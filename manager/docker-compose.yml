@@ -29,9 +29,11 @@ services:
       DATABASE_URL: postgres://manager:${POSTGRES_PASSWORD:-manager}@postgres:5432/manager
       MANAGER_PORT: "9876"
       SHLS_ROOT: /opt/streaming/streaming-infra-manager/manager/swarm-hls-stream
+      BEE_DATA_ROOT: ${BEE_DATA_ROOT:-/opt/streaming/streaming-infra-manager-data}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /opt/streaming/streaming-infra-manager:/opt/streaming/streaming-infra-manager
+      - ${BEE_DATA_ROOT:-/opt/streaming/streaming-infra-manager-data}:${BEE_DATA_ROOT:-/opt/streaming/streaming-infra-manager-data}
 
   web:
     build:
