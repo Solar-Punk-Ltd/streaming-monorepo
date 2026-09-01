@@ -10,7 +10,8 @@ import { promisify } from 'node:util';
 const run = promisify(execFile);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const SCRIPT = join(ROOT, 'deploy/scripts/phase06-light-vs-ultralight.sh');
-const BATCH = '0000000300000000000000000000000000000000000000000000000000000000';
+/** Synthetic. A live batch id in a committed fixture is a stamp anyone can spend against. */
+const BATCH = 'a'.repeat(64);
 
 /**
  * That the light-against-ultra-light sitting refuses what it cannot finish, at the margin it says.

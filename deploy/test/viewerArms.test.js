@@ -55,7 +55,8 @@ async function startChequebook(availableBzz) {
  * state the script exists to notice, so the test would sit out a real timeout per arm and prove
  * nothing about the ordering it is measuring.
  */
-const BATCH_ID = '0000000300000000000000000000000000000000000000000000000000000000';
+/** Synthetic. A live batch id in a committed fixture is a stamp anyone can spend against. */
+const BATCH_ID = 'a'.repeat(64);
 
 function stubBin(
   binDir,

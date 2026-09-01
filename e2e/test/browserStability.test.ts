@@ -143,7 +143,7 @@ describe('what a run cost the deployment', () => {
   ): NodeReading => ({
     rung,
     port,
-    batchId: '0000000300000000000000000000000000000000000000000000000000000000',
+    batchId: 'a'.repeat(8),
     postageUtilization: utilization,
     postageCapacity: 256,
     postageTtlDays: 30,
@@ -269,7 +269,7 @@ describe('what a run cost a stage with one bee node per rung', () => {
   ): NodeReading => ({
     rung,
     port,
-    batchId: `${port}`.padEnd(64, 'a'),
+    batchId: `${port}`.padEnd(8, 'a'),
     postageUtilization: utilization,
     postageCapacity: 256,
     postageTtlDays: 30,
