@@ -24,13 +24,20 @@ for required in "$SSH_CONFIG" "$RENDERED_DIR"; do
 done
 
 # Array for direct invocation so a space in the checkout path cannot split the command.
-# rsync's -e takes a string and does its own splitting; that one stays a join.
 SSH_BIN=(ssh -F "$SSH_CONFIG")
+
+# rsync takes -e as one string and splits it again itself, so the same path has to be protected a
+# second time, in rsync's grammar rather than the shell's. Both openrsync (what macOS ships) and
+# upstream rsync honour single and double quotes in that string and deliberately ignore backslash
+# escapes, which rules out `printf %q`: its output arrives split at the spaces with the
+# backslashes kept as literal characters. A single quote inside the path is doubled, which is how
+# both parsers spell a literal one.
+RSYNC_RSH="ssh -F '${SSH_CONFIG//"'"/"''"}'"
 
 # No --delete: the static stack and the rendered files land in the same remote directory, so
 # each pass would delete the other's files.
-rsync -az --exclude 'push.sh' -e "${SSH_BIN[*]}" "$STACK_DIR/" "$ALIAS:$REMOTE_DIR/"
-rsync -az -e "${SSH_BIN[*]}" "$RENDERED_DIR/" "$ALIAS:$REMOTE_DIR/"
+rsync -az --exclude 'push.sh' -e "$RSYNC_RSH" "$STACK_DIR/" "$ALIAS:$REMOTE_DIR/"
+rsync -az -e "$RSYNC_RSH" "$RENDERED_DIR/" "$ALIAS:$REMOTE_DIR/"
 
 # shellcheck disable=SC2029 # REMOTE_DIR is a local constant, expanding it here is intended
 "${SSH_BIN[@]}" "$ALIAS" "cd $REMOTE_DIR && docker compose pull --quiet && docker compose up -d"
