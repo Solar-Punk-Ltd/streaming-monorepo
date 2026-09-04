@@ -1,0 +1,41 @@
+# Four machine-level rules. They watch the box, not the pipeline: the manager, the uploader and
+# SRS expose no Prometheus metrics today, so anything stream-level has to be read from Grafana's
+# logs and the player until they do.
+groups:
+  - name: hosts
+    rules:
+      - alert: InstanceDown
+        expr: up{job="node"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance_name }} ({{ $labels.stage }}) is not answering scrapes"
+
+      - alert: DiskAlmostFull
+        expr: |
+          100 * (1 - node_filesystem_avail_bytes{job="node",fstype!~"tmpfs|overlay|squashfs"}
+                     / node_filesystem_size_bytes{job="node",fstype!~"tmpfs|overlay|squashfs"}) > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance_name }} {{ $labels.mountpoint }} is over 85% full"
+
+      - alert: CpuSustainedHigh
+        expr: |
+          100 * (1 - avg by (instance, instance_name, stage) (rate(node_cpu_seconds_total{job="node",mode="idle"}[5m]))) > 85
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance_name }} CPU over 85% for 15m — a four-rung ladder is ~7 vCPU before the manager's share"
+
+      - alert: MemoryAlmostExhausted
+        expr: |
+          100 * (1 - node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"}) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance_name }} has less than 10% memory available"

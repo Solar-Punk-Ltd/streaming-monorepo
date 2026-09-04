@@ -1,0 +1,4 @@
+# Copy to poc.backend.hcl and fill in the bucket bootstrap/ created:
+#   terraform init -backend-config=envs/poc.backend.hcl
+bucket = "REPLACE_WITH_STATE_BUCKET"
+prefix = "poc"

@@ -1,0 +1,128 @@
+# Container logs to Loki. Alloy ships every container's stdout/stderr to the monitoring host, so
+# what SRS, the uploader and the manager say is readable next to their metrics instead of only
+# over ssh on the host that produced it.
+#
+# This is provisioning and not application config, the same call as node_exporter: it belongs to
+# the machine rather than to whatever the manager happens to be running, and it discovers
+# containers from the docker socket instead of being told what they are — so nothing here needs
+# editing when the media profile changes what runs on the host.
+#
+# Rendered into both startup templates from one file: two copies of this config in two templates
+# is a drift waiting to happen, and only the labels differ between the host roles.
+install -d -m 0755 ${alloy_dir}
+
+# Quoted heredocs: both files are written verbatim. Terraform has already made the only
+# substitutions there are by the time this runs on the host.
+cat >${alloy_dir}/config.alloy <<'DEVCON_ALLOY_CONFIG'
+// Written by the instance startup script from terraform/templates/alloy_provision.sh.tftpl.
+// Edits made on the host are overwritten on the next boot.
+
+logging {
+  // warn, not the default info: discovery.docker finds every container on this host, Alloy's own
+  // included, so its per-target chatter would be shipped to Loki as log lines about shipping log
+  // lines. At warn it is silent unless something is actually wrong, which is worth seeing.
+  level = "warn"
+}
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  // Docker reports the name with a leading slash. This label is what a human types into a
+  // Grafana query, so strip it once here rather than in every query. Anchored like every
+  // Prometheus-style relabel regex, and the default replacement is the first capture group.
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/?(.*)"
+    target_label  = "container"
+  }
+
+  // Which stack a container belongs to. A stage host runs the manager, its Postgres and web UI
+  // alongside the media profile, and the container name alone does not say which is which.
+  // Meta labels are dropped before the logs are shipped, so anything wanted as a label has to
+  // be copied to a real one here.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "compose_project"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "compose_service"
+  }
+}
+
+loki.source.docker "containers" {
+  host    = "unix:///var/run/docker.sock"
+  targets = discovery.relabel.containers.output
+
+  // role and stage carry exactly the values the Prometheus targets do (see render.tf), and host
+  // carries the instance name that appears there as instance_name. That is what lets a log line
+  // and a metric be lined up by host without a translation table.
+  labels = {
+    host  = "${host_name}",
+    role  = "${role}",
+    stage = "${stage}",
+  }
+
+  forward_to = [loki.write.monitoring.receiver]
+}
+
+loki.write "monitoring" {
+  endpoint {
+    url = "${loki_url}"
+  }
+}
+DEVCON_ALLOY_CONFIG
+
+cat >${alloy_dir}/docker-compose.yml <<'DEVCON_ALLOY_COMPOSE'
+# Written by the instance startup script from terraform/templates/alloy_provision.sh.tftpl.
+# Edits made on the host are overwritten on the next boot.
+#
+# Own compose project, so it is independent of the manager stacks on a stage host and of the
+# monitoring stack on the monitoring host: `docker compose down` in either never takes the
+# shipper with it.
+name: devcon-alloy
+
+services:
+  alloy:
+    # Tag and digest, like the monitoring stack's images. The tag is mutable, so the digest is
+    # the actual pin; the tag is there to be read. Pinned in terraform/locals.tf.
+    image: ${alloy_image}
+    restart: unless-stopped
+    # No `ports:` at all, and the HTTP bind stated rather than inherited: Alloy's debug UI needs
+    # no authentication to read this host's config and component state, so it stays inside the
+    # container's own network namespace. The default already binds loopback — saying so here
+    # means a future Alloy changing that default cannot quietly publish it.
+    command:
+      - run
+      - --server.http.listen-addr=127.0.0.1:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      # Read-only: Alloy lists containers and reads their logs, and never starts one. Write
+      # access to this socket is root on the host, so the flag is the difference that matters.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${alloy_dir}/config.alloy:/etc/alloy/config.alloy:ro
+      # A named volume, not a bind mount, and the reason it exists: it holds the read positions,
+      # which have to survive the --force-recreate below or every boot re-ships the logs this
+      # host already sent.
+      - data:/var/lib/alloy/data
+
+volumes:
+  data:
+DEVCON_ALLOY_COMPOSE
+
+# --force-recreate because `up -d` does not notice that a bind-mounted file changed — the same
+# gap push.sh closes with a SIGHUP for Prometheus. Runs on every boot and is idempotent: one
+# container either way, and the positions volume outlives the recreate. So a changed config
+# takes effect on the next boot, or in place over ssh with
+# `sudo google_metadata_script_runner startup`.
+#
+# A subshell, so the rest of the startup script keeps its working directory. Loki not being up
+# yet is fine and expected on a first boot — the monitoring stack is pushed by a human
+# afterwards, and loki.write retries.
+(cd ${alloy_dir} && docker compose up -d --force-recreate)

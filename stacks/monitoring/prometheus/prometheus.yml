@@ -1,0 +1,29 @@
+# targets/ is rendered by Terraform and rsynced next to this file by push.sh, so a new stage
+# arrives as a file change and needs no reload of this config.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
+
+  # node_exporter on every host, the monitoring host included. There are no
+  # Prometheus-format metrics in the manager, the uploader or SRS today, so this is the
+  # whole of the machine-level view.
+  - job_name: node
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/*.json
+        refresh_interval: 30s

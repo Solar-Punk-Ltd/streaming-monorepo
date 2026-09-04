@@ -1,0 +1,23 @@
+# Rendered by Terraform. Use it as: ssh -F terraform/rendered/ssh_config <alias>
+#
+# The aliases MUST stay dotless. swarm-hls-stream's host_from_target only resolves a target
+# through `ssh -G` when the name has no dot in it; a dotted alias is taken for a literal
+# hostname and the lookup breaks.
+#
+# No HostName anywhere: the ProxyCommand names the instance and IAP carries the connection, so
+# no host is reachable at an address here.
+#
+# No host-key pinning for these IAP hosts: the tunnel is opened by instance name against IAM,
+# and pinning would only re-add the manual `ssh-keygen -R` after a rebuild — the exact step the
+# M4 test exists to rule out. Scoped per host on purpose. A target OUTSIDE this list — a Hetzner
+# publisher, any other deploy target — gets OpenSSH's defaults, because for a direct TCP
+# connection the host key is the only identity there is.
+%{ for host in hosts ~}
+Host ${host.alias}
+  User ${user}
+  IdentityFile ${identity_file}
+  ProxyCommand gcloud compute start-iap-tunnel ${host.instance_name} %p --listen-on-stdin --project=${project} --zone=${host.zone}
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+
+%{ endfor ~}

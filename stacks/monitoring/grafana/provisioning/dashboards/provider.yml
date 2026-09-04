@@ -1,0 +1,12 @@
+# File-provisioned dashboards: any *.json dropped into this directory ships with the next
+# push.sh run and appears in Grafana without a UI import. The useful first one is Node Exporter
+# Full — grafana.com dashboard 1860 — since node_exporter is the only metrics source today.
+apiVersion: 1
+
+providers:
+  - name: files
+    type: file
+    folder: ""
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/provisioning/dashboards

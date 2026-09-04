@@ -1,0 +1,64 @@
+# The image's own /etc/loki/local-config.yaml with retention added, mounted over it.
+#
+# Everything above the retention block is copied from that file verbatim, and schema_config
+# especially is not ours to tune: it decides how the index and chunks already written under
+# /var/lib/monitoring/loki are read back, so changing `from`, `store`, `object_store` or `schema`
+# here would orphan the history on the TSDB disk rather than migrate it. When the image is
+# bumped, re-read its default (`docker cp devcon-monitoring-loki-1:/etc/loki/local-config.yaml -
+# | tar -xO`; the image is distroless and has no `cat`) and diff it against this file.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# Retention, which the default config has none of: the compactor compacts and never deletes, and
+# a retention_period of 0s means keep forever. On a disk shared with the Prometheus TSDB that is
+# not a policy, it is a full disk at some unpredictable date. 14 days covers a test window and
+# the run-up to it, which is as far back as anyone reads a container log.
+#
+# working_directory is deliberately not set: common.path_prefix already puts it at
+# /loki/compactor, which is on the TSDB disk, so compaction state survives a host rebuild the
+# same way the chunks do.
+compactor:
+  retention_enabled: true
+  # Required once retention is on — Loki refuses to start with retention enabled and no delete
+  # request store — and filesystem is the store this single-binary deployment already uses.
+  delete_request_store: filesystem
+
+limits_config:
+  retention_period: 336h # 14d
+  # Both are already the image's defaults. Stated because retention is what makes them
+  # load-bearing: a stage host with a drifted clock, or an Alloy resuming from old positions
+  # after a long stop, would otherwise write into a window the compactor is about to delete.
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h # 7d
+
+ruler:
+  alertmanager_url: http://localhost:9093
+
+# Off. The default reports usage to stats.grafana.org from a host whose entire posture is that
+# nothing leaves it unasked, and Grafana's own container is already configured this way.
+analytics:
+  reporting_enabled: false

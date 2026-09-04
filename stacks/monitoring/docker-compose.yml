@@ -1,0 +1,74 @@
+# Pushed to /home/solarpunk/monitoring by push.sh, on top of everything Terraform rendered
+# under rendered/monitoring/. Loki's push port is the only thing published off-host, and only to
+# the stage service account; the UIs are loopback-only, so reach Grafana over the tunnel:
+# ssh -F ../../rendered/ssh_config -L 3000:localhost:3000 monitoring
+#
+# State lives on the separate TSDB disk at /var/lib/monitoring, so a host rebuild keeps the
+# history that makes the two-region comparison readable.
+
+name: devcon-monitoring
+
+# Every image carries a tag and a digest. Tags are mutable and push.sh re-pulls on every run, so
+# the digest is the actual pin; the tag is there to be read.
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.13.2@sha256:508729e0e2d18e11fd742a5a5ca70e557b940a93948c3c95fd0123a6fd538b69
+    restart: unless-stopped
+    # No --web.enable-lifecycle: it is an unauthenticated kill and reload endpoint inside the
+    # compose network. push.sh reloads the config with a SIGHUP instead.
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - /var/lib/monitoring/prometheus:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  alertmanager:
+    image: prom/alertmanager:v0.34.0@sha256:690c7b525f4367aa91f73e2f91c632206d32e97c6384bdbf2fb7a861b420340d
+    restart: unless-stopped
+    # No config mounted on purpose: the image's default routes nowhere, and picking a receiver
+    # is a post-POC decision. Alerts still fire and are visible in the UI.
+    volumes:
+      - /var/lib/monitoring/alertmanager:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+
+  loki:
+    image: grafana/loki:3.7.7@sha256:d70e4659623f3e109af669cae76fe2a5dd5be54e2298fe8aed380d982fbc2500
+    restart: unless-stopped
+    # ./loki/loki.yaml is the image's bundled single-binary config plus 14-day retention, mounted
+    # over the copy in the image. Retention stopped being optional when the stage hosts started
+    # shipping their container logs here: this disk is shared with the Prometheus TSDB.
+    command: -config.file=/etc/loki/loki.yaml
+    volumes:
+      - ./loki:/etc/loki:ro
+      - /var/lib/monitoring/loki:/loki
+    # The one port published off-host in this stack, and only reachable by an instance running as
+    # the stage service account (firewall.tf, devcon-loki-push). Same posture as node_exporter on
+    # 0.0.0.0:9100: the VPC's default-deny plus that identity-based rule is the control, not the
+    # bind address. Loki has no authentication of its own, so widening that rule is what would
+    # matter here, not this line.
+    ports:
+      - "3100:3100"
+
+  grafana:
+    image: grafana/grafana:13.2.0@sha256:3fd54ae1214669f8355f065ec9f6445d5279a3d77095ab048ca045685272429b
+    restart: unless-stopped
+    # :? so a missing .env fails the run loudly instead of silently leaving admin/admin.
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?render rendered/monitoring/.env with terraform apply first}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - /var/lib/monitoring/grafana:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+      - loki

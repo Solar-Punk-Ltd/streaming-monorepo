@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# First-boot machine provisioning for the monitoring host: runtime, the TSDB disk, and the
+# directories the pinned images write into. The compose stack itself is pushed by
+# stacks/monitoring/push.sh.
+set -euo pipefail
+
+# A failed run surfaces in `gcloud compute instances get-serial-port-output` instead of a host
+# that looks up but silently has no docker.
+trap 'echo "devcon: monitoring provisioning FAILED at line $LINENO" >/dev/kmsg' ERR
+
+MARKER=/var/lib/devcon-monitoring-provisioned
+DEVICE=/dev/disk/by-id/google-${disk_device_id}
+
+if [ ! -f "$MARKER" ]; then
+  export DEBIAN_FRONTEND=noninteractive
+
+  # Lock timeout instead of a sleep: unattended-upgrades holds dpkg on a fresh boot. The retry
+  # covers transient mirror failures; the final failure exits into the ERR trap.
+  for attempt in 1 2 3; do
+    if apt-get -o DPkg::Lock::Timeout=300 update -y &&
+      apt-get -o DPkg::Lock::Timeout=300 install -y --no-install-recommends \
+        docker.io \
+        rsync \
+        jq \
+        prometheus-node-exporter; then
+      break
+    fi
+    [ "$attempt" -lt 3 ] || exit 1
+    sleep 15
+  done
+
+  # Compose v2 plugin: Ubuntu's archive names it docker-compose-v2, Docker's own apt repo names
+  # it docker-compose-plugin. Take whichever this host's sources offer.
+  apt-get -o DPkg::Lock::Timeout=300 install -y --no-install-recommends docker-compose-v2 ||
+    apt-get -o DPkg::Lock::Timeout=300 install -y --no-install-recommends docker-compose-plugin
+
+  touch "$MARKER"
+fi
+
+if ! id -u ${host_user} >/dev/null 2>&1; then
+  useradd --create-home --shell /bin/bash ${host_user}
+fi
+usermod --append --groups docker ${host_user}
+install -d -o ${host_user} -g ${host_user} ${stack_dir}
+
+# Format only an unformatted disk: this runs on every boot, and the TSDB outliving the host is
+# the point of putting it on its own disk. The by-id path is stable, the device order is not.
+if ! blkid "$DEVICE" >/dev/null 2>&1; then
+  mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard "$DEVICE"
+fi
+
+mkdir -p ${data_dir}
+grep -q "^$DEVICE " /etc/fstab ||
+  echo "$DEVICE ${data_dir} ext4 discard,defaults,nofail 0 2" >>/etc/fstab
+mountpoint -q ${data_dir} || mount ${data_dir}
+
+# The uids the pinned images run as. Wrong ownership here does not fail the container start --
+# it fails the first write, minutes later, inside the container's log.
+install -d -o 65534 -g 65534 ${data_dir}/prometheus
+install -d -o 65534 -g 65534 ${data_dir}/alertmanager
+install -d -o 472 -g 472 ${data_dir}/grafana
+install -d -o 10001 -g 10001 ${data_dir}/loki
+
+systemctl enable --now docker
+systemctl enable --now prometheus-node-exporter
+
+# Log shipping, rendered from templates/alloy_provision.sh.tftpl and shared with the stage hosts.
+# This host ships its own containers too: the monitoring stack's own logs are the first place to
+# look when a stage host's logs stop arriving. After docker is up, because it brings a container
+# up.
+${alloy_provision}
