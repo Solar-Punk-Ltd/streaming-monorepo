@@ -1,0 +1,32 @@
+# Rendered by Terraform for the Bee hosts on Vultr. Two ways to use it:
+#
+#   ssh -F terraform/rendered/vultr/ssh_config <alias>
+#
+# or, once, in ~/.ssh/config — which is the one that matters, because
+# streaming-infra-manager's deploy/deploy.sh calls bare `ssh <target>` and never `ssh -F`:
+#
+#   Include ${self_path}
+#
+# Put that line above your own Host blocks: at top level it is global, and OpenSSH silently
+# ignores an Include whose file does not exist, so the line is safe to add before this file has
+# ever been rendered.
+#
+# The aliases MUST stay dotless. swarm-hls-stream's host_from_target only resolves a target
+# through `ssh -G` when the name has no dot in it; a dotted alias is taken for a literal
+# hostname and the lookup breaks.
+#
+# UNLIKE the GCP root's ssh_config, these are direct TCP connections to a public address, so the
+# host key is the only identity there is and pinning it is not optional. StrictHostKeyChecking
+# accept-new records the key on first connect and refuses a CHANGED one; the known_hosts file is
+# per-root and scoped to these hosts, so after a deliberate rebuild the fix is deleting that one
+# file — never `ssh-keygen -R` against ~/.ssh/known_hosts, and never a global StrictHostKeyChecking
+# no that would also weaken every other target you ssh to.
+%{ for host in hosts ~}
+Host ${host.alias}
+  HostName ${host.ip}
+  User ${user}
+  IdentityFile ${identity_file}
+  StrictHostKeyChecking accept-new
+  UserKnownHostsFile ${known_hosts}
+
+%{ endfor ~}

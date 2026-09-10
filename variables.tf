@@ -9,7 +9,7 @@ variable "project_id" {
 }
 
 # Renaming a stage key is a full destroy and recreate, not a rename: both reserved addresses —
-# the external one is the Hetzner allowlist identity — and both of its secrets go with it. If a
+# the external one is the Bee-host allowlist identity — and both of its secrets go with it. If a
 # rename is ever needed, move the state with `moved` blocks first.
 variable "stages" {
   type = map(object({
@@ -157,4 +157,61 @@ variable "manage_project_services" {
   description = "Whether Terraform enables the project APIs it needs. Set false when the project's services are managed elsewhere."
   type        = bool
   default     = true
+}
+
+# Direct sshd access for a host that cannot open an IAP tunnel: the streaming-infra-manager on
+# its Hetzner box deploys the ABR uploader to the stage hosts over plain ssh from a container. IAP
+# stays the path for humans; this is one more IP-keyed exception of the same kind as
+# loki_push_source_ranges below. Empty means no sshd is reachable from the internet (the M0-M4
+# posture).
+variable "ssh_source_ranges" {
+  description = "Public addresses allowed to reach sshd on the STAGE hosts directly (tcp 22): the manager host that deploys the uploader. Not the monitoring host, which nothing external deploys to."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for range in var.ssh_source_ranges :
+      can(cidrhost(range, 0)) && can(tonumber(split("/", range)[1])) && tonumber(split("/", range)[1]) >= 24
+    ])
+    error_message = "ssh_source_ranges entries must be valid CIDR blocks no wider than /24: this opens a root-capable sshd to the internet, one address at a time."
+  }
+}
+
+# Further keys for user solarpunk on the stage hosts, alongside ssh_public_key: the manager host's
+# deploy key. Instance metadata takes the whole roster, and the guest agent converges
+# authorized_keys to it — which is also why a key appended by hand on a GCP host does not survive.
+variable "additional_ssh_public_keys" {
+  description = "OpenSSH public keys installed for solarpunk on the stage hosts in addition to ssh_public_key, through instance metadata."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for key in var.additional_ssh_public_keys :
+      can(regex("^(ssh-ed25519 AAAAC3NzaC1lZDI1NTE5|ssh-rsa AAAAB3NzaC1yc2E|ecdsa-sha2-nistp[0-9]+ AAAA)[A-Za-z0-9+/]{20,}={0,3}( |$)", key))
+    ])
+    error_message = "Every additional_ssh_public_keys entry must be a complete one-line OpenSSH public key."
+  }
+}
+
+# The Bee hosts at Vultr, by address, because there is no shared identity plane between the two
+# clouds: the loki_push rule below filters by service account, which cannot match traffic arriving
+# from another provider. Fed by hand from the other root's output, and deliberately not by a
+# terraform_remote_state read of it — that would make this root depend on the Vultr root having
+# been applied, and the GCP footing has to be able to come up on its own.
+#
+#   cd vultr && terraform output bee_host_ips     # then paste the addresses here as /32s
+variable "loki_push_source_ranges" {
+  description = "Public addresses allowed to push to Loki on the monitoring host: the Vultr Bee hosts' reserved IPs, from terraform/vultr's output bee_host_ips. Empty means no off-cloud host can ship logs."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for range in var.loki_push_source_ranges :
+      can(cidrhost(range, 0)) && can(tonumber(split("/", range)[1])) && tonumber(split("/", range)[1]) >= 24
+    ])
+    error_message = "loki_push_source_ranges entries must be valid CIDR blocks no wider than /24: Loki has no authentication, so this list is the entire ingress control for a write surface on a public port. Reserved Bee host addresses are /32s."
+  }
 }

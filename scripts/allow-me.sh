@@ -20,7 +20,10 @@ cd "$ROOT"
 # policy expires on its own clock (`invalid_rapt`). The gcloud CLI credential is the one that has
 # to be fresh anyway for the IAP tunnels, so borrow its token: both the gcs backend and the
 # google provider honour GOOGLE_OAUTH_ACCESS_TOKEN, and one credential to keep alive beats two.
-export GOOGLE_OAUTH_ACCESS_TOKEN="${GOOGLE_OAUTH_ACCESS_TOKEN:-$(gcloud auth print-access-token)}"
+# Always minted fresh, never inherited from the shell: an access token lives for an hour, and one
+# exported by hand for an earlier command is exactly the thing that makes the backend fail with a
+# bare "AuthenticationRequired" 401 while `gcloud auth login` has just succeeded.
+export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"
 
 case "${1:-on}" in
   on)

@@ -14,11 +14,14 @@ srt_source_ranges = ["10.60.1.0/24", "10.60.2.0/24"]
 # before the first apply:
 #   gcloud compute machine-types list --filter="name=t2d-standard-8 AND zone~'europe-west3-a|asia-south1-a'"
 stages = {
-  # Stage 1 — EU, ~10 ms from the Hetzner publishers. Live since M2 (2026-09-01).
-  # srt_port: SRS SRT = 10001 + port_slot*10; the media profile takes slot 1 ⇒ 10011.
+  # Stage 1 — EU, ~10 ms from the Bee publishers in Frankfurt (terraform/vultr). Live since M2 (2026-09-01).
+  # srt_port: SRS SRT = 10001 + port_slot*10, and the slot is whatever the manager assigns the ABR
+  # Uploader profile — slots are global across one manager's database, not per host. Read the slot
+  # off the profile in the manager UI and set this to match, then apply; the firewall admits only
+  # this port.
   stage1 = {
     region   = "europe-west3"
-    srt_port = 10011
+    srt_port = 10051
     machine  = "t2d-standard-8"
   }
   # Stage 2 — Mumbai (M3). Uncommenting this entry IS the M3 rollout step.
@@ -28,3 +31,17 @@ stages = {
   #   machine  = "t2d-standard-8"
   # }
 }
+
+# The Bee hosts at Vultr, allowed to push container logs into Loki on the monitoring host. There
+# is no shared identity plane between the clouds, so this is IP-keyed. Fill it from the other
+# root — `cd vultr && terraform output bee_host_ips` — as /32s, then apply. Empty means those
+# hosts' metrics arrive and their logs do not.
+loki_push_source_ranges = ["108.61.171.132/32"] # bee1, terraform/vultr output bee_host_ips
+
+# The streaming-infra-manager host (Hetzner, static). It deploys the ABR uploader to the stage
+# hosts over plain ssh, so it gets tcp/22 on them directly and its deploy key on user solarpunk.
+# Humans keep using IAP through rendered/ssh_config.
+ssh_source_ranges = ["65.108.40.56/32"]
+additional_ssh_public_keys = [
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJcfXyVNl9YhCXekkm2c8dodKJrxgnliiQrKp9Vso5Le streaming-infra-manager@65.108.40.56",
+]

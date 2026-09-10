@@ -114,3 +114,60 @@ resource "google_compute_firewall" "manager_ui_iap" {
     metadata = "EXCLUDE_ALL_METADATA"
   }
 }
+
+# Loki's push port, opened to named public addresses: the Bee hosts at Vultr (terraform/vultr),
+# whose Alloy ships container logs into the same Loki the stage hosts do. The internal, identity
+# based loki_push rule above cannot serve them — a source-service-account filter never matches
+# traffic from outside the project, let alone outside GCP — so this is IP-keyed, and the addresses
+# are reserved on the Vultr side precisely so a rebuild there does not invalidate the rule here.
+#
+# Absent rather than empty when the list is: GCP reads an omitted source_ranges as 0.0.0.0/0, and
+# Loki has no authentication, so an empty list must mean "no rule" and never "everyone".
+resource "google_compute_firewall" "loki_push_external" {
+  count = length(var.loki_push_source_ranges) > 0 ? 1 : 0
+
+  name    = "${var.name_prefix}-loki-push-external"
+  project = var.project_id
+  network = google_compute_network.vpc.id
+
+  allow {
+    protocol = "tcp"
+    ports    = [tostring(local.loki_port)]
+  }
+
+  source_ranges           = var.loki_push_source_ranges
+  target_service_accounts = [google_service_account.monitoring.email]
+
+  # Logged, unlike the two service-account rules it sits beside. Those are host-to-host chatter
+  # inside one project; this one admits an unauthenticated write from the public internet, so
+  # every match is worth a record — the same call as the SRT ingest rule.
+  log_config {
+    metadata = "EXCLUDE_ALL_METADATA"
+  }
+}
+
+# sshd on the stage hosts, opened to named public addresses: the streaming-infra-manager host,
+# which deploys the ABR uploader over plain ssh from a container and has no gcloud and no Google
+# identity to open an IAP tunnel with. Stage tag only — nothing external deploys to the monitoring
+# host, so its sshd stays IAP-only. Absent while the list is empty, for the same reason as the
+# Loki rule above: an omitted source_ranges would mean everyone.
+resource "google_compute_firewall" "ssh_external" {
+  count = length(var.ssh_source_ranges) > 0 ? 1 : 0
+
+  name    = "${var.name_prefix}-ssh-external"
+  project = var.project_id
+  network = google_compute_network.vpc.id
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  source_ranges = var.ssh_source_ranges
+  target_tags   = [local.stage_tag]
+
+  # Internet-facing, so logged like the SRT and external Loki rules.
+  log_config {
+    metadata = "EXCLUDE_ALL_METADATA"
+  }
+}

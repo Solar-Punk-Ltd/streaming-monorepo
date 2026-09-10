@@ -65,6 +65,12 @@ resource "local_file" "ssh_config" {
     project       = var.project_id
     user          = local.host_user
     identity_file = var.ssh_identity_file
+
+    # Absolute, because an Include is resolved against ~/.ssh (or the including file's directory)
+    # and not against this file's location — and because the whole point of the line is that a
+    # copy of it in ~/.ssh/config keeps working. The path is the Vultr root's rendered config;
+    # nothing here requires it to exist.
+    vultr_ssh_config = "${abspath(local.rendered_dir)}/vultr/ssh_config"
     hosts = [
       for alias in local.host_aliases : {
         alias         = alias

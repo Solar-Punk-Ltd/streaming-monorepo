@@ -9,7 +9,7 @@ data "google_compute_image" "ubuntu" {
 }
 
 # The stage's external address doubles as its egress identity: GCP VM egress leaves through the
-# instance's external address, so a Hetzner-side allowlist keys on exactly these.
+# instance's external address, so the Bee hosts' firewall (terraform/vultr) keys on exactly these.
 resource "google_compute_address" "stage" {
   for_each = var.stages
 
@@ -95,7 +95,9 @@ resource "google_compute_instance" "stage" {
   }
 
   metadata = {
-    ssh-keys       = "${local.host_user}:${var.ssh_public_key}"
+    # The whole roster, one "user:key" per line: the operator key plus the manager host's deploy
+    # key. Metadata is authoritative for this user's authorized_keys.
+    ssh-keys       = join("\n", [for key in concat([var.ssh_public_key], var.additional_ssh_public_keys) : "${local.host_user}:${key}"])
     enable-oslogin = "FALSE"
 
     # A tenant in a shared project: without this, project-level ssh-keys metadata — which

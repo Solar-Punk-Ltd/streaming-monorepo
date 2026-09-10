@@ -12,8 +12,8 @@ and never touches `BEE_PUBLISHERS`, `ABR_LADDER`, stamps or keys — those stay 
   project (`gcloud auth login && gcloud auth application-default login`)
 - On the project: rights to create compute, Secret Manager, service-account and storage
   resources, plus `roles/iap.tunnelResourceAccessor` for whoever will SSH
-- For the appliers: `ssh`, `rsync`; the media deploy additionally follows
-  `streaming-infra-manager/deploy/README.md`
+- For the appliers: `ssh`, `rsync`. The media deploy is not run from here — it runs on the
+  `streaming-infra-manager` host, which reaches the stage hosts over ssh on its own
 - Nothing to install on the hosts: the startup scripts provision docker, `node_exporter` and the
   Grafana Alloy log shipper themselves on first boot
 
@@ -50,23 +50,35 @@ Dashboards are file-provisioned — drop JSON into
 `stacks/monitoring/grafana/provisioning/dashboards/` (Node Exporter Full, grafana.com ID 1860,
 is the useful first one) and push again.
 
-**M2 — stage 1.** Uncomment `stage1` (europe-west3), apply, then hand the host its config:
+**M2 — stage 1.** Uncomment `stage1` (europe-west3) and apply:
 
 ```sh
 terraform apply -var-file=envs/poc.tfvars
-scp -p -F rendered/ssh_config rendered/stage1/manager.env stage1:/home/solarpunk/streaming-infra-manager/manager/.env
 ./stacks/monitoring/push.sh            # picks up the new scrape target
 ```
 
 What M2 gives you before anything is deployed on the host: `node_exporter` scraped by Prometheus,
-and Alloy shipping every container's logs to Loki — including the manager, Postgres, SRS and the
-uploader from the moment they first start, with no step of its own. See "Reading the logs" below.
+and Alloy shipping every container's logs to Loki — SRS and the uploader from the moment they
+first start, with no step of its own. See "Reading the logs" below.
 
-Deploy the manager stack per `streaming-infra-manager/deploy/README.md` (its deploy.sh works
-with `ssh -F` aliases), then drive the media profile from the manager. Two things the plan
-insists on: run the media stack from the ABR lineage (`main` predates `BEE_PUBLISHERS`), and
-always deploy with `--portSlot >= 1` — slot 1 puts SRT on 10011, which is what the firewall and
-`poc.tfvars` assume. The SRT passphrase for the hand-authored engine env:
+The host does not deploy itself and runs no manager of its own. The ABR Uploader — SRS plus
+`stream-uploader` — is pushed onto it over plain ssh by the one `streaming-infra-manager` per
+brand, which lives on a host outside GCP and drives the Bee hosts at Vultr the same way. Two
+variables are what make that reach the host at all: `ssh_source_ranges` carries the manager
+host's /32, which is the only thing besides IAP that gets past the VPC's deny-all on port 22,
+and `additional_ssh_public_keys` carries its deploy key into the instance's `ssh-keys` metadata
+alongside `ssh_public_key`, where the guest agent converges `solarpunk`'s `authorized_keys` to
+the whole roster. The profile's host is entered in the manager as `solarpunk@<external ip>`,
+never an ssh alias: the manager writes that value, minus the `user@`, straight into the SRT URL.
+
+Two things the plan insists on: run the media stack from the ABR lineage (`main` predates
+`BEE_PUBLISHERS`), and deploy with `--portSlot >= 1`. **Port slots are global to the manager's
+one Postgres**, so the uploader takes whatever slot is free rather than always slot 1, and its
+SRT port is `10001 + 10 × slot`. Put that number in `stages.stage1.srt_port` and apply again —
+the ingest rule admits exactly one port per stage, and a mismatch is a stream that connects to
+nothing. `rendered/stage1/manager.env` is still rendered here and is not part of this rollout:
+the manager's env lives on the manager host, with the manager. The SRT passphrase for the
+hand-authored engine env:
 `gcloud secrets versions access latest --secret=devcon-srt-passphrase-stage1`.
 
 **M3 — stage 2** is uncommenting `stage2` and running the same two commands as M2.
@@ -75,24 +87,50 @@ always deploy with `--portSlot >= 1` — slot 1 puts SRT on 10011, which is what
 
 ```sh
 terraform apply -var-file=envs/poc.tfvars -replace='google_compute_instance.stage["stage2"]'
-scp -p -F rendered/ssh_config rendered/stage2/manager.env stage2:/home/solarpunk/streaming-infra-manager/manager/.env
 ```
 
-then redeploy the manager stack and the media profile exactly as in M2 — the recovery procedure
-IS the M2 procedure, which is what the test proves. Nothing else moves: both of the host's
-addresses are reserved (external and internal), so the Hetzner allowlist, the Prometheus target
-in `nodes.json` and the ssh alias all stay valid, no `push.sh` re-run is needed, and no host key
-needs clearing (identity comes from IAP, which opens the tunnel by instance name against IAM).
+then redeploy the ABR Uploader from the manager exactly as in M2 — the recovery procedure IS the
+M2 procedure, which is what the test proves. Nothing else moves: both of the host's addresses are
+reserved (external and internal), so the Bee hosts' firewall allowlist, the manager's reach into
+port 22 and the block for this host in its rendered ssh config, the Prometheus target in
+`nodes.json` and the ssh alias all stay valid, and no `push.sh` re-run is needed. The human path
+needs no host key cleared either — identity comes from IAP, which opens the tunnel by instance
+name against IAM. The manager's does: it connects by address, so the rebuilt host presents a key
+its `known_hosts` disagrees with, and that one line has to go before the redeploy.
+
+## Bee hosts on Vultr
+
+The Bee publishers run on their own machines at Vultr, in a second root:
+[vultr/README.md](vultr/README.md). One host carries three ABR ladders — twelve Bee publisher
+nodes — deployed onto it over ssh by the same external `streaming-infra-manager` that deploys the
+uploader here. That root reads this one's `stage_external_ips` and `monitoring_external_ip` out
+of the state bucket, so **this root is applied first**; the one thing that has to come back the
+other way is a list of addresses:
+
+1. `cd vultr && ./scripts/allow-me.sh` — applies the Vultr root (needs `VULTR_API_KEY`).
+2. `terraform output bee_host_ips` there, paste them as /32s into `loki_push_source_ranges` in
+   `envs/poc.tfvars`, and apply **this** root. Without it those hosts' logs cannot reach Loki,
+   while their metrics arrive normally — a gap that is silent from the Grafana side.
+3. `./stacks/monitoring/push.sh` — the Vultr root renders its Prometheus targets into
+   `rendered/monitoring/prometheus/targets/vultr-bee-hosts.json`, so this ships them with no
+   edit to the monitoring stack.
+
+The rendered `ssh_config` here `Include`s the Vultr root's, so one file reaches every host; the
+line is inert until that root has been applied. That file is the human path, over IAP. The
+manager's path is a separate rendered file, `rendered/vultr/manager_ssh_config`, which the Vultr
+root writes with a block for every host in both clouds — direct TCP, host keys pinned — and the
+operator copies to the manager host. See [vultr/README.md](vultr/README.md).
 
 ## Day-to-day access
 
 ```sh
 ssh -F rendered/ssh_config stage1                                  # or: monitoring
-ssh -F rendered/ssh_config -L 8080:localhost:8080 stage1           # manager web UI
+ssh -F rendered/ssh_config -L 3000:localhost:3000 monitoring       # Grafana
 ```
 
 Aliases must stay dotless — `swarm-hls-stream` resolves deploy targets through `ssh -G` only for
-names without a dot.
+names without a dot. The manager's web UI is not on either of these hosts and needs no tunnel
+from here.
 
 ## Reading the logs
 
@@ -135,9 +173,10 @@ The script writes the gitignored `operator.auto.tfvars` and runs the usual plan/
 rule stays Terraform-owned. Run it again when the home router's address changes; one address is
 held at a time, so a re-run replaces the old one. Whoever applies from a checkout without that
 file closes the door, which is the right default. Then aim the encoder at the stage's **external**
-address (output `srt_ingest_endpoints`; the internal `10.60.x.x` address is reachable only from
-inside the VPC): `srt://<external-ip>:10011?streamid=#!::r=live/stream,m=publish`. Production
-never needs this: the venue encoder has a static address and belongs in `srt_source_ranges`.
+address and the port its uploader's slot decided (output `srt_ingest_endpoints` prints both; the
+internal `10.60.x.x` address is reachable only from inside the VPC):
+`srt://<endpoint>?streamid=#!::r=live/stream,m=publish`. Production never needs this: the venue
+encoder has a static address and belongs in `srt_source_ranges`.
 
 ## Operational notes
 
@@ -153,10 +192,12 @@ never needs this: the venue encoder has a static address and belongs in `srt_sou
   script in place (idempotent by design — the apt work is behind a marker file, and the Alloy
   stack is recreated from the config it just wrote); a reboot; or `-replace`, which rebuilds the
   host. Apply first, then re-run: the runner reads the metadata Terraform has already written.
-- **SSH is one shared key** for user `solarpunk` across all three hosts, so there is no per-human
-  attribution and no per-human revocation. OS Login is off on purpose: `streaming-infra-manager`
-  hardcodes `/home/solarpunk` on both sides of its bind mounts, and OS Login derives the username
-  from IAM.
+- **SSH is one shared key** for user `solarpunk` across all three hosts, plus the manager host's
+  deploy key on the stage hosts through `additional_ssh_public_keys`, so there is no per-human
+  attribution and no per-human revocation. Instance metadata is authoritative for that roster and
+  the guest agent converges `authorized_keys` to it, which is also why a key appended by hand on
+  a host does not survive. OS Login is off on purpose: `streaming-infra-manager` hardcodes
+  `/home/solarpunk` on both sides of its bind mounts, and OS Login derives the username from IAM.
 - **After M0, commit `envs/poc.backend.hcl`.** A bucket name is not a secret, and copying the
   example file is a per-checkout manual step of exactly the kind M4 exists to eliminate.
 - **The state bucket's project should be one whose IAM the team actually controls**, which may not
@@ -168,25 +209,36 @@ never needs this: the venue encoder has a static address and belongs in `srt_sou
 
 ## What the security actually rests on
 
-- **Nothing on a stage host authenticates** — not the manager, not the uploader API, not a Bee
-  API. The VPC's default-deny ingress plus these rules is the entire control. Do not widen
-  a rule "temporarily".
+- **Nothing on a stage host authenticates** — not the uploader API, not SRS's own HTTP surface.
+  The VPC's default-deny ingress plus these rules is the entire control. Do not widen a rule
+  "temporarily".
+- **One rule puts a stage host's sshd on the public internet**: `devcon-ssh-external`, tcp 22
+  from the /32s in `ssh_source_ranges`, targeting the stage tag only. It exists because the
+  `streaming-infra-manager` host deploys the uploader over plain ssh from inside a container and
+  has no gcloud and no Google identity to open an IAP tunnel with. It is IP-keyed and logged,
+  like the SRT ingest rule and for the same reason: with no application auth behind it, matching
+  the rule is the whole authorization event and the only record of it. The monitoring host is not
+  a target — nothing external deploys to it — and IAP stays the human path to both. The variable
+  refuses anything wider than a /24.
 - **Loki's push port is the only thing published off-host** (tcp 3100 on the monitoring host), and
   Loki has no authentication either. What stands in front of it is one identity-based rule —
   source the stage service account, target the monitoring one — so only an instance running as
   that service account can write logs or read them back out. A `source_ranges` version of that
   rule would trust a subnet where this trusts two hosts. Everything else in the monitoring stack
-  stays on loopback and is reached over an IAP tunnel.
+  stays on loopback and is reached over an IAP tunnel. The Bee hosts at Vultr cannot be admitted
+  that way — a source-service-account filter never matches traffic from outside the project — so
+  each of their reserved addresses is a named /32 in `loki_push_source_ranges`, and that rule is
+  logged where the two internal ones are not. It is absent while the list is empty.
 - **The state bucket is a security boundary**: generated passwords live in Terraform state.
   The bootstrap bucket is versioned, uniform-access, public-access-enforced; who can read it is
   project IAM, decided outside this module.
 - The stage hosts' static external IPs (output `stage_external_ips`) are the egress identity a
-  Hetzner-side allowlist keys on — and also what apt depends on at first boot; removing
+  Bee hosts' firewall (terraform/vultr) keys on — and also what apt depends on at first boot; removing
   `access_config` would silently break provisioning.
 - Egress is the meter that matters while publishing (~12 Mbps for two stages); idle, the bill is
   the VMs — roughly $13/day list with stage 1 + monitoring up. Between test windows **stop the
   instances** rather than destroying: carrying cost drops to about a dollar a day (disks +
-  reserved addresses), and the static IPs — the Hetzner allowlist identity — and the TSDB
+  reserved addresses), and the static IPs — the Bee-host allowlist identity — and the TSDB
   history survive. `terraform destroy` releases the addresses and deletes the TSDB disk along
   with everything else; save it for a real teardown, and expect to re-allowlist on the Bee side
   after the next apply.

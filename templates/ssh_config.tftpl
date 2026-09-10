@@ -1,5 +1,13 @@
 # Rendered by Terraform. Use it as: ssh -F terraform/rendered/ssh_config <alias>
 #
+# The Bee hosts at Vultr are a second root with a second rendered config, pulled in here so one
+# file reaches every host in the pilot. At top level, before any Host block, an Include is global,
+# and OpenSSH silently ignores one whose file does not exist — so this root does not depend on
+# terraform/vultr having been applied, and the line is correct on a checkout that never applies
+# it. The aliases cannot collide: the Vultr root reserves "monitoring" and the "stage" prefix in
+# its bee_hosts validation, because ssh resolves the FIRST matching Host block.
+Include ${vultr_ssh_config}
+#
 # The aliases MUST stay dotless. swarm-hls-stream's host_from_target only resolves a target
 # through `ssh -G` when the name has no dot in it; a dotted alias is taken for a literal
 # hostname and the lookup breaks.
@@ -9,7 +17,7 @@
 #
 # No host-key pinning for these IAP hosts: the tunnel is opened by instance name against IAM,
 # and pinning would only re-add the manual `ssh-keygen -R` after a rebuild — the exact step the
-# M4 test exists to rule out. Scoped per host on purpose. A target OUTSIDE this list — a Hetzner
+# M4 test exists to rule out. Scoped per host on purpose. A target OUTSIDE this list — a non-IAP
 # publisher, any other deploy target — gets OpenSSH's defaults, because for a direct TCP
 # connection the host key is the only identity there is.
 %{ for host in hosts ~}

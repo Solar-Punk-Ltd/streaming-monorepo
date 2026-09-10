@@ -1,5 +1,5 @@
 output "stage_external_ips" {
-  description = "Static external address per stage. These double as the egress identity a Hetzner-side allowlist keys on: GCP VM egress leaves through the instance's own external address."
+  description = "Static external address per stage. These double as the egress identity the Bee hosts' firewall keys on (terraform/vultr admits exactly these /32s to the Bee API band): GCP VM egress leaves through the instance's own external address."
   value       = { for key, address in google_compute_address.stage : key => address.address }
 }
 
