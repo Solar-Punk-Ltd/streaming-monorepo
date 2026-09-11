@@ -1,0 +1,30 @@
+# AGENTS.md
+
+Read by AI coding agents working in this repository.
+
+## Layout
+
+- pnpm workspace. Packages are listed in `pnpm-workspace.yaml`; today only
+  `web2-admin`.
+- `docs/ROADMAP.md` is the plan and the checkpoint log. Update it when a
+  checkpoint closes or a decision lands.
+- `docs/architecture/` holds the design briefs. `web2-admin.md` is the text
+  version of the interactive MVP model and is the reference for what the
+  admin layer is and is not.
+- `docs/infra-state.md` says what is deployed where.
+
+## Conventions
+
+- TypeScript, ESM, exact-pinned dependencies (`save-exact=true` in `.npmrc`).
+- Mirror streaming-infra-manager where a choice is arbitrary, so the two repos
+  read as one team's work.
+- The admin layer never touches a wallet or a host directly. Anything that
+  does goes through the Manager API.
+- Ownership (which brand a call may act for) is enforced in the Admin API and
+  nowhere else.
+
+## Working model
+
+One orchestrating session owns docs, roadmap, memory and verification.
+Implementation and other heavy work is delegated to high-effort agents with a
+self-contained brief. Every delegated change is reviewed before it lands.

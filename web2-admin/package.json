@@ -1,0 +1,15 @@
+{
+  "name": "@solarpunk/web2-admin",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Web2 admin layer: brand console, admin API and Postgres for the multi-brand Swarm streaming platform.",
+  "license": "MIT",
+  "scripts": {
+    "build": "echo 'web2-admin: nothing to build yet (checkpoint 1)'",
+    "dev": "echo 'web2-admin: nothing to run yet (checkpoint 1)'",
+    "test": "echo 'web2-admin: no tests yet (checkpoint 1)'",
+    "typecheck": "echo 'web2-admin: nothing to typecheck yet (checkpoint 1)'",
+    "lint": "echo 'web2-admin: no linter yet (checkpoint 1)'"
+  }
+}
