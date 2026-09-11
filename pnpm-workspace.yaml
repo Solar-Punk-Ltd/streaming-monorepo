@@ -1,0 +1,4 @@
+# Every top-level app or library in this monorepo is a workspace package.
+# Add a new line here when a new package is created.
+packages:
+  - web2-admin

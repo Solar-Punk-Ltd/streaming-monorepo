@@ -1,0 +1,19 @@
+{
+  "name": "streaming-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Solar Punk multi-brand Swarm streaming platform: the Web2 admin layer and the packages around it.",
+  "license": "MIT",
+  "packageManager": "pnpm@10.29.3",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter @deploy/web2-admin dev",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint"
+  }
+}
