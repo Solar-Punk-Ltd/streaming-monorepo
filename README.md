@@ -7,7 +7,9 @@ https://solar-punk-ltd.github.io/devcon-streaming-partnership/?model=mvp.
 
 | Package | What |
 |---|---|
-| [web2-admin](web2-admin/) | Brand console, admin API and Postgres. The Web2 admin layer of the MVP model. |
+| [web2-admin/common](web2-admin/common/) | API contract shared by backend and frontend. |
+| [web2-admin/backend](web2-admin/backend/) | Admin API: Express 5 + pg. |
+| [web2-admin/frontend](web2-admin/frontend/) | Brand console: React + MUI + Vite, modelled on msrs-client. |
 
 ## Docs
 

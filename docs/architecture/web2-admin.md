@@ -72,13 +72,14 @@ the same open question as the auth component above, seen from the other end.
 3. Chat: Swarm feeds/GSOC versus a websocket in the web2 layer. Drawn in the
    SPA, not decided. Only matters here if the websocket answer wins.
 
-## Proposed stack (to confirm at checkpoint 2)
+## Stack (decided 2026-09-11)
 
-Aligned with streaming-infra-manager so the two codebases feel like one team's:
+Same as streaming-infra-manager, so the two codebases feel like one team's:
 
 - TypeScript, ESM, exact-pinned dependencies, pnpm workspace.
-- API: Node with Express 5, `pg` for Postgres, schema validation (manager uses yup).
-- SQL migrations checked into the repo, run on startup like the manager does.
-- Console: React with Vite. The manager uses MUI; the console is a customer
-  surface, so a lighter or brand-themable UI kit is worth a decision.
-- Tests: Node's built-in test runner through tsx, unit and integration split.
+- `web2-admin/backend`: Express 5, `pg`, yup validation, SQL migrations in the
+  repo run on startup, Node test runner through tsx (unit and integration).
+- `web2-admin/frontend`: React 18, MUI, Vite. The console is modelled on
+  msrs-client (https://github.com/Solar-Punk-Ltd/msrs-client), which is the
+  admin UI operators use today at https://ethisstream.eth.limo/#/.
+- Package scope `@streaming-monorepo/`.

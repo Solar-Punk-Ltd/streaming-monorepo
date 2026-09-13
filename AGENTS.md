@@ -4,14 +4,19 @@ Read by AI coding agents working in this repository.
 
 ## Layout
 
-- pnpm workspace. Packages are listed in `pnpm-workspace.yaml`; today only
-  `web2-admin`.
+- pnpm workspace. Packages are listed in `pnpm-workspace.yaml`: `web2-admin/*`,
+  i.e. `web2-admin/common`, `web2-admin/backend` and `web2-admin/frontend`.
+  Package scope is `@streaming-monorepo/`. `common` is the API contract;
+  change it deliberately and update both sides.
 - `docs/ROADMAP.md` is the plan and the checkpoint log. Update it when a
   checkpoint closes or a decision lands.
 - `docs/architecture/` holds the design briefs. `web2-admin.md` is the text
   version of the interactive MVP model and is the reference for what the
   admin layer is and is not.
 - `docs/infra-state.md` says what is deployed where.
+- `docs/research/` holds condensed reports on the sibling repos (msrs-client,
+  streaming-infra-manager, swarm-hls-stream). Read the relevant one before
+  touching anything that talks to those systems.
 
 ## Conventions
 
