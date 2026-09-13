@@ -1,0 +1,16 @@
+# Build-context excludes for this Dockerfile. BuildKit reads
+# `<dockerfile>.dockerignore` in preference to the context root's
+# `.dockerignore`, which lets this live next to the Dockerfile it belongs to.
+#
+# The context is the repository root, so without this the daemon is handed a
+# few hundred megabytes of installed node_modules — which the image installs
+# itself, from the lockfile — and every local .env.
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.git
+**/.env
+**/.env.*
+!**/.env.sample
+**/*.log
+**/.DS_Store

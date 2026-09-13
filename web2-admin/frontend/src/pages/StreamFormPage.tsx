@@ -1,0 +1,332 @@
+import { useEffect, useState, type FormEvent } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import {
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  Divider,
+  Paper,
+  Stack,
+  Typography,
+} from '@mui/material';
+import {
+  STREAM_LIMITS,
+  type MediaType,
+  type Stream,
+  type StreamInput,
+} from '@streaming-monorepo/web2-admin-common';
+
+import * as api from '../api';
+import {
+  errorMessage,
+  MEDIA_TYPE_LOCKED,
+  SCHEDULE_LOCKED,
+  UNSUPPORTED_IMAGE_TYPE,
+} from '../errors';
+import {
+  dateTimeLocalValueToIso,
+  isoToDateTimeLocalValue,
+} from '../format';
+import {
+  DescriptionField,
+  MediaTypeField,
+  NameField,
+  ScheduleField,
+  TagsField,
+  THUMBNAIL_MIME_TYPES,
+  ThumbnailField,
+} from '../components/StreamFormFields';
+import { useSnackbar } from '../components/Snackbar';
+
+/** msrs-client's messages, so the two consoles fail the same way. */
+export const ERROR_MESSAGES = {
+  NAME_REQUIRED: 'Stream name is required',
+  DESCRIPTION_REQUIRED: 'Description is required',
+  SCHEDULED_TIME_REQUIRED: 'Scheduled start time is required',
+  THUMBNAIL_TOO_LARGE: 'Thumbnail file size must be less than 5MB',
+};
+
+interface FormState {
+  title: string;
+  description: string;
+  tags: string[];
+  mediaType: MediaType;
+  /** A `datetime-local` value, i.e. local wall-clock time, or ''. */
+  scheduledStartTime: string;
+}
+
+const EMPTY: FormState = {
+  title: '',
+  description: '',
+  tags: [],
+  mediaType: 'video',
+  scheduledStartTime: '',
+};
+
+function toInput(form: FormState): StreamInput {
+  return {
+    title: form.title.trim(),
+    description: form.description.trim(),
+    tags: form.tags,
+    mediaType: form.mediaType,
+    scheduledStartTime: dateTimeLocalValueToIso(form.scheduledStartTime),
+  };
+}
+
+export function StreamFormPage() {
+  const { id } = useParams<{ id?: string }>();
+  const isEdit = Boolean(id);
+  const navigate = useNavigate();
+  const snackbar = useSnackbar();
+
+  const [form, setForm] = useState<FormState>(EMPTY);
+  const [loaded, setLoaded] = useState<Stream | null>(null);
+  const [loading, setLoading] = useState(isEdit);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // Thumbnail is three pieces of state: what the server has, what the
+  // operator just picked, and whether they asked for the stored one to go.
+  const [picked, setPicked] = useState<File | null>(null);
+  const [removeStored, setRemoveStored] = useState(false);
+
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
+    setForm((prev) => ({ ...prev, [key]: value }));
+
+  useEffect(() => {
+    // One component serves /create and /edit/:id, so a change of route param
+    // has to clear everything the previous stream put here — an unsaved file
+    // pick included, or it would be applied to the wrong stream on save.
+    setPicked(null);
+    setRemoveStored(false);
+    setError(null);
+    if (!id) {
+      setLoaded(null);
+      setForm(EMPTY);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    api
+      .fetchStream(id)
+      .then((stream) => {
+        if (cancelled) return;
+        setLoaded(stream);
+        setForm({
+          title: stream.title,
+          description: stream.description,
+          tags: stream.tags,
+          mediaType: stream.mediaType,
+          scheduledStartTime: isoToDateTimeLocalValue(
+            stream.scheduledStartTime,
+          ),
+        });
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(errorMessage(e, 'Failed to load the stream'));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  // The object URL is created in an effect, not in a memo, so its revoke is
+  // tied to the same lifecycle that created it. jsdom has no object URLs and
+  // the preview is decoration, so it is skipped there rather than guarded for.
+  const [pickedPreview, setPickedPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!picked || typeof URL.createObjectURL !== 'function') {
+      setPickedPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(picked);
+    setPickedPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [picked]);
+
+  // Once an encoder has connected, two fields stop being editable. The media
+  // type is half of the ingest address the streamer already has; the schedule
+  // is a promise about a stream that has already started, and viewers have
+  // read it off the catalogue entry. Everything else stays editable, live
+  // included — a typo in a title is worth fixing mid-broadcast.
+  const hasGoneLive = loaded?.status === 'live' || loaded?.status === 'vod';
+  const mediaTypeLocked = loaded?.status === 'published' || hasGoneLive;
+  const scheduleLocked = hasGoneLive;
+
+  const storedThumbnail =
+    loaded?.hasThumbnail && !removeStored && !picked
+      ? api.thumbnailUrl(loaded)
+      : null;
+
+  const validate = (): string | null => {
+    if (!form.title.trim()) return ERROR_MESSAGES.NAME_REQUIRED;
+    if (!form.description.trim()) return ERROR_MESSAGES.DESCRIPTION_REQUIRED;
+    if (!form.scheduledStartTime) return ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED;
+    return null;
+  };
+
+  const pickThumbnail = (file: File) => {
+    // `accept` is a hint the operator can bypass with "all files", so the
+    // type is checked here too rather than surfacing as a 415 after the row
+    // has already been saved.
+    if (!(THUMBNAIL_MIME_TYPES as readonly string[]).includes(file.type)) {
+      setError(UNSUPPORTED_IMAGE_TYPE);
+      return;
+    }
+    if (file.size > STREAM_LIMITS.THUMBNAIL_MAX_BYTES) {
+      setError(ERROR_MESSAGES.THUMBNAIL_TOO_LARGE);
+      return;
+    }
+    setError(null);
+    setPicked(file);
+    setRemoveStored(false);
+  };
+
+  const removeThumbnail = () => {
+    setPicked(null);
+    if (loaded?.hasThumbnail) setRemoveStored(true);
+  };
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const invalid = validate();
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
+    setError(null);
+    setSaving(true);
+
+    let saved: Stream;
+    try {
+      saved = id
+        ? await api.updateStream(id, toInput(form))
+        : await api.createStream(toInput(form));
+    } catch (err) {
+      setError(
+        errorMessage(
+          err,
+          isEdit ? 'Failed to update stream' : 'Failed to create stream',
+        ),
+      );
+      setSaving(false);
+      return;
+    }
+
+    // The image travels on its own endpoint, after the row exists. A failure
+    // here must not read as "the stream was not saved" — it was, and sending
+    // the operator back to a form that would create a second one is worse
+    // than moving on with the thumbnail called out.
+    try {
+      if (picked) {
+        await api.uploadThumbnail(saved.id, picked);
+      } else if (removeStored) {
+        await api.deleteThumbnail(saved.id);
+      }
+      snackbar.success(isEdit ? 'Stream updated.' : `"${saved.title}" created.`);
+    } catch (err) {
+      snackbar.error(
+        `Stream saved, but the thumbnail did not: ${errorMessage(
+          err,
+          'the upload failed',
+        )}`,
+      );
+    }
+
+    setSaving(false);
+    navigate(`/streams/${saved.id}`);
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+        <CircularProgress aria-label="Loading stream" />
+      </Box>
+    );
+  }
+
+  return (
+    <Stack spacing={3}>
+      <Typography variant="h5" component="h1">
+        {isEdit ? 'Edit Stream' : 'Create New Stream'}
+      </Typography>
+
+      <Paper variant="outlined" sx={{ p: 3 }}>
+        <Box component="form" onSubmit={submit} noValidate>
+          <Stack spacing={3}>
+            {error ? <Alert severity="error">{error}</Alert> : null}
+
+            <NameField
+              value={form.title}
+              onChange={(v) => set('title', v)}
+              error={error === ERROR_MESSAGES.NAME_REQUIRED}
+              disabled={saving}
+            />
+            <DescriptionField
+              value={form.description}
+              onChange={(v) => set('description', v)}
+              error={error === ERROR_MESSAGES.DESCRIPTION_REQUIRED}
+              disabled={saving}
+            />
+            <TagsField
+              value={form.tags}
+              onChange={(v) => set('tags', v)}
+              disabled={saving}
+            />
+            {/*
+              The media type is the `app` half of the ingest stream id, so
+              changing it on a published stream would silently invalidate the
+              OBS settings the streamer already has. The backend refuses it
+              with 409 media_type_locked; the radio says so up front.
+            */}
+            <MediaTypeField
+              value={form.mediaType}
+              onChange={(v) => set('mediaType', v)}
+              disabled={saving || mediaTypeLocked}
+              helperText={mediaTypeLocked ? MEDIA_TYPE_LOCKED : undefined}
+            />
+
+            <Divider />
+
+            <ThumbnailField
+              previewUrl={pickedPreview ?? storedThumbnail}
+              fileName={picked?.name ?? null}
+              onPick={pickThumbnail}
+              onRemove={removeThumbnail}
+              disabled={saving}
+            />
+
+            <Divider />
+
+            <ScheduleField
+              value={form.scheduledStartTime}
+              onChange={(v) => set('scheduledStartTime', v)}
+              error={error === ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED}
+              disabled={saving || scheduleLocked}
+              helperText={scheduleLocked ? SCHEDULE_LOCKED : undefined}
+            />
+
+            <Stack direction="row" spacing={2}>
+              <Button type="submit" variant="contained" disabled={saving}>
+                {saving
+                  ? isEdit
+                    ? 'Updating Stream…'
+                    : 'Creating Stream…'
+                  : isEdit
+                    ? 'Update Stream'
+                    : 'Create Stream'}
+              </Button>
+              <Button onClick={() => navigate(-1)} disabled={saving}>
+                Cancel
+              </Button>
+            </Stack>
+          </Stack>
+        </Box>
+      </Paper>
+    </Stack>
+  );
+}
