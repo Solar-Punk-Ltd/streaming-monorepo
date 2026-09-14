@@ -1,6 +1,7 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STREAM_LIMITS } from '@streaming-monorepo/web2-admin-common';
 
 import {
@@ -8,6 +9,11 @@ import {
   SCHEDULE_LOCKED,
   UNSUPPORTED_IMAGE_TYPE,
 } from '../errors';
+import { ScheduleField } from '../components/schedule/ScheduleField';
+import {
+  formatHumanDateTime,
+  nextFullHour,
+} from '../components/schedule/scheduleTime';
 import { ERROR_MESSAGES, StreamFormPage } from '../pages/StreamFormPage';
 import {
   jsonError,
@@ -77,6 +83,9 @@ describe('StreamFormPage validation', () => {
 
     typeIn('Stream Name *', 'Pilot keynote');
     typeIn('Description *', 'The opening talk');
+    // The form arrives prefilled, so the only way to reach this error is to
+    // empty the field by hand — which the operator can still do.
+    typeIn('Scheduled Start Time *', '');
     submit();
 
     expect(
@@ -160,7 +169,6 @@ describe('StreamFormPage validation', () => {
     typeIn('Tags', 'eth');
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Audio Only' }));
-    typeIn('Scheduled Start Time *', '2026-10-01T18:00');
     fireEvent.change(screen.getByLabelText('Upload Thumbnail (Max 5MB)'), {
       target: { files: [fakeImage('cover.png', 1024)] },
     });
@@ -192,7 +200,6 @@ describe('StreamFormPage validation', () => {
 
     typeIn('Stream Name *', 'Pilot keynote');
     typeIn('Description *', 'The opening talk');
-    typeIn('Scheduled Start Time *', '2026-10-01T18:00');
     fireEvent.change(screen.getByLabelText('Upload Thumbnail (Max 5MB)'), {
       target: { files: [fakeImage('cover.png', 1024)] },
     });
@@ -456,5 +463,218 @@ describe('StreamFormPage thumbnail', () => {
     ).not.toBeInTheDocument();
     expect(screen.getByText('exact.png')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+  });
+});
+
+
+/**
+ * The schedule field is one control with three parts: the picker field, the
+ * quick-pick chips and the caption. What it owes the form is a
+ * `datetime-local` string out of `onChange`, and silence with its reason
+ * showing when the stream is locked.
+ */
+describe('ScheduleField', () => {
+  /** Monday 14 September 2026, 14:23 — so the next full hour is 15:00. */
+  const NOW = new Date(2026, 8, 14, 14, 23, 0);
+
+  beforeEach(() => {
+    // Only Date is faked: the picker still needs real timers to open.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  function Harness({
+    initial = '2026-09-14T15:00',
+    disabled = false,
+    helperText,
+    onChange,
+  }: {
+    initial?: string;
+    disabled?: boolean;
+    helperText?: string;
+    onChange: (value: string) => void;
+  }) {
+    const [value, setValue] = useState(initial);
+    return (
+      <ScheduleField
+        value={value}
+        onChange={(next) => {
+          onChange(next);
+          setValue(next);
+        }}
+        disabled={disabled}
+        helperText={helperText}
+      />
+    );
+  }
+
+  const renderField = (props: Partial<Parameters<typeof Harness>[0]> = {}) => {
+    const onChange = vi.fn();
+    renderWithProviders(<Harness onChange={onChange} {...props} />);
+    return onChange;
+  };
+
+  it('shows the value in the field and again in the caption', () => {
+    renderField();
+
+    expect(screen.getByLabelText('Scheduled Start Time *')).toHaveValue(
+      'Mon 14 Sep 2026, 15:00',
+    );
+    expect(
+      screen.getByText('Mon 14 Sep 2026, 15:00 · in 37 minutes'),
+    ).toBeInTheDocument();
+  });
+
+  it('offers the quick picks that are still ahead', () => {
+    const onChange = renderField();
+
+    // 14:23 on a Monday: all four are in the future.
+    expect(
+      screen.getByRole('button', { name: 'Tonight 20:00' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Tomorrow same time' }));
+
+    expect(onChange).toHaveBeenLastCalledWith('2026-09-15T14:23');
+    expect(screen.getByLabelText('Scheduled Start Time *')).toHaveValue(
+      'Tue 15 Sep 2026, 14:23',
+    );
+  });
+
+  it('picks a day out of the popover calendar', async () => {
+    const onChange = renderField();
+
+    fireEvent.click(screen.getByRole('button', { name: /choose date/i }));
+    const calendar = await screen.findByRole('dialog');
+    fireEvent.click(within(calendar).getByRole('gridcell', { name: '20' }));
+
+    // The day moves; the time the field already held stays put.
+    expect(onChange).toHaveBeenLastCalledWith('2026-09-20T15:00');
+  });
+
+  it('can be emptied, which is what makes the field fail validation', () => {
+    const onChange = renderField();
+
+    typeIn('Scheduled Start Time *', '');
+
+    expect(onChange).toHaveBeenLastCalledWith('');
+  });
+
+  it('goes quiet, with its reason, when the stream is locked', () => {
+    renderField({
+      disabled: true,
+      helperText: SCHEDULE_LOCKED,
+      initial: '2026-09-14T09:00',
+    });
+
+    expect(screen.getByLabelText('Scheduled Start Time *')).toBeDisabled();
+    expect(screen.getByRole('button', { name: /choose date/i })).toBeDisabled();
+    expect(screen.getByText(SCHEDULE_LOCKED)).toBeInTheDocument();
+    // No shortcuts on a field nobody can change.
+    expect(
+      screen.queryByRole('button', { name: 'Tomorrow same time' }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe('StreamFormPage schedule prefill', () => {
+  it('prefills a new stream with the next full hour', () => {
+    mockFetch([]);
+    renderCreateForm();
+
+    expect(screen.getByLabelText('Scheduled Start Time *')).toHaveValue(
+      formatHumanDateTime(nextFullHour(new Date())),
+    );
+  });
+
+  it('leaves an edited stream on the time it was given', async () => {
+    const iso = '2026-10-01T18:00:00.000Z';
+    mockFetch([
+      {
+        path: '/api/streams/edit-time',
+        respond: () =>
+          jsonOk(makeStream({ id: 'edit-time', scheduledStartTime: iso })),
+      },
+    ]);
+
+    renderEditForm('edit-time');
+
+    // Whatever the machine's zone, the field shows that instant in it — the
+    // prefill must not have overwritten a stored time.
+    expect(await screen.findByLabelText('Scheduled Start Time *')).toHaveValue(
+      formatHumanDateTime(new Date(iso)),
+    );
+  });
+});
+
+describe('StreamFormPage error clearing', () => {
+  it('drops the required-name error as soon as a name is typed', () => {
+    mockFetch([]);
+    renderCreateForm();
+
+    submit();
+
+    expect(screen.getByText(ERROR_MESSAGES.NAME_REQUIRED)).toBeInTheDocument();
+    expect(screen.getByLabelText('Stream Name *')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+
+    typeIn('Stream Name *', 'Alps 2');
+
+    // The message was about the form as it was when Create was pressed;
+    // leaving it up paints a filled field red and contradicts what the
+    // operator is looking at.
+    expect(
+      screen.queryByText(ERROR_MESSAGES.NAME_REQUIRED),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Stream Name *')).toHaveAttribute(
+      'aria-invalid',
+      'false',
+    );
+  });
+
+  it('does not clear a message a different field still owns', () => {
+    mockFetch([]);
+    renderCreateForm();
+
+    typeIn('Stream Name *', 'Alps 2');
+    submit();
+
+    expect(
+      screen.getByText(ERROR_MESSAGES.DESCRIPTION_REQUIRED),
+    ).toBeInTheDocument();
+
+    // Editing the tags does not answer the description.
+    typeIn('Tags', 'alps');
+
+    expect(
+      screen.getByText(ERROR_MESSAGES.DESCRIPTION_REQUIRED),
+    ).toBeInTheDocument();
+
+    typeIn('Description *', 'Two nights on the Aletsch');
+
+    expect(
+      screen.queryByText(ERROR_MESSAGES.DESCRIPTION_REQUIRED),
+    ).not.toBeInTheDocument();
+  });
+
+  it('validates again on the next submit', () => {
+    mockFetch([]);
+    renderCreateForm();
+
+    typeIn('Stream Name *', 'Alps 2');
+    submit();
+
+    expect(
+      screen.getByText(ERROR_MESSAGES.DESCRIPTION_REQUIRED),
+    ).toBeInTheDocument();
+
+    // Emptying the name again must bring its own error back, not the stale one.
+    typeIn('Stream Name *', '');
+    submit();
+
+    expect(screen.getByText(ERROR_MESSAGES.NAME_REQUIRED)).toBeInTheDocument();
   });
 });
