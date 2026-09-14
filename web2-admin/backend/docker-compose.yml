@@ -1,0 +1,47 @@
+# Local development stack for the web2-admin backend.
+#
+#   pnpm database:start   → postgres only, on 127.0.0.1:5433 (host mode, `pnpm dev`)
+#   docker compose -p web2-admin --profile full up -d --build   → + the API image
+#
+# Port 5433 rather than 5432 on purpose: streaming-infra-manager publishes its
+# own postgres on 5432 and both are often up on the same laptop.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    # Only the three variables it needs, interpolated from .env: the rest of
+    # that file is the API's business and includes the feed signing key.
+    environment:
+      POSTGRES_DB: web2admin
+      POSTGRES_USER: web2admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-web2admin}
+    volumes:
+      - web2admin-pg:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U web2admin -d web2admin"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    profiles: ["full"]
+    build:
+      # The repository root: the image needs pnpm-lock.yaml and the workspace
+      # manifests to install the backend with its workspace dependency.
+      context: ../..
+      dockerfile: web2-admin/backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://web2admin:${POSTGRES_PASSWORD:-web2admin}@postgres:5432/web2admin
+      WEB2_ADMIN_PORT: "9877"
+    ports:
+      - "127.0.0.1:9877:9877"
+
+volumes:
+  web2admin-pg:

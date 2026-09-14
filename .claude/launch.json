@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web2-admin-frontend",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@streaming-monorepo/web2-admin-frontend", "dev"],
+      "port": 5081
+    }
+  ]
+}

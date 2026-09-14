@@ -1,0 +1,68 @@
+import type {
+  IngestLookupResponse,
+  MediaType,
+  StreamStateResponse,
+} from '@streaming-monorepo/web2-admin-common';
+import { Request, RequestHandler, Response, Router } from 'express';
+
+import { StreamStateService } from '../../domain/StreamStateService.js';
+import {
+  ingestLookupParamSchema,
+  streamStateSchema,
+  type StreamStateBody,
+} from '../../schemas/internal.js';
+import { streamIdParamSchema } from '../../schemas/stream.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
+import { validateBody, validateParams } from '../middleware/validate.js';
+import { toIngestLookup, toPublishResult } from '../presenters.js';
+
+export interface InternalRoutesDeps {
+  streamStateService: StreamStateService;
+  requireInternalToken: RequestHandler;
+}
+
+/**
+ * What the swarm-hls-stream uploader calls, and nothing else. Two routes: the
+ * one that turns an ingest address into the draft an encoder is publishing to,
+ * and the one that reports what happened to it.
+ *
+ * The split with the console's routes is the whole point of the checkpoint.
+ * The uploader owns each stream's manifest feed and never writes the
+ * catalogue; the admin API owns the catalogue and never touches a manifest.
+ * `POST /state` is how the one tells the other what to say.
+ */
+export function createInternalRouter(deps: InternalRoutesDeps): Router {
+  const { streamStateService, requireInternalToken } = deps;
+  const router = Router();
+
+  router.use(requireInternalToken);
+
+  router.get(
+    '/streams/by-ingest/:app/:stream',
+    validateParams(ingestLookupParamSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const stream = await streamStateService.lookupByIngest(
+        String(req.params.app) as MediaType,
+        String(req.params.stream),
+      );
+      const response: IngestLookupResponse = toIngestLookup(stream);
+      res.json(response);
+    }),
+  );
+
+  router.post(
+    '/streams/:id/state',
+    validateParams(streamIdParamSchema),
+    validateBody(streamStateSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const outcome = await streamStateService.report(
+        String(req.params.id),
+        req.body as StreamStateBody,
+      );
+      const response: StreamStateResponse = toPublishResult(outcome);
+      res.json(response);
+    }),
+  );
+
+  return router;
+}
