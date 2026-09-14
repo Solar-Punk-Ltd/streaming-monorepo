@@ -19,8 +19,6 @@ import {
   type MediaType,
 } from '@streaming-monorepo/web2-admin-common';
 
-import { nowDateTimeLocalValue } from '../format';
-
 /**
  * The fields, labels and limits are msrs-client's, reproduced in MUI so the
  * console its operators already know keeps reading the same.
@@ -298,37 +296,5 @@ export function ThumbnailField({
         </Stack>
       ) : null}
     </Stack>
-  );
-}
-
-export function ScheduleField({
-  value,
-  onChange,
-  error = false,
-  disabled = false,
-  helperText,
-}: {
-  /** A `datetime-local` value, i.e. local wall-clock time, or ''. */
-  value: string;
-  onChange: (value: string) => void;
-  error?: boolean;
-  disabled?: boolean;
-  /** Why the field is locked, when it is; the backend says the same sentence. */
-  helperText?: string;
-}) {
-  return (
-    <TextField
-      id="scheduled-time"
-      label="Scheduled Start Time *"
-      type="datetime-local"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      inputProps={{ min: nowDateTimeLocalValue() }}
-      InputLabelProps={{ shrink: true }}
-      error={error}
-      disabled={disabled}
-      helperText={helperText}
-      fullWidth
-    />
   );
 }
