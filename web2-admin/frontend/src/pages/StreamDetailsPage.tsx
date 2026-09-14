@@ -216,7 +216,9 @@ export function StreamDetailsPage() {
       new Date(stream.publishedAt).getTime();
 
   return (
-    <Stack spacing={3}>
+    // The same column width as the form the operator arrived from, so the two
+    // screens do not jump about between each other.
+    <Stack spacing={3} sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
       <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap">
         <Typography variant="h5" component="h1" sx={{ flexGrow: 1 }}>
           {stream.title}

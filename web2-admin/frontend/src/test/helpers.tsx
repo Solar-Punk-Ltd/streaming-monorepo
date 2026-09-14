@@ -1,4 +1,6 @@
 import { ThemeProvider, createTheme } from '@mui/material';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { render, type RenderResult } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
@@ -76,9 +78,11 @@ export function renderWithProviders(
 ): RenderResult {
   return render(
     <ThemeProvider theme={theme}>
-      <SnackbarProvider>
-        <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
-      </SnackbarProvider>
+      <LocalizationProvider dateAdapter={AdapterDayjs}>
+        <SnackbarProvider>
+          <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+        </SnackbarProvider>
+      </LocalizationProvider>
     </ThemeProvider>,
   );
 }
@@ -89,11 +93,13 @@ export function renderWithAuth(
 ): RenderResult {
   return render(
     <ThemeProvider theme={theme}>
-      <SnackbarProvider>
-        <MemoryRouter initialEntries={[route]}>
-          <AuthProvider>{ui}</AuthProvider>
-        </MemoryRouter>
-      </SnackbarProvider>
+      <LocalizationProvider dateAdapter={AdapterDayjs}>
+        <SnackbarProvider>
+          <MemoryRouter initialEntries={[route]}>
+            <AuthProvider>{ui}</AuthProvider>
+          </MemoryRouter>
+        </SnackbarProvider>
+      </LocalizationProvider>
     </ThemeProvider>,
   );
 }

@@ -6,6 +6,7 @@ import {
   Button,
   CircularProgress,
   Divider,
+  Grid2 as Grid,
   Paper,
   Stack,
   Typography,
@@ -32,11 +33,12 @@ import {
   DescriptionField,
   MediaTypeField,
   NameField,
-  ScheduleField,
   TagsField,
   THUMBNAIL_MIME_TYPES,
   ThumbnailField,
 } from '../components/StreamFormFields';
+import { ScheduleField } from '../components/schedule/ScheduleField';
+import { nextFullHourValue } from '../components/schedule/scheduleTime';
 import { useSnackbar } from '../components/Snackbar';
 
 /** msrs-client's messages, so the two consoles fail the same way. */
@@ -46,6 +48,30 @@ export const ERROR_MESSAGES = {
   SCHEDULED_TIME_REQUIRED: 'Scheduled start time is required',
   THUMBNAIL_TOO_LARGE: 'Thumbnail file size must be less than 5MB',
 };
+
+/**
+ * The required fields in the order the form asks for them. One table, so the
+ * check that blocks a submit and the check that decides a message has been
+ * answered can never disagree about what "filled in" means.
+ */
+const REQUIRED: { message: string; filled: (form: FormState) => boolean }[] = [
+  {
+    message: ERROR_MESSAGES.NAME_REQUIRED,
+    filled: (form) => Boolean(form.title.trim()),
+  },
+  {
+    message: ERROR_MESSAGES.DESCRIPTION_REQUIRED,
+    filled: (form) => Boolean(form.description.trim()),
+  },
+  {
+    message: ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED,
+    filled: (form) => Boolean(form.scheduledStartTime),
+  },
+];
+
+function firstMissing(form: FormState): string | null {
+  return REQUIRED.find((rule) => !rule.filled(form))?.message ?? null;
+}
 
 interface FormState {
   title: string;
@@ -64,6 +90,14 @@ const EMPTY: FormState = {
   scheduledStartTime: '',
 };
 
+/**
+ * A new stream starts at the next full hour rather than empty: the operator
+ * either accepts it or moves it, and neither costs a trip to the calendar.
+ */
+function freshForm(): FormState {
+  return { ...EMPTY, scheduledStartTime: nextFullHourValue(new Date()) };
+}
+
 function toInput(form: FormState): StreamInput {
   return {
     title: form.title.trim(),
@@ -80,7 +114,9 @@ export function StreamFormPage() {
   const navigate = useNavigate();
   const snackbar = useSnackbar();
 
-  const [form, setForm] = useState<FormState>(EMPTY);
+  const [form, setForm] = useState<FormState>(() =>
+    isEdit ? EMPTY : freshForm(),
+  );
   const [loaded, setLoaded] = useState<Stream | null>(null);
   const [loading, setLoading] = useState(isEdit);
   const [error, setError] = useState<string | null>(null);
@@ -91,8 +127,18 @@ export function StreamFormPage() {
   const [picked, setPicked] = useState<File | null>(null);
   const [removeStored, setRemoveStored] = useState(false);
 
-  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
-    setForm((prev) => ({ ...prev, [key]: value }));
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
+    const next = { ...form, [key]: value };
+    setForm(next);
+    // A "… is required" message is about the form as it was when Create was
+    // pressed. Leaving it up once the operator has typed the missing value
+    // paints a filled field red and contradicts what they are looking at, so
+    // the message goes the moment the field it names is answered. Anything
+    // else on screen — a rejected thumbnail, a failed save — is about
+    // something this keystroke did not touch, and stays.
+    const rule = REQUIRED.find((r) => r.message === error);
+    if (rule?.filled(next)) setError(null);
+  };
 
   useEffect(() => {
     // One component serves /create and /edit/:id, so a change of route param
@@ -103,7 +149,7 @@ export function StreamFormPage() {
     setError(null);
     if (!id) {
       setLoaded(null);
-      setForm(EMPTY);
+      setForm(freshForm());
       return;
     }
     let cancelled = false;
@@ -162,13 +208,6 @@ export function StreamFormPage() {
       ? api.thumbnailUrl(loaded)
       : null;
 
-  const validate = (): string | null => {
-    if (!form.title.trim()) return ERROR_MESSAGES.NAME_REQUIRED;
-    if (!form.description.trim()) return ERROR_MESSAGES.DESCRIPTION_REQUIRED;
-    if (!form.scheduledStartTime) return ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED;
-    return null;
-  };
-
   const pickThumbnail = (file: File) => {
     // `accept` is a hint the operator can bypass with "all files", so the
     // type is checked here too rather than surfacing as a 415 after the row
@@ -193,7 +232,7 @@ export function StreamFormPage() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const invalid = validate();
+    const invalid = firstMissing(form);
     if (invalid) {
       setError(invalid);
       return;
@@ -250,7 +289,10 @@ export function StreamFormPage() {
   }
 
   return (
-    <Stack spacing={3}>
+    // A form is read down one column, and a text field stretched across a
+    // 1200px page is harder to fill in, not easier. The heading is capped with
+    // the card so the two stay on the same left edge.
+    <Stack spacing={3} sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
       <Typography variant="h5" component="h1">
         {isEdit ? 'Edit Stream' : 'Create New Stream'}
       </Typography>
@@ -272,11 +314,29 @@ export function StreamFormPage() {
               error={error === ERROR_MESSAGES.DESCRIPTION_REQUIRED}
               disabled={saving}
             />
-            <TagsField
-              value={form.tags}
-              onChange={(v) => set('tags', v)}
-              disabled={saving}
-            />
+            {/*
+              Two short answers that both grow downwards — a list of chips and
+              a time with its shortcuts — so they sit side by side on a wide
+              screen and stack on a narrow one.
+            */}
+            <Grid container spacing={3} alignItems="flex-start">
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TagsField
+                  value={form.tags}
+                  onChange={(v) => set('tags', v)}
+                  disabled={saving}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <ScheduleField
+                  value={form.scheduledStartTime}
+                  onChange={(v) => set('scheduledStartTime', v)}
+                  error={error === ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED}
+                  disabled={saving || scheduleLocked}
+                  helperText={scheduleLocked ? SCHEDULE_LOCKED : undefined}
+                />
+              </Grid>
+            </Grid>
             {/*
               The media type is the `app` half of the ingest stream id, so
               changing it on a published stream would silently invalidate the
@@ -298,16 +358,6 @@ export function StreamFormPage() {
               onPick={pickThumbnail}
               onRemove={removeThumbnail}
               disabled={saving}
-            />
-
-            <Divider />
-
-            <ScheduleField
-              value={form.scheduledStartTime}
-              onChange={(v) => set('scheduledStartTime', v)}
-              error={error === ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED}
-              disabled={saving || scheduleLocked}
-              helperText={scheduleLocked ? SCHEDULE_LOCKED : undefined}
             />
 
             <Stack direction="row" spacing={2}>
