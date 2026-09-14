@@ -1,18 +1,26 @@
-# @deploy/web2-admin
+# web2-admin
 
-The Web2 admin layer of the multi-brand Swarm streaming platform: the brand
-console, the admin API behind it, and the Postgres that holds which brand owns
-what. Multi-tenant from day one.
+The Web2 admin layer of the multi-brand Swarm streaming platform, split like
+streaming-infra-manager:
 
-Design brief and component map: [docs/architecture/web2-admin.md](../docs/architecture/web2-admin.md).
-Roadmap and checkpoints: [docs/ROADMAP.md](../docs/ROADMAP.md).
+| Package | Name | What |
+|---|---|---|
+| `common/` | `@streaming-monorepo/web2-admin-common` | The API contract: types shared by backend and frontend, plus the OBS ingest URL builders. |
+| `backend/` | `@streaming-monorepo/web2-admin-backend` | Express 5 + pg API: session auth, stream drafts, publish to the stream list feed, OBS connection details. See its README. |
+| `frontend/` | `@streaming-monorepo/web2-admin-frontend` | React + MUI + Vite console modelled on msrs-client. See its README. |
 
-## Status
+Design brief: [docs/architecture/web2-admin.md](../docs/architecture/web2-admin.md).
+Checkpoint 2 spec: [docs/architecture/web2-admin-checkpoint-2.md](../docs/architecture/web2-admin-checkpoint-2.md).
+Roadmap: [docs/ROADMAP.md](../docs/ROADMAP.md).
 
-Checkpoint 1: package created, no code yet. The stack decision and the first
-scaffold (API + database + migrations) are checkpoint 2.
+## Run it locally
 
-## Scripts
+```bash
+pnpm install
+cp web2-admin/backend/.env.sample web2-admin/backend/.env   # set FEED_PRIVATE_KEY, INGEST_HOST; FEED_GATEWAY=fake needs no Bee
+pnpm --filter @streaming-monorepo/web2-admin-backend database:start
+pnpm dev                                                    # backend on :9877, frontend on :5081
+```
 
-All scripts are placeholders until checkpoint 2. Run them from the repo root
-with `pnpm --filter @deploy/web2-admin <script>`.
+Log in at http://localhost:5081 with the seeded user from `.env` (`admin` /
+`admin1234` by default) and change the password on the Account page.

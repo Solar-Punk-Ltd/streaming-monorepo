@@ -1,0 +1,38 @@
+{
+  "name": "@streaming-monorepo/web2-admin-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "web2-admin console: React 18 + MUI + Vite, modelled on msrs-client.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "mock-api": "node scripts/mock-api.mjs",
+    "build": "pnpm --filter @streaming-monorepo/web2-admin-common build && tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@emotion/react": "11.13.5",
+    "@emotion/styled": "11.13.5",
+    "@mui/icons-material": "6.1.10",
+    "@mui/material": "6.1.10",
+    "@streaming-monorepo/web2-admin-common": "workspace:*",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "6.30.6"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "6.6.3",
+    "@testing-library/react": "15.0.7",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "4.3.4",
+    "jsdom": "25.0.1",
+    "typescript": "5.6.3",
+    "vite": "5.4.11",
+    "vitest": "2.1.9"
+  }
+}

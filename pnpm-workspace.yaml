@@ -1,4 +1,4 @@
-# Every top-level app or library in this monorepo is a workspace package.
-# Add a new line here when a new package is created.
+# Every app or library in this monorepo is a workspace package.
+# web2-admin is split like streaming-infra-manager: backend (API) and frontend (console).
 packages:
-  - web2-admin
+  - web2-admin/*

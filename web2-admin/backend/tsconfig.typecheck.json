@@ -1,0 +1,12 @@
+// `tsconfig.json` is the *build* config: rootDir is src, so it cannot include
+// tests without breaking the emit. `tsx --test` strips types without checking
+// them, so a type error in a test file is invisible to the test run — this
+// config is what `pnpm typecheck` uses so tests are checked too.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}
