@@ -127,6 +127,7 @@ token is `401 unauthenticated`, the same answer the console's routes give.
 | --- | --- | --- |
 | GET | `/streams/by-ingest/:app/:stream` | `IngestLookupResponse` — id, topic, owner, mediaType, title, status and the `publishKey` the encoder must present |
 | POST | `/streams/:id/state` | `StreamStateReport` in, `PublishResult` out (200) |
+| POST | `/streams/:id/renditions` | `RenditionReport` in, `RenditionReportResponse` out (200) — one rung of an ABR ladder |
 
 **The lookup** resolves the ingest stream id `<mediaType>/<topic>` to a stream.
 Both halves must match, and only `published`, `live` and `vod` resolve: a
@@ -154,6 +155,49 @@ nothing to do with this stream, and the uploader retries. A failure answers
 `502 publish_failed` with `publish_error` recorded and the state intact, so the
 retry has only the write left to do.
 
+**The rendition report** is how an ABR ladder reaches the catalogue. With
+`ABR_ENABLED` the uploader publishes a master playlist plus one feed per rung,
+and in admin mode the master's topic *is* the stream's declared topic — so the
+ladder's merge state, which swarm-hls-stream keeps inside the catalogue feed it
+writes for itself, has to live here instead. Each rung POSTs its own
+`Rendition` (`name`, `width`, `height`, `topic`, `bandwidth`, `avgBandwidth`,
+plus `index` and `duration` — both or neither — once it finalizes) and gets
+back the merged ladder, ascending by height, with `ladder { finished,
+flippedToFinished, duration }`.
+
+The fold keeps one record per `(stream, name)`. The incoming report replaces
+the stored one, except that a rung which already reported an `index` keeps its
+`index` and `duration` when the incoming report has none **and arrives on the
+same `topic`**, taking only geometry and bandwidths from it: a rung recovered
+from a crash resumes writing the feed it was already writing and announces
+itself before it finalizes again, so a wholesale replace would flip a finished
+ladder back to unfinished. The rule is `StreamCatalog.keepingWhatFinished` from
+the uploader, where it was learned.
+
+The topic is what separates that recovery from a new session of the same rung.
+A rung that starts again — the encoder reconnected after the ladder finished,
+or one transcode restarted while its siblings kept going — mints a fresh random
+topic, so an indexless report on a *different* topic is a rung that is live
+again and replaces the finished record. Without the test, a reconnect after a
+finished broadcast would leave the master advertising the recording's rung
+feeds while the feeds now being written went unadvertised.
+
+**A rendition report never moves the status.** It stores the rung and rewrites
+the entry, adding `renditions` and `group` (= the stream's topic) whenever the
+stream has at least one rung — an entry for a single-rendition stream is
+exactly what it was before ABR existed. `live` and `vod` still come from the
+state route, and `vod.index` for a ladder is the *master's* feed index, not a
+rung's; the rung indexes ride inside `renditions`. `flippedToFinished` is what
+tells the uploader to send that one `vod`. Refused with
+`409 invalid_state` for `draft` (nothing has been announced) and `publishing`
+(a feed write is in flight); the row is stored before the feed is written, like
+a state report, so a failed write is `502 publish_failed` and the retry has
+only the write left to do — the fold is idempotent.
+
+Migration 003 adds `stream_renditions`, one row per `(stream_id, name)`, and
+`finishUnpublish` deletes a stream's rungs in the same statement that clears
+its state columns.
+
 ### What that changes for the console
 
 - A stream that is `live` or `vod` is still editable — title, description, tags
@@ -169,7 +213,7 @@ retry has only the write left to do.
   `409 stream_live` ("Stop the broadcast first."): nothing here can stop the
   encoder that is still pushing to it. On a recording both work as they do on a
   published stream, and the unpublish clears everything the uploader reported,
-  because the row is a draft again.
+  because the row is a draft again — the ABR ladder included.
 
 ## Migrations
 

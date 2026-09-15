@@ -1,18 +1,27 @@
 /**
- * In-memory stand-ins for the two ports PublishService depends on, next to
+ * In-memory stand-ins for the ports PublishService depends on, next to
  * FakeFeedGateway (which is production code, selected by FEED_GATEWAY=fake).
  *
  * FakeStreamStore copies the semantics that matter from StreamRepository: the
  * status transitions are conditional, exactly as the SQL is, so a claim on a
- * row that is already `publishing` returns null here too.
+ * row that is already `publishing` returns null here too, and `finishUnpublish`
+ * drops the stream's rungs the way the CTE in the real statement does.
  */
-import type { StreamStatus } from '@streaming-monorepo/web2-admin-common';
+import type {
+  Rendition,
+  StreamStatus,
+} from '@streaming-monorepo/web2-admin-common';
 
 import type {
   FeedWriteLog,
+  PublishRenditionStore,
   PublishStreamStore,
 } from '../../../src/domain/PublishService.js';
-import type { StreamRow, ThumbnailRow } from '../../../src/types/index.js';
+import type {
+  StreamRenditionRow,
+  StreamRow,
+  ThumbnailRow,
+} from '../../../src/types/index.js';
 
 export const TEST_OWNER = '19e7e376e7c213b7e7e7e46cc70a5dd086daff2a';
 export const TEST_USER_ID = '00000000-0000-4000-8000-000000000001';
@@ -51,11 +60,58 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
   };
 }
 
+/**
+ * The rungs of the ladders in play, keyed by stream. Ordered by height on the
+ * way out, like the SQL, so a test that stores 720p after 1080p still sees the
+ * order the master playlist and the catalogue entry use.
+ */
+export class FakeRenditionStore implements PublishRenditionStore {
+  readonly rows = new Map<string, StreamRenditionRow[]>();
+
+  async listByStream(streamId: string): Promise<StreamRenditionRow[]> {
+    return [...(this.rows.get(streamId) ?? [])].sort(
+      (a, b) => a.height - b.height || a.name.localeCompare(b.name),
+    );
+  }
+
+  async upsert(
+    streamId: string,
+    rendition: Rendition,
+  ): Promise<StreamRenditionRow> {
+    const row: StreamRenditionRow = {
+      stream_id: streamId,
+      name: rendition.name,
+      width: rendition.width,
+      height: rendition.height,
+      topic: rendition.topic,
+      bandwidth: rendition.bandwidth,
+      avg_bandwidth: rendition.avgBandwidth,
+      manifest_index: rendition.index ?? null,
+      duration_seconds: rendition.duration ?? null,
+      updated_at: new Date('2026-09-11T11:00:00.000Z'),
+    };
+    const kept = (this.rows.get(streamId) ?? []).filter(
+      (existing) => existing.name !== row.name,
+    );
+    this.rows.set(streamId, [...kept, row]);
+    return row;
+  }
+
+  async deleteByStream(streamId: string): Promise<number> {
+    const dropped = this.rows.get(streamId)?.length ?? 0;
+    this.rows.delete(streamId);
+    return dropped;
+  }
+}
+
 export class FakeStreamStore implements PublishStreamStore {
   readonly rows = new Map<string, StreamRow>();
   readonly thumbnails = new Map<string, ThumbnailRow>();
   /** Set to make the status write fail, as a lost connection would. */
   failNextFailPublish: Error | null = null;
+
+  /** Linked so `finishUnpublish` clears the ladder, as the real SQL does. */
+  constructor(private readonly renditions?: FakeRenditionStore) {}
 
   add(row: StreamRow, thumbnail?: ThumbnailRow): StreamRow {
     this.rows.set(row.id, row);
@@ -124,6 +180,7 @@ export class FakeStreamStore implements PublishStreamStore {
     userId: string,
   ): Promise<StreamRow | null> {
     if (!(await this.findById(id, userId))) return null;
+    await this.renditions?.deleteByStream(id);
     return this.patch(id, {
       status: 'draft',
       published_at: null,

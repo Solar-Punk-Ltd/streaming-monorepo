@@ -30,6 +30,7 @@ import { PublishService } from '../../src/domain/PublishService.js';
 
 import {
   FakeFeedWriteLog,
+  FakeRenditionStore,
   FakeStreamStore,
   streamRow,
   TEST_OWNER,
@@ -44,10 +45,17 @@ const feed: FeedIdentity = {
 };
 
 function setup(gateway = new FakeFeedGateway()) {
-  const store = new FakeStreamStore();
+  const renditions = new FakeRenditionStore();
+  const store = new FakeStreamStore(renditions);
   const writes = new FakeFeedWriteLog();
-  const service = new PublishService(store, writes, gateway, feed);
-  return { store, writes, gateway, service };
+  const service = new PublishService(
+    store,
+    renditions,
+    writes,
+    gateway,
+    feed,
+  );
+  return { store, renditions, writes, gateway, service };
 }
 
 const entriesOf = (gateway: FakeFeedGateway): FeedStreamEntry[] =>
@@ -487,6 +495,76 @@ describe('PublishService republishing a stream that has gone live', () => {
 
     assert.deepEqual([a.feed.index, b.feed.index].sort(), [0, 1]);
     assert.equal(entriesOf(gateway).length, 2);
+  });
+});
+
+describe('PublishService and the ABR ladder', () => {
+  const rung = (name: string, height: number, index?: number) => ({
+    name,
+    width: (height * 16) / 9,
+    height,
+    topic: `bbbbbbbb-0000-4000-8000-0000000${String(height).padStart(5, '0')}`,
+    bandwidth: height * 4000,
+    avgBandwidth: height * 3000,
+    ...(index === undefined ? {} : { index, duration: 61 }),
+  });
+
+  it('carries the ladder onto the entry, ascending by height', async () => {
+    const { store, renditions, gateway, service } = setup();
+    const row = store.add(streamRow());
+    await renditions.upsert(row.id, rung('720p', 720));
+    await renditions.upsert(row.id, rung('360p', 360));
+
+    await service.publish(row.id, TEST_USER_ID);
+
+    const [entry] = entriesOf(gateway);
+    assert.equal(entry!.group, row.topic, 'the master feed is the declared topic');
+    assert.deepEqual(
+      entry!.renditions?.map((r) => r.name),
+      ['360p', '720p'],
+    );
+    assert.equal(entry!.renditions?.[1]?.avgBandwidth, 720 * 3000);
+  });
+
+  it('rewrites the ladder on a state report, not only on a publish', async () => {
+    // The rungs are read on every write: a report that did not carry them
+    // would take the ladder off the entry until the next rung reported.
+    const { store, renditions, gateway, service } = setup();
+    const row = store.add(streamRow({ status: 'live', published_feed_index: 0 }));
+    await renditions.upsert(row.id, rung('1080p', 1080));
+
+    await service.republishWithState(store.get(row.id));
+
+    const [entry] = entriesOf(gateway);
+    assert.equal(entry!.state, 'live');
+    assert.equal(entry!.renditions?.length, 1);
+  });
+
+  it('leaves a single-rendition entry exactly as it was', async () => {
+    const { store, gateway, service } = setup();
+    const row = store.add(streamRow());
+
+    await service.publish(row.id, TEST_USER_ID);
+
+    const [entry] = entriesOf(gateway);
+    assert.ok(!('group' in entry!), 'no group without a ladder');
+    assert.ok(!('renditions' in entry!), 'and no renditions');
+  });
+
+  it('drops the ladder when the stream is unpublished', async () => {
+    // Back to `draft` is a fresh life: the rungs describe a broadcast that is
+    // no longer on the catalogue, and must not ride onto the next publish.
+    const { store, renditions, gateway, service } = setup();
+    const row = store.add(streamRow());
+    await renditions.upsert(row.id, rung('720p', 720, 12));
+    await service.publish(row.id, TEST_USER_ID);
+
+    await service.unpublish(row.id, TEST_USER_ID);
+    assert.deepEqual(await renditions.listByStream(row.id), []);
+
+    await service.publish(row.id, TEST_USER_ID);
+    const [entry] = entriesOf(gateway);
+    assert.ok(!('renditions' in entry!), 'republished without a ladder');
   });
 });
 

@@ -361,13 +361,26 @@ export class StreamRepository {
    * Everything the uploader reported is cleared: the row is a draft again, and
    * a stale `live_since` or manifest index would describe a recording that is
    * no longer on the catalogue.
+   *
+   * The ABR ladder goes with it, in this one statement rather than through
+   * StreamRenditionRepository: the rungs are part of what the uploader
+   * reported, and a crash between two statements would leave a draft that
+   * carries a ladder from a broadcast nobody can play any more onto the next
+   * entry it is published with. The delete is scoped through `owned` so it
+   * cannot touch another user's stream when the UPDATE itself would not.
    */
   async finishUnpublish(
     id: string,
     userId: string,
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
-      `UPDATE streams
+      `WITH owned AS (
+         SELECT id FROM streams WHERE id = $1 AND user_id = $2
+       ), cleared AS (
+         DELETE FROM stream_renditions
+          WHERE stream_id IN (SELECT id FROM owned)
+       )
+       UPDATE streams
           SET status = 'draft',
               published_at = NULL,
               published_feed_index = NULL,

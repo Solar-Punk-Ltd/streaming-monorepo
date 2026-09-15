@@ -1,5 +1,6 @@
 import type {
   FeedStreamEntry,
+  Rendition,
   StreamStatus,
 } from '@streaming-monorepo/web2-admin-common';
 
@@ -68,11 +69,19 @@ export function feedEntryState(status: StreamStatus): FeedStreamEntry['state'] {
  * a `vod` entry and only once the uploader has reported them — an entry that
  * carries neither is a live or scheduled stream, exactly as swarm-hls-stream's
  * reader expects.
+ *
+ * `renditions` is the stream's ABR ladder, and `group` the topic its master
+ * playlist is published under — which in admin mode is the stream's own topic,
+ * because the admin declares it and the uploader publishes the master there.
+ * Both are written only when the uploader has reported at least one rung, so a
+ * single-rendition stream's entry is byte-identical to what it was before the
+ * ladder existed.
  */
 export function buildFeedEntry(
   stream: StreamRow,
   thumbnailRef: string | null,
   timestamp: number,
+  renditions: readonly Rendition[] = [],
 ): FeedStreamEntry {
   const state = feedEntryState(stream.status);
   const entry: FeedStreamEntry = {
@@ -94,6 +103,10 @@ export function buildFeedEntry(
     if (stream.duration_seconds !== null) {
       entry.duration = stream.duration_seconds;
     }
+  }
+  if (renditions.length > 0) {
+    entry.group = stream.topic;
+    entry.renditions = [...renditions];
   }
   return entry;
 }

@@ -275,7 +275,65 @@ its state.
   .../state {state:'live'}`; on stop, `{state:'vod', index, duration}`. Failed
   reports are retried a few times and logged; they never stop the stream.
 - Without `ADMIN_API_URL` everything behaves as on `main-v3` today.
-- ABR ladder in admin mode is out of scope for this step; single rendition.
+- ABR ladder in admin mode was out of scope for the first step (single
+  rendition only); the section below is what lifted that, 2026-09-15.
+
+#### ABR ladder in admin mode
+
+With `ABR_ENABLED=true` the uploader publishes not one manifest feed but five:
+a **master playlist** and one **rung feed** per rendition, each under its own
+topic and all signed by the same key. Standalone it mints a random group id for
+the master and folds the rungs together inside the catalogue feed it writes
+itself. In admin mode it writes no catalogue at all, so two things move:
+
+- **The declared topic is the master feed's topic.** The group id *is* the
+  stream's `topic`, the one the admin minted and the one every player link
+  already points at. Rung feeds keep fresh random topics. The viewer needs no
+  change: it plays a ladder whenever the feed at the topic in the link holds a
+  master playlist.
+- **The merge state moves into the admin's database.** Each rung reports its
+  own record; the admin folds it, stores it, and writes the merged ladder onto
+  the catalogue entry.
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/streams/:id/renditions` | `RenditionReport` (= `Rendition`: `name`, `width`, `height`, `topic`, `bandwidth`, `avgBandwidth`, and `index` + `duration` once the rung finalizes — both or neither). Answers `RenditionReportResponse`: the stream, the merged ladder ascending by height, `ladder { finished, flippedToFinished, duration }`, and the catalogue write it caused. |
+
+The fold, one record per `(stream, name)`: the incoming report replaces the
+stored one, **except** that a stored rung which already has an `index` keeps
+its `index` and `duration` when the incoming report has none **and arrives on
+the same `topic`**, taking only geometry and bandwidths from it. A rung
+recovered from a crash resumes writing the feed it was already writing and
+announces itself before it finalizes again, so replacing wholesale would flip a
+finished ladder back to unfinished. The rule is copied from
+`StreamCatalog.keepingWhatFinished` in the uploader, where it was learned.
+
+The topic is what tells that recovery apart from a **new session** of the same
+rung. A rung that starts again — the encoder reconnected after the ladder
+finished, or one transcode restarted while its siblings kept going — mints a
+fresh random topic, so an indexless report on a *different* topic is a rung
+that is live again, and it replaces the finished record. Without the test, a
+reconnect after a finished broadcast would leave the master advertising the
+recording's rung feeds while the feeds now being written went unadvertised.
+
+Semantics worth stating plainly:
+
+- **Status still comes from the state reports.** A rendition report never moves
+  a stream to `live` or `vod`; it only rewrites the entry. `live` is sent once
+  the first master playlist has been written to the declared topic, and `vod`
+  once, by the rung whose report came back `flippedToFinished: true`.
+- **`vod.index` for a ladder is the master's feed index**, not a rung's — it is
+  what a viewer opens. Each rung carries its own `index` inside `renditions`.
+- The entry gains `renditions: Rendition[]` and `group: string` (= the stream's
+  `topic`) whenever the stream has at least one rung, and neither otherwise, so
+  a single-rendition entry is exactly what it was before.
+- Refused: `404 stream_not_found`, `409 invalid_state` for `draft` (nothing
+  announced) and `publishing` (a feed write in flight), `400 validation_error`,
+  `502 publish_failed` when the row was stored but the catalogue write failed —
+  the uploader retries the whole report, and the fold is idempotent.
+
+Migration 003 adds `stream_renditions`, one row per `(stream_id, name)`;
+`finishUnpublish` deletes them alongside the state columns it already clears.
 
 ## Out of scope for checkpoint 2, tracked in the roadmap
 

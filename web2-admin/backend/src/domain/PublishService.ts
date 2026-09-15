@@ -1,8 +1,12 @@
-import type { StreamStatus } from '@streaming-monorepo/web2-admin-common';
+import type {
+  FeedStreamEntry,
+  StreamStatus,
+} from '@streaming-monorepo/web2-admin-common';
 
 import {
   PUBLISHABLE_STATUSES,
   UNPUBLISHABLE_STATUSES,
+  type StreamRenditionRow,
   type StreamRow,
   type ThumbnailRow,
 } from '../types/index.js';
@@ -20,6 +24,7 @@ import type { FeedGateway } from './FeedGateway.js';
 import type { FeedIdentity } from './feedIdentity.js';
 import { Logger } from './Logger.js';
 import { Mutex } from './Mutex.js';
+import { toRendition } from './renditions.js';
 
 const logger = Logger.getInstance();
 
@@ -56,6 +61,16 @@ export interface PublishStreamStore {
     previousStatus: StreamStatus,
     message: string,
   ): Promise<void>;
+}
+
+/**
+ * The slice of StreamRenditionRepository publishing needs: read-only. The
+ * ladder is written by the rendition report, and every entry this service
+ * builds — first publish, hand republish, state report — reads it back so the
+ * catalogue never loses rungs that were reported between two writes.
+ */
+export interface PublishRenditionStore {
+  listByStream(streamId: string): Promise<StreamRenditionRow[]>;
 }
 
 export interface FeedWriteLog {
@@ -100,6 +115,7 @@ const THUMBNAIL_FILE_EXTENSIONS: Record<string, string> = {
 export class PublishService {
   constructor(
     private readonly streams: PublishStreamStore,
+    private readonly renditions: PublishRenditionStore,
     private readonly feedWrites: FeedWriteLog,
     private readonly gateway: FeedGateway,
     private readonly feed: FeedIdentity,
@@ -151,11 +167,9 @@ export class PublishService {
 
     try {
       const thumbnailRef = await this.ensureThumbnailUploaded(claimed, userId);
+      const entry = await this.entryFor(claimed, thumbnailRef);
       const snapshot = await this.gateway.readLatest();
-      const entries = upsertEntry(
-        snapshot.entries,
-        buildFeedEntry(claimed, thumbnailRef, Date.now()),
-      );
+      const entries = upsertEntry(snapshot.entries, entry);
       const index = await this.writeFeed(entries, snapshot.index);
 
       const stream = await this.streams.finishPublish(
@@ -237,11 +251,9 @@ export class PublishService {
 
     try {
       const thumbnailRef = await this.ensureThumbnailUploaded(stream, userId);
+      const entry = await this.entryFor(stream, thumbnailRef);
       const snapshot = await this.gateway.readLatest();
-      const entries = upsertEntry(
-        snapshot.entries,
-        buildFeedEntry(stream, thumbnailRef, Date.now()),
-      );
+      const entries = upsertEntry(snapshot.entries, entry);
       const index = await this.writeFeed(entries, snapshot.index);
 
       const updated = await this.streams.recordRepublish(
@@ -267,6 +279,29 @@ export class PublishService {
     const stream = await this.streams.findById(id, userId);
     if (!stream) throw new StreamNotFoundError(id);
     return stream;
+  }
+
+  /**
+   * The stream's entry as it should stand right now, ladder included.
+   *
+   * The rungs are read here, on every write, rather than handed in by the
+   * caller: a hand republish and a state report have to carry the ladder just
+   * as a rendition report does, and forgetting one of them would silently take
+   * the renditions off the entry until the next rung reported. A stream with
+   * no rungs reads back an empty list and an entry identical to what it was
+   * before ABR existed.
+   */
+  private async entryFor(
+    stream: StreamRow,
+    thumbnailRef: string | null,
+  ): Promise<FeedStreamEntry> {
+    const rungs = await this.renditions.listByStream(stream.id);
+    return buildFeedEntry(
+      stream,
+      thumbnailRef,
+      Date.now(),
+      rungs.map(toRendition),
+    );
   }
 
   /**

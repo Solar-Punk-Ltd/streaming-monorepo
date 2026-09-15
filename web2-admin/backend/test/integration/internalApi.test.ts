@@ -22,6 +22,8 @@ import type {
   FeedStreamEntry,
   IngestLookupResponse,
   PublishResult,
+  Rendition,
+  RenditionReportResponse,
   Stream,
   StreamStateResponse,
 } from '@streaming-monorepo/web2-admin-common';
@@ -93,6 +95,13 @@ function reportState(id: string, body: unknown): Promise<RawResponse> {
   });
 }
 
+function reportRendition(id: string, body: unknown): Promise<RawResponse> {
+  return raw('POST', `/api/internal/streams/${id}/renditions`, {
+    ...internalCall(),
+    body,
+  });
+}
+
 /** The entry for this topic in the newest feed write that contains it. */
 async function catalogueEntry(topic: string): Promise<FeedStreamEntry> {
   const result = await pool.query<{ payload: unknown[] }>(
@@ -117,6 +126,7 @@ describe('internal API authentication', () => {
     const calls: [string, string][] = [
       ['GET', `/api/internal/streams/by-ingest/video/${id}`],
       ['POST', `/api/internal/streams/${id}/state`],
+      ['POST', `/api/internal/streams/${id}/renditions`],
     ];
     for (const [method, path] of calls) {
       const anonymous = await raw(method, path, { anonymous: true });
@@ -383,5 +393,231 @@ describe('internal state reports', () => {
     assert.equal(result.stream.durationSeconds ?? null, null);
     assert.equal(result.stream.liveSince ?? null, null);
     assert.equal(result.stream.endedAt ?? null, null);
+  });
+});
+
+describe('internal rendition reports', () => {
+  let stream: Stream;
+
+  /**
+   * One rung of a ladder, geometry and bitrates derived from the height so two
+   * rungs are never accidentally identical. The topic is a rung's own manifest
+   * feed, which is a fresh UUID under the same owner — never the stream's.
+   */
+  const rung = (
+    name: string,
+    height: number,
+    over: Partial<Rendition> = {},
+  ): Rendition => ({
+    name,
+    width: Math.round((height * 16) / 9),
+    height,
+    topic: `bbbbbbbb-0000-4000-8000-0000000${String(height).padStart(5, '0')}`,
+    bandwidth: height * 4000,
+    avgBandwidth: height * 3000,
+    ...over,
+  });
+
+  const report = (body: Rendition): Promise<RenditionReportResponse> =>
+    api<RenditionReportResponse>(
+      'POST',
+      `/api/internal/streams/${stream.id}/renditions`,
+      { ...internalCall(), body },
+    );
+
+  before(async () => {
+    stream = await publishedStream({ title: 'itest internal ladder' });
+  });
+
+  it('404s a stream id nobody handed the uploader', async () => {
+    const response = await reportRendition(
+      '1867808f-7b1c-4e46-b437-f7423b466b39',
+      rung('720p', 720),
+    );
+    assert.equal(response.status, 404);
+    assert.equal((response.body as { error: string }).error, 'stream_not_found');
+  });
+
+  it('409s a draft: there is no entry to write a ladder onto', async () => {
+    const unpublished = await api<Stream>('POST', '/api/streams', {
+      body: draft,
+    });
+    created.add(unpublished.id);
+
+    const response = await reportRendition(unpublished.id, rung('720p', 720));
+    assert.equal(response.status, 409);
+    assert.deepEqual(response.body, {
+      error: 'invalid_state',
+      id: unpublished.id,
+      status: 'draft',
+    });
+  });
+
+  it('rejects a body the contract does not allow', async () => {
+    const bad = await Promise.all([
+      reportRendition(stream.id, { ...rung('720p', 720), index: 4 }),
+      reportRendition(stream.id, { ...rung('720p', 720), duration: 61 }),
+      reportRendition(stream.id, { ...rung('720_p', 720) }),
+      reportRendition(stream.id, { ...rung('720p', 720), topic: 'not-a-uuid' }),
+    ]);
+    for (const response of bad) {
+      assert.equal(response.status, 400, response.text);
+      assert.equal(
+        (response.body as { error: string }).error,
+        'validation_error',
+      );
+    }
+  });
+
+  it('puts the first rung on the catalogue entry, under the declared topic', async () => {
+    const result = await report(rung('720p', 720));
+
+    assert.equal(result.renditions.length, 1);
+    assert.deepEqual(result.ladder, {
+      finished: false,
+      flippedToFinished: false,
+      duration: null,
+    });
+    assert.equal(
+      result.stream.status,
+      'published',
+      'a rendition report never moves the status',
+    );
+    assert.equal(result.stream.publishedFeedIndex, result.feed.index);
+
+    const entry = await catalogueEntry(stream.topic);
+    assert.equal(entry.group, stream.topic, 'the master feed is the topic');
+    assert.equal(entry.renditions?.length, 1);
+    assert.equal(entry.renditions?.[0]?.avgBandwidth, 720 * 3000);
+    assert.equal(entry.state, 'scheduled', 'still what the state report says');
+  });
+
+  it('merges a second rung and returns the ladder ascending by height', async () => {
+    const result = await report(rung('360p', 360));
+
+    assert.deepEqual(
+      result.renditions.map((r) => r.name),
+      ['360p', '720p'],
+    );
+    assert.equal(result.ladder.finished, false);
+
+    const entry = await catalogueEntry(stream.topic);
+    assert.deepEqual(
+      entry.renditions?.map((r) => r.name),
+      ['360p', '720p'],
+    );
+  });
+
+  it('is not finished while any rung is still delivering', async () => {
+    const result = await report(rung('720p', 720, { index: 41, duration: 61.2 }));
+
+    assert.equal(result.ladder.finished, false, '360p has not finalized');
+    assert.equal(result.ladder.duration, null);
+    assert.equal(result.renditions.find((r) => r.name === '720p')?.index, 41);
+  });
+
+  it('flips to finished once the last rung finalizes, with the longest duration', async () => {
+    const result = await report(rung('360p', 360, { index: 12, duration: 60.8 }));
+
+    assert.deepEqual(result.ladder, {
+      finished: true,
+      flippedToFinished: true,
+      duration: 61.2,
+    });
+
+    const entry = await catalogueEntry(stream.topic);
+    assert.equal(entry.renditions?.length, 2);
+    assert.equal(entry.renditions?.[0]?.index, 12);
+    assert.equal(entry.renditions?.[1]?.index, 41);
+  });
+
+  it('keeps a finished rung finished when it comes back without an index', async () => {
+    // A rung recovered from a crash announces itself before it finalizes
+    // again. Replacing it wholesale would un-finish the ladder and tell the
+    // uploader to report `vod` a second time.
+    const result = await report(rung('720p', 720, { bandwidth: 9_000_000 }));
+
+    assert.equal(result.ladder.finished, true);
+    assert.equal(
+      result.ladder.flippedToFinished,
+      false,
+      'it was already finished, so nothing flipped',
+    );
+    const kept = result.renditions.find((r) => r.name === '720p');
+    assert.equal(kept?.index, 41, 'the recording it already closed');
+    assert.equal(kept?.duration, 61.2);
+    assert.equal(kept?.bandwidth, 9_000_000, 'but the new bitrate');
+  });
+
+  it('replaces a finished rung that comes back on a fresh topic', async () => {
+    // Not a recovery: an encoder that reconnected after the broadcast
+    // finished. The rung is live again on a feed of its own, so the ladder is
+    // no longer a finished recording. Keeping the stored record would leave
+    // the master advertising the recording's rung feed while the one now being
+    // written went unadvertised.
+    const freshTopic = 'cccccccc-0000-4000-8000-000000000720';
+    const result = await report(rung('720p', 720, { topic: freshTopic }));
+
+    assert.equal(result.ladder.finished, false, 'one rung is delivering again');
+    assert.equal(result.ladder.flippedToFinished, false);
+    assert.equal(result.ladder.duration, null);
+
+    const restarted = result.renditions.find((r) => r.name === '720p');
+    assert.equal(restarted?.topic, freshTopic);
+    assert.equal(restarted?.index, undefined, 'the old recording is gone');
+    assert.equal(
+      result.renditions.find((r) => r.name === '360p')?.index,
+      12,
+      'the rung that did not restart keeps its recording',
+    );
+
+    const entry = await catalogueEntry(stream.topic);
+    assert.equal(
+      entry.renditions?.find((r) => r.name === '720p')?.topic,
+      freshTopic,
+      'the catalogue points at the feed being written now',
+    );
+  });
+
+  it('carries the ladder through a state report and a hand republish', async () => {
+    const ended = await api<StreamStateResponse>(
+      'POST',
+      `/api/internal/streams/${stream.id}/state`,
+      { ...internalCall(), body: { state: 'vod', index: 9, duration: 61.2 } },
+    );
+    assert.equal(ended.stream.status, 'vod');
+
+    const afterState = await catalogueEntry(stream.topic);
+    assert.equal(afterState.state, 'vod');
+    assert.equal(afterState.index, 9, 'the master, not a rung');
+    assert.equal(afterState.renditions?.length, 2, 'the ladder is still there');
+
+    await api<PublishResult>('POST', `/api/streams/${stream.id}/publish`);
+    const afterRepublish = await catalogueEntry(stream.topic);
+    assert.equal(afterRepublish.renditions?.length, 2);
+  });
+
+  it('drops the ladder when the recording is unpublished', async () => {
+    const result = await api<PublishResult>(
+      'POST',
+      `/api/streams/${stream.id}/unpublish`,
+    );
+    assert.equal(result.stream.status, 'draft');
+
+    const rows = await pool.query(
+      'SELECT 1 FROM stream_renditions WHERE stream_id = $1',
+      [stream.id],
+    );
+    assert.equal(rows.rowCount, 0, 'the rungs went with the state columns');
+
+    // And a fresh publish of the same row announces a single-rendition stream.
+    const republished = await api<PublishResult>(
+      'POST',
+      `/api/streams/${stream.id}/publish`,
+    );
+    assert.equal(republished.stream.status, 'published');
+    const entry = await catalogueEntry(stream.topic);
+    assert.ok(!('renditions' in entry), 'no ladder');
+    assert.ok(!('group' in entry), 'and no group');
   });
 });
