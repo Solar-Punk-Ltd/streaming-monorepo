@@ -20,6 +20,7 @@ import { createRequireInternalToken } from './middleware/requireInternalToken.js
 import { requestLogger } from './middleware/requestLogger.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createConfigRouter } from './routes/config.js';
+import { createFeedRouter } from './routes/feed.js';
 import { createHealthRouter } from './routes/health.js';
 import { createInternalRouter } from './routes/internal.js';
 import { createStreamsRouter } from './routes/streams.js';
@@ -77,6 +78,13 @@ export function startApiServer(
   app.use(
     '/api/auth',
     createAuthRouter(deps.authService, deps.cookie, requireAuth),
+  );
+  app.use(
+    '/api/feed',
+    createFeedRouter({
+      publishService: deps.publishService,
+      requireAuth,
+    }),
   );
   app.use(
     '/api/streams',

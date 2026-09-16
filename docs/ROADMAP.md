@@ -69,7 +69,7 @@ mode" section of docs/architecture/web2-admin-checkpoint-2.md). The declared
 topic becomes the master playlist's feed, so the group id the uploader used to
 mint at random is now the stream's own topic and every existing player link
 keeps working; rung feeds keep fresh random topics. The ladder's merge state
-moves out of the catalogue feed and into the admin's database — migration 003
+moves out of the catalogue feed and into the admin's database — migration 004
 `stream_renditions`, `POST /api/internal/streams/:id/renditions`, one record
 per rung — because in admin mode the uploader writes no catalogue to merge
 into. The admin folds each report — a finished rung keeps its index when it

@@ -177,6 +177,29 @@ export interface PublishResult {
   };
 }
 
+/**
+ * POST /api/feed/reconcile — rewrites the stream list feed from the database.
+ *
+ * The repair path for a catalogue entry no request can reach: one whose stream
+ * was unpublished and then deleted, so nothing holds the `(owner, topic)` that
+ * would remove it. Entries written by anyone else are left untouched.
+ *
+ * `index` is the feed index of the repair write, or null when the catalogue
+ * already matched the database and nothing was written. The three arrays are
+ * stream topics.
+ */
+export interface FeedReconcileResult {
+  index: number | null;
+  /** Entries dropped: on the feed, no published stream behind them. */
+  removed: string[];
+  /** Entries added: published streams that were missing from the feed. */
+  added: string[];
+  /** Entries rewritten because they no longer matched their stream. */
+  updated: string[];
+  /** How many elements the feed holds now. */
+  entryCount: number;
+}
+
 /** GET /api/config — public, unauthenticated. */
 export interface PublicConfig {
   feed: {

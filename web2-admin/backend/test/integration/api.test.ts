@@ -86,6 +86,9 @@ describe('unauthenticated surface', () => {
       ['POST', `/api/streams/${id}/unpublish`],
       ['GET', `/api/streams/${id}/ingest`],
       ['POST', `/api/streams/${id}/ingest/rotate-key`],
+      // Not a stream route, but it rewrites the same feed, so it is behind the
+      // same session.
+      ['POST', '/api/feed/reconcile'],
       ['GET', '/api/auth/me'],
       ['POST', '/api/auth/password'],
     ];

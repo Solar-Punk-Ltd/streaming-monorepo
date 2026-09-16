@@ -332,7 +332,7 @@ Semantics worth stating plainly:
   `502 publish_failed` when the row was stored but the catalogue write failed —
   the uploader retries the whole report, and the fold is idempotent.
 
-Migration 003 adds `stream_renditions`, one row per `(stream_id, name)`;
+Migration 004 adds `stream_renditions`, one row per `(stream_id, name)`;
 `finishUnpublish` deletes them alongside the state columns it already clears.
 
 ## Out of scope for checkpoint 2, tracked in the roadmap

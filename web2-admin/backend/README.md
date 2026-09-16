@@ -79,16 +79,75 @@ Swarm, no Bee node or usable postage batch is needed, and references look like
 references. It is how to work on the console, and what
 `pnpm test:integration` expects. Startup warns when it is on.
 
+It forgets every write on restart while `feed_writes` — which decides the next
+index — does not, so the first write after a restart continues from whatever
+the database says and the in-memory feed adopts that index. The boot check then
+reports a network head of `none` behind a recorded one, which under `fake` is
+normal and not a divergence.
+
 ## Publishing
 
 One writer, one feed, payload is the whole JSON array rewritten each time
 (`src/domain/PublishService.ts`). A publish claims the row into `publishing`,
-uploads the thumbnail if it has no reference yet, reads the feed head, replaces
-or appends this stream's entry by `(owner, topic)` — entries written by anyone
-else are kept verbatim — writes at the next index, logs it in `feed_writes`,
-and only then marks the row `published`. Any failure puts the previous status
-back with `publish_error` set and answers `502 publish_failed`. Publish and
-unpublish are serialised through one in-process mutex.
+uploads the thumbnail if it has no reference yet, takes the current list and
+index from `feed_writes`, replaces or appends this stream's entry by
+`(owner, topic)` — entries written by anyone else are kept verbatim — writes at
+the next index, logs it in `feed_writes`, and only then marks the row
+`published`. Any failure puts the previous status back with `publish_error` set
+and answers `502 publish_failed`. Publish and unpublish are serialised through
+one in-process mutex.
+
+### Where the next index comes from
+
+**`feed_writes` is the source of truth for the next index and the base payload;
+the network is a cross-check at boot.** The invariant this rests on is that
+**exactly one backend process writes a given feed key**.
+
+It used to read the head from Bee and write at `head + 1`. That assumed a
+node's feed lookup reflects an update that node itself made. It does not: on
+the test node the head lagged this backend's own write by up to ~30 s. Writes
+3-4 s apart through the mutex therefore computed the same index, and since a
+feed update's chunk address is `f(owner, topic, index)`, the later chunk simply
+replaced the earlier one — silently, three times in 55 writes. The stale head
+came with a stale *payload*, which made it worse: a publish rebuilt the list
+from a snapshot taken before the previous unpublish, so a stream that had been
+unpublished and then deleted came back onto the catalogue with no row left to
+remove it; and an unpublish that read a snapshot from before its own publish
+found no entry to remove, skipped the write, and left the entry there while the
+row went back to `draft`.
+
+So the database leads. It is written in the same step as the feed, under the
+mutex, by the process holding the key, and migration `003` gave `feed_writes`
+the `feed_owner` / `feed_topic` / `reference` columns plus a partial unique
+index on `(feed_owner, feed_topic, feed_index)` so a repeat of an index fails
+loudly instead of overwriting a chunk. `readLatest()` is now used for two
+things only:
+
+- **Fallback.** A feed with no recorded write — a fresh install, or rows that
+  predate migration `003` — takes its first base from the network, and says so
+  in the log. From the write after that, the log leads.
+- **Boot check.** Startup compares the network head against the last recorded
+  write. Behind is normal (the node lagging itself) and is an info line. Ahead
+  is a WARN — another writer under this key, or the wrong database — and the
+  network head and its payload are adopted as the base by recording them, so
+  the next write goes *after* what is out there rather than over it. Bee being
+  unreachable here is a warning, not a failed boot.
+
+Boot also dry-runs the reconcile diff and WARNs with the topics of any
+catalogue entry that has no stream row behind it.
+
+### POST /api/feed/reconcile
+
+The repair path for exactly that: an entry no request can name, because
+`unpublish` needs a row and topics are server-minted. Session auth, no body.
+Under the publish mutex it takes the authoritative base and rewrites the list
+from the database — drops entries of ours whose topic has no row in
+`published`/`live`/`vod`, rebuilds entries that no longer match their row,
+appends published rows that are missing, and copies everything written by
+anyone else through untouched. It writes only if something changed, so running
+it on a clean catalogue costs no index and no stamp. The answer is
+`FeedReconcileResult`: the index written (or `null`), and the topics
+`removed` / `added` / `updated`.
 
 A stored `thumbnail_ref` is verified before it is reused: the gateway is asked
 whether it still holds that reference, and only then is it carried onto the
@@ -194,7 +253,7 @@ tells the uploader to send that one `vod`. Refused with
 a state report, so a failed write is `502 publish_failed` and the retry has
 only the write left to do — the fold is idempotent.
 
-Migration 003 adds `stream_renditions`, one row per `(stream_id, name)`, and
+Migration 004 adds `stream_renditions`, one row per `(stream_id, name)`, and
 `finishUnpublish` deletes a stream's rungs in the same statement that clears
 its state columns.
 

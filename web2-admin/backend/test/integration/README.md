@@ -51,11 +51,17 @@ pnpm test:integration
 | internal lookup by ingest stream id | a published stream resolves with its `publishKey`; a draft, the right topic under the wrong app and an unknown topic are all the same `404 stream_not_found`; a malformed topic is `400` |
 | internal state reports | a `live` report for a stream that was never published is `409 invalid_state_transition`; a body the contract forbids (`vod` without the numbers, `live` with them, a state this backend owns) is `400`; `live` flips the row and the **catalogue entry** read back out of `feed_writes`; a repeated `live` does not move `liveSince`; delete and unpublish are `409 stream_live` while it is live; the title stays editable and the schedule is `409 stream_locked`; a manual republish keeps it live; `vod` puts `index` and `duration` on the entry; `live` afterwards is refused; unpublishing the recording clears everything the uploader reported |
 | internal rendition reports | an unknown id is `404`, a draft `409 invalid_state`, and a body the contract forbids (`index` without `duration` and back, a name with `_`, a topic that is not a UUID) is `400`; a ladder built rung by rung comes back ascending by height and lands on the **catalogue entry** with `group` = the stream's topic; the status never moves; `finished` waits for the last rung, then `flippedToFinished` fires once with the longest duration; a finished rung that reports again without an index on the same topic keeps its index and takes the new bitrate, while the same report on a fresh topic replaces it and un-finishes the ladder; a state report and a hand republish both carry the ladder; unpublishing deletes the rungs and the next publish announces a single-rendition stream |
+| feed reconcile | not covered here. `POST /api/feed/reconcile` needs a catalogue that disagrees with the database, which only a stale feed read produces; the diff itself is unit-tested against `FakeFeedGateway`. Calling it by hand against a `fake` instance is safe and answers `FeedReconcileResult` |
 | resetOrphanedPublishing | the boot repair of rows left claimed by a process that died mid-publish, against real SQL: a first-time publish goes back to `draft`, an interrupted *re*publish back to `published` (so DELETE cannot orphan its feed entry), and a second boot has nothing to repair |
 | BeeFeedGateway | the real bee-js calls: an unwritten feed reads as "no index", a payload round trips, the head advances, a thumbnail downloads byte-identical. **Skipped** unless `BEE_URL` and `POSTAGE_BATCH_ID` are set; it signs a fresh random key and topic every run, so it can never touch the catalog this backend publishes |
 
 ## Notes
 
+- Publish and unpublish now take the list and the next index from
+  `feed_writes`, not from the gateway, so the index a publish reports continues
+  the database's sequence rather than restarting at 0 after the backend is
+  restarted. Nothing in the suite asserts an absolute index, and the in-memory
+  gateway adopts whatever index it is handed for a feed it has not written.
 - The internal API suite reads the catalogue entry back from `feed_writes`
   rather than from the API: that a row says `live` is not the same claim as
   that the entry a viewer reads says it, and only the second one matters.
