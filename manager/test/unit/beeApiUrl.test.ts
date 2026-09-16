@@ -28,7 +28,7 @@ function profile(over: Partial<Profile> = {}): Profile {
     host: '203.0.113.58',
     feed_owner: null,
     feed_topic: null,
-    private_key: null,
+    has_private_key: false,
     public_key: null,
     stamp_id: null,
     bee_publishers: null,
