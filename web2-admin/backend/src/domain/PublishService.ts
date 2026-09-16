@@ -15,8 +15,13 @@ import {
   StreamLiveError,
   StreamNotFoundError,
 } from './errors/index.js';
-import { buildFeedEntry, removeEntry, upsertEntry } from './feedEntries.js';
-import type { FeedGateway } from './FeedGateway.js';
+import {
+  buildFeedEntry,
+  planReconcile,
+  removeEntry,
+  upsertEntry,
+} from './feedEntries.js';
+import type { FeedGateway, FeedSnapshot } from './FeedGateway.js';
 import type { FeedIdentity } from './feedIdentity.js';
 import { Logger } from './Logger.js';
 import { Mutex } from './Mutex.js';
@@ -56,10 +61,31 @@ export interface PublishStreamStore {
     previousStatus: StreamStatus,
     message: string,
   ): Promise<void>;
+  /**
+   * Every row that should be on the catalogue right now — status `published`,
+   * `live` or `vod`, every user. Only `reconcile` uses it, and it has to see
+   * all of them: a row it cannot see reads as an entry with nothing behind it.
+   */
+  listOnFeed(): Promise<StreamRow[]>;
 }
 
+/**
+ * The record of what this backend wrote, and — since the Bee lookup turned out
+ * to lag its own writes — the authority on where the next write goes.
+ */
 export interface FeedWriteLog {
-  record(feedIndex: number, entryCount: number, payload: unknown[]): Promise<void>;
+  record(
+    owner: string,
+    topic: string,
+    feedIndex: number,
+    entryCount: number,
+    payload: unknown[],
+    reference: string | null,
+  ): Promise<void>;
+  lastWrite(
+    owner: string,
+    topic: string,
+  ): Promise<{ index: number; entries: unknown[] } | null>;
 }
 
 export interface PublishOutcome {
@@ -71,6 +97,28 @@ export interface PublishOutcome {
     index: number;
     entryCount: number;
   };
+}
+
+/** What `reconcile` changed, or would have changed. Topics, not row ids. */
+export interface ReconcileOutcome {
+  /** Feed index of the repair write, or null when nothing needed repairing. */
+  index: number | null;
+  removed: string[];
+  added: string[];
+  updated: string[];
+  entryCount: number;
+}
+
+/** What the boot check found when it compared the network to `feed_writes`. */
+export interface FeedBootCheck {
+  /** Index of the last write this backend recorded; null when it has none. */
+  recorded: number | null;
+  /** The network head, or null when there is none or Bee could not answer. */
+  network: number | null;
+  /** True when the network was ahead and its head became the new base. */
+  adopted: boolean;
+  /** Topics on the feed under our owner with no row behind them. */
+  ghosts: string[];
 }
 
 /** A stream the uploader has reported on; its entry carries that state. */
@@ -93,9 +141,21 @@ const THUMBNAIL_FILE_EXTENSIONS: Record<string, string> = {
 /**
  * Publishing is one writer on one feed that this backend owns.
  *
- * Do not hand FEED_PRIVATE_KEY to a running swarm-hls-stream uploader: it
- * caches the feed's next index, and two writers at one index fork the feed.
- * Checkpoint 3 turns that around and has the uploader report into this API.
+ * The index and the base payload come from `feed_writes`, not from the
+ * network. Bee's feed lookup does not reflect an update the node itself made
+ * for up to ~30 s, and `head + 1` read from it put two writes on one index —
+ * the second overwriting the first — and handed the next publish a payload
+ * from before the previous one, which resurrected unpublished entries. The
+ * database is written in the same step as the feed, under this mutex, by the
+ * one process holding the key, so it cannot lag. The network is compared
+ * against it once at boot (`checkFeedOnBoot`) and is the fallback only when
+ * there is no recorded write at all.
+ *
+ * That makes "exactly one backend process writes a given feed key" an
+ * invariant rather than a convention. Do not hand FEED_PRIVATE_KEY to a
+ * running swarm-hls-stream uploader — it caches the feed's next index — and do
+ * not run two backends against one key and two databases; the boot check will
+ * shout, but only after the damage.
  */
 export class PublishService {
   constructor(
@@ -134,6 +194,131 @@ export class PublishService {
     return this.mutex.run(() => this.doRepublishWithState(stream));
   }
 
+  /**
+   * Rebuilds the catalogue from the database: drops entries of ours with no
+   * published row behind them, rewrites entries that no longer match their
+   * row, appends rows that are missing, and leaves everyone else's elements
+   * exactly where they are.
+   *
+   * The operator repair for what the stale feed read left on the live feed —
+   * an entry whose stream was unpublished, then deleted, so no request could
+   * ever name it again. Nothing here touches a row: the database is the truth
+   * this rewrites *towards*.
+   *
+   * Writes only when something changed, so running it on a clean catalogue
+   * costs nothing. A failure is left as it is rather than dressed as a publish
+   * failure: no status was moved, so there is nothing to put back.
+   */
+  async reconcile(userId?: string): Promise<ReconcileOutcome> {
+    return this.mutex.run(async () => {
+      const base = await this.baseSnapshot();
+      const rows = await this.streams.listOnFeed();
+      const plan = planReconcile(base.entries, rows, this.feed.owner, userId);
+
+      if (!plan.changed) {
+        logger.info(
+          `[Reconcile] catalogue already matches the database (${base.entries.length} entries); nothing written`,
+        );
+        return {
+          index: null,
+          removed: [],
+          added: [],
+          updated: [],
+          entryCount: base.entries.length,
+        };
+      }
+
+      const index = await this.writeFeed(plan.entries, base.index);
+      logger.warn(
+        `[Reconcile] rewrote the catalogue at feed index ${index} (${plan.entries.length} entries): removed [${plan.removed.join(', ')}], added [${plan.added.join(', ')}], updated [${plan.updated.join(', ')}]`,
+      );
+      return {
+        index,
+        removed: plan.removed,
+        added: plan.added,
+        updated: plan.updated,
+        entryCount: plan.entries.length,
+      };
+    });
+  }
+
+  /**
+   * Boot-time cross-check of the one assumption the new index scheme rests on:
+   * that this process is the only writer of this feed key.
+   *
+   * The network being *behind* `feed_writes` is the normal case — it is the
+   * lookup lag that caused all of this. The network being *ahead* means
+   * something else wrote under our key, or this database is not the one that
+   * wrote the feed; the head and its payload are adopted as the base so the
+   * next write goes after it rather than over it, and it is logged loudly
+   * because no automatic repair can tell those two apart.
+   *
+   * Bee being unreachable is not fatal here: the check is a cross-check, and
+   * the backend has everything it needs without it.
+   */
+  async checkFeedOnBoot(): Promise<FeedBootCheck> {
+    return this.mutex.run(async () => {
+      const last = await this.feedWrites.lastWrite(
+        this.feed.owner,
+        this.feed.topicHex,
+      );
+
+      let network: FeedSnapshot | null = null;
+      try {
+        network = await this.gateway.readLatest();
+      } catch (error) {
+        logger.warn(
+          `[Boot] could not read the feed head to cross-check it: ${getErrorMessage(error)}`,
+        );
+      }
+
+      let base: FeedSnapshot = last
+        ? { index: last.index, entries: last.entries }
+        : (network ?? { index: null, entries: [] });
+      let adopted = false;
+
+      if (last && network) {
+        if (network.index === null || network.index < last.index) {
+          logger.info(
+            `[Boot] feed head is ${network.index ?? 'unwritten'}, the last write recorded here is ${last.index}: the node has not caught up with its own write yet`,
+          );
+        } else if (network.index > last.index) {
+          logger.warn(
+            `[Boot] feed head ${network.index} is AHEAD of the last write this backend recorded (${last.index}) — another writer under this key? Adopting the network head as the base, so the next write goes after it.`,
+          );
+          await this.feedWrites.record(
+            this.feed.owner,
+            this.feed.topicHex,
+            network.index,
+            network.entries.length,
+            network.entries,
+            null,
+          );
+          base = network;
+          adopted = true;
+        }
+      }
+
+      // The same diff `reconcile` would write, without writing it: a ghost
+      // entry is invisible in the console (its row is gone) and only shows up
+      // as a viewer seeing a stream that does not exist.
+      const rows = await this.streams.listOnFeed();
+      const plan = planReconcile(base.entries, rows, this.feed.owner);
+      if (plan.removed.length > 0) {
+        logger.warn(
+          `[Boot] ${plan.removed.length} catalogue entr${plan.removed.length === 1 ? 'y has' : 'ies have'} no stream row behind ${plan.removed.length === 1 ? 'it' : 'them'}: ${plan.removed.join(', ')} — POST /api/feed/reconcile removes ${plan.removed.length === 1 ? 'it' : 'them'}`,
+        );
+      }
+
+      return {
+        recorded: last?.index ?? null,
+        network: network?.index ?? null,
+        adopted,
+        ghosts: plan.removed,
+      };
+    });
+  }
+
   private async doPublish(
     before: StreamRow,
     userId: string,
@@ -151,7 +336,7 @@ export class PublishService {
 
     try {
       const thumbnailRef = await this.ensureThumbnailUploaded(claimed, userId);
-      const snapshot = await this.gateway.readLatest();
+      const snapshot = await this.baseSnapshot();
       const entries = upsertEntry(
         snapshot.entries,
         buildFeedEntry(claimed, thumbnailRef, Date.now()),
@@ -192,7 +377,7 @@ export class PublishService {
     );
 
     try {
-      const snapshot = await this.gateway.readLatest();
+      const snapshot = await this.baseSnapshot();
       const { entries, removed } = removeEntry(
         snapshot.entries,
         claimed.owner,
@@ -201,7 +386,14 @@ export class PublishService {
 
       // Nothing to take off the feed — a draft that was never published, or
       // one already removed. Skip the write rather than spend a stamp on an
-      // identical list; `index` then reports the head, not a new write.
+      // identical list; `index` then reports the base, not a new write.
+      //
+      // This shortcut used to lie. The snapshot came from Bee's lookup, which
+      // could still be showing the list from before the publish that put this
+      // entry there, so "was not on the feed" meant "the node has not caught
+      // up" and the entry stayed on the catalogue with the row back in
+      // `draft`. The base is now the payload this backend last wrote, so the
+      // absence is real.
       const index = removed
         ? await this.writeFeed(entries, snapshot.index)
         : (snapshot.index ?? 0);
@@ -237,7 +429,7 @@ export class PublishService {
 
     try {
       const thumbnailRef = await this.ensureThumbnailUploaded(stream, userId);
-      const snapshot = await this.gateway.readLatest();
+      const snapshot = await this.baseSnapshot();
       const entries = upsertEntry(
         snapshot.entries,
         buildFeedEntry(stream, thumbnailRef, Date.now()),
@@ -342,14 +534,43 @@ export class PublishService {
     return reference;
   }
 
-  /** Writes at the index after the head; index 0 when the feed is empty. */
+  /**
+   * The list this write starts from, and the index it goes after.
+   *
+   * `feed_writes` first, because it is the only record that is never stale.
+   * The network is asked only when this feed has no recorded write — a fresh
+   * install, or a database whose rows all predate migration 003 — and that is
+   * logged, because it is the one moment the old failure mode can still bite.
+   */
+  private async baseSnapshot(): Promise<FeedSnapshot> {
+    const last = await this.feedWrites.lastWrite(
+      this.feed.owner,
+      this.feed.topicHex,
+    );
+    if (last) return { index: last.index, entries: last.entries };
+
+    const snapshot = await this.gateway.readLatest();
+    logger.info(
+      `[Publish] no recorded write for feed ${this.feed.owner}/${this.feed.topicHex}; falling back to the network head (${snapshot.index ?? 'none'})`,
+    );
+    return snapshot;
+  }
+
+  /** Writes at the index after the base; index 0 when the feed is empty. */
   private async writeFeed(
     entries: unknown[],
     head: number | null,
   ): Promise<number> {
     const index = head === null ? 0 : head + 1;
-    await this.gateway.write(entries, index);
-    await this.feedWrites.record(index, entries.length, entries);
+    const reference = await this.gateway.write(entries, index);
+    await this.feedWrites.record(
+      this.feed.owner,
+      this.feed.topicHex,
+      index,
+      entries.length,
+      entries,
+      reference,
+    );
     return index;
   }
 
