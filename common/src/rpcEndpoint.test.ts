@@ -22,6 +22,6 @@ describe('the chain endpoint a deployment may name for itself', () => {
   });
 
   it('refuses a deploy target pasted in by mistake', () => {
-    assert.match(rpcEndpointProblem('http://deploy@203.0.113.105:9000') ?? '', /ssh/i);
+    assert.match(rpcEndpointProblem('http://user@example.org:9000') ?? '', /ssh/i);
   });
 });
