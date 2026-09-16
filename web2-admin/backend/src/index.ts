@@ -17,7 +17,7 @@ import { StreamService } from './domain/StreamService.js';
 import { StreamStateService } from './domain/StreamStateService.js';
 import { UserRepository } from './domain/UserRepository.js';
 import { config } from './utils/config.js';
-import { getErrorStack } from './utils/errorUtils.js';
+import { getErrorMessage, getErrorStack } from './utils/errorUtils.js';
 
 const logger = Logger.getInstance();
 
@@ -153,6 +153,18 @@ async function main(): Promise<void> {
     createFeedGateway(),
     feed,
   );
+  // After the orphan reset, so the dry-run diff sees the repaired statuses.
+  // Never fatal: this is a cross-check of the feed, and the API is fully
+  // usable whatever it finds.
+  try {
+    const check = await publishService.checkFeedOnBoot();
+    logger.info(
+      `[Boot] feed: last write recorded ${check.recorded ?? 'none'}, network head ${check.network ?? 'none'}${check.adopted ? ' (adopted)' : ''}`,
+    );
+  } catch (error) {
+    logger.warn(`[Boot] feed check failed: ${getErrorMessage(error)}`);
+  }
+
   const ingestService = new IngestService(streamRepository, config.ingest);
   const streamStateService = new StreamStateService(
     streamRepository,

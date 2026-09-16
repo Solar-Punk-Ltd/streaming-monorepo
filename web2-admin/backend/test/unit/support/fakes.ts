@@ -74,6 +74,13 @@ export class FakeStreamStore implements PublishStreamStore {
     return row && row.user_id === userId ? { ...row } : null;
   }
 
+  /** Unscoped, as the SQL is: reconcile has to see every user's rows. */
+  async listOnFeed(): Promise<StreamRow[]> {
+    return [...this.rows.values()]
+      .filter((row) => ['published', 'live', 'vod'].includes(row.status))
+      .map((row) => ({ ...row }));
+  }
+
   async findThumbnail(
     id: string,
     userId: string,
@@ -173,15 +180,50 @@ export class FakeStreamStore implements PublishStreamStore {
   }
 }
 
+interface FakeFeedWriteRecord {
+  owner: string;
+  topic: string;
+  feedIndex: number;
+  entryCount: number;
+  payload: unknown[];
+  reference: string | null;
+}
+
+/**
+ * The log, and — as in production since migration 003 — the authority on the
+ * next index. Keyed by `(owner, topic)` exactly as the partial unique index
+ * is, so a test that rotates the feed key gets its own sequence.
+ */
 export class FakeFeedWriteLog implements FeedWriteLog {
-  readonly records: { feedIndex: number; entryCount: number; payload: unknown[] }[] =
-    [];
+  readonly records: FakeFeedWriteRecord[] = [];
 
   async record(
+    owner: string,
+    topic: string,
     feedIndex: number,
     entryCount: number,
     payload: unknown[],
+    reference: string | null,
   ): Promise<void> {
-    this.records.push({ feedIndex, entryCount, payload });
+    this.records.push({
+      owner,
+      topic,
+      feedIndex,
+      entryCount,
+      payload,
+      reference,
+    });
+  }
+
+  async lastWrite(
+    owner: string,
+    topic: string,
+  ): Promise<{ index: number; entries: unknown[] } | null> {
+    const mine = this.records.filter(
+      (r) => r.owner === owner && r.topic === topic,
+    );
+    if (mine.length === 0) return null;
+    const last = mine.reduce((a, b) => (b.feedIndex > a.feedIndex ? b : a));
+    return { index: last.feedIndex, entries: last.payload };
   }
 }

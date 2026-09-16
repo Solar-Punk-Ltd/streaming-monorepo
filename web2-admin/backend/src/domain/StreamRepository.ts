@@ -39,6 +39,21 @@ export class StreamRepository {
     return result.rows;
   }
 
+  /**
+   * Every row that should be on the catalogue, for every user. Unscoped on
+   * purpose: `reconcile` compares this against the feed, and a row it could
+   * not see would read as an entry with nothing behind it and be removed.
+   * `publishing` is excluded — that write is still in flight.
+   */
+  async listOnFeed(): Promise<StreamRow[]> {
+    const result = await this.pool.query<StreamRow>(
+      `SELECT ${STREAM_COLUMNS} FROM streams
+        WHERE status IN ('published', 'live', 'vod')
+        ORDER BY created_at`,
+    );
+    return result.rows;
+  }
+
   async findById(id: string, userId: string): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `SELECT ${STREAM_COLUMNS} FROM streams WHERE id = $1 AND user_id = $2`,

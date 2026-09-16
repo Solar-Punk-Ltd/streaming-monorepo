@@ -10,6 +10,11 @@
  * backend did not write survive a rewrite byte for byte, that unpublishing
  * removes exactly one entry, and that a failed write leaves the row where it
  * was with the reason recorded rather than half-published.
+ *
+ * The last three suites are the ones added after the catalogue was found
+ * forked in production: that a feed lookup which lags its own writes no longer
+ * decides the next index, that the boot check notices a head it did not write,
+ * and that `reconcile` can take an entry off the feed that no request can name.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -85,8 +90,18 @@ describe('PublishService.publish', () => {
     });
     assert.ok(entry!.timestamp > 0, 'timestamp is ms since epoch');
 
+    // The log row now names the feed it belongs to and the chunk the node
+    // returned: since the next index is read back out of this table, a row
+    // that cannot say which feed key it was written under is useless.
     assert.deepEqual(writes.records, [
-      { feedIndex: 0, entryCount: 1, payload: gateway.writes[0]!.entries },
+      {
+        owner: TEST_OWNER,
+        topic: feed.topicHex,
+        feedIndex: 0,
+        entryCount: 1,
+        payload: gateway.writes[0]!.entries,
+        reference: gateway.writes[0]!.reference,
+      },
     ]);
   });
 
@@ -615,6 +630,25 @@ describe('PublishService.unpublish', () => {
   });
 });
 
+describe('FakeFeedGateway', () => {
+  it('continues a feed it has no memory of, and only then insists on +1', async () => {
+    // The dev loop: `tsx watch` restarts the backend on every save, the fake
+    // forgets every write, and `feed_writes` does not. Refusing to continue
+    // where the database says the feed is would break publishing until the
+    // table was emptied by hand.
+    const gateway = new FakeFeedGateway();
+    await gateway.write([], 41);
+    assert.equal((await gateway.readLatest()).index, 41);
+
+    await gateway.write([], 42);
+    await assert.rejects(
+      () => gateway.write([], 42),
+      /expected 43/,
+      'within one process the check still stands',
+    );
+  });
+});
+
 describe('FakeFeedGateway.hasReference', () => {
   it('knows only the references it handed out', async () => {
     const gateway = new FakeFeedGateway();
@@ -631,5 +665,247 @@ describe('FakeFeedGateway.hasReference', () => {
       false,
       'a fresh process knows nothing, which is the honest answer',
     );
+  });
+});
+
+/**
+ * The bug this whole scheme exists for: Bee's feed lookup answers with the
+ * head as it was seconds ago, so `head + 1` read from the network put two
+ * different writes on one index and the later chunk replaced the earlier one.
+ * `FakeFeedGateway`'s `readLagWrites` is that node, without the node.
+ */
+describe('PublishService against a feed lookup that lags its own writes', () => {
+  it('writes consecutive indices anyway, and the unpublish still removes the entry', async () => {
+    const gateway = new FakeFeedGateway(undefined, { readLagWrites: 1 });
+    const { store, service } = setup(gateway);
+    const first = store.add(streamRow());
+    const second = store.add(streamRow());
+
+    const a = await service.publish(first.id, TEST_USER_ID);
+    const b = await service.publish(second.id, TEST_USER_ID);
+
+    // What the old code would have read for the second publish: still index 0,
+    // and a list without the first entry on it. Both writes would have gone to
+    // index 0, the second overwriting the first.
+    const stale = await gateway.readLatest();
+    assert.equal(stale.index, 0, 'the network is a write behind');
+
+    assert.equal(a.feed.index, 0);
+    assert.equal(b.feed.index, 1, 'not the stale head + 1');
+    assert.equal(b.feed.entryCount, 2, 'the base carried the first entry');
+
+    // And the entry really comes off again: the removal reads the same
+    // authoritative base, not the payload from before the publish that put it
+    // there, so `removed` is true and the write happens.
+    const off = await service.unpublish(first.id, TEST_USER_ID);
+    assert.equal(off.feed.index, 2);
+    assert.deepEqual(
+      entriesOf(gateway).map((e) => e.topic),
+      [second.topic],
+    );
+  });
+
+  it('falls back to the network head only while nothing is recorded', async () => {
+    // A feed this backend has written before (index 7) but has no row for:
+    // a fresh install against an existing catalogue, or rows that predate
+    // migration 003. The first write has to trust the network; from then on
+    // the log leads, even though this node never stops answering 7.
+    const gateway = new FakeFeedGateway(
+      { index: 7, entries: [] },
+      { readLagWrites: 99 },
+    );
+    const { store, writes, service } = setup(gateway);
+    const first = store.add(streamRow());
+    const second = store.add(streamRow());
+
+    assert.equal((await service.publish(first.id, TEST_USER_ID)).feed.index, 8);
+    assert.equal((await service.publish(second.id, TEST_USER_ID)).feed.index, 9);
+    assert.equal((await gateway.readLatest()).index, 7, 'still stuck');
+    assert.deepEqual(
+      writes.records.map((r) => r.feedIndex),
+      [8, 9],
+    );
+  });
+});
+
+describe('PublishService.checkFeedOnBoot', () => {
+  it('adopts a network head that is ahead of everything recorded here', async () => {
+    // Something else wrote under this key, or this is not the database that
+    // wrote the feed. Either way the next write must go *after* what is on the
+    // network, not over it — and the payload there is the only base there is.
+    const foreign = {
+      owner: 'ffffffffffffffffffffffffffffffffffffffff',
+      topic: '9c1ac0de-0000-4000-8000-000000000001',
+    };
+    const gateway = new FakeFeedGateway();
+    const { store, writes, service } = setup(gateway);
+    const row = store.add(streamRow());
+    await service.publish(row.id, TEST_USER_ID);
+
+    // The network moves on without us: two more updates under our key.
+    await gateway.write([foreign], 1);
+    await gateway.write([foreign], 2);
+
+    const check = await service.checkFeedOnBoot();
+
+    assert.equal(check.recorded, 0);
+    assert.equal(check.network, 2);
+    assert.equal(check.adopted, true);
+    assert.deepEqual(writes.records.at(-1)!.payload, [foreign]);
+    assert.equal(writes.records.at(-1)!.reference, null, 'not ours to name');
+
+    // The next publish continues after the adopted head and keeps what was
+    // found there.
+    const next = await service.publish(row.id, TEST_USER_ID);
+    assert.equal(next.feed.index, 3);
+    assert.deepEqual(gateway.writes.at(-1)!.entries[0], foreign);
+  });
+
+  it('says nothing is wrong when the network is merely behind', async () => {
+    const gateway = new FakeFeedGateway(undefined, { readLagWrites: 5 });
+    const { store, writes, service } = setup(gateway);
+    const row = store.add(streamRow());
+    await service.publish(row.id, TEST_USER_ID);
+
+    const before = writes.records.length;
+    const check = await service.checkFeedOnBoot();
+
+    assert.equal(check.recorded, 0);
+    assert.equal(check.network, null, 'the lookup has not caught up at all');
+    assert.equal(check.adopted, false);
+    assert.equal(writes.records.length, before, 'nothing recorded');
+  });
+
+  it('carries on when the gateway cannot answer at all', async () => {
+    const { store, service, gateway } = setup();
+    const row = store.add(streamRow());
+    await service.publish(row.id, TEST_USER_ID);
+    gateway.failNextRead = new Error('bee unreachable');
+
+    const check = await service.checkFeedOnBoot();
+    assert.equal(check.network, null);
+    assert.equal(check.adopted, false);
+  });
+
+  it('reports ghosts without writing anything', async () => {
+    const { store, gateway, service } = setup();
+    const row = store.add(streamRow());
+    await service.publish(row.id, TEST_USER_ID);
+    store.rows.delete(row.id); // unpublished, then deleted, entry left behind
+
+    const check = await service.checkFeedOnBoot();
+
+    assert.deepEqual(check.ghosts, [row.topic]);
+    assert.equal(gateway.writes.length, 1, 'the dry run writes nothing');
+  });
+});
+
+describe('PublishService.reconcile', () => {
+  it('drops an entry with no row behind it', async () => {
+    // A2-2 / A4-1: the row was unpublished and then deleted while a stale
+    // write put the entry back, so no request can name it any more — topics
+    // are server-minted and `unpublish` needs a row.
+    const { store, gateway, service } = setup();
+    const ghost = store.add(streamRow());
+    const kept = store.add(streamRow());
+    await service.publish(ghost.id, TEST_USER_ID);
+    await service.publish(kept.id, TEST_USER_ID);
+    store.rows.delete(ghost.id);
+
+    const outcome = await service.reconcile(TEST_USER_ID);
+
+    assert.deepEqual(outcome.removed, [ghost.topic]);
+    assert.deepEqual(outcome.added, []);
+    assert.deepEqual(outcome.updated, []);
+    assert.equal(outcome.index, 2);
+    assert.equal(outcome.entryCount, 1);
+    assert.deepEqual(
+      entriesOf(gateway).map((e) => e.topic),
+      [kept.topic],
+    );
+  });
+
+  it('adds a published row that is missing from the feed', async () => {
+    // The other half of the collision: the write that carried this entry was
+    // overwritten, so the row says `published` and the catalogue does not.
+    const { store, gateway, service } = setup(
+      new FakeFeedGateway({ index: 4, entries: [] }),
+    );
+    const row = store.add(
+      streamRow({ status: 'published', published_feed_index: 4 }),
+    );
+
+    const outcome = await service.reconcile(TEST_USER_ID);
+
+    assert.deepEqual(outcome.added, [row.topic]);
+    assert.equal(outcome.index, 5);
+    const [entry] = entriesOf(gateway);
+    assert.equal(entry!.topic, row.topic);
+    assert.equal(entry!.state, 'scheduled');
+  });
+
+  it('rebuilds an entry that no longer matches its row, keeping vod numbers', async () => {
+    const { store, gateway, service } = setup();
+    const row = store.add(streamRow());
+    await service.publish(row.id, TEST_USER_ID);
+    store.add({
+      ...store.get(row.id),
+      title: 'Edited after the entry was written',
+      status: 'vod',
+      manifest_index: 412,
+      duration_seconds: 61,
+    });
+
+    const outcome = await service.reconcile(TEST_USER_ID);
+
+    assert.deepEqual(outcome.updated, [row.topic]);
+    const [entry] = entriesOf(gateway);
+    assert.equal(entry!.title, 'Edited after the entry was written');
+    assert.equal(entry!.state, 'vod');
+    assert.equal(entry!.index, 412);
+    assert.equal(entry!.duration, 61);
+  });
+
+  it('leaves entries written by someone else exactly where they are', async () => {
+    const foreign = {
+      owner: 'ffffffffffffffffffffffffffffffffffffffff',
+      topic: '9c1ac0de-0000-4000-8000-000000000001',
+      title: 'Someone else',
+      state: 'live',
+    };
+    const nonsense = 'not an entry at all';
+    const gateway = new FakeFeedGateway({
+      index: 3,
+      entries: [foreign, nonsense],
+    });
+    const { store, service } = setup(gateway);
+    const ghost = store.add(streamRow());
+    await service.publish(ghost.id, TEST_USER_ID);
+    store.rows.delete(ghost.id);
+
+    const outcome = await service.reconcile(TEST_USER_ID);
+
+    assert.deepEqual(outcome.removed, [ghost.topic]);
+    const written = gateway.writes.at(-1)!.entries;
+    assert.deepEqual(written[0], foreign, 'foreign entry untouched');
+    assert.equal(written[1], nonsense, 'unparseable element untouched');
+    assert.equal(written.length, 2);
+  });
+
+  it('writes nothing when the catalogue already matches the database', async () => {
+    const { store, writes, gateway, service } = setup();
+    const row = store.add(streamRow());
+    await service.publish(row.id, TEST_USER_ID);
+
+    const outcome = await service.reconcile(TEST_USER_ID);
+
+    assert.equal(outcome.index, null, 'no index spent');
+    assert.deepEqual(
+      [outcome.removed, outcome.added, outcome.updated],
+      [[], [], []],
+    );
+    assert.equal(outcome.entryCount, 1);
+    assert.equal(gateway.writes.length, 1, 'no stamp spent either');
+    assert.equal(writes.records.length, 1);
   });
 });

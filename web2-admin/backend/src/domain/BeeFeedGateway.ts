@@ -32,10 +32,18 @@ export interface BeeFeedGatewayOptions {
  * The real thing: the stream list feed as swarm-hls-stream's StreamCatalog
  * writes it — one feed, payload is the whole JSON array, one index per update.
  *
- * This gateway holds no index state of its own. Every write reads the head
- * first, which is slower than caching it but cannot drift from what the
- * network says; PublishService's mutex is what keeps two concurrent requests
- * from picking the same index.
+ * This gateway holds no index state of its own, and it is no longer asked to.
+ * `readLatest` was once the source of the next index — head + 1 — on the
+ * assumption that a node's feed lookup reflects an update that node itself
+ * made. It does not: the head read back here lagged this backend's own write
+ * by up to ~30 s on the test node, so writes 3-4 s apart computed the same
+ * index and the later chunk replaced the earlier one, and the stale payload
+ * that came with it put unpublished entries back on the catalogue.
+ *
+ * PublishService now takes both the index and the base payload from
+ * `feed_writes`, and `readLatest` is what the boot check compares that against
+ * and the fallback for a feed with no recorded write. `write` still refuses
+ * nothing: the index it is given is the caller's decision.
  */
 export class BeeFeedGateway implements FeedGateway {
   private readonly bee: Bee;
