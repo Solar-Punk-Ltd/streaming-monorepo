@@ -283,7 +283,7 @@ its state.
 With `ABR_ENABLED=true` the uploader publishes not one manifest feed but five:
 a **master playlist** and one **rung feed** per rendition, each under its own
 topic and all signed by the same key. Standalone it mints a random group id for
-the master and folds the rungs together inside the catalogue feed it writes
+the master and merges the rungs together inside the catalogue feed it writes
 itself. In admin mode it writes no catalogue at all, so two things move:
 
 - **The declared topic is the master feed's topic.** The group id *is* the
@@ -292,14 +292,14 @@ itself. In admin mode it writes no catalogue at all, so two things move:
   change: it plays a ladder whenever the feed at the topic in the link holds a
   master playlist.
 - **The merge state moves into the admin's database.** Each rung reports its
-  own record; the admin folds it, stores it, and writes the merged ladder onto
+  own record; the admin merges it, stores it, and writes the merged ladder onto
   the catalogue entry.
 
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/streams/:id/renditions` | `RenditionReport` (= `Rendition`: `name`, `width`, `height`, `topic`, `bandwidth`, `avgBandwidth`, and `index` + `duration` once the rung finalizes — both or neither). Answers `RenditionReportResponse`: the stream, the merged ladder ascending by height, `ladder { finished, flippedToFinished, duration }`, and the catalogue write it caused. |
 
-The fold, one record per `(stream, name)`: the incoming report replaces the
+The merge, one record per `(stream, name)`: the incoming report replaces the
 stored one, **except** that a stored rung which already has an `index` keeps
 its `index` and `duration` when the incoming report has none **and arrives on
 the same `topic`**, taking only geometry and bandwidths from it. A rung
@@ -333,7 +333,7 @@ Semantics worth stating plainly:
 - Refused: `404 stream_not_found`, `409 invalid_state` for `draft` (nothing
   announced) and `publishing` (a feed write in flight), `400 validation_error`,
   `502 publish_failed` when the row was stored but the catalogue write failed —
-  the uploader retries the whole report, and the fold is idempotent.
+  the uploader retries the whole report, and the merge is idempotent.
 
 Migration 004 adds `stream_renditions`, one row per `(stream_id, name)`;
 `finishUnpublish` deletes them alongside the state columns it already clears.

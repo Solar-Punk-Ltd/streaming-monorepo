@@ -72,7 +72,7 @@ keeps working; rung feeds keep fresh random topics. The ladder's merge state
 moves out of the catalogue feed and into the admin's database — migration 004
 `stream_renditions`, `POST /api/internal/streams/:id/renditions`, one record
 per rung — because in admin mode the uploader writes no catalogue to merge
-into. The admin folds each report — a finished rung keeps its index when it
+into. The admin merges each report — a finished rung keeps its index when it
 reports again without one **on the same topic**, which is a crash recovery
 resuming the feed it was already writing; the same report on a fresh topic is a
 new session and replaces it, so an encoder reconnecting after a finished

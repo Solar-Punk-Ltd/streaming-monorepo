@@ -4,10 +4,10 @@ import type { StreamRenditionRow } from '../types/index.js';
 
 /**
  * The ABR ladder's vocabulary: what a stored rung looks like on the wire, how
- * a fresh report is folded into the one already stored, and when the ladder as
+ * a fresh report is merged into the one already stored, and when the ladder as
  * a whole counts as finished.
  *
- * The fold is the part with history behind it. It is `keepingWhatFinished` from
+ * The merge is the part with history behind it. It is `keepingWhatFinished` from
  * swarm-hls-stream's StreamCatalog, moved here because in admin mode the
  * uploader no longer writes the catalogue it used to merge into.
  */
@@ -74,7 +74,7 @@ function sameTopic(left: string, right: string): boolean {
  * the old one instead would leave the master advertising the recording's rung
  * feeds while the feeds now being written went unadvertised.
  */
-export function foldRendition(
+export function mergeRendition(
   stored: Rendition | null,
   incoming: Rendition,
 ): Rendition {

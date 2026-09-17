@@ -224,7 +224,7 @@ plus `index` and `duration` — both or neither — once it finalizes) and gets
 back the merged ladder, ascending by height, with `ladder { finished,
 flippedToFinished, duration }`.
 
-The fold keeps one record per `(stream, name)`. The incoming report replaces
+The merge keeps one record per `(stream, name)`. The incoming report replaces
 the stored one, except that a rung which already reported an `index` keeps its
 `index` and `duration` when the incoming report has none **and arrives on the
 same `topic`**, taking only geometry and bandwidths from it: a rung recovered
@@ -255,7 +255,7 @@ order their entries landed and only one of them flips. Refused with
 `409 invalid_state` for `draft` (nothing has been announced) and `publishing`
 (a feed write is in flight); the row is stored before the feed is written, like
 a state report, so a failed write is `502 publish_failed` and the retry has
-only the write left to do — the fold is idempotent.
+only the write left to do — the merge is idempotent.
 
 Migration 004 adds `stream_renditions`, one row per `(stream_id, name)`, and
 `finishUnpublish` deletes a stream's rungs in the same statement that clears

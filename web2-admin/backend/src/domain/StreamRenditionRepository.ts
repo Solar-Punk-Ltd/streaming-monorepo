@@ -35,7 +35,7 @@ export class StreamRenditionRepository {
 
   /**
    * Stores one rung, replacing whatever that name held. The caller has already
-   * folded the incoming report into the stored one, so what arrives here is
+   * merged the incoming report into the stored one, so what arrives here is
    * the whole row as it should now stand — including a null index and duration
    * for a rung that has not finalized.
    */

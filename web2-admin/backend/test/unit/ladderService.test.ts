@@ -5,7 +5,7 @@
  * What the uploader reads back from a report is the whole reason this service
  * exists: the merged ladder it builds its master playlist from, and the
  * `flippedToFinished` that tells it to send the one `vod`. Both used to be
- * computed from reads of the stored rungs around the fold, outside the publish
+ * computed from reads of the stored rungs around the merge, outside the publish
  * mutex, so two overlapping reports could answer in the wrong order and both
  * claim the flip. The tests below pin that the answer is the write: the ladder
  * as the entry carries it, judged against the entry it replaced.
@@ -202,8 +202,8 @@ describe('LadderService.report', () => {
   });
 
   it('flips exactly once when two final reports overlap', async () => {
-    // Both fold before either reaches the mutex. Judged from the stored rungs
-    // around each fold, both would see a ladder unfinished before and
+    // Both merge before either reaches the mutex. Judged from the stored rungs
+    // around each merge, both would see a ladder unfinished before and
     // finished after, and both would claim the flip; the cue to send `vod`
     // is meant to fire once, from the report whose write finished the entry.
     const { gateway, service, stream } = await setup();

@@ -9,7 +9,7 @@ import { InvalidStateError, StreamNotFoundError } from './errors/index.js';
 import { Logger } from './Logger.js';
 import type { PublishOutcome, PublishService } from './PublishService.js';
 import {
-  foldRendition,
+  mergeRendition,
   isLadderFinished,
   ladderDuration,
   toRendition,
@@ -22,7 +22,7 @@ export interface LadderStreamStore {
   findByIdUnscoped(id: string): Promise<StreamRow | null>;
 }
 
-/** The slice of StreamRenditionRepository the fold needs; a fake stands in. */
+/** The slice of StreamRenditionRepository the merge needs; a fake stands in. */
 export interface LadderRenditionStore {
   listByStream(streamId: string): Promise<StreamRenditionRow[]>;
   upsert(streamId: string, rendition: Rendition): Promise<StreamRenditionRow>;
@@ -47,7 +47,7 @@ export interface RenditionReportOutcome {
  *
  * Standalone, swarm-hls-stream merges the rungs of a ladder inside the
  * catalogue feed it writes itself. In admin mode it writes no catalogue at
- * all, so each rung reports itself here instead: this service folds the report
+ * all, so each rung reports itself here instead: this service merges the report
  * into what is stored, rewrites the catalogue entry through the same
  * single-writer path everything else uses, and answers with the merged ladder
  * the uploader builds its master playlist from.
@@ -77,11 +77,11 @@ export class LadderService {
    * A rendition report, in the same two steps a state report takes and for the
    * same reason: the rung is persisted first and the catalogue entry rewritten
    * second. A feed write can fail for reasons that have nothing to do with
-   * this stream, and the uploader retries the whole report; the fold is
+   * this stream, and the uploader retries the whole report; the merge is
    * idempotent, so the retry has only the write left to do.
    *
    * The answer comes from the write, not from reads of the stored ladder
-   * around the fold. Two reports can fold in one order and reach the mutex in
+   * around the merge. Two reports can merge in one order and reach the mutex in
    * the other, and a ladder read out here can describe an entry other than
    * the one this report wrote; the uploader would then build its master from
    * an older ladder than the entry carries. `flippedToFinished` is judged
@@ -105,7 +105,7 @@ export class LadderService {
 
     const stored = (await this.renditions.listByStream(id)).map(toRendition);
     const previous = stored.find((rung) => rung.name === report.name) ?? null;
-    await this.renditions.upsert(id, foldRendition(previous, report));
+    await this.renditions.upsert(id, mergeRendition(previous, report));
 
     const publish = await this.publishService.republishWithState(stream);
     const { renditions } = publish;

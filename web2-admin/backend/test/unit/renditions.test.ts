@@ -1,7 +1,7 @@
 /**
  * The ABR ladder's arithmetic. Unit test — the pure functions only.
  *
- * The fold is the one with a bug behind it. swarm-hls-stream's scenario H: a
+ * The merge is the one with a bug behind it. swarm-hls-stream's scenario H: a
  * rung dies and comes back, announces itself before it has finalized again,
  * and a wholesale replace throws away the index it already reported — which
  * un-finishes a ladder that was finished and leaves the viewer a master
@@ -14,7 +14,7 @@ import { describe, it } from 'node:test';
 import type { Rendition } from '@streaming-monorepo/web2-admin-common';
 
 import {
-  foldRendition,
+  mergeRendition,
   isLadderFinished,
   ladderDuration,
   toRendition,
@@ -79,10 +79,10 @@ describe('toRendition', () => {
   });
 });
 
-describe('foldRendition', () => {
+describe('mergeRendition', () => {
   it('takes the incoming report when nothing is stored for that rung', () => {
     const incoming = rendition();
-    assert.deepEqual(foldRendition(null, incoming), incoming);
+    assert.deepEqual(mergeRendition(null, incoming), incoming);
   });
 
   it('replaces an unfinished rung wholesale', () => {
@@ -92,7 +92,7 @@ describe('foldRendition', () => {
     const stored = rendition({ topic: TOPIC_360, bandwidth: 1_000_000 });
     const incoming = rendition({ bandwidth: 3_000_000 });
 
-    assert.deepEqual(foldRendition(stored, incoming), incoming);
+    assert.deepEqual(mergeRendition(stored, incoming), incoming);
   });
 
   it('keeps what a finished rung finished with, on the same topic', () => {
@@ -107,7 +107,7 @@ describe('foldRendition', () => {
       avgBandwidth: 4_000_000,
     });
 
-    assert.deepEqual(foldRendition(stored, incoming), {
+    assert.deepEqual(mergeRendition(stored, incoming), {
       name: '720p',
       width: 1920,
       height: 1080,
@@ -123,7 +123,7 @@ describe('foldRendition', () => {
     const stored = rendition({ index: 42, duration: 61.5 });
     const incoming = rendition({ topic: TOPIC_720.toUpperCase() });
 
-    assert.equal(foldRendition(stored, incoming).index, 42);
+    assert.equal(mergeRendition(stored, incoming).index, 42);
   });
 
   it('replaces a finished rung that reports on a fresh topic', () => {
@@ -134,11 +134,11 @@ describe('foldRendition', () => {
     const stored = rendition({ index: 42, duration: 61.5 });
     const incoming = rendition({ topic: TOPIC_360 });
 
-    const folded = foldRendition(stored, incoming);
-    assert.deepEqual(folded, incoming);
-    assert.equal(folded.topic, TOPIC_360, 'the feed now being written');
-    assert.ok(!('index' in folded), 'and it is delivering, not finished');
-    assert.ok(!('duration' in folded));
+    const merged = mergeRendition(stored, incoming);
+    assert.deepEqual(merged, incoming);
+    assert.equal(merged.topic, TOPIC_360, 'the feed now being written');
+    assert.ok(!('index' in merged), 'and it is delivering, not finished');
+    assert.ok(!('duration' in merged));
   });
 
   it('lets a finished report replace a finished rung', () => {
@@ -147,7 +147,7 @@ describe('foldRendition', () => {
     const stored = rendition({ index: 42, duration: 61.5 });
     const incoming = rendition({ topic: TOPIC_360, index: 7, duration: 12 });
 
-    assert.deepEqual(foldRendition(stored, incoming), incoming);
+    assert.deepEqual(mergeRendition(stored, incoming), incoming);
   });
 });
 

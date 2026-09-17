@@ -253,7 +253,7 @@ export type StreamStateResponse = PublishResult;
  * reported by the uploader as that rung starts delivering and again when it
  * finalizes (then carrying `index` and `duration`, both or neither).
  *
- * The admin folds the report into what it already stores for `(stream, name)`,
+ * The admin merges the report into what it already stores for `(stream, name)`,
  * writes the merged ladder onto the catalogue entry, and answers with the
  * ladder as it now stands. It never moves the stream's status from a rendition
  * report: `live` and `vod` still come from POST /state.
