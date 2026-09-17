@@ -27,6 +27,7 @@ import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
 import { LadderService } from '../../src/domain/LadderService.js';
 import { PublishService } from '../../src/domain/PublishService.js';
+import { StreamStateService } from '../../src/domain/StreamStateService.js';
 
 import {
   FakeFeedWriteLog,
@@ -79,9 +80,10 @@ async function setup() {
     feed,
   );
   const service = new LadderService(store, renditions, publishService);
+  const state = new StreamStateService(store, publishService);
   const stream = store.add(streamRow());
   await publishService.publish(stream.id, TEST_USER_ID);
-  return { store, gateway, service, stream };
+  return { store, renditions, gateway, service, state, stream };
 }
 
 /** The stream's entry as the write at `index` left it on the feed. */
@@ -223,6 +225,54 @@ describe('LadderService.report', () => {
     assert.equal(gateway.writes.length, before + 2, 'one write per report');
     const last = entryAt(gateway, gateway.writes.at(-1)!.index, stream.topic);
     assert.deepEqual(last.renditions, [FINAL_360, FINAL_720]);
+  });
+
+  it('keeps a finished rung that reports itself live again on the same feed', async () => {
+    // A rung's topic is derived from the declared topic and the rung name, so
+    // it does not change between sessions. Until that rung reports a final
+    // again, the recording it finished stays addressable on the entry.
+    const { service, stream } = await setup();
+    await service.report(stream.id, FINAL_360);
+
+    const again = await service.report(stream.id, LIVE_360);
+
+    assert.deepEqual(again.renditions, [FINAL_360]);
+    assert.equal(again.ladder.finished, true);
+  });
+
+  it('is unfinished after a resume, and flips once when the new run ends', async () => {
+    // The `live` report is what un-finishes the ladder, because the feeds the
+    // rungs continue writing are the ones the last recording sits on. After it
+    // the entry carries index-less rungs, and the next set of final reports
+    // has a flip to give the uploader for the second `vod`.
+    const { gateway, service, state, stream } = await setup();
+    await state.report(stream.id, { state: 'live' });
+    await service.report(stream.id, LIVE_360);
+    await service.report(stream.id, LIVE_720);
+    await service.report(stream.id, FINAL_360);
+    const ended = await service.report(stream.id, FINAL_720);
+    assert.equal(ended.ladder.flippedToFinished, true);
+    await state.report(stream.id, { state: 'vod', index: 7, duration: 62.5 });
+
+    const resumed = await state.report(stream.id, { state: 'live' });
+
+    const entry = entryAt(gateway, resumed.feed.index, stream.topic);
+    assert.deepEqual(entry.renditions, [LIVE_360, LIVE_720], 'unfinished');
+
+    const first = await service.report(stream.id, LIVE_720);
+    assert.deepEqual(first.ladder, {
+      finished: false,
+      flippedToFinished: false,
+      duration: null,
+    });
+    const second = await service.report(stream.id, FINAL_360);
+    assert.equal(second.ladder.flippedToFinished, false);
+    const last = await service.report(stream.id, FINAL_720);
+    assert.deepEqual(last.ladder, {
+      finished: true,
+      flippedToFinished: true,
+      duration: 62.5,
+    });
   });
 
   it('answers each overlapping report with the ladder its own write put on the feed', async () => {

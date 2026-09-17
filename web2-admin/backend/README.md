@@ -200,8 +200,13 @@ both numbers required with `vod`, refused with `live`. `live` sets `status`,
 stamps `live_since` (kept as it is when the stream is already live, because the
 uploader retries) and clears `ended_at`; `vod` sets `status`, `manifest_index`,
 `duration_seconds` and `ended_at`. Allowed: `published → live`, `live → live`,
-`live → vod`, `vod → vod`, and `published → vod` for a broadcast that ended
-before its `live` report ever got through. Anything else is
+`live → vod`, `vod → vod`, `published → vod` for a broadcast that ended before
+its `live` report ever got through, and `vod → live` for a broadcast that goes
+live again. Every feed of a declared stream outlives the sessions written to
+it, so a reconnected encoder continues them above the previous head; that
+`live` therefore clears `manifest_index` and `duration_seconds` on the row and
+on every rung in the same statement, and the entry lists the latest recording
+once the next `vod` arrives. Anything else is
 `409 invalid_state_transition` with `from` and `to`. The rule is enforced twice
 — once to answer the 409, once as the `WHERE status = ANY(...)` of the UPDATE
 itself, so two reports racing cannot both win.
@@ -227,19 +232,17 @@ flippedToFinished, duration }`.
 The merge keeps one record per `(stream, name)`. The incoming report replaces
 the stored one, except that a rung which already reported an `index` keeps its
 `index` and `duration` when the incoming report has none **and arrives on the
-same `topic`**, taking only geometry and bandwidths from it: a rung recovered
-from a crash resumes writing the feed it was already writing and announces
-itself before it finalizes again, so a wholesale replace would flip a finished
-ladder back to unfinished. The rule is `StreamCatalog.keepingWhatFinished` from
-the uploader, where it was learned.
-
-The topic is what separates that recovery from a new session of the same rung.
-A rung that starts again — the encoder reconnected after the ladder finished,
-or one transcode restarted while its siblings kept going — mints a fresh random
-topic, so an indexless report on a *different* topic is a rung that is live
-again and replaces the finished record. Without the test, a reconnect after a
-finished broadcast would leave the master advertising the recording's rung
-feeds while the feeds now being written went unadvertised.
+same `topic`**, taking only geometry and bandwidths from it. A rung's topic is
+derived from the stream's declared topic and the rung name, so every report for
+a rung arrives on the feed that rung's recordings already sit on, and an
+indexless one is that rung delivering again — recovered from a crash, or a new
+session above the previous head. Either way the recording it finished last
+stays addressable until that rung's next final report replaces it, which is
+what keeps the master playlist a viewer seeks with on the entry. The rule is
+`StreamCatalog.keepingWhatFinished` from the uploader, where it was learned;
+the topic test is true for every rung of a well-formed ladder, and a report
+naming some other feed is taken as it arrived. Un-finishing a ladder is the
+`live` state report's job, not the merge's.
 
 **A rendition report never moves the status.** It stores the rung and rewrites
 the entry, adding `renditions` and `group` (= the stream's topic) whenever the

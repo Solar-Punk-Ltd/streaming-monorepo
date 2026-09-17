@@ -252,7 +252,20 @@ export class StreamRepository {
    * The uploader's `live` report. `live_since` is set once per live run: a
    * repeated report (the uploader retries) must not keep moving it, and a
    * stream that goes live after having been announced gets a fresh one.
-   * `ended_at` is cleared, so a stream that is live is never also ended.
+   * `ended_at` is cleared, so a stream that is live is never also ended, and
+   * so are `manifest_index` and `duration_seconds`: a stream that is live has
+   * no finished recording, and a broadcast coming back after `vod` would
+   * otherwise keep listing the previous one while the new session writes over
+   * its head.
+   *
+   * The ladder is un-finished with it, in this one statement rather than
+   * through StreamRenditionRepository, for the reason `finishUnpublish` clears
+   * it in its own: a crash between two statements would leave the entry
+   * advertising rung recordings that have been superseded. Only a row coming
+   * back from `vod` is touched — a repeated `live` report must not throw away
+   * rungs that have finalized since, and there is nothing to clear for a
+   * broadcast that is starting for the first time. Index and duration go null
+   * together, as migration 004 requires.
    *
    * Conditional on `allowedFrom` for the same reason every other transition
    * here is: the check and the write are one statement, so two reports racing
@@ -263,12 +276,25 @@ export class StreamRepository {
     allowedFrom: readonly StreamStatus[],
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
-      `UPDATE streams
+      `WITH resuming AS (
+         SELECT id FROM streams
+          WHERE id = $1 AND status = 'vod' AND status = ANY($2::text[])
+            FOR UPDATE
+       ), unfinished AS (
+         UPDATE stream_renditions
+            SET manifest_index = NULL,
+                duration_seconds = NULL,
+                updated_at = NOW()
+          WHERE stream_id IN (SELECT id FROM resuming)
+       )
+       UPDATE streams
           SET status = 'live',
               live_since = CASE
                 WHEN status = 'live' AND live_since IS NOT NULL THEN live_since
                 ELSE NOW()
               END,
+              manifest_index = NULL,
+              duration_seconds = NULL,
               ended_at = NULL,
               publish_error = NULL,
               updated_at = NOW()

@@ -62,9 +62,11 @@ describe('isStateTransitionAllowed', () => {
     assert.equal(isStateTransitionAllowed('publishing', 'vod'), false);
   });
 
-  it('refuses resuming a finished recording', () => {
-    // The next broadcast is a new publish, not a continuation of this one.
-    assert.equal(isStateTransitionAllowed('vod', 'live'), false);
+  it('accepts a broadcast going live again after it ended', () => {
+    // The feeds outlive the sessions written to them, so a reconnected
+    // encoder continues them above the previous head rather than publishing
+    // anew. The `live` un-finishes the row and the ladder it left behind.
+    assert.equal(isStateTransitionAllowed('vod', 'live'), true);
   });
 
   it('agrees with the status list the SQL transition is conditioned on', () => {

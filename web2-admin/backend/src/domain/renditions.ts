@@ -59,20 +59,20 @@ function sameTopic(left: string, right: string): boolean {
  *
  * The incoming report replaces the stored one, with one exception: a stored
  * rung that has finalized keeps its `index` and `duration` when the incoming
- * report has none *and comes in on the same feed topic*. A rung that comes back
- * after a crash announces itself before it finalizes again, and replacing
- * wholesale would flip a finished ladder back to unfinished — and with it the
- * master playlist the viewer needs to seek a recording. Geometry and bandwidths
- * still come from the incoming report: those describe the encoder running now.
+ * report has none *and comes in on the same feed topic*. A rung's topic is
+ * derived from the stream's declared topic and the rung name, so every report
+ * for a rung arrives on the feed that rung's recordings already sit on, and an
+ * indexless one is that rung delivering again — recovered from a crash, or a
+ * new session above the previous head. Either way the recording it finished
+ * last stays addressable at the index it kept, until that rung's next final
+ * report replaces it; dropping it meanwhile would take the master playlist a
+ * viewer seeks the recording with off the entry. Geometry and bandwidths still
+ * come from the incoming report: those describe the encoder running now.
  *
- * The topic is what tells that recovery apart from a new session of the same
- * rung. A crashed rung resumes writing the feed it was already writing, so its
- * topic is unchanged; a rung that starts again — the encoder reconnected after
- * the ladder finished, or one transcode restarted while its siblings kept going
- * — mints a fresh random topic. So an indexless report on a *different* topic
- * is a rung that is live again, and it replaces the finished record. Keeping
- * the old one instead would leave the master advertising the recording's rung
- * feeds while the feeds now being written went unadvertised.
+ * The topic test stays because the record it protects is about one feed. It is
+ * true for every rung of a well-formed ladder; a report naming some other feed
+ * describes a recording this one has nothing to say about, so it is taken as
+ * it arrived.
  */
 export function mergeRendition(
   stored: Rendition | null,

@@ -252,7 +252,7 @@ viewer plays.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/streams/by-ingest/:app/:stream` | Resolve a draft from the ingest stream id `<mediaType>/<topic>`. Returns `IngestLookupResponse` or 404. Only streams in `published`, `live` or `vod` resolve; a `draft` is not announced and is refused. |
-| POST | `/streams/:id/state` | `StreamStateReport`. `live` sets status `live` and `liveSince`, `vod` sets status `vod`, `manifestIndex`, `durationSeconds`, `endedAt`. Each report rewrites the catalogue entry with the new state (and `index`, `duration` for vod), through the same single-writer publish path. |
+| POST | `/streams/:id/state` | `StreamStateReport`. `live` sets status `live` and `liveSince`, `vod` sets status `vod`, `manifestIndex`, `durationSeconds`, `endedAt`. `vod → live` is allowed: a broadcast may go live again, because its feeds continue, and the `live` clears the finished recording from the row and from every rung. Each report rewrites the catalogue entry with the new state (and `index`, `duration` for vod), through the same single-writer publish path. |
 
 Config: `INTERNAL_API_TOKEN` (required, 32+ chars). Migration 002 adds
 `manifest_index BIGINT`, `duration_seconds DOUBLE PRECISION`,
@@ -288,7 +288,8 @@ itself. In admin mode it writes no catalogue at all, so two things move:
 
 - **The declared topic is the master feed's topic.** The group id *is* the
   stream's `topic`, the one the admin minted and the one every player link
-  already points at. Rung feeds keep fresh random topics. The viewer needs no
+  already points at. Each rung feed's topic is derived from that declared topic
+  and the rung name, so it is stable across sessions too. The viewer needs no
   change: it plays a ladder whenever the feed at the topic in the link holds a
   master playlist.
 - **The merge state moves into the admin's database.** Each rung reports its
@@ -302,19 +303,19 @@ itself. In admin mode it writes no catalogue at all, so two things move:
 The merge, one record per `(stream, name)`: the incoming report replaces the
 stored one, **except** that a stored rung which already has an `index` keeps
 its `index` and `duration` when the incoming report has none **and arrives on
-the same `topic`**, taking only geometry and bandwidths from it. A rung
-recovered from a crash resumes writing the feed it was already writing and
-announces itself before it finalizes again, so replacing wholesale would flip a
-finished ladder back to unfinished. The rule is copied from
-`StreamCatalog.keepingWhatFinished` in the uploader, where it was learned.
+the same `topic`**, taking only geometry and bandwidths from it. The rule is
+copied from `StreamCatalog.keepingWhatFinished` in the uploader, where it was
+learned.
 
-The topic is what tells that recovery apart from a **new session** of the same
-rung. A rung that starts again — the encoder reconnected after the ladder
-finished, or one transcode restarted while its siblings kept going — mints a
-fresh random topic, so an indexless report on a *different* topic is a rung
-that is live again, and it replaces the finished record. Without the test, a
-reconnect after a finished broadcast would leave the master advertising the
-recording's rung feeds while the feeds now being written went unadvertised.
+A rung's topic is derived from the stream's declared topic and the rung name,
+so it does not change between sessions: every report for a rung arrives on the
+feed that rung's recordings already sit on, and an indexless one is that rung
+delivering again — recovered from a crash, or a **new session** above the
+previous head. Either way the recording it finished last stays addressable
+until that rung's next final report replaces it, which is what keeps the master
+playlist a viewer seeks a recording with on the entry. Un-finishing a ladder is
+the `live` state report's job: it clears every rung's `manifest_index` and
+`duration_seconds` in the same statement that takes the row out of `vod`.
 
 Semantics worth stating plainly:
 

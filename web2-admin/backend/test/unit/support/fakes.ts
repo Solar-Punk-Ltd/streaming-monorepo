@@ -21,6 +21,7 @@ import type {
   PublishRenditionStore,
   PublishStreamStore,
 } from '../../../src/domain/PublishService.js';
+import type { StateStreamStore } from '../../../src/domain/StreamStateService.js';
 import type {
   StreamRenditionRow,
   StreamRow,
@@ -108,9 +109,29 @@ export class FakeRenditionStore
     this.rows.delete(streamId);
     return dropped;
   }
+
+  /**
+   * Un-finishes every rung, as the CTE in `markLive` does for a stream coming
+   * back from `vod`. Index and duration go together, which is the migration's
+   * CHECK and the reason nothing here clears one of them alone.
+   */
+  clearLadderIndexes(streamId: string): void {
+    const rows = this.rows.get(streamId);
+    if (!rows) return;
+    this.rows.set(
+      streamId,
+      rows.map((row) => ({
+        ...row,
+        manifest_index: null,
+        duration_seconds: null,
+      })),
+    );
+  }
 }
 
-export class FakeStreamStore implements PublishStreamStore, LadderStreamStore {
+export class FakeStreamStore
+  implements PublishStreamStore, LadderStreamStore, StateStreamStore
+{
   readonly rows = new Map<string, StreamRow>();
   readonly thumbnails = new Map<string, ThumbnailRow>();
   /** Set to make the status write fail, as a lost connection would. */
@@ -140,6 +161,56 @@ export class FakeStreamStore implements PublishStreamStore, LadderStreamStore {
   async findByIdUnscoped(id: string): Promise<StreamRow | null> {
     const row = this.rows.get(id);
     return row ? { ...row } : null;
+  }
+
+  /** Unscoped, as the SQL is: `topic` is UNIQUE, so this is still one row. */
+  async findByTopic(topic: string): Promise<StreamRow | null> {
+    const row = [...this.rows.values()].find((r) => r.topic === topic);
+    return row ? { ...row } : null;
+  }
+
+  /**
+   * The `live` report, conditional exactly as the SQL is. A row coming back
+   * from `vod` is un-finished in the same step: the recording columns, and
+   * every rung's index and duration through the linked ladder, the way the
+   * CTE in `markLive` does it.
+   */
+  async markLive(
+    id: string,
+    allowedFrom: readonly StreamStatus[],
+  ): Promise<StreamRow | null> {
+    const row = this.rows.get(id);
+    if (!row || !allowedFrom.includes(row.status)) return null;
+    if (row.status === 'vod') this.renditions?.clearLadderIndexes(id);
+    return this.patch(id, {
+      status: 'live',
+      live_since:
+        row.status === 'live' && row.live_since !== null
+          ? row.live_since
+          : new Date('2026-09-11T11:00:00.000Z'),
+      manifest_index: null,
+      duration_seconds: null,
+      ended_at: null,
+      publish_error: null,
+    });
+  }
+
+  /** The `vod` report: where the recording is. `live_since` is left alone. */
+  async markVod(
+    id: string,
+    allowedFrom: readonly StreamStatus[],
+    manifestIndex: number,
+    durationSeconds: number,
+  ): Promise<StreamRow | null> {
+    const row = this.rows.get(id);
+    if (!row || !allowedFrom.includes(row.status)) return null;
+    return this.patch(id, {
+      status: 'vod',
+      manifest_index: manifestIndex,
+      duration_seconds: durationSeconds,
+      ended_at: new Date('2026-09-11T11:00:00.000Z'),
+      publish_error: null,
+    });
   }
 
   /** Unscoped, as the SQL is: reconcile has to see every user's rows. */

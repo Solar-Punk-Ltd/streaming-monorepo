@@ -17,13 +17,21 @@ export type ReportedState = 'live' | 'vod';
  * ran out) still has a recording worth publishing, and refusing the `vod`
  * would leave the catalogue advertising a stream that is scheduled forever.
  *
+ * `vod → live` is a broadcast going live again after it ended. Every feed of a
+ * declared stream outlives the sessions written to it — the master on the
+ * declared topic, each rung on a topic derived from that topic and the rung
+ * name — so an encoder that reconnects continues those same feeds above the
+ * previous head, with a discontinuity at the seam. The recordings sit back to
+ * back on one feed and the entry lists the latest one, so the `live` clears
+ * what the finished recording left on the row and on the ladder and the next
+ * `vod` says where this one ended.
+ *
  * What is refused: `draft` (never announced — the uploader is not even
- * supposed to resolve it), `publishing` (a feed write is in flight; the report
- * would race it), and `vod → live` (a finished recording does not resume; the
- * next broadcast is a new publish).
+ * supposed to resolve it) and `publishing` (a feed write is in flight; the
+ * report would race it).
  */
 const ALLOWED_FROM: Record<ReportedState, readonly StreamStatus[]> = {
-  live: ['published', 'live'],
+  live: ['published', 'live', 'vod'],
   vod: ['published', 'live', 'vod'],
 };
 

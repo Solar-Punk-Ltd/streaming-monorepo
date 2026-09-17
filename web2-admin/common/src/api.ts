@@ -236,7 +236,12 @@ export interface IngestLookupResponse {
   publishKey: string;
 }
 
-/** POST /api/internal/streams/:id/state */
+/**
+ * POST /api/internal/streams/:id/state
+ *
+ * `live` may follow `vod`: a broadcast goes live again on the same feeds, and
+ * that report clears the recording the stream last listed, rungs included.
+ */
 export interface StreamStateReport {
   state: 'live' | 'vod';
   /** Required with 'vod': feed index of the final manifest under the stream's topic. */
