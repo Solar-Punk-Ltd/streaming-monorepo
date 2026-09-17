@@ -2,7 +2,8 @@
 --
 -- A stream published with ABR_ENABLED is not one manifest feed but five: a
 -- master playlist on the stream's declared topic, and one rung feed per
--- rendition under a fresh random topic. swarm-hls-stream kept the merge state
+-- rendition on a topic derived from that topic and the rung name, stable for
+-- the life of the declaration. swarm-hls-stream kept the merge state
 -- of that ladder inside the catalogue feed itself, because standalone it is
 -- the only writer of both. In admin mode it writes neither: this backend owns
 -- the catalogue, so the ladder has to be stored somewhere it can rebuild an
@@ -13,8 +14,9 @@
 -- again when it finalizes:
 --
 --   name              rung name, e.g. '720p'. Part of the primary key: a rung
---                     reports itself repeatedly (it retries, and it reconnects
---                     after a crash) and each report replaces the one row it
+--                     reports itself repeatedly (it retries, it reconnects
+--                     after a crash, and a new session picks up the feed the
+--                     last one left) and each report replaces the one row it
 --                     owns. The charset matches the uploader's, where '_'
 --                     separates the rung from the base in an ingest id and so
 --                     cannot appear in a rung name.

@@ -373,14 +373,36 @@ describe('internal state reports', () => {
     assert.equal(entry.duration, 3725.5);
   });
 
-  it('refuses a live report once the recording is final', async () => {
-    const response = await reportState(stream.id, { state: 'live' });
-    assert.equal(response.status, 409);
-    assert.deepEqual(response.body, {
-      error: 'invalid_state_transition',
-      from: 'vod',
-      to: 'live',
-    });
+  it('goes live again after the recording, dropping what it had finished', async () => {
+    // The broadcast continues on the feeds it already owns, so a reconnecting
+    // encoder resumes this stream rather than needing a new one. What it must
+    // not keep is the previous recording: the entry would point a viewer at a
+    // finished manifest while a new session writes over its head.
+    const result = await api<StreamStateResponse>(
+      'POST',
+      `/api/internal/streams/${stream.id}/state`,
+      { ...internalCall(), body: { state: 'live' } },
+    );
+
+    assert.equal(result.stream.status, 'live');
+    assert.equal(result.stream.manifestIndex ?? null, null);
+    assert.equal(result.stream.durationSeconds ?? null, null);
+    assert.equal(result.stream.endedAt ?? null, null);
+    assert.ok(result.stream.liveSince, 'a fresh live run is stamped');
+
+    const entry = await catalogueEntry(stream.topic);
+    assert.equal(entry.state, 'live');
+    assert.equal(entry.index ?? null, null, 'no recording while it is live');
+    assert.equal(entry.duration ?? null, null);
+
+    // And back to a recording, which is the state the rest of this sequence
+    // starts from.
+    const ended = await api<StreamStateResponse>(
+      'POST',
+      `/api/internal/streams/${stream.id}/state`,
+      { ...internalCall(), body: { state: 'vod', index: 412, duration: 3725.5 } },
+    );
+    assert.equal(ended.stream.status, 'vod');
   });
 
   it('unpublishes a recording and clears what the uploader reported', async () => {
@@ -549,26 +571,27 @@ describe('internal rendition reports', () => {
     assert.equal(kept?.bandwidth, 9_000_000, 'but the new bitrate');
   });
 
-  it('replaces a finished rung that comes back on a fresh topic', async () => {
-    // Not a recovery: an encoder that reconnected after the broadcast
-    // finished. The rung is live again on a feed of its own, so the ladder is
-    // no longer a finished recording. Keeping the stored record would leave
-    // the master advertising the recording's rung feed while the one now being
-    // written went unadvertised.
+  it('takes a rung that reports on a different feed as it arrived', async () => {
+    // A rung's topic is derived from the stream's topic and the rung name, so
+    // in a well-formed ladder every report for a rung names the feed its
+    // recordings already sit on. A report naming some other feed describes a
+    // recording this ladder has nothing to say about, so nothing is carried
+    // over: keeping the stored index would leave the master advertising a feed
+    // the report did not mention.
     const freshTopic = 'cccccccc-0000-4000-8000-000000000720';
     const result = await report(rung('720p', 720, { topic: freshTopic }));
 
-    assert.equal(result.ladder.finished, false, 'one rung is delivering again');
+    assert.equal(result.ladder.finished, false, 'that rung has no recording');
     assert.equal(result.ladder.flippedToFinished, false);
     assert.equal(result.ladder.duration, null);
 
-    const restarted = result.renditions.find((r) => r.name === '720p');
-    assert.equal(restarted?.topic, freshTopic);
-    assert.equal(restarted?.index, undefined, 'the old recording is gone');
+    const foreign = result.renditions.find((r) => r.name === '720p');
+    assert.equal(foreign?.topic, freshTopic);
+    assert.equal(foreign?.index, undefined, 'nothing was carried over');
     assert.equal(
       result.renditions.find((r) => r.name === '360p')?.index,
       12,
-      'the rung that did not restart keeps its recording',
+      'the rung that stayed on its own feed keeps its recording',
     );
 
     const entry = await catalogueEntry(stream.topic);
@@ -595,6 +618,49 @@ describe('internal rendition reports', () => {
     await api<PublishResult>('POST', `/api/streams/${stream.id}/publish`);
     const afterRepublish = await catalogueEntry(stream.topic);
     assert.equal(afterRepublish.renditions?.length, 2);
+  });
+
+  it('un-finishes every rung when the broadcast goes live again', async () => {
+    // Each rung continues on the feed it already owns, so the ladder survives
+    // the resume — but not the indexes, which address the recording that just
+    // ended. They come back one final report at a time.
+    const live = await api<StreamStateResponse>(
+      'POST',
+      `/api/internal/streams/${stream.id}/state`,
+      { ...internalCall(), body: { state: 'live' } },
+    );
+    assert.equal(live.stream.status, 'live');
+
+    const rows = await pool.query<{
+      name: string;
+      manifest_index: string | null;
+      duration_seconds: string | null;
+    }>(
+      `SELECT name, manifest_index, duration_seconds FROM stream_renditions
+        WHERE stream_id = $1 ORDER BY name`,
+      [stream.id],
+    );
+    assert.equal(rows.rowCount, 2, 'the rungs themselves stay');
+    for (const row of rows.rows) {
+      assert.equal(row.manifest_index, null, `${row.name} index`);
+      assert.equal(row.duration_seconds, null, `${row.name} duration`);
+    }
+
+    const entry = await catalogueEntry(stream.topic);
+    assert.equal(entry.state, 'live');
+    assert.equal(entry.renditions?.length, 2);
+    assert.equal(
+      entry.renditions?.every((r) => r.index === undefined),
+      true,
+      'and the catalogue advertises none of the old recordings',
+    );
+
+    // Back to a recording for the unpublish that follows.
+    await api<StreamStateResponse>(
+      'POST',
+      `/api/internal/streams/${stream.id}/state`,
+      { ...internalCall(), body: { state: 'vod', index: 9, duration: 61.2 } },
+    );
   });
 
   it('drops the ladder when the recording is unpublished', async () => {

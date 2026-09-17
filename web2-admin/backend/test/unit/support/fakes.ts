@@ -172,8 +172,15 @@ export class FakeStreamStore
   /**
    * The `live` report, conditional exactly as the SQL is. A row coming back
    * from `vod` is un-finished in the same step: the recording columns, and
-   * every rung's index and duration through the linked ladder, the way the
-   * CTE in `markLive` does it.
+   * every rung's index and duration through the linked ladder.
+   *
+   * ⚠️ That the rungs are cleared at all is a property of the CTE in
+   * `markLive`, and no fake can stand in for it — a statement that clears none
+   * of them returns exactly the row one that clears them all returns, so this
+   * method would keep the tests below green either way. It has been wrong once.
+   * The real SQL is pinned in `test/integration/streamRepository.test.ts`; the
+   * tests here say what the service does with the answer, not that the answer
+   * is right.
    */
   async markLive(
     id: string,
@@ -271,11 +278,18 @@ export class FakeStreamStore
   ): Promise<StreamRow | null> {
     if (!(await this.findById(id, userId))) return null;
     await this.renditions?.deleteByStream(id);
+    // Everything the uploader reported goes with it, as the SQL does it: a
+    // draft still carrying a manifest index or a `live_since` would describe a
+    // recording that is no longer on the catalogue.
     return this.patch(id, {
       status: 'draft',
       published_at: null,
       published_feed_index: null,
       publish_error: null,
+      manifest_index: null,
+      duration_seconds: null,
+      live_since: null,
+      ended_at: null,
     });
   }
 

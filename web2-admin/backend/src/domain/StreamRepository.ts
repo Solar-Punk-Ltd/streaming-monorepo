@@ -270,36 +270,48 @@ export class StreamRepository {
    * Conditional on `allowedFrom` for the same reason every other transition
    * here is: the check and the write are one statement, so two reports racing
    * cannot both win.
+   *
+   * ⛔ `locked` is read by `moved`, and that is what makes the lock work.
+   * Postgres runs a data-modifying CTE nothing selects from *after* the main
+   * query, so a `FOR UPDATE` that only an unreferenced CTE depends on is
+   * evaluated once the row has already been written by this same command —
+   * which makes it self-modified, skips it, and silently clears no rungs at
+   * all. Keeping the lock on the path the returned row depends on evaluates it
+   * first, before anything is written, and gives `unfinished` the status the
+   * row actually had. Do not reorder these.
    */
   async markLive(
     id: string,
     allowedFrom: readonly StreamStatus[],
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
-      `WITH resuming AS (
-         SELECT id FROM streams
-          WHERE id = $1 AND status = 'vod' AND status = ANY($2::text[])
-            FOR UPDATE
+      `WITH locked AS (
+         SELECT id, status FROM streams WHERE id = $1 FOR UPDATE
+       ), moved AS (
+         UPDATE streams
+            SET status = 'live',
+                live_since = CASE
+                  WHEN status = 'live' AND live_since IS NOT NULL THEN live_since
+                  ELSE NOW()
+                END,
+                manifest_index = NULL,
+                duration_seconds = NULL,
+                ended_at = NULL,
+                publish_error = NULL,
+                updated_at = NOW()
+          WHERE id IN (SELECT id FROM locked WHERE status = ANY($2::text[]))
+          RETURNING ${STREAM_COLUMNS}
        ), unfinished AS (
          UPDATE stream_renditions
             SET manifest_index = NULL,
                 duration_seconds = NULL,
                 updated_at = NOW()
-          WHERE stream_id IN (SELECT id FROM resuming)
+          WHERE stream_id IN (
+            SELECT id FROM locked
+             WHERE status = 'vod' AND status = ANY($2::text[])
+          )
        )
-       UPDATE streams
-          SET status = 'live',
-              live_since = CASE
-                WHEN status = 'live' AND live_since IS NOT NULL THEN live_since
-                ELSE NOW()
-              END,
-              manifest_index = NULL,
-              duration_seconds = NULL,
-              ended_at = NULL,
-              publish_error = NULL,
-              updated_at = NOW()
-        WHERE id = $1 AND status = ANY($2::text[])
-        RETURNING ${STREAM_COLUMNS}`,
+       SELECT * FROM moved`,
       [id, allowedFrom],
     );
     return this.one(result.rows, result.rowCount);

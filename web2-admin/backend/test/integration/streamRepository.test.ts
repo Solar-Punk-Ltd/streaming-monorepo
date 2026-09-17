@@ -4,10 +4,14 @@
  * suite needs anyway); `DATABASE_URL` overrides the connection.
  *
  * What is exercised here is the SQL a fake repository cannot stand in for:
- * the boot-time repair of rows left claimed by a process that died mid-publish.
- * Getting that wrong loses streams — a republish interrupted by a restart that
- * came back as `draft` could then be DELETEd, leaving its entry on the feed
- * with no row left to unpublish it.
+ * the boot-time repair of rows left claimed by a process that died mid-publish,
+ * and the un-finishing of an ABR ladder when a broadcast goes live again.
+ * Getting the first wrong loses streams — a republish interrupted by a restart
+ * that came back as `draft` could then be DELETEd, leaving its entry on the
+ * feed with no row left to unpublish it. Getting the second wrong is invisible
+ * to any fake: `markLive` clears the rungs from inside its own statement, and
+ * a CTE that clears none of them returns exactly the same row as one that
+ * clears them all.
  *
  * It creates its own user and removes it in `after` (streams cascade), so no
  * other row is touched.
@@ -18,6 +22,7 @@ import { after, before, describe, it } from 'node:test';
 
 import { Database } from '../../src/domain/Database.js';
 import { newPublishKey } from '../../src/domain/StreamService.js';
+import { StreamRenditionRepository } from '../../src/domain/StreamRenditionRepository.js';
 import { StreamRepository } from '../../src/domain/StreamRepository.js';
 
 const DATABASE_URL =
@@ -28,6 +33,7 @@ const OWNER = '90f8bf6a479f320ead074411a4b0e7944ea8c9c1';
 
 let database: Database;
 let streams: StreamRepository;
+let renditions: StreamRenditionRepository;
 let userId: string;
 
 before(async () => {
@@ -47,6 +53,7 @@ before(async () => {
     );
   }
   streams = new StreamRepository(database.pool);
+  renditions = new StreamRenditionRepository(database.pool);
 });
 
 after(async () => {
@@ -130,5 +137,108 @@ describe('resetOrphanedPublishing', () => {
       'its entry is still on the feed',
     );
     assert.ok(await streams.findById(republish, userId));
+  });
+});
+
+/** A finished two-rung ladder on a stream whose recording is final. */
+async function recordedLadder(): Promise<string> {
+  const row = await streams.insert({
+    user_id: userId,
+    topic: randomUUID(),
+    owner: OWNER,
+    title: 'itest ladder',
+    description: 'a recording that is about to go live again',
+    tags: [],
+    media_type: 'video',
+    scheduled_start_time: null,
+    publish_key: newPublishKey(),
+  });
+  await streams.finishPublish(row.id, userId, 1, null);
+  await renditions.upsert(row.id, {
+    name: '360p',
+    width: 640,
+    height: 360,
+    topic: randomUUID(),
+    bandwidth: 800_000,
+    avgBandwidth: 700_000,
+    index: 10,
+    duration: 61,
+  });
+  await renditions.upsert(row.id, {
+    name: '720p',
+    width: 1280,
+    height: 720,
+    topic: randomUUID(),
+    bandwidth: 2_800_000,
+    avgBandwidth: 2_500_000,
+    index: 12,
+    duration: 62.5,
+  });
+  await streams.markLive(row.id, ['published', 'live', 'vod']);
+  await streams.markVod(row.id, ['published', 'live', 'vod'], 7, 62.5);
+  return row.id;
+}
+
+describe('markLive un-finishes a broadcast that comes back', () => {
+  it('clears the row and every rung when it resumes from vod', async () => {
+    const id = await recordedLadder();
+
+    const live = await streams.markLive(id, ['published', 'live', 'vod']);
+
+    assert.equal(live?.status, 'live');
+    assert.equal(live?.manifest_index ?? null, null, 'no recording while live');
+    assert.equal(live?.duration_seconds ?? null, null);
+    assert.equal(live?.ended_at ?? null, null);
+
+    const rungs = await renditions.listByStream(id);
+    assert.equal(rungs.length, 2, 'the rungs themselves survive');
+    for (const rung of rungs) {
+      assert.equal(
+        rung.manifest_index ?? null,
+        null,
+        `${rung.name} no longer points at the previous recording`,
+      );
+      assert.equal(rung.duration_seconds ?? null, null, `${rung.name} duration`);
+    }
+  });
+
+  it('leaves rungs that finalized since a repeated live report alone', async () => {
+    const id = await recordedLadder();
+    await streams.markLive(id, ['published', 'live', 'vod']);
+
+    // The new session's 360p finishes while the broadcast is still live.
+    await renditions.upsert(id, {
+      name: '360p',
+      width: 640,
+      height: 360,
+      topic: randomUUID(),
+      bandwidth: 800_000,
+      avgBandwidth: 700_000,
+      index: 99,
+      duration: 5,
+    });
+
+    await streams.markLive(id, ['published', 'live', 'vod']);
+
+    const rungs = await renditions.listByStream(id);
+    const low = rungs.find((r) => r.name === '360p');
+    assert.equal(
+      Number(low?.manifest_index),
+      99,
+      'a repeated live report must not throw away what finished since',
+    );
+    assert.equal(Number(low?.duration_seconds), 5);
+  });
+
+  it('touches nothing when the transition is refused', async () => {
+    const id = await recordedLadder();
+
+    const refused = await streams.markLive(id, ['published']);
+
+    assert.equal(refused, null, 'vod is not in allowedFrom');
+    const row = await streams.findById(id, userId);
+    assert.equal(row?.status, 'vod', 'still the recording it was');
+    const rungs = await renditions.listByStream(id);
+    assert.equal(Number(rungs.find((r) => r.name === '720p')?.manifest_index), 12);
   });
 });
