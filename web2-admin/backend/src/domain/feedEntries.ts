@@ -8,6 +8,8 @@ import type {
 
 import type { StreamRow } from '../types/index.js';
 
+import { isRendition } from './renditions.js';
+
 /**
  * The stream list feed is a JSON array that everything on it rewrites whole.
  * These helpers touch exactly the one entry a stream owns and leave every
@@ -45,6 +47,29 @@ export function removeEntry(
 ): { entries: unknown[]; removed: boolean } {
   const kept = entries.filter((e) => !sameId(e, owner, topic));
   return { entries: kept, removed: kept.length !== entries.length };
+}
+
+/**
+ * The ladder the stream's entry carries on the list right now — what
+ * `upsertEntry` is about to replace. Empty when the stream has no entry there
+ * or its entry carries no `renditions`.
+ *
+ * Read rung by rung rather than cast: an element that names our `(owner,
+ * topic)` is still only JSON somebody wrote. A ladder with a rung this backend
+ * cannot read counts as no ladder at all. Of the two ways to be wrong about
+ * what was there, that one costs a repeated `vod` report, which the state
+ * route takes; the other costs a `vod` that is never sent.
+ */
+export function ladderOnFeed(
+  entries: unknown[],
+  owner: string,
+  topic: string,
+): Rendition[] {
+  const entry = entries.find((e) => sameId(e, owner, topic));
+  if (typeof entry !== 'object' || entry === null) return [];
+  const renditions = (entry as { renditions?: unknown }).renditions;
+  if (!Array.isArray(renditions)) return [];
+  return renditions.every(isRendition) ? [...renditions] : [];
 }
 
 /**

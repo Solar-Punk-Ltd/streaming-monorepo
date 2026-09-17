@@ -412,7 +412,10 @@ export class StreamRepository {
     return this.one(result.rows, result.rowCount);
   }
 
-  /** Releases the publishing claim back to where it came from, with the error. */
+  /**
+   * Releases the publishing claim back to where it came from, with the error.
+   * Only for the paths that took the claim — a first publish, an unpublish.
+   */
   async failPublish(
     id: string,
     userId: string,
@@ -426,6 +429,26 @@ export class StreamRepository {
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2`,
       [id, userId, previousStatus, message],
+    );
+  }
+
+  /**
+   * Records why a feed write failed, and nothing else. For the republish path,
+   * which takes no `publishing` claim: the status is whatever the uploader last
+   * reported, and putting back the one the caller saw would undo a `live` that
+   * landed while the write waited its turn.
+   */
+  async recordPublishError(
+    id: string,
+    userId: string,
+    message: string,
+  ): Promise<void> {
+    await this.pool.query(
+      `UPDATE streams
+          SET publish_error = $3,
+              updated_at = NOW()
+        WHERE id = $1 AND user_id = $2`,
+      [id, userId, message],
     );
   }
 

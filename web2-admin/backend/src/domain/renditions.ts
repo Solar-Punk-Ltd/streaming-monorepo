@@ -27,6 +27,27 @@ export function toRendition(row: StreamRenditionRow): Rendition {
   return rendition;
 }
 
+/**
+ * Whether an element read back off the catalogue is a rung this backend would
+ * have written: the six fields every rung carries, and `index` / `duration`
+ * numbers when present. The feed is a shared array, and the ladder an entry
+ * carries is read before it is trusted, never cast.
+ */
+export function isRendition(value: unknown): value is Rendition {
+  if (typeof value !== 'object' || value === null) return false;
+  const rung = value as Record<string, unknown>;
+  return (
+    typeof rung.name === 'string' &&
+    typeof rung.width === 'number' &&
+    typeof rung.height === 'number' &&
+    typeof rung.topic === 'string' &&
+    typeof rung.bandwidth === 'number' &&
+    typeof rung.avgBandwidth === 'number' &&
+    (rung.index === undefined || typeof rung.index === 'number') &&
+    (rung.duration === undefined || typeof rung.duration === 'number')
+  );
+}
+
 /** A rung's feed topic is a UUID; its case has never been load-bearing. */
 function sameTopic(left: string, right: string): boolean {
   return left.toLowerCase() === right.toLowerCase();

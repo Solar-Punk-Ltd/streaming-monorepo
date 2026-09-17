@@ -247,7 +247,11 @@ stream has at least one rung — an entry for a single-rendition stream is
 exactly what it was before ABR existed. `live` and `vod` still come from the
 state route, and `vod.index` for a ladder is the *master's* feed index, not a
 rung's; the rung indexes ride inside `renditions`. `flippedToFinished` is what
-tells the uploader to send that one `vod`. Refused with
+tells the uploader to send that one `vod`. The ladder, `finished` and
+`flippedToFinished` in the answer are all read from the catalogue write itself,
+under the publish mutex — the ladder the write put on the entry, judged against
+the one the entry carried before — so two reports that overlap answer in the
+order their entries landed and only one of them flips. Refused with
 `409 invalid_state` for `draft` (nothing has been announced) and `publishing`
 (a feed write is in flight); the row is stored before the feed is written, like
 a state report, so a failed write is `502 publish_failed` and the retry has

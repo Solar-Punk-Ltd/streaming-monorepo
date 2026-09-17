@@ -475,6 +475,49 @@ describe('PublishService republishing a stream that has gone live', () => {
     assert.equal(entriesOf(gateway)[0]!.state, 'live');
   });
 
+  it('leaves the status as the row has it when the write fails, even after the row moved', async () => {
+    // A `live` report lands while a rung's write waits for the mutex. The
+    // caller of this republish read the row before that, as `published`; a
+    // failure that put that back would tell every viewer the broadcast never
+    // started, on the strength of a row nobody has since.
+    const { store, gateway, service } = setup();
+    const asCallerReadIt = store.add(
+      streamRow({ status: 'published', published_feed_index: 3 }),
+    );
+    store.add({
+      ...asCallerReadIt,
+      status: 'live',
+      live_since: new Date('2026-10-01T09:01:00.000Z'),
+    });
+    gateway.failNextWrite = new Error('bee unreachable');
+
+    await assert.rejects(
+      () => service.republishWithState(asCallerReadIt),
+      (err: unknown) =>
+        err instanceof PublishFailedError && err.reason === 'bee unreachable',
+    );
+
+    const after = store.get(asCallerReadIt.id);
+    assert.equal(after.status, 'live', 'not put back to what the caller saw');
+    assert.ok(after.live_since);
+    assert.equal(after.publish_error, 'bee unreachable');
+    assert.equal(after.published_feed_index, 3, 'no write, no new index');
+  });
+
+  it('writes the entry from the row as it is at write time, not as the caller read it', async () => {
+    const { store, gateway, service } = setup();
+    const asCallerReadIt = store.add(
+      streamRow({ status: 'published', published_feed_index: 3 }),
+    );
+    store.add({ ...asCallerReadIt, status: 'live' });
+
+    const outcome = await service.republishWithState(asCallerReadIt);
+
+    assert.equal(entriesOf(gateway)[0]!.state, 'live');
+    assert.equal(outcome.stream.status, 'live');
+    assert.equal(store.get(asCallerReadIt.id).status, 'live');
+  });
+
   it('takes the same route when the operator republishes by hand', async () => {
     // A title fixed mid-broadcast: POST /streams/:id/publish on a live stream
     // must reach the feed without the stream leaving `live`.
@@ -560,11 +603,42 @@ describe('PublishService and the ABR ladder', () => {
     const { store, gateway, service } = setup();
     const row = store.add(streamRow());
 
-    await service.publish(row.id, TEST_USER_ID);
+    const outcome = await service.publish(row.id, TEST_USER_ID);
 
     const [entry] = entriesOf(gateway);
     assert.ok(!('group' in entry!), 'no group without a ladder');
     assert.ok(!('renditions' in entry!), 'and no renditions');
+    assert.deepEqual(outcome.renditions, []);
+    assert.deepEqual(outcome.previousRenditions, []);
+  });
+
+  it('hands back the ladder it wrote and the one the entry carried before', async () => {
+    // A rendition report answers from these two rather than reading the rungs
+    // again: what this write put on the catalogue and what it took off, both
+    // read under the mutex, so overlapping reports answer in the order their
+    // entries landed.
+    const { store, renditions, gateway, service } = setup();
+    const row = store.add(streamRow());
+    await renditions.upsert(row.id, rung('720p', 720));
+    await renditions.upsert(row.id, rung('360p', 360));
+
+    const first = await service.publish(row.id, TEST_USER_ID);
+    assert.deepEqual(
+      first.renditions.map((r) => r.name),
+      ['360p', '720p'],
+      'ascending by height',
+    );
+    assert.deepEqual(first.renditions, entriesOf(gateway)[0]!.renditions);
+    assert.deepEqual(first.previousRenditions, [], 'nothing on the feed yet');
+
+    await renditions.upsert(row.id, rung('720p', 720, 12));
+    const second = await service.publish(row.id, TEST_USER_ID);
+    assert.deepEqual(second.previousRenditions, first.renditions);
+    assert.equal(second.renditions[1]!.index, 12);
+
+    const gone = await service.unpublish(row.id, TEST_USER_ID);
+    assert.deepEqual(gone.renditions, [], 'nothing written for the stream');
+    assert.deepEqual(gone.previousRenditions, second.renditions);
   });
 
   it('drops the ladder when the stream is unpublished', async () => {

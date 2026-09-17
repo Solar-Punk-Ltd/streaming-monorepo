@@ -321,7 +321,10 @@ Semantics worth stating plainly:
 - **Status still comes from the state reports.** A rendition report never moves
   a stream to `live` or `vod`; it only rewrites the entry. `live` is sent once
   the first master playlist has been written to the declared topic, and `vod`
-  once, by the rung whose report came back `flippedToFinished: true`.
+  once, by the rung whose report came back `flippedToFinished: true`. That flag
+  is judged against the entry the report's own write replaced on the catalogue,
+  so overlapping final reports flip exactly one of them, and a report whose
+  write failed flips on its retry.
 - **`vod.index` for a ladder is the master's feed index**, not a rung's — it is
   what a viewer opens. Each rung carries its own `index` inside `renditions`.
 - The entry gains `renditions: Rendition[]` and `group: string` (= the stream's

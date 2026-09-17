@@ -13,6 +13,10 @@ import type {
 } from '@streaming-monorepo/web2-admin-common';
 
 import type {
+  LadderRenditionStore,
+  LadderStreamStore,
+} from '../../../src/domain/LadderService.js';
+import type {
   FeedWriteLog,
   PublishRenditionStore,
   PublishStreamStore,
@@ -65,7 +69,9 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
  * way out, like the SQL, so a test that stores 720p after 1080p still sees the
  * order the master playlist and the catalogue entry use.
  */
-export class FakeRenditionStore implements PublishRenditionStore {
+export class FakeRenditionStore
+  implements PublishRenditionStore, LadderRenditionStore
+{
   readonly rows = new Map<string, StreamRenditionRow[]>();
 
   async listByStream(streamId: string): Promise<StreamRenditionRow[]> {
@@ -104,7 +110,7 @@ export class FakeRenditionStore implements PublishRenditionStore {
   }
 }
 
-export class FakeStreamStore implements PublishStreamStore {
+export class FakeStreamStore implements PublishStreamStore, LadderStreamStore {
   readonly rows = new Map<string, StreamRow>();
   readonly thumbnails = new Map<string, ThumbnailRow>();
   /** Set to make the status write fail, as a lost connection would. */
@@ -128,6 +134,12 @@ export class FakeStreamStore implements PublishStreamStore {
   async findById(id: string, userId: string): Promise<StreamRow | null> {
     const row = this.rows.get(id);
     return row && row.user_id === userId ? { ...row } : null;
+  }
+
+  /** Unscoped, as the SQL is: the internal API has no session to scope by. */
+  async findByIdUnscoped(id: string): Promise<StreamRow | null> {
+    const row = this.rows.get(id);
+    return row ? { ...row } : null;
   }
 
   /** Unscoped, as the SQL is: reconcile has to see every user's rows. */
@@ -224,6 +236,16 @@ export class FakeStreamStore implements PublishStreamStore {
     }
     if (!(await this.findById(id, userId))) return;
     this.patch(id, { status: previousStatus, publish_error: message });
+  }
+
+  /** Only the reason, as the SQL is: a republish has no claim to undo. */
+  async recordPublishError(
+    id: string,
+    userId: string,
+    message: string,
+  ): Promise<void> {
+    if (!(await this.findById(id, userId))) return;
+    this.patch(id, { publish_error: message });
   }
 
   private patch(id: string, changes: Partial<StreamRow>): StreamRow {

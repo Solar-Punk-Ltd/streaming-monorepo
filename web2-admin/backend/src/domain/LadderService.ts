@@ -3,6 +3,8 @@ import type {
   RenditionReport,
 } from '@streaming-monorepo/web2-admin-common';
 
+import type { StreamRenditionRow, StreamRow } from '../types/index.js';
+
 import { InvalidStateError, StreamNotFoundError } from './errors/index.js';
 import { Logger } from './Logger.js';
 import type { PublishOutcome, PublishService } from './PublishService.js';
@@ -12,10 +14,19 @@ import {
   ladderDuration,
   toRendition,
 } from './renditions.js';
-import { StreamRenditionRepository } from './StreamRenditionRepository.js';
-import { StreamRepository } from './StreamRepository.js';
 
 const logger = Logger.getInstance();
+
+/** The slice of StreamRepository a report needs; a fake stands in for tests. */
+export interface LadderStreamStore {
+  findByIdUnscoped(id: string): Promise<StreamRow | null>;
+}
+
+/** The slice of StreamRenditionRepository the fold needs; a fake stands in. */
+export interface LadderRenditionStore {
+  listByStream(streamId: string): Promise<StreamRenditionRow[]>;
+  upsert(streamId: string, rendition: Rendition): Promise<StreamRenditionRow>;
+}
 
 /** Where the ladder stands after a report; the uploader's cue to report `vod`. */
 export interface LadderState {
@@ -26,6 +37,7 @@ export interface LadderState {
 
 export interface RenditionReportOutcome {
   publish: PublishOutcome;
+  /** The ladder as the write put it on the catalogue: `publish.renditions`. */
   renditions: Rendition[];
   ladder: LadderState;
 }
@@ -40,6 +52,13 @@ export interface RenditionReportOutcome {
  * single-writer path everything else uses, and answers with the merged ladder
  * the uploader builds its master playlist from.
  *
+ * Everything the uploader reads back — the merged ladder, `finished`,
+ * `flippedToFinished`, `duration` — is taken from that write: the ladder it
+ * put on the entry, and the ladder the entry it replaced was carrying. Both
+ * are read under the publish mutex, so two reports that overlap answer in the
+ * order their entries landed on the catalogue, and only the one whose write
+ * finished the ladder there says so.
+ *
  * It never moves the stream's status. `live` and `vod` still come from
  * POST /state, and a rendition report that flipped the ladder to finished is
  * what tells the uploader to send the `vod` one.
@@ -49,8 +68,8 @@ export interface RenditionReportOutcome {
  */
 export class LadderService {
   constructor(
-    private readonly streams: StreamRepository,
-    private readonly renditions: StreamRenditionRepository,
+    private readonly streams: LadderStreamStore,
+    private readonly renditions: LadderRenditionStore,
     private readonly publishService: PublishService,
   ) {}
 
@@ -60,6 +79,15 @@ export class LadderService {
    * second. A feed write can fail for reasons that have nothing to do with
    * this stream, and the uploader retries the whole report; the fold is
    * idempotent, so the retry has only the write left to do.
+   *
+   * The answer comes from the write, not from reads of the stored ladder
+   * around the fold. Two reports can fold in one order and reach the mutex in
+   * the other, and a ladder read out here can describe an entry other than
+   * the one this report wrote; the uploader would then build its master from
+   * an older ladder than the entry carries. `flippedToFinished` is judged
+   * against the entry the write replaced, which is also why a report whose
+   * write failed flips on its retry: the row already held the finished ladder,
+   * but the catalogue did not yet say so.
    */
   async report(
     id: string,
@@ -76,30 +104,28 @@ export class LadderService {
     }
 
     const stored = (await this.renditions.listByStream(id)).map(toRendition);
-    const wasFinished = isLadderFinished(stored);
     const previous = stored.find((rung) => rung.name === report.name) ?? null;
     await this.renditions.upsert(id, foldRendition(previous, report));
 
-    const renditions = (await this.renditions.listByStream(id)).map(
-      toRendition,
-    );
+    const publish = await this.publishService.republishWithState(stream);
+    const { renditions } = publish;
     const finished = isLadderFinished(renditions);
     const ladder: LadderState = {
       finished,
-      flippedToFinished: finished && !wasFinished,
+      flippedToFinished:
+        finished && !isLadderFinished(publish.previousRenditions),
       duration: ladderDuration(renditions),
     };
 
     logger.info(
-      `[Ladder] ${stream.topic} rung ${report.name} reported${
+      `[Ladder] ${publish.stream.topic} rung ${report.name} reported${
         report.index === undefined
           ? ''
           : ` final (index ${String(report.index)}, ${String(report.duration)}s)`
-      }; ${renditions.length} rung(s), ${
-        ladder.finished ? 'finished' : 'still running'
-      }`,
+      }; ${renditions.length} rung(s) on the catalogue, ${
+        finished ? 'finished' : 'still running'
+      }${ladder.flippedToFinished ? ' as of this report' : ''}`,
     );
-    const publish = await this.publishService.republishWithState(stream);
     return { publish, renditions, ladder };
   }
 }
