@@ -10,10 +10,8 @@ import {
   UNSUPPORTED_IMAGE_TYPE,
 } from '../errors';
 import { ScheduleField } from '../components/schedule/ScheduleField';
-import {
-  formatHumanDateTime,
-  nextFullHour,
-} from '../components/schedule/scheduleTime';
+import { formatHumanDateTime } from '../dateUtil';
+import { nextFullHour } from '../components/schedule/scheduleTime';
 import { ERROR_MESSAGES, StreamFormPage } from '../pages/StreamFormPage';
 import {
   jsonError,
@@ -85,7 +83,7 @@ describe('StreamFormPage validation', () => {
     typeIn('Description *', 'The opening talk');
     // The form arrives prefilled, so the only way to reach this error is to
     // empty the field by hand — which the operator can still do.
-    typeIn('Scheduled Start Time *', '');
+    typeIn('Scheduled Date *', '');
     submit();
 
     expect(
@@ -260,13 +258,41 @@ describe('StreamFormPage validation', () => {
 
     renderEditForm('live-id');
 
-    expect(await screen.findByLabelText('Scheduled Start Time *')).toBeDisabled();
+    expect(await screen.findByLabelText('Scheduled Date *')).toBeDisabled();
+    expect(screen.getByLabelText('Scheduled Time *')).toBeDisabled();
     expect(screen.getByText(SCHEDULE_LOCKED)).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Audio Only' })).toBeDisabled();
     // A typo in a title is worth fixing mid-broadcast.
     expect(screen.getByLabelText('Stream Name *')).toBeEnabled();
     expect(screen.getByLabelText('Description *')).toBeEnabled();
     expect(screen.getByLabelText('Tags')).toBeEnabled();
+  });
+
+  it('leaves the schedule open on a live stream that never had one', async () => {
+    // A row the API created before a schedule was required. Locking the empty
+    // field would make the stream uneditable: the form will not submit without
+    // a time. The backend lets that first time through for the same reason.
+    mockFetch([
+      {
+        path: '/api/streams/live-blank',
+        respond: () =>
+          jsonOk(
+            makeStream({
+              id: 'live-blank',
+              status: 'live',
+              scheduledStartTime: null,
+              liveSince: '2026-10-01T09:01:00.000Z',
+            }),
+          ),
+      },
+    ]);
+
+    renderEditForm('live-blank');
+
+    expect(await screen.findByLabelText('Scheduled Date *')).toBeEnabled();
+    expect(screen.getByLabelText('Scheduled Time *')).toBeEnabled();
+    expect(screen.queryByText(SCHEDULE_LOCKED)).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Audio Only' })).toBeDisabled();
   });
 
   it('leaves the schedule editable while the stream is only published', async () => {
@@ -280,7 +306,8 @@ describe('StreamFormPage validation', () => {
 
     renderEditForm('pub-2');
 
-    expect(await screen.findByLabelText('Scheduled Start Time *')).toBeEnabled();
+    expect(await screen.findByLabelText('Scheduled Date *')).toBeEnabled();
+    expect(screen.getByLabelText('Scheduled Time *')).toBeEnabled();
     expect(screen.queryByText(SCHEDULE_LOCKED)).not.toBeInTheDocument();
   });
 
@@ -516,15 +543,38 @@ describe('ScheduleField', () => {
     return onChange;
   };
 
-  it('shows the value in the field and again in the caption', () => {
+  const dateField = () =>
+    screen.getByLabelText<HTMLInputElement>('Scheduled Date *');
+  const timeField = () =>
+    screen.getByLabelText<HTMLInputElement>('Scheduled Time *');
+
+  /** Opens the time menu the way a mouse does, and hands back its options. */
+  const openTimeMenu = () => {
+    fireEvent.click(screen.getByRole('button', { name: /open/i }));
+    return screen.getAllByRole('option');
+  };
+
+  const typeTime = (text: string) =>
+    fireEvent.change(timeField(), { target: { value: text } });
+
+  it('shows the day and the time in their own fields, and both in the caption', () => {
     renderField();
 
-    expect(screen.getByLabelText('Scheduled Start Time *')).toHaveValue(
-      'Mon 14 Sep 2026, 15:00',
-    );
+    expect(dateField()).toHaveValue('14/09/2026');
+    expect(timeField()).toHaveValue('15:00');
     expect(
-      screen.getByText('Mon 14 Sep 2026, 15:00 · in 37 minutes'),
+      screen.getByText('14/09/2026 15:00 · in 37 minutes'),
     ).toBeInTheDocument();
+  });
+
+  it('shows the date as DD/MM/YYYY, with no weekday section', () => {
+    // The weekday used to be an editable section of the field: typing in it
+    // moved the value inside the week while the text stood still, so the form
+    // stored a date nobody chose. There is no such section to type into now.
+    renderField();
+
+    expect(dateField().value).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
+    expect(dateField().value).not.toMatch(/[A-Za-z]/);
   });
 
   it('offers the quick picks that are still ahead', () => {
@@ -537,9 +587,68 @@ describe('ScheduleField', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tomorrow same time' }));
 
     expect(onChange).toHaveBeenLastCalledWith('2026-09-15T14:23');
-    expect(screen.getByLabelText('Scheduled Start Time *')).toHaveValue(
-      'Tue 15 Sep 2026, 14:23',
-    );
+    expect(dateField()).toHaveValue('15/09/2026');
+    expect(timeField()).toHaveValue('14:23');
+  });
+
+  it('narrows the time menu to the hour that was typed', () => {
+    renderField();
+
+    typeTime('18');
+
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
+      '18:00',
+      '18:15',
+      '18:30',
+      '18:45',
+    ]);
+  });
+
+  it('takes a time off the menu without touching the day', () => {
+    const onChange = renderField();
+
+    typeTime('18');
+    fireEvent.click(screen.getByRole('option', { name: '18:30' }));
+
+    expect(onChange).toHaveBeenLastCalledWith('2026-09-14T18:30');
+  });
+
+  it('accepts a typed time that is not on the quarter-hour grid', () => {
+    // The menu is a convenience, not a constraint: a stream can start at 18:07
+    // and 1807 is how an operator says so.
+    const onChange = renderField();
+
+    typeTime('1807');
+    fireEvent.blur(timeField());
+
+    expect(onChange).toHaveBeenLastCalledWith('2026-09-14T18:07');
+  });
+
+  it('keeps an off-grid time it was given, in the field and in the menu', () => {
+    renderField({ initial: '2026-09-14T18:07' });
+
+    expect(timeField()).toHaveValue('18:07');
+    expect(openTimeMenu().map((o) => o.textContent)).toContain('18:07');
+  });
+
+  it('disables the slots today has already spent, and none on a later day', () => {
+    renderField();
+
+    const options = openTimeMenu();
+    const byLabel = new Map(options.map((o) => [o.textContent, o]));
+    // It is 14:23, so 09:00 has gone and 18:00 has not.
+    expect(byLabel.get('09:00')).toHaveAttribute('aria-disabled', 'true');
+    expect(byLabel.get('18:00')).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('leaves every slot open on a future day', () => {
+    renderField({ initial: '2026-09-20T15:00' });
+
+    const options = openTimeMenu();
+
+    expect(
+      options.filter((o) => o.getAttribute('aria-disabled') === 'true'),
+    ).toHaveLength(0);
   });
 
   it('picks a day out of the popover calendar', async () => {
@@ -553,10 +662,22 @@ describe('ScheduleField', () => {
     expect(onChange).toHaveBeenLastCalledWith('2026-09-20T15:00');
   });
 
+  it('fills the time itself when a day is chosen before one', async () => {
+    // A single click on a date is a complete answer to the operator, so the
+    // form must end up with a complete value rather than a half-filled one.
+    const onChange = renderField({ initial: '' });
+
+    fireEvent.click(screen.getByRole('button', { name: /choose date/i }));
+    const calendar = await screen.findByRole('dialog');
+    fireEvent.click(within(calendar).getByRole('gridcell', { name: '20' }));
+
+    expect(onChange).toHaveBeenLastCalledWith('2026-09-20T00:00');
+  });
+
   it('can be emptied, which is what makes the field fail validation', () => {
     const onChange = renderField();
 
-    typeIn('Scheduled Start Time *', '');
+    typeIn('Scheduled Date *', '');
 
     expect(onChange).toHaveBeenLastCalledWith('');
   });
@@ -568,7 +689,8 @@ describe('ScheduleField', () => {
       initial: '2026-09-14T09:00',
     });
 
-    expect(screen.getByLabelText('Scheduled Start Time *')).toBeDisabled();
+    expect(dateField()).toBeDisabled();
+    expect(timeField()).toBeDisabled();
     expect(screen.getByRole('button', { name: /choose date/i })).toBeDisabled();
     expect(screen.getByText(SCHEDULE_LOCKED)).toBeInTheDocument();
     // No shortcuts on a field nobody can change.
@@ -579,13 +701,16 @@ describe('ScheduleField', () => {
 });
 
 describe('StreamFormPage schedule prefill', () => {
+  /** `DD/MM/YYYY HH:mm` → the halves the two fields each show. */
+  const halves = (date: Date) => formatHumanDateTime(date).split(' ');
+
   it('prefills a new stream with the next full hour', () => {
     mockFetch([]);
     renderCreateForm();
 
-    expect(screen.getByLabelText('Scheduled Start Time *')).toHaveValue(
-      formatHumanDateTime(nextFullHour(new Date())),
-    );
+    const [day, time] = halves(nextFullHour(new Date()));
+    expect(screen.getByLabelText('Scheduled Date *')).toHaveValue(day);
+    expect(screen.getByLabelText('Scheduled Time *')).toHaveValue(time);
   });
 
   it('leaves an edited stream on the time it was given', async () => {
@@ -602,9 +727,9 @@ describe('StreamFormPage schedule prefill', () => {
 
     // Whatever the machine's zone, the field shows that instant in it — the
     // prefill must not have overwritten a stored time.
-    expect(await screen.findByLabelText('Scheduled Start Time *')).toHaveValue(
-      formatHumanDateTime(new Date(iso)),
-    );
+    const [day, time] = halves(new Date(iso));
+    expect(await screen.findByLabelText('Scheduled Date *')).toHaveValue(day);
+    expect(screen.getByLabelText('Scheduled Time *')).toHaveValue(time);
   });
 });
 

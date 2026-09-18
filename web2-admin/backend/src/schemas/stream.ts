@@ -34,14 +34,18 @@ const tagsField = () =>
     .max(STREAM_LIMITS.TAGS_MAX, `at most ${STREAM_LIMITS.TAGS_MAX} tags`)
     .default([]);
 
+/**
+ * Every stream carries a scheduled start: it is the promise the catalogue
+ * entry makes to viewers, and a row without one cannot be edited through the
+ * console at all. Missing, null and '' are all the same refusal.
+ */
 const scheduledStartTimeField = () =>
   string()
-    .nullable()
-    .default(null)
+    .required('scheduledStartTime is required and must be an ISO 8601 date-time')
     .test(
       'iso-date-time',
-      'scheduledStartTime must be an ISO 8601 date-time or null',
-      (value) => value == null || !Number.isNaN(Date.parse(value)),
+      'scheduledStartTime is required and must be an ISO 8601 date-time',
+      (value) => typeof value === 'string' && !Number.isNaN(Date.parse(value)),
     );
 
 export const streamInputSchema = object({

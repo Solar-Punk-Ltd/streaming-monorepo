@@ -29,7 +29,7 @@ export interface StreamInputValues {
   description: string;
   tags: string[];
   mediaType: MediaType;
-  scheduledStartTime: string | null;
+  scheduledStartTime: string;
 }
 
 /**

@@ -210,6 +210,28 @@ describe('stream lifecycle', () => {
     assert.equal((response.body as { error: string }).error, 'validation_error');
   });
 
+  it('refuses a stream with no scheduled start time', async () => {
+    // Without this rule the API can mint a row the console cannot edit: the
+    // form will not submit an empty schedule, and the backend refuses any
+    // other value once the stream has gone live.
+    const { scheduledStartTime: _omitted, ...withoutSchedule } = draft;
+    for (const body of [withoutSchedule, { ...draft, scheduledStartTime: null }]) {
+      const created = await raw('POST', '/api/streams', { body });
+      assert.equal(created.status, 400, JSON.stringify(body));
+      assert.equal(
+        (created.body as { error: string }).error,
+        'validation_error',
+      );
+
+      const updated = await raw('PUT', `/api/streams/${stream.id}`, { body });
+      assert.equal(updated.status, 400, JSON.stringify(body));
+      assert.equal(
+        (updated.body as { error: string }).error,
+        'validation_error',
+      );
+    }
+  });
+
   it('lists it, newest first', async () => {
     const list = await api<StreamListResponse>('GET', '/api/streams');
     assert.equal(list.streams[0]?.id, stream.id);

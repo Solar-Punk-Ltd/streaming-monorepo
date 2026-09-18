@@ -12,7 +12,7 @@ import {
 import * as api from '../api';
 import { useAuth } from '../auth';
 import { errorMessage } from '../errors';
-import { formatDateTime } from '../format';
+import { formatDateTime } from '../dateUtil';
 import { useSnackbar } from '../components/Snackbar';
 
 const MIN_PASSWORD_LENGTH = 8;

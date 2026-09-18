@@ -67,6 +67,7 @@ export interface Stream {
   description: string;
   tags: string[];
   mediaType: MediaType;
+  /** Null only on a row created before a schedule was required. */
   scheduledStartTime: string | null;
   /** True when a thumbnail image is stored for this stream. */
   hasThumbnail: boolean;
@@ -101,7 +102,8 @@ export interface StreamInput {
   description: string;
   tags?: string[];
   mediaType: MediaType;
-  scheduledStartTime: string | null;
+  /** Required: a stream is a promise to viewers about when it starts. */
+  scheduledStartTime: string;
 }
 
 /** GET /api/streams */
@@ -147,6 +149,7 @@ export interface FeedStreamEntry {
   mediatype: MediaType;
   /** Swarm reference hex of the thumbnail, or '' when there is none. */
   thumbnail: string;
+  /** Null only on a row created before a schedule was required. */
   scheduledStartTime: string | null;
   /** ms since epoch, when this entry was last written. */
   timestamp: number;
