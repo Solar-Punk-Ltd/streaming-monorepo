@@ -1,3 +1,5 @@
+import type { SessionInfo } from '../domain/auth/AuthService.js';
+
 import type { UserRow } from './rows.js';
 
 declare global {
@@ -8,10 +10,11 @@ declare global {
       user?: UserRow;
       /**
        * sha256 of the presented session cookie: which of the user's sessions
-       * this request is. A password change keeps this one and revokes the
-       * rest. Sessions are never renewed — the TTL is absolute by design.
+       * this request is. A password change keeps this one and revokes the rest.
        */
       sessionTokenHash?: string;
+      /** The whole session, including when it runs out. Set by requireAuth. */
+      authSession?: SessionInfo;
     }
   }
 }

@@ -32,8 +32,18 @@ const FRIENDLY: Record<string, string> = {
   invalid_credentials: 'Wrong username or password.',
   too_many_attempts:
     'Too many login attempts for this username. Try again in a few minutes.',
-  unauthenticated: 'Your session has expired. Log in again.',
+  unauthenticated: 'Your session ended. Log in again.',
+  no_users: 'No users yet. Create the first one on the host.',
   invalid_password: 'Your current password is not correct.',
+  // A write that reached the API without the header the console puts on every
+  // one of them. Either something else sent it, or a proxy stripped it.
+  cross_site_request:
+    'That request was refused as cross-site. Reload the console and try again.',
+  admin_required: 'Only an admin can do that.',
+  user_exists: 'That username is taken.',
+  user_not_found: 'That user no longer exists. Reload the list.',
+  cannot_remove_user:
+    'That user cannot be removed: it is the last one, the last admin, or your own account.',
   stream_busy: 'This stream is being published right now. Try again in a moment.',
   stream_published: 'Unpublish the stream before deleting it.',
   media_type_locked: MEDIA_TYPE_LOCKED,

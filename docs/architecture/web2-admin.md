@@ -66,9 +66,19 @@ the same open question as the auth component above, seen from the other end.
 
 ## Open questions carried into the build
 
-1. Authentication and ownership model (OIDC, wallet signature, or magic link).
-   Pilot survives without it because one brand and one operator are both us.
+1. Ownership across brands: which brand a call may act for. The operator half
+   of this is answered — the console has usernames, passwords, an admin role
+   and user management, ported from streaming-infra-manager and described in
+   [web2-admin-auth.md](web2-admin-auth.md) — and streams are scoped to the
+   user who created them, which is the single-tenant shape of the answer.
+   Choosing how a brand proves itself, OIDC against something it already has,
+   a wallet signature, or a magic link, is still open and still blocks the
+   second brand rather than the first.
 2. Manager API authentication once admin and manager are on different hosts.
+   The manager answered its own half on `main-v2`: sessions, roles and a
+   cross-site check. What is undecided is how this service authenticates to it
+   as a machine caller, which is the same shape of problem the uploader's
+   bearer token solves in the other direction.
 3. Chat: Swarm feeds/GSOC versus a websocket in the web2 layer. Drawn in the
    SPA, not decided. Only matters here if the websocket answer wins.
 

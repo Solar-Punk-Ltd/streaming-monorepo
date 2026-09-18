@@ -38,8 +38,34 @@ export const STREAM_LIMITS = {
 export interface User {
   id: string;
   username: string;
+  /** May add and remove users and sign anyone out. */
+  isAdmin: boolean;
   createdAt: string;
   passwordChangedAt: string | null;
+  /** ISO, or null for a user who has never signed in. */
+  lastLoginAt: string | null;
+}
+
+/** One row of the Access page's user table, as `GET /api/auth/users` answers it. */
+export interface UserSummary {
+  id: string;
+  username: string;
+  isAdmin: boolean;
+  createdAt: string;
+  lastLoginAt: string | null;
+  /** Open sessions this user currently has. */
+  sessions: number;
+}
+
+export interface UserListResponse {
+  users: UserSummary[];
+}
+
+export interface AddUserRequest {
+  username: string;
+  password: string;
+  /** Defaults to false. The first user ever added is an admin regardless. */
+  admin?: boolean;
 }
 
 export interface LoginRequest {

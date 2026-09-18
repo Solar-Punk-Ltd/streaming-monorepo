@@ -34,13 +34,11 @@ import {
   internalCall,
   login,
   raw,
+  releaseStack,
   requireStack,
+  stack,
   type RawResponse,
 } from './helpers.js';
-
-const DATABASE_URL =
-  process.env.DATABASE_URL ??
-  'postgres://web2admin:web2admin@127.0.0.1:5433/web2admin';
 
 const draft = {
   title: 'itest internal',
@@ -56,7 +54,7 @@ let pool: pg.Pool;
 before(async () => {
   await requireStack();
   await login();
-  pool = new pg.Pool({ connectionString: DATABASE_URL, max: 2 });
+  pool = new pg.Pool({ connectionString: stack().databaseUrl, max: 2 });
 });
 
 after(async () => {
@@ -72,6 +70,7 @@ after(async () => {
     await raw('DELETE', `/api/streams/${id}`);
   }
   await pool?.end();
+  await releaseStack();
 });
 
 async function publishedStream(

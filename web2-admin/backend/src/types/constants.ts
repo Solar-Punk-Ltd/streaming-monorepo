@@ -1,8 +1,5 @@
 import type { StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
-/** Session cookie name. httpOnly, sameSite lax, path /, secure from config. */
-export const SESSION_COOKIE_NAME = 'web2_admin_session';
-
 /** What `Content-Type` a thumbnail PUT may carry. */
 export const THUMBNAIL_MIME_TYPES: readonly string[] = [
   'image/png',
@@ -46,9 +43,9 @@ export const EDITABLE_STATUSES: readonly StreamStatus[] = [
   'vod',
 ];
 
-/** Login attempts per username per window before 429 too_many_attempts. */
-export const LOGIN_MAX_ATTEMPTS = 10;
-export const LOGIN_WINDOW_MS = 15 * 60 * 1000;
-
-/** Minimum length of a new password, checked by the yup schema. */
-export const PASSWORD_MIN_LENGTH = 8;
+/**
+ * A user agent is kept on the session row so a revoke can be told which
+ * browser it drops. Truncated, because the header is attacker-controlled and
+ * this column is not worth a kilobyte a login.
+ */
+export const USER_AGENT_MAX_LENGTH = 255;

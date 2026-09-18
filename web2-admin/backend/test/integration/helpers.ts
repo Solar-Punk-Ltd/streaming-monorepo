@@ -1,35 +1,67 @@
 /**
- * Integration-test helpers: a thin HTTP client with one cookie jar for the
- * running web2-admin API. These tests talk to a LIVE backend (Postgres +
- * Express) over HTTP only — they import nothing from `src`, so they exercise
- * the real system exactly as the frontend does.
+ * Integration-test helpers: a throwaway backend, and a thin HTTP client with
+ * one cookie jar pointed at it.
  *
- * Base URL is `WEB2_ADMIN_URL` (default http://localhost:9877); the login used
- * is `ADMIN_USERNAME` / `ADMIN_PASSWORD` (default admin / admin1234, the seed).
+ * These tests talk to a LIVE backend (Postgres + Express) over HTTP only — they
+ * import nothing from `src` but the harness that starts it, so they exercise
+ * the real system exactly as the console does, cross-site header and all.
+ *
+ * The instance is the suite's own: its own database, its own port,
+ * `FEED_GATEWAY=fake`, and a first user made with the `user:add` CLI. It is
+ * never the development backend on :9877, which runs against a real Bee node
+ * and the real catalogue and which this suite would publish through.
  */
 import assert from 'node:assert/strict';
 
-export const BASE = process.env.WEB2_ADMIN_URL ?? 'http://localhost:9877';
-export const ADMIN_USERNAME = process.env.ADMIN_USERNAME ?? 'admin';
-export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? 'admin1234';
+import {
+  REQUESTED_WITH_HEADER,
+  REQUESTED_WITH_VALUE,
+} from '@streaming-monorepo/web2-admin-common';
 
-/**
- * The bearer token of the API under test, for the /api/internal routes the
- * uploader calls. Must match the `INTERNAL_API_TOKEN` that instance booted
- * with; the default is the one test/integration/README tells you to start it
- * with.
- */
-export const INTERNAL_API_TOKEN =
-  process.env.INTERNAL_API_TOKEN ??
-  'web2-admin-integration-internal-token-000000';
+import {
+  ITEST_INTERNAL_TOKEN,
+  ITEST_PASSWORD,
+  ITEST_USERNAME,
+  startInstance,
+  type Instance,
+} from './instance.js';
+
+export const ADMIN_USERNAME = ITEST_USERNAME;
+export const ADMIN_PASSWORD = ITEST_PASSWORD;
+export const INTERNAL_API_TOKEN = ITEST_INTERNAL_TOKEN;
+
+let instance: Instance | null = null;
+
+/** Starts the backend under test, once per test process. */
+export async function requireStack(): Promise<void> {
+  if (!instance) instance = await startInstance();
+}
+
+/** Stops it and drops its database. Every suite calls this in `after`. */
+export async function releaseStack(): Promise<void> {
+  const running = instance;
+  instance = null;
+  forgetCookie();
+  if (running) await running.stop();
+}
+
+export function stack(): Instance {
+  if (!instance) throw new Error('the backend under test has not been started');
+  return instance;
+}
 
 /**
  * Headers for an internal call: the bearer token, and `anonymous` so the
  * session cookie the rest of the suite holds is not sent with it. The internal
- * routes must answer on the token alone.
+ * routes must answer on the token alone — and, since they sit ahead of the
+ * cross-site check, without the header a browser would have to send.
  */
 export function internalCall(token = INTERNAL_API_TOKEN): RequestOptions {
-  return { anonymous: true, headers: { authorization: `Bearer ${token}` } };
+  return {
+    anonymous: true,
+    crossSiteHeader: false,
+    headers: { authorization: `Bearer ${token}` },
+  };
 }
 
 /** A 1x1 transparent PNG: the smallest real image to upload. */
@@ -58,12 +90,16 @@ export function forgetCookie(): void {
   cookie = null;
 }
 
+const SAFE_METHODS = new Set(['GET', 'HEAD']);
+
 export interface RequestOptions {
   body?: unknown;
   raw?: Buffer;
   contentType?: string;
   /** Send no cookie, to check a route is actually behind requireAuth. */
   anonymous?: boolean;
+  /** Left off to prove a write without it is refused as cross-site. */
+  crossSiteHeader?: boolean;
   /** Extra headers, last word — for sending a cookie the jar would not hold. */
   headers?: Record<string, string>;
 }
@@ -75,6 +111,11 @@ export async function raw(
 ): Promise<RawResponse> {
   const headers: Record<string, string> = {};
   if (cookie && !options.anonymous) headers.cookie = cookie;
+  // What the console's fetch wrapper adds to every write, and what a page on
+  // another site cannot add without a CORS preflight this API never answers.
+  if (!SAFE_METHODS.has(method.toUpperCase()) && options.crossSiteHeader !== false) {
+    headers[REQUESTED_WITH_HEADER] = REQUESTED_WITH_VALUE;
+  }
 
   let body: BodyInit | undefined;
   if (options.raw) {
@@ -85,7 +126,7 @@ export async function raw(
     headers['content-type'] = options.contentType ?? 'application/json';
   }
 
-  const response = await fetch(`${BASE}${path}`, {
+  const response = await fetch(`${stack().url}${path}`, {
     method,
     headers: { ...headers, ...options.headers },
     body,
@@ -136,20 +177,6 @@ export async function login(
   forgetCookie();
   await api('POST', '/api/auth/login', { body: { username, password } });
   assert.ok(sessionCookie(), 'login did not set a session cookie');
-}
-
-/** Fails loudly, once, when the API under test is not up. */
-export async function requireStack(): Promise<void> {
-  let response: RawResponse;
-  try {
-    response = await raw('GET', '/api/health', { anonymous: true });
-  } catch (err) {
-    assert.fail(
-      `web2-admin API is not reachable at ${BASE} (${String(err)}).\n` +
-        'Start it with: pnpm database:start && FEED_GATEWAY=fake pnpm dev',
-    );
-  }
-  assert.equal(response.status, 200, `GET /api/health -> ${response.text}`);
 }
 
 /** Best-effort teardown: take the stream off the feed, then delete the row. */

@@ -12,6 +12,9 @@
  *   node web2-admin/frontend/scripts/mock-api.mjs
  *   VITE_WEB2_ADMIN_URL=http://localhost:9877 pnpm --filter @streaming-monorepo/web2-admin-frontend dev
  *
+ * MOCK_NO_USERS=true starts with an empty users table, which is the only way
+ * to see the console's "no users yet" screen and the command it prints.
+ *
  * No dependencies: plain node:http, plain node:crypto.
  */
 
@@ -32,12 +35,40 @@ const FEED_TOPIC = 'swarm-stream';
 const FEED_TOPIC_HEX =
   '4c4b1a0d9e5b1f7a3c2d8e6f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3';
 
-const user = {
-  id: randomUUID(),
-  username: SEED_USERNAME,
-  createdAt: new Date().toISOString(),
-  passwordChangedAt: null,
-};
+/**
+ * The users the mock knows. `MOCK_NO_USERS=true` starts with none, which is
+ * the only way to see the console's "no users yet" screen and the command it
+ * prints.
+ */
+const users = new Map();
+const passwords = new Map();
+
+function makeUser(username, password, isAdmin) {
+  const row = {
+    id: randomUUID(),
+    username,
+    isAdmin,
+    createdAt: new Date().toISOString(),
+    passwordChangedAt: null,
+    lastLoginAt: null,
+  };
+  users.set(row.id, row);
+  passwords.set(row.id, password);
+  return row;
+}
+
+if (process.env.MOCK_NO_USERS !== 'true') {
+  makeUser(SEED_USERNAME, seedPassword, true);
+}
+
+function byUsername(username) {
+  return [...users.values()].find((u) => u.username === username) ?? null;
+}
+
+/** username -> consecutive failures, for the lockout the real API keeps. */
+const failures = new Map();
+const LOCKOUT_FREE_ATTEMPTS = 4;
+const LOCKOUT_SECONDS = 60;
 
 /** token -> userId */
 const sessions = new Map();
@@ -69,9 +100,26 @@ function readCookie(req) {
   return null;
 }
 
-function authed(req) {
+/** The signed-in user, or null. */
+function currentUser(req) {
   const token = readCookie(req);
-  return token !== null && sessions.has(token);
+  if (token === null) return null;
+  return users.get(sessions.get(token)) ?? null;
+}
+
+function sessionCount(userId) {
+  return [...sessions.values()].filter((id) => id === userId).length;
+}
+
+function summarise(row) {
+  return {
+    id: row.id,
+    username: row.username,
+    isAdmin: row.isAdmin,
+    createdAt: row.createdAt,
+    lastLoginAt: row.lastLoginAt,
+    sessions: sessionCount(row.id),
+  };
 }
 
 async function readBody(req) {
@@ -184,21 +232,57 @@ async function handle(req, res) {
     });
   }
 
+  // Every write must carry the header no cross-origin page can add without a
+  // preflight this mock, like the API, never answers.
+  if (
+    method !== 'GET' &&
+    method !== 'HEAD' &&
+    req.headers['x-requested-with'] !== 'web2-admin'
+  ) {
+    return send(res, 403, { error: 'cross_site_request' });
+  }
+
   if (path === '/api/auth/login' && method === 'POST') {
     const body = await readJson(req);
-    if (body.username !== user.username || body.password !== seedPassword) {
+    if (users.size === 0) return send(res, 401, { error: 'no_users' });
+
+    const name = String(body.username ?? '');
+    if ((failures.get(name) ?? 0) > LOCKOUT_FREE_ATTEMPTS) {
+      return send(
+        res,
+        429,
+        { error: 'too_many_attempts', retryAfterSeconds: LOCKOUT_SECONDS },
+        { 'retry-after': String(LOCKOUT_SECONDS) },
+      );
+    }
+
+    const row = byUsername(name);
+    if (row === null || passwords.get(row.id) !== body.password) {
+      failures.set(name, (failures.get(name) ?? 0) + 1);
       return send(res, 401, { error: 'invalid_credentials' });
     }
+
+    failures.delete(name);
+    row.lastLoginAt = new Date().toISOString();
     const token = hex(24);
-    sessions.set(token, user.id);
+    sessions.set(token, row.id);
     return send(
       res,
       200,
-      { user },
+      { user: row },
       {
         'set-cookie': `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`,
       },
     );
+  }
+
+  // Public: the console asks this on boot, and a 401 here is an answer.
+  if (path === '/api/auth/session') {
+    const me = currentUser(req);
+    if (me) return send(res, 200, { user: me });
+    return send(res, 401, {
+      error: users.size === 0 ? 'no_users' : 'unauthenticated',
+    });
   }
 
   if (path === '/api/auth/logout' && method === 'POST') {
@@ -211,27 +295,81 @@ async function handle(req, res) {
   }
 
   // Everything below needs a session.
-  if (!authed(req)) return send(res, 401, { error: 'unauthenticated' });
+  const user = currentUser(req);
+  if (user === null) return send(res, 401, { error: 'unauthenticated' });
 
-  if (path === '/api/auth/me') return send(res, 200, { user });
+  if (path === '/api/auth/users' && method === 'GET') {
+    return send(res, 200, { users: [...users.values()].map(summarise) });
+  }
+
+  if (path === '/api/auth/users' && method === 'POST') {
+    if (!user.isAdmin) return send(res, 403, { error: 'admin_required' });
+    const body = await readJson(req);
+    if (byUsername(body.username)) {
+      return send(res, 409, { error: 'user_exists' });
+    }
+    const added = makeUser(
+      String(body.username),
+      String(body.password),
+      body.admin === true,
+    );
+    return send(res, 201, { user: added });
+  }
+
+  const userRoute = /^\/api\/auth\/users\/([^/]+)(\/revoke)?$/.exec(path);
+  if (userRoute) {
+    const target = users.get(userRoute[1]);
+    if (!target) return send(res, 404, { error: 'user_not_found' });
+
+    if (userRoute[2] && method === 'POST') {
+      if (!user.isAdmin && target.id !== user.id) {
+        return send(res, 403, { error: 'admin_required' });
+      }
+      for (const [token, id] of [...sessions.entries()]) {
+        if (id === target.id) sessions.delete(token);
+      }
+      res.writeHead(204);
+      return res.end();
+    }
+
+    if (!userRoute[2] && method === 'DELETE') {
+      if (!user.isAdmin) return send(res, 403, { error: 'admin_required' });
+      const admins = [...users.values()].filter((u) => u.isAdmin).length;
+      if (
+        target.id === user.id ||
+        users.size <= 1 ||
+        (target.isAdmin && admins <= 1)
+      ) {
+        return send(res, 409, { error: 'cannot_remove_user' });
+      }
+      users.delete(target.id);
+      passwords.delete(target.id);
+      for (const [token, id] of [...sessions.entries()]) {
+        if (id === target.id) sessions.delete(token);
+      }
+      res.writeHead(204);
+      return res.end();
+    }
+  }
 
   if (path === '/api/auth/password' && method === 'POST') {
     const body = await readJson(req);
-    if (body.currentPassword !== seedPassword) {
-      return send(res, 400, { error: 'invalid_password' });
+    if (passwords.get(user.id) !== body.currentPassword) {
+      return send(res, 401, { error: 'invalid_credentials' });
     }
-    if (typeof body.newPassword !== 'string' || body.newPassword.length < 8) {
+    if (typeof body.newPassword !== 'string' || body.newPassword.length < 12) {
       return send(res, 400, {
         error: 'validation_error',
-        errors: ['newPassword must be at least 8 characters'],
+        errors: ['password must be at least 12 characters'],
       });
     }
-    seedPassword = body.newPassword;
+    passwords.set(user.id, body.newPassword);
+    if (user.username === SEED_USERNAME) seedPassword = body.newPassword;
     user.passwordChangedAt = new Date().toISOString();
     // Every other session of this user goes away; keep the caller's.
     const keep = readCookie(req);
-    for (const token of [...sessions.keys()]) {
-      if (token !== keep) sessions.delete(token);
+    for (const [token, id] of [...sessions.entries()]) {
+      if (id === user.id && token !== keep) sessions.delete(token);
     }
     return send(res, 200, { user });
   }

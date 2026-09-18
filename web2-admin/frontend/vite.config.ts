@@ -13,8 +13,15 @@ export default defineConfig({
     port: 5081,
     // Everything the console calls lives under /api, so one prefix covers it.
     // Session cookies ride along because the proxy keeps the origin.
+    //
+    // `changeOrigin` stays off on purpose: with it, the proxy readdresses the
+    // request to the API's own host and port, and the backend's cross-site
+    // check then sees an `Origin` of this dev server against a `Host` of the
+    // API and refuses every write, sign-in first. Off, the API is addressed
+    // as the browser addressed it, which is what nginx does in production, so
+    // development exercises the same rule rather than a softer one.
     proxy: {
-      '/api': WEB2_ADMIN_URL,
+      '/api': { target: WEB2_ADMIN_URL, changeOrigin: false },
     },
   },
   test: {
