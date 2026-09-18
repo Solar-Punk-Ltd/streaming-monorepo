@@ -106,4 +106,70 @@ describe('buildFeedEntry', () => {
     assert.equal(entry.index, 0);
     assert.equal(entry.duration, 0);
   });
+
+  it('writes no group and no renditions for a single-rendition stream', () => {
+    // The entry a non-ABR stream gets must stay exactly what it was before the
+    // ladder existed; an empty `renditions: []` is not the same thing and
+    // would have swarm-hls-stream's reader look for a master playlist.
+    const entry = buildFeedEntry(streamRow({ status: 'live' }), null, 1);
+
+    assert.ok(!('group' in entry));
+    assert.ok(!('renditions' in entry));
+  });
+
+  it('carries the ladder, with the declared topic as its group', () => {
+    // In admin mode the master playlist is published on the stream's own
+    // topic, so `group` is that topic and not a random id the uploader minted.
+    const row = streamRow({ status: 'live' });
+    const ladder = [
+      {
+        name: '360p',
+        width: 640,
+        height: 360,
+        topic: 'bbbbbbbb-0000-4000-8000-000000000360',
+        bandwidth: 800_000,
+        avgBandwidth: 700_000,
+      },
+      {
+        name: '720p',
+        width: 1280,
+        height: 720,
+        topic: 'bbbbbbbb-0000-4000-8000-000000000720',
+        bandwidth: 2_800_000,
+        avgBandwidth: 2_400_000,
+        index: 42,
+        duration: 61.5,
+      },
+    ];
+
+    const entry = buildFeedEntry(row, null, 1, ladder);
+
+    assert.equal(entry.group, row.topic);
+    assert.deepEqual(entry.renditions, ladder);
+  });
+
+  it('keeps the ladder on a vod entry, beside the master index', () => {
+    // The entry's own `index` is the master playlist's, not a rung's: it is
+    // what the viewer opens, and each rung carries its own index inside.
+    const entry = buildFeedEntry(
+      streamRow({ status: 'vod', manifest_index: 9, duration_seconds: 61.5 }),
+      null,
+      1,
+      [
+        {
+          name: '720p',
+          width: 1280,
+          height: 720,
+          topic: 'bbbbbbbb-0000-4000-8000-000000000720',
+          bandwidth: 2_800_000,
+          avgBandwidth: 2_400_000,
+          index: 42,
+          duration: 61.5,
+        },
+      ],
+    );
+
+    assert.equal(entry.index, 9, 'the master, not the rung');
+    assert.equal(entry.renditions?.[0]?.index, 42);
+  });
 });

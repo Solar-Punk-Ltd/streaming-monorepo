@@ -11,3 +11,13 @@ export const STREAM_COLUMNS = `
   publish_error, publish_key, publish_key_rotated_at, manifest_index,
   duration_seconds, live_since, ended_at, created_at, updated_at
 `;
+
+/**
+ * The same, for the rungs of a stream's ABR ladder. Small enough to list, and
+ * listed for the same reason: `SELECT *` would start leaking new columns into
+ * StreamRenditionRow without anyone saying so.
+ */
+export const STREAM_RENDITION_COLUMNS = `
+  stream_id, name, width, height, topic, bandwidth, avg_bandwidth,
+  manifest_index, duration_seconds, updated_at
+`;

@@ -186,6 +186,7 @@ token is `401 unauthenticated`, the same answer the console's routes give.
 | --- | --- | --- |
 | GET | `/streams/by-ingest/:app/:stream` | `IngestLookupResponse` — id, topic, owner, mediaType, title, status and the `publishKey` the encoder must present |
 | POST | `/streams/:id/state` | `StreamStateReport` in, `PublishResult` out (200) |
+| POST | `/streams/:id/renditions` | `RenditionReport` in, `RenditionReportResponse` out (200) — one rung of an ABR ladder |
 
 **The lookup** resolves the ingest stream id `<mediaType>/<topic>` to a stream.
 Both halves must match, and only `published`, `live` and `vod` resolve: a
@@ -199,8 +200,13 @@ both numbers required with `vod`, refused with `live`. `live` sets `status`,
 stamps `live_since` (kept as it is when the stream is already live, because the
 uploader retries) and clears `ended_at`; `vod` sets `status`, `manifest_index`,
 `duration_seconds` and `ended_at`. Allowed: `published → live`, `live → live`,
-`live → vod`, `vod → vod`, and `published → vod` for a broadcast that ended
-before its `live` report ever got through. Anything else is
+`live → vod`, `vod → vod`, `published → vod` for a broadcast that ended before
+its `live` report ever got through, and `vod → live` for a broadcast that goes
+live again. Every feed of a declared stream outlives the sessions written to
+it, so a reconnected encoder continues them above the previous head; that
+`live` therefore clears `manifest_index` and `duration_seconds` on the row and
+on every rung in the same statement, and the entry lists the latest recording
+once the next `vod` arrives. Anything else is
 `409 invalid_state_transition` with `from` and `to`. The rule is enforced twice
 — once to answer the 409, once as the `WHERE status = ANY(...)` of the UPDATE
 itself, so two reports racing cannot both win.
@@ -212,6 +218,51 @@ written second**, deliberately: a feed write can fail for reasons that have
 nothing to do with this stream, and the uploader retries. A failure answers
 `502 publish_failed` with `publish_error` recorded and the state intact, so the
 retry has only the write left to do.
+
+**The rendition report** is how an ABR ladder reaches the catalogue. With
+`ABR_ENABLED` the uploader publishes a master playlist plus one feed per rung,
+and in admin mode the master's topic *is* the stream's declared topic — so the
+ladder's merge state, which swarm-hls-stream keeps inside the catalogue feed it
+writes for itself, has to live here instead. Each rung POSTs its own
+`Rendition` (`name`, `width`, `height`, `topic`, `bandwidth`, `avgBandwidth`,
+plus `index` and `duration` — both or neither — once it finalizes) and gets
+back the merged ladder, ascending by height, with `ladder { finished,
+flippedToFinished, duration }`.
+
+The merge keeps one record per `(stream, name)`. The incoming report replaces
+the stored one, except that a rung which already reported an `index` keeps its
+`index` and `duration` when the incoming report has none **and arrives on the
+same `topic`**, taking only geometry and bandwidths from it. A rung's topic is
+derived from the stream's declared topic and the rung name, so every report for
+a rung arrives on the feed that rung's recordings already sit on, and an
+indexless one is that rung delivering again — recovered from a crash, or a new
+session above the previous head. Either way the recording it finished last
+stays addressable until that rung's next final report replaces it, which is
+what keeps the master playlist a viewer seeks with on the entry. The rule is
+`StreamCatalog.keepingWhatFinished` from the uploader, where it was learned;
+the topic test is true for every rung of a well-formed ladder, and a report
+naming some other feed is taken as it arrived. Un-finishing a ladder is the
+`live` state report's job, not the merge's.
+
+**A rendition report never moves the status.** It stores the rung and rewrites
+the entry, adding `renditions` and `group` (= the stream's topic) whenever the
+stream has at least one rung — an entry for a single-rendition stream is
+exactly what it was before ABR existed. `live` and `vod` still come from the
+state route, and `vod.index` for a ladder is the *master's* feed index, not a
+rung's; the rung indexes ride inside `renditions`. `flippedToFinished` is what
+tells the uploader to send that one `vod`. The ladder, `finished` and
+`flippedToFinished` in the answer are all read from the catalogue write itself,
+under the publish mutex — the ladder the write put on the entry, judged against
+the one the entry carried before — so two reports that overlap answer in the
+order their entries landed and only one of them flips. Refused with
+`409 invalid_state` for `draft` (nothing has been announced) and `publishing`
+(a feed write is in flight); the row is stored before the feed is written, like
+a state report, so a failed write is `502 publish_failed` and the retry has
+only the write left to do — the merge is idempotent.
+
+Migration 004 adds `stream_renditions`, one row per `(stream_id, name)`, and
+`finishUnpublish` deletes a stream's rungs in the same statement that clears
+its state columns.
 
 ### What that changes for the console
 
@@ -228,7 +279,7 @@ retry has only the write left to do.
   `409 stream_live` ("Stop the broadcast first."): nothing here can stop the
   encoder that is still pushing to it. On a recording both work as they do on a
   published stream, and the unpublish clears everything the uploader reported,
-  because the row is a draft again.
+  because the row is a draft again — the ABR ladder included.
 
 ## Migrations
 

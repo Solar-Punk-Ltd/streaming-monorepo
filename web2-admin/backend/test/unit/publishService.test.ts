@@ -35,6 +35,7 @@ import { PublishService } from '../../src/domain/PublishService.js';
 
 import {
   FakeFeedWriteLog,
+  FakeRenditionStore,
   FakeStreamStore,
   streamRow,
   TEST_OWNER,
@@ -48,11 +49,29 @@ const feed: FeedIdentity = {
     'cfbbc155d709547b198638d0fb11d733359561538d8bd606a9ab257354d13bcc',
 };
 
+/** One rung of a ladder, as the uploader reports it; `index` set marks it finished. */
+const rung = (name: string, height: number, index?: number) => ({
+  name,
+  width: (height * 16) / 9,
+  height,
+  topic: `bbbbbbbb-0000-4000-8000-0000000${String(height).padStart(5, '0')}`,
+  bandwidth: height * 4000,
+  avgBandwidth: height * 3000,
+  ...(index === undefined ? {} : { index, duration: 61 }),
+});
+
 function setup(gateway = new FakeFeedGateway()) {
-  const store = new FakeStreamStore();
+  const renditions = new FakeRenditionStore();
+  const store = new FakeStreamStore(renditions);
   const writes = new FakeFeedWriteLog();
-  const service = new PublishService(store, writes, gateway, feed);
-  return { store, writes, gateway, service };
+  const service = new PublishService(
+    store,
+    renditions,
+    writes,
+    gateway,
+    feed,
+  );
+  return { store, renditions, writes, gateway, service };
 }
 
 const entriesOf = (gateway: FakeFeedGateway): FeedStreamEntry[] =>
@@ -456,6 +475,49 @@ describe('PublishService republishing a stream that has gone live', () => {
     assert.equal(entriesOf(gateway)[0]!.state, 'live');
   });
 
+  it('leaves the status as the row has it when the write fails, even after the row moved', async () => {
+    // A `live` report lands while a rung's write waits for the mutex. The
+    // caller of this republish read the row before that, as `published`; a
+    // failure that put that back would tell every viewer the broadcast never
+    // started, on the strength of a row nobody has since.
+    const { store, gateway, service } = setup();
+    const asCallerReadIt = store.add(
+      streamRow({ status: 'published', published_feed_index: 3 }),
+    );
+    store.add({
+      ...asCallerReadIt,
+      status: 'live',
+      live_since: new Date('2026-10-01T09:01:00.000Z'),
+    });
+    gateway.failNextWrite = new Error('bee unreachable');
+
+    await assert.rejects(
+      () => service.republishWithState(asCallerReadIt),
+      (err: unknown) =>
+        err instanceof PublishFailedError && err.reason === 'bee unreachable',
+    );
+
+    const after = store.get(asCallerReadIt.id);
+    assert.equal(after.status, 'live', 'not put back to what the caller saw');
+    assert.ok(after.live_since);
+    assert.equal(after.publish_error, 'bee unreachable');
+    assert.equal(after.published_feed_index, 3, 'no write, no new index');
+  });
+
+  it('writes the entry from the row as it is at write time, not as the caller read it', async () => {
+    const { store, gateway, service } = setup();
+    const asCallerReadIt = store.add(
+      streamRow({ status: 'published', published_feed_index: 3 }),
+    );
+    store.add({ ...asCallerReadIt, status: 'live' });
+
+    const outcome = await service.republishWithState(asCallerReadIt);
+
+    assert.equal(entriesOf(gateway)[0]!.state, 'live');
+    assert.equal(outcome.stream.status, 'live');
+    assert.equal(store.get(asCallerReadIt.id).status, 'live');
+  });
+
   it('takes the same route when the operator republishes by hand', async () => {
     // A title fixed mid-broadcast: POST /streams/:id/publish on a live stream
     // must reach the feed without the stream leaving `live`.
@@ -502,6 +564,97 @@ describe('PublishService republishing a stream that has gone live', () => {
 
     assert.deepEqual([a.feed.index, b.feed.index].sort(), [0, 1]);
     assert.equal(entriesOf(gateway).length, 2);
+  });
+});
+
+describe('PublishService and the ABR ladder', () => {
+  it('carries the ladder onto the entry, ascending by height', async () => {
+    const { store, renditions, gateway, service } = setup();
+    const row = store.add(streamRow());
+    await renditions.upsert(row.id, rung('720p', 720));
+    await renditions.upsert(row.id, rung('360p', 360));
+
+    await service.publish(row.id, TEST_USER_ID);
+
+    const [entry] = entriesOf(gateway);
+    assert.equal(entry!.group, row.topic, 'the master feed is the declared topic');
+    assert.deepEqual(
+      entry!.renditions?.map((r) => r.name),
+      ['360p', '720p'],
+    );
+    assert.equal(entry!.renditions?.[1]?.avgBandwidth, 720 * 3000);
+  });
+
+  it('rewrites the ladder on a state report, not only on a publish', async () => {
+    // The rungs are read on every write: a report that did not carry them
+    // would take the ladder off the entry until the next rung reported.
+    const { store, renditions, gateway, service } = setup();
+    const row = store.add(streamRow({ status: 'live', published_feed_index: 0 }));
+    await renditions.upsert(row.id, rung('1080p', 1080));
+
+    await service.republishWithState(store.get(row.id));
+
+    const [entry] = entriesOf(gateway);
+    assert.equal(entry!.state, 'live');
+    assert.equal(entry!.renditions?.length, 1);
+  });
+
+  it('leaves a single-rendition entry exactly as it was', async () => {
+    const { store, gateway, service } = setup();
+    const row = store.add(streamRow());
+
+    const outcome = await service.publish(row.id, TEST_USER_ID);
+
+    const [entry] = entriesOf(gateway);
+    assert.ok(!('group' in entry!), 'no group without a ladder');
+    assert.ok(!('renditions' in entry!), 'and no renditions');
+    assert.deepEqual(outcome.renditions, []);
+    assert.deepEqual(outcome.previousRenditions, []);
+  });
+
+  it('hands back the ladder it wrote and the one the entry carried before', async () => {
+    // A rendition report answers from these two rather than reading the rungs
+    // again: what this write put on the catalogue and what it took off, both
+    // read under the mutex, so overlapping reports answer in the order their
+    // entries landed.
+    const { store, renditions, gateway, service } = setup();
+    const row = store.add(streamRow());
+    await renditions.upsert(row.id, rung('720p', 720));
+    await renditions.upsert(row.id, rung('360p', 360));
+
+    const first = await service.publish(row.id, TEST_USER_ID);
+    assert.deepEqual(
+      first.renditions.map((r) => r.name),
+      ['360p', '720p'],
+      'ascending by height',
+    );
+    assert.deepEqual(first.renditions, entriesOf(gateway)[0]!.renditions);
+    assert.deepEqual(first.previousRenditions, [], 'nothing on the feed yet');
+
+    await renditions.upsert(row.id, rung('720p', 720, 12));
+    const second = await service.publish(row.id, TEST_USER_ID);
+    assert.deepEqual(second.previousRenditions, first.renditions);
+    assert.equal(second.renditions[1]!.index, 12);
+
+    const gone = await service.unpublish(row.id, TEST_USER_ID);
+    assert.deepEqual(gone.renditions, [], 'nothing written for the stream');
+    assert.deepEqual(gone.previousRenditions, second.renditions);
+  });
+
+  it('drops the ladder when the stream is unpublished', async () => {
+    // Back to `draft` is a fresh life: the rungs describe a broadcast that is
+    // no longer on the catalogue, and must not ride onto the next publish.
+    const { store, renditions, gateway, service } = setup();
+    const row = store.add(streamRow());
+    await renditions.upsert(row.id, rung('720p', 720, 12));
+    await service.publish(row.id, TEST_USER_ID);
+
+    await service.unpublish(row.id, TEST_USER_ID);
+    assert.deepEqual(await renditions.listByStream(row.id), []);
+
+    await service.publish(row.id, TEST_USER_ID);
+    const [entry] = entriesOf(gateway);
+    assert.ok(!('renditions' in entry!), 'republished without a ladder');
   });
 });
 
@@ -864,6 +1017,37 @@ describe('PublishService.reconcile', () => {
     assert.equal(entry!.state, 'vod');
     assert.equal(entry!.index, 412);
     assert.equal(entry!.duration, 61);
+  });
+
+  it('keeps a ladder′s renditions on the entry, and does not count them as drift', async () => {
+    // A reconcile rebuilds every entry of ours from its row. The rungs are not
+    // on the row, so a rebuild that did not read them would strip `renditions`
+    // and `group` from every ladder stream, write that as a repair, and take
+    // the ladder off the catalogue until its next rung report.
+    const { store, renditions, gateway, service } = setup();
+    const row = store.add(streamRow());
+    await renditions.upsert(row.id, rung('720p', 720));
+    await renditions.upsert(row.id, rung('360p', 360));
+    await service.publish(row.id, TEST_USER_ID);
+    const writesBefore = gateway.writes.length;
+
+    const untouched = await service.reconcile(TEST_USER_ID);
+
+    assert.deepEqual(untouched.updated, [], 'a ladder entry that matches its rows is not drift');
+    assert.equal(gateway.writes.length, writesBefore, 'a clean catalogue costs no write');
+
+    // And when the row really did drift, the rebuilt entry still carries the ladder.
+    store.add({ ...store.get(row.id), title: 'Retitled mid-ladder' });
+    const repaired = await service.reconcile(TEST_USER_ID);
+
+    assert.deepEqual(repaired.updated, [row.topic]);
+    const [entry] = entriesOf(gateway);
+    assert.equal(entry!.title, 'Retitled mid-ladder');
+    assert.equal(entry!.group, row.topic);
+    assert.deepEqual(
+      entry!.renditions?.map((r) => r.name),
+      ['360p', '720p'],
+    );
   });
 
   it('leaves entries written by someone else exactly where they are', async () => {

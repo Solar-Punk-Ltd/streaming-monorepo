@@ -5,6 +5,7 @@ import {
   FeedOwnerMismatchError,
   InvalidCredentialsError,
   InvalidPasswordError,
+  InvalidStateError,
   InvalidStateTransitionError,
   MediaTypeLockedError,
   PublishFailedError,
@@ -106,6 +107,14 @@ export function errorHandler(
       id: err.streamId,
       field: err.field,
       message: err.message,
+    });
+    return;
+  }
+  if (err instanceof InvalidStateError) {
+    res.status(409).json({
+      error: 'invalid_state',
+      id: err.streamId,
+      status: err.currentStatus,
     });
     return;
   }

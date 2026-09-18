@@ -64,6 +64,29 @@ watch page says the stream has not started). The viewer must be rebuilt from
 that branch. The player link in the console now opens the viewer catalogue,
 not the per-stream route, for the same reason.
 
+Decided 2026-09-15, ABR ladder in admin mode (spec: the "ABR ladder in admin
+mode" section of docs/architecture/web2-admin-checkpoint-2.md). The declared
+topic becomes the master playlist's feed, so the group id the uploader used to
+mint at random is now the stream's own topic and every existing player link
+keeps working; a rung feed's topic is derived from that topic and the rung
+name, so it is the same feed every session. The ladder's merge state
+moves out of the catalogue feed and into the admin's database — migration 004
+`stream_renditions`, `POST /api/internal/streams/:id/renditions`, one record
+per rung — because in admin mode the uploader writes no catalogue to merge
+into. The admin merges each report — a finished rung keeps its index when it
+reports again without one, which is that rung delivering onto the feed it was
+already writing, so the recording it closed last stays addressable until its
+next final report replaces it, while a report naming some other feed is taken
+as it arrived — then writes `renditions` and `group` onto the entry and answers
+with the merged ladder the uploader builds its master from. A broadcast that
+goes live again un-finishes the row and every rung with it, so an encoder
+reconnecting after a finished broadcast does not leave the master pointing at
+the previous recording. Status is otherwise untouched by these reports: `live`
+and `vod` still come from the state route, and a `vod` for a ladder carries the
+**master's** feed index, not a rung's.
+Admin side done on `feat/web2admin-abr`; the uploader half is the same branch
+name in swarm-hls-stream.
+
 ## Checkpoint 3: manager integration
 
 - Manager deploys swarm-hls-stream from `main-v3`.

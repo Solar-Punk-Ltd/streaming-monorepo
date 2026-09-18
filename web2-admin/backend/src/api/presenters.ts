@@ -5,10 +5,12 @@
 import type {
   IngestLookupResponse,
   PublishResult,
+  RenditionReportResponse,
   Stream,
   User,
 } from '@streaming-monorepo/web2-admin-common';
 
+import type { RenditionReportOutcome } from '../domain/LadderService.js';
 import type { PublishOutcome } from '../domain/PublishService.js';
 import type { StreamRow, UserRow } from '../types/index.js';
 
@@ -52,6 +54,24 @@ export function toStream(row: StreamRow): Stream {
 
 export function toPublishResult(outcome: PublishOutcome): PublishResult {
   return { stream: toStream(outcome.stream), feed: outcome.feed };
+}
+
+/**
+ * The answer to a rendition report: the stream exactly as the state route
+ * returns it, the merged ladder, where that ladder now stands, and the
+ * catalogue write the report caused. The ladder rides beside the stream rather
+ * than inside it — `Stream.renditions` is the console's field, filled in by a
+ * later checkpoint, and the uploader reads this one.
+ */
+export function toRenditionReportResponse(
+  outcome: RenditionReportOutcome,
+): RenditionReportResponse {
+  return {
+    stream: toStream(outcome.publish.stream),
+    renditions: outcome.renditions,
+    ladder: outcome.ladder,
+    feed: outcome.publish.feed,
+  };
 }
 
 /**

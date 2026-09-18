@@ -84,6 +84,14 @@ export interface Stream {
   /** When the uploader reported the stream live, and when it reported it ended. */
   liveSince?: string | null;
   endedAt?: string | null;
+  /**
+   * The merged ABR ladder, when the uploader has reported rungs for this
+   * stream. Absent for a single-rendition stream, and absent from the console's
+   * stream routes for now: `POST /api/internal/streams/:id/renditions` is the
+   * only answer that carries the ladder, and a later checkpoint surfaces it on
+   * the console's own responses.
+   */
+  renditions?: Rendition[];
   createdAt: string;
   updatedAt: string;
 }
@@ -99,6 +107,29 @@ export interface StreamInput {
 /** GET /api/streams */
 export interface StreamListResponse {
   streams: Stream[];
+}
+
+/**
+ * One rung of an ABR ladder: a rendition the uploader publishes as its own
+ * manifest feed, signed by the same owner as the master. Field names and
+ * semantics are swarm-hls-stream's `Rendition`, verbatim, because the same
+ * objects ride on the catalogue entry the viewer reads.
+ */
+export interface Rendition {
+  /** Rung name, e.g. '720p'. Letters, digits, '.' and '-' only (no '_'). */
+  name: string;
+  width: number;
+  height: number;
+  /** The rung's own manifest feed raw topic; a UUID, signed by the same owner. */
+  topic: string;
+  /** Peak observed segment bitrate, bits/s. HLS BANDWIDTH. */
+  bandwidth: number;
+  /** Mean bitrate, bits/s. HLS AVERAGE-BANDWIDTH. */
+  avgBandwidth: number;
+  /** Set once the rung finalized: feed index of its VOD manifest in `topic`. */
+  index?: number;
+  /** Set with `index`: recording length in seconds. */
+  duration?: number;
 }
 
 /**
@@ -121,6 +152,16 @@ export interface FeedStreamEntry {
   timestamp: number;
   index?: number;
   duration?: number;
+  /**
+   * Both present only for a stream whose uploader publishes an ABR ladder, and
+   * both absent otherwise. `group` equals the stream's `topic`: in admin mode
+   * the declared topic *is* the master playlist's feed, and the rungs listed in
+   * `renditions` (ascending by height) each have a feed of their own under the
+   * same owner. Field names mirror swarm-hls-stream's `StreamEntry` and
+   * `Rendition`, so its viewer reads this entry unchanged.
+   */
+  group?: string;
+  renditions?: Rendition[];
 }
 
 /** GET /api/streams/:id/feed and POST /api/streams/:id/publish */
@@ -195,7 +236,12 @@ export interface IngestLookupResponse {
   publishKey: string;
 }
 
-/** POST /api/internal/streams/:id/state */
+/**
+ * POST /api/internal/streams/:id/state
+ *
+ * `live` may follow `vod`: a broadcast goes live again on the same feeds, and
+ * that report clears the recording the stream last listed, rungs included.
+ */
 export interface StreamStateReport {
   state: 'live' | 'vod';
   /** Required with 'vod': feed index of the final manifest under the stream's topic. */
@@ -206,3 +252,32 @@ export interface StreamStateReport {
 
 /** Response of POST /api/internal/streams/:id/state: the stream plus the feed write it caused. */
 export type StreamStateResponse = PublishResult;
+
+/**
+ * POST /api/internal/streams/:id/renditions — one rung of an ABR ladder,
+ * reported by the uploader as that rung starts delivering and again when it
+ * finalizes (then carrying `index` and `duration`, both or neither).
+ *
+ * The admin merges the report into what it already stores for `(stream, name)`,
+ * writes the merged ladder onto the catalogue entry, and answers with the
+ * ladder as it now stands. It never moves the stream's status from a rendition
+ * report: `live` and `vod` still come from POST /state.
+ */
+export type RenditionReport = Rendition;
+
+/** Response of POST /api/internal/streams/:id/renditions. */
+export interface RenditionReportResponse {
+  stream: Stream;
+  /** The merged ladder after this report, ascending by height. */
+  renditions: Rendition[];
+  ladder: {
+    /** At least one rung, and every rung has an index. */
+    finished: boolean;
+    /** Finished now and not before this report — the uploader's cue to report `vod`. */
+    flippedToFinished: boolean;
+    /** Longest rung when finished, else null. Seconds. */
+    duration: number | null;
+  };
+  /** The catalogue write this report caused. */
+  feed: PublishResult['feed'];
+}

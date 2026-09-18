@@ -66,3 +66,23 @@ export interface ThumbnailRow {
   thumbnail: Buffer;
   thumbnail_mime: string | null;
 }
+
+/**
+ * One rung of a stream's ABR ladder, as the uploader last reported it. The
+ * wire shape is `Rendition` in web2-admin-common — camelCase, and `index` /
+ * `duration` for the two nullable columns; `src/domain/renditions.ts`
+ * converts, the way feedEntries.ts does for the entry as a whole.
+ */
+export interface StreamRenditionRow {
+  stream_id: string;
+  name: string;
+  width: number;
+  height: number;
+  topic: string;
+  bandwidth: number;
+  avg_bandwidth: number;
+  /** Null until the rung finalizes; set together with `duration_seconds`. */
+  manifest_index: number | null;
+  duration_seconds: number | null;
+  updated_at: Date;
+}
