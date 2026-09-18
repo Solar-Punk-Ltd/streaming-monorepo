@@ -11,6 +11,13 @@
 /** The dayjs/MUI token string for the one format the console displays. */
 export const DATE_TIME_FORMAT = 'DD/MM/YYYY HH:mm';
 
+/**
+ * The same date, without the clock half — for the schedule field, which asks
+ * for the day and the time in two separate controls and must not spell the
+ * day differently from the caption that reads the whole instant back.
+ */
+export const DATE_FORMAT = 'DD/MM/YYYY';
+
 const pad = (n: number) => String(n).padStart(2, '0');
 
 /**

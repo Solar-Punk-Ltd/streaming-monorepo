@@ -185,6 +185,24 @@ export function firstFreeSlot(dateValue: string, now: Date): string | null {
   return timeSlots().find((slot) => !isSlotPast(dateValue, slot, now)) ?? null;
 }
 
+/**
+ * `18:30`, `1830`, `9:05`, `1807`, `7` — what an operator types into the time
+ * field instead of reaching for the menu. A bare hour means the hour itself,
+ * and the grid is not enforced: an exact minute is a legitimate answer, so
+ * `18:07` comes back as `18:07` rather than being rounded onto a slot.
+ * Anything that is not a time of day is null, and the field keeps what it had.
+ */
+const TYPED_TIME_RE = /^(\d{1,2}):?(\d{2})?$/;
+
+export function parseTypedTime(text: string): string | null {
+  const m = TYPED_TIME_RE.exec(text.trim());
+  if (!m) return null;
+  const hours = Number(m[1]);
+  const minutes = m[2] === undefined ? 0 : Number(m[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return `${pad(hours)}:${pad(minutes)}`;
+}
+
 /** `2026-09-20T18:00` → `{ date: '2026-09-20', time: '18:00' }`. */
 export function splitDateTimeLocal(value: string): { date: string; time: string } {
   const m = VALUE_RE.exec(value);
@@ -207,4 +225,18 @@ export function dateTimeLocalToDayjs(value: string): Dayjs | null {
 export function dayjsToDateTimeLocal(value: Dayjs | null): string {
   if (!value || !value.isValid()) return '';
   return toDateTimeLocalValue(value.toDate());
+}
+
+/** The date-only siblings, for the calendar half of the split field. */
+export function dateToDayjs(value: string): Dayjs | null {
+  return dateTimeLocalToDayjs(`${value}T00:00`);
+}
+
+export function dayjsToDateValue(value: Dayjs | null): string {
+  return splitDateTimeLocal(dayjsToDateTimeLocal(value)).date;
+}
+
+/** Today, as the date half of a value — the day a bare time means. */
+export function todayValue(now: Date): string {
+  return splitDateTimeLocal(toDateTimeLocalValue(now)).date;
 }
