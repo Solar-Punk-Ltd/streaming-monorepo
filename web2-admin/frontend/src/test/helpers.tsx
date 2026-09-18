@@ -8,6 +8,8 @@ import type { ReactNode } from 'react';
 import type {
   IngestDetails,
   Stream,
+  User,
+  UserSummary,
 } from '@streaming-monorepo/web2-admin-common';
 
 import { AuthProvider } from '../auth';
@@ -20,12 +22,33 @@ const theme = createTheme({ palette: { mode: 'dark' } });
  * reads `ok`, `status` and `json()`, so hand-rolled objects keep the mocks
  * obvious and free of environment surprises.
  */
-export function jsonOk<T>(body: T, status = 200): Response {
-  return { ok: true, status, json: async () => body } as unknown as Response;
+function headersOf(values: Record<string, string> = {}): Headers {
+  return {
+    get: (name: string) => values[name.toLowerCase()] ?? null,
+  } as unknown as Headers;
 }
 
-export function jsonError(status: number, body: unknown): Response {
-  return { ok: false, status, json: async () => body } as unknown as Response;
+export function jsonOk<T>(body: T, status = 200): Response {
+  return {
+    ok: true,
+    status,
+    headers: headersOf(),
+    json: async () => body,
+  } as unknown as Response;
+}
+
+export function jsonError(
+  status: number,
+  body: unknown,
+  /** Lower-case names; only the lockout's `retry-after` is read today. */
+  headers: Record<string, string> = {},
+): Response {
+  return {
+    ok: false,
+    status,
+    headers: headersOf(headers),
+    json: async () => body,
+  } as unknown as Response;
 }
 
 export function noContent(): Response {
@@ -102,6 +125,32 @@ export function renderWithAuth(
       </LocalizationProvider>
     </ThemeProvider>,
   );
+}
+
+export function makeUser(overrides: Partial<User> = {}): User {
+  return {
+    id: 'u1',
+    username: 'admin',
+    isAdmin: true,
+    createdAt: '2026-09-11T10:00:00.000Z',
+    passwordChangedAt: null,
+    lastLoginAt: '2026-09-18T08:00:00.000Z',
+    ...overrides,
+  };
+}
+
+export function makeUserSummary(
+  overrides: Partial<UserSummary> = {},
+): UserSummary {
+  return {
+    id: 'u1',
+    username: 'admin',
+    isAdmin: true,
+    createdAt: '2026-09-11T10:00:00.000Z',
+    lastLoginAt: '2026-09-18T08:00:00.000Z',
+    sessions: 1,
+    ...overrides,
+  };
 }
 
 let counter = 0;

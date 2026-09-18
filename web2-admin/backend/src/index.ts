@@ -1,5 +1,14 @@
+import {
+  SESSION_ABSOLUTE_TIMEOUT_MS,
+  SESSION_IDLE_TIMEOUT_MS,
+} from '@streaming-monorepo/web2-admin-common';
+
 import { ApiServerHandle, startApiServer } from './api/server.js';
-import { AuthService } from './domain/AuthService.js';
+import { AuthService } from './domain/auth/AuthService.js';
+import { PostgresCredentialRepository } from './domain/auth/PostgresCredentialRepository.js';
+import { PostgresSessionRepository } from './domain/auth/PostgresSessionRepository.js';
+import { PostgresUserRepository } from './domain/auth/PostgresUserRepository.js';
+import { SessionSweep, startSessionSweep } from './domain/auth/sessionSweep.js';
 import { BeeFeedGateway } from './domain/BeeFeedGateway.js';
 import { Database } from './domain/Database.js';
 import { FakeFeedGateway } from './domain/FakeFeedGateway.js';
@@ -9,15 +18,11 @@ import { FeedWriteRepository } from './domain/FeedWriteRepository.js';
 import { IngestService } from './domain/IngestService.js';
 import { LadderService } from './domain/LadderService.js';
 import { Logger } from './domain/Logger.js';
-import { LoginRateLimiter } from './domain/LoginRateLimiter.js';
 import { PublishService } from './domain/PublishService.js';
-import { seedAdminUser } from './domain/seedAdmin.js';
-import { SessionRepository } from './domain/SessionRepository.js';
 import { StreamRenditionRepository } from './domain/StreamRenditionRepository.js';
 import { StreamRepository } from './domain/StreamRepository.js';
 import { StreamService } from './domain/StreamService.js';
 import { StreamStateService } from './domain/StreamStateService.js';
-import { UserRepository } from './domain/UserRepository.js';
 import { config } from './utils/config.js';
 import { getErrorMessage, getErrorStack } from './utils/errorUtils.js';
 
@@ -45,7 +50,9 @@ function logStartupConfig(owner: string, topicHex: string): void {
   logger.info(`[Boot]   listen: ${config.host}:${config.port}`);
   logger.info(`[Boot]   database: ${redactDatabaseUrl(config.databaseUrl)}`);
   logger.info(
-    `[Boot]   sessions: ttl ${config.sessionTtlHours}h, secure cookie ${config.cookieSecure}`,
+    `[Boot]   sessions: idle ${SESSION_IDLE_TIMEOUT_MS / 3_600_000}h, absolute ${
+      SESSION_ABSOLUTE_TIMEOUT_MS / 86_400_000
+    }d, cookie Secure decided per request from X-Forwarded-Proto`,
   );
   logger.info(`[Boot]   feed gateway: ${config.feedGateway}`);
   logger.info(`[Boot]   bee: ${config.beeUrl}`);
@@ -84,6 +91,7 @@ function createFeedGateway(): FeedGateway {
 
 let apiServer: ApiServerHandle | undefined;
 let database: Database | undefined;
+let sessionSweep: SessionSweep | undefined;
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal: string): Promise<void> {
@@ -95,6 +103,10 @@ async function gracefulShutdown(signal: string): Promise<void> {
   logger.info(`Received ${signal}. Shutting down gracefully...`);
 
   try {
+    if (sessionSweep) {
+      sessionSweep.stop();
+      sessionSweep = undefined;
+    }
     if (apiServer) {
       await apiServer.close();
       apiServer = undefined;
@@ -120,16 +132,11 @@ async function main(): Promise<void> {
   database = new Database(config.databaseUrl);
   await database.migrate();
 
-  const userRepository = new UserRepository(database.pool);
-  const sessionRepository = new SessionRepository(database.pool);
+  const userRepository = new PostgresUserRepository(database.pool);
+  const sessionRepository = new PostgresSessionRepository(database.pool);
   const streamRepository = new StreamRepository(database.pool);
   const renditionRepository = new StreamRenditionRepository(database.pool);
   const feedWriteRepository = new FeedWriteRepository(database.pool);
-
-  await seedAdminUser(userRepository, {
-    username: config.seedAdminUsername,
-    password: config.seedAdminPassword,
-  });
 
   const orphans = await streamRepository.resetOrphanedPublishing();
   if (orphans.length > 0) {
@@ -140,15 +147,22 @@ async function main(): Promise<void> {
     );
   }
 
-  const pruned = await sessionRepository.deleteExpired();
-  if (pruned > 0) logger.info(`[Boot] pruned ${pruned} expired session(s)`);
-
   const authService = new AuthService(
     userRepository,
     sessionRepository,
-    new LoginRateLimiter(),
-    config.sessionTtlHours,
+    new PostgresCredentialRepository(database.pool),
   );
+  // Prunes what has run out now, and once a day after that. There is no
+  // sign-up and no seeded account: a database with no users refuses every
+  // sign-in until the CLI has made one.
+  sessionSweep = startSessionSweep(authService);
+
+  if ((await authService.countUsers()) === 0) {
+    logger.warn(
+      '[Boot] no users exist yet. Every route but /api/health, /api/config and /api/internal refuses until one is created with: node dist/cli.js user:add <username>',
+    );
+  }
+
   const streamService = new StreamService(streamRepository, feed);
   const publishService = new PublishService(
     streamRepository,
@@ -191,7 +205,6 @@ async function main(): Promise<void> {
       ingestService,
       internalApiToken: config.internalApiToken,
       feed,
-      cookie: { secure: config.cookieSecure },
       viewerBaseUrl: config.viewerBaseUrl,
     },
     config.port,

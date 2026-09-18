@@ -17,20 +17,34 @@ second.
 - **@ethersphere/bee-js** — the only Swarm dependency, behind a `FeedGateway`
   interface (`src/domain/FeedGateway.ts`)
 - **node:crypto** — scrypt passwords, random session tokens stored as sha256.
-  No auth, session or rate-limit dependency
+  No auth, session, CSRF or rate-limit dependency
 
 ## Quick start
 
 ```bash
 cp .env.sample .env       # then set FEED_PRIVATE_KEY and INGEST_HOST
 pnpm database:start       # postgres:16-alpine on 127.0.0.1:5433
+pnpm user:add levi        # the first user — prompts twice, echoes nothing
 pnpm dev                  # API on :9877
 curl localhost:9877/api/health                   # {"status":"ok"}
 ```
 
-First start creates `SEED_ADMIN_USERNAME` / `SEED_ADMIN_PASSWORD`
-(`admin` / `admin1234`) while the users table is empty, and logs a warning at
-every boot until that password is changed in the UI.
+**There is no seeded account and no sign-up route.** A fresh database has no
+users: the API boots, logs a warning, serves `/api/health`, `/api/config` and
+`/api/internal`, and answers every sign-in with `401 no_users` until a user is
+made with the CLI. In the image that is
+
+```bash
+docker compose exec -it api node dist/cli.js user:add levi
+# or, with the password never landing in a file or an argv:
+op read "op://<vault>/<item>/password" \
+  | docker compose exec -T api node dist/cli.js user:add levi --password-stdin
+```
+
+The first user ever added can manage users whatever the flags said; later ones
+are plain unless `--admin` is given. See
+[docs/architecture/web2-admin-auth.md](../../docs/architecture/web2-admin-auth.md)
+for the whole design.
 
 ## Scripts
 
@@ -39,8 +53,9 @@ every boot until that password is changed in the UI.
 | `pnpm dev` | `tsx watch` against `src/index.ts` |
 | `pnpm build` | builds common, then `tsc` + copies `src/migrations` into `dist` |
 | `pnpm start` | `node dist/index.js` |
+| `pnpm user:add <name> [--admin]` | add a user; `--password-stdin` reads it from a pipe. The only way to make the first one |
 | `pnpm test` | unit tests (`test/unit`), no database or network |
-| `pnpm test:integration` | drives a **running** API over HTTP — see [test/integration](test/integration/README.md) |
+| `pnpm test:integration` | starts a backend of its own and drives it over HTTP — see [test/integration](test/integration/README.md) |
 | `pnpm typecheck` | `tsc -p tsconfig.typecheck.json`, which includes `test/` |
 | `pnpm database:start` / `database:stop` | the Postgres container |
 
@@ -56,8 +71,6 @@ reference; the summary:
 | --- | --- | --- |
 | `WEB2_ADMIN_PORT` / `WEB2_ADMIN_HOST` | `9877` / `0.0.0.0` | where to listen (the manager API uses 9876) |
 | `DATABASE_URL` | required | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin` |
-| `SESSION_TTL_HOURS` / `COOKIE_SECURE` | `24` / `false` | session lifetime; set `COOKIE_SECURE=true` behind TLS |
-| `SEED_ADMIN_USERNAME` / `SEED_ADMIN_PASSWORD` | `admin` / `admin1234` | the first-start user |
 | `FEED_GATEWAY` | `bee` | `fake` swaps in an in-memory gateway (see below) |
 | `BEE_URL` / `POSTAGE_BATCH_ID` | required | node and batch used for feed writes and thumbnails |
 | `FEED_PRIVATE_KEY` | required | 0x + 64 hex. Signs the stream list feed; its address is `owner` on every stream |
@@ -84,6 +97,31 @@ index — does not, so the first write after a restart continues from whatever
 the database says and the in-memory feed adopts that index. The boot check then
 reports a network head of `none` behind a recorded one, which under `fake` is
 normal and not a divergence.
+
+## Sign in
+
+`docs/architecture/web2-admin-auth.md` is the design; the short version:
+
+- A password is scrypt (`N=2^15, r=8, p=3`) in `scrypt$N$r$p$salt$hash`, so the
+  cost can be raised without invalidating what is stored. Minimum 12
+  characters, must not contain the username.
+- A session is 32 random bytes in an httpOnly SameSite=Lax cookie with **no
+  expiry of its own**; the row is the clock. Twelve hours of inactivity,
+  fourteen days at most, `last_seen_at` written at most once a minute. Only the
+  sha256 of the cookie value is stored. `Secure` is decided per request from
+  `X-Forwarded-Proto`, never from configuration.
+- Four free sign-in attempts per username and per client address, then a minute
+  that doubles to an hour; attempts still waiting on scrypt count, so a burst
+  sent together buys no extra guesses. Changing a password is throttled on a
+  key of its own.
+- Every non-GET request must carry `x-requested-with: web2-admin` and must not
+  look cross-site, or it is `403 cross_site_request` before its body is read.
+  **`/api/internal` is exempt** — it is a machine caller with a bearer token,
+  and it is mounted ahead of the check for that reason.
+- `GET /api/auth/users`, `POST /api/auth/users` (admin), `DELETE
+  /api/auth/users/:id` (admin, never yourself, never the last user or the last
+  admin) and `POST /api/auth/users/:id/revoke` (admin, or anyone for
+  themselves) are the Access page.
 
 ## Publishing
 
@@ -290,11 +328,14 @@ header. `pnpm build` copies the directory into `dist`.
 
 ## Limitations (intentional, checkpoint 3 step 1)
 
-- **Single tenant.** `streams.user_id` exists and every query is scoped by it,
-  but nothing creates a second user.
+- **Every user sees every stream they own, and only those.** `streams.user_id`
+  scopes every query, so a second user added on the Access page starts with an
+  empty list rather than sharing the first one's drafts. There is no way to
+  hand a stream over.
 - **Nothing polls.** A state report is the only thing that moves a stream to
   `live` or `vod`; an uploader that dies without reporting leaves the stream
   live on the catalogue until someone republishes or unpublishes it by hand.
 - **The ingest does not verify `key=`** until the deployed uploader carries
   publisher auth, which is what `INGEST_KEY_VERIFIED` admits to the UI.
-- **Sessions are unbounded per user** and pruned at boot and on login.
+- **Sessions are unbounded per user** and pruned on sign-in and by a daily
+  sweep.

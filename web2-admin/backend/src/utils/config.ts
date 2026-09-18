@@ -70,10 +70,6 @@ export interface AppConfig {
   port: number;
   host: string;
   databaseUrl: string;
-  sessionTtlHours: number;
-  cookieSecure: boolean;
-  seedAdminUsername: string;
-  seedAdminPassword: string;
   feedGateway: FeedGatewayKind;
   beeUrl: string;
   postageBatchId: string;
@@ -119,10 +115,6 @@ export const config: AppConfig = {
   port: optionalNumber('WEB2_ADMIN_PORT', 9877),
   host: optional('WEB2_ADMIN_HOST', '0.0.0.0'),
   databaseUrl: required('DATABASE_URL'),
-  sessionTtlHours: optionalNumber('SESSION_TTL_HOURS', 24),
-  cookieSecure: optionalBoolean('COOKIE_SECURE', false),
-  seedAdminUsername: optional('SEED_ADMIN_USERNAME', 'admin'),
-  seedAdminPassword: optional('SEED_ADMIN_PASSWORD', 'admin1234'),
   feedGateway: feedGateway(),
   beeUrl: required('BEE_URL'),
   postageBatchId: required('POSTAGE_BATCH_ID'),

@@ -11,7 +11,13 @@ import { describe, it } from 'node:test';
 
 import { ValidationError } from 'yup';
 
-import { changePasswordSchema, loginSchema } from '../../src/schemas/auth.js';
+import { PASSWORD_MAX_LENGTH } from '@streaming-monorepo/web2-admin-common';
+
+import {
+  changePasswordSchema,
+  createUserSchema,
+  loginSchema,
+} from '../../src/schemas/auth.js';
 import {
   ingestLookupParamSchema,
   renditionReportSchema,
@@ -206,9 +212,12 @@ describe('streamIdParamSchema', () => {
 });
 
 describe('auth schemas', () => {
-  it('accepts a login body and trims the username', async () => {
+  it('accepts a login body as it arrived, without reshaping it', async () => {
+    // Neither field is trimmed or shape-checked: a wrong pair must answer the
+    // same way whatever it looked like, and the rules that decide whether a
+    // password is good enough belong to the routes that set one.
     const value = await validate(loginSchema, {
-      username: ' admin ',
+      username: 'admin',
       password: 'admin1234',
     });
     assert.deepEqual(value, { username: 'admin', password: 'admin1234' });
@@ -219,18 +228,49 @@ describe('auth schemas', () => {
     assert.equal(errors.length, 2);
   });
 
-  it('requires a new password of at least 8 characters', async () => {
-    const errors = await errorsFor(changePasswordSchema, {
+  it('bounds the login body so no caller can make scrypt hash 256 KB', async () => {
+    const errors = await errorsFor(loginSchema, {
+      username: 'admin',
+      password: 'x'.repeat(PASSWORD_MAX_LENGTH + 1),
+    });
+    assert.equal(errors.length, 1);
+  });
+
+  it('requires both password-change fields, and leaves the policy to common', async () => {
+    const errors = await errorsFor(changePasswordSchema, {});
+    assert.equal(errors.length, 2);
+
+    // `short` passes the schema: `passwordProblem` is what refuses it, with a
+    // sentence the operator can act on. The route test pins the 400.
+    const ok = await validate(changePasswordSchema, {
       currentPassword: 'admin1234',
       newPassword: 'short',
     });
-    assert.deepEqual(errors, ['newPassword must be at least 8 characters']);
+    assert.equal(ok.newPassword, 'short');
+  });
 
-    const ok = await validate(changePasswordSchema, {
-      currentPassword: 'admin1234',
-      newPassword: 'longenough',
+  it('accepts a create-user body, admin flag and all', async () => {
+    const value = await validate(createUserSchema, {
+      username: 'mate',
+      password: 'a-perfectly-good-password',
+      admin: true,
     });
-    assert.equal(ok.newPassword, 'longenough');
+    assert.deepEqual(value, {
+      username: 'mate',
+      password: 'a-perfectly-good-password',
+      admin: true,
+    });
+  });
+
+  it('refuses a username the database CHECK would refuse', async () => {
+    for (const username of ['Mate', 'x', '_leading', 'has space', 'a'.repeat(33)]) {
+      const errors = await errorsFor(createUserSchema, {
+        username,
+        password: 'a-perfectly-good-password',
+      });
+      assert.equal(errors.length, 1, username);
+      assert.match(errors[0]!, /username must be 2 to 32 characters/);
+    }
   });
 });
 

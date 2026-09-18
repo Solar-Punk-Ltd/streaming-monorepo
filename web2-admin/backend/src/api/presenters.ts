@@ -22,8 +22,10 @@ export function toUser(row: UserRow): User {
   return {
     id: row.id,
     username: row.username,
+    isAdmin: row.is_admin,
     createdAt: row.created_at.toISOString(),
     passwordChangedAt: iso(row.password_changed_at),
+    lastLoginAt: iso(row.last_login_at),
   };
 }
 

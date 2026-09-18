@@ -10,23 +10,13 @@ export interface UserRow {
   id: string;
   username: string;
   password_hash: string;
+  /** May add and remove users and sign anyone out. Migration 005. */
+  is_admin: boolean;
   password_changed_at: Date | null;
+  /** Null for a user who has never signed in. */
+  last_login_at: Date | null;
   created_at: Date;
   updated_at: Date;
-}
-
-export interface SessionRow {
-  id: string;
-  user_id: string;
-  token_hash: string;
-  created_at: Date;
-  expires_at: Date;
-}
-
-/** A session joined with its user, as `findByTokenHash` returns it. */
-export interface SessionWithUserRow {
-  session: SessionRow;
-  user: UserRow;
 }
 
 /**

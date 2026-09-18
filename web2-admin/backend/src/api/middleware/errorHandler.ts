@@ -2,12 +2,16 @@ import { NextFunction, Request, Response } from 'express';
 import { ValidationError as YupValidationError } from 'yup';
 
 import {
+  AdminRequiredError,
+  CannotRemoveUserError,
+  CrossSiteRequestError,
   FeedOwnerMismatchError,
   InvalidCredentialsError,
-  InvalidPasswordError,
   InvalidStateError,
   InvalidStateTransitionError,
+  InvalidUsernameError,
   MediaTypeLockedError,
+  NoUsersError,
   PublishFailedError,
   StreamBusyError,
   StreamLiveError,
@@ -18,6 +22,9 @@ import {
   TooManyAttemptsError,
   UnauthenticatedError,
   UnsupportedMediaTypeError,
+  UserExistsError,
+  UserNotFoundError,
+  WeakPasswordError,
 } from '../../domain/errors/index.js';
 import { Logger } from '../../domain/Logger.js';
 import { getErrorMessage, getErrorStack } from '../../utils/errorUtils.js';
@@ -52,8 +59,30 @@ export function errorHandler(
     res.status(400).json({ error: 'validation_error', errors: err.errors });
     return;
   }
+  if (err instanceof WeakPasswordError || err instanceof InvalidUsernameError) {
+    // Same shape as a schema rejection: the reason is the only useful text, and
+    // the console already renders `errors` from a 400.
+    res.status(400).json({ error: 'validation_error', errors: [err.reason] });
+    return;
+  }
+  if (err instanceof CrossSiteRequestError) {
+    // Before the body is read, so this is the answer to a write from another
+    // site whatever its body looked like.
+    res.status(403).json({ error: 'cross_site_request', message: err.reason });
+    return;
+  }
+  if (err instanceof AdminRequiredError) {
+    res.status(403).json({ error: 'admin_required', message: err.message });
+    return;
+  }
   if (err instanceof UnauthenticatedError) {
     res.status(401).json({ error: 'unauthenticated' });
+    return;
+  }
+  if (err instanceof NoUsersError) {
+    // 401 and not 404: nobody is signed in and nobody can be, which is what the
+    // sign-in page needs to know to show the CLI command instead of a form.
+    res.status(401).json({ error: 'no_users' });
     return;
   }
   if (err instanceof InvalidCredentialsError) {
@@ -62,11 +91,22 @@ export function errorHandler(
   }
   if (err instanceof TooManyAttemptsError) {
     res.setHeader('Retry-After', String(err.retryAfterSeconds));
-    res.status(429).json({ error: 'too_many_attempts' });
+    res.status(429).json({
+      error: 'too_many_attempts',
+      retryAfterSeconds: err.retryAfterSeconds,
+    });
     return;
   }
-  if (err instanceof InvalidPasswordError) {
-    res.status(400).json({ error: 'invalid_password' });
+  if (err instanceof UserExistsError) {
+    res.status(409).json({ error: 'user_exists', username: err.username });
+    return;
+  }
+  if (err instanceof UserNotFoundError) {
+    res.status(404).json({ error: 'user_not_found', id: err.userId });
+    return;
+  }
+  if (err instanceof CannotRemoveUserError) {
+    res.status(409).json({ error: 'cannot_remove_user', message: err.reason });
     return;
   }
   if (err instanceof StreamNotFoundError) {
