@@ -35,7 +35,8 @@ import type {
 
 import * as api from '../api';
 import { errorMessage } from '../errors';
-import { formatDateTime, formatDuration, shortHex } from '../format';
+import { formatDateTime } from '../dateUtil';
+import { formatDuration, shortHex } from '../format';
 import { IngestPanel } from '../components/IngestPanel';
 import { MEDIA_TYPE_LABEL, StatusChip } from '../components/StatusChip';
 import { useSnackbar } from '../components/Snackbar';

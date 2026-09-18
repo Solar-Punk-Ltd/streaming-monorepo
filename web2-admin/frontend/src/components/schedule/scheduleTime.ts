@@ -1,6 +1,6 @@
 import dayjs, { type Dayjs } from 'dayjs';
 
-import { toDateTimeLocalValue } from '../../format';
+import { formatHumanDateTime, toDateTimeLocalValue } from '../../dateUtil';
 
 /**
  * Every date calculation the three scheduler variants need, as pure
@@ -15,12 +15,6 @@ import { toDateTimeLocalValue } from '../../format';
  */
 
 const pad = (n: number) => String(n).padStart(2, '0');
-
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
 
 const SATURDAY = 6;
 
@@ -67,20 +61,6 @@ export function nextFullHourValue(now: Date): string {
 }
 
 /**
- * `Sat 20 Sep 2026, 18:00` — fixed English rather than the locale, so it is
- * stable, and zero-padded to match the `ddd DD MMM YYYY, HH:mm` the picker
- * field itself displays; the caption is a reading of that field, and two
- * spellings of the same date a line apart look like two dates.
- */
-export function formatHumanDateTime(date: Date): string {
-  return (
-    `${WEEKDAYS[date.getDay()]} ${pad(date.getDate())} ` +
-    `${MONTHS[date.getMonth()]} ${date.getFullYear()}, ` +
-    `${pad(date.getHours())}:${pad(date.getMinutes())}`
-  );
-}
-
-/**
  * `in 40 minutes`, `in 6 days`, `2 hours ago`. Days are rounded from the
  * elapsed milliseconds, so a span crossing a DST change still reads as the
  * whole number of days an operator counted on a calendar — 143 hours and 145
@@ -111,7 +91,12 @@ export function relativeLabel(target: Date, now: Date): string {
   return diff < 0 ? `${phrase} ago` : `in ${phrase}`;
 }
 
-/** The caption under every variant, or null when there is nothing to read. */
+/**
+ * The caption under every variant, or null when there is nothing to read. The
+ * date half comes from `formatHumanDateTime`, the same function behind the
+ * `DATE_TIME_FORMAT` the picker field renders, because two spellings of one
+ * date a line apart look like two dates.
+ */
 export function describeSchedule(value: string, now: Date): string | null {
   const date = parseDateTimeLocalValue(value);
   if (!date) return null;

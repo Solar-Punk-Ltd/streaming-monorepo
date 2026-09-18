@@ -59,12 +59,18 @@ export function hasGoneLive(status: StreamStatus): boolean {
  *
  * An edit that leaves the value alone is not a change — the console PUTs the
  * whole StreamInput back on every save, schedule included.
+ *
+ * A row with no stored time predates the rule that every stream has one. Such
+ * a stream cannot be edited at all while its schedule is locked, because the
+ * console will not submit an empty one; giving it a time for the first time
+ * is filling a gap, not rewriting a promise, so it is allowed.
  */
 export function isScheduleLocked(
   stream: StreamRow,
   scheduledStartTime: string | null,
 ): boolean {
   if (!hasGoneLive(stream.status)) return false;
+  if (stream.scheduled_start_time === null) return false;
   return !sameInstant(stream.scheduled_start_time, scheduledStartTime);
 }
 

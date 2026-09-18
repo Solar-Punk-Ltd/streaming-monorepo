@@ -142,7 +142,7 @@ describe('relativeLabel and describeSchedule', () => {
 
   it('spells the whole value out for the caption', () => {
     expect(describeSchedule('2026-09-20T18:00', MONDAY)).toBe(
-      'Sun 20 Sep 2026, 18:00 · in 6 days',
+      '20/09/2026 18:00 · in 6 days',
     );
   });
 

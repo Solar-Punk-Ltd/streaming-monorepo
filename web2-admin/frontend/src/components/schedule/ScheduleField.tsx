@@ -2,6 +2,7 @@ import { Chip, Stack, Typography } from '@mui/material';
 import { DesktopDateTimePicker } from '@mui/x-date-pickers/DesktopDateTimePicker';
 import dayjs from 'dayjs';
 
+import { DATE_TIME_FORMAT } from '../../dateUtil';
 import {
   dateTimeLocalToDayjs,
   dayjsToDateTimeLocal,
@@ -58,7 +59,7 @@ export function ScheduleField({
         ampm={false}
         disablePast={floor !== undefined}
         minDateTime={floor}
-        format="ddd DD MMM YYYY, HH:mm"
+        format={DATE_TIME_FORMAT}
         slotProps={{
           textField: {
             id: 'scheduled-time',

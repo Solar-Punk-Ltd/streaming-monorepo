@@ -10,10 +10,8 @@ import {
   UNSUPPORTED_IMAGE_TYPE,
 } from '../errors';
 import { ScheduleField } from '../components/schedule/ScheduleField';
-import {
-  formatHumanDateTime,
-  nextFullHour,
-} from '../components/schedule/scheduleTime';
+import { formatHumanDateTime } from '../dateUtil';
+import { nextFullHour } from '../components/schedule/scheduleTime';
 import { ERROR_MESSAGES, StreamFormPage } from '../pages/StreamFormPage';
 import {
   jsonError,
@@ -269,6 +267,32 @@ describe('StreamFormPage validation', () => {
     expect(screen.getByLabelText('Tags')).toBeEnabled();
   });
 
+  it('leaves the schedule open on a live stream that never had one', async () => {
+    // A row the API created before a schedule was required. Locking the empty
+    // field would make the stream uneditable: the form will not submit without
+    // a time. The backend lets that first time through for the same reason.
+    mockFetch([
+      {
+        path: '/api/streams/live-blank',
+        respond: () =>
+          jsonOk(
+            makeStream({
+              id: 'live-blank',
+              status: 'live',
+              scheduledStartTime: null,
+              liveSince: '2026-10-01T09:01:00.000Z',
+            }),
+          ),
+      },
+    ]);
+
+    renderEditForm('live-blank');
+
+    expect(await screen.findByLabelText('Scheduled Start Time *')).toBeEnabled();
+    expect(screen.queryByText(SCHEDULE_LOCKED)).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Audio Only' })).toBeDisabled();
+  });
+
   it('leaves the schedule editable while the stream is only published', async () => {
     mockFetch([
       {
@@ -520,11 +544,26 @@ describe('ScheduleField', () => {
     renderField();
 
     expect(screen.getByLabelText('Scheduled Start Time *')).toHaveValue(
-      'Mon 14 Sep 2026, 15:00',
+      '14/09/2026 15:00',
     );
     expect(
-      screen.getByText('Mon 14 Sep 2026, 15:00 · in 37 minutes'),
+      screen.getByText('14/09/2026 15:00 · in 37 minutes'),
     ).toBeInTheDocument();
+  });
+
+  it('shows the date as DD/MM/YYYY HH:mm, with no weekday section', () => {
+    // The weekday used to be an editable section of the field: typing in it
+    // moved the value inside the week while the text stood still, so the form
+    // stored a date nobody chose. There is no such section to type into now.
+    renderField();
+
+    const field = screen.getByLabelText<HTMLInputElement>(
+      'Scheduled Start Time *',
+    );
+
+    expect(field.value).toBe('14/09/2026 15:00');
+    expect(field.value).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
+    expect(field.value).not.toMatch(/[A-Za-z]/);
   });
 
   it('offers the quick picks that are still ahead', () => {
@@ -538,7 +577,7 @@ describe('ScheduleField', () => {
 
     expect(onChange).toHaveBeenLastCalledWith('2026-09-15T14:23');
     expect(screen.getByLabelText('Scheduled Start Time *')).toHaveValue(
-      'Tue 15 Sep 2026, 14:23',
+      '15/09/2026 14:23',
     );
   });
 

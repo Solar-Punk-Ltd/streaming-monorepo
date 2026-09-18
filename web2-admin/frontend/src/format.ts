@@ -1,47 +1,12 @@
-/** ISO timestamp → the operator's locale, or an em dash when absent. */
-export function formatDateTime(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString();
-}
+/**
+ * Formatting that is not a date. Everything about dates and times lives in
+ * `dateUtil.ts`, so there is one answer to what a timestamp looks like.
+ */
 
 /** A long hex value elided in the middle: owners, topics, swarm references. */
 export function shortHex(hex: string, lead = 8, tail = 6): string {
   if (hex.length <= lead + tail + 1) return hex;
   return `${hex.slice(0, lead)}…${hex.slice(-tail)}`;
-}
-
-/**
- * `<input type="datetime-local">` wants local wall-clock time with no zone,
- * and `new Date().toISOString()` is UTC — hence the hand-rolled formatting.
- */
-export function toDateTimeLocalValue(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
-  );
-}
-
-export function nowDateTimeLocalValue(): string {
-  return toDateTimeLocalValue(new Date());
-}
-
-/** ISO string from the API → the value a datetime-local input accepts. */
-export function isoToDateTimeLocalValue(iso: string | null): string {
-  if (!iso) return '';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  return toDateTimeLocalValue(date);
-}
-
-/** A datetime-local value → the ISO string the API stores, or null. */
-export function dateTimeLocalValueToIso(value: string): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString();
 }
 
 /**

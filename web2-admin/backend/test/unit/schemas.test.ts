@@ -61,14 +61,14 @@ describe('streamInputSchema', () => {
     });
   });
 
-  it('defaults tags to [] and scheduledStartTime to null', async () => {
+  it('defaults tags to []', async () => {
     const value = await validate(streamInputSchema, {
+      ...goodStream,
       title: 'Audio only',
       description: 'A podcast.',
       mediaType: 'audio',
     });
     assert.deepEqual(value.tags, []);
-    assert.equal(value.scheduledStartTime, null);
   });
 
   it('strips unknown fields instead of storing them', async () => {
@@ -84,7 +84,7 @@ describe('streamInputSchema', () => {
   it('requires a title and a description', async () => {
     const errors = await errorsFor(streamInputSchema, {
       mediaType: 'video',
-      scheduledStartTime: null,
+      scheduledStartTime: '2026-10-01T09:00:00.000Z',
     });
     assert.ok(errors.some((e) => e.includes('title')), errors.join('; '));
     assert.ok(errors.some((e) => e.includes('description')), errors.join('; '));
@@ -160,6 +160,32 @@ describe('streamInputSchema', () => {
       errors.some((e) => e.includes('ISO 8601')),
       errors.join('; '),
     );
+  });
+
+  it('requires a scheduled start time: missing, null and empty all fail', async () => {
+    // A stream with no schedule cannot be edited through the console at all,
+    // because the form will not submit without one; the API refuses to create
+    // that row in the first place.
+    const { scheduledStartTime: _omitted, ...withoutSchedule } = goodStream;
+    for (const body of [
+      withoutSchedule,
+      { ...goodStream, scheduledStartTime: null },
+      { ...goodStream, scheduledStartTime: '' },
+    ]) {
+      const errors = await errorsFor(streamInputSchema, body);
+      assert.ok(
+        errors.some((e) => e.includes('scheduledStartTime is required')),
+        `${JSON.stringify(body)}: ${errors.join('; ')}`,
+      );
+    }
+  });
+
+  it('accepts a valid ISO 8601 scheduled start time', async () => {
+    const value = await validate(streamInputSchema, {
+      ...goodStream,
+      scheduledStartTime: '2027-03-29T02:30:00.000Z',
+    });
+    assert.equal(value.scheduledStartTime, '2027-03-29T02:30:00.000Z');
   });
 });
 
