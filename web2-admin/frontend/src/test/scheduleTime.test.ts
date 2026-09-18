@@ -9,7 +9,10 @@ import {
   joinDateTimeLocal,
   nextFullHour,
   nextFullHourValue,
+  dateToDayjs,
+  dayjsToDateValue,
   parseDateTimeLocalValue,
+  parseTypedTime,
   quickPicks,
   relativeLabel,
   slotOptions,
@@ -142,7 +145,7 @@ describe('relativeLabel and describeSchedule', () => {
 
   it('spells the whole value out for the caption', () => {
     expect(describeSchedule('2026-09-20T18:00', MONDAY)).toBe(
-      'Sun 20 Sep 2026, 18:00 · in 6 days',
+      '20/09/2026 18:00 · in 6 days',
     );
   });
 
@@ -200,5 +203,37 @@ describe('value plumbing', () => {
     expect(dayjsToDateTimeLocal(dateTimeLocalToDayjs(value))).toBe(value);
     expect(dateTimeLocalToDayjs('')).toBeNull();
     expect(dayjsToDateTimeLocal(null)).toBe('');
+  });
+});
+
+describe('parseTypedTime', () => {
+  it('reads the shapes an operator types', () => {
+    expect(parseTypedTime('18:30')).toBe('18:30');
+    expect(parseTypedTime('1830')).toBe('18:30');
+    expect(parseTypedTime('9:05')).toBe('09:05');
+    expect(parseTypedTime('905')).toBe('09:05');
+    expect(parseTypedTime('1807')).toBe('18:07');
+    // A bare hour is that hour, not a prefix of something longer.
+    expect(parseTypedTime('7')).toBe('07:00');
+    expect(parseTypedTime('07')).toBe('07:00');
+    expect(parseTypedTime(' 18:30 ')).toBe('18:30');
+  });
+
+  it('refuses anything that is not a time of day', () => {
+    // 24:00 is midnight spelled as a duration; the field holds clock times.
+    expect(parseTypedTime('24:00')).toBeNull();
+    expect(parseTypedTime('18:60')).toBeNull();
+    expect(parseTypedTime('')).toBeNull();
+    expect(parseTypedTime('half six')).toBeNull();
+    expect(parseTypedTime('123456')).toBeNull();
+    expect(parseTypedTime('18:3')).toBeNull();
+  });
+});
+
+describe('date-only plumbing', () => {
+  it('round-trips the calendar half', () => {
+    expect(dayjsToDateValue(dateToDayjs('2026-09-20'))).toBe('2026-09-20');
+    expect(dateToDayjs('')).toBeNull();
+    expect(dayjsToDateValue(null)).toBe('');
   });
 });

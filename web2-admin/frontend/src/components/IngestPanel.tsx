@@ -11,7 +11,7 @@ import type { IngestDetails } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
 import { errorMessage } from '../errors';
-import { formatDateTime } from '../format';
+import { formatDateTime } from '../dateUtil';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useSnackbar } from './Snackbar';
 import { ValueField } from './ValueField';

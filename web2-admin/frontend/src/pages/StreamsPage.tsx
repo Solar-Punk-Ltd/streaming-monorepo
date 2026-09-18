@@ -27,7 +27,7 @@ import type { Stream } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
 import { errorMessage } from '../errors';
-import { formatDateTime } from '../format';
+import { formatDateTime } from '../dateUtil';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { MediaTypeChip, StatusChip } from '../components/StatusChip';
 import { useSnackbar } from '../components/Snackbar';

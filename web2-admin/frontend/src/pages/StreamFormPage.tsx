@@ -28,7 +28,7 @@ import {
 import {
   dateTimeLocalValueToIso,
   isoToDateTimeLocalValue,
-} from '../format';
+} from '../dateUtil';
 import {
   DescriptionField,
   MediaTypeField,
@@ -98,13 +98,21 @@ function freshForm(): FormState {
   return { ...EMPTY, scheduledStartTime: nextFullHourValue(new Date()) };
 }
 
-function toInput(form: FormState): StreamInput {
+/**
+ * The form state as the contract wants it, or null when the schedule is not a
+ * time this can send. The API requires a scheduled start now, so a value the
+ * conversion cannot read is the same failure as an empty field rather than a
+ * null quietly put on the wire.
+ */
+function toInput(form: FormState): StreamInput | null {
+  const scheduledStartTime = dateTimeLocalValueToIso(form.scheduledStartTime);
+  if (!scheduledStartTime) return null;
   return {
     title: form.title.trim(),
     description: form.description.trim(),
     tags: form.tags,
     mediaType: form.mediaType,
-    scheduledStartTime: dateTimeLocalValueToIso(form.scheduledStartTime),
+    scheduledStartTime,
   };
 }
 
@@ -199,9 +207,14 @@ export function StreamFormPage() {
   // is a promise about a stream that has already started, and viewers have
   // read it off the catalogue entry. Everything else stays editable, live
   // included — a typo in a title is worth fixing mid-broadcast.
+  //
+  // A stream that went live without a stored schedule (a row the API created
+  // before one was required) has no promise to protect, and the API will not
+  // accept a save without a time, so the field stays open until it has one.
+  // The backend applies the same exception.
   const hasGoneLive = loaded?.status === 'live' || loaded?.status === 'vod';
   const mediaTypeLocked = loaded?.status === 'published' || hasGoneLive;
-  const scheduleLocked = hasGoneLive;
+  const scheduleLocked = hasGoneLive && loaded?.scheduledStartTime !== null;
 
   const storedThumbnail =
     loaded?.hasThumbnail && !removeStored && !picked
@@ -237,14 +250,19 @@ export function StreamFormPage() {
       setError(invalid);
       return;
     }
+    const input = toInput(form);
+    if (!input) {
+      setError(ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED);
+      return;
+    }
     setError(null);
     setSaving(true);
 
     let saved: Stream;
     try {
       saved = id
-        ? await api.updateStream(id, toInput(form))
-        : await api.createStream(toInput(form));
+        ? await api.updateStream(id, input)
+        : await api.createStream(input);
     } catch (err) {
       setError(
         errorMessage(

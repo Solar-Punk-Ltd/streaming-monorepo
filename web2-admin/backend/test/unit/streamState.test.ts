@@ -136,12 +136,18 @@ describe('isScheduleLocked', () => {
     );
   });
 
-  it('treats clearing or setting the schedule as a change', () => {
+  it('treats clearing a stored schedule as a change', () => {
     const live = streamRow({ status: 'live', scheduled_start_time: scheduled });
     assert.equal(isScheduleLocked(live, null), true);
+  });
 
+  it('lets a row that never had a schedule be given one', () => {
+    // A legacy row created through the API before a schedule was required.
+    // The console cannot edit it at all otherwise: the form will not submit
+    // without a time, and any time it sent would be refused. Filling that gap
+    // is not rewriting a promise nobody was ever made.
     const never = streamRow({ status: 'vod', scheduled_start_time: null });
-    assert.equal(isScheduleLocked(never, '2026-10-01T09:00:00.000Z'), true);
+    assert.equal(isScheduleLocked(never, '2026-10-01T09:00:00.000Z'), false);
     assert.equal(isScheduleLocked(never, null), false);
   });
 });
