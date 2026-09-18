@@ -25,9 +25,7 @@ import { newPublishKey } from '../../src/domain/StreamService.js';
 import { StreamRenditionRepository } from '../../src/domain/StreamRenditionRepository.js';
 import { StreamRepository } from '../../src/domain/StreamRepository.js';
 
-const DATABASE_URL =
-  process.env.DATABASE_URL ??
-  'postgres://web2admin:web2admin@127.0.0.1:5433/web2admin';
+import { releaseStack, requireStack, stack } from './helpers.js';
 
 const OWNER = '90f8bf6a479f320ead074411a4b0e7944ea8c9c1';
 
@@ -37,19 +35,24 @@ let renditions: StreamRenditionRepository;
 let userId: string;
 
 before(async () => {
-  database = new Database(DATABASE_URL);
+  // The suite's own instance, so the schema is migrated and no row of the
+  // development database is ever touched.
+  await requireStack();
+  database = new Database(stack().databaseUrl);
   try {
     const user = await database.pool.query<{ id: string }>(
       `INSERT INTO users (username, password_hash)
        VALUES ($1, 'scrypt$16384$8$1$aaaa$bbbb')
        RETURNING id`,
-      [`itest-repo-${randomUUID()}`],
+      // Short and lower-case: migration 005 added a CHECK mirroring
+      // USERNAME_RE, and a 47 character name would be refused by it.
+      [`itest-${randomUUID().slice(0, 8)}`],
     );
     userId = user.rows[0]!.id;
   } catch (err) {
     assert.fail(
-      `Postgres is not reachable/migrated at ${DATABASE_URL} (${String(err)}).\n` +
-        'Start it with: pnpm database:start && FEED_GATEWAY=fake pnpm dev',
+      `Postgres is not reachable/migrated at ${stack().databaseUrl} (${String(err)}).\n` +
+        'Start it with: pnpm database:start',
     );
   }
   streams = new StreamRepository(database.pool);
@@ -61,6 +64,7 @@ after(async () => {
     await database.pool.query('DELETE FROM users WHERE id = $1', [userId]);
   }
   await database.close();
+  await releaseStack();
 });
 
 async function claimedStream(publishedFeedIndex: number | null): Promise<string> {

@@ -22,7 +22,7 @@
 - Frontend↔API: same-origin relative fetch('/profiles'); vite.config.ts server.port 5080, proxy map per path prefix to MANAGER_URL (VITE_MANAGER_URL ?? http://localhost:9876) — SSE paths with proxyTimeout 0; nginx.conf mirrors with upstream + SPA try_files fallback. http.ts: extractApiError(res, fallback) (errors[] join '; ' → message → error → fallback) + getJson<T>(path). data.ts: one exported async fn per endpoint. EventSource('/events'). Types re-exported from common.
 - Frontend: main.tsx createTheme({palette:{mode:'dark'}}) + CssBaseline; flat src/ feature files, no router (useState<AppView> + MUI Tabs), Snackbar+Alert for errors, Dialog for destructive; icons imported individually; types/{index,interfaces,types}.ts barrel.
 
-## Manager API (port 9876, NO AUTH, firewall/ssh-tunnel scoped; api container publishes no port; web nginx 127.0.0.1:8080)
+## Manager API (port 9876; NO AUTH as of this 2026-09-11 snapshot of `master` — the `main-v2` line has since grown sessions, roles and a cross-site check, which web2-admin ported; firewall/ssh-tunnel scoped; api container publishes no port; web nginx 127.0.0.1:8080)
 GET /health {status:"ok"} | GET /config {host, srtPassphrase|null} | GET /services | GET /metrics, /metrics/stream (SSE), /metrics/disk/:project | GET /events (SSE profile.changed / profile.deleted)
 POST /profiles (202, allocates port_slot 1..999, inserts DEPLOYING, kicks deploy) | GET /profiles {profiles:[…]} | GET /profiles/:name | PUT /profiles/:name (202, full replace; omitted clears) | DELETE /profiles/:name (202, REMOVING → clean.sh → row deleted)
 POST /profiles/:name/deploy {services?} SSE | POST /profiles/:name/deploy-uploader SSE | POST /profiles/:name/stop SSE | GET /profiles/:name/health SSE

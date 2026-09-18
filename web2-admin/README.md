@@ -22,5 +22,12 @@ pnpm --filter @streaming-monorepo/web2-admin-backend database:start
 pnpm dev                                                    # backend on :9877, frontend on :5081
 ```
 
-Log in at http://localhost:5081 with the seeded user from `.env` (`admin` /
-`admin1234` by default) and change the password on the Account page.
+There is no seeded account. Create the first user on the host, which makes it
+an admin:
+
+```bash
+pnpm --filter @streaming-monorepo/web2-admin-backend user:add <username>
+```
+
+Then log in at http://localhost:5081. The Access page manages users and
+passwords.

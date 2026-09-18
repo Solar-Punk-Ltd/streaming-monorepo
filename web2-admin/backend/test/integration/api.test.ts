@@ -5,16 +5,12 @@
  * Prerequisites (from web2-admin/backend/):
  *
  *   pnpm database:start                     # Postgres on 127.0.0.1:5433
- *   FEED_GATEWAY=fake pnpm dev              # API on :9877
  *   pnpm test:integration
  *
- * FEED_GATEWAY=fake matters: the publish steps expect feed writes to succeed
- * without a Bee node or a usable postage batch. Against FEED_GATEWAY=bee they
- * assert the real thing and will fail if Swarm is not reachable.
- *
- * Point elsewhere with WEB2_ADMIN_URL, and at another login with
- * ADMIN_USERNAME / ADMIN_PASSWORD. Everything created is removed in `after`,
- * including after a failed test; nothing else is touched.
+ * The suite starts a backend of its own on a free port, against a throwaway
+ * database, with FEED_GATEWAY=fake — see instance.ts. It never talks to the
+ * development backend on :9877, which writes to a real Bee node and the real
+ * catalogue. Everything it creates goes with the database in `after`.
  */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
@@ -29,12 +25,15 @@ import type {
 } from '@streaming-monorepo/web2-admin-common';
 
 import {
+  ADMIN_PASSWORD,
+  ADMIN_USERNAME,
   api,
   cleanup,
   forgetCookie,
   login,
   PNG_1X1,
   raw,
+  releaseStack,
   requireStack,
   sessionCookie,
 } from './helpers.js';
@@ -53,6 +52,7 @@ before(requireStack);
 after(async () => {
   await login();
   await cleanup(created);
+  await releaseStack();
 });
 
 describe('unauthenticated surface', () => {
@@ -130,7 +130,7 @@ describe('login', () => {
   it('refuses a wrong password without saying why', async () => {
     forgetCookie();
     const response = await raw('POST', '/api/auth/login', {
-      body: { username: 'admin', password: 'definitely-not-it' },
+      body: { username: ADMIN_USERNAME, password: 'definitely-not-it' },
     });
     assert.equal(response.status, 401);
     assert.deepEqual(response.body, { error: 'invalid_credentials' });
@@ -139,30 +139,16 @@ describe('login', () => {
 
   it('rejects a malformed body as a validation error', async () => {
     const response = await raw('POST', '/api/auth/login', {
-      body: { username: 'admin' },
+      body: { username: ADMIN_USERNAME },
     });
     assert.equal(response.status, 400);
     assert.equal((response.body as { error: string }).error, 'validation_error');
   });
 
-  it('does not throttle usernames that do not exist', async () => {
-    // Nothing to guess behind them, and remembering them is how the throttle's
-    // memory would be filled for free. The 11th attempt used to be a 429.
-    forgetCookie();
-    const username = `itest-nobody-${Date.now()}`;
-    for (let attempt = 1; attempt <= 11; attempt += 1) {
-      const response = await raw('POST', '/api/auth/login', {
-        body: { username, password: 'x' },
-      });
-      assert.equal(response.status, 401, `attempt ${attempt}`);
-      assert.deepEqual(response.body, { error: 'invalid_credentials' });
-    }
-  });
-
   it('sets an httpOnly session cookie, and /auth/me reads it back', async () => {
     forgetCookie();
     const response = await raw('POST', '/api/auth/login', {
-      body: { username: 'admin', password: process.env.ADMIN_PASSWORD ?? 'admin1234' },
+      body: { username: ADMIN_USERNAME, password: ADMIN_PASSWORD },
     });
     assert.equal(response.status, 200);
 
@@ -173,7 +159,7 @@ describe('login', () => {
     assert.match(setCookie, /Path=\//i);
 
     const me = await api<MeResponse>('GET', '/api/auth/me');
-    assert.equal(me.user.username, 'admin');
+    assert.equal(me.user.username, ADMIN_USERNAME);
     assert.equal((response.body as MeResponse).user.id, me.user.id);
   });
 });

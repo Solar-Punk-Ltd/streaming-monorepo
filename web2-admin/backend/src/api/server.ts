@@ -2,7 +2,7 @@ import http from 'node:http';
 
 import express from 'express';
 
-import { AuthService } from '../domain/AuthService.js';
+import { AuthService } from '../domain/auth/AuthService.js';
 import { Database } from '../domain/Database.js';
 import type { FeedIdentity } from '../domain/feedIdentity.js';
 import { IngestService } from '../domain/IngestService.js';
@@ -12,11 +12,11 @@ import { PublishService } from '../domain/PublishService.js';
 import { StreamService } from '../domain/StreamService.js';
 import { StreamStateService } from '../domain/StreamStateService.js';
 
-import type { SessionCookieConfig } from './cookies.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFound } from './middleware/notFound.js';
 import { createRequireAuth } from './middleware/requireAuth.js';
 import { createRequireInternalToken } from './middleware/requireInternalToken.js';
+import { requireSameSite } from './middleware/requireSameSite.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createConfigRouter } from './routes/config.js';
@@ -40,7 +40,6 @@ export interface ApiDeps {
   /** Bearer token for /api/internal; never accepted anywhere else. */
   internalApiToken: string;
   feed: FeedIdentity;
-  cookie: SessionCookieConfig;
   viewerBaseUrl: string;
 }
 
@@ -56,29 +55,41 @@ export function startApiServer(
   const app = express();
 
   app.use(requestLogger);
+
   // Thumbnails are raw image bodies with their own, much larger limit; see the
   // streams router. Everything else is small JSON.
-  app.use(express.json({ limit: '256kb' }));
+  const json = express.json({ limit: '256kb' });
 
-  const requireAuth = createRequireAuth(deps.authService);
-
-  app.use('/api/health', createHealthRouter(deps.database));
-  // Mounted before the session routes and on a path of its own: the uploader's
-  // bearer token and the console's session cookie authenticate disjoint
-  // surfaces, and nothing is shared between the two but the database.
+  // The uploader's routes, mounted ahead of the cross-site check and with a
+  // body parser of their own.
+  //
+  // /api/internal is a machine caller: swarm-hls-stream posts from a server
+  // with no Origin, no Sec-Fetch-Site and no custom header, and it authenticates
+  // with a bearer token that no browser holds. Putting it behind requireSameSite
+  // would refuse every report it makes and break the live streaming loop, while
+  // buying nothing: a cross-site page cannot forge the token either, and the
+  // session cookie is never accepted here. Mounted first so the check that
+  // follows never sees these requests at all.
   app.use(
     '/api/internal',
+    json,
     createInternalRouter({
       streamStateService: deps.streamStateService,
       ladderService: deps.ladderService,
       requireInternalToken: createRequireInternalToken(deps.internalApiToken),
     }),
   );
+
+  // Ahead of the body parser: a write from another site is refused before its
+  // body is read, not after.
+  app.use(requireSameSite);
+  app.use(json);
+
+  const requireAuth = createRequireAuth(deps.authService);
+
+  app.use('/api/health', createHealthRouter(deps.database));
   app.use('/api/config', createConfigRouter(deps.feed, deps.viewerBaseUrl));
-  app.use(
-    '/api/auth',
-    createAuthRouter(deps.authService, deps.cookie, requireAuth),
-  );
+  app.use('/api/auth', createAuthRouter(deps.authService, requireAuth));
   app.use(
     '/api/feed',
     createFeedRouter({

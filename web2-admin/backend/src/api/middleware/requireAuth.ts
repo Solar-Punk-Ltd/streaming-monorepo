@@ -1,21 +1,34 @@
 import { NextFunction, Request, RequestHandler, Response } from 'express';
 
-import { AuthService } from '../../domain/AuthService.js';
-import { UnauthenticatedError } from '../../domain/errors/index.js';
+import type {
+  AuthService,
+  SessionInfo,
+} from '../../domain/auth/AuthService.js';
+import {
+  AdminRequiredError,
+  UnauthenticatedError,
+} from '../../domain/errors/index.js';
 import type { UserRow } from '../../types/index.js';
-import { readSessionToken } from '../cookies.js';
+import { clearSessionCookie, readSessionToken } from '../cookies.js';
 
 /**
- * Loads the session named by the cookie and puts the user on the request.
- * Everything under /api/streams and /api/auth/{me,password} is behind it.
+ * The gate. Loads the session named by the cookie and puts the user on the
+ * request; everything mounted behind it needs a live session.
+ *
+ * A cookie that no longer opens anything is cleared on the way out, so a
+ * browser that has been away for a fortnight stops sending a dead token.
  */
 export function createRequireAuth(authService: AuthService): RequestHandler {
-  return async (req: Request, _res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const token = readSessionToken(req);
-      const session = token ? await authService.authenticate(token) : null;
-      if (!session) throw new UnauthenticatedError();
+      const session = token ? await authService.sessionFor(token) : null;
+      if (!session) {
+        if (token) clearSessionCookie(req, res);
+        throw new UnauthenticatedError();
+      }
 
+      req.authSession = session;
       req.user = session.user;
       req.sessionTokenHash = session.tokenHash;
       next();
@@ -33,3 +46,14 @@ export function requireUser(req: Request): {
   if (!req.user || !req.sessionTokenHash) throw new UnauthenticatedError();
   return { user: req.user, tokenHash: req.sessionTokenHash };
 }
+
+/** The whole session on a request that came through requireAuth. */
+export function signedInSession(req: Request): SessionInfo {
+  if (!req.authSession) throw new UnauthenticatedError();
+  return req.authSession;
+}
+
+/** Mounted after `requireAuth`: refuses anyone who cannot manage users. */
+export const requireAdmin: RequestHandler = (req, _res, next) => {
+  next(requireUser(req).user.is_admin ? undefined : new AdminRequiredError());
+};

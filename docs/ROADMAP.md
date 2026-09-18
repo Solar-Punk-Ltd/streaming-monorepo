@@ -18,7 +18,7 @@ short note here on what was decided.
 - pnpm workspace at the root, `web2-admin` as the first package.
 - Design brief for the admin layer copied out of the interactive model.
 
-## Checkpoint 2: first working slice (in progress)
+## Checkpoint 2: first working slice (merged 2026-09-18, PRs 1 to 5)
 
 Spec: docs/architecture/web2-admin-checkpoint-2.md. Decided: same stack as
 streaming-infra-manager, packages `web2-admin/{common,backend,frontend}`,
@@ -38,10 +38,10 @@ scope `@streaming-monorepo/`.
   console flipped to Live, viewer played it.
 
 Lesson from that run: when the postage batch expired, the catalogue feed lost
-indexes 3 to 5 and Bee's lookup stopped at 2, hiding the live entry at 6.
-Follow-up for the backend: keep its own last-written index and probe for gaps
-instead of trusting the lookup alone, and warn in the console when the batch
-is near expiry.
+indexes 3 to 5 and Bee's lookup stopped at 2, hiding the live entry at 6. The
+backend now takes the index and the base payload from its own `feed_writes`
+rows rather than from a Bee lookup. Still open: warn in the console when the
+batch is near expiry.
 
 Verified 2026-09-11 with the real backend on Postgres and the real frontend in
 a browser: login, create, edit with tags, publish (feed index 0), republish
@@ -86,6 +86,29 @@ and `vod` still come from the state route, and a `vod` for a ladder carries the
 **master's** feed index, not a rung's.
 Admin side done on `feat/web2admin-abr`; the uploader half is the same branch
 name in swarm-hls-stream.
+
+## Operator authentication (2026-09-18)
+
+streaming-infra-manager grew a full auth stack on its `main-v2` line, and this
+repo now runs a port of it rather than a second design. Spec:
+[web2-admin-auth.md](architecture/web2-admin-auth.md).
+
+- scrypt at the manager's cost, a password policy, and a decoy hash so an
+  unknown username costs the same as a real one.
+- No seeded account. The first user is created on the host with
+  `pnpm user:add`, and is an admin because somebody has to make the second.
+- Users, an admin role, add, remove and sign-out-everywhere, refusing to
+  remove the last user or the last admin.
+- Sessions on two clocks, idle and absolute, with a daily sweep.
+- A login limiter keyed on the username, the client address and the
+  password-change path, counting attempts before the hash rather than after,
+  with nginx refusing a flood in front of it.
+- A cross-site check on every write. `/api/internal` is mounted ahead of it,
+  because the uploader is a machine caller with no Origin and no header.
+
+Not ported: the manager's `OpenStreams` and stream revalidator, which exist to
+kill live server-sent event connections on revoke and expiry. This service has
+no SSE, so nothing outlives its request.
 
 ## Checkpoint 3: manager integration
 

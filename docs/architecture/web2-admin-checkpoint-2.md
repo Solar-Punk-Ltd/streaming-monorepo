@@ -1,5 +1,11 @@
 # web2-admin, checkpoint 2: first working slice
 
+> This is the design as it was written for checkpoint 2, kept for the reasoning
+> behind each decision. It is not a description of the code today: the schema
+> has moved on, and authentication was later replaced by the port described in
+> [web2-admin-auth.md](web2-admin-auth.md). Read the package READMEs for what
+> is actually there.
+
 Goal, in a team member's words: an MSRS-like admin frontend in this repo, working end
 to end for four features, improved later. The four features:
 

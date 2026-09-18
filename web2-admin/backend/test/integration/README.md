@@ -1,29 +1,31 @@
 # Integration tests
 
-End-to-end tests against a **live** stack. The API suites drive the running
-backend over HTTP — the same requests the console makes, nothing imported from
-`src`; the two others exercise `BeeFeedGateway` and `StreamRepository`
-directly, because a Bee node and Postgres are exactly what a fake cannot
-stand in for.
+End-to-end tests against a **live** backend — but one the suite starts itself.
+
+`test/integration/instance.ts` creates a throwaway database beside the one in
+`DATABASE_URL`, makes the first user by running the `user:add` CLI against it,
+spawns `src/index.ts` under tsx on a free port with `FEED_GATEWAY=fake`, and
+drops the database again in `after`. Every API suite drives that instance over
+HTTP — the same requests the console makes, cross-site header and all; the two
+repository suites use its database and its Bee-less gateway directly, because
+Postgres and a Bee node are exactly what a fake cannot stand in for.
+
+**It never talks to the development backend on :9877.** It could not even if it
+wanted to: there is no seeded account any more, so the suite has no credentials
+for an instance it did not create. That is the point — this suite publishes,
+reports state and unpublishes, and the development backend writes to a real Bee
+node and the real catalogue.
 
 ## Prerequisites
 
 ```bash
 # from web2-admin/backend/
-cp .env.sample .env        # FEED_GATEWAY=fake, set FEED_PRIVATE_KEY and INGEST_HOST
+cp .env.sample .env        # only DATABASE_URL is read from it here
 pnpm database:start        # Postgres on 127.0.0.1:5433
-pnpm dev                   # API on :9877
 ```
 
-Never point this suite at an instance running `FEED_GATEWAY=bee` against a real
-Bee node and a real catalogue: it publishes, reports state and unpublishes. If
-one is already running on :9877, start a second instance on a port of its own —
-`WEB2_ADMIN_PORT=9879 FEED_GATEWAY=fake pnpm dev`, its own `DATABASE_URL` if
-the admin password of the first is not the seed one — and run with
-`WEB2_ADMIN_URL=http://localhost:9879`.
-
-`FEED_GATEWAY=fake` matters: the publish steps expect feed writes to succeed
-without a Bee node or a usable postage batch.
+The Postgres role in `DATABASE_URL` must be able to `CREATE DATABASE`; the one
+`pnpm database:start` brings up is the image's superuser, so it can.
 
 ## Run
 
@@ -33,11 +35,12 @@ pnpm test:integration
 
 | Env | Default | |
 | --- | --- | --- |
-| `WEB2_ADMIN_URL` | `http://localhost:9877` | API under test |
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / `admin1234` | the login to use |
-| `DATABASE_URL` | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin` | database for the repository suite |
-| `BEE_URL` + `POSTAGE_BATCH_ID` | unset | when both are set, the bee-js suite runs too |
-| `INTERNAL_API_TOKEN` | `web2-admin-integration-internal-token-000000` | must equal the token the API under test booted with |
+| `DATABASE_URL` | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin` | where Postgres is. The throwaway database is created beside it |
+| `BEE_URL` + `POSTAGE_BATCH_ID` | unset | when both are set, the bee-js suite runs too, against a key and topic of its own |
+
+The instance's own settings — port, user, internal token, feed key — are fixed
+in `instance.ts` and are not configurable: they belong to a database that is
+about to be dropped.
 
 ## What it covers
 
@@ -45,6 +48,7 @@ pnpm test:integration
 | --- | --- |
 | unauthenticated surface | `/api/health` and `/api/config` need no session; every stream route and `/api/auth/{me,password}` answer `401 unauthenticated`; unknown paths `404` with the path echoed |
 | login | wrong password `401 invalid_credentials`, malformed body `400`, success sets an httpOnly SameSite=Lax cookie that `/api/auth/me` reads back |
+| sign-in (`auth.test.ts`) | the CLI-made first user is an admin with a recorded last sign-in; `GET /api/auth/session` answers 401 without a cookie and the user with one; the cookie carries no expiry of its own; a write without `x-requested-with` is `403 cross_site_request` before its body is read, and so is one whose `Origin` names another site, while a read is not; **`/api/internal` answers on its bearer token alone with none of those headers**, and `401` without the token; adding, listing, revoking and removing users, including the refusals for a plain user, for yourself and for an id that is not a user; a password change that keeps this session and drops the others; and last, because it locks the client address for a minute, the lockout on the fifth wrong password |
 | stream lifecycle | create → list → edit → media type editable as a draft → thumbnail stored and served byte-identical → non-image `415` → publish (entry on the feed, thumbnail uploaded, status `published`) → ingest details and key rotation → delete refused `409 stream_published` → edit keeps it published → media type change refused `409 media_type_locked` → unpublish back to `draft` → delete → `404` |
 | logout | clears the cookie and the session |
 | internal API authentication | every `/api/internal` route answers `401 unauthenticated` without a bearer token, with a wrong one, and with a valid console session cookie instead |
@@ -52,6 +56,7 @@ pnpm test:integration
 | internal state reports | a `live` report for a stream that was never published is `409 invalid_state_transition`; a body the contract forbids (`vod` without the numbers, `live` with them, a state this backend owns) is `400`; `live` flips the row and the **catalogue entry** read back out of `feed_writes`; a repeated `live` does not move `liveSince`; delete and unpublish are `409 stream_live` while it is live; the title stays editable and the schedule is `409 stream_locked`; a manual republish keeps it live; `vod` puts `index` and `duration` on the entry; a `live` report afterwards resumes the broadcast and takes the recording back off the row and the entry; unpublishing the recording clears everything the uploader reported |
 | internal rendition reports | an unknown id is `404`, a draft `409 invalid_state`, and a body the contract forbids (`index` without `duration` and back, a name with `_`, a topic that is not a UUID) is `400`; a ladder built rung by rung comes back ascending by height and lands on the **catalogue entry** with `group` = the stream's topic; the status never moves; `finished` waits for the last rung, then `flippedToFinished` fires once with the longest duration; a finished rung that reports again without an index on the same topic keeps its index and takes the new bitrate, while a report naming some other feed is taken as it arrived; a `live` report un-finishes every rung and leaves the ladder itself standing; a state report and a hand republish both carry the ladder; unpublishing deletes the rungs and the next publish announces a single-rendition stream |
 | feed reconcile | not covered here. `POST /api/feed/reconcile` needs a catalogue that disagrees with the database, which only a stale feed read produces; the diff itself is unit-tested against `FakeFeedGateway`. Calling it by hand against a `fake` instance is safe and answers `FeedReconcileResult` |
+| user removal (`userRepository.test.ts`) | the SQL a fake cannot stand in for: two removals sent together against Postgres leave exactly one user rather than none, which is what the `pg_advisory_xact_lock` in `deleteUnlessLast` is for; the last user who can manage users is refused; an id nobody has reads as missing |
 | resetOrphanedPublishing | the boot repair of rows left claimed by a process that died mid-publish, against real SQL: a first-time publish goes back to `draft`, an interrupted *re*publish back to `published` (so DELETE cannot orphan its feed entry), and a second boot has nothing to repair |
 | BeeFeedGateway | the real bee-js calls: an unwritten feed reads as "no index", a payload round trips, the head advances, a thumbnail downloads byte-identical. **Skipped** unless `BEE_URL` and `POSTAGE_BATCH_ID` are set; it signs a fresh random key and topic every run, so it can never touch the catalog this backend publishes |
 
@@ -65,8 +70,10 @@ pnpm test:integration
 - The internal API suite reads the catalogue entry back from `feed_writes`
   rather than from the API: that a row says `live` is not the same claim as
   that the entry a viewer reads says it, and only the second one matters.
-- Everything created is removed in `after`, including after a failed test; no
-  other row is touched (the repository suite creates its own user and deletes
-  it, streams cascading). The suite does not change the admin password.
+- Everything created goes with the throwaway database in `after`, including
+  after a failed test; no row of any other database is touched.
+- The lockout counts the client address as well as the username, and every
+  request in a test process comes from `127.0.0.1`. Anything that exhausts it
+  has to be the last thing that file does — see the end of `auth.test.ts`.
 - The stream lifecycle is one ordered scenario sharing a stream, so a failure
   early in it will cascade — read the first failure, not the last.

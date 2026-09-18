@@ -1,31 +1,145 @@
 import type {
+  AddUserRequest,
   ChangePasswordRequest,
   IngestDetails,
-  LoginRequest,
   MeResponse,
   PublicConfig,
   PublishResult,
   Stream,
   StreamInput,
   StreamListResponse,
+  User,
+  UserListResponse,
+  UserSummary,
 } from '@streaming-monorepo/web2-admin-common';
 
+import { SIGN_IN_MESSAGES, tooManyAttempts } from './authMessages';
 import {
+  apiFetch,
+  extractApiError,
+  failWith,
   getJson,
+  send,
   sendBytes,
   sendDelete,
   sendEmpty,
   sendJson,
+  ApiError,
 } from './http';
 
 const API = '/api';
 
 // --- auth -------------------------------------------------------------------
 
-export function login(body: LoginRequest): Promise<MeResponse> {
-  return sendJson<MeResponse>('POST', `${API}/auth/login`, body, {
-    expectUnauthorized: true,
-  });
+/** Why nobody is signed in, which is the whole of what the login page says. */
+export type SignedOutReason =
+  | 'notSignedIn'
+  | 'noUsers'
+  | 'ended'
+  | 'unreachable';
+
+export type SessionProbe =
+  | { signedIn: true; user: User }
+  | { signedIn: false; reason: SignedOutReason };
+
+export type SignInResult =
+  | { ok: true; user: User }
+  | { ok: false; message: string };
+
+/** What to say when a 429 carries neither a body nor a Retry-After header. */
+const LOCKOUT_FALLBACK_SECONDS = 60;
+
+/**
+ * How long the lockout has left. The body is the authority — it is the number
+ * the API actually counted — and the `Retry-After` header is the fallback for
+ * a 429 that came from nginx's own rate limit zone rather than from the API,
+ * which answers no body at all.
+ */
+async function retryAfterOf(res: Response): Promise<number> {
+  const header = Number(res.headers?.get('retry-after'));
+  try {
+    const body = (await res.json()) as { retryAfterSeconds?: number };
+    if (body.retryAfterSeconds) return body.retryAfterSeconds;
+  } catch {
+    /* the header below is the fallback */
+  }
+  return Number.isFinite(header) && header > 0
+    ? header
+    : LOCKOUT_FALLBACK_SECONDS;
+}
+
+/**
+ * Who is signed in, asked once on boot.
+ *
+ * 401 is an answer here rather than a session ending, and its body separates
+ * "nobody is signed in" from "no user has been created yet", which are two
+ * very different things to tell whoever is looking at the screen.
+ */
+export async function probeSession(): Promise<SessionProbe> {
+  try {
+    const res = await apiFetch(
+      `${API}/auth/session`,
+      {},
+      { allowUnauthorized: true },
+    );
+
+    if (res.ok) {
+      return { signedIn: true, user: ((await res.json()) as MeResponse).user };
+    }
+    if (res.status === 401) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      return {
+        signedIn: false,
+        reason: body.error === 'no_users' ? 'noUsers' : 'notSignedIn',
+      };
+    }
+    return { signedIn: false, reason: 'unreachable' };
+  } catch {
+    return { signedIn: false, reason: 'unreachable' };
+  }
+}
+
+/**
+ * Logging in. Answers rather than throws, because every way it can fail is
+ * something the form has to print above the password field.
+ */
+export async function signIn(
+  username: string,
+  password: string,
+): Promise<SignInResult> {
+  let res: Response;
+  try {
+    res = await apiFetch(
+      `${API}/auth/login`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      },
+      { allowUnauthorized: true },
+    );
+  } catch {
+    return { ok: false, message: SIGN_IN_MESSAGES.unreachable };
+  }
+
+  if (res.ok) return { ok: true, user: ((await res.json()) as MeResponse).user };
+  if (res.status === 429) {
+    return { ok: false, message: tooManyAttempts(await retryAfterOf(res)) };
+  }
+  if (res.status === 401) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    return {
+      ok: false,
+      message:
+        body.error === 'no_users'
+          ? SIGN_IN_MESSAGES.noUsers
+          : SIGN_IN_MESSAGES.wrongPair,
+    };
+  }
+  return {
+    ok: false,
+    message: await extractApiError(res, SIGN_IN_MESSAGES.unreachable),
+  };
 }
 
 export function logout(): Promise<void> {
@@ -33,20 +147,53 @@ export function logout(): Promise<void> {
 }
 
 /**
- * The session probe. A 401 here is expected on first load, so it resolves to
- * null instead of throwing and does not trip the global unauthorized handler.
+ * A 401 here means the current password was wrong, not that the session has
+ * gone, so it is answered rather than turned into a sign-out.
+ *
+ * Answers the updated user when the API returns one, so the console can show
+ * the new `passwordChangedAt` without another round trip.
  */
-export async function fetchMe(): Promise<MeResponse | null> {
-  const res = await fetch(`${API}/auth/me`, { credentials: 'same-origin' });
-  if (res.status === 401) return null;
-  if (!res.ok) throw new Error(`session check failed (${res.status})`);
-  return (await res.json()) as MeResponse;
+export async function changePassword(
+  body: ChangePasswordRequest,
+): Promise<User | null> {
+  const res = await apiFetch(
+    `${API}/auth/password`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+    { allowUnauthorized: true },
+  );
+
+  if (res.status === 401) {
+    throw new ApiError(
+      'That is not your current password.',
+      'invalid_credentials',
+      401,
+    );
+  }
+  if (!res.ok) await failWith(res, 'Could not change the password.');
+
+  const answer = (await res.json().catch(() => null)) as MeResponse | null;
+  return answer?.user ?? null;
 }
 
-export function changePassword(
-  body: ChangePasswordRequest,
-): Promise<MeResponse> {
-  return sendJson<MeResponse>('POST', `${API}/auth/password`, body);
+export async function fetchUsers(): Promise<UserSummary[]> {
+  const body = await getJson<UserListResponse>(`${API}/auth/users`);
+  return body.users;
+}
+
+export function addUser(body: AddUserRequest): Promise<void> {
+  return send('POST', `${API}/auth/users`, body);
+}
+
+export function removeUser(id: string): Promise<void> {
+  return send('DELETE', `${API}/auth/users/${encodeURIComponent(id)}`);
+}
+
+export function revokeSessions(id: string): Promise<void> {
+  return send('POST', `${API}/auth/users/${encodeURIComponent(id)}/revoke`, {});
 }
 
 // --- streams ----------------------------------------------------------------

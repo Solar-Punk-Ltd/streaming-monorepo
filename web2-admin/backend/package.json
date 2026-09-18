@@ -8,6 +8,7 @@
   "scripts": {
     "build": "pnpm --filter @streaming-monorepo/web2-admin-common build && tsc && rm -rf dist/migrations && cp -r src/migrations dist/migrations",
     "start": "node dist/index.js",
+    "user:add": "tsx --conditions=development src/cli.ts user:add",
     "dev": "tsx watch --conditions=development src/index.ts",
     "typecheck": "tsc -p tsconfig.typecheck.json",
     "test": "tsx --conditions=development --test 'test/unit/**/*.test.ts'",
