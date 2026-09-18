@@ -252,7 +252,7 @@ viewer plays.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/streams/by-ingest/:app/:stream` | Resolve a draft from the ingest stream id `<mediaType>/<topic>`. Returns `IngestLookupResponse` or 404. Only streams in `published`, `live` or `vod` resolve; a `draft` is not announced and is refused. |
-| POST | `/streams/:id/state` | `StreamStateReport`. `live` sets status `live` and `liveSince`, `vod` sets status `vod`, `manifestIndex`, `durationSeconds`, `endedAt`. Each report rewrites the catalogue entry with the new state (and `index`, `duration` for vod), through the same single-writer publish path. |
+| POST | `/streams/:id/state` | `StreamStateReport`. `live` sets status `live` and `liveSince`, `vod` sets status `vod`, `manifestIndex`, `durationSeconds`, `endedAt`. `vod → live` is allowed: a broadcast may go live again, because its feeds continue, and the `live` clears the finished recording from the row and from every rung. Each report rewrites the catalogue entry with the new state (and `index`, `duration` for vod), through the same single-writer publish path. |
 
 Config: `INTERNAL_API_TOKEN` (required, 32+ chars). Migration 002 adds
 `manifest_index BIGINT`, `duration_seconds DOUBLE PRECISION`,
@@ -275,7 +275,69 @@ its state.
   .../state {state:'live'}`; on stop, `{state:'vod', index, duration}`. Failed
   reports are retried a few times and logged; they never stop the stream.
 - Without `ADMIN_API_URL` everything behaves as on `main-v3` today.
-- ABR ladder in admin mode is out of scope for this step; single rendition.
+- ABR ladder in admin mode was out of scope for the first step (single
+  rendition only); the section below is what lifted that, 2026-09-15.
+
+#### ABR ladder in admin mode
+
+With `ABR_ENABLED=true` the uploader publishes not one manifest feed but five:
+a **master playlist** and one **rung feed** per rendition, each under its own
+topic and all signed by the same key. Standalone it mints a random group id for
+the master and merges the rungs together inside the catalogue feed it writes
+itself. In admin mode it writes no catalogue at all, so two things move:
+
+- **The declared topic is the master feed's topic.** The group id *is* the
+  stream's `topic`, the one the admin minted and the one every player link
+  already points at. Each rung feed's topic is derived from that declared topic
+  and the rung name, so it is stable across sessions too. The viewer needs no
+  change: it plays a ladder whenever the feed at the topic in the link holds a
+  master playlist.
+- **The merge state moves into the admin's database.** Each rung reports its
+  own record; the admin merges it, stores it, and writes the merged ladder onto
+  the catalogue entry.
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/streams/:id/renditions` | `RenditionReport` (= `Rendition`: `name`, `width`, `height`, `topic`, `bandwidth`, `avgBandwidth`, and `index` + `duration` once the rung finalizes — both or neither). Answers `RenditionReportResponse`: the stream, the merged ladder ascending by height, `ladder { finished, flippedToFinished, duration }`, and the catalogue write it caused. |
+
+The merge, one record per `(stream, name)`: the incoming report replaces the
+stored one, **except** that a stored rung which already has an `index` keeps
+its `index` and `duration` when the incoming report has none **and arrives on
+the same `topic`**, taking only geometry and bandwidths from it. The rule is
+copied from `StreamCatalog.keepingWhatFinished` in the uploader, where it was
+learned.
+
+A rung's topic is derived from the stream's declared topic and the rung name,
+so it does not change between sessions: every report for a rung arrives on the
+feed that rung's recordings already sit on, and an indexless one is that rung
+delivering again — recovered from a crash, or a **new session** above the
+previous head. Either way the recording it finished last stays addressable
+until that rung's next final report replaces it, which is what keeps the master
+playlist a viewer seeks a recording with on the entry. Un-finishing a ladder is
+the `live` state report's job: it clears every rung's `manifest_index` and
+`duration_seconds` in the same statement that takes the row out of `vod`.
+
+Semantics worth stating plainly:
+
+- **Status still comes from the state reports.** A rendition report never moves
+  a stream to `live` or `vod`; it only rewrites the entry. `live` is sent once
+  the first master playlist has been written to the declared topic, and `vod`
+  once, by the rung whose report came back `flippedToFinished: true`. That flag
+  is judged against the entry the report's own write replaced on the catalogue,
+  so overlapping final reports flip exactly one of them, and a report whose
+  write failed flips on its retry.
+- **`vod.index` for a ladder is the master's feed index**, not a rung's — it is
+  what a viewer opens. Each rung carries its own `index` inside `renditions`.
+- The entry gains `renditions: Rendition[]` and `group: string` (= the stream's
+  `topic`) whenever the stream has at least one rung, and neither otherwise, so
+  a single-rendition entry is exactly what it was before.
+- Refused: `404 stream_not_found`, `409 invalid_state` for `draft` (nothing
+  announced) and `publishing` (a feed write in flight), `400 validation_error`,
+  `502 publish_failed` when the row was stored but the catalogue write failed —
+  the uploader retries the whole report, and the merge is idempotent.
+
+Migration 004 adds `stream_renditions`, one row per `(stream_id, name)`;
+`finishUnpublish` deletes them alongside the state columns it already clears.
 
 ## Out of scope for checkpoint 2, tracked in the roadmap
 

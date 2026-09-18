@@ -252,28 +252,66 @@ export class StreamRepository {
    * The uploader's `live` report. `live_since` is set once per live run: a
    * repeated report (the uploader retries) must not keep moving it, and a
    * stream that goes live after having been announced gets a fresh one.
-   * `ended_at` is cleared, so a stream that is live is never also ended.
+   * `ended_at` is cleared, so a stream that is live is never also ended, and
+   * so are `manifest_index` and `duration_seconds`: a stream that is live has
+   * no finished recording, and a broadcast coming back after `vod` would
+   * otherwise keep listing the previous one while the new session writes over
+   * its head.
+   *
+   * The ladder is un-finished with it, in this one statement rather than
+   * through StreamRenditionRepository, for the reason `finishUnpublish` clears
+   * it in its own: a crash between two statements would leave the entry
+   * advertising rung recordings that have been superseded. Only a row coming
+   * back from `vod` is touched — a repeated `live` report must not throw away
+   * rungs that have finalized since, and there is nothing to clear for a
+   * broadcast that is starting for the first time. Index and duration go null
+   * together, as migration 004 requires.
    *
    * Conditional on `allowedFrom` for the same reason every other transition
    * here is: the check and the write are one statement, so two reports racing
    * cannot both win.
+   *
+   * ⛔ `locked` is read by `moved`, and that is what makes the lock work.
+   * Postgres runs a data-modifying CTE nothing selects from *after* the main
+   * query, so a `FOR UPDATE` that only an unreferenced CTE depends on is
+   * evaluated once the row has already been written by this same command —
+   * which makes it self-modified, skips it, and silently clears no rungs at
+   * all. Keeping the lock on the path the returned row depends on evaluates it
+   * first, before anything is written, and gives `unfinished` the status the
+   * row actually had. Do not reorder these.
    */
   async markLive(
     id: string,
     allowedFrom: readonly StreamStatus[],
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
-      `UPDATE streams
-          SET status = 'live',
-              live_since = CASE
-                WHEN status = 'live' AND live_since IS NOT NULL THEN live_since
-                ELSE NOW()
-              END,
-              ended_at = NULL,
-              publish_error = NULL,
-              updated_at = NOW()
-        WHERE id = $1 AND status = ANY($2::text[])
-        RETURNING ${STREAM_COLUMNS}`,
+      `WITH locked AS (
+         SELECT id, status FROM streams WHERE id = $1 FOR UPDATE
+       ), moved AS (
+         UPDATE streams
+            SET status = 'live',
+                live_since = CASE
+                  WHEN status = 'live' AND live_since IS NOT NULL THEN live_since
+                  ELSE NOW()
+                END,
+                manifest_index = NULL,
+                duration_seconds = NULL,
+                ended_at = NULL,
+                publish_error = NULL,
+                updated_at = NOW()
+          WHERE id IN (SELECT id FROM locked WHERE status = ANY($2::text[]))
+          RETURNING ${STREAM_COLUMNS}
+       ), unfinished AS (
+         UPDATE stream_renditions
+            SET manifest_index = NULL,
+                duration_seconds = NULL,
+                updated_at = NOW()
+          WHERE stream_id IN (
+            SELECT id FROM locked
+             WHERE status = 'vod' AND status = ANY($2::text[])
+          )
+       )
+       SELECT * FROM moved`,
       [id, allowedFrom],
     );
     return this.one(result.rows, result.rowCount);
@@ -376,13 +414,26 @@ export class StreamRepository {
    * Everything the uploader reported is cleared: the row is a draft again, and
    * a stale `live_since` or manifest index would describe a recording that is
    * no longer on the catalogue.
+   *
+   * The ABR ladder goes with it, in this one statement rather than through
+   * StreamRenditionRepository: the rungs are part of what the uploader
+   * reported, and a crash between two statements would leave a draft that
+   * carries a ladder from a broadcast nobody can play any more onto the next
+   * entry it is published with. The delete is scoped through `owned` so it
+   * cannot touch another user's stream when the UPDATE itself would not.
    */
   async finishUnpublish(
     id: string,
     userId: string,
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
-      `UPDATE streams
+      `WITH owned AS (
+         SELECT id FROM streams WHERE id = $1 AND user_id = $2
+       ), cleared AS (
+         DELETE FROM stream_renditions
+          WHERE stream_id IN (SELECT id FROM owned)
+       )
+       UPDATE streams
           SET status = 'draft',
               published_at = NULL,
               published_feed_index = NULL,
@@ -399,7 +450,10 @@ export class StreamRepository {
     return this.one(result.rows, result.rowCount);
   }
 
-  /** Releases the publishing claim back to where it came from, with the error. */
+  /**
+   * Releases the publishing claim back to where it came from, with the error.
+   * Only for the paths that took the claim — a first publish, an unpublish.
+   */
   async failPublish(
     id: string,
     userId: string,
@@ -413,6 +467,26 @@ export class StreamRepository {
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2`,
       [id, userId, previousStatus, message],
+    );
+  }
+
+  /**
+   * Records why a feed write failed, and nothing else. For the republish path,
+   * which takes no `publishing` claim: the status is whatever the uploader last
+   * reported, and putting back the one the caller saw would undo a `live` that
+   * landed while the write waited its turn.
+   */
+  async recordPublishError(
+    id: string,
+    userId: string,
+    message: string,
+  ): Promise<void> {
+    await this.pool.query(
+      `UPDATE streams
+          SET publish_error = $3,
+              updated_at = NOW()
+        WHERE id = $1 AND user_id = $2`,
+      [id, userId, message],
     );
   }
 

@@ -7,11 +7,13 @@ import type { FeedGateway } from './domain/FeedGateway.js';
 import { feedIdentityFrom } from './domain/feedIdentity.js';
 import { FeedWriteRepository } from './domain/FeedWriteRepository.js';
 import { IngestService } from './domain/IngestService.js';
+import { LadderService } from './domain/LadderService.js';
 import { Logger } from './domain/Logger.js';
 import { LoginRateLimiter } from './domain/LoginRateLimiter.js';
 import { PublishService } from './domain/PublishService.js';
 import { seedAdminUser } from './domain/seedAdmin.js';
 import { SessionRepository } from './domain/SessionRepository.js';
+import { StreamRenditionRepository } from './domain/StreamRenditionRepository.js';
 import { StreamRepository } from './domain/StreamRepository.js';
 import { StreamService } from './domain/StreamService.js';
 import { StreamStateService } from './domain/StreamStateService.js';
@@ -121,6 +123,7 @@ async function main(): Promise<void> {
   const userRepository = new UserRepository(database.pool);
   const sessionRepository = new SessionRepository(database.pool);
   const streamRepository = new StreamRepository(database.pool);
+  const renditionRepository = new StreamRenditionRepository(database.pool);
   const feedWriteRepository = new FeedWriteRepository(database.pool);
 
   await seedAdminUser(userRepository, {
@@ -149,6 +152,7 @@ async function main(): Promise<void> {
   const streamService = new StreamService(streamRepository, feed);
   const publishService = new PublishService(
     streamRepository,
+    renditionRepository,
     feedWriteRepository,
     createFeedGateway(),
     feed,
@@ -170,6 +174,11 @@ async function main(): Promise<void> {
     streamRepository,
     publishService,
   );
+  const ladderService = new LadderService(
+    streamRepository,
+    renditionRepository,
+    publishService,
+  );
 
   apiServer = startApiServer(
     {
@@ -177,6 +186,7 @@ async function main(): Promise<void> {
       authService,
       streamService,
       streamStateService,
+      ladderService,
       publishService,
       ingestService,
       internalApiToken: config.internalApiToken,

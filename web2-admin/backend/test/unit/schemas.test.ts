@@ -14,6 +14,7 @@ import { ValidationError } from 'yup';
 import { changePasswordSchema, loginSchema } from '../../src/schemas/auth.js';
 import {
   ingestLookupParamSchema,
+  renditionReportSchema,
   streamStateSchema,
 } from '../../src/schemas/internal.js';
 import {
@@ -289,5 +290,98 @@ describe('streamStateSchema', () => {
       await errorsFor(streamStateSchema, { state: 'published' }),
       ['state must be one of live, vod'],
     );
+  });
+});
+
+describe('renditionReportSchema', () => {
+  const goodRung = {
+    name: '720p',
+    width: 1280,
+    height: 720,
+    topic: 'bbbbbbbb-0000-4000-8000-000000000720',
+    bandwidth: 2800000,
+    avgBandwidth: 2400000,
+  };
+
+  it('accepts a rung that is still delivering', async () => {
+    const value = await validate(renditionReportSchema, goodRung);
+    assert.deepEqual(value, goodRung);
+  });
+
+  it('accepts a rung that has finalized', async () => {
+    const value = await validate(renditionReportSchema, {
+      ...goodRung,
+      index: 42,
+      duration: 61.5,
+    });
+    assert.deepEqual(value, { ...goodRung, index: 42, duration: 61.5 });
+  });
+
+  it('refuses one of index and duration without the other', async () => {
+    // A ladder is finished when every rung has an index, and an index with no
+    // duration would finish it with nothing to put on the entry's seek bar.
+    const message = 'index and duration are sent together, or neither is';
+    assert.deepEqual(
+      await errorsFor(renditionReportSchema, { ...goodRung, index: 42 }),
+      [message],
+    );
+    assert.deepEqual(
+      await errorsFor(renditionReportSchema, { ...goodRung, duration: 61.5 }),
+      [message],
+    );
+  });
+
+  it('accepts index 0 with duration 0, which is not "absent"', async () => {
+    const value = await validate(renditionReportSchema, {
+      ...goodRung,
+      index: 0,
+      duration: 0,
+    });
+    assert.equal(value.index, 0);
+    assert.equal(value.duration, 0);
+  });
+
+  it('refuses a name outside the charset the uploader uses', async () => {
+    // '_' separates the base from the rung in an ingest id, so it cannot be
+    // part of a rung name; the rest would end up in a master playlist and in
+    // log lines unescaped.
+    for (const name of ['720_p', '720p/../etc', '', 'x'.repeat(33), 'rung p']) {
+      const errors = await errorsFor(renditionReportSchema, {
+        ...goodRung,
+        name,
+      });
+      assert.ok(errors.some((e) => e.includes('name')), `accepted ${name}`);
+    }
+  });
+
+  it('refuses a rung topic that is not a UUID', async () => {
+    assert.deepEqual(
+      await errorsFor(renditionReportSchema, {
+        ...goodRung,
+        topic: "' OR 1=1 --",
+      }),
+      ['topic must be a UUID'],
+    );
+  });
+
+  it('refuses geometry and bandwidths that cannot describe a rung', async () => {
+    const errors = await errorsFor(renditionReportSchema, {
+      ...goodRung,
+      width: 0,
+      height: -720,
+      bandwidth: -1,
+      avgBandwidth: 2400000.5,
+    });
+    assert.deepEqual(errors.sort(), [
+      'avgBandwidth must be a whole number',
+      'bandwidth must not be negative',
+      'height must be positive',
+      'width must be positive',
+    ]);
+  });
+
+  it('requires every field a master playlist entry needs', async () => {
+    const errors = await errorsFor(renditionReportSchema, {});
+    assert.equal(errors.length, 6, errors.join('; '));
   });
 });

@@ -2,10 +2,13 @@ import { isDeepStrictEqual } from 'node:util';
 
 import type {
   FeedStreamEntry,
+  Rendition,
   StreamStatus,
 } from '@streaming-monorepo/web2-admin-common';
 
 import type { StreamRow } from '../types/index.js';
+
+import { isRendition } from './renditions.js';
 
 /**
  * The stream list feed is a JSON array that everything on it rewrites whole.
@@ -47,6 +50,29 @@ export function removeEntry(
 }
 
 /**
+ * The ladder the stream's entry carries on the list right now — what
+ * `upsertEntry` is about to replace. Empty when the stream has no entry there
+ * or its entry carries no `renditions`.
+ *
+ * Read rung by rung rather than cast: an element that names our `(owner,
+ * topic)` is still only JSON somebody wrote. A ladder with a rung this backend
+ * cannot read counts as no ladder at all. Of the two ways to be wrong about
+ * what was there, that one costs a repeated `vod` report, which the state
+ * route takes; the other costs a `vod` that is never sent.
+ */
+export function ladderOnFeed(
+  entries: unknown[],
+  owner: string,
+  topic: string,
+): Rendition[] {
+  const entry = entries.find((e) => sameId(e, owner, topic));
+  if (typeof entry !== 'object' || entry === null) return [];
+  const renditions = (entry as { renditions?: unknown }).renditions;
+  if (!Array.isArray(renditions)) return [];
+  return renditions.every(isRendition) ? [...renditions] : [];
+}
+
+/**
  * The entry's `state` is the row's status, narrowed to the three values the
  * viewer knows. Everything this backend does on its own — a draft claimed into
  * `publishing`, a published stream nobody has streamed yet — is an
@@ -70,11 +96,19 @@ export function feedEntryState(status: StreamStatus): FeedStreamEntry['state'] {
  * a `vod` entry and only once the uploader has reported them — an entry that
  * carries neither is a live or scheduled stream, exactly as swarm-hls-stream's
  * reader expects.
+ *
+ * `renditions` is the stream's ABR ladder, and `group` the topic its master
+ * playlist is published under — which in admin mode is the stream's own topic,
+ * because the admin declares it and the uploader publishes the master there.
+ * Both are written only when the uploader has reported at least one rung, so a
+ * single-rendition stream's entry is byte-identical to what it was before the
+ * ladder existed.
  */
 export function buildFeedEntry(
   stream: StreamRow,
   thumbnailRef: string | null,
   timestamp: number,
+  renditions: readonly Rendition[] = [],
 ): FeedStreamEntry {
   const state = feedEntryState(stream.status);
   const entry: FeedStreamEntry = {
@@ -96,6 +130,10 @@ export function buildFeedEntry(
     if (stream.duration_seconds !== null) {
       entry.duration = stream.duration_seconds;
     }
+  }
+  if (renditions.length > 0) {
+    entry.group = stream.topic;
+    entry.renditions = [...renditions];
   }
   return entry;
 }
@@ -155,6 +193,11 @@ function entryOwner(value: unknown): string | null {
  * `userId`, when given, narrows which rows may be added or rewritten to that
  * user's. Ghost removal ignores it on purpose: an entry with no row behind it
  * belongs to nobody, and scoping would make it unremovable all over again.
+ *
+ * `ladders` is each row's stored ABR rungs, by stream id, and it has to be
+ * given for the rebuild to mean anything on a ladder stream: an entry rebuilt
+ * from the row alone carries no `renditions`, so without it every ladder reads
+ * as drifted and the "drift" written is the ladder coming off the catalogue.
  */
 export function planReconcile(
   base: unknown[],
@@ -162,6 +205,7 @@ export function planReconcile(
   feedOwner: string,
   userId?: string,
   now: number = Date.now(),
+  ladders: ReadonlyMap<string, readonly Rendition[]> = new Map(),
 ): ReconcilePlan {
   const owner = feedOwner.toLowerCase();
   const byTopic = new Map(rows.map((row) => [row.topic.toLowerCase(), row]));
@@ -198,6 +242,7 @@ export function planReconcile(
       row,
       row.thumbnail_ref,
       typeof timestamp === 'number' ? timestamp : now,
+      ladders.get(row.id) ?? [],
     );
     if (isDeepStrictEqual(element, rebuilt)) {
       entries.push(element);
@@ -212,7 +257,9 @@ export function planReconcile(
     if (userId && row.user_id !== userId) continue;
     if (row.owner.toLowerCase() !== owner) continue;
     added.push(row.topic);
-    entries.push(buildFeedEntry(row, row.thumbnail_ref, now));
+    entries.push(
+      buildFeedEntry(row, row.thumbnail_ref, now, ladders.get(row.id) ?? []),
+    );
   }
 
   return {

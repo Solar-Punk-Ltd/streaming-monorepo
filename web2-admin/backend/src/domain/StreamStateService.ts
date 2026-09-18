@@ -1,6 +1,7 @@
 import type {
   MediaType,
   StreamStateReport,
+  StreamStatus,
 } from '@streaming-monorepo/web2-admin-common';
 
 import type { StreamRow } from '../types/index.js';
@@ -11,10 +12,25 @@ import {
 } from './errors/index.js';
 import { Logger } from './Logger.js';
 import type { PublishOutcome, PublishService } from './PublishService.js';
-import { StreamRepository } from './StreamRepository.js';
 import { allowedFromFor, isStateTransitionAllowed } from './streamState.js';
 
 const logger = Logger.getInstance();
+
+/** The slice of StreamRepository a state report needs; a fake stands in. */
+export interface StateStreamStore {
+  findByTopic(topic: string): Promise<StreamRow | null>;
+  findByIdUnscoped(id: string): Promise<StreamRow | null>;
+  markLive(
+    id: string,
+    allowedFrom: readonly StreamStatus[],
+  ): Promise<StreamRow | null>;
+  markVod(
+    id: string,
+    allowedFrom: readonly StreamStatus[],
+    manifestIndex: number,
+    durationSeconds: number,
+  ): Promise<StreamRow | null>;
+}
 
 /**
  * The uploader's half of the contract: resolve the draft an encoder just
@@ -27,7 +43,7 @@ const logger = Logger.getInstance();
  */
 export class StreamStateService {
   constructor(
-    private readonly streams: StreamRepository,
+    private readonly streams: StateStreamStore,
     private readonly publishService: PublishService,
   ) {}
 
@@ -98,6 +114,10 @@ export class StreamStateService {
   ): Promise<StreamRow | null> {
     const allowedFrom = allowedFromFor(report.state);
     if (report.state === 'live') {
+      // A row coming back from `vod` is un-finished by this one statement —
+      // the recording columns and every rung's index and duration — so the
+      // republish below writes `live` with a ladder that carries no indexes,
+      // and the next final reports flip it again.
       return this.streams.markLive(existing.id, allowedFrom);
     }
     // The schema has already established that a `vod` report carries both.
