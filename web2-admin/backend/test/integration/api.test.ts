@@ -36,6 +36,7 @@ import {
   releaseStack,
   requireStack,
   sessionCookie,
+  stack,
 } from './helpers.js';
 
 const created = new Set<string>();
@@ -385,6 +386,88 @@ describe('stream lifecycle', () => {
       (malformed.body as { error: string }).error,
       'validation_error',
     );
+  });
+});
+
+/**
+ * A stream belongs to the installation. Everything below is done by a second
+ * operator, on a stream the first one drafted, through the same routes the
+ * console uses — the point being that none of it is refused. `requireAuth`
+ * still gates every one of these: the 401 sweep above is the other half.
+ */
+describe('a second operator, on the first one’s stream', () => {
+  const SECOND_USERNAME = 'itest-mate';
+  const SECOND_PASSWORD = 'a-second-operators-password';
+  let id = '';
+
+  before(async () => {
+    await login();
+    const drafted = await api<Stream>('POST', '/api/streams', {
+      body: { ...draft, title: 'itest shared' },
+    });
+    id = drafted.id;
+    created.add(id);
+    await stack().addUser(SECOND_USERNAME, SECOND_PASSWORD, false);
+    await login(SECOND_USERNAME, SECOND_PASSWORD);
+  });
+
+  after(async () => {
+    await login();
+  });
+
+  it('sees it in the list, and reads it', async () => {
+    const list = await api<StreamListResponse>('GET', '/api/streams');
+    assert.ok(
+      list.streams.some((s) => s.id === id),
+      'the list is the installation’s, not the caller’s',
+    );
+    assert.equal((await api<Stream>('GET', `/api/streams/${id}`)).id, id);
+  });
+
+  it('edits it, and rotates its publish key', async () => {
+    const edited = await api<Stream>('PUT', `/api/streams/${id}`, {
+      body: { ...draft, title: 'itest shared, edited by the second operator' },
+    });
+    assert.equal(edited.title, 'itest shared, edited by the second operator');
+
+    const details = await api<IngestDetails>('GET', `/api/streams/${id}/ingest`);
+    const rotated = await api<IngestDetails>(
+      'POST',
+      `/api/streams/${id}/ingest/rotate-key`,
+    );
+    assert.notEqual(rotated.publishKey, details.publishKey);
+  });
+
+  it('sets its thumbnail, and clears it again', async () => {
+    const stored = await api<Stream>('PUT', `/api/streams/${id}/thumbnail`, {
+      raw: PNG_1X1,
+      contentType: 'image/png',
+    });
+    assert.equal(stored.hasThumbnail, true);
+
+    const served = await raw('GET', `/api/streams/${id}/thumbnail`);
+    assert.equal(served.status, 200);
+
+    const cleared = await api<Stream>('DELETE', `/api/streams/${id}/thumbnail`);
+    assert.equal(cleared.hasThumbnail, false);
+  });
+
+  it('publishes it, unpublishes it, and deletes it', async () => {
+    const published = await api<PublishResult>(
+      'POST',
+      `/api/streams/${id}/publish`,
+    );
+    assert.equal(published.stream.status, 'published');
+
+    const unpublished = await api<PublishResult>(
+      'POST',
+      `/api/streams/${id}/unpublish`,
+    );
+    assert.equal(unpublished.stream.status, 'draft');
+
+    const deleted = await raw('DELETE', `/api/streams/${id}`);
+    assert.equal(deleted.status, 204);
+    created.delete(id);
   });
 });
 

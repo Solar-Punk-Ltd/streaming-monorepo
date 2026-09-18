@@ -54,8 +54,8 @@ export class IngestService {
     private readonly endpoint: IngestConfig,
   ) {}
 
-  async detailsFor(id: string, userId: string): Promise<IngestDetails> {
-    const stream = await this.streams.findById(id, userId);
+  async detailsFor(id: string): Promise<IngestDetails> {
+    const stream = await this.streams.findById(id);
     if (!stream) throw new StreamNotFoundError(id);
     return ingestDetailsFor(stream, this.endpoint);
   }
@@ -64,12 +64,8 @@ export class IngestService {
    * A new key invalidates whatever the streamer was given. Allowed in any
    * status: the point of rotating is that the old one leaked.
    */
-  async rotateKey(id: string, userId: string): Promise<IngestDetails> {
-    const rotated = await this.streams.rotatePublishKey(
-      id,
-      userId,
-      newPublishKey(),
-    );
+  async rotateKey(id: string): Promise<IngestDetails> {
+    const rotated = await this.streams.rotatePublishKey(id, newPublishKey());
     if (!rotated) throw new StreamNotFoundError(id);
     return ingestDetailsFor(rotated, this.endpoint);
   }

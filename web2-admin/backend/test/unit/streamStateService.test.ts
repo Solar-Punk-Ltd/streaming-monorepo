@@ -30,7 +30,6 @@ import {
   FakeStreamStore,
   streamRow,
   TEST_OWNER,
-  TEST_USER_ID,
 } from './support/fakes.js';
 
 const feed: FeedIdentity = {
@@ -80,7 +79,7 @@ async function setup() {
   const state = new StreamStateService(store, publishService);
   const ladder = new LadderService(store, renditions, publishService);
   const stream = store.add(streamRow());
-  await publishService.publish(stream.id, TEST_USER_ID);
+  await publishService.publish(stream.id);
   return { store, renditions, gateway, state, ladder, stream };
 }
 

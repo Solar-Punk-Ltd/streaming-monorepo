@@ -152,13 +152,8 @@ export class FakeStreamStore
     return row;
   }
 
-  async findById(id: string, userId: string): Promise<StreamRow | null> {
-    const row = this.rows.get(id);
-    return row && row.user_id === userId ? { ...row } : null;
-  }
-
-  /** Unscoped, as the SQL is: the internal API has no session to scope by. */
-  async findByIdUnscoped(id: string): Promise<StreamRow | null> {
+  /** Unscoped, as the SQL is: a stream belongs to the installation. */
+  async findById(id: string): Promise<StreamRow | null> {
     const row = this.rows.get(id);
     return row ? { ...row } : null;
   }
@@ -220,49 +215,38 @@ export class FakeStreamStore
     });
   }
 
-  /** Unscoped, as the SQL is: reconcile has to see every user's rows. */
+  /** As the SQL is: reconcile has to see every row that should be on the feed. */
   async listOnFeed(): Promise<StreamRow[]> {
     return [...this.rows.values()]
       .filter((row) => ['published', 'live', 'vod'].includes(row.status))
       .map((row) => ({ ...row }));
   }
 
-  async findThumbnail(
-    id: string,
-    userId: string,
-  ): Promise<ThumbnailRow | null> {
-    if (!(await this.findById(id, userId))) return null;
+  async findThumbnail(id: string): Promise<ThumbnailRow | null> {
+    if (!(await this.findById(id))) return null;
     return this.thumbnails.get(id) ?? null;
   }
 
-  async recordThumbnailRef(
-    id: string,
-    userId: string,
-    thumbnailRef: string,
-  ): Promise<void> {
-    if (!(await this.findById(id, userId))) return;
+  async recordThumbnailRef(id: string, thumbnailRef: string): Promise<void> {
+    if (!(await this.findById(id))) return;
     this.patch(id, { thumbnail_ref: thumbnailRef });
   }
 
   async claimForPublish(
     id: string,
-    userId: string,
     allowedFrom: readonly StreamStatus[],
   ): Promise<StreamRow | null> {
     const row = this.rows.get(id);
-    if (!row || row.user_id !== userId || !allowedFrom.includes(row.status)) {
-      return null;
-    }
+    if (!row || !allowedFrom.includes(row.status)) return null;
     return this.patch(id, { status: 'publishing' });
   }
 
   async finishPublish(
     id: string,
-    userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
   ): Promise<StreamRow | null> {
-    if (!(await this.findById(id, userId))) return null;
+    if (!(await this.findById(id))) return null;
     return this.patch(id, {
       status: 'published',
       published_at: new Date('2026-09-11T11:00:00.000Z'),
@@ -272,11 +256,8 @@ export class FakeStreamStore
     });
   }
 
-  async finishUnpublish(
-    id: string,
-    userId: string,
-  ): Promise<StreamRow | null> {
-    if (!(await this.findById(id, userId))) return null;
+  async finishUnpublish(id: string): Promise<StreamRow | null> {
+    if (!(await this.findById(id))) return null;
     await this.renditions?.deleteByStream(id);
     // Everything the uploader reported goes with it, as the SQL does it: a
     // draft still carrying a manifest index or a `live_since` would describe a
@@ -296,11 +277,10 @@ export class FakeStreamStore
   /** Status untouched, exactly as the SQL is: a republish keeps its state. */
   async recordRepublish(
     id: string,
-    userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
   ): Promise<StreamRow | null> {
-    if (!(await this.findById(id, userId))) return null;
+    if (!(await this.findById(id))) return null;
     return this.patch(id, {
       published_feed_index: feedIndex,
       publish_error: null,
@@ -310,7 +290,6 @@ export class FakeStreamStore
 
   async failPublish(
     id: string,
-    userId: string,
     previousStatus: StreamStatus,
     message: string,
   ): Promise<void> {
@@ -319,17 +298,13 @@ export class FakeStreamStore
       this.failNextFailPublish = null;
       throw failure;
     }
-    if (!(await this.findById(id, userId))) return;
+    if (!(await this.findById(id))) return;
     this.patch(id, { status: previousStatus, publish_error: message });
   }
 
   /** Only the reason, as the SQL is: a republish has no claim to undo. */
-  async recordPublishError(
-    id: string,
-    userId: string,
-    message: string,
-  ): Promise<void> {
-    if (!(await this.findById(id, userId))) return;
+  async recordPublishError(id: string, message: string): Promise<void> {
+    if (!(await this.findById(id))) return;
     this.patch(id, { publish_error: message });
   }
 

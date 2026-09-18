@@ -328,10 +328,12 @@ header. `pnpm build` copies the directory into `dist`.
 
 ## Limitations (intentional, checkpoint 3 step 1)
 
-- **Every user sees every stream they own, and only those.** `streams.user_id`
-  scopes every query, so a second user added on the Access page starts with an
-  empty list rather than sharing the first one's drafts. There is no way to
-  hand a stream over.
+- **Every signed-in operator sees and manages every stream.** A stream belongs
+  to the installation, not to whoever drafted it: all of them publish to one
+  catalogue feed signed by one key, so no query is scoped by user.
+  `streams.user_id` is still written on create, as the record of who made the
+  row, and is read by nothing. Per-brand separation is the open question, and
+  `requireAuth` still gates every one of these routes.
 - **Nothing polls.** A state report is the only thing that moves a stream to
   `live` or `vod`; an uploader that dies without reporting leaves the stream
   live on the catalogue until someone republishes or unpublishes it by hand.

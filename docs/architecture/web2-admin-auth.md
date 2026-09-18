@@ -89,7 +89,7 @@ and being wrong about a different half of it.
 | The manager | Here | Why |
 | --- | --- | --- |
 | `SERIAL` user ids | `UUID` | The table was already UUID-keyed. `userIdParamSchema` matches a UUID, not `^[1-9]\d*$`. |
-| `StoredSession` carries `username` and `isAdmin` | carries the whole `UserRow` | `GET /api/auth/me` answers the `User` the contract declares and every stream route reads `req.user.id`; joining the row once is cheaper than a second lookup per request. |
+| `StoredSession` carries `username` and `isAdmin` | carries the whole `UserRow` | `GET /api/auth/me` answers the `User` the contract declares, and `POST /api/streams` reads `req.user.id` to record who drafted the row; joining the row once is cheaper than a second lookup per request. |
 | `SESSION_COOKIE_NAME = 'sim_session'` | `web2_admin_session` | Different product, and the two run on the same laptop. |
 | `REQUESTED_WITH_VALUE = 'streaming-infra-manager'` | `web2-admin` | Same. |
 | `POST /login` → 204 | → `MeResponse` | The console already had the user from the login answer; taking it away would have been a change to a working contract for nothing. |

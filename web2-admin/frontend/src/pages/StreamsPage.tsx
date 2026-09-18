@@ -98,7 +98,7 @@ export function StreamsPage() {
     <Stack spacing={3}>
       <Stack direction="row" alignItems="center" spacing={2}>
         <Typography variant="h5" component="h1" sx={{ flexGrow: 1 }}>
-          My Streams
+          Streams
         </Typography>
         {/* `publishing` is transient and nothing pushes the transition here. */}
         <Tooltip title="Refresh">
@@ -140,7 +140,7 @@ export function StreamsPage() {
             No streams yet.
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Create your first stream to get its OBS connection details, then
+            Create the first one to get its OBS connection details, then
             publish it to the stream list.
           </Typography>
         </Paper>

@@ -19,7 +19,7 @@ const logger = Logger.getInstance();
 
 /** The slice of StreamRepository a report needs; a fake stands in for tests. */
 export interface LadderStreamStore {
-  findByIdUnscoped(id: string): Promise<StreamRow | null>;
+  findById(id: string): Promise<StreamRow | null>;
 }
 
 /** The slice of StreamRenditionRepository the merge needs; a fake stands in. */
@@ -93,7 +93,7 @@ export class LadderService {
     id: string,
     report: RenditionReport,
   ): Promise<RenditionReportOutcome> {
-    const stream = await this.streams.findByIdUnscoped(id);
+    const stream = await this.streams.findById(id);
     if (!stream) throw new StreamNotFoundError(id);
     // Nothing has been announced (`draft`), or a feed write is already in
     // flight for this stream (`publishing`) and would be raced. `published`,

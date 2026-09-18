@@ -62,16 +62,20 @@ export class StreamService {
     private readonly feed: FeedIdentity,
   ) {}
 
-  async list(userId: string): Promise<StreamRow[]> {
-    return this.streams.list(userId);
+  async list(): Promise<StreamRow[]> {
+    return this.streams.list();
   }
 
-  async get(id: string, userId: string): Promise<StreamRow> {
-    const stream = await this.streams.findById(id, userId);
+  async get(id: string): Promise<StreamRow> {
+    const stream = await this.streams.findById(id);
     if (!stream) throw new StreamNotFoundError(id);
     return stream;
   }
 
+  /**
+   * `userId` is recorded on the row and never read back to scope anything: it
+   * says who drafted the stream, not who may act on it.
+   */
   async create(userId: string, input: StreamInputValues): Promise<StreamRow> {
     return this.streams.insert({
       user_id: userId,
@@ -95,12 +99,8 @@ export class StreamService {
    * recorded — a title fixed mid-broadcast reaches viewers on the next
    * republish, which keeps the state it is in.
    */
-  async update(
-    id: string,
-    userId: string,
-    input: StreamInputValues,
-  ): Promise<StreamRow> {
-    const existing = await this.streams.findById(id, userId);
+  async update(id: string, input: StreamInputValues): Promise<StreamRow> {
+    const existing = await this.streams.findById(id);
     if (!existing) throw new StreamNotFoundError(id);
     if (isMediaTypeLocked(existing, input.mediaType)) {
       throw new MediaTypeLockedError(id, existing.media_type);
@@ -111,7 +111,6 @@ export class StreamService {
 
     const updated = await this.streams.update(
       id,
-      userId,
       {
         title: input.title,
         description: input.description,
@@ -121,14 +120,14 @@ export class StreamService {
       },
       EDITABLE_STATUSES,
     );
-    return updated ?? (await this.refuse(id, userId));
+    return updated ?? (await this.refuse(id));
   }
 
-  async remove(id: string, userId: string): Promise<void> {
-    const deleted = await this.streams.deleteById(id, userId, ['draft']);
+  async remove(id: string): Promise<void> {
+    const deleted = await this.streams.deleteById(id, ['draft']);
     if (deleted) return;
 
-    const existing = await this.streams.findById(id, userId);
+    const existing = await this.streams.findById(id);
     if (!existing) throw new StreamNotFoundError(id);
     if (existing.status === 'publishing') {
       throw new StreamBusyError(id, existing.status);
@@ -141,7 +140,6 @@ export class StreamService {
 
   async setThumbnail(
     id: string,
-    userId: string,
     contentType: string,
     bytes: Buffer,
   ): Promise<StreamRow> {
@@ -151,40 +149,35 @@ export class StreamService {
     }
     const updated = await this.streams.setThumbnail(
       id,
-      userId,
       bytes,
       mime,
       EDITABLE_STATUSES,
     );
-    return updated ?? (await this.refuse(id, userId));
+    return updated ?? (await this.refuse(id));
   }
 
-  async getThumbnail(id: string, userId: string): Promise<ThumbnailRow> {
-    const found = await this.streams.findThumbnail(id, userId);
+  async getThumbnail(id: string): Promise<ThumbnailRow> {
+    const found = await this.streams.findThumbnail(id);
     if (found) return found;
 
     // Distinguish "no such stream" from "stream without a thumbnail": both are
     // 404s, but not the same one.
-    const stream = await this.streams.findById(id, userId);
+    const stream = await this.streams.findById(id);
     if (!stream) throw new StreamNotFoundError(id);
     throw new ThumbnailNotFoundError(id);
   }
 
-  async removeThumbnail(id: string, userId: string): Promise<StreamRow> {
-    const updated = await this.streams.clearThumbnail(
-      id,
-      userId,
-      EDITABLE_STATUSES,
-    );
-    return updated ?? (await this.refuse(id, userId));
+  async removeThumbnail(id: string): Promise<StreamRow> {
+    const updated = await this.streams.clearThumbnail(id, EDITABLE_STATUSES);
+    return updated ?? (await this.refuse(id));
   }
 
   /**
    * A conditional UPDATE returned nothing: say which of the two reasons it
    * was. Always throws.
    */
-  private async refuse(id: string, userId: string): Promise<never> {
-    const existing = await this.streams.findById(id, userId);
+  private async refuse(id: string): Promise<never> {
+    const existing = await this.streams.findById(id);
     if (!existing) throw new StreamNotFoundError(id);
     throw new StreamBusyError(id, existing.status);
   }

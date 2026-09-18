@@ -39,7 +39,6 @@ import {
   FakeStreamStore,
   streamRow,
   TEST_OWNER,
-  TEST_USER_ID,
 } from './support/fakes.js';
 
 const feed: FeedIdentity = {
@@ -82,7 +81,7 @@ describe('PublishService.publish', () => {
     const { store, writes, gateway, service } = setup();
     const row = store.add(streamRow());
 
-    const outcome = await service.publish(row.id, TEST_USER_ID);
+    const outcome = await service.publish(row.id);
 
     assert.equal(outcome.feed.index, 0);
     assert.equal(outcome.feed.entryCount, 1);
@@ -128,8 +127,8 @@ describe('PublishService.publish', () => {
     const { store, gateway, service } = setup();
     const row = store.add(streamRow());
 
-    await service.publish(row.id, TEST_USER_ID);
-    const republished = await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
+    const republished = await service.publish(row.id);
 
     assert.equal(republished.feed.index, 1);
     assert.equal(republished.feed.entryCount, 1, 'not duplicated');
@@ -140,10 +139,10 @@ describe('PublishService.publish', () => {
   it('picks up edits made between two publishes', async () => {
     const { store, gateway, service } = setup();
     const row = store.add(streamRow());
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
 
     store.add({ ...store.get(row.id), title: 'Devcon closing', status: 'published' });
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
 
     assert.equal(entriesOf(gateway)[0]!.title, 'Devcon closing');
   });
@@ -163,7 +162,7 @@ describe('PublishService.publish', () => {
     const { store, service } = setup(gateway);
     const row = store.add(streamRow());
 
-    const outcome = await service.publish(row.id, TEST_USER_ID);
+    const outcome = await service.publish(row.id);
 
     assert.equal(outcome.feed.index, 8, 'continues the existing feed');
     assert.equal(outcome.feed.entryCount, 3);
@@ -181,8 +180,8 @@ describe('PublishService.publish', () => {
     const second = store.add(streamRow());
 
     const [a, b] = await Promise.all([
-      service.publish(first.id, TEST_USER_ID),
-      service.publish(second.id, TEST_USER_ID),
+      service.publish(first.id),
+      service.publish(second.id),
     ]);
 
     assert.deepEqual([a.feed.index, b.feed.index].sort(), [0, 1]);
@@ -198,7 +197,7 @@ describe('PublishService.publish', () => {
       { thumbnail: bytes, thumbnail_mime: 'image/png' },
     );
 
-    const first = await service.publish(row.id, TEST_USER_ID);
+    const first = await service.publish(row.id);
     assert.equal(gateway.thumbnails.length, 1);
     assert.deepEqual(gateway.thumbnails[0], {
       filename: `${row.topic}.png`,
@@ -208,7 +207,7 @@ describe('PublishService.publish', () => {
     assert.match(first.stream.thumbnail_ref ?? '', /^[0-9a-f]{64}$/);
     assert.equal(entriesOf(gateway)[0]!.thumbnail, first.stream.thumbnail_ref);
 
-    const second = await service.publish(row.id, TEST_USER_ID);
+    const second = await service.publish(row.id);
     assert.equal(gateway.thumbnails.length, 1, 'not uploaded again');
     assert.equal(second.stream.thumbnail_ref, first.stream.thumbnail_ref);
   });
@@ -231,7 +230,7 @@ describe('PublishService.publish', () => {
       { thumbnail: bytes, thumbnail_mime: 'image/png' },
     );
 
-    const outcome = await service.publish(row.id, TEST_USER_ID);
+    const outcome = await service.publish(row.id);
 
     assert.equal(gateway.thumbnails.length, 1, 're-uploaded');
     const fresh = outcome.stream.thumbnail_ref;
@@ -260,7 +259,7 @@ describe('PublishService.publish', () => {
     gateway.failNextHasReference = new ThumbnailCheckError(stale, 'fetch failed');
 
     await assert.rejects(
-      () => service.publish(row.id, TEST_USER_ID),
+      () => service.publish(row.id),
       (err: unknown) =>
         err instanceof PublishFailedError &&
         err.reason.includes(stale) &&
@@ -285,12 +284,12 @@ describe('PublishService.publish', () => {
     );
     gateway.failNextWrite = new Error('postage batch not usable');
 
-    await assert.rejects(() => service.publish(row.id, TEST_USER_ID), PublishFailedError);
+    await assert.rejects(() => service.publish(row.id), PublishFailedError);
     assert.equal(gateway.thumbnails.length, 1);
     const afterFailure = store.get(row.id);
     assert.match(afterFailure.thumbnail_ref ?? '', /^[0-9a-f]{64}$/);
 
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
     assert.equal(gateway.thumbnails.length, 1, 'not uploaded again on the retry');
   });
 
@@ -299,19 +298,26 @@ describe('PublishService.publish', () => {
     const row = store.add(streamRow({ status: 'publishing' }));
 
     await assert.rejects(
-      () => service.publish(row.id, TEST_USER_ID),
+      () => service.publish(row.id),
       (err: unknown) =>
         err instanceof StreamBusyError && err.currentStatus === 'publishing',
     );
   });
 
-  it('refuses a stream that belongs to someone else', async () => {
+  it('publishes a stream another operator drafted', async () => {
+    // A stream belongs to the installation, not to whoever typed it in, so
+    // `user_id` naming somebody else changes nothing about who may act on it.
     const { store, service } = setup();
-    const row = store.add(streamRow());
+    const row = store.add(
+      streamRow({ user_id: '00000000-0000-4000-8000-0000000000ff' }),
+    );
 
-    await assert.rejects(
-      () => service.publish(row.id, '00000000-0000-4000-8000-0000000000ff'),
-      StreamNotFoundError,
+    const outcome = await service.publish(row.id);
+    assert.equal(outcome.stream.status, 'published');
+    assert.equal(
+      store.get(row.id).user_id,
+      '00000000-0000-4000-8000-0000000000ff',
+      'who drafted it is still recorded',
     );
   });
 
@@ -323,7 +329,7 @@ describe('PublishService.publish', () => {
     const row = store.add(streamRow({ owner: 'f'.repeat(40) }));
 
     await assert.rejects(
-      () => service.publish(row.id, TEST_USER_ID),
+      () => service.publish(row.id),
       (err: unknown) =>
         err instanceof FeedOwnerMismatchError &&
         err.streamOwner === 'f'.repeat(40) &&
@@ -336,7 +342,7 @@ describe('PublishService.publish', () => {
   it('matches the owner case-insensitively', async () => {
     const { store, service } = setup();
     const row = store.add(streamRow({ owner: TEST_OWNER.toUpperCase() }));
-    const outcome = await service.publish(row.id, TEST_USER_ID);
+    const outcome = await service.publish(row.id);
     assert.equal(outcome.stream.status, 'published');
   });
 
@@ -346,7 +352,7 @@ describe('PublishService.publish', () => {
     gateway.failNextWrite = new Error('postage batch not usable');
 
     await assert.rejects(
-      () => service.publish(row.id, TEST_USER_ID),
+      () => service.publish(row.id),
       (err: unknown) =>
         err instanceof PublishFailedError &&
         err.reason === 'postage batch not usable',
@@ -365,7 +371,7 @@ describe('PublishService.publish', () => {
     const row = store.add(streamRow({ status: 'published', published_feed_index: 3 }));
     gateway.failNextRead = new Error('bee unreachable');
 
-    await assert.rejects(() => service.publish(row.id, TEST_USER_ID), PublishFailedError);
+    await assert.rejects(() => service.publish(row.id), PublishFailedError);
 
     const after = store.get(row.id);
     assert.equal(after.status, 'published');
@@ -379,7 +385,7 @@ describe('PublishService.publish', () => {
     store.failNextFailPublish = new Error('connection terminated');
 
     await assert.rejects(
-      () => service.publish(row.id, TEST_USER_ID),
+      () => service.publish(row.id),
       (err: unknown) =>
         err instanceof PublishFailedError &&
         err.reason === 'postage batch not usable',
@@ -393,8 +399,8 @@ describe('PublishService.publish', () => {
     const fine = store.add(streamRow());
     gateway.failNextWrite = new Error('postage batch not usable');
 
-    await assert.rejects(() => service.publish(failing.id, TEST_USER_ID));
-    const outcome = await service.publish(fine.id, TEST_USER_ID);
+    await assert.rejects(() => service.publish(failing.id));
+    const outcome = await service.publish(fine.id);
     assert.equal(outcome.feed.index, 0);
   });
 });
@@ -526,7 +532,7 @@ describe('PublishService republishing a stream that has gone live', () => {
       streamRow({ status: 'live', published_feed_index: 0 }),
     );
 
-    const outcome = await service.publish(row.id, TEST_USER_ID);
+    const outcome = await service.publish(row.id);
 
     assert.equal(outcome.stream.status, 'live');
     assert.equal(entriesOf(gateway)[0]!.state, 'live');
@@ -543,7 +549,7 @@ describe('PublishService republishing a stream that has gone live', () => {
       }),
     );
 
-    const outcome = await service.publish(row.id, TEST_USER_ID);
+    const outcome = await service.publish(row.id);
 
     assert.equal(outcome.stream.status, 'vod');
     assert.equal(entriesOf(gateway)[0]!.index, 7);
@@ -559,7 +565,7 @@ describe('PublishService republishing a stream that has gone live', () => {
 
     const [a, b] = await Promise.all([
       service.republishWithState(store.get(live.id)),
-      service.publish(draft.id, TEST_USER_ID),
+      service.publish(draft.id),
     ]);
 
     assert.deepEqual([a.feed.index, b.feed.index].sort(), [0, 1]);
@@ -574,7 +580,7 @@ describe('PublishService and the ABR ladder', () => {
     await renditions.upsert(row.id, rung('720p', 720));
     await renditions.upsert(row.id, rung('360p', 360));
 
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
 
     const [entry] = entriesOf(gateway);
     assert.equal(entry!.group, row.topic, 'the master feed is the declared topic');
@@ -603,7 +609,7 @@ describe('PublishService and the ABR ladder', () => {
     const { store, gateway, service } = setup();
     const row = store.add(streamRow());
 
-    const outcome = await service.publish(row.id, TEST_USER_ID);
+    const outcome = await service.publish(row.id);
 
     const [entry] = entriesOf(gateway);
     assert.ok(!('group' in entry!), 'no group without a ladder');
@@ -622,7 +628,7 @@ describe('PublishService and the ABR ladder', () => {
     await renditions.upsert(row.id, rung('720p', 720));
     await renditions.upsert(row.id, rung('360p', 360));
 
-    const first = await service.publish(row.id, TEST_USER_ID);
+    const first = await service.publish(row.id);
     assert.deepEqual(
       first.renditions.map((r) => r.name),
       ['360p', '720p'],
@@ -632,11 +638,11 @@ describe('PublishService and the ABR ladder', () => {
     assert.deepEqual(first.previousRenditions, [], 'nothing on the feed yet');
 
     await renditions.upsert(row.id, rung('720p', 720, 12));
-    const second = await service.publish(row.id, TEST_USER_ID);
+    const second = await service.publish(row.id);
     assert.deepEqual(second.previousRenditions, first.renditions);
     assert.equal(second.renditions[1]!.index, 12);
 
-    const gone = await service.unpublish(row.id, TEST_USER_ID);
+    const gone = await service.unpublish(row.id);
     assert.deepEqual(gone.renditions, [], 'nothing written for the stream');
     assert.deepEqual(gone.previousRenditions, second.renditions);
   });
@@ -647,12 +653,12 @@ describe('PublishService and the ABR ladder', () => {
     const { store, renditions, gateway, service } = setup();
     const row = store.add(streamRow());
     await renditions.upsert(row.id, rung('720p', 720, 12));
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
 
-    await service.unpublish(row.id, TEST_USER_ID);
+    await service.unpublish(row.id);
     assert.deepEqual(await renditions.listByStream(row.id), []);
 
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
     const [entry] = entriesOf(gateway);
     assert.ok(!('renditions' in entry!), 'republished without a ladder');
   });
@@ -662,9 +668,9 @@ describe('PublishService.unpublish', () => {
   it('removes the entry, writes the next index and returns the stream to draft', async () => {
     const { store, writes, gateway, service } = setup();
     const row = store.add(streamRow());
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
 
-    const outcome = await service.unpublish(row.id, TEST_USER_ID);
+    const outcome = await service.unpublish(row.id);
 
     assert.equal(outcome.feed.index, 1);
     assert.equal(outcome.feed.entryCount, 0);
@@ -683,9 +689,9 @@ describe('PublishService.unpublish', () => {
     const gateway = new FakeFeedGateway({ index: 2, entries: [foreign] });
     const { store, service } = setup(gateway);
     const row = store.add(streamRow());
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
 
-    const outcome = await service.unpublish(row.id, TEST_USER_ID);
+    const outcome = await service.unpublish(row.id);
 
     assert.equal(outcome.feed.entryCount, 1);
     assert.deepEqual(gateway.writes.at(-1)!.entries, [foreign]);
@@ -697,9 +703,9 @@ describe('PublishService.unpublish', () => {
       streamRow({ has_thumbnail: true, thumbnail_mime: 'image/png' }),
       { thumbnail: Buffer.from([1, 2, 3]), thumbnail_mime: 'image/png' },
     );
-    const published = await service.publish(row.id, TEST_USER_ID);
+    const published = await service.publish(row.id);
 
-    const outcome = await service.unpublish(row.id, TEST_USER_ID);
+    const outcome = await service.unpublish(row.id);
     assert.equal(outcome.stream.thumbnail_ref, published.stream.thumbnail_ref);
   });
 
@@ -707,7 +713,7 @@ describe('PublishService.unpublish', () => {
     const { store, writes, gateway, service } = setup();
     const row = store.add(streamRow());
 
-    const outcome = await service.unpublish(row.id, TEST_USER_ID);
+    const outcome = await service.unpublish(row.id);
 
     assert.equal(gateway.writes.length, 0, 'no stamp spent on an identical list');
     assert.equal(writes.records.length, 0);
@@ -733,7 +739,7 @@ describe('PublishService.unpublish', () => {
       }),
     );
 
-    const outcome = await service.unpublish(row.id, TEST_USER_ID);
+    const outcome = await service.unpublish(row.id);
 
     assert.equal(outcome.stream.status, 'draft');
     assert.equal(outcome.feed.index, 5);
@@ -746,7 +752,7 @@ describe('PublishService.unpublish', () => {
     await service.republishWithState(store.get(row.id));
     store.add({ ...store.get(row.id), status: 'vod', manifest_index: 4 });
 
-    const outcome = await service.unpublish(row.id, TEST_USER_ID);
+    const outcome = await service.unpublish(row.id);
 
     assert.equal(outcome.stream.status, 'draft');
     assert.deepEqual(entriesOf(gateway), []);
@@ -759,7 +765,7 @@ describe('PublishService.unpublish', () => {
     const row = store.add(streamRow({ status: 'live' }));
 
     await assert.rejects(
-      () => service.unpublish(row.id, TEST_USER_ID),
+      () => service.unpublish(row.id),
       (err: unknown) =>
         err instanceof StreamLiveError && err.streamId === row.id,
     );
@@ -770,11 +776,11 @@ describe('PublishService.unpublish', () => {
   it('restores the status when the removing write fails', async () => {
     const { store, gateway, service } = setup();
     const row = store.add(streamRow());
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
     gateway.failNextWrite = new Error('bee unreachable');
 
     await assert.rejects(
-      () => service.unpublish(row.id, TEST_USER_ID),
+      () => service.unpublish(row.id),
       PublishFailedError,
     );
     const after = store.get(row.id);
@@ -834,8 +840,8 @@ describe('PublishService against a feed lookup that lags its own writes', () => 
     const first = store.add(streamRow());
     const second = store.add(streamRow());
 
-    const a = await service.publish(first.id, TEST_USER_ID);
-    const b = await service.publish(second.id, TEST_USER_ID);
+    const a = await service.publish(first.id);
+    const b = await service.publish(second.id);
 
     // What the old code would have read for the second publish: still index 0,
     // and a list without the first entry on it. Both writes would have gone to
@@ -850,7 +856,7 @@ describe('PublishService against a feed lookup that lags its own writes', () => 
     // And the entry really comes off again: the removal reads the same
     // authoritative base, not the payload from before the publish that put it
     // there, so `removed` is true and the write happens.
-    const off = await service.unpublish(first.id, TEST_USER_ID);
+    const off = await service.unpublish(first.id);
     assert.equal(off.feed.index, 2);
     assert.deepEqual(
       entriesOf(gateway).map((e) => e.topic),
@@ -871,8 +877,8 @@ describe('PublishService against a feed lookup that lags its own writes', () => 
     const first = store.add(streamRow());
     const second = store.add(streamRow());
 
-    assert.equal((await service.publish(first.id, TEST_USER_ID)).feed.index, 8);
-    assert.equal((await service.publish(second.id, TEST_USER_ID)).feed.index, 9);
+    assert.equal((await service.publish(first.id)).feed.index, 8);
+    assert.equal((await service.publish(second.id)).feed.index, 9);
     assert.equal((await gateway.readLatest()).index, 7, 'still stuck');
     assert.deepEqual(
       writes.records.map((r) => r.feedIndex),
@@ -893,7 +899,7 @@ describe('PublishService.checkFeedOnBoot', () => {
     const gateway = new FakeFeedGateway();
     const { store, writes, service } = setup(gateway);
     const row = store.add(streamRow());
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
 
     // The network moves on without us: two more updates under our key.
     await gateway.write([foreign], 1);
@@ -909,7 +915,7 @@ describe('PublishService.checkFeedOnBoot', () => {
 
     // The next publish continues after the adopted head and keeps what was
     // found there.
-    const next = await service.publish(row.id, TEST_USER_ID);
+    const next = await service.publish(row.id);
     assert.equal(next.feed.index, 3);
     assert.deepEqual(gateway.writes.at(-1)!.entries[0], foreign);
   });
@@ -918,7 +924,7 @@ describe('PublishService.checkFeedOnBoot', () => {
     const gateway = new FakeFeedGateway(undefined, { readLagWrites: 5 });
     const { store, writes, service } = setup(gateway);
     const row = store.add(streamRow());
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
 
     const before = writes.records.length;
     const check = await service.checkFeedOnBoot();
@@ -932,7 +938,7 @@ describe('PublishService.checkFeedOnBoot', () => {
   it('carries on when the gateway cannot answer at all', async () => {
     const { store, service, gateway } = setup();
     const row = store.add(streamRow());
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
     gateway.failNextRead = new Error('bee unreachable');
 
     const check = await service.checkFeedOnBoot();
@@ -943,7 +949,7 @@ describe('PublishService.checkFeedOnBoot', () => {
   it('reports ghosts without writing anything', async () => {
     const { store, gateway, service } = setup();
     const row = store.add(streamRow());
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
     store.rows.delete(row.id); // unpublished, then deleted, entry left behind
 
     const check = await service.checkFeedOnBoot();
@@ -961,11 +967,11 @@ describe('PublishService.reconcile', () => {
     const { store, gateway, service } = setup();
     const ghost = store.add(streamRow());
     const kept = store.add(streamRow());
-    await service.publish(ghost.id, TEST_USER_ID);
-    await service.publish(kept.id, TEST_USER_ID);
+    await service.publish(ghost.id);
+    await service.publish(kept.id);
     store.rows.delete(ghost.id);
 
-    const outcome = await service.reconcile(TEST_USER_ID);
+    const outcome = await service.reconcile();
 
     assert.deepEqual(outcome.removed, [ghost.topic]);
     assert.deepEqual(outcome.added, []);
@@ -988,7 +994,7 @@ describe('PublishService.reconcile', () => {
       streamRow({ status: 'published', published_feed_index: 4 }),
     );
 
-    const outcome = await service.reconcile(TEST_USER_ID);
+    const outcome = await service.reconcile();
 
     assert.deepEqual(outcome.added, [row.topic]);
     assert.equal(outcome.index, 5);
@@ -1000,7 +1006,7 @@ describe('PublishService.reconcile', () => {
   it('rebuilds an entry that no longer matches its row, keeping vod numbers', async () => {
     const { store, gateway, service } = setup();
     const row = store.add(streamRow());
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
     store.add({
       ...store.get(row.id),
       title: 'Edited after the entry was written',
@@ -1009,7 +1015,7 @@ describe('PublishService.reconcile', () => {
       duration_seconds: 61,
     });
 
-    const outcome = await service.reconcile(TEST_USER_ID);
+    const outcome = await service.reconcile();
 
     assert.deepEqual(outcome.updated, [row.topic]);
     const [entry] = entriesOf(gateway);
@@ -1028,17 +1034,17 @@ describe('PublishService.reconcile', () => {
     const row = store.add(streamRow());
     await renditions.upsert(row.id, rung('720p', 720));
     await renditions.upsert(row.id, rung('360p', 360));
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
     const writesBefore = gateway.writes.length;
 
-    const untouched = await service.reconcile(TEST_USER_ID);
+    const untouched = await service.reconcile();
 
     assert.deepEqual(untouched.updated, [], 'a ladder entry that matches its rows is not drift');
     assert.equal(gateway.writes.length, writesBefore, 'a clean catalogue costs no write');
 
     // And when the row really did drift, the rebuilt entry still carries the ladder.
     store.add({ ...store.get(row.id), title: 'Retitled mid-ladder' });
-    const repaired = await service.reconcile(TEST_USER_ID);
+    const repaired = await service.reconcile();
 
     assert.deepEqual(repaired.updated, [row.topic]);
     const [entry] = entriesOf(gateway);
@@ -1064,10 +1070,10 @@ describe('PublishService.reconcile', () => {
     });
     const { store, service } = setup(gateway);
     const ghost = store.add(streamRow());
-    await service.publish(ghost.id, TEST_USER_ID);
+    await service.publish(ghost.id);
     store.rows.delete(ghost.id);
 
-    const outcome = await service.reconcile(TEST_USER_ID);
+    const outcome = await service.reconcile();
 
     assert.deepEqual(outcome.removed, [ghost.topic]);
     const written = gateway.writes.at(-1)!.entries;
@@ -1079,9 +1085,9 @@ describe('PublishService.reconcile', () => {
   it('writes nothing when the catalogue already matches the database', async () => {
     const { store, writes, gateway, service } = setup();
     const row = store.add(streamRow());
-    await service.publish(row.id, TEST_USER_ID);
+    await service.publish(row.id);
 
-    const outcome = await service.reconcile(TEST_USER_ID);
+    const outcome = await service.reconcile();
 
     assert.equal(outcome.index, null, 'no index spent');
     assert.deepEqual(

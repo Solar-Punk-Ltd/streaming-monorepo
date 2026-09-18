@@ -6,6 +6,10 @@ import type { StreamRow, ThumbnailRow } from '../types/index.js';
 import { STREAM_COLUMNS } from './streamSql.js';
 
 export interface StreamInsertData {
+  /**
+   * Who drafted the row. Recorded, and never used to scope a query: a stream
+   * belongs to the installation, and every signed-in operator shares it.
+   */
   user_id: string;
   topic: string;
   owner: string;
@@ -29,21 +33,19 @@ export interface StreamUpdateData {
 export class StreamRepository {
   constructor(private readonly pool: Pool) {}
 
-  async list(userId: string): Promise<StreamRow[]> {
+  async list(): Promise<StreamRow[]> {
     const result = await this.pool.query<StreamRow>(
       `SELECT ${STREAM_COLUMNS} FROM streams
-        WHERE user_id = $1
         ORDER BY created_at DESC`,
-      [userId],
     );
     return result.rows;
   }
 
   /**
-   * Every row that should be on the catalogue, for every user. Unscoped on
-   * purpose: `reconcile` compares this against the feed, and a row it could
-   * not see would read as an entry with nothing behind it and be removed.
-   * `publishing` is excluded — that write is still in flight.
+   * Every row that should be on the catalogue. `reconcile` compares this
+   * against the feed, and a row it could not see would read as an entry with
+   * nothing behind it and be removed. `publishing` is excluded — that write is
+   * still in flight.
    */
   async listOnFeed(): Promise<StreamRow[]> {
     const result = await this.pool.query<StreamRow>(
@@ -54,20 +56,12 @@ export class StreamRepository {
     return result.rows;
   }
 
-  async findById(id: string, userId: string): Promise<StreamRow | null> {
-    const result = await this.pool.query<StreamRow>(
-      `SELECT ${STREAM_COLUMNS} FROM streams WHERE id = $1 AND user_id = $2`,
-      [id, userId],
-    );
-    return this.one(result.rows, result.rowCount);
-  }
-
   /**
-   * By primary key, with no user scope — the internal API acts on the id it
-   * handed the uploader, and there is no session behind that call. Session
-   * routes use `findById`, which is scoped, and nothing here may replace it.
+   * By primary key. Nothing here is scoped to a user: a stream belongs to the
+   * installation, so every signed-in operator acts on the same rows, and the
+   * internal API acts on the id it handed the uploader with no session at all.
    */
-  async findByIdUnscoped(id: string): Promise<StreamRow | null> {
+  async findById(id: string): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `SELECT ${STREAM_COLUMNS} FROM streams WHERE id = $1`,
       [id],
@@ -76,10 +70,9 @@ export class StreamRepository {
   }
 
   /**
-   * By the stream id viewers and encoders use, with no user scope: the
-   * internal API resolves a stream from the ingest address an encoder
-   * connected to, and there is no session behind that call to scope it by.
-   * `topic` is UNIQUE, so this is still one row.
+   * By the stream id viewers and encoders use: the internal API resolves a
+   * stream from the ingest address an encoder connected to. `topic` is UNIQUE,
+   * so this is still one row.
    */
   async findByTopic(topic: string): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
@@ -115,23 +108,21 @@ export class StreamRepository {
   /** Null when the row is not in one of `allowedFrom` (or does not exist). */
   async update(
     id: string,
-    userId: string,
     data: StreamUpdateData,
     allowedFrom: readonly StreamStatus[],
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
-          SET title = $4,
-              description = $5,
-              tags = $6,
-              media_type = $7,
-              scheduled_start_time = $8,
+          SET title = $3,
+              description = $4,
+              tags = $5,
+              media_type = $6,
+              scheduled_start_time = $7,
               updated_at = NOW()
-        WHERE id = $1 AND user_id = $2 AND status = ANY($3::text[])
+        WHERE id = $1 AND status = ANY($2::text[])
         RETURNING ${STREAM_COLUMNS}`,
       [
         id,
-        userId,
         allowedFrom,
         data.title,
         data.description,
@@ -146,25 +137,21 @@ export class StreamRepository {
   /** True when a row was deleted; false when it was not in `allowedFrom`. */
   async deleteById(
     id: string,
-    userId: string,
     allowedFrom: readonly StreamStatus[],
   ): Promise<boolean> {
     const result = await this.pool.query(
       `DELETE FROM streams
-        WHERE id = $1 AND user_id = $2 AND status = ANY($3::text[])`,
-      [id, userId, allowedFrom],
+        WHERE id = $1 AND status = ANY($2::text[])`,
+      [id, allowedFrom],
     );
     return (result.rowCount ?? 0) > 0;
   }
 
-  async findThumbnail(
-    id: string,
-    userId: string,
-  ): Promise<ThumbnailRow | null> {
+  async findThumbnail(id: string): Promise<ThumbnailRow | null> {
     const result = await this.pool.query<ThumbnailRow>(
       `SELECT thumbnail, thumbnail_mime FROM streams
-        WHERE id = $1 AND user_id = $2 AND thumbnail IS NOT NULL`,
-      [id, userId],
+        WHERE id = $1 AND thumbnail IS NOT NULL`,
+      [id],
     );
     return this.one(result.rows, result.rowCount);
   }
@@ -176,27 +163,25 @@ export class StreamRepository {
    */
   async setThumbnail(
     id: string,
-    userId: string,
     bytes: Buffer,
     mime: string,
     allowedFrom: readonly StreamStatus[],
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
-          SET thumbnail = $4,
-              thumbnail_mime = $5,
+          SET thumbnail = $3,
+              thumbnail_mime = $4,
               thumbnail_ref = NULL,
               updated_at = NOW()
-        WHERE id = $1 AND user_id = $2 AND status = ANY($3::text[])
+        WHERE id = $1 AND status = ANY($2::text[])
         RETURNING ${STREAM_COLUMNS}`,
-      [id, userId, allowedFrom, bytes, mime],
+      [id, allowedFrom, bytes, mime],
     );
     return this.one(result.rows, result.rowCount);
   }
 
   async clearThumbnail(
     id: string,
-    userId: string,
     allowedFrom: readonly StreamStatus[],
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
@@ -205,9 +190,9 @@ export class StreamRepository {
               thumbnail_mime = NULL,
               thumbnail_ref = NULL,
               updated_at = NOW()
-        WHERE id = $1 AND user_id = $2 AND status = ANY($3::text[])
+        WHERE id = $1 AND status = ANY($2::text[])
         RETURNING ${STREAM_COLUMNS}`,
-      [id, userId, allowedFrom],
+      [id, allowedFrom],
     );
     return this.one(result.rows, result.rowCount);
   }
@@ -217,33 +202,28 @@ export class StreamRepository {
    * upload is paid for the moment it succeeds, so it must survive a publish
    * that fails afterwards instead of being uploaded again next time.
    */
-  async recordThumbnailRef(
-    id: string,
-    userId: string,
-    thumbnailRef: string,
-  ): Promise<void> {
+  async recordThumbnailRef(id: string, thumbnailRef: string): Promise<void> {
     await this.pool.query(
       `UPDATE streams
-          SET thumbnail_ref = $3,
+          SET thumbnail_ref = $2,
               updated_at = NOW()
-        WHERE id = $1 AND user_id = $2`,
-      [id, userId, thumbnailRef],
+        WHERE id = $1`,
+      [id, thumbnailRef],
     );
   }
 
   async rotatePublishKey(
     id: string,
-    userId: string,
     publishKey: string,
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
-          SET publish_key = $3,
+          SET publish_key = $2,
               publish_key_rotated_at = NOW(),
               updated_at = NOW()
-        WHERE id = $1 AND user_id = $2
+        WHERE id = $1
         RETURNING ${STREAM_COLUMNS}`,
-      [id, userId, publishKey],
+      [id, publishKey],
     );
     return this.one(result.rows, result.rowCount);
   }
@@ -351,19 +331,18 @@ export class StreamRepository {
    */
   async recordRepublish(
     id: string,
-    userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
-          SET published_feed_index = $3,
+          SET published_feed_index = $2,
               publish_error = NULL,
-              thumbnail_ref = $4,
+              thumbnail_ref = $3,
               updated_at = NOW()
-        WHERE id = $1 AND user_id = $2
+        WHERE id = $1
         RETURNING ${STREAM_COLUMNS}`,
-      [id, userId, feedIndex, thumbnailRef],
+      [id, feedIndex, thumbnailRef],
     );
     return this.one(result.rows, result.rowCount);
   }
@@ -374,23 +353,21 @@ export class StreamRepository {
    */
   async claimForPublish(
     id: string,
-    userId: string,
     allowedFrom: readonly StreamStatus[],
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
           SET status = 'publishing',
               updated_at = NOW()
-        WHERE id = $1 AND user_id = $2 AND status = ANY($3::text[])
+        WHERE id = $1 AND status = ANY($2::text[])
         RETURNING ${STREAM_COLUMNS}`,
-      [id, userId, allowedFrom],
+      [id, allowedFrom],
     );
     return this.one(result.rows, result.rowCount);
   }
 
   async finishPublish(
     id: string,
-    userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
   ): Promise<StreamRow | null> {
@@ -398,13 +375,13 @@ export class StreamRepository {
       `UPDATE streams
           SET status = 'published',
               published_at = NOW(),
-              published_feed_index = $3,
+              published_feed_index = $2,
               publish_error = NULL,
-              thumbnail_ref = $4,
+              thumbnail_ref = $3,
               updated_at = NOW()
-        WHERE id = $1 AND user_id = $2
+        WHERE id = $1
         RETURNING ${STREAM_COLUMNS}`,
-      [id, userId, feedIndex, thumbnailRef],
+      [id, feedIndex, thumbnailRef],
     );
     return this.one(result.rows, result.rowCount);
   }
@@ -419,19 +396,12 @@ export class StreamRepository {
    * StreamRenditionRepository: the rungs are part of what the uploader
    * reported, and a crash between two statements would leave a draft that
    * carries a ladder from a broadcast nobody can play any more onto the next
-   * entry it is published with. The delete is scoped through `owned` so it
-   * cannot touch another user's stream when the UPDATE itself would not.
+   * entry it is published with.
    */
-  async finishUnpublish(
-    id: string,
-    userId: string,
-  ): Promise<StreamRow | null> {
+  async finishUnpublish(id: string): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
-      `WITH owned AS (
-         SELECT id FROM streams WHERE id = $1 AND user_id = $2
-       ), cleared AS (
-         DELETE FROM stream_renditions
-          WHERE stream_id IN (SELECT id FROM owned)
+      `WITH cleared AS (
+         DELETE FROM stream_renditions WHERE stream_id = $1
        )
        UPDATE streams
           SET status = 'draft',
@@ -443,9 +413,9 @@ export class StreamRepository {
               live_since = NULL,
               ended_at = NULL,
               updated_at = NOW()
-        WHERE id = $1 AND user_id = $2
+        WHERE id = $1
         RETURNING ${STREAM_COLUMNS}`,
-      [id, userId],
+      [id],
     );
     return this.one(result.rows, result.rowCount);
   }
@@ -456,17 +426,16 @@ export class StreamRepository {
    */
   async failPublish(
     id: string,
-    userId: string,
     previousStatus: StreamStatus,
     message: string,
   ): Promise<void> {
     await this.pool.query(
       `UPDATE streams
-          SET status = $3,
-              publish_error = $4,
+          SET status = $2,
+              publish_error = $3,
               updated_at = NOW()
-        WHERE id = $1 AND user_id = $2`,
-      [id, userId, previousStatus, message],
+        WHERE id = $1`,
+      [id, previousStatus, message],
     );
   }
 
@@ -476,17 +445,13 @@ export class StreamRepository {
    * reported, and putting back the one the caller saw would undo a `live` that
    * landed while the write waited its turn.
    */
-  async recordPublishError(
-    id: string,
-    userId: string,
-    message: string,
-  ): Promise<void> {
+  async recordPublishError(id: string, message: string): Promise<void> {
     await this.pool.query(
       `UPDATE streams
-          SET publish_error = $3,
+          SET publish_error = $2,
               updated_at = NOW()
-        WHERE id = $1 AND user_id = $2`,
-      [id, userId, message],
+        WHERE id = $1`,
+      [id, message],
     );
   }
 

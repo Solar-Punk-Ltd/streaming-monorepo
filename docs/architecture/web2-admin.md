@@ -69,8 +69,11 @@ the same open question as the auth component above, seen from the other end.
 1. Ownership across brands: which brand a call may act for. The operator half
    of this is answered — the console has usernames, passwords, an admin role
    and user management, ported from streaming-infra-manager and described in
-   [web2-admin-auth.md](web2-admin-auth.md) — and streams are scoped to the
-   user who created them, which is the single-tenant shape of the answer.
+   [web2-admin-auth.md](web2-admin-auth.md) — and a stream belongs to the
+   installation: they all publish to one catalogue feed signed by one key, so
+   every operator of that installation sees and manages all of them, and
+   `streams.user_id` records who drafted a row rather than who may act on it.
+   What is still open is the per-brand separation above that.
    Choosing how a brand proves itself, OIDC against something it already has,
    a wallet signature, or a magic link, is still open and still blocks the
    second brand rather than the first.

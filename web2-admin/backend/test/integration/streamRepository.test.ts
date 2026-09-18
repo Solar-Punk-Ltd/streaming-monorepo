@@ -103,11 +103,11 @@ describe('resetOrphanedPublishing', () => {
       'both claimed rows are reported',
     );
 
-    const draft = await streams.findById(firstPublish, userId);
+    const draft = await streams.findById(firstPublish);
     assert.equal(draft?.status, 'draft', 'never reached the feed');
     assert.equal(draft?.publish_error, 'backend restarted while publishing');
 
-    const published = await streams.findById(republish, userId);
+    const published = await streams.findById(republish);
     assert.equal(
       published?.status,
       'published',
@@ -127,7 +127,7 @@ describe('resetOrphanedPublishing', () => {
       false,
       'a second boot has nothing to repair',
     );
-    assert.equal((await streams.findById(republish, userId))?.status, 'published');
+    assert.equal((await streams.findById(republish))?.status, 'published');
   });
 
   it('keeps a repaired published row undeletable until it is unpublished', async () => {
@@ -136,11 +136,11 @@ describe('resetOrphanedPublishing', () => {
     await streams.resetOrphanedPublishing();
 
     assert.equal(
-      await streams.deleteById(republish, userId, ['draft']),
+      await streams.deleteById(republish, ['draft']),
       false,
       'its entry is still on the feed',
     );
-    assert.ok(await streams.findById(republish, userId));
+    assert.ok(await streams.findById(republish));
   });
 });
 
@@ -157,7 +157,7 @@ async function recordedLadder(): Promise<string> {
     scheduled_start_time: null,
     publish_key: newPublishKey(),
   });
-  await streams.finishPublish(row.id, userId, 1, null);
+  await streams.finishPublish(row.id, 1, null);
   await renditions.upsert(row.id, {
     name: '360p',
     width: 640,
@@ -240,9 +240,38 @@ describe('markLive un-finishes a broadcast that comes back', () => {
     const refused = await streams.markLive(id, ['published']);
 
     assert.equal(refused, null, 'vod is not in allowedFrom');
-    const row = await streams.findById(id, userId);
+    const row = await streams.findById(id);
     assert.equal(row?.status, 'vod', 'still the recording it was');
     const rungs = await renditions.listByStream(id);
     assert.equal(Number(rungs.find((r) => r.name === '720p')?.manifest_index), 12);
+  });
+});
+
+describe('who drafted a stream', () => {
+  it('is recorded on create, and scopes nothing', async () => {
+    const row = await streams.insert({
+      user_id: userId,
+      topic: randomUUID(),
+      owner: OWNER,
+      title: 'itest shared',
+      description: 'drafted by one operator, managed by every one of them',
+      tags: [],
+      media_type: 'video',
+      scheduled_start_time: null,
+      publish_key: newPublishKey(),
+    });
+
+    assert.equal(row.user_id, userId, 'user_id is still written on create');
+    assert.equal(
+      (await streams.findById(row.id))?.user_id,
+      userId,
+      'and is still on the row when it is read back',
+    );
+    assert.ok(
+      (await streams.list()).some((s) => s.id === row.id),
+      'the list is the installation’s, with no user predicate on it',
+    );
+
+    assert.equal(await streams.deleteById(row.id, ['draft']), true);
   });
 });

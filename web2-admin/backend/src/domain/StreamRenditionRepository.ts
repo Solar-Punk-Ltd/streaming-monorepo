@@ -6,10 +6,10 @@ import type { StreamRenditionRow } from '../types/index.js';
 import { STREAM_RENDITION_COLUMNS } from './streamSql.js';
 
 /**
- * The rungs of each stream's ABR ladder (migration 004). No user scope: the
- * only caller is the internal API, which acts on the stream id it handed the
- * uploader and has no session behind it — the same reason
- * `StreamRepository.findByIdUnscoped` exists.
+ * The rungs of each stream's ABR ladder (migration 004). No user scope, for
+ * the same reason `StreamRepository` has none: the only caller is the internal
+ * API, which acts on the stream id it handed the uploader and has no session
+ * behind it.
  *
  * Deleting a stream takes its rungs with it through the foreign key;
  * `StreamRepository.finishUnpublish` clears them in its own statement, so an

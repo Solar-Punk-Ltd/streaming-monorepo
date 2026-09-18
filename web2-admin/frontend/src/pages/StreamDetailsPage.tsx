@@ -249,7 +249,7 @@ export function StreamDetailsPage() {
           Edit
         </Button>
         <Button size="small" onClick={() => navigate('/')}>
-          Back to My Streams
+          Back to Streams
         </Button>
       </Stack>
 
