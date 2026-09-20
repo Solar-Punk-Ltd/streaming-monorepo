@@ -7,7 +7,6 @@ refuse() {
 }
 
 phase="${1:-}"
-
 case "$phase" in
   preflight|build|verify)
     if [ "$#" -ne 5 ] || [ "$2" != "--plan" ] || [ "$4" != "--output" ]; then
@@ -24,102 +23,213 @@ esac
 
 plan="$3"
 output="${5:-}"
+candidate_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+backend_root="${candidate_root}/web2-admin/backend"
+compose_file="${backend_root}/release-compose.yml"
+release_env="${HOME}/.config/web2-admin/release.env"
 
-node --input-type=module - "$plan" "$phase" <<'NODE'
+plan_value() {
+  node --input-type=module - "$plan" "$phase" "$1" <<'NODE'
 import { lstatSync, readFileSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 
-const [planPath, expectedPhase] = process.argv.slice(2);
+const [planPath, expectedPhase, key] = process.argv.slice(2);
 let value;
 try {
   const stat = lstatSync(planPath);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.size < 1 || stat.size > 64 * 1024) {
-    throw new Error('invalid file');
-  }
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size < 1 || stat.size > 64 * 1024) throw new Error('invalid file');
   value = JSON.parse(readFileSync(planPath, 'utf8'));
 } catch {
   process.stderr.write('REFUSED: admin release plan is invalid\n');
   process.exit(1);
 }
 const record = value !== null && typeof value === 'object' && !Array.isArray(value);
-const keys = record ? Object.keys(value).sort() : [];
-const exactKeys = [
-  'activeArtifactPath',
-  'arguments',
-  'candidateRoot',
-  'images',
-  'phase',
-  'schemaVersion',
-  'slot',
-  'temporaryProject',
-  'treeDigest',
-];
-const exact = keys.length === exactKeys.length && exactKeys.every((key, index) => keys[index] === key);
-const slot = record && value.slot !== null && typeof value.slot === 'object' && !Array.isArray(value.slot)
-  ? value.slot
-  : null;
-const args = record && value.arguments !== null && typeof value.arguments === 'object' && !Array.isArray(value.arguments)
-  ? value.arguments
-  : null;
+const exactKeys = ['activeArtifactPath', 'arguments', 'candidateRoot', 'images', 'phase', 'schemaVersion', 'slot', 'temporaryProject', 'treeDigest'];
+const slot = record && value.slot !== null && typeof value.slot === 'object' && !Array.isArray(value.slot) ? value.slot : null;
+const args = record && value.arguments !== null && typeof value.arguments === 'object' && !Array.isArray(value.arguments) ? value.arguments : null;
+const target = args?.target !== null && typeof args?.target === 'object' && !Array.isArray(args.target) ? args.target : null;
+const imageNames = expectedPhase === 'transition' || expectedPhase === 'verify' ? ['admin-api', 'admin-web'] : [];
+const validImages = Array.isArray(value?.images) && value.images.length === imageNames.length && imageNames.every((service, index) => {
+  const image = value.images[index];
+  return image?.service === service && /^sha256:[0-9a-f]{64}$/.test(image.imageId);
+});
 if (
-  !record || !exact || value.schemaVersion !== 1 || value.phase !== expectedPhase ||
+  !record || Object.keys(value).sort().join(',') !== exactKeys.sort().join(',') ||
+  value.schemaVersion !== 1 || value.phase !== expectedPhase ||
   typeof value.candidateRoot !== 'string' || !isAbsolute(value.candidateRoot) ||
   typeof value.treeDigest !== 'string' || !/^[0-9a-f]{64}$/.test(value.treeDigest) ||
   value.temporaryProject !== `release-${value.treeDigest.slice(0, 20)}` ||
   slot?.role !== 'admin' || slot?.id !== 'default' || Object.keys(slot).length !== 2 ||
-  args === null || Object.keys(args).length !== 0 || !Array.isArray(value.images)
+  args === null || Object.keys(args).join(',') !== 'target' ||
+  target === null || Object.keys(target).sort().join(',') !== 'postgresVolumeName,projectName,webPort' ||
+  typeof target.projectName !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,62}$/.test(target.projectName) ||
+  typeof target.postgresVolumeName !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,62}$/.test(target.postgresVolumeName) ||
+  !Number.isSafeInteger(target.webPort) || target.webPort < 1 || target.webPort > 65535 || !validImages ||
+  ((expectedPhase === 'transition' || expectedPhase === 'verify')
+    ? typeof value.activeArtifactPath !== 'string' || !isAbsolute(value.activeArtifactPath)
+    : value.activeArtifactPath !== null)
 ) {
   process.stderr.write('REFUSED: admin release plan is invalid\n');
   process.exit(1);
 }
+if (key === 'candidateRoot') process.stdout.write(value.candidateRoot);
+else if (key === 'temporaryProject') process.stdout.write(value.temporaryProject);
+else if (key === 'activeArtifactPath') process.stdout.write(value.activeArtifactPath ?? '');
+else if (key.startsWith('target:')) process.stdout.write(String(target[key.slice(7)]));
+else if (key.startsWith('image:')) {
+  const image = value.images.find((entry) => entry.service === key.slice(6));
+  if (!image) process.exit(1);
+  process.stdout.write(image.imageId);
+} else process.exit(1);
 NODE
-
-if [ "$phase" = "transition" ] || [ "$phase" = "verify" ]; then
-  refuse "admin production release coordinator is not configured"
-fi
-
-if [ "$phase" = "preflight" ]; then
-  umask 077
-  printf '%s\n' '{"schemaVersion":1}' > "$output"
-  exit 0
-fi
-
-candidate_root="$(node -e "const p=require(process.argv[1]);process.stdout.write(p.candidateRoot)" "$plan")"
-tree_digest="$(node -e "const p=require(process.argv[1]);process.stdout.write(p.treeDigest)" "$plan")"
-tag_suffix="${tree_digest:0:20}"
-api_tag="streaming-admin-api-release-${tag_suffix}"
-web_tag="streaming-admin-web-release-${tag_suffix}"
-
-docker build --tag "$api_tag" --file "$candidate_root/web2-admin/backend/Dockerfile" "$candidate_root"
-docker build --tag "$web_tag" --file "$candidate_root/web2-admin/frontend/Dockerfile" "$candidate_root"
-api_id="$(docker image inspect --format '{{.Id}}' "$api_tag")"
-web_id="$(docker image inspect --format '{{.Id}}' "$web_tag")"
-
-umask 077
-node --input-type=module - "$output" "$api_id" "$web_id" <<'NODE'
-import { openSync, closeSync, fsyncSync, renameSync, writeFileSync } from 'node:fs';
-
-const [output, apiId, webId] = process.argv.slice(2);
-for (const imageId of [apiId, webId]) {
-  if (!/^sha256:[0-9a-f]{64}$/.test(imageId)) {
-    process.stderr.write('REFUSED: built admin image id is invalid\n');
-    process.exit(1);
-  }
 }
-const body = `${JSON.stringify({
-  schemaVersion: 1,
-  images: [
-    { service: 'admin-api', imageId: apiId },
-    { service: 'admin-web', imageId: webId },
-  ],
-})}\n`;
-const temporary = `${output}.tmp.${process.pid}`;
-writeFileSync(temporary, body, { flag: 'wx', mode: 0o600 });
-const descriptor = openSync(temporary, 'r');
+
+config_target() {
+  node --input-type=module - "$release_env" "$1" <<'NODE'
+import { lstatSync, readFileSync } from 'node:fs';
+
+const [path, key] = process.argv.slice(2);
+let text;
 try {
-  fsyncSync(descriptor);
-} finally {
-  closeSync(descriptor);
+  const stat = lstatSync(path);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size < 1 || stat.size > 64 * 1024) throw new Error('invalid file');
+  text = readFileSync(path, 'utf8');
+} catch {
+  process.stderr.write('REFUSED: admin release environment is missing or invalid\n');
+  process.exit(1);
 }
-renameSync(temporary, output);
+const values = new Map();
+for (const line of text.split(/\r?\n/)) {
+  const trimmed = line.trim();
+  if (trimmed === '' || trimmed.startsWith('#')) continue;
+  const separator = trimmed.indexOf('=');
+  if (separator < 1) continue;
+  const name = trimmed.slice(0, separator).trim();
+  let value = trimmed.slice(separator + 1).trim();
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+  values.set(name, value);
+}
+const defaults = { RELEASE_PROJECT_NAME: 'web2-admin', RELEASE_POSTGRES_VOLUME_NAME: 'web2-admin_web2admin-pg' };
+const value = values.get(key) ?? defaults[key];
+if (typeof value !== 'string') {
+  process.stderr.write('REFUSED: admin release target is incomplete\n');
+  process.exit(1);
+}
+if (
+  ((key === 'RELEASE_PROJECT_NAME' || key === 'RELEASE_POSTGRES_VOLUME_NAME') && !/^[a-z0-9][a-z0-9_-]{0,62}$/.test(value)) ||
+  (key === 'RELEASE_WEB_PORT' && (!/^[1-9]\d*$/.test(value) || Number(value) > 65535))
+) {
+  process.stderr.write('REFUSED: admin release target is invalid\n');
+  process.exit(1);
+}
+process.stdout.write(value);
 NODE
+}
+
+[ "$(plan_value candidateRoot)" = "$candidate_root" ] || refuse "admin release candidate root does not match its plan"
+[ -f "$compose_file" ] && [ ! -L "$compose_file" ] || refuse "admin release compose file is missing"
+
+project_name="$(plan_value target:projectName)"
+postgres_volume_name="$(plan_value target:postgresVolumeName)"
+web_port="$(plan_value target:webPort)"
+[ "$(config_target RELEASE_PROJECT_NAME)" = "$project_name" ] || refuse "admin release project does not match installed configuration"
+[ "$(config_target RELEASE_POSTGRES_VOLUME_NAME)" = "$postgres_volume_name" ] || refuse "admin release database volume does not match installed configuration"
+[ "$(config_target RELEASE_WEB_PORT)" = "$web_port" ] || refuse "admin release web port does not match installed configuration"
+
+export ADMIN_RELEASE_ENV_FILE="$release_env"
+export RELEASE_PROJECT_NAME="$project_name"
+export RELEASE_POSTGRES_VOLUME_NAME="$postgres_volume_name"
+export RELEASE_WEB_PORT="$web_port"
+
+compose() {
+  docker compose --env-file "$release_env" --project-name "$project_name" --project-directory "$backend_root" -f "$compose_file" "$@"
+}
+
+write_images() {
+  local api_image="$1"
+  local web_image="$2"
+  local temporary="${output}.tmp.$$"
+  umask 077
+  printf '{"schemaVersion":1,"images":[{"service":"admin-api","imageId":"%s"},{"service":"admin-web","imageId":"%s"}]}\n' "$api_image" "$web_image" > "$temporary"
+  mv "$temporary" "$output"
+}
+
+case "$phase" in
+  preflight)
+    umask 077
+    printf '%s\n' '{"schemaVersion":1}' > "$output"
+    ;;
+  build)
+    temporary_project="$(plan_value temporaryProject)"
+    docker compose --env-file "$release_env" --project-name "$temporary_project" --project-directory "$backend_root" -f "$compose_file" build api web
+    api_image="$(docker image inspect --format '{{.Id}}' "${temporary_project}-api")"
+    web_image="$(docker image inspect --format '{{.Id}}' "${temporary_project}-web")"
+    [[ "$api_image" =~ ^sha256:[0-9a-f]{64}$ ]] || refuse "built admin API image id is invalid"
+    [[ "$web_image" =~ ^sha256:[0-9a-f]{64}$ ]] || refuse "built admin web image id is invalid"
+    write_images "$api_image" "$web_image"
+    ;;
+  transition)
+    api_image="$(plan_value image:admin-api)"
+    web_image="$(plan_value image:admin-web)"
+    active_artifact="$(plan_value activeArtifactPath)"
+    node --input-type=module - "$active_artifact" <<'NODE'
+import { lstatSync } from 'node:fs';
+const stat = lstatSync(process.argv[2]);
+if (!stat.isFile() || stat.isSymbolicLink() || stat.size < 1 || stat.size > 64 * 1024) process.exit(1);
+NODE
+    override="$(dirname "$plan")/admin-image-override.yml"
+    umask 077
+    cat > "$override" <<EOF
+services:
+  api:
+    image: ${api_image}
+    pull_policy: never
+    volumes:
+      - type: bind
+        source: ${active_artifact}
+        target: /run/streaming-release/active-artifact.json
+        read_only: true
+  web:
+    image: ${web_image}
+    pull_policy: never
+volumes:
+  web2admin-pg:
+    name: ${postgres_volume_name}
+EOF
+    api_containers="$(docker ps -aq --filter "label=com.docker.compose.project=${project_name}" --filter 'label=com.docker.compose.service=api' --filter 'label=com.docker.compose.oneoff=False')"
+    postgres_containers="$(docker ps -aq --filter "label=com.docker.compose.project=${project_name}" --filter 'label=com.docker.compose.service=postgres' --filter 'label=com.docker.compose.oneoff=False')"
+    if ! docker volume inspect "$postgres_volume_name" >/dev/null 2>&1; then
+      if [ -n "$api_containers" ] || [ -n "$postgres_containers" ]; then
+        refuse "admin release found installed services without their database volume"
+      fi
+    fi
+    if [ -n "$api_containers" ]; then
+      compose -f "$override" stop api
+    fi
+    compose -f "$override" up -d --no-build --wait --wait-timeout 120 postgres
+    compose -f "$override" up -d --no-build --wait --wait-timeout 120 api
+    compose -f "$override" up -d --no-build --wait --wait-timeout 120 web
+    ;;
+  verify)
+    override="$(dirname "$plan")/admin-image-override.yml"
+    [ -f "$override" ] && [ ! -L "$override" ] || refuse "admin release image override is missing"
+    api_container="$(compose -f "$override" ps -q api)"
+    web_container="$(compose -f "$override" ps -q web)"
+    postgres_container="$(compose -f "$override" ps -q postgres)"
+    for container in "$api_container" "$web_container" "$postgres_container"; do
+      [[ "$container" =~ ^[A-Za-z0-9_.:-]+$ ]] || refuse "admin release could not identify one container per service"
+      [ "$(docker inspect --format '{{.State.Status}}' "$container")" = running ] || refuse "admin release service is not running"
+      [ "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$container")" = healthy ] || refuse "admin release service is not healthy"
+    done
+    api_image="$(docker inspect --format '{{.Image}}' "$api_container")"
+    web_image="$(docker inspect --format '{{.Image}}' "$web_container")"
+    [ "$api_image" = "$(plan_value image:admin-api)" ] || refuse "admin API image does not match the guarded build"
+    [ "$web_image" = "$(plan_value image:admin-web)" ] || refuse "admin web image does not match the guarded build"
+    postgres_mount="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$postgres_container")"
+    [ "$postgres_mount" = "$postgres_volume_name" ] || refuse "admin database volume does not match the guarded target"
+    artifact_mount="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/run/streaming-release/active-artifact.json"}}{{.Source}}|{{.RW}}{{end}}{{end}}' "$api_container")"
+    [ "$artifact_mount" = "$(plan_value activeArtifactPath)|false" ] || refuse "admin active artifact mount does not match the guarded receipt"
+    [ "$(docker port "$web_container" 80/tcp)" = "127.0.0.1:${web_port}" ] || refuse "admin web port does not match the guarded target"
+    write_images "$api_image" "$web_image"
+    ;;
+esac

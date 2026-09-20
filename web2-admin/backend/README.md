@@ -62,6 +62,27 @@ for the whole design.
 `docker compose -p web2-admin --profile full up -d --build` runs the API in
 Docker too (two-stage `pnpm deploy` image, `Dockerfile`).
 
+The guarded release path uses `release-compose.yml` through
+`release-adapter.sh`. It is separate from the development Compose file. The
+installed release guard supplies immutable API and web image IDs, the bound
+Compose project, the existing Postgres volume and a required loopback web
+port. It also mounts its immutable active artifact descriptor read-only at
+`/run/streaming-release/active-artifact.json`.
+
+Runtime configuration remains operator-owned at
+`$HOME/.config/web2-admin/release.env`. It contains the normal backend
+environment and `POSTGRES_PASSWORD`. `RELEASE_WEB_PORT` is required.
+`RELEASE_PROJECT_NAME` and `RELEASE_POSTGRES_VOLUME_NAME` default to
+`web2-admin` and `web2-admin_web2admin-pg`. An isolated installation may set
+all three to the exact target bound when its external guard is installed. The
+adapter refuses a plan whose target differs from that file. No database or API
+port is published. The web service binds only `127.0.0.1:<RELEASE_WEB_PORT>`.
+
+During a guarded transition the old API stops before the candidate API starts.
+The candidate applies migrations during boot and must pass its database-backed
+health check before the web service starts. Verification checks both image IDs,
+the Postgres volume, the active artifact mount and the loopback port.
+
 ## Configuration
 
 Every variable is documented in [.env.sample](.env.sample), which is the
