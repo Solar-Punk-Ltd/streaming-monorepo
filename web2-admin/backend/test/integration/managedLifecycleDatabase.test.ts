@@ -17,6 +17,7 @@ let database: Database;
 let streams: StreamRepository;
 let renditions: StreamRenditionRepository;
 let schema: string;
+let isolatedDatabaseUrl: string;
 let userId: string;
 
 before(async () => {
@@ -29,7 +30,8 @@ before(async () => {
 
   const isolatedUrl = new URL(sourceUrl);
   isolatedUrl.searchParams.set('options', `-csearch_path=${schema}`);
-  database = new Database(isolatedUrl.toString());
+  isolatedDatabaseUrl = isolatedUrl.toString();
+  database = new Database(isolatedDatabaseUrl);
   await database.migrate();
   streams = new StreamRepository(database.pool);
   renditions = new StreamRenditionRepository(database.pool);
@@ -341,5 +343,30 @@ describe('managed run database invariants', () => {
         last_event_sequence: 2,
       },
     ]);
+  });
+});
+
+describe('managed lifecycle schema compatibility', () => {
+  it('refuses a database lifecycle version newer than this binary supports', async () => {
+    await database.pool.query(
+      `UPDATE schema_compatibility
+          SET version = 2
+        WHERE component = 'managed_stream_lifecycle'`,
+    );
+    const olderBinary = new Database(isolatedDatabaseUrl);
+
+    try {
+      await assert.rejects(
+        olderBinary.migrate(),
+        /managed_stream_lifecycle schema version 2 is newer than supported version 1/,
+      );
+    } finally {
+      await olderBinary.close();
+      await database.pool.query(
+        `UPDATE schema_compatibility
+            SET version = 1
+          WHERE component = 'managed_stream_lifecycle'`,
+      );
+    }
   });
 });
