@@ -26,6 +26,7 @@ import {
 } from '../../domain/ReleaseGuardReceiptRepository.js';
 import { StreamStateService } from '../../domain/StreamStateService.js';
 import { UploaderCapabilityRepository } from '../../domain/UploaderCapabilityRepository.js';
+import type { ManagedIngestLifecycleConfig } from '../../utils/managedIngestConfig.js';
 import {
   ingestLookupParamSchema,
   continuationPreparationParamSchema,
@@ -58,6 +59,7 @@ import {
   toPublishResult,
   toRenditionReportResponse,
 } from '../presenters.js';
+import { createInternalRuntimeRouter } from './internalRuntime.js';
 
 export interface InternalRoutesDeps {
   streamStateService: StreamStateService;
@@ -68,6 +70,7 @@ export interface InternalRoutesDeps {
   publishService: PublishService;
   uploaderCapabilities?: UploaderCapabilityRepository;
   releaseGuardReceipts?: ReleaseGuardReceiptRepository;
+  managedIngestConfig: ManagedIngestLifecycleConfig | null;
   requireInternalToken: RequestHandler;
 }
 
@@ -93,11 +96,13 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
     publishService,
     uploaderCapabilities,
     releaseGuardReceipts,
+    managedIngestConfig,
     requireInternalToken,
   } = deps;
   const router = Router();
 
   router.use(requireInternalToken);
+  router.use(createInternalRuntimeRouter(managedIngestConfig));
 
   if (uploaderCapabilities) {
     router.post(

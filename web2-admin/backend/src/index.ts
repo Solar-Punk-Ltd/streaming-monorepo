@@ -256,6 +256,7 @@ async function main(): Promise<void> {
       publishService,
       uploaderCapabilities,
       releaseGuardReceipts,
+      managedIngestConfig: config.ingest.managedLifecycle,
       ingestService,
       internalApiToken: config.internalApiToken,
       feed,

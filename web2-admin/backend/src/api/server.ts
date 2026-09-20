@@ -16,6 +16,7 @@ import { ReleaseGuardReceiptRepository } from '../domain/ReleaseGuardReceiptRepo
 import { StreamService } from '../domain/StreamService.js';
 import { StreamStateService } from '../domain/StreamStateService.js';
 import { UploaderCapabilityRepository } from '../domain/UploaderCapabilityRepository.js';
+import type { ManagedIngestLifecycleConfig } from '../utils/managedIngestConfig.js';
 
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFound } from './middleware/notFound.js';
@@ -46,6 +47,7 @@ export interface ApiDeps {
   publishService: PublishService;
   uploaderCapabilities?: UploaderCapabilityRepository;
   releaseGuardReceipts?: ReleaseGuardReceiptRepository;
+  managedIngestConfig: ManagedIngestLifecycleConfig | null;
   ingestService: IngestService;
   /** Bearer token for /api/internal; never accepted anywhere else. */
   internalApiToken: string;
@@ -92,6 +94,7 @@ export function startApiServer(
       publishService: deps.publishService,
       uploaderCapabilities: deps.uploaderCapabilities,
       releaseGuardReceipts: deps.releaseGuardReceipts,
+      managedIngestConfig: deps.managedIngestConfig,
       requireInternalToken: createRequireInternalToken(deps.internalApiToken),
     }),
   );
