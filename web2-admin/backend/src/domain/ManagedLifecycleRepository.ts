@@ -254,9 +254,17 @@ export class ManagedLifecycleRepository {
         `UPDATE streams
             SET lifecycle_revision = $2,
                 completed_run_number = COALESCE($3, completed_run_number),
-                status = CASE WHEN $3 IS NULL THEN status ELSE 'vod' END,
+                status = CASE
+                  WHEN $6 = 'live' THEN 'live'
+                  WHEN $3 IS NOT NULL THEN 'vod'
+                  ELSE status
+                END,
                 manifest_index = COALESCE($4, manifest_index),
                 duration_seconds = COALESCE($5, duration_seconds),
+                live_since = CASE
+                  WHEN $6 = 'live' THEN COALESCE(live_since, NOW())
+                  ELSE live_since
+                END,
                 ended_at = CASE WHEN $3 IS NULL THEN ended_at ELSE NOW() END,
                 updated_at = NOW()
           WHERE id = $1`,
@@ -266,6 +274,7 @@ export class ManagedLifecycleRepository {
           recording?.runNumber ?? null,
           recording?.master.index ?? null,
           recording?.master.duration ?? null,
+          report.state,
         ],
       );
       await client.query('COMMIT');

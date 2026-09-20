@@ -281,6 +281,7 @@ describe('managed run database invariants', () => {
       state: 'live' as const,
     };
     assert.equal((await lifecycle.report(row.id, 1, live)).state, 'live');
+    assert.equal((await streams.findById(row.id, userId))?.status, 'live');
     assert.equal((await lifecycle.report(row.id, 1, live)).revision, 3);
     await lifecycle.report(row.id, 1, {
       ...live,
