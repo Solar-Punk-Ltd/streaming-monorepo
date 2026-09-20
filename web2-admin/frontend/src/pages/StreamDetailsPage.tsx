@@ -87,13 +87,30 @@ function watchPath(stream: Stream): string {
 }
 
 function addResponseTransitAge(stream: Stream, elapsedMs: number): Stream {
-  if (stream.lifecycle?.observationAgeMs === undefined) return stream;
+  const lifecycle = stream.lifecycle;
+  if (
+    !lifecycle ||
+    (lifecycle.observationAgeMs === undefined &&
+      lifecycle.reconnectRemainingMs === undefined)
+  ) {
+    return stream;
+  }
+  const elapsed = Math.max(0, elapsedMs);
   return {
     ...stream,
     lifecycle: {
-      ...stream.lifecycle,
-      observationAgeMs:
-        stream.lifecycle.observationAgeMs + Math.max(0, elapsedMs),
+      ...lifecycle,
+      ...(lifecycle.observationAgeMs === undefined
+        ? {}
+        : { observationAgeMs: lifecycle.observationAgeMs + elapsed }),
+      ...(lifecycle.reconnectRemainingMs === undefined
+        ? {}
+        : {
+            reconnectRemainingMs: Math.max(
+              0,
+              lifecycle.reconnectRemainingMs - elapsed,
+            ),
+          }),
     },
   };
 }

@@ -405,6 +405,52 @@ describe('StreamDetailsPage', () => {
     }
   });
 
+  it('counts a delayed owner response against reconnect time remaining', async () => {
+    const response = deferred<Response>();
+    let requested = false;
+    let monotonicNow = 1_000;
+    const now = vi
+      .spyOn(performance, 'now')
+      .mockImplementation(() => monotonicNow);
+    const waiting = managedVod();
+    waiting.lifecycle = {
+      version: 1,
+      revision: 8,
+      runNumber: 2,
+      state: 'waiting',
+      permission: 'claimed',
+      canContinue: false,
+      observationAgeMs: 0,
+      reconnectRemainingMs: 60_000,
+    };
+    mockFetch(
+      routesFor(waiting, [
+        {
+          path: `/api/streams/${ID}`,
+          respond: () => {
+            requested = true;
+            return response.promise;
+          },
+        },
+      ]),
+    );
+
+    try {
+      renderDetails();
+      await waitFor(() => expect(requested).toBe(true));
+      monotonicNow += 10_000;
+      response.resolve(jsonOk(waiting));
+
+      expect(
+        await screen.findByText(
+          'Run 2: Waiting for reconnection (50s remaining)',
+        ),
+      ).toBeInTheDocument();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it('offers a refresh while publishing leaves both buttons disabled', async () => {
     let status: Stream['status'] = 'publishing';
     mockFetch([
