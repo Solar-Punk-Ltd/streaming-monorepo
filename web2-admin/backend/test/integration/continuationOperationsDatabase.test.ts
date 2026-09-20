@@ -245,4 +245,107 @@ describe('continuation operations', () => {
         error instanceof ManagedLifecycleConflict && error.code === 'closed',
     );
   });
+
+  it('allocates a new run after a pending continuation is cancelled', async () => {
+    const { streamId, checkpointReference } = await completedManagedStream();
+    const firstRequestId = randomUUID();
+    const first = await continuations.create(streamId, ownerId, {
+      requestId: firstRequestId,
+      expectedRevision: 5,
+    });
+    const cancelled = await continuations.cancel(
+      streamId,
+      first.operationId,
+      ownerId,
+    );
+
+    assert.equal(
+      (await continuations.create(streamId, ownerId, {
+        requestId: firstRequestId,
+        expectedRevision: 5,
+      })).status,
+      'cancelled',
+      'the same request reconciles its terminal operation',
+    );
+    const replacement = await continuations.create(streamId, ownerId, {
+      requestId: randomUUID(),
+      expectedRevision: cancelled.revision,
+    });
+    assert.equal(replacement.previousRunNumber, 1);
+    assert.equal(replacement.nextRunNumber, 3, 'run 2 is never reused');
+    assert.equal(
+      replacement.retainedRecording?.checkpointReference,
+      checkpointReference,
+    );
+  });
+
+  it('allocates a new run after preparation fails', async () => {
+    const { streamId } = await completedManagedStream();
+    const first = await continuations.create(streamId, ownerId, {
+      requestId: randomUUID(),
+      expectedRevision: 5,
+    });
+    const failed = await continuations.prepare(streamId, first.operationId, {
+      lifecycleVersion: 1,
+      uploaderId: UPLOADER_ID,
+      expectedRevision: first.revision,
+      status: 'failed',
+      failure: 'checkpoint unavailable',
+    });
+
+    const replacement = await continuations.create(streamId, ownerId, {
+      requestId: randomUUID(),
+      expectedRevision: failed.revision,
+    });
+    assert.equal(replacement.previousRunNumber, 1);
+    assert.equal(replacement.nextRunNumber, 3, 'failed run 2 is never reused');
+  });
+
+  it('records a ready cancellation as empty and continues from a fresh run', async () => {
+    const { streamId, checkpointReference } = await completedManagedStream();
+    const first = await continuations.create(streamId, ownerId, {
+      requestId: randomUUID(),
+      expectedRevision: 5,
+    });
+    const preparedCheckpoint = randomUUID();
+    await continuations.prepare(streamId, first.operationId, {
+      lifecycleVersion: 1,
+      uploaderId: UPLOADER_ID,
+      expectedRevision: first.revision,
+      status: 'ready',
+      checkpointReference: preparedCheckpoint,
+    });
+    const cancelled = await continuations.cancel(
+      streamId,
+      first.operationId,
+      ownerId,
+    );
+
+    const closedRun = await database.pool.query<{
+      close_reason: string;
+      empty_checkpoint_reference: string;
+      accepted_media_count: number;
+    }>(
+      `SELECT close_reason, empty_checkpoint_reference, accepted_media_count
+         FROM stream_runs WHERE stream_id = $1 AND run_number = 2`,
+      [streamId],
+    );
+    assert.deepEqual(closedRun.rows[0], {
+      close_reason: 'empty',
+      empty_checkpoint_reference: preparedCheckpoint,
+      accepted_media_count: 0,
+    });
+
+    const replacement = await continuations.create(streamId, ownerId, {
+      requestId: randomUUID(),
+      expectedRevision: cancelled.revision,
+    });
+    assert.equal(replacement.previousRunNumber, 2);
+    assert.equal(replacement.nextRunNumber, 3);
+    assert.equal(
+      replacement.retainedRecording?.checkpointReference,
+      checkpointReference,
+      'the previous completed replay remains retained',
+    );
+  });
 });

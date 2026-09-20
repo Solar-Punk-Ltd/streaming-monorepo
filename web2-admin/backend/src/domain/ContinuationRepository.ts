@@ -124,12 +124,30 @@ export class ContinuationRepository {
       if (!canContinueVod && !canContinueEmpty) {
         throw new ManagedLifecycleConflict('closed');
       }
-      const allocated = await client.query(
+      const unresolved = await client.query(
+        `SELECT 1 FROM continuation_operations
+          WHERE stream_id = $1 AND status IN ('pending', 'ready')`,
+        [streamId],
+      );
+      if ((unresolved.rowCount ?? 0) > 0) {
+        throw new ManagedLifecycleConflict('revision_conflict');
+      }
+      const allocation = await client.query<{ next_run_number: number }>(
+        `SELECT GREATEST(
+                  $2::int,
+                  COALESCE(MAX(next_run_number), $2::int)
+                ) + 1 AS next_run_number
+           FROM continuation_operations
+          WHERE stream_id = $1`,
+        [streamId, stream.current_run_number],
+      );
+      const nextRunNumber = allocation.rows[0].next_run_number;
+      const alreadyAllocated = await client.query(
         `SELECT 1 FROM continuation_operations
           WHERE stream_id = $1 AND next_run_number = $2`,
-        [streamId, stream.current_run_number + 1],
+        [streamId, nextRunNumber],
       );
-      if ((allocated.rowCount ?? 0) > 0) {
+      if ((alreadyAllocated.rowCount ?? 0) > 0) {
         throw new ManagedLifecycleConflict('revision_conflict');
       }
 
@@ -148,7 +166,7 @@ export class ContinuationRepository {
           digest,
           stream.assigned_uploader_id,
           stream.current_run_number,
-          stream.current_run_number + 1,
+          nextRunNumber,
           stream.completed_run_number,
           revision,
         ],
@@ -319,13 +337,26 @@ export class ContinuationRepository {
       }
       const revision = row.revision + 1;
       if (row.status === 'ready') {
-        await client.query(
+        if (row.checkpoint_reference === null) {
+          throw new ManagedLifecycleConflict('closed');
+        }
+        const closed = await client.query(
           `UPDATE stream_runs
               SET state = 'closed', permission = 'closed',
-                  close_reason = 'cancelled', revision = $3
-            WHERE stream_id = $1 AND run_number = $2`,
-          [streamId, row.next_run_number, revision],
+                  close_reason = 'empty', empty_checkpoint_reference = $3,
+                  accepted_media_count = 0, revision = $4
+            WHERE stream_id = $1 AND run_number = $2
+              AND permission = 'open' AND claim_id IS NULL`,
+          [
+            streamId,
+            row.next_run_number,
+            row.checkpoint_reference,
+            revision,
+          ],
         );
+        if ((closed.rowCount ?? 0) !== 1) {
+          throw new ManagedLifecycleConflict('closed');
+        }
       }
       await client.query(
         `UPDATE continuation_operations
