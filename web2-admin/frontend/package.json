@@ -11,6 +11,7 @@
     "build": "pnpm --filter @streaming-monorepo/web2-admin-common build && tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint src vite.config.ts --max-warnings 0",
     "test": "vitest run",
     "test:watch": "vitest"
   },

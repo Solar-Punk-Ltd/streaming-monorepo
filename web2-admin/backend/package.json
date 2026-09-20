@@ -11,6 +11,7 @@
     "user:add": "tsx --conditions=development src/cli.ts user:add",
     "dev": "tsx watch --conditions=development src/index.ts",
     "typecheck": "tsc -p tsconfig.typecheck.json",
+    "lint": "eslint src test --max-warnings 0",
     "test": "tsx --conditions=development --test 'test/unit/**/*.test.ts'",
     "test:integration": "tsx --conditions=development --test 'test/integration/**/*.test.ts'",
     "database:start": "docker compose -p web2-admin -f ./docker-compose.yml up -d postgres",
