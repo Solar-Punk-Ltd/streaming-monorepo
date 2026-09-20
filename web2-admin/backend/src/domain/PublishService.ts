@@ -7,7 +7,6 @@ import type {
 import {
   PUBLISHABLE_STATUSES,
   UNPUBLISHABLE_STATUSES,
-  type StreamRenditionRow,
   type StreamRow,
   type ThumbnailRow,
 } from '../types/index.js';
@@ -34,6 +33,7 @@ import { Logger } from './Logger.js';
 import type { ManagedPublisherEnrollment } from './ManagedEnrollmentService.js';
 import { Mutex } from './Mutex.js';
 import { toRendition } from './renditions.js';
+import type { CatalogueStreamSnapshot } from './StreamRepository.js';
 
 const logger = Logger.getInstance();
 
@@ -41,7 +41,10 @@ const logger = Logger.getInstance();
 export interface PublishStreamStore {
   findById(id: string, userId: string): Promise<StreamRow | null>;
   findByIdUnscoped(id: string): Promise<StreamRow | null>;
-  managedCatalogueState(streamId: string): Promise<ManagedCatalogueState | null>;
+  catalogueSnapshot(
+    streamId: string,
+  ): Promise<CatalogueStreamSnapshot | null>;
+  catalogueSnapshotsOnFeed(): Promise<CatalogueStreamSnapshot[]>;
   findThumbnail(id: string, userId: string): Promise<ThumbnailRow | null>;
   recordThumbnailRef(
     id: string,
@@ -90,27 +93,6 @@ export interface PublishStreamStore {
     userId: string,
     message: string,
   ): Promise<void>;
-  /**
-   * Every row that should be on the catalogue right now — status `published`,
-   * `live` or `vod`, every user. Only `reconcile` uses it, and it has to see
-   * all of them: a row it cannot see reads as an entry with nothing behind it.
-   */
-  listOnFeed(): Promise<StreamRow[]>;
-}
-
-/**
-
- * The slice of StreamRenditionRepository publishing needs: read-only. The
- * ladder is written by the rendition report, and every entry this service
- * builds — first publish, hand republish, state report — reads it back so the
- * catalogue never loses rungs that were reported between two writes.
- */
-export interface PublishRenditionStore {
-  listByStream(streamId: string): Promise<StreamRenditionRow[]>;
-  listByManagedRun(
-    streamId: string,
-    runNumber: number,
-  ): Promise<StreamRenditionRow[]>;
 }
 
 /**
@@ -217,7 +199,6 @@ const THUMBNAIL_FILE_EXTENSIONS: Record<string, string> = {
 export class PublishService {
   constructor(
     private readonly streams: PublishStreamStore,
-    private readonly renditions: PublishRenditionStore,
     private readonly feedWrites: FeedWriteLog,
     private readonly gateway: FeedGateway,
     private readonly feed: FeedIdentity,
@@ -292,15 +273,16 @@ export class PublishService {
   async reconcile(userId?: string): Promise<ReconcileOutcome> {
     return this.mutex.run(async () => {
       const base = await this.baseSnapshot();
-      const rows = await this.streams.listOnFeed();
+      const snapshots = await this.streams.catalogueSnapshotsOnFeed();
+      const rows = snapshots.map(({ stream }) => stream);
       const plan = planReconcile(
         base.entries,
         rows,
         this.feed.owner,
         userId,
         Date.now(),
-        await this.laddersOf(rows),
-        await this.managedCatalogueStatesOf(rows),
+        this.laddersOf(snapshots),
+        this.managedCatalogueStatesOf(snapshots),
       );
 
       if (!plan.changed) {
@@ -390,15 +372,16 @@ export class PublishService {
       // The same diff `reconcile` would write, without writing it: a ghost
       // entry is invisible in the console (its row is gone) and only shows up
       // as a viewer seeing a stream that does not exist.
-      const rows = await this.streams.listOnFeed();
+      const snapshots = await this.streams.catalogueSnapshotsOnFeed();
+      const rows = snapshots.map(({ stream }) => stream);
       const plan = planReconcile(
         base.entries,
         rows,
         this.feed.owner,
         undefined,
         Date.now(),
-        await this.laddersOf(rows),
-        await this.managedCatalogueStatesOf(rows),
+        this.laddersOf(snapshots),
+        this.managedCatalogueStatesOf(snapshots),
       );
       if (plan.removed.length > 0) {
         logger.warn(
@@ -432,7 +415,10 @@ export class PublishService {
 
     try {
       const thumbnailRef = await this.ensureThumbnailUploaded(claimed, userId);
-      const { entry, renditions } = await this.entryFor(claimed, thumbnailRef);
+      const { entry, renditions } = await this.entryFor(
+        claimed.id,
+        thumbnailRef,
+      );
       const snapshot = await this.baseSnapshot();
       const previous = ladderOnFeed(snapshot.entries, entry.owner, entry.topic);
       const entries = upsertEntry(snapshot.entries, entry);
@@ -564,7 +550,10 @@ export class PublishService {
 
     try {
       const thumbnailRef = await this.ensureThumbnailUploaded(current, userId);
-      const { entry, renditions } = await this.entryFor(current, thumbnailRef);
+      const { entry, renditions, stream: projected } = await this.entryFor(
+        current.id,
+        thumbnailRef,
+      );
       const snapshot = await this.baseSnapshot();
       const previous = ladderOnFeed(snapshot.entries, entry.owner, entry.topic);
       const entries = upsertEntry(snapshot.entries, entry);
@@ -579,7 +568,7 @@ export class PublishService {
       if (!updated) throw new StreamNotFoundError(id);
 
       logger.info(
-        `[Publish] ${current.topic} rewritten as ${current.status} at feed index ${index} (${entries.length} entries)`,
+        `[Publish] ${projected.topic} rewritten as ${projected.status} at feed index ${index} (${entries.length} entries)`,
       );
       return this.outcome(updated, index, entries.length, renditions, previous);
     } catch (error) {
@@ -605,24 +594,24 @@ export class PublishService {
    * taking the ladder off the catalogue until its next rung report. One query
    * per row, and a reconcile is rare and already reads every row.
    */
-  private async laddersOf(
-    rows: readonly StreamRow[],
-  ): Promise<Map<string, Rendition[]>> {
+  private laddersOf(
+    snapshots: readonly CatalogueStreamSnapshot[],
+  ): Map<string, Rendition[]> {
     const ladders = new Map<string, Rendition[]>();
-    for (const row of rows) {
-      const rungs = await this.renditionsFor(row);
-      if (rungs.length > 0) ladders.set(row.id, rungs.map(toRendition));
+    for (const { stream, renditions } of snapshots) {
+      if (renditions.length > 0) {
+        ladders.set(stream.id, renditions.map(toRendition));
+      }
     }
     return ladders;
   }
 
-  private async managedCatalogueStatesOf(
-    rows: readonly StreamRow[],
-  ): Promise<Map<string, ManagedCatalogueState>> {
+  private managedCatalogueStatesOf(
+    snapshots: readonly CatalogueStreamSnapshot[],
+  ): Map<string, ManagedCatalogueState> {
     const states = new Map<string, ManagedCatalogueState>();
-    for (const row of rows) {
-      const state = await this.streams.managedCatalogueState(row.id);
-      if (state) states.set(row.id, state);
+    for (const { stream, managedState } of snapshots) {
+      if (managedState) states.set(stream.id, managedState);
     }
     return states;
   }
@@ -641,29 +630,24 @@ export class PublishService {
    * rather than with a second read that may already describe a later write.
    */
   private async entryFor(
-    stream: StreamRow,
+    streamId: string,
     thumbnailRef: string | null,
-  ): Promise<{ entry: FeedStreamEntry; renditions: Rendition[] }> {
-    const renditions = (await this.renditionsFor(stream)).map(toRendition);
-    const managedState = await this.streams.managedCatalogueState(stream.id);
+  ): Promise<{
+    stream: StreamRow;
+    entry: FeedStreamEntry;
+    renditions: Rendition[];
+  }> {
+    const snapshot = await this.streams.catalogueSnapshot(streamId);
+    if (!snapshot) throw new StreamNotFoundError(streamId);
+    const renditions = snapshot.renditions.map(toRendition);
     const entry = buildFeedEntry(
-      stream,
+      snapshot.stream,
       thumbnailRef,
       Date.now(),
       renditions,
-      managedState ?? undefined,
+      snapshot.managedState,
     );
-    return { entry, renditions };
-  }
-
-  private renditionsFor(stream: StreamRow): Promise<StreamRenditionRow[]> {
-    if (stream.lifecycle_version === 1 && stream.current_run_number !== null) {
-      return this.renditions.listByManagedRun(
-        stream.id,
-        stream.current_run_number,
-      );
-    }
-    return this.renditions.listByStream(stream.id);
+    return { stream: snapshot.stream, entry, renditions };
   }
 
   /**

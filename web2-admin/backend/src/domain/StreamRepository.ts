@@ -6,12 +6,18 @@ import type {
   MediaType,
   StreamStatus,
 } from '@streaming-monorepo/web2-admin-common';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 
-import type { StreamRow, ThumbnailRow } from '../types/index.js';
+import type {
+  StreamRenditionRow,
+  StreamRow,
+  ThumbnailRow,
+} from '../types/index.js';
 
 import type { ManagedCatalogueState } from './feedEntries.js';
-import { STREAM_COLUMNS } from './streamSql.js';
+import { STREAM_COLUMNS, STREAM_RENDITION_COLUMNS } from './streamSql.js';
+
+type Queryable = Pool | PoolClient;
 
 interface ManagedCatalogueDatabaseRow {
   lifecycle_version: number | null;
@@ -31,6 +37,12 @@ interface ManagedCatalogueDatabaseRow {
 export interface ManagedOwnerState {
   lifecycle: ManagedOwnerLifecycle;
   completedRecording?: CompletedRecordingSnapshot;
+}
+
+export interface CatalogueStreamSnapshot {
+  stream: StreamRow;
+  renditions: StreamRenditionRow[];
+  managedState?: ManagedCatalogueState;
 }
 
 interface PublicRecordingDatabaseRow {
@@ -102,6 +114,35 @@ export class StreamRepository {
     return result.rows;
   }
 
+  async catalogueSnapshot(
+    streamId: string,
+  ): Promise<CatalogueStreamSnapshot | null> {
+    return this.inCatalogueSnapshot(async (client) => {
+      const result = await client.query<StreamRow>(
+        `SELECT ${STREAM_COLUMNS} FROM streams WHERE id = $1`,
+        [streamId],
+      );
+      const stream = this.one(result.rows, result.rowCount);
+      return stream ? this.readCatalogueSnapshot(client, stream) : null;
+    });
+  }
+
+  async catalogueSnapshotsOnFeed(): Promise<CatalogueStreamSnapshot[]> {
+    return this.inCatalogueSnapshot(async (client) => {
+      const result = await client.query<StreamRow>(
+        `SELECT ${STREAM_COLUMNS} FROM streams
+          WHERE status IN ('published', 'live', 'vod')
+            AND (lifecycle_version IS DISTINCT FROM 1 OR published_at IS NOT NULL)
+          ORDER BY created_at`,
+      );
+      const snapshots: CatalogueStreamSnapshot[] = [];
+      for (const stream of result.rows) {
+        snapshots.push(await this.readCatalogueSnapshot(client, stream));
+      }
+      return snapshots;
+    });
+  }
+
   async findById(id: string, userId: string): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `SELECT ${STREAM_COLUMNS} FROM streams WHERE id = $1 AND user_id = $2`,
@@ -138,7 +179,14 @@ export class StreamRepository {
   }
 
   async managedOwnerState(streamId: string): Promise<ManagedOwnerState | null> {
-    const stateResult = await this.pool.query<ManagedCatalogueDatabaseRow>(
+    return this.readManagedOwnerState(this.pool, streamId);
+  }
+
+  private async readManagedOwnerState(
+    queryable: Queryable,
+    streamId: string,
+  ): Promise<ManagedOwnerState | null> {
+    const stateResult = await queryable.query<ManagedCatalogueDatabaseRow>(
       `SELECT stream.lifecycle_version, stream.lifecycle_revision,
               stream.current_run_number, stream.completed_run_number,
               run.state, run.permission,
@@ -219,6 +267,7 @@ export class StreamRepository {
     return {
       lifecycle,
       completedRecording: await this.completedRecording(
+        queryable,
         streamId,
         state.completed_run_number,
       ),
@@ -226,25 +275,26 @@ export class StreamRepository {
   }
 
   private async completedRecording(
+    queryable: Queryable,
     streamId: string,
     runNumber: number,
   ): Promise<CompletedRecordingSnapshot> {
     const [recordingResult, expectedResult, renditionsResult] =
       await Promise.all([
-        this.pool.query<PublicRecordingDatabaseRow>(
+        queryable.query<PublicRecordingDatabaseRow>(
           `SELECT master_topic, master_index, master_reference, duration_seconds
              FROM stream_run_recordings
             WHERE stream_id = $1 AND run_number = $2`,
           [streamId, runNumber],
         ),
-        this.pool.query<{ name: string }>(
+        queryable.query<{ name: string }>(
           `SELECT name
              FROM stream_run_expected_renditions
             WHERE stream_id = $1 AND run_number = $2
             ORDER BY name`,
           [streamId, runNumber],
         ),
-        this.pool.query<PublicRenditionDatabaseRow>(
+        queryable.query<PublicRenditionDatabaseRow>(
           `SELECT name, topic, manifest_index, reference, duration_seconds,
                   width, height, bandwidth, avg_bandwidth
              FROM stream_run_recording_renditions
@@ -280,6 +330,68 @@ export class StreamRepository {
         avgBandwidth: Number(rendition.avg_bandwidth),
       })),
     };
+  }
+
+  private async readCatalogueSnapshot(
+    client: PoolClient,
+    stream: StreamRow,
+  ): Promise<CatalogueStreamSnapshot> {
+    const managed = stream.lifecycle_version === 1;
+    if (managed && stream.current_run_number === null) {
+      throw new Error(`managed stream ${stream.id} has no current run number`);
+    }
+    const renditionResult = managed
+      ? await client.query<StreamRenditionRow>(
+          `SELECT stream_id, name, width, height, topic, bandwidth,
+                  avg_bandwidth, manifest_index, duration_seconds, updated_at
+             FROM stream_run_renditions
+            WHERE stream_id = $1 AND run_number = $2
+            ORDER BY height ASC, name ASC`,
+          [stream.id, stream.current_run_number],
+        )
+      : await client.query<StreamRenditionRow>(
+          `SELECT ${STREAM_RENDITION_COLUMNS} FROM stream_renditions
+            WHERE stream_id = $1
+            ORDER BY height ASC, name ASC`,
+          [stream.id],
+        );
+    if (!managed) {
+      return { stream, renditions: renditionResult.rows };
+    }
+    const ownerState = await this.readManagedOwnerState(client, stream.id);
+    if (!ownerState) {
+      throw new Error(`managed stream ${stream.id} has no current run state`);
+    }
+    const { permission: _permission, ...lifecycle } = ownerState.lifecycle;
+    return {
+      stream,
+      renditions: renditionResult.rows,
+      managedState: {
+        lifecycle,
+        ...(ownerState.completedRecording
+          ? { completedRecording: ownerState.completedRecording }
+          : {}),
+      },
+    };
+  }
+
+  private async inCatalogueSnapshot<T>(
+    read: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query(
+        'BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY',
+      );
+      const result = await read(client);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   /**

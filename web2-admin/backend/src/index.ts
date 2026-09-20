@@ -202,7 +202,6 @@ async function main(): Promise<void> {
   const streamService = new StreamService(streamRepository, feed);
   const publishService = new PublishService(
     streamRepository,
-    renditionRepository,
     feedWriteRepository,
     createFeedGateway(),
     feed,

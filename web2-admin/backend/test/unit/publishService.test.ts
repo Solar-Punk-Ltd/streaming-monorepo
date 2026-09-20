@@ -71,7 +71,6 @@ function setup(
   const writes = new FakeFeedWriteLog();
   const service = new PublishService(
     store,
-    renditions,
     writes,
     gateway,
     feed,
@@ -549,6 +548,7 @@ describe('PublishService republishing a stream that has gone live', () => {
     const live = store.add(
       streamRow({
         status: 'live',
+        published_at: new Date('2026-09-11T10:00:00.000Z'),
         lifecycle_version: 1,
         lifecycle_revision: 2,
         current_run_number: 1,
@@ -590,6 +590,7 @@ describe('PublishService republishing a stream that has gone live', () => {
     const row = store.add(
       streamRow({
         status: 'live',
+        published_at: new Date('2026-09-11T10:00:00.000Z'),
         lifecycle_version: 1,
         lifecycle_revision: 3,
         current_run_number: 2,
@@ -607,6 +608,48 @@ describe('PublishService republishing a stream that has gone live', () => {
     assert.deepEqual(
       entriesOf(gateway)[0].renditions?.map(({ name }) => name),
       ['360p'],
+    );
+  });
+
+  it('never combines one managed run row with another run lifecycle', async () => {
+    const { store, gateway, service } = setup();
+    const runOne = store.add(
+      streamRow({
+        status: 'vod',
+        published_at: new Date('2026-09-11T10:00:00.000Z'),
+        manifest_index: 12,
+        duration_seconds: 45,
+        lifecycle_version: 1,
+        lifecycle_revision: 4,
+        current_run_number: 1,
+        completed_run_number: 1,
+        lifecycle_state: 'vod',
+        lifecycle_permission: 'closed',
+        lifecycle_uploader_id: 'srs-main',
+      }),
+    );
+    const readState = store.managedCatalogueState.bind(store);
+    store.managedCatalogueState = async (streamId) => {
+      store.add({
+        ...runOne,
+        status: 'published',
+        manifest_index: null,
+        duration_seconds: null,
+        lifecycle_revision: 5,
+        current_run_number: 2,
+        lifecycle_state: 'ready',
+        lifecycle_permission: 'open',
+      });
+      return readState(streamId);
+    };
+
+    await service.republishManagedState(runOne.id);
+
+    const [entry] = entriesOf(gateway);
+    assert.ok(entry);
+    assert.ok(
+      (entry.state === 'vod' && entry.lifecycle?.runNumber === 1) ||
+        (entry.state === 'scheduled' && entry.lifecycle?.runNumber === 2),
     );
   });
 

@@ -18,10 +18,10 @@ import type {
 } from '../../../src/domain/LadderService.js';
 import type {
   FeedWriteLog,
-  PublishRenditionStore,
   PublishStreamStore,
 } from '../../../src/domain/PublishService.js';
 import type { ManagedCatalogueState } from '../../../src/domain/feedEntries.js';
+import type { CatalogueStreamSnapshot } from '../../../src/domain/StreamRepository.js';
 import type { StateStreamStore } from '../../../src/domain/StreamStateService.js';
 import type {
   StreamRenditionRow,
@@ -79,7 +79,7 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
  * order the master playlist and the catalogue entry use.
  */
 export class FakeRenditionStore
-  implements PublishRenditionStore, LadderRenditionStore
+  implements LadderRenditionStore
 {
   readonly rows = new Map<string, StreamRenditionRow[]>();
   readonly managedRows = new Map<string, StreamRenditionRow[]>();
@@ -199,6 +199,48 @@ export class FakeStreamStore
         state: row.lifecycle_state,
       },
     };
+  }
+
+  async catalogueSnapshot(
+    streamId: string,
+  ): Promise<CatalogueStreamSnapshot | null> {
+    const stream = this.rows.get(streamId);
+    if (!stream) return null;
+    const renditions =
+      stream.lifecycle_version === 1 && stream.current_run_number !== null
+        ? await this.renditions?.listByManagedRun(
+            stream.id,
+            stream.current_run_number,
+          )
+        : await this.renditions?.listByStream(stream.id);
+    const managedState =
+      stream.lifecycle_version === 1 &&
+      stream.current_run_number !== null &&
+      stream.lifecycle_state !== null
+        ? {
+            lifecycle: {
+              version: 1 as const,
+              revision: stream.lifecycle_revision,
+              runNumber: stream.current_run_number,
+              state: stream.lifecycle_state,
+            },
+          }
+        : undefined;
+    return {
+      stream: { ...stream },
+      renditions: renditions ?? [],
+      ...(managedState ? { managedState } : {}),
+    };
+  }
+
+  async catalogueSnapshotsOnFeed(): Promise<CatalogueStreamSnapshot[]> {
+    const rows = await this.listOnFeed();
+    const snapshots: CatalogueStreamSnapshot[] = [];
+    for (const row of rows) {
+      const snapshot = await this.catalogueSnapshot(row.id);
+      if (snapshot) snapshots.push(snapshot);
+    }
+    return snapshots;
   }
 
   /** Unscoped, as the SQL is: `topic` is UNIQUE, so this is still one row. */

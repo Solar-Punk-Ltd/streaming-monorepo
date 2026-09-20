@@ -75,7 +75,6 @@ async function setup() {
   const gateway = new FakeFeedGateway();
   const publishService = new PublishService(
     store,
-    renditions,
     new FakeFeedWriteLog(),
     gateway,
     feed,
