@@ -21,6 +21,11 @@ const target = {
   postgresVolumeName: 'admin-test-pg',
   webPort: 18081,
 };
+const fixtureNetwork = {
+  name: 'srs-continuation-20260920-a1b2c3d4-network',
+  fixtureId: 'srs-continuation-20260920-a1b2c3d4',
+};
+const fixtureNetworkId = 'd'.repeat(64);
 
 async function temporaryRoot(t: {
   after(callback: () => Promise<void>): void;
@@ -30,7 +35,11 @@ async function temporaryRoot(t: {
   return root;
 }
 
-function plan(phase: string, activeArtifactPath: string | null = null) {
+function plan(
+  phase: string,
+  activeArtifactPath: string | null = null,
+  network?: typeof fixtureNetwork,
+) {
   const treeDigest = 'a'.repeat(64);
   return {
     schemaVersion: 1,
@@ -46,7 +55,19 @@ function plan(phase: string, activeArtifactPath: string | null = null) {
         ]
       : [],
     activeArtifactPath,
-    arguments: { target: { ...target } },
+    arguments: {
+      target: { ...target },
+      ...(network === undefined
+        ? {}
+        : {
+            fixtureNetwork: {
+              ...network,
+              ...(phase === 'transition' || phase === 'verify'
+                ? { networkId: fixtureNetworkId }
+                : {}),
+            },
+          }),
+    },
   };
 }
 
@@ -138,6 +159,44 @@ fi
     );
   });
 
+  it('preflights and returns the exact bound fixture network id', async (t) => {
+    const root = await temporaryRoot(t);
+    const home = await writeReleaseEnvironment(root);
+    const bin = join(root, 'bin');
+    await mkdir(bin);
+    await writeFile(
+      join(bin, 'docker'),
+      `#!/bin/bash
+set -euo pipefail
+if [ "$1" = network ] && [ "$2" = inspect ]; then
+  case "$4" in
+    *'.Id'*) printf '%s\n' '${fixtureNetworkId}' ;;
+    *Internal*) printf '%s\n' true ;;
+    *fixture*) printf '%s\n' '${fixtureNetwork.fixtureId}' ;;
+    *managed*) printf '%s\n' true ;;
+  esac
+fi
+`,
+    );
+    await chmod(join(bin, 'docker'), 0o700);
+    const planPath = join(root, 'preflight-plan.json');
+    const output = join(root, 'preflight.json');
+    await writeFile(planPath, JSON.stringify(plan('preflight', null, fixtureNetwork)));
+
+    await execFileAsync(adapter, ['preflight', '--plan', planPath, '--output', output], {
+      env: {
+        ...process.env,
+        HOME: home,
+        PATH: `${bin}:${process.env.PATH ?? ''}`,
+      },
+    });
+
+    assert.deepEqual(JSON.parse(await readFile(output, 'utf8')), {
+      schemaVersion: 1,
+      fixtureNetworkId,
+    });
+  });
+
   it('stops the old API before starting and verifying the guarded services', async (t) => {
     const root = await temporaryRoot(t);
     const home = await writeReleaseEnvironment(root);
@@ -226,7 +285,106 @@ if [ "$1" = compose ] && [[ "$*" == *' up '* ]] && [ "${'$'}{!#}" = api ]; then 
     assert.doesNotMatch(calls, / up -d --no-build --wait --wait-timeout 120 web/);
   });
 
-  it('verifies exact images, database, artifact mount and loopback port', async (t) => {
+  it('joins only the bound internal fixture network and labels guard-owned resources', async (t) => {
+    const root = await temporaryRoot(t);
+    const home = await writeReleaseEnvironment(root);
+    const bin = join(root, 'bin');
+    await mkdir(bin);
+    await writeFile(
+      join(bin, 'docker'),
+      `#!/bin/bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${root}/docker-calls"
+if [ "$1" = network ] && [ "$2" = inspect ]; then
+  case "$4" in
+    *'.Id'*) printf '%s\n' '${fixtureNetworkId}' ;;
+    *Internal*) printf '%s\n' true ;;
+    *fixture*) printf '%s\n' '${fixtureNetwork.fixtureId}' ;;
+    *managed*) printf '%s\n' true ;;
+  esac
+elif [ "$1" = volume ] && [ "$2" = inspect ]; then
+  printf '%s\n' '${target.postgresVolumeName}'
+fi
+`,
+    );
+    await chmod(join(bin, 'docker'), 0o700);
+    const activeArtifactPath = join(root, 'active-artifact.json');
+    const planPath = join(root, 'transition-plan.json');
+    await writeFile(activeArtifactPath, '{"schemaVersion":1}');
+    await writeFile(
+      planPath,
+      JSON.stringify(plan('transition', activeArtifactPath, fixtureNetwork)),
+    );
+
+    await execFileAsync(adapter, ['transition', '--plan', planPath], {
+      env: {
+        ...process.env,
+        HOME: home,
+        PATH: `${bin}:${process.env.PATH ?? ''}`,
+      },
+    });
+
+    const calls = await readFile(join(root, 'docker-calls'), 'utf8');
+    assert.match(calls, new RegExp(`network inspect .* ${fixtureNetwork.name}`));
+    const override = await readFile(join(root, 'admin-fixture-network-override.yml'), 'utf8');
+    assert.match(override, new RegExp(`name: ${fixtureNetwork.name}`));
+    assert.match(override, /external: true/);
+    assert.match(override, new RegExp(`org\\.solarpunk\\.srs-continuation\\.fixture: ${fixtureNetwork.fixtureId}`));
+    assert.match(override, /org\.solarpunk\.srs-continuation\.managed: "true"/);
+    assert.match(override, /aliases:\n\s+- api\n\s+- admin-api/);
+    assert.match(override, /aliases:\n\s+- admin-web/);
+    assert.match(override, /api:[\s\S]*ports: !reset \[\]/);
+    assert.match(override, /postgres:[\s\S]*ports: !reset \[\]/);
+    assert.match(override, new RegExp(`127\\.0\\.0\\.1:${String(target.webPort)}:80`));
+  });
+
+  it('refuses a fixture network with the wrong identity before starting services', async (t) => {
+    const root = await temporaryRoot(t);
+    const home = await writeReleaseEnvironment(root);
+    const bin = join(root, 'bin');
+    await mkdir(bin);
+    await writeFile(
+      join(bin, 'docker'),
+      `#!/bin/bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${root}/docker-calls"
+if [ "$1" = network ] && [ "$2" = inspect ]; then
+  case "$4" in
+    *'.Id'*) printf '%s\n' '${fixtureNetworkId}' ;;
+    *Internal*) printf '%s\n' true ;;
+    *fixture*) printf '%s\n' wrong-fixture ;;
+    *managed*) printf '%s\n' true ;;
+  esac
+fi
+`,
+    );
+    await chmod(join(bin, 'docker'), 0o700);
+    const activeArtifactPath = join(root, 'active-artifact.json');
+    const planPath = join(root, 'transition-plan.json');
+    await writeFile(activeArtifactPath, '{"schemaVersion":1}');
+    await writeFile(
+      planPath,
+      JSON.stringify(plan('transition', activeArtifactPath, fixtureNetwork)),
+    );
+
+    await assert.rejects(
+      execFileAsync(adapter, ['transition', '--plan', planPath], {
+        env: {
+          ...process.env,
+          HOME: home,
+          PATH: `${bin}:${process.env.PATH ?? ''}`,
+        },
+      }),
+      (error: Error & { stderr?: string }) => {
+        assert.match(error.stderr ?? '', /fixture network identity does not match/);
+        return true;
+      },
+    );
+    const calls = await readFile(join(root, 'docker-calls'), 'utf8');
+    assert.doesNotMatch(calls, / up /);
+  });
+
+  it('verifies exact images, database, fixture membership and loopback port', async (t) => {
     const root = await temporaryRoot(t);
     const home = await writeReleaseEnvironment(root);
     const bin = join(root, 'bin');
@@ -236,13 +394,29 @@ if [ "$1" = compose ] && [[ "$*" == *' up '* ]] && [ "${'$'}{!#}" = api ]; then 
     const output = join(root, 'verify.json');
     await writeFile(activeArtifactPath, '{"schemaVersion":1}');
     await writeFile(join(root, 'admin-image-override.yml'), 'services: {}\n');
-    await writeFile(planPath, JSON.stringify(plan('verify', activeArtifactPath)));
+    await writeFile(join(root, 'admin-fixture-network-override.yml'), 'services: {}\n');
+    await writeFile(
+      planPath,
+      JSON.stringify(plan('verify', activeArtifactPath, fixtureNetwork)),
+    );
     await writeFile(
       join(bin, 'docker'),
       `#!/bin/bash
 set -euo pipefail
 printf '%s\\n' "$*" >> "${root}/docker-calls"
-if [ "$1" = compose ] && [[ "$*" == *' ps -q '* ]]; then
+if [ "$1" = network ] && [ "$2" = inspect ]; then
+  case "$4" in
+    *'.Id'*) printf '%s\\n' '${fixtureNetworkId}' ;;
+    *Internal*) printf '%s\\n' true ;;
+    *fixture*) printf '%s\\n' '${fixtureNetwork.fixtureId}' ;;
+    *managed*) printf '%s\\n' true ;;
+  esac
+elif [ "$1" = volume ] && [ "$2" = inspect ]; then
+  case "$4" in
+    *fixture*) printf '%s\\n' '${fixtureNetwork.fixtureId}' ;;
+    *managed*) printf '%s\\n' true ;;
+  esac
+elif [ "$1" = compose ] && [[ "$*" == *' ps -q '* ]]; then
   case "${'$'}{!#}" in
     api) printf '%s\\n' admin-api-container ;;
     web) printf '%s\\n' admin-web-container ;;
@@ -253,10 +427,14 @@ elif [ "$1" = inspect ]; then
   container="${'$'}{!#}"
   if [[ "$format" == *State.Status* ]]; then printf '%s\\n' running
   elif [[ "$format" == *State.Health* ]]; then printf '%s\\n' healthy
+  elif [[ "$format" == *Config.Labels*fixture* ]]; then printf '%s\\n' '${fixtureNetwork.fixtureId}'
+  elif [[ "$format" == *Config.Labels*managed* ]]; then printf '%s\\n' true
+  elif [[ "$format" == *NetworkSettings* ]]; then printf '%s\\n' '${fixtureNetworkId}'
   elif [[ "$format" == *'.Image'* ]]; then
     case "$container" in
       admin-api-container) printf 'sha256:%s\\n' "$(printf b%.0s {1..64})" ;;
       admin-web-container) printf 'sha256:%s\\n' "$(printf c%.0s {1..64})" ;;
+      admin-postgres-container) printf 'sha256:%s\\n' "$(printf e%.0s {1..64})" ;;
     esac
   elif [[ "$format" == *'/var/lib/postgresql/data'* ]]; then printf '%s\\n' '${target.postgresVolumeName}'
   elif [[ "$format" == *'/run/streaming-release/active-artifact.json'* ]]; then printf '%s|false\\n' '${activeArtifactPath}'

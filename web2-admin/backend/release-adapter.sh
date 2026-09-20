@@ -48,6 +48,23 @@ const exactKeys = ['activeArtifactPath', 'arguments', 'candidateRoot', 'images',
 const slot = record && value.slot !== null && typeof value.slot === 'object' && !Array.isArray(value.slot) ? value.slot : null;
 const args = record && value.arguments !== null && typeof value.arguments === 'object' && !Array.isArray(value.arguments) ? value.arguments : null;
 const target = args?.target !== null && typeof args?.target === 'object' && !Array.isArray(args.target) ? args.target : null;
+const fixtureNetwork = args?.fixtureNetwork !== null && typeof args?.fixtureNetwork === 'object' && !Array.isArray(args.fixtureNetwork)
+  ? args.fixtureNetwork
+  : null;
+const argumentKeys = args === null ? [] : Object.keys(args).sort();
+const argumentsAreExact = argumentKeys.join(',') === 'target' || argumentKeys.join(',') === 'fixtureNetwork,target';
+const fixtureNetworkKeys = fixtureNetwork === null ? '' : Object.keys(fixtureNetwork).sort().join(',');
+const fixtureNetworkShape = expectedPhase === 'transition' || expectedPhase === 'verify'
+  ? 'fixtureId,name,networkId'
+  : 'fixtureId,name';
+const fixtureNetworkIsValid = fixtureNetwork === null || (
+  fixtureNetworkKeys === fixtureNetworkShape &&
+  typeof fixtureNetwork.name === 'string' && /^[a-z0-9][a-z0-9_.-]{0,127}$/.test(fixtureNetwork.name) &&
+  typeof fixtureNetwork.fixtureId === 'string' && /^srs-continuation-20260920-[a-z0-9]{8,16}$/.test(fixtureNetwork.fixtureId) &&
+  fixtureNetwork.name === `${fixtureNetwork.fixtureId}-network` &&
+  (fixtureNetworkShape === 'fixtureId,name' ||
+    (typeof fixtureNetwork.networkId === 'string' && /^[0-9a-f]{64}$/.test(fixtureNetwork.networkId)))
+);
 const imageNames = expectedPhase === 'transition' || expectedPhase === 'verify' ? ['admin-api', 'admin-web'] : [];
 const validImages = Array.isArray(value?.images) && value.images.length === imageNames.length && imageNames.every((service, index) => {
   const image = value.images[index];
@@ -60,7 +77,7 @@ if (
   typeof value.treeDigest !== 'string' || !/^[0-9a-f]{64}$/.test(value.treeDigest) ||
   value.temporaryProject !== `release-${value.treeDigest.slice(0, 20)}` ||
   slot?.role !== 'admin' || slot?.id !== 'default' || Object.keys(slot).length !== 2 ||
-  args === null || Object.keys(args).join(',') !== 'target' ||
+  args === null || !argumentsAreExact || !fixtureNetworkIsValid ||
   target === null || Object.keys(target).sort().join(',') !== 'postgresVolumeName,projectName,webPort' ||
   typeof target.projectName !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,62}$/.test(target.projectName) ||
   typeof target.postgresVolumeName !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,62}$/.test(target.postgresVolumeName) ||
@@ -76,6 +93,9 @@ if (key === 'candidateRoot') process.stdout.write(value.candidateRoot);
 else if (key === 'temporaryProject') process.stdout.write(value.temporaryProject);
 else if (key === 'activeArtifactPath') process.stdout.write(value.activeArtifactPath ?? '');
 else if (key.startsWith('target:')) process.stdout.write(String(target[key.slice(7)]));
+else if (key === 'fixtureNetwork:name') process.stdout.write(fixtureNetwork?.name ?? '');
+else if (key === 'fixtureNetwork:fixtureId') process.stdout.write(fixtureNetwork?.fixtureId ?? '');
+else if (key === 'fixtureNetwork:networkId') process.stdout.write(fixtureNetwork?.networkId ?? '');
 else if (key.startsWith('image:')) {
   const image = value.images.find((entry) => entry.service === key.slice(6));
   if (!image) process.exit(1);
@@ -132,6 +152,9 @@ NODE
 project_name="$(plan_value target:projectName)"
 postgres_volume_name="$(plan_value target:postgresVolumeName)"
 web_port="$(plan_value target:webPort)"
+fixture_network_name="$(plan_value fixtureNetwork:name)"
+fixture_id="$(plan_value fixtureNetwork:fixtureId)"
+fixture_network_id="$(plan_value fixtureNetwork:networkId)"
 [ "$(config_target RELEASE_PROJECT_NAME)" = "$project_name" ] || refuse "admin release project does not match installed configuration"
 [ "$(config_target RELEASE_POSTGRES_VOLUME_NAME)" = "$postgres_volume_name" ] || refuse "admin release database volume does not match installed configuration"
 [ "$(config_target RELEASE_WEB_PORT)" = "$web_port" ] || refuse "admin release web port does not match installed configuration"
@@ -143,6 +166,101 @@ export RELEASE_WEB_PORT="$web_port"
 
 compose() {
   docker compose --env-file "$release_env" --project-name "$project_name" --project-directory "$backend_root" -f "$compose_file" "$@"
+}
+
+require_fixture_network() {
+  [ -n "$fixture_network_name" ] || return 0
+  actual_network_id="$(docker network inspect --format '{{.Id}}' "$fixture_network_name")"
+  [[ "$actual_network_id" =~ ^[0-9a-f]{64}$ ]] || refuse "admin fixture network id is invalid"
+  if [ -n "$fixture_network_id" ] && [ "$actual_network_id" != "$fixture_network_id" ]; then
+    refuse "admin fixture network id does not match"
+  fi
+  [ "$(docker network inspect --format '{{.Internal}}' "$fixture_network_name")" = true ] ||
+    refuse "admin fixture network is not internal"
+  [ "$(docker network inspect --format '{{index .Labels "org.solarpunk.srs-continuation.fixture"}}' "$fixture_network_name")" = "$fixture_id" ] ||
+    refuse "admin fixture network identity does not match"
+  [ "$(docker network inspect --format '{{index .Labels "org.solarpunk.srs-continuation.managed"}}' "$fixture_network_name")" = true ] ||
+    refuse "admin fixture network is not managed"
+}
+
+write_fixture_override() {
+  local fixture_override="$1"
+  [ -n "$fixture_network_name" ] || return 0
+  cat > "$fixture_override" <<EOF
+services:
+  api:
+    labels:
+      org.solarpunk.srs-continuation.fixture: ${fixture_id}
+      org.solarpunk.srs-continuation.managed: "true"
+    networks:
+      fixture:
+        aliases:
+          - api
+          - admin-api
+    ports: !reset []
+  web:
+    labels:
+      org.solarpunk.srs-continuation.fixture: ${fixture_id}
+      org.solarpunk.srs-continuation.managed: "true"
+    networks:
+      fixture:
+        aliases:
+          - admin-web
+    ports: !override
+      - "127.0.0.1:${web_port}:80"
+  postgres:
+    labels:
+      org.solarpunk.srs-continuation.fixture: ${fixture_id}
+      org.solarpunk.srs-continuation.managed: "true"
+    ports: !reset []
+networks:
+  fixture:
+    external: true
+    name: ${fixture_network_name}
+volumes:
+  web2admin-pg:
+    labels:
+      org.solarpunk.srs-continuation.fixture: ${fixture_id}
+      org.solarpunk.srs-continuation.managed: "true"
+EOF
+}
+
+require_fixture_container() {
+  local container="$1"
+  [ -n "$fixture_network_name" ] || return 0
+  [ "$(docker inspect --format '{{index .Config.Labels "org.solarpunk.srs-continuation.fixture"}}' "$container")" = "$fixture_id" ] ||
+    refuse "admin fixture container identity does not match"
+  [ "$(docker inspect --format '{{index .Config.Labels "org.solarpunk.srs-continuation.managed"}}' "$container")" = true ] ||
+    refuse "admin fixture container is not managed"
+}
+
+require_fixture_membership() {
+  local container="$1"
+  [ -n "$fixture_network_name" ] || return 0
+  [ "$(docker inspect --format "{{with index .NetworkSettings.Networks \"${fixture_network_name}\"}}{{.NetworkID}}{{end}}" "$container")" = "$fixture_network_id" ] ||
+    refuse "admin fixture container is not attached to the bound network"
+}
+
+require_fixture_volume() {
+  [ -n "$fixture_network_name" ] || return 0
+  [ "$(docker volume inspect --format '{{index .Labels "org.solarpunk.srs-continuation.fixture"}}' "$postgres_volume_name")" = "$fixture_id" ] ||
+    refuse "admin fixture database identity does not match"
+  [ "$(docker volume inspect --format '{{index .Labels "org.solarpunk.srs-continuation.managed"}}' "$postgres_volume_name")" = true ] ||
+    refuse "admin fixture database is not managed"
+}
+
+compose_release() {
+  local override="$1"
+  shift
+  if [ -n "$fixture_network_name" ]; then
+    local fixture_override
+    fixture_override="$(dirname "$plan")/admin-fixture-network-override.yml"
+    [ -f "$fixture_override" ] && [ ! -L "$fixture_override" ] ||
+      refuse "admin fixture network override is missing"
+    compose -f "$override" -f "$fixture_override" "$@"
+  else
+    compose -f "$override" "$@"
+  fi
 }
 
 write_images() {
@@ -157,7 +275,12 @@ write_images() {
 case "$phase" in
   preflight)
     umask 077
-    printf '%s\n' '{"schemaVersion":1}' > "$output"
+    if [ -n "$fixture_network_name" ]; then
+      require_fixture_network
+      printf '{"schemaVersion":1,"fixtureNetworkId":"%s"}\n' "$actual_network_id" > "$output"
+    else
+      printf '%s\n' '{"schemaVersion":1}' > "$output"
+    fi
     ;;
   build)
     temporary_project="$(plan_value temporaryProject)"
@@ -169,6 +292,7 @@ case "$phase" in
     write_images "$api_image" "$web_image"
     ;;
   transition)
+    require_fixture_network
     api_image="$(plan_value image:admin-api)"
     web_image="$(plan_value image:admin-web)"
     active_artifact="$(plan_value activeArtifactPath)"
@@ -196,6 +320,9 @@ volumes:
   web2admin-pg:
     name: ${postgres_volume_name}
 EOF
+    if [ -n "$fixture_network_name" ]; then
+      write_fixture_override "$(dirname "$plan")/admin-fixture-network-override.yml"
+    fi
     api_containers="$(docker ps -aq --filter "label=com.docker.compose.project=${project_name}" --filter 'label=com.docker.compose.service=api' --filter 'label=com.docker.compose.oneoff=False')"
     postgres_containers="$(docker ps -aq --filter "label=com.docker.compose.project=${project_name}" --filter 'label=com.docker.compose.service=postgres' --filter 'label=com.docker.compose.oneoff=False')"
     if ! docker volume inspect "$postgres_volume_name" >/dev/null 2>&1; then
@@ -204,27 +331,34 @@ EOF
       fi
     fi
     if [ -n "$api_containers" ]; then
-      compose -f "$override" stop api
+      compose_release "$override" stop api
     fi
-    compose -f "$override" up -d --no-build --wait --wait-timeout 120 postgres
-    compose -f "$override" up -d --no-build --wait --wait-timeout 120 api
-    compose -f "$override" up -d --no-build --wait --wait-timeout 120 web
+    compose_release "$override" up -d --no-build --wait --wait-timeout 120 postgres
+    compose_release "$override" up -d --no-build --wait --wait-timeout 120 api
+    compose_release "$override" up -d --no-build --wait --wait-timeout 120 web
     ;;
   verify)
+    require_fixture_network
     override="$(dirname "$plan")/admin-image-override.yml"
     [ -f "$override" ] && [ ! -L "$override" ] || refuse "admin release image override is missing"
-    api_container="$(compose -f "$override" ps -q api)"
-    web_container="$(compose -f "$override" ps -q web)"
-    postgres_container="$(compose -f "$override" ps -q postgres)"
+    api_container="$(compose_release "$override" ps -q api)"
+    web_container="$(compose_release "$override" ps -q web)"
+    postgres_container="$(compose_release "$override" ps -q postgres)"
     for container in "$api_container" "$web_container" "$postgres_container"; do
       [[ "$container" =~ ^[A-Za-z0-9_.:-]+$ ]] || refuse "admin release could not identify one container per service"
       [ "$(docker inspect --format '{{.State.Status}}' "$container")" = running ] || refuse "admin release service is not running"
       [ "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$container")" = healthy ] || refuse "admin release service is not healthy"
+      require_fixture_container "$container"
     done
+    require_fixture_membership "$api_container"
+    require_fixture_membership "$web_container"
+    require_fixture_volume
     api_image="$(docker inspect --format '{{.Image}}' "$api_container")"
     web_image="$(docker inspect --format '{{.Image}}' "$web_container")"
+    postgres_image="$(docker inspect --format '{{.Image}}' "$postgres_container")"
     [ "$api_image" = "$(plan_value image:admin-api)" ] || refuse "admin API image does not match the guarded build"
     [ "$web_image" = "$(plan_value image:admin-web)" ] || refuse "admin web image does not match the guarded build"
+    [[ "$postgres_image" =~ ^sha256:[0-9a-f]{64}$ ]] || refuse "admin postgres image id is invalid"
     postgres_mount="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$postgres_container")"
     [ "$postgres_mount" = "$postgres_volume_name" ] || refuse "admin database volume does not match the guarded target"
     artifact_mount="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/run/streaming-release/active-artifact.json"}}{{.Source}}|{{.RW}}{{end}}{{end}}' "$api_container")"
