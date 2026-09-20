@@ -250,6 +250,48 @@ describe('StreamDetailsPage', () => {
     }
   });
 
+  it('counts a delayed owner response against active status freshness', async () => {
+    const response = deferred<Response>();
+    let requested = false;
+    let monotonicNow = 1_000;
+    const now = vi
+      .spyOn(performance, 'now')
+      .mockImplementation(() => monotonicNow);
+    const live = managedVod();
+    live.lifecycle = {
+      version: 1,
+      revision: 8,
+      runNumber: 2,
+      state: 'live',
+      permission: 'claimed',
+      observationAgeMs: 15_000,
+    };
+    mockFetch(
+      routesFor(live, [
+        {
+          path: `/api/streams/${ID}`,
+          respond: () => {
+            requested = true;
+            return response.promise;
+          },
+        },
+      ]),
+    );
+
+    try {
+      renderDetails();
+      await waitFor(() => expect(requested).toBe(true));
+      monotonicNow += 20_000;
+      response.resolve(jsonOk(live));
+
+      expect(
+        await screen.findByText('Run 2: Status unavailable'),
+      ).toBeInTheDocument();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it('offers a refresh while publishing leaves both buttons disabled', async () => {
     let status: Stream['status'] = 'publishing';
     mockFetch([
@@ -394,6 +436,97 @@ describe('StreamDetailsPage', () => {
     expect(await screen.findByText(/Preparing continuation\. Run 2\./)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel continuation' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Continue stream' })).not.toBeInTheDocument();
+  });
+
+  it('polls a pending continuation until preparation is ready', async () => {
+    const pending = managedVod();
+    pending.continuation = pendingOperation();
+    const ready = managedVod();
+    ready.lifecycle = {
+      version: 1,
+      revision: 7,
+      runNumber: 2,
+      state: 'ready',
+      permission: 'open',
+    };
+    ready.continuation = {
+      ...pendingOperation(),
+      status: 'ready',
+      revision: 7,
+    };
+    let reads = 0;
+    let ownerPoll: (() => void) | undefined;
+    const interval = vi
+      .spyOn(window, 'setInterval')
+      .mockImplementation((handler: TimerHandler, timeout?: number) => {
+        if (timeout === 10_000 && typeof handler === 'function') {
+          ownerPoll = handler;
+        }
+        return 99;
+      });
+    mockFetch(
+      routesFor(pending, [
+        {
+          path: `/api/streams/${ID}`,
+          respond: () => jsonOk(reads++ === 0 ? pending : ready),
+        },
+      ]),
+    );
+
+    try {
+      renderDetails();
+      expect(
+        await screen.findByText(/Preparing continuation\. Run 2\./),
+      ).toBeInTheDocument();
+      expect(ownerPoll).toBeTypeOf('function');
+      void act(() => ownerPoll?.());
+      expect(
+        await screen.findByText(/Ready for OBS\. Run 2\./),
+      ).toBeInTheDocument();
+    } finally {
+      interval.mockRestore();
+    }
+  });
+
+  it('refuses a newer request whose lifecycle revision moved backward', async () => {
+    const current = managedVod();
+    current.lifecycle = {
+      version: 1,
+      revision: 7,
+      runNumber: 2,
+      state: 'ready',
+      permission: 'open',
+    };
+    current.continuation = {
+      ...pendingOperation(),
+      status: 'ready',
+      revision: 7,
+    };
+    const stale = managedVod();
+    stale.lifecycle = {
+      version: 1,
+      revision: 6,
+      runNumber: 1,
+      state: 'closed',
+      permission: 'closed',
+    };
+    let reads = 0;
+    mockFetch(
+      routesFor(current, [
+        {
+          path: `/api/streams/${ID}`,
+          respond: () => jsonOk(reads++ === 0 ? current : stale),
+        },
+      ]),
+    );
+    renderDetails();
+    expect(await screen.findByText('Run 2: Ready for OBS')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('refresh stream'));
+
+    await waitFor(() => expect(reads).toBe(2));
+    expect(screen.getByText('Run 2: Ready for OBS')).toBeInTheDocument();
+    expect(screen.queryByText('Run 1: Finishing recording')).not.toBeInTheDocument();
   });
 
   it('does not let a delayed operation reply replace a newer revision', async () => {

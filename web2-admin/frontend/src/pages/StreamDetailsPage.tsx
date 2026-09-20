@@ -86,6 +86,18 @@ function watchPath(stream: Stream): string {
   return `#/watch/${stream.mediaType}/${stream.owner}/${stream.topic}`;
 }
 
+function addResponseTransitAge(stream: Stream, elapsedMs: number): Stream {
+  if (stream.lifecycle?.observationAgeMs === undefined) return stream;
+  return {
+    ...stream,
+    lifecycle: {
+      ...stream.lifecycle,
+      observationAgeMs:
+        stream.lifecycle.observationAgeMs + Math.max(0, elapsedMs),
+    },
+  };
+}
+
 export function StreamDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -103,15 +115,31 @@ export function StreamDetailsPage() {
   // another's title would be worse than showing nothing.
   const requestId = useRef(0);
   const streamRequestId = useRef(0);
+  const acceptedLifecycle = useRef<{ streamId: string; revision: number } | null>(
+    null,
+  );
 
   const refreshStream = useCallback(() => {
     if (!id) return;
     const request = (streamRequestId.current += 1);
+    const requestedAt = performance.now();
     setError(null);
     api
       .fetchStream(id)
       .then((next) => {
-        if (streamRequestId.current === request) setStream(next);
+        if (streamRequestId.current !== request) return;
+        const previous = acceptedLifecycle.current;
+        const revision = next.lifecycle?.revision;
+        if (
+          previous?.streamId === next.id &&
+          (revision === undefined || revision < previous.revision)
+        ) {
+          return;
+        }
+        if (revision !== undefined) {
+          acceptedLifecycle.current = { streamId: next.id, revision };
+        }
+        setStream(addResponseTransitAge(next, performance.now() - requestedAt));
       })
       .catch((e: unknown) => {
         if (streamRequestId.current === request) {
@@ -146,15 +174,20 @@ export function StreamDetailsPage() {
     setStream(null);
     setIngest(null);
     setLastResult(null);
+    acceptedLifecycle.current = null;
     load();
   }, [load]);
 
   useEffect(() => {
     const state = stream?.lifecycle?.state;
-    if (state !== 'claimed' && state !== 'live' && state !== 'waiting') return;
+    const operation = stream?.continuation?.status;
+    const activeLifecycle =
+      state === 'claimed' || state === 'live' || state === 'waiting';
+    const preparingContinuation = operation === 'pending' || operation === 'ready';
+    if (!activeLifecycle && !preparingContinuation) return;
     const interval = window.setInterval(refreshStream, 10_000);
     return () => window.clearInterval(interval);
-  }, [refreshStream, stream?.lifecycle?.state]);
+  }, [refreshStream, stream?.continuation?.status, stream?.lifecycle?.state]);
 
   const runPublish = async (action: 'publish' | 'unpublish') => {
     if (!id) return;
@@ -503,7 +536,11 @@ export function StreamDetailsPage() {
         ) : null}
       </Paper>
 
-      <ContinuationPanel stream={stream} reload={refreshStream} />
+      <ContinuationPanel
+        key={stream.id}
+        stream={stream}
+        reload={refreshStream}
+      />
 
       {ingest ? (
         <IngestPanel
