@@ -32,6 +32,7 @@ ALTER TABLE streams
       (
         lifecycle_version = 1
         AND lifecycle_revision BETWEEN 1 AND 9007199254740991
+        AND current_run_number IS NOT NULL
         AND current_run_number > 0
         AND (
           completed_run_number IS NULL
@@ -338,10 +339,14 @@ BEGIN
 
   IF NEW.lifecycle_version IS DISTINCT FROM 1
     OR NEW.lifecycle_revision < OLD.lifecycle_revision
+    OR NEW.current_run_number IS NULL
     OR NEW.current_run_number < OLD.current_run_number
     OR (
       OLD.completed_run_number IS NOT NULL
-      AND NEW.completed_run_number < OLD.completed_run_number
+      AND (
+        NEW.completed_run_number IS NULL
+        OR NEW.completed_run_number < OLD.completed_run_number
+      )
     )
   THEN
     RAISE EXCEPTION 'managed lifecycle identity cannot move backward'
