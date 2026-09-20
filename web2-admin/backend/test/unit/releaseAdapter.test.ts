@@ -120,6 +120,14 @@ async function writeReleaseEnvironment(root: string): Promise<string> {
 }
 
 describe('fixed admin release adapter', () => {
+  it('bounds every guarded admin service to the fixture resource ceiling', async () => {
+    const compose = await readFile(releaseCompose, 'utf8');
+
+    assert.equal(compose.match(/^ {4}cpus: 1\.0$/gm)?.length, 3);
+    assert.equal(compose.match(/^ {4}mem_limit: 1g$/gm)?.length, 3);
+    assert.equal(compose.match(/^ {4}pids_limit: 256$/gm)?.length, 3);
+  });
+
   it('overrides reference-file credentials from the role-scoped process environment', async () => {
     const compose = await readFile(releaseCompose, 'utf8');
     for (const name of [
