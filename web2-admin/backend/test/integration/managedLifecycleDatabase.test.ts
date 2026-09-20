@@ -322,6 +322,66 @@ describe('managed closed recording protection', () => {
 });
 
 describe('managed run database invariants', () => {
+  it('presents reconnect time and continuation eligibility from server state', async () => {
+    const row = await streams.insert({
+      user_id: userId,
+      topic: randomUUID(),
+      owner: OWNER,
+      title: 'owner lifecycle projection',
+      description: 'server-relative reconnect and close status',
+      tags: [],
+      media_type: 'video',
+      scheduled_start_time: null,
+      publish_key: newPublishKey(),
+    });
+    const claimId = randomUUID();
+    await database.pool.query(
+      `UPDATE streams SET lifecycle_version = 1, lifecycle_revision = 2,
+                          current_run_number = 1 WHERE id = $1`,
+      [row.id],
+    );
+    await database.pool.query(
+      `INSERT INTO stream_runs (
+         stream_id, run_number, state, permission, assigned_uploader_id,
+         claim_id, claim_request_id, claim_request_digest, revision,
+         reconnect_deadline
+       ) VALUES ($1, 1, 'waiting', 'claimed', 'itest-uploader', $2, $3,
+                 'claim-digest', 2, clock_timestamp() + interval '60 seconds')`,
+      [row.id, claimId, randomUUID()],
+    );
+
+    const waiting = await streams.managedOwnerState(row.id);
+    assert.equal(waiting?.lifecycle.state, 'waiting');
+    assert.equal(waiting?.lifecycle.canContinue, false);
+    assert.ok(
+      (waiting?.lifecycle.reconnectRemainingMs ?? 0) > 55_000,
+      'remaining reconnect time comes from the database clock',
+    );
+    assert.ok((waiting?.lifecycle.reconnectRemainingMs ?? 0) <= 60_000);
+
+    await database.pool.query(
+      `UPDATE stream_runs
+          SET state = 'closed', permission = 'closed', revision = 3,
+              reconnect_deadline = NULL, close_reason = 'recovery_required'
+        WHERE stream_id = $1 AND run_number = 1`,
+      [row.id],
+    );
+    await database.pool.query(
+      `UPDATE streams SET lifecycle_revision = 3 WHERE id = $1`,
+      [row.id],
+    );
+
+    assert.deepEqual((await streams.managedOwnerState(row.id))?.lifecycle, {
+      version: 1,
+      revision: 3,
+      runNumber: 1,
+      state: 'closed',
+      permission: 'closed',
+      closeReason: 'recovery_required',
+      canContinue: false,
+    });
+  });
+
   it('returns the current claim on an exact retry and refuses it after closure', async () => {
     const row = await streams.insert({
       user_id: userId,

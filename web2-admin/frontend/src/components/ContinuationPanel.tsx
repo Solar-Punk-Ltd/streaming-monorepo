@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, CircularProgress, Paper, Stack, Typography } from '@mui/material';
 import type {
   ContinuationCreateRequest,
+  ManagedOwnerLifecycle,
   OwnerContinuationOperation,
   Stream,
 } from '@streaming-monorepo/web2-admin-common';
@@ -33,23 +34,52 @@ const LIFECYCLE_LABEL = {
   claimed: 'Starting broadcast',
   live: 'Live',
   waiting: 'Waiting for reconnection',
-  closed: 'Finishing recording',
   vod: 'Recording ready',
 } as const;
 
-function lifecycleStatus(stream: Stream, stale: boolean): string {
-  const lifecycle = stream.lifecycle;
-  if (!lifecycle) return '';
-  return `Run ${lifecycle.runNumber}: ${
-    stale ? 'Status unavailable' : LIFECYCLE_LABEL[lifecycle.state]
-  }`;
+function closedLabel(lifecycle: ManagedOwnerLifecycle): string {
+  if (lifecycle.closeReason === 'empty') return 'Closed';
+  if (lifecycle.closeReason === 'recovery_required') return 'Recovery required';
+  if (lifecycle.closeReason === 'finalization_failed') {
+    return 'Recording failed';
+  }
+  return 'Finishing recording';
 }
 
-function canContinue(stream: Stream): boolean {
-  return (
-    stream.lifecycle?.permission === 'closed' &&
-    (stream.lifecycle.state === 'closed' || stream.lifecycle.state === 'vod')
-  );
+function lifecycleStatus(
+  stream: Stream,
+  stale: boolean,
+  waitingRemainingMs: number | null,
+): string {
+  const lifecycle = stream.lifecycle;
+  if (!lifecycle) return '';
+  if (stale) return `Run ${lifecycle.runNumber}: Status unavailable`;
+  if (lifecycle.state === 'closed') {
+    return `Run ${lifecycle.runNumber}: ${closedLabel(lifecycle)}`;
+  }
+  const remaining =
+    lifecycle.state === 'waiting' && waitingRemainingMs !== null
+      ? ` (${String(Math.ceil(waitingRemainingMs / 1_000))}s remaining)`
+      : '';
+  return `Run ${lifecycle.runNumber}: ${LIFECYCLE_LABEL[lifecycle.state]}${remaining}`;
+}
+
+function continueUnavailableReason(
+  lifecycle: ManagedOwnerLifecycle,
+): string {
+  if (lifecycle.closeReason === 'recovery_required') {
+    return 'Recording recovery is required before this stream can continue.';
+  }
+  if (lifecycle.closeReason === 'finalization_failed') {
+    return 'Recording finalization failed. Resolve it before continuing.';
+  }
+  if (lifecycle.state === 'closed') {
+    return 'Recording is still being finalized.';
+  }
+  if (lifecycle.state === 'vod') {
+    return 'The recording is incomplete and cannot be continued.';
+  }
+  return 'This run is still active.';
 }
 
 function isExplainedFailure(error: unknown): boolean {
@@ -71,6 +101,9 @@ export function ContinuationPanel({
   const [busy, setBusy] = useState(false);
   const [conflictRevision, setConflictRevision] = useState<number | null>(null);
   const [stale, setStale] = useState(false);
+  const [waitingRemainingMs, setWaitingRemainingMs] = useState<number | null>(
+    stream.lifecycle?.reconnectRemainingMs ?? null,
+  );
 
   useEffect(() => {
     const incoming = stream.continuation;
@@ -121,12 +154,41 @@ export function ContinuationPanel({
     stream.lifecycle?.state,
   ]);
 
+  useEffect(() => {
+    const lifecycle = stream.lifecycle;
+    if (
+      lifecycle?.state !== 'waiting' ||
+      lifecycle.reconnectRemainingMs === undefined
+    ) {
+      setWaitingRemainingMs(null);
+      return;
+    }
+    const initialRemainingMs = lifecycle.reconnectRemainingMs;
+    const observedAt = performance.now();
+    const update = () => {
+      setWaitingRemainingMs(
+        Math.max(0, initialRemainingMs - (performance.now() - observedAt)),
+      );
+    };
+    update();
+    const timer = window.setInterval(update, 1_000);
+    return () => window.clearInterval(timer);
+  }, [
+    stream.lifecycle?.reconnectRemainingMs,
+    stream.lifecycle?.revision,
+    stream.lifecycle?.state,
+  ]);
+
   const lifecycle = stream.lifecycle;
   if (!lifecycle) return null;
 
   const conflicted = conflictRevision !== null;
   const active = operation && ACTIVE_OPERATION.has(operation.status);
-  const continueAvailable = canContinue(stream) && !active && !conflicted;
+  const continueAvailable = lifecycle.canContinue && !active && !conflicted;
+  const unavailableReason =
+    !continueAvailable && !active && !conflicted
+      ? continueUnavailableReason(lifecycle)
+      : null;
 
   const start = async () => {
     const request = retryRequest.current ?? {
@@ -207,7 +269,7 @@ export function ContinuationPanel({
       <Stack spacing={2}>
         <Typography variant="h6">Continuation</Typography>
         <Typography variant="body2">
-          {lifecycleStatus(stream, stale)}
+          {lifecycleStatus(stream, stale, waitingRemainingMs)}
         </Typography>
         {stream.completedRecording ? (
           <Typography variant="body2">
@@ -229,6 +291,16 @@ export function ContinuationPanel({
             {STATUS_LABEL[operation.status]}. Run {operation.nextRunNumber}.
             {operation.failure ? ` ${operation.failure}` : ''}
           </Alert>
+        ) : null}
+        {lifecycle.state === 'ready' ? (
+          <Typography variant="body2">
+            OBS may reconnect automatically. If it does not, choose Start Streaming.
+          </Typography>
+        ) : null}
+        {unavailableReason ? (
+          <Typography variant="caption" color="text.secondary">
+            {unavailableReason}
+          </Typography>
         ) : null}
         <Stack direction="row" spacing={1} alignItems="center">
           {continueAvailable ? (

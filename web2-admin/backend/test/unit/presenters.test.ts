@@ -33,6 +33,8 @@ describe('stream presentation', () => {
         runNumber: 2,
         state: 'closed',
         permission: 'closed',
+        closeReason: 'reconnect_timeout',
+        canContinue: false,
         receivedAt: '2026-09-20T10:00:00.000Z',
         observationAgeMs: 4_000,
       },
@@ -45,6 +47,8 @@ describe('stream presentation', () => {
       runNumber: 2,
       state: 'closed',
       permission: 'closed',
+      closeReason: 'reconnect_timeout',
+      canContinue: false,
       receivedAt: '2026-09-20T10:00:00.000Z',
       observationAgeMs: 4_000,
     });

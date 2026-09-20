@@ -20,6 +20,10 @@ interface ManagedCatalogueDatabaseRow {
   completed_run_number: number | null;
   state: ManagedLifecycleState | null;
   permission: ManagedRunPermission | null;
+  reconnect_remaining_ms: number | null;
+  close_reason: ManagedOwnerLifecycle['closeReason'] | null;
+  empty_checkpoint_reference: string | null;
+  accepted_media_count: string | number | null;
   last_received_at: Date | null;
   observation_age_ms: number | null;
 }
@@ -136,13 +140,21 @@ export class StreamRepository {
     const stateResult = await this.pool.query<ManagedCatalogueDatabaseRow>(
       `SELECT stream.lifecycle_version, stream.lifecycle_revision,
               stream.current_run_number, stream.completed_run_number,
-              run.state, run.permission, run.last_received_at,
+              run.state, run.permission,
+              run.close_reason, run.empty_checkpoint_reference,
+              run.accepted_media_count, run.last_received_at,
               CASE WHEN run.last_received_at IS NULL THEN NULL
                    ELSE GREATEST(
                      0,
                      EXTRACT(EPOCH FROM (clock_timestamp() - run.last_received_at)) * 1000
                    )::double precision
-              END AS observation_age_ms
+              END AS observation_age_ms,
+              CASE WHEN run.reconnect_deadline IS NULL THEN NULL
+                   ELSE GREATEST(
+                     0,
+                     EXTRACT(EPOCH FROM (run.reconnect_deadline - clock_timestamp())) * 1000
+                   )::double precision
+              END AS reconnect_remaining_ms
          FROM streams stream
          LEFT JOIN stream_runs run
            ON run.stream_id = stream.id
@@ -166,6 +178,19 @@ export class StreamRepository {
       runNumber: state.current_run_number,
       state: state.state,
       permission: state.permission,
+      canContinue:
+        state.permission === 'closed' &&
+        ((state.state === 'vod' &&
+          state.completed_run_number === state.current_run_number) ||
+          (state.state === 'closed' &&
+            state.close_reason === 'empty' &&
+            state.empty_checkpoint_reference !== null &&
+            state.accepted_media_count !== null &&
+            Number(state.accepted_media_count) === 0)),
+      ...(state.close_reason ? { closeReason: state.close_reason } : {}),
+      ...(state.state === 'waiting' && state.reconnect_remaining_ms !== null
+        ? { reconnectRemainingMs: state.reconnect_remaining_ms }
+        : {}),
       ...(state.last_received_at &&
       state.observation_age_ms !== null &&
       (state.state === 'claimed' ||

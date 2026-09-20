@@ -365,6 +365,8 @@ describe('continuation operations', () => {
       runNumber: 2,
       state: 'closed',
       permission: 'closed',
+      closeReason: 'empty',
+      canContinue: true,
     });
     assert.equal(ownerState?.completedRecording?.runNumber, 1);
   });

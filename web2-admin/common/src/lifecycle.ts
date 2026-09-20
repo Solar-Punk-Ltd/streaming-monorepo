@@ -21,6 +21,11 @@ export interface ManagedLifecycleSummary {
 
 export interface ManagedOwnerLifecycle extends ManagedLifecycleSummary {
   permission: ManagedRunPermission;
+  closeReason?: ManagedCloseReason;
+  /** Remaining reconnect window at the response's server receipt time. */
+  reconnectRemainingMs?: number;
+  /** True only when the current closed run has durable replay or empty proof. */
+  canContinue: boolean;
   /** Server receipt time of the latest active-run report. */
   receivedAt?: string;
   /** Age at this response's server, independent of browser clock skew. */

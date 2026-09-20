@@ -58,6 +58,7 @@ function managedVod(): Stream {
       runNumber: 1,
       state: 'vod',
       permission: 'closed',
+      canContinue: true,
     },
     completedRecording: {
       runNumber: 1,
@@ -214,6 +215,7 @@ describe('StreamDetailsPage', () => {
         runNumber: 2,
         state: 'live',
         permission: 'claimed',
+        canContinue: false,
         receivedAt: '2099-01-01T00:00:00.000Z',
         observationAgeMs: 0,
       };
@@ -232,6 +234,8 @@ describe('StreamDetailsPage', () => {
         runNumber: 2,
         state: 'closed',
         permission: 'closed',
+        closeReason: 'reconnect_timeout',
+        canContinue: false,
         receivedAt: '2020-01-01T00:00:00.000Z',
         observationAgeMs: 999_999,
       };
@@ -250,6 +254,114 @@ describe('StreamDetailsPage', () => {
     }
   });
 
+  it('distinguishes an eligible empty close from recovery failure', () => {
+    const empty = managedVod();
+    empty.lifecycle = {
+      version: 1,
+      revision: 9,
+      runNumber: 2,
+      state: 'closed',
+      permission: 'closed',
+      closeReason: 'empty',
+      canContinue: true,
+    };
+    const first = renderWithProviders(
+      <ContinuationPanel stream={empty} reload={() => undefined} />,
+    );
+    expect(screen.getByText('Run 2: Closed')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Continue stream' }),
+    ).toBeEnabled();
+    first.unmount();
+
+    const recovery = managedVod();
+    recovery.lifecycle = {
+      version: 1,
+      revision: 10,
+      runNumber: 2,
+      state: 'closed',
+      permission: 'closed',
+      closeReason: 'recovery_required',
+      canContinue: false,
+    };
+    renderWithProviders(
+      <ContinuationPanel stream={recovery} reload={() => undefined} />,
+    );
+    expect(screen.getByText('Run 2: Recovery required')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Recording recovery is required before this stream can continue.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Continue stream' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('ages the server-relative reconnect countdown locally', () => {
+    vi.useFakeTimers();
+    let monotonicNow = 1_000;
+    const now = vi
+      .spyOn(performance, 'now')
+      .mockImplementation(() => monotonicNow);
+    try {
+      const waiting = managedVod();
+      waiting.lifecycle = {
+        version: 1,
+        revision: 9,
+        runNumber: 2,
+        state: 'waiting',
+        permission: 'claimed',
+        observationAgeMs: 0,
+        reconnectRemainingMs: 60_000,
+        canContinue: false,
+      };
+      renderWithProviders(
+        <ContinuationPanel stream={waiting} reload={() => undefined} />,
+      );
+      expect(
+        screen.getByText('Run 2: Waiting for reconnection (60s remaining)'),
+      ).toBeInTheDocument();
+
+      monotonicNow += 1_000;
+      void act(() => vi.advanceTimersByTime(1_000));
+
+      expect(
+        screen.getByText('Run 2: Waiting for reconnection (59s remaining)'),
+      ).toBeInTheDocument();
+    } finally {
+      now.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it('tells the owner how to resume OBS when continuation is ready', () => {
+    const ready = managedVod();
+    ready.lifecycle = {
+      version: 1,
+      revision: 7,
+      runNumber: 2,
+      state: 'ready',
+      permission: 'open',
+      canContinue: false,
+    };
+    ready.continuation = {
+      ...pendingOperation(),
+      status: 'ready',
+      revision: 7,
+    };
+
+    renderWithProviders(
+      <ContinuationPanel stream={ready} reload={() => undefined} />,
+    );
+
+    expect(
+      screen.getByText(
+        'OBS may reconnect automatically. If it does not, choose Start Streaming.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('counts a delayed owner response against active status freshness', async () => {
     const response = deferred<Response>();
     let requested = false;
@@ -264,6 +376,7 @@ describe('StreamDetailsPage', () => {
       runNumber: 2,
       state: 'live',
       permission: 'claimed',
+      canContinue: false,
       observationAgeMs: 15_000,
     };
     mockFetch(
@@ -448,6 +561,7 @@ describe('StreamDetailsPage', () => {
       runNumber: 2,
       state: 'ready',
       permission: 'open',
+      canContinue: false,
     };
     ready.continuation = {
       ...pendingOperation(),
@@ -496,6 +610,7 @@ describe('StreamDetailsPage', () => {
       runNumber: 2,
       state: 'ready',
       permission: 'open',
+      canContinue: false,
     };
     current.continuation = {
       ...pendingOperation(),
@@ -509,6 +624,8 @@ describe('StreamDetailsPage', () => {
       runNumber: 1,
       state: 'closed',
       permission: 'closed',
+      closeReason: 'empty',
+      canContinue: true,
     };
     let reads = 0;
     mockFetch(
