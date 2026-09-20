@@ -35,4 +35,17 @@ describe('managed ingest lifecycle configuration', () => {
       /INGEST_MANAGED_UPLOADER_ID is required/,
     );
   });
+
+  it('refuses uploader identities outside the shared safe grammar', () => {
+    for (const uploaderId of ['srs uploader', 'srs/uploader']) {
+      assert.throws(
+        () =>
+          managedIngestLifecycleConfig({
+            INGEST_MANAGED_LIFECYCLE_VERSION: '1',
+            INGEST_MANAGED_UPLOADER_ID: uploaderId,
+          }),
+        /INGEST_MANAGED_UPLOADER_ID must use only/,
+      );
+    }
+  });
 });
