@@ -7,6 +7,7 @@ import type { StreamRenditionRow, StreamRow } from '../types/index.js';
 
 import { InvalidStateError, StreamNotFoundError } from './errors/index.js';
 import { Logger } from './Logger.js';
+import { ManagedLifecycleConflict } from './managedLifecycle.js';
 import type { PublishOutcome, PublishService } from './PublishService.js';
 import {
   mergeRendition,
@@ -95,6 +96,9 @@ export class LadderService {
   ): Promise<RenditionReportOutcome> {
     const stream = await this.streams.findByIdUnscoped(id);
     if (!stream) throw new StreamNotFoundError(id);
+    if (stream.lifecycle_version === 1) {
+      throw new ManagedLifecycleConflict('managed_route_required');
+    }
     // Nothing has been announced (`draft`), or a feed write is already in
     // flight for this stream (`publishing`) and would be raced. `published`,
     // `live` and `vod` all take a rung: a ladder can start reporting before

@@ -14,6 +14,7 @@ export type ManagedLifecycleConflictCode =
   | 'request_conflict'
   | 'revision_conflict'
   | 'assignment_mismatch'
+  | 'managed_route_required'
   | 'stale_run'
   | 'closed';
 

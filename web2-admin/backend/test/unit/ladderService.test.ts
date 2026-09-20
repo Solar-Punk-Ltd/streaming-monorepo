@@ -26,6 +26,7 @@ import {
 import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
 import { LadderService } from '../../src/domain/LadderService.js';
+import { ManagedLifecycleConflict } from '../../src/domain/managedLifecycle.js';
 import { PublishService } from '../../src/domain/PublishService.js';
 import { StreamStateService } from '../../src/domain/StreamStateService.js';
 
@@ -102,6 +103,29 @@ function entryAt(
 }
 
 describe('LadderService.report', () => {
+  it('refuses the bearer-only rendition route for an enrolled run', async () => {
+    const { store, renditions, service } = await setup();
+    const managed = store.add(
+      streamRow({
+        status: 'published',
+        lifecycle_version: 1,
+        lifecycle_revision: 1,
+        current_run_number: 1,
+        lifecycle_state: 'ready',
+        lifecycle_permission: 'open',
+        lifecycle_uploader_id: 'srs-uploader-a',
+      }),
+    );
+
+    await assert.rejects(
+      service.report(managed.id, LIVE_360),
+      (error: unknown) =>
+        error instanceof ManagedLifecycleConflict &&
+        error.code === 'managed_route_required',
+    );
+    assert.deepEqual(await renditions.listByStream(managed.id), []);
+  });
+
   it('refuses a stream nobody has announced', async () => {
     const { store, service } = await setup();
     const draft = store.add(streamRow());

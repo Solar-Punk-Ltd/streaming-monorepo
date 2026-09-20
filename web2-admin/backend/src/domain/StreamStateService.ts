@@ -11,6 +11,7 @@ import {
   StreamNotFoundError,
 } from './errors/index.js';
 import { Logger } from './Logger.js';
+import { ManagedLifecycleConflict } from './managedLifecycle.js';
 import type { PublishOutcome, PublishService } from './PublishService.js';
 import { allowedFromFor, isStateTransitionAllowed } from './streamState.js';
 
@@ -95,6 +96,9 @@ export class StreamStateService {
   ): Promise<PublishOutcome> {
     const existing = await this.streams.findByIdUnscoped(id);
     if (!existing) throw new StreamNotFoundError(id);
+    if (existing.lifecycle_version === 1) {
+      throw new ManagedLifecycleConflict('managed_route_required');
+    }
     if (!isStateTransitionAllowed(existing.status, report.state)) {
       throw new InvalidStateTransitionError(id, existing.status, report.state);
     }

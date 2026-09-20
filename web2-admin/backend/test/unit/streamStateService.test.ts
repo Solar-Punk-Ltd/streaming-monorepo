@@ -25,6 +25,7 @@ import {
 import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
 import { LadderService } from '../../src/domain/LadderService.js';
+import { ManagedLifecycleConflict } from '../../src/domain/managedLifecycle.js';
 import { PublishService } from '../../src/domain/PublishService.js';
 import { StreamStateService } from '../../src/domain/StreamStateService.js';
 
@@ -184,6 +185,29 @@ async function broadcast(
 }
 
 describe('StreamStateService.report', () => {
+  it('refuses the legacy state route for an enrolled run', async () => {
+    const { store, state } = await setup();
+    const managed = store.add(
+      streamRow({
+        status: 'published',
+        lifecycle_version: 1,
+        lifecycle_revision: 1,
+        current_run_number: 1,
+        lifecycle_state: 'ready',
+        lifecycle_permission: 'open',
+        lifecycle_uploader_id: 'srs-uploader-a',
+      }),
+    );
+
+    await assert.rejects(
+      state.report(managed.id, { state: 'live' }),
+      (error: unknown) =>
+        error instanceof ManagedLifecycleConflict &&
+        error.code === 'managed_route_required',
+    );
+    assert.equal(store.get(managed.id).status, 'published');
+  });
+
   it('refuses a stream nobody has announced', async () => {
     const { store, state } = await setup();
     const draft = store.add(streamRow());
