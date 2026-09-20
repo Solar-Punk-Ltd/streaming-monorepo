@@ -925,6 +925,61 @@ describe('PublishService.unpublish', () => {
     assert.equal(entriesOf(gateway)[0].state, 'vod');
   });
 
+  it('restores the catalogue when a managed recording becomes live during unpublish', async () => {
+    const { store, gateway, service } = setup();
+    const row = store.add(
+      streamRow({
+        status: 'vod',
+        published_at: new Date('2026-09-11T10:00:00.000Z'),
+        published_feed_index: 4,
+        manifest_index: 12,
+        duration_seconds: 62.5,
+        lifecycle_version: 1,
+        lifecycle_revision: 5,
+        current_run_number: 1,
+        completed_run_number: 1,
+        lifecycle_state: 'vod',
+        lifecycle_permission: 'closed',
+        lifecycle_uploader_id: 'srs-main',
+      }),
+    );
+    await service.republishManagedState(row.id);
+
+    let removalStarted!: () => void;
+    let releaseRemoval!: () => void;
+    const started = new Promise<void>((resolve) => {
+      removalStarted = resolve;
+    });
+    const release = new Promise<void>((resolve) => {
+      releaseRemoval = resolve;
+    });
+    const write = gateway.write.bind(gateway);
+    gateway.write = async (entries, index) => {
+      removalStarted();
+      await release;
+      return write(entries, index);
+    };
+
+    const unpublishing = service.unpublish(row.id, TEST_USER_ID);
+    await started;
+    store.add({
+      ...store.get(row.id),
+      status: 'live',
+      lifecycle_revision: 6,
+      lifecycle_state: 'live',
+      lifecycle_permission: 'claimed',
+    });
+    releaseRemoval();
+
+    await assert.rejects(unpublishing, StreamLiveError);
+    assert.equal(
+      store.get(row.id).published_at?.toISOString(),
+      row.published_at?.toISOString(),
+    );
+    assert.equal(entriesOf(gateway)[0]?.state, 'live');
+    assert.equal(entriesOf(gateway)[0]?.lifecycle?.revision, 6);
+  });
+
   it('refuses to unpublish a live stream', async () => {
     // Nothing here can stop the encoder that is still pushing to it, and the
     // viewer would lose the entry it is playing from.

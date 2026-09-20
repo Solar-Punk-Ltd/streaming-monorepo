@@ -382,7 +382,14 @@ export class FakeStreamStore
     userId: string,
   ): Promise<StreamRow | null> {
     const row = await this.findById(id, userId);
-    if (!row || row.lifecycle_version !== 1) return null;
+    if (
+      !row ||
+      row.lifecycle_version !== 1 ||
+      row.lifecycle_permission !== 'closed' ||
+      (row.lifecycle_state !== 'closed' && row.lifecycle_state !== 'vod')
+    ) {
+      return null;
+    }
     return this.patch(id, {
       published_at: null,
       published_feed_index: null,

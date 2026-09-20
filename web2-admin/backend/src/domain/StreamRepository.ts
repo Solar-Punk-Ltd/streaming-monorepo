@@ -792,6 +792,13 @@ export class StreamRepository {
               publish_error = NULL,
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2 AND lifecycle_version = 1
+          AND EXISTS (
+            SELECT 1 FROM stream_runs current_run
+             WHERE current_run.stream_id = streams.id
+               AND current_run.run_number = streams.current_run_number
+               AND current_run.permission = 'closed'
+               AND current_run.state IN ('closed', 'vod')
+          )
         RETURNING ${STREAM_COLUMNS}`,
       [id, userId],
     );

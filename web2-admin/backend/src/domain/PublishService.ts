@@ -520,7 +520,22 @@ export class PublishService {
       before.id,
       before.user_id,
     );
-    if (!stream) throw new StreamNotFoundError(before.id);
+    if (!stream) {
+      const current = await this.streams.findById(before.id, before.user_id);
+      if (!current) throw new StreamNotFoundError(before.id);
+      if (before.published_at !== null) {
+        await this.doRepublishWithState(current);
+      }
+      if (
+        current.status === 'live' ||
+        current.lifecycle_state === 'live' ||
+        current.lifecycle_state === 'waiting' ||
+        current.lifecycle_state === 'claimed'
+      ) {
+        throw new StreamLiveError(before.id);
+      }
+      throw new StreamBusyError(before.id, current.status);
+    }
     logger.info(
       `[Publish] ${before.topic} hidden from the catalogue${
         removed ? ` at feed index ${index}` : ' (was not on the feed)'

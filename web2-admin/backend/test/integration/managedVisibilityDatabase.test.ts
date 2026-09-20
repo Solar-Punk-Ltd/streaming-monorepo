@@ -218,6 +218,43 @@ describe('managed catalogue visibility', () => {
     assert.equal(recording.rows[0].rendition_reference, 'b'.repeat(64));
   });
 
+  it('does not hide a managed row after its current run becomes active', async () => {
+    const stream = await streams.insert({
+      user_id: ownerId,
+      topic: randomUUID(),
+      owner: feed.owner,
+      title: 'active during unpublish',
+      description: 'conditional visibility fixture',
+      tags: [],
+      media_type: 'video',
+      scheduled_start_time: null,
+      publish_key: newPublishKey(),
+    });
+    await database.pool.query(
+      `UPDATE streams SET lifecycle_version = 1, lifecycle_revision = 2,
+                          current_run_number = 1, status = 'live',
+                          published_at = NOW()
+        WHERE id = $1`,
+      [stream.id],
+    );
+    await database.pool.query(
+      `INSERT INTO stream_runs (
+         stream_id, run_number, state, permission, assigned_uploader_id,
+         claim_id, claim_request_id, claim_request_digest, revision
+       ) VALUES ($1, 1, 'live', 'claimed', 'srs-uploader-a', $2, $3,
+                 'claim-digest', 2)`,
+      [stream.id, randomUUID(), randomUUID()],
+    );
+
+    assert.equal(
+      await streams.hideManagedFromCatalogue(stream.id, ownerId),
+      null,
+    );
+    const stored = await streams.findById(stream.id, ownerId);
+    assert.ok(stored?.published_at);
+    assert.equal(stored.status, 'live');
+  });
+
   it('reads a managed row, lifecycle and ladder from one database snapshot', async () => {
     const stream = await streams.insert({
       user_id: ownerId,
