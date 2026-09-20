@@ -210,6 +210,73 @@ describe('managed closed recording protection', () => {
       },
     ]);
 
+    await database.pool.query(
+      `INSERT INTO stream_runs (
+         stream_id, run_number, state, permission, assigned_uploader_id,
+         revision
+       ) VALUES ($1, 2, 'ready', 'open', 'itest-uploader', 6)`,
+      [id],
+    );
+    await database.pool.query(
+      `UPDATE streams
+          SET lifecycle_revision = 6, current_run_number = 2
+        WHERE id = $1`,
+      [id],
+    );
+
+    const recovered = await lifecycle.readClaimedRun(
+      id,
+      1,
+      'itest-uploader',
+      claimId,
+    );
+    assert.deepEqual(recovered.lastAcceptedEvent, {
+      sequence: 4,
+      digest: 'vod-4',
+    });
+    assert.equal(recovered.completedRecording?.checkpointReference, checkpointReference);
+    assert.equal(recovered.completedRecording?.master.reference, masterReference);
+    assert.deepEqual(recovered.completedRecording?.expectedRenditions, [
+      '360p',
+      '720p',
+    ]);
+    assert.deepEqual(
+      recovered.completedRecording?.renditions.map((rendition) => ({
+        name: rendition.name,
+        reference: rendition.reference,
+        width: rendition.width,
+        bandwidth: rendition.bandwidth,
+      })),
+      [
+        {
+          name: '360p',
+          reference: 'c'.repeat(64),
+          width: 640,
+          bandwidth: 800_000,
+        },
+        {
+          name: '720p',
+          reference: 'd'.repeat(64),
+          width: 1280,
+          bandwidth: 2_800_000,
+        },
+      ],
+    );
+    await assert.rejects(
+      lifecycle.report(id, 1, {
+        lifecycleVersion: 1,
+        runNumber: 1,
+        uploaderId: 'itest-uploader',
+        claimId,
+        eventSequence: 5,
+        observedAt: '2026-09-20T10:20:00.000Z',
+        state: 'closed',
+        reason: 'recovery_required',
+      }),
+      (error: unknown) =>
+        error instanceof ManagedLifecycleConflict && error.code === 'stale_run',
+    );
+
     await assert.rejects(
       database.pool.query(
         `UPDATE streams SET completed_run_number = NULL WHERE id = $1`,

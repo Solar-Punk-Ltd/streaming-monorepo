@@ -64,6 +64,10 @@ export interface ManagedRunView {
   permission: ManagedRunPermission;
   reconnectDeadline?: string;
   closeReason?: ManagedCloseReason;
+  lastAcceptedEvent?: {
+    sequence: number;
+    digest: string;
+  };
   completedRecording?: InternalCompletedRecordingSnapshot;
 }
 
@@ -101,6 +105,28 @@ export type ManagedRunReport =
       state: 'vod';
       completedRecording: InternalCompletedRecordingSnapshot;
     });
+
+/** Stable UTF-8 input for the cross-service report SHA256. */
+export function canonicalManagedReportJson(report: ManagedRunReport): string {
+  return canonicalJson(report);
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(',')}]`;
+  }
+  if (value !== null && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`)
+      .join(',')}}`;
+  }
+  const encoded = JSON.stringify(value);
+  if (encoded === undefined) {
+    throw new TypeError('managed report contains a non-JSON value');
+  }
+  return encoded;
+}
 
 export type ContinuationOperationState =
   | 'pending'

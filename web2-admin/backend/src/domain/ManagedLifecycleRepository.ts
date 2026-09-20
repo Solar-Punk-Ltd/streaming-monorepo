@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-import type {
+import {
+  canonicalManagedReportJson,
+  type InternalCompletedRecordingSnapshot,
   ManagedClaimRequest,
   ManagedRunReport,
   ManagedRunView,
@@ -32,6 +34,30 @@ interface ManagedRunDatabaseRow {
   last_event_digest: string | null;
 }
 
+interface RecordingDatabaseRow {
+  checkpoint_reference: string;
+  master_topic: string;
+  master_index: string | number;
+  master_reference: string;
+  duration_seconds: number;
+}
+
+interface ExpectedRenditionDatabaseRow {
+  name: string;
+}
+
+interface RecordedRenditionDatabaseRow {
+  name: string;
+  topic: string;
+  manifest_index: string | number;
+  reference: string;
+  duration_seconds: number;
+  width: number;
+  height: number;
+  bandwidth: string | number;
+  avg_bandwidth: string | number;
+}
+
 const RUN_SELECT = `
   SELECT stream.lifecycle_version, stream.lifecycle_revision,
          stream.current_run_number, run.stream_id, run.run_number,
@@ -57,24 +83,16 @@ function claimDigest(request: ManagedClaimRequest): string {
     .digest('hex');
 }
 
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(',')}]`;
-  }
-  if (value && typeof value === 'object') {
-    return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value);
-}
-
 function reportDigest(report: ManagedRunReport): string {
-  return createHash('sha256').update(canonicalJson(report)).digest('hex');
+  return createHash('sha256')
+    .update(canonicalManagedReportJson(report))
+    .digest('hex');
 }
 
-function toView(row: ManagedRunDatabaseRow): ManagedRunView {
+function toView(
+  row: ManagedRunDatabaseRow,
+  completedRecording?: InternalCompletedRecordingSnapshot,
+): ManagedRunView {
   return {
     lifecycleVersion: 1,
     streamId: row.stream_id,
@@ -88,6 +106,15 @@ function toView(row: ManagedRunDatabaseRow): ManagedRunView {
       ? { reconnectDeadline: row.reconnect_deadline.toISOString() }
       : {}),
     ...(row.close_reason ? { closeReason: row.close_reason } : {}),
+    ...(row.last_event_sequence != null && row.last_event_digest != null
+      ? {
+          lastAcceptedEvent: {
+            sequence: Number(row.last_event_sequence),
+            digest: row.last_event_digest,
+          },
+        }
+      : {}),
+    ...(completedRecording ? { completedRecording } : {}),
   };
 }
 
@@ -161,17 +188,27 @@ export class ManagedLifecycleRepository {
     uploaderId: string,
     claimId: string,
   ): Promise<ManagedRunView> {
-    const result = await this.pool.query<ManagedRunDatabaseRow>(
-      RUN_SELECT,
-      [streamId, runNumber],
-    );
-    const row = result.rows[0];
-    if (!row) throw new ManagedLifecycleConflict('stale_run');
-    this.requireCurrent(row, runNumber, uploaderId);
-    if (row.claim_id !== claimId) {
-      throw new ManagedLifecycleConflict('assignment_mismatch');
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const row = await this.lockRun(client, streamId, runNumber);
+      this.requireAssignedManagedRun(row, uploaderId);
+      if (row.claim_id !== claimId) {
+        throw new ManagedLifecycleConflict('assignment_mismatch');
+      }
+      const completedRecording = await this.readRecording(
+        client,
+        streamId,
+        runNumber,
+      );
+      await client.query('COMMIT');
+      return toView(row, completedRecording);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
-    return toView(row);
   }
 
   async report(
@@ -306,7 +343,17 @@ export class ManagedLifecycleRepository {
     runNumber: number,
     uploaderId: string,
   ): void {
-    if (row.lifecycle_version !== 1 || row.current_run_number !== runNumber) {
+    this.requireAssignedManagedRun(row, uploaderId);
+    if (row.current_run_number !== runNumber) {
+      throw new ManagedLifecycleConflict('stale_run');
+    }
+  }
+
+  private requireAssignedManagedRun(
+    row: ManagedRunDatabaseRow,
+    uploaderId: string,
+  ): void {
+    if (row.lifecycle_version !== 1) {
       throw new ManagedLifecycleConflict('stale_run');
     }
     if (row.assigned_uploader_id !== uploaderId) {
@@ -333,8 +380,8 @@ export class ManagedLifecycleRepository {
     const declaredNames = [...recording.expectedRenditions].sort();
     const recordedNames = recording.renditions.map(({ name }) => name).sort();
     if (
-      canonicalJson(expectedNames) !== canonicalJson(declaredNames) ||
-      canonicalJson(expectedNames) !== canonicalJson(recordedNames)
+      JSON.stringify(expectedNames) !== JSON.stringify(declaredNames) ||
+      JSON.stringify(expectedNames) !== JSON.stringify(recordedNames)
     ) {
       throw new ManagedLifecycleConflict('event_conflict');
     }
@@ -374,5 +421,60 @@ export class ManagedLifecycleRepository {
         ],
       );
     }
+  }
+
+  private async readRecording(
+    client: PoolClient,
+    streamId: string,
+    runNumber: number,
+  ): Promise<InternalCompletedRecordingSnapshot | undefined> {
+    const recordingResult = await client.query<RecordingDatabaseRow>(
+      `SELECT checkpoint_reference, master_topic, master_index,
+              master_reference, duration_seconds
+         FROM stream_run_recordings
+        WHERE stream_id = $1 AND run_number = $2`,
+      [streamId, runNumber],
+    );
+    const recording = recordingResult.rows[0];
+    if (!recording) return undefined;
+
+    const expectedResult = await client.query<ExpectedRenditionDatabaseRow>(
+      `SELECT name
+         FROM stream_run_expected_renditions
+        WHERE stream_id = $1 AND run_number = $2
+        ORDER BY name`,
+      [streamId, runNumber],
+    );
+    const renditionsResult = await client.query<RecordedRenditionDatabaseRow>(
+      `SELECT name, topic, manifest_index, reference, duration_seconds,
+              width, height, bandwidth, avg_bandwidth
+         FROM stream_run_recording_renditions
+        WHERE stream_id = $1 AND run_number = $2
+        ORDER BY name`,
+      [streamId, runNumber],
+    );
+
+    return {
+      runNumber,
+      checkpointReference: recording.checkpoint_reference,
+      master: {
+        topic: recording.master_topic,
+        index: Number(recording.master_index),
+        reference: recording.master_reference,
+        duration: recording.duration_seconds,
+      },
+      expectedRenditions: expectedResult.rows.map(({ name }) => name),
+      renditions: renditionsResult.rows.map((rendition) => ({
+        name: rendition.name,
+        topic: rendition.topic,
+        index: Number(rendition.manifest_index),
+        reference: rendition.reference,
+        duration: rendition.duration_seconds,
+        width: rendition.width,
+        height: rendition.height,
+        bandwidth: Number(rendition.bandwidth),
+        avgBandwidth: Number(rendition.avg_bandwidth),
+      })),
+    };
   }
 }
