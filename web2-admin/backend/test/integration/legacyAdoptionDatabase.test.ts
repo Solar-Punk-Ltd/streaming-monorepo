@@ -468,6 +468,37 @@ describe('legacy VOD adoption', () => {
     assert.equal(legacy.rows[0].lifecycle_version, null);
   });
 
+  it('returns a failed preparation in the owner stream reconciliation read', async () => {
+    const stream = await legacyVod();
+    const preview = await adoptions.preview(stream.id, userId);
+    const operation = await adoptions.create(stream.id, userId, {
+      requestId: randomUUID(),
+      expectedCandidateDigest: preview.candidateDigest,
+    });
+    const failedRequest: LegacyAdoptionPreparationRequest = {
+      lifecycleVersion: 1,
+      uploaderId: UPLOADER_ID,
+      expectedRevision: operation.revision,
+      candidateDigest: operation.candidateDigest,
+      status: 'failed',
+      failure: 'The 720p recording is missing from storage.',
+    };
+
+    await adoptions.prepare(stream.id, operation.operationId, failedRequest);
+    const recovered = await adoptions.getCurrent(stream.id, userId);
+
+    assert.equal(recovered?.operationId, operation.operationId);
+    assert.equal(recovered?.status, 'failed');
+    assert.equal(recovered?.failure, failedRequest.failure);
+
+    const retry = await adoptions.create(stream.id, userId, {
+      requestId: randomUUID(),
+      expectedCandidateDigest: preview.candidateDigest,
+    });
+    await adoptions.cancel(stream.id, retry.operationId, userId);
+    assert.equal(await adoptions.getCurrent(stream.id, userId), null);
+  });
+
   it('requires an audio adoption proof to contain audio and no video track', async () => {
     await capabilities.record(UPLOADER_ID, {
       ...capability,

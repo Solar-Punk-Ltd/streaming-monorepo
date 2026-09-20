@@ -223,11 +223,13 @@ export class LegacyAdoptionRepository {
     const result = await this.pool.query<OperationRow>(
       `${OPERATION_SELECT}
         WHERE operation.stream_id = $1 AND stream.user_id = $2
-          AND operation.status = 'pending'
         ORDER BY operation.created_at DESC LIMIT 1`,
       [streamId, ownerId],
     );
-    return result.rows[0] ? this.toOperation(result.rows[0]) : null;
+    const row = result.rows[0];
+    return row && (row.status === 'pending' || row.status === 'failed')
+      ? this.toOperation(row)
+      : null;
   }
 
   async listPending(uploaderId: string): Promise<LegacyAdoptionOperation[]> {

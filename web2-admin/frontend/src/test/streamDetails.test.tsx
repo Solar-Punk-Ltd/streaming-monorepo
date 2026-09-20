@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type {
+  OwnerLegacyAdoptionOperation,
   OwnerContinuationOperation,
   Stream,
 } from '@streaming-monorepo/web2-admin-common';
@@ -91,6 +92,30 @@ function pendingOperation(
   };
 }
 
+function legacyVod(): Stream {
+  return makeStream({
+    id: ID,
+    status: 'vod',
+    manifestIndex: 12,
+    durationSeconds: 62.5,
+  });
+}
+
+function pendingLegacyPreparation(): OwnerLegacyAdoptionOperation {
+  return {
+    lifecycleVersion: 1,
+    kind: 'legacy-adoption',
+    operationId: '99999999-9999-4999-8999-999999999999',
+    requestId: '77777777-7777-4777-8777-777777777777',
+    streamId: ID,
+    topic: '11111111-1111-4111-8111-111111111111',
+    mediaType: 'video',
+    candidateDigest: 'a'.repeat(64),
+    revision: 1,
+    status: 'pending',
+  };
+}
+
 function deferred<T>() {
   let settle: (value: T) => void = () => undefined;
   const promise = new Promise<T>((resolve) => {
@@ -100,6 +125,124 @@ function deferred<T>() {
 }
 
 describe('StreamDetailsPage', () => {
+  it('reuses one request while preparing an existing recording to continue', async () => {
+    const requests: Array<{
+      requestId: string;
+      expectedCandidateDigest: string;
+    }> = [];
+    mockFetch(
+      routesFor(legacyVod(), [
+        {
+          path: `/api/streams/${ID}/legacy-adoptions/candidate`,
+          respond: () => jsonOk({ candidateDigest: 'a'.repeat(64) }),
+        },
+        {
+          method: 'POST',
+          path: `/api/streams/${ID}/legacy-adoptions`,
+          respond: (init) => {
+            if (typeof init?.body !== 'string') {
+              throw new TypeError('expected a JSON request body');
+            }
+            requests.push(JSON.parse(init.body) as (typeof requests)[number]);
+            return requests.length === 1
+              ? Promise.reject(new TypeError('response lost'))
+              : jsonOk({ operation: pendingLegacyPreparation() }, 202);
+          },
+        },
+      ]),
+    );
+
+    renderDetails();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Prepare to continue' }),
+    );
+
+    expect(
+      await screen.findByText('Checking the previous recording.'),
+    ).toBeInTheDocument();
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).toEqual(requests[1]);
+    expect(
+      screen.getByText(
+        'Your existing replay stays available while this one-time check runs.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('recovers pending and failed recording preparation after reload', async () => {
+    const pending = legacyVod();
+    pending.legacyAdoption = pendingLegacyPreparation();
+
+    mockFetch(routesFor(pending));
+    const page = renderDetails();
+    expect(
+      await screen.findByText('Checking the previous recording.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Cancel preparation' }),
+    ).toBeEnabled();
+    page.unmount();
+
+    const failed = legacyVod();
+    failed.legacyAdoption = {
+      ...pendingLegacyPreparation(),
+      revision: 2,
+      status: 'failed',
+      failure: 'The 720p recording is missing from storage.',
+    };
+    mockFetch(routesFor(failed));
+    renderDetails();
+    expect(
+      await screen.findByText('The 720p recording is missing from storage.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Try preparation again' }),
+    ).toBeEnabled();
+  });
+
+  it('polls a pending recording check until ordinary continuation is available', async () => {
+    const pending = legacyVod();
+    pending.legacyAdoption = pendingLegacyPreparation();
+    const ready = managedVod();
+    let reads = 0;
+    let ownerPoll: (() => void) | undefined;
+    const interval = vi
+      .spyOn(window, 'setInterval')
+      .mockImplementation((handler: TimerHandler, timeout?: number) => {
+        if (timeout === 10_000 && typeof handler === 'function') {
+          ownerPoll = handler;
+        }
+        return 99;
+      });
+    mockFetch(
+      routesFor(pending, [
+        {
+          path: `/api/streams/${ID}`,
+          respond: () => jsonOk(reads++ === 0 ? pending : ready),
+        },
+      ]),
+    );
+
+    try {
+      renderDetails();
+      expect(
+        await screen.findByText('Checking the previous recording.'),
+      ).toBeInTheDocument();
+      expect(ownerPoll).toBeTypeOf('function');
+
+      void act(() => ownerPoll?.());
+
+      expect(
+        await screen.findByRole('button', { name: 'Continue stream' }),
+      ).toBeEnabled();
+      expect(
+        screen.queryByText('Checking the previous recording.'),
+      ).not.toBeInTheDocument();
+    } finally {
+      interval.mockRestore();
+    }
+  });
+
   it('warns when a published stream was edited after it was published', async () => {
     mockFetch(
       routesFor(

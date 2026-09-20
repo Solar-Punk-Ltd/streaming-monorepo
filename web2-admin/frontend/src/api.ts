@@ -3,8 +3,10 @@ import type {
   ChangePasswordRequest,
   ContinuationCreateRequest,
   IngestDetails,
+  LegacyAdoptionCreateRequest,
   MeResponse,
   OwnerContinuationOperation,
+  OwnerLegacyAdoptionOperation,
   PublicConfig,
   PublishResult,
   Stream,
@@ -306,6 +308,58 @@ export async function cancelContinuation(
   );
   if (!response) {
     throw new Error('Continuation cancellation returned no operation');
+  }
+  return response.operation;
+}
+
+interface LegacyPreparationCandidateResponse {
+  candidateDigest: string;
+}
+
+interface OwnerLegacyAdoptionResponse {
+  operation: OwnerLegacyAdoptionOperation;
+}
+
+export async function fetchLegacyPreparationCandidate(
+  streamId: string,
+): Promise<string> {
+  const response = await getJson<LegacyPreparationCandidateResponse>(
+    `${API}/streams/${encodeURIComponent(streamId)}/legacy-adoptions/candidate`,
+  );
+  return response.candidateDigest;
+}
+
+export async function createLegacyPreparation(
+  streamId: string,
+  request: LegacyAdoptionCreateRequest,
+): Promise<OwnerLegacyAdoptionOperation> {
+  const response = await sendJson<OwnerLegacyAdoptionResponse>(
+    'POST',
+    `${API}/streams/${encodeURIComponent(streamId)}/legacy-adoptions`,
+    request,
+  );
+  return response.operation;
+}
+
+export async function fetchLegacyPreparation(
+  streamId: string,
+  operationId: string,
+): Promise<OwnerLegacyAdoptionOperation> {
+  const response = await getJson<OwnerLegacyAdoptionResponse>(
+    `${API}/streams/${encodeURIComponent(streamId)}/legacy-adoptions/${encodeURIComponent(operationId)}`,
+  );
+  return response.operation;
+}
+
+export async function cancelLegacyPreparation(
+  streamId: string,
+  operationId: string,
+): Promise<OwnerLegacyAdoptionOperation> {
+  const response = await sendDelete<OwnerLegacyAdoptionResponse>(
+    `${API}/streams/${encodeURIComponent(streamId)}/legacy-adoptions/${encodeURIComponent(operationId)}`,
+  );
+  if (!response) {
+    throw new Error('Recording preparation cancellation returned no operation');
   }
   return response.operation;
 }

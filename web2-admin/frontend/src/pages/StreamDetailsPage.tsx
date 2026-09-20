@@ -42,6 +42,7 @@ import { MEDIA_TYPE_LABEL, StatusChip } from '../components/StatusChip';
 import { useSnackbar } from '../components/Snackbar';
 import { CopyButton } from '../components/CopyButton';
 import { ContinuationPanel } from '../components/ContinuationPanel';
+import { LegacyPreparationPanel } from '../components/LegacyPreparationPanel';
 
 function Field({
   label,
@@ -198,13 +199,25 @@ export function StreamDetailsPage() {
   useEffect(() => {
     const state = stream?.lifecycle?.state;
     const operation = stream?.continuation?.status;
+    const legacyPreparation = stream?.legacyAdoption?.status;
     const activeLifecycle =
       state === 'claimed' || state === 'live' || state === 'waiting';
     const preparingContinuation = operation === 'pending' || operation === 'ready';
-    if (!activeLifecycle && !preparingContinuation) return;
+    if (
+      !activeLifecycle &&
+      !preparingContinuation &&
+      legacyPreparation !== 'pending'
+    ) {
+      return;
+    }
     const interval = window.setInterval(refreshStream, 10_000);
     return () => window.clearInterval(interval);
-  }, [refreshStream, stream?.continuation?.status, stream?.lifecycle?.state]);
+  }, [
+    refreshStream,
+    stream?.continuation?.status,
+    stream?.legacyAdoption?.status,
+    stream?.lifecycle?.state,
+  ]);
 
   const runPublish = async (action: 'publish' | 'unpublish') => {
     if (!id) return;
@@ -558,6 +571,12 @@ export function StreamDetailsPage() {
 
       <ContinuationPanel
         key={stream.id}
+        stream={stream}
+        reload={refreshStream}
+      />
+
+      <LegacyPreparationPanel
+        key={`legacy-${stream.id}`}
         stream={stream}
         reload={refreshStream}
       />
