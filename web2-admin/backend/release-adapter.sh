@@ -51,8 +51,11 @@ const target = args?.target !== null && typeof args?.target === 'object' && !Arr
 const fixtureNetwork = args?.fixtureNetwork !== null && typeof args?.fixtureNetwork === 'object' && !Array.isArray(args.fixtureNetwork)
   ? args.fixtureNetwork
   : null;
+const runtime = args?.runtime !== null && typeof args?.runtime === 'object' && !Array.isArray(args.runtime)
+  ? args.runtime
+  : null;
 const argumentKeys = args === null ? [] : Object.keys(args).sort();
-const argumentsAreExact = argumentKeys.join(',') === 'target' || argumentKeys.join(',') === 'fixtureNetwork,target';
+const argumentsAreExact = argumentKeys.join(',') === 'runtime,target' || argumentKeys.join(',') === 'fixtureNetwork,runtime,target';
 const fixtureNetworkKeys = fixtureNetwork === null ? '' : Object.keys(fixtureNetwork).sort().join(',');
 const fixtureNetworkShape = expectedPhase === 'preflight'
   ? 'fixtureId,name'
@@ -65,6 +68,10 @@ const fixtureNetworkIsValid = fixtureNetwork === null || (
   (fixtureNetworkShape === 'fixtureId,name' ||
     (typeof fixtureNetwork.networkId === 'string' && /^[0-9a-f]{64}$/.test(fixtureNetwork.networkId)))
 );
+const runtimeKeys = runtime === null ? '' : Object.keys(runtime).sort().join(',');
+const runtimeIsDisabled = runtime?.managedLifecycleVersion === null && runtime?.uploaderId === null;
+const runtimeIsManaged = runtime?.managedLifecycleVersion === 1 &&
+  typeof runtime?.uploaderId === 'string' && /^[A-Za-z0-9_.:-]{1,200}$/.test(runtime.uploaderId);
 const imageNames = expectedPhase === 'transition' || expectedPhase === 'verify' ? ['admin-api', 'admin-web'] : [];
 const validImages = Array.isArray(value?.images) && value.images.length === imageNames.length && imageNames.every((service, index) => {
   const image = value.images[index];
@@ -78,6 +85,7 @@ if (
   value.temporaryProject !== `release-${value.treeDigest.slice(0, 20)}` ||
   slot?.role !== 'admin' || slot?.id !== 'default' || Object.keys(slot).length !== 2 ||
   args === null || !argumentsAreExact || !fixtureNetworkIsValid ||
+  runtimeKeys !== 'managedLifecycleVersion,uploaderId' || (!runtimeIsDisabled && !runtimeIsManaged) ||
   target === null || Object.keys(target).sort().join(',') !== 'postgresVolumeName,projectName,webPort' ||
   typeof target.projectName !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,62}$/.test(target.projectName) ||
   typeof target.postgresVolumeName !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,62}$/.test(target.postgresVolumeName) ||
@@ -96,6 +104,9 @@ else if (key.startsWith('target:')) process.stdout.write(String(target[key.slice
 else if (key === 'fixtureNetwork:name') process.stdout.write(fixtureNetwork?.name ?? '');
 else if (key === 'fixtureNetwork:fixtureId') process.stdout.write(fixtureNetwork?.fixtureId ?? '');
 else if (key === 'fixtureNetwork:networkId') process.stdout.write(fixtureNetwork?.networkId ?? '');
+else if (key === 'runtime:managedLifecycleVersion') process.stdout.write(runtime.managedLifecycleVersion === null ? '' : '1');
+else if (key === 'runtime:uploaderId') process.stdout.write(runtime.uploaderId ?? '');
+else if (key === 'runtime:json') process.stdout.write(JSON.stringify(runtime));
 else if (key.startsWith('image:')) {
   const image = value.images.find((entry) => entry.service === key.slice(6));
   if (!image) process.exit(1);
@@ -155,10 +166,16 @@ web_port="$(plan_value target:webPort)"
 fixture_network_name="$(plan_value fixtureNetwork:name)"
 fixture_id="$(plan_value fixtureNetwork:fixtureId)"
 fixture_network_id="$(plan_value fixtureNetwork:networkId)"
+managed_lifecycle_version="$(plan_value runtime:managedLifecycleVersion)"
+managed_uploader_id="$(plan_value runtime:uploaderId)"
 admin_db_network_name="${project_name}-fixture-db"
 [ "$(config_target RELEASE_PROJECT_NAME)" = "$project_name" ] || refuse "admin release project does not match installed configuration"
 [ "$(config_target RELEASE_POSTGRES_VOLUME_NAME)" = "$postgres_volume_name" ] || refuse "admin release database volume does not match installed configuration"
 [ "$(config_target RELEASE_WEB_PORT)" = "$web_port" ] || refuse "admin release web port does not match installed configuration"
+[ "${INGEST_MANAGED_LIFECYCLE_VERSION:-}" = "$managed_lifecycle_version" ] ||
+  refuse "admin runtime assignment does not match its guarded plan"
+[ "${INGEST_MANAGED_UPLOADER_ID:-}" = "$managed_uploader_id" ] ||
+  refuse "admin runtime assignment does not match its guarded plan"
 
 export ADMIN_RELEASE_ENV_FILE="$release_env"
 export RELEASE_PROJECT_NAME="$project_name"
@@ -370,11 +387,12 @@ write_images() {
 case "$phase" in
   preflight)
     umask 077
+    runtime_json="$(plan_value runtime:json)"
     if [ -n "$fixture_network_name" ]; then
       require_fixture_network
-      printf '{"schemaVersion":1,"fixtureNetworkId":"%s"}\n' "$actual_network_id" > "$output"
+      printf '{"schemaVersion":1,"fixtureNetworkId":"%s","runtime":%s}\n' "$actual_network_id" "$runtime_json" > "$output"
     else
-      printf '%s\n' '{"schemaVersion":1}' > "$output"
+      printf '{"schemaVersion":1,"runtime":%s}\n' "$runtime_json" > "$output"
     fi
     ;;
   build)
@@ -467,6 +485,27 @@ EOF
     artifact_mount="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/run/streaming-release/active-artifact.json"}}{{.Source}}|{{.RW}}{{end}}{{end}}' "$api_container")"
     [ "$artifact_mount" = "$(plan_value activeArtifactPath)|false" ] || refuse "admin active artifact mount does not match the guarded receipt"
     [ "$(docker port "$web_container" 80/tcp)" = "127.0.0.1:${web_port}" ] || refuse "admin web port does not match the guarded target"
+    docker exec "$api_container" node -e '
+const expectedVersion = process.argv[1] === "" ? null : 1;
+const expectedUploader = process.argv[2] === "" ? null : process.argv[2];
+const controller = new AbortController();
+const timeout = setTimeout(() => controller.abort(), 5000);
+try {
+  const token = process.env.INTERNAL_API_TOKEN;
+  if (typeof token !== "string" || token.length < 1) process.exit(31);
+  const response = await fetch("http://127.0.0.1:9877/api/internal/runtime/lifecycle", {
+    headers: { authorization: `Bearer ${token}` },
+    signal: controller.signal,
+  });
+  const text = await response.text();
+  if (!response.ok || Buffer.byteLength(text) > 1024) process.exit(32);
+  const value = JSON.parse(text);
+  if (Object.keys(value).sort().join(",") !== "lifecycleVersion,uploaderId" ||
+      value.lifecycleVersion !== expectedVersion || value.uploaderId !== expectedUploader) process.exit(33);
+} finally {
+  clearTimeout(timeout);
+}
+' "$managed_lifecycle_version" "$managed_uploader_id" >/dev/null || refuse "running admin runtime assignment does not match"
     write_images "$api_image" "$web_image"
     ;;
 esac

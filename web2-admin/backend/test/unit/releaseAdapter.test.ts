@@ -74,6 +74,10 @@ function plan(
   phase: string,
   activeArtifactPath: string | null = null,
   network?: typeof fixtureNetwork,
+  runtime: { managedLifecycleVersion: 1 | null; uploaderId: string | null } = {
+    managedLifecycleVersion: null,
+    uploaderId: null,
+  },
 ) {
   const treeDigest = 'a'.repeat(64);
   return {
@@ -92,6 +96,7 @@ function plan(
     activeArtifactPath,
     arguments: {
       target: { ...target },
+      runtime,
       ...(network === undefined
         ? {}
         : {
@@ -189,7 +194,10 @@ if [ "$1" = image ]; then printf 'sha256:%s\n' "$(printf a%.0s {1..64})"; fi
     await chmod(join(bin, 'docker'), 0o700);
     const planPath = join(root, 'build-plan.json');
     const output = join(root, 'build.json');
-    await writeFile(planPath, JSON.stringify(plan('build')));
+    await writeFile(planPath, JSON.stringify(plan('build', null, undefined, {
+      managedLifecycleVersion: 1,
+      uploaderId: routed.INGEST_MANAGED_UPLOADER_ID,
+    })));
 
     const result = await execFileAsync(
       adapter,
@@ -218,6 +226,35 @@ if [ "$1" = image ]; then printf 'sha256:%s\n' "$(printf a%.0s {1..64})"; fi
       assert.doesNotMatch(serialized, new RegExp(routed[name]));
     }
     assert.doesNotMatch(serialized, new RegExp(routed.INGEST_MANAGED_UPLOADER_ID));
+  });
+
+  it('refuses a runtime assignment mismatch before invoking Docker', async (t) => {
+    const root = await temporaryRoot(t);
+    const home = await writeReleaseEnvironment(root);
+    const bin = join(root, 'bin');
+    await mkdir(bin);
+    await writeFile(join(bin, 'docker'), '#!/bin/bash\nprintf unexpected > "$HOME/docker-called"\n');
+    await chmod(join(bin, 'docker'), 0o700);
+    const planPath = join(root, 'build-plan.json');
+    const output = join(root, 'build.json');
+    await writeFile(planPath, JSON.stringify(plan('build', null, undefined, {
+      managedLifecycleVersion: 1,
+      uploaderId: '11111111-1111-4111-8111-111111111111',
+    })));
+
+    await assert.rejects(
+      execFileAsync(adapter, ['build', '--plan', planPath, '--output', output], {
+        env: {
+          ...process.env,
+          HOME: home,
+          PATH: `${bin}:${process.env.PATH ?? ''}`,
+          INGEST_MANAGED_LIFECYCLE_VERSION: '1',
+          INGEST_MANAGED_UPLOADER_ID: '22222222-2222-4222-8222-222222222222',
+        },
+      }),
+      /runtime assignment does not match/i,
+    );
+    await assert.rejects(readFile(join(home, 'docker-called')));
   });
 
   it('accepts the guard-resolved fixture network while building isolated images', async (t) => {
@@ -327,6 +364,7 @@ fi
     assert.deepEqual(JSON.parse(await readFile(output, 'utf8')), {
       schemaVersion: 1,
       fixtureNetworkId,
+      runtime: { managedLifecycleVersion: null, uploaderId: null },
     });
   });
 
@@ -666,6 +704,8 @@ elif [ "$1" = inspect ]; then
   fi
 elif [ "$1" = port ]; then
   printf '127.0.0.1:%s\\n' '${String(target.webPort)}'
+elif [ "$1" = exec ] && [ -f "${root}/wrong-runtime" ]; then
+  exit 42
 fi
 `,
     );
@@ -699,6 +739,7 @@ fi
     assert.equal(calls.match(/HostConfig\.NanoCpus/g)?.length, 3);
     assert.equal(calls.match(/HostConfig\.Memory/g)?.length, 3);
     assert.equal(calls.match(/HostConfig\.PidsLimit/g)?.length, 3);
+    assert.match(calls, /exec admin-api-container node -e/);
 
     await writeFile(join(root, 'wrong-memory'), 'deliberate fixture limit fault\n');
     await assert.rejects(
@@ -715,6 +756,25 @@ fi
       ),
       (error: Error & { stderr?: string }) => {
         assert.match(error.stderr ?? '', /fixture memory limit does not match/);
+        return true;
+      },
+    );
+    await rm(join(root, 'wrong-memory'));
+    await writeFile(join(root, 'wrong-runtime'), 'deliberate runtime assignment fault\n');
+    await assert.rejects(
+      execFileAsync(
+        adapter,
+        ['verify', '--plan', planPath, '--output', output],
+        {
+          env: {
+            ...process.env,
+            HOME: home,
+            PATH: `${bin}:${process.env.PATH ?? ''}`,
+          },
+        },
+      ),
+      (error: Error & { stderr?: string }) => {
+        assert.match(error.stderr ?? '', /running admin runtime assignment does not match/);
         return true;
       },
     );
