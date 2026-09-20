@@ -60,6 +60,10 @@ export interface PublishStreamStore {
     thumbnailRef: string | null,
   ): Promise<StreamRow | null>;
   finishUnpublish(id: string, userId: string): Promise<StreamRow | null>;
+  hideManagedFromCatalogue(
+    id: string,
+    userId: string,
+  ): Promise<StreamRow | null>;
   recordRepublish(
     id: string,
     userId: string,
@@ -257,10 +261,15 @@ export class PublishService {
     );
   }
 
-  async republishManagedState(streamId: string): Promise<PublishOutcome> {
+  async republishManagedState(
+    streamId: string,
+  ): Promise<PublishOutcome | null> {
     return this.mutex.run(async () => {
       const current = await this.streams.findByIdUnscoped(streamId);
       if (!current) throw new StreamNotFoundError(streamId);
+      if (current.lifecycle_version === 1 && current.published_at === null) {
+        return null;
+      }
       return this.doRepublishWithState(current);
     });
   }
@@ -456,6 +465,9 @@ export class PublishService {
     // A recording can come off the catalogue; a live broadcast cannot, because
     // nothing here can stop the encoder that is still pushing to it.
     if (before.status === 'live') throw new StreamLiveError(id);
+    if (before.lifecycle_version === 1) {
+      return this.doManagedUnpublish(before);
+    }
     const { claimed, previousStatus } = await this.claim(
       before,
       userId,
@@ -501,6 +513,34 @@ export class PublishService {
     } catch (error) {
       throw await this.fail(id, userId, previousStatus, error);
     }
+  }
+
+  private async doManagedUnpublish(before: StreamRow): Promise<PublishOutcome> {
+    const snapshot = await this.baseSnapshot();
+    const previous = ladderOnFeed(
+      snapshot.entries,
+      before.owner,
+      before.topic,
+    );
+    const { entries, removed } = removeEntry(
+      snapshot.entries,
+      before.owner,
+      before.topic,
+    );
+    const index = removed
+      ? await this.writeFeed(entries, snapshot.index)
+      : (snapshot.index ?? 0);
+    const stream = await this.streams.hideManagedFromCatalogue(
+      before.id,
+      before.user_id,
+    );
+    if (!stream) throw new StreamNotFoundError(before.id);
+    logger.info(
+      `[Publish] ${before.topic} hidden from the catalogue${
+        removed ? ` at feed index ${index}` : ' (was not on the feed)'
+      }`,
+    );
+    return this.outcome(stream, index, entries.length, [], previous);
   }
 
   /**

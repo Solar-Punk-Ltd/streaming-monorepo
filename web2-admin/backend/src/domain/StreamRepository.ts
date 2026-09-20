@@ -96,6 +96,7 @@ export class StreamRepository {
     const result = await this.pool.query<StreamRow>(
       `SELECT ${STREAM_COLUMNS} FROM streams
         WHERE status IN ('published', 'live', 'vod')
+          AND (lifecycle_version IS DISTINCT FROM 1 OR published_at IS NOT NULL)
         ORDER BY created_at`,
     );
     return result.rows;
@@ -560,8 +561,8 @@ export class StreamRepository {
   /**
    * Records a feed write that did not change the status: a republish of a
    * stream that is live or recorded, where the whole point is that it stays
-   * where it is. `published_at` is left alone — it is when the stream was
-   * first announced, not when its entry was last rewritten.
+   * where it is. A hidden managed recording gets a new `published_at` when
+   * its owner restores it. Other entries keep the time they were announced.
    */
   async recordRepublish(
     id: string,
@@ -571,7 +572,11 @@ export class StreamRepository {
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
-          SET published_feed_index = $3,
+          SET published_at = CASE
+                WHEN lifecycle_version = 1 THEN COALESCE(published_at, NOW())
+                ELSE published_at
+              END,
+              published_feed_index = $3,
               publish_error = NULL,
               thumbnail_ref = $4,
               updated_at = NOW()
@@ -658,6 +663,23 @@ export class StreamRepository {
               ended_at = NULL,
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2
+        RETURNING ${STREAM_COLUMNS}`,
+      [id, userId],
+    );
+    return this.one(result.rows, result.rowCount);
+  }
+
+  async hideManagedFromCatalogue(
+    id: string,
+    userId: string,
+  ): Promise<StreamRow | null> {
+    const result = await this.pool.query<StreamRow>(
+      `UPDATE streams
+          SET published_at = NULL,
+              published_feed_index = NULL,
+              publish_error = NULL,
+              updated_at = NOW()
+        WHERE id = $1 AND user_id = $2 AND lifecycle_version = 1
         RETURNING ${STREAM_COLUMNS}`,
       [id, userId],
     );

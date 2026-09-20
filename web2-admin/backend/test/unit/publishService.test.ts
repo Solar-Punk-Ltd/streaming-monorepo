@@ -844,6 +844,44 @@ describe('PublishService.unpublish', () => {
     assert.deepEqual(entriesOf(gateway), []);
   });
 
+  it('hides and restores a managed recording without changing its run facts', async () => {
+    const { store, gateway, service } = setup();
+    const row = store.add(
+      streamRow({
+        status: 'vod',
+        published_at: new Date('2026-09-11T10:00:00.000Z'),
+        published_feed_index: 4,
+        manifest_index: 12,
+        duration_seconds: 62.5,
+        lifecycle_version: 1,
+        lifecycle_revision: 5,
+        current_run_number: 1,
+        completed_run_number: 1,
+        lifecycle_state: 'vod',
+        lifecycle_permission: 'closed',
+        lifecycle_uploader_id: 'srs-main',
+      }),
+    );
+    await service.republishManagedState(row.id);
+
+    const hidden = await service.unpublish(row.id, TEST_USER_ID);
+    assert.equal(hidden.stream.status, 'vod');
+    assert.equal(hidden.stream.lifecycle_permission, 'closed');
+    assert.equal(hidden.stream.completed_run_number, 1);
+    assert.equal(hidden.stream.manifest_index, 12);
+    assert.equal(hidden.stream.published_at, null);
+    assert.deepEqual(entriesOf(gateway), []);
+
+    const writesWhileHidden = gateway.writes.length;
+    assert.equal(await service.republishManagedState(row.id), null);
+    assert.equal(gateway.writes.length, writesWhileHidden);
+
+    const restored = await service.publish(row.id, TEST_USER_ID);
+    assert.equal(restored.stream.status, 'vod');
+    assert.ok(restored.stream.published_at);
+    assert.equal(entriesOf(gateway)[0].state, 'vod');
+  });
+
   it('refuses to unpublish a live stream', async () => {
     // Nothing here can stop the encoder that is still pushing to it, and the
     // viewer would lose the entry it is playing from.

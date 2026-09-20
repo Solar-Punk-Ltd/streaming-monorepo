@@ -261,7 +261,11 @@ export class FakeStreamStore
   /** Unscoped, as the SQL is: reconcile has to see every user's rows. */
   async listOnFeed(): Promise<StreamRow[]> {
     return [...this.rows.values()]
-      .filter((row) => ['published', 'live', 'vod'].includes(row.status))
+      .filter(
+        (row) =>
+          ['published', 'live', 'vod'].includes(row.status) &&
+          (row.lifecycle_version !== 1 || row.published_at !== null),
+      )
       .map((row) => ({ ...row }));
   }
 
@@ -331,6 +335,19 @@ export class FakeStreamStore
     });
   }
 
+  async hideManagedFromCatalogue(
+    id: string,
+    userId: string,
+  ): Promise<StreamRow | null> {
+    const row = await this.findById(id, userId);
+    if (!row || row.lifecycle_version !== 1) return null;
+    return this.patch(id, {
+      published_at: null,
+      published_feed_index: null,
+      publish_error: null,
+    });
+  }
+
   /** Status untouched, exactly as the SQL is: a republish keeps its state. */
   async recordRepublish(
     id: string,
@@ -338,8 +355,13 @@ export class FakeStreamStore
     feedIndex: number,
     thumbnailRef: string | null,
   ): Promise<StreamRow | null> {
-    if (!(await this.findById(id, userId))) return null;
+    const current = await this.findById(id, userId);
+    if (!current) return null;
     return this.patch(id, {
+      published_at:
+        current.lifecycle_version === 1
+          ? (current.published_at ?? new Date('2026-09-11T11:00:00.000Z'))
+          : current.published_at,
       published_feed_index: feedIndex,
       publish_error: null,
       thumbnail_ref: thumbnailRef,

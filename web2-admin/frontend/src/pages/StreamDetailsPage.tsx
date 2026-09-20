@@ -266,11 +266,14 @@ export function StreamDetailsPage() {
   // `publishing` keeps saying Publish: a first publish is in flight, and the
   // button is disabled anyway.
   const publishLabel =
-    stream.status === 'draft' || stream.status === 'publishing'
+    stream.status === 'draft' ||
+    stream.status === 'publishing' ||
+    (stream.lifecycle !== undefined && stream.publishedAt === null)
       ? 'Publish'
       : 'Republish';
   const canUnpublish =
-    stream.status === 'published' || stream.status === 'vod';
+    (stream.status === 'published' || stream.status === 'vod') &&
+    stream.publishedAt !== null;
   const viewerBaseUrl = config?.viewerBaseUrl ?? null;
   // A published stream keeps its status when edited and the backend writes no
   // feed entry for the edit, so the feed and the row have drifted apart until

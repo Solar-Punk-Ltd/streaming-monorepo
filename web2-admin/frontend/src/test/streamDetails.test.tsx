@@ -191,6 +191,34 @@ describe('StreamDetailsPage', () => {
     expect(screen.getByRole('button', { name: 'Republish' })).toBeEnabled();
   });
 
+  it('offers Publish but not Unpublish for a hidden managed recording', async () => {
+    mockFetch(
+      routesFor(
+        makeStream({
+          id: ID,
+          status: 'vod',
+          publishedAt: null,
+          publishedFeedIndex: null,
+          manifestIndex: 12,
+          durationSeconds: 62.5,
+          lifecycle: {
+            version: 1,
+            revision: 5,
+            runNumber: 1,
+            state: 'vod',
+            permission: 'closed',
+            canContinue: true,
+          },
+        }),
+      ),
+    );
+
+    renderDetails();
+
+    expect(await screen.findByRole('button', { name: 'Publish' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Unpublish' })).toBeDisabled();
+  });
+
   it('leaves the reported fields off a stream nobody has streamed yet', async () => {
     mockFetch(routesFor(makeStream({ id: ID, status: 'published' })));
 
