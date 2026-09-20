@@ -50,7 +50,6 @@ export interface Instance {
 }
 
 function databaseNameFor(url: string): { admin: string; name: string; target: string } {
-  const parsed = new URL(url);
   const name = `web2admin_itest_${Date.now().toString(36)}${Math.floor(
     Math.random() * 1e6,
   ).toString(36)}`;

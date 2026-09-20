@@ -148,11 +148,11 @@ describe('the session cookie', () => {
     setSessionCookie(requestWith(), res, TOKEN);
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.name, NAME);
-    assert.equal(calls[0]!.value, TOKEN);
+    assert.equal(calls[0].name, NAME);
+    assert.equal(calls[0].value, TOKEN);
     // No maxAge and no expires: the sessions row is the only clock, and a
     // cookie with a deadline of its own would be a second one to keep in step.
-    assert.deepEqual(calls[0]!.options, {
+    assert.deepEqual(calls[0].options, {
       httpOnly: true,
       sameSite: 'lax',
       path: '/',
@@ -164,7 +164,7 @@ describe('the session cookie', () => {
     const secureOf = (req: Request): boolean => {
       const { res, calls } = recordingResponse();
       setSessionCookie(req, res, TOKEN);
-      return (calls[0]!.options as { secure: boolean }).secure;
+      return (calls[0].options as { secure: boolean }).secure;
     };
 
     // Marking it Secure on a plain-HTTP origin makes the browser drop the
@@ -198,6 +198,6 @@ describe('the session cookie', () => {
     clearSessionCookie(req, res);
 
     // Or the browser keeps the original cookie alongside the expired one.
-    assert.deepEqual(calls[1]!.options, calls[0]!.options);
+    assert.deepEqual(calls[1].options, calls[0].options);
   });
 });

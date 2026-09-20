@@ -80,11 +80,11 @@ describe('removing a user', () => {
       async ([ann, bob]) => {
         // The instance's own admin steps aside, or there is always a third
         // user and neither removal is ever the last one.
-        await database.pool.query(FORGET_USER, [original[0]!.id]);
+        await database.pool.query(FORGET_USER, [original[0].id]);
 
         const outcomes = await Promise.all([
-          users.deleteUnlessLast(ann!),
-          users.deleteUnlessLast(bob!),
+          users.deleteUnlessLast(ann),
+          users.deleteUnlessLast(bob),
         ]);
 
         assert.equal(
@@ -98,7 +98,7 @@ describe('removing a user', () => {
     );
 
     // Put the sign-in account back for whatever runs next in this process.
-    await users.insert(original[0]!.username, original[0]!.password_hash, true);
+    await users.insert(original[0].username, original[0].password_hash, true);
   });
 
   it('refuses the last user who can manage users', async () => {

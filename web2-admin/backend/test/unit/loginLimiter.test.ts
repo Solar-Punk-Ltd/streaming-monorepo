@@ -31,7 +31,7 @@ function limiterAt(start = 1_700_000_000_000) {
   return {
     clock,
     limiter: new LoginLimiter(() => clock.now),
-    advance(ms: number) {
+    advance: (ms: number) => {
       clock.now += ms;
     },
   };

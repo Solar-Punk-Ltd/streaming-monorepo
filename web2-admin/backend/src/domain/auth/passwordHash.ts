@@ -82,8 +82,8 @@ function decode(stored: string): StoredHash | null {
   );
   if (!positiveIntegers || N < 2) return null;
 
-  const salt = Buffer.from(fields[4]!, 'base64');
-  const key = Buffer.from(fields[5]!, 'base64');
+  const salt = Buffer.from(fields[4], 'base64');
+  const key = Buffer.from(fields[5], 'base64');
   if (salt.length === 0 || key.length === 0) return null;
 
   return { params: { N, r, p }, salt, key };

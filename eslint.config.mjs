@@ -60,9 +60,13 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/test/unit/support/fakes.ts'],
+    files: [
+      '**/src/domain/FakeFeedGateway.ts',
+      '**/test/unit/support/authFixtures.ts',
+      '**/test/unit/support/fakes.ts',
+    ],
     rules: {
-      // These async methods implement production ports whose methods return promises.
+      // These in-memory fakes implement ports whose methods return promises.
       '@typescript-eslint/require-await': 'off',
     },
   },

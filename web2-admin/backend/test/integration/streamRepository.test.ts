@@ -48,7 +48,7 @@ before(async () => {
       // USERNAME_RE, and a 47 character name would be refused by it.
       [`itest-${randomUUID().slice(0, 8)}`],
     );
-    userId = user.rows[0]!.id;
+    userId = user.rows[0].id;
   } catch (err) {
     assert.fail(
       `Postgres is not reachable/migrated at ${stack().databaseUrl} (${String(err)}).\n` +

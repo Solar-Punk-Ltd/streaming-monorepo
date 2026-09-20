@@ -71,7 +71,7 @@ export class StreamRenditionRepository {
         rendition.duration ?? null,
       ],
     );
-    return result.rows[0]!;
+    return result.rows[0];
   }
 
   /** How many rungs were dropped; 0 for a stream that never had a ladder. */

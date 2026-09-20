@@ -192,5 +192,5 @@ export class StreamService {
 
 /** `image/png; charset=binary` → `image/png`. */
 export function normaliseThumbnailMime(contentType: string): string {
-  return contentType.split(';')[0]!.trim().toLowerCase();
+  return contentType.split(';')[0].trim().toLowerCase();
 }

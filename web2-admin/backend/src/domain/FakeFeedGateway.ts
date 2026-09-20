@@ -63,7 +63,7 @@ export class FakeFeedGateway implements FeedGateway {
     const failure = this.take('failNextRead');
     if (failure) throw failure;
     const at = Math.max(0, this.history.length - 1 - this.readLagWrites);
-    const seen = this.history[at]!;
+    const seen = this.history[at];
     return { index: seen.index, entries: [...seen.entries] };
   }
 

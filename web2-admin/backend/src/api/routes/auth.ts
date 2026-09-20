@@ -33,8 +33,7 @@ import { toUser } from '../presenters.js';
 
 /** Kept on the session row, so a revoke can be told which browser it drops. */
 function userAgentOf(req: Request): string | null {
-  const header = req.headers['user-agent'];
-  const value = Array.isArray(header) ? header[0] : header;
+  const value = req.header('user-agent');
   return value ? value.slice(0, USER_AGENT_MAX_LENGTH) : null;
 }
 

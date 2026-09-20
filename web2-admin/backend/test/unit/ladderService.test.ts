@@ -220,8 +220,8 @@ describe('LadderService.report', () => {
 
     const flipped = outcomes.filter((o) => o.ladder.flippedToFinished);
     assert.equal(flipped.length, 1);
-    assert.equal(flipped[0]!.ladder.finished, true);
-    assert.equal(flipped[0]!.ladder.duration, 62.5);
+    assert.equal(flipped[0].ladder.finished, true);
+    assert.equal(flipped[0].ladder.duration, 62.5);
     assert.equal(gateway.writes.length, before + 2, 'one write per report');
     const last = entryAt(gateway, gateway.writes.at(-1)!.index, stream.topic);
     assert.deepEqual(last.renditions, [FINAL_360, FINAL_720]);
@@ -296,7 +296,7 @@ describe('LadderService.report', () => {
       (a, b) => a.publish.feed.index - b.publish.feed.index,
     );
     assert.deepEqual(
-      later!.renditions.map((r) => r.name),
+      later.renditions.map((r) => r.name),
       ['360p', '720p'],
     );
   });

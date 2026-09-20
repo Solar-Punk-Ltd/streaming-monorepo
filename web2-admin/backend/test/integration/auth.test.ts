@@ -50,10 +50,10 @@ describe('the first user, made on the host with the CLI', () => {
     const [first, ...rest] = await users();
 
     assert.equal(rest.length, 0);
-    assert.equal(first!.username, ADMIN_USERNAME);
-    assert.equal(first!.isAdmin, true);
-    assert.equal(first!.sessions, 1);
-    assert.ok(first!.lastLoginAt, 'signing in recorded when it happened');
+    assert.equal(first.username, ADMIN_USERNAME);
+    assert.equal(first.isAdmin, true);
+    assert.equal(first.sessions, 1);
+    assert.ok(first.lastLoginAt, 'signing in recorded when it happened');
   });
 });
 
@@ -155,7 +155,7 @@ describe('managing users over HTTP', () => {
 
   before(async () => {
     await login();
-    adminId = (await users())[0]!.id;
+    adminId = (await users())[0].id;
   });
 
   it('adds a plain user', async () => {
@@ -185,7 +185,7 @@ describe('managing users over HTTP', () => {
     assert.equal(response.status, 400);
     const body = response.body as { error: string; errors: string[] };
     assert.equal(body.error, 'validation_error');
-    assert.match(body.errors[0]!, /at least 12 characters/);
+    assert.match(body.errors[0], /at least 12 characters/);
   });
 
   it('refuses a username the database CHECK would refuse', async () => {

@@ -473,10 +473,10 @@ describe('managing users', () => {
     const [levi, ...rest] = await list();
 
     assert.equal(rest.length, 0);
-    assert.equal(levi!.username, USERNAME);
-    assert.equal(levi!.isAdmin, true);
-    assert.equal(levi!.sessions, 1);
-    assert.ok(levi!.lastLoginAt);
+    assert.equal(levi.username, USERNAME);
+    assert.equal(levi.isAdmin, true);
+    assert.equal(levi.sessions, 1);
+    assert.ok(levi.lastLoginAt);
   });
 
   it('adds a user, and refuses the name a second time', async () => {

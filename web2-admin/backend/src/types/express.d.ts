@@ -3,7 +3,6 @@ import type { SessionInfo } from '../domain/auth/AuthService.js';
 import type { UserRow } from './rows.js';
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       /** Set by requireAuth. Use requireUser(req) to read it type-safely. */

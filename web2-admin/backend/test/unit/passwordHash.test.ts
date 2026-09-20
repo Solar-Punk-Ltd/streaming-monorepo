@@ -52,8 +52,8 @@ describe('password hashing', () => {
     assert.match(stored, /^scrypt\$32768\$8\$3\$/);
     assert.deepEqual(paramsOf(stored), CURRENT_PARAMS);
     assert.deepEqual(CURRENT_PARAMS, { N: 2 ** 15, r: 8, p: 3 });
-    assert.equal(Buffer.from(salt!, 'base64').length, 32);
-    assert.equal(Buffer.from(key!, 'base64').length, 64);
+    assert.equal(Buffer.from(salt, 'base64').length, 32);
+    assert.equal(Buffer.from(key, 'base64').length, 64);
   });
 
   it('still verifies a hash written with the old parameters', async () => {

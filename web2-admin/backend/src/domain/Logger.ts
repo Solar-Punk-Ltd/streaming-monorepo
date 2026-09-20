@@ -17,8 +17,27 @@ export class Logger {
   private formatMessage(level: string, ...args: unknown[]): string {
     const timestamp = new Date().toISOString();
     return `[${timestamp}] [${level.toUpperCase()}] - ${args
-      .map((arg) => (typeof arg === 'object' ? JSON.stringify(arg) : String(arg)))
+      .map((arg) => this.formatArgument(arg))
       .join(' ')}`;
+  }
+
+  private formatArgument(arg: unknown): string {
+    if (arg === null) return 'null';
+    switch (typeof arg) {
+      case 'string':
+        return arg;
+      case 'number':
+      case 'bigint':
+      case 'boolean':
+      case 'symbol':
+        return String(arg);
+      case 'undefined':
+        return 'undefined';
+      case 'function':
+        return arg.name ? `[Function ${arg.name}]` : '[Function]';
+      case 'object':
+        return JSON.stringify(arg) ?? 'undefined';
+    }
   }
 
   log(...args: unknown[]): void {
