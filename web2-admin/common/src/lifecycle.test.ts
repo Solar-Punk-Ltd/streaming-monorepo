@@ -5,6 +5,7 @@ import { test } from 'node:test';
 
 import type {
   InternalCompletedRecordingSnapshot,
+  LegacyRecordingCandidate,
   ManagedRenditionReport,
   ManagedRunReport,
   UploaderCapabilities,
@@ -12,6 +13,7 @@ import type {
 import {
   canonicalManagedReportJson,
   canonicalManagedRenditionReportJson,
+  canonicalLegacyRecordingCandidateJson,
   canonicalUploaderProfileJson,
 } from './lifecycle.js';
 
@@ -127,4 +129,27 @@ test('uploader profile fingerprints match the cross-service vectors', () => {
       vector.sha256HexParts.join(''),
     );
   }
+});
+
+test('legacy adoption candidate digest normalizes rendition order', () => {
+  const adoptionFixture = JSON.parse(
+    readFileSync(
+      new URL('../fixtures/legacy-adoption-v1.json', import.meta.url),
+      'utf8',
+    ),
+  ) as {
+    candidate: LegacyRecordingCandidate;
+    canonicalUtf8: string;
+    sha256HexParts: [string, string];
+  };
+  const reversed = {
+    ...adoptionFixture.candidate,
+    renditions: [...adoptionFixture.candidate.renditions].reverse(),
+  };
+  const canonical = canonicalLegacyRecordingCandidateJson(reversed);
+  assert.equal(canonical, adoptionFixture.canonicalUtf8);
+  assert.equal(
+    createHash('sha256').update(canonical).digest('hex'),
+    adoptionFixture.sha256HexParts.join(''),
+  );
 });

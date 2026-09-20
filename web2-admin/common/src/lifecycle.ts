@@ -229,6 +229,133 @@ export interface ContinuationPreparationRequest {
   failure?: string;
 }
 
+export interface LegacyRecordingCandidate {
+  streamId: string;
+  topic: string;
+  mediaType: MediaType;
+  master: {
+    topic: string;
+    index: number;
+    duration: number;
+  };
+  renditions: Array<{
+    name: string;
+    topic: string;
+    index: number;
+    duration: number;
+    width: number;
+    height: number;
+    bandwidth: number;
+    avgBandwidth: number;
+  }>;
+}
+
+export type LegacyMediaFormatTrack =
+  | {
+      kind: 'video';
+      codec: string;
+      profile: string | null;
+      level: number | null;
+      width: number;
+      height: number;
+      pixelFormat: string;
+      chromaLocation: string | null;
+      bitsPerRawSample: number | null;
+    }
+  | {
+      kind: 'audio';
+      codec: string;
+      profile: string | null;
+      sampleRate: number;
+      channels: number;
+      channelLayout: string;
+    };
+
+export interface LegacyMediaFormatFingerprint {
+  version: 1;
+  container: 'mpegts';
+  /** Canonical order preserves duplicate streams instead of treating this as a set. */
+  tracks: LegacyMediaFormatTrack[];
+}
+
+export interface LegacyAdoptionValidation {
+  version: 1;
+  mediaReadable: true;
+  pendingWrites: 0;
+  /** One entry for the source topic, or one per frozen ABR rendition topic. */
+  tracks: Array<{
+    topic: string;
+    formatFingerprint: LegacyMediaFormatFingerprint;
+  }>;
+}
+
+export type LegacyAdoptionOperationState =
+  | 'pending'
+  | 'failed'
+  | 'cancelled'
+  | 'committed';
+
+export interface LegacyAdoptionCreateRequest {
+  requestId: string;
+  expectedCandidateDigest: string;
+}
+
+export interface LegacyAdoptionOperation {
+  lifecycleVersion: typeof MANAGED_LIFECYCLE_VERSION;
+  kind: 'legacy-adoption';
+  operationId: string;
+  requestId: string;
+  streamId: string;
+  topic: string;
+  mediaType: MediaType;
+  uploaderId: string;
+  candidateDigest: string;
+  revision: number;
+  status: LegacyAdoptionOperationState;
+  candidate: LegacyRecordingCandidate;
+  completedRecording?: InternalCompletedRecordingSnapshot;
+  validation?: LegacyAdoptionValidation;
+  failure?: string;
+}
+
+export type OwnerLegacyAdoptionOperation = Omit<
+  LegacyAdoptionOperation,
+  'uploaderId' | 'candidate' | 'completedRecording' | 'validation'
+>;
+
+export type LegacyAdoptionPreparationRequest =
+  | {
+      lifecycleVersion: typeof MANAGED_LIFECYCLE_VERSION;
+      uploaderId: string;
+      expectedRevision: number;
+      candidateDigest: string;
+      status: 'ready';
+      completedRecording: InternalCompletedRecordingSnapshot;
+      validation: LegacyAdoptionValidation;
+    }
+  | {
+      lifecycleVersion: typeof MANAGED_LIFECYCLE_VERSION;
+      uploaderId: string;
+      expectedRevision: number;
+      candidateDigest: string;
+      status: 'failed';
+      failure: string;
+    };
+
+/** Stable bytes for the frozen legacy recording compare-and-set token. */
+export function canonicalLegacyRecordingCandidateJson(
+  candidate: LegacyRecordingCandidate,
+): string {
+  return canonicalJson({
+    ...candidate,
+    renditions: [...candidate.renditions].sort((left, right) =>
+      left.name === right.name
+        ? left.topic.localeCompare(right.topic)
+        : left.name.localeCompare(right.name),
+    ),
+  });
+}
+
 export interface UploaderRenditionProfile {
   name: string;
   width: number;
