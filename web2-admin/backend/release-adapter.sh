@@ -190,6 +190,9 @@ write_fixture_override() {
   cat > "$fixture_override" <<EOF
 services:
   api:
+    cpus: 1.0
+    mem_limit: 1g
+    pids_limit: 256
     labels:
       org.solarpunk.srs-continuation.fixture: ${fixture_id}
       org.solarpunk.srs-continuation.managed: "true"
@@ -202,6 +205,9 @@ services:
           - ${fixture_id}-admin-api
     ports: !reset []
   web:
+    cpus: 1.0
+    mem_limit: 1g
+    pids_limit: 256
     labels:
       org.solarpunk.srs-continuation.fixture: ${fixture_id}
       org.solarpunk.srs-continuation.managed: "true"
@@ -212,6 +218,9 @@ services:
     ports: !override
       - "127.0.0.1:${web_port}:80"
   postgres:
+    cpus: 1.0
+    mem_limit: 1g
+    pids_limit: 256
     labels:
       org.solarpunk.srs-continuation.fixture: ${fixture_id}
       org.solarpunk.srs-continuation.managed: "true"
@@ -281,6 +290,17 @@ require_fixture_container() {
     refuse "admin fixture container identity does not match"
   [ "$(docker inspect --format '{{index .Config.Labels "org.solarpunk.srs-continuation.managed"}}' "$container")" = true ] ||
     refuse "admin fixture container is not managed"
+}
+
+require_fixture_limits() {
+  local container="$1"
+  [ -n "$fixture_network_name" ] || return 0
+  [ "$(docker inspect --format '{{.HostConfig.NanoCpus}}' "$container")" = 1000000000 ] ||
+    refuse "admin fixture CPU limit does not match"
+  [ "$(docker inspect --format '{{.HostConfig.Memory}}' "$container")" = 1073741824 ] ||
+    refuse "admin fixture memory limit does not match"
+  [ "$(docker inspect --format '{{.HostConfig.PidsLimit}}' "$container")" = 256 ] ||
+    refuse "admin fixture PID limit does not match"
 }
 
 require_fixture_membership() {
@@ -426,6 +446,7 @@ EOF
       [ "$(docker inspect --format '{{.State.Status}}' "$container")" = running ] || refuse "admin release service is not running"
       [ "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$container")" = healthy ] || refuse "admin release service is not healthy"
       require_fixture_container "$container"
+      require_fixture_limits "$container"
     done
     require_fixture_membership "$api_container"
     require_fixture_membership "$web_container"

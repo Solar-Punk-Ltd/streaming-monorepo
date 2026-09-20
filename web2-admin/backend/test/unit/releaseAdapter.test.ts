@@ -120,12 +120,12 @@ async function writeReleaseEnvironment(root: string): Promise<string> {
 }
 
 describe('fixed admin release adapter', () => {
-  it('bounds every guarded admin service to the fixture resource ceiling', async () => {
+  it('keeps fixture resource ceilings out of the ordinary release compose', async () => {
     const compose = await readFile(releaseCompose, 'utf8');
 
-    assert.equal(compose.match(/^ {4}cpus: 1\.0$/gm)?.length, 3);
-    assert.equal(compose.match(/^ {4}mem_limit: 1g$/gm)?.length, 3);
-    assert.equal(compose.match(/^ {4}pids_limit: 256$/gm)?.length, 3);
+    assert.doesNotMatch(compose, /^ {4}cpus:/m);
+    assert.doesNotMatch(compose, /^ {4}mem_limit:/m);
+    assert.doesNotMatch(compose, /^ {4}pids_limit:/m);
   });
 
   it('overrides reference-file credentials from the role-scoped process environment', async () => {
@@ -454,6 +454,9 @@ fi
     assert.match(override, /api:[\s\S]*ports: !reset \[\]/);
     assert.match(override, /postgres:[\s\S]*ports: !reset \[\]/);
     assert.match(override, new RegExp(`127\\.0\\.0\\.1:${String(target.webPort)}:80`));
+    assert.equal(override.match(/^ {4}cpus: 1\.0$/gm)?.length, 3);
+    assert.equal(override.match(/^ {4}mem_limit: 1g$/gm)?.length, 3);
+    assert.equal(override.match(/^ {4}pids_limit: 256$/gm)?.length, 3);
   });
 
   it('refuses a merged fixture topology that isolates the API from Postgres', async (t) => {
@@ -607,6 +610,9 @@ elif [ "$1" = inspect ]; then
   container="${'$'}{!#}"
   if [[ "$format" == *State.Status* ]]; then printf '%s\\n' running
   elif [[ "$format" == *State.Health* ]]; then printf '%s\\n' healthy
+  elif [[ "$format" == *HostConfig.NanoCpus* ]]; then printf '%s\\n' 1000000000
+  elif [[ "$format" == *HostConfig.Memory* ]]; then printf '%s\\n' 1073741824
+  elif [[ "$format" == *HostConfig.PidsLimit* ]]; then printf '%s\\n' 256
   elif [[ "$format" == *Config.Labels*fixture* ]]; then printf '%s\\n' '${fixtureNetwork.fixtureId}'
   elif [[ "$format" == *Config.Labels*managed* ]]; then printf '%s\\n' true
   elif [[ "$format" == *NetworkSettings* ]]; then
@@ -660,5 +666,8 @@ fi
     assert.match(calls, new RegExp(`${adminDatabaseNetworkName}.*admin-postgres-container`));
     assert.match(calls, new RegExp(`${adminDatabaseNetworkName}.*admin-web-container`));
     assert.match(calls, new RegExp(`${fixtureNetwork.name}.*admin-postgres-container`));
+    assert.equal(calls.match(/HostConfig\.NanoCpus/g)?.length, 3);
+    assert.equal(calls.match(/HostConfig\.Memory/g)?.length, 3);
+    assert.equal(calls.match(/HostConfig\.PidsLimit/g)?.length, 3);
   });
 });
