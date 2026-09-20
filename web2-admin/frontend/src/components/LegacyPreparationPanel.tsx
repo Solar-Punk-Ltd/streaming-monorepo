@@ -22,6 +22,14 @@ function isExplainedFailure(error: unknown): boolean {
   return error instanceof ApiError;
 }
 
+function newerOperation(
+  current: OwnerLegacyAdoptionOperation | null,
+  incoming: OwnerLegacyAdoptionOperation,
+): OwnerLegacyAdoptionOperation {
+  if (!current || current.operationId !== incoming.operationId) return incoming;
+  return incoming.revision >= current.revision ? incoming : current;
+}
+
 export function LegacyPreparationPanel({
   stream,
   reload,
@@ -31,18 +39,29 @@ export function LegacyPreparationPanel({
 }) {
   const snackbar = useSnackbar();
   const retryRequest = useRef<LegacyAdoptionCreateRequest | null>(null);
+  const actionGeneration = useRef(0);
   const [operation, setOperation] = useState<OwnerLegacyAdoptionOperation | null>(
     stream.legacyAdoption ?? null,
   );
+  const currentOperationId = useRef(operation?.operationId ?? null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(
+    () => () => {
+      actionGeneration.current += 1;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    currentOperationId.current = operation?.operationId ?? null;
+  }, [operation]);
 
   useEffect(() => {
     const incoming = stream.legacyAdoption;
     setOperation((current) => {
       if (incoming) {
-        return !current || incoming.revision >= current.revision
-          ? incoming
-          : current;
+        return newerOperation(current, incoming);
       }
       return stream.lifecycle || stream.status !== 'vod' ? null : current;
     });
@@ -51,6 +70,9 @@ export function LegacyPreparationPanel({
   if (stream.lifecycle || stream.status !== 'vod') return null;
 
   const start = async () => {
+    const startedFromOperationId = currentOperationId.current;
+    const generation = (actionGeneration.current += 1);
+    const isCurrent = () => actionGeneration.current === generation;
     setBusy(true);
     try {
       const request =
@@ -60,6 +82,7 @@ export function LegacyPreparationPanel({
           expectedCandidateDigest:
             await api.fetchLegacyPreparationCandidate(stream.id),
         } satisfies LegacyAdoptionCreateRequest);
+      if (!isCurrent()) return;
       retryRequest.current = request;
 
       let created: OwnerLegacyAdoptionOperation;
@@ -67,60 +90,105 @@ export function LegacyPreparationPanel({
         created = await api.createLegacyPreparation(stream.id, request);
       } catch (error) {
         if (isExplainedFailure(error)) throw error;
+        if (!isCurrent()) return;
         created = await api.createLegacyPreparation(stream.id, request);
       }
+      if (
+        !isCurrent() ||
+        currentOperationId.current !== startedFromOperationId ||
+        created.streamId !== stream.id ||
+        created.requestId !== request.requestId
+      ) {
+        return;
+      }
       retryRequest.current = null;
-      setOperation((current) =>
-        !current || created.revision >= current.revision ? created : current,
-      );
+      currentOperationId.current = created.operationId;
+      setOperation((current) => newerOperation(current, created));
       reload();
       snackbar.success('Recording check started.');
     } catch (error) {
-      if (error instanceof ApiError && error.status === 409) {
-        retryRequest.current = null;
-        reload();
+      if (isCurrent()) {
+        if (error instanceof ApiError && error.status === 409) {
+          retryRequest.current = null;
+          reload();
+        }
+        snackbar.error(
+          errorMessage(error, 'Could not check the previous recording'),
+        );
       }
-      snackbar.error(
-        errorMessage(error, 'Could not check the previous recording'),
-      );
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   };
 
   const refresh = async () => {
     if (!operation) return;
+    const operationId = operation.operationId;
+    const generation = (actionGeneration.current += 1);
+    const isCurrent = () => actionGeneration.current === generation;
     setBusy(true);
     try {
       const refreshed = await api.fetchLegacyPreparation(
         stream.id,
-        operation.operationId,
+        operationId,
       );
+      if (
+        !isCurrent() ||
+        currentOperationId.current !== operationId ||
+        refreshed.streamId !== stream.id ||
+        refreshed.operationId !== operationId
+      ) {
+        return;
+      }
       setOperation((current) =>
-        !current || refreshed.revision >= current.revision ? refreshed : current,
+        current?.operationId === operationId
+          ? newerOperation(current, refreshed)
+          : current,
       );
       reload();
     } catch (error) {
-      snackbar.error(errorMessage(error, 'Could not refresh the recording check'));
+      if (isCurrent()) {
+        snackbar.error(
+          errorMessage(error, 'Could not refresh the recording check'),
+        );
+      }
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   };
 
   const cancel = async () => {
     if (operation?.status !== 'pending') return;
+    const operationId = operation.operationId;
+    const generation = (actionGeneration.current += 1);
+    const isCurrent = () => actionGeneration.current === generation;
     setBusy(true);
     try {
-      await api.cancelLegacyPreparation(stream.id, operation.operationId);
+      const cancelled = await api.cancelLegacyPreparation(stream.id, operationId);
+      if (
+        !isCurrent() ||
+        currentOperationId.current !== operationId ||
+        cancelled.streamId !== stream.id ||
+        cancelled.operationId !== operationId
+      ) {
+        return;
+      }
       retryRequest.current = null;
-      setOperation(null);
+      currentOperationId.current = null;
+      setOperation((current) =>
+        current?.operationId === operationId ? null : current,
+      );
       reload();
       snackbar.success('Recording check cancelled.');
     } catch (error) {
-      snackbar.error(errorMessage(error, 'Could not cancel the recording check'));
-      await refresh();
+      if (isCurrent()) {
+        snackbar.error(
+          errorMessage(error, 'Could not cancel the recording check'),
+        );
+        reload();
+      }
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   };
 

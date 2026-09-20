@@ -146,7 +146,15 @@ describe('StreamDetailsPage', () => {
             requests.push(JSON.parse(init.body) as (typeof requests)[number]);
             return requests.length === 1
               ? Promise.reject(new TypeError('response lost'))
-              : jsonOk({ operation: pendingLegacyPreparation() }, 202);
+              : jsonOk(
+                  {
+                    operation: {
+                      ...pendingLegacyPreparation(),
+                      requestId: requests[1].requestId,
+                    },
+                  },
+                  202,
+                );
           },
         },
       ]),
@@ -198,6 +206,143 @@ describe('StreamDetailsPage', () => {
     expect(
       screen.getByRole('button', { name: 'Try preparation again' }),
     ).toBeEnabled();
+  });
+
+  it('replaces a failed preparation with a new lower-revision attempt', async () => {
+    const failed = legacyVod();
+    failed.legacyAdoption = {
+      ...pendingLegacyPreparation(),
+      revision: 2,
+      status: 'failed',
+      failure: 'The previous recording could not be read.',
+    };
+    const retriedOperation = {
+      ...pendingLegacyPreparation(),
+      operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      requestId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      revision: 1,
+    };
+    const retried = legacyVod();
+    let retryRequestId = retriedOperation.requestId;
+    let reads = 0;
+    mockFetch(
+      routesFor(failed, [
+        {
+          path: `/api/streams/${ID}`,
+          respond: () => {
+            retried.legacyAdoption = {
+              ...retriedOperation,
+              requestId: retryRequestId,
+            };
+            return jsonOk(reads++ === 0 ? failed : retried);
+          },
+        },
+        {
+          path: `/api/streams/${ID}/legacy-adoptions/candidate`,
+          respond: () => jsonOk({ candidateDigest: 'a'.repeat(64) }),
+        },
+        {
+          method: 'POST',
+          path: `/api/streams/${ID}/legacy-adoptions`,
+          respond: (init) => {
+            if (typeof init?.body !== 'string') {
+              throw new TypeError('expected a JSON request body');
+            }
+            const request = JSON.parse(init.body) as { requestId: string };
+            retryRequestId = request.requestId;
+            return jsonOk({
+              operation: { ...retriedOperation, requestId: retryRequestId },
+            });
+          },
+        },
+      ]),
+    );
+
+    renderDetails();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Try preparation again' }),
+    );
+
+    expect(
+      await screen.findByText('Checking the previous recording.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Cancel preparation' }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByText('The previous recording could not be read.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('ignores an old operation refresh after a newer operation arrives', async () => {
+    const old = legacyVod();
+    old.legacyAdoption = pendingLegacyPreparation();
+    const current = legacyVod();
+    current.legacyAdoption = {
+      ...pendingLegacyPreparation(),
+      operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      requestId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      revision: 1,
+      status: 'failed',
+      failure: 'The current recording check failed.',
+    };
+    const oldRefresh = deferred<Response>();
+    let reads = 0;
+    let ownerPoll: (() => void) | undefined;
+    const interval = vi
+      .spyOn(window, 'setInterval')
+      .mockImplementation((handler: TimerHandler, timeout?: number) => {
+        if (timeout === 10_000 && typeof handler === 'function') {
+          ownerPoll = handler;
+        }
+        return 99;
+      });
+    mockFetch(
+      routesFor(old, [
+        {
+          path: `/api/streams/${ID}`,
+          respond: () => jsonOk(reads++ === 0 ? old : current),
+        },
+        {
+          path: `/api/streams/${ID}/legacy-adoptions/${pendingLegacyPreparation().operationId}`,
+          respond: () => oldRefresh.promise,
+        },
+      ]),
+    );
+
+    try {
+      renderDetails();
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Refresh preparation' }),
+      );
+      expect(ownerPoll).toBeTypeOf('function');
+      void act(() => ownerPoll?.());
+      expect(
+        await screen.findByText('The current recording check failed.'),
+      ).toBeInTheDocument();
+
+      oldRefresh.resolve(
+        jsonOk({
+          operation: {
+            ...pendingLegacyPreparation(),
+            revision: 99,
+            status: 'failed',
+            failure: 'A delayed older recording check failed.',
+          },
+        }),
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.queryByText('A delayed older recording check failed.'),
+        ).not.toBeInTheDocument();
+      });
+      expect(
+        screen.getByText('The current recording check failed.'),
+      ).toBeInTheDocument();
+    } finally {
+      interval.mockRestore();
+    }
   });
 
   it('polls a pending recording check until ordinary continuation is available', async () => {
