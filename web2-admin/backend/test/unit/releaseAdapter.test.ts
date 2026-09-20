@@ -16,6 +16,7 @@ import { describe, it } from 'node:test';
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(import.meta.dirname, '../../../..');
 const adapter = join(repositoryRoot, 'web2-admin/backend/release-adapter.sh');
+const releaseCompose = join(repositoryRoot, 'web2-admin/backend/release-compose.yml');
 const target = {
   projectName: 'admin-test',
   postgresVolumeName: 'admin-test-pg',
@@ -87,6 +88,70 @@ async function writeReleaseEnvironment(root: string): Promise<string> {
 }
 
 describe('fixed admin release adapter', () => {
+  it('overrides reference-file credentials from the role-scoped process environment', async () => {
+    const compose = await readFile(releaseCompose, 'utf8');
+    for (const name of [
+      'BEE_URL',
+      'FEED_PRIVATE_KEY',
+      'INGEST_SRT_PASSPHRASE',
+      'INTERNAL_API_TOKEN',
+      'POSTAGE_BATCH_ID',
+    ]) {
+      assert.match(compose, new RegExp(`^      ${name}: \\${'${'}${name}`, 'm'));
+    }
+    assert.match(compose, /POSTGRES_PASSWORD: \$\{POSTGRES_PASSWORD:/);
+  });
+
+  it('preserves routed process credentials without copying their values into its output', async (t) => {
+    const root = await temporaryRoot(t);
+    const home = await writeReleaseEnvironment(root);
+    const bin = join(root, 'bin');
+    await mkdir(bin);
+    const routed = {
+      BEE_URL: 'http://synthetic-bee.invalid:1633',
+      FEED_PRIVATE_KEY: `0x${'1'.repeat(64)}`,
+      INGEST_SRT_PASSPHRASE: 'synthetic-passphrase',
+      INTERNAL_API_TOKEN: 'synthetic-internal-token-000000000',
+      POSTAGE_BATCH_ID: '2'.repeat(64),
+      POSTGRES_PASSWORD: 'synthetic-postgres-password',
+    };
+    await writeFile(
+      join(bin, 'docker'),
+      `#!/bin/bash
+set -euo pipefail
+[ "${'$'}BEE_URL" = '${routed.BEE_URL}' ]
+[ "${'$'}FEED_PRIVATE_KEY" = '${routed.FEED_PRIVATE_KEY}' ]
+[ "${'$'}INGEST_SRT_PASSPHRASE" = '${routed.INGEST_SRT_PASSPHRASE}' ]
+[ "${'$'}INTERNAL_API_TOKEN" = '${routed.INTERNAL_API_TOKEN}' ]
+[ "${'$'}POSTAGE_BATCH_ID" = '${routed.POSTAGE_BATCH_ID}' ]
+[ "${'$'}POSTGRES_PASSWORD" = '${routed.POSTGRES_PASSWORD}' ]
+if [ "$1" = image ]; then printf 'sha256:%s\n' "$(printf a%.0s {1..64})"; fi
+`,
+    );
+    await chmod(join(bin, 'docker'), 0o700);
+    const planPath = join(root, 'build-plan.json');
+    const output = join(root, 'build.json');
+    await writeFile(planPath, JSON.stringify(plan('build')));
+
+    const result = await execFileAsync(
+      adapter,
+      ['build', '--plan', planPath, '--output', output],
+      {
+        env: {
+          ...process.env,
+          ...routed,
+          HOME: home,
+          PATH: `${bin}:${process.env.PATH ?? ''}`,
+        },
+      },
+    );
+
+    assert.equal(result.stdout, '');
+    assert.equal(result.stderr, '');
+    const serialized = JSON.stringify(JSON.parse(await readFile(output, 'utf8')));
+    for (const secret of Object.values(routed)) assert.doesNotMatch(serialized, new RegExp(secret));
+  });
+
   it('builds isolated backend and frontend images and returns immutable ids', async (t) => {
     const root = await temporaryRoot(t);
     const home = await writeReleaseEnvironment(root);

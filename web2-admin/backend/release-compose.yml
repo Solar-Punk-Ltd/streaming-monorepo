@@ -30,6 +30,11 @@ services:
       DATABASE_URL: postgres://web2admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/web2admin
       WEB2_ADMIN_HOST: 0.0.0.0
       WEB2_ADMIN_PORT: "9877"
+      BEE_URL: ${BEE_URL:?BEE_URL is required}
+      FEED_PRIVATE_KEY: ${FEED_PRIVATE_KEY:?FEED_PRIVATE_KEY is required}
+      INGEST_SRT_PASSPHRASE: ${INGEST_SRT_PASSPHRASE:-}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
+      POSTAGE_BATCH_ID: ${POSTAGE_BATCH_ID:?POSTAGE_BATCH_ID is required}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9877/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 5s
