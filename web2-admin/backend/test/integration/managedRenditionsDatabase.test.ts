@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
-import type { ManagedRenditionReport } from '@streaming-monorepo/web2-admin-common';
+import type {
+  ManagedRenditionReport,
+  ManagedRenditionReportResponse,
+} from '@streaming-monorepo/web2-admin-common';
 import pg from 'pg';
 
 import { Database } from '../../src/domain/Database.js';
@@ -58,6 +61,21 @@ function gatedPool(pool: pg.Pool): {
     locked: locked.promise,
     release: () => release.resolve(),
   };
+}
+
+async function waitForRunLockWaiters(count: number): Promise<void> {
+  for (let attempt = 0; attempt < 1_000; attempt += 1) {
+    const result = await adminPool.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+         FROM pg_stat_activity
+        WHERE datname = current_database()
+          AND wait_event_type = 'Lock'
+          AND query LIKE '%FOR UPDATE OF stream, run%'`,
+    );
+    if (Number(result.rows[0]?.count) >= count) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  assert.fail(`expected ${count} managed run row-lock waiters`);
 }
 
 let adminPool: pg.Pool;
@@ -251,6 +269,59 @@ describe('managed run-scoped rendition reports', () => {
       '360p',
       '720p',
     ]);
+  });
+
+  it('refuses an old-run rung waiting behind current-run replacement', async () => {
+    const transition = await database.pool.connect();
+    let pending: Promise<ManagedRenditionReportResponse> | undefined;
+    try {
+      await transition.query('BEGIN');
+      await transition.query('SELECT id FROM streams WHERE id = $1 FOR UPDATE', [
+        streamId,
+      ]);
+      await transition.query(
+        `INSERT INTO stream_runs (
+           stream_id, run_number, state, permission, assigned_uploader_id,
+           revision
+         ) VALUES ($1, 2, 'ready', 'open', $2, 3)`,
+        [streamId, UPLOADER_ID],
+      );
+      await transition.query(
+        `UPDATE streams
+            SET lifecycle_revision = 3, current_run_number = 2
+          WHERE id = $1`,
+        [streamId],
+      );
+
+      pending = lifecycle.reportRendition(streamId, 1, report('360p', 1));
+      await waitForRunLockWaiters(1);
+      await transition.query('COMMIT');
+      await assert.rejects(
+        pending,
+        (error: unknown) =>
+          error instanceof ManagedLifecycleConflict && error.code === 'stale_run',
+      );
+    } finally {
+      await transition.query('ROLLBACK');
+      transition.release();
+    }
+
+    const current = await database.pool.query<{
+      current_run_number: number;
+      lifecycle_revision: number;
+    }>(
+      `SELECT current_run_number, lifecycle_revision
+         FROM streams WHERE id = $1`,
+      [streamId],
+    );
+    assert.deepEqual(current.rows, [
+      { current_run_number: 2, lifecycle_revision: 3 },
+    ]);
+    const stored = await database.pool.query<{ run_number: number }>(
+      `SELECT run_number FROM stream_run_renditions WHERE stream_id = $1`,
+      [streamId],
+    );
+    assert.deepEqual(stored.rows, []);
   });
 
   it('accepts only final draining reports after close and only exact retries after VOD', async () => {
