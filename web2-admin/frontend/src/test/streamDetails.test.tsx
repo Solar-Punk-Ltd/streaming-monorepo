@@ -1,12 +1,13 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type {
   OwnerContinuationOperation,
   Stream,
 } from '@streaming-monorepo/web2-admin-common';
 
 import { StreamDetailsPage } from '../pages/StreamDetailsPage';
+import { ContinuationPanel } from '../components/ContinuationPanel';
 import {
   jsonOk,
   jsonError,
@@ -202,34 +203,51 @@ describe('StreamDetailsPage', () => {
     expect(screen.queryByText('Manifest index')).not.toBeInTheDocument();
   });
 
-  it('marks stale active status unavailable while closed status stays durable', async () => {
-    const staleReceivedAt = new Date(Date.now() - 60_000).toISOString();
-    const live = managedVod();
-    live.lifecycle = {
-      version: 1,
-      revision: 8,
-      runNumber: 2,
-      state: 'live',
-      permission: 'claimed',
-      receivedAt: staleReceivedAt,
-    };
-    mockFetch(routesFor(live));
-    const first = renderDetails();
-    expect(await screen.findByText('Run 2: status unavailable')).toBeInTheDocument();
-    first.unmount();
+  it('expires active status from server age despite browser clock skew', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-21T00:00:00.000Z'));
+      const live = managedVod();
+      live.lifecycle = {
+        version: 1,
+        revision: 8,
+        runNumber: 2,
+        state: 'live',
+        permission: 'claimed',
+        receivedAt: '2099-01-01T00:00:00.000Z',
+        observationAgeMs: 0,
+      };
+      const first = renderWithProviders(
+        <ContinuationPanel stream={live} reload={() => undefined} />,
+      );
+      expect(screen.getByText('Run 2: Live')).toBeInTheDocument();
+      void act(() => vi.advanceTimersByTime(30_000));
+      expect(screen.getByText('Run 2: Status unavailable')).toBeInTheDocument();
+      first.unmount();
 
-    const closed = managedVod();
-    closed.lifecycle = {
-      version: 1,
-      revision: 9,
-      runNumber: 2,
-      state: 'closed',
-      permission: 'closed',
-      receivedAt: staleReceivedAt,
-    };
-    mockFetch(routesFor(closed));
-    renderDetails();
-    expect(await screen.findByText('Run 2: closed')).toBeInTheDocument();
+      const closed = managedVod();
+      closed.lifecycle = {
+        version: 1,
+        revision: 9,
+        runNumber: 2,
+        state: 'closed',
+        permission: 'closed',
+        receivedAt: '2020-01-01T00:00:00.000Z',
+        observationAgeMs: 999_999,
+      };
+      renderWithProviders(
+        <ContinuationPanel stream={closed} reload={() => undefined} />,
+      );
+      expect(
+        screen.getByText('Run 2: Finishing recording'),
+      ).toBeInTheDocument();
+      void act(() => vi.advanceTimersByTime(60_000));
+      expect(
+        screen.getByText('Run 2: Finishing recording'),
+      ).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('offers a refresh while publishing leaves both buttons disabled', async () => {
@@ -363,7 +381,98 @@ describe('StreamDetailsPage', () => {
     expect(requests[0]).toEqual(requests[1]);
     expect(requests[0]?.expectedRevision).toBe(5);
     expect(screen.getByRole('button', { name: 'Cancel continuation' })).toBeEnabled();
-    expect(screen.getByText(/Previous replay: run 1, master index 32/)).toBeInTheDocument();
+    expect(screen.getByText('Previous replay: run 1, 12:05')).toBeInTheDocument();
+  });
+
+  it('adopts the owner-scoped current operation after a page reload', async () => {
+    const stream = managedVod();
+    stream.continuation = pendingOperation();
+    mockFetch(routesFor(stream));
+
+    renderDetails();
+
+    expect(await screen.findByText(/Preparing continuation\. Run 2\./)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel continuation' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Continue stream' })).not.toBeInTheDocument();
+  });
+
+  it('does not let a delayed operation reply replace a newer revision', async () => {
+    const oldReply = deferred<Response>();
+    const stream = managedVod();
+    const ready = { ...pendingOperation(), status: 'ready' as const, revision: 7 };
+    stream.continuation = ready;
+    mockFetch(
+      routesFor(stream, [
+        {
+          path: `/api/streams/${ID}/continuations/${ready.operationId}`,
+          respond: () => oldReply.promise,
+        },
+      ]),
+    );
+    renderDetails();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Refresh continuation' }),
+    );
+
+    oldReply.resolve(
+      jsonOk({ operation: { ...pendingOperation(), revision: 6 } }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Ready for OBS\. Run 2\./)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Preparing continuation\. Run 2\./)).not.toBeInTheDocument();
+  });
+
+  it('clears a tab conflict only after owner state reconciles', async () => {
+    const initial = managedVod();
+    const initialLifecycle = initial.lifecycle;
+    if (!initialLifecycle) throw new Error('managed fixture needs lifecycle');
+    const reconciled = deferred<Response>();
+    let streamReads = 0;
+    mockFetch(
+      routesFor(initial, [
+        {
+          path: `/api/streams/${ID}`,
+          respond: () => {
+            streamReads += 1;
+            return streamReads === 1 ? jsonOk(initial) : reconciled.promise;
+          },
+        },
+        {
+          method: 'POST',
+          path: `/api/streams/${ID}/continuations`,
+          respond: () => jsonError(409, { error: 'revision_conflict' }),
+        },
+      ]),
+    );
+    renderDetails();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Continue stream' }),
+    );
+    expect(
+      await screen.findAllByText(
+        'Another tab changed this stream. Refresh before trying again.',
+      ),
+    ).toHaveLength(2);
+
+    const current = pendingOperation();
+    reconciled.resolve(
+      jsonOk({
+        ...initial,
+        lifecycle: { ...initialLifecycle, revision: 6 },
+        continuation: current,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText(
+          'Another tab changed this stream. Refresh before trying again.',
+        ),
+      ).toHaveLength(1);
+    });
+    expect(screen.getByText(/Preparing continuation\. Run 2\./)).toBeInTheDocument();
   });
 
   it('cancels a prepared continuation before it is claimed', async () => {

@@ -102,21 +102,30 @@ export function StreamDetailsPage() {
   // overwrite the current one — showing one stream's ingest key under
   // another's title would be worse than showing nothing.
   const requestId = useRef(0);
+  const streamRequestId = useRef(0);
+
+  const refreshStream = useCallback(() => {
+    if (!id) return;
+    const request = (streamRequestId.current += 1);
+    setError(null);
+    api
+      .fetchStream(id)
+      .then((next) => {
+        if (streamRequestId.current === request) setStream(next);
+      })
+      .catch((e: unknown) => {
+        if (streamRequestId.current === request) {
+          setError(errorMessage(e, 'Failed to load the stream'));
+        }
+      });
+  }, [id]);
 
   const load = useCallback(() => {
     if (!id) return;
     const request = (requestId.current += 1);
     const current = () => requestId.current === request;
 
-    setError(null);
-    api
-      .fetchStream(id)
-      .then((s) => {
-        if (current()) setStream(s);
-      })
-      .catch((e: unknown) => {
-        if (current()) setError(errorMessage(e, 'Failed to load the stream'));
-      });
+    refreshStream();
     api
       .fetchIngest(id)
       .then((i) => {
@@ -129,7 +138,7 @@ export function StreamDetailsPage() {
       });
     // The player link is optional: a missing viewer base URL is not an error.
     api.fetchPublicConfig().then(setConfig).catch(() => undefined);
-  }, [id, snackbar]);
+  }, [id, refreshStream, snackbar]);
 
   useEffect(() => {
     // A different stream means everything on screen is stale, the OBS panel
@@ -139,6 +148,13 @@ export function StreamDetailsPage() {
     setLastResult(null);
     load();
   }, [load]);
+
+  useEffect(() => {
+    const state = stream?.lifecycle?.state;
+    if (state !== 'claimed' && state !== 'live' && state !== 'waiting') return;
+    const interval = window.setInterval(refreshStream, 10_000);
+    return () => window.clearInterval(interval);
+  }, [refreshStream, stream?.lifecycle?.state]);
 
   const runPublish = async (action: 'publish' | 'unpublish') => {
     if (!id) return;
@@ -487,7 +503,7 @@ export function StreamDetailsPage() {
         ) : null}
       </Paper>
 
-      <ContinuationPanel stream={stream} reload={load} />
+      <ContinuationPanel stream={stream} reload={refreshStream} />
 
       {ingest ? (
         <IngestPanel

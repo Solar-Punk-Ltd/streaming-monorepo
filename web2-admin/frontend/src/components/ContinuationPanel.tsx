@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, CircularProgress, Paper, Stack, Typography } from '@mui/material';
 import type {
   ContinuationCreateRequest,
@@ -8,6 +8,7 @@ import type {
 
 import * as api from '../api';
 import { errorMessage } from '../errors';
+import { formatDuration } from '../format';
 import { ApiError } from '../http';
 import { useSnackbar } from './Snackbar';
 
@@ -27,18 +28,21 @@ const STATUS_LABEL: Record<OwnerContinuationOperation['status'], string> = {
 const ACTIVE_REPORT_STATES = new Set(['claimed', 'live', 'waiting']);
 const REPORT_STALE_AFTER_MS = 30_000;
 
-function lifecycleStatus(stream: Stream): string {
+const LIFECYCLE_LABEL = {
+  ready: 'Ready for OBS',
+  claimed: 'Starting broadcast',
+  live: 'Live',
+  waiting: 'Waiting for reconnection',
+  closed: 'Finishing recording',
+  vod: 'Recording ready',
+} as const;
+
+function lifecycleStatus(stream: Stream, stale: boolean): string {
   const lifecycle = stream.lifecycle;
   if (!lifecycle) return '';
-  if (ACTIVE_REPORT_STATES.has(lifecycle.state)) {
-    const receivedAt = lifecycle.receivedAt
-      ? new Date(lifecycle.receivedAt).getTime()
-      : Number.NaN;
-    if (!Number.isFinite(receivedAt) || Date.now() - receivedAt >= REPORT_STALE_AFTER_MS) {
-      return `Run ${lifecycle.runNumber}: status unavailable`;
-    }
-  }
-  return `Run ${lifecycle.runNumber}: ${lifecycle.state}`;
+  return `Run ${lifecycle.runNumber}: ${
+    stale ? 'Status unavailable' : LIFECYCLE_LABEL[lifecycle.state]
+  }`;
 }
 
 function canContinue(stream: Stream): boolean {
@@ -62,24 +66,76 @@ export function ContinuationPanel({
   const snackbar = useSnackbar();
   const retryRequest = useRef<ContinuationCreateRequest | null>(null);
   const [operation, setOperation] = useState<OwnerContinuationOperation | null>(
-    null,
+    stream.continuation ?? null,
   );
   const [busy, setBusy] = useState(false);
-  const [conflicted, setConflicted] = useState(false);
+  const [conflictRevision, setConflictRevision] = useState<number | null>(null);
+  const [stale, setStale] = useState(false);
 
-  if (!stream.lifecycle) return null;
+  useEffect(() => {
+    const incoming = stream.continuation;
+    setOperation((current) => {
+      if (incoming) {
+        return !current || incoming.revision >= current.revision
+          ? incoming
+          : current;
+      }
+      return current &&
+        stream.lifecycle &&
+        stream.lifecycle.revision >= current.revision
+        ? null
+        : current;
+    });
+  }, [stream.continuation, stream.lifecycle]);
 
+  useEffect(() => {
+    if (
+      conflictRevision !== null &&
+      ((stream.lifecycle?.revision ?? -1) > conflictRevision ||
+        stream.continuation)
+    ) {
+      setConflictRevision(null);
+    }
+  }, [conflictRevision, stream.continuation, stream.lifecycle?.revision]);
+
+  useEffect(() => {
+    const lifecycle = stream.lifecycle;
+    if (!lifecycle || !ACTIVE_REPORT_STATES.has(lifecycle.state)) {
+      setStale(false);
+      return;
+    }
+    const age = lifecycle.observationAgeMs;
+    if (age === undefined || age >= REPORT_STALE_AFTER_MS) {
+      setStale(true);
+      return;
+    }
+    setStale(false);
+    const timer = window.setTimeout(
+      () => setStale(true),
+      REPORT_STALE_AFTER_MS - age,
+    );
+    return () => window.clearTimeout(timer);
+  }, [
+    stream.lifecycle?.observationAgeMs,
+    stream.lifecycle?.revision,
+    stream.lifecycle?.state,
+  ]);
+
+  const lifecycle = stream.lifecycle;
+  if (!lifecycle) return null;
+
+  const conflicted = conflictRevision !== null;
   const active = operation && ACTIVE_OPERATION.has(operation.status);
   const continueAvailable = canContinue(stream) && !active && !conflicted;
 
   const start = async () => {
     const request = retryRequest.current ?? {
       requestId: crypto.randomUUID(),
-      expectedRevision: stream.lifecycle!.revision,
+      expectedRevision: lifecycle.revision,
     };
     retryRequest.current = request;
     setBusy(true);
-    setConflicted(false);
+    setConflictRevision(null);
     try {
       let created: OwnerContinuationOperation;
       try {
@@ -89,13 +145,15 @@ export function ContinuationPanel({
         created = await api.createContinuation(stream.id, request);
       }
       retryRequest.current = null;
-      setOperation(created);
+      setOperation((current) =>
+        !current || created.revision >= current.revision ? created : current,
+      );
       reload();
       snackbar.success('Continuation preparation started.');
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         retryRequest.current = null;
-        setConflicted(true);
+        setConflictRevision(lifecycle.revision);
         reload();
       }
       snackbar.error(errorMessage(error, 'Could not continue this stream'));
@@ -112,7 +170,9 @@ export function ContinuationPanel({
         stream.id,
         operation.operationId,
       );
-      setOperation(refreshed);
+      setOperation((current) =>
+        !current || refreshed.revision >= current.revision ? refreshed : current,
+      );
       reload();
     } catch (error) {
       snackbar.error(errorMessage(error, 'Could not refresh the continuation'));
@@ -129,7 +189,9 @@ export function ContinuationPanel({
         stream.id,
         operation.operationId,
       );
-      setOperation(cancelled);
+      setOperation((current) =>
+        !current || cancelled.revision >= current.revision ? cancelled : current,
+      );
       reload();
       snackbar.success('Continuation cancelled.');
     } catch (error) {
@@ -145,12 +207,12 @@ export function ContinuationPanel({
       <Stack spacing={2}>
         <Typography variant="h6">Continuation</Typography>
         <Typography variant="body2">
-          {lifecycleStatus(stream)}
+          {lifecycleStatus(stream, stale)}
         </Typography>
         {stream.completedRecording ? (
           <Typography variant="body2">
-            Previous replay: run {stream.completedRecording.runNumber}, master index{' '}
-            {stream.completedRecording.master.index}
+            Previous replay: run {stream.completedRecording.runNumber},{' '}
+            {formatDuration(stream.completedRecording.master.duration)}
           </Typography>
         ) : (
           <Typography variant="body2" color="text.secondary">
