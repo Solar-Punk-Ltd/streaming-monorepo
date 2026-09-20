@@ -246,3 +246,108 @@ describe('markLive un-finishes a broadcast that comes back', () => {
     assert.equal(Number(rungs.find((r) => r.name === '720p')?.manifest_index), 12);
   });
 });
+
+describe('managed closed recording protection', () => {
+  it('refuses the pre-feature markLive SQL and preserves every completed reference', async () => {
+    const id = await recordedLadder();
+    const claimId = randomUUID();
+    const masterReference = 'fixture-master-reference';
+    const checkpointReference = 'fixture-checkpoint-reference';
+
+    await database.pool.query(
+      `UPDATE streams
+          SET lifecycle_version = 1,
+              lifecycle_revision = 4,
+              current_run_number = 1,
+              completed_run_number = 1
+        WHERE id = $1`,
+      [id],
+    );
+    await database.pool.query(
+      `INSERT INTO stream_runs (
+         stream_id, run_number, state, permission, assigned_uploader_id,
+         claim_id, revision, last_event_sequence, last_event_digest,
+         last_observed_at, close_reason
+       ) VALUES ($1, 1, 'vod', 'closed', 'itest-uploader', $2, 4, 3, 'vod-3', NOW(), 'reconnect_timeout')`,
+      [id, claimId],
+    );
+    await database.pool.query(
+      `INSERT INTO stream_run_recordings (
+         stream_id, run_number, checkpoint_reference, master_topic,
+         master_index, master_reference, duration_seconds
+       )
+       SELECT id, 1, $2, topic, manifest_index, $3, duration_seconds
+         FROM streams WHERE id = $1`,
+      [id, checkpointReference, masterReference],
+    );
+    await database.pool.query(
+      `INSERT INTO stream_run_expected_renditions (stream_id, run_number, name)
+       VALUES ($1, 1, '360p'), ($1, 1, '720p')`,
+      [id],
+    );
+    await database.pool.query(
+      `INSERT INTO stream_run_recording_renditions (
+         stream_id, run_number, name, topic, manifest_index, reference,
+         duration_seconds
+       )
+       SELECT stream_id, 1, name, topic, manifest_index,
+              CASE name
+                WHEN '360p' THEN 'fixture-360p-reference'
+                ELSE 'fixture-720p-reference'
+              END,
+              duration_seconds
+         FROM stream_renditions WHERE stream_id = $1`,
+      [id],
+    );
+
+    await assert.rejects(
+      streams.markLive(id, ['published', 'live', 'vod']),
+      (error: NodeJS.ErrnoException & { constraint?: string }) => {
+        assert.equal(error.code, '23514');
+        assert.equal(error.constraint, 'managed_closed_stream_guard');
+        return true;
+      },
+    );
+
+    const stream = await streams.findById(id, userId);
+    assert.equal(stream?.status, 'vod');
+    assert.equal(Number(stream?.manifest_index), 7);
+    assert.equal(Number(stream?.duration_seconds), 62.5);
+
+    const storedRungs = await renditions.listByStream(id);
+    assert.equal(Number(storedRungs.find((r) => r.name === '360p')?.manifest_index), 10);
+    assert.equal(Number(storedRungs.find((r) => r.name === '720p')?.manifest_index), 12);
+
+    const retained = await database.pool.query<{
+      checkpoint_reference: string;
+      master_reference: string;
+      rung_count: number;
+    }>(
+      `SELECT recording.checkpoint_reference,
+              recording.master_reference,
+              COUNT(rungs.name)::int AS rung_count
+         FROM stream_run_recordings recording
+         JOIN stream_run_recording_renditions rungs
+           USING (stream_id, run_number)
+        WHERE recording.stream_id = $1 AND recording.run_number = 1
+        GROUP BY recording.checkpoint_reference, recording.master_reference`,
+      [id],
+    );
+    assert.deepEqual(retained.rows, [
+      {
+        checkpoint_reference: checkpointReference,
+        master_reference: masterReference,
+        rung_count: 2,
+      },
+    ]);
+  });
+
+  it('keeps the existing VOD-to-Live behavior for a legacy stream', async () => {
+    const id = await recordedLadder();
+
+    const live = await streams.markLive(id, ['published', 'live', 'vod']);
+
+    assert.equal(live?.status, 'live');
+    assert.equal(live?.manifest_index, null);
+  });
+});
