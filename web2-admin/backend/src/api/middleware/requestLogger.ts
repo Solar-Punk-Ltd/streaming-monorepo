@@ -10,12 +10,12 @@ export function requestLogger(
   next: NextFunction,
 ): void {
   const start = Date.now();
-  // Method, path and status only: bodies here carry passwords and session
-  // cookies, and the query string is never used by this API.
+  // Method, path and status only. Bodies carry passwords and session cookies,
+  // while internal recovery queries carry uploader and claim identities.
   res.on('finish', () => {
     const ms = Date.now() - start;
     logger.info(
-      `[HTTP] ${req.method} ${req.originalUrl} ${res.statusCode} ${ms}ms`,
+      `[HTTP] ${req.method} ${req.path} ${res.statusCode} ${ms}ms`,
     );
   });
   next();
