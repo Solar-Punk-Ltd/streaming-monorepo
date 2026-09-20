@@ -84,6 +84,11 @@ interface RenditionRow {
   avg_bandwidth: number;
 }
 
+interface EmptyOutcomeRow {
+  empty_checkpoint_reference: string;
+  accepted_media_count: 0;
+}
+
 const OPERATION_SELECT = `
   SELECT operation.operation_id, operation.request_id, operation.stream_id,
          stream.topic, stream.media_type, operation.assigned_uploader_id,
@@ -495,6 +500,11 @@ export class ContinuationRepository {
       row.retained_run_number === null
         ? undefined
         : await this.readRecording(client, row.stream_id, row.retained_run_number);
+    const previousEmptyOutcome = await this.readEmptyOutcome(
+      client,
+      row.stream_id,
+      row.previous_run_number,
+    );
     return {
       lifecycleVersion: 1,
       operationId: row.operation_id,
@@ -508,7 +518,32 @@ export class ContinuationRepository {
       revision: row.revision,
       status: row.status,
       ...(retainedRecording ? { retainedRecording } : {}),
+      ...(previousEmptyOutcome ? { previousEmptyOutcome } : {}),
       ...(row.failure ? { failure: row.failure } : {}),
+    };
+  }
+
+  private async readEmptyOutcome(
+    client: PoolClient,
+    streamId: string,
+    runNumber: number,
+  ): Promise<ContinuationOperation['previousEmptyOutcome']> {
+    const result = await client.query<EmptyOutcomeRow>(
+      `SELECT empty_checkpoint_reference, accepted_media_count
+         FROM stream_runs
+        WHERE stream_id = $1 AND run_number = $2
+          AND state = 'closed' AND permission = 'closed'
+          AND close_reason = 'empty'
+          AND empty_checkpoint_reference IS NOT NULL
+          AND accepted_media_count = 0`,
+      [streamId, runNumber],
+    );
+    const outcome = result.rows[0];
+    if (!outcome) return undefined;
+    return {
+      runNumber,
+      checkpointReference: outcome.empty_checkpoint_reference,
+      acceptedMediaCount: outcome.accepted_media_count,
     };
   }
 

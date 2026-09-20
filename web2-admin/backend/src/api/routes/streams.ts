@@ -57,9 +57,10 @@ function streamId(req: Request): string {
   return String(req.params.id);
 }
 
-function toOwnerContinuation(operation: ContinuationOperation) {
+export function toOwnerContinuation(operation: ContinuationOperation) {
   const {
     retainedRecording: _retainedRecording,
+    previousEmptyOutcome: _previousEmptyOutcome,
     uploaderId: _uploaderId,
     ...ownerOperation
   } = operation;

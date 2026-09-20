@@ -153,6 +153,11 @@ export interface ContinuationOperation {
   revision: number;
   status: ContinuationOperationState;
   retainedRecording?: InternalCompletedRecordingSnapshot;
+  previousEmptyOutcome?: {
+    runNumber: number;
+    checkpointReference: string;
+    acceptedMediaCount: 0;
+  };
   failure?: string;
 }
 

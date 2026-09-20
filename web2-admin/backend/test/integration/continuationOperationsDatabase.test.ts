@@ -342,6 +342,11 @@ describe('continuation operations', () => {
     });
     assert.equal(replacement.previousRunNumber, 2);
     assert.equal(replacement.nextRunNumber, 3);
+    assert.deepEqual(replacement.previousEmptyOutcome, {
+      runNumber: 2,
+      checkpointReference: preparedCheckpoint,
+      acceptedMediaCount: 0,
+    });
     assert.equal(
       replacement.retainedRecording?.checkpointReference,
       checkpointReference,
