@@ -203,6 +203,18 @@ describe('managed closed recording protection', () => {
         max_width: 1280,
       },
     ]);
+
+    await assert.rejects(
+      database.pool.query(
+        `UPDATE streams SET completed_run_number = NULL WHERE id = $1`,
+        [id],
+      ),
+      (error: NodeJS.ErrnoException & { constraint?: string }) => {
+        assert.equal(error.code, '23514');
+        assert.equal(error.constraint, 'managed_stream_lifecycle_order');
+        return true;
+      },
+    );
   });
 
   it('keeps VOD-to-Live behavior for a legacy stream', async () => {
@@ -216,6 +228,35 @@ describe('managed closed recording protection', () => {
 });
 
 describe('managed run database invariants', () => {
+  it('requires every managed stream to identify its current run', async () => {
+    const row = await streams.insert({
+      user_id: userId,
+      topic: randomUUID(),
+      owner: OWNER,
+      title: 'missing current run',
+      description: 'invalid managed identity',
+      tags: [],
+      media_type: 'video',
+      scheduled_start_time: null,
+      publish_key: newPublishKey(),
+    });
+
+    await assert.rejects(
+      database.pool.query(
+        `UPDATE streams
+            SET lifecycle_version = 1, lifecycle_revision = 1,
+                current_run_number = NULL
+          WHERE id = $1`,
+        [row.id],
+      ),
+      (error: NodeJS.ErrnoException & { constraint?: string }) => {
+        assert.equal(error.code, '23514');
+        assert.equal(error.constraint, 'streams_lifecycle_shape');
+        return true;
+      },
+    );
+  });
+
   it('refuses conflicting, stale and late events without changing the claim', async () => {
     const row = await streams.insert({
       user_id: userId,
