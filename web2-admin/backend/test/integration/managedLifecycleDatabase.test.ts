@@ -93,7 +93,7 @@ describe('managed closed recording protection', () => {
     const id = await recordedLadder();
     const claimId = randomUUID();
     const masterReference = 'a'.repeat(64);
-    const checkpointReference = 'b'.repeat(64);
+    const checkpointReference = randomUUID();
 
     await database.pool.query(
       `UPDATE streams
