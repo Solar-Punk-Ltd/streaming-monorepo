@@ -122,22 +122,25 @@ describe('managed closed recording protection', () => {
       [id, checkpointReference, masterReference],
     );
     await database.pool.query(
-      `INSERT INTO stream_run_expected_renditions (stream_id, run_number, name, topic)
-       SELECT stream_id, 1, name, topic
+      `INSERT INTO stream_run_expected_renditions (
+         stream_id, run_number, name, topic, width, height, bandwidth,
+         avg_bandwidth
+       )
+       SELECT stream_id, 1, name, topic, width, height, bandwidth, avg_bandwidth
          FROM stream_renditions WHERE stream_id = $1`,
       [id],
     );
     await database.pool.query(
       `INSERT INTO stream_run_recording_renditions (
          stream_id, run_number, name, topic, manifest_index, reference,
-         duration_seconds
+         duration_seconds, width, height, bandwidth, avg_bandwidth
        )
        SELECT stream_id, 1, name, topic, manifest_index,
               CASE name
                 WHEN '360p' THEN repeat('c', 64)
                 ELSE repeat('d', 64)
               END,
-              duration_seconds
+              duration_seconds, width, height, bandwidth, avg_bandwidth
          FROM stream_renditions WHERE stream_id = $1`,
       [id],
     );
@@ -177,10 +180,12 @@ describe('managed closed recording protection', () => {
       checkpoint_reference: string;
       master_reference: string;
       rung_count: number;
+      max_width: number;
     }>(
       `SELECT recording.checkpoint_reference,
               recording.master_reference,
-              COUNT(rungs.name)::int AS rung_count
+              COUNT(rungs.name)::int AS rung_count,
+              MAX(rungs.width)::int AS max_width
          FROM stream_run_recordings recording
          JOIN stream_run_recording_renditions rungs
            USING (stream_id, run_number)
@@ -193,6 +198,7 @@ describe('managed closed recording protection', () => {
         checkpoint_reference: checkpointReference,
         master_reference: masterReference,
         rung_count: 2,
+        max_width: 1280,
       },
     ]);
   });
