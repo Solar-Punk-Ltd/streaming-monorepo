@@ -6,7 +6,6 @@ import {
   InferType,
   NumberSchema,
   array,
-  mixed,
   number,
   object,
   string,

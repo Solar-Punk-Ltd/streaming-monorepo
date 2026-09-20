@@ -40,7 +40,10 @@ async function errorsFor(schema: Parameters<typeof validate>[0], value: unknown)
     await validate(schema, value);
     assert.fail('expected a ValidationError');
   } catch (err) {
-    assert.ok(err instanceof ValidationError, `not a ValidationError: ${err}`);
+    assert.ok(
+      err instanceof ValidationError,
+      `not a ValidationError: ${String(err)}`,
+    );
     return err.errors;
   }
 }
@@ -271,7 +274,7 @@ describe('auth schemas', () => {
         password: 'a-perfectly-good-password',
       });
       assert.equal(errors.length, 1, username);
-      assert.match(errors[0]!, /username must be 2 to 32 characters/);
+      assert.match(errors[0], /username must be 2 to 32 characters/);
     }
   });
 });

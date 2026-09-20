@@ -45,7 +45,7 @@ before(async () => {
      VALUES ('managed-lifecycle-test', 'scrypt$16384$8$1$aaaa$bbbb')
      RETURNING id`,
   );
-  userId = user.rows[0]!.id;
+  userId = user.rows[0].id;
 });
 
 after(async () => {

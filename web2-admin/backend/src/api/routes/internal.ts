@@ -1,5 +1,6 @@
 import type {
   IngestLookupResponse,
+  ManagedClaimRequest,
   ManagedRunReport,
   MediaType,
   RenditionReport,
@@ -103,7 +104,7 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
       const run = await managedLifecycle.claim(
         String(req.params.id),
         Number(req.params.run),
-        req.body,
+        req.body as ManagedClaimRequest,
       );
       res.json(run);
     }),
@@ -117,8 +118,8 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
       const run = await managedLifecycle.readClaimedRun(
         String(req.params.id),
         Number(req.params.run),
-        String(req.query.uploaderId),
-        String(req.query.claimId),
+        req.query.uploaderId as string,
+        req.query.claimId as string,
       );
       res.json(run);
     }),

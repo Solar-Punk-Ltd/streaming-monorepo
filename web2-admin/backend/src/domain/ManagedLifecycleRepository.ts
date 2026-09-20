@@ -146,7 +146,7 @@ export class ManagedLifecycleRepository {
         [streamId, revision],
       );
       await client.query('COMMIT');
-      return toView(claimed.rows[0]!);
+      return toView(claimed.rows[0]);
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -278,7 +278,7 @@ export class ManagedLifecycleRepository {
         ],
       );
       await client.query('COMMIT');
-      return toView(updated.rows[0]!);
+      return toView(updated.rows[0]);
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;

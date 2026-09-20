@@ -10,10 +10,11 @@ import type { AnySchema } from 'yup';
 export function validateBody(schema: AnySchema): RequestHandler {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
-      req.body = await schema.validate(req.body ?? {}, {
+      const validated: unknown = await schema.validate(req.body ?? {}, {
         abortEarly: false,
         stripUnknown: true,
       });
+      req.body = validated;
       next();
     } catch (err) {
       next(err);
@@ -24,12 +25,12 @@ export function validateBody(schema: AnySchema): RequestHandler {
 export function validateParams(schema: AnySchema): RequestHandler {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
-      const validated = await schema.validate(req.params, {
+      const validated: unknown = await schema.validate(req.params, {
         abortEarly: false,
         stripUnknown: true,
       });
       // Express 5's req.params is not writable, only mutable.
-      Object.assign(req.params, validated);
+      Object.assign(req.params, validated as Record<string, string>);
       next();
     } catch (err) {
       next(err);
@@ -40,11 +41,11 @@ export function validateParams(schema: AnySchema): RequestHandler {
 export function validateQuery(schema: AnySchema): RequestHandler {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
-      const validated = await schema.validate(req.query, {
+      const validated: unknown = await schema.validate(req.query, {
         abortEarly: false,
         stripUnknown: true,
       });
-      Object.assign(req.query, validated);
+      Object.assign(req.query, validated as Record<string, string>);
       next();
     } catch (err) {
       next(err);
