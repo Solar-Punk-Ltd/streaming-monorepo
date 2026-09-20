@@ -3,6 +3,7 @@ import http from 'node:http';
 import express from 'express';
 
 import { AuthService } from '../domain/auth/AuthService.js';
+import { ContinuationRepository } from '../domain/ContinuationRepository.js';
 import { Database } from '../domain/Database.js';
 import type { FeedIdentity } from '../domain/feedIdentity.js';
 import { IngestService } from '../domain/IngestService.js';
@@ -37,6 +38,7 @@ export interface ApiDeps {
   streamStateService: StreamStateService;
   ladderService: LadderService;
   managedLifecycle: ManagedLifecycleRepository;
+  continuations: ContinuationRepository;
   publishService: PublishService;
   ingestService: IngestService;
   /** Bearer token for /api/internal; never accepted anywhere else. */
@@ -79,6 +81,7 @@ export function startApiServer(
       streamStateService: deps.streamStateService,
       ladderService: deps.ladderService,
       managedLifecycle: deps.managedLifecycle,
+      continuations: deps.continuations,
       requireInternalToken: createRequireInternalToken(deps.internalApiToken),
     }),
   );
@@ -106,6 +109,7 @@ export function startApiServer(
       streamService: deps.streamService,
       publishService: deps.publishService,
       ingestService: deps.ingestService,
+      continuations: deps.continuations,
       requireAuth,
     }),
   );

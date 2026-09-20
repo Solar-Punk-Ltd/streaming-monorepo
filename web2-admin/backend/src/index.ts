@@ -5,6 +5,7 @@ import {
 
 import { ApiServerHandle, startApiServer } from './api/server.js';
 import { AuthService } from './domain/auth/AuthService.js';
+import { ContinuationRepository } from './domain/ContinuationRepository.js';
 import { PostgresCredentialRepository } from './domain/auth/PostgresCredentialRepository.js';
 import { PostgresSessionRepository } from './domain/auth/PostgresSessionRepository.js';
 import { PostgresUserRepository } from './domain/auth/PostgresUserRepository.js';
@@ -139,6 +140,7 @@ async function main(): Promise<void> {
   const renditionRepository = new StreamRenditionRepository(database.pool);
   const feedWriteRepository = new FeedWriteRepository(database.pool);
   const managedLifecycle = new ManagedLifecycleRepository(database.pool);
+  const continuations = new ContinuationRepository(database.pool);
 
   const orphans = await streamRepository.resetOrphanedPublishing();
   if (orphans.length > 0) {
@@ -204,6 +206,7 @@ async function main(): Promise<void> {
       streamStateService,
       ladderService,
       managedLifecycle,
+      continuations,
       publishService,
       ingestService,
       internalApiToken: config.internalApiToken,

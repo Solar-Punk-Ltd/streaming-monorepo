@@ -88,6 +88,52 @@ export const managedRunIdentitySchema = object({
   claimId: string().required().matches(UUID_RE, 'claimId must be a UUID'),
 }).noUnknown(true);
 
+export const uploaderContinuationParamSchema = object({
+  uploaderId: string().required().min(1).max(200),
+}).noUnknown(true);
+
+export const continuationPreparationParamSchema = object({
+  id: string().required().matches(UUID_RE, 'id must be a UUID'),
+  operationId: string()
+    .required()
+    .matches(UUID_RE, 'operationId must be a UUID'),
+}).noUnknown(true);
+
+export const continuationPreparationSchema = object({
+  lifecycleVersion,
+  uploaderId: string().required().min(1).max(200),
+  expectedRevision: positiveSafeInteger('expectedRevision'),
+  status: string<'ready' | 'failed'>()
+    .required()
+    .oneOf(['ready', 'failed']),
+  checkpointReference: string()
+    .matches(UUID_RE, 'checkpointReference must be a UUID')
+    .when('status', {
+      is: 'ready',
+      then: (schema) =>
+        schema.required('checkpointReference is required when status is ready'),
+      otherwise: (schema) =>
+        schema.test(
+          'ready-only',
+          'checkpointReference is only sent with status ready',
+          (value) => value === undefined,
+        ),
+    }),
+  failure: string()
+    .min(1)
+    .max(500)
+    .when('status', {
+      is: 'failed',
+      then: (schema) => schema.required('failure is required when status is failed'),
+      otherwise: (schema) =>
+        schema.test(
+          'failed-only',
+          'failure is only sent with status failed',
+          (value) => value === undefined,
+        ),
+    }),
+}).noUnknown(true);
+
 const immutableReferenceSchema = object({
   topic: string().required().matches(UUID_RE, 'topic must be a UUID'),
   index: number().required().integer().min(0).max(SAFE_INTEGER_MAX),

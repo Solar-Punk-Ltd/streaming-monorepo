@@ -1,5 +1,6 @@
 import type {
   IngestLookupResponse,
+  ContinuationPreparationRequest,
   ManagedClaimRequest,
   ManagedRunReport,
   MediaType,
@@ -10,16 +11,20 @@ import type {
 import { Request, RequestHandler, Response, Router } from 'express';
 
 import { LadderService } from '../../domain/LadderService.js';
+import { ContinuationRepository } from '../../domain/ContinuationRepository.js';
 import { ManagedLifecycleRepository } from '../../domain/ManagedLifecycleRepository.js';
 import { StreamStateService } from '../../domain/StreamStateService.js';
 import {
   ingestLookupParamSchema,
+  continuationPreparationParamSchema,
+  continuationPreparationSchema,
   managedClaimSchema,
   managedRunIdentitySchema,
   managedRunParamSchema,
   managedReportSchema,
   renditionReportSchema,
   streamStateSchema,
+  uploaderContinuationParamSchema,
   type StreamStateBody,
 } from '../../schemas/internal.js';
 import { streamIdParamSchema } from '../../schemas/stream.js';
@@ -39,6 +44,7 @@ export interface InternalRoutesDeps {
   streamStateService: StreamStateService;
   ladderService: LadderService;
   managedLifecycle: ManagedLifecycleRepository;
+  continuations: ContinuationRepository;
   requireInternalToken: RequestHandler;
 }
 
@@ -59,11 +65,37 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
     streamStateService,
     ladderService,
     managedLifecycle,
+    continuations,
     requireInternalToken,
   } = deps;
   const router = Router();
 
   router.use(requireInternalToken);
+
+  router.get(
+    '/uploaders/:uploaderId/continuations',
+    validateParams(uploaderContinuationParamSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const operations = await continuations.listPending(
+        String(req.params.uploaderId),
+      );
+      res.json({ continuations: operations });
+    }),
+  );
+
+  router.post(
+    '/streams/:id/continuations/:operationId/preparation',
+    validateParams(continuationPreparationParamSchema),
+    validateBody(continuationPreparationSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const operation = await continuations.prepare(
+        String(req.params.id),
+        String(req.params.operationId),
+        req.body as ContinuationPreparationRequest,
+      );
+      res.json({ operation });
+    }),
+  );
 
   router.get(
     '/streams/by-ingest/:app/:stream',

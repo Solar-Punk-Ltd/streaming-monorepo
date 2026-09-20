@@ -3,7 +3,7 @@ import {
   STREAM_LIMITS,
   type MediaType,
 } from '@streaming-monorepo/web2-admin-common';
-import { InferType, array, object, string } from 'yup';
+import { InferType, array, number, object, string } from 'yup';
 
 export const UUID_RE =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -28,7 +28,13 @@ const tagsField = () =>
     )
     .transform((value: unknown) =>
       Array.isArray(value)
-        ? [...new Set(value.map((v) => (typeof v === 'string' ? v.trim() : v)))]
+        ? [
+            ...new Set(
+              value.map((v: unknown) =>
+                typeof v === 'string' ? v.trim() : v,
+              ),
+            ),
+          ]
         : value,
     )
     .max(STREAM_LIMITS.TAGS_MAX, `at most ${STREAM_LIMITS.TAGS_MAX} tags`)
@@ -77,3 +83,19 @@ export type StreamInputBody = InferType<typeof streamInputSchema>;
 export const streamIdParamSchema = object({
   id: string().required().matches(UUID_RE, 'id must be a UUID'),
 }).strict();
+
+export const continuationOperationParamSchema = object({
+  id: string().required().matches(UUID_RE, 'id must be a UUID'),
+  operationId: string()
+    .required()
+    .matches(UUID_RE, 'operationId must be a UUID'),
+}).strict();
+
+export const continuationCreateSchema = object({
+  requestId: string().required().matches(UUID_RE, 'requestId must be a UUID'),
+  expectedRevision: number()
+    .required()
+    .integer('expectedRevision must be a whole number')
+    .min(1, 'expectedRevision must be positive')
+    .max(Number.MAX_SAFE_INTEGER, 'expectedRevision must be a safe integer'),
+}).noUnknown(true);

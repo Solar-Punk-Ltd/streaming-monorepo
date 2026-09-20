@@ -19,6 +19,7 @@ import {
   loginSchema,
 } from '../../src/schemas/auth.js';
 import {
+  continuationPreparationSchema,
   managedClaimSchema,
   managedReportSchema,
   ingestLookupParamSchema,
@@ -26,6 +27,7 @@ import {
   streamStateSchema,
 } from '../../src/schemas/internal.js';
 import {
+  continuationCreateSchema,
   streamIdParamSchema,
   streamInputSchema,
 } from '../../src/schemas/stream.js';
@@ -374,6 +376,35 @@ describe('managed lifecycle schemas', () => {
       },
     };
     assert.deepEqual(await validate(managedReportSchema, report), report);
+  });
+
+  it('requires preparation results to carry only their state-specific detail', async () => {
+    const base = {
+      lifecycleVersion: 1,
+      uploaderId: 'srs-main',
+      expectedRevision: 8,
+    };
+    const ready = {
+      ...base,
+      status: 'ready',
+      checkpointReference: '99999999-9999-4999-8999-999999999999',
+    };
+    assert.deepEqual(await validate(continuationPreparationSchema, ready), ready);
+    assert.deepEqual(
+      await errorsFor(continuationPreparationSchema, {
+        ...base,
+        status: 'failed',
+      }),
+      ['failure is required when status is failed'],
+    );
+  });
+
+  it('requires a stable request identity for Continue', async () => {
+    const request = {
+      requestId: '77777777-7777-4777-8777-777777777777',
+      expectedRevision: 11,
+    };
+    assert.deepEqual(await validate(continuationCreateSchema, request), request);
   });
 });
 

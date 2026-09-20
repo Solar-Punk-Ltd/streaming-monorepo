@@ -1,4 +1,6 @@
 import {
+  type ContinuationCreateRequest,
+  type ContinuationOperation,
   STREAM_LIMITS,
   type Stream,
   type StreamListResponse,
@@ -6,6 +8,7 @@ import {
 import express, { Request, RequestHandler, Response, Router } from 'express';
 
 import { UnsupportedMediaTypeError } from '../../domain/errors/index.js';
+import { ContinuationRepository } from '../../domain/ContinuationRepository.js';
 import { IngestService } from '../../domain/IngestService.js';
 import { PublishService } from '../../domain/PublishService.js';
 import {
@@ -14,6 +17,8 @@ import {
 } from '../../domain/StreamService.js';
 import {
   StreamInputBody,
+  continuationCreateSchema,
+  continuationOperationParamSchema,
   streamIdParamSchema,
   streamInputSchema,
 } from '../../schemas/stream.js';
@@ -27,6 +32,7 @@ export interface StreamRoutesDeps {
   streamService: StreamService;
   publishService: PublishService;
   ingestService: IngestService;
+  continuations: ContinuationRepository;
   requireAuth: RequestHandler;
 }
 
@@ -51,8 +57,23 @@ function streamId(req: Request): string {
   return String(req.params.id);
 }
 
+function toOwnerContinuation(operation: ContinuationOperation) {
+  const {
+    retainedRecording: _retainedRecording,
+    uploaderId: _uploaderId,
+    ...ownerOperation
+  } = operation;
+  return ownerOperation;
+}
+
 export function createStreamsRouter(deps: StreamRoutesDeps): Router {
-  const { streamService, publishService, ingestService, requireAuth } = deps;
+  const {
+    streamService,
+    publishService,
+    ingestService,
+    continuations,
+    requireAuth,
+  } = deps;
   const router = Router();
 
   router.use(requireAuth);
@@ -64,6 +85,52 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
       const streams = await streamService.list(user.id);
       const response: StreamListResponse = { streams: streams.map(toStream) };
       res.json(response);
+    }),
+  );
+
+  router.post(
+    '/:id/continuations',
+    validateParams(streamIdParamSchema),
+    validateBody(continuationCreateSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const { user } = requireUser(req);
+      const operation = await continuations.create(
+        streamId(req),
+        user.id,
+        req.body as ContinuationCreateRequest,
+      );
+      const location = `/api/streams/${streamId(req)}/continuations/${operation.operationId}`;
+      res.location(location).status(202).json({
+        operation: toOwnerContinuation(operation),
+      });
+    }),
+  );
+
+  router.get(
+    '/:id/continuations/:operationId',
+    validateParams(continuationOperationParamSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const { user } = requireUser(req);
+      const operation = await continuations.get(
+        streamId(req),
+        String(req.params.operationId),
+        user.id,
+      );
+      res.json({ operation: toOwnerContinuation(operation) });
+    }),
+  );
+
+  router.delete(
+    '/:id/continuations/:operationId',
+    validateParams(continuationOperationParamSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const { user } = requireUser(req);
+      const operation = await continuations.cancel(
+        streamId(req),
+        String(req.params.operationId),
+        user.id,
+      );
+      res.json({ operation: toOwnerContinuation(operation) });
     }),
   );
 
