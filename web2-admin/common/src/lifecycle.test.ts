@@ -6,8 +6,12 @@ import { test } from 'node:test';
 import type {
   InternalCompletedRecordingSnapshot,
   ManagedRunReport,
+  UploaderCapabilities,
 } from './lifecycle.js';
-import { canonicalManagedReportJson } from './lifecycle.js';
+import {
+  canonicalManagedReportJson,
+  canonicalUploaderProfileJson,
+} from './lifecycle.js';
 
 interface DigestFixture {
   report: ManagedRunReport;
@@ -19,6 +23,15 @@ interface VodReconciliationFixture {
   report: Extract<ManagedRunReport, { state: 'vod' }>;
   reconciledCompletedRecording: InternalCompletedRecordingSnapshot;
   sha256HexParts: [string, string];
+}
+
+interface CapabilityFixture {
+  request: UploaderCapabilities;
+  profileVectors: Array<{
+    mediaType: 'audio' | 'video';
+    canonicalUtf8: string;
+    sha256HexParts: [string, string];
+  }>;
 }
 
 const fixture = JSON.parse(
@@ -64,4 +77,26 @@ test('managed VOD digest retains report array order across reconciliation', () =
       .digest('hex'),
     vodFixture.sha256HexParts.join(''),
   );
+});
+
+test('uploader profile fingerprints match the cross-service vectors', () => {
+  const capabilityFixture = JSON.parse(
+    readFileSync(
+      new URL('../fixtures/uploader-capabilities-v1.json', import.meta.url),
+      'utf8',
+    ),
+  ) as CapabilityFixture;
+
+  for (const vector of capabilityFixture.profileVectors) {
+    const profile = capabilityFixture.request.profiles.find(
+      (candidate) => candidate.mediaType === vector.mediaType,
+    );
+    assert.ok(profile);
+    const canonical = canonicalUploaderProfileJson(profile);
+    assert.equal(canonical, vector.canonicalUtf8);
+    assert.equal(
+      createHash('sha256').update(canonical).digest('hex'),
+      vector.sha256HexParts.join(''),
+    );
+  }
 });

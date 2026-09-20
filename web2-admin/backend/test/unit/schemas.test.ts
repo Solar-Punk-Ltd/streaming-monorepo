@@ -25,6 +25,7 @@ import {
   ingestLookupParamSchema,
   renditionReportSchema,
   streamStateSchema,
+  uploaderCapabilitySchema,
 } from '../../src/schemas/internal.js';
 import {
   continuationCreateSchema,
@@ -405,6 +406,51 @@ describe('managed lifecycle schemas', () => {
       expectedRevision: 11,
     };
     assert.deepEqual(await validate(continuationCreateSchema, request), request);
+  });
+});
+
+describe('uploaderCapabilitySchema', () => {
+  const video = {
+    mediaType: 'video',
+    renditions: [
+      {
+        name: '720p',
+        width: 1280,
+        height: 720,
+        bandwidth: 2_800_000,
+        avgBandwidth: 2_500_000,
+      },
+    ],
+  };
+  const capability = {
+    lifecycleVersion: 1,
+    capabilities: {
+      durableCheckpointStore: 1,
+      legacyRecordingAdoption: 1,
+    },
+    profiles: [video, { mediaType: 'audio', renditions: [] }],
+  };
+
+  it('accepts one bounded shape per media type', async () => {
+    assert.deepEqual(await validate(uploaderCapabilitySchema, capability), capability);
+  });
+
+  it('refuses duplicate media types and invented audio rungs', async () => {
+    assert.ok(
+      (await errorsFor(uploaderCapabilitySchema, {
+        ...capability,
+        profiles: [video, video],
+      })).some((error) => error.includes('one profile per media type')),
+    );
+    assert.ok(
+      (await errorsFor(uploaderCapabilitySchema, {
+        ...capability,
+        profiles: [
+          video,
+          { mediaType: 'audio', renditions: video.renditions },
+        ],
+      })).some((error) => error.includes('audio profile must not declare rungs')),
+    );
   });
 });
 

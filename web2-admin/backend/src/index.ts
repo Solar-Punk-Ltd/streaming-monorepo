@@ -25,6 +25,7 @@ import { StreamRenditionRepository } from './domain/StreamRenditionRepository.js
 import { StreamRepository } from './domain/StreamRepository.js';
 import { StreamService } from './domain/StreamService.js';
 import { StreamStateService } from './domain/StreamStateService.js';
+import { UploaderCapabilityRepository } from './domain/UploaderCapabilityRepository.js';
 import { config } from './utils/config.js';
 import { getErrorMessage, getErrorStack } from './utils/errorUtils.js';
 
@@ -72,7 +73,11 @@ function logStartupConfig(owner: string, topicHex: string): void {
   logger.info(
     `[Boot]   ingest: ${config.ingest.host} srt ${config.ingest.srtPort} rtmp ${config.ingest.rtmpPort}, passphrase ${
       config.ingest.srtPassphrase ? redactSecret(config.ingest.srtPassphrase) : '(unset)'
-    }, key verified ${config.ingest.keyVerified}`,
+    }, key verified ${config.ingest.keyVerified}, managed lifecycle ${
+      config.ingest.managedLifecycle
+        ? `v1 uploader ${config.ingest.managedLifecycle.uploaderId}`
+        : 'disabled'
+    }`,
   );
 }
 
@@ -141,6 +146,12 @@ async function main(): Promise<void> {
   const feedWriteRepository = new FeedWriteRepository(database.pool);
   const managedLifecycle = new ManagedLifecycleRepository(database.pool);
   const continuations = new ContinuationRepository(database.pool);
+  const uploaderCapabilities = config.ingest.managedLifecycle
+    ? new UploaderCapabilityRepository(
+        database.pool,
+        config.ingest.managedLifecycle.uploaderId,
+      )
+    : undefined;
 
   const orphans = await streamRepository.resetOrphanedPublishing();
   if (orphans.length > 0) {
@@ -208,6 +219,7 @@ async function main(): Promise<void> {
       managedLifecycle,
       continuations,
       publishService,
+      uploaderCapabilities,
       ingestService,
       internalApiToken: config.internalApiToken,
       feed,

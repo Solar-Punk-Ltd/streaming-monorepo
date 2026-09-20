@@ -22,6 +22,7 @@ const endpoint: IngestConfig = {
   rtmpPort: 10062,
   srtPassphrase: 'a-long-server-passphrase',
   keyVerified: false,
+  managedLifecycle: null,
 };
 
 describe('ingestDetailsFor', () => {

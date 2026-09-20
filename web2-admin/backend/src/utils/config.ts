@@ -3,6 +3,10 @@ import 'dotenv/config';
 import { PrivateKey } from '@ethersphere/bee-js';
 
 import { getErrorMessage } from './errorUtils.js';
+import {
+  managedIngestLifecycleConfig,
+  type ManagedIngestLifecycleConfig,
+} from './managedIngestConfig.js';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -64,6 +68,7 @@ export interface IngestConfig {
   /** One value for the whole SRS server, or null when SRT is unencrypted. */
   srtPassphrase: string | null;
   keyVerified: boolean;
+  managedLifecycle: ManagedIngestLifecycleConfig | null;
 }
 
 export interface AppConfig {
@@ -131,5 +136,6 @@ export const config: AppConfig = {
     rtmpPort: optionalNumber('INGEST_RTMP_PORT', 10062),
     srtPassphrase: optional('INGEST_SRT_PASSPHRASE', '') || null,
     keyVerified: optionalBoolean('INGEST_KEY_VERIFIED', false),
+    managedLifecycle: managedIngestLifecycleConfig(process.env),
   },
 };

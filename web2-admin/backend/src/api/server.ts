@@ -13,6 +13,7 @@ import { ManagedLifecycleRepository } from '../domain/ManagedLifecycleRepository
 import { PublishService } from '../domain/PublishService.js';
 import { StreamService } from '../domain/StreamService.js';
 import { StreamStateService } from '../domain/StreamStateService.js';
+import { UploaderCapabilityRepository } from '../domain/UploaderCapabilityRepository.js';
 
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFound } from './middleware/notFound.js';
@@ -40,6 +41,7 @@ export interface ApiDeps {
   managedLifecycle: ManagedLifecycleRepository;
   continuations: ContinuationRepository;
   publishService: PublishService;
+  uploaderCapabilities?: UploaderCapabilityRepository;
   ingestService: IngestService;
   /** Bearer token for /api/internal; never accepted anywhere else. */
   internalApiToken: string;
@@ -83,6 +85,7 @@ export function startApiServer(
       managedLifecycle: deps.managedLifecycle,
       continuations: deps.continuations,
       publishService: deps.publishService,
+      uploaderCapabilities: deps.uploaderCapabilities,
       requireInternalToken: createRequireInternalToken(deps.internalApiToken),
     }),
   );

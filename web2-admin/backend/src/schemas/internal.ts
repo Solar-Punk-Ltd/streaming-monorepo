@@ -71,6 +71,60 @@ const positiveSafeInteger = (name: string) =>
     .min(1, `${name} must be positive`)
     .max(SAFE_INTEGER_MAX, `${name} must be a safe integer`);
 
+const uploaderRenditionProfileSchema = object({
+  name: string().required().matches(/^[A-Za-z0-9.-]{1,32}$/),
+  width: number().required().integer().positive(),
+  height: number().required().integer().positive(),
+  bandwidth: number().required().integer().min(0),
+  avgBandwidth: number().required().integer().min(0),
+}).noUnknown(true);
+
+const uploaderMediaProfileSchema = object({
+  mediaType: string<MediaType>()
+    .required()
+    .oneOf([...MEDIA_TYPES]),
+  renditions: array()
+    .of(uploaderRenditionProfileSchema.required())
+    .required()
+    .max(16)
+    .test(
+      'unique-rendition-names',
+      'rendition names must be unique within a profile',
+      (value) =>
+        value === undefined ||
+        new Set(value.map(({ name }) => name)).size === value.length,
+    ),
+})
+  .test(
+    'audio-has-no-rungs',
+    'audio profile must not declare rungs',
+    (value) =>
+      value?.mediaType !== 'audio' || (value.renditions?.length ?? 0) === 0,
+  )
+  .noUnknown(true);
+
+export const uploaderCapabilitySchema = object({
+  lifecycleVersion,
+  capabilities: object({
+    durableCheckpointStore: number().required().oneOf([1]),
+    legacyRecordingAdoption: number().required().oneOf([1]),
+  })
+    .required()
+    .noUnknown(true),
+  profiles: array()
+    .of(uploaderMediaProfileSchema.required())
+    .required()
+    .min(1)
+    .max(MEDIA_TYPES.length)
+    .test(
+      'one-profile-per-media-type',
+      'profiles must contain one profile per media type',
+      (value) =>
+        value === undefined ||
+        new Set(value.map(({ mediaType }) => mediaType)).size === value.length,
+    ),
+}).noUnknown(true);
+
 export const managedClaimSchema = object({
   lifecycleVersion,
   expectedRevision: positiveSafeInteger('expectedRevision'),

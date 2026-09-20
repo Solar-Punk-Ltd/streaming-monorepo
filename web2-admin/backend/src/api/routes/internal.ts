@@ -7,6 +7,7 @@ import type {
   RenditionReport,
   RenditionReportResponse,
   StreamStateResponse,
+  UploaderCapabilities,
 } from '@streaming-monorepo/web2-admin-common';
 import { Request, RequestHandler, Response, Router } from 'express';
 
@@ -15,6 +16,7 @@ import { ContinuationRepository } from '../../domain/ContinuationRepository.js';
 import { ManagedLifecycleRepository } from '../../domain/ManagedLifecycleRepository.js';
 import { PublishService } from '../../domain/PublishService.js';
 import { StreamStateService } from '../../domain/StreamStateService.js';
+import { UploaderCapabilityRepository } from '../../domain/UploaderCapabilityRepository.js';
 import {
   ingestLookupParamSchema,
   continuationPreparationParamSchema,
@@ -26,6 +28,7 @@ import {
   renditionReportSchema,
   streamStateSchema,
   uploaderContinuationParamSchema,
+  uploaderCapabilitySchema,
   type StreamStateBody,
 } from '../../schemas/internal.js';
 import { streamIdParamSchema } from '../../schemas/stream.js';
@@ -47,6 +50,7 @@ export interface InternalRoutesDeps {
   managedLifecycle: ManagedLifecycleRepository;
   continuations: ContinuationRepository;
   publishService: PublishService;
+  uploaderCapabilities?: UploaderCapabilityRepository;
   requireInternalToken: RequestHandler;
 }
 
@@ -69,11 +73,27 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
     managedLifecycle,
     continuations,
     publishService,
+    uploaderCapabilities,
     requireInternalToken,
   } = deps;
   const router = Router();
 
   router.use(requireInternalToken);
+
+  if (uploaderCapabilities) {
+    router.post(
+      '/uploaders/:uploaderId/capabilities',
+      validateParams(uploaderContinuationParamSchema),
+      validateBody(uploaderCapabilitySchema),
+      asyncHandler(async (req: Request, res: Response) => {
+        const receipt = await uploaderCapabilities.record(
+          String(req.params.uploaderId),
+          req.body as UploaderCapabilities,
+        );
+        res.json(receipt);
+      }),
+    );
+  }
 
   router.get(
     '/uploaders/:uploaderId/continuations',
@@ -110,9 +130,17 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
         String(req.params.stream),
         req.header('X-Stream-Lifecycle-Version'),
       );
+      const expectedRenditions =
+        stream.lifecycle_version === 1 && stream.current_run_number !== null
+          ? await managedLifecycle.expectedRenditions(
+              stream.id,
+              stream.current_run_number,
+            )
+          : [];
       const response: IngestLookupResponse = toIngestLookup(
         stream,
         req.header('X-Stream-Lifecycle-Version') === '1',
+        expectedRenditions,
       );
       res.json(response);
     }),

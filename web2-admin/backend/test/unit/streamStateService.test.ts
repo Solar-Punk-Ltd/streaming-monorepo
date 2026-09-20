@@ -113,7 +113,17 @@ describe('StreamStateService.lookupByIngest lifecycle negotiation', () => {
       (await state.lookupByIngest('video', managed.topic, '1')).id,
       managed.id,
     );
-    assert.deepEqual(toIngestLookup(managed, true), {
+    const expectedRenditions = [
+      {
+        name: '720p',
+        topic: '22222222-2222-4222-8222-222222222222',
+        width: 1280,
+        height: 720,
+        bandwidth: 2_800_000,
+        avgBandwidth: 2_500_000,
+      },
+    ];
+    assert.deepEqual(toIngestLookup(managed, true, expectedRenditions), {
       id: managed.id,
       topic: managed.topic,
       owner: managed.owner,
@@ -130,10 +140,12 @@ describe('StreamStateService.lookupByIngest lifecycle negotiation', () => {
         permission: 'open',
         uploaderId: 'srs-main',
       },
+      expectedRenditions,
     });
     const negotiatedLegacy = toIngestLookup(stream, true);
     assert.ok('mode' in negotiatedLegacy);
     assert.equal(negotiatedLegacy.mode, 'legacy');
+    assert.equal('expectedRenditions' in negotiatedLegacy, false);
     await assert.rejects(
       state.lookupByIngest('video', managed.topic, '2'),
       StreamNotFoundError,

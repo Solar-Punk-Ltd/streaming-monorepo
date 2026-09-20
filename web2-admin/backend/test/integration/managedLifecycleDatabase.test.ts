@@ -346,6 +346,55 @@ describe('managed run database invariants', () => {
        ) VALUES ($1, 1, 'ready', 'open', 'itest-uploader', 1)`,
       [row.id],
     );
+    const expectedRenditions = [
+      {
+        name: '360p',
+        topic: randomUUID(),
+        width: 640,
+        height: 360,
+        bandwidth: 800_000,
+        avgBandwidth: 700_000,
+      },
+      {
+        name: '720p',
+        topic: randomUUID(),
+        width: 1280,
+        height: 720,
+        bandwidth: 2_800_000,
+        avgBandwidth: 2_500_000,
+      },
+    ];
+    for (const rendition of [...expectedRenditions].reverse()) {
+      await database.pool.query(
+        `INSERT INTO stream_run_expected_renditions (
+           stream_id, run_number, name, topic, width, height, bandwidth,
+           avg_bandwidth
+         ) VALUES ($1, 1, $2, $3, $4, $5, $6, $7)`,
+        [
+          row.id,
+          rendition.name,
+          rendition.topic,
+          rendition.width,
+          rendition.height,
+          rendition.bandwidth,
+          rendition.avgBandwidth,
+        ],
+      );
+    }
+    await assert.rejects(
+      database.pool.query(
+        `INSERT INTO stream_run_expected_renditions (
+           stream_id, run_number, name, topic, width, height, bandwidth,
+           avg_bandwidth
+         ) VALUES ($1, 1, 'duplicate-topic', $2, 1920, 1080, 5000000, 4500000)`,
+        [row.id, expectedRenditions[0].topic],
+      ),
+      (error: unknown) =>
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === '23505',
+    );
     const request = {
       lifecycleVersion: 1 as const,
       expectedRevision: 1,
@@ -357,6 +406,8 @@ describe('managed run database invariants', () => {
     const retried = await lifecycle.claim(row.id, 1, request);
     assert.equal(claimed.claimId, retried.claimId);
     assert.equal(retried.permission, 'claimed');
+    assert.deepEqual(claimed.expectedRenditions, expectedRenditions);
+    assert.deepEqual(retried.expectedRenditions, expectedRenditions);
 
     const observedAt = '2026-09-20T10:00:00.000Z';
     const live = {
@@ -400,6 +451,7 @@ describe('managed run database invariants', () => {
     );
     assert.equal(recovered.state, 'closed');
     assert.equal(recovered.permission, 'closed');
+    assert.deepEqual(recovered.expectedRenditions, expectedRenditions);
   });
 
   it('retains the winning claim request and requires proof for an empty close', async () => {

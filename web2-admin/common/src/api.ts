@@ -289,6 +289,7 @@ export type IngestLookupResponse =
         permission: import('./lifecycle.js').ManagedRunPermission;
         uploaderId: string;
       };
+      expectedRenditions: import('./lifecycle.js').ManagedExpectedRendition[];
     });
 
 /**

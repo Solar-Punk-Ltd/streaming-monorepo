@@ -4,6 +4,7 @@
  */
 import type {
   IngestLookupResponse,
+  ManagedExpectedRendition,
   ManagedOwnerLifecycle,
   CompletedRecordingSnapshot,
   PublishResult,
@@ -97,6 +98,7 @@ export function toRenditionReportResponse(
 export function toIngestLookup(
   row: StreamRow,
   negotiatedLifecycle = false,
+  expectedRenditions: ManagedExpectedRendition[] = [],
 ): IngestLookupResponse {
   const legacy = {
     id: row.id,
@@ -130,5 +132,6 @@ export function toIngestLookup(
       permission: row.lifecycle_permission,
       uploaderId: row.lifecycle_uploader_id,
     },
+    expectedRenditions,
   };
 }

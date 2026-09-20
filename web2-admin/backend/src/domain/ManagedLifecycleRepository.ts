@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   canonicalManagedReportJson,
   type InternalCompletedRecordingSnapshot,
+  type ManagedExpectedRendition,
   ManagedClaimRequest,
   ManagedRunReport,
   ManagedRunView,
@@ -91,6 +92,7 @@ function reportDigest(report: ManagedRunReport): string {
 
 function toView(
   row: ManagedRunDatabaseRow,
+  expectedRenditions: ManagedExpectedRendition[],
   completedRecording?: InternalCompletedRecordingSnapshot,
 ): ManagedRunView {
   return {
@@ -102,6 +104,7 @@ function toView(
     claimId: row.claim_id,
     state: row.state,
     permission: row.permission,
+    expectedRenditions,
     ...(row.reconnect_deadline
       ? { reconnectDeadline: row.reconnect_deadline.toISOString() }
       : {}),
@@ -131,6 +134,11 @@ export class ManagedLifecycleRepository {
       await client.query('BEGIN');
       const row = await this.lockRun(client, streamId, runNumber);
       this.requireCurrent(row, runNumber, request.uploaderId);
+      const expectedRenditions = await this.readExpectedRenditions(
+        client,
+        streamId,
+        runNumber,
+      );
 
       if (row.permission === 'closed') {
         throw new ManagedLifecycleConflict('closed');
@@ -142,7 +150,7 @@ export class ManagedLifecycleRepository {
           throw new ManagedLifecycleConflict('request_conflict');
         }
         await client.query('COMMIT');
-        return toView(row);
+        return toView(row, expectedRenditions);
       }
       if (row.permission !== 'open') {
         throw new ManagedLifecycleConflict('revision_conflict');
@@ -179,7 +187,7 @@ export class ManagedLifecycleRepository {
         [streamId, runNumber, revision],
       );
       await client.query('COMMIT');
-      return toView(claimed.rows[0]);
+      return toView(claimed.rows[0], expectedRenditions);
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -207,8 +215,13 @@ export class ManagedLifecycleRepository {
         streamId,
         runNumber,
       );
+      const expectedRenditions = await this.readExpectedRenditions(
+        client,
+        streamId,
+        runNumber,
+      );
       await client.query('COMMIT');
-      return toView(row, completedRecording);
+      return toView(row, expectedRenditions, completedRecording);
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -230,6 +243,11 @@ export class ManagedLifecycleRepository {
       if (row.claim_id !== report.claimId) {
         throw new ManagedLifecycleConflict('assignment_mismatch');
       }
+      const expectedRenditions = await this.readExpectedRenditions(
+        client,
+        streamId,
+        runNumber,
+      );
 
       const digest = reportDigest(report);
       const disposition = classifyManagedEvent(
@@ -243,7 +261,7 @@ export class ManagedLifecycleRepository {
       );
       if (disposition === 'duplicate') {
         await client.query('COMMIT');
-        return toView(row);
+        return toView(row, expectedRenditions);
       }
       if (!isManagedRunTransitionAllowed(row.state, report.state)) {
         throw new ManagedLifecycleConflict('event_conflict');
@@ -321,7 +339,7 @@ export class ManagedLifecycleRepository {
         ],
       );
       await client.query('COMMIT');
-      return toView(updated.rows[0]);
+      return toView(updated.rows[0], expectedRenditions);
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -342,6 +360,47 @@ export class ManagedLifecycleRepository {
     const row = result.rows[0];
     if (!row) throw new ManagedLifecycleConflict('stale_run');
     return row;
+  }
+
+  async expectedRenditions(
+    streamId: string,
+    runNumber: number,
+  ): Promise<ManagedExpectedRendition[]> {
+    const client = await this.pool.connect();
+    try {
+      return await this.readExpectedRenditions(client, streamId, runNumber);
+    } finally {
+      client.release();
+    }
+  }
+
+  private async readExpectedRenditions(
+    client: PoolClient,
+    streamId: string,
+    runNumber: number,
+  ): Promise<ManagedExpectedRendition[]> {
+    const result = await client.query<{
+      name: string;
+      topic: string;
+      width: number;
+      height: number;
+      bandwidth: string | number;
+      avg_bandwidth: string | number;
+    }>(
+      `SELECT name, topic, width, height, bandwidth, avg_bandwidth
+         FROM stream_run_expected_renditions
+        WHERE stream_id = $1 AND run_number = $2
+        ORDER BY name`,
+      [streamId, runNumber],
+    );
+    return result.rows.map((rendition) => ({
+      name: rendition.name,
+      topic: rendition.topic,
+      width: rendition.width,
+      height: rendition.height,
+      bandwidth: Number(rendition.bandwidth),
+      avgBandwidth: Number(rendition.avg_bandwidth),
+    }));
   }
 
   private requireCurrent(

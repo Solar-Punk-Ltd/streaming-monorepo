@@ -70,6 +70,7 @@ export interface ManagedRunView {
   claimId: string | null;
   state: ManagedLifecycleState;
   permission: ManagedRunPermission;
+  expectedRenditions: ManagedExpectedRendition[];
   reconnectDeadline?: string;
   closeReason?: ManagedCloseReason;
   lastAcceptedEvent?: {
@@ -181,4 +182,52 @@ export interface ContinuationPreparationRequest {
   status: 'ready' | 'failed';
   checkpointReference?: string;
   failure?: string;
+}
+
+export interface UploaderRenditionProfile {
+  name: string;
+  width: number;
+  height: number;
+  bandwidth: number;
+  avgBandwidth: number;
+}
+
+export interface ManagedExpectedRendition extends UploaderRenditionProfile {
+  topic: string;
+}
+
+/** One configured output shape for a media type. Empty rungs mean passthrough. */
+export interface UploaderMediaProfile {
+  mediaType: MediaType;
+  renditions: UploaderRenditionProfile[];
+}
+
+export interface UploaderCapabilities {
+  lifecycleVersion: typeof MANAGED_LIFECYCLE_VERSION;
+  capabilities: {
+    durableCheckpointStore: 1;
+    legacyRecordingAdoption: 1;
+  };
+  /** Exactly one profile may be advertised for each media type. */
+  profiles: UploaderMediaProfile[];
+}
+
+export interface UploaderCapabilityReceipt {
+  lifecycleVersion: typeof MANAGED_LIFECYCLE_VERSION;
+  uploaderId: string;
+  receivedAt: string;
+  freshUntil: string;
+  profileDigests: Array<{ mediaType: MediaType; digest: string }>;
+}
+
+/** Stable profile fingerprint. Rung order is normalized by name. */
+export function canonicalUploaderProfileJson(
+  profile: UploaderMediaProfile,
+): string {
+  return canonicalJson({
+    ...profile,
+    renditions: [...profile.renditions].sort((left, right) =>
+      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+    ),
+  });
 }
