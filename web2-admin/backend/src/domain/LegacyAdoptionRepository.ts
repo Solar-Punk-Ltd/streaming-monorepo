@@ -97,6 +97,7 @@ function sameValue(left: unknown, right: unknown): boolean {
 }
 
 function compareTracks(left: LegacyMediaFormatTrack, right: LegacyMediaFormatTrack): number {
+  if (left.kind !== right.kind) return left.kind.localeCompare(right.kind);
   const leftValue = JSON.stringify(canonicalValue(left));
   const rightValue = JSON.stringify(canonicalValue(right));
   return leftValue.localeCompare(rightValue);
@@ -601,6 +602,11 @@ export class LegacyAdoptionRepository {
         ) {
           throw new ManagedLifecycleConflict('assignment_mismatch');
         }
+      } else if (
+        !fingerprint.tracks.some(({ kind }) => kind === 'audio') ||
+        fingerprint.tracks.some(({ kind }) => kind === 'video')
+      ) {
+        throw new ManagedLifecycleConflict('assignment_mismatch');
       }
     }
   }

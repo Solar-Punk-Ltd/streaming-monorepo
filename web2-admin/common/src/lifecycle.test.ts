@@ -161,4 +161,10 @@ test('legacy adoption candidate digest normalizes rendition order', () => {
       '44444444-4444-4444-8444-444444444444',
     ],
   );
+  for (const { formatFingerprint } of adoptionFixture.validation.tracks) {
+    assert.deepEqual(
+      formatFingerprint.tracks.map(({ kind }) => kind),
+      ['audio', 'video'],
+    );
+  }
 });

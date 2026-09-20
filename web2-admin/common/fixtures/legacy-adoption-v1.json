@@ -43,6 +43,14 @@
           "container": "mpegts",
           "tracks": [
             {
+              "kind": "audio",
+              "codec": "aac",
+              "profile": "LC",
+              "sampleRate": 48000,
+              "channels": 2,
+              "channelLayout": "stereo"
+            },
+            {
               "kind": "video",
               "codec": "h264",
               "profile": "High",
@@ -52,14 +60,6 @@
               "pixelFormat": "yuv420p",
               "chromaLocation": "left",
               "bitsPerRawSample": 8
-            },
-            {
-              "kind": "audio",
-              "codec": "aac",
-              "profile": "LC",
-              "sampleRate": 48000,
-              "channels": 2,
-              "channelLayout": "stereo"
             }
           ]
         }
@@ -71,6 +71,14 @@
           "container": "mpegts",
           "tracks": [
             {
+              "kind": "audio",
+              "codec": "aac",
+              "profile": "LC",
+              "sampleRate": 48000,
+              "channels": 2,
+              "channelLayout": "stereo"
+            },
+            {
               "kind": "video",
               "codec": "h264",
               "profile": "High",
@@ -80,14 +88,6 @@
               "pixelFormat": "yuv420p",
               "chromaLocation": "left",
               "bitsPerRawSample": 8
-            },
-            {
-              "kind": "audio",
-              "codec": "aac",
-              "profile": "LC",
-              "sampleRate": 48000,
-              "channels": 2,
-              "channelLayout": "stereo"
             }
           ]
         }

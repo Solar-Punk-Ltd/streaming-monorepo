@@ -197,6 +197,21 @@ async function legacyVod(): Promise<{ id: string; topic: string }> {
   return stream.rows[0];
 }
 
+async function legacyAudioVod(): Promise<{ id: string; topic: string }> {
+  const stream = await database.pool.query<{ id: string; topic: string }>(
+    `INSERT INTO streams (
+       user_id, topic, owner, title, description, tags, media_type,
+       scheduled_start_time, publish_key, status, manifest_index,
+       duration_seconds, ended_at, published_at
+     ) VALUES ($1, $2, $3, 'Legacy audio VOD', 'Adoption fixture', '{}',
+               'audio', NOW(), 'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd', 'vod',
+               8, 41.25, NOW(), NOW())
+     RETURNING id, topic`,
+    [userId, randomUUID(), OWNER],
+  );
+  return stream.rows[0];
+}
+
 function readyRequest(
   operation: Awaited<ReturnType<LegacyAdoptionRepository['create']>>,
 ): Extract<LegacyAdoptionPreparationRequest, { status: 'ready' }> {
@@ -223,33 +238,54 @@ function readyRequest(
       version: 1,
       mediaReadable: true,
       pendingWrites: 0,
-      tracks: operation.candidate.renditions
+      tracks: (operation.candidate.renditions.length > 0
+        ? operation.candidate.renditions
+        : [
+            {
+              topic: operation.candidate.master.topic,
+              width: 0,
+              height: 0,
+            },
+          ]
+      )
         .map(({ topic, width, height }) => ({
           topic,
           formatFingerprint: {
             version: 1 as const,
             container: 'mpegts' as const,
-            tracks: [
-              {
-                kind: 'video' as const,
-                codec: 'h264',
-                profile: 'High',
-                level: 40,
-                width,
-                height,
-                pixelFormat: 'yuv420p',
-                chromaLocation: 'left',
-                bitsPerRawSample: 8,
-              },
-              {
-                kind: 'audio' as const,
-                codec: 'aac',
-                profile: 'LC',
-                sampleRate: 48_000,
-                channels: 2,
-                channelLayout: 'stereo',
-              },
-            ],
+            tracks:
+              operation.mediaType === 'audio'
+                ? [
+                    {
+                      kind: 'audio' as const,
+                      codec: 'aac',
+                      profile: 'LC',
+                      sampleRate: 48_000,
+                      channels: 2,
+                      channelLayout: 'stereo',
+                    },
+                  ]
+                : [
+                    {
+                      kind: 'audio' as const,
+                      codec: 'aac',
+                      profile: 'LC',
+                      sampleRate: 48_000,
+                      channels: 2,
+                      channelLayout: 'stereo',
+                    },
+                    {
+                      kind: 'video' as const,
+                      codec: 'h264',
+                      profile: 'High',
+                      level: 40,
+                      width,
+                      height,
+                      pixelFormat: 'yuv420p',
+                      chromaLocation: 'left',
+                      bitsPerRawSample: 8,
+                    },
+                  ],
           },
         }))
         .sort((left, right) => left.topic.localeCompare(right.topic)),
@@ -298,9 +334,9 @@ describe('legacy VOD adoption', () => {
     );
     const changedFormat = structuredClone(preparation);
     const firstTrack = changedFormat.validation.tracks[0]
-      .formatFingerprint.tracks[0];
-    assert.equal(firstTrack.kind, 'video');
-    if (firstTrack.kind === 'video') firstTrack.width += 1;
+      .formatFingerprint.tracks.find(({ kind }) => kind === 'video');
+    assert.equal(firstTrack?.kind, 'video');
+    if (firstTrack?.kind === 'video') firstTrack.width += 1;
     await assert.rejects(
       adoptions.prepare(stream.id, operation.operationId, changedFormat),
       (error: unknown) =>
@@ -430,6 +466,42 @@ describe('legacy VOD adoption', () => {
       [stream.id],
     );
     assert.equal(legacy.rows[0].lifecycle_version, null);
+  });
+
+  it('requires an audio adoption proof to contain audio and no video track', async () => {
+    await capabilities.record(UPLOADER_ID, {
+      ...capability,
+      profiles: [{ mediaType: 'audio', renditions: [] }],
+    });
+    const stream = await legacyAudioVod();
+    const preview = await adoptions.preview(stream.id, userId);
+    const operation = await adoptions.create(stream.id, userId, {
+      requestId: randomUUID(),
+      expectedCandidateDigest: preview.candidateDigest,
+    });
+    const valid = readyRequest(operation);
+    const corrupt = structuredClone(valid);
+    corrupt.validation.tracks[0].formatFingerprint.tracks.push({
+      kind: 'video',
+      codec: 'h264',
+      profile: 'High',
+      level: 40,
+      width: 1920,
+      height: 1080,
+      pixelFormat: 'yuv420p',
+      chromaLocation: 'left',
+      bitsPerRawSample: 8,
+    });
+    await assert.rejects(
+      adoptions.prepare(stream.id, operation.operationId, corrupt),
+      (error: unknown) =>
+        error instanceof ManagedLifecycleConflict &&
+        error.code === 'assignment_mismatch',
+    );
+    assert.equal(
+      (await adoptions.prepare(stream.id, operation.operationId, valid)).status,
+      'committed',
+    );
   });
 
   it('serializes prepare and cancel in both lock orders without reopening a terminal result', async () => {
