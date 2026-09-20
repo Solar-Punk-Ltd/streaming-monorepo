@@ -27,7 +27,11 @@ services:
     env_file:
       - ${ADMIN_RELEASE_ENV_FILE:?ADMIN_RELEASE_ENV_FILE is required}
     environment:
-      DATABASE_URL: postgres://web2admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/web2admin
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: web2admin
+      DATABASE_USER: web2admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       WEB2_ADMIN_HOST: 0.0.0.0
       WEB2_ADMIN_PORT: "9877"
       BEE_URL: ${BEE_URL:?BEE_URL is required}

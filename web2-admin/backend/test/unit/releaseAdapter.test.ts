@@ -131,7 +131,8 @@ describe('fixed admin release adapter', () => {
     ]) {
       assert.match(compose, new RegExp(`^      ${name}: \\${'${'}${name}`, 'm'));
     }
-    assert.match(compose, /POSTGRES_PASSWORD: \$\{POSTGRES_PASSWORD:/);
+    assert.equal(compose.match(/^ {6}POSTGRES_PASSWORD: \$\{POSTGRES_PASSWORD:/gm)?.length, 2);
+    assert.doesNotMatch(compose, /^ {6}DATABASE_URL:/m);
   });
 
   it('preserves routed process credentials without copying their values into its output', async (t) => {
@@ -145,7 +146,7 @@ describe('fixed admin release adapter', () => {
       INGEST_SRT_PASSPHRASE: 'synthetic-passphrase',
       INTERNAL_API_TOKEN: 'synthetic-internal-token-000000000',
       POSTAGE_BATCH_ID: '2'.repeat(64),
-      POSTGRES_PASSWORD: 'synthetic-postgres-password',
+      POSTGRES_PASSWORD: 'synthetic:@/#?% password',
     };
     await writeFile(
       join(bin, 'docker'),

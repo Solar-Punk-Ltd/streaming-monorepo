@@ -3,6 +3,7 @@ import 'dotenv/config';
 import { PrivateKey } from '@ethersphere/bee-js';
 
 import { getErrorMessage } from './errorUtils.js';
+import { databaseUrlFromEnvironment } from './databaseUrl.js';
 import {
   managedIngestLifecycleConfig,
   type ManagedIngestLifecycleConfig,
@@ -119,7 +120,7 @@ function feedPrivateKey(): string {
 export const config: AppConfig = {
   port: optionalNumber('WEB2_ADMIN_PORT', 9877),
   host: optional('WEB2_ADMIN_HOST', '0.0.0.0'),
-  databaseUrl: required('DATABASE_URL'),
+  databaseUrl: databaseUrlFromEnvironment(process.env),
   feedGateway: feedGateway(),
   beeUrl: required('BEE_URL'),
   postageBatchId: required('POSTAGE_BATCH_ID'),
