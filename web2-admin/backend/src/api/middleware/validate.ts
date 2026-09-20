@@ -36,3 +36,18 @@ export function validateParams(schema: AnySchema): RequestHandler {
     }
   };
 }
+
+export function validateQuery(schema: AnySchema): RequestHandler {
+  return async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      const validated = await schema.validate(req.query, {
+        abortEarly: false,
+        stripUnknown: true,
+      });
+      Object.assign(req.query, validated);
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}

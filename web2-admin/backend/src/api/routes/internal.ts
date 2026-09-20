@@ -8,16 +8,24 @@ import type {
 import { Request, RequestHandler, Response, Router } from 'express';
 
 import { LadderService } from '../../domain/LadderService.js';
+import { ManagedLifecycleRepository } from '../../domain/ManagedLifecycleRepository.js';
 import { StreamStateService } from '../../domain/StreamStateService.js';
 import {
   ingestLookupParamSchema,
+  managedClaimSchema,
+  managedRunIdentitySchema,
+  managedRunParamSchema,
   renditionReportSchema,
   streamStateSchema,
   type StreamStateBody,
 } from '../../schemas/internal.js';
 import { streamIdParamSchema } from '../../schemas/stream.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { validateBody, validateParams } from '../middleware/validate.js';
+import {
+  validateBody,
+  validateParams,
+  validateQuery,
+} from '../middleware/validate.js';
 import {
   toIngestLookup,
   toPublishResult,
@@ -27,6 +35,7 @@ import {
 export interface InternalRoutesDeps {
   streamStateService: StreamStateService;
   ladderService: LadderService;
+  managedLifecycle: ManagedLifecycleRepository;
   requireInternalToken: RequestHandler;
 }
 
@@ -43,7 +52,12 @@ export interface InternalRoutesDeps {
  * say.
  */
 export function createInternalRouter(deps: InternalRoutesDeps): Router {
-  const { streamStateService, ladderService, requireInternalToken } = deps;
+  const {
+    streamStateService,
+    ladderService,
+    managedLifecycle,
+    requireInternalToken,
+  } = deps;
   const router = Router();
 
   router.use(requireInternalToken);
@@ -58,6 +72,35 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
       );
       const response: IngestLookupResponse = toIngestLookup(stream);
       res.json(response);
+    }),
+  );
+
+  router.post(
+    '/streams/:id/runs/:run/claims',
+    validateParams(managedRunParamSchema),
+    validateBody(managedClaimSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const run = await managedLifecycle.claim(
+        String(req.params.id),
+        Number(req.params.run),
+        req.body,
+      );
+      res.json(run);
+    }),
+  );
+
+  router.get(
+    '/streams/:id/runs/:run',
+    validateParams(managedRunParamSchema),
+    validateQuery(managedRunIdentitySchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const run = await managedLifecycle.readClaimedRun(
+        String(req.params.id),
+        Number(req.params.run),
+        String(req.query.uploaderId),
+        String(req.query.claimId),
+      );
+      res.json(run);
     }),
   );
 

@@ -27,6 +27,7 @@ import {
   WeakPasswordError,
 } from '../../domain/errors/index.js';
 import { Logger } from '../../domain/Logger.js';
+import { ManagedLifecycleConflict } from '../../domain/managedLifecycle.js';
 import { getErrorMessage, getErrorStack } from '../../utils/errorUtils.js';
 
 const logger = Logger.getInstance();
@@ -186,6 +187,10 @@ export function errorHandler(
     res
       .status(502)
       .json({ error: 'publish_failed', id: err.streamId, message: err.reason });
+    return;
+  }
+  if (err instanceof ManagedLifecycleConflict) {
+    res.status(409).json({ error: err.code });
     return;
   }
 

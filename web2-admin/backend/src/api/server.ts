@@ -8,6 +8,7 @@ import type { FeedIdentity } from '../domain/feedIdentity.js';
 import { IngestService } from '../domain/IngestService.js';
 import { LadderService } from '../domain/LadderService.js';
 import { Logger } from '../domain/Logger.js';
+import { ManagedLifecycleRepository } from '../domain/ManagedLifecycleRepository.js';
 import { PublishService } from '../domain/PublishService.js';
 import { StreamService } from '../domain/StreamService.js';
 import { StreamStateService } from '../domain/StreamStateService.js';
@@ -35,6 +36,7 @@ export interface ApiDeps {
   streamService: StreamService;
   streamStateService: StreamStateService;
   ladderService: LadderService;
+  managedLifecycle: ManagedLifecycleRepository;
   publishService: PublishService;
   ingestService: IngestService;
   /** Bearer token for /api/internal; never accepted anywhere else. */
@@ -76,6 +78,7 @@ export function startApiServer(
     createInternalRouter({
       streamStateService: deps.streamStateService,
       ladderService: deps.ladderService,
+      managedLifecycle: deps.managedLifecycle,
       requireInternalToken: createRequireInternalToken(deps.internalApiToken),
     }),
   );

@@ -18,6 +18,7 @@ import { FeedWriteRepository } from './domain/FeedWriteRepository.js';
 import { IngestService } from './domain/IngestService.js';
 import { LadderService } from './domain/LadderService.js';
 import { Logger } from './domain/Logger.js';
+import { ManagedLifecycleRepository } from './domain/ManagedLifecycleRepository.js';
 import { PublishService } from './domain/PublishService.js';
 import { StreamRenditionRepository } from './domain/StreamRenditionRepository.js';
 import { StreamRepository } from './domain/StreamRepository.js';
@@ -137,6 +138,7 @@ async function main(): Promise<void> {
   const streamRepository = new StreamRepository(database.pool);
   const renditionRepository = new StreamRenditionRepository(database.pool);
   const feedWriteRepository = new FeedWriteRepository(database.pool);
+  const managedLifecycle = new ManagedLifecycleRepository(database.pool);
 
   const orphans = await streamRepository.resetOrphanedPublishing();
   if (orphans.length > 0) {
@@ -201,6 +203,7 @@ async function main(): Promise<void> {
       streamService,
       streamStateService,
       ladderService,
+      managedLifecycle,
       publishService,
       ingestService,
       internalApiToken: config.internalApiToken,

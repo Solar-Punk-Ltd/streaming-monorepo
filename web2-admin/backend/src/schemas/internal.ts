@@ -79,6 +79,16 @@ export const managedClaimSchema = object({
   requestId: string().required().matches(UUID_RE, 'requestId must be a UUID'),
 }).noUnknown(true);
 
+export const managedRunParamSchema = object({
+  id: string().required().matches(UUID_RE, 'id must be a UUID'),
+  run: positiveSafeInteger('run'),
+}).noUnknown(true);
+
+export const managedRunIdentitySchema = object({
+  uploaderId: string().required().min(1).max(200),
+  claimId: string().required().matches(UUID_RE, 'claimId must be a UUID'),
+}).noUnknown(true);
+
 const immutableReferenceSchema = object({
   topic: string().required().matches(UUID_RE, 'topic must be a UUID'),
   index: number().required().integer().min(0).max(SAFE_INTEGER_MAX),
