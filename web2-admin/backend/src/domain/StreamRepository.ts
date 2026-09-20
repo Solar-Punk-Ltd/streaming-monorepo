@@ -239,7 +239,7 @@ export class StreamRepository {
         data.publish_key,
       ],
     );
-    return result.rows[0]!;
+    return result.rows[0];
   }
 
   /** Null when the row is not in one of `allowedFrom` (or does not exist). */
@@ -646,6 +646,6 @@ export class StreamRepository {
   }
 
   private one<T>(rows: T[], rowCount: number | null): T | null {
-    return rowCount && rowCount > 0 ? rows[0]! : null;
+    return rowCount && rowCount > 0 ? rows[0] : null;
   }
 }

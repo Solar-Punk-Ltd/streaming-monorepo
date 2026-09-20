@@ -105,9 +105,9 @@ describe('PublishService.publish', () => {
       mediatype: 'video',
       thumbnail: '',
       scheduledStartTime: '2026-10-01T09:00:00.000Z',
-      timestamp: entry!.timestamp,
+      timestamp: entry.timestamp,
     });
-    assert.ok(entry!.timestamp > 0, 'timestamp is ms since epoch');
+    assert.ok(entry.timestamp > 0, 'timestamp is ms since epoch');
 
     // The log row now names the feed it belongs to and the chunk the node
     // returned: since the next index is read back out of this table, a row
@@ -118,8 +118,8 @@ describe('PublishService.publish', () => {
         topic: feed.topicHex,
         feedIndex: 0,
         entryCount: 1,
-        payload: gateway.writes[0]!.entries,
-        reference: gateway.writes[0]!.reference,
+        payload: gateway.writes[0].entries,
+        reference: gateway.writes[0].reference,
       },
     ]);
   });
@@ -145,7 +145,7 @@ describe('PublishService.publish', () => {
     store.add({ ...store.get(row.id), title: 'Devcon closing', status: 'published' });
     await service.publish(row.id, TEST_USER_ID);
 
-    assert.equal(entriesOf(gateway)[0]!.title, 'Devcon closing');
+    assert.equal(entriesOf(gateway)[0].title, 'Devcon closing');
   });
 
   it('keeps entries it did not write, including ones it cannot parse', async () => {
@@ -167,7 +167,7 @@ describe('PublishService.publish', () => {
 
     assert.equal(outcome.feed.index, 8, 'continues the existing feed');
     assert.equal(outcome.feed.entryCount, 3);
-    const written = gateway.writes[0]!.entries;
+    const written = gateway.writes[0].entries;
     assert.deepEqual(written[0], foreign, 'foreign entry untouched');
     assert.equal(written[1], nonsense, 'unparseable element untouched');
     assert.equal((written[2] as FeedStreamEntry).topic, row.topic);
@@ -206,7 +206,7 @@ describe('PublishService.publish', () => {
       size: bytes.length,
     });
     assert.match(first.stream.thumbnail_ref ?? '', /^[0-9a-f]{64}$/);
-    assert.equal(entriesOf(gateway)[0]!.thumbnail, first.stream.thumbnail_ref);
+    assert.equal(entriesOf(gateway)[0].thumbnail, first.stream.thumbnail_ref);
 
     const second = await service.publish(row.id, TEST_USER_ID);
     assert.equal(gateway.thumbnails.length, 1, 'not uploaded again');
@@ -237,7 +237,7 @@ describe('PublishService.publish', () => {
     const fresh = outcome.stream.thumbnail_ref;
     assert.match(fresh ?? '', /^[0-9a-f]{64}$/);
     assert.notEqual(fresh, stale);
-    assert.equal(entriesOf(gateway)[0]!.thumbnail, fresh, 'the feed gets the new one');
+    assert.equal(entriesOf(gateway)[0].thumbnail, fresh, 'the feed gets the new one');
     assert.equal(store.get(row.id).thumbnail_ref, fresh, 'persisted');
     assert.ok(await gateway.hasReference(fresh!));
   });
@@ -418,7 +418,7 @@ describe('PublishService republishing a stream that has gone live', () => {
     assert.equal(outcome.stream.status, 'live');
     assert.equal(outcome.stream.published_feed_index, outcome.feed.index);
     assert.equal(outcome.stream.publish_error, null);
-    assert.equal(entriesOf(gateway)[0]!.state, 'live');
+    assert.equal(entriesOf(gateway)[0].state, 'live');
     assert.equal(store.get(row.id).status, 'live', 'never claimed');
   });
 
@@ -436,9 +436,9 @@ describe('PublishService republishing a stream that has gone live', () => {
     await service.republishWithState(store.get(row.id));
 
     const [entry] = entriesOf(gateway);
-    assert.equal(entry!.state, 'vod');
-    assert.equal(entry!.index, 412);
-    assert.equal(entry!.duration, 3725.5);
+    assert.equal(entry.state, 'vod');
+    assert.equal(entry.index, 412);
+    assert.equal(entry.duration, 3725.5);
   });
 
   it('keeps the reported state when the feed write fails', async () => {
@@ -472,7 +472,7 @@ describe('PublishService republishing a stream that has gone live', () => {
     const retried = await service.republishWithState(store.get(row.id));
     assert.equal(retried.stream.status, 'live');
     assert.equal(retried.stream.publish_error, null);
-    assert.equal(entriesOf(gateway)[0]!.state, 'live');
+    assert.equal(entriesOf(gateway)[0].state, 'live');
   });
 
   it('leaves the status as the row has it when the write fails, even after the row moved', async () => {
@@ -513,7 +513,7 @@ describe('PublishService republishing a stream that has gone live', () => {
 
     const outcome = await service.republishWithState(asCallerReadIt);
 
-    assert.equal(entriesOf(gateway)[0]!.state, 'live');
+    assert.equal(entriesOf(gateway)[0].state, 'live');
     assert.equal(outcome.stream.status, 'live');
     assert.equal(store.get(asCallerReadIt.id).status, 'live');
   });
@@ -570,7 +570,7 @@ describe('PublishService republishing a stream that has gone live', () => {
     const outcome = await service.publish(row.id, TEST_USER_ID);
 
     assert.equal(outcome.stream.status, 'live');
-    assert.equal(entriesOf(gateway)[0]!.state, 'live');
+    assert.equal(entriesOf(gateway)[0].state, 'live');
   });
 
   it('republishes a recording as vod, by hand, with its index intact', async () => {
@@ -587,8 +587,8 @@ describe('PublishService republishing a stream that has gone live', () => {
     const outcome = await service.publish(row.id, TEST_USER_ID);
 
     assert.equal(outcome.stream.status, 'vod');
-    assert.equal(entriesOf(gateway)[0]!.index, 7);
-    assert.equal(entriesOf(gateway)[0]!.duration, 61);
+    assert.equal(entriesOf(gateway)[0].index, 7);
+    assert.equal(entriesOf(gateway)[0].duration, 61);
   });
 
   it('serialises a state report against a concurrent publish', async () => {
@@ -618,12 +618,12 @@ describe('PublishService and the ABR ladder', () => {
     await service.publish(row.id, TEST_USER_ID);
 
     const [entry] = entriesOf(gateway);
-    assert.equal(entry!.group, row.topic, 'the master feed is the declared topic');
+    assert.equal(entry.group, row.topic, 'the master feed is the declared topic');
     assert.deepEqual(
-      entry!.renditions?.map((r) => r.name),
+      entry.renditions?.map((r) => r.name),
       ['360p', '720p'],
     );
-    assert.equal(entry!.renditions?.[1]?.avgBandwidth, 720 * 3000);
+    assert.equal(entry.renditions?.[1]?.avgBandwidth, 720 * 3000);
   });
 
   it('rewrites the ladder on a state report, not only on a publish', async () => {
@@ -636,8 +636,8 @@ describe('PublishService and the ABR ladder', () => {
     await service.republishWithState(store.get(row.id));
 
     const [entry] = entriesOf(gateway);
-    assert.equal(entry!.state, 'live');
-    assert.equal(entry!.renditions?.length, 1);
+    assert.equal(entry.state, 'live');
+    assert.equal(entry.renditions?.length, 1);
   });
 
   it('leaves a single-rendition entry exactly as it was', async () => {
@@ -647,8 +647,8 @@ describe('PublishService and the ABR ladder', () => {
     const outcome = await service.publish(row.id, TEST_USER_ID);
 
     const [entry] = entriesOf(gateway);
-    assert.ok(!('group' in entry!), 'no group without a ladder');
-    assert.ok(!('renditions' in entry!), 'and no renditions');
+    assert.ok(!('group' in entry), 'no group without a ladder');
+    assert.ok(!('renditions' in entry), 'and no renditions');
     assert.deepEqual(outcome.renditions, []);
     assert.deepEqual(outcome.previousRenditions, []);
   });
@@ -669,13 +669,13 @@ describe('PublishService and the ABR ladder', () => {
       ['360p', '720p'],
       'ascending by height',
     );
-    assert.deepEqual(first.renditions, entriesOf(gateway)[0]!.renditions);
+    assert.deepEqual(first.renditions, entriesOf(gateway)[0].renditions);
     assert.deepEqual(first.previousRenditions, [], 'nothing on the feed yet');
 
     await renditions.upsert(row.id, rung('720p', 720, 12));
     const second = await service.publish(row.id, TEST_USER_ID);
     assert.deepEqual(second.previousRenditions, first.renditions);
-    assert.equal(second.renditions[1]!.index, 12);
+    assert.equal(second.renditions[1].index, 12);
 
     const gone = await service.unpublish(row.id, TEST_USER_ID);
     assert.deepEqual(gone.renditions, [], 'nothing written for the stream');
@@ -695,7 +695,7 @@ describe('PublishService and the ABR ladder', () => {
 
     await service.publish(row.id, TEST_USER_ID);
     const [entry] = entriesOf(gateway);
-    assert.ok(!('renditions' in entry!), 'republished without a ladder');
+    assert.ok(!('renditions' in entry), 'republished without a ladder');
   });
 });
 
@@ -1034,8 +1034,8 @@ describe('PublishService.reconcile', () => {
     assert.deepEqual(outcome.added, [row.topic]);
     assert.equal(outcome.index, 5);
     const [entry] = entriesOf(gateway);
-    assert.equal(entry!.topic, row.topic);
-    assert.equal(entry!.state, 'scheduled');
+    assert.equal(entry.topic, row.topic);
+    assert.equal(entry.state, 'scheduled');
   });
 
   it('rebuilds an entry that no longer matches its row, keeping vod numbers', async () => {
@@ -1054,10 +1054,10 @@ describe('PublishService.reconcile', () => {
 
     assert.deepEqual(outcome.updated, [row.topic]);
     const [entry] = entriesOf(gateway);
-    assert.equal(entry!.title, 'Edited after the entry was written');
-    assert.equal(entry!.state, 'vod');
-    assert.equal(entry!.index, 412);
-    assert.equal(entry!.duration, 61);
+    assert.equal(entry.title, 'Edited after the entry was written');
+    assert.equal(entry.state, 'vod');
+    assert.equal(entry.index, 412);
+    assert.equal(entry.duration, 61);
   });
 
   it('keeps a ladder′s renditions on the entry, and does not count them as drift', async () => {
@@ -1083,10 +1083,10 @@ describe('PublishService.reconcile', () => {
 
     assert.deepEqual(repaired.updated, [row.topic]);
     const [entry] = entriesOf(gateway);
-    assert.equal(entry!.title, 'Retitled mid-ladder');
-    assert.equal(entry!.group, row.topic);
+    assert.equal(entry.title, 'Retitled mid-ladder');
+    assert.equal(entry.group, row.topic);
     assert.deepEqual(
-      entry!.renditions?.map((r) => r.name),
+      entry.renditions?.map((r) => r.name),
       ['360p', '720p'],
     );
   });
