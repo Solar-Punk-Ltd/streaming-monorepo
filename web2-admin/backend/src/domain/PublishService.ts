@@ -26,6 +26,7 @@ import {
   planReconcile,
   removeEntry,
   upsertEntry,
+  type ManagedCatalogueState,
 } from './feedEntries.js';
 import type { FeedGateway, FeedSnapshot } from './FeedGateway.js';
 import type { FeedIdentity } from './feedIdentity.js';
@@ -38,6 +39,8 @@ const logger = Logger.getInstance();
 /** The slice of StreamRepository publishing needs; a fake stands in for tests. */
 export interface PublishStreamStore {
   findById(id: string, userId: string): Promise<StreamRow | null>;
+  findByIdUnscoped(id: string): Promise<StreamRow | null>;
+  managedCatalogueState(streamId: string): Promise<ManagedCatalogueState | null>;
   findThumbnail(id: string, userId: string): Promise<ThumbnailRow | null>;
   recordThumbnailRef(
     id: string,
@@ -247,6 +250,14 @@ export class PublishService {
     );
   }
 
+  async republishManagedState(streamId: string): Promise<PublishOutcome> {
+    return this.mutex.run(async () => {
+      const current = await this.streams.findByIdUnscoped(streamId);
+      if (!current) throw new StreamNotFoundError(streamId);
+      return this.doRepublishWithState(current);
+    });
+  }
+
   /**
    * Rebuilds the catalogue from the database: drops entries of ours with no
    * published row behind them, rewrites entries that no longer match their
@@ -273,6 +284,7 @@ export class PublishService {
         userId,
         Date.now(),
         await this.laddersOf(rows),
+        await this.managedCatalogueStatesOf(rows),
       );
 
       if (!plan.changed) {
@@ -370,6 +382,7 @@ export class PublishService {
         undefined,
         Date.now(),
         await this.laddersOf(rows),
+        await this.managedCatalogueStatesOf(rows),
       );
       if (plan.removed.length > 0) {
         logger.warn(
@@ -556,6 +569,17 @@ export class PublishService {
     return ladders;
   }
 
+  private async managedCatalogueStatesOf(
+    rows: readonly StreamRow[],
+  ): Promise<Map<string, ManagedCatalogueState>> {
+    const states = new Map<string, ManagedCatalogueState>();
+    for (const row of rows) {
+      const state = await this.streams.managedCatalogueState(row.id);
+      if (state) states.set(row.id, state);
+    }
+    return states;
+  }
+
   /**
    * The stream's entry as it should stand right now, ladder included — and
    * that ladder on its own, for the outcome.
@@ -576,7 +600,14 @@ export class PublishService {
     const renditions = (await this.renditions.listByStream(stream.id)).map(
       toRendition,
     );
-    const entry = buildFeedEntry(stream, thumbnailRef, Date.now(), renditions);
+    const managedState = await this.streams.managedCatalogueState(stream.id);
+    const entry = buildFeedEntry(
+      stream,
+      thumbnailRef,
+      Date.now(),
+      renditions,
+      managedState ?? undefined,
+    );
     return { entry, renditions };
   }
 

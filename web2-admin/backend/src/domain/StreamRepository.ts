@@ -1,9 +1,42 @@
-import type { MediaType, StreamStatus } from '@streaming-monorepo/web2-admin-common';
+import type {
+  CompletedRecordingSnapshot,
+  ManagedLifecycleState,
+  MediaType,
+  StreamStatus,
+} from '@streaming-monorepo/web2-admin-common';
 import { Pool } from 'pg';
 
 import type { StreamRow, ThumbnailRow } from '../types/index.js';
 
+import type { ManagedCatalogueState } from './feedEntries.js';
 import { STREAM_COLUMNS } from './streamSql.js';
+
+interface ManagedCatalogueDatabaseRow {
+  lifecycle_version: number | null;
+  lifecycle_revision: number;
+  current_run_number: number | null;
+  completed_run_number: number | null;
+  state: ManagedLifecycleState | null;
+}
+
+interface PublicRecordingDatabaseRow {
+  master_topic: string;
+  master_index: string | number;
+  master_reference: string;
+  duration_seconds: number;
+}
+
+interface PublicRenditionDatabaseRow {
+  name: string;
+  topic: string;
+  manifest_index: string | number;
+  reference: string;
+  duration_seconds: number;
+  width: number;
+  height: number;
+  bandwidth: string | number;
+  avg_bandwidth: string | number;
+}
 
 export interface StreamInsertData {
   user_id: string;
@@ -73,6 +106,103 @@ export class StreamRepository {
       [id],
     );
     return this.one(result.rows, result.rowCount);
+  }
+
+  async managedCatalogueState(
+    streamId: string,
+  ): Promise<ManagedCatalogueState | null> {
+    const stateResult = await this.pool.query<ManagedCatalogueDatabaseRow>(
+      `SELECT stream.lifecycle_version, stream.lifecycle_revision,
+              stream.current_run_number, stream.completed_run_number,
+              run.state
+         FROM streams stream
+         LEFT JOIN stream_runs run
+           ON run.stream_id = stream.id
+          AND run.run_number = stream.current_run_number
+        WHERE stream.id = $1`,
+      [streamId],
+    );
+    const state = this.one(stateResult.rows, stateResult.rowCount);
+    if (
+      state?.lifecycle_version !== 1 ||
+      state.current_run_number === null ||
+      state.state === null
+    ) {
+      return null;
+    }
+
+    const lifecycle: ManagedCatalogueState['lifecycle'] = {
+      version: 1,
+      revision: state.lifecycle_revision,
+      runNumber: state.current_run_number,
+      state: state.state,
+    };
+    if (state.completed_run_number === null) return { lifecycle };
+
+    return {
+      lifecycle,
+      completedRecording: await this.completedRecording(
+        streamId,
+        state.completed_run_number,
+      ),
+    };
+  }
+
+  private async completedRecording(
+    streamId: string,
+    runNumber: number,
+  ): Promise<CompletedRecordingSnapshot> {
+    const [recordingResult, expectedResult, renditionsResult] =
+      await Promise.all([
+        this.pool.query<PublicRecordingDatabaseRow>(
+          `SELECT master_topic, master_index, master_reference, duration_seconds
+             FROM stream_run_recordings
+            WHERE stream_id = $1 AND run_number = $2`,
+          [streamId, runNumber],
+        ),
+        this.pool.query<{ name: string }>(
+          `SELECT name
+             FROM stream_run_expected_renditions
+            WHERE stream_id = $1 AND run_number = $2
+            ORDER BY name`,
+          [streamId, runNumber],
+        ),
+        this.pool.query<PublicRenditionDatabaseRow>(
+          `SELECT name, topic, manifest_index, reference, duration_seconds,
+                  width, height, bandwidth, avg_bandwidth
+             FROM stream_run_recording_renditions
+            WHERE stream_id = $1 AND run_number = $2
+            ORDER BY name, topic`,
+          [streamId, runNumber],
+        ),
+      ]);
+    const recording = this.one(recordingResult.rows, recordingResult.rowCount);
+    if (!recording) {
+      throw new Error(
+        `managed stream ${streamId} names missing completed run ${runNumber}`,
+      );
+    }
+    return {
+      runNumber,
+      master: {
+        topic: recording.master_topic,
+        index: Number(recording.master_index),
+        reference: recording.master_reference,
+        duration: recording.duration_seconds,
+      },
+      expectedRenditions: expectedResult.rows.map(({ name }) => name),
+      renditions: renditionsResult.rows.map((rendition) => ({
+        name: rendition.name,
+        topic: rendition.topic,
+        index: Number(rendition.manifest_index),
+        reference: rendition.reference,
+        duration: rendition.duration_seconds,
+        width: rendition.width,
+        height: rendition.height,
+        bandwidth: Number(rendition.bandwidth),
+        avgBandwidth: Number(rendition.avg_bandwidth),
+      })),
+    };
   }
 
   /**

@@ -82,6 +82,7 @@ export function startApiServer(
       ladderService: deps.ladderService,
       managedLifecycle: deps.managedLifecycle,
       continuations: deps.continuations,
+      publishService: deps.publishService,
       requireInternalToken: createRequireInternalToken(deps.internalApiToken),
     }),
   );

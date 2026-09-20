@@ -1,7 +1,9 @@
 import { isDeepStrictEqual } from 'node:util';
 
 import type {
+  CompletedRecordingSnapshot,
   FeedStreamEntry,
+  ManagedLifecycleSummary,
   Rendition,
   StreamStatus,
 } from '@streaming-monorepo/web2-admin-common';
@@ -9,6 +11,11 @@ import type {
 import type { StreamRow } from '../types/index.js';
 
 import { isRendition } from './renditions.js';
+
+export interface ManagedCatalogueState {
+  lifecycle: ManagedLifecycleSummary;
+  completedRecording?: CompletedRecordingSnapshot;
+}
 
 /**
  * The stream list feed is a JSON array that everything on it rewrites whole.
@@ -109,6 +116,7 @@ export function buildFeedEntry(
   thumbnailRef: string | null,
   timestamp: number,
   renditions: readonly Rendition[] = [],
+  managedState?: ManagedCatalogueState,
 ): FeedStreamEntry {
   const state = feedEntryState(stream.status);
   const entry: FeedStreamEntry = {
@@ -134,6 +142,12 @@ export function buildFeedEntry(
   if (renditions.length > 0) {
     entry.group = stream.topic;
     entry.renditions = [...renditions];
+  }
+  if (managedState) {
+    entry.lifecycle = managedState.lifecycle;
+    if (managedState.completedRecording) {
+      entry.completedRecording = managedState.completedRecording;
+    }
   }
   return entry;
 }
@@ -206,6 +220,7 @@ export function planReconcile(
   userId?: string,
   now: number = Date.now(),
   ladders: ReadonlyMap<string, readonly Rendition[]> = new Map(),
+  managedStates: ReadonlyMap<string, ManagedCatalogueState> = new Map(),
 ): ReconcilePlan {
   const owner = feedOwner.toLowerCase();
   const byTopic = new Map(rows.map((row) => [row.topic.toLowerCase(), row]));
@@ -243,6 +258,7 @@ export function planReconcile(
       row.thumbnail_ref,
       typeof timestamp === 'number' ? timestamp : now,
       ladders.get(row.id) ?? [],
+      managedStates.get(row.id),
     );
     if (isDeepStrictEqual(element, rebuilt)) {
       entries.push(element);
@@ -258,7 +274,13 @@ export function planReconcile(
     if (row.owner.toLowerCase() !== owner) continue;
     added.push(row.topic);
     entries.push(
-      buildFeedEntry(row, row.thumbnail_ref, now, ladders.get(row.id) ?? []),
+      buildFeedEntry(
+        row,
+        row.thumbnail_ref,
+        now,
+        ladders.get(row.id) ?? [],
+        managedStates.get(row.id),
+      ),
     );
   }
 

@@ -518,6 +518,47 @@ describe('PublishService republishing a stream that has gone live', () => {
     assert.equal(store.get(asCallerReadIt.id).status, 'live');
   });
 
+  it('does not let a delayed older managed publication overwrite a newer state', async () => {
+    const { store, gateway, service } = setup();
+    const live = store.add(
+      streamRow({
+        status: 'live',
+        lifecycle_version: 1,
+        lifecycle_revision: 2,
+        current_run_number: 1,
+        lifecycle_state: 'live',
+        lifecycle_permission: 'claimed',
+        lifecycle_uploader_id: 'srs-main',
+      }),
+    );
+
+    let releaseOlder!: () => void;
+    const olderMayPublish = new Promise<void>((resolve) => {
+      releaseOlder = resolve;
+    });
+    const delayedOlder = olderMayPublish.then(() =>
+      service.republishManagedState(live.id),
+    );
+    store.add({
+      ...live,
+      status: 'vod',
+      lifecycle_revision: 3,
+      lifecycle_state: 'vod',
+      lifecycle_permission: 'closed',
+      manifest_index: 12,
+      duration_seconds: 45,
+    });
+    await service.republishManagedState(live.id);
+    releaseOlder();
+    await delayedOlder;
+
+    const [final] = entriesOf(gateway);
+    assert.ok(final);
+    assert.equal(final.state, 'vod');
+    assert.equal(final.lifecycle?.revision, 3);
+    assert.equal(final.lifecycle?.state, 'vod');
+  });
+
   it('takes the same route when the operator republishes by hand', async () => {
     // A title fixed mid-broadcast: POST /streams/:id/publish on a live stream
     // must reach the feed without the stream leaving `live`.

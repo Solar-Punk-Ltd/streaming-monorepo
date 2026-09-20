@@ -21,6 +21,7 @@ import type {
   PublishRenditionStore,
   PublishStreamStore,
 } from '../../../src/domain/PublishService.js';
+import type { ManagedCatalogueState } from '../../../src/domain/feedEntries.js';
 import type { StateStreamStore } from '../../../src/domain/StreamStateService.js';
 import type {
   StreamRenditionRow,
@@ -168,6 +169,27 @@ export class FakeStreamStore
   async findByIdUnscoped(id: string): Promise<StreamRow | null> {
     const row = this.rows.get(id);
     return row ? { ...row } : null;
+  }
+
+  async managedCatalogueState(
+    streamId: string,
+  ): Promise<ManagedCatalogueState | null> {
+    const row = this.rows.get(streamId);
+    if (
+      row?.lifecycle_version !== 1 ||
+      row.current_run_number === null ||
+      row.lifecycle_state === null
+    ) {
+      return null;
+    }
+    return {
+      lifecycle: {
+        version: 1,
+        revision: row.lifecycle_revision,
+        runNumber: row.current_run_number,
+        state: row.lifecycle_state,
+      },
+    };
   }
 
   /** Unscoped, as the SQL is: `topic` is UNIQUE, so this is still one row. */

@@ -13,6 +13,7 @@ import { Request, RequestHandler, Response, Router } from 'express';
 import { LadderService } from '../../domain/LadderService.js';
 import { ContinuationRepository } from '../../domain/ContinuationRepository.js';
 import { ManagedLifecycleRepository } from '../../domain/ManagedLifecycleRepository.js';
+import { PublishService } from '../../domain/PublishService.js';
 import { StreamStateService } from '../../domain/StreamStateService.js';
 import {
   ingestLookupParamSchema,
@@ -45,6 +46,7 @@ export interface InternalRoutesDeps {
   ladderService: LadderService;
   managedLifecycle: ManagedLifecycleRepository;
   continuations: ContinuationRepository;
+  publishService: PublishService;
   requireInternalToken: RequestHandler;
 }
 
@@ -66,6 +68,7 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
     ladderService,
     managedLifecycle,
     continuations,
+    publishService,
     requireInternalToken,
   } = deps;
   const router = Router();
@@ -93,6 +96,7 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
         String(req.params.operationId),
         req.body as ContinuationPreparationRequest,
       );
+      await publishService.republishManagedState(String(req.params.id));
       res.json({ operation });
     }),
   );
@@ -124,6 +128,7 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
         Number(req.params.run),
         req.body as ManagedRunReport,
       );
+      await publishService.republishManagedState(String(req.params.id));
       res.json(run);
     }),
   );
@@ -138,6 +143,7 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
         Number(req.params.run),
         req.body as ManagedClaimRequest,
       );
+      await publishService.republishManagedState(String(req.params.id));
       res.json(run);
     }),
   );

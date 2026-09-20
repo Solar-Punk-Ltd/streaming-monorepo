@@ -172,4 +172,42 @@ describe('buildFeedEntry', () => {
     assert.equal(entry.index, 9, 'the master, not the rung');
     assert.equal(entry.renditions?.[0]?.index, 42);
   });
+
+  it('publishes managed lifecycle and the completed replay without its checkpoint', () => {
+    const row = streamRow({
+      status: 'live',
+      lifecycle_version: 1,
+      lifecycle_revision: 8,
+      current_run_number: 2,
+      lifecycle_state: 'live',
+      lifecycle_permission: 'claimed',
+      lifecycle_uploader_id: 'srs-main',
+    });
+    const entry = buildFeedEntry(row, null, 1, [], {
+      lifecycle: { version: 1, revision: 8, runNumber: 2, state: 'live' },
+      completedRecording: {
+        runNumber: 1,
+        master: {
+          topic: row.topic,
+          index: 12,
+          reference: 'a'.repeat(64),
+          duration: 45,
+        },
+        expectedRenditions: [],
+        renditions: [],
+      },
+    });
+
+    assert.deepEqual(entry.lifecycle, {
+      version: 1,
+      revision: 8,
+      runNumber: 2,
+      state: 'live',
+    });
+    assert.equal(entry.completedRecording?.master.reference, 'a'.repeat(64));
+    assert.ok(
+      !('checkpointReference' in (entry.completedRecording ?? {})),
+      'private checkpoint never reaches the catalogue',
+    );
+  });
 });

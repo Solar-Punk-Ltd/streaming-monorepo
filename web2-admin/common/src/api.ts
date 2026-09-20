@@ -191,6 +191,8 @@ export interface FeedStreamEntry {
    */
   group?: string;
   renditions?: Rendition[];
+  lifecycle?: import('./lifecycle.js').ManagedLifecycleSummary;
+  completedRecording?: import('./lifecycle.js').CompletedRecordingSnapshot;
 }
 
 /** GET /api/streams/:id/feed and POST /api/streams/:id/publish */

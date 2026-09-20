@@ -262,6 +262,27 @@ describe('managed closed recording protection', () => {
         },
       ],
     );
+
+    const catalogueState = await streams.managedCatalogueState(id);
+    assert.deepEqual(catalogueState?.lifecycle, {
+      version: 1,
+      revision: 6,
+      runNumber: 2,
+      state: 'ready',
+    });
+    assert.equal(catalogueState?.completedRecording?.runNumber, 1);
+    assert.equal(
+      catalogueState?.completedRecording?.master.reference,
+      masterReference,
+    );
+    assert.deepEqual(
+      catalogueState?.completedRecording?.expectedRenditions,
+      ['360p', '720p'],
+    );
+    assert.ok(
+      !('checkpointReference' in (catalogueState?.completedRecording ?? {})),
+      'the public catalogue projection excludes the private checkpoint',
+    );
     await assert.rejects(
       lifecycle.report(id, 1, {
         lifecycleVersion: 1,

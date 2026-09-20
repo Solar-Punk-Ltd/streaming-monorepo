@@ -99,6 +99,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
         user.id,
         req.body as ContinuationCreateRequest,
       );
+      await publishService.republishManagedState(streamId(req));
       const location = `/api/streams/${streamId(req)}/continuations/${operation.operationId}`;
       res.location(location).status(202).json({
         operation: toOwnerContinuation(operation),
@@ -130,6 +131,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
         String(req.params.operationId),
         user.id,
       );
+      await publishService.republishManagedState(streamId(req));
       res.json({ operation: toOwnerContinuation(operation) });
     }),
   );
