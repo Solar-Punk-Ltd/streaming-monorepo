@@ -40,7 +40,7 @@ export function classifyManagedEvent(
 
 const RUN_TRANSITIONS: Record<ManagedRunState, readonly ManagedRunState[]> = {
   ready: ['ready', 'claimed', 'closed'],
-  claimed: ['claimed', 'live', 'closed'],
+  claimed: ['claimed', 'live', 'waiting', 'closed'],
   live: ['live', 'waiting', 'closed'],
   waiting: ['waiting', 'live', 'closed'],
   closed: ['closed', 'vod'],
