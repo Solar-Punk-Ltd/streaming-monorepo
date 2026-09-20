@@ -4,6 +4,8 @@
  */
 import type {
   IngestLookupResponse,
+  ManagedOwnerLifecycle,
+  CompletedRecordingSnapshot,
   PublishResult,
   RenditionReportResponse,
   Stream,
@@ -29,7 +31,13 @@ export function toUser(row: UserRow): User {
   };
 }
 
-export function toStream(row: StreamRow): Stream {
+export function toStream(
+  row: StreamRow,
+  managed?: {
+    lifecycle: ManagedOwnerLifecycle;
+    completedRecording?: CompletedRecordingSnapshot;
+  } | null,
+): Stream {
   return {
     id: row.id,
     topic: row.topic,
@@ -49,6 +57,10 @@ export function toStream(row: StreamRow): Stream {
     durationSeconds: row.duration_seconds,
     liveSince: iso(row.live_since),
     endedAt: iso(row.ended_at),
+    ...(managed ? { lifecycle: managed.lifecycle } : {}),
+    ...(managed?.completedRecording
+      ? { completedRecording: managed.completedRecording }
+      : {}),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };

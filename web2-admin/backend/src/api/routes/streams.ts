@@ -157,7 +157,8 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     asyncHandler(async (req: Request, res: Response) => {
       const { user } = requireUser(req);
       const stream = await streamService.get(streamId(req), user.id);
-      res.json(toStream(stream));
+      const managed = await streamService.managedOwnerState(stream.id);
+      res.json(toStream(stream, managed));
     }),
   );
 

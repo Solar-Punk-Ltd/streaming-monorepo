@@ -111,6 +111,10 @@ export interface Stream {
   /** When the uploader reported the stream live, and when it reported it ended. */
   liveSince?: string | null;
   endedAt?: string | null;
+  /** Present only after this stream is enrolled in managed continuation. */
+  lifecycle?: import('./lifecycle.js').ManagedOwnerLifecycle;
+  /** Latest completed replay, which may predate the current run. */
+  completedRecording?: import('./lifecycle.js').CompletedRecordingSnapshot;
   /**
    * The merged ABR ladder, when the uploader has reported rungs for this
    * stream. Absent for a single-rendition stream, and absent from the console's

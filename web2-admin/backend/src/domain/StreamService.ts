@@ -22,6 +22,7 @@ import {
 import { isScheduleLocked } from './streamState.js';
 import type { FeedIdentity } from './feedIdentity.js';
 import { StreamRepository } from './StreamRepository.js';
+import type { ManagedOwnerState } from './StreamRepository.js';
 
 /** A validated StreamInput, with tags and scheduledStartTime settled. */
 export interface StreamInputValues {
@@ -70,6 +71,10 @@ export class StreamService {
     const stream = await this.streams.findById(id, userId);
     if (!stream) throw new StreamNotFoundError(id);
     return stream;
+  }
+
+  async managedOwnerState(id: string): Promise<ManagedOwnerState | null> {
+    return this.streams.managedOwnerState(id);
   }
 
   async create(userId: string, input: StreamInputValues): Promise<StreamRow> {

@@ -352,5 +352,14 @@ describe('continuation operations', () => {
       checkpointReference,
       'the previous completed replay remains retained',
     );
+    const ownerState = await streams.managedOwnerState(streamId);
+    assert.deepEqual(ownerState?.lifecycle, {
+      version: 1,
+      revision: replacement.revision,
+      runNumber: 2,
+      state: 'closed',
+      permission: 'closed',
+    });
+    assert.equal(ownerState?.completedRecording?.runNumber, 1);
   });
 });

@@ -19,6 +19,10 @@ export interface ManagedLifecycleSummary {
   state: ManagedLifecycleState;
 }
 
+export interface ManagedOwnerLifecycle extends ManagedLifecycleSummary {
+  permission: ManagedRunPermission;
+}
+
 export interface ImmutableMediaReference {
   topic: string;
   index: number;

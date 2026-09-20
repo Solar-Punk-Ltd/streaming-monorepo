@@ -1,6 +1,8 @@
 import type {
   CompletedRecordingSnapshot,
   ManagedLifecycleState,
+  ManagedOwnerLifecycle,
+  ManagedRunPermission,
   MediaType,
   StreamStatus,
 } from '@streaming-monorepo/web2-admin-common';
@@ -17,6 +19,12 @@ interface ManagedCatalogueDatabaseRow {
   current_run_number: number | null;
   completed_run_number: number | null;
   state: ManagedLifecycleState | null;
+  permission: ManagedRunPermission | null;
+}
+
+export interface ManagedOwnerState {
+  lifecycle: ManagedOwnerLifecycle;
+  completedRecording?: CompletedRecordingSnapshot;
 }
 
 interface PublicRecordingDatabaseRow {
@@ -111,10 +119,22 @@ export class StreamRepository {
   async managedCatalogueState(
     streamId: string,
   ): Promise<ManagedCatalogueState | null> {
+    const ownerState = await this.managedOwnerState(streamId);
+    if (!ownerState) return null;
+    const { permission: _permission, ...lifecycle } = ownerState.lifecycle;
+    return {
+      lifecycle,
+      ...(ownerState.completedRecording
+        ? { completedRecording: ownerState.completedRecording }
+        : {}),
+    };
+  }
+
+  async managedOwnerState(streamId: string): Promise<ManagedOwnerState | null> {
     const stateResult = await this.pool.query<ManagedCatalogueDatabaseRow>(
       `SELECT stream.lifecycle_version, stream.lifecycle_revision,
               stream.current_run_number, stream.completed_run_number,
-              run.state
+              run.state, run.permission
          FROM streams stream
          LEFT JOIN stream_runs run
            ON run.stream_id = stream.id
@@ -126,16 +146,18 @@ export class StreamRepository {
     if (
       state?.lifecycle_version !== 1 ||
       state.current_run_number === null ||
-      state.state === null
+      state.state === null ||
+      state.permission === null
     ) {
       return null;
     }
 
-    const lifecycle: ManagedCatalogueState['lifecycle'] = {
+    const lifecycle: ManagedOwnerLifecycle = {
       version: 1,
       revision: state.lifecycle_revision,
       runNumber: state.current_run_number,
       state: state.state,
+      permission: state.permission,
     };
     if (state.completed_run_number === null) return { lifecycle };
 
