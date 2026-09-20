@@ -27,6 +27,26 @@ interface CurrentStreamRow {
   accepted_media_count: number | null;
 }
 
+type LockedStreamRow = Omit<
+  CurrentStreamRow,
+  | 'state'
+  | 'permission'
+  | 'assigned_uploader_id'
+  | 'close_reason'
+  | 'empty_checkpoint_reference'
+  | 'accepted_media_count'
+>;
+
+type LockedRunRow = Pick<
+  CurrentStreamRow,
+  | 'state'
+  | 'permission'
+  | 'assigned_uploader_id'
+  | 'close_reason'
+  | 'empty_checkpoint_reference'
+  | 'accepted_media_count'
+>;
+
 interface OperationRow {
   operation_id: string;
   request_id: string;
@@ -386,22 +406,28 @@ export class ContinuationRepository {
     streamId: string,
     ownerId: string,
   ): Promise<CurrentStreamRow> {
-    const result = await client.query<CurrentStreamRow>(
+    const streamResult = await client.query<LockedStreamRow>(
       `SELECT stream.topic, stream.media_type, stream.lifecycle_version,
               stream.lifecycle_revision, stream.current_run_number,
-              stream.completed_run_number, run.state, run.permission,
-              run.assigned_uploader_id, run.close_reason,
-              run.empty_checkpoint_reference, run.accepted_media_count
+              stream.completed_run_number
          FROM streams stream
-         JOIN stream_runs run
-           ON run.stream_id = stream.id
-          AND run.run_number = stream.current_run_number
         WHERE stream.id = $1 AND stream.user_id = $2
-        FOR UPDATE OF stream, run`,
+        FOR UPDATE /* continuation_lock_owned_stream */`,
       [streamId, ownerId],
     );
-    if (!result.rows[0]) throw new StreamNotFoundError(streamId);
-    return result.rows[0];
+    const stream = streamResult.rows[0];
+    if (!stream) throw new StreamNotFoundError(streamId);
+    const runResult = await client.query<LockedRunRow>(
+      `SELECT state, permission, assigned_uploader_id, close_reason,
+              empty_checkpoint_reference, accepted_media_count
+         FROM stream_runs
+        WHERE stream_id = $1 AND run_number = $2
+        FOR UPDATE`,
+      [streamId, stream.current_run_number],
+    );
+    const run = runResult.rows[0];
+    if (!run) throw new ManagedLifecycleConflict('stale_run');
+    return { ...stream, ...run };
   }
 
   private async findByRequest(
