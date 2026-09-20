@@ -48,6 +48,8 @@ CREATE TABLE stream_runs (
   permission             TEXT NOT NULL,
   assigned_uploader_id   TEXT NOT NULL,
   claim_id               UUID,
+  claim_request_id       UUID,
+  claim_request_digest   TEXT,
   revision               BIGINT NOT NULL,
   last_event_sequence    BIGINT,
   last_event_digest      TEXT,
@@ -55,6 +57,8 @@ CREATE TABLE stream_runs (
   last_received_at       TIMESTAMPTZ,
   reconnect_deadline     TIMESTAMPTZ,
   close_reason           TEXT,
+  empty_checkpoint_reference UUID,
+  accepted_media_count   BIGINT,
   created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (stream_id, run_number),
@@ -84,15 +88,32 @@ CREATE TABLE stream_runs (
       = (last_received_at IS NULL)
   ),
   CONSTRAINT stream_runs_permission_shape CHECK (
-    (permission = 'open' AND state = 'ready' AND claim_id IS NULL)
+    (
+      permission = 'open'
+      AND state = 'ready'
+      AND claim_id IS NULL
+      AND claim_request_id IS NULL
+      AND claim_request_digest IS NULL
+    )
     OR
     (
       permission = 'claimed'
       AND state IN ('claimed', 'live', 'waiting')
       AND claim_id IS NOT NULL
+      AND claim_request_id IS NOT NULL
+      AND claim_request_digest IS NOT NULL
     )
-    OR
-    (permission = 'closed' AND state IN ('closed', 'vod'))
+    OR (
+      permission = 'closed'
+      AND state IN ('closed', 'vod')
+      AND (
+        claim_id IS NULL
+        OR (
+          claim_request_id IS NOT NULL
+          AND claim_request_digest IS NOT NULL
+        )
+      )
+    )
   ),
   CONSTRAINT stream_runs_waiting_deadline CHECK (
     state <> 'waiting' OR reconnect_deadline IS NOT NULL
@@ -109,6 +130,18 @@ CREATE TABLE stream_runs (
       )
     )
     OR (state NOT IN ('closed', 'vod') AND close_reason IS NULL)
+  ),
+  CONSTRAINT stream_runs_empty_outcome CHECK (
+    (
+      close_reason = 'empty'
+      AND empty_checkpoint_reference IS NOT NULL
+      AND accepted_media_count = 0
+    )
+    OR (
+      close_reason IS DISTINCT FROM 'empty'
+      AND empty_checkpoint_reference IS NULL
+      AND accepted_media_count IS NULL
+    )
   )
 );
 
@@ -214,6 +247,14 @@ BEGIN
     OR (
       OLD.claim_id IS NOT NULL
       AND OLD.claim_id IS DISTINCT FROM NEW.claim_id
+    )
+    OR (
+      OLD.claim_request_id IS NOT NULL
+      AND OLD.claim_request_id IS DISTINCT FROM NEW.claim_request_id
+    )
+    OR (
+      OLD.claim_request_digest IS NOT NULL
+      AND OLD.claim_request_digest IS DISTINCT FROM NEW.claim_request_digest
     )
   THEN
     RAISE EXCEPTION 'a managed run claim identity is immutable'

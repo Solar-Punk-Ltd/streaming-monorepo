@@ -109,10 +109,12 @@ describe('managed closed recording protection', () => {
     await database.pool.query(
       `INSERT INTO stream_runs (
          stream_id, run_number, state, permission, assigned_uploader_id,
-         claim_id, revision, last_event_sequence, last_event_digest,
+         claim_id, claim_request_id, claim_request_digest, revision,
+         last_event_sequence, last_event_digest,
          last_observed_at, close_reason
-       ) VALUES ($1, 1, 'closed', 'closed', 'itest-uploader', $2, 4, 3, 'closed-3', NOW(), 'reconnect_timeout')`,
-      [id, claimId],
+       ) VALUES ($1, 1, 'closed', 'closed', 'itest-uploader', $2, $3,
+                 'claim-digest', 4, 3, 'closed-3', NOW(), 'reconnect_timeout')`,
+      [id, claimId, randomUUID()],
     );
     await database.pool.query(
       `INSERT INTO stream_run_recordings (
@@ -228,6 +230,96 @@ describe('managed closed recording protection', () => {
 });
 
 describe('managed run database invariants', () => {
+  it('retains the winning claim request and requires proof for an empty close', async () => {
+    const row = await streams.insert({
+      user_id: userId,
+      topic: randomUUID(),
+      owner: OWNER,
+      title: 'claim identity',
+      description: 'durable claim and empty outcome',
+      tags: [],
+      media_type: 'video',
+      scheduled_start_time: null,
+      publish_key: newPublishKey(),
+    });
+    const claimId = randomUUID();
+    const requestId = randomUUID();
+    const checkpointReference = randomUUID();
+    await database.pool.query(
+      `UPDATE streams
+          SET lifecycle_version = 1, lifecycle_revision = 1,
+              current_run_number = 1
+        WHERE id = $1`,
+      [row.id],
+    );
+    await database.pool.query(
+      `INSERT INTO stream_runs (
+         stream_id, run_number, state, permission, assigned_uploader_id,
+         revision
+       ) VALUES ($1, 1, 'ready', 'open', 'itest-uploader', 1)`,
+      [row.id],
+    );
+    await database.pool.query(
+      `UPDATE stream_runs
+          SET state = 'claimed', permission = 'claimed', claim_id = $2,
+              claim_request_id = $3, claim_request_digest = 'request-a',
+              revision = 2
+        WHERE stream_id = $1 AND run_number = 1`,
+      [row.id, claimId, requestId],
+    );
+
+    await assert.rejects(
+      database.pool.query(
+        `UPDATE stream_runs SET claim_request_id = $2
+          WHERE stream_id = $1 AND run_number = 1`,
+        [row.id, randomUUID()],
+      ),
+      (error: NodeJS.ErrnoException & { constraint?: string }) => {
+        assert.equal(error.code, '23514');
+        assert.equal(error.constraint, 'managed_run_claim_identity');
+        return true;
+      },
+    );
+    await assert.rejects(
+      database.pool.query(
+        `UPDATE stream_runs
+            SET state = 'closed', permission = 'closed',
+                close_reason = 'empty', revision = 3
+          WHERE stream_id = $1 AND run_number = 1`,
+        [row.id],
+      ),
+      (error: NodeJS.ErrnoException & { constraint?: string }) => {
+        assert.equal(error.code, '23514');
+        assert.equal(error.constraint, 'stream_runs_empty_outcome');
+        return true;
+      },
+    );
+    await database.pool.query(
+      `UPDATE stream_runs
+          SET state = 'closed', permission = 'closed', close_reason = 'empty',
+              empty_checkpoint_reference = $2, accepted_media_count = 0,
+              revision = 3
+        WHERE stream_id = $1 AND run_number = 1`,
+      [row.id, checkpointReference],
+    );
+    const stored = await database.pool.query<{
+      request_id: string;
+      checkpoint_reference: string;
+      accepted_media_count: string;
+    }>(
+      `SELECT claim_request_id AS request_id,
+              empty_checkpoint_reference AS checkpoint_reference,
+              accepted_media_count
+         FROM stream_runs WHERE stream_id = $1 AND run_number = 1`,
+      [row.id],
+    );
+    assert.deepEqual(stored.rows, [{
+      request_id: requestId,
+      checkpoint_reference: checkpointReference,
+      accepted_media_count: 0,
+    }]);
+  });
+
   it('requires every managed stream to identify its current run', async () => {
     const row = await streams.insert({
       user_id: userId,
@@ -281,9 +373,10 @@ describe('managed run database invariants', () => {
     await database.pool.query(
       `INSERT INTO stream_runs (
          stream_id, run_number, state, permission, assigned_uploader_id,
-         claim_id, revision
-       ) VALUES ($1, 1, 'claimed', 'claimed', 'itest-uploader', $2, 1)`,
-      [row.id, claimId],
+         claim_id, claim_request_id, claim_request_digest, revision
+       ) VALUES ($1, 1, 'claimed', 'claimed', 'itest-uploader', $2, $3,
+                 'claim-digest', 1)`,
+      [row.id, claimId, randomUUID()],
     );
     await database.pool.query(
       `UPDATE stream_runs
