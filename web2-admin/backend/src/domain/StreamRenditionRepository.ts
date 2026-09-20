@@ -33,6 +33,21 @@ export class StreamRenditionRepository {
     return result.rows;
   }
 
+  async listByManagedRun(
+    streamId: string,
+    runNumber: number,
+  ): Promise<StreamRenditionRow[]> {
+    const result = await this.pool.query<StreamRenditionRow>(
+      `SELECT stream_id, name, width, height, topic, bandwidth,
+              avg_bandwidth, manifest_index, duration_seconds, updated_at
+         FROM stream_run_renditions
+        WHERE stream_id = $1 AND run_number = $2
+        ORDER BY height ASC, name ASC`,
+      [streamId, runNumber],
+    );
+    return result.rows;
+  }
+
   /**
    * Stores one rung, replacing whatever that name held. The caller has already
    * merged the incoming report into the stored one, so what arrives here is

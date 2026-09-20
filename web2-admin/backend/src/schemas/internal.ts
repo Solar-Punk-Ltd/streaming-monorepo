@@ -142,6 +142,10 @@ export const managedRunParamSchema = object({
   run: positiveSafeInteger('run'),
 }).noUnknown(true);
 
+export const managedRenditionParamSchema = managedRunParamSchema.shape({
+  name: string().required().matches(/^[A-Za-z0-9.-]{1,32}$/),
+});
+
 export const managedRunIdentitySchema = object({
   uploaderId: string().required().min(1).max(200),
   claimId: string().required().matches(UUID_RE, 'claimId must be a UUID'),
@@ -273,6 +277,34 @@ export const managedReportSchema = object({
       schema.required('completedRecording is required when state is vod'),
     otherwise: (schema) => schema.strip(),
   }),
+}).noUnknown(true);
+
+const managedRenditionBodySchema = object({
+  name: string().required().matches(/^[A-Za-z0-9.-]{1,32}$/),
+  topic: string().required().matches(UUID_RE, 'topic must be a UUID'),
+  width: number().required().integer().positive(),
+  height: number().required().integer().positive(),
+  bandwidth: number().required().integer().min(0),
+  avgBandwidth: number().required().integer().min(0),
+  index: number().integer().min(0).max(SAFE_INTEGER_MAX),
+  duration: number().min(0),
+})
+  .test(
+    'index-with-duration',
+    'index and duration are sent together, or neither is',
+    (value) =>
+      value === undefined ||
+      (value.index === undefined) === (value.duration === undefined),
+  )
+  .noUnknown(true);
+
+export const managedRenditionReportSchema = object({
+  lifecycleVersion,
+  uploaderId: string().required().min(1).max(200),
+  claimId: string().required().matches(UUID_RE, 'claimId must be a UUID'),
+  renditionSequence: positiveSafeInteger('renditionSequence'),
+  observedAt: string().required().datetime({ precision: 3 }),
+  rendition: managedRenditionBodySchema.required(),
 }).noUnknown(true);
 
 export type ManagedClaimBody = InferType<typeof managedClaimSchema>;

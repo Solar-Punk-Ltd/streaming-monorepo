@@ -120,8 +120,48 @@ export type ManagedRunReport =
       completedRecording: InternalCompletedRecordingSnapshot;
     });
 
+export interface ManagedRenditionReport {
+  lifecycleVersion: typeof MANAGED_LIFECYCLE_VERSION;
+  uploaderId: string;
+  claimId: string;
+  renditionSequence: number;
+  observedAt: string;
+  rendition: ManagedExpectedRendition & {
+    index?: number;
+    duration?: number;
+  };
+}
+
+export interface ManagedRenditionReportResponse {
+  lifecycleVersion: typeof MANAGED_LIFECYCLE_VERSION;
+  streamId: string;
+  runNumber: number;
+  revision: number;
+  uploaderId: string;
+  claimId: string;
+  renditionRevision: number;
+  renditions: Array<
+    ManagedExpectedRendition & {
+      index?: number;
+      duration?: number;
+    }
+  >;
+  ladder: {
+    finished: boolean;
+    flippedToFinished: boolean;
+    duration: number | null;
+  };
+}
+
 /** Stable UTF-8 input for the cross-service report SHA256. */
 export function canonicalManagedReportJson(report: ManagedRunReport): string {
+  return canonicalJson(report);
+}
+
+/** Stable UTF-8 input for one run-scoped rendition event SHA256. */
+export function canonicalManagedRenditionReportJson(
+  report: ManagedRenditionReport,
+): string {
   return canonicalJson(report);
 }
 

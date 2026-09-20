@@ -585,6 +585,31 @@ describe('PublishService republishing a stream that has gone live', () => {
     assert.equal(final.lifecycle?.state, 'vod');
   });
 
+  it('publishes only the current managed run ladder', async () => {
+    const { store, renditions, gateway, service } = setup();
+    const row = store.add(
+      streamRow({
+        status: 'live',
+        lifecycle_version: 1,
+        lifecycle_revision: 3,
+        current_run_number: 2,
+        lifecycle_state: 'live',
+        lifecycle_permission: 'claimed',
+        lifecycle_uploader_id: 'srs-main',
+      }),
+    );
+    await renditions.upsert(row.id, rung('old-720p', 720));
+    const current = await renditions.upsert(row.id, rung('360p', 360));
+    renditions.managedRows.set(`${row.id}:2`, [current]);
+
+    await service.republishManagedState(row.id);
+
+    assert.deepEqual(
+      entriesOf(gateway)[0].renditions?.map(({ name }) => name),
+      ['360p'],
+    );
+  });
+
   it('takes the same route when the operator republishes by hand', async () => {
     // A title fixed mid-broadcast: POST /streams/:id/publish on a live stream
     // must reach the feed without the stream leaving `live`.

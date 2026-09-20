@@ -82,11 +82,20 @@ export class FakeRenditionStore
   implements PublishRenditionStore, LadderRenditionStore
 {
   readonly rows = new Map<string, StreamRenditionRow[]>();
+  readonly managedRows = new Map<string, StreamRenditionRow[]>();
 
   async listByStream(streamId: string): Promise<StreamRenditionRow[]> {
     return [...(this.rows.get(streamId) ?? [])].sort(
       (a, b) => a.height - b.height || a.name.localeCompare(b.name),
     );
+  }
+
+  async listByManagedRun(
+    streamId: string,
+    runNumber: number,
+  ): Promise<StreamRenditionRow[]> {
+    return [...(this.managedRows.get(`${streamId}:${String(runNumber)}`) ?? [])]
+      .sort((a, b) => a.height - b.height || a.name.localeCompare(b.name));
   }
 
   async upsert(

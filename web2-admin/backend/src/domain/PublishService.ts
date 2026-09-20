@@ -103,6 +103,10 @@ export interface PublishStreamStore {
  */
 export interface PublishRenditionStore {
   listByStream(streamId: string): Promise<StreamRenditionRow[]>;
+  listByManagedRun(
+    streamId: string,
+    runNumber: number,
+  ): Promise<StreamRenditionRow[]>;
 }
 
 /**
@@ -566,7 +570,7 @@ export class PublishService {
   ): Promise<Map<string, Rendition[]>> {
     const ladders = new Map<string, Rendition[]>();
     for (const row of rows) {
-      const rungs = await this.renditions.listByStream(row.id);
+      const rungs = await this.renditionsFor(row);
       if (rungs.length > 0) ladders.set(row.id, rungs.map(toRendition));
     }
     return ladders;
@@ -600,9 +604,7 @@ export class PublishService {
     stream: StreamRow,
     thumbnailRef: string | null,
   ): Promise<{ entry: FeedStreamEntry; renditions: Rendition[] }> {
-    const renditions = (await this.renditions.listByStream(stream.id)).map(
-      toRendition,
-    );
+    const renditions = (await this.renditionsFor(stream)).map(toRendition);
     const managedState = await this.streams.managedCatalogueState(stream.id);
     const entry = buildFeedEntry(
       stream,
@@ -612,6 +614,16 @@ export class PublishService {
       managedState ?? undefined,
     );
     return { entry, renditions };
+  }
+
+  private renditionsFor(stream: StreamRow): Promise<StreamRenditionRow[]> {
+    if (stream.lifecycle_version === 1 && stream.current_run_number !== null) {
+      return this.renditions.listByManagedRun(
+        stream.id,
+        stream.current_run_number,
+      );
+    }
+    return this.renditions.listByStream(stream.id);
   }
 
   /**

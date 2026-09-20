@@ -1,10 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import {
+  canonicalManagedRenditionReportJson,
   canonicalManagedReportJson,
   type InternalCompletedRecordingSnapshot,
   type ManagedExpectedRendition,
   ManagedClaimRequest,
+  ManagedRenditionReport,
+  ManagedRenditionReportResponse,
   ManagedRunReport,
   ManagedRunView,
 } from '@streaming-monorepo/web2-admin-common';
@@ -33,6 +36,22 @@ interface ManagedRunDatabaseRow {
   close_reason: ManagedRunView['closeReason'] | null;
   last_event_sequence: number | null;
   last_event_digest: string | null;
+  rendition_revision: number;
+  rendition_finished_revision: number | null;
+}
+
+interface ManagedRenditionDatabaseRow {
+  name: string;
+  topic: string;
+  width: number;
+  height: number;
+  bandwidth: string | number;
+  avg_bandwidth: string | number;
+  manifest_index: string | number | null;
+  duration_seconds: number | null;
+  last_sequence: string | number;
+  last_digest: string;
+  rendition_revision: string | number;
 }
 
 interface RecordingDatabaseRow {
@@ -65,7 +84,8 @@ const RUN_SELECT = `
          run.revision, run.assigned_uploader_id, run.claim_id,
          run.claim_request_id, run.claim_request_digest, run.state,
          run.permission, run.reconnect_deadline, run.close_reason
-         , run.last_event_sequence, run.last_event_digest
+         , run.last_event_sequence, run.last_event_digest,
+         run.rendition_revision, run.rendition_finished_revision
     FROM streams stream
     JOIN stream_runs run
       ON run.stream_id = stream.id AND run.run_number = $2
@@ -87,6 +107,12 @@ function claimDigest(request: ManagedClaimRequest): string {
 function reportDigest(report: ManagedRunReport): string {
   return createHash('sha256')
     .update(canonicalManagedReportJson(report))
+    .digest('hex');
+}
+
+function renditionReportDigest(report: ManagedRenditionReport): string {
+  return createHash('sha256')
+    .update(canonicalManagedRenditionReportJson(report))
     .digest('hex');
 }
 
@@ -348,6 +374,160 @@ export class ManagedLifecycleRepository {
     }
   }
 
+  async reportRendition(
+    streamId: string,
+    runNumber: number,
+    report: ManagedRenditionReport,
+  ): Promise<ManagedRenditionReportResponse> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const run = await this.lockRun(client, streamId, runNumber);
+      this.requireCurrent(run, runNumber, report.uploaderId);
+      if (run.claim_id !== report.claimId) {
+        throw new ManagedLifecycleConflict('assignment_mismatch');
+      }
+      const expected = await this.readExpectedRendition(
+        client,
+        streamId,
+        runNumber,
+        report.rendition.name,
+      );
+      if (!expected || !this.matchesExpectedRendition(expected, report)) {
+        throw new ManagedLifecycleConflict('assignment_mismatch');
+      }
+
+      const previous = await this.readRunRendition(
+        client,
+        streamId,
+        runNumber,
+        report.rendition.name,
+      );
+      const digest = renditionReportDigest(report);
+      const disposition = classifyManagedEvent(
+        previous
+          ? {
+              sequence: Number(previous.last_sequence),
+              digest: previous.last_digest,
+            }
+          : null,
+        { sequence: report.renditionSequence, digest },
+      );
+      if (disposition === 'duplicate') {
+        const response = await this.readRenditionResponse(
+          client,
+          run,
+          Number(previous?.rendition_revision) ===
+            Number(run.rendition_finished_revision),
+        );
+        await client.query('COMMIT');
+        return response;
+      }
+      if (run.state === 'vod') {
+        throw new ManagedLifecycleConflict('closed');
+      }
+      const isFinal = report.rendition.index !== undefined;
+      if (run.permission === 'closed' && !isFinal) {
+        throw new ManagedLifecycleConflict('closed');
+      }
+      if (run.permission === 'open') {
+        throw new ManagedLifecycleConflict('assignment_mismatch');
+      }
+      if (
+        previous?.manifest_index !== null &&
+        previous?.manifest_index !== undefined &&
+        (report.rendition.index === undefined ||
+          Number(previous.manifest_index) !== report.rendition.index ||
+          previous.duration_seconds !== report.rendition.duration)
+      ) {
+        throw new ManagedLifecycleConflict('event_conflict');
+      }
+
+      const renditionRevision = Number(run.rendition_revision) + 1;
+      await client.query(
+        `INSERT INTO stream_run_renditions (
+           stream_id, run_number, name, topic, width, height, bandwidth,
+           avg_bandwidth, manifest_index, duration_seconds, last_sequence,
+           last_digest, last_observed_at, rendition_revision
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                   $13, $14)
+         ON CONFLICT (stream_id, run_number, name) DO UPDATE
+            SET manifest_index = COALESCE(
+                  stream_run_renditions.manifest_index,
+                  EXCLUDED.manifest_index
+                ),
+                duration_seconds = COALESCE(
+                  stream_run_renditions.duration_seconds,
+                  EXCLUDED.duration_seconds
+                ),
+                last_sequence = EXCLUDED.last_sequence,
+                last_digest = EXCLUDED.last_digest,
+                last_observed_at = EXCLUDED.last_observed_at,
+                rendition_revision = EXCLUDED.rendition_revision,
+                updated_at = NOW()`,
+        [
+          streamId,
+          runNumber,
+          report.rendition.name,
+          report.rendition.topic,
+          report.rendition.width,
+          report.rendition.height,
+          report.rendition.bandwidth,
+          report.rendition.avgBandwidth,
+          report.rendition.index ?? null,
+          report.rendition.duration ?? null,
+          report.renditionSequence,
+          digest,
+          report.observedAt,
+          renditionRevision,
+        ],
+      );
+      const finished = await this.isExpectedLadderFinished(
+        client,
+        streamId,
+        runNumber,
+      );
+      const flippedToFinished =
+        finished && run.rendition_finished_revision === null;
+      const updated = await client.query<ManagedRunDatabaseRow>(
+        `UPDATE stream_runs
+            SET rendition_revision = $3,
+                rendition_finished_revision = CASE
+                  WHEN $4 AND rendition_finished_revision IS NULL THEN $3
+                  ELSE rendition_finished_revision
+                END
+          WHERE stream_id = $1 AND run_number = $2
+          RETURNING $5::bigint AS lifecycle_revision,
+                    1::smallint AS lifecycle_version,
+                    run_number AS current_run_number, stream_id, run_number,
+                    revision, assigned_uploader_id, claim_id,
+                    claim_request_id, claim_request_digest, state, permission,
+                    reconnect_deadline, close_reason, last_event_sequence,
+                    last_event_digest, rendition_revision,
+                    rendition_finished_revision`,
+        [
+          streamId,
+          runNumber,
+          renditionRevision,
+          finished,
+          run.lifecycle_revision,
+        ],
+      );
+      const response = await this.readRenditionResponse(
+        client,
+        updated.rows[0],
+        flippedToFinished,
+      );
+      await client.query('COMMIT');
+      return response;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   private async lockRun(
     client: PoolClient,
     streamId: string,
@@ -403,6 +583,126 @@ export class ManagedLifecycleRepository {
     }));
   }
 
+  private async readExpectedRendition(
+    client: PoolClient,
+    streamId: string,
+    runNumber: number,
+    name: string,
+  ): Promise<ManagedExpectedRendition | undefined> {
+    const renditions = await this.readExpectedRenditions(
+      client,
+      streamId,
+      runNumber,
+    );
+    return renditions.find((rendition) => rendition.name === name);
+  }
+
+  private matchesExpectedRendition(
+    expected: ManagedExpectedRendition,
+    report: ManagedRenditionReport,
+  ): boolean {
+    const actual = report.rendition;
+    return (
+      expected.name === actual.name &&
+      expected.topic === actual.topic &&
+      expected.width === actual.width &&
+      expected.height === actual.height &&
+      expected.bandwidth === actual.bandwidth &&
+      expected.avgBandwidth === actual.avgBandwidth
+    );
+  }
+
+  private async readRunRendition(
+    client: PoolClient,
+    streamId: string,
+    runNumber: number,
+    name: string,
+  ): Promise<ManagedRenditionDatabaseRow | undefined> {
+    const result = await client.query<ManagedRenditionDatabaseRow>(
+      `SELECT name, topic, width, height, bandwidth, avg_bandwidth,
+              manifest_index, duration_seconds, last_sequence, last_digest,
+              rendition_revision
+         FROM stream_run_renditions
+        WHERE stream_id = $1 AND run_number = $2 AND name = $3`,
+      [streamId, runNumber, name],
+    );
+    return result.rows[0];
+  }
+
+  private async isExpectedLadderFinished(
+    client: PoolClient,
+    streamId: string,
+    runNumber: number,
+  ): Promise<boolean> {
+    const result = await client.query<{ finished: boolean }>(
+      `SELECT COUNT(*) > 0
+              AND COUNT(*) = COUNT(rendition.manifest_index) AS finished
+         FROM stream_run_expected_renditions expected
+         LEFT JOIN stream_run_renditions rendition
+           ON rendition.stream_id = expected.stream_id
+          AND rendition.run_number = expected.run_number
+          AND rendition.name = expected.name
+        WHERE expected.stream_id = $1 AND expected.run_number = $2`,
+      [streamId, runNumber],
+    );
+    return result.rows[0]?.finished ?? false;
+  }
+
+  private async readRenditionResponse(
+    client: PoolClient,
+    run: ManagedRunDatabaseRow,
+    flippedToFinished: boolean,
+  ): Promise<ManagedRenditionReportResponse> {
+    if (!run.claim_id) {
+      throw new ManagedLifecycleConflict('assignment_mismatch');
+    }
+    const result = await client.query<ManagedRenditionDatabaseRow>(
+      `SELECT name, topic, width, height, bandwidth, avg_bandwidth,
+              manifest_index, duration_seconds, last_sequence, last_digest,
+              rendition_revision
+         FROM stream_run_renditions
+        WHERE stream_id = $1 AND run_number = $2
+        ORDER BY name, topic`,
+      [run.stream_id, run.run_number],
+    );
+    const renditions = result.rows.map((rendition) => ({
+      name: rendition.name,
+      topic: rendition.topic,
+      width: rendition.width,
+      height: rendition.height,
+      bandwidth: Number(rendition.bandwidth),
+      avgBandwidth: Number(rendition.avg_bandwidth),
+      ...(rendition.manifest_index !== null &&
+      rendition.duration_seconds !== null
+        ? {
+            index: Number(rendition.manifest_index),
+            duration: rendition.duration_seconds,
+          }
+        : {}),
+    }));
+    const finished =
+      run.rendition_finished_revision !== null &&
+      renditions.length > 0 &&
+      renditions.every((rendition) => rendition.index !== undefined);
+    return {
+      lifecycleVersion: 1,
+      streamId: run.stream_id,
+      runNumber: run.run_number,
+      revision: Number(run.lifecycle_revision),
+      uploaderId: run.assigned_uploader_id,
+      claimId: run.claim_id,
+      renditionRevision: Number(run.rendition_revision),
+      renditions,
+      ladder: {
+        finished,
+        flippedToFinished,
+        duration: finished
+          ? Math.max(...renditions.map(({ duration }) => duration ?? 0))
+          : null,
+      },
+    };
+  }
+
   private requireCurrent(
     row: ManagedRunDatabaseRow,
     runNumber: number,
@@ -436,12 +736,21 @@ export class ManagedLifecycleRepository {
     if (recording.runNumber !== runNumber) {
       throw new ManagedLifecycleConflict('stale_run');
     }
-    const expected = await client.query<{ name: string }>(
-      `SELECT name FROM stream_run_expected_renditions
-        WHERE stream_id = $1 AND run_number = $2 ORDER BY name`,
+    const expected = await this.readExpectedRenditions(
+      client,
+      streamId,
+      runNumber,
+    );
+    const acceptedResult = await client.query<ManagedRenditionDatabaseRow>(
+      `SELECT name, topic, width, height, bandwidth, avg_bandwidth,
+              manifest_index, duration_seconds, last_sequence, last_digest,
+              rendition_revision
+         FROM stream_run_renditions
+        WHERE stream_id = $1 AND run_number = $2
+        ORDER BY name`,
       [streamId, runNumber],
     );
-    const expectedNames = expected.rows.map(({ name }) => name);
+    const expectedNames = expected.map(({ name }) => name);
     const declaredNames = [...recording.expectedRenditions].sort();
     const recordedNames = recording.renditions.map(({ name }) => name).sort();
     if (
@@ -449,6 +758,30 @@ export class ManagedLifecycleRepository {
       JSON.stringify(expectedNames) !== JSON.stringify(recordedNames)
     ) {
       throw new ManagedLifecycleConflict('event_conflict');
+    }
+    const acceptedByName = new Map(
+      acceptedResult.rows.map((rendition) => [rendition.name, rendition]),
+    );
+    for (const rendition of recording.renditions) {
+      const expectedRendition = expected.find(
+        (candidate) => candidate.name === rendition.name,
+      );
+      const accepted = acceptedByName.get(rendition.name);
+      if (
+        !expectedRendition ||
+        !accepted ||
+        accepted.manifest_index === null ||
+        accepted.duration_seconds === null ||
+        rendition.topic !== expectedRendition.topic ||
+        rendition.width !== expectedRendition.width ||
+        rendition.height !== expectedRendition.height ||
+        rendition.bandwidth !== expectedRendition.bandwidth ||
+        rendition.avgBandwidth !== expectedRendition.avgBandwidth ||
+        rendition.index !== Number(accepted.manifest_index) ||
+        rendition.duration !== accepted.duration_seconds
+      ) {
+        throw new ManagedLifecycleConflict('event_conflict');
+      }
     }
     await client.query(
       `INSERT INTO stream_run_recordings (

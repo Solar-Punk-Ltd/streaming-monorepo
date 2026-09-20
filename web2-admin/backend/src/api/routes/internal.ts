@@ -2,6 +2,7 @@ import type {
   IngestLookupResponse,
   ContinuationPreparationRequest,
   ManagedClaimRequest,
+  ManagedRenditionReport,
   ManagedRunReport,
   MediaType,
   RenditionReport,
@@ -15,6 +16,7 @@ import { Request, RequestHandler, Response, Router } from 'express';
 import { LadderService } from '../../domain/LadderService.js';
 import { ContinuationRepository } from '../../domain/ContinuationRepository.js';
 import { ManagedLifecycleRepository } from '../../domain/ManagedLifecycleRepository.js';
+import { ManagedLifecycleConflict } from '../../domain/managedLifecycle.js';
 import { PublishService } from '../../domain/PublishService.js';
 import {
   ReleaseGuardReceiptConflict,
@@ -27,6 +29,8 @@ import {
   continuationPreparationParamSchema,
   continuationPreparationSchema,
   managedClaimSchema,
+  managedRenditionParamSchema,
+  managedRenditionReportSchema,
   managedRunIdentitySchema,
   managedRunParamSchema,
   managedReportSchema,
@@ -185,6 +189,25 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
       );
       await publishService.republishManagedState(String(req.params.id));
       res.json(run);
+    }),
+  );
+
+  router.post(
+    '/streams/:id/runs/:run/renditions/:name',
+    validateParams(managedRenditionParamSchema),
+    validateBody(managedRenditionReportSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const report = req.body as ManagedRenditionReport;
+      if (report.rendition.name !== String(req.params.name)) {
+        throw new ManagedLifecycleConflict('assignment_mismatch');
+      }
+      const outcome = await managedLifecycle.reportRendition(
+        String(req.params.id),
+        Number(req.params.run),
+        report,
+      );
+      await publishService.republishManagedState(String(req.params.id));
+      res.json(outcome);
     }),
   );
 

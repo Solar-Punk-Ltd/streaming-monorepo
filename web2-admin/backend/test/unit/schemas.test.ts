@@ -21,6 +21,8 @@ import {
 import {
   continuationPreparationSchema,
   managedClaimSchema,
+  managedRenditionParamSchema,
+  managedRenditionReportSchema,
   managedReportSchema,
   ingestLookupParamSchema,
   releaseGuardReceiptSchema,
@@ -379,6 +381,46 @@ describe('managed lifecycle schemas', () => {
       },
     };
     assert.deepEqual(await validate(managedReportSchema, report), report);
+  });
+
+  it('requires exact run-scoped rendition identity and paired final fields', async () => {
+    const body = {
+      lifecycleVersion: 1,
+      uploaderId: 'srs-main',
+      claimId: '22222222-2222-4222-8222-222222222222',
+      renditionSequence: 3,
+      observedAt: '2026-09-20T10:00:00.000Z',
+      rendition: {
+        name: '360p',
+        topic: '33333333-3333-4333-8333-333333333333',
+        width: 640,
+        height: 360,
+        bandwidth: 800_000,
+        avgBandwidth: 700_000,
+        index: 12,
+        duration: 61,
+      },
+    };
+    assert.deepEqual(await validate(managedRenditionReportSchema, body), body);
+    assert.deepEqual(
+      await validate(managedRenditionParamSchema, {
+        id: '1867808f-7b1c-4e46-b437-f7423b466b39',
+        run: 2,
+        name: '360p',
+      }),
+      {
+        id: '1867808f-7b1c-4e46-b437-f7423b466b39',
+        run: 2,
+        name: '360p',
+      },
+    );
+    assert.deepEqual(
+      await errorsFor(managedRenditionReportSchema, {
+        ...body,
+        rendition: { ...body.rendition, duration: undefined },
+      }),
+      ['index and duration are sent together, or neither is'],
+    );
   });
 
   it('requires preparation results to carry only their state-specific detail', async () => {

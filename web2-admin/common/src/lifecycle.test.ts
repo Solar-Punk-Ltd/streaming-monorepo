@@ -5,16 +5,24 @@ import { test } from 'node:test';
 
 import type {
   InternalCompletedRecordingSnapshot,
+  ManagedRenditionReport,
   ManagedRunReport,
   UploaderCapabilities,
 } from './lifecycle.js';
 import {
   canonicalManagedReportJson,
+  canonicalManagedRenditionReportJson,
   canonicalUploaderProfileJson,
 } from './lifecycle.js';
 
 interface DigestFixture {
   report: ManagedRunReport;
+  canonicalUtf8: string;
+  sha256HexParts: [string, string];
+}
+
+interface RenditionDigestFixture {
+  report: ManagedRenditionReport;
   canonicalUtf8: string;
   sha256HexParts: [string, string];
 }
@@ -47,6 +55,26 @@ test('managed report canonical bytes and SHA256 match the cross-service vector',
   assert.equal(
     createHash('sha256').update(canonical).digest('hex'),
     fixture.sha256HexParts.join(''),
+  );
+});
+
+test('managed rendition canonical bytes and SHA256 match the cross-service vector', () => {
+  const renditionFixture = JSON.parse(
+    readFileSync(
+      new URL(
+        '../fixtures/managed-rendition-digest-v1.json',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+  ) as RenditionDigestFixture;
+  const canonical = canonicalManagedRenditionReportJson(
+    renditionFixture.report,
+  );
+  assert.equal(canonical, renditionFixture.canonicalUtf8);
+  assert.equal(
+    createHash('sha256').update(canonical).digest('hex'),
+    renditionFixture.sha256HexParts.join(''),
   );
 });
 
