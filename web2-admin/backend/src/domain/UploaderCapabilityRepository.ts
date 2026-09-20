@@ -7,7 +7,7 @@ import {
   type UploaderCapabilityReceipt,
   type UploaderMediaProfile,
 } from '@streaming-monorepo/web2-admin-common';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 
 import { ManagedLifecycleConflict } from './managedLifecycle.js';
 
@@ -63,7 +63,21 @@ export class UploaderCapabilityRepository {
   }
 
   async freshProfile(mediaType: MediaType): Promise<FreshUploaderProfile | null> {
-    const result = await this.pool.query<CapabilityRow>(
+    return this.readFreshProfile(this.pool, mediaType);
+  }
+
+  async freshProfileForEnrollment(
+    client: PoolClient,
+    mediaType: MediaType,
+  ): Promise<FreshUploaderProfile | null> {
+    return this.readFreshProfile(client, mediaType);
+  }
+
+  private async readFreshProfile(
+    queryable: Pool | PoolClient,
+    mediaType: MediaType,
+  ): Promise<FreshUploaderProfile | null> {
+    const result = await queryable.query<CapabilityRow>(
       `SELECT uploader_id, lifecycle_version, profiles, received_at
          FROM uploader_capability_receipts
         WHERE uploader_id = $1

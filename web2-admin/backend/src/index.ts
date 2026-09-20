@@ -21,6 +21,7 @@ import { LadderService } from './domain/LadderService.js';
 import { Logger } from './domain/Logger.js';
 import { ManagedLifecycleRepository } from './domain/ManagedLifecycleRepository.js';
 import { PublishService } from './domain/PublishService.js';
+import { ReleaseGuardReceiptRepository } from './domain/ReleaseGuardReceiptRepository.js';
 import { StreamRenditionRepository } from './domain/StreamRenditionRepository.js';
 import { StreamRepository } from './domain/StreamRepository.js';
 import { StreamService } from './domain/StreamService.js';
@@ -152,6 +153,12 @@ async function main(): Promise<void> {
         config.ingest.managedLifecycle.uploaderId,
       )
     : undefined;
+  const releaseGuardReceipts = config.ingest.managedLifecycle
+    ? new ReleaseGuardReceiptRepository(
+        database.pool,
+        config.ingest.managedLifecycle.uploaderId,
+      )
+    : undefined;
 
   const orphans = await streamRepository.resetOrphanedPublishing();
   if (orphans.length > 0) {
@@ -220,6 +227,7 @@ async function main(): Promise<void> {
       continuations,
       publishService,
       uploaderCapabilities,
+      releaseGuardReceipts,
       ingestService,
       internalApiToken: config.internalApiToken,
       feed,

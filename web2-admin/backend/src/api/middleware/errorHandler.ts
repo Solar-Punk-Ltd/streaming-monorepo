@@ -28,6 +28,7 @@ import {
 } from '../../domain/errors/index.js';
 import { Logger } from '../../domain/Logger.js';
 import { ManagedLifecycleConflict } from '../../domain/managedLifecycle.js';
+import { ReleaseGuardReceiptConflict } from '../../domain/ReleaseGuardReceiptRepository.js';
 import { getErrorMessage, getErrorStack } from '../../utils/errorUtils.js';
 
 const logger = Logger.getInstance();
@@ -190,6 +191,10 @@ export function errorHandler(
     return;
   }
   if (err instanceof ManagedLifecycleConflict) {
+    res.status(409).json({ error: err.code });
+    return;
+  }
+  if (err instanceof ReleaseGuardReceiptConflict) {
     res.status(409).json({ error: err.code });
     return;
   }

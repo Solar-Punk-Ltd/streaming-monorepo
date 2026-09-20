@@ -13,6 +13,11 @@ import {
 
 import { UUID_RE } from './stream.js';
 
+export {
+  releaseGuardReceiptSchema,
+  releaseGuardSlotParamSchema,
+} from './releaseGuard.js';
+
 /**
  * `/streams/by-ingest/:app/:stream` — the ingest stream id split in two. The
  * uploader passes through whatever an encoder put in `streamid=`, so both

@@ -6,6 +6,7 @@ import type {
   MediaType,
   RenditionReport,
   RenditionReportResponse,
+  ReleaseGuardReceipt,
   StreamStateResponse,
   UploaderCapabilities,
 } from '@streaming-monorepo/web2-admin-common';
@@ -15,6 +16,10 @@ import { LadderService } from '../../domain/LadderService.js';
 import { ContinuationRepository } from '../../domain/ContinuationRepository.js';
 import { ManagedLifecycleRepository } from '../../domain/ManagedLifecycleRepository.js';
 import { PublishService } from '../../domain/PublishService.js';
+import {
+  ReleaseGuardReceiptConflict,
+  ReleaseGuardReceiptRepository,
+} from '../../domain/ReleaseGuardReceiptRepository.js';
 import { StreamStateService } from '../../domain/StreamStateService.js';
 import { UploaderCapabilityRepository } from '../../domain/UploaderCapabilityRepository.js';
 import {
@@ -25,6 +30,8 @@ import {
   managedRunIdentitySchema,
   managedRunParamSchema,
   managedReportSchema,
+  releaseGuardReceiptSchema,
+  releaseGuardSlotParamSchema,
   renditionReportSchema,
   streamStateSchema,
   uploaderContinuationParamSchema,
@@ -51,6 +58,7 @@ export interface InternalRoutesDeps {
   continuations: ContinuationRepository;
   publishService: PublishService;
   uploaderCapabilities?: UploaderCapabilityRepository;
+  releaseGuardReceipts?: ReleaseGuardReceiptRepository;
   requireInternalToken: RequestHandler;
 }
 
@@ -74,6 +82,7 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
     continuations,
     publishService,
     uploaderCapabilities,
+    releaseGuardReceipts,
     requireInternalToken,
   } = deps;
   const router = Router();
@@ -91,6 +100,24 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
           req.body as UploaderCapabilities,
         );
         res.json(receipt);
+      }),
+    );
+  }
+
+  if (releaseGuardReceipts) {
+    router.put(
+      '/release-guard/receipts/:role/:id',
+      validateParams(releaseGuardSlotParamSchema),
+      validateBody(releaseGuardReceiptSchema),
+      asyncHandler(async (req: Request, res: Response) => {
+        const receipt = req.body as ReleaseGuardReceipt;
+        if (
+          receipt.slot.role !== String(req.params.role) ||
+          receipt.slot.id !== String(req.params.id)
+        ) {
+          throw new ReleaseGuardReceiptConflict('assignment_mismatch');
+        }
+        res.json(await releaseGuardReceipts.record(receipt));
       }),
     );
   }

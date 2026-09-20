@@ -11,6 +11,7 @@ import { LadderService } from '../domain/LadderService.js';
 import { Logger } from '../domain/Logger.js';
 import { ManagedLifecycleRepository } from '../domain/ManagedLifecycleRepository.js';
 import { PublishService } from '../domain/PublishService.js';
+import { ReleaseGuardReceiptRepository } from '../domain/ReleaseGuardReceiptRepository.js';
 import { StreamService } from '../domain/StreamService.js';
 import { StreamStateService } from '../domain/StreamStateService.js';
 import { UploaderCapabilityRepository } from '../domain/UploaderCapabilityRepository.js';
@@ -42,6 +43,7 @@ export interface ApiDeps {
   continuations: ContinuationRepository;
   publishService: PublishService;
   uploaderCapabilities?: UploaderCapabilityRepository;
+  releaseGuardReceipts?: ReleaseGuardReceiptRepository;
   ingestService: IngestService;
   /** Bearer token for /api/internal; never accepted anywhere else. */
   internalApiToken: string;
@@ -86,6 +88,7 @@ export function startApiServer(
       continuations: deps.continuations,
       publishService: deps.publishService,
       uploaderCapabilities: deps.uploaderCapabilities,
+      releaseGuardReceipts: deps.releaseGuardReceipts,
       requireInternalToken: createRequireInternalToken(deps.internalApiToken),
     }),
   );

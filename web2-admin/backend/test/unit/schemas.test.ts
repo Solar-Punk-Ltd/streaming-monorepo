@@ -23,6 +23,8 @@ import {
   managedClaimSchema,
   managedReportSchema,
   ingestLookupParamSchema,
+  releaseGuardReceiptSchema,
+  releaseGuardSlotParamSchema,
   renditionReportSchema,
   streamStateSchema,
   uploaderCapabilitySchema,
@@ -451,6 +453,57 @@ describe('uploaderCapabilitySchema', () => {
         ],
       })).some((error) => error.includes('audio profile must not declare rungs')),
     );
+  });
+});
+
+describe('releaseGuardReceiptSchema', () => {
+  const receipt = {
+    schemaVersion: 1,
+    installationId: '11111111-1111-4111-8111-111111111111',
+    generation: 2,
+    stateDigest: 'a'.repeat(64),
+    slot: { role: 'uploader', id: 'srs-uploader-a' },
+    minimums: { srsLifecycle: 1 },
+    artifact: {
+      treeDigest: 'b'.repeat(64),
+      images: [
+        { service: 'srs', imageId: `sha256:${'c'.repeat(64)}` },
+        { service: 'uploader', imageId: `sha256:${'d'.repeat(64)}` },
+      ],
+    },
+  };
+
+  it('accepts the exact per-slot receipt and route identity', async () => {
+    assert.deepEqual(await validate(releaseGuardReceiptSchema, receipt), receipt);
+    assert.deepEqual(
+      await validate(releaseGuardSlotParamSchema, receipt.slot),
+      receipt.slot,
+    );
+  });
+
+  it('requires default component slots and sorted unique image services', async () => {
+    assert.ok(
+      (await errorsFor(releaseGuardReceiptSchema, {
+        ...receipt,
+        slot: { role: 'admin', id: 'remote' },
+      })).some((error) => error.includes('default')),
+    );
+    assert.ok(
+      (await errorsFor(releaseGuardReceiptSchema, {
+        ...receipt,
+        artifact: { ...receipt.artifact, images: [...receipt.artifact.images].reverse() },
+      })).some((error) => error.includes('sorted and unique')),
+    );
+  });
+
+  it('refuses unsupported minima, path-like uploader ids, and non-digests', async () => {
+    for (const invalid of [
+      { ...receipt, minimums: { srsLifecycle: 0 } },
+      { ...receipt, slot: { role: 'uploader', id: 'srs/uploader' } },
+      { ...receipt, stateDigest: 'not-a-digest' },
+    ]) {
+      assert.ok((await errorsFor(releaseGuardReceiptSchema, invalid)).length > 0);
+    }
   });
 });
 
