@@ -124,12 +124,12 @@ export class ContinuationRepository {
       if (!canContinueVod && !canContinueEmpty) {
         throw new ManagedLifecycleConflict('closed');
       }
-      const unresolved = await client.query(
+      const allocated = await client.query(
         `SELECT 1 FROM continuation_operations
-          WHERE stream_id = $1 AND status IN ('pending', 'ready')`,
-        [streamId],
+          WHERE stream_id = $1 AND next_run_number = $2`,
+        [streamId, stream.current_run_number + 1],
       );
-      if ((unresolved.rowCount ?? 0) > 0) {
+      if ((allocated.rowCount ?? 0) > 0) {
         throw new ManagedLifecycleConflict('revision_conflict');
       }
 

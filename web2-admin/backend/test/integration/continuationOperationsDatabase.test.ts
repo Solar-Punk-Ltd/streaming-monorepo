@@ -137,6 +137,15 @@ describe('continuation operations', () => {
       operation.operationId,
     );
     await assert.rejects(
+      continuations.create(streamId, ownerId, {
+        requestId: randomUUID(),
+        expectedRevision: 6,
+      }),
+      (error: unknown) =>
+        error instanceof ManagedLifecycleConflict &&
+        error.code === 'revision_conflict',
+    );
+    await assert.rejects(
       continuations.get(streamId, operation.operationId, otherOwnerId),
     );
 
