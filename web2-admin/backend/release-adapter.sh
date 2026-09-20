@@ -54,9 +54,9 @@ const fixtureNetwork = args?.fixtureNetwork !== null && typeof args?.fixtureNetw
 const argumentKeys = args === null ? [] : Object.keys(args).sort();
 const argumentsAreExact = argumentKeys.join(',') === 'target' || argumentKeys.join(',') === 'fixtureNetwork,target';
 const fixtureNetworkKeys = fixtureNetwork === null ? '' : Object.keys(fixtureNetwork).sort().join(',');
-const fixtureNetworkShape = expectedPhase === 'transition' || expectedPhase === 'verify'
-  ? 'fixtureId,name,networkId'
-  : 'fixtureId,name';
+const fixtureNetworkShape = expectedPhase === 'preflight'
+  ? 'fixtureId,name'
+  : 'fixtureId,name,networkId';
 const fixtureNetworkIsValid = fixtureNetwork === null || (
   fixtureNetworkKeys === fixtureNetworkShape &&
   typeof fixtureNetwork.name === 'string' && /^[a-z0-9][a-z0-9_.-]{0,127}$/.test(fixtureNetwork.name) &&

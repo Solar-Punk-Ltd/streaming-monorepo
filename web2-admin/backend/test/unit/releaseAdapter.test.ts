@@ -97,9 +97,7 @@ function plan(
         : {
             fixtureNetwork: {
               ...network,
-              ...(phase === 'transition' || phase === 'verify'
-                ? { networkId: fixtureNetworkId }
-                : {}),
+              ...(phase === 'preflight' ? {} : { networkId: fixtureNetworkId }),
             },
           }),
     },
@@ -186,7 +184,7 @@ if [ "$1" = image ]; then printf 'sha256:%s\n' "$(printf a%.0s {1..64})"; fi
     for (const secret of Object.values(routed)) assert.doesNotMatch(serialized, new RegExp(secret));
   });
 
-  it('builds isolated backend and frontend images and returns immutable ids', async (t) => {
+  it('accepts the guard-resolved fixture network while building isolated images', async (t) => {
     const root = await temporaryRoot(t);
     const home = await writeReleaseEnvironment(root);
     const bin = join(root, 'bin');
@@ -208,7 +206,7 @@ fi
     await chmod(docker, 0o700);
     const planPath = join(root, 'build-plan.json');
     const output = join(root, 'build.json');
-    await writeFile(planPath, JSON.stringify(plan('build')));
+    await writeFile(planPath, JSON.stringify(plan('build', null, fixtureNetwork)));
 
     await execFileAsync(adapter, ['build', '--plan', planPath, '--output', output], {
       env: {
