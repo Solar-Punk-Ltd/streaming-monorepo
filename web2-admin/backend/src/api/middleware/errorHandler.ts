@@ -10,6 +10,7 @@ import {
   InvalidStateError,
   InvalidStateTransitionError,
   InvalidUsernameError,
+  ManagedEnrollmentUnavailableError,
   MediaTypeLockedError,
   NoUsersError,
   PublishFailedError,
@@ -188,6 +189,13 @@ export function errorHandler(
     res
       .status(502)
       .json({ error: 'publish_failed', id: err.streamId, message: err.reason });
+    return;
+  }
+  if (err instanceof ManagedEnrollmentUnavailableError) {
+    res.status(503).json({
+      error: 'managed_enrollment_unavailable',
+      id: err.streamId,
+    });
     return;
   }
   if (err instanceof ManagedLifecycleConflict) {

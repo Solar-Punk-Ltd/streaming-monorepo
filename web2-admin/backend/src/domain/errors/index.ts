@@ -8,6 +8,7 @@ export { InvalidStateError } from './InvalidStateError.js';
 export { InvalidStateTransitionError } from './InvalidStateTransitionError.js';
 export { InvalidUsernameError } from './InvalidUsernameError.js';
 export { MediaTypeLockedError } from './MediaTypeLockedError.js';
+export { ManagedEnrollmentUnavailableError } from './ManagedEnrollmentUnavailableError.js';
 export { NoUsersError } from './NoUsersError.js';
 export { PublishFailedError } from './PublishFailedError.js';
 export { StreamBusyError } from './StreamBusyError.js';

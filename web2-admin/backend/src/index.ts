@@ -19,6 +19,8 @@ import { FeedWriteRepository } from './domain/FeedWriteRepository.js';
 import { IngestService } from './domain/IngestService.js';
 import { LadderService } from './domain/LadderService.js';
 import { Logger } from './domain/Logger.js';
+import { ManagedEnrollmentReadiness } from './domain/ManagedEnrollmentReadiness.js';
+import { ManagedEnrollmentService } from './domain/ManagedEnrollmentService.js';
 import { ManagedLifecycleRepository } from './domain/ManagedLifecycleRepository.js';
 import { PublishService } from './domain/PublishService.js';
 import { ReleaseGuardReceiptRepository } from './domain/ReleaseGuardReceiptRepository.js';
@@ -28,6 +30,7 @@ import { StreamService } from './domain/StreamService.js';
 import { StreamStateService } from './domain/StreamStateService.js';
 import { UploaderCapabilityRepository } from './domain/UploaderCapabilityRepository.js';
 import { config } from './utils/config.js';
+import { loadActiveAdminArtifact } from './utils/activeAdminArtifact.js';
 import { getErrorMessage, getErrorStack } from './utils/errorUtils.js';
 
 const logger = Logger.getInstance();
@@ -159,6 +162,20 @@ async function main(): Promise<void> {
         config.ingest.managedLifecycle.uploaderId,
       )
     : undefined;
+  const managedEnrollment =
+    config.ingest.managedLifecycle &&
+    uploaderCapabilities &&
+    releaseGuardReceipts
+      ? new ManagedEnrollmentService(
+          database.pool,
+          new ManagedEnrollmentReadiness(
+            releaseGuardReceipts,
+            uploaderCapabilities,
+            loadActiveAdminArtifact(),
+          ),
+          config.ingest.managedLifecycle.uploaderId,
+        )
+      : undefined;
 
   const orphans = await streamRepository.resetOrphanedPublishing();
   if (orphans.length > 0) {
@@ -192,6 +209,7 @@ async function main(): Promise<void> {
     feedWriteRepository,
     createFeedGateway(),
     feed,
+    managedEnrollment,
   );
   // After the orphan reset, so the dry-run diff sees the repaired statuses.
   // Never fatal: this is a cross-check of the feed, and the API is fully

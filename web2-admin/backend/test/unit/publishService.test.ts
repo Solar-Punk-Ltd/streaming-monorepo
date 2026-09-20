@@ -23,6 +23,7 @@ import type { FeedStreamEntry } from '@streaming-monorepo/web2-admin-common';
 
 import {
   FeedOwnerMismatchError,
+  ManagedEnrollmentUnavailableError,
   PublishFailedError,
   StreamBusyError,
   StreamLiveError,
@@ -31,6 +32,7 @@ import {
 } from '../../src/domain/errors/index.js';
 import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
+import type { ManagedPublisherEnrollment } from '../../src/domain/ManagedEnrollmentService.js';
 import { PublishService } from '../../src/domain/PublishService.js';
 
 import {
@@ -60,7 +62,10 @@ const rung = (name: string, height: number, index?: number) => ({
   ...(index === undefined ? {} : { index, duration: 61 }),
 });
 
-function setup(gateway = new FakeFeedGateway()) {
+function setup(
+  gateway = new FakeFeedGateway(),
+  managedEnrollment?: ManagedPublisherEnrollment,
+) {
   const renditions = new FakeRenditionStore();
   const store = new FakeStreamStore(renditions);
   const writes = new FakeFeedWriteLog();
@@ -70,6 +75,7 @@ function setup(gateway = new FakeFeedGateway()) {
     writes,
     gateway,
     feed,
+    managedEnrollment,
   );
   return { store, renditions, writes, gateway, service };
 }
@@ -78,6 +84,26 @@ const entriesOf = (gateway: FakeFeedGateway): FeedStreamEntry[] =>
   (gateway.writes.at(-1)?.entries ?? []) as FeedStreamEntry[];
 
 describe('PublishService.publish', () => {
+  it('refuses the feed write when configured managed enrollment is not ready', async () => {
+    const blocker: ManagedPublisherEnrollment = {
+      enrollEligiblePlaceholder(streamId) {
+        return Promise.reject(new ManagedEnrollmentUnavailableError(streamId));
+      },
+    };
+    const { store, gateway, service } = setup(
+      new FakeFeedGateway(),
+      blocker,
+    );
+    const row = store.add(streamRow());
+
+    await assert.rejects(
+      service.publish(row.id, TEST_USER_ID),
+      ManagedEnrollmentUnavailableError,
+    );
+    assert.equal(gateway.writes.length, 0);
+    assert.equal(store.get(row.id).status, 'draft');
+  });
+
   it('appends an entry at index 0 on an empty feed', async () => {
     const { store, writes, gateway, service } = setup();
     const row = store.add(streamRow());

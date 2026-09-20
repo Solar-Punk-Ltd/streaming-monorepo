@@ -31,6 +31,7 @@ import {
 import type { FeedGateway, FeedSnapshot } from './FeedGateway.js';
 import type { FeedIdentity } from './feedIdentity.js';
 import { Logger } from './Logger.js';
+import type { ManagedPublisherEnrollment } from './ManagedEnrollmentService.js';
 import { Mutex } from './Mutex.js';
 import { toRendition } from './renditions.js';
 
@@ -212,12 +213,14 @@ export class PublishService {
     private readonly feedWrites: FeedWriteLog,
     private readonly gateway: FeedGateway,
     private readonly feed: FeedIdentity,
+    private readonly managedEnrollment?: ManagedPublisherEnrollment,
     /** Every feed write in this process goes through this one mutex. */
     private readonly mutex: Mutex = new Mutex(),
   ) {}
 
   async publish(id: string, userId: string): Promise<PublishOutcome> {
     return this.mutex.run(async () => {
+      await this.managedEnrollment?.enrollEligiblePlaceholder(id, userId);
       const before = await this.read(id, userId);
       // A stream the uploader has reported on is republished as it is: the
       // operator fixed a title mid-broadcast, and the entry must go back on
