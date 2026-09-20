@@ -12,6 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(here, '..', 'migrations');
 
 const logger = Logger.getInstance();
+const MANAGED_LIFECYCLE_SCHEMA_VERSION = 1;
 
 // node-postgres hands BIGINT back as a string, because int8 does not fit in a
 // double. The only int8 this schema reads is a feed index (and feed_writes.id,
@@ -60,6 +61,30 @@ export class Database {
       } finally {
         client.release();
       }
+    }
+
+    await this.assertSchemaCompatibility();
+  }
+
+  private async assertSchemaCompatibility(): Promise<void> {
+    const result = await this.pool.query<{ version: number }>(
+      `SELECT version FROM schema_compatibility
+        WHERE component = 'managed_stream_lifecycle'`,
+    );
+    const version = result.rows[0]?.version;
+    if (version === undefined) {
+      throw new Error(
+        '[Database] managed_stream_lifecycle schema version is missing',
+      );
+    }
+    if (version > MANAGED_LIFECYCLE_SCHEMA_VERSION) {
+      throw new Error(
+        `[Database] managed_stream_lifecycle schema version ${String(
+          version,
+        )} is newer than supported version ${String(
+          MANAGED_LIFECYCLE_SCHEMA_VERSION,
+        )}`,
+      );
     }
   }
 
