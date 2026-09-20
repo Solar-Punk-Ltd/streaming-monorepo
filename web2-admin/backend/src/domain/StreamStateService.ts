@@ -58,12 +58,22 @@ export class StreamStateService {
    * which either starts the session or does not, and a token holder that
    * probes ingest addresses learns nothing from the difference.
    */
-  async lookupByIngest(app: MediaType, topic: string): Promise<StreamRow> {
+  async lookupByIngest(
+    app: MediaType,
+    topic: string,
+    lifecycleVersion?: string,
+  ): Promise<StreamRow> {
     const notFound = () => new StreamNotFoundError(`${app}/${topic}`);
     const stream = await this.streams.findByTopic(topic);
     if (!stream) throw notFound();
     if (stream.media_type !== app) throw notFound();
     if (stream.status === 'draft' || stream.status === 'publishing') {
+      throw notFound();
+    }
+    if (lifecycleVersion !== undefined && lifecycleVersion !== '1') {
+      throw notFound();
+    }
+    if (stream.lifecycle_version === 1 && lifecycleVersion !== '1') {
       throw notFound();
     }
     return stream;

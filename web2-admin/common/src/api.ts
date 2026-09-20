@@ -254,7 +254,7 @@ export interface ApiError {
  */
 
 /** GET /api/internal/streams/by-ingest/:app/:stream (ingest stream id = `<app>/<stream>`) */
-export interface IngestLookupResponse {
+export interface LegacyIngestLookupResponse {
   id: string;
   topic: string;
   owner: string;
@@ -264,6 +264,24 @@ export interface IngestLookupResponse {
   /** The per-stream key the encoder must present as `key=`. */
   publishKey: string;
 }
+
+export type IngestLookupResponse =
+  | LegacyIngestLookupResponse
+  | (LegacyIngestLookupResponse & {
+      lifecycleVersion: 1;
+      mode: 'legacy';
+    })
+  | (LegacyIngestLookupResponse & {
+      lifecycleVersion: 1;
+      mode: 'managed';
+      lifecycle: {
+        revision: number;
+        runNumber: number;
+        state: import('./lifecycle.js').ManagedLifecycleState;
+        permission: import('./lifecycle.js').ManagedRunPermission;
+        uploaderId: string;
+      };
+    });
 
 /**
  * POST /api/internal/streams/:id/state

@@ -1,5 +1,6 @@
 import type {
   IngestLookupResponse,
+  ManagedRunReport,
   MediaType,
   RenditionReport,
   RenditionReportResponse,
@@ -15,6 +16,7 @@ import {
   managedClaimSchema,
   managedRunIdentitySchema,
   managedRunParamSchema,
+  managedReportSchema,
   renditionReportSchema,
   streamStateSchema,
   type StreamStateBody,
@@ -69,9 +71,27 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
       const stream = await streamStateService.lookupByIngest(
         String(req.params.app) as MediaType,
         String(req.params.stream),
+        req.header('X-Stream-Lifecycle-Version'),
       );
-      const response: IngestLookupResponse = toIngestLookup(stream);
+      const response: IngestLookupResponse = toIngestLookup(
+        stream,
+        req.header('X-Stream-Lifecycle-Version') === '1',
+      );
       res.json(response);
+    }),
+  );
+
+  router.post(
+    '/streams/:id/runs/:run/reports',
+    validateParams(managedRunParamSchema),
+    validateBody(managedReportSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const run = await managedLifecycle.report(
+        String(req.params.id),
+        Number(req.params.run),
+        req.body as ManagedRunReport,
+      );
+      res.json(run);
     }),
   );
 

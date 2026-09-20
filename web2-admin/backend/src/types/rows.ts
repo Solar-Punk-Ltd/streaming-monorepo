@@ -4,7 +4,12 @@
  * int8 type parser in Database.ts). The API contract in web2-admin-common is
  * camelCase; src/api/presenters.ts is the only place that converts.
  */
-import type { MediaType, StreamStatus } from '@streaming-monorepo/web2-admin-common';
+import type {
+  ManagedLifecycleState,
+  ManagedRunPermission,
+  MediaType,
+  StreamStatus,
+} from '@streaming-monorepo/web2-admin-common';
 
 export interface UserRow {
   id: string;
@@ -48,6 +53,13 @@ export interface StreamRow {
   duration_seconds: number | null;
   live_since: Date | null;
   ended_at: Date | null;
+  lifecycle_version: number | null;
+  lifecycle_revision: number;
+  current_run_number: number | null;
+  completed_run_number: number | null;
+  lifecycle_state: ManagedLifecycleState | null;
+  lifecycle_permission: ManagedRunPermission | null;
+  lifecycle_uploader_id: string | null;
   created_at: Date;
   updated_at: Date;
 }

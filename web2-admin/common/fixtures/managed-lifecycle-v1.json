@@ -15,15 +15,14 @@
     "title": "Continuation fixture",
     "status": "published",
     "publishKey": "fixture-publish-key",
+    "lifecycleVersion": 1,
+    "mode": "managed",
     "lifecycle": {
-      "version": 1,
       "revision": 7,
-      "run": {
-        "number": 2,
-        "state": "ready",
-        "permission": "open",
-        "assignedUploaderId": "srs-157-90-34-105"
-      }
+      "runNumber": 2,
+      "state": "ready",
+      "permission": "open",
+      "uploaderId": "srs-157-90-34-105"
     }
   },
   "claim": {
@@ -85,7 +84,7 @@
       "eventSequence": 4,
       "observedAt": "2026-09-20T10:11:05.000Z",
       "state": "vod",
-      "recording": {
+      "completedRecording": {
         "runNumber": 2,
         "checkpointReference": "99999999-9999-4999-8999-999999999999",
         "master": {
@@ -101,19 +100,41 @@
             "topic": "55555555-5555-4555-8555-555555555555",
             "index": 30,
             "reference": "fixture-360p-reference",
-            "duration": 724.5
+            "duration": 724.5,
+            "width": 640,
+            "height": 360,
+            "bandwidth": 800000,
+            "avgBandwidth": 700000
           },
           {
             "name": "720p",
             "topic": "66666666-6666-4666-8666-666666666666",
             "index": 31,
             "reference": "fixture-720p-reference",
-            "duration": 724.1
+            "duration": 724.1,
+            "width": 1280,
+            "height": 720,
+            "bandwidth": 2800000,
+            "avgBandwidth": 2500000
           }
         ]
       }
     }
   ],
+  "emptyCloseExample": {
+    "lifecycleVersion": 1,
+    "runNumber": 2,
+    "uploaderId": "srs-157-90-34-105",
+    "claimId": "44444444-4444-4444-8444-444444444444",
+    "eventSequence": 3,
+    "observedAt": "2026-09-20T10:11:00.000Z",
+    "state": "closed",
+    "reason": "empty",
+    "emptyOutcome": {
+      "checkpointReference": "99999999-9999-4999-8999-999999999999",
+      "acceptedMediaCount": 0
+    }
+  },
   "managedRunRead": {
     "request": {
       "method": "GET",

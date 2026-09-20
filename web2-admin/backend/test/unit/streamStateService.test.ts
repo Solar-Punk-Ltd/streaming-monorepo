@@ -17,7 +17,11 @@ import type {
   Rendition,
 } from '@streaming-monorepo/web2-admin-common';
 
-import { InvalidStateTransitionError } from '../../src/domain/errors/index.js';
+import { toIngestLookup } from '../../src/api/presenters.js';
+import {
+  InvalidStateTransitionError,
+  StreamNotFoundError,
+} from '../../src/domain/errors/index.js';
 import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
 import { LadderService } from '../../src/domain/LadderService.js';
@@ -83,6 +87,59 @@ async function setup() {
   await publishService.publish(stream.id, TEST_USER_ID);
   return { store, renditions, gateway, state, ladder, stream };
 }
+
+describe('StreamStateService.lookupByIngest lifecycle negotiation', () => {
+  it('keeps legacy lookup compatible and hides managed rows from old uploaders', async () => {
+    const { state, store, stream } = await setup();
+    const legacy = await state.lookupByIngest('video', stream.topic);
+    assert.equal(legacy.id, stream.id);
+
+    const managed = store.add(
+      streamRow({
+        status: 'published',
+        lifecycle_version: 1,
+        lifecycle_revision: 4,
+        current_run_number: 1,
+        lifecycle_state: 'ready',
+        lifecycle_permission: 'open',
+        lifecycle_uploader_id: 'srs-main',
+      }),
+    );
+    await assert.rejects(
+      state.lookupByIngest('video', managed.topic),
+      StreamNotFoundError,
+    );
+    assert.equal(
+      (await state.lookupByIngest('video', managed.topic, '1')).id,
+      managed.id,
+    );
+    assert.deepEqual(toIngestLookup(managed, true), {
+      id: managed.id,
+      topic: managed.topic,
+      owner: managed.owner,
+      mediaType: 'video',
+      title: managed.title,
+      status: 'published',
+      publishKey: managed.publish_key,
+      lifecycleVersion: 1,
+      mode: 'managed',
+      lifecycle: {
+        revision: 4,
+        runNumber: 1,
+        state: 'ready',
+        permission: 'open',
+        uploaderId: 'srs-main',
+      },
+    });
+    const negotiatedLegacy = toIngestLookup(stream, true);
+    assert.ok('mode' in negotiatedLegacy);
+    assert.equal(negotiatedLegacy.mode, 'legacy');
+    await assert.rejects(
+      state.lookupByIngest('video', managed.topic, '2'),
+      StreamNotFoundError,
+    );
+  });
+});
 
 /** The stream's entry as the write at `index` left it on the feed. */
 function entryAt(

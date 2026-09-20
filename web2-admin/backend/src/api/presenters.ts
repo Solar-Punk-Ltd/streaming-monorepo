@@ -82,8 +82,11 @@ export function toRenditionReportResponse(
  * the encoder presented, and nothing else — this answer leaves the trusted
  * network the internal token protects.
  */
-export function toIngestLookup(row: StreamRow): IngestLookupResponse {
-  return {
+export function toIngestLookup(
+  row: StreamRow,
+  negotiatedLifecycle = false,
+): IngestLookupResponse {
+  const legacy = {
     id: row.id,
     topic: row.topic,
     owner: row.owner,
@@ -91,5 +94,29 @@ export function toIngestLookup(row: StreamRow): IngestLookupResponse {
     title: row.title,
     status: row.status,
     publishKey: row.publish_key,
+  };
+  if (!negotiatedLifecycle) return legacy;
+  if (row.lifecycle_version !== 1) {
+    return { ...legacy, lifecycleVersion: 1, mode: 'legacy' };
+  }
+  if (
+    row.current_run_number === null ||
+    row.lifecycle_state === null ||
+    row.lifecycle_permission === null ||
+    row.lifecycle_uploader_id === null
+  ) {
+    throw new Error(`Managed stream ${row.id} has no current run envelope`);
+  }
+  return {
+    ...legacy,
+    lifecycleVersion: 1,
+    mode: 'managed',
+    lifecycle: {
+      revision: row.lifecycle_revision,
+      runNumber: row.current_run_number,
+      state: row.lifecycle_state,
+      permission: row.lifecycle_permission,
+      uploaderId: row.lifecycle_uploader_id,
+    },
   };
 }
