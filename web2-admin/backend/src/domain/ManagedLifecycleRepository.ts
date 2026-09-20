@@ -2,11 +2,16 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import type {
   ManagedClaimRequest,
+  ManagedRunReport,
   ManagedRunView,
 } from '@streaming-monorepo/web2-admin-common';
 import type { Pool, PoolClient } from 'pg';
 
-import { ManagedLifecycleConflict } from './managedLifecycle.js';
+import {
+  classifyManagedEvent,
+  isManagedRunTransitionAllowed,
+  ManagedLifecycleConflict,
+} from './managedLifecycle.js';
 
 interface ManagedRunDatabaseRow {
   lifecycle_version: number;
@@ -23,6 +28,8 @@ interface ManagedRunDatabaseRow {
   permission: ManagedRunView['permission'];
   reconnect_deadline: Date | null;
   close_reason: ManagedRunView['closeReason'] | null;
+  last_event_sequence: number | null;
+  last_event_digest: string | null;
 }
 
 const RUN_SELECT = `
@@ -31,6 +38,7 @@ const RUN_SELECT = `
          run.revision, run.assigned_uploader_id, run.claim_id,
          run.claim_request_id, run.claim_request_digest, run.state,
          run.permission, run.reconnect_deadline, run.close_reason
+         , run.last_event_sequence, run.last_event_digest
     FROM streams stream
     JOIN stream_runs run
       ON run.stream_id = stream.id AND run.run_number = $2
@@ -47,6 +55,23 @@ function claimDigest(request: ManagedClaimRequest): string {
       }),
     )
     .digest('hex');
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function reportDigest(report: ManagedRunReport): string {
+  return createHash('sha256').update(canonicalJson(report)).digest('hex');
 }
 
 function toView(row: ManagedRunDatabaseRow): ManagedRunView {
@@ -149,6 +174,110 @@ export class ManagedLifecycleRepository {
     return toView(row);
   }
 
+  async report(
+    streamId: string,
+    runNumber: number,
+    report: ManagedRunReport,
+  ): Promise<ManagedRunView> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const row = await this.lockRun(client, streamId, runNumber);
+      this.requireCurrent(row, runNumber, report.uploaderId);
+      if (row.claim_id !== report.claimId) {
+        throw new ManagedLifecycleConflict('assignment_mismatch');
+      }
+
+      const digest = reportDigest(report);
+      const disposition = classifyManagedEvent(
+        row.last_event_sequence == null
+          ? null
+          : {
+              sequence: Number(row.last_event_sequence),
+              digest: row.last_event_digest!,
+            },
+        { sequence: report.eventSequence, digest },
+      );
+      if (disposition === 'duplicate') {
+        await client.query('COMMIT');
+        return toView(row);
+      }
+      if (!isManagedRunTransitionAllowed(row.state, report.state)) {
+        throw new ManagedLifecycleConflict('event_conflict');
+      }
+
+      const revision = row.lifecycle_revision + 1;
+      if (report.state === 'vod') {
+        await this.storeRecording(client, streamId, runNumber, report);
+      }
+      const permission =
+        report.state === 'closed' || report.state === 'vod'
+          ? 'closed'
+          : 'claimed';
+      const updated = await client.query<ManagedRunDatabaseRow>(
+        `UPDATE stream_runs
+            SET state = $3, permission = $4, revision = $5,
+                last_event_sequence = $6, last_event_digest = $7,
+                last_observed_at = $8,
+                reconnect_deadline = $9, close_reason = $10,
+                empty_checkpoint_reference = $11,
+                accepted_media_count = $12
+          WHERE stream_id = $1 AND run_number = $2
+          RETURNING $5::bigint AS lifecycle_revision,
+                    1::smallint AS lifecycle_version,
+                    run_number AS current_run_number, stream_id, run_number,
+                    revision, assigned_uploader_id, claim_id,
+                    claim_request_id, claim_request_digest, state, permission,
+                    reconnect_deadline, close_reason,
+                    last_event_sequence, last_event_digest`,
+        [
+          streamId,
+          runNumber,
+          report.state,
+          permission,
+          revision,
+          report.eventSequence,
+          digest,
+          report.observedAt,
+          report.state === 'waiting' ? report.reconnectDeadline : null,
+          report.state === 'closed' ? report.reason : row.close_reason,
+          report.state === 'closed'
+            ? (report.emptyOutcome?.checkpointReference ?? null)
+            : null,
+          report.state === 'closed'
+            ? (report.emptyOutcome?.acceptedMediaCount ?? null)
+            : null,
+        ],
+      );
+      const recording = report.state === 'vod' ? report.completedRecording : null;
+      await client.query(
+        `UPDATE streams
+            SET lifecycle_revision = $2,
+                completed_run_number = COALESCE($3, completed_run_number),
+                status = CASE WHEN $3 IS NULL THEN status ELSE 'vod' END,
+                manifest_index = COALESCE($4, manifest_index),
+                duration_seconds = COALESCE($5, duration_seconds),
+                ended_at = CASE WHEN $3 IS NULL THEN ended_at ELSE NOW() END,
+                updated_at = NOW()
+          WHERE id = $1`,
+        [
+          streamId,
+          revision,
+          recording?.runNumber ?? null,
+          recording?.master.index ?? null,
+          recording?.master.duration ?? null,
+        ],
+      );
+      await client.query('COMMIT');
+      return toView(updated.rows[0]!);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   private async lockRun(
     client: PoolClient,
     streamId: string,
@@ -173,6 +302,68 @@ export class ManagedLifecycleRepository {
     }
     if (row.assigned_uploader_id !== uploaderId) {
       throw new ManagedLifecycleConflict('assignment_mismatch');
+    }
+  }
+
+  private async storeRecording(
+    client: PoolClient,
+    streamId: string,
+    runNumber: number,
+    report: Extract<ManagedRunReport, { state: 'vod' }>,
+  ): Promise<void> {
+    const recording = report.completedRecording;
+    if (recording.runNumber !== runNumber) {
+      throw new ManagedLifecycleConflict('stale_run');
+    }
+    const expected = await client.query<{ name: string }>(
+      `SELECT name FROM stream_run_expected_renditions
+        WHERE stream_id = $1 AND run_number = $2 ORDER BY name`,
+      [streamId, runNumber],
+    );
+    const expectedNames = expected.rows.map(({ name }) => name);
+    const declaredNames = [...recording.expectedRenditions].sort();
+    const recordedNames = recording.renditions.map(({ name }) => name).sort();
+    if (
+      canonicalJson(expectedNames) !== canonicalJson(declaredNames) ||
+      canonicalJson(expectedNames) !== canonicalJson(recordedNames)
+    ) {
+      throw new ManagedLifecycleConflict('event_conflict');
+    }
+    await client.query(
+      `INSERT INTO stream_run_recordings (
+         stream_id, run_number, checkpoint_reference, master_topic,
+         master_index, master_reference, duration_seconds
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        streamId,
+        runNumber,
+        recording.checkpointReference,
+        recording.master.topic,
+        recording.master.index,
+        recording.master.reference,
+        recording.master.duration,
+      ],
+    );
+    for (const rendition of recording.renditions) {
+      await client.query(
+        `INSERT INTO stream_run_recording_renditions (
+           stream_id, run_number, name, topic, manifest_index, reference,
+           duration_seconds, width, height, bandwidth, avg_bandwidth
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          streamId,
+          runNumber,
+          rendition.name,
+          rendition.topic,
+          rendition.index,
+          rendition.reference,
+          rendition.duration,
+          rendition.width,
+          rendition.height,
+          rendition.bandwidth,
+          rendition.avgBandwidth,
+        ],
+      );
     }
   }
 }

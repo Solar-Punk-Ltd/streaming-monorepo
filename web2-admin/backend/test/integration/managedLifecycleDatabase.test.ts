@@ -270,13 +270,34 @@ describe('managed run database invariants', () => {
     assert.equal(claimed.claimId, retried.claimId);
     assert.equal(retried.permission, 'claimed');
 
-    await database.pool.query(
-      `UPDATE stream_runs
-          SET state = 'closed', permission = 'closed',
-              close_reason = 'cancelled', revision = 3
-        WHERE stream_id = $1 AND run_number = 1`,
-      [row.id],
-    );
+    const observedAt = '2026-09-20T10:00:00.000Z';
+    const live = {
+      lifecycleVersion: 1 as const,
+      runNumber: 1,
+      uploaderId: request.uploaderId,
+      claimId: claimed.claimId!,
+      eventSequence: 1,
+      observedAt,
+      state: 'live' as const,
+    };
+    assert.equal((await lifecycle.report(row.id, 1, live)).state, 'live');
+    assert.equal((await lifecycle.report(row.id, 1, live)).revision, 3);
+    await lifecycle.report(row.id, 1, {
+      ...live,
+      eventSequence: 2,
+      state: 'waiting',
+      reconnectDeadline: '2026-09-20T10:01:00.000Z',
+    });
+    await lifecycle.report(row.id, 1, {
+      ...live,
+      eventSequence: 3,
+      state: 'closed',
+      reason: 'empty',
+      emptyOutcome: {
+        checkpointReference: randomUUID(),
+        acceptedMediaCount: 0,
+      },
+    });
     await assert.rejects(
       lifecycle.claim(row.id, 1, request),
       (error: unknown) =>
