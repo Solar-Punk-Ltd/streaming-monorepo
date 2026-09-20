@@ -42,13 +42,21 @@ export class StreamRenditionRepository {
   async upsert(
     streamId: string,
     rendition: Rendition,
-  ): Promise<StreamRenditionRow> {
+  ): Promise<StreamRenditionRow | null> {
     const result = await this.pool.query<StreamRenditionRow>(
-      `INSERT INTO stream_renditions (
+      `WITH locked AS (
+         SELECT id, lifecycle_version
+           FROM streams
+          WHERE id = $1
+          FOR UPDATE
+       )
+       INSERT INTO stream_renditions (
          stream_id, name, width, height, topic, bandwidth, avg_bandwidth,
          manifest_index, duration_seconds, updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+       SELECT id, $2, $3, $4, $5, $6, $7, $8, $9, NOW()
+         FROM locked
+        WHERE lifecycle_version IS DISTINCT FROM 1
        ON CONFLICT (stream_id, name) DO UPDATE
           SET width = EXCLUDED.width,
               height = EXCLUDED.height,
@@ -71,7 +79,7 @@ export class StreamRenditionRepository {
         rendition.duration ?? null,
       ],
     );
-    return result.rows[0];
+    return result.rows[0] ?? null;
   }
 
   /** How many rungs were dropped; 0 for a stream that never had a ladder. */

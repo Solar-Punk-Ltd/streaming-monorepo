@@ -109,6 +109,9 @@ export class StreamStateService {
       // between the read and the write. Re-read to say which of the two it is.
       const current = await this.streams.findByIdUnscoped(id);
       if (!current) throw new StreamNotFoundError(id);
+      if (current.lifecycle_version === 1) {
+        throw new ManagedLifecycleConflict('managed_route_required');
+      }
       throw new InvalidStateTransitionError(id, current.status, report.state);
     }
 

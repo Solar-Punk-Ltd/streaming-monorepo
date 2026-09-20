@@ -11,11 +11,16 @@ import pg from 'pg';
 
 import { Database } from '../../src/domain/Database.js';
 import { ManagedEnrollmentUnavailableError } from '../../src/domain/errors/index.js';
+import { LadderService } from '../../src/domain/LadderService.js';
 import { ManagedEnrollmentService } from '../../src/domain/ManagedEnrollmentService.js';
 import { ManagedEnrollmentReadiness } from '../../src/domain/ManagedEnrollmentReadiness.js';
+import { ManagedLifecycleConflict } from '../../src/domain/managedLifecycle.js';
 import { managedRungTopicFor } from '../../src/domain/managedRungTopic.js';
+import type { PublishService } from '../../src/domain/PublishService.js';
 import { ReleaseGuardReceiptRepository } from '../../src/domain/ReleaseGuardReceiptRepository.js';
+import { StreamRenditionRepository } from '../../src/domain/StreamRenditionRepository.js';
 import { StreamRepository } from '../../src/domain/StreamRepository.js';
+import { StreamStateService } from '../../src/domain/StreamStateService.js';
 import { UploaderCapabilityRepository } from '../../src/domain/UploaderCapabilityRepository.js';
 
 const { Pool } = pg;
@@ -57,6 +62,24 @@ let receipts: ReleaseGuardReceiptRepository;
 let enrollment: ManagedEnrollmentService;
 let schema: string;
 let userId: string;
+
+interface Deferred {
+  promise: Promise<void>;
+  resolve(): void;
+}
+
+function deferred(): Deferred {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+const unreachablePublisher = {
+  republishWithState: () =>
+    assert.fail('a refused legacy report must not publish'),
+} as unknown as PublishService;
 
 async function waitForEnrollmentWaiters(count: number): Promise<void> {
   for (let attempt = 0; attempt < 1_000; attempt += 1) {
@@ -319,5 +342,96 @@ describe('managed stream enrollment', () => {
       [stream.id],
     );
     assert.deepEqual(expected.rows, [{ name: '1080p' }]);
+  });
+
+  it('refuses a legacy state write that resumes after enrollment commits', async () => {
+    const stream = await createLegacy('published');
+    await makeReady();
+    const streams = new StreamRepository(database.pool);
+    const read = deferred();
+    const resume = deferred();
+    let pauseNextRead = true;
+    const state = new StreamStateService(
+      {
+        findByTopic: streams.findByTopic.bind(streams),
+        findByIdUnscoped: async (id) => {
+          const row = await streams.findByIdUnscoped(id);
+          if (pauseNextRead) {
+            pauseNextRead = false;
+            read.resolve();
+            await resume.promise;
+          }
+          return row;
+        },
+        markLive: streams.markLive.bind(streams),
+        markVod: streams.markVod.bind(streams),
+      },
+      unreachablePublisher,
+    );
+
+    const report = state.report(stream.id, { state: 'live' });
+    await read.promise;
+    assert.equal(
+      await enrollment.enrollEligiblePlaceholder(stream.id, userId),
+      'enrolled',
+    );
+    resume.resolve();
+
+    await assert.rejects(
+      report,
+      (error: unknown) =>
+        error instanceof ManagedLifecycleConflict &&
+        error.code === 'managed_route_required',
+    );
+    const stored = await streams.findByIdUnscoped(stream.id);
+    assert.equal(stored?.status, 'published');
+  });
+
+  it('refuses a legacy rung write that resumes after enrollment commits', async () => {
+    const stream = await createLegacy('published');
+    await makeReady();
+    const streams = new StreamRepository(database.pool);
+    const renditions = new StreamRenditionRepository(database.pool);
+    const read = deferred();
+    const resume = deferred();
+    let pauseNextRead = true;
+    const ladder = new LadderService(
+      {
+        findByIdUnscoped: async (id) => {
+          const row = await streams.findByIdUnscoped(id);
+          if (pauseNextRead) {
+            pauseNextRead = false;
+            read.resolve();
+            await resume.promise;
+          }
+          return row;
+        },
+      },
+      renditions,
+      unreachablePublisher,
+    );
+
+    const report = ladder.report(stream.id, {
+      name: '360p',
+      width: 640,
+      height: 360,
+      topic: managedRungTopicFor(stream.topic, '360p'),
+      bandwidth: 800_000,
+      avgBandwidth: 700_000,
+    });
+    await read.promise;
+    assert.equal(
+      await enrollment.enrollEligiblePlaceholder(stream.id, userId),
+      'enrolled',
+    );
+    resume.resolve();
+
+    await assert.rejects(
+      report,
+      (error: unknown) =>
+        error instanceof ManagedLifecycleConflict &&
+        error.code === 'managed_route_required',
+    );
+    assert.deepEqual(await renditions.listByStream(stream.id), []);
   });
 });

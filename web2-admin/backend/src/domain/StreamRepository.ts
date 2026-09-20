@@ -492,7 +492,8 @@ export class StreamRepository {
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `WITH locked AS (
-         SELECT id, status FROM streams WHERE id = $1 FOR UPDATE
+         SELECT id, status, lifecycle_version
+           FROM streams WHERE id = $1 FOR UPDATE
        ), moved AS (
          UPDATE streams
             SET status = 'live',
@@ -505,7 +506,11 @@ export class StreamRepository {
                 ended_at = NULL,
                 publish_error = NULL,
                 updated_at = NOW()
-          WHERE id IN (SELECT id FROM locked WHERE status = ANY($2::text[]))
+          WHERE id IN (
+            SELECT id FROM locked
+             WHERE status = ANY($2::text[])
+               AND lifecycle_version IS DISTINCT FROM 1
+          )
           RETURNING ${STREAM_COLUMNS}
        ), unfinished AS (
          UPDATE stream_renditions
@@ -515,6 +520,7 @@ export class StreamRepository {
           WHERE stream_id IN (
             SELECT id FROM locked
              WHERE status = 'vod' AND status = ANY($2::text[])
+               AND lifecycle_version IS DISTINCT FROM 1
           )
        )
        SELECT * FROM moved`,
@@ -542,7 +548,9 @@ export class StreamRepository {
               ended_at = NOW(),
               publish_error = NULL,
               updated_at = NOW()
-        WHERE id = $1 AND status = ANY($2::text[])
+        WHERE id = $1
+          AND status = ANY($2::text[])
+          AND lifecycle_version IS DISTINCT FROM 1
         RETURNING ${STREAM_COLUMNS}`,
       [id, allowedFrom, manifestIndex, durationSeconds],
     );

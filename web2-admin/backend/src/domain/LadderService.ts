@@ -26,7 +26,10 @@ export interface LadderStreamStore {
 /** The slice of StreamRenditionRepository the merge needs; a fake stands in. */
 export interface LadderRenditionStore {
   listByStream(streamId: string): Promise<StreamRenditionRow[]>;
-  upsert(streamId: string, rendition: Rendition): Promise<StreamRenditionRow>;
+  upsert(
+    streamId: string,
+    rendition: Rendition,
+  ): Promise<StreamRenditionRow | null>;
 }
 
 /** Where the ladder stands after a report; the uploader's cue to report `vod`. */
@@ -109,7 +112,18 @@ export class LadderService {
 
     const stored = (await this.renditions.listByStream(id)).map(toRendition);
     const previous = stored.find((rung) => rung.name === report.name) ?? null;
-    await this.renditions.upsert(id, mergeRendition(previous, report));
+    const updated = await this.renditions.upsert(
+      id,
+      mergeRendition(previous, report),
+    );
+    if (!updated) {
+      const current = await this.streams.findByIdUnscoped(id);
+      if (!current) throw new StreamNotFoundError(id);
+      if (current.lifecycle_version === 1) {
+        throw new ManagedLifecycleConflict('managed_route_required');
+      }
+      throw new InvalidStateError(id, current.status);
+    }
 
     const publish = await this.publishService.republishWithState(stream);
     const { renditions } = publish;
