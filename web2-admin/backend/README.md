@@ -71,12 +71,22 @@ port. It also mounts its immutable active artifact descriptor read-only at
 
 Runtime configuration remains operator-owned at
 `$HOME/.config/web2-admin/release.env`. It contains the normal backend
-environment and `POSTGRES_PASSWORD`. `RELEASE_WEB_PORT` is required.
+environment as nonsecret values and `op://` references. It must never contain
+resolved credential values. `RELEASE_WEB_PORT` is required.
 `RELEASE_PROJECT_NAME` and `RELEASE_POSTGRES_VOLUME_NAME` default to
 `web2-admin` and `web2-admin_web2admin-pg`. An isolated installation may set
 all three to the exact target bound when its external guard is installed. The
 adapter refuses a plan whose target differs from that file. No database or API
 port is published. The web service binds only `127.0.0.1:<RELEASE_WEB_PORT>`.
+
+The installed manager process that owns guarded admin releases must be started
+through `op run --env-file "$HOME/.config/web2-admin/release.env"` around its
+existing fixed launch command. Its release adapter passes only the fixed admin
+allowlist into this child. Compose explicitly maps those process values over
+the reference-file entries. This keeps `POSTGRES_PASSWORD`, `BEE_URL`,
+`POSTAGE_BATCH_ID`, `FEED_PRIVATE_KEY`, `INTERNAL_API_TOKEN` and
+`INGEST_SRT_PASSPHRASE` out of files, arguments and adapter output. A literal
+`op://` string reaching a container is a failed release, not a credential.
 
 During a guarded transition the old API stops before the candidate API starts.
 The candidate applies migrations during boot and must pass its database-backed
