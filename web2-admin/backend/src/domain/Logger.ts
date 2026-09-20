@@ -38,6 +38,7 @@ export class Logger {
       case 'object':
         return JSON.stringify(arg) ?? 'undefined';
     }
+    throw new TypeError('Unsupported log argument');
   }
 
   log(...args: unknown[]): void {
