@@ -2,7 +2,15 @@ import {
   MEDIA_TYPES,
   type MediaType,
 } from '@streaming-monorepo/web2-admin-common';
-import { InferType, NumberSchema, number, object, string } from 'yup';
+import {
+  InferType,
+  NumberSchema,
+  array,
+  mixed,
+  number,
+  object,
+  string,
+} from 'yup';
 
 import { UUID_RE } from './stream.js';
 
@@ -49,6 +57,112 @@ export const streamStateSchema = object({
 }).noUnknown(true);
 
 export type StreamStateBody = InferType<typeof streamStateSchema>;
+
+const SAFE_INTEGER_MAX = Number.MAX_SAFE_INTEGER;
+const SWARM_REFERENCE_RE = /^[0-9a-f]{64}$/;
+
+const lifecycleVersion = number()
+  .required()
+  .oneOf([1], 'lifecycleVersion must be 1');
+
+const positiveSafeInteger = (name: string) =>
+  number()
+    .required()
+    .integer(`${name} must be a whole number`)
+    .min(1, `${name} must be positive`)
+    .max(SAFE_INTEGER_MAX, `${name} must be a safe integer`);
+
+export const managedClaimSchema = object({
+  lifecycleVersion,
+  expectedRevision: positiveSafeInteger('expectedRevision'),
+  uploaderId: string().required().min(1).max(200),
+  requestId: string().required().matches(UUID_RE, 'requestId must be a UUID'),
+}).noUnknown(true);
+
+const immutableReferenceSchema = object({
+  topic: string().required().matches(UUID_RE, 'topic must be a UUID'),
+  index: number().required().integer().min(0).max(SAFE_INTEGER_MAX),
+  reference: string()
+    .required()
+    .matches(
+      SWARM_REFERENCE_RE,
+      'reference must be a 64-character Swarm reference',
+    ),
+  duration: number().required().min(0),
+}).noUnknown(true);
+
+const immutableRenditionSchema = immutableReferenceSchema.shape({
+  name: string().required().matches(/^[A-Za-z0-9.-]{1,32}$/),
+  width: number().integer().positive(),
+  height: number().integer().positive(),
+  bandwidth: number().integer().min(0),
+  avgBandwidth: number().integer().min(0),
+});
+
+const completedRecordingSchema = object({
+  runNumber: positiveSafeInteger('runNumber'),
+  checkpointReference: string()
+    .required()
+    .matches(UUID_RE, 'checkpointReference must be a UUID'),
+  master: immutableReferenceSchema.required(),
+  expectedRenditions: array().of(string().required()).required(),
+  renditions: array().of(immutableRenditionSchema.required()).required(),
+}).noUnknown(true);
+
+const emptyOutcomeSchema = object({
+  checkpointReference: string()
+    .required()
+    .matches(UUID_RE, 'checkpointReference must be a UUID'),
+  acceptedMediaCount: number()
+    .required()
+    .oneOf([0], 'acceptedMediaCount must be 0'),
+}).noUnknown(true);
+
+export const managedReportSchema = object({
+  lifecycleVersion,
+  runNumber: positiveSafeInteger('runNumber'),
+  uploaderId: string().required().min(1).max(200),
+  claimId: string().required().matches(UUID_RE, 'claimId must be a UUID'),
+  eventSequence: positiveSafeInteger('eventSequence'),
+  observedAt: string().required().datetime({ precision: 3 }),
+  state: string()
+    .required()
+    .oneOf(['live', 'waiting', 'closed', 'vod']),
+  reconnectDeadline: string().datetime({ precision: 3 }).when('state', {
+    is: 'waiting',
+    then: (schema) =>
+      schema.required('reconnectDeadline is required when state is waiting'),
+    otherwise: (schema) => schema.strip(),
+  }),
+  reason: string()
+    .oneOf([
+      'reconnect_timeout',
+      'cancelled',
+      'recovery_required',
+      'finalization_failed',
+      'empty',
+    ])
+    .when('state', {
+      is: 'closed',
+      then: (schema) => schema.required('reason is required when state is closed'),
+      otherwise: (schema) => schema.strip(),
+    }),
+  emptyOutcome: emptyOutcomeSchema.when(['state', 'reason'], {
+    is: (state: string, reason: string) => state === 'closed' && reason === 'empty',
+    then: (schema) =>
+      schema.required('emptyOutcome is required for an empty close'),
+    otherwise: (schema) => schema.strip(),
+  }),
+  completedRecording: completedRecordingSchema.when('state', {
+    is: 'vod',
+    then: (schema) =>
+      schema.required('completedRecording is required when state is vod'),
+    otherwise: (schema) => schema.strip(),
+  }),
+}).noUnknown(true);
+
+export type ManagedClaimBody = InferType<typeof managedClaimSchema>;
+export type ManagedReportBody = InferType<typeof managedReportSchema>;
 
 /**
  * Rung names go into the uploader's ingest ids as `<base>_<rung>`, so '_' is

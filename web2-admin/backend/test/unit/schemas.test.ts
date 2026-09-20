@@ -19,6 +19,8 @@ import {
   loginSchema,
 } from '../../src/schemas/auth.js';
 import {
+  managedClaimSchema,
+  managedReportSchema,
   ingestLookupParamSchema,
   renditionReportSchema,
   streamStateSchema,
@@ -303,6 +305,72 @@ describe('ingestLookupParamSchema', () => {
       }),
       ['app must be one of video, audio'],
     );
+  });
+});
+
+describe('managed lifecycle schemas', () => {
+  const identity = {
+    lifecycleVersion: 1,
+    runNumber: 2,
+    uploaderId: 'srs-main',
+    claimId: '22222222-2222-4222-8222-222222222222',
+    eventSequence: 4,
+    observedAt: '2026-09-20T10:00:00.000Z',
+  };
+
+  it('accepts a claim only for lifecycle version 1', async () => {
+    const claim = {
+      lifecycleVersion: 1,
+      expectedRevision: 7,
+      uploaderId: 'srs-main',
+      requestId: '11111111-1111-4111-8111-111111111111',
+    };
+    assert.deepEqual(await validate(managedClaimSchema, claim), claim);
+    assert.deepEqual(
+      await errorsFor(managedClaimSchema, { ...claim, lifecycleVersion: 2 }),
+      ['lifecycleVersion must be 1'],
+    );
+  });
+
+  it('requires state-specific report data and a real immutable reference', async () => {
+    assert.deepEqual(
+      await errorsFor(managedReportSchema, {
+        ...identity,
+        state: 'waiting',
+      }),
+      ['reconnectDeadline is required when state is waiting'],
+    );
+
+    const errors = await errorsFor(managedReportSchema, {
+      ...identity,
+      state: 'vod',
+      completedRecording: {
+        runNumber: 2,
+        checkpointReference: '99999999-9999-4999-8999-999999999999',
+        master: {
+          topic: 'bbbbbbbb-0000-4000-8000-000000000001',
+          index: 8,
+          reference: 'not-a-swarm-reference',
+          duration: 12,
+        },
+        expectedRenditions: [],
+        renditions: [],
+      },
+    });
+    assert.ok(errors.includes('reference must be a 64-character Swarm reference'));
+  });
+
+  it('accepts a durably verified empty close without inventing a VOD snapshot', async () => {
+    const report = {
+      ...identity,
+      state: 'closed',
+      reason: 'empty',
+      emptyOutcome: {
+        checkpointReference: '99999999-9999-4999-8999-999999999999',
+        acceptedMediaCount: 0,
+      },
+    };
+    assert.deepEqual(await validate(managedReportSchema, report), report);
   });
 });
 
