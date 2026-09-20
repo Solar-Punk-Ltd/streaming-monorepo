@@ -33,7 +33,7 @@ export function jsonOk<T>(body: T, status = 200): Response {
     ok: true,
     status,
     headers: headersOf(),
-    json: async () => body,
+    json: () => Promise.resolve(body),
   } as unknown as Response;
 }
 
@@ -47,7 +47,7 @@ export function jsonError(
     ok: false,
     status,
     headers: headersOf(headers),
-    json: async () => body,
+    json: () => Promise.resolve(body),
   } as unknown as Response;
 }
 
@@ -55,9 +55,7 @@ export function noContent(): Response {
   return {
     ok: true,
     status: 204,
-    json: async () => {
-      throw new Error('no body');
-    },
+    json: () => Promise.reject(new Error('no body')),
   } as unknown as Response;
 }
 
@@ -75,7 +73,13 @@ export interface Route {
 export function mockFetch(routes: Route[]) {
   const fetchMock = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input).split('?')[0];
+      const url = (
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url
+      ).split('?')[0];
       const method = (init?.method ?? 'GET').toUpperCase();
       const route = routes.find(
         (r) => r.path === url && (r.method ?? 'GET').toUpperCase() === method,

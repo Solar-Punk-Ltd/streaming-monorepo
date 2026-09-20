@@ -63,15 +63,15 @@ describe('IngestPanel', () => {
     // which values are safe to leave on screen. The rest of the URL stays
     // readable so the operator can still check host and port.
     for (const label of ['SRT URL', 'Your stream key']) {
-      const shown = (screen.getByLabelText(label) as HTMLInputElement).value;
+      const shown = screen.getByLabelText<HTMLInputElement>(label).value;
       expect(shown).toContain('key=••••••••');
       expect(shown).not.toContain(details.publishKey);
     }
     expect(
-      (screen.getByLabelText('SRT URL') as HTMLInputElement).value,
+      screen.getByLabelText<HTMLInputElement>('SRT URL').value,
     ).toContain('srt://ingest.example.test:10061');
     expect(screen.getByLabelText('SRT Passphrase')).not.toHaveValue(
-      details.srt.passphrase!,
+      details.srt.passphrase,
     );
 
     fireEvent.click(screen.getByLabelText('show your stream key'));
@@ -118,7 +118,11 @@ describe('IngestPanel', () => {
         method: 'POST',
         path: '/api/streams/stream-1/ingest/rotate-key',
         respond: () =>
-          ({ ok: true, status: 200, json: async () => rotated }) as Response,
+          ({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(rotated),
+          }) as Response,
       },
     ]);
     const onRotated = vi.fn();

@@ -84,9 +84,7 @@ describe('LoginPage', () => {
             ok: false,
             status: 429,
             headers: { get: () => '120' } as unknown as Headers,
-            json: async () => {
-              throw new Error('not json');
-            },
+            json: () => Promise.reject(new Error('not json')),
           }) as unknown as Response,
       },
     ]);
@@ -170,16 +168,13 @@ describe('LoginPage', () => {
     renderWithAuth(<LoginPage />, { route: '/login' });
     await fillAndSubmit('admin', 'admin12345678');
 
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        LOGIN,
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            [REQUESTED_WITH_HEADER]: 'web2-admin',
-          }),
-        }),
-      );
-    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const request = fetchMock.mock.calls.find(([url]) => url === LOGIN);
+    expect(request?.[1]?.headers).toEqual(
+      expect.objectContaining({
+        [REQUESTED_WITH_HEADER]: 'web2-admin',
+      }),
+    );
   });
 
   it('clears the error once the login succeeds', async () => {

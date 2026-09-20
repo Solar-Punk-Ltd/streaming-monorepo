@@ -138,7 +138,10 @@ describe('StreamFormPage validation', () => {
         path: '/api/streams',
         respond: (init) => {
           calls.push({ url: '/api/streams', method: 'POST' });
-          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          if (typeof init?.body !== 'string') {
+            throw new TypeError('expected a JSON request body');
+          }
+          const body = JSON.parse(init.body) as Record<string, unknown>;
           expect(body.title).toBe('Devcon keynote');
           expect(body.description).toBe('The opening talk');
           expect(body.mediaType).toBe('audio');
@@ -174,8 +177,8 @@ describe('StreamFormPage validation', () => {
     submit();
 
     await waitFor(() => expect(calls).toHaveLength(2));
-    expect(calls[0]!.method).toBe('POST');
-    expect(calls[1]!.method).toBe('PUT');
+    expect(calls[0].method).toBe('POST');
+    expect(calls[1].method).toBe('PUT');
     expect(await screen.findByText('details page')).toBeInTheDocument();
   });
 

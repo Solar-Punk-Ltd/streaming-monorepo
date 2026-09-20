@@ -60,9 +60,7 @@ describe('extractApiError', () => {
     const res = {
       ok: false,
       status: 413,
-      json: async () => {
-        throw new Error('not json');
-      },
+      json: () => Promise.reject(new Error('not json')),
     } as unknown as Response;
 
     expect(await extractApiError(res, 'too big')).toBe('too big');

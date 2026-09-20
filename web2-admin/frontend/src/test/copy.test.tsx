@@ -89,7 +89,7 @@ describe('copying a value', () => {
 
   it('selects the value for a manual copy when neither route works', async () => {
     expect(navigator.clipboard).toBeUndefined();
-    expect(document.execCommand).toBeUndefined();
+    expect(typeof document.execCommand).toBe('undefined');
     render();
 
     clickCopy();
@@ -97,7 +97,7 @@ describe('copying a value', () => {
     expect(
       await screen.findByText(/The srt url is selected — copy it with your keyboard/),
     ).toBeInTheDocument();
-    const field = screen.getByLabelText('SRT URL') as HTMLInputElement;
+    const field = screen.getByLabelText<HTMLInputElement>('SRT URL');
     expect(field.selectionStart).toBe(0);
     expect(field.selectionEnd).toBe(VALUE.length);
   });
@@ -106,14 +106,14 @@ describe('copying a value', () => {
     render(true);
 
     // Hidden to start with.
-    expect((screen.getByLabelText('SRT URL') as HTMLInputElement).value).not.toBe(
+    expect(screen.getByLabelText<HTMLInputElement>('SRT URL').value).not.toBe(
       VALUE,
     );
 
     clickCopy();
 
     await waitFor(() => {
-      const field = screen.getByLabelText('SRT URL') as HTMLInputElement;
+      const field = screen.getByLabelText<HTMLInputElement>('SRT URL');
       expect(field.value).toBe(VALUE);
       expect(field.selectionEnd).toBe(VALUE.length);
     });

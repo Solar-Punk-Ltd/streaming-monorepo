@@ -68,6 +68,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then((probe) => {
         if (!cancelled) apply(probe);
       })
+      .catch(() => {
+        if (!cancelled) apply({ signedIn: false, reason: 'unreachable' });
+      })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
