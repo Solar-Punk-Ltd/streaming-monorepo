@@ -172,6 +172,12 @@ export class ManagedLifecycleRepository {
           WHERE id = $1`,
         [streamId, revision],
       );
+      await client.query(
+        `UPDATE continuation_operations
+            SET status = 'claimed', revision = $3
+          WHERE stream_id = $1 AND next_run_number = $2 AND status = 'ready'`,
+        [streamId, runNumber, revision],
+      );
       await client.query('COMMIT');
       return toView(claimed.rows[0]);
     } catch (error) {

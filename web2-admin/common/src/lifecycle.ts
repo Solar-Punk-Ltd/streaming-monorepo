@@ -135,9 +135,15 @@ export type ContinuationOperationState =
   | 'cancelled'
   | 'claimed';
 
+export interface ContinuationCreateRequest {
+  requestId: string;
+  expectedRevision: number;
+}
+
 export interface ContinuationOperation {
   lifecycleVersion: typeof MANAGED_LIFECYCLE_VERSION;
   operationId: string;
+  requestId: string;
   streamId: string;
   topic: string;
   mediaType: MediaType;

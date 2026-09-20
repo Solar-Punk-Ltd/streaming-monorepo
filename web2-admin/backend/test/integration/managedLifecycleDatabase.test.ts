@@ -632,6 +632,13 @@ describe('managed run database invariants', () => {
 });
 
 describe('managed lifecycle schema compatibility', () => {
+  it('installs durable continuation operation storage', async () => {
+    const result = await database.pool.query<{ table_name: string | null }>(
+      `SELECT to_regclass('continuation_operations')::text AS table_name`,
+    );
+    assert.equal(result.rows[0].table_name, 'continuation_operations');
+  });
+
   it('refuses a database lifecycle version newer than this binary supports', async () => {
     await database.pool.query(
       `UPDATE schema_compatibility
