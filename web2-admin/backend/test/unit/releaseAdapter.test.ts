@@ -143,6 +143,19 @@ describe('fixed admin release adapter', () => {
     assert.doesNotMatch(compose, /^ {6}DATABASE_URL:/m);
   });
 
+  it('keeps managed ingest disabled until a real manager profile identity is routed', async () => {
+    const compose = await readFile(releaseCompose, 'utf8');
+
+    assert.match(
+      compose,
+      /^ {6}INGEST_MANAGED_LIFECYCLE_VERSION: \$\{INGEST_MANAGED_LIFECYCLE_VERSION:-\}$/m,
+    );
+    assert.match(
+      compose,
+      /^ {6}INGEST_MANAGED_UPLOADER_ID: \$\{INGEST_MANAGED_UPLOADER_ID:-\}$/m,
+    );
+  });
+
   it('preserves routed process credentials without copying their values into its output', async (t) => {
     const root = await temporaryRoot(t);
     const home = await writeReleaseEnvironment(root);
@@ -152,6 +165,8 @@ describe('fixed admin release adapter', () => {
       BEE_URL: 'http://synthetic-bee.invalid:1633',
       FEED_PRIVATE_KEY: `0x${'1'.repeat(64)}`,
       INGEST_SRT_PASSPHRASE: 'synthetic-passphrase',
+      INGEST_MANAGED_LIFECYCLE_VERSION: '1',
+      INGEST_MANAGED_UPLOADER_ID: '11111111-1111-4111-8111-111111111111',
       INTERNAL_API_TOKEN: 'synthetic-internal-token-000000000',
       POSTAGE_BATCH_ID: '2'.repeat(64),
       POSTGRES_PASSWORD: 'synthetic:@/#?% password',
@@ -163,6 +178,8 @@ set -euo pipefail
 [ "${'$'}BEE_URL" = '${routed.BEE_URL}' ]
 [ "${'$'}FEED_PRIVATE_KEY" = '${routed.FEED_PRIVATE_KEY}' ]
 [ "${'$'}INGEST_SRT_PASSPHRASE" = '${routed.INGEST_SRT_PASSPHRASE}' ]
+[ "${'$'}INGEST_MANAGED_LIFECYCLE_VERSION" = '${routed.INGEST_MANAGED_LIFECYCLE_VERSION}' ]
+[ "${'$'}INGEST_MANAGED_UPLOADER_ID" = '${routed.INGEST_MANAGED_UPLOADER_ID}' ]
 [ "${'$'}INTERNAL_API_TOKEN" = '${routed.INTERNAL_API_TOKEN}' ]
 [ "${'$'}POSTAGE_BATCH_ID" = '${routed.POSTAGE_BATCH_ID}' ]
 [ "${'$'}POSTGRES_PASSWORD" = '${routed.POSTGRES_PASSWORD}' ]
@@ -190,7 +207,17 @@ if [ "$1" = image ]; then printf 'sha256:%s\n' "$(printf a%.0s {1..64})"; fi
     assert.equal(result.stdout, '');
     assert.equal(result.stderr, '');
     const serialized = JSON.stringify(JSON.parse(await readFile(output, 'utf8')));
-    for (const secret of Object.values(routed)) assert.doesNotMatch(serialized, new RegExp(secret));
+    for (const name of [
+      'BEE_URL',
+      'FEED_PRIVATE_KEY',
+      'INGEST_SRT_PASSPHRASE',
+      'INTERNAL_API_TOKEN',
+      'POSTAGE_BATCH_ID',
+      'POSTGRES_PASSWORD',
+    ] as const) {
+      assert.doesNotMatch(serialized, new RegExp(routed[name]));
+    }
+    assert.doesNotMatch(serialized, new RegExp(routed.INGEST_MANAGED_UPLOADER_ID));
   });
 
   it('accepts the guard-resolved fixture network while building isolated images', async (t) => {
