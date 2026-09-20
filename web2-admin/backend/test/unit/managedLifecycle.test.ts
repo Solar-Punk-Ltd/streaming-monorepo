@@ -53,6 +53,7 @@ describe('managed lifecycle state invariants', () => {
   it('allows reconnect and finalization without reopening a closed run', () => {
     assert.equal(isManagedRunTransitionAllowed('ready', 'claimed'), true);
     assert.equal(isManagedRunTransitionAllowed('claimed', 'live'), true);
+    assert.equal(isManagedRunTransitionAllowed('claimed', 'waiting'), true);
     assert.equal(isManagedRunTransitionAllowed('live', 'waiting'), true);
     assert.equal(isManagedRunTransitionAllowed('waiting', 'live'), true);
     assert.equal(isManagedRunTransitionAllowed('waiting', 'closed'), true);
@@ -61,6 +62,7 @@ describe('managed lifecycle state invariants', () => {
     assert.equal(isManagedRunTransitionAllowed('closed', 'live'), false);
     assert.equal(isManagedRunTransitionAllowed('vod', 'live'), false);
     assert.equal(isManagedRunTransitionAllowed('vod', 'waiting'), false);
+    assert.equal(isManagedRunTransitionAllowed('ready', 'waiting'), false);
   });
 
   it('never reopens a closed publishing permission', () => {
