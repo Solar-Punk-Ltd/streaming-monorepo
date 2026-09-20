@@ -155,6 +155,7 @@ web_port="$(plan_value target:webPort)"
 fixture_network_name="$(plan_value fixtureNetwork:name)"
 fixture_id="$(plan_value fixtureNetwork:fixtureId)"
 fixture_network_id="$(plan_value fixtureNetwork:networkId)"
+admin_db_network_name="${project_name}-fixture-db"
 [ "$(config_target RELEASE_PROJECT_NAME)" = "$project_name" ] || refuse "admin release project does not match installed configuration"
 [ "$(config_target RELEASE_POSTGRES_VOLUME_NAME)" = "$postgres_volume_name" ] || refuse "admin release database volume does not match installed configuration"
 [ "$(config_target RELEASE_WEB_PORT)" = "$web_port" ] || refuse "admin release web port does not match installed configuration"
@@ -193,6 +194,7 @@ services:
       org.solarpunk.srs-continuation.fixture: ${fixture_id}
       org.solarpunk.srs-continuation.managed: "true"
     networks:
+      admin-db:
       fixture:
         aliases:
           - api
@@ -212,8 +214,16 @@ services:
     labels:
       org.solarpunk.srs-continuation.fixture: ${fixture_id}
       org.solarpunk.srs-continuation.managed: "true"
+    networks:
+      admin-db:
     ports: !reset []
 networks:
+  admin-db:
+    name: ${admin_db_network_name}
+    internal: true
+    labels:
+      org.solarpunk.srs-continuation.fixture: ${fixture_id}
+      org.solarpunk.srs-continuation.managed: "true"
   fixture:
     external: true
     name: ${fixture_network_name}
@@ -223,6 +233,44 @@ volumes:
       org.solarpunk.srs-continuation.fixture: ${fixture_id}
       org.solarpunk.srs-continuation.managed: "true"
 EOF
+}
+
+validate_fixture_compose() {
+  local override="$1"
+  [ -n "$fixture_network_name" ] || return 0
+  if ! compose_release "$override" config --format json | node --input-type=module - \
+    "$project_name" "$admin_db_network_name" "$fixture_network_name" "$fixture_id" 3<&0 <<'NODE'
+import { readFileSync } from 'node:fs';
+
+const [projectName, databaseNetworkName, fixtureNetworkName, fixtureId] = process.argv.slice(2);
+try {
+  const input = readFileSync(3);
+  if (input.length < 1 || input.length > 512 * 1024) process.exit(1);
+  const value = JSON.parse(input.toString('utf8'));
+  const keys = (record) => record !== null && typeof record === 'object' && !Array.isArray(record)
+    ? Object.keys(record).sort().join(',')
+    : '';
+  const labels = value?.networks?.['admin-db']?.labels;
+  const valid =
+    value?.name === projectName &&
+    keys(value?.services?.api?.networks) === 'admin-db,fixture' &&
+    keys(value?.services?.postgres?.networks) === 'admin-db' &&
+    keys(value?.services?.web?.networks) === 'fixture' &&
+    value?.networks?.['admin-db']?.name === databaseNetworkName &&
+    value?.networks?.['admin-db']?.internal === true &&
+    labels?.['org.solarpunk.srs-continuation.fixture'] === fixtureId &&
+    labels?.['org.solarpunk.srs-continuation.managed'] === 'true' &&
+    value?.networks?.fixture?.name === fixtureNetworkName &&
+    value?.networks?.fixture?.external === true &&
+    value?.networks?.default === undefined;
+  if (!valid) process.exit(1);
+} catch {
+  process.exit(1);
+}
+NODE
+  then
+    refuse "admin fixture compose topology is invalid"
+  fi
 }
 
 require_fixture_container() {
@@ -239,6 +287,32 @@ require_fixture_membership() {
   [ -n "$fixture_network_name" ] || return 0
   [ "$(docker inspect --format "{{with index .NetworkSettings.Networks \"${fixture_network_name}\"}}{{.NetworkID}}{{end}}" "$container")" = "$fixture_network_id" ] ||
     refuse "admin fixture container is not attached to the bound network"
+}
+
+require_network_absence() {
+  local container="$1"
+  local network="$2"
+  [ -z "$(docker inspect --format "{{with index .NetworkSettings.Networks \"${network}\"}}{{.NetworkID}}{{end}}" "$container")" ] ||
+    refuse "admin fixture container is attached to an unexpected network"
+}
+
+require_admin_db_network() {
+  [ -n "$fixture_network_name" ] || return 0
+  actual_admin_db_network_id="$(docker network inspect --format '{{.Id}}' "$admin_db_network_name")"
+  [[ "$actual_admin_db_network_id" =~ ^[0-9a-f]{64}$ ]] || refuse "admin fixture database network id is invalid"
+  [ "$(docker network inspect --format '{{.Internal}}' "$admin_db_network_name")" = true ] ||
+    refuse "admin fixture database network is not internal"
+  [ "$(docker network inspect --format '{{index .Labels "org.solarpunk.srs-continuation.fixture"}}' "$admin_db_network_name")" = "$fixture_id" ] ||
+    refuse "admin fixture database network identity does not match"
+  [ "$(docker network inspect --format '{{index .Labels "org.solarpunk.srs-continuation.managed"}}' "$admin_db_network_name")" = true ] ||
+    refuse "admin fixture database network is not managed"
+}
+
+require_admin_db_membership() {
+  local container="$1"
+  [ -n "$fixture_network_name" ] || return 0
+  [ "$(docker inspect --format "{{with index .NetworkSettings.Networks \"${admin_db_network_name}\"}}{{.NetworkID}}{{end}}" "$container")" = "$actual_admin_db_network_id" ] ||
+    refuse "admin fixture service is not attached to its database network"
 }
 
 require_fixture_volume() {
@@ -322,6 +396,7 @@ volumes:
 EOF
     if [ -n "$fixture_network_name" ]; then
       write_fixture_override "$(dirname "$plan")/admin-fixture-network-override.yml"
+      validate_fixture_compose "$override"
     fi
     api_containers="$(docker ps -aq --filter "label=com.docker.compose.project=${project_name}" --filter 'label=com.docker.compose.service=api' --filter 'label=com.docker.compose.oneoff=False')"
     postgres_containers="$(docker ps -aq --filter "label=com.docker.compose.project=${project_name}" --filter 'label=com.docker.compose.service=postgres' --filter 'label=com.docker.compose.oneoff=False')"
@@ -341,6 +416,7 @@ EOF
     require_fixture_network
     override="$(dirname "$plan")/admin-image-override.yml"
     [ -f "$override" ] && [ ! -L "$override" ] || refuse "admin release image override is missing"
+    validate_fixture_compose "$override"
     api_container="$(compose_release "$override" ps -q api)"
     web_container="$(compose_release "$override" ps -q web)"
     postgres_container="$(compose_release "$override" ps -q postgres)"
@@ -352,6 +428,11 @@ EOF
     done
     require_fixture_membership "$api_container"
     require_fixture_membership "$web_container"
+    require_network_absence "$postgres_container" "$fixture_network_name"
+    require_admin_db_network
+    require_admin_db_membership "$api_container"
+    require_admin_db_membership "$postgres_container"
+    require_network_absence "$web_container" "$admin_db_network_name"
     require_fixture_volume
     api_image="$(docker inspect --format '{{.Image}}' "$api_container")"
     web_image="$(docker inspect --format '{{.Image}}' "$web_container")"

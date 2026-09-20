@@ -27,6 +27,40 @@ const fixtureNetwork = {
   fixtureId: 'srs-continuation-20260920-a1b2c3d4',
 };
 const fixtureNetworkId = 'd'.repeat(64);
+const adminDatabaseNetworkName = `${target.projectName}-fixture-db`;
+const adminDatabaseNetworkId = 'f'.repeat(64);
+
+function mergedFixtureCompose(
+  overrides: {
+    apiNetworks?: string[];
+    postgresNetworks?: string[];
+    webNetworks?: string[];
+  } = {},
+) {
+  const networks = (names: string[]) => Object.fromEntries(names.map((name) => [name, null]));
+  return {
+    name: target.projectName,
+    services: {
+      api: { networks: networks(overrides.apiNetworks ?? ['admin-db', 'fixture']) },
+      postgres: { networks: networks(overrides.postgresNetworks ?? ['admin-db']) },
+      web: { networks: networks(overrides.webNetworks ?? ['fixture']) },
+    },
+    networks: {
+      'admin-db': {
+        name: adminDatabaseNetworkName,
+        internal: true,
+        labels: {
+          'org.solarpunk.srs-continuation.fixture': fixtureNetwork.fixtureId,
+          'org.solarpunk.srs-continuation.managed': 'true',
+        },
+      },
+      fixture: {
+        name: fixtureNetwork.name,
+        external: true,
+      },
+    },
+  };
+}
 
 async function temporaryRoot(t: {
   after(callback: () => Promise<void>): void;
@@ -356,11 +390,17 @@ if [ "$1" = compose ] && [[ "$*" == *' up '* ]] && [ "${'$'}{!#}" = api ]; then 
     const bin = join(root, 'bin');
     await mkdir(bin);
     await writeFile(
+      join(root, 'merged-compose.json'),
+      JSON.stringify(mergedFixtureCompose()),
+    );
+    await writeFile(
       join(bin, 'docker'),
       `#!/bin/bash
 set -euo pipefail
 printf '%s\n' "$*" >> "${root}/docker-calls"
-if [ "$1" = network ] && [ "$2" = inspect ]; then
+if [ "$1" = compose ] && [[ "$*" == *' config --format json'* ]]; then
+  cat "${root}/merged-compose.json"
+elif [ "$1" = network ] && [ "$2" = inspect ]; then
   case "$4" in
     *'.Id'*) printf '%s\n' '${fixtureNetworkId}' ;;
     *Internal*) printf '%s\n' true ;;
@@ -391,6 +431,7 @@ fi
 
     const calls = await readFile(join(root, 'docker-calls'), 'utf8');
     assert.match(calls, new RegExp(`network inspect .* ${fixtureNetwork.name}`));
+    assert.match(calls, / config --format json/);
     const override = await readFile(join(root, 'admin-fixture-network-override.yml'), 'utf8');
     assert.match(override, new RegExp(`name: ${fixtureNetwork.name}`));
     assert.match(override, /external: true/);
@@ -398,9 +439,65 @@ fi
     assert.match(override, /org\.solarpunk\.srs-continuation\.managed: "true"/);
     assert.match(override, /aliases:\n\s+- api\n\s+- admin-api/);
     assert.match(override, /aliases:\n\s+- admin-web/);
+    assert.match(override, new RegExp(`name: ${adminDatabaseNetworkName}`));
+    assert.match(override, /admin-db:\n\s+name: [^\n]+\n\s+internal: true/);
+    assert.match(override, /api:[\s\S]*networks:[\s\S]*admin-db:[\s\S]*fixture:/);
+    assert.match(override, /postgres:[\s\S]*networks:\n\s+admin-db:/);
     assert.match(override, /api:[\s\S]*ports: !reset \[\]/);
     assert.match(override, /postgres:[\s\S]*ports: !reset \[\]/);
     assert.match(override, new RegExp(`127\\.0\\.0\\.1:${String(target.webPort)}:80`));
+  });
+
+  it('refuses a merged fixture topology that isolates the API from Postgres', async (t) => {
+    const root = await temporaryRoot(t);
+    const home = await writeReleaseEnvironment(root);
+    const bin = join(root, 'bin');
+    await mkdir(bin);
+    await writeFile(
+      join(root, 'merged-compose.json'),
+      JSON.stringify(mergedFixtureCompose({ apiNetworks: ['fixture'] })),
+    );
+    await writeFile(
+      join(bin, 'docker'),
+      `#!/bin/bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${root}/docker-calls"
+if [ "$1" = compose ] && [[ "$*" == *' config --format json'* ]]; then
+  cat "${root}/merged-compose.json"
+elif [ "$1" = network ] && [ "$2" = inspect ]; then
+  case "$4" in
+    *'.Id'*) printf '%s\n' '${fixtureNetworkId}' ;;
+    *Internal*) printf '%s\n' true ;;
+    *fixture*) printf '%s\n' '${fixtureNetwork.fixtureId}' ;;
+    *managed*) printf '%s\n' true ;;
+  esac
+fi
+`,
+    );
+    await chmod(join(bin, 'docker'), 0o700);
+    const activeArtifactPath = join(root, 'active-artifact.json');
+    const planPath = join(root, 'transition-plan.json');
+    await writeFile(activeArtifactPath, '{"schemaVersion":1}');
+    await writeFile(
+      planPath,
+      JSON.stringify(plan('transition', activeArtifactPath, fixtureNetwork)),
+    );
+
+    await assert.rejects(
+      execFileAsync(adapter, ['transition', '--plan', planPath], {
+        env: {
+          ...process.env,
+          HOME: home,
+          PATH: `${bin}:${process.env.PATH ?? ''}`,
+        },
+      }),
+      (error: Error & { stderr?: string }) => {
+        assert.match(error.stderr ?? '', /fixture compose topology is invalid/);
+        return true;
+      },
+    );
+    const calls = await readFile(join(root, 'docker-calls'), 'utf8');
+    assert.doesNotMatch(calls, / up /);
   });
 
   it('refuses a fixture network with the wrong identity before starting services', async (t) => {
@@ -461,6 +558,10 @@ fi
     await writeFile(join(root, 'admin-image-override.yml'), 'services: {}\n');
     await writeFile(join(root, 'admin-fixture-network-override.yml'), 'services: {}\n');
     await writeFile(
+      join(root, 'merged-compose.json'),
+      JSON.stringify(mergedFixtureCompose()),
+    );
+    await writeFile(
       planPath,
       JSON.stringify(plan('verify', activeArtifactPath, fixtureNetwork)),
     );
@@ -471,7 +572,11 @@ set -euo pipefail
 printf '%s\\n' "$*" >> "${root}/docker-calls"
 if [ "$1" = network ] && [ "$2" = inspect ]; then
   case "$4" in
-    *'.Id'*) printf '%s\\n' '${fixtureNetworkId}' ;;
+    *'.Id'*)
+      if [ "$5" = '${adminDatabaseNetworkName}' ]; then printf '%s\\n' '${adminDatabaseNetworkId}'
+      else printf '%s\\n' '${fixtureNetworkId}'
+      fi
+      ;;
     *Internal*) printf '%s\\n' true ;;
     *fixture*) printf '%s\\n' '${fixtureNetwork.fixtureId}' ;;
     *managed*) printf '%s\\n' true ;;
@@ -481,6 +586,8 @@ elif [ "$1" = volume ] && [ "$2" = inspect ]; then
     *fixture*) printf '%s\\n' '${fixtureNetwork.fixtureId}' ;;
     *managed*) printf '%s\\n' true ;;
   esac
+elif [ "$1" = compose ] && [[ "$*" == *' config --format json'* ]]; then
+  cat "${root}/merged-compose.json"
 elif [ "$1" = compose ] && [[ "$*" == *' ps -q '* ]]; then
   case "${'$'}{!#}" in
     api) printf '%s\\n' admin-api-container ;;
@@ -494,7 +601,16 @@ elif [ "$1" = inspect ]; then
   elif [[ "$format" == *State.Health* ]]; then printf '%s\\n' healthy
   elif [[ "$format" == *Config.Labels*fixture* ]]; then printf '%s\\n' '${fixtureNetwork.fixtureId}'
   elif [[ "$format" == *Config.Labels*managed* ]]; then printf '%s\\n' true
-  elif [[ "$format" == *NetworkSettings* ]]; then printf '%s\\n' '${fixtureNetworkId}'
+  elif [[ "$format" == *NetworkSettings* ]]; then
+    if [[ "$format" == *'${fixtureNetwork.name}'* ]]; then
+      case "$container" in
+        admin-api-container|admin-web-container) printf '%s\\n' '${fixtureNetworkId}' ;;
+      esac
+    elif [[ "$format" == *'${adminDatabaseNetworkName}'* ]]; then
+      case "$container" in
+        admin-api-container|admin-postgres-container) printf '%s\\n' '${adminDatabaseNetworkId}' ;;
+      esac
+    fi
   elif [[ "$format" == *'.Image'* ]]; then
     case "$container" in
       admin-api-container) printf 'sha256:%s\\n' "$(printf b%.0s {1..64})" ;;
@@ -530,5 +646,11 @@ fi
       { service: 'admin-api', imageId: `sha256:${'b'.repeat(64)}` },
       { service: 'admin-web', imageId: `sha256:${'c'.repeat(64)}` },
     ]);
+    const calls = await readFile(join(root, 'docker-calls'), 'utf8');
+    assert.match(calls, new RegExp(`network inspect .* ${adminDatabaseNetworkName}`));
+    assert.match(calls, new RegExp(`${adminDatabaseNetworkName}.*admin-api-container`));
+    assert.match(calls, new RegExp(`${adminDatabaseNetworkName}.*admin-postgres-container`));
+    assert.match(calls, new RegExp(`${adminDatabaseNetworkName}.*admin-web-container`));
+    assert.match(calls, new RegExp(`${fixtureNetwork.name}.*admin-postgres-container`));
   });
 });
