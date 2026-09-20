@@ -8,6 +8,7 @@ import { Database } from '../domain/Database.js';
 import type { FeedIdentity } from '../domain/feedIdentity.js';
 import { IngestService } from '../domain/IngestService.js';
 import { LadderService } from '../domain/LadderService.js';
+import { LegacyAdoptionRepository } from '../domain/LegacyAdoptionRepository.js';
 import { Logger } from '../domain/Logger.js';
 import { ManagedLifecycleRepository } from '../domain/ManagedLifecycleRepository.js';
 import { PublishService } from '../domain/PublishService.js';
@@ -41,6 +42,7 @@ export interface ApiDeps {
   ladderService: LadderService;
   managedLifecycle: ManagedLifecycleRepository;
   continuations: ContinuationRepository;
+  legacyAdoptions?: LegacyAdoptionRepository;
   publishService: PublishService;
   uploaderCapabilities?: UploaderCapabilityRepository;
   releaseGuardReceipts?: ReleaseGuardReceiptRepository;
@@ -86,6 +88,7 @@ export function startApiServer(
       ladderService: deps.ladderService,
       managedLifecycle: deps.managedLifecycle,
       continuations: deps.continuations,
+      legacyAdoptions: deps.legacyAdoptions,
       publishService: deps.publishService,
       uploaderCapabilities: deps.uploaderCapabilities,
       releaseGuardReceipts: deps.releaseGuardReceipts,
@@ -117,6 +120,7 @@ export function startApiServer(
       publishService: deps.publishService,
       ingestService: deps.ingestService,
       continuations: deps.continuations,
+      legacyAdoptions: deps.legacyAdoptions,
       requireAuth,
     }),
   );

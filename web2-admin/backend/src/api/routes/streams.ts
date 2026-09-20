@@ -1,6 +1,8 @@
 import {
   type ContinuationCreateRequest,
   type ContinuationOperation,
+  type LegacyAdoptionCreateRequest,
+  type LegacyAdoptionOperation,
   STREAM_LIMITS,
   type Stream,
   type StreamListResponse,
@@ -10,6 +12,7 @@ import express, { Request, RequestHandler, Response, Router } from 'express';
 import { UnsupportedMediaTypeError } from '../../domain/errors/index.js';
 import { ContinuationRepository } from '../../domain/ContinuationRepository.js';
 import { IngestService } from '../../domain/IngestService.js';
+import { LegacyAdoptionRepository } from '../../domain/LegacyAdoptionRepository.js';
 import { PublishService } from '../../domain/PublishService.js';
 import {
   normaliseThumbnailMime,
@@ -19,6 +22,8 @@ import {
   StreamInputBody,
   continuationCreateSchema,
   continuationOperationParamSchema,
+  legacyAdoptionCreateSchema,
+  legacyAdoptionOperationParamSchema,
   streamIdParamSchema,
   streamInputSchema,
 } from '../../schemas/stream.js';
@@ -33,6 +38,7 @@ export interface StreamRoutesDeps {
   publishService: PublishService;
   ingestService: IngestService;
   continuations: ContinuationRepository;
+  legacyAdoptions?: LegacyAdoptionRepository;
   requireAuth: RequestHandler;
 }
 
@@ -67,17 +73,89 @@ export function toOwnerContinuation(operation: ContinuationOperation) {
   return ownerOperation;
 }
 
+export function toOwnerLegacyAdoption(operation: LegacyAdoptionOperation) {
+  const {
+    uploaderId: _uploaderId,
+    candidate: _candidate,
+    completedRecording: _completedRecording,
+    validation: _validation,
+    ...ownerOperation
+  } = operation;
+  return ownerOperation;
+}
+
 export function createStreamsRouter(deps: StreamRoutesDeps): Router {
   const {
     streamService,
     publishService,
     ingestService,
     continuations,
+    legacyAdoptions,
     requireAuth,
   } = deps;
   const router = Router();
 
   router.use(requireAuth);
+
+  if (legacyAdoptions) {
+    router.get(
+      '/:id/legacy-adoptions/candidate',
+      validateParams(streamIdParamSchema),
+      asyncHandler(async (req: Request, res: Response) => {
+        const { user } = requireUser(req);
+        const preview = await legacyAdoptions.preview(streamId(req), user.id);
+        res.json({ candidateDigest: preview.candidateDigest });
+      }),
+    );
+
+    router.post(
+      '/:id/legacy-adoptions',
+      validateParams(streamIdParamSchema),
+      validateBody(legacyAdoptionCreateSchema),
+      asyncHandler(async (req: Request, res: Response) => {
+        const { user } = requireUser(req);
+        const operation = await legacyAdoptions.create(
+          streamId(req),
+          user.id,
+          req.body as LegacyAdoptionCreateRequest,
+        );
+        res
+          .location(
+            `/api/streams/${streamId(req)}/legacy-adoptions/${operation.operationId}`,
+          )
+          .status(202)
+          .json({ operation: toOwnerLegacyAdoption(operation) });
+      }),
+    );
+
+    router.get(
+      '/:id/legacy-adoptions/:operationId',
+      validateParams(legacyAdoptionOperationParamSchema),
+      asyncHandler(async (req: Request, res: Response) => {
+        const { user } = requireUser(req);
+        const operation = await legacyAdoptions.get(
+          streamId(req),
+          String(req.params.operationId),
+          user.id,
+        );
+        res.json({ operation: toOwnerLegacyAdoption(operation) });
+      }),
+    );
+
+    router.delete(
+      '/:id/legacy-adoptions/:operationId',
+      validateParams(legacyAdoptionOperationParamSchema),
+      asyncHandler(async (req: Request, res: Response) => {
+        const { user } = requireUser(req);
+        const operation = await legacyAdoptions.cancel(
+          streamId(req),
+          String(req.params.operationId),
+          user.id,
+        );
+        res.json({ operation: toOwnerLegacyAdoption(operation) });
+      }),
+    );
+  }
 
   router.get(
     '/',
@@ -159,13 +237,17 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     asyncHandler(async (req: Request, res: Response) => {
       const { user } = requireUser(req);
       const stream = await streamService.get(streamId(req), user.id);
-      const [managed, currentContinuation] = await Promise.all([
+      const [managed, currentContinuation, currentLegacyAdoption] = await Promise.all([
         streamService.managedOwnerState(stream.id),
         continuations.getCurrent(stream.id, user.id),
+        legacyAdoptions?.getCurrent(stream.id, user.id) ?? Promise.resolve(null),
       ]);
       const response = toStream(stream, managed);
       if (currentContinuation) {
         response.continuation = toOwnerContinuation(currentContinuation);
+      }
+      if (currentLegacyAdoption) {
+        response.legacyAdoption = toOwnerLegacyAdoption(currentLegacyAdoption);
       }
       res.json(response);
     }),

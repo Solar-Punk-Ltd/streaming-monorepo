@@ -90,7 +90,8 @@ export type ManagedCloseReason =
   | 'cancelled'
   | 'recovery_required'
   | 'finalization_failed'
-  | 'empty';
+  | 'empty'
+  | 'adopted';
 
 interface ManagedReportBase {
   lifecycleVersion: typeof MANAGED_LIFECYCLE_VERSION;

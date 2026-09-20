@@ -5,6 +5,7 @@ import { test } from 'node:test';
 
 import type {
   InternalCompletedRecordingSnapshot,
+  LegacyAdoptionValidation,
   LegacyRecordingCandidate,
   ManagedRenditionReport,
   ManagedRunReport,
@@ -139,6 +140,7 @@ test('legacy adoption candidate digest normalizes rendition order', () => {
     ),
   ) as {
     candidate: LegacyRecordingCandidate;
+    validation: LegacyAdoptionValidation;
     canonicalUtf8: string;
     sha256HexParts: [string, string];
   };
@@ -151,5 +153,12 @@ test('legacy adoption candidate digest normalizes rendition order', () => {
   assert.equal(
     createHash('sha256').update(canonical).digest('hex'),
     adoptionFixture.sha256HexParts.join(''),
+  );
+  assert.deepEqual(
+    adoptionFixture.validation.tracks.map(({ topic }) => topic),
+    [
+      '33333333-3333-4333-8333-333333333333',
+      '44444444-4444-4444-8444-444444444444',
+    ],
   );
 });

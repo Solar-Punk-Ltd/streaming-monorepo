@@ -1,6 +1,7 @@
 import type {
   IngestLookupResponse,
   ContinuationPreparationRequest,
+  LegacyAdoptionPreparationRequest,
   ManagedClaimRequest,
   ManagedRenditionReport,
   ManagedRunReport,
@@ -14,6 +15,7 @@ import type {
 import { Request, RequestHandler, Response, Router } from 'express';
 
 import { LadderService } from '../../domain/LadderService.js';
+import { LegacyAdoptionRepository } from '../../domain/LegacyAdoptionRepository.js';
 import { ContinuationRepository } from '../../domain/ContinuationRepository.js';
 import { ManagedLifecycleRepository } from '../../domain/ManagedLifecycleRepository.js';
 import { ManagedLifecycleConflict } from '../../domain/managedLifecycle.js';
@@ -28,6 +30,8 @@ import {
   ingestLookupParamSchema,
   continuationPreparationParamSchema,
   continuationPreparationSchema,
+  legacyAdoptionPreparationParamSchema,
+  legacyAdoptionPreparationSchema,
   managedClaimSchema,
   managedRenditionParamSchema,
   managedRenditionReportSchema,
@@ -60,6 +64,7 @@ export interface InternalRoutesDeps {
   ladderService: LadderService;
   managedLifecycle: ManagedLifecycleRepository;
   continuations: ContinuationRepository;
+  legacyAdoptions?: LegacyAdoptionRepository;
   publishService: PublishService;
   uploaderCapabilities?: UploaderCapabilityRepository;
   releaseGuardReceipts?: ReleaseGuardReceiptRepository;
@@ -84,6 +89,7 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
     ladderService,
     managedLifecycle,
     continuations,
+    legacyAdoptions,
     publishService,
     uploaderCapabilities,
     releaseGuardReceipts,
@@ -136,6 +142,36 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
       res.json({ continuations: operations });
     }),
   );
+
+  if (legacyAdoptions) {
+    router.get(
+      '/uploaders/:uploaderId/legacy-adoptions',
+      validateParams(uploaderContinuationParamSchema),
+      asyncHandler(async (req: Request, res: Response) => {
+        const operations = await legacyAdoptions.listPending(
+          String(req.params.uploaderId),
+        );
+        res.json({ legacyAdoptions: operations });
+      }),
+    );
+
+    router.post(
+      '/streams/:id/legacy-adoptions/:operationId/preparation',
+      validateParams(legacyAdoptionPreparationParamSchema),
+      validateBody(legacyAdoptionPreparationSchema),
+      asyncHandler(async (req: Request, res: Response) => {
+        const operation = await legacyAdoptions.prepare(
+          String(req.params.id),
+          String(req.params.operationId),
+          req.body as LegacyAdoptionPreparationRequest,
+        );
+        if (operation.status === 'committed') {
+          await publishService.republishManagedState(String(req.params.id));
+        }
+        res.json({ operation });
+      }),
+    );
+  }
 
   router.post(
     '/streams/:id/continuations/:operationId/preparation',

@@ -99,3 +99,16 @@ export const continuationCreateSchema = object({
     .min(1, 'expectedRevision must be positive')
     .max(Number.MAX_SAFE_INTEGER, 'expectedRevision must be a safe integer'),
 }).noUnknown(true);
+
+export const legacyAdoptionCreateSchema = object({
+  requestId: string().required().matches(UUID_RE, 'requestId must be a UUID'),
+  expectedCandidateDigest: string()
+    .required()
+    .matches(/^[0-9a-f]{64}$/, 'expectedCandidateDigest must be a SHA256 digest'),
+}).noUnknown(true);
+
+export const legacyAdoptionOperationParamSchema = streamIdParamSchema.shape({
+  operationId: string()
+    .required()
+    .matches(UUID_RE, 'operationId must be a UUID'),
+});

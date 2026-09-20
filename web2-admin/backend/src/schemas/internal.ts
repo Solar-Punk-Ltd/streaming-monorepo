@@ -6,6 +6,8 @@ import {
   InferType,
   NumberSchema,
   array,
+  boolean,
+  lazy,
   number,
   object,
   string,
@@ -197,6 +199,83 @@ export const continuationPreparationSchema = object({
     }),
 }).noUnknown(true);
 
+const nullableBoundedString = () => string().nullable().defined().max(100);
+
+const legacyVideoFormatTrackSchema = object({
+  kind: string<'video'>().required().oneOf(['video']),
+  codec: string().required().min(1).max(100),
+  profile: nullableBoundedString(),
+  level: number().nullable().defined().min(0).max(SAFE_INTEGER_MAX),
+  width: number().required().integer().positive(),
+  height: number().required().integer().positive(),
+  pixelFormat: string().required().min(1).max(100),
+  chromaLocation: nullableBoundedString(),
+  bitsPerRawSample: number()
+    .nullable()
+    .defined()
+    .integer()
+    .positive()
+    .max(64),
+}).noUnknown(true);
+
+const legacyAudioFormatTrackSchema = object({
+  kind: string<'audio'>().required().oneOf(['audio']),
+  codec: string().required().min(1).max(100),
+  profile: nullableBoundedString(),
+  sampleRate: number().required().integer().positive().max(768_000),
+  channels: number().required().integer().positive().max(64),
+  channelLayout: string().required().min(1).max(100),
+}).noUnknown(true);
+
+const legacyMediaFormatFingerprintSchema = object({
+  version: number().required().oneOf([1]),
+  container: string<'mpegts'>().required().oneOf(['mpegts']),
+  tracks: array()
+    .of(
+      lazy((value: unknown) =>
+        typeof value === 'object' &&
+        value !== null &&
+        'kind' in value &&
+        value.kind === 'video'
+          ? legacyVideoFormatTrackSchema
+          : legacyAudioFormatTrackSchema,
+      ),
+    )
+    .required()
+    .min(1)
+    .max(16),
+}).noUnknown(true);
+
+const legacyAdoptionValidationSchema = object({
+  version: number().required().oneOf([1]),
+  mediaReadable: boolean().required().oneOf([true]),
+  pendingWrites: number().required().oneOf([0]),
+  tracks: array()
+    .of(
+      object({
+        topic: string().required().matches(UUID_RE, 'topic must be a UUID'),
+        formatFingerprint: legacyMediaFormatFingerprintSchema.required(),
+      })
+        .required()
+        .noUnknown(true),
+    )
+    .required()
+    .min(1)
+    .max(16)
+    .test(
+      'unique-validation-topics',
+      'validation topics must be unique',
+      (value) =>
+        value === undefined ||
+        new Set(value.map(({ topic }) => topic)).size === value.length,
+    ),
+}).noUnknown(true);
+
+export const legacyAdoptionPreparationParamSchema = object({
+  id: string().required().matches(UUID_RE, 'id must be a UUID'),
+  operationId: string().required().matches(UUID_RE, 'operationId must be a UUID'),
+}).noUnknown(true);
+
 const immutableReferenceSchema = object({
   topic: string().required().matches(UUID_RE, 'topic must be a UUID'),
   index: number().required().integer().min(0).max(SAFE_INTEGER_MAX),
@@ -225,6 +304,32 @@ const completedRecordingSchema = object({
   master: immutableReferenceSchema.required(),
   expectedRenditions: array().of(string().required()).required(),
   renditions: array().of(immutableRenditionSchema.required()).required(),
+}).noUnknown(true);
+
+export const legacyAdoptionPreparationSchema = object({
+  lifecycleVersion,
+  uploaderId: string().required().matches(/^[A-Za-z0-9_.:-]{1,200}$/),
+  expectedRevision: positiveSafeInteger('expectedRevision'),
+  candidateDigest: string().required().matches(SWARM_REFERENCE_RE),
+  status: string<'ready' | 'failed'>().required().oneOf(['ready', 'failed']),
+  completedRecording: completedRecordingSchema.when('status', {
+    is: 'ready',
+    then: (schema) => schema.required(),
+    otherwise: (schema) => schema.strip(),
+  }),
+  validation: legacyAdoptionValidationSchema.when('status', {
+    is: 'ready',
+    then: (schema) => schema.required(),
+    otherwise: (schema) => schema.strip(),
+  }),
+  failure: string()
+    .min(1)
+    .max(500)
+    .when('status', {
+      is: 'failed',
+      then: (schema) => schema.required(),
+      otherwise: (schema) => schema.strip(),
+    }),
 }).noUnknown(true);
 
 const emptyOutcomeSchema = object({

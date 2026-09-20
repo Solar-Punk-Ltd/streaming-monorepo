@@ -20,6 +20,7 @@ import {
 } from '../../src/schemas/auth.js';
 import {
   continuationPreparationSchema,
+  legacyAdoptionPreparationSchema,
   managedClaimSchema,
   managedRenditionParamSchema,
   managedRenditionReportSchema,
@@ -692,5 +693,107 @@ describe('renditionReportSchema', () => {
   it('requires every field a master playlist entry needs', async () => {
     const errors = await errorsFor(renditionReportSchema, {});
     assert.equal(errors.length, 6, errors.join('; '));
+  });
+});
+
+describe('legacyAdoptionPreparationSchema', () => {
+  const topic = '33333333-3333-4333-8333-333333333333';
+  const ready = {
+    lifecycleVersion: 1,
+    uploaderId: 'srs-uploader-a',
+    expectedRevision: 1,
+    candidateDigest: 'a'.repeat(64),
+    status: 'ready',
+    completedRecording: {
+      runNumber: 1,
+      checkpointReference: '55555555-5555-4555-8555-555555555555',
+      master: {
+        topic: '22222222-2222-4222-8222-222222222222',
+        index: 12,
+        reference: 'b'.repeat(64),
+        duration: 62.5,
+      },
+      expectedRenditions: ['360p'],
+      renditions: [
+        {
+          name: '360p',
+          topic,
+          index: 10,
+          reference: 'c'.repeat(64),
+          duration: 62.5,
+          width: 640,
+          height: 360,
+          bandwidth: 800_123,
+          avgBandwidth: 700_045,
+        },
+      ],
+    },
+    validation: {
+      version: 1,
+      mediaReadable: true,
+      pendingWrites: 0,
+      tracks: [
+        {
+          topic,
+          formatFingerprint: {
+            version: 1,
+            container: 'mpegts',
+            tracks: [
+              {
+                kind: 'video',
+                codec: 'h264',
+                profile: 'High',
+                level: 40,
+                width: 640,
+                height: 360,
+                pixelFormat: 'yuv420p',
+                chromaLocation: 'left',
+                bitsPerRawSample: 8,
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
+
+  it('accepts topic-bound byte format proof and zero pending writes', async () => {
+    const value = await validate(legacyAdoptionPreparationSchema, ready);
+    assert.deepEqual(value, ready);
+  });
+
+  it('refuses summary booleans without the bounded format proof', async () => {
+    const errors = await errorsFor(legacyAdoptionPreparationSchema, {
+      ...ready,
+      validation: {
+        version: 1,
+        mediaReadable: true,
+        pendingWrites: 0,
+        tracks: [],
+      },
+    });
+    assert.ok(errors.some((error) => error.includes('at least 1')));
+  });
+
+  it('refuses duplicate topics and an unknown required format field', async () => {
+    const proof = ready.validation.tracks[0];
+    const errors = await errorsFor(legacyAdoptionPreparationSchema, {
+      ...ready,
+      validation: {
+        ...ready.validation,
+        tracks: [
+          proof,
+          {
+            ...proof,
+            formatFingerprint: {
+              ...proof.formatFingerprint,
+              tracks: [{ kind: 'video', codec: 'h264' }],
+            },
+          },
+        ],
+      },
+    });
+    assert.ok(errors.some((error) => error.includes('unique')));
+    assert.ok(errors.some((error) => error.includes('width')));
   });
 });

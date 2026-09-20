@@ -18,6 +18,7 @@ import { feedIdentityFrom } from './domain/feedIdentity.js';
 import { FeedWriteRepository } from './domain/FeedWriteRepository.js';
 import { IngestService } from './domain/IngestService.js';
 import { LadderService } from './domain/LadderService.js';
+import { LegacyAdoptionRepository } from './domain/LegacyAdoptionRepository.js';
 import { Logger } from './domain/Logger.js';
 import { ManagedEnrollmentReadiness } from './domain/ManagedEnrollmentReadiness.js';
 import { ManagedEnrollmentService } from './domain/ManagedEnrollmentService.js';
@@ -159,17 +160,29 @@ async function main(): Promise<void> {
         config.ingest.managedLifecycle.uploaderId,
       )
     : undefined;
-  const managedEnrollment =
+  const managedEnrollmentReadiness =
     config.ingest.managedLifecycle &&
     uploaderCapabilities &&
     releaseGuardReceipts
+      ? new ManagedEnrollmentReadiness(
+          releaseGuardReceipts,
+          uploaderCapabilities,
+          loadActiveAdminArtifact(),
+        )
+      : undefined;
+  const managedEnrollment =
+    config.ingest.managedLifecycle && managedEnrollmentReadiness
       ? new ManagedEnrollmentService(
           database.pool,
-          new ManagedEnrollmentReadiness(
-            releaseGuardReceipts,
-            uploaderCapabilities,
-            loadActiveAdminArtifact(),
-          ),
+          managedEnrollmentReadiness,
+          config.ingest.managedLifecycle.uploaderId,
+        )
+      : undefined;
+  const legacyAdoptions =
+    config.ingest.managedLifecycle && managedEnrollmentReadiness
+      ? new LegacyAdoptionRepository(
+          database.pool,
+          managedEnrollmentReadiness,
           config.ingest.managedLifecycle.uploaderId,
         )
       : undefined;
@@ -239,6 +252,7 @@ async function main(): Promise<void> {
       ladderService,
       managedLifecycle,
       continuations,
+      legacyAdoptions,
       publishService,
       uploaderCapabilities,
       releaseGuardReceipts,
