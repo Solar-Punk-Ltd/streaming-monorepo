@@ -84,7 +84,9 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     asyncHandler(async (req: Request, res: Response) => {
       const { user } = requireUser(req);
       const streams = await streamService.list(user.id);
-      const response: StreamListResponse = { streams: streams.map(toStream) };
+      const response: StreamListResponse = {
+        streams: streams.map((stream) => toStream(stream)),
+      };
       res.json(response);
     }),
   );
@@ -157,8 +159,15 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     asyncHandler(async (req: Request, res: Response) => {
       const { user } = requireUser(req);
       const stream = await streamService.get(streamId(req), user.id);
-      const managed = await streamService.managedOwnerState(stream.id);
-      res.json(toStream(stream, managed));
+      const [managed, currentContinuation] = await Promise.all([
+        streamService.managedOwnerState(stream.id),
+        continuations.getCurrent(stream.id, user.id),
+      ]);
+      const response = toStream(stream, managed);
+      if (currentContinuation) {
+        response.continuation = toOwnerContinuation(currentContinuation);
+      }
+      res.json(response);
     }),
   );
 

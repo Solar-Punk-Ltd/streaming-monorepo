@@ -234,6 +234,38 @@ export class ContinuationRepository {
     }
   }
 
+  async getCurrent(
+    streamId: string,
+    ownerId: string,
+  ): Promise<ContinuationOperation | null> {
+    const client = await this.pool.connect();
+    try {
+      const result = await client.query<OperationRow>(
+        `${OPERATION_SELECT}
+          WHERE operation.stream_id = $1
+            AND stream.user_id = $2
+            AND (
+              operation.status IN ('pending', 'ready')
+              OR (
+                operation.status = 'claimed'
+                AND EXISTS (
+                  SELECT 1 FROM stream_runs run
+                   WHERE run.stream_id = operation.stream_id
+                     AND run.run_number = operation.next_run_number
+                     AND run.permission = 'claimed'
+                )
+              )
+            )
+          ORDER BY operation.next_run_number DESC
+          LIMIT 1`,
+        [streamId, ownerId],
+      );
+      return result.rows[0] ? await this.toOperation(client, result.rows[0]) : null;
+    } finally {
+      client.release();
+    }
+  }
+
   async listPending(uploaderId: string): Promise<ContinuationOperation[]> {
     const client = await this.pool.connect();
     try {

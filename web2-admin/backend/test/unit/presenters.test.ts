@@ -34,6 +34,7 @@ describe('stream presentation', () => {
         state: 'closed',
         permission: 'closed',
         receivedAt: '2026-09-20T10:00:00.000Z',
+        observationAgeMs: 4_000,
       },
       completedRecording,
     });
@@ -45,6 +46,7 @@ describe('stream presentation', () => {
       state: 'closed',
       permission: 'closed',
       receivedAt: '2026-09-20T10:00:00.000Z',
+      observationAgeMs: 4_000,
     });
     assert.equal(presented.completedRecording, completedRecording);
   });

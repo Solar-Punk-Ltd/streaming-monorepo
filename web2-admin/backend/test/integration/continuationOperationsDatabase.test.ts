@@ -130,6 +130,11 @@ describe('continuation operations', () => {
     assert.equal(operation.revision, 6);
     assert.equal(operation.retainedRecording?.checkpointReference, checkpointReference);
     assert.equal(
+      (await continuations.getCurrent(streamId, ownerId))?.operationId,
+      operation.operationId,
+    );
+    assert.equal(await continuations.getCurrent(streamId, otherOwnerId), null);
+    assert.equal(
       (await continuations.create(streamId, ownerId, {
         requestId,
         expectedRevision: 5,
@@ -225,6 +230,7 @@ describe('continuation operations', () => {
       ownerId,
     );
     assert.equal(cancelled.status, 'cancelled');
+    assert.equal(await continuations.getCurrent(streamId, ownerId), null);
     assert.equal(
       (await continuations.cancel(streamId, operation.operationId, ownerId)).status,
       'cancelled',

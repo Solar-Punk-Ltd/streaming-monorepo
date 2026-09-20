@@ -23,6 +23,8 @@ export interface ManagedOwnerLifecycle extends ManagedLifecycleSummary {
   permission: ManagedRunPermission;
   /** Server receipt time of the latest active-run report. */
   receivedAt?: string;
+  /** Age at this response's server, independent of browser clock skew. */
+  observationAgeMs?: number;
 }
 
 export interface ImmutableMediaReference {

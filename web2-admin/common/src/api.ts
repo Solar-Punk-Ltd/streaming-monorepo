@@ -115,6 +115,8 @@ export interface Stream {
   lifecycle?: import('./lifecycle.js').ManagedOwnerLifecycle;
   /** Latest completed replay, which may predate the current run. */
   completedRecording?: import('./lifecycle.js').CompletedRecordingSnapshot;
+  /** Current non-terminal continuation, scoped to this stream owner. */
+  continuation?: import('./lifecycle.js').OwnerContinuationOperation;
   /**
    * The merged ABR ladder, when the uploader has reported rungs for this
    * stream. Absent for a single-rendition stream, and absent from the console's
