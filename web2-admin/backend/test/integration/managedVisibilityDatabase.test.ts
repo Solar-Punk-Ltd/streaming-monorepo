@@ -40,6 +40,21 @@ function deferred(): Deferred {
   return { promise, resolve };
 }
 
+async function waitForLockWaiter(): Promise<void> {
+  for (let attempt = 0; attempt < 1_000; attempt += 1) {
+    const result = await adminPool.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+         FROM pg_stat_activity
+        WHERE datname = current_database()
+          AND wait_event_type = 'Lock'
+          AND query LIKE 'UPDATE streams%published_at%'`,
+    );
+    if (Number(result.rows[0]?.count) >= 1) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  assert.fail('expected the managed hide to wait on the stream row lock');
+}
+
 function gatedCataloguePool(pool: pg.Pool): {
   pool: pg.Pool;
   streamRead: Promise<void>;
@@ -253,6 +268,72 @@ describe('managed catalogue visibility', () => {
     const stored = await streams.findById(stream.id, ownerId);
     assert.ok(stored?.published_at);
     assert.equal(stored.status, 'live');
+  });
+
+  it('rechecks the current run after waiting behind an active transition', async () => {
+    const stream = await streams.insert({
+      user_id: ownerId,
+      topic: randomUUID(),
+      owner: feed.owner,
+      title: 'blocked active transition',
+      description: 'blocked writer visibility fixture',
+      tags: [],
+      media_type: 'video',
+      scheduled_start_time: null,
+      publish_key: newPublishKey(),
+    });
+    await database.pool.query(
+      `UPDATE streams SET lifecycle_version = 1, lifecycle_revision = 1,
+                          current_run_number = 1, status = 'published',
+                          published_at = NOW()
+        WHERE id = $1`,
+      [stream.id],
+    );
+    await database.pool.query(
+      `INSERT INTO stream_runs (
+         stream_id, run_number, state, permission, assigned_uploader_id,
+         revision, close_reason
+       ) VALUES ($1, 1, 'closed', 'closed', 'srs-uploader-a', 1,
+                 'reconnect_timeout')`,
+      [stream.id],
+    );
+
+    const transition = await database.pool.connect();
+    try {
+      await transition.query('BEGIN');
+      await transition.query('SELECT id FROM streams WHERE id = $1 FOR UPDATE', [
+        stream.id,
+      ]);
+      await transition.query(
+        `INSERT INTO stream_runs (
+           stream_id, run_number, state, permission, assigned_uploader_id,
+           claim_id, claim_request_id, claim_request_digest, revision
+         ) VALUES ($1, 2, 'live', 'claimed', 'srs-uploader-a', $2, $3,
+                   'claim-digest', 2)`,
+        [stream.id, randomUUID(), randomUUID()],
+      );
+      await transition.query(
+        `UPDATE streams SET current_run_number = 2, lifecycle_revision = 2,
+                            status = 'live'
+          WHERE id = $1`,
+        [stream.id],
+      );
+
+      const hiding = streams.hideManagedFromCatalogue(stream.id, ownerId);
+      await waitForLockWaiter();
+      await transition.query('COMMIT');
+
+      assert.equal(await hiding, null);
+      const stored = await streams.findById(stream.id, ownerId);
+      assert.ok(stored?.published_at);
+      assert.equal(stored.current_run_number, 2);
+      assert.equal(stored.lifecycle_state, 'live');
+    } catch (error) {
+      await transition.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      transition.release();
+    }
   });
 
   it('reads a managed row, lifecycle and ladder from one database snapshot', async () => {
