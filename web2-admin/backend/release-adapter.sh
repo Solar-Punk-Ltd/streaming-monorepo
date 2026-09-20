@@ -199,6 +199,7 @@ services:
         aliases:
           - api
           - admin-api
+          - ${fixture_id}-admin-api
     ports: !reset []
   web:
     labels:

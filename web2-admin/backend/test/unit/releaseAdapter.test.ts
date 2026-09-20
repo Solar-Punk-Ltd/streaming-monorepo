@@ -445,6 +445,7 @@ fi
     assert.match(override, new RegExp(`org\\.solarpunk\\.srs-continuation\\.fixture: ${fixtureNetwork.fixtureId}`));
     assert.match(override, /org\.solarpunk\.srs-continuation\.managed: "true"/);
     assert.match(override, /aliases:\n\s+- api\n\s+- admin-api/);
+    assert.match(override, new RegExp(`\\s+- ${fixtureNetwork.fixtureId}-admin-api`));
     assert.match(override, /aliases:\n\s+- admin-web/);
     assert.match(override, new RegExp(`name: ${adminDatabaseNetworkName}`));
     assert.match(override, /admin-db:\n\s+name: [^\n]+\n\s+internal: true/);
