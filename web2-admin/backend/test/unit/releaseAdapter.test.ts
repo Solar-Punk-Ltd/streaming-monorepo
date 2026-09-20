@@ -611,7 +611,10 @@ elif [ "$1" = inspect ]; then
   if [[ "$format" == *State.Status* ]]; then printf '%s\\n' running
   elif [[ "$format" == *State.Health* ]]; then printf '%s\\n' healthy
   elif [[ "$format" == *HostConfig.NanoCpus* ]]; then printf '%s\\n' 1000000000
-  elif [[ "$format" == *HostConfig.Memory* ]]; then printf '%s\\n' 1073741824
+  elif [[ "$format" == *HostConfig.Memory* ]]; then
+    if [ -f "${root}/wrong-memory" ] && [ "$container" = admin-postgres-container ]; then printf '%s\\n' 0
+    else printf '%s\\n' 1073741824
+    fi
   elif [[ "$format" == *HostConfig.PidsLimit* ]]; then printf '%s\\n' 256
   elif [[ "$format" == *Config.Labels*fixture* ]]; then printf '%s\\n' '${fixtureNetwork.fixtureId}'
   elif [[ "$format" == *Config.Labels*managed* ]]; then printf '%s\\n' true
@@ -669,5 +672,24 @@ fi
     assert.equal(calls.match(/HostConfig\.NanoCpus/g)?.length, 3);
     assert.equal(calls.match(/HostConfig\.Memory/g)?.length, 3);
     assert.equal(calls.match(/HostConfig\.PidsLimit/g)?.length, 3);
+
+    await writeFile(join(root, 'wrong-memory'), 'deliberate fixture limit fault\n');
+    await assert.rejects(
+      execFileAsync(
+        adapter,
+        ['verify', '--plan', planPath, '--output', output],
+        {
+          env: {
+            ...process.env,
+            HOME: home,
+            PATH: `${bin}:${process.env.PATH ?? ''}`,
+          },
+        },
+      ),
+      (error: Error & { stderr?: string }) => {
+        assert.match(error.stderr ?? '', /fixture memory limit does not match/);
+        return true;
+      },
+    );
   });
 });
