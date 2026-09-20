@@ -149,10 +149,21 @@ export class StreamRepository {
                      EXTRACT(EPOCH FROM (clock_timestamp() - run.last_received_at)) * 1000
                    )::double precision
               END AS observation_age_ms,
-              CASE WHEN run.reconnect_deadline IS NULL THEN NULL
-                   ELSE GREATEST(
-                     0,
-                     EXTRACT(EPOCH FROM (run.reconnect_deadline - clock_timestamp())) * 1000
+              CASE WHEN run.reconnect_deadline IS NULL
+                     OR run.last_observed_at IS NULL
+                     OR run.last_received_at IS NULL
+                   THEN NULL
+                   ELSE LEAST(
+                     60000,
+                     GREATEST(
+                       0,
+                       EXTRACT(EPOCH FROM (
+                         run.reconnect_deadline - run.last_observed_at
+                       )) * 1000
+                       - EXTRACT(EPOCH FROM (
+                         clock_timestamp() - run.last_received_at
+                       )) * 1000
+                     )
                    )::double precision
               END AS reconnect_remaining_ms
          FROM streams stream

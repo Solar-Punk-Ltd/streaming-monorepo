@@ -344,9 +344,12 @@ describe('managed run database invariants', () => {
       `INSERT INTO stream_runs (
          stream_id, run_number, state, permission, assigned_uploader_id,
          claim_id, claim_request_id, claim_request_digest, revision,
-         reconnect_deadline
+         last_event_sequence, last_event_digest, last_observed_at,
+         last_received_at, reconnect_deadline
        ) VALUES ($1, 1, 'waiting', 'claimed', 'itest-uploader', $2, $3,
-                 'claim-digest', 2, clock_timestamp() + interval '60 seconds')`,
+                 'claim-digest', 2, 1, 'waiting-digest',
+                 clock_timestamp() + interval '1 hour', clock_timestamp(),
+                 clock_timestamp() + interval '1 hour 40 seconds')`,
       [row.id, claimId, randomUUID()],
     );
 
@@ -354,10 +357,10 @@ describe('managed run database invariants', () => {
     assert.equal(waiting?.lifecycle.state, 'waiting');
     assert.equal(waiting?.lifecycle.canContinue, false);
     assert.ok(
-      (waiting?.lifecycle.reconnectRemainingMs ?? 0) > 55_000,
-      'remaining reconnect time comes from the database clock',
+      (waiting?.lifecycle.reconnectRemainingMs ?? 0) > 35_000,
+      'remaining time preserves the uploader-reported interval across clock skew',
     );
-    assert.ok((waiting?.lifecycle.reconnectRemainingMs ?? 0) <= 60_000);
+    assert.ok((waiting?.lifecycle.reconnectRemainingMs ?? 0) <= 40_000);
 
     await database.pool.query(
       `UPDATE stream_runs
