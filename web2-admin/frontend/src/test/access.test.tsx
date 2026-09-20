@@ -69,7 +69,13 @@ describe('the users table', () => {
     const root = within(rowOf('root'));
     expect(root.getByText('admin')).toBeInTheDocument();
     expect(root.getByText('you')).toBeInTheDocument();
-    expect(root.getByText('11/09/2026 12:00')).toBeInTheDocument();
+    const instant = new Date('2026-09-11T10:00:00.000Z');
+    const twoDigits = (value: number) => String(value).padStart(2, '0');
+    const lastLogin =
+      `${twoDigits(instant.getDate())}/${twoDigits(instant.getMonth() + 1)}/` +
+      `${instant.getFullYear()} ${twoDigits(instant.getHours())}:` +
+      twoDigits(instant.getMinutes());
+    expect(root.getByText(lastLogin)).toBeInTheDocument();
     expect(root.getByText('2')).toBeInTheDocument();
 
     const kim = within(rowOf('kim'));
