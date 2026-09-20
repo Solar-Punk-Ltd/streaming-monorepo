@@ -32,6 +32,7 @@ import { UploaderCapabilityRepository } from './domain/UploaderCapabilityReposit
 import { config } from './utils/config.js';
 import { loadActiveAdminArtifact } from './utils/activeAdminArtifact.js';
 import { getErrorMessage, getErrorStack } from './utils/errorUtils.js';
+import { secretLogSummary } from './utils/secretLogSummary.js';
 
 const logger = Logger.getInstance();
 
@@ -46,12 +47,6 @@ function redactDatabaseUrl(url: string): string {
   }
 }
 
-/** Enough of a secret to recognise it in a log, not enough to use it. */
-function redactSecret(value: string): string {
-  if (value === '') return '(unset)';
-  return `${value.slice(0, 6)}…(${value.length} chars)`;
-}
-
 function logStartupConfig(owner: string, topicHex: string): void {
   logger.info('[Boot] configuration:');
   logger.info(`[Boot]   listen: ${config.host}:${config.port}`);
@@ -63,8 +58,10 @@ function logStartupConfig(owner: string, topicHex: string): void {
   );
   logger.info(`[Boot]   feed gateway: ${config.feedGateway}`);
   logger.info(`[Boot]   bee: ${config.beeUrl}`);
-  logger.info(`[Boot]   postage batch: ${redactSecret(config.postageBatchId)}`);
-  logger.info(`[Boot]   feed key: ${redactSecret(config.feedPrivateKey)}`);
+  logger.info(
+    `[Boot]   postage batch: ${secretLogSummary(config.postageBatchId)}`,
+  );
+  logger.info(`[Boot]   feed key: ${secretLogSummary(config.feedPrivateKey)}`);
   logger.info(
     `[Boot]   feed: owner ${owner} topic "${config.feedTopic}" (${topicHex})`,
   );
@@ -72,11 +69,11 @@ function logStartupConfig(owner: string, topicHex: string): void {
     `[Boot]   viewer: ${config.viewerBaseUrl || '(unset → no player links)'}`,
   );
   logger.info(
-    `[Boot]   internal API token: ${redactSecret(config.internalApiToken)}`,
+    `[Boot]   internal API token: ${secretLogSummary(config.internalApiToken)}`,
   );
   logger.info(
     `[Boot]   ingest: ${config.ingest.host} srt ${config.ingest.srtPort} rtmp ${config.ingest.rtmpPort}, passphrase ${
-      config.ingest.srtPassphrase ? redactSecret(config.ingest.srtPassphrase) : '(unset)'
+      secretLogSummary(config.ingest.srtPassphrase)
     }, key verified ${config.ingest.keyVerified}, managed lifecycle ${
       config.ingest.managedLifecycle
         ? `v1 uploader ${config.ingest.managedLifecycle.uploaderId}`
