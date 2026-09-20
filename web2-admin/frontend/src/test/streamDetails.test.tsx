@@ -1,11 +1,15 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
-import type { Stream } from '@streaming-monorepo/web2-admin-common';
+import type {
+  OwnerContinuationOperation,
+  Stream,
+} from '@streaming-monorepo/web2-admin-common';
 
 import { StreamDetailsPage } from '../pages/StreamDetailsPage';
 import {
   jsonOk,
+  jsonError,
   makeIngest,
   makeStream,
   mockFetch,
@@ -41,6 +45,56 @@ function renderDetails() {
     </Routes>,
     { route: `/streams/${ID}` },
   );
+}
+
+function managedVod(): Stream {
+  return makeStream({
+    id: ID,
+    status: 'vod',
+    lifecycle: {
+      version: 1,
+      revision: 5,
+      runNumber: 1,
+      state: 'vod',
+      permission: 'closed',
+    },
+    completedRecording: {
+      runNumber: 1,
+      master: {
+        topic: '11111111-1111-4111-8111-111111111111',
+        index: 32,
+        reference: 'fixture-master-reference',
+        duration: 724.5,
+      },
+      expectedRenditions: [],
+      renditions: [],
+    },
+  });
+}
+
+function pendingOperation(
+  operationId = '88888888-8888-4888-8888-888888888888',
+): OwnerContinuationOperation {
+  return {
+    lifecycleVersion: 1,
+    operationId,
+    requestId: '77777777-7777-4777-8777-777777777777',
+    streamId: ID,
+    topic: '11111111-1111-4111-8111-111111111111',
+    mediaType: 'video',
+    previousRunNumber: 1,
+    nextRunNumber: 2,
+    revision: 6,
+    status: 'pending',
+  };
+}
+
+function deferred<T>() {
+  let settle: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((resolve) => {
+    settle = resolve;
+  });
+  return { promise, resolve: settle };
 }
 
 describe('StreamDetailsPage', () => {
@@ -148,6 +202,36 @@ describe('StreamDetailsPage', () => {
     expect(screen.queryByText('Manifest index')).not.toBeInTheDocument();
   });
 
+  it('marks stale active status unavailable while closed status stays durable', async () => {
+    const staleReceivedAt = new Date(Date.now() - 60_000).toISOString();
+    const live = managedVod();
+    live.lifecycle = {
+      version: 1,
+      revision: 8,
+      runNumber: 2,
+      state: 'live',
+      permission: 'claimed',
+      receivedAt: staleReceivedAt,
+    };
+    mockFetch(routesFor(live));
+    const first = renderDetails();
+    expect(await screen.findByText('Run 2: status unavailable')).toBeInTheDocument();
+    first.unmount();
+
+    const closed = managedVod();
+    closed.lifecycle = {
+      version: 1,
+      revision: 9,
+      runNumber: 2,
+      state: 'closed',
+      permission: 'closed',
+      receivedAt: staleReceivedAt,
+    };
+    mockFetch(routesFor(closed));
+    renderDetails();
+    expect(await screen.findByText('Run 2: closed')).toBeInTheDocument();
+  });
+
   it('offers a refresh while publishing leaves both buttons disabled', async () => {
     let status: Stream['status'] = 'publishing';
     mockFetch([
@@ -247,5 +331,159 @@ describe('StreamDetailsPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Draft')).toBeInTheDocument();
     });
+  });
+
+  it('reuses the same request id when the Continue response is lost', async () => {
+    const requests: Array<{ requestId: string; expectedRevision: number }> = [];
+    mockFetch(
+      routesFor(managedVod(), [
+        {
+          method: 'POST',
+          path: `/api/streams/${ID}/continuations`,
+          respond: (init) => {
+            if (typeof init?.body !== 'string') {
+              throw new TypeError('expected a JSON request body');
+            }
+            requests.push(JSON.parse(init.body) as (typeof requests)[number]);
+            return requests.length === 1
+              ? Promise.reject(new TypeError('response lost'))
+              : jsonOk({ operation: pendingOperation() }, 202);
+          },
+        },
+      ]),
+    );
+
+    renderDetails();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Continue stream' }),
+    );
+
+    expect(await screen.findByText(/Preparing continuation\. Run 2\./)).toBeInTheDocument();
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).toEqual(requests[1]);
+    expect(requests[0]?.expectedRevision).toBe(5);
+    expect(screen.getByRole('button', { name: 'Cancel continuation' })).toBeEnabled();
+    expect(screen.getByText(/Previous replay: run 1, master index 32/)).toBeInTheDocument();
+  });
+
+  it('cancels a prepared continuation before it is claimed', async () => {
+    const operation = pendingOperation();
+    mockFetch(
+      routesFor(managedVod(), [
+        {
+          method: 'POST',
+          path: `/api/streams/${ID}/continuations`,
+          respond: () => jsonOk({ operation }, 202),
+        },
+        {
+          method: 'DELETE',
+          path: `/api/streams/${ID}/continuations/${operation.operationId}`,
+          respond: () =>
+            jsonOk({ operation: { ...operation, status: 'cancelled', revision: 7 } }),
+        },
+      ]),
+    );
+
+    renderDetails();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Continue stream' }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Cancel continuation' }),
+    );
+
+    expect(await screen.findByText(/Continuation cancelled\. Run 2\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel continuation' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue stream' })).toBeEnabled();
+  });
+
+  it('removes Cancel after refresh reports that the uploader claimed the run', async () => {
+    const operation = pendingOperation();
+    mockFetch(
+      routesFor(managedVod(), [
+        {
+          method: 'POST',
+          path: `/api/streams/${ID}/continuations`,
+          respond: () => jsonOk({ operation }, 202),
+        },
+        {
+          path: `/api/streams/${ID}/continuations/${operation.operationId}`,
+          respond: () =>
+            jsonOk({ operation: { ...operation, status: 'claimed', revision: 8 } }),
+        },
+      ]),
+    );
+
+    renderDetails();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Continue stream' }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Refresh continuation' }),
+    );
+
+    expect(await screen.findByText(/Continuation claimed\. Run 2\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel continuation' })).not.toBeInTheDocument();
+  });
+
+  it('shows one winner and a typed conflict when two tabs Continue together', async () => {
+    const posts: Array<{
+      body: { requestId: string; expectedRevision: number };
+      response: ReturnType<typeof deferred<Response>>;
+    }> = [];
+    mockFetch(
+      routesFor(managedVod(), [
+        {
+          method: 'POST',
+          path: `/api/streams/${ID}/continuations`,
+          respond: (init) => {
+            if (typeof init?.body !== 'string') {
+              throw new TypeError('expected a JSON request body');
+            }
+            const response = deferred<Response>();
+            posts.push({
+              body: JSON.parse(init.body) as (typeof posts)[number]['body'],
+              response,
+            });
+            return response.promise;
+          },
+        },
+      ]),
+    );
+
+    renderWithProviders(
+      <Routes>
+        <Route
+          path="/streams/:id"
+          element={
+            <>
+              <StreamDetailsPage />
+              <StreamDetailsPage />
+            </>
+          }
+        />
+      </Routes>,
+      { route: `/streams/${ID}` },
+    );
+
+    const buttons = await screen.findAllByRole('button', {
+      name: 'Continue stream',
+    });
+    fireEvent.click(buttons[0]);
+    fireEvent.click(buttons[1]);
+    await waitFor(() => expect(posts).toHaveLength(2));
+    expect(posts[0]?.body.requestId).not.toBe(posts[1]?.body.requestId);
+
+    posts[0]?.response.resolve(
+      jsonOk({ operation: pendingOperation('88888888-8888-4888-8888-888888888881') }, 202),
+    );
+    posts[1]?.response.resolve(jsonError(409, { error: 'revision_conflict' }));
+
+    expect(await screen.findByText(/Preparing continuation\. Run 2\./)).toBeInTheDocument();
+    expect(
+      await screen.findAllByText(
+        'Another tab changed this stream. Refresh before trying again.',
+      ),
+    ).toHaveLength(2);
   });
 });

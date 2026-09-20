@@ -1,8 +1,10 @@
 import type {
   AddUserRequest,
   ChangePasswordRequest,
+  ContinuationCreateRequest,
   IngestDetails,
   MeResponse,
+  OwnerContinuationOperation,
   PublicConfig,
   PublishResult,
   Stream,
@@ -267,6 +269,45 @@ export function unpublishStream(id: string): Promise<PublishResult> {
     'POST',
     `${API}/streams/${encodeURIComponent(id)}/unpublish`,
   );
+}
+
+interface OwnerContinuationResponse {
+  operation: OwnerContinuationOperation;
+}
+
+export async function createContinuation(
+  id: string,
+  request: ContinuationCreateRequest,
+): Promise<OwnerContinuationOperation> {
+  const response = await sendJson<OwnerContinuationResponse>(
+    'POST',
+    `${API}/streams/${encodeURIComponent(id)}/continuations`,
+    request,
+  );
+  return response.operation;
+}
+
+export async function fetchContinuation(
+  streamId: string,
+  operationId: string,
+): Promise<OwnerContinuationOperation> {
+  const response = await getJson<OwnerContinuationResponse>(
+    `${API}/streams/${encodeURIComponent(streamId)}/continuations/${encodeURIComponent(operationId)}`,
+  );
+  return response.operation;
+}
+
+export async function cancelContinuation(
+  streamId: string,
+  operationId: string,
+): Promise<OwnerContinuationOperation> {
+  const response = await sendDelete<OwnerContinuationResponse>(
+    `${API}/streams/${encodeURIComponent(streamId)}/continuations/${encodeURIComponent(operationId)}`,
+  );
+  if (!response) {
+    throw new Error('Continuation cancellation returned no operation');
+  }
+  return response.operation;
 }
 
 // --- ingest -----------------------------------------------------------------

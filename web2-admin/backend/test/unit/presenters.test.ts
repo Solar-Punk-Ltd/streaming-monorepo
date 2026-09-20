@@ -33,6 +33,7 @@ describe('stream presentation', () => {
         runNumber: 2,
         state: 'closed',
         permission: 'closed',
+        receivedAt: '2026-09-20T10:00:00.000Z',
       },
       completedRecording,
     });
@@ -43,6 +44,7 @@ describe('stream presentation', () => {
       runNumber: 2,
       state: 'closed',
       permission: 'closed',
+      receivedAt: '2026-09-20T10:00:00.000Z',
     });
     assert.equal(presented.completedRecording, completedRecording);
   });

@@ -51,6 +51,8 @@ const FRIENDLY: Record<string, string> = {
   stream_live: 'Stop the broadcast first: a live stream stays on the feed.',
   invalid_state_transition:
     'The uploader reported a state this stream cannot be in. Reload to see where it actually is.',
+  revision_conflict: 'Another tab changed this stream. Refresh before trying again.',
+  closed: 'This run is already closed or claimed. Refresh to see its current state.',
   payload_too_large: 'The thumbnail is larger than the 5MB limit.',
   unsupported_media_type: UNSUPPORTED_IMAGE_TYPE,
   not_found: 'Not found.',

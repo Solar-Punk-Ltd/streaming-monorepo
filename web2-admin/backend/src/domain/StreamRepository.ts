@@ -20,6 +20,7 @@ interface ManagedCatalogueDatabaseRow {
   completed_run_number: number | null;
   state: ManagedLifecycleState | null;
   permission: ManagedRunPermission | null;
+  last_received_at: Date | null;
 }
 
 export interface ManagedOwnerState {
@@ -134,7 +135,7 @@ export class StreamRepository {
     const stateResult = await this.pool.query<ManagedCatalogueDatabaseRow>(
       `SELECT stream.lifecycle_version, stream.lifecycle_revision,
               stream.current_run_number, stream.completed_run_number,
-              run.state, run.permission
+              run.state, run.permission, run.last_received_at
          FROM streams stream
          LEFT JOIN stream_runs run
            ON run.stream_id = stream.id
@@ -158,6 +159,12 @@ export class StreamRepository {
       runNumber: state.current_run_number,
       state: state.state,
       permission: state.permission,
+      ...(state.last_received_at &&
+      (state.state === 'claimed' ||
+        state.state === 'live' ||
+        state.state === 'waiting')
+        ? { receivedAt: state.last_received_at.toISOString() }
+        : {}),
     };
     if (state.completed_run_number === null) return { lifecycle };
 

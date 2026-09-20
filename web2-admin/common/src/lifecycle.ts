@@ -21,6 +21,8 @@ export interface ManagedLifecycleSummary {
 
 export interface ManagedOwnerLifecycle extends ManagedLifecycleSummary {
   permission: ManagedRunPermission;
+  /** Server receipt time of the latest active-run report. */
+  receivedAt?: string;
 }
 
 export interface ImmutableMediaReference {
@@ -164,6 +166,11 @@ export interface ContinuationOperation {
   };
   failure?: string;
 }
+
+export type OwnerContinuationOperation = Omit<
+  ContinuationOperation,
+  'uploaderId' | 'retainedRecording' | 'previousEmptyOutcome'
+>;
 
 export interface ContinuationPreparationRequest {
   lifecycleVersion: typeof MANAGED_LIFECYCLE_VERSION;

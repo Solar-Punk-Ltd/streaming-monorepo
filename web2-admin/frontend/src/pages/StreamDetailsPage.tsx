@@ -41,6 +41,7 @@ import { IngestPanel } from '../components/IngestPanel';
 import { MEDIA_TYPE_LABEL, StatusChip } from '../components/StatusChip';
 import { useSnackbar } from '../components/Snackbar';
 import { CopyButton } from '../components/CopyButton';
+import { ContinuationPanel } from '../components/ContinuationPanel';
 
 function Field({
   label,
@@ -485,6 +486,8 @@ export function StreamDetailsPage() {
           </Alert>
         ) : null}
       </Paper>
+
+      <ContinuationPanel stream={stream} reload={load} />
 
       {ingest ? (
         <IngestPanel
