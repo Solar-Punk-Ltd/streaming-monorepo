@@ -5,6 +5,8 @@ import { after, before, describe, it } from 'node:test';
 import pg from 'pg';
 
 import { Database } from '../../src/domain/Database.js';
+import { ManagedLifecycleRepository } from '../../src/domain/ManagedLifecycleRepository.js';
+import { ManagedLifecycleConflict } from '../../src/domain/managedLifecycle.js';
 import { newPublishKey } from '../../src/domain/StreamService.js';
 import { StreamRenditionRepository } from '../../src/domain/StreamRenditionRepository.js';
 import { StreamRepository } from '../../src/domain/StreamRepository.js';
@@ -16,6 +18,7 @@ let adminPool: pg.Pool;
 let database: Database;
 let streams: StreamRepository;
 let renditions: StreamRenditionRepository;
+let lifecycle: ManagedLifecycleRepository;
 let schema: string;
 let isolatedDatabaseUrl: string;
 let userId: string;
@@ -35,6 +38,7 @@ before(async () => {
   await database.migrate();
   streams = new StreamRepository(database.pool);
   renditions = new StreamRenditionRepository(database.pool);
+  lifecycle = new ManagedLifecycleRepository(database.pool);
 
   const user = await database.pool.query<{ id: string }>(
     `INSERT INTO users (username, password_hash)
@@ -230,6 +234,64 @@ describe('managed closed recording protection', () => {
 });
 
 describe('managed run database invariants', () => {
+  it('returns the current claim on an exact retry and refuses it after closure', async () => {
+    const row = await streams.insert({
+      user_id: userId,
+      topic: randomUUID(),
+      owner: OWNER,
+      title: 'claim retry',
+      description: 'claim response recovery',
+      tags: [],
+      media_type: 'video',
+      scheduled_start_time: null,
+      publish_key: newPublishKey(),
+    });
+    await database.pool.query(
+      `UPDATE streams SET lifecycle_version = 1, lifecycle_revision = 1,
+                          current_run_number = 1 WHERE id = $1`,
+      [row.id],
+    );
+    await database.pool.query(
+      `INSERT INTO stream_runs (
+         stream_id, run_number, state, permission, assigned_uploader_id,
+         revision
+       ) VALUES ($1, 1, 'ready', 'open', 'itest-uploader', 1)`,
+      [row.id],
+    );
+    const request = {
+      lifecycleVersion: 1 as const,
+      expectedRevision: 1,
+      uploaderId: 'itest-uploader',
+      requestId: randomUUID(),
+    };
+
+    const claimed = await lifecycle.claim(row.id, 1, request);
+    const retried = await lifecycle.claim(row.id, 1, request);
+    assert.equal(claimed.claimId, retried.claimId);
+    assert.equal(retried.permission, 'claimed');
+
+    await database.pool.query(
+      `UPDATE stream_runs
+          SET state = 'closed', permission = 'closed',
+              close_reason = 'cancelled', revision = 3
+        WHERE stream_id = $1 AND run_number = 1`,
+      [row.id],
+    );
+    await assert.rejects(
+      lifecycle.claim(row.id, 1, request),
+      (error: unknown) =>
+        error instanceof ManagedLifecycleConflict && error.code === 'closed',
+    );
+    const recovered = await lifecycle.readClaimedRun(
+      row.id,
+      1,
+      request.uploaderId,
+      claimed.claimId!,
+    );
+    assert.equal(recovered.state, 'closed');
+    assert.equal(recovered.permission, 'closed');
+  });
+
   it('retains the winning claim request and requires proof for an empty close', async () => {
     const row = await streams.insert({
       user_id: userId,

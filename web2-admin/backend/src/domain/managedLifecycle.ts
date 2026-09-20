@@ -8,7 +8,14 @@ export type ManagedRunState =
 
 export type ManagedRunPermission = 'open' | 'claimed' | 'closed';
 
-export type ManagedLifecycleConflictCode = 'stale_event' | 'event_conflict';
+export type ManagedLifecycleConflictCode =
+  | 'stale_event'
+  | 'event_conflict'
+  | 'request_conflict'
+  | 'revision_conflict'
+  | 'assignment_mismatch'
+  | 'stale_run'
+  | 'closed';
 
 export class ManagedLifecycleConflict extends Error {
   constructor(public readonly code: ManagedLifecycleConflictCode) {
