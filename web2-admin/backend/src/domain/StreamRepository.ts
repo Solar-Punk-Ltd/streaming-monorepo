@@ -169,9 +169,9 @@ export class StreamRepository {
   ): Promise<ManagedCatalogueState | null> {
     const ownerState = await this.managedOwnerState(streamId);
     if (!ownerState) return null;
-    const { permission: _permission, ...lifecycle } = ownerState.lifecycle;
+    const { version, revision, runNumber, state } = ownerState.lifecycle;
     return {
-      lifecycle,
+      lifecycle: { version, revision, runNumber, state },
       ...(ownerState.completedRecording
         ? { completedRecording: ownerState.completedRecording }
         : {}),
