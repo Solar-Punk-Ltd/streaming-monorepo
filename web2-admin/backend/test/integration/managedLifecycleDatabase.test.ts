@@ -14,6 +14,40 @@ import { StreamRepository } from '../../src/domain/StreamRepository.js';
 const { Pool } = pg;
 const OWNER = 'fixture-owner';
 
+/**
+ * markLive exactly as the admin sent it before managed lifecycles existed,
+ * copied from the pre-feature baseline 48848678. An older admin can still send
+ * it during an upgrade, and the repository's own markLive has skipped managed
+ * streams since c6da305, so only this copy still reaches the database guard.
+ */
+const PRE_FEATURE_MARK_LIVE_SQL = `WITH locked AS (
+     SELECT id, status FROM streams WHERE id = $1 FOR UPDATE
+   ), moved AS (
+     UPDATE streams
+        SET status = 'live',
+            live_since = CASE
+              WHEN status = 'live' AND live_since IS NOT NULL THEN live_since
+              ELSE NOW()
+            END,
+            manifest_index = NULL,
+            duration_seconds = NULL,
+            ended_at = NULL,
+            publish_error = NULL,
+            updated_at = NOW()
+      WHERE id IN (SELECT id FROM locked WHERE status = ANY($2::text[]))
+      RETURNING id
+   ), unfinished AS (
+     UPDATE stream_renditions
+        SET manifest_index = NULL,
+            duration_seconds = NULL,
+            updated_at = NOW()
+      WHERE stream_id IN (
+        SELECT id FROM locked
+         WHERE status = 'vod' AND status = ANY($2::text[])
+      )
+   )
+   SELECT * FROM moved`;
+
 let adminPool: pg.Pool;
 let database: Database;
 let streams: StreamRepository;
@@ -167,13 +201,14 @@ describe('managed closed recording protection', () => {
     );
 
     await assert.rejects(
-      streams.markLive(id, ['published', 'live', 'vod']),
+      database.pool.query(PRE_FEATURE_MARK_LIVE_SQL, [id, ['published', 'live', 'vod']]),
       (error: NodeJS.ErrnoException & { constraint?: string }) => {
         assert.equal(error.code, '23514');
         assert.equal(error.constraint, 'managed_closed_stream_guard');
         return true;
       },
     );
+    assert.equal(await streams.markLive(id, ['published', 'live', 'vod']), null);
 
     const stream = await streams.findById(id, userId);
     assert.equal(stream?.status, 'vod');
