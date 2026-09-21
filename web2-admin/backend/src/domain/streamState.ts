@@ -21,10 +21,11 @@ export type ReportedState = 'live' | 'vod';
  * declared stream outlives the sessions written to it — the master on the
  * declared topic, each rung on a topic derived from that topic and the rung
  * name — so an encoder that reconnects continues those same feeds above the
- * previous head, with a discontinuity at the seam. The recordings sit back to
- * back on one feed and the entry lists the latest one, so the `live` clears
- * what the finished recording left on the row and on the ladder and the next
- * `vod` says where this one ended.
+ * previous head, with a discontinuity at the seam. Each new recording opens
+ * with the one already at that feed's head, so the recording this row points at
+ * carries every session of the broadcast with its seams marked, and the `live`
+ * clears what the finished recording left on the row and on the ladder while
+ * the next `vod` says where this one ended.
  *
  * What is refused: `draft` (never announced — the uploader is not even
  * supposed to resolve it) and `publishing` (a feed write is in flight; the
