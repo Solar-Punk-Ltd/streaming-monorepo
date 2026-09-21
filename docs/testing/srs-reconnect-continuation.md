@@ -1,5 +1,7 @@
 # SRS reconnect and continuation verification
 
+Note of 2026-09-21: the release guard was removed by the owner's ruling of that day, on branch `feat/srs-reconnect-continuation`. The guard receipts, the admin artifact descriptor and the release-only admin coordinator described below no longer exist, and managed enrollment now needs only a fresh uploader capability record.
+
 Status: active. The admin source checkpoint described here is
 `c2419e4f6ff15bfa10e135a3649d4a9780f662b6`, tested on 2026-09-21. Final
 whole-repository verification of this exact checkpoint is still pending on the
