@@ -16,4 +16,9 @@ describe('secretLogSummary', () => {
   it('reports an empty value as unset', () => {
     assert.equal(secretLogSummary(''), '(unset)');
   });
+
+  it('reports a missing optional credential as unset instead of stopping the boot', () => {
+    assert.equal(secretLogSummary(null), '(unset)');
+    assert.equal(secretLogSummary(undefined), '(unset)');
+  });
 });
