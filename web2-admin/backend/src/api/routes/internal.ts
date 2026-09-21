@@ -8,7 +8,6 @@ import type {
   MediaType,
   RenditionReport,
   RenditionReportResponse,
-  ReleaseGuardReceipt,
   StreamStateResponse,
   UploaderCapabilities,
 } from '@streaming-monorepo/web2-admin-common';
@@ -20,10 +19,6 @@ import { ContinuationRepository } from '../../domain/ContinuationRepository.js';
 import { ManagedLifecycleRepository } from '../../domain/ManagedLifecycleRepository.js';
 import { ManagedLifecycleConflict } from '../../domain/managedLifecycle.js';
 import { PublishService } from '../../domain/PublishService.js';
-import {
-  ReleaseGuardReceiptConflict,
-  ReleaseGuardReceiptRepository,
-} from '../../domain/ReleaseGuardReceiptRepository.js';
 import { StreamStateService } from '../../domain/StreamStateService.js';
 import { UploaderCapabilityRepository } from '../../domain/UploaderCapabilityRepository.js';
 import type { ManagedIngestLifecycleConfig } from '../../utils/managedIngestConfig.js';
@@ -39,8 +34,6 @@ import {
   managedRunIdentitySchema,
   managedRunParamSchema,
   managedReportSchema,
-  releaseGuardReceiptSchema,
-  releaseGuardSlotParamSchema,
   renditionReportSchema,
   streamStateSchema,
   uploaderContinuationParamSchema,
@@ -69,7 +62,6 @@ export interface InternalRoutesDeps {
   legacyAdoptions?: LegacyAdoptionRepository;
   publishService: PublishService;
   uploaderCapabilities?: UploaderCapabilityRepository;
-  releaseGuardReceipts?: ReleaseGuardReceiptRepository;
   managedIngestConfig: ManagedIngestLifecycleConfig | null;
   requireInternalToken: RequestHandler;
 }
@@ -95,7 +87,6 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
     legacyAdoptions,
     publishService,
     uploaderCapabilities,
-    releaseGuardReceipts,
     managedIngestConfig,
     requireInternalToken,
   } = deps;
@@ -115,24 +106,6 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
           req.body as UploaderCapabilities,
         );
         res.json(receipt);
-      }),
-    );
-  }
-
-  if (releaseGuardReceipts) {
-    router.put(
-      '/release-guard/receipts/:role/:id',
-      validateParams(releaseGuardSlotParamSchema),
-      validateBody(releaseGuardReceiptSchema),
-      asyncHandler(async (req: Request, res: Response) => {
-        const receipt = req.body as ReleaseGuardReceipt;
-        if (
-          receipt.slot.role !== String(req.params.role) ||
-          receipt.slot.id !== String(req.params.id)
-        ) {
-          throw new ReleaseGuardReceiptConflict('assignment_mismatch');
-        }
-        res.json(await releaseGuardReceipts.record(receipt));
       }),
     );
   }

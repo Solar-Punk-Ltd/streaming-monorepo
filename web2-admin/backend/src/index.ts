@@ -24,7 +24,6 @@ import { ManagedEnrollmentReadiness } from './domain/ManagedEnrollmentReadiness.
 import { ManagedEnrollmentService } from './domain/ManagedEnrollmentService.js';
 import { ManagedLifecycleRepository } from './domain/ManagedLifecycleRepository.js';
 import { PublishService } from './domain/PublishService.js';
-import { ReleaseGuardReceiptRepository } from './domain/ReleaseGuardReceiptRepository.js';
 import { StreamRenditionRepository } from './domain/StreamRenditionRepository.js';
 import { StreamRepository } from './domain/StreamRepository.js';
 import { StreamService } from './domain/StreamService.js';
@@ -153,12 +152,6 @@ async function main(): Promise<void> {
         config.ingest.managedLifecycle.uploaderId,
       )
     : undefined;
-  const releaseGuardReceipts = config.ingest.managedLifecycle
-    ? new ReleaseGuardReceiptRepository(
-        database.pool,
-        config.ingest.managedLifecycle.uploaderId,
-      )
-    : undefined;
   const managedEnrollmentReadiness = uploaderCapabilities
     ? new ManagedEnrollmentReadiness(uploaderCapabilities)
     : undefined;
@@ -247,7 +240,6 @@ async function main(): Promise<void> {
       legacyAdoptions,
       publishService,
       uploaderCapabilities,
-      releaseGuardReceipts,
       managedIngestConfig: config.ingest.managedLifecycle,
       ingestService,
       internalApiToken: config.internalApiToken,

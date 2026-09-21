@@ -393,34 +393,6 @@ export interface UploaderCapabilityReceipt {
   profileDigests: Array<{ mediaType: MediaType; digest: string }>;
 }
 
-export type ReleaseGuardRole = 'manager' | 'admin' | 'uploader' | 'viewer';
-
-export interface ReleaseGuardArtifact {
-  treeDigest: string;
-  images: Array<{ service: string; imageId: string }>;
-}
-
-export interface ReleaseGuardReceipt {
-  schemaVersion: 1;
-  installationId: string;
-  generation: number;
-  stateDigest: string;
-  slot: {
-    role: ReleaseGuardRole;
-    id: string;
-  };
-  minimums: { srsLifecycle: 1 };
-  artifact: ReleaseGuardArtifact;
-}
-
-export interface ReleaseGuardActiveArtifact {
-  schemaVersion: 1;
-  installationId: string;
-  generation: number;
-  slot: { role: 'admin'; id: 'default' };
-  artifact: ReleaseGuardArtifact;
-}
-
 /** Stable profile fingerprint. Rung order is normalized by name. */
 export function canonicalUploaderProfileJson(
   profile: UploaderMediaProfile,

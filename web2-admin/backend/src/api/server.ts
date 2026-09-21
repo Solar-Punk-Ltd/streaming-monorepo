@@ -12,7 +12,6 @@ import { LegacyAdoptionRepository } from '../domain/LegacyAdoptionRepository.js'
 import { Logger } from '../domain/Logger.js';
 import { ManagedLifecycleRepository } from '../domain/ManagedLifecycleRepository.js';
 import { PublishService } from '../domain/PublishService.js';
-import { ReleaseGuardReceiptRepository } from '../domain/ReleaseGuardReceiptRepository.js';
 import { StreamService } from '../domain/StreamService.js';
 import { StreamStateService } from '../domain/StreamStateService.js';
 import { UploaderCapabilityRepository } from '../domain/UploaderCapabilityRepository.js';
@@ -46,7 +45,6 @@ export interface ApiDeps {
   legacyAdoptions?: LegacyAdoptionRepository;
   publishService: PublishService;
   uploaderCapabilities?: UploaderCapabilityRepository;
-  releaseGuardReceipts?: ReleaseGuardReceiptRepository;
   managedIngestConfig: ManagedIngestLifecycleConfig | null;
   ingestService: IngestService;
   /** Bearer token for /api/internal; never accepted anywhere else. */
@@ -93,7 +91,6 @@ export function startApiServer(
       legacyAdoptions: deps.legacyAdoptions,
       publishService: deps.publishService,
       uploaderCapabilities: deps.uploaderCapabilities,
-      releaseGuardReceipts: deps.releaseGuardReceipts,
       managedIngestConfig: deps.managedIngestConfig,
       requireInternalToken: createRequireInternalToken(deps.internalApiToken),
     }),
