@@ -31,7 +31,6 @@ import { StreamService } from './domain/StreamService.js';
 import { StreamStateService } from './domain/StreamStateService.js';
 import { UploaderCapabilityRepository } from './domain/UploaderCapabilityRepository.js';
 import { config } from './utils/config.js';
-import { loadActiveAdminArtifact } from './utils/activeAdminArtifact.js';
 import { getErrorMessage, getErrorStack } from './utils/errorUtils.js';
 import { secretLogSummary } from './utils/secretLogSummary.js';
 
@@ -160,16 +159,9 @@ async function main(): Promise<void> {
         config.ingest.managedLifecycle.uploaderId,
       )
     : undefined;
-  const managedEnrollmentReadiness =
-    config.ingest.managedLifecycle &&
-    uploaderCapabilities &&
-    releaseGuardReceipts
-      ? new ManagedEnrollmentReadiness(
-          releaseGuardReceipts,
-          uploaderCapabilities,
-          loadActiveAdminArtifact(),
-        )
-      : undefined;
+  const managedEnrollmentReadiness = uploaderCapabilities
+    ? new ManagedEnrollmentReadiness(uploaderCapabilities)
+    : undefined;
   const managedEnrollment =
     config.ingest.managedLifecycle && managedEnrollmentReadiness
       ? new ManagedEnrollmentService(

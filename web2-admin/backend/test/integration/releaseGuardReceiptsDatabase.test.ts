@@ -2,44 +2,17 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
-import type {
-  ReleaseGuardActiveArtifact,
-  ReleaseGuardReceipt,
-  UploaderCapabilities,
-} from '@streaming-monorepo/web2-admin-common';
+import type { ReleaseGuardReceipt } from '@streaming-monorepo/web2-admin-common';
 import pg from 'pg';
 
 import { Database } from '../../src/domain/Database.js';
-import { ManagedEnrollmentReadiness } from '../../src/domain/ManagedEnrollmentReadiness.js';
 import {
   ReleaseGuardReceiptConflict,
   ReleaseGuardReceiptRepository,
 } from '../../src/domain/ReleaseGuardReceiptRepository.js';
-import { UploaderCapabilityRepository } from '../../src/domain/UploaderCapabilityRepository.js';
 
 const { Pool } = pg;
 const UPLOADER_ID = 'srs-uploader-a';
-const capability: UploaderCapabilities = {
-  lifecycleVersion: 1,
-  capabilities: {
-    durableCheckpointStore: 1,
-    legacyRecordingAdoption: 1,
-  },
-  profiles: [
-    {
-      mediaType: 'video',
-      renditions: [
-        {
-          name: '720p',
-          width: 1280,
-          height: 720,
-          bandwidth: 2_800_000,
-          avgBandwidth: 2_500_000,
-        },
-      ],
-    },
-  ],
-};
 
 let adminPool: pg.Pool;
 let database: Database;
@@ -224,59 +197,5 @@ describe('release guard receipts', () => {
     assert.ok(rejected && rejected.status === 'rejected');
     assert.ok(rejected.reason instanceof ReleaseGuardReceiptConflict);
     assert.equal(rejected.reason.code, 'installation_conflict');
-  });
-
-  it('checks current admin proof and fresh capability after the caller locks the stream', async () => {
-    const adminReceipt = receipt('admin', 'default');
-    const activeAdminArtifact: ReleaseGuardActiveArtifact = {
-      schemaVersion: 1,
-      installationId: adminReceipt.installationId,
-      generation: adminReceipt.generation,
-      slot: { role: 'admin', id: 'default' },
-      artifact: adminReceipt.artifact,
-    };
-    const capabilities = new UploaderCapabilityRepository(
-      database.pool,
-      UPLOADER_ID,
-    );
-    const readiness = new ManagedEnrollmentReadiness(
-      receipts,
-      capabilities,
-      activeAdminArtifact,
-    );
-    for (const required of [
-      receipt('manager', 'default'),
-      adminReceipt,
-      receipt('viewer', 'default'),
-      receipt('uploader', UPLOADER_ID),
-    ]) {
-      await receipts.record(required);
-    }
-    const client = await database.pool.connect();
-    try {
-      await client.query('BEGIN');
-      assert.equal(await readiness.readAfterStreamLock(client, 'video'), null);
-      await client.query('COMMIT');
-
-      await capabilities.record(UPLOADER_ID, capability);
-      await client.query('BEGIN');
-      const ready = await readiness.readAfterStreamLock(client, 'video');
-      await client.query('COMMIT');
-      assert.equal(ready?.profile.mediaType, 'video');
-      assert.match(ready?.profileDigest ?? '', /^[0-9a-f]{64}$/);
-      assert.equal(ready?.guardReceipts.length, 4);
-
-      await database.pool.query(
-        `UPDATE uploader_capability_receipts
-            SET received_at = clock_timestamp() - interval '31 seconds'
-          WHERE uploader_id = $1`,
-        [UPLOADER_ID],
-      );
-      await client.query('BEGIN');
-      assert.equal(await readiness.readAfterStreamLock(client, 'video'), null);
-      await client.query('COMMIT');
-    } finally {
-      client.release();
-    }
   });
 });

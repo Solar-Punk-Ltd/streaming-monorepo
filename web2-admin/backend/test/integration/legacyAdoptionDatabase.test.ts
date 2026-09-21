@@ -4,8 +4,6 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 
 import type {
   LegacyAdoptionPreparationRequest,
-  ReleaseGuardActiveArtifact,
-  ReleaseGuardReceipt,
   UploaderCapabilities,
 } from '@streaming-monorepo/web2-admin-common';
 import pg from 'pg';
@@ -16,22 +14,11 @@ import { LegacyAdoptionRepository } from '../../src/domain/LegacyAdoptionReposit
 import { ManagedEnrollmentReadiness } from '../../src/domain/ManagedEnrollmentReadiness.js';
 import { ManagedLifecycleConflict } from '../../src/domain/managedLifecycle.js';
 import { managedRungTopicFor } from '../../src/domain/managedRungTopic.js';
-import { ReleaseGuardReceiptRepository } from '../../src/domain/ReleaseGuardReceiptRepository.js';
 import { UploaderCapabilityRepository } from '../../src/domain/UploaderCapabilityRepository.js';
 
 const { Pool } = pg;
 const UPLOADER_ID = 'srs-uploader-a';
 const OWNER = '90f8bf6a479f320ead074411a4b0e7944ea8c9c1';
-const activeAdminArtifact: ReleaseGuardActiveArtifact = {
-  schemaVersion: 1,
-  installationId: '22222222-2222-4222-8222-222222222222',
-  generation: 3,
-  slot: { role: 'admin', id: 'default' },
-  artifact: {
-    treeDigest: 'e'.repeat(64),
-    images: [{ service: 'admin', imageId: `sha256:${'c'.repeat(64)}` }],
-  },
-};
 const capability: UploaderCapabilities = {
   lifecycleVersion: 1,
   capabilities: { durableCheckpointStore: 1, legacyRecordingAdoption: 1 },
@@ -62,7 +49,6 @@ let adminPool: pg.Pool;
 let database: Database;
 let adoptions: LegacyAdoptionRepository;
 let capabilities: UploaderCapabilityRepository;
-let receipts: ReleaseGuardReceiptRepository;
 let schema: string;
 let userId: string;
 
@@ -88,30 +74,6 @@ async function waitForLockWaiters(
   assert.fail(`expected ${count} stream row-lock waiters`);
 }
 
-function guardReceipt(
-  role: ReleaseGuardReceipt['slot']['role'],
-  id: string,
-): ReleaseGuardReceipt {
-  return {
-    schemaVersion: 1,
-    installationId:
-      role === 'admin'
-        ? activeAdminArtifact.installationId
-        : '11111111-1111-4111-8111-111111111111',
-    generation: role === 'admin' ? activeAdminArtifact.generation : 1,
-    stateDigest: 'a'.repeat(64),
-    slot: { role, id },
-    minimums: { srsLifecycle: 1 },
-    artifact:
-      role === 'admin'
-        ? activeAdminArtifact.artifact
-        : {
-            treeDigest: 'b'.repeat(64),
-            images: [{ service: role, imageId: `sha256:${'d'.repeat(64)}` }],
-          },
-  };
-}
-
 before(async () => {
   const sourceUrl = process.env.DATABASE_URL;
   assert.ok(sourceUrl, 'DATABASE_URL must name the isolated test Postgres');
@@ -128,14 +90,9 @@ before(async () => {
   );
   userId = user.rows[0].id;
   capabilities = new UploaderCapabilityRepository(database.pool, UPLOADER_ID);
-  receipts = new ReleaseGuardReceiptRepository(database.pool, UPLOADER_ID);
   adoptions = new LegacyAdoptionRepository(
     database.pool,
-    new ManagedEnrollmentReadiness(
-      receipts,
-      capabilities,
-      activeAdminArtifact,
-    ),
+    new ManagedEnrollmentReadiness(capabilities),
     UPLOADER_ID,
   );
 });
@@ -150,18 +107,8 @@ after(async () => {
 
 beforeEach(async () => {
   await database.pool.query('TRUNCATE streams CASCADE');
-  await database.pool.query(
-    'TRUNCATE release_guard_receipts, uploader_capability_receipts',
-  );
+  await database.pool.query('TRUNCATE uploader_capability_receipts');
   await capabilities.record(UPLOADER_ID, capability);
-  for (const receipt of [
-    guardReceipt('manager', 'default'),
-    guardReceipt('admin', 'default'),
-    guardReceipt('viewer', 'default'),
-    guardReceipt('uploader', UPLOADER_ID),
-  ]) {
-    await receipts.record(receipt);
-  }
 });
 
 async function legacyVod(): Promise<{ id: string; topic: string }> {

@@ -2,11 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
-import type {
-  ReleaseGuardActiveArtifact,
-  ReleaseGuardReceipt,
-  UploaderCapabilities,
-} from '@streaming-monorepo/web2-admin-common';
+import type { UploaderCapabilities } from '@streaming-monorepo/web2-admin-common';
 import pg from 'pg';
 
 import { Database } from '../../src/domain/Database.js';
@@ -17,7 +13,6 @@ import { ManagedEnrollmentReadiness } from '../../src/domain/ManagedEnrollmentRe
 import { ManagedLifecycleConflict } from '../../src/domain/managedLifecycle.js';
 import { managedRungTopicFor } from '../../src/domain/managedRungTopic.js';
 import type { PublishService } from '../../src/domain/PublishService.js';
-import { ReleaseGuardReceiptRepository } from '../../src/domain/ReleaseGuardReceiptRepository.js';
 import { StreamRenditionRepository } from '../../src/domain/StreamRenditionRepository.js';
 import { StreamRepository } from '../../src/domain/StreamRepository.js';
 import { StreamStateService } from '../../src/domain/StreamStateService.js';
@@ -58,7 +53,6 @@ const capability: UploaderCapabilities = {
 let adminPool: pg.Pool;
 let database: Database;
 let capabilities: UploaderCapabilityRepository;
-let receipts: ReleaseGuardReceiptRepository;
 let enrollment: ManagedEnrollmentService;
 let schema: string;
 let userId: string;
@@ -96,42 +90,6 @@ async function waitForEnrollmentWaiters(count: number): Promise<void> {
   assert.fail(`expected ${count} enrollment row-lock waiters`);
 }
 
-function guardReceipt(
-  role: ReleaseGuardReceipt['slot']['role'],
-  id: string,
-): ReleaseGuardReceipt {
-  return {
-    schemaVersion: 1,
-    installationId:
-      role === 'admin'
-        ? '22222222-2222-4222-8222-222222222222'
-        : '11111111-1111-4111-8111-111111111111',
-    generation: role === 'admin' ? 3 : 1,
-    stateDigest: 'a'.repeat(64),
-    slot: { role, id },
-    minimums: { srsLifecycle: 1 },
-    artifact: {
-      treeDigest: role === 'admin' ? 'e'.repeat(64) : 'b'.repeat(64),
-      images: [
-        { service: role, imageId: `sha256:${'c'.repeat(64)}` },
-      ],
-    },
-  };
-}
-
-const activeAdminArtifact: ReleaseGuardActiveArtifact = {
-  schemaVersion: 1,
-  installationId: '22222222-2222-4222-8222-222222222222',
-  generation: 3,
-  slot: { role: 'admin', id: 'default' },
-  artifact: {
-    treeDigest: 'e'.repeat(64),
-    images: [
-      { service: 'admin', imageId: `sha256:${'c'.repeat(64)}` },
-    ],
-  },
-};
-
 before(async () => {
   const sourceUrl = process.env.DATABASE_URL;
   assert.ok(sourceUrl, 'DATABASE_URL must name the isolated test Postgres');
@@ -149,12 +107,7 @@ before(async () => {
   );
   userId = user.rows[0].id;
   capabilities = new UploaderCapabilityRepository(database.pool, UPLOADER_ID);
-  receipts = new ReleaseGuardReceiptRepository(database.pool, UPLOADER_ID);
-  const readiness = new ManagedEnrollmentReadiness(
-    receipts,
-    capabilities,
-    activeAdminArtifact,
-  );
+  const readiness = new ManagedEnrollmentReadiness(capabilities);
   enrollment = new ManagedEnrollmentService(
     database.pool,
     readiness,
@@ -172,9 +125,7 @@ after(async () => {
 
 beforeEach(async () => {
   await database.pool.query('DELETE FROM streams');
-  await database.pool.query(
-    'TRUNCATE release_guard_receipts, uploader_capability_receipts',
-  );
+  await database.pool.query('TRUNCATE uploader_capability_receipts');
 });
 
 async function createLegacy(status = 'draft'): Promise<{ id: string; topic: string }> {
@@ -192,14 +143,12 @@ async function createLegacy(status = 'draft'): Promise<{ id: string; topic: stri
 
 async function makeReady(): Promise<void> {
   await capabilities.record(UPLOADER_ID, capability);
-  for (const required of [
-    guardReceipt('manager', 'default'),
-    guardReceipt('admin', 'default'),
-    guardReceipt('viewer', 'default'),
-    guardReceipt('uploader', UPLOADER_ID),
-  ]) {
-    await receipts.record(required);
-  }
+}
+
+function isRefusedAsNotFresh(error: unknown): boolean {
+  assert.ok(error instanceof ManagedEnrollmentUnavailableError);
+  assert.equal(error.reason, 'uploader_capability_not_fresh');
+  return true;
 }
 
 describe('managed stream enrollment', () => {
@@ -273,12 +222,29 @@ describe('managed stream enrollment', () => {
     );
   });
 
-  it('fails closed without complete readiness but leaves active legacy rows alone', async () => {
+  it('fails closed without a fresh capability record, says why, and leaves active legacy rows alone', async () => {
     const idle = await createLegacy();
     await assert.rejects(
       enrollment.enrollEligiblePlaceholder(idle.id, userId),
-      ManagedEnrollmentUnavailableError,
+      isRefusedAsNotFresh,
     );
+
+    await makeReady();
+    await database.pool.query(
+      `UPDATE uploader_capability_receipts
+          SET received_at = clock_timestamp() - interval '31 seconds'
+        WHERE uploader_id = $1`,
+      [UPLOADER_ID],
+    );
+    await assert.rejects(
+      enrollment.enrollEligiblePlaceholder(idle.id, userId),
+      isRefusedAsNotFresh,
+    );
+    const refused = await database.pool.query<{ lifecycle_version: number | null }>(
+      'SELECT lifecycle_version FROM streams WHERE id = $1',
+      [idle.id],
+    );
+    assert.equal(refused.rows[0].lifecycle_version, null);
 
     const active = await createLegacy('live');
     assert.equal(

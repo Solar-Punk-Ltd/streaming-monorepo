@@ -1,61 +1,53 @@
-import { isDeepStrictEqual } from 'node:util';
-
 import type {
   MediaType,
-  ReleaseGuardActiveArtifact,
-  ReleaseGuardReceipt,
   UploaderMediaProfile,
 } from '@streaming-monorepo/web2-admin-common';
 import type { PoolClient } from 'pg';
 
-import type { ReleaseGuardReceiptRepository } from './ReleaseGuardReceiptRepository.js';
+import { ManagedEnrollmentUnavailableError } from './errors/index.js';
 import type { UploaderCapabilityRepository } from './UploaderCapabilityRepository.js';
 
 export interface ManagedEnrollmentProof {
   profile: UploaderMediaProfile;
   profileDigest: string;
-  guardReceipts: ReleaseGuardReceipt[];
 }
 
+/**
+ * Decides whether a stream may enter the managed lifecycle, for a new stream
+ * and for a legacy recording alike. The one requirement is a fresh capability
+ * record from the configured uploader that offers the stream's media type. The
+ * record is filtered on lifecycle version 1, so it also proves the uploader
+ * runs a lifecycle-capable release. Nothing here proves which release the
+ * viewer runs.
+ */
 export class ManagedEnrollmentReadiness {
   constructor(
-    private readonly releaseGuardReceipts: ReleaseGuardReceiptRepository,
     private readonly uploaderCapabilities: UploaderCapabilityRepository,
-    private readonly activeAdminArtifact: ReleaseGuardActiveArtifact | null,
   ) {}
 
-  async readAfterStreamLock(
+  /**
+   * Call while holding the stream's row lock, so the ladder returned is the
+   * one the enrollment freezes.
+   *
+   * @throws ManagedEnrollmentUnavailableError with reason
+   * `uploader_capability_not_fresh` when no fresh record offers `mediaType`.
+   */
+  async requireAfterStreamLock(
     client: PoolClient,
+    streamId: string,
     mediaType: MediaType,
-  ): Promise<ManagedEnrollmentProof | null> {
-    if (!this.activeAdminArtifact) return null;
-    const guardReceipts =
-      await this.releaseGuardReceipts.readCompleteSetForEnrollment(client);
-    if (!guardReceipts) return null;
-    const adminReceipt = guardReceipts.find(
-      ({ slot }) => slot.role === 'admin' && slot.id === 'default',
-    );
-    if (!adminReceipt || !this.matchesActiveAdmin(adminReceipt)) return null;
-
+  ): Promise<ManagedEnrollmentProof> {
     const capability =
       await this.uploaderCapabilities.freshProfileForEnrollment(
         client,
         mediaType,
       );
-    if (!capability) return null;
-    return {
-      profile: capability.profile,
-      profileDigest: capability.digest,
-      guardReceipts,
-    };
-  }
-
-  private matchesActiveAdmin(receipt: ReleaseGuardReceipt): boolean {
-    return (
-      receipt.installationId === this.activeAdminArtifact?.installationId &&
-      receipt.generation === this.activeAdminArtifact.generation &&
-      isDeepStrictEqual(receipt.slot, this.activeAdminArtifact.slot) &&
-      isDeepStrictEqual(receipt.artifact, this.activeAdminArtifact.artifact)
-    );
+    if (!capability) {
+      throw new ManagedEnrollmentUnavailableError(
+        streamId,
+        'uploader_capability_not_fresh',
+      );
+    }
+    return { profile: capability.profile, profileDigest: capability.digest };
   }
 }

@@ -1,10 +1,7 @@
 import type { MediaType, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 import type { Pool, PoolClient } from 'pg';
 
-import {
-  ManagedEnrollmentUnavailableError,
-  StreamNotFoundError,
-} from './errors/index.js';
+import { StreamNotFoundError } from './errors/index.js';
 import type { ManagedEnrollmentReadiness } from './ManagedEnrollmentReadiness.js';
 import { managedRungTopicFor } from './managedRungTopic.js';
 
@@ -54,11 +51,11 @@ export class ManagedEnrollmentService implements ManagedPublisherEnrollment {
         return 'legacy';
       }
 
-      const proof = await this.readiness.readAfterStreamLock(
+      const proof = await this.readiness.requireAfterStreamLock(
         client,
+        streamId,
         stream.media_type,
       );
-      if (!proof) throw new ManagedEnrollmentUnavailableError(streamId);
 
       await client.query(
         `INSERT INTO stream_runs (

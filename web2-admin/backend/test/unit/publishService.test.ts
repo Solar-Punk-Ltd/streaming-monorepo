@@ -86,7 +86,12 @@ describe('PublishService.publish', () => {
   it('refuses the feed write when configured managed enrollment is not ready', async () => {
     const blocker: ManagedPublisherEnrollment = {
       enrollEligiblePlaceholder(streamId) {
-        return Promise.reject(new ManagedEnrollmentUnavailableError(streamId));
+        return Promise.reject(
+          new ManagedEnrollmentUnavailableError(
+            streamId,
+            'uploader_capability_not_fresh',
+          ),
+        );
       },
     };
     const { store, gateway, service } = setup(

@@ -195,6 +195,7 @@ export function errorHandler(
     res.status(503).json({
       error: 'managed_enrollment_unavailable',
       id: err.streamId,
+      reason: err.reason,
     });
     return;
   }

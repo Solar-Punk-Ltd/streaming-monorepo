@@ -120,8 +120,11 @@ export class LegacyAdoptionRepository {
     try {
       await client.query('BEGIN');
       const stream = await this.lockOwnedStream(client, streamId, ownerId);
-      const proof = await this.readiness.readAfterStreamLock(client, stream.media_type);
-      if (!proof) throw new ManagedEnrollmentUnavailableError(streamId);
+      const proof = await this.readiness.requireAfterStreamLock(
+        client,
+        streamId,
+        stream.media_type,
+      );
       const candidate = await this.readCandidate(client, stream);
       this.assertProfileCompatible(candidate, proof.profile);
       await client.query('COMMIT');
@@ -155,8 +158,11 @@ export class LegacyAdoptionRepository {
         await client.query('COMMIT');
         return this.toOperation(existing);
       }
-      const proof = await this.readiness.readAfterStreamLock(client, stream.media_type);
-      if (!proof) throw new ManagedEnrollmentUnavailableError(streamId);
+      const proof = await this.readiness.requireAfterStreamLock(
+        client,
+        streamId,
+        stream.media_type,
+      );
       const candidate = await this.readCandidate(client, stream);
       this.assertProfileCompatible(candidate, proof.profile);
       const candidateDigest = sha256(canonicalLegacyRecordingCandidateJson(candidate));
@@ -330,9 +336,16 @@ export class LegacyAdoptionRepository {
       ) {
         throw new ManagedLifecycleConflict('candidate_changed');
       }
-      const proof = await this.readiness.readAfterStreamLock(client, stream.media_type);
-      if (!proof || proof.profileDigest !== row.profile_digest) {
-        throw new ManagedEnrollmentUnavailableError(streamId);
+      const proof = await this.readiness.requireAfterStreamLock(
+        client,
+        streamId,
+        stream.media_type,
+      );
+      if (proof.profileDigest !== row.profile_digest) {
+        throw new ManagedEnrollmentUnavailableError(
+          streamId,
+          'uploader_profile_changed',
+        );
       }
       this.assertProfileCompatible(candidate, proof.profile);
       this.assertReadyProof(candidate, request);
