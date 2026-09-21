@@ -291,12 +291,12 @@ describe('StreamDetailsPage', () => {
     let ownerPoll: (() => void) | undefined;
     const interval = vi
       .spyOn(window, 'setInterval')
-      .mockImplementation((handler: TimerHandler, timeout?: number) => {
+      .mockImplementation(((handler: TimerHandler, timeout?: number) => {
         if (timeout === 10_000 && typeof handler === 'function') {
-          ownerPoll = handler;
+          ownerPoll = handler as () => void;
         }
         return 99;
-      });
+      }) as typeof window.setInterval);
     mockFetch(
       routesFor(old, [
         {
@@ -353,12 +353,12 @@ describe('StreamDetailsPage', () => {
     let ownerPoll: (() => void) | undefined;
     const interval = vi
       .spyOn(window, 'setInterval')
-      .mockImplementation((handler: TimerHandler, timeout?: number) => {
+      .mockImplementation(((handler: TimerHandler, timeout?: number) => {
         if (timeout === 10_000 && typeof handler === 'function') {
-          ownerPoll = handler;
+          ownerPoll = handler as () => void;
         }
         return 99;
-      });
+      }) as typeof window.setInterval);
     mockFetch(
       routesFor(pending, [
         {
@@ -934,12 +934,12 @@ describe('StreamDetailsPage', () => {
     let ownerPoll: (() => void) | undefined;
     const interval = vi
       .spyOn(window, 'setInterval')
-      .mockImplementation((handler: TimerHandler, timeout?: number) => {
+      .mockImplementation(((handler: TimerHandler, timeout?: number) => {
         if (timeout === 10_000 && typeof handler === 'function') {
-          ownerPoll = handler;
+          ownerPoll = handler as () => void;
         }
         return 99;
-      });
+      }) as typeof window.setInterval);
     mockFetch(
       routesFor(pending, [
         {
