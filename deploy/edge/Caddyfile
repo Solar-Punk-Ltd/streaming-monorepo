@@ -1,0 +1,20 @@
+# The console's public HTTPS front door, in front of the nginx that serves it,
+# as streaming-infra-manager's edge is in front of its own. Caddy obtains and
+# renews the certificate itself, which needs the domain's A record pointing at
+# this host and ports 80 and 443 reachable from the internet. Port 80 answers
+# the ACME challenge and redirects everything else to https, so a password is
+# never sent in the clear.
+#
+# X-Forwarded-For and X-Forwarded-Proto are added by Caddy, and set rather than
+# passed along, since no proxy in front of it is trusted. nginx takes the client
+# address from the first and the API marks the session cookie Secure from the
+# second. Host is passed through as the browser sent it, which the API's
+# cross-site check compares with Origin.
+
+{$WEB2_ADMIN_DOMAIN} {
+	encode zstd gzip
+
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	reverse_proxy web:80
+}

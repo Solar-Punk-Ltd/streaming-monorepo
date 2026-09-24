@@ -25,7 +25,13 @@ COPY web2-admin/backend ./web2-admin/backend
 RUN pnpm --filter @streaming-monorepo/web2-admin-backend... build
 
 # Produces a self-contained tree at /out with prod node_modules + dist.
-RUN pnpm deploy --filter=@streaming-monorepo/web2-admin-backend --prod /out
+#
+# --legacy because pnpm 10 refuses to deploy from a workspace that does not
+# inject its workspace packages, and this image had never been built since the
+# workspace moved to pnpm 10. The manager sets injectWorkspacePackages in its
+# pnpm-workspace.yaml instead; doing that here would rewrite the lockfile and
+# turn the dev-time link to common into a copy, for the sake of one image.
+RUN pnpm deploy --legacy --filter=@streaming-monorepo/web2-admin-backend --prod /out
 
 # --- runtime stage ----------------------------------------------------------
 FROM node:22-alpine

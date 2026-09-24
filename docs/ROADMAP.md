@@ -110,6 +110,36 @@ Not ported: the manager's `OpenStreams` and stream revalidator, which exist to
 kill live server-sent event connections on revoke and expiry. This service has
 no SSE, so nothing outlives its request.
 
+## Deploy script (2026-09-23)
+
+`deploy/deploy.sh` with host parameters lands, with its own production compose
+file (`deploy/docker-compose.yml`) and [deploy/README.md](../deploy/README.md).
+Manager-driven deploy is next.
+
+- The grammar is swarm-hls-stream's (`--host`, `--profile`, `--portSlot`,
+  services), because the manager already runs that stack's script that way,
+  with standard input closed. `--host` is required; `localhost` deploys on the
+  machine running the script.
+- One checkout per host, one compose project per profile
+  (`web2-admin-<profile>`), one env file per profile in `web2-admin/backend/`,
+  as the manager keeps its profiles. Only the deploying profile's env file is
+  synced, so one laptop cannot delete another profile's.
+- Console port with a slot: `11009 + N*10`, slots 1 to 99. The stack owns every
+  digit of 10000 to 10009 (10009 is its SRS HTTP API) and digits 1 to 6 of the
+  1100x block, so digit 9 there collides with no stack service at any slot.
+  Without a slot, `WEB2_ADMIN_WEB_PORT` or 9090.
+- The env file is checked for the keys the API refuses to start without before
+  anything leaves the machine; sample values warn.
+
+Verified 2026-09-23 with `--host=localhost` on a laptop: build, migrations,
+health through nginx, `user:add`, sign-in through nginx on the slot port, a
+service-scoped redeploy, and a crash-looping API caught by the health timeout.
+No remote host has been deployed to. The run found two defects that had never
+been hit because the images had never been built: the backend image's
+`pnpm deploy` fails under pnpm 10 (now `--legacy`), and nginx forwarded `Host`
+without the port, so the API's cross-site check refused every write, sign-in
+included, on any port but 80 (now `$http_host`, as in the manager).
+
 ## Checkpoint 3: manager integration
 
 - Manager deploys swarm-hls-stream from `main-v3`.
