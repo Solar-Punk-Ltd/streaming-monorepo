@@ -145,6 +145,43 @@ been hit because the images had never been built: the backend image's
 without the port, so the API's cross-site check refused every write, sign-in
 included, on any port but 80 (now `$http_host`, as in the manager).
 
+## Shared HTTPS edge (2026-09-24)
+
+`deploy/edge.sh` and `deploy/edge/`: one Caddy per host, its own compose
+project (`edge`) on the host's network, serving each console the host
+publishes on its loopback under its own name, web2-admin's on 9090 and
+streaming-infra-manager's on 8080. See "Public HTTPS: the host's edge" in
+[deploy/README.md](../deploy/README.md).
+
+- Decided: one edge per host, not one per compose project. Ports 80 and 443
+  belong to one process per host, so the per-project edge on the
+  `deploy-edge-wip` branch could not coexist with a second profile's or the
+  manager's own `public` edge. That branch is abandoned. On a host that runs
+  this edge, the manager's `MANAGER_DOMAIN` stays empty and its name goes in
+  `deploy/edge/.env` instead.
+- The names are per deployment and live in the gitignored
+  `deploy/edge/.env`. Either site is optional, at least one is required, and
+  the Caddyfile is rendered from the file, one site per name set, because
+  Caddy cannot take an empty site address.
+- `deploy.sh` now leaves `deploy/edge/` out of its rsync, so a web2-admin
+  deploy can never delete or replace the rendered Caddyfile on the host.
+- Caddy's admin API is off, since on the host's network it would listen on the
+  host's loopback, and every run recreates the container so the new Caddyfile
+  is read; the certificates survive in the volumes.
+
+Verified locally on 2026-09-24, with no host involved: the Caddyfile for both
+names, for each alone, and from a CRLF env file, all accepted by `caddy
+validate` in the pinned image; `docker compose config`; every refusal before
+ssh; the generated host script's paths (a conflicting container or listener on
+80/443, a crash-looping Caddy, a console that refuses, times out or drops the
+connection) against stubbed docker, curl and ss; the certificate probe's
+reports against stubbed curl and dig; and deploy.sh's rsync filter in dry runs
+with macOS openrsync, GNU rsync 3.5, and the two together. Not yet run against
+a real host, DNS or Let's Encrypt. First real host (2026-09-24): its ports 80
+and 443 already belong to a production nginx, so the console goes behind that
+server as one more name; the README's "A host that already has a web server"
+section is the recipe, and edge.sh stays for hosts with no front door yet.
+
 ## Checkpoint 3: manager integration
 
 - Manager deploys swarm-hls-stream from `main-v3`.

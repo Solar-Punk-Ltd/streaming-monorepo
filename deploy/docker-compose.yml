@@ -86,8 +86,10 @@ services:
       - api
     labels:
       buzz.solarpunk.web2-admin.commit: ${WEB2_ADMIN_COMMIT:-unknown}
-    # Loopback only, reached over an SSH tunnel, the same as the manager. There
-    # is no TLS edge in this file yet.
+    # Loopback only, as in the manager. The host's edge (deploy/edge/, its own
+    # compose project on the host's network) reaches it here, and the SSH
+    # tunnel stays the way in when the edge, its certificate or DNS is broken,
+    # or when the host has no edge.
     ports:
       - "127.0.0.1:${WEB2_ADMIN_WEB_PORT:-9090}:80"
     healthcheck:

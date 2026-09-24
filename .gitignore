@@ -7,7 +7,14 @@ coverage/
 .env
 .env.*
 !.env.example
+# The committed templates the real env files are copied from.
+!.env.sample
 .pnpm-store/
 
 # Written by deploy/deploy.sh on every deploy.
 deploy/.deployed-commit
+# Written by deploy/edge.sh from deploy/edge/.env, which `.env` above already
+# keeps out. Both name one deployment's domains. The .tmp is the render in
+# progress.
+deploy/edge/Caddyfile
+deploy/edge/Caddyfile.tmp
