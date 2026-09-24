@@ -16,6 +16,7 @@ https://solar-punk-ltd.github.io/devcon-streaming-partnership/?model=mvp.
 - [Roadmap and checkpoints](docs/ROADMAP.md)
 - [Web2 admin layer design brief](docs/architecture/web2-admin.md)
 - [Infrastructure state](docs/infra-state.md)
+- [Deploying to a server](deploy/README.md)
 
 ## Getting started
 

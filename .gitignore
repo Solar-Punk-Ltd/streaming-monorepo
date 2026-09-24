@@ -8,3 +8,6 @@ coverage/
 .env.*
 !.env.example
 .pnpm-store/
+
+# Written by deploy/deploy.sh on every deploy.
+deploy/.deployed-commit

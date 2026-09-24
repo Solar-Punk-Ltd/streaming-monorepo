@@ -61,6 +61,8 @@ for the whole design.
 
 `docker compose -p web2-admin --profile full up -d --build` runs the API in
 Docker too (two-stage `pnpm deploy` image, `Dockerfile`).
+Deploying to a server is a different compose file and a script:
+[deploy/README.md](../../deploy/README.md).
 
 ## Configuration
 
