@@ -1,0 +1,100 @@
+# Production stack for the web2 admin layer: postgres, the API, and the
+# nginx-served console in front of it. Brought up by deploy/deploy.sh, which
+# pins the project name (`-p web2-admin-<profile>`) so several profiles can
+# live on one host, each with its own network, volume and port.
+#
+# The development stack is a different file on purpose
+# (web2-admin/backend/docker-compose.yml, project `web2-admin`): it publishes
+# postgres and the API for `pnpm dev` and the tests, and nothing here does.
+#
+# Two variables are set by deploy.sh rather than read from the env file:
+#   WEB2_ADMIN_ENV_FILE  which env file the API gets, relative to this file,
+#                        because the profile decides it
+#   WEB2_ADMIN_WEB_PORT  the loopback port the console is published on,
+#                        because a port slot is authoritative over the file
+# Running compose by hand works too, as long as both are exported first; see
+# deploy/README.md.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    # Only the three variables it needs. The rest of the env file is the API's
+    # business and includes the feed signing key, which a database has no use
+    # for. POSTGRES_PASSWORD only takes effect when the volume is first
+    # created; changing it afterwards needs an ALTER USER inside the database.
+    environment:
+      POSTGRES_DB: web2admin
+      POSTGRES_USER: web2admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in the env file}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    # No published port. The API reaches it by service name on the project
+    # network, and an operator who needs psql runs it with `exec`.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U web2admin -d web2admin"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      # The repository root: the image installs the workspace from the
+      # lockfile, so it needs the root manifests as well as the package.
+      context: ..
+      dockerfile: web2-admin/backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # A Bee node on the same host is reached as host.docker.internal, since
+    # localhost inside this container is the container itself.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file: ${WEB2_ADMIN_ENV_FILE:?WEB2_ADMIN_ENV_FILE is set by deploy/deploy.sh; export it to run compose by hand}
+    # These win over the env file. The database is this project's own, and
+    # nginx.conf names api:9877, so an env file written for host mode (a
+    # 127.0.0.1 bind, or another port) must not be able to cut nginx off.
+    environment:
+      DATABASE_URL: postgres://web2admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in the env file}@postgres:5432/web2admin
+      WEB2_ADMIN_HOST: "0.0.0.0"
+      WEB2_ADMIN_PORT: "9877"
+    labels:
+      # What this container was built from, per project, since several
+      # profiles share one checkout and deploy/.deployed-commit only says what
+      # the checkout was last synced to.
+      buzz.solarpunk.web2-admin.commit: ${WEB2_ADMIN_COMMIT:-unknown}
+    # No published port: the console's nginx proxies /api to it. The health
+    # route runs a query, so healthy means the database answers too, and the
+    # migrations that run at boot have finished before the server listens.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9877/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+
+  web:
+    build:
+      context: ..
+      dockerfile: web2-admin/frontend/Dockerfile
+    restart: unless-stopped
+    # Started, not healthy, as in the manager: waiting for the API is
+    # deploy.sh's job, with a timeout, where a crash-looping API cannot hold a
+    # deploy open forever. nginx resolves api:9877 when it starts, which only
+    # needs the container to exist.
+    depends_on:
+      - api
+    labels:
+      buzz.solarpunk.web2-admin.commit: ${WEB2_ADMIN_COMMIT:-unknown}
+    # Loopback only, reached over an SSH tunnel, the same as the manager. There
+    # is no TLS edge in this file yet.
+    ports:
+      - "127.0.0.1:${WEB2_ADMIN_WEB_PORT:-9090}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:80/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pg-data:
