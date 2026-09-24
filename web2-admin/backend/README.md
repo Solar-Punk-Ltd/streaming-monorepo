@@ -315,6 +315,14 @@ its state columns.
   it is* — the entry keeps its state and its index and duration — rather than
   claiming the row into `publishing` and returning it as `published`, which
   would quietly tell every viewer the broadcast had stopped.
+- Every stream the API returns carries `hasUnpublishedEdits`, which drives the
+  console's "Edited since it was published" notice. It is true while the
+  console holds an edit the catalogue entry does not carry, and `updatedAt` is
+  no longer read for it, because the uploader's reports move that too.
+  Migration 006 adds the two columns behind it: `content_edited_at`, moved
+  only by an edit that changes something the entry carries, and
+  `entry_content_edited_at`, the edit the entry was last rebuilt from, written
+  by a publish, a republish, a state or rendition report and a reconcile.
 - `POST /streams/:id/unpublish` and `DELETE /streams/:id` on a live stream are
   `409 stream_live` ("Stop the broadcast first."): nothing here can stop the
   encoder that is still pushing to it. On a recording both work as they do on a

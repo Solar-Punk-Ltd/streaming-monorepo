@@ -48,6 +48,18 @@ export interface StreamRow {
   duration_seconds: number | null;
   live_since: Date | null;
   ended_at: Date | null;
+  /**
+   * When the console last changed something the catalogue entry carries:
+   * title, description, tags, media type, scheduled start or thumbnail. Null
+   * when nothing has changed since migration 006. Nothing else moves it.
+   */
+  content_edited_at: Date | null;
+  /**
+   * The `content_edited_at` of the row this stream's catalogue entry was last
+   * rebuilt from. The two differ while the console holds an edit the entry
+   * does not carry. Migration 006.
+   */
+  entry_content_edited_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }

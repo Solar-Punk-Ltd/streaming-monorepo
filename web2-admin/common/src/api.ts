@@ -112,6 +112,16 @@ export interface Stream {
   liveSince?: string | null;
   endedAt?: string | null;
   /**
+   * True while the console holds an edit this stream's catalogue entry does
+   * not carry: its title, description, tags, media type, scheduled start or
+   * thumbnail changed after the last write that rebuilt the entry from the
+   * stream. A publish or republish clears it, and so do the uploader's state
+   * and rendition reports and a reconcile, because each of those rebuilds the
+   * entry too. The uploader's reports never set it. Always false for a stream
+   * that is not on the catalogue.
+   */
+  hasUnpublishedEdits: boolean;
+  /**
    * The merged ABR ladder, when the uploader has reported rungs for this
    * stream. Absent for a single-rendition stream, and absent from the console's
    * stream routes for now: `POST /api/internal/streams/:id/renditions` is the

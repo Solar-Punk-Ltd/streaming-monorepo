@@ -44,15 +44,19 @@ function renderDetails() {
 }
 
 describe('StreamDetailsPage', () => {
-  it('warns when a published stream was edited after it was published', async () => {
+  it('warns when the API reports edits the catalogue entry does not carry', async () => {
+    // The timestamps are equal on purpose: the notice is the API's answer, not
+    // a comparison the page makes of its own.
+    const at = '2026-09-11T10:00:00.000Z';
     mockFetch(
       routesFor(
         makeStream({
           id: ID,
-          status: 'published',
-          publishedAt: '2026-09-11T10:00:00.000Z',
-          updatedAt: '2026-09-11T10:05:00.000Z',
+          status: 'vod',
+          publishedAt: at,
+          updatedAt: at,
           publishedFeedIndex: 2,
+          hasUnpublishedEdits: true,
         }),
       ),
     );
@@ -66,16 +70,21 @@ describe('StreamDetailsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('does not warn when the row has not changed since the publish', async () => {
-    const at = '2026-09-11T10:00:00.000Z';
+  it('does not warn about a stream that only the uploader has moved on', async () => {
+    // Seen on the deployed admin on 2026-09-24: created, published, broadcast
+    // once and never edited, and the uploader's reports had carried
+    // `updatedAt` past `publishedAt`.
     mockFetch(
       routesFor(
         makeStream({
           id: ID,
-          status: 'published',
-          publishedAt: at,
-          updatedAt: at,
+          status: 'vod',
+          publishedAt: '2026-09-11T10:00:00.000Z',
+          updatedAt: '2026-09-11T11:30:00.000Z',
           publishedFeedIndex: 2,
+          liveSince: '2026-09-11T10:01:00.000Z',
+          endedAt: '2026-09-11T11:30:00.000Z',
+          hasUnpublishedEdits: false,
         }),
       ),
     );
@@ -83,24 +92,6 @@ describe('StreamDetailsPage', () => {
     renderDetails();
 
     await screen.findByRole('button', { name: /Republish/ });
-    expect(screen.queryByText(EDITED_SINCE_PUBLISH)).not.toBeInTheDocument();
-  });
-
-  it('does not warn for a draft, whatever its timestamps say', async () => {
-    mockFetch(
-      routesFor(
-        makeStream({
-          id: ID,
-          status: 'draft',
-          publishedAt: null,
-          updatedAt: '2026-09-11T10:05:00.000Z',
-        }),
-      ),
-    );
-
-    renderDetails();
-
-    await screen.findByRole('button', { name: 'Publish' });
     expect(screen.queryByText(EDITED_SINCE_PUBLISH)).not.toBeInTheDocument();
   });
 

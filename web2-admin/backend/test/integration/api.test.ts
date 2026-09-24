@@ -283,6 +283,11 @@ describe('stream lifecycle', () => {
     assert.ok(result.stream.publishedAt);
     assert.equal(result.stream.publishedFeedIndex, result.feed.index);
     assert.equal(result.stream.publishError, null);
+    assert.equal(
+      result.stream.hasUnpublishedEdits,
+      false,
+      'the edits made as a draft went out with the publish',
+    );
     assert.match(result.stream.thumbnailRef ?? '', /^[0-9a-f]{64}$/);
     assert.ok(result.feed.index >= 0);
     assert.ok(result.feed.entryCount >= 1);
@@ -328,6 +333,11 @@ describe('stream lifecycle', () => {
     });
     assert.equal(updated.status, 'published');
     assert.equal(updated.publishedFeedIndex, stream.publishedFeedIndex);
+    assert.equal(
+      updated.hasUnpublishedEdits,
+      true,
+      'the entry on the feed still has the old title',
+    );
   });
 
   it('refuses a media type change while published', async () => {
