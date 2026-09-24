@@ -269,6 +269,11 @@ describe('internal state reports', () => {
     assert.ok(result.stream.liveSince, 'liveSince is stamped');
     assert.equal(result.stream.endedAt ?? null, null);
     assert.equal(result.stream.publishedFeedIndex, result.feed.index);
+    assert.equal(
+      result.stream.hasUnpublishedEdits,
+      false,
+      'a report moves the row but is not an edit to republish',
+    );
 
     const entry = await catalogueEntry(stream.topic);
     assert.equal(entry.state, 'live');
@@ -322,6 +327,7 @@ describe('internal state reports', () => {
     });
     assert.equal(edited.status, 'live', 'editing does not end the broadcast');
     assert.equal(edited.title, 'itest internal live, edited');
+    assert.equal(edited.hasUnpublishedEdits, true, 'not on the entry yet');
 
     const rescheduled = await raw('PUT', `/api/streams/${stream.id}`, {
       body: {
@@ -347,6 +353,7 @@ describe('internal state reports', () => {
       `/api/streams/${stream.id}/publish`,
     );
     assert.equal(result.stream.status, 'live');
+    assert.equal(result.stream.hasUnpublishedEdits, false, 'the edit went out');
 
     const entry = await catalogueEntry(stream.topic);
     assert.equal(entry.state, 'live');
@@ -365,6 +372,11 @@ describe('internal state reports', () => {
     assert.equal(result.stream.durationSeconds, 3725.5);
     assert.ok(result.stream.endedAt, 'endedAt is stamped');
     assert.ok(result.stream.liveSince, 'and liveSince is kept');
+    assert.equal(
+      result.stream.hasUnpublishedEdits,
+      false,
+      'a recording nobody edited since its republish has nothing to republish',
+    );
 
     const entry = await catalogueEntry(stream.topic);
     assert.equal(entry.state, 'vod');

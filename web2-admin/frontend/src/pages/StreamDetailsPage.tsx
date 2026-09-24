@@ -205,16 +205,6 @@ export function StreamDetailsPage() {
   const canUnpublish =
     stream.status === 'published' || stream.status === 'vod';
   const viewerBaseUrl = config?.viewerBaseUrl ?? null;
-  // A published stream keeps its status when edited and the backend writes no
-  // feed entry for the edit, so the feed and the row have drifted apart until
-  // the operator republishes. Nothing else on the page would say so.
-  const editedSincePublish =
-    (stream.status === 'published' ||
-      stream.status === 'live' ||
-      stream.status === 'vod') &&
-    stream.publishedAt !== null &&
-    new Date(stream.updatedAt).getTime() >
-      new Date(stream.publishedAt).getTime();
 
   return (
     // The same column width as the form the operator arrived from, so the two
@@ -259,7 +249,13 @@ export function StreamDetailsPage() {
         </Alert>
       ) : null}
 
-      {editedSincePublish ? (
+      {/*
+        An edit to a stream on the catalogue writes no feed entry, so the entry
+        stays behind until the operator republishes, and nothing else on the
+        page would say so. The API decides it, because only the API knows which
+        edit the entry was last rebuilt from.
+      */}
+      {stream.hasUnpublishedEdits ? (
         <Alert severity="warning">
           Edited since it was published. Republish to update the feed.
         </Alert>

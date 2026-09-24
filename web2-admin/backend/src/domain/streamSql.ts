@@ -9,8 +9,18 @@ export const STREAM_COLUMNS = `
   scheduled_start_time, (thumbnail IS NOT NULL) AS has_thumbnail,
   thumbnail_mime, thumbnail_ref, status, published_at, published_feed_index,
   publish_error, publish_key, publish_key_rotated_at, manifest_index,
-  duration_seconds, live_since, ended_at, created_at, updated_at
+  duration_seconds, live_since, ended_at, content_edited_at,
+  entry_content_edited_at, created_at, updated_at
 `;
+
+/**
+ * What a console edit stamps `content_edited_at` with: now, to the
+ * millisecond. The service reads that value into a JavaScript `Date`, which
+ * holds milliseconds, and writes it back as `entry_content_edited_at` once the
+ * entry carries the edit. Truncating here keeps the two columns equal in the
+ * database too, rather than a microsecond apart.
+ */
+export const CONTENT_EDITED_NOW = `date_trunc('milliseconds', NOW())`;
 
 /**
  * The same, for the rungs of a stream's ABR ladder. Small enough to list, and

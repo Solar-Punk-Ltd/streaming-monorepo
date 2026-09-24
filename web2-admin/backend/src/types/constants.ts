@@ -30,6 +30,16 @@ export const UNPUBLISHABLE_STATUSES: readonly StreamStatus[] = [
 ];
 
 /**
+ * Statuses whose stream has an entry on the catalogue: what `listOnFeed`
+ * selects. `publishing` is not one of them, because that write is in flight.
+ */
+export const ON_FEED_STATUSES: readonly StreamStatus[] = [
+  'published',
+  'live',
+  'vod',
+];
+
+/**
  * Statuses in which the metadata is still editable. A live or recorded stream
  * keeps its title, description, tags and thumbnail editable — only the media
  * type and the schedule are locked, and those are refused by their own rules

@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 
 import type { StreamRow, ThumbnailRow } from '../types/index.js';
 
-import { STREAM_COLUMNS } from './streamSql.js';
+import { CONTENT_EDITED_NOW, STREAM_COLUMNS } from './streamSql.js';
 
 export interface StreamInsertData {
   user_id: string;
@@ -112,7 +112,14 @@ export class StreamRepository {
     return result.rows[0]!;
   }
 
-  /** Null when the row is not in one of `allowedFrom` (or does not exist). */
+  /**
+   * Null when the row is not in one of `allowedFrom` (or does not exist).
+   *
+   * `content_edited_at` moves only when a value actually changes. The console
+   * PUTs the whole form back on every save, so a save that changed nothing
+   * would otherwise ask the operator to republish an entry that is already
+   * right. The comparisons read the row as it was, before this SET.
+   */
   async update(
     id: string,
     userId: string,
@@ -126,6 +133,15 @@ export class StreamRepository {
               tags = $6,
               media_type = $7,
               scheduled_start_time = $8,
+              content_edited_at = CASE
+                WHEN title IS DISTINCT FROM $4
+                  OR description IS DISTINCT FROM $5
+                  OR tags IS DISTINCT FROM $6
+                  OR media_type IS DISTINCT FROM $7
+                  OR scheduled_start_time IS DISTINCT FROM $8
+                THEN ${CONTENT_EDITED_NOW}
+                ELSE content_edited_at
+              END,
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2 AND status = ANY($3::text[])
         RETURNING ${STREAM_COLUMNS}`,
@@ -172,7 +188,8 @@ export class StreamRepository {
   /**
    * Stores new image bytes and clears `thumbnail_ref`: the reference now
    * belongs to a different image, and a null ref is what tells the next
-   * publish to upload the new one.
+   * publish to upload the new one. Always an edit, for the same reason: the
+   * entry keeps the old reference until a publish uploads this image.
    */
   async setThumbnail(
     id: string,
@@ -186,6 +203,7 @@ export class StreamRepository {
           SET thumbnail = $4,
               thumbnail_mime = $5,
               thumbnail_ref = NULL,
+              content_edited_at = ${CONTENT_EDITED_NOW},
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2 AND status = ANY($3::text[])
         RETURNING ${STREAM_COLUMNS}`,
@@ -194,6 +212,7 @@ export class StreamRepository {
     return this.one(result.rows, result.rowCount);
   }
 
+  /** An edit only when there was an image to remove. */
   async clearThumbnail(
     id: string,
     userId: string,
@@ -204,6 +223,10 @@ export class StreamRepository {
           SET thumbnail = NULL,
               thumbnail_mime = NULL,
               thumbnail_ref = NULL,
+              content_edited_at = CASE
+                WHEN thumbnail IS NOT NULL THEN ${CONTENT_EDITED_NOW}
+                ELSE content_edited_at
+              END,
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2 AND status = ANY($3::text[])
         RETURNING ${STREAM_COLUMNS}`,
@@ -348,24 +371,48 @@ export class StreamRepository {
    * stream that is live or recorded, where the whole point is that it stays
    * where it is. `published_at` is left alone — it is when the stream was
    * first announced, not when its entry was last rewritten.
+   *
+   * `entryContentEditedAt` is the `content_edited_at` the entry was built
+   * from. It is handed in rather than copied from the row, because an edit can
+   * land while the write is in flight, and the entry does not carry that one.
    */
   async recordRepublish(
     id: string,
     userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
+    entryContentEditedAt: Date | null,
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
           SET published_feed_index = $3,
               publish_error = NULL,
               thumbnail_ref = $4,
+              entry_content_edited_at = $5,
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2
         RETURNING ${STREAM_COLUMNS}`,
-      [id, userId, feedIndex, thumbnailRef],
+      [id, userId, feedIndex, thumbnailRef, entryContentEditedAt],
     );
     return this.one(result.rows, result.rowCount);
+  }
+
+  /**
+   * A reconcile rebuilt this stream's entry from the row: record which edit it
+   * carries now. Unscoped, like the reconcile itself, which rebuilds entries
+   * from every user's rows when no user is given.
+   */
+  async recordEntryRebuilt(
+    id: string,
+    entryContentEditedAt: Date | null,
+  ): Promise<void> {
+    await this.pool.query(
+      `UPDATE streams
+          SET entry_content_edited_at = $2,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [id, entryContentEditedAt],
+    );
   }
 
   /**
@@ -388,11 +435,13 @@ export class StreamRepository {
     return this.one(result.rows, result.rowCount);
   }
 
+  /** `entryContentEditedAt` as on `recordRepublish`. */
   async finishPublish(
     id: string,
     userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
+    entryContentEditedAt: Date | null,
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
@@ -401,10 +450,11 @@ export class StreamRepository {
               published_feed_index = $3,
               publish_error = NULL,
               thumbnail_ref = $4,
+              entry_content_edited_at = $5,
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2
         RETURNING ${STREAM_COLUMNS}`,
-      [id, userId, feedIndex, thumbnailRef],
+      [id, userId, feedIndex, thumbnailRef, entryContentEditedAt],
     );
     return this.one(result.rows, result.rowCount);
   }
