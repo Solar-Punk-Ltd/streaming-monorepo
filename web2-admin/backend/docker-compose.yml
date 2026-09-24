@@ -5,6 +5,10 @@
 #
 # Port 5433 rather than 5432 on purpose: streaming-infra-manager publishes its
 # own postgres on 5432 and both are often up on the same laptop.
+#
+# This file is for development only. The stack that goes to a server is
+# deploy/docker-compose.yml, brought up by deploy/deploy.sh (deploy/README.md):
+# nothing published but the console on loopback, and a project per profile.
 services:
   postgres:
     image: postgres:16-alpine
