@@ -16,8 +16,14 @@ const SESSION = '/api/auth/session';
 const USERS = '/api/auth/users';
 
 // Not named "admin": the admin chip carries that word, and a username that
-// collides with it makes every row lookup ambiguous.
-const ADMIN = makeUserSummary({ id: 'u1', username: 'root', sessions: 2 });
+// collides with it makes every row lookup ambiguous. Created at noon built from
+// local parts, as in dateUtil.test.ts, so the table shows 12:00 in any zone.
+const ADMIN = makeUserSummary({
+  id: 'u1',
+  username: 'root',
+  createdAt: new Date(2026, 8, 11, 12, 0).toISOString(),
+  sessions: 2,
+});
 const KIM = makeUserSummary({
   id: 'u2',
   username: 'kim',

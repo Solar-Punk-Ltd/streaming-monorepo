@@ -31,12 +31,14 @@ import type {
   PublicConfig,
   PublishResult,
   Stream,
+  StreamStatus,
 } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
 import { errorMessage } from '../errors';
 import { formatDateTime } from '../dateUtil';
 import { formatDuration, shortHex } from '../format';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { IngestPanel } from '../components/IngestPanel';
 import { MEDIA_TYPE_LABEL, StatusChip } from '../components/StatusChip';
 import { useSnackbar } from '../components/Snackbar';
@@ -85,6 +87,40 @@ function watchPath(stream: Stream): string {
   return `#/watch/${stream.mediaType}/${stream.owner}/${stream.topic}`;
 }
 
+/**
+ * What an unpublish takes away, said before it happens. A recording loses the
+ * most: the API forgets where the recording is and how long it runs, nothing
+ * in the console can put that back, and publishing the stream again announces
+ * one that has not started. The video itself stays on Swarm.
+ */
+const UNPUBLISH_PROMPTS = {
+  recording: {
+    title: 'Unpublish recording',
+    message:
+      'The recording stops being listed in the catalogue, and its recording ' +
+      'details are removed from this admin: where the recording is, how long ' +
+      'it runs and when it was live. The video stays on Swarm, but if you ' +
+      'publish this stream again, it is listed as not started, not as this ' +
+      'recording.',
+  },
+  scheduled: {
+    title: 'Unpublish stream',
+    message:
+      'The stream stops being listed in the catalogue and goes back to a ' +
+      'draft. Until you publish it again, an encoder cannot go live on it.',
+  },
+} as const;
+
+type UnpublishPrompt =
+  (typeof UNPUBLISH_PROMPTS)[keyof typeof UNPUBLISH_PROMPTS];
+
+/** Only `published` and `vod` can be unpublished, and only `vod` has a recording. */
+function unpublishPromptFor(status: StreamStatus): UnpublishPrompt {
+  return status === 'vod'
+    ? UNPUBLISH_PROMPTS.recording
+    : UNPUBLISH_PROMPTS.scheduled;
+}
+
 export function StreamDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -96,6 +132,13 @@ export function StreamDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<PublishResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [unpublishOpen, setUnpublishOpen] = useState(false);
+  // Chosen when the dialog opens and kept while it closes, so a successful
+  // unpublish, which turns the stream into a draft, cannot swap the wording
+  // under the closing dialog.
+  const [unpublishPrompt, setUnpublishPrompt] = useState<UnpublishPrompt>(
+    UNPUBLISH_PROMPTS.scheduled,
+  );
 
   // Bumped on every load so a slow response for the previous stream cannot
   // overwrite the current one — showing one stream's ingest key under
@@ -136,11 +179,15 @@ export function StreamDetailsPage() {
     setStream(null);
     setIngest(null);
     setLastResult(null);
+    setUnpublishOpen(false);
     load();
   }, [load]);
 
-  const runPublish = async (action: 'publish' | 'unpublish') => {
-    if (!id) return;
+  /** True when the API accepted it. A failure is reported here, not thrown. */
+  const runPublish = async (
+    action: 'publish' | 'unpublish',
+  ): Promise<boolean> => {
+    if (!id) return false;
     setBusy(true);
     try {
       const result =
@@ -154,6 +201,7 @@ export function StreamDetailsPage() {
           ? `Published at feed index ${result.feed.index}.`
           : `Unpublished. Feed is at index ${result.feed.index}.`,
       );
+      return true;
     } catch (e) {
       snackbar.error(
         errorMessage(
@@ -164,9 +212,21 @@ export function StreamDetailsPage() {
       // The backend records publish_error on the row; re-read it so the page
       // shows what it stored rather than only the transient snackbar.
       if (id) api.fetchStream(id).then(setStream).catch(() => undefined);
+      return false;
     } finally {
       setBusy(false);
     }
+  };
+
+  const askToUnpublish = (status: StreamStatus) => {
+    setUnpublishPrompt(unpublishPromptFor(status));
+    setUnpublishOpen(true);
+  };
+
+  // Closed on success only, as Delete and Rotate key do: after a failure the
+  // operator can try again or cancel.
+  const confirmUnpublish = async () => {
+    if (await runPublish('unpublish')) setUnpublishOpen(false);
   };
 
   if (error) {
@@ -205,16 +265,6 @@ export function StreamDetailsPage() {
   const canUnpublish =
     stream.status === 'published' || stream.status === 'vod';
   const viewerBaseUrl = config?.viewerBaseUrl ?? null;
-  // A published stream keeps its status when edited and the backend writes no
-  // feed entry for the edit, so the feed and the row have drifted apart until
-  // the operator republishes. Nothing else on the page would say so.
-  const editedSincePublish =
-    (stream.status === 'published' ||
-      stream.status === 'live' ||
-      stream.status === 'vod') &&
-    stream.publishedAt !== null &&
-    new Date(stream.updatedAt).getTime() >
-      new Date(stream.publishedAt).getTime();
 
   return (
     // The same column width as the form the operator arrived from, so the two
@@ -259,7 +309,13 @@ export function StreamDetailsPage() {
         </Alert>
       ) : null}
 
-      {editedSincePublish ? (
+      {/*
+        An edit to a stream on the catalogue writes no feed entry, so the entry
+        stays behind until the operator republishes, and nothing else on the
+        page would say so. The API decides it, because only the API knows which
+        edit the entry was last rebuilt from.
+      */}
+      {stream.hasUnpublishedEdits ? (
         <Alert severity="warning">
           Edited since it was published. Republish to update the feed.
         </Alert>
@@ -439,7 +495,7 @@ export function StreamDetailsPage() {
             startIcon={<CloudOffIcon />}
             color="warning"
             disabled={busy || !canUnpublish}
-            onClick={() => void runPublish('unpublish')}
+            onClick={() => askToUnpublish(stream.status)}
           >
             Unpublish
           </Button>
@@ -493,6 +549,16 @@ export function StreamDetailsPage() {
           onRotated={setIngest}
         />
       ) : null}
+
+      <ConfirmDialog
+        open={unpublishOpen}
+        title={unpublishPrompt.title}
+        message={unpublishPrompt.message}
+        confirmText={busy ? 'Unpublishing…' : 'Unpublish'}
+        busy={busy}
+        onConfirm={() => void confirmUnpublish()}
+        onCancel={() => setUnpublishOpen(false)}
+      />
     </Stack>
   );
 }
