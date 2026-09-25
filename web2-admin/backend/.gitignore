@@ -1,3 +1,0 @@
-# The repository root ignores `.env.*`, which would swallow this package's
-# documented sample environment too. Keep it tracked.
-!.env.sample

@@ -31,12 +31,25 @@ export const PASSWORD_RULE =
 /**
  * The command that creates the first user, shown when there are none.
  *
- * `api` is the backend's service name in `web2-admin/backend/docker-compose.yml`
- * and `-p web2-admin` the project name its own scripts use. One constant, so
- * the day the CLI is renamed there is one line to change here.
+ * `docker exec` on the container rather than `docker compose exec` on the
+ * service, because the compose form only works from the right directory with
+ * the right project name and env file, and those differ between the dev stack
+ * and every server profile. The container's name is the one thing an operator
+ * on the host can always look up. One constant, so the day the CLI is renamed
+ * there is one line to change here.
  */
 export const FIRST_USER_COMMAND =
-  'docker compose -p web2-admin exec -it api node dist/cli.js user:add <username>';
+  'docker exec -it <api-container> node dist/cli.js user:add <username>';
+
+/**
+ * Said under the command. The names are compose's `<project>-<service>-1`:
+ * deploy/deploy.sh runs project `web2-admin-<profile>`, the dev stack
+ * `web2-admin`.
+ */
+export const FIRST_USER_HINT =
+  'Run it on the host. The container is web2-admin-<profile>-api-1 on a ' +
+  'server and web2-admin-api-1 on the dev stack; docker ps shows the name. ' +
+  'Then log in with that user.';
 
 const SECONDS_PER_MINUTE = 60;
 const SECONDS_PER_HOUR = 60 * SECONDS_PER_MINUTE;
