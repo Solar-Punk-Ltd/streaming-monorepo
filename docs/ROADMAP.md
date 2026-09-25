@@ -182,6 +182,18 @@ and 443 already belong to a production nginx, so the console goes behind that
 server as one more name; the README's "A host that already has a web server"
 section is the recipe, and edge.sh stays for hosts with no front door yet.
 
+First real run, 2026-09-25, on the GCP QA control host (the monitoring VM): both
+consoles deployed to loopback (manager 8080, web2-admin profile `qa` on 9091,
+because Prometheus has 9090 there), then `edge.sh --host=monitoring` twice, first
+with the manager's name alone while the admin name still pointed elsewhere, then
+with both. Each run validated the Caddyfile, recreated Caddy, proved both
+upstreams from the host, and saw valid certificates from outside within the
+probe window; the certificate obtained in the first run survived the second in
+the volume, as designed. What it took in Terraform: one firewall rule (tcp 80
+and 443 from the internet to the host's tag), the manager's address and deploy
+key in both roots' tfvars in place of the Hetzner host's, and a re-run of the
+Bee host's provisioning so the new key landed there.
+
 ## Checkpoint 3: manager integration
 
 - Manager deploys swarm-hls-stream from `main-v3`.
