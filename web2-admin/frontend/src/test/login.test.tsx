@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { REQUESTED_WITH_HEADER } from '@streaming-monorepo/web2-admin-common';
 
-import { FIRST_USER_COMMAND } from '../authMessages';
+import { FIRST_USER_COMMAND, FIRST_USER_HINT } from '../authMessages';
 import { LoginPage } from '../pages/LoginPage';
 import {
   jsonError,
@@ -111,6 +111,15 @@ describe('LoginPage', () => {
       await screen.findByText('No users yet. Create the first one on the host.'),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Command')).toHaveValue(FIRST_USER_COMMAND);
+    // The form that works from any directory, on a server profile and on the
+    // dev stack alike, with the names to put in it and how to find them.
+    expect(FIRST_USER_COMMAND).toBe(
+      'docker exec -it <api-container> node dist/cli.js user:add <username>',
+    );
+    expect(screen.getByText(FIRST_USER_HINT)).toBeInTheDocument();
+    expect(FIRST_USER_HINT).toContain('web2-admin-<profile>-api-1');
+    expect(FIRST_USER_HINT).toContain('web2-admin-api-1');
+    expect(FIRST_USER_HINT).toContain('docker ps');
   });
 
   it('says nothing about a session when there never was one', async () => {

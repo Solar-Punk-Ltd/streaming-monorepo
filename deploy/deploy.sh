@@ -18,7 +18,8 @@
 #      with -dirty appended when the tree has changes, since this repository
 #      is often deployed before its work is committed.
 #   3. rsyncs the checkout to <remote-path> on the host, leaving out .git,
-#      node_modules, build output and every env file but the one this profile
+#      node_modules, build output, deploy/edge/ (the host's edge, which
+#      deploy/edge.sh maintains) and every env file but the one this profile
 #      uses. --delete keeps the host's tree identical to this one. The other
 #      env files are left out rather than shipped because the host keeps one
 #      checkout for every profile: a laptop that has only .env.brand-a must not
@@ -526,15 +527,26 @@ else
     # rsync --delete empties whatever directory it is pointed at of everything
     # this checkout does not have. A mistyped --remote-path naming a home
     # directory would be wiped, so the target must be new, empty, or already a
-    # checkout of this repository.
-    if ! ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p '$REMOTE_PATH' && { [ -f '$REMOTE_PATH/deploy/deploy.sh' ] || [ -z \"\$(ls -A '$REMOTE_PATH')\" ]; }" </dev/null; then
+    # checkout of this repository, which includes one deploy/edge.sh has so
+    # far only put the host's edge into. A checkout is known by web2-admin/
+    # beside deploy/deploy.sh: the manager's checkout has a deploy/deploy.sh of
+    # its own, and a --remote-path mistyped onto it must not pass.
+    if ! ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p '$REMOTE_PATH' && { { [ -f '$REMOTE_PATH/deploy/deploy.sh' ] && [ -d '$REMOTE_PATH/web2-admin' ]; } || [ -f '$REMOTE_PATH/deploy/edge/docker-compose.yml' ] || [ -z \"\$(ls -A '$REMOTE_PATH')\" ]; }" </dev/null; then
         die "$HOST:$REMOTE_PATH could not be created, or it is a non-empty directory that is not a checkout of this repository. rsync --delete would empty it, so nothing was sent."
     fi
     # Filter order matters: the first rule that matches a path wins. The
     # profile's env file and the sample are sent, every other .env is neither
     # sent nor, being excluded, deleted on the host.
+    #
+    # deploy/edge/ belongs to deploy/edge.sh, which puts the Caddyfile it
+    # renders there. That file is gitignored, so this checkout may not have
+    # it, or may have one rendered for another host, and --delete would then
+    # remove or replace the one the host's edge runs on. Excluded, the whole
+    # directory is neither sent nor deleted, so a web2-admin deploy never
+    # touches the edge.
     rsync -az --delete \
         -e "ssh ${SSH_OPTS[*]}" \
+        --exclude '/deploy/edge/' \
         --exclude '.git/' \
         --exclude 'node_modules/' \
         --exclude 'dist/' \

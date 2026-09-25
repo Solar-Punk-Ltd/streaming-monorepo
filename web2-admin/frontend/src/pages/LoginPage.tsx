@@ -14,7 +14,11 @@ import {
 
 import type { SignedOutReason } from '../api';
 import { useAuth } from '../auth';
-import { FIRST_USER_COMMAND, SIGN_IN_MESSAGES } from '../authMessages';
+import {
+  FIRST_USER_COMMAND,
+  FIRST_USER_HINT,
+  SIGN_IN_MESSAGES,
+} from '../authMessages';
 import { APP_NAME } from '../components/AppShell';
 import { ValueField } from '../components/ValueField';
 
@@ -91,7 +95,7 @@ export function LoginPage() {
                       <ValueField
                         label="Command"
                         value={FIRST_USER_COMMAND}
-                        helperText="Run it on the host, then log in with that user."
+                        helperText={FIRST_USER_HINT}
                       />
                     ) : null}
                   </Stack>

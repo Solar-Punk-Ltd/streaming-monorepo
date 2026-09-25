@@ -1,0 +1,37 @@
+# The host's HTTPS edge: one Caddy for the whole host, in front of every
+# console the host publishes on its loopback (web2-admin's, 9090 by default,
+# and streaming-infra-manager's, 8080). Brought up by deploy/edge.sh, which
+# pins the project name (`-p edge`) and ships ./Caddyfile beside this file,
+# rendered from deploy/edge/.env on the machine it runs on.
+#
+# It is its own compose project, not a service inside each console's project,
+# because ports 80 and 443 belong to one process per host. An edge in every
+# project cannot coexist with a second project's, or with the manager's own
+# `public` edge, on the same host.
+services:
+  caddy:
+    # The manager's edge image, pinned by digest so every host runs the same
+    # build and a retagged 2.11.4 cannot change it underneath us.
+    image: caddy:2.11.4@sha256:df7f1c2fb114453b951de51a98efc010db1655a92c2e86be6706714e2417a78d
+    restart: unless-stopped
+    # The host's network rather than a bridge. Caddy binds 80 and 443 (and
+    # 443/udp for HTTP/3) on the host directly, and 127.0.0.1 inside this
+    # container is the host's loopback, which is where both consoles are
+    # published. That is what lets a console stay on loopback, unreachable
+    # from outside, and still be served here: nothing about a console's own
+    # compose file changes, and neither project has to join the other's
+    # network. It also means no `ports:` here, since nothing is published.
+    network_mode: host
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # /data holds the certificates and the ACME account key, and /config
+      # the config Caddy saves, both persisted as the image asks. In volumes
+      # so that recreating the container, which every run of deploy/edge.sh
+      # does, keeps the certificates instead of asking Let's Encrypt again and
+      # running into its rate limits.
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:
