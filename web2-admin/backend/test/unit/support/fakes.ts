@@ -107,12 +107,6 @@ export class FakeRenditionStore
     return row;
   }
 
-  async deleteByStream(streamId: string): Promise<number> {
-    const dropped = this.rows.get(streamId)?.length ?? 0;
-    this.rows.delete(streamId);
-    return dropped;
-  }
-
   /**
    * Un-finishes every rung, as the CTE in `markLive` does for a stream coming
    * back from `vod`. Index and duration go together, which is the migration's

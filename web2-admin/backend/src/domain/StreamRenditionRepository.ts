@@ -73,13 +73,4 @@ export class StreamRenditionRepository {
     );
     return result.rows[0]!;
   }
-
-  /** How many rungs were dropped; 0 for a stream that never had a ladder. */
-  async deleteByStream(streamId: string): Promise<number> {
-    const result = await this.pool.query(
-      'DELETE FROM stream_renditions WHERE stream_id = $1',
-      [streamId],
-    );
-    return result.rowCount ?? 0;
-  }
 }
