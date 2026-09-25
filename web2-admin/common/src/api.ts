@@ -119,9 +119,11 @@ export interface Stream {
    * not carry: its title, description, tags, media type, scheduled start or
    * thumbnail changed after the last write that rebuilt the entry from the
    * stream. A publish or republish clears it, and so do the uploader's state
-   * and rendition reports and a reconcile, because each of those rebuilds the
-   * entry too. The uploader's reports never set it. Always false for a stream
-   * that is not on the catalogue.
+   * and rendition reports, because each of those rebuilds the entry too. A
+   * reconcile clears it as well, except on a stream whose new image is still
+   * waiting to be uploaded, because a reconcile uploads nothing. The
+   * uploader's reports never set it. Always false for a stream that is not on
+   * the catalogue.
    */
   hasUnpublishedEdits: boolean;
   /**
