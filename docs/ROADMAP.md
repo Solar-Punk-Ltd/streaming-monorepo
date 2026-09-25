@@ -194,6 +194,23 @@ and 443 from the internet to the host's tag), the manager's address and deploy
 key in both roots' tfvars in place of the Hetzner host's, and a re-run of the
 Bee host's provisioning so the new key landed there.
 
+## Ingest panel and unpublish (2026-09-26)
+
+Decided by Levi after a tester could not go live on the test host on
+2026-09-25. Nothing there was broken: every SRT attempt carried no passphrase,
+because the panel sent OBS users to an "OBS Passphrase field" that OBS does
+not have.
+
+- The OBS panel says, for SRT and for RTMP separately, what goes in OBS's
+  Server box and its Stream Key box. For SRT the passphrase rides on the Server
+  line as `&passphrase=`, which OBS reads after its Use authentication Password
+  and so wins, and the Stream Key stays empty, because OBS hands that box to
+  SRT as the stream id and the URL's own `streamid=` replaces it. OBS ends a
+  value on that line at `&`, turns `+` into a space and never percent-decodes,
+  so a passphrase outside RFC 3986's unreserved characters goes in the Use
+  authentication Password instead, which OBS 29.1 and later hands to SRT. All
+  of it read from OBS 31's source.
+
 ## Checkpoint 3: manager integration
 
 - Manager deploys swarm-hls-stream from `main-v3`.
