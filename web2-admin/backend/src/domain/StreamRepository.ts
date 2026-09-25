@@ -469,7 +469,7 @@ export class StreamRepository {
    * `thumbnail_ref`, because the upload is still paid for, and what the
    * uploader reported, which is where the recording is, how long it runs,
    * when it was live and its ABR rungs. Publishing the draft again lists it as
-   * that recording. Only what described the catalogue entry is cleared.
+   * that recording.
    */
   async finishUnpublish(
     id: string,
