@@ -156,7 +156,8 @@ export interface PublishOutcome {
    * The ladder the entry was written with, ascending by height. Read inside
    * the mutex, in the same step as the write, so a rendition report answers
    * with exactly what its write put on the catalogue. Empty for a stream with
-   * no rungs, and after an unpublish.
+   * no rungs, and after an unpublish, which takes the entry off the feed while
+   * the rungs stay on the row.
    */
   renditions: Rendition[];
   /**
