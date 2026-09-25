@@ -596,11 +596,14 @@ export class PublishService {
     topics: readonly string[],
   ): Promise<void> {
     const rebuilt = new Set(topics.map((topic) => topic.toLowerCase()));
-    for (const row of rows) {
-      if (!rebuilt.has(row.topic.toLowerCase())) continue;
-      if (hasPendingThumbnail(row)) continue;
-      await this.streams.recordEntryRebuilt(row.id, row.content_edited_at);
-    }
+    const recorded = rows.filter(
+      (row) => rebuilt.has(row.topic.toLowerCase()) && !hasPendingThumbnail(row),
+    );
+    await Promise.all(
+      recorded.map((row) =>
+        this.streams.recordEntryRebuilt(row.id, row.content_edited_at),
+      ),
+    );
   }
 
   /**
