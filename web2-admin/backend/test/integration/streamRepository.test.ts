@@ -311,11 +311,11 @@ describe('which writes count as a console edit (migration 006)', () => {
     await streams.recordThumbnailRef(row.id, userId, 'a'.repeat(64));
     await streams.recordPublishError(row.id, userId, 'bee unreachable');
 
-    const after = await streams.findById(row.id, userId);
-    assert.ok(after);
-    assert.equal(after.status, 'vod');
-    assert.equal(after.content_edited_at, null);
-    assert.equal(hasUnpublishedEdits(after), false);
+    const reread = await streams.findById(row.id, userId);
+    assert.ok(reread);
+    assert.equal(reread.status, 'vod');
+    assert.equal(reread.content_edited_at, null);
+    assert.equal(hasUnpublishedEdits(reread), false);
   });
 
   it('stamps a real edit to the millisecond, and a save that changes nothing is not one', async () => {
@@ -433,8 +433,8 @@ describe('which writes count as a console edit (migration 006)', () => {
 
     await streams.recordEntryRebuilt(row.id, edited.content_edited_at);
 
-    const after = await streams.findById(row.id, userId);
-    assert.ok(after);
-    assert.equal(hasUnpublishedEdits(after), false);
+    const reread = await streams.findById(row.id, userId);
+    assert.ok(reread);
+    assert.equal(hasUnpublishedEdits(reread), false);
   });
 });
