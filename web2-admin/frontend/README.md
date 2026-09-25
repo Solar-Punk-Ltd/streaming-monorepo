@@ -65,7 +65,9 @@ honours a few env vars:
 | `SEED_ADMIN_USERNAME` | `admin` | the seeded user |
 | `SEED_ADMIN_PASSWORD` | `admin1234` | its password (changeable through the UI) |
 | `INGEST_KEY_VERIFIED` | `false` | set `true` to hide the "ingest does not verify this key yet" note |
-| `VIEWER_BASE_URL` | `http://localhost:10064` | drives the "open player catalogue" link; must be a viewer built for this backend's feed |
+| `VIEWER_BASE_URL` | `http://localhost:10074` | drives the "open player catalogue" link. It must be a viewer built for this backend's feed |
+| `MOCK_NO_USERS` | unset | set `true` to start with no users, the only way to see the console's "no users yet" screen |
+| `MOCK_RECORDING` | unset | set `true` to start with one finished recording on the feed, the only way to see a recording's details and to unpublish and publish it again |
 
 ## Checks
 
