@@ -32,6 +32,7 @@ import type { FeedIdentity } from './feedIdentity.js';
 import { Logger } from './Logger.js';
 import { Mutex } from './Mutex.js';
 import { toRendition } from './renditions.js';
+import { publishedStatusFor, type PublishedStatus } from './streamState.js';
 import { hasPendingThumbnail } from './unpublishedEdits.js';
 
 const logger = Logger.getInstance();
@@ -53,7 +54,8 @@ export interface PublishStreamStore {
   /**
    * `entryContentEditedAt` here and on `recordRepublish` is the
    * `content_edited_at` of the row the entry was built from: which edit the
-   * catalogue now carries, not when the write finished.
+   * catalogue now carries, not when the write finished. `status` is the one
+   * the entry was built with.
    */
   finishPublish(
     id: string,
@@ -61,7 +63,12 @@ export interface PublishStreamStore {
     feedIndex: number,
     thumbnailRef: string | null,
     entryContentEditedAt: Date | null,
+    status: PublishedStatus,
   ): Promise<StreamRow | null>;
+  /**
+   * Back to `draft` and off the catalogue, keeping the recording and its rungs
+   * for the next publish.
+   */
   finishUnpublish(id: string, userId: string): Promise<StreamRow | null>;
   recordRepublish(
     id: string,
@@ -417,10 +424,16 @@ export class PublishService {
     }
 
     const { claimed, previousStatus } = await this.claim(before, userId);
+    // The uploader's reports are refused while the row is claimed, so the
+    // recording this reads cannot change before the row is finished.
+    const status = publishedStatusFor(claimed);
 
     try {
       const thumbnailRef = await this.ensureThumbnailUploaded(claimed, userId);
-      const { entry, renditions } = await this.entryFor(claimed, thumbnailRef);
+      const { entry, renditions } = await this.entryFor(
+        { ...claimed, status },
+        thumbnailRef,
+      );
       const snapshot = await this.baseSnapshot();
       const previous = ladderOnFeed(snapshot.entries, entry.owner, entry.topic);
       const entries = upsertEntry(snapshot.entries, entry);
@@ -434,11 +447,12 @@ export class PublishService {
         index,
         thumbnailRef,
         claimed.content_edited_at,
+        status,
       );
       if (!stream) throw new StreamNotFoundError(id);
 
       logger.info(
-        `[Publish] ${claimed.topic} published at feed index ${index} (${entries.length} entries)`,
+        `[Publish] ${claimed.topic} published${status === 'vod' ? ' as its recording' : ''} at feed index ${index} (${entries.length} entries)`,
       );
       return this.outcome(stream, index, entries.length, renditions, previous);
     } catch (error) {

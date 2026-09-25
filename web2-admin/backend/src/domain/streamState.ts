@@ -52,6 +52,25 @@ export function hasGoneLive(status: StreamStatus): boolean {
   return status === 'live' || status === 'vod';
 }
 
+/** Where a first publish leaves the row. */
+export type PublishedStatus = Extract<StreamStatus, 'published' | 'vod'>;
+
+/**
+ * Whether the row holds a finished recording: the feed index of its final
+ * manifest. An unpublish keeps it, so a draft can hold one too.
+ */
+function holdsRecording(stream: StreamRow): boolean {
+  return stream.manifest_index !== null;
+}
+
+/**
+ * A draft that still holds a recording goes back on the catalogue as that
+ * recording, never as a stream that has not started.
+ */
+export function publishedStatusFor(stream: StreamRow): PublishedStatus {
+  return holdsRecording(stream) ? 'vod' : 'published';
+}
+
 /**
  * Whether an edit would move the scheduled start of a stream that is already
  * running or already recorded. The time is a promise made to viewers on the
