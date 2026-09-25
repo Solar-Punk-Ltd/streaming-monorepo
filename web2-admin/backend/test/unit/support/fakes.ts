@@ -59,6 +59,8 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
     duration_seconds: null,
     live_since: null,
     ended_at: null,
+    content_edited_at: null,
+    entry_content_edited_at: null,
     created_at: at,
     updated_at: at,
     ...over,
@@ -261,6 +263,7 @@ export class FakeStreamStore
     userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
+    entryContentEditedAt: Date | null,
   ): Promise<StreamRow | null> {
     if (!(await this.findById(id, userId))) return null;
     return this.patch(id, {
@@ -269,6 +272,7 @@ export class FakeStreamStore
       published_feed_index: feedIndex,
       publish_error: null,
       thumbnail_ref: thumbnailRef,
+      entry_content_edited_at: entryContentEditedAt,
     });
   }
 
@@ -293,19 +297,34 @@ export class FakeStreamStore
     });
   }
 
-  /** Status untouched, exactly as the SQL is: a republish keeps its state. */
+  /**
+   * Status untouched, exactly as the SQL is: a republish keeps its state. The
+   * rest of the row is read as it is now, so an edit that landed while the
+   * entry was being written survives this, as it does in Postgres.
+   */
   async recordRepublish(
     id: string,
     userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
+    entryContentEditedAt: Date | null,
   ): Promise<StreamRow | null> {
     if (!(await this.findById(id, userId))) return null;
     return this.patch(id, {
       published_feed_index: feedIndex,
       publish_error: null,
       thumbnail_ref: thumbnailRef,
+      entry_content_edited_at: entryContentEditedAt,
     });
+  }
+
+  /** Unscoped, as the SQL is: a reconcile rebuilds every user's entries. */
+  async recordEntryRebuilt(
+    id: string,
+    entryContentEditedAt: Date | null,
+  ): Promise<void> {
+    if (!this.rows.has(id)) return;
+    this.patch(id, { entry_content_edited_at: entryContentEditedAt });
   }
 
   async failPublish(

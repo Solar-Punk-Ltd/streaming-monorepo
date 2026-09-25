@@ -138,9 +138,17 @@ async function readJson(req) {
   }
 }
 
+/** The statuses whose stream has an entry on the catalogue. */
+const ON_FEED_STATUSES = ['published', 'live', 'vod'];
+
 function publicStream(row) {
-  const { thumbnail, thumbnailMime, ...rest } = row;
-  return { ...rest, hasThumbnail: thumbnail !== null && thumbnailMime !== null };
+  const { thumbnail, thumbnailMime, editsNotOnFeed, ...rest } = row;
+  return {
+    ...rest,
+    hasThumbnail: thumbnail !== null && thumbnailMime !== null,
+    hasUnpublishedEdits:
+      editsNotOnFeed && ON_FEED_STATUSES.includes(row.status),
+  };
 }
 
 function ingestDetails(row) {
@@ -163,13 +171,30 @@ function ingestDetails(row) {
   };
 }
 
+/** What the catalogue entry carries of a stream's own fields. */
+function entryContent(row) {
+  return JSON.stringify([
+    row.title,
+    row.description,
+    row.tags,
+    row.mediaType,
+    row.scheduledStartTime,
+  ]);
+}
+
+/**
+ * Like the API, a save that changes nothing is not an edit: the console PUTs
+ * the whole form back every time.
+ */
 function applyInput(row, input) {
+  const before = entryContent(row);
   row.title = String(input.title ?? '');
   row.description = String(input.description ?? '');
   row.tags = Array.isArray(input.tags) ? input.tags.map(String) : [];
   row.mediaType = input.mediaType === 'audio' ? 'audio' : 'video';
   row.scheduledStartTime = input.scheduledStartTime ?? null;
   row.updatedAt = new Date().toISOString();
+  if (entryContent(row) !== before) row.editsNotOnFeed = true;
 }
 
 function newStream(input) {
@@ -192,10 +217,14 @@ function newStream(input) {
     publishError: null,
     publishKey: hex(16),
     publishKeyRotatedAt: null,
+    // Stands in for the API's two timestamps: an edit the catalogue entry
+    // does not carry yet. Cleared by a publish, which rebuilds the entry.
+    editsNotOnFeed: false,
     createdAt: now,
     updatedAt: now,
   };
   applyInput(row, input);
+  row.editsNotOnFeed = false;
   return row;
 }
 
@@ -424,6 +453,7 @@ async function handle(req, res) {
     row.thumbnailMime = mime;
     // A new image invalidates whatever was uploaded to Swarm before.
     row.thumbnailRef = null;
+    row.editsNotOnFeed = true;
     row.updatedAt = new Date().toISOString();
     return send(res, 200, publicStream(row));
   }
@@ -439,6 +469,7 @@ async function handle(req, res) {
   }
 
   if (sub === '/thumbnail' && method === 'DELETE') {
+    if (row.thumbnail) row.editsNotOnFeed = true;
     row.thumbnail = null;
     row.thumbnailMime = null;
     row.thumbnailRef = null;
@@ -458,6 +489,7 @@ async function handle(req, res) {
     row.publishedAt = new Date().toISOString();
     row.publishedFeedIndex = feedIndex;
     row.publishError = null;
+    row.editsNotOnFeed = false;
     row.updatedAt = row.publishedAt;
     return send(res, 200, publishResult(row));
   }

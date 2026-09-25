@@ -1,10 +1,11 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import type { Stream } from '@streaming-monorepo/web2-admin-common';
 
 import { StreamDetailsPage } from '../pages/StreamDetailsPage';
 import {
+  jsonError,
   jsonOk,
   makeIngest,
   makeStream,
@@ -44,15 +45,19 @@ function renderDetails() {
 }
 
 describe('StreamDetailsPage', () => {
-  it('warns when a published stream was edited after it was published', async () => {
+  it('warns when the API reports edits the catalogue entry does not carry', async () => {
+    // The timestamps are equal on purpose: the notice is the API's answer, not
+    // a comparison the page makes of its own.
+    const at = '2026-09-11T10:00:00.000Z';
     mockFetch(
       routesFor(
         makeStream({
           id: ID,
-          status: 'published',
-          publishedAt: '2026-09-11T10:00:00.000Z',
-          updatedAt: '2026-09-11T10:05:00.000Z',
+          status: 'vod',
+          publishedAt: at,
+          updatedAt: at,
           publishedFeedIndex: 2,
+          hasUnpublishedEdits: true,
         }),
       ),
     );
@@ -66,16 +71,21 @@ describe('StreamDetailsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('does not warn when the row has not changed since the publish', async () => {
-    const at = '2026-09-11T10:00:00.000Z';
+  it('does not warn about a stream that only the uploader has moved on', async () => {
+    // Seen on the deployed admin on 2026-09-24: created, published, broadcast
+    // once and never edited, and the uploader's reports had carried
+    // `updatedAt` past `publishedAt`.
     mockFetch(
       routesFor(
         makeStream({
           id: ID,
-          status: 'published',
-          publishedAt: at,
-          updatedAt: at,
+          status: 'vod',
+          publishedAt: '2026-09-11T10:00:00.000Z',
+          updatedAt: '2026-09-11T11:30:00.000Z',
           publishedFeedIndex: 2,
+          liveSince: '2026-09-11T10:01:00.000Z',
+          endedAt: '2026-09-11T11:30:00.000Z',
+          hasUnpublishedEdits: false,
         }),
       ),
     );
@@ -83,24 +93,6 @@ describe('StreamDetailsPage', () => {
     renderDetails();
 
     await screen.findByRole('button', { name: /Republish/ });
-    expect(screen.queryByText(EDITED_SINCE_PUBLISH)).not.toBeInTheDocument();
-  });
-
-  it('does not warn for a draft, whatever its timestamps say', async () => {
-    mockFetch(
-      routesFor(
-        makeStream({
-          id: ID,
-          status: 'draft',
-          publishedAt: null,
-          updatedAt: '2026-09-11T10:05:00.000Z',
-        }),
-      ),
-    );
-
-    renderDetails();
-
-    await screen.findByRole('button', { name: 'Publish' });
     expect(screen.queryByText(EDITED_SINCE_PUBLISH)).not.toBeInTheDocument();
   });
 
@@ -218,20 +210,117 @@ describe('StreamDetailsPage', () => {
       publishedFeedIndex: 4,
     });
     mockFetch(
+      routesFor(published, [unpublishRoute(published)]),
+    );
+
+    renderDetails();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Unpublish' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Unpublish',
+      }),
+    );
+
+    expect(
+      await screen.findByText('Unpublished. Feed is at index 4.'),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Draft')).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
+  it('asks before unpublishing a recording, and says what this admin loses', async () => {
+    // The unpublish clears where the recording is and how long it runs, and
+    // nothing in the console can put that back, so one click is not enough.
+    const recording = makeStream({
+      id: ID,
+      status: 'vod',
+      publishedAt: '2026-09-11T10:00:00.000Z',
+      publishedFeedIndex: 4,
+      liveSince: '2026-09-11T10:01:00.000Z',
+      endedAt: '2026-09-11T11:00:00.000Z',
+      durationSeconds: 3540,
+      manifestIndex: 412,
+    });
+    const fetchMock = mockFetch(
+      routesFor(recording, [unpublishRoute(recording)]),
+    );
+
+    renderDetails();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Unpublish' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Unpublish recording')).toBeInTheDocument();
+    expect(dialog).toHaveTextContent('stops being listed in the catalogue');
+    expect(dialog).toHaveTextContent(
+      'its recording details are removed from this admin',
+    );
+    expect(dialog).toHaveTextContent(
+      'it is listed as not started, not as this recording',
+    );
+    expect(unpublishCalls(fetchMock)).toBe(0);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(unpublishCalls(fetchMock)).toBe(0);
+    expect(screen.getByText('Manifest index')).toBeInTheDocument();
+  });
+
+  it('asks with a shorter message for a stream that has not gone live', async () => {
+    const published = makeStream({
+      id: ID,
+      status: 'published',
+      publishedAt: '2026-09-11T10:00:00.000Z',
+      publishedFeedIndex: 4,
+    });
+    const fetchMock = mockFetch(
+      routesFor(published, [unpublishRoute(published)]),
+    );
+
+    renderDetails();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Unpublish' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Unpublish stream')).toBeInTheDocument();
+    expect(dialog).toHaveTextContent(
+      'stops being listed in the catalogue and goes back to a draft',
+    );
+    expect(dialog).not.toHaveTextContent('recording');
+    expect(unpublishCalls(fetchMock)).toBe(0);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Unpublish' }));
+
+    expect(
+      await screen.findByText('Unpublished. Feed is at index 4.'),
+    ).toBeInTheDocument();
+    expect(unpublishCalls(fetchMock)).toBe(1);
+  });
+
+  it('keeps the dialog open when the unpublish fails, to retry or cancel', async () => {
+    const published = makeStream({
+      id: ID,
+      status: 'published',
+      publishedAt: '2026-09-11T10:00:00.000Z',
+      publishedFeedIndex: 4,
+    });
+    mockFetch(
       routesFor(published, [
         {
           method: 'POST',
           path: `/api/streams/${ID}/unpublish`,
           respond: () =>
-            jsonOk({
-              stream: { ...published, status: 'draft', publishedAt: null },
-              feed: {
-                owner: 'abc',
-                topic: 'swarm-stream',
-                topicHex: 'ff',
-                index: 4,
-                entryCount: 0,
-              },
+            jsonError(502, {
+              error: 'publish_failed',
+              message: 'bee unreachable',
             }),
         },
       ]),
@@ -240,12 +329,63 @@ describe('StreamDetailsPage', () => {
     renderDetails();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Unpublish' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Unpublish',
+      }),
+    );
 
+    expect(await screen.findByText('bee unreachable')).toBeInTheDocument();
+    // MUI keeps a closing dialog on the page for its exit transition, so
+    // "still there" proves nothing until that time has passed.
+    await expect(
+      waitFor(
+        () => {
+          expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        },
+        { timeout: 600 },
+      ),
+    ).rejects.toThrow();
     expect(
-      await screen.findByText('Unpublished. Feed is at index 4.'),
-    ).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByText('Draft')).toBeInTheDocument();
-    });
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Unpublish',
+      }),
+    ).toBeEnabled();
   });
 });
+
+/** The API's answer to an unpublish of `stream`: back to a draft, entry gone. */
+function unpublishRoute(stream: Stream): MockRoute {
+  return {
+    method: 'POST',
+    path: `/api/streams/${ID}/unpublish`,
+    respond: () =>
+      jsonOk({
+        stream: {
+          ...stream,
+          status: 'draft',
+          publishedAt: null,
+          publishedFeedIndex: null,
+          manifestIndex: null,
+          durationSeconds: null,
+          liveSince: null,
+          endedAt: null,
+        },
+        feed: {
+          owner: 'abc',
+          topic: 'swarm-stream',
+          topicHex: 'ff',
+          index: 4,
+          entryCount: 0,
+        },
+      }),
+  };
+}
+
+function unpublishCalls(fetchMock: ReturnType<typeof mockFetch>): number {
+  return fetchMock.mock.calls.filter(
+    ([url, init]) =>
+      String(url) === `/api/streams/${ID}/unpublish` &&
+      init?.method === 'POST',
+  ).length;
+}

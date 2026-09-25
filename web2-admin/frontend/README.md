@@ -12,7 +12,7 @@ types from [`../common`](../common/).
 | `#/login` | Username, password, Log in. The API's error text is shown inline. |
 | `#/` | My Streams: thumbnail, title, media type chip, status chip, scheduled start, Edit / Details / Delete, Create New Stream. |
 | `#/create`, `#/edit/:id` | The msrs-client form: Stream Name (n/100), Description (n/500), Tags (Enter or Add, max 10 × 20 chars), Media Type (locked once published), Upload Thumbnail (max 5MB, preview, remove), Scheduled Start Time. |
-| `#/streams/:id` | Details: metadata, publish / unpublish with feed feedback, a link to the viewer catalogue plus the copyable per-stream route, last publish error, and the OBS connection details with copy buttons and Rotate key. |
+| `#/streams/:id` | Details: metadata, publish / unpublish with feed feedback (Unpublish asks first, and for a recording says what this admin forgets), a link to the viewer catalogue plus the copyable per-stream route, last publish error, and the OBS connection details with copy buttons and Rotate key. |
 | `#/account` | Change password. |
 
 The SRT URL embeds the same per-stream `key=` as the RTMP stream key, so both
