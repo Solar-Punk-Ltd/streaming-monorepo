@@ -165,7 +165,7 @@ instead.
    `bee.makeFeedWriter(topic, new PrivateKey(FEED_PRIVATE_KEY)).uploadPayload(batch, JSON.stringify(entries), { index })`.
    Serialise publish and unpublish through one in-process async mutex so two
    requests cannot race for the same index.
-6. Record `feed_writes`, then `UPDATE streams SET status='published', published_at=NOW(), published_feed_index=$2, publish_error=NULL, thumbnail_ref=$3`.
+6. Record `feed_writes`, then `UPDATE streams SET status='published', published_at=NOW(), published_feed_index=$2, publish_error=NULL, thumbnail_ref=$3`. Since 2026-09-26 the status is `vod` when the draft still holds a recording, see below.
 7. On any failure: `UPDATE ... SET status = previous status, publish_error = message`, and respond `502 {error:'publish_failed', message}`.
 
 Unpublish removes the entry and writes the next index the same way, then sets
