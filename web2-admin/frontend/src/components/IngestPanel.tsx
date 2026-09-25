@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import {
   Alert,
   Button,
@@ -7,7 +7,10 @@ import {
   Typography,
 } from '@mui/material';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
-import type { IngestDetails } from '@streaming-monorepo/web2-admin-common';
+import {
+  buildObsSrtServer,
+  type IngestDetails,
+} from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
 import { errorMessage } from '../errors';
@@ -22,12 +25,90 @@ export const KEY_UNVERIFIED_NOTE =
   'can publish under this name until the uploader is upgraded.';
 
 /**
- * The SRT URL and the RTMP stream key both carry `key=<publishKey>`, so both
- * have to be treated as secrets. Only the key is hidden, though: the host,
- * port and stream id are what the operator needs to read back.
+ * The SRT Server line carries `key=<publishKey>` and, where it can ride there,
+ * `passphrase=<passphrase>`. The RTMP stream key carries the same `key=`. Only
+ * those values are hidden: the host, port and stream id are what the operator
+ * needs to read back.
  */
-function maskPublishKey(value: string): string {
-  return value.replace(/key=[^,&?\s]+/g, 'key=••••••••');
+function maskIngestSecrets(value: string): string {
+  return value.replace(/\b(key|passphrase)=[^,&?\s]+/g, '$1=••••••••');
+}
+
+/** One protocol's settings, named for screen readers by its heading. */
+function ProtocolSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  const headingId = useId();
+  return (
+    <Stack component="section" aria-labelledby={headingId} spacing={2}>
+      <Typography id={headingId} variant="subtitle2" color="text.secondary">
+        {title}
+      </Typography>
+      {children}
+    </Stack>
+  );
+}
+
+function SrtSettings({ srt }: { srt: IngestDetails['srt'] }) {
+  const { server, passphraseRoute } = buildObsSrtServer(
+    srt.url,
+    srt.passphrase,
+  );
+  return (
+    <ProtocolSection title="SRT">
+      <ValueField
+        label="SRT Server"
+        value={server}
+        secret
+        maskedValue={maskIngestSecrets(server)}
+        helperText={
+          passphraseRoute === 'server'
+            ? 'Paste into the Server box. It carries the stream id, your key and the passphrase.'
+            : 'Paste into the Server box. It carries the stream id and your key.'
+        }
+      />
+      <Typography variant="body2">
+        <strong>Stream Key</strong>: leave it empty. The Server line already
+        names the stream.
+      </Typography>
+      {passphraseRoute === 'authentication' && srt.passphrase ? (
+        <ValueField
+          label="SRT Password"
+          value={srt.passphrase}
+          secret
+          helperText="This passphrase has characters the Server line cannot carry. In OBS, tick Use authentication, leave Username empty and paste this into Password."
+        />
+      ) : null}
+      {passphraseRoute === 'none' ? (
+        <Alert severity="info">
+          No SRT passphrase is configured on this ingest server.
+        </Alert>
+      ) : null}
+    </ProtocolSection>
+  );
+}
+
+function RtmpSettings({ rtmp }: { rtmp: IngestDetails['rtmp'] }) {
+  return (
+    <ProtocolSection title="RTMP">
+      <ValueField
+        label="RTMP Server"
+        value={rtmp.server}
+        helperText="Paste into the Server box."
+      />
+      <ValueField
+        label="RTMP Stream Key"
+        value={rtmp.streamKey}
+        secret
+        maskedValue={maskIngestSecrets(rtmp.streamKey)}
+        helperText="Paste into the Stream Key box."
+      />
+    </ProtocolSection>
+  );
 }
 
 export function IngestPanel({
@@ -78,40 +159,14 @@ export function IngestPanel({
           <Alert severity="warning">{KEY_UNVERIFIED_NOTE}</Alert>
         ) : null}
 
-        <Typography variant="subtitle2" color="text.secondary">
-          SRT
+        <Typography variant="body2">
+          In OBS, open Settings, then Stream, and set Service to Custom. Then
+          fill in the Server and Stream Key boxes for one of the two protocols
+          below.
         </Typography>
-        <ValueField
-          label="SRT URL"
-          value={details.srt.url}
-          secret
-          maskedValue={maskPublishKey(details.srt.url)}
-          helperText="Paste into the OBS Server field. It carries the stream key."
-        />
-        {details.srt.passphrase ? (
-          <ValueField
-            label="SRT Passphrase"
-            value={details.srt.passphrase}
-            secret
-            helperText="Server-wide, not per stream. Paste into the OBS Passphrase field."
-          />
-        ) : (
-          <Alert severity="info">
-            No SRT passphrase is configured on this ingest server.
-          </Alert>
-        )}
 
-        <Typography variant="subtitle2" color="text.secondary">
-          RTMP
-        </Typography>
-        <ValueField label="RTMP Server" value={details.rtmp.server} />
-        <ValueField
-          label="Your stream key"
-          value={details.rtmp.streamKey}
-          secret
-          maskedValue={maskPublishKey(details.rtmp.streamKey)}
-          helperText="Paste into the OBS Stream Key field."
-        />
+        <SrtSettings srt={details.srt} />
+        <RtmpSettings rtmp={details.rtmp} />
 
         <Typography variant="caption" color="text.secondary">
           Ingest stream id {details.streamId}

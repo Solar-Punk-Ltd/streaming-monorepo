@@ -551,6 +551,49 @@ describe('PublishService republishing a stream that has gone live', () => {
     assert.equal(entriesOf(gateway)[0]!.duration, 61);
   });
 
+  it('publishes a draft that still holds a recording as that recording', async () => {
+    // An unpublish keeps the recording, so the next publish has to list the
+    // stream as what it is, never as one that has not started.
+    const { store, renditions, gateway, service } = setup();
+    const row = store.add(
+      streamRow({
+        manifest_index: 7,
+        duration_seconds: 61,
+        live_since: new Date('2026-09-11T10:01:00.000Z'),
+        ended_at: new Date('2026-09-11T10:02:01.000Z'),
+      }),
+    );
+    await renditions.upsert(row.id, rung('720p', 720, 12));
+
+    const outcome = await service.publish(row.id, TEST_USER_ID);
+
+    assert.equal(outcome.stream.status, 'vod');
+    assert.equal(outcome.stream.published_feed_index, outcome.feed.index);
+    assert.equal(outcome.stream.manifest_index, 7);
+    const [entry] = entriesOf(gateway);
+    assert.equal(entry!.state, 'vod');
+    assert.equal(entry!.index, 7);
+    assert.equal(entry!.duration, 61);
+    assert.equal(entry!.renditions?.[0]?.index, 12);
+  });
+
+  it('puts a draft holding a recording back to draft, recording intact, when the write fails', async () => {
+    const { store, gateway, service } = setup();
+    const row = store.add(streamRow({ manifest_index: 7, duration_seconds: 61 }));
+    gateway.failNextWrite = new Error('bee unreachable');
+
+    await assert.rejects(
+      () => service.publish(row.id, TEST_USER_ID),
+      PublishFailedError,
+    );
+
+    const after = store.get(row.id);
+    assert.equal(after.status, 'draft');
+    assert.equal(after.manifest_index, 7);
+    assert.equal(after.duration_seconds, 61);
+    assert.equal(after.publish_error, 'bee unreachable');
+  });
+
   it('serialises a state report against a concurrent publish', async () => {
     // Two feed writes, one index each: the report does not hold the row's
     // `publishing` claim, so the mutex is all that keeps them apart.
@@ -642,20 +685,34 @@ describe('PublishService and the ABR ladder', () => {
     assert.deepEqual(gone.previousRenditions, second.renditions);
   });
 
-  it('drops the ladder when the stream is unpublished', async () => {
-    // Back to `draft` is a fresh life: the rungs describe a broadcast that is
-    // no longer on the catalogue, and must not ride onto the next publish.
+  it('keeps the ladder when a recording is unpublished, and publishes it back with it', async () => {
+    // An unpublish takes the entry off the catalogue and keeps what the stream
+    // has, so the next publish lists the same recording, ladder and all.
     const { store, renditions, gateway, service } = setup();
-    const row = store.add(streamRow());
+    const row = store.add(
+      streamRow({
+        status: 'vod',
+        manifest_index: 9,
+        duration_seconds: 61,
+        published_feed_index: 0,
+      }),
+    );
+    await renditions.upsert(row.id, rung('360p', 360, 10));
     await renditions.upsert(row.id, rung('720p', 720, 12));
     await service.publish(row.id, TEST_USER_ID);
+    const listed = entriesOf(gateway)[0]!;
 
     await service.unpublish(row.id, TEST_USER_ID);
-    assert.deepEqual(await renditions.listByStream(row.id), []);
+    assert.equal((await renditions.listByStream(row.id)).length, 2, 'the rungs stay');
+    assert.deepEqual(entriesOf(gateway), [], 'the entry is off the catalogue');
 
     await service.publish(row.id, TEST_USER_ID);
-    const [entry] = entriesOf(gateway);
-    assert.ok(!('renditions' in entry!), 'republished without a ladder');
+    assert.equal(store.get(row.id).status, 'vod');
+    assert.deepEqual(
+      { ...entriesOf(gateway)[0]!, timestamp: 0 },
+      { ...listed, timestamp: 0 },
+      'the same recording as before the unpublish',
+    );
   });
 });
 
@@ -741,16 +798,30 @@ describe('PublishService.unpublish', () => {
     assert.deepEqual(gateway.writes.at(-1)!.entries, []);
   });
 
-  it('takes a recording off the feed like any published stream', async () => {
+  it('takes a recording off the feed and keeps what the uploader reported', async () => {
     const { store, gateway, service } = setup();
     const row = store.add(streamRow({ status: 'live' }));
     await service.republishWithState(store.get(row.id));
-    store.add({ ...store.get(row.id), status: 'vod', manifest_index: 4 });
+    const liveSince = new Date('2026-09-11T10:01:00.000Z');
+    const endedAt = new Date('2026-09-11T11:00:00.000Z');
+    store.add({
+      ...store.get(row.id),
+      status: 'vod',
+      manifest_index: 4,
+      duration_seconds: 3540,
+      live_since: liveSince,
+      ended_at: endedAt,
+    });
 
     const outcome = await service.unpublish(row.id, TEST_USER_ID);
 
     assert.equal(outcome.stream.status, 'draft');
     assert.deepEqual(entriesOf(gateway), []);
+    assert.equal(outcome.stream.published_feed_index, null, 'off the catalogue');
+    assert.equal(outcome.stream.manifest_index, 4, 'where the recording is');
+    assert.equal(outcome.stream.duration_seconds, 3540, 'how long it runs');
+    assert.deepEqual(outcome.stream.live_since, liveSince);
+    assert.deepEqual(outcome.stream.ended_at, endedAt);
   });
 
   it('refuses to unpublish a live stream', async () => {

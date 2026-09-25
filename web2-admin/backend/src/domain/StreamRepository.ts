@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 
 import type { StreamRow, ThumbnailRow } from '../types/index.js';
 
+import type { PublishedStatus } from './streamState.js';
 import { CONTENT_EDITED_NOW, STREAM_COLUMNS } from './streamSql.js';
 
 export interface StreamInsertData {
@@ -282,13 +283,12 @@ export class StreamRepository {
    * its head.
    *
    * The ladder is un-finished with it, in this one statement rather than
-   * through StreamRenditionRepository, for the reason `finishUnpublish` clears
-   * it in its own: a crash between two statements would leave the entry
-   * advertising rung recordings that have been superseded. Only a row coming
-   * back from `vod` is touched — a repeated `live` report must not throw away
-   * rungs that have finalized since, and there is nothing to clear for a
-   * broadcast that is starting for the first time. Index and duration go null
-   * together, as migration 004 requires.
+   * through StreamRenditionRepository: a crash between two statements would
+   * leave the entry advertising rung recordings that have been superseded.
+   * Only a row coming back from `vod` is touched — a repeated `live` report
+   * must not throw away rungs that have finalized since, and there is nothing
+   * to clear for a broadcast that is starting for the first time. Index and
+   * duration go null together, as migration 004 requires.
    *
    * Conditional on `allowedFrom` for the same reason every other transition
    * here is: the check and the write are one statement, so two reports racing
@@ -435,17 +435,22 @@ export class StreamRepository {
     return this.one(result.rows, result.rowCount);
   }
 
-  /** `entryContentEditedAt` as on `recordRepublish`. */
+  /**
+   * `entryContentEditedAt` as on `recordRepublish`. `status` is where the
+   * publish leaves the row, `vod` for a draft that still holds a recording
+   * (`publishedStatusFor`), so the row says what its entry says.
+   */
   async finishPublish(
     id: string,
     userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
     entryContentEditedAt: Date | null,
+    status: PublishedStatus,
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
-          SET status = 'published',
+          SET status = $6,
               published_at = NOW(),
               published_feed_index = $3,
               publish_error = NULL,
@@ -454,44 +459,28 @@ export class StreamRepository {
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2
         RETURNING ${STREAM_COLUMNS}`,
-      [id, userId, feedIndex, thumbnailRef, entryContentEditedAt],
+      [id, userId, feedIndex, thumbnailRef, entryContentEditedAt, status],
     );
     return this.one(result.rows, result.rowCount);
   }
 
   /**
-   * Back to `draft`, keeping `thumbnail_ref` — the upload is still paid for.
-   * Everything the uploader reported is cleared: the row is a draft again, and
-   * a stale `live_since` or manifest index would describe a recording that is
-   * no longer on the catalogue.
-   *
-   * The ABR ladder goes with it, in this one statement rather than through
-   * StreamRenditionRepository: the rungs are part of what the uploader
-   * reported, and a crash between two statements would leave a draft that
-   * carries a ladder from a broadcast nobody can play any more onto the next
-   * entry it is published with. The delete is scoped through `owned` so it
-   * cannot touch another user's stream when the UPDATE itself would not.
+   * Back to `draft` and off the catalogue, keeping everything the stream has:
+   * `thumbnail_ref`, because the upload is still paid for, and what the
+   * uploader reported, which is where the recording is, how long it runs,
+   * when it was live and its ABR rungs. Publishing the draft again lists it as
+   * that recording. Only what described the catalogue entry is cleared.
    */
   async finishUnpublish(
     id: string,
     userId: string,
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
-      `WITH owned AS (
-         SELECT id FROM streams WHERE id = $1 AND user_id = $2
-       ), cleared AS (
-         DELETE FROM stream_renditions
-          WHERE stream_id IN (SELECT id FROM owned)
-       )
-       UPDATE streams
+      `UPDATE streams
           SET status = 'draft',
               published_at = NULL,
               published_feed_index = NULL,
               publish_error = NULL,
-              manifest_index = NULL,
-              duration_seconds = NULL,
-              live_since = NULL,
-              ended_at = NULL,
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2
         RETURNING ${STREAM_COLUMNS}`,

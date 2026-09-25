@@ -233,19 +233,10 @@ describe('StreamDetailsPage', () => {
     });
   });
 
-  it('asks before unpublishing a recording, and says what this admin loses', async () => {
-    // The unpublish clears where the recording is and how long it runs, and
-    // nothing in the console can put that back, so one click is not enough.
-    const recording = makeStream({
-      id: ID,
-      status: 'vod',
-      publishedAt: '2026-09-11T10:00:00.000Z',
-      publishedFeedIndex: 4,
-      liveSince: '2026-09-11T10:01:00.000Z',
-      endedAt: '2026-09-11T11:00:00.000Z',
-      durationSeconds: 3540,
-      manifestIndex: 412,
-    });
+  it('asks before unpublishing a recording, and says the recording is kept', async () => {
+    // A recording comes off the catalogue, and viewers lose it until it is
+    // published again, so one click is not enough.
+    const recording = recordingStream();
     const fetchMock = mockFetch(
       routesFor(recording, [unpublishRoute(recording)]),
     );
@@ -258,10 +249,10 @@ describe('StreamDetailsPage', () => {
     expect(within(dialog).getByText('Unpublish recording')).toBeInTheDocument();
     expect(dialog).toHaveTextContent('stops being listed in the catalogue');
     expect(dialog).toHaveTextContent(
-      'its recording details are removed from this admin',
+      'this admin keeps where it is, how long it runs and when it was live',
     );
     expect(dialog).toHaveTextContent(
-      'it is listed as not started, not as this recording',
+      'Publish it again to list it as this recording',
     );
     expect(unpublishCalls(fetchMock)).toBe(0);
 
@@ -272,6 +263,32 @@ describe('StreamDetailsPage', () => {
     });
     expect(unpublishCalls(fetchMock)).toBe(0);
     expect(screen.getByText('Manifest index')).toBeInTheDocument();
+  });
+
+  it('still shows the recording once it is unpublished back to a draft', async () => {
+    const recording = recordingStream();
+    mockFetch(routesFor(recording, [unpublishRoute(recording)]));
+
+    renderDetails();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Unpublish' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Unpublish',
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Draft')).toBeInTheDocument();
+    });
+    // An open dialog hides the rest of the page from role queries.
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('Manifest index')).toBeInTheDocument();
+    expect(screen.getByText('412')).toBeInTheDocument();
+    expect(screen.getByText('Duration')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled();
   });
 
   it('asks with a shorter message for a stream that has not gone live', async () => {
@@ -354,7 +371,24 @@ describe('StreamDetailsPage', () => {
   });
 });
 
-/** The API's answer to an unpublish of `stream`: back to a draft, entry gone. */
+/** A stream the uploader reported as a finished recording. */
+function recordingStream(): Stream {
+  return makeStream({
+    id: ID,
+    status: 'vod',
+    publishedAt: '2026-09-11T10:00:00.000Z',
+    publishedFeedIndex: 4,
+    liveSince: '2026-09-11T10:01:00.000Z',
+    endedAt: '2026-09-11T11:00:00.000Z',
+    durationSeconds: 3540,
+    manifestIndex: 412,
+  });
+}
+
+/**
+ * The API's answer to an unpublish of `stream`: back to a draft and off the
+ * catalogue, with the recording kept.
+ */
 function unpublishRoute(stream: Stream): MockRoute {
   return {
     method: 'POST',
@@ -366,10 +400,6 @@ function unpublishRoute(stream: Stream): MockRoute {
           status: 'draft',
           publishedAt: null,
           publishedFeedIndex: null,
-          manifestIndex: null,
-          durationSeconds: null,
-          liveSince: null,
-          endedAt: null,
         },
         feed: {
           owner: 'abc',
