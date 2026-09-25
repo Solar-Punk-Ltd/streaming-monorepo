@@ -285,7 +285,7 @@ export class StreamRepository {
    * The ladder is un-finished with it, in this one statement rather than
    * through StreamRenditionRepository: a crash between two statements would
    * leave the entry advertising rung recordings that have been superseded.
-   * Only a row coming back from `vod` is touched — a repeated `live` report
+   * Only a row coming back from `vod` is touched. A repeated `live` report
    * must not throw away rungs that have finalized since, and there is nothing
    * to clear for a broadcast that is starting for the first time. Index and
    * duration go null together, as migration 004 requires.
