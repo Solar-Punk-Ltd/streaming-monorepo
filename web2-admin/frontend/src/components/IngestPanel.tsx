@@ -28,7 +28,8 @@ export const KEY_UNVERIFIED_NOTE =
  * The SRT Server line carries `key=<publishKey>` and, where it can ride there,
  * `passphrase=<passphrase>`. The RTMP stream key carries the same `key=`. Only
  * those values are hidden: the host, port and stream id are what the operator
- * needs to read back.
+ * needs to read back. A value ends at a comma because the SRT stream id carries
+ * `,m=publish` after the key.
  */
 function maskIngestSecrets(value: string): string {
   return value.replace(/\b(key|passphrase)=[^,&?\s]+/g, '$1=••••••••');
@@ -161,8 +162,8 @@ export function IngestPanel({
 
         <Typography variant="body2">
           In OBS, open Settings, then Stream, and set Service to Custom. Then
-          fill in the Server and Stream Key boxes for one of the two protocols
-          below.
+          pick one of the two protocols below and copy its values into OBS.
+          Each field says which box it goes in.
         </Typography>
 
         <SrtSettings srt={details.srt} />
