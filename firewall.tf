@@ -171,3 +171,25 @@ resource "google_compute_firewall" "ssh_external" {
     metadata = "EXCLUDE_ALL_METADATA"
   }
 }
+
+# The public HTTPS edge (Caddy) on the monitoring host: the manager's and web2-admin's consoles
+# under their own names, each behind its own login. 80 answers the ACME challenge and redirects,
+# 443 is the site. Open to the internet because Let's Encrypt validates from addresses it does not
+# publish. Logged, like every other internet-facing rule here.
+resource "google_compute_firewall" "https_public" {
+  name    = "${var.name_prefix}-https-public"
+  project = var.project_id
+  network = google_compute_network.vpc.id
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80", "443"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = [local.monitoring_tag]
+
+  log_config {
+    metadata = "EXCLUDE_ALL_METADATA"
+  }
+}

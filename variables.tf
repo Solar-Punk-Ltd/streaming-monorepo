@@ -45,7 +45,7 @@ variable "monitoring_machine" {
   # shipping to Loki.
   description = "Machine type for the monitoring host."
   type        = string
-  default     = "e2-standard-2"
+  default     = "e2-standard-4"
 }
 
 variable "subnet_cidrs" {

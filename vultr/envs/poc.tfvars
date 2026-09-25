@@ -3,21 +3,21 @@
 # paths and a deploy script that works for one host and not the other.
 ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGW7evFxxJK2rb7KQmvvandmtjf8DFthn5X7+lcis2kG your_email@example.com"
 
-# The streaming-infra-manager host (Hetzner, static): it deploys the Bee pools over ssh, so it is
-# the one standing ssh source. A laptop is never listed here — open a window with
+# The streaming-infra-manager host: the GCP monitoring host (reserved external address), which
+# runs the manager. It deploys the Bee pools over ssh, so it is the one standing ssh source. A laptop is never listed here — open a window with
 #   ./scripts/allow-me.sh          # this machine's current /32
 #   ./scripts/allow-me.sh off      # close it again
-ssh_source_ranges = ["65.108.40.56/32"]
+ssh_source_ranges = ["34.107.41.24/32"]
 
 # The same host reaches every rung's Bee API to buy and inspect postage batches. The GCP stage
 # uploaders are admitted from the GCP root's state; this list is for addresses that state does not
 # know.
-bee_api_source_ranges = ["65.108.40.56/32"]
+bee_api_source_ranges = ["34.107.41.24/32"]
 
-# The manager host's deploy key (~/.ssh/manager_deploy.pub on 65.108.40.56), installed for
+# The manager host's deploy key (~/manager-ssh/deploy_key.pub on 34.107.41.24), installed for
 # solarpunk on every Bee host by the provisioning script.
 additional_ssh_public_keys = [
-  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJcfXyVNl9YhCXekkm2c8dodKJrxgnliiQrKp9Vso5Le streaming-infra-manager@65.108.40.56",
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP/yKd9wYI2AOiA27Dy46Gl6Jgurhc90BaCoo6pd91hu streaming-infra-manager@34.107.41.24",
 ]
 
 # region/plan: `fra` (Frankfurt) is ~10 ms from the GCP europe-west3 stage, which keeps the

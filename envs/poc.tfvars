@@ -21,7 +21,7 @@ stages = {
   # this port.
   stage1 = {
     region   = "europe-west3"
-    srt_port = 10051
+    srt_port = 10011 # slot 1 of the QA manager's stage-1 profile (2026-09-25); was 10051, slot 5 of the retired manager
     machine  = "t2d-standard-8"
   }
   # Stage 2 — Mumbai (M3). Uncommenting this entry IS the M3 rollout step.
@@ -38,10 +38,12 @@ stages = {
 # hosts' metrics arrive and their logs do not.
 loki_push_source_ranges = ["108.61.171.132/32"] # bee1, terraform/vultr output bee_host_ips
 
-# The streaming-infra-manager host (Hetzner, static). It deploys the ABR uploader to the stage
-# hosts over plain ssh, so it gets tcp/22 on them directly and its deploy key on user solarpunk.
+# The streaming-infra-manager host: the monitoring host of this root (its reserved external
+# address), which now runs the manager. It deploys the ABR uploader to the stage hosts over plain
+# ssh to their external addresses, so it gets tcp/22 on them directly and its deploy key
+# (~/manager-ssh/deploy_key.pub there) on user solarpunk.
 # Humans keep using IAP through rendered/ssh_config.
-ssh_source_ranges = ["65.108.40.56/32"]
+ssh_source_ranges = ["34.107.41.24/32"]
 additional_ssh_public_keys = [
-  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJcfXyVNl9YhCXekkm2c8dodKJrxgnliiQrKp9Vso5Le streaming-infra-manager@65.108.40.56",
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP/yKd9wYI2AOiA27Dy46Gl6Jgurhc90BaCoo6pd91hu streaming-infra-manager@34.107.41.24",
 ]
