@@ -10,10 +10,13 @@
 export type MediaType = 'video' | 'audio';
 
 /**
- * draft      never published, or unpublished again
+ * draft      never published, or unpublished again. It may still hold the
+ *            recording of an earlier broadcast, which the next publish lists
+ *            as vod
  * publishing publish in progress (transient)
  * published  entry is in the stream list feed with state 'scheduled'
- * live/vod   reserved for checkpoint 3, when the uploader reports state back
+ * live/vod   reported by the uploader: the broadcast is running, or it has
+ *            ended and manifestIndex says where its recording is
  */
 export type StreamStatus = 'draft' | 'publishing' | 'published' | 'live' | 'vod';
 
