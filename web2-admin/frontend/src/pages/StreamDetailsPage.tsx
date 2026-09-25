@@ -88,20 +88,19 @@ function watchPath(stream: Stream): string {
 }
 
 /**
- * What an unpublish takes away, said before it happens. A recording loses the
- * most: the API forgets where the recording is and how long it runs, nothing
- * in the console can put that back, and publishing the stream again announces
- * one that has not started. The video itself stays on Swarm.
+ * What an unpublish does, said before it happens. A recording comes off the
+ * catalogue and nothing of it is lost: the API keeps where it is, how long it
+ * runs and when it was live, and publishing the stream again lists it as that
+ * recording.
  */
 const UNPUBLISH_PROMPTS = {
   recording: {
     title: 'Unpublish recording',
     message:
-      'The recording stops being listed in the catalogue, and its recording ' +
-      'details are removed from this admin: where the recording is, how long ' +
-      'it runs and when it was live. The video stays on Swarm, but if you ' +
-      'publish this stream again, it is listed as not started, not as this ' +
-      'recording.',
+      'The recording stops being listed in the catalogue and the stream goes ' +
+      'back to a draft. Nothing of the recording is lost: the video stays on ' +
+      'Swarm, and this admin keeps where it is, how long it runs and when it ' +
+      'was live. Publish it again to list it as this recording.',
   },
   scheduled: {
     title: 'Unpublish stream',

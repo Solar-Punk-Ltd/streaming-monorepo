@@ -5,9 +5,10 @@
  *
  * What is exercised here is the SQL a fake repository cannot stand in for:
  * the boot-time repair of rows left claimed by a process that died mid-publish,
- * the un-finishing of an ABR ladder when a broadcast goes live again, and which
- * writes count as a console edit for the "Edited since it was published"
- * notice (migration 006).
+ * the un-finishing of an ABR ladder when a broadcast goes live again, an
+ * unpublish that keeps the recording and its rungs, and which writes count as
+ * a console edit for the "Edited since it was published" notice (migration
+ * 006).
  * Getting the first wrong loses streams — a republish interrupted by a restart
  * that came back as `draft` could then be DELETEd, leaving its entry on the
  * feed with no row left to unpublish it. Getting the second wrong is invisible
@@ -164,7 +165,14 @@ async function recordedLadder(): Promise<string> {
     scheduled_start_time: null,
     publish_key: newPublishKey(),
   });
-  await streams.finishPublish(row.id, userId, 1, null, row.content_edited_at);
+  await streams.finishPublish(
+    row.id,
+    userId,
+    1,
+    null,
+    row.content_edited_at,
+    'published',
+  );
   await renditions.upsert(row.id, {
     name: '360p',
     width: 640,
@@ -254,6 +262,52 @@ describe('markLive un-finishes a broadcast that comes back', () => {
   });
 });
 
+describe('an unpublish keeps the recording for the next publish', () => {
+  it('takes the row off the catalogue and keeps the recording and every rung', async () => {
+    const id = await recordedLadder();
+
+    const draft = await streams.finishUnpublish(id, userId);
+
+    assert.equal(draft?.status, 'draft');
+    assert.equal(draft?.published_at, null, 'no longer announced');
+    assert.equal(draft?.published_feed_index, null);
+    assert.equal(draft?.manifest_index, 7, 'where the recording is');
+    assert.equal(draft?.duration_seconds, 62.5, 'how long it runs');
+    assert.ok(draft?.live_since, 'when it went live');
+    assert.ok(draft?.ended_at, 'when it ended');
+
+    const rungs = await renditions.listByStream(id);
+    assert.deepEqual(
+      rungs.map((r) => [r.name, Number(r.manifest_index), Number(r.duration_seconds)]),
+      [
+        ['360p', 10, 61],
+        ['720p', 12, 62.5],
+      ],
+      'every rung, finished as it was',
+    );
+  });
+
+  it('finishes the next publish as the recording it holds', async () => {
+    const id = await recordedLadder();
+    const draft = await streams.finishUnpublish(id, userId);
+    assert.ok(draft);
+
+    const listed = await streams.finishPublish(
+      id,
+      userId,
+      2,
+      null,
+      draft.content_edited_at,
+      'vod',
+    );
+
+    assert.equal(listed?.status, 'vod');
+    assert.equal(listed?.published_feed_index, 2);
+    assert.ok(listed?.published_at);
+    assert.equal(listed?.manifest_index, 7);
+  });
+});
+
 /** A published stream nobody has edited, as a first publish leaves it. */
 async function publishedStream(
   scheduledStartTime: string | null = null,
@@ -275,6 +329,7 @@ async function publishedStream(
     1,
     null,
     row.content_edited_at,
+    'published',
   );
   assert.ok(published);
   return published;

@@ -300,9 +300,9 @@ order their entries landed and only one of them flips. Refused with
 a state report, so a failed write is `502 publish_failed` and the retry has
 only the write left to do — the merge is idempotent.
 
-Migration 004 adds `stream_renditions`, one row per `(stream_id, name)`, and
-`finishUnpublish` deletes a stream's rungs in the same statement that clears
-its state columns.
+Migration 004 adds `stream_renditions`, one row per `(stream_id, name)`. An
+unpublish keeps a stream's rungs with the rest of its recording, and deleting
+the stream takes them with it through the foreign key.
 
 ### What that changes for the console
 
@@ -326,8 +326,10 @@ its state columns.
 - `POST /streams/:id/unpublish` and `DELETE /streams/:id` on a live stream are
   `409 stream_live` ("Stop the broadcast first."): nothing here can stop the
   encoder that is still pushing to it. On a recording both work as they do on a
-  published stream, and the unpublish clears everything the uploader reported,
-  because the row is a draft again — the ABR ladder included.
+  published stream, and the unpublish keeps everything the uploader reported:
+  where the recording is, how long it runs, when it was live and the ABR
+  ladder. `POST /streams/:id/publish` on a draft that holds a recording lists
+  it as that recording again (`vod`), never as a stream that has not started.
 
 ## Migrations
 

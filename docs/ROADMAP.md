@@ -210,6 +210,13 @@ not have.
   so a passphrase outside RFC 3986's unreserved characters goes in the Use
   authentication Password instead, which OBS 29.1 and later hands to SRT. All
   of it read from OBS 31's source.
+- Unpublish keeps the recording. It still takes the entry off the catalogue
+  and puts the stream back to draft, but the row keeps where the recording is,
+  how long it runs, when it was live and its ABR rungs, where it used to wipe
+  them and leave a republish announcing a stream that had not started.
+  Publishing a draft that holds a recording lists it as that recording (`vod`,
+  with its index, duration and ladder). No database constraint ties those
+  columns to a status, so nothing in the schema changed.
 
 ## Checkpoint 3: manager integration
 
