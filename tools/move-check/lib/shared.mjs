@@ -90,7 +90,8 @@ export function isAllowedPath(path, allows) {
   return allows.some((allow) => (allow.endsWith('/') ? path.startsWith(allow) : path === allow));
 }
 
-function isPlainObject(value) {
+/** True for a JSON object, false for arrays, null and every other value. */
+export function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
