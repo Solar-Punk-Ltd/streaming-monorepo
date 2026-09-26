@@ -40,7 +40,7 @@
 set -euo pipefail
 
 readonly DEFAULT_REMOTE_PATH="/home/solarpunk/streaming-monorepo"
-readonly ENV_DIR="web2-admin/backend"
+readonly ENV_DIR="backend"
 readonly COMPOSE_FILE="deploy/docker-compose.yml"
 readonly KNOWN_SERVICES="postgres api web"
 # The loopback port the console gets without a port slot. The manager's own
@@ -55,8 +55,8 @@ usage() {
     cat <<'USAGE'
 Usage: deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path=<dir>] [service...]
 
-  deploy.sh --host=admin-host                          Deploy the default profile (web2-admin/backend/.env)
-  deploy.sh --host=admin-host --profile=brand-a        Deploy profile brand-a (web2-admin/backend/.env.brand-a)
+  deploy.sh --host=admin-host                          Deploy the default profile (backend/.env)
+  deploy.sh --host=admin-host --profile=brand-a        Deploy profile brand-a (backend/.env.brand-a)
   deploy.sh --host=admin-host --profile=brand-a --portSlot=3
                                                        Same, console on 127.0.0.1:11039 on the host
   deploy.sh --host=admin-host --profile=brand-a api    Rebuild and restart the API only
@@ -66,7 +66,7 @@ Flags (each also accepts a separate value, as in --host admin-host):
   --host=<target>       Required. An ssh alias from ~/.ssh/config, user@host, or
                         "localhost" for this machine. There is no default host.
   --profile=<name>      Profile name, ^[a-z0-9][a-z0-9-]{0,30}$. Default: "default".
-                        Selects web2-admin/backend/.env.<name> (plain .env for
+                        Selects backend/.env.<name> (plain .env for
                         "default"), which must exist, and the compose project
                         web2-admin-<name>.
   --portSlot=<N> (1-99) Publishes the console on 11009 + N*10 on the host's
