@@ -260,7 +260,14 @@ function onlyInFirst(first, second) {
   return first.filter((key) => !others.has(key));
 }
 
+function hasTopLevelSection(text, name) {
+  return findTopLevelSection(text.split('\n'), name) !== null;
+}
+
 function comparePackageKeys(fromText, toText) {
+  if (!hasTopLevelSection(fromText, 'packages') && !hasTopLevelSection(toText, 'packages')) {
+    throw new CheckError('Neither file has a top-level packages: section, so --packages has nothing to compare. Are both files pnpm lockfiles?');
+  }
   const sections = KEYED_SECTIONS.map(({ name, singular }) => {
     const fromKeys = listSectionKeys(fromText, name);
     const toKeys = listSectionKeys(toText, name);
