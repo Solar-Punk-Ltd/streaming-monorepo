@@ -527,11 +527,14 @@ else
     # rsync --delete empties whatever directory it is pointed at of everything
     # this checkout does not have. A mistyped --remote-path naming a home
     # directory would be wiped, so the target must be new, empty, or already a
-    # checkout of this repository, which includes one deploy/edge.sh has so
-    # far only put the host's edge into. A checkout is known by web2-admin/
-    # beside deploy/deploy.sh: the manager's checkout has a deploy/deploy.sh of
-    # its own, and a --remote-path mistyped onto it must not pass.
-    if ! ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p '$REMOTE_PATH' && { { [ -f '$REMOTE_PATH/deploy/deploy.sh' ] && [ -d '$REMOTE_PATH/web2-admin' ]; } || [ -f '$REMOTE_PATH/deploy/edge/docker-compose.yml' ] || [ -z \"\$(ls -A '$REMOTE_PATH')\" ]; }" </dev/null; then
+    # checkout of this repository, which includes one infra/edge/edge.sh has
+    # so far only put the host's edge into. A checkout is known by what sits
+    # beside deploy/deploy.sh: web2-admin/ in one sent from the repository
+    # root, as every deploy was before the admin moved into apps/web2-admin,
+    # and backend/Dockerfile in one sent from apps/web2-admin. The manager's
+    # checkout has a deploy/deploy.sh of its own and neither of the two, and a
+    # --remote-path mistyped onto it must not pass.
+    if ! ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p '$REMOTE_PATH' && { { [ -f '$REMOTE_PATH/deploy/deploy.sh' ] && { [ -d '$REMOTE_PATH/web2-admin' ] || [ -f '$REMOTE_PATH/backend/Dockerfile' ]; }; } || [ -f '$REMOTE_PATH/deploy/edge/docker-compose.yml' ] || [ -z \"\$(ls -A '$REMOTE_PATH')\" ]; }" </dev/null; then
         die "$HOST:$REMOTE_PATH could not be created, or it is a non-empty directory that is not a checkout of this repository. rsync --delete would empty it, so nothing was sent."
     fi
     # Filter order matters: the first rule that matches a path wins. The
