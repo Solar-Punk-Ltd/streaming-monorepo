@@ -9,15 +9,15 @@ streaming-infra-manager:
 | `backend/` | `@streaming-monorepo/web2-admin-backend` | Express 5 + pg API: session auth, stream drafts, publish to the stream list feed, OBS connection details. See its README. |
 | `frontend/` | `@streaming-monorepo/web2-admin-frontend` | React + MUI + Vite console modelled on msrs-client. See its README. |
 
-Design brief: [docs/architecture/web2-admin.md](../docs/architecture/web2-admin.md).
-Checkpoint 2 spec: [docs/architecture/web2-admin-checkpoint-2.md](../docs/architecture/web2-admin-checkpoint-2.md).
-Roadmap: [docs/ROADMAP.md](../docs/ROADMAP.md).
+Design brief: [docs/architecture/web2-admin.md](../../docs/architecture/web2-admin.md).
+Checkpoint 2 spec: [docs/architecture/web2-admin-checkpoint-2.md](../../docs/architecture/web2-admin-checkpoint-2.md).
+Roadmap: [docs/ROADMAP.md](../../docs/ROADMAP.md).
 
 ## Run it locally
 
 ```bash
 pnpm install
-cp web2-admin/backend/.env.sample web2-admin/backend/.env   # set FEED_PRIVATE_KEY, INGEST_HOST; FEED_GATEWAY=fake needs no Bee
+cp backend/.env.sample backend/.env                         # set FEED_PRIVATE_KEY, INGEST_HOST; FEED_GATEWAY=fake needs no Bee
 pnpm --filter @streaming-monorepo/web2-admin-backend database:start
 pnpm dev                                                    # backend on :9877, frontend on :5081
 ```

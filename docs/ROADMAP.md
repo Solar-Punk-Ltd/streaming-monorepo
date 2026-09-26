@@ -113,7 +113,7 @@ no SSE, so nothing outlives its request.
 ## Deploy script (2026-09-23)
 
 `deploy/deploy.sh` with host parameters lands, with its own production compose
-file (`deploy/docker-compose.yml`) and [deploy/README.md](../deploy/README.md).
+file (`deploy/docker-compose.yml`) and [deploy/README.md](../apps/web2-admin/deploy/README.md).
 Manager-driven deploy is next.
 
 - The grammar is swarm-hls-stream's (`--host`, `--profile`, `--portSlot`,
@@ -151,7 +151,7 @@ included, on any port but 80 (now `$http_host`, as in the manager).
 project (`edge`) on the host's network, serving each console the host
 publishes on its loopback under its own name, web2-admin's on 9090 and
 streaming-infra-manager's on 8080. See "Public HTTPS: the host's edge" in
-[deploy/README.md](../deploy/README.md).
+[deploy/README.md](../apps/web2-admin/deploy/README.md).
 
 - Decided: one edge per host, not one per compose project. Ports 80 and 443
   belong to one process per host, so the per-project edge on the

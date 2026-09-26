@@ -4,8 +4,9 @@ Read by AI coding agents working in this repository.
 
 ## Layout
 
-- pnpm workspace. Packages are listed in `pnpm-workspace.yaml`: `web2-admin/*`,
-  i.e. `web2-admin/common`, `web2-admin/backend` and `web2-admin/frontend`.
+- pnpm workspace. Packages are listed in `apps/web2-admin/pnpm-workspace.yaml`:
+  `apps/web2-admin/common`, `apps/web2-admin/backend` and
+  `apps/web2-admin/frontend`.
   Package scope is `@streaming-monorepo/`. `common` is the API contract;
   change it deliberately and update both sides.
 - `docs/ROADMAP.md` is the plan and the checkpoint log. Update it when a
@@ -20,7 +21,8 @@ Read by AI coding agents working in this repository.
 
 ## Conventions
 
-- TypeScript, ESM, exact-pinned dependencies (`save-exact=true` in `.npmrc`).
+- TypeScript, ESM, exact-pinned dependencies (`save-exact=true` in
+  `apps/web2-admin/.npmrc`).
 - Mirror streaming-infra-manager where a choice is arbitrary, so the two repos
   read as one team's work.
 - The admin layer never touches a wallet or a host directly. Anything that
