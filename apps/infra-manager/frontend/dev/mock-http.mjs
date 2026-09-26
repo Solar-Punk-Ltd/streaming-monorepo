@@ -1,0 +1,74 @@
+/**
+ * What every mock route needs: writing a JSON answer, streaming a script the
+ * way the manager streams one, reading a JSON body, and reading the Cookie
+ * header. Shared by mock-manager.mjs and mock-auth.mjs so neither keeps its
+ * own copy.
+ */
+
+export function send(res, status, body, headers = {}) {
+  const payload = JSON.stringify(body);
+  res.writeHead(status, {
+    'content-type': 'application/json',
+    'content-length': Buffer.byteLength(payload),
+    ...headers,
+  });
+  res.end(payload);
+}
+
+/** For the routes that answer a log or a config file rather than JSON. */
+export function sendText(res, status, text, headers = {}) {
+  const payload = Buffer.from(text, 'utf8');
+  res.writeHead(status, {
+    'content-type': 'text/plain; charset=utf-8',
+    'content-length': payload.length,
+    ...headers,
+  });
+  res.end(payload);
+}
+
+/** 204 has no body, and a browser reads a Set-Cookie off it just the same. */
+export function sendEmpty(res, status, headers = {}) {
+  res.writeHead(status, headers);
+  res.end();
+}
+
+export async function readBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  if (chunks.length === 0) return {};
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    return {};
+  }
+}
+
+export function parseCookies(header) {
+  const cookies = new Map();
+  for (const pair of (header ?? '').split(';')) {
+    const separator = pair.indexOf('=');
+    if (separator < 1) continue;
+    const name = pair.slice(0, separator).trim();
+    if (name) cookies.set(name, pair.slice(separator + 1).trim());
+  }
+  return cookies;
+}
+
+/**
+ * Answers an action the way the manager does, with the run's own event stream.
+ *
+ * deploy, stop and deploy-uploader are scripts, and the manager writes the
+ * status line before the script starts, so a 200 here says it began and
+ * nothing more. The exit code travels in the last frame, which is what the
+ * page reads to tell a start that worked from one that did not.
+ */
+export function sendScriptRun(res, script, args, code = 0) {
+  res.writeHead(200, {
+    'content-type': 'text/event-stream',
+    'cache-control': 'no-cache, no-transform',
+    connection: 'keep-alive',
+  });
+  res.write(`event: start\ndata: ${JSON.stringify({ script, args })}\n\n`);
+  res.write(`event: done\ndata: ${JSON.stringify({ code })}\n\n`);
+  res.end();
+}

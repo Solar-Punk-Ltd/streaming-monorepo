@@ -1,0 +1,595 @@
+import {
+  ABR_RUNG_COMPONENTS,
+  ABR_UPLOADER_KIND,
+  BEE_UPLOADER_SERVICE,
+  beePublishersProblem,
+  beeUrlProblem,
+  rpcEndpointProblem,
+  defaultServicesFor,
+  engineForComponents,
+  hasConflictingEngines,
+  impliedRpcEndpointSource,
+  LADDER_GROUP_NAME_MAX,
+  type NodeMode,
+  NODE_MODES,
+  normalizeBeePublishers,
+  OME_SERVICE,
+  RPC_ENDPOINT_SOURCES,
+  type RpcEndpointSource,
+  rpcEndpointChoiceProblem,
+  SRT_PASSPHRASE_MESSAGE,
+  SRT_PASSPHRASE_RE,
+} from '@streaming-infra-manager/common';
+import { array, boolean, number, object, string, InferType } from 'yup';
+
+import { ALL_SERVICES, PROFILE_KINDS } from '../types/index.js';
+
+import { managerAdminTokenField, newDeploymentSettingsField } from './deploymentSettings.js';
+import { ENGINE_SETTING_VALUE_FIELDS } from './engineSettingValues.js';
+
+const ONE_ENGINE_MESSAGE =
+  'components may include at most one engine (srs or ome, not both)';
+
+const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,30}$/;
+
+const HOST_RE = /^[a-zA-Z0-9][a-zA-Z0-9._@-]{0,127}$/; // like localhost or "user@host"
+const ETH_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
+const STAMP_ID_RE = /^(0x)?[0-9a-fA-F]{64}$/;
+// The stack's deploy script checks the --feed-topic flag against this shape
+// (_lib.sh, require_override_shape), and the manager passes the topic as that
+// flag, so anything wider stores a deployment no deploy can run.
+const FEED_TOPIC_RE = /^[A-Za-z0-9._-]{1,64}$/;
+
+// Four `rung@url<batch>` entries come to ~500 chars. This is headroom, not a
+// format rule. beePublishersProblem is the rule.
+const BEE_PUBLISHERS_MAX = 2000;
+
+/**
+ * A pasted BEE_PUBLISHERS. Validated here, where the operator can still fix it,
+ * against the same rules the uploader applies when it starts, on another
+ * machine, where the failure would be a container that will not come up.
+ */
+const beePublishersField = () =>
+  string()
+    .nullable()
+    .notRequired()
+    .max(BEE_PUBLISHERS_MAX)
+    // Canonicalise before the tests run, so what is stored is what was
+    // accepted: entries separated by single spaces, batch ids lower-case and
+    // un-prefixed. A four-line paste and an 0x-prefixed batch id both parse
+    // fine here but are refused by the uploader on the other machine, see
+    // normalizeBeePublishers. Left untouched when it does not parse, so the
+    // shape error below still quotes what the operator typed.
+    .transform((value) => normalizeBeePublishers(value))
+    .test('bee-publishers', 'invalid bee_publishers', function (value) {
+      const problem = beePublishersProblem(value);
+      return problem
+        ? this.createError({ message: `bee_publishers: ${problem}` })
+        : true;
+    })
+    // An abr-uploader is defined by publishing to a pool. Without the value it
+    // is a streamer with no Bee node and no postage. It would deploy and never
+    // upload anything.
+    .test('required-for-abr-uploader', 'bee_publishers required', function (v) {
+      const { kind } = this.parent as { kind?: string };
+      if (kind !== ABR_UPLOADER_KIND || (v && v.trim())) return true;
+      return this.createError({
+        message: `bee_publishers is required for a ${ABR_UPLOADER_KIND} — paste it from an ABR node pool`,
+      });
+    });
+
+/**
+ * An explicit bee API URL. Refused alongside `bee_publishers`, which the
+ * uploader reads instead, so a config cannot say two different things about
+ * where uploads go.
+ */
+const beeUrlField = () =>
+  string()
+    .nullable()
+    .notRequired()
+    .max(255)
+    .test('bee-url', 'invalid bee_url', function (value) {
+      const problem = beeUrlProblem(value);
+      if (problem) return this.createError({ message: `bee_url: ${problem}` });
+      if (!value || !value.trim()) return true;
+      const { bee_publishers } = this.parent as { bee_publishers?: string | null };
+      if (bee_publishers && bee_publishers.trim()) {
+        return this.createError({
+          message:
+            'bee_url is not used when bee_publishers is set — the uploader publishes to the pool',
+        });
+      }
+      return true;
+    });
+
+/**
+ * The chain endpoint this deployment's Bee nodes reach, or nothing for the one
+ * its stack version carries. Per deployment because the shipped default is a
+ * public RPC that throttles, and an operator running their own endpoint has to
+ * be able to move one deployment onto it without moving the rest.
+ */
+const rpcEndpointField = () =>
+  string()
+    .nullable()
+    .notRequired()
+    // Blank is null and nothing else, because the column carries a CHECK that
+    // the value looks like an address, so a blank one reaching the write is a
+    // raw database error rather than an answer. `nullify` maps only undefined.
+    .transform((value: unknown) =>
+      typeof value === 'string' ? value.trim() || null : value,
+    )
+    .max(255)
+    .test('rpc-endpoint', 'invalid rpc_endpoint', function (value) {
+      const problem = rpcEndpointProblem(value);
+      return problem
+        ? this.createError({ message: `rpc_endpoint: ${problem}` })
+        : true;
+    });
+
+/**
+ * What the route tells the schema about the manager itself, which no request
+ * body carries: whether this manager has a chain endpoint of its own to offer.
+ */
+export interface ProfileSchemaContext {
+  managerHasEndpoint?: boolean;
+}
+
+function managerHasEndpoint(options: { context?: unknown }): boolean {
+  return Boolean((options.context as ProfileSchemaContext | undefined)?.managerHasEndpoint);
+}
+
+/**
+ * How much of a chain this deployment's Bee node runs with. Absent means the
+ * mode the stack ships that node in, which is what every existing deployment
+ * runs. Chosen when the deployment is created: an update carries the field so
+ * that a different mode can be refused rather than silently ignored, and
+ * ProfileService is what compares it against the stored one, because no update
+ * body says what the deployment is.
+ */
+const nodeModeField = () =>
+  string()
+    .nullable()
+    .notRequired()
+    .oneOf(
+      [...NODE_MODES, null],
+      `node_mode must be one of ${NODE_MODES.join(', ')}`,
+    );
+
+/** The fields an endpoint choice is judged against, from whichever body carries it. */
+interface EndpointChoiceBody {
+  rpc_endpoint?: string | null;
+  node_mode?: NodeMode | null;
+  kind?: string;
+  components?: string[] | null;
+  abr_ladder?: boolean;
+}
+
+/** The services one deployment's body describes. */
+function servicesOfBody(body: EndpointChoiceBody): string[] {
+  return defaultServicesFor({
+    kind: body.kind ?? 'custom',
+    components: body.components,
+  });
+}
+
+/**
+ * The services each member of a group's body describes.
+ *
+ * A node pool's members are one Bee node each whatever `components` carries,
+ * because the ladder fixes them, so judging such a body by its components would
+ * apply a gateway's rules to four publishers.
+ */
+function servicesOfMember(body: EndpointChoiceBody): string[] {
+  return body.abr_ladder ? [...ABR_RUNG_COMPONENTS] : servicesOfBody(body);
+}
+
+/**
+ * Where this deployment's node reaches the chain: the manager's own endpoint,
+ * the stack's default, or the address in `rpc_endpoint`.
+ *
+ * The rule is `rpcEndpointChoiceProblem`, stated once in common and asked here
+ * so an operator gets a field-scoped message, and again in ProfileService over
+ * the resulting row. Both, because a create body carries the services and an
+ * update body carries neither `kind` nor `components`: the light-gateway rule
+ * cannot be judged here on an update, and a body that names no source at all
+ * means the stored one, which only the service can see.
+ */
+const rpcEndpointSourceField = (
+  onCreate: boolean,
+  servicesOf: (body: EndpointChoiceBody) => string[] = servicesOfBody,
+) =>
+  string()
+    .notRequired()
+    .oneOf(
+      [...RPC_ENDPOINT_SOURCES, undefined],
+      `rpc_endpoint_source must be one of ${RPC_ENDPOINT_SOURCES.join(', ')}`,
+    )
+    .test('rpc-endpoint-choice', 'invalid rpc_endpoint_source', function (value) {
+      const body = this.parent as EndpointChoiceBody;
+      const { rpc_endpoint: url, node_mode: nodeMode } = body;
+      if (value === undefined && !onCreate) return true;
+      if (!onCreate && value === 'custom' && url === undefined) return true;
+      const problem = rpcEndpointChoiceProblem({
+        source:
+          (value as RpcEndpointSource | undefined) ??
+          impliedRpcEndpointSource({
+            url,
+            managerHasEndpoint: managerHasEndpoint(this.options),
+            nodeMode,
+            services: servicesOf(body),
+          }),
+        url,
+        managerHasEndpoint: managerHasEndpoint(this.options),
+        nodeMode,
+        services: servicesOf(body),
+      });
+      return problem
+        ? this.createError({ message: `rpc_endpoint_source: ${problem}` })
+        : true;
+    });
+
+/**
+ * The stack version a new deployment runs. Absent means the default one.
+ * Whether the id names a version, and whether that version has finished
+ * building, is the service's to answer.
+ */
+const stackVersionIdField = () =>
+  number()
+    .notRequired()
+    .integer('stack_version_id must be a whole number')
+    .positive('stack_version_id must be a positive number');
+
+/**
+ * The engine settings a new deployment is created with, or nothing at all.
+ *
+ * Nothing is not an empty object. An absent field leaves the column at its
+ * default and the container starts on whatever the version's own entrypoints
+ * fall back to, which is what an API create with no opinion has always got and
+ * still gets. The wizard is the caller that has one, because it offers a
+ * segment length before the deployment exists and the settings route cannot
+ * take the value a moment later: a profile is DEPLOYING from the instant create
+ * returns, and that route refuses a busy deployment.
+ *
+ * A key neither engine reads is dropped here, where the engine settings route
+ * refuses it by name, because that route's body replaces a set already stored.
+ * The bounds, the choices and the cross-field rules are not here, for the
+ * reason the route gives: `engineSettingsProblem` owns them, and
+ * ProfileService calls it with the version's own defaults so the pair is
+ * judged against the host this deployment will run on.
+ */
+const engineSettingsField = () =>
+  object(ENGINE_SETTING_VALUE_FIELDS)
+    .notRequired()
+    .default(undefined)
+    .noUnknown(true);
+
+export const profileNameSchema = object({
+  name: string()
+    .required()
+    .matches(PROFILE_NAME_RE, 'name must match /^[a-z0-9][a-z0-9-]{0,30}$/'),
+}).strict();
+
+export const createProfileSchema = object({
+  name: string()
+    .required()
+    .matches(PROFILE_NAME_RE, 'name must match /^[a-z0-9][a-z0-9-]{0,30}$/'),
+  kind: string()
+    .oneOf([...PROFILE_KINDS])
+    .default('custom'),
+  notes: string().nullable().notRequired().max(500),
+  host: string()
+    .notRequired()
+    .matches(HOST_RE, 'host must be "localhost", an ssh alias, or user@host'),
+  components: array()
+    .of(
+      string()
+        .required()
+        .oneOf([...ALL_SERVICES]),
+    )
+    .notRequired()
+    .test('one-engine', ONE_ENGINE_MESSAGE, (v) => !hasConflictingEngines(v)),
+  feed_owner: string()
+    .notRequired()
+    .matches(
+      ETH_ADDRESS_RE,
+      'feed_owner must be a 0x-prefixed Ethereum address',
+    ),
+  feed_topic: string()
+    .notRequired()
+    .matches(
+      FEED_TOPIC_RE,
+      'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters',
+    ),
+  private_key: string()
+    .notRequired()
+    .matches(PRIVATE_KEY_RE, 'private_key must be 0x + 64 hex chars')
+    // The uploader declares `streamKey: required('STREAM_KEY')` and derives the
+    // catalog feed's owner from it, so one is not optional for a deployment
+    // whose only job is to publish. Without it the container throws at config
+    // load and restarts forever, while the manager reports RUNNING throughout.
+    .test('required-for-abr-uploader', 'private_key required', function (v) {
+      const { kind } = this.parent as { kind?: string };
+      if (kind !== ABR_UPLOADER_KIND || (v && v.trim())) return true;
+      return this.createError({
+        message: `private_key is required for a ${ABR_UPLOADER_KIND} — it is the uploader's STREAM_KEY, and it cannot start without one`,
+      });
+    }),
+  public_key: string()
+    .notRequired()
+    .matches(
+      ETH_ADDRESS_RE,
+      'public_key must be a 0x-prefixed Ethereum address',
+    ),
+  stamp_id: string()
+    .notRequired()
+    .matches(
+      STAMP_ID_RE,
+      'stamp_id must be 32-byte hex (optionally 0x-prefixed)',
+    ),
+  bee_publishers: beePublishersField().test(
+    'bee-publishers-srs-only',
+    'bee_publishers requires the srs engine — the ABR ladder is SRS-only',
+    function (value) {
+      if (!value || !value.trim()) return true;
+      const { components } = this.parent as { components?: string[] | null };
+      return engineForComponents(components) !== OME_SERVICE;
+    },
+  ),
+  rpc_endpoint: rpcEndpointField(),
+  rpc_endpoint_source: rpcEndpointSourceField(true),
+  node_mode: nodeModeField(),
+  bee_url: beeUrlField().test(
+    'bee-url-needs-no-local-node',
+    'bee_url has no effect alongside a local bee-uploader',
+    function (value) {
+      if (!value || !value.trim()) return true;
+      const { kind, components } = this.parent as {
+        kind?: string;
+        components?: string[] | null;
+      };
+      // deploy.sh's resolve_bee_url overwrites BEE_URL whenever a local
+      // bee-uploader is enabled, so accepting one here would store a value that
+      // silently never applies.
+      const services = defaultServicesFor({ kind: kind ?? 'custom', components });
+      return !services.includes(BEE_UPLOADER_SERVICE)
+        ? true
+        : this.createError({
+            message:
+              'bee_url only applies to a deployment that runs no bee-uploader — remove that component to point the uploader at an external node',
+          });
+    },
+  ),
+  srt_passphrase: string()
+    .notRequired()
+    .matches(SRT_PASSPHRASE_RE, `srt_passphrase ${SRT_PASSPHRASE_MESSAGE}`),
+  stack_version_id: stackVersionIdField(),
+  engine_settings: engineSettingsField(),
+  stack_settings: newDeploymentSettingsField(),
+  use_manager_admin_token: managerAdminTokenField(),
+}).noUnknown(true);
+
+export type CreateProfileInput = InferType<typeof createProfileSchema>;
+
+/** The services a comma list names, the empty entries left out. */
+export function servicesOfList(value: string | null | undefined): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((service) => service.trim())
+    .filter(Boolean);
+}
+
+/**
+ * The deployment a settings list is asked for before it exists, from the query
+ * of `GET /versions/:id/settings-catalog`: its kind, its services as a comma
+ * list, and its host, each held to the rule a create body holds it to.
+ */
+export const newDeploymentShapeQuerySchema = object({
+  kind: string()
+    .oneOf([...PROFILE_KINDS])
+    .default('custom'),
+  components: string()
+    .notRequired()
+    .test(
+      'known-services',
+      `components must be a comma list of ${ALL_SERVICES.join(', ')}`,
+      (value) => servicesOfList(value).every((service) => (ALL_SERVICES as readonly string[]).includes(service)),
+    )
+    .test('one-engine', ONE_ENGINE_MESSAGE, (value) => !hasConflictingEngines(servicesOfList(value))),
+  host: string()
+    .notRequired()
+    .matches(HOST_RE, 'host must be "localhost", an ssh alias, or user@host'),
+}).noUnknown(true);
+
+export const updateProfileSchema = object({
+  notes: string().nullable().notRequired().max(500),
+  /** The revision the drawer loaded the notes at. Sent with an edited note. */
+  notes_revision: number().integer().min(0).notRequired(),
+  feed_owner: string()
+    .notRequired()
+    .matches(
+      ETH_ADDRESS_RE,
+      'feed_owner must be a 0x-prefixed Ethereum address',
+    ),
+  feed_topic: string()
+    .notRequired()
+    .matches(
+      FEED_TOPIC_RE,
+      'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters',
+    ),
+  private_key: string()
+    .notRequired()
+    .matches(PRIVATE_KEY_RE, 'private_key must be 0x + 64 hex chars'),
+  public_key: string()
+    .notRequired()
+    .matches(
+      ETH_ADDRESS_RE,
+      'public_key must be a 0x-prefixed Ethereum address',
+    ),
+  stamp_id: string()
+    .notRequired()
+    .matches(
+      STAMP_ID_RE,
+      'stamp_id must be 32-byte hex (optionally 0x-prefixed)',
+    ),
+  // Neither the engine nor the components are in an update body. writeProfileEnv
+  // refuses an OME profile at deploy time, and components are immutable after
+  // the first deploy so the bee-uploader check cannot newly fail here.
+  bee_publishers: beePublishersField(),
+  bee_url: beeUrlField(),
+  rpc_endpoint: rpcEndpointField(),
+  rpc_endpoint_source: rpcEndpointSourceField(false),
+  node_mode: nodeModeField(),
+  srt_passphrase: string()
+    .notRequired()
+    .matches(SRT_PASSPHRASE_RE, `srt_passphrase ${SRT_PASSPHRASE_MESSAGE}`),
+}).noUnknown(true);
+
+export type UpdateProfileInput = InferType<typeof updateProfileSchema>;
+
+export const removeProfileSchema = object({
+  expectedInstanceId: string().optional().uuid('expectedInstanceId must be a deployment instance UUID'),
+}).noUnknown(true).strict();
+
+export type RemoveProfileInput = InferType<typeof removeProfileSchema>;
+
+export const removeGroupSchema = object({
+  expectedName: string().required().matches(PROFILE_NAME_RE, 'expectedName must be a group name'),
+}).noUnknown(true).strict();
+
+export type RemoveGroupInput = InferType<typeof removeGroupSchema>;
+
+export const updateNotesSchema = object({
+  notes: string().nullable().defined().max(500),
+  /** The revision the page loaded the notes at. A moved one refuses the save. */
+  notes_revision: number().integer().min(0).required(),
+}).noUnknown(true);
+
+export type UpdateNotesInput = InferType<typeof updateNotesSchema>;
+
+export const createGroupSchema = object({
+  group_name: string()
+    .required()
+    .matches(
+      PROFILE_NAME_RE,
+      'group_name must match /^[a-z0-9][a-z0-9-]{0,30}$/',
+    )
+    // A ladder member is named `<group>-<rung>`, and profile names cap at 31
+    // characters, so a ladder's group name has less room than an ordinary one.
+    // Caught here rather than as a check-constraint violation partway through
+    // creating the group.
+    .test(
+      'ladder-name-fits',
+      `group_name must be at most ${LADDER_GROUP_NAME_MAX} characters for an ABR node pool, so that <group>-<rung> member names stay within 31`,
+      function (value) {
+        const { abr_ladder } = this.parent as { abr_ladder?: boolean };
+        if (!abr_ladder || !value) return true;
+        return value.length <= LADDER_GROUP_NAME_MAX;
+      },
+    ),
+  /**
+   * Deploy one bee-uploader per ABR quality rung, named `<group>-<rung>`. Size and
+   * components are fixed by the ladder. Anything passed for them is ignored.
+   */
+  abr_ladder: boolean().notRequired(),
+  size: number().required().integer().min(1),
+  kind: string()
+    .oneOf([...PROFILE_KINDS])
+    .default('custom'),
+  notes: string().nullable().notRequired().max(500),
+  host: string()
+    .notRequired()
+    .matches(HOST_RE, 'host must be "localhost", an ssh alias, or user@host'),
+  components: array()
+    .of(
+      string()
+        .required()
+        .oneOf([...ALL_SERVICES]),
+    )
+    .notRequired()
+    .test('one-engine', ONE_ENGINE_MESSAGE, (v) => !hasConflictingEngines(v)),
+  feed_owner: string()
+    .notRequired()
+    .matches(
+      ETH_ADDRESS_RE,
+      'feed_owner must be a 0x-prefixed Ethereum address',
+    ),
+  feed_topic: string()
+    .notRequired()
+    .matches(
+      FEED_TOPIC_RE,
+      'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters',
+    ),
+  private_key: string()
+    .notRequired()
+    .matches(PRIVATE_KEY_RE, 'private_key must be 0x + 64 hex chars'),
+  public_key: string()
+    .notRequired()
+    .matches(
+      ETH_ADDRESS_RE,
+      'public_key must be a 0x-prefixed Ethereum address',
+    ),
+  stamp_id: string()
+    .notRequired()
+    .matches(
+      STAMP_ID_RE,
+      'stamp_id must be 32-byte hex (optionally 0x-prefixed)',
+    ),
+  srt_passphrase: string()
+    .notRequired()
+    .matches(SRT_PASSPHRASE_RE, `srt_passphrase ${SRT_PASSPHRASE_MESSAGE}`),
+  // One answer for every member, as the engine settings are: see
+  // SharedProfileParams for why a pool cannot have one rung on the chain and
+  // another off it.
+  rpc_endpoint: rpcEndpointField(),
+  rpc_endpoint_source: rpcEndpointSourceField(true, servicesOfMember),
+  node_mode: nodeModeField(),
+  stack_version_id: stackVersionIdField(),
+  engine_settings: engineSettingsField(),
+  // One list for every member, as the engine settings are.
+  stack_settings: newDeploymentSettingsField(),
+  // Each member gets its own copy of the one stored token.
+  use_manager_admin_token: managerAdminTokenField(),
+}).noUnknown(true);
+
+export type CreateGroupInput = InferType<typeof createGroupSchema>;
+
+export const groupIdParamSchema = object({
+  id: string()
+    .required()
+    .matches(/^[1-9]\d*$/, 'id must be a positive integer')
+    .test('group-id-range', 'id must fit a group identifier', value => value !== undefined && Number(value) <= 2_147_483_647),
+}).strict();
+
+export const updateGroupConfigSchema = object({
+  notes: string().nullable().notRequired().max(500),
+  feed_owner: string()
+    .notRequired()
+    .matches(
+      ETH_ADDRESS_RE,
+      'feed_owner must be a 0x-prefixed Ethereum address',
+    ),
+  feed_topic: string()
+    .notRequired()
+    .matches(
+      FEED_TOPIC_RE,
+      'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters',
+    ),
+  stamp_id: string()
+    .notRequired()
+    .matches(
+      STAMP_ID_RE,
+      'stamp_id must be 32-byte hex (optionally 0x-prefixed)',
+    ),
+  srt_passphrase: string()
+    .notRequired()
+    .matches(SRT_PASSPHRASE_RE, `srt_passphrase ${SRT_PASSPHRASE_MESSAGE}`),
+}).noUnknown(true);
+
+export type UpdateGroupConfigInput = InferType<typeof updateGroupConfigSchema>;
+
+export const addMembersSchema = object({
+  count: number().required().integer().min(1),
+}).noUnknown(true);
+
+export type AddMembersInput = InferType<typeof addMembersSchema>;
