@@ -70,7 +70,22 @@ describe('deploy/deploy.sh', () => {
   });
 
   it('pins the stack commit from the repository itself, not from a checkout of the submodule', () => {
-    assert.match(script, new RegExp(`git rev-parse HEAD:manager/swarm-hls-stream > manager/${STACK_COMMIT_FILE.replace('.', '\\.')}`));
+    // `./` reads the path from the folder the script runs in rather than from the repository root,
+    // so the pin is found when the repository holds the manager in a subfolder too.
+    assert.match(script, new RegExp(`git rev-parse HEAD:\\./manager/swarm-hls-stream > manager/${STACK_COMMIT_FILE.replace('.', '\\.')}`));
+  });
+
+  it('records a digest of the manager tree alone, even from a repository that holds more than the manager', () => {
+    assert.match(script, /MANAGER_DIGEST="\$\(git ls-tree -r HEAD \| shasum -a 256 \| cut -c1-64\)"/);
+    assert.equal(script.includes('--full-tree'), false, 'the listing stays inside the folder the script runs in');
+    assert.ok(script.indexOf('cd "$REPO_ROOT"') < script.indexOf('MANAGER_DIGEST='), 'which is the manager folder by then');
+  });
+
+  it('names the compose project manager in the file itself, the name the volume probe and the upgrade use', () => {
+    const compose = readFileSync(join(here, '..', '..', 'docker-compose.yml'), 'utf8');
+    assert.match(compose, /^name: manager$/m, 'the project name does not come from the folder the file sits in');
+    assert.ok(script.includes(`POSTGRES_VOLUME="manager_${MANAGER_POSTGRES_VOLUME}"`), 'the data volume the deploy looks for carries it');
+    assert.ok(script.includes('--project manager'), 'and so does the upgrade');
   });
 
   it('builds nothing of the streaming stack here, because the host fetches and builds it', () => {
