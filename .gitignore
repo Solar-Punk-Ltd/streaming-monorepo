@@ -11,10 +11,10 @@ coverage/
 !.env.sample
 .pnpm-store/
 
-# Written by deploy/deploy.sh on every deploy.
-deploy/.deployed-commit
-# Written by deploy/edge.sh from deploy/edge/.env, which `.env` above already
+# Written by apps/web2-admin/deploy/deploy.sh on every deploy.
+apps/web2-admin/deploy/.deployed-commit
+# Written by infra/edge/edge.sh from infra/edge/.env, which `.env` above already
 # keeps out. Both name one deployment's domains. The .tmp is the render in
 # progress.
-deploy/edge/Caddyfile
-deploy/edge/Caddyfile.tmp
+infra/edge/Caddyfile
+infra/edge/Caddyfile.tmp
