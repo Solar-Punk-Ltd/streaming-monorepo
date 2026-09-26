@@ -1,0 +1,287 @@
+import {
+  addingStreamToList,
+  catalogStateLost,
+  datingReanchored,
+  encoderReturned,
+  engineSkippedSegments,
+  finalizeResumed,
+  ladderFinalized,
+  manifestUploaded,
+  omeSegmentLossReported,
+  originDeclaredDiscontinuity,
+  publishingRendition,
+  replacedSessionFinalized,
+  rungAnnounced,
+  rungBatchRefused,
+  segmentDurationUnread,
+  segmentsNeverArrived,
+  segmentUploaded,
+  segmentUploadFailed,
+  streamStopped,
+  updatingStreamToVod,
+} from '@swarm-hls-stream/shared';
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import { containerName, loadConfig } from '../../src/config.js';
+import {
+  deployedLogShapeRefusal,
+  deployedLogShapeSummary,
+  type DeployedMessage,
+  deployedMessage,
+} from '../../src/deployedLogShape.js';
+import { makeHost } from '../../src/harness/host.js';
+
+/**
+ * Preflight, in one sentence: the uploader deployed on this stage must write the log lines this
+ * harness reads its answers out of, or every upload-side scenario measures a silence.
+ *
+ * ⛔⛔⛔ **The failure this exists for, walked into on 2026-09-01 at the cost of a paid sitting.**
+ * `Manifest uploaded at SOC index N` gained a stream id that morning, because on a four rung ladder
+ * the four SOC counters were indistinguishable. `bench-on-host.sh` syncs this repo to the host and
+ * runs the harness from it. It does NOT redeploy the uploader, which ships as a prebuilt `dist/`.
+ * So the harness looked for the new line, the deployment wrote the old one, and `bee-outage-long`
+ * and `service/happy-path` both went red for "manifest publishes never resumed" against a stage that
+ * was publishing manifests the entire time. Two false reds, both reading as product faults.
+ *
+ * `logLevel.ts` already guards the sibling precondition, that the deployment's `LOG_LEVEL` admits
+ * these lines at all. It guards the LEVEL. Nothing guarded the SHAPE.
+ *
+ * ⚠️ **It reads the container's built code, not a log.** A preflight runs before anything publishes,
+ * so there is no recent window holding these lines to sample, and an idle stage would look identical
+ * to a stale one. The composed messages' fixed halves survive bundling as literals, so grepping
+ * `dist` answers the question with no broadcast, no stamp and no BZZ. It proves the deployment CAN
+ * write the line rather than that it did, which is the right question: a scenario waiting for a line
+ * already knows how to fail when it never comes, and cannot survive one arriving unreadable.
+ *
+ * ⛔⛔ THE REFUSAL ONLY STOPS THE SPEND BECAUSE OF THE `&&` IN `test:e2e`. KEEP THEM TOGETHER. See
+ * `spend-ceiling.test.ts`, which records why at length.
+ *
+ * The rule lives in `src/deployedLogShape.ts` because nothing under `suites/` runs in CI. It is
+ * covered by `test/deployedLogShape.test.ts` and therefore by `pnpm verify`, leaving this file as
+ * the list of messages, the wiring and a failure message.
+ */
+
+/** Read at module scope: a throw inside `describe` prints `not ok` and still exits 0. */
+const cfg = loadConfig();
+
+/**
+ * The lines the harness parses whose wording is a contract with the deployment.
+ *
+ * Composed through `packages/shared/src/uploaderLog.ts` rather than written out, so this list cannot
+ * drift from the producer the way a copied string would. A line the harness reads that is NOT here
+ * is a line a stale deployment can still break silently.
+ *
+ * ⚠️ Two entries refuse a deployment built before the messages moved into the contract, even though
+ * the words never changed. The catalog line used to be assembled from two string literals joined by
+ * a `+`, so the fragment spanning the join was in no built file, and the OME line lived under
+ * `dist/engines/`, which this gate did not read until the `cat` below was widened. Both now compose
+ * in the shared module the gate reads either way. One redeploy answers it, which is what the refusal
+ * already asks for.
+ *
+ * ⛔⛔⛔ **One entry refuses every live suite on this stage right now, and it is meant to.** The
+ * batch-refusal line landed in this checkout on 2026-09-04 and the deployed uploader has not been
+ * rebuilt since, so this gate refuses until `deploy/scripts/deploy.sh` has run against a head that
+ * carries it. That redeploy is the step before the next live run rather than a defect here. Adding
+ * the entry only after the redeploy would have been the wrong order: a drain suite reading no
+ * refusal line reports the encoder for a batch the operator emptied on purpose, and telling those
+ * two apart afterwards costs a sitting.
+ */
+const PARSED_MESSAGES: readonly DeployedMessage[] = [
+  deployedMessage(
+    'manifest publishes',
+    (stream, index) => manifestUploaded(stream, index),
+    'service/happy-path and the freeze regression guard in bee-outage-long',
+  ),
+  deployedMessage(
+    'per-segment uploads',
+    // ⚠️ Every substituted value takes the placeholder, including the ones this line does not vary
+    // on. Passing a real-looking string instead bakes it into the fixed half, and the gate then
+    // demands the deployment contain the word "reference".
+    (stream, index) => segmentUploaded(stream, index, stream),
+    'every scenario that counts segments or checks they are gapless',
+  ),
+  deployedMessage(
+    'rung announces',
+    (stream) => publishingRendition(stream, stream),
+    'the ABR ladder suite, which reads how many rungs actually published',
+  ),
+  deployedMessage(
+    'session topics',
+    (stream) => rungAnnounced(stream, stream, stream, stream),
+    'every ladder scenario, which scopes its assertions to the topics announced in its own window',
+  ),
+  deployedMessage(
+    'catalog announces',
+    (stream) => addingStreamToList(stream),
+    'the broadcast identification every upload-side scenario does on a single-rendition deployment, ' +
+      'and the feed location the bench resolves before it reads a single segment',
+  ),
+  deployedMessage(
+    'single-rendition VOD flips',
+    (stream) => updatingStreamToVod(stream),
+    'the recording-finalized wait in publish-stop-to-vod, finalize-crash, whole-stack-restart, ' +
+      'reconnect-during-drain, recovery-entry-corrupt, vod-playback and broadcast-ended, on a ' +
+      'single-rendition deployment',
+  ),
+  deployedMessage(
+    'ladder VOD flips',
+    (stream) => ladderFinalized(stream),
+    'the same recording-finalized wait in those seven scenarios on a ladder deployment, where no ' +
+      'rung flips its own entry and the group flip is the only evidence a broadcast ended',
+  ),
+  deployedMessage(
+    'session ends',
+    (stream) => streamStopped(stream),
+    "reconnect-during-drain's ladder path, which waits for every outgoing rung's session to end",
+  ),
+  deployedMessage(
+    'replaced session ends',
+    (stream) => replacedSessionFinalized(stream),
+    'the same wait, for a rung whose drain lost the race to its own reconnect, which is the half of ' +
+      'that scenario nothing else can observe',
+  ),
+  // ⛔ The seven below are one counter, `discontinuitiesArmed`, which counts the uploader announcing a
+  // lost segment or a declared break. Six suites assert it is zero on a clean run, so a line nothing
+  // matches does not fail them, it passes them for ever on a stage losing segments all night. A
+  // vacuous green is the worst thing this gate can be asked to prevent, which is why each of the
+  // seven is listed rather than the family.
+  //
+  // ⚠️ Only the third, the fifth and the seventh are a break. Since the owner's ruling of 2026-09-06
+  // the other four report a lost segment, whose hole the playlist says with `#EXT-X-GAP` entries
+  // instead.
+  //
+  // ⛔⛔ **The seventh refuses every live suite on this stage until the uploader is redeployed, and
+  // that is deliberate.** It landed in this checkout on 2026-09-22 with the reconnect window, and the
+  // deployed uploader ships a prebuilt `dist/`, so this gate refuses until `deploy/scripts/deploy.sh`
+  // has run against a head carrying it. Listing it only after the redeploy would be the wrong order,
+  // for the reason the batch-refusal entry below gives at length: a suite that cannot see a break
+  // reports a broadcast as clean when it survived an outage, and telling those two apart afterwards
+  // costs a sitting.
+  deployedMessage(
+    'a spent retry window, which loses the segment in flight',
+    (stream, index) => segmentUploadFailed(stream, index),
+    'the zero-arm assertions in happy-path, abr-ladder, bee-outage-short, gateway-outage-viewer, ' +
+      'multi-stream-concurrent and crash-writer-bee-pause, which turn vacuously green rather than ' +
+      'red, the armed-count assertion in bee-outage-long, which fails red, and the segment indices ' +
+      'every one of them prints when it fails',
+  ),
+  deployedMessage(
+    'segments that never arrived',
+    (stream) => segmentsNeverArrived(stream, stream),
+    'the same seven assertions, for the path an engine that could not download from the origin takes',
+  ),
+  deployedMessage(
+    'discontinuities the origin declared',
+    (stream) => originDeclaredDiscontinuity(stream),
+    'the same seven assertions, for the one path that leaves the segment run gapless, so nothing else ' +
+      'in the suite can see it at all',
+  ),
+  deployedMessage(
+    'the discontinuity an encoder returning inside the reconnect window arms',
+    // ⚠️ Every substituted value takes the placeholder, the sequence and the two instants included,
+    // for the reason the entry above gives: a real-looking value bakes itself into the fixed half.
+    (text, index) => encoderReturned(index, text, text),
+    'the same seven assertions, for the path nothing else can see: an encoder that dropped and came ' +
+      'back keeps its session, so the segment carrying the marker is uploaded like any other and the ' +
+      'run either side of the join stays gapless. It is also the only line that says a broadcast ' +
+      'survived an outage rather than being two broadcasts',
+  ),
+  deployedMessage(
+    'losses the OME puller reported',
+    (stream) => omeSegmentLossReported(stream, stream, stream),
+    "the same seven assertions on an OME deployment, where this line is written beside the uploader's " +
+      'own and both have always counted, so losing it changes a count as well as blinding a check',
+  ),
+  deployedMessage(
+    'the discontinuity the engine’s own counter restarting arms',
+    (text, index) => datingReanchored(index, text, text),
+    'the same seven assertions, for the path that goes nowhere near `pendingDiscontinuity`: the ' +
+      'shipped SRS webhook declares no break of its own, so the reset is the only evidence there ' +
+      'is and the segment run stays gapless, which leaves nothing else in the suite able to see it',
+  ),
+  deployedMessage(
+    'a hole the uploader inferred from the numbering',
+    // ⚠️ Every substituted value takes the placeholder, the two indexes and the count included. A
+    // real-looking number instead bakes itself into the fixed half, and the gate then demands the
+    // deployment contain that number.
+    (stream, index) => engineSkippedSegments(index, index, stream, index),
+    "the same seven assertions, and scenario F's post-recovery wait, which is the only check in the " +
+      'suite that asks for this family by itself. It is the only kind of loss the shipped SRS path ' +
+      'produces: SRS posts each closed segment once and never retries, so a segment closed while ' +
+      'the uploader was dead is reported by nothing, the run either side of the hole stays gapless, ' +
+      'and a deployment that cannot write this line leaves F asserting a hole it cannot see',
+  ),
+  /**
+   * ⛔⛔⛔ **THIS ENTRY REFUSES EVERY LIVE SUITE UNTIL THE UPLOADER IS REDEPLOYED, AND THAT IS
+   * DELIBERATE.** The line landed in this checkout on 2026-09-04 and the deployed uploader ships a
+   * prebuilt `dist/`, so until `deploy/scripts/deploy.sh` has run against a head carrying it, this
+   * gate refuses. Listing it now rather than after the redeploy is the point: a drain suite that
+   * reads no refusal line reports the encoder for a batch it emptied itself, and an operator who has
+   * to be told which of those two happened has already paid for a sitting.
+   *
+   * ⚠️ Its batch id is cut to eight characters by the composer, which is why `messageLiterals` splits
+   * on shortened stand-ins as well as whole ones. Without that, the fragment carrying the cut-short
+   * placeholder became a literal no uploader ever built contains, and this gate refused every
+   * deployment for ever.
+   */
+  deployedMessage(
+    'a rung whose postage batch bee refused',
+    // ⚠️ The batch takes the placeholder too, even though the composer shortens it. A real-looking
+    // id instead bakes its first eight characters into the fixed half, and the gate then demands
+    // the deployment contain that id.
+    (stream, index) => rungBatchRefused(stream, stream, index, stream),
+    'both batch-drain suites, which tell a drained postage batch from a dead encoder by this line ' +
+      'and by nothing else. Every other instrument reports the two identically: the rung stops ' +
+      'uploading, its dropped count climbs, and the master stops offering it. A deployment that ' +
+      'cannot write it leaves scenario L waiting out its whole ceiling and then reporting the ' +
+      'uploader for a batch the operator drained on purpose',
+  ),
+  deployedMessage(
+    'the catalog giving up on its own previous state',
+    (stream, index) => catalogStateLost(stream, index),
+    "finalize-crash's discriminator, which is the only thing separating a genuine second finalize " +
+      'from a first one the catalog guard was blind to',
+  ),
+  deployedMessage(
+    'a finalize resuming rather than republishing after a crash',
+    (stream, index) => finalizeResumed(stream, index),
+    "resumedFinalizeCount, which reports whether finalize-crash's kill landed inside the window it " +
+      'aims at and was answered there. A deployment that cannot write this line still passes the ' +
+      'scenario, and passes it without anyone being able to say the window was ever exercised',
+  ),
+  deployedMessage(
+    'a segment the uploader could not read a duration out of',
+    (stream, index) => segmentDurationUnread(stream, index, index, stream),
+    "make:recording's refusal, which is the only thing standing between a segment that held no video " +
+      'and a recording handed back as good. Such a recording plays as sound over a blank picture for ' +
+      'its whole length, so the refusal going quiet costs the artifact rather than the run',
+  ),
+];
+
+describe('preflight — the deployed uploader writes the lines this harness reads', () => {
+  const host = makeHost(cfg);
+
+  it('is built from a checkout that agrees with this one about the messages', async () => {
+    const container = containerName(cfg, 'stream-uploader');
+    // The bundled contract module itself, which is where every composed message's literal halves
+    // end up, plus the uploader's own libs and engines for anything still written inline. The
+    // engines are read because one family's producer lives under `dist/engines/ome/`, so a gate
+    // stopping at `dist/libs/*.js` could only ever prove that line through the shared module.
+    const { stdout } = await host.run(
+      `docker exec ${container} sh -c ` +
+        `'cat dist/node_modules/@swarm-hls-stream/shared/uploaderLog.js dist/libs/*.js dist/engines/*/*.js 2>/dev/null'`,
+    );
+
+    assert.ok(
+      stdout.length > 0,
+      `read no built code out of ${container}. This gate cannot tell a stale deployment from an ` +
+        'unreadable one, so it refuses rather than passing: check the container is up and that the ' +
+        'uploader still ships a prebuilt dist/.',
+    );
+
+    const refusal = deployedLogShapeRefusal(PARSED_MESSAGES, stdout);
+    assert.equal(refusal, null, String(refusal));
+    console.log(`  ${deployedLogShapeSummary(PARSED_MESSAGES)}`);
+  });
+});

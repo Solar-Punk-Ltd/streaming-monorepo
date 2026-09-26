@@ -1,0 +1,637 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import { abandonedAnswerVerdict, fragmentSettleVerdict } from '../src/browser/fragmentRequests.js';
+import { type QualitySwitchVerdict } from '../src/browser/qualitySwitch.js';
+import { parseBrowserArmState } from '../src/harness/browser.js';
+import {
+  climbedBackRefusal,
+  keptPlayingRefusal,
+  levelsAskedForSummary,
+  qualityArmRefusal,
+  qualityArmSummary,
+  SQUEEZE_RECOVER_SECONDS,
+  SQUEEZE_SECONDS,
+  SQUEEZE_SETTLE_SECONDS,
+  squeezeArmMinutes,
+  steppedDownRefusal,
+  throttleRefusal,
+} from '../src/harness/qualityArm.js';
+
+import {
+  armState,
+  ASKED_FOR_A_CHEAPER_RUNG,
+  INSTRUMENT_UNPROVEN,
+  qualityArmState,
+  STEPPED_DOWN_AND_BACK,
+} from './helpers/browserArmFixtures.js';
+
+/**
+ * The questions a squeezed viewer's run is asked.
+ *
+ * `suites/viewer/quality-switch.test.ts` costs a broadcast and nothing under `suites/` runs in CI, so
+ * every rule it judges on is covered here: a rule written inline in a suite is a rule nothing checks
+ * until a paid broadcast is already burning.
+ */
+
+const E2E_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
+const CLEAN_ARM = { maxSegmentRequests: 9 };
+
+describe('how much wall clock one squeeze arm gets', () => {
+  it("outlasts the driver's own windows", () => {
+    const windows = SQUEEZE_SETTLE_SECONDS + SQUEEZE_SECONDS + SQUEEZE_RECOVER_SECONDS;
+
+    assert.ok(squeezeArmMinutes() * 60 > windows, `${windows}s of driver timeline has to fit inside`);
+  });
+
+  /**
+   * ⛔ Mirrored constants, so this is a grep rather than a promise. `browser/quality.ts` runs its own
+   * `main()` on import and cannot be read from a suite, so its three window defaults are restated in
+   * the harness. A default moved there and not here would size every arm against a timeline the
+   * driver no longer has, and the arm would be killed partway through the window it exists to watch.
+   */
+  it('mirrors the window defaults the quality driver actually declares', () => {
+    const driver = readFileSync(join(E2E_DIR, 'browser', 'quality.ts'), 'utf8');
+    const declared = (name: string): number => {
+      const match = new RegExp(`const ${name} = (\\d+);`).exec(driver);
+      assert.ok(match, `browser/quality.ts no longer declares ${name}`);
+      return Number(match[1]);
+    };
+
+    assert.equal(SQUEEZE_SETTLE_SECONDS, declared('DEFAULT_SETTLE_SECONDS'));
+    assert.equal(SQUEEZE_SECONDS, declared('DEFAULT_SQUEEZE_SECONDS'));
+    assert.equal(SQUEEZE_RECOVER_SECONDS, declared('DEFAULT_RECOVER_SECONDS'));
+  });
+});
+const SQUEEZED = parseBrowserArmState(qualityArmState()).quality as QualitySwitchVerdict;
+const wentThrough = (overrides: Partial<QualitySwitchVerdict>): QualitySwitchVerdict => ({ ...SQUEEZED, ...overrides });
+
+describe('whether a run is a viewer whose connection was squeezed', () => {
+  it('passes an in-tab arm that watched, was capped and reported what its player chose', () => {
+    assert.equal(qualityArmRefusal(parseBrowserArmState(qualityArmState()), CLEAN_ARM), null);
+  });
+
+  /**
+   * ⛔ The one that matters most here. A plain watch produces a full report with every playback figure
+   * in it, and a suite that read one as a quality-switch run would certify the ladder off a viewer
+   * whose connection was never touched.
+   */
+  it('refuses a plain watch, whose player had no reason to switch anything', () => {
+    const refusal = qualityArmRefusal(parseBrowserArmState(armState()), CLEAN_ARM);
+
+    assert.match(String(refusal), /never made worse/);
+  });
+
+  /** Before any figure is read. A throttled or hidden page produces numbers about the harness. */
+  it('refuses a run whose browser was not a usable instrument', () => {
+    const degraded = parseBrowserArmState(
+      qualityArmState({ instrument: { sound: false, failures: ['timer drift 61x the interval'] } }),
+    );
+
+    assert.match(String(qualityArmRefusal(degraded, CLEAN_ARM)), /timer drift 61x the interval/);
+  });
+
+  /**
+   * ⛔⛔⛔ The other half of the instrument check, which read nothing until 2026-09-16. Both sensors
+   * pass on the subject page by construction, so a proof the driver took and wrote into the artifact
+   * is the only thing that says the "sound" above could have come out the other way.
+   */
+  it('refuses a run whose instrument was never shown able to report a failure', () => {
+    const unproven = parseBrowserArmState(qualityArmState({ instrumentProofs: INSTRUMENT_UNPROVEN }));
+
+    assert.match(
+      String(qualityArmRefusal(unproven, CLEAN_ARM)),
+      /restatement of the launch flags rather than evidence/,
+    );
+  });
+
+  /**
+   * ⛔⛔ The refusal that cost a paid arm on 2026-08-30 by not existing. The gateway profile settled
+   * its viewer on 360p, the bottom rung, so no cap could give them anywhere to go. Failing them
+   * reported a property of the BYTE SOURCE as a defect in the ladder, and the message said "a ladder
+   * nobody descends" about a player that had behaved perfectly.
+   */
+  it('refuses a viewer who had nowhere to step down to, before asking anything of the ladder', () => {
+    const bottomRung = parseBrowserArmState(
+      qualityArmState({ squeeze: { ridingHeight: 360, cannotAsk: 'this viewer settled on 360p, the bottom' } }),
+    );
+
+    assert.match(String(qualityArmRefusal(bottomRung, CLEAN_ARM)), /cannot be asked whether the ladder adapts/);
+  });
+
+  it('refuses a run that decoded nothing, since there was no quality to switch', () => {
+    const blank = parseBrowserArmState(qualityArmState({ resolutions: [] }));
+
+    assert.match(String(qualityArmRefusal(blank, CLEAN_ARM)), /nothing was decoded/);
+  });
+
+  it('refuses a run whose picture never moved at all', () => {
+    const frozen = parseBrowserArmState(qualityArmState({ overallAdvanceRatio: 0 }));
+
+    assert.match(String(qualityArmRefusal(frozen, CLEAN_ARM)), /never moved forward/);
+  });
+
+  /** The byte source is the condition the reading is filed under, exactly as it is on a crash arm. */
+  it('refuses an arm whose byte source is not the one it asked for', () => {
+    const mismatched = parseBrowserArmState(
+      qualityArmState({ byteSource: { requested: 'weeb3', reported: 'gateway', settledForMs: 60_000 } }),
+    );
+
+    assert.match(String(qualityArmRefusal(mismatched, CLEAN_ARM)), /the switch did not take/);
+  });
+});
+
+describe('whether a squeezed run is evidence about the ladder', () => {
+  const advancing = (before: number, during: number): QualitySwitchVerdict =>
+    wentThrough({
+      before: { ...SQUEEZED.before, advance: { ratio: before, wallMs: 60_000, samples: 60 } },
+      during: { ...SQUEEZED.during, advance: { ratio: during, wallMs: 60_000, samples: 60 } },
+    });
+
+  it('accepts a run whose player adapted', () => {
+    assert.equal(throttleRefusal(SQUEEZED), null);
+  });
+
+  /**
+   * ⛔⛔⛔ THE READING THAT PROVED THE FIRST VERSION OF THIS GATE WRONG, and these are the measured
+   * numbers. In-tab, 2026-08-30: capped at 2800 kbps, the player's own estimate read 74221 kbps, and
+   * playback fell from 1.000 to 0.604 over the same window. The cap unmistakably reached the VIEWER.
+   * What it did not reach was the MEASUREMENT, because fragments leave a local node at memory speed
+   * and hls.js times the handover rather than the node's retrieval from Swarm.
+   *
+   * Gating on the estimate refused this run as a harness failure. It is a product failure: the viewer
+   * got worse and the ladder did not move.
+   */
+  it('accepts a run the player never measured, when the picture got worse anyway', () => {
+    const inTab = wentThrough({
+      throttledToKbps: 2800,
+      steppedDownAfterMs: null,
+      before: {
+        ...SQUEEZED.before,
+        endedOnRungHeight: 1080,
+        bandwidthEstimateKbps: 97_751,
+        advance: { ratio: 1.0, wallMs: 60_000, samples: 60 },
+      },
+      during: {
+        ...SQUEEZED.during,
+        endedOnRungHeight: 1080,
+        lowestRungHeight: 1080,
+        bandwidthEstimateKbps: 74_221,
+        advance: { ratio: 0.604, wallMs: 60_000, samples: 60 },
+      },
+    });
+
+    assert.equal(throttleRefusal(inTab), null, 'the cap landed, whatever the estimate said');
+    assert.match(String(steppedDownRefusal(inTab)), /never came below it/, 'and the ladder failing is the finding');
+  });
+
+  /** ⛔ Neither outcome. A player that held its rung on an unchanged picture felt no cap at all. */
+  it('refuses a run where nothing a viewer could feel changed', () => {
+    // ⛔ The override goes AFTER the spread. Written the other way it is silently undone by the
+    // helper's own steppedDownAfterMs, and the case passes by testing a player that adapted.
+    const untouched: QualitySwitchVerdict = { ...advancing(1.0, 1.0), steppedDownAfterMs: null };
+
+    assert.match(String(throttleRefusal(untouched)), /The cap did not land/);
+  });
+
+  /** A player that adapted so well the picture never suffered is the ideal outcome, not a dead cap. */
+  it('accepts a player that adapted well enough that the picture never suffered', () => {
+    assert.equal(throttleRefusal(advancing(1.0, 1.0)), null);
+  });
+
+  /** A pinned player rides one rung by instruction, so neither answer it gives is about ABR. */
+  it('refuses a run whose level was pinned', () => {
+    assert.match(String(throttleRefusal(wentThrough({ abrEnabledThroughout: false }))), /pinned/);
+  });
+});
+
+describe('whether the viewer stepped down when their link could not carry their rung', () => {
+  it('accepts a player that came below where the cap found it', () => {
+    assert.equal(steppedDownRefusal(SQUEEZED), null);
+  });
+
+  /** ⭐ The case the plan names as done-when: a client that ignores bandwidth and rides one rung. */
+  it('refuses a player that rode its rung straight through the squeeze', () => {
+    const stubborn = wentThrough({ steppedDownAfterMs: null, during: { ...SQUEEZED.during, lowestRungHeight: 1080 } });
+
+    assert.match(String(steppedDownRefusal(stubborn)), /never came below it/);
+  });
+
+  /**
+   * ⛔⛔⛔ The two ways a viewer fails to descend are different faults with different owners, and
+   * until 2026-09-01 the refusal called both of them the first one.
+   *
+   * Read off the V2 artifact of that day: the cap landed at 46.0s, **ABR asked for 360p by 49.0s**,
+   * and the player did not arrive on 360p until 108.0s, a second AFTER the cap was lifted at 106.9s.
+   * So the decision took three seconds and the execution took fifty-nine. Its estimate had fallen
+   * 21616 → 700 kbps and its buffer was down to 0.31s: it was starving on an in-flight 1080p fragment
+   * it could not finish, not ignoring its bandwidth.
+   *
+   * The gate is unchanged, because a viewer who does not actually descend inside the squeeze has a
+   * real problem either way. What changes is that the message stops blaming ABR for a decision ABR
+   * got right, the same correction scenario H needed. See [[swarm-hls-abr-reacts-fast-viewer-starves]].
+   */
+  it('says the decision was made when ABR asked for a lower rung and the player never got there', () => {
+    const decided = wentThrough({
+      steppedDownAfterMs: null,
+      abrChoseLowerAfterMs: 3_000,
+      during: { ...SQUEEZED.during, lowestRungHeight: 1080 },
+    });
+
+    const refusal = String(steppedDownRefusal(decided));
+    assert.match(refusal, /ABR asked for a lower rung 3.0s/, 'the refusal must say the decision was made');
+    assert.match(refusal, /could not act on it/, 'and that what failed was acting on it');
+  });
+
+  it('still blames the decision when ABR never asked for anything lower', () => {
+    const stubborn = wentThrough({
+      steppedDownAfterMs: null,
+      abrChoseLowerAfterMs: null,
+      during: { ...SQUEEZED.during, lowestRungHeight: 1080 },
+    });
+
+    assert.match(String(steppedDownRefusal(stubborn)), /never asked for a lower rung/);
+  });
+
+  it('refuses a run where the player had chosen no rung when the cap landed', () => {
+    const unstarted = wentThrough({ before: { ...SQUEEZED.before, endedOnRungHeight: null } });
+
+    assert.match(String(steppedDownRefusal(unstarted)), /nothing for it to have stepped down from/);
+  });
+});
+
+describe('whether stepping down bought the viewer anything', () => {
+  it('accepts a picture that kept moving while capped', () => {
+    assert.equal(keptPlayingRefusal(SQUEEZED), null);
+  });
+
+  /**
+   * ⭐ The half that makes a step down worth having. A player that adapted its way into a stall has
+   * arrived back where it started, and every other reading in the run would still look like a success.
+   */
+  it('refuses a player that stepped down into a frozen picture', () => {
+    const stalled = wentThrough({ during: { ...SQUEEZED.during, advance: { ratio: 0, wallMs: 60_000, samples: 60 } } });
+
+    assert.match(String(keptPlayingRefusal(stalled)), /frozen frame/);
+  });
+});
+
+describe('whether the viewer got their quality back', () => {
+  it('accepts a player that climbed once the cap came off', () => {
+    assert.equal(climbedBackRefusal(SQUEEZED), null);
+  });
+
+  it('refuses a player left on the rung the squeeze pushed it to', () => {
+    assert.match(String(climbedBackRefusal(wentThrough({ climbedBackAfterMs: null }))), /only ever goes down/);
+  });
+
+  it('names the rung the viewer is stuck on and the one they came from, rather than calling it the bottom', () => {
+    const message = String(climbedBackRefusal(wentThrough({ climbedBackAfterMs: null })));
+
+    assert.match(message, /360p/, 'the message should name the rung they are stuck on');
+    assert.match(message, /from 1080p/, 'and the rung they came from');
+    assert.doesNotMatch(message, /bottom rung/, 'a rung is only the bottom one if it actually is');
+  });
+
+  /**
+   * ⛔⛔ Read live on 2026-08-30 against a viewer who rode 1080p through the entire cap. This refused
+   * them for failing to climb back to a rung they had never left, and called 1080p the bottom rung
+   * while doing it. Whether they should have stepped down is `steppedDownRefusal`'s question.
+   */
+  it('says nothing about a viewer the squeeze never moved, who has nothing to climb back from', () => {
+    const neverMoved = wentThrough({
+      climbedBackAfterMs: null,
+      during: { ...SQUEEZED.during, lowestRungHeight: 1080 },
+    });
+
+    assert.equal(climbedBackRefusal(neverMoved), null);
+  });
+});
+
+describe('the line an operator reads while a squeeze arm runs', () => {
+  it('names the rung before, under and after the cap', () => {
+    const line = qualityArmSummary(parseBrowserArmState(qualityArmState()));
+
+    assert.match(line, /1080p before/);
+    assert.match(line, /360p under it/);
+    assert.match(line, /1080p after/);
+  });
+
+  it('has something to say about an arm that drove no squeeze, rather than throwing at the printer', () => {
+    assert.match(qualityArmSummary(parseBrowserArmState(armState())), /no squeeze/);
+  });
+
+  /**
+   * ⭐ The added observation, and the reason it is worth the line. Every other figure in this summary
+   * is what the player DECODED or what ABR would pick next, and neither separates a player riding a
+   * rung it cannot afford from one asking for a cheaper rung that upstream answers with the expensive
+   * one.
+   */
+  it('carries which level the player asked for, phase by phase', () => {
+    const line = qualityArmSummary(parseBrowserArmState(qualityArmState()));
+
+    assert.match(line, /levels asked for: level 3 x45 before the cap/);
+    assert.match(line, /level 3 x4, level 0 x36 while capped/);
+    assert.match(line, /level 3 x55 after the lift/);
+  });
+});
+
+/**
+ * ⛔⛔⛔ Three silences, three sentences, and none of them may be printed as another.
+ *
+ * A null timeline is the BROWSER IMAGE having no instrument, since only a driver carrying it writes
+ * the section. A state of `absent` is the deployed CLIENT having none. A recorded run with an empty
+ * phase is the player, which is the only one of the three that is a finding about the product. Each
+ * has a different fix, so a reader that conflated them would send someone to the wrong place.
+ */
+describe('which level the player asked for, and the three ways it can be missing', () => {
+  const askedNothing = (state: string): Record<string, unknown> => ({
+    before: { requests: 0, levels: [] },
+    during: { requests: 0, levels: [] },
+    after: { requests: 0, levels: [] },
+    captured: 0,
+    state,
+  });
+
+  it('names the browser image when the artifact carries no such section at all', () => {
+    const stale = parseBrowserArmState(qualityArmState({ fragmentRequests: null }));
+
+    assert.equal(stale.fragmentRequests, null);
+    assert.match(levelsAskedForSummary(stale.fragmentRequests), /browser image .* predates the instrument/);
+  });
+
+  it('names the deployed client when the section is there and heard nothing over a moving picture', () => {
+    const armed = parseBrowserArmState(qualityArmState({ fragmentRequests: askedNothing('absent') }));
+
+    assert.match(levelsAskedForSummary(armed.fragmentRequests), /instrument absent from the deployed client/);
+  });
+
+  it('never reports either silence as a player that asked for nothing', () => {
+    const armed = parseBrowserArmState(qualityArmState({ fragmentRequests: askedNothing('absent') }));
+
+    assert.doesNotMatch(levelsAskedForSummary(armed.fragmentRequests), /levels asked for/);
+  });
+
+  it('says a silence over a frozen picture settles nothing either way', () => {
+    const frozen = parseBrowserArmState(qualityArmState({ fragmentRequests: askedNothing('unplayed') }));
+
+    assert.match(levelsAskedForSummary(frozen.fragmentRequests), /says nothing/);
+  });
+
+  /** ⛔ Checked against the states this harness knows, never cast to them, exactly as a feed state is. */
+  it('refuses a state it does not recognise rather than reading it as a reading', () => {
+    assert.throws(
+      () => parseBrowserArmState(qualityArmState({ fragmentRequests: askedNothing('probably') })),
+      /run\.fragmentRequests\.state/,
+    );
+  });
+
+  it('refuses a section missing a phase, rather than counting the ones it has', () => {
+    const halfStated = { ...ASKED_FOR_A_CHEAPER_RUNG };
+    delete (halfStated as Record<string, unknown>).during;
+
+    assert.throws(
+      () => parseBrowserArmState(qualityArmState({ fragmentRequests: halfStated })),
+      /run\.fragmentRequests\.during/,
+    );
+  });
+});
+
+/**
+ * ⛔⛔ The raw lists, and the FOURTH silence, which is about the file rather than about any deployment.
+ *
+ * An artifact written before these lists existed carries the buckets and nothing else, and every count
+ * in it is still good. Re-reading old artifacts is how this project works, so refusing that file would
+ * take away readings that are fine. A list that is PRESENT is read whole: half a list of segment numbers
+ * is exactly the evidence someone would draw a retry conclusion from.
+ */
+describe('the raw lists an artifact carries, and the artifact that predates them', () => {
+  const parsed = () => parseBrowserArmState(qualityArmState()).fragmentRequests;
+
+  it('reads back every request the run heard, with its own segment number', () => {
+    const requests = parsed()?.requests;
+
+    assert.equal(requests?.length, 140, 'the raw request list did not come back whole');
+    assert.deepEqual(requests?.[45], { atMs: 1_756_377_645_000, level: '3', sn: '145', rung: 'swarm://0xowner/top' });
+  });
+
+  it('reads back how each attempt ended, phase by phase and line by line', () => {
+    const settled = parsed()?.settled;
+
+    assert.equal(settled?.state, 'recorded');
+    assert.deepEqual(
+      settled?.during.outcomes.map((outcome) => [outcome.outcome, outcome.settled]),
+      [
+        ['loaded', 36],
+        ['errored', 4],
+      ],
+    );
+    assert.equal(settled?.during.elapsed?.maxMs, 8_000);
+    assert.equal(settled?.settles.length, 140);
+  });
+
+  /** ⛔ The backward case. Tonight's earlier build wrote the buckets and threw the lines away. */
+  it('reads an artifact that carries no raw lists, and says they are absent rather than empty', () => {
+    const older = { ...ASKED_FOR_A_CHEAPER_RUNG };
+    delete (older as Record<string, unknown>).requests;
+    delete (older as Record<string, unknown>).settled;
+
+    const asked = parseBrowserArmState(qualityArmState({ fragmentRequests: older })).fragmentRequests;
+
+    assert.equal(asked?.requests, null, 'a list that was never written read as a list that was empty');
+    assert.equal(asked?.settled, null);
+    assert.equal(asked?.during.requests, 40, 'the buckets that file does carry were thrown away with the lists');
+  });
+
+  it('says the artifact predates the settle reading rather than reporting nothing settled', () => {
+    const older = { ...ASKED_FOR_A_CHEAPER_RUNG };
+    delete (older as Record<string, unknown>).settled;
+
+    const asked = parseBrowserArmState(qualityArmState({ fragmentRequests: older })).fragmentRequests;
+
+    assert.match(fragmentSettleVerdict(asked?.settled ?? null), /written before the settle line existed/);
+  });
+
+  it('refuses a request entry missing its segment number, rather than reading the rest', () => {
+    const damaged = {
+      ...ASKED_FOR_A_CHEAPER_RUNG,
+      requests: [{ atMs: 1, level: '3', rung: 'swarm://0xowner/top' }],
+    };
+
+    assert.throws(
+      () => parseBrowserArmState(qualityArmState({ fragmentRequests: damaged })),
+      /run\.fragmentRequests\.requests\[0\]\.sn/,
+    );
+  });
+
+  /** ⛔ Checked against the states this harness knows, never cast to them, exactly as a feed state is. */
+  it('refuses a settle state it does not recognise', () => {
+    const settled = ASKED_FOR_A_CHEAPER_RUNG.settled as Record<string, unknown>;
+    const damaged = { ...ASKED_FOR_A_CHEAPER_RUNG, settled: { ...settled, state: 'probably' } };
+
+    assert.throws(
+      () => parseBrowserArmState(qualityArmState({ fragmentRequests: damaged })),
+      /run\.fragmentRequests\.settled\.state/,
+    );
+  });
+
+  it('refuses a settle section missing a phase, rather than counting the ones it has', () => {
+    const settled = { ...(ASKED_FOR_A_CHEAPER_RUNG.settled as Record<string, unknown>) };
+    delete settled.during;
+
+    assert.throws(
+      () => parseBrowserArmState(qualityArmState({ fragmentRequests: { ...ASKED_FOR_A_CHEAPER_RUNG, settled } })),
+      /run\.fragmentRequests\.settled\.during/,
+    );
+  });
+
+  /**
+   * ⛔ A spread of three numbers has to arrive whole. One missing and the other two believed is a
+   * median over a range nobody stated.
+   */
+  it('refuses a duration spread that is missing one of its numbers', () => {
+    const settled = { ...(ASKED_FOR_A_CHEAPER_RUNG.settled as Record<string, unknown>) };
+    const during = { ...(settled.during as Record<string, unknown>) };
+    during.elapsed = { minMs: 140, maxMs: 8_000, samples: 40 };
+    settled.during = during;
+
+    assert.throws(
+      () => parseBrowserArmState(qualityArmState({ fragmentRequests: { ...ASKED_FOR_A_CHEAPER_RUNG, settled } })),
+      /run\.fragmentRequests\.settled\.during\.elapsed\.medianMs/,
+    );
+  });
+
+  /** The counterpart: a stretch where nothing carried a duration is a READING, and reads as null. */
+  it('reads a stretch that carried no duration at all as having none', () => {
+    const settled = { ...(ASKED_FOR_A_CHEAPER_RUNG.settled as Record<string, unknown>) };
+    settled.during = { ...(settled.during as Record<string, unknown>), elapsed: null };
+
+    const asked = parseBrowserArmState(
+      qualityArmState({ fragmentRequests: { ...ASKED_FOR_A_CHEAPER_RUNG, settled } }),
+    ).fragmentRequests;
+
+    assert.equal(asked?.settled?.during.elapsed, null);
+    assert.equal(asked?.settled?.during.settled, 40, 'the attempts went with the durations');
+  });
+});
+
+/**
+ * ⭐⭐ What the node did with the retrievals the player had already walked away from.
+ *
+ * A settle of `aborted` covers both a retrieval whose bytes arrived far too late and one whose bytes
+ * never arrived, and under a cap those are opposite findings. This section is the only place the two are
+ * separated, and it carries the byte counts that say what the node did for work nobody wanted.
+ */
+describe('what became of the attempts the player abandoned', () => {
+  const parsed = () => parseBrowserArmState(qualityArmState()).fragmentRequests;
+
+  it('reads back each phase, and every late answer in order', () => {
+    const answers = parsed()?.abandonedAnswers;
+
+    assert.equal(answers?.state, 'recorded');
+    assert.deepEqual(
+      [answers?.during.answered, answers?.during.resolved, answers?.during.rejected, answers?.during.bytes],
+      [3, 2, 1, 424_848],
+    );
+    assert.equal(answers?.answers.length, 4);
+    assert.equal(answers?.answers[2].byteLength, null, 'a refusal came back carrying a byte count');
+  });
+
+  /**
+   * ⛔ The silence about the FILE, and it is the only silence this half has. A run that heard none of
+   * these lines is written as `silent` by the driver, so a null here can only be an artifact older than
+   * the reading.
+   */
+  it('reads an artifact that carries no such section as predating it, not as a run that answered none', () => {
+    const older = { ...ASKED_FOR_A_CHEAPER_RUNG };
+    delete (older as Record<string, unknown>).abandonedAnswers;
+
+    const asked = parseBrowserArmState(qualityArmState({ fragmentRequests: older })).fragmentRequests;
+
+    assert.equal(asked?.abandonedAnswers, null);
+    assert.match(abandonedAnswerVerdict(asked?.abandonedAnswers ?? null), /written before/);
+    assert.equal(asked?.during.requests, 40, 'the rest of the section went with it');
+  });
+
+  /** ⛔ Checked against the states this harness knows, never cast to them, exactly as a feed state is. */
+  it('refuses a state it does not recognise', () => {
+    const answers = ASKED_FOR_A_CHEAPER_RUNG.abandonedAnswers as Record<string, unknown>;
+    const damaged = { ...ASKED_FOR_A_CHEAPER_RUNG, abandonedAnswers: { ...answers, state: 'probably' } };
+
+    assert.throws(
+      () => parseBrowserArmState(qualityArmState({ fragmentRequests: damaged })),
+      /run\.fragmentRequests\.abandonedAnswers\.state/,
+    );
+  });
+
+  it('refuses a section missing a phase, rather than counting the ones it has', () => {
+    const answers = { ...(ASKED_FOR_A_CHEAPER_RUNG.abandonedAnswers as Record<string, unknown>) };
+    delete answers.during;
+
+    assert.throws(
+      () =>
+        parseBrowserArmState(
+          qualityArmState({ fragmentRequests: { ...ASKED_FOR_A_CHEAPER_RUNG, abandonedAnswers: answers } }),
+        ),
+      /run\.fragmentRequests\.abandonedAnswers\.during/,
+    );
+  });
+
+  it('refuses a late answer missing the word that says which way it went', () => {
+    const answers = { ...(ASKED_FOR_A_CHEAPER_RUNG.abandonedAnswers as Record<string, unknown>) };
+    answers.answers = [{ atMs: 1, level: '3', sn: '145', byteLength: 10, elapsedMs: 20 }];
+
+    assert.throws(
+      () =>
+        parseBrowserArmState(
+          qualityArmState({ fragmentRequests: { ...ASKED_FOR_A_CHEAPER_RUNG, abandonedAnswers: answers } }),
+        ),
+      /run\.fragmentRequests\.abandonedAnswers\.answers\[0\]\.answer/,
+    );
+  });
+
+  /** The counterpart: a stretch that produced no bytes is a READING, and reads as null rather than zero. */
+  it('reads a stretch whose late answers produced nothing as having no byte count', () => {
+    const answers = { ...(ASKED_FOR_A_CHEAPER_RUNG.abandonedAnswers as Record<string, unknown>) };
+    answers.during = { answered: 1, resolved: 0, rejected: 1, bytes: null };
+
+    const asked = parseBrowserArmState(
+      qualityArmState({ fragmentRequests: { ...ASKED_FOR_A_CHEAPER_RUNG, abandonedAnswers: answers } }),
+    ).fragmentRequests;
+
+    assert.equal(asked?.abandonedAnswers?.during.bytes, null);
+    assert.equal(asked?.abandonedAnswers?.during.answered, 1, 'the answer went with its missing byte count');
+  });
+});
+
+/**
+ * ⛔⛔ Re-reading an artifact from a previous sitting is how this project works, so the reader has to
+ * keep working on the files already on disk. This one was written on 2026-08-28, before the fragment
+ * instrument existed at all, and every reading in it is still good.
+ *
+ * ⭐ A real file rather than a fixture, because a fixture is written by whoever changes the reader and a
+ * file on disk is not.
+ */
+describe('an artifact from before any of these readings existed', () => {
+  const ARCHIVED = join(dirname(E2E_DIR), 'docs', 'bench', 'browser-watch-2026-08-28T15-35-20-729Z.json');
+
+  it('still parses, with the sections it predates reading as absent rather than as empty readings', () => {
+    const result = parseBrowserArmState(JSON.parse(readFileSync(ARCHIVED, 'utf8')));
+
+    assert.equal(result.fragmentRequests, null, 'a file that predates the instrument read as one carrying it');
+    assert.ok(result.samples > 0, 'the readings that file does carry were lost');
+  });
+});
+
+describe('the verdict as the artifact carries it', () => {
+  /** ⛔ Read whole rather than trusted. A half-stated verdict is what the reader is supposed to refuse. */
+  it('refuses an artifact whose quality section is missing a phase', () => {
+    const halfStated = { ...STEPPED_DOWN_AND_BACK };
+    delete (halfStated as Record<string, unknown>).during;
+
+    assert.throws(() => parseBrowserArmState(qualityArmState({ quality: halfStated })), /run\.quality\.during/);
+  });
+});

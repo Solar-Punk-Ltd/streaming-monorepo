@@ -1,0 +1,59 @@
+import React from 'react';
+
+import {
+  FEED_STATE_DEGRADED,
+  FEED_STATE_ENDED,
+  FEED_STATE_LIVE,
+  FEED_STATE_RECONNECTING,
+  FEED_STATE_STALLED,
+  FeedState,
+} from '../../feedState';
+
+import './FeedStateOverlay.scss';
+
+/**
+ * What each state is called on screen. One message per situation rather than one for all of them,
+ * because they ask different things of the viewer: a gateway that is not answering usually comes
+ * back on its own, a feed that has stopped advancing while its gateway answers usually does not, a
+ * connection too slow to keep up is neither of those and often recovers, and a broadcast that has
+ * ended has nothing left to retry.
+ *
+ * An ended broadcast can still come back, because a declared stream's broadcaster may return to the
+ * same feeds. The player watches for that slowly and rejoins on its own once the viewer has reached
+ * the end of what they were playing. It is rare and can take minutes, so the message does not ask
+ * anybody to wait for it.
+ */
+const MESSAGE: Record<Exclude<FeedState, typeof FEED_STATE_LIVE>, string> = {
+  [FEED_STATE_RECONNECTING]: 'Reconnecting to the stream',
+  [FEED_STATE_STALLED]: 'Waiting for the broadcast to continue',
+  [FEED_STATE_DEGRADED]: 'The stream is struggling to keep up',
+  [FEED_STATE_ENDED]: 'This broadcast has ended',
+};
+
+interface FeedStateOverlayProps {
+  state: FeedState;
+}
+
+/**
+ * Says why the picture has stopped, while the player keeps retrying behind it.
+ *
+ * Deliberately not an error and not dismissable. The stream is not over and there is nothing for the
+ * viewer to do: attempts continue on a backoff and the overlay goes away on its own when one
+ * succeeds. Before this, the only thing a viewer saw was the picture freezing and then a decoder
+ * error once the buffer ran dry, which points at the wrong thing entirely.
+ */
+export const FeedStateOverlay: React.FC<FeedStateOverlayProps> = ({ state }) => {
+  if (state === FEED_STATE_LIVE) {
+    return null;
+  }
+
+  return (
+    <div className="swarm-hls-feed-state" role="status" aria-live="polite">
+      {/* The pulsing dot means something is being retried soon enough to be worth waiting for, so an
+          ended broadcast does not get one. The slow watch for its broadcaster coming back is not
+          that, and it is the only state here that a viewer can act on by leaving. */}
+      {state !== FEED_STATE_ENDED && <span className="swarm-hls-feed-state__dot" aria-hidden="true" />}
+      {MESSAGE[state]}
+    </div>
+  );
+};

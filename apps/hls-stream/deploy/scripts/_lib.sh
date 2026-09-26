@@ -1,0 +1,1025 @@
+#!/bin/bash
+# Shared constants and helpers for deploy scripts.
+# Source this file, do not execute directly.
+
+# --- Service names ---
+readonly SVC_SRS="srs"
+readonly SVC_OME="ome"
+readonly SVC_UPLOADER="stream-uploader"
+readonly SVC_BEE_UPLOADER="bee-uploader"
+readonly SVC_BEE_GATEWAY="bee-gateway"
+readonly SVC_CLIENT="client"
+
+# One Bee node per ABR rung, so the ladder does not share one upload pipe. `bee-uploader` is the
+# 360p rung as well as the shared default: the catalog and every ladder master go through the lowest
+# rung's node. Disabled by default, because each is a wallet and a postage batch to fund and a
+# single-rendition deployment needs none of them. See `BEE_PUBLISHERS` in `.env.sample`.
+readonly SVC_BEE_RUNG_480P="bee-uploader-480p"
+readonly SVC_BEE_RUNG_720P="bee-uploader-720p"
+readonly SVC_BEE_RUNG_1080P="bee-uploader-1080p"
+readonly BEE_RUNG_SERVICES=("$SVC_BEE_RUNG_480P" "$SVC_BEE_RUNG_720P" "$SVC_BEE_RUNG_1080P")
+
+readonly ALL_SERVICES=("$SVC_BEE_UPLOADER" "$SVC_BEE_GATEWAY" "${BEE_RUNG_SERVICES[@]}" "$SVC_UPLOADER" "$SVC_SRS" "$SVC_OME" "$SVC_CLIENT")
+
+readonly DEFAULT_DISABLED_SERVICES=("$SVC_OME" "${BEE_RUNG_SERVICES[@]}")
+
+# --- Targets ---
+readonly TARGET_LOCAL="localhost"
+readonly TARGET_NATIVE="native"
+readonly TARGET_DISABLED="disabled"
+
+# --- Paths ---
+# Assigned before `readonly` rather than with it: `readonly X=$(...)` takes the exit status of the
+# `readonly`, not of the command substitution, so a failing `cd` would go unnoticed. (SC2155)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEPLOY_DIR="$(dirname "$SCRIPT_DIR")"
+ROOT_DIR="$(dirname "$DEPLOY_DIR")"
+readonly SCRIPT_DIR DEPLOY_DIR ROOT_DIR
+readonly CONFIG_FILE="$DEPLOY_DIR/config.json"
+readonly ENV_SAMPLE="$ROOT_DIR/.env.sample"
+
+# --- Profile (deployment instance) ---
+# Set by parse_profile_args; defaults to "default".
+# - PROFILE         logical name, used as docker compose project name
+# - ENV_FILE        $ROOT_DIR/.env for default; $ROOT_DIR/.env.<profile> otherwise.
+#                   The non-default file is REQUIRED: parse_profile_args errors if it is
+#                   missing so a typo in --profile= doesn't silently deploy the wrong stack.
+# - REMOTE_BASE     ~/swarm-hls-stream for default, ~/swarm-hls-stream-<profile> otherwise
+# - PORT_SLOT       integer slot id (0-99). 0 = no slot, env values win.
+#                   For slot N>=1, every host-mapped port becomes default + N*10,
+#                   yielding non-overlapping bands of 10 ports per slot: 10000-10998
+#                   for the stack, and 11001-11996 for the per-rung bee nodes.
+#                   99 is the last slot that keeps those two blocks apart.
+#                   See apply_port_slot and the range check in parse_profile_args.
+PROFILE="default"
+ENV_FILE="$ROOT_DIR/.env"
+REMOTE_BASE="~/swarm-hls-stream"
+PORT_SLOT=0
+
+# Per-deployment parameter overrides. Set by parse_profile_args from CLI flags
+# (--host / --feed-owner / --feed-topic / --private-key / --stamp-id). When non-empty,
+# they take precedence over the matching keys in .env.<profile> during deploy
+# (see generate_env_overrides in deploy.sh).
+HOST_OVERRIDE="" # target (an ssh alias, user@host, or "localhost").
+FEED_OWNER_OVERRIDE=""
+FEED_TOPIC_OVERRIDE=""
+PRIVATE_KEY_OVERRIDE=""
+STAMP_ID_OVERRIDE=""
+
+# Populated by parse_profile_args with the argv minus the --profile / --portSlot flags.
+REST_ARGS=()
+
+# Host ports, as `NAME:stock:base`.
+#
+# The two numbers are different questions and used to be one. `stock` is what a plain deploy falls
+# back to when the variable is unset, and it matches the `${NAME:-NNNN}` fallback in the compose file
+# that publishes it. `base` is the origin of the `base + slot*10` arithmetic, where each service
+# holds a unique last digit (0-9) so slots cannot collide.
+#
+# Collapsing them hid a real divergence for seven of the ten, because `apply_port_slot` leaves an
+# already-set variable alone at slot 0 and those seven carry a value in `.env.sample`. SRS_RTMP_PORT,
+# SRS_HTTP_PORT and SRS_HTTP_API_PORT carry none, in `.env.sample` or `engines/srs/.env.sample`, so a stock deploy took
+# 10002 and 10003 from the arithmetic origin while `engines/srs/docker-compose.yml` documents 1935
+# and 8080. Since d6394a3 passed these into SRS's own config, that is what SRS bound: consistent end
+# to end, and not what the ports are documented as, so an operator opening 1935 for a broadcaster
+# opened a port nothing listened on. Filed as OPS-27.
+readonly PORT_VARS=(
+  "API_PORT:3000:10000"
+  "SRS_SRT_PORT:10080:10001"
+  "SRS_RTMP_PORT:1935:10002"
+  "SRS_HTTP_PORT:8080:10003"
+  "CLIENT_PORT:5173:10004"
+  "BEE_UPLOADER_API_PORT:1633:10005"
+  "BEE_UPLOADER_P2P_PORT:1634:10006"
+  "BEE_GATEWAY_API_PORT:1733:10007"
+  "BEE_GATEWAY_P2P_PORT:1734:10008"
+  # SRS's read-only stats API. Added so two profiles no longer collide on the fixed 1985 it bound.
+  "SRS_HTTP_API_PORT:1985:10009"
+
+  # ⛔ A SECOND DECADE, because the first one has no digit left. The rule above is that each service
+  # holds a unique last digit 0-9 within its own thousand so slots cannot collide, and all ten of
+  # 1000x are taken. The per-rung Bee nodes need six more ports, so they open 1100x on the same
+  # arithmetic and the same unique-digit rule inside it.
+  #
+  # ⚠️ The two blocks meet at slot 100, where 10000 + 100*10 is 11000, so a deployment there would
+  # collide with slot 0's own bee nodes. Since 2026-09-04 `parse_profile_args` refuses any slot above
+  # 99, which is what this second decade costs and it is now paid for. Filed with the port scheme's
+  # own note above.
+  "BEE_RUNG_480P_API_PORT:11001:11001"
+  "BEE_RUNG_480P_P2P_PORT:11002:11002"
+  "BEE_RUNG_720P_API_PORT:11003:11003"
+  "BEE_RUNG_720P_P2P_PORT:11004:11004"
+  "BEE_RUNG_1080P_API_PORT:11005:11005"
+  "BEE_RUNG_1080P_P2P_PORT:11006:11006"
+)
+
+# Refuse a per-deployment override whose value is not the shape that key takes.
+#
+# These four are the only argv values that reach a file the deploy `source`s, here and again on the
+# deployment host, so their shape is checked rather than trusted. `shell_quote` in
+# parameter_overrides_text is the other layer and neither is written to lean on the other: a value
+# carrying a newline would still end the remote heredoc at its own `ENVEOF` whatever the quoting
+# around it says, and only a shape check can say that value never existed.
+#
+# The value is not echoed back. One of the four is the publisher's private key, and a deploy's output
+# reaches the manager's logs and this repository's transcripts, where a key that appears once is a key
+# that has to be rotated. The flag and the shape it wants are what fixes a typo.
+#
+# @param $1 the flag as an operator typed it, $2 its value, $3 the regex, $4 the shape in plain words
+require_override_shape() {
+  local flag="$1" value="$2" pattern="$3" shape="$4"
+  [ -n "$value" ] || return 0
+  if ! [[ "$value" =~ $pattern ]]; then
+    echo -e "${RED}ERROR: $flag must be $shape${NC}" >&2
+    exit 1
+  fi
+}
+
+# Parse profile + portSlot flags from argv.
+# Accepted: --profile=<n>, --profile <n>, --portSlot=<N>, --portSlot <N>
+# Caller pattern:
+#   parse_profile_args "$@"
+#   set -- "${REST_ARGS[@]}"
+# Side effects: sets PROFILE, ENV_FILE, REMOTE_BASE, PORT_SLOT, REST_ARGS globals.
+parse_profile_args() {
+  REST_ARGS=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --profile=*)
+        PROFILE="${1#*=}"
+        shift
+        ;;
+      --profile)
+        if [ $# -lt 2 ]; then
+          echo -e "${RED}ERROR: --profile requires a value${NC}" >&2
+          exit 1
+        fi
+        PROFILE="$2"
+        shift 2
+        ;;
+      --portSlot=*)
+        PORT_SLOT="${1#*=}"
+        shift
+        ;;
+      --portSlot)
+        if [ $# -lt 2 ]; then
+          echo -e "${RED}ERROR: --portSlot requires a value${NC}" >&2
+          exit 1
+        fi
+        PORT_SLOT="$2"
+        shift 2
+        ;;
+      --host=*)
+        HOST_OVERRIDE="${1#*=}"
+        shift
+        ;;
+      --host)
+        if [ $# -lt 2 ]; then
+          echo -e "${RED}ERROR: --host requires a value${NC}" >&2
+          exit 1
+        fi
+        HOST_OVERRIDE="$2"
+        shift 2
+        ;;
+      --feed-owner=*)
+        FEED_OWNER_OVERRIDE="${1#*=}"
+        shift
+        ;;
+      --feed-owner)
+        if [ $# -lt 2 ]; then
+          echo -e "${RED}ERROR: --feed-owner requires a value${NC}" >&2
+          exit 1
+        fi
+        FEED_OWNER_OVERRIDE="$2"
+        shift 2
+        ;;
+      --feed-topic=*)
+        FEED_TOPIC_OVERRIDE="${1#*=}"
+        shift
+        ;;
+      --feed-topic)
+        if [ $# -lt 2 ]; then
+          echo -e "${RED}ERROR: --feed-topic requires a value${NC}" >&2
+          exit 1
+        fi
+        FEED_TOPIC_OVERRIDE="$2"
+        shift 2
+        ;;
+      --private-key=*)
+        PRIVATE_KEY_OVERRIDE="${1#*=}"
+        shift
+        ;;
+      --private-key)
+        if [ $# -lt 2 ]; then
+          echo -e "${RED}ERROR: --private-key requires a value${NC}" >&2
+          exit 1
+        fi
+        PRIVATE_KEY_OVERRIDE="$2"
+        shift 2
+        ;;
+      --stamp-id=*)
+        STAMP_ID_OVERRIDE="${1#*=}"
+        shift
+        ;;
+      --stamp-id)
+        if [ $# -lt 2 ]; then
+          echo -e "${RED}ERROR: --stamp-id requires a value${NC}" >&2
+          exit 1
+        fi
+        STAMP_ID_OVERRIDE="$2"
+        shift 2
+        ;;
+      *)
+        REST_ARGS+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  if ! [[ "$PORT_SLOT" =~ ^[0-9]+$ ]]; then
+    echo -e "${RED}ERROR: --portSlot must be a whole number, got: $PORT_SLOT${NC}" >&2
+    exit 1
+  fi
+  # Base 10 on purpose. Bash arithmetic reads a leading zero as octal, so an unforced "08" dies in
+  # apply_port_slot with "value too great for base" and "010" silently becomes slot 8.
+  PORT_SLOT=$((10#$PORT_SLOT))
+
+  if ! [[ "$PROFILE" =~ ^[a-z0-9][a-z0-9-]{0,30}$ ]]; then
+    echo -e "${RED}ERROR: invalid profile name: $PROFILE${NC}" >&2
+    echo "Profile must match ^[a-z0-9][a-z0-9-]{0,30}$" >&2
+    exit 1
+  fi
+
+  # PORT_SLOT shifts each default by slot*10 (so slot 1 → 10010-10018, slot 99 → 10990-10998).
+  #
+  # ⛔ The ceiling is the SECOND port block and not the TCP range. The per-rung bee nodes take six
+  # ports out of 1100x on the same arithmetic, so slot 100 puts the first block at 11000, on top of
+  # slot 0's own bee nodes. That collision was carried as a ⚠️ note beside PORT_VARS and nothing
+  # enforced it until 2026-09-04. Slots 1, 2 and 7 are all that have ever been used.
+  if ! [[ "$PORT_SLOT" =~ ^[0-9]{1,2}$ ]]; then
+    echo -e "${RED}ERROR: --portSlot must be 0-99 (got: $PORT_SLOT).${NC}" >&2
+    echo "Slot 100 puts the first port block at 11000, on top of the per-rung bee ports." >&2
+    exit 1
+  fi
+
+  # ⛔ These four end up in a file that is `source`d on this machine and on the deployment host, so a
+  # value nobody checked is a command line on both. The shapes are the ones the keys already have:
+  # an owner is an ethereum address, a stream key and a batch id are 32 bytes of hex, and a topic is
+  # either a plain word like the `swarm-stream` in `.env.sample` or a 64 character hex string.
+  # See parameter_overrides_text, which quotes them as well.
+  require_override_shape "--feed-owner" "$FEED_OWNER_OVERRIDE" '^(0x)?[0-9a-fA-F]{40}$' \
+    "a 40 character hex address, with or without a 0x prefix"
+  require_override_shape "--feed-topic" "$FEED_TOPIC_OVERRIDE" '^[A-Za-z0-9._-]{1,64}$' \
+    "letters, digits, dot, underscore or hyphen, at most 64 characters"
+  require_override_shape "--private-key" "$PRIVATE_KEY_OVERRIDE" '^(0x)?[0-9a-fA-F]{64}$' \
+    "a 64 character hex key, with or without a 0x prefix"
+  require_override_shape "--stamp-id" "$STAMP_ID_OVERRIDE" '^(0x)?[0-9a-fA-F]{64}$' \
+    "a 64 character hex batch id, with or without a 0x prefix"
+
+  # A named profile always points at its OWN env file, present or not. The old fallback to the
+  # default `.env` did not merely lose this profile's settings, it silently adopted the default
+  # deployment's ports, STAMP and STREAM_KEY, so `--profile=streamr1` brought up a second stack
+  # fighting the first one for the same port range. See OPS-4.
+  #
+  # Missing is a warning here and a refusal in `require_env`, which only `deploy.sh` calls, because
+  # the two cases are genuinely different. Deploying without the profile's settings is the harm.
+  # Stopping, cleaning and health-checking need no env at all: those containers are identified by
+  # the compose project name, and refusing here stranded a running stack whose env file had been
+  # deleted, or that was being torn down from a fresh clone of the deploy host.
+  if [ "$PROFILE" != "default" ]; then
+    ENV_FILE="$ROOT_DIR/.env.$PROFILE"
+    REMOTE_BASE="~/swarm-hls-stream-$PROFILE"
+    if [ ! -f "$ENV_FILE" ]; then
+      log_warn "Profile '$PROFILE' has no $ENV_FILE, so nothing from it is loaded."
+      log_warn "Create it with: cp $ROOT_DIR/.env.sample $ENV_FILE"
+    fi
+  fi
+}
+
+# Holds KEY=VALUE\n lines for ports that apply_port_slot has resolved (either slot-shifted
+# defaults, or just defaults). Written into the docker-compose override env file so the
+# values are guaranteed to reach compose's interpolation regardless of `--env-file` quirks.
+PORT_OVERRIDES_TEXT=""
+
+# Resolve every PORT_VAR and write the chosen value into PORT_OVERRIDES_TEXT
+# (which deploy.sh injects into .env.deploy as a 2nd --env-file for compose).
+#
+# Rule:
+#   - PORT_SLOT=0 (no --portSlot flag): keep env values; only fill the
+#     unset ports with their built-in default.
+#   - PORT_SLOT=1-99: AUTHORITATIVE, every port becomes default + slot*10,
+#     regardless of any value in .env.<profile>. This avoids surprises where a
+#     hand-edited port in the env file silently survives the slot shift.
+#
+# Also keeps SRS_ADAPTER_PORT in lock-step with the resolved API_PORT.
+apply_port_slot() {
+  local entry name stock base current shifted rest
+  PORT_OVERRIDES_TEXT=""
+  for entry in "${PORT_VARS[@]}"; do
+    name="${entry%%:*}"
+    rest="${entry#*:}"
+    stock="${rest%%:*}"
+    base="${rest##*:}"
+    current="${!name:-}"
+
+    if [ "$PORT_SLOT" = "0" ]; then
+      if [ -n "$current" ]; then
+        continue
+      fi
+      shifted="$stock"
+    else
+      shifted=$((base + PORT_SLOT * 10))
+    fi
+
+    if ! [[ "$shifted" =~ ^[1-9][0-9]*$ ]]; then
+      echo -e "${RED}ERROR: computed $name=$shifted is not a valid port${NC}" >&2
+      exit 1
+    fi
+    if [ "$shifted" -gt 65535 ]; then
+      echo -e "${RED}ERROR: ${name}=${shifted} exceeds 65535. Lower --portSlot or set ${name} explicitly (omit --portSlot to use env values).${NC}" >&2
+      exit 1
+    fi
+    export "$name=$shifted"
+    PORT_OVERRIDES_TEXT+="${name}=${shifted}\n"
+  done
+
+  # SRS webhook target: mirrors the resolved API port (env or prefixed default).
+  if [ -n "${API_PORT:-}" ]; then
+    export SRS_ADAPTER_PORT="$API_PORT"
+    PORT_OVERRIDES_TEXT+="SRS_ADAPTER_PORT=${API_PORT}\n"
+  fi
+}
+
+# Emit one KEY=VALUE line for each per-deployment parameter override that was
+# supplied on the command line. Empty overrides are skipped so the .env value
+# wins. Mapping (CLI flag → docker .env key):
+#   --feed-owner   → VITE_APP_OWNER       (0x prefix stripped, viewer build expects raw hex)
+#   --feed-topic   → STREAM_LIST_TOPIC, VITE_APP_RAW_TOPIC
+#   --private-key  → STREAM_KEY
+#   --stamp-id     → STAMP                (0x prefix stripped, bee expects raw hex)
+#
+# Single-quoted through `shell_quote`, for the reason engine_env_overrides_text gives further down in
+# this file: the file these lines land in is `source`d as well as read by compose, so an unquoted
+# `$(...)` in a value runs as a command. These four are worse than the engine values in one way,
+# because they come from argv rather than from a file the operator wrote, and a deployment manager
+# puts operator-entered text there.
+#
+# The lines carry real newlines rather than the two-character `\n` the port and engine text use.
+# That text is expanded by `printf '%b'`, and `%b` reads a backslash escape inside a VALUE too, so a
+# value carrying a literal backslash-n would arrive as a second env line of its own choosing.
+# generate_env_overrides in deploy.sh keeps the two apart and is the only caller.
+parameter_overrides_text() {
+  if [ -n "$FEED_OWNER_OVERRIDE" ]; then
+    printf 'VITE_APP_OWNER=%s\n' "$(shell_quote "${FEED_OWNER_OVERRIDE#0x}")"
+  fi
+  if [ -n "$FEED_TOPIC_OVERRIDE" ]; then
+    printf 'STREAM_LIST_TOPIC=%s\n' "$(shell_quote "$FEED_TOPIC_OVERRIDE")"
+    printf 'VITE_APP_RAW_TOPIC=%s\n' "$(shell_quote "$FEED_TOPIC_OVERRIDE")"
+  fi
+  if [ -n "$PRIVATE_KEY_OVERRIDE" ]; then
+    printf 'STREAM_KEY=%s\n' "$(shell_quote "$PRIVATE_KEY_OVERRIDE")"
+  fi
+  if [ -n "$STAMP_ID_OVERRIDE" ]; then
+    printf 'STAMP=%s\n' "$(shell_quote "${STAMP_ID_OVERRIDE#0x}")"
+  fi
+}
+
+# --- Usage text ---
+
+# Print a script's leading comment header as its `--help`, with the `#` prefix stripped.
+#
+# ⛔ This used to be a hardcoded line range, `sed -n '2,NNp'`, once per script, and a line number is
+# not a thing a comment stays at. It drifted twice. `bee-publishers.sh` ended its help with a stray
+# `set -u`, `spend-ledger.sh` with `set -u` and a blank line, and `drain-stage.sh` spent two days
+# cutting its own last paragraph in half so the help said no batch id is ever printed whole and
+# stopped before saying what it is printed as instead. The header's end is where the comments end,
+# so that is what is read now.
+#
+# @param $1 the script to read, which a caller passes as "${BASH_SOURCE[0]}"
+print_comment_header() {
+  awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$1"
+}
+
+# --- Default ports ---
+readonly DEFAULT_API_PORT=3000
+readonly DEFAULT_BEE_UPLOADER_PORT=1633
+readonly DEFAULT_BEE_GATEWAY_PORT=1733
+
+# --- Colors ---
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly CYAN='\033[0;36m'
+readonly NC='\033[0m'
+
+# --- Dependency checks ---
+
+require_jq() {
+  if ! command -v jq &>/dev/null; then
+    echo -e "${RED}ERROR: jq is required. Install: https://jqlang.github.io/jq/download/${NC}"
+    exit 1
+  fi
+}
+
+require_config() {
+  if [ ! -f "$CONFIG_FILE" ]; then
+    echo -e "${RED}ERROR: $CONFIG_FILE not found.${NC}"
+    echo "Copy config.sample.json to config.json and edit it:"
+    echo "  cp $DEPLOY_DIR/config.sample.json $CONFIG_FILE"
+    exit 1
+  fi
+}
+
+# The `--env-file` flag for compose, omitted when the file is absent.
+#
+# Compose refuses to start at all when pointed at a missing env file, and a teardown does not need
+# one: the containers belong to the compose project, which `-p` names. Without this, requiring a
+# profile's env file would have made a profile whose file was deleted impossible to stop or clean.
+env_file_flag() {
+  if [ -f "$ENV_FILE" ]; then
+    echo "--env-file $ENV_FILE"
+  fi
+}
+
+require_env() {
+  if [ ! -f "$ENV_FILE" ]; then
+    if [ "$PROFILE" != "default" ]; then
+      echo -e "${RED}ERROR: $ENV_FILE not found.${NC}" >&2
+      echo "Profile '$PROFILE' requires $ROOT_DIR/.env.$PROFILE" >&2
+      echo "Copy and edit:" >&2
+      echo "  cp $ROOT_DIR/.env $ROOT_DIR/.env.$PROFILE" >&2
+      echo "Then change ports / STAMP / STREAM_KEY / data dirs for this profile." >&2
+    else
+      echo -e "${RED}ERROR: $ENV_FILE not found. Run setup.sh first.${NC}" >&2
+    fi
+    exit 1
+  fi
+}
+
+# --- Config helpers ---
+
+# Get the target for a service from config.json.
+# Returns "localhost", "user@host", or "false" (disabled).
+get_target() {
+  local service="$1"
+  local value svc
+  # Use `type` to distinguish false (boolean) from missing (null) from string
+  value=$(jq -r ".services[\"$service\"] | if . == false then \"false\" elif . == null then \"missing\" else tostring end" "$CONFIG_FILE")
+  if [ "$value" = "missing" ]; then
+    value="localhost"
+    for svc in "${DEFAULT_DISABLED_SERVICES[@]}"; do
+      [ "$svc" = "$service" ] && value="false" && break
+    done
+  fi
+  # --host overrides the config target for every enabled service.
+  # Disabled services (false) remain disabled.
+  if [ -n "$HOST_OVERRIDE" ] && [ "$value" != "false" ]; then
+    echo "$HOST_OVERRIDE"
+    return
+  fi
+  echo "$value"
+}
+
+is_enabled() {
+  local target="$1"
+  [ "$target" != "$TARGET_DISABLED" ] && [ "$target" != "null" ] && [ "$target" != "false" ]
+}
+
+is_local() {
+  local target="$1"
+  [ "$target" = "$TARGET_LOCAL" ]
+}
+
+# "native" means the service runs on the host machine outside Docker (e.g. `pnpm dev`).
+# The deploy script skips it; SRS reaches it via host.docker.internal.
+is_native() {
+  local target="$1"
+  [ "$target" = "$TARGET_NATIVE" ]
+}
+
+is_remote() {
+  local target="$1"
+  is_enabled "$target" && ! is_local "$target" && ! is_native "$target"
+}
+
+# Extract the real hostname/IP from a target.
+# Handles "user@host", plain IPs, and SSH Host aliases.
+host_from_target() {
+  local target="$1"
+  local host
+
+  if [[ "$target" == *@* ]]; then
+    host="${target#*@}"
+  else
+    host="$target"
+  fi
+
+  # If host looks like an IP or FQDN, use it directly.
+  # Otherwise it's an SSH alias, so resolve via ssh -G.
+  if [[ "$host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$host" == *.* ]]; then
+    echo "$host"
+  else
+    local resolved
+    resolved=$(ssh -G "$host" 2>/dev/null | awk '/^hostname / { print $2 }')
+    echo "${resolved:-$host}"
+  fi
+}
+
+# --- Service grouping ---
+
+# Get unique enabled Docker targets from config (excludes "native", since those run outside compose).
+get_targets() {
+  local seen=()
+  for svc in "${ALL_SERVICES[@]}"; do
+    local target
+    target=$(get_target "$svc")
+    if is_enabled "$target" && ! is_native "$target"; then
+      # Check if already seen
+      local found=false
+      for s in "${seen[@]}"; do
+        [ "$s" = "$target" ] && found=true && break
+      done
+      if [ "$found" = "false" ]; then
+        seen+=("$target")
+        echo "$target"
+      fi
+    fi
+  done
+}
+
+# Get services assigned to a specific target.
+get_services_for_target() {
+  local target="$1"
+  for svc in "${ALL_SERVICES[@]}"; do
+    local svc_target
+    svc_target=$(get_target "$svc")
+    if [ "$svc_target" = "$target" ]; then
+      echo "$svc"
+    fi
+  done
+}
+
+# --- Service filter ---
+
+# Services named on the command line. Empty means the operator asked about the whole target, which
+# is not the same as asking about nothing: every consumer treats empty as "all", so a filter that
+# failed to populate widens the command rather than narrowing it.
+FILTER_SERVICES=()
+
+# Append one argv entry to FILTER_SERVICES, or report an unknown service name and return 1 so the
+# caller can print its own usage before exiting. Compose reads an unknown `--profile` as "select no
+# services" and exits 0, so a typo that reached it would report success while the service the
+# operator named kept running. See OPS-3.
+add_service_filter() {
+  local arg="$1" svc
+  for svc in "${ALL_SERVICES[@]}"; do
+    if [ "$arg" = "$svc" ]; then
+      FILTER_SERVICES+=("$arg")
+      return 0
+    fi
+  done
+  log_error "Unknown service: $arg"
+  return 1
+}
+
+is_in_filter() {
+  local svc="$1" f
+  if [ ${#FILTER_SERVICES[@]} -eq 0 ]; then
+    return 0
+  fi
+  for f in "${FILTER_SERVICES[@]}"; do
+    [ "$f" = "$svc" ] && return 0
+  done
+  return 1
+}
+
+get_filtered_services_for_target() {
+  local target="$1" svc
+  for svc in $(get_services_for_target "$target"); do
+    if is_in_filter "$svc"; then
+      echo "$svc"
+    fi
+  done
+}
+
+# Build --profile flags for a list of services.
+build_profile_flags() {
+  local flags=""
+  for svc in "$@"; do
+    flags="$flags --profile $svc"
+  done
+  echo "$flags"
+}
+
+# Build compose file flags (-f). Adds overrides when COMPOSE_NETWORK=host or NAT addrs are set, and
+# one per engine that is to run on a config file of the operator's own.
+build_compose_files() {
+  local base="$1"
+  local flags="-f $base/docker-compose.yml"
+  if [ "${COMPOSE_NETWORK:-}" = "host" ]; then
+    flags="$flags -f $base/docker-compose.host.yml"
+  fi
+  if [ -n "${BEE_UPLOADER_NAT_ADDR:-}" ] || [ -n "${BEE_GATEWAY_NAT_ADDR:-}" ]; then
+    flags="$flags -f $base/docker-compose.nat.yml"
+  fi
+  # A config file of the operator's own, mounted where the engine's entrypoint looks for one. The
+  # file is on the machine that runs compose, which for a remote target means the far side. See
+  # engines/README.md, "Your own config file".
+  if [ -n "${SRS_CONF_FILE:-}" ]; then
+    flags="$flags -f $base/docker-compose.srs-conf.yml"
+  fi
+  if [ -n "${OME_CONF_FILE:-}" ]; then
+    flags="$flags -f $base/docker-compose.ome-conf.yml"
+  fi
+  echo "$flags"
+}
+
+# Compose project flag (-p <profile>): namespaces containers/volumes per profile.
+compose_project_flag() {
+  echo "-p $PROFILE"
+}
+
+# --- Env helpers ---
+
+# Load KEY=VALUE lines from a file into the current shell. Each value is
+# treated as a DEFAULT. Anything already exported by the caller wins.
+load_env_file() {
+  local _env_file="$1"
+  if [ -f "$_env_file" ]; then
+    set -a
+    local _env_line _env_key _env_value
+    while IFS= read -r _env_line || [ -n "$_env_line" ]; do
+      case "$_env_line" in
+        ''|\#*) continue ;;
+      esac
+      _env_key="${_env_line%%=*}"
+      if ! [[ "$_env_key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        continue
+      fi
+      # `declare -p` rather than `${!key+x}`, because an EMPTY ARRAY reads as unset to the second
+      # one. Every array this library declares up front is empty at this point, so a `.env` line
+      # naming one used to claim its first element: `FILTER_SERVICES=client` in a `.env` made
+      # `stop.sh` with no arguments stop only `client` and still print "All services stopped", and
+      # in `clean.sh`, which loads the env before parsing argv, the same element reached the
+      # unquoted remote heredoc and ran as a command on the deployment host.
+      #
+      # This also covers the readonly constants, which `export` would have failed on rather than
+      # skipped. The locals above are `_env_`-prefixed so a `.env` key cannot collide with them and
+      # be skipped for the wrong reason.
+      if declare -p "$_env_key" &>/dev/null; then
+        continue
+      fi
+      # Take the value literally (no eval: secrets may contain $, !, #, ...).
+      # Quoted values run to the closing quote; unquoted values end at an
+      # inline comment (whitespace + #, dotenv-style) with whitespace trimmed.
+      _env_value="${_env_line#*=}"
+      case "$_env_value" in
+        \"*) _env_value="${_env_value#\"}"; _env_value="${_env_value%%\"*}" ;;
+        \'*) _env_value="${_env_value#\'}"; _env_value="${_env_value%%\'*}" ;;
+        *)
+          _env_value="${_env_value%%[[:space:]]\#*}"
+          _env_value="${_env_value%"${_env_value##*[![:space:]]}"}"
+          ;;
+      esac
+      export "$_env_key=$_env_value"
+    done < "$_env_file"
+    set +a
+  fi
+}
+
+load_env() {
+  load_env_file "$ENV_FILE"
+}
+
+# --- Shell quoting ---
+
+# Wrap a value so another shell reads it as a single literal word, for the strings that have to
+# survive a trip through one: an `ssh` command line, or a file the far side will `source`.
+#
+# POSIX single-quoting (close the quote, escape, reopen) rather than bash's `printf %q`, because the
+# shell on the other side is whatever login shell the deployment account has.
+#
+# The replacement is built in a variable on purpose, and the two shorter spellings are both wrong on
+# bash 3.2, which is what `#!/bin/bash` resolves to on macOS. Measured on 3.2.57 against 5.x:
+#
+#   ${1//\'/\'\\\'\'}       needs a second round of backslash removal that 3.2 does not do. Emits an
+#                           unbalanced word, so the receiving shell dies on `unexpected EOF`.
+#   ${1//\'/"'\\''"}        looks like the fix, and fails silently instead of loudly: no syntax
+#                           error, and 80 of 180 sampled inputs parse back to the wrong bytes.
+#
+# The first is the one that is dangerous rather than merely wrong. A value ending in a backslash eats
+# the wrapper's own closing quote, which rebalances the word and leaves a substitution before it
+# outside every quote, so the receiving shell runs it. Found by brute force on 3.2, none on 5.x.
+#
+# The form below round-trips every one of those inputs byte for byte on both versions.
+shell_quote() {
+  local escaped_quote="'\\''"
+  printf "'%s'" "${1//\'/$escaped_quote}"
+}
+
+# --- Publish keys ---
+
+# The publish key for one stream id, derived from the master secret. See SEC-28.
+#
+# Must agree byte for byte with `derivePublishKey` in packages/stream-uploader/src/utils/publishKey.ts,
+# because the service recomputes it and compares. Pinned to one golden vector, asserted here in
+# deploy/test/publishKey.test.js and there in publishKey.test.ts, so either side drifting fails a test.
+#
+# **The secret goes in through the environment and never through argv**, which is the whole reason
+# this is `node` and not the shorter `openssl dgst -hmac "$secret"`. openssl offers no way to take an
+# HMAC key from anywhere but its command line, and a command line is world-readable: any unprivileged
+# local user, or a container sharing the host PID namespace, reads it out of /proc/<pid>/cmdline, and
+# execve auditing captures it deterministically. One master secret is every stream's key forever,
+# since there is no per-stream revocation, so a momentary argv exposure is a permanent compromise.
+#
+# Using node also removes two disagreements the openssl form had with the service. The exit status is
+# the interpreter's rather than the last stage of a four-command pipeline, so a failure is a failure
+# instead of an empty key reported as success. And the length check counts the same units the service
+# counts: bash's `${#var}` is bytes under LC_ALL=C and characters under a UTF-8 locale, neither of
+# which is the UTF-16 code units `String.length` uses, so a non-ASCII secret could pass here and
+# throw at service startup.
+#
+# **node is not on a deploy target**, which is where an operator issues keys from, and this used to
+# say the requirement was fair because `deploy.sh` did not ship `config.json` "so it cannot run there
+# anyway". OPS-29 removed that premise, and what was left underneath was `node: command not found`
+# on the one machine the script exists for. Measured on `control-1`: no node, docker present.
+#
+# So node if it is here, and node in a container if it is not. The derivation itself is written once
+# and handed to whichever runs it, because two copies of an HMAC is two chances to issue keys the
+# service refuses.
+#
+# The secret stays out of argv on both paths. `docker run -e NAME` with no `=value` passes the value
+# through from this shell's environment, so the container's command line carries only the name. What
+# it does add is that the value is visible to anyone who can `docker inspect`, which on this host is
+# anyone in the docker group, and membership of that group is already root-equivalent.
+readonly PUBLISH_KEY_NODE_IMAGE="node:22-alpine"
+readonly PUBLISH_KEY_DERIVATION='
+    const { createHmac } = require("node:crypto");
+    const secret = process.env.PUBLISH_KEY_SECRET || "";
+    if (secret.length < 32) {
+      console.error("PUBLISH_KEY_SECRET must be at least 32 characters, which is what the service enforces at startup");
+      process.exit(1);
+    }
+    process.stdout.write(createHmac("sha256", secret).update(process.argv[1], "utf8").digest("hex").slice(0, 32));
+  '
+
+derive_publish_key() {
+  local stream_id="$1"
+
+  if command -v node >/dev/null 2>&1; then
+    PUBLISH_KEY_SECRET="${PUBLISH_KEY_SECRET:-}" node -e "$PUBLISH_KEY_DERIVATION" "$stream_id"
+    return $?
+  fi
+
+  if command -v docker >/dev/null 2>&1; then
+    PUBLISH_KEY_SECRET="${PUBLISH_KEY_SECRET:-}" docker run --rm -e PUBLISH_KEY_SECRET \
+      "$PUBLISH_KEY_NODE_IMAGE" node -e "$PUBLISH_KEY_DERIVATION" "$stream_id"
+    return $?
+  fi
+
+  echo "Deriving a publish key needs node, or docker to run ${PUBLISH_KEY_NODE_IMAGE}, and this host has" >&2
+  echo "neither. openssl is deliberately not used: it takes an HMAC key only from its command line," >&2
+  echo "and one leaked master secret is every stream's key forever, with no per-stream revocation." >&2
+  return 1
+}
+
+# --- Bee data dirs ---
+
+readonly DEFAULT_BEE_UPLOADER_DATA_DIR="./data/bee-uploader"
+readonly DEFAULT_BEE_GATEWAY_DATA_DIR="./data/bee-gateway"
+
+# Refuse a bee data dir that the operator's `.env` cannot be trusted to have meant.
+#
+# This character check is the layer that carries the safety, not `shell_quote`, and it is worth being
+# exact about that: the value reaches an `ssh` command line, `shell_quote` wraps it, and the quoting
+# was itself wrong on bash 3.2 until this branch fixed it. Two layers only look like two when both
+# work, so this one is written to hold on its own.
+#
+# It is not sufficient by itself either. The path is handed to `mkdir -p` and `chmod -R 777` on the
+# deployment host, and no character set separates a directory this deployment owns from one it does
+# not: `../..`, `.`, `/etc` and a home directory are all ordinary-looking paths. `..` is refused here
+# because it is cheap to name, and the rest is refused by `nodes/init-node.sh`, on the host that
+# holds the directory and can actually tell. See SEC-21.
+#
+# The set is narrower than what a docker bind mount source accepts, so this does refuse values that
+# used to work: a local deploy took `data/two words` and no longer does. That is a deliberate trade
+# and not a free one.
+#
+# Unset is fine. The defaults above are literals in this repository, not operator input.
+require_safe_data_dir() {
+  local name="$1"
+  local value="${!name:-}"
+  if [ -z "$value" ]; then
+    return 0
+  fi
+
+  # A leading `-` is excluded separately from the rest of the set, because a path is an argument
+  # before it is a path: `mkdir -p -weird` reads it as options and dies with `illegal option -- w`,
+  # naming neither the variable nor the value. `--` is not the fix, since BSD `chmod` does not accept
+  # it and the same line runs on the operator's macOS machine. `./-weird` is still allowed.
+  if ! [[ "$value" =~ ^[A-Za-z0-9._/][A-Za-z0-9._/-]*$ ]]; then
+    log_error "$name is not a usable data directory: $value"
+    echo "  Allowed characters: letters, digits, and . _ - / and not a leading -"
+    exit 1
+  fi
+
+  case "/$value/" in
+    */../*)
+      log_error "$name walks out of the deployment directory: $value"
+      echo "  The path is created and chmodded on the deployment host, so '..' is refused."
+      exit 1
+      ;;
+  esac
+}
+
+# The data dir as a path on the machine that will hold it. A relative value is relative to `deploy/`,
+# which is where docker compose resolves the same value's bind mount from, so the directory this
+# creates and the one the container mounts are the same one. An absolute value is taken as given.
+local_data_dir() {
+  case "$1" in
+    /*) printf '%s' "$1" ;;
+    *) printf '%s/%s' "$DEPLOY_DIR" "$1" ;;
+  esac
+}
+
+# --- Engine env (per-profile) ---
+# Engine-specific options live in engines/<engine>/.env. Like the root env,
+# a named profile gets its own copy: engines/<engine>/.env.<profile>.
+
+readonly ENGINE_SERVICES=("$SVC_SRS" "$SVC_OME")
+
+engine_env_file() {
+  local engine="$1"
+  if [ "$PROFILE" = "default" ]; then
+    echo "$ROOT_DIR/engines/$engine/.env"
+  else
+    echo "$ROOT_DIR/engines/$engine/.env.$PROFILE"
+  fi
+}
+
+# Create the current profile's engine env when missing, copied from the base
+# engines/<engine>/.env (falling back to .env.sample). --portSlot shifts SRS's
+# four ports, which are in PORT_VARS, but not OME's OME_SRT_PORT and
+# OME_HLS_PORT, so an OME copy needs its ports reviewed by hand.
+ensure_engine_env() {
+  local engine="$1"
+  local file base sample
+  file=$(engine_env_file "$engine")
+  [ -f "$file" ] && return 0
+  base="$ROOT_DIR/engines/$engine/.env"
+  sample="$ROOT_DIR/engines/$engine/.env.sample"
+  if [ "$PROFILE" != "default" ] && [ -f "$base" ]; then
+    cp "$base" "$file"
+  elif [ -f "$sample" ]; then
+    cp "$sample" "$file"
+  else
+    return 0
+  fi
+  log_warn "Created ${file#"$ROOT_DIR"/} for profile '$PROFILE'. Review its ports/secrets (--portSlot shifts the SRS ports, not OME_SRT_PORT or OME_HLS_PORT)."
+}
+
+# Load the env file of every enabled engine as defaults. Runs after load_env so
+# the root env wins on duplicate keys, the same order the natively-run uploader
+# uses (dotenv loads <root>/.env first, then engines/<engine>/.env).
+load_engine_envs() {
+  local engine
+  for engine in "${ENGINE_SERVICES[@]}"; do
+    if is_enabled "$(get_target "$engine")"; then
+      load_env_file "$(engine_env_file "$engine")"
+    fi
+  done
+}
+
+# Load whatever engine env files this tree has, without asking which engines are enabled.
+#
+# `load_engine_envs` answers a different question and needs `config.json` to answer it, through
+# `get_target`. A remote deploy target does not have that file: `deploy.sh` ships the compose files,
+# the Dockerfiles, `.env` and `deploy/scripts/`, and neither `config.json` nor `config.sample.json`.
+# So a script that wants an engine's port only to print a URL must not be gated on it, and the
+# question it actually has is which env files are here. See OPS-29.
+load_engine_envs_present() {
+  local engine file
+  for engine in "${ENGINE_SERVICES[@]}"; do
+    file="$(engine_env_file "$engine")"
+    if [ -f "$file" ]; then
+      load_env_file "$file"
+    fi
+  done
+}
+
+# Emit resolved KEY=VALUE\n lines for every key in the enabled engines' env
+# files. Values are read from the current shell, i.e. after the
+# load_env / load_engine_envs / apply_port_slot precedence has been applied,
+# and land in the .env.deploy.<profile> override file so per-profile engine
+# settings reliably reach compose interpolation (same reason PORT_OVERRIDES_TEXT
+# exists), locally and on remote targets.
+engine_env_overrides_text() {
+  local engine file line key value out=""
+  for engine in "${ENGINE_SERVICES[@]}"; do
+    is_enabled "$(get_target "$engine")" || continue
+    file=$(engine_env_file "$engine")
+    [ -f "$file" ] || continue
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        ''|\#*) continue ;;
+      esac
+      key="${line%%=*}"
+      if ! [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        continue
+      fi
+      # Single-quote the value: the override file is both `source`d and parsed by compose, and
+      # secrets may contain $, !, #, ... Through `shell_quote` rather than repeating the escape,
+      # because the copy that used to live here was the same expression that is wrong on bash 3.2:
+      # an engine env value containing an apostrophe wrote an unbalanced line, and the `source` of
+      # it at the two sites below then failed with `unexpected EOF` under `set -e`, aborting the
+      # deploy on a syntax error naming a temp file.
+      value=$(shell_quote "${!key:-}")
+      out+="${key}=${value}\n"
+    done < "$file"
+  done
+  printf '%s' "$out"
+}
+
+# --- Validation ---
+
+validate_config() {
+  local srs_target uploader_target client_target gateway_target
+  srs_target=$(get_target "$SVC_SRS")
+  uploader_target=$(get_target "$SVC_UPLOADER")
+  client_target=$(get_target "$SVC_CLIENT")
+  gateway_target=$(get_target "$SVC_BEE_GATEWAY")
+
+  # SRS and stream-uploader must be co-located (shared media volume).
+  # Exception: uploader="native" is allowed only when srs="localhost".
+  if is_enabled "$srs_target" && is_enabled "$uploader_target"; then
+    if is_native "$uploader_target"; then
+      if ! is_local "$srs_target"; then
+        echo -e "${RED}ERROR: stream-uploader=\"native\" requires srs=\"localhost\".${NC}"
+        echo "Native mode only works when SRS runs on the same machine."
+        exit 1
+      fi
+    elif [ "$srs_target" != "$uploader_target" ]; then
+      echo -e "${RED}ERROR: srs and stream-uploader must be on the same target.${NC}"
+      echo "They share the media volume for HLS segments."
+      exit 1
+    fi
+  fi
+
+  # client and bee-gateway must be co-located: the client's nginx proxies /bee/
+  # to the bee-gateway service via docker DNS, which only resolves within the same
+  # compose project / network.
+  if is_enabled "$client_target" && is_enabled "$gateway_target"; then
+    if [ "$client_target" != "$gateway_target" ]; then
+      echo -e "${RED}ERROR: client and bee-gateway must be on the same target.${NC}"
+      echo "The client container proxies /bee/ to bee-gateway over the compose network."
+      exit 1
+    fi
+  fi
+}
+
+# --- Output helpers ---
+
+log_info() {
+  echo -e "${CYAN}---${NC} $1"
+}
+
+log_ok() {
+  echo -e "${GREEN}✓${NC} $1"
+}
+
+log_warn() {
+  echo -e "${YELLOW}!${NC} $1"
+}
+
+log_error() {
+  echo -e "${RED}✗${NC} $1"
+}
+
+print_services() {
+  echo ""
+  echo "Profile: $PROFILE  (env: $ENV_FILE)"
+  if [ -n "$HOST_OVERRIDE" ]; then
+    echo "Host override: $HOST_OVERRIDE  (config.json targets ignored for enabled services)"
+  fi
+  if [ "$PORT_SLOT" != "0" ]; then
+    echo "Port slot: $PORT_SLOT (defaults shifted by slot*10, authoritative, env values ignored)"
+    echo "  bee-uploader  api=${BEE_UPLOADER_API_PORT:-?}  p2p=${BEE_UPLOADER_P2P_PORT:-?}"
+    echo "  bee-gateway   api=${BEE_GATEWAY_API_PORT:-?}  p2p=${BEE_GATEWAY_P2P_PORT:-?}"
+    echo "  stream-uplder api=${API_PORT:-?}"
+    echo "  srs           srt=${SRS_SRT_PORT:-?}  rtmp=${SRS_RTMP_PORT:-?}  http=${SRS_HTTP_PORT:-?}"
+    echo "  client        http=${CLIENT_PORT:-?}"
+  fi
+  echo "Deployment topology:"
+  for svc in "${ALL_SERVICES[@]}"; do
+    local target
+    target=$(get_target "$svc")
+    if is_native "$target"; then
+      echo -e "  ${CYAN}◆${NC} $svc → native (host process)"
+    elif is_enabled "$target"; then
+      echo -e "  ${GREEN}●${NC} $svc → $target"
+    else
+      echo -e "  ${YELLOW}○${NC} $svc → disabled"
+    fi
+  done
+  echo ""
+}

@@ -1,0 +1,86 @@
+node_modules
+dist
+.env*
+
+# Batch id written beside .env when stamp:setup cannot record it there (OPS-1)
+stamp-batch-*.txt
+!.env.sample
+.DS_Store
+*.log
+coverage
+.vscode
+state/
+nodes/data/
+deploy/data/
+deploy/config.json
+deploy/.env.deploy*
+*.tsbuildinfo
+
+# TAP written beside the dot reporter so scripts/assert-test-floor.mjs can count what actually ran
+.test-summary.tap
+
+/engines/srs/media
+
+# Compiled output emitted beside sources, which happens when tsc is invoked with
+# file names on the command line and so ignores tsconfig.json's outDir.
+packages/*/src/**/*.js
+packages/*/test/**/*.js
+
+# weeb-3's SharedWorker runtime, copied out of node_modules by the client's `prebuild` so nginx can
+# serve it from our own origin. 4 MB of wasm that the lockfile already pins, so the tracked copy
+# would only ever be a second version of the same bytes.
+packages/client/public/weeb-3/
+
+# Stryker copies the whole tree into a sandbox per run and writes its report beside it.
+.stryker-tmp/
+reports/mutation/
+
+# Frame captures written per run by `e2e/src/browser/runFiles.ts`. `bench-on-host.sh` rsyncs
+# `docs/bench/` back wholesale after every run, so anything a harness leaves there is staged
+# without anyone choosing to keep it. Each run's own report carries the numbers these show.
+docs/bench/browser-screenshots/
+
+# Per-run output from the bench and browser harnesses: a raw JSON capture, the markdown report
+# summarising it, and the sweep logs, all named after the run's timestamp and all rsynced back by
+# the same wholesale copy. What is worth keeping is the analysis written across many runs, which
+# lives in the hand-written documents beside these. A per-run file that a document cites as
+# evidence is tracked deliberately with `git add -f`.
+docs/bench/latency-*.json
+docs/bench/longrun-*.json
+docs/bench/browser-watch-*.json
+docs/bench/browser-crash-*.json
+docs/bench/latency-*.md
+docs/bench/longrun-*.md
+docs/bench/browser-watch-*.md
+docs/bench/browser-crash-*.md
+docs/bench/profiles-*.log
+docs/bench/sweep-*.log
+docs/bench/browser-vod-*.json
+docs/bench/browser-vod-*.md
+docs/bench/browser-quality-*.json
+docs/bench/browser-quality-*.md
+docs/bench/browser-rung-outage-*.json
+docs/bench/browser-rung-outage-*.md
+docs/bench/in-tab-throttle-probe-*.json
+docs/bench/in-tab-throttle-probe-*.md
+# The pre-registration and the written-up result share the driver's prefix and are hand written, so
+# they are kept. A run's own report is force-added when it is the evidence behind a result.
+!docs/bench/in-tab-throttle-probe-prediction-*.md
+!docs/bench/in-tab-throttle-probe-result-*.md
+
+# Stryker drains the command runner's stdout slowly, and the uploader suite times out against
+# that backpressure. Redirecting it to a file is what makes the dry run pass.
+.stryker-test-output.log
+
+# The night's spend authorisation and its dated predecessors. Written when the owner gives it,
+# never committed. Lives in the LOCAL repo root: bench-on-host.sh syncs with --delete and no
+# exclusion for it, so a copy that exists only on the host is deleted by the next sync.
+.spend-ledger.env*
+
+# What each rung was publishing through before drain-stage.sh armed it, one file per profile. It
+# carries whole batch ids and it is live state for one deployment, so it belongs beside that
+# deployment's env file and nowhere else. The `.env*` rule above does not cover it.
+.drain-stage.*.env
+
+# Python bytecode caches, written beside deploy/scripts/*.py by any invocation.
+__pycache__/
