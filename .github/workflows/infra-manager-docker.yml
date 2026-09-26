@@ -9,7 +9,7 @@
 # repository with its submodule, no manager and no secret.
 #
 # What each proves and what it does not: docs/ci.md.
-name: docker-backed checks
+name: infra-manager docker-backed checks
 
 on:
   workflow_dispatch:
