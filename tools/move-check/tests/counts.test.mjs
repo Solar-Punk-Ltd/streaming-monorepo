@@ -138,6 +138,18 @@ describe('parseTestLog', () => {
     assert.deepEqual(parseTestLog(stamped), parseTestLog(recursiveLog()));
   });
 
+  it('records a package pnpm ran a test script for that printed no summary it reads', () => {
+    const log = pnpmPackage('apps/legacy', ['PASS src/a.test.js', 'Tests:       5 passed, 5 total']).join('\n');
+    assert.deepEqual(parseTestLog(log).get('apps/legacy'), []);
+  });
+
+  it('records a package whose test:unit script printed no summary, and ignores other scripts', () => {
+    const log = [...pnpmPackage('apps/a', ['compiled'], 'build'), ...pnpmPackage('apps/b', ['nothing readable'], 'test:unit')].join('\n');
+    const summaries = parseTestLog(log);
+    assert.equal(summaries.has('apps/a'), false);
+    assert.deepEqual(summaries.get('apps/b'), []);
+  });
+
   it('keeps two summaries of one package in the order they were printed', () => {
     const log = pnpmPackage('web2-admin/backend', [...tapSummary({ tests: 3 }), ...tapSummary({ tests: 7 })]).join('\n');
     assert.deepEqual(
@@ -187,6 +199,16 @@ describe('findCountProblems', () => {
     );
   });
 
+  it('names a package whose tests ran but printed no summary it reads, in each log that lacks one', () => {
+    const silent = pnpmPackage('apps/legacy', ['Tests:       5 passed, 5 total']).join('\n');
+    const readable = pnpmPackage('apps/legacy', tapSummary({ tests: 5 })).join('\n');
+    assert.deepEqual(findCountProblems(log(silent), log(silent)), [
+      'apps/legacy: its tests ran but printed no summary this check reads, in the before log',
+      'apps/legacy: its tests ran but printed no summary this check reads, in the after log',
+    ]);
+    assert.deepEqual(findCountProblems(log(readable), log(silent)), ['apps/legacy: its tests ran but printed no summary this check reads, in the after log']);
+  });
+
   it('names a package whose number of summaries changed', () => {
     const before = pnpmPackage('web2-admin/backend', [...tapSummary({ tests: 3 }), ...tapSummary({ tests: 7 })]).join('\n');
     const after = pnpmPackage('web2-admin/backend', tapSummary({ tests: 3 })).join('\n');
@@ -210,7 +232,7 @@ describe('counts.mjs', () => {
     assert.equal(result.status, 1);
     assert.match(result.stdout, /^web2-admin\/frontend: vitest counts differ: tests failed \(absent\) vs 2, tests passed 21 vs 19$/m);
     assert.match(result.stdout, /^web2-admin\/frontend: vitest failed in the after log: tests failed 2$/m);
-    assert.match(result.stdout, /^counts: differs, 2 problems$/m);
+    assert.match(result.stdout, /^counts: does not match, 2 problems$/m);
   });
 
   it('passes a move once --map renames the package directories', (t) => {
@@ -223,6 +245,15 @@ describe('counts.mjs', () => {
     assert.equal(unmapped.status, 1);
     assert.match(unmapped.stdout, /^web2-admin\/backend: only in the before log$/m);
     assert.match(unmapped.stdout, /^apps\/web2-admin\/backend: only in the after log$/m);
+  });
+
+  it('fails when a package ran its tests with a runner it cannot read, rather than skipping it', (t) => {
+    const dir = makeTempDir(t);
+    const log = [...pnpmPackage('apps/legacy', ['Tests:       5 passed, 5 total']), ...pnpmPackage('apps/kept', tapSummary({ tests: 2 }))].join('\n');
+    const result = runScript(COUNTS, ['--before', writeLog(dir, 'a.log', log), '--after', writeLog(dir, 'b.log', log)]);
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /^apps\/legacy: its tests ran but printed no summary this check reads, in the before log$/m);
+    assert.match(result.stdout, /^counts: does not match, 2 problems$/m);
   });
 
   it('exits 2 when neither log holds a summary it knows', (t) => {
