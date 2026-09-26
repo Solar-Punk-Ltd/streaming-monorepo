@@ -19,7 +19,7 @@ node and the real catalogue.
 ## Prerequisites
 
 ```bash
-# from web2-admin/backend/
+# from apps/web2-admin/backend/
 cp .env.sample .env        # only DATABASE_URL is read from it here
 pnpm database:start        # Postgres on 127.0.0.1:5433
 ```

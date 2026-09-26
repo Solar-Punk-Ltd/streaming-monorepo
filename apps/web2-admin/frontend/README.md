@@ -32,7 +32,7 @@ guard sends the operator to `#/login`.
 ## Running it
 
 ```bash
-pnpm install                                              # from the repo root
+pnpm install                                              # from apps/web2-admin
 pnpm --filter @streaming-monorepo/web2-admin-frontend dev  # http://localhost:5081
 ```
 
@@ -52,7 +52,7 @@ real yup schemas and it is not the contract. Use it when you want to click
 through the console without a Postgres and a Bee node:
 
 ```bash
-node web2-admin/frontend/scripts/mock-api.mjs          # listens on 127.0.0.1:9877
+node frontend/scripts/mock-api.mjs                     # listens on 127.0.0.1:9877
 pnpm --filter @streaming-monorepo/web2-admin-frontend dev
 ```
 
@@ -84,11 +84,11 @@ testing but not in a production build.
 ## Production
 
 `Dockerfile` builds the SPA and serves it from nginx, with `nginx.conf`
-mirroring the dev proxy (`/api` → `api:9877`). Build it from the repository
-root:
+mirroring the dev proxy (`/api` → `api:9877`). Build it from
+`apps/web2-admin`:
 
 ```bash
-docker build -f web2-admin/frontend/Dockerfile -t web2-admin-frontend .
+docker build -f frontend/Dockerfile -t web2-admin-frontend .
 ```
 
 ## Layout

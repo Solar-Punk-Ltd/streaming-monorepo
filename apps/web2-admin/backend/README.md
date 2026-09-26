@@ -43,7 +43,7 @@ op read "op://<vault>/<item>/password" \
 
 The first user ever added can manage users whatever the flags said; later ones
 are plain unless `--admin` is given. See
-[docs/architecture/web2-admin-auth.md](../../docs/architecture/web2-admin-auth.md)
+[docs/architecture/web2-admin-auth.md](../../../docs/architecture/web2-admin-auth.md)
 for the whole design.
 
 ## Scripts
@@ -62,7 +62,7 @@ for the whole design.
 `docker compose -p web2-admin --profile full up -d --build` runs the API in
 Docker too (two-stage `pnpm deploy` image, `Dockerfile`).
 Deploying to a server is a different compose file and a script:
-[deploy/README.md](../../deploy/README.md).
+[deploy/README.md](../deploy/README.md).
 
 ## Configuration
 

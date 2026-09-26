@@ -98,7 +98,7 @@ and being wrong about a different half of it.
 | `NoUsersError` → 409 | → 401 | It is an answer to "who am I", and the console's fetch wrapper already treats `/auth/session` and `/auth/login` as routes where a 401 is an answer rather than an eviction. |
 | `GET /auth/users` → a bare array | → `{ users: [...] }` | `UserListResponse` in web2-admin-common. |
 | One password check throttled per route | Same, but the wrong *current* password answers 401 `invalid_credentials` | The manager's choice, kept: the console's wrapper exempts `/auth/password` from the sign-out-on-401 rule for exactly this case. |
-| `manager/src/domain/auth/*` | `web2-admin/backend/src/domain/auth/*` | Same shape, under this repo's `src/domain/`. |
+| `manager/src/domain/auth/*` | `apps/web2-admin/backend/src/domain/auth/*` | Same shape, under this repo's `src/domain/`. |
 
 The login body is **not** trimmed, which the old `loginSchema` did. That is the
 manager's choice and the reason is in its comment: a wrong pair must answer the
