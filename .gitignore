@@ -18,3 +18,9 @@ apps/web2-admin/deploy/.deployed-commit
 # progress.
 infra/edge/Caddyfile
 infra/edge/Caddyfile.tmp
+# The same files at their places before the admin and the edge moved. A checkout made before the
+# move still holds them, git leaves ignored files where they are, and the Caddyfile names one
+# deployment's domains, so they stay ignored until no such checkout is left.
+deploy/.deployed-commit
+deploy/edge/Caddyfile
+deploy/edge/Caddyfile.tmp
