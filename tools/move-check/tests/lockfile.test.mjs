@@ -239,6 +239,14 @@ describe('lockfile.mjs', () => {
       assert.equal(result.stdout, 'lockfile: match, the same 2 packages and 2 snapshots on both sides\n');
     });
 
+    it('exits 2 rather than matching two files that have no packages section', (t) => {
+      const { repo, commits } = repoWithLockfiles(t, '{ "name": "not-a-lockfile" }\n', '{ "name": "not-a-lockfile" }\n');
+      const args = ['--packages', '--from', `${commits[0]}:pnpm-lock.yaml`, '--to', `${commits[1]}:pnpm-lock.yaml`];
+      const result = runScript(LOCKFILE, args, { cwd: repo });
+      assert.equal(result.status, 2);
+      assert.match(result.stderr, /Neither file has a top-level packages: section/);
+    });
+
     it('lists the keys one side has and the other lacks', (t) => {
       const upgraded = BEFORE_MOVE.replaceAll('express@5.2.1', 'express@5.2.2');
       const { repo, commits } = repoWithLockfiles(t, BEFORE_MOVE, upgraded);
