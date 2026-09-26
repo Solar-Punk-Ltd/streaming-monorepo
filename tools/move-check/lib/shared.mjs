@@ -137,7 +137,8 @@ function lastChars(text, limit) {
   return text.length > limit ? `...${text.slice(-limit)}` : text;
 }
 
-function describeCommandFailure(command, args, error) {
+/** Says why a program could not run or what it said when it failed, quoting both of its streams. */
+export function describeCommandFailure(command, args, error) {
   if (error.code === 'ENOENT') return `${command} was not found. Install it or put it on PATH.`;
   const ending = error.status === null ? `signal ${error.signal}` : `exit ${error.status}`;
   const streams = [
