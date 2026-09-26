@@ -4,7 +4,7 @@
 # a deploy builds on the host.
 # Counts drift as suites are added. Re-measure rather than trusting them. What they prove and what they
 # do not: docs/ci.md.
-name: checks
+name: infra-manager
 
 on:
   pull_request:
