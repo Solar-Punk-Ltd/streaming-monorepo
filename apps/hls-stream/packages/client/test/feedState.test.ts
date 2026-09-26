@@ -1,0 +1,1802 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'vitest';
+
+import {
+  backoffDelayMs,
+  FEED_STATE_DEGRADED,
+  FEED_STATE_ENDED,
+  FEED_STATE_LIVE,
+  FEED_STATE_RECONNECTING,
+  FEED_STATE_STALLED,
+  FeedHealthTracker,
+  type FeedState,
+  PLAYBACK_STALL_BURST,
+  PLAYBACK_STALL_WINDOW_MS,
+  RUNG_DEATH_LAG_SEGMENTS,
+  TRACKED_TOPIC_LIMIT,
+  UNSERVED_POLLS_PROBE_CEILING,
+  UNSERVED_SLOT_STALL_MS,
+} from '../src/components/SwarmHlsPlayer/feedState';
+
+const TOPIC = 'topic-under-test';
+
+function makeClock() {
+  let ms = 0;
+  return {
+    now: () => ms,
+    advance: (by: number) => {
+      ms += by;
+    },
+  };
+}
+
+/**
+ * Drives an unserved run past the stall window.
+ *
+ * Two polls and a clock, never a loop over the constant. Looping `UNSERVED_SLOT_STALL_MS` times
+ * against an implementation that compares to `UNSERVED_SLOT_STALL_MS` compares the constant only to
+ * itself, which is how the old poll-count version stayed green at any value including ten minutes.
+ */
+function unservedPastWindow(tracker: FeedHealthTracker, clock: { advance: (by: number) => void }): void {
+  tracker.recordUnservedSlot(TOPIC);
+  clock.advance(UNSERVED_SLOT_STALL_MS);
+  tracker.recordUnservedSlot(TOPIC);
+}
+
+function makeTracker() {
+  const clock = makeClock();
+  const seen: FeedState[] = [];
+  const tracker = new FeedHealthTracker(clock.now);
+  return { clock, tracker, seen, watch: () => tracker.subscribe(TOPIC, (state) => seen.push(state)) };
+}
+
+describe('FeedHealthTracker backoff schedule', () => {
+  /**
+   * Written out as milliseconds rather than derived from the base and the cap.
+   *
+   * The version of this test that failed review advanced its clock by the same constant the
+   * implementation caps at, so no value of that constant could make it fail: a cap of ten minutes
+   * stayed green, and so did a base slow enough to make the player useless. A schedule is only
+   * pinned by numbers that are not the implementation's own.
+   */
+  it('doubles the wait per consecutive failure and stops at eight seconds', () => {
+    assert.deepEqual([1, 2, 3, 4, 5, 6, 20].map(backoffDelayMs), [2_000, 4_000, 8_000, 8_000, 8_000, 8_000, 8_000]);
+  });
+
+  /**
+   * The sibling constant, pinned the same way and for the same reason. Every test that exercised the
+   * unserved run used to loop the threshold's own value against an implementation comparing to that
+   * same value, so the constant was only ever compared to itself: raising it to 600 left all 18 tests
+   * green, and 600 polls is ten minutes of a dead feed before a viewer is told anything.
+   *
+   * ⛔ **Polls were the wrong unit, which is why this is now milliseconds.** The poll rate collapses
+   * during exactly the stall it counted, so thirty polls meant about eight seconds while healthy and
+   * about thirty-two during a stall. See {@link UNSERVED_SLOT_STALL_MS}. Eight seconds is what the
+   * count meant in the healthy case, so only the broken case moves.
+   */
+  it('waits eight seconds of an unserved feed before telling a viewer', () => {
+    assert.equal(UNSERVED_SLOT_STALL_MS, 8_000);
+  });
+
+  /** Bounds the probe and nothing else since 2026-08-29. The overlay is timed, not counted. */
+  it('keeps probing past a refusal for a bounded number of polls', () => {
+    assert.equal(UNSERVED_POLLS_PROBE_CEILING, 30);
+  });
+
+  it('counts the wait down against its own clock', () => {
+    const { tracker, clock } = makeTracker();
+
+    tracker.recordGatewayFailure(TOPIC);
+    assert.equal(tracker.backoffRemainingMs(TOPIC), 2_000);
+
+    clock.advance(1_999);
+    assert.equal(tracker.backoffRemainingMs(TOPIC), 1);
+
+    clock.advance(1);
+    assert.equal(tracker.backoffRemainingMs(TOPIC), 0);
+  });
+
+  it('lengthens the wait each time the gateway fails again', () => {
+    const { tracker, clock } = makeTracker();
+
+    tracker.recordGatewayFailure(TOPIC);
+    clock.advance(2_000);
+    tracker.recordGatewayFailure(TOPIC);
+
+    assert.equal(tracker.backoffRemainingMs(TOPIC), 4_000);
+  });
+
+  it('drops the whole wait the moment the gateway answers', () => {
+    const { tracker } = makeTracker();
+
+    tracker.recordGatewayFailure(TOPIC);
+    tracker.recordGatewayFailure(TOPIC);
+    tracker.recordGatewayResponse(TOPIC);
+
+    assert.equal(tracker.backoffRemainingMs(TOPIC), 0);
+    assert.equal(tracker.state(TOPIC), FEED_STATE_LIVE);
+  });
+
+  /**
+   * `Date.now` is not monotonic. A backoff scheduled against it is a deadline in a time base that a
+   * system clock correction moves, and an outage is a plausible moment for one: a laptop resuming
+   * from sleep resynchronises its clock, which is exactly when the gateway was last unreachable.
+   */
+  it('is not scheduled against a clock a system time correction can move', () => {
+    const tracker = new FeedHealthTracker();
+    const realDateNow = Date.now;
+
+    tracker.recordGatewayFailure(TOPIC);
+    const beforeCorrection = tracker.backoffRemainingMs(TOPIC);
+    try {
+      Date.now = () => realDateNow() - 60 * 60 * 1_000;
+      const afterCorrection = tracker.backoffRemainingMs(TOPIC);
+
+      assert.ok(
+        afterCorrection <= beforeCorrection,
+        `the clock stepping back an hour added ${afterCorrection - beforeCorrection}ms to a 2s wait`,
+      );
+    } finally {
+      Date.now = realDateNow;
+    }
+  });
+});
+
+/**
+ * What the schedule costs a viewer whose gateway has come back, which is a different question from
+ * what the schedule is.
+ *
+ * ⭐ **Measured 2026-08-29, live, in a real browser, on the four rung ABR ladder.** Three unrelated
+ * faults were injected under a watching viewer and the frozen picture was timed: killing the
+ * uploader process cost **59.0s**, pausing the writer bee node for **eight seconds** cost **58.9s**,
+ * and a writer bee outage cost **58.5s**. Three faults of three very different lengths landing
+ * within half a second of each other is one timer rather than three coincidences, and the timer is
+ * the schedule above. Waiting out 2 + 4 + 8 + 16 and then a first cap period is exactly sixty
+ * seconds in which nothing asks the gateway anything, and all three sat on it.
+ *
+ * ⛔ **The fault length barely enters into it.** An eight second pause cost 58.9 seconds of frozen
+ * picture, so fifty of those seconds were the client's own, spent holding off a gateway that had
+ * been answering again for the better part of a minute.
+ *
+ * The bound is the same client's cost on a single rendition, measured 2026-08-27 across both byte
+ * sources: a 20.5 second gateway stop froze the picture 28.6s and 27.6s, of which **10.7s and 9.9s
+ * were spent after the gateway had started answering again**. See
+ * `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md`. A ladder viewer walks five feeds where a
+ * single rendition walks one, and walking more of them must not make recovery worse than the
+ * one-rung case a ladder is built out of.
+ */
+describe('FeedHealthTracker recovery time', () => {
+  /** The slower of the two client-owned recoveries measured on a single rendition, 2026-08-27. */
+  const SINGLE_RENDITION_RECOVERY_MS = 10_700;
+
+  /** Attempts to run before calling the schedule flat, well past where any doubling can matter. */
+  const SCHEDULE_DEPTH = 64;
+
+  /** When the gateway is asked again, counting from the failure that started the fault. */
+  function attemptTimesMs(depth: number): number[] {
+    const times: number[] = [];
+    let at = 0;
+    for (let failures = 1; failures <= depth; failures++) {
+      const wait = backoffDelayMs(failures);
+      assert.ok(wait > 0, `failure ${failures} scheduled a wait of ${wait}ms, which is not a backoff`);
+      at += wait;
+      times.push(at);
+    }
+    return times;
+  }
+
+  it('re-asks a gateway that came back inside the time one rendition took to recover in full', () => {
+    const gaps = Array.from({ length: SCHEDULE_DEPTH }, (_, i) => backoffDelayMs(i + 1));
+    const longestGapMs = Math.max(...gaps);
+
+    assert.ok(
+      longestGapMs < SINGLE_RENDITION_RECOVERY_MS,
+      `a ladder viewer can go ${longestGapMs / 1_000}s without the gateway being asked, where a ` +
+        `single rendition recovered in full in ${SINGLE_RENDITION_RECOVERY_MS / 1_000}s`,
+    );
+  });
+
+  it('gets more than one more chance inside the minute all three 2026-08-29 faults froze for', () => {
+    const FROZEN_MS = 59_000;
+    const chances = attemptTimesMs(SCHEDULE_DEPTH).filter((at) => at < FROZEN_MS).length;
+
+    assert.ok(
+      chances >= 6,
+      `the gateway was asked ${chances} times in the ${FROZEN_MS / 1_000}s the picture was frozen`,
+    );
+  });
+});
+
+describe('FeedHealthTracker states', () => {
+  it('starts a topic it has never seen as live', () => {
+    const { tracker } = makeTracker();
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_LIVE);
+  });
+
+  it('calls a gateway that will not answer a reconnection', () => {
+    const { tracker, seen, watch } = makeTracker();
+    watch();
+
+    tracker.recordGatewayFailure(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_RECONNECTING);
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_RECONNECTING]);
+  });
+
+  it('says it once, not once per failed poll', () => {
+    const { tracker, clock, seen, watch } = makeTracker();
+    watch();
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      clock.advance(60_000);
+      tracker.recordGatewayFailure(TOPIC);
+    }
+
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_RECONNECTING]);
+  });
+
+  /**
+   * The other shape of a feed going quiet, and the one that answers 404 the whole way through. A
+   * lapsed stamp, a chunk that never synced, or a gateway that does not hold this feed all look
+   * exactly like a viewer who has caught up with the publisher, until the run gets long.
+   */
+  it('stays quiet through a run of unserved slots and then calls the feed stalled', () => {
+    const { tracker, clock, seen, watch } = makeTracker();
+    watch();
+
+    tracker.recordUnservedSlot(TOPIC);
+    clock.advance(UNSERVED_SLOT_STALL_MS - 1);
+    tracker.recordUnservedSlot(TOPIC);
+    assert.deepEqual(seen, [FEED_STATE_LIVE], 'a viewer who had merely caught up was told something was wrong');
+
+    clock.advance(1);
+    tracker.recordUnservedSlot(TOPIC);
+
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_STALLED]);
+  });
+
+  // Deliberate, and the reason the two runs are counted apart. A caught-up viewer sees an unserved
+  // slot on nearly every poll and has to keep asking at full cadence to get the next segment when it
+  // lands. Backing that off would add latency to the healthy case to describe the unhealthy one.
+  it('never holds off a poll over an unserved slot, however long the run', () => {
+    const { tracker, clock } = makeTracker();
+
+    unservedPastWindow(tracker, clock);
+    clock.advance(UNSERVED_SLOT_STALL_MS * 10);
+    tracker.recordUnservedSlot(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_STALLED);
+    assert.equal(tracker.backoffRemainingMs(TOPIC), 0);
+  });
+
+  it('ends a stalled run on the first slot that is served', () => {
+    const { tracker, clock, seen, watch } = makeTracker();
+    watch();
+
+    unservedPastWindow(tracker, clock);
+    tracker.recordGatewayResponse(TOPIC);
+
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_STALLED, FEED_STATE_LIVE]);
+  });
+
+  /**
+   * The direction the sibling test below does not cover, and the one that was wrong: a failure
+   * followed by answered polls, rather than answered polls followed by a failure.
+   *
+   * An unserved slot is the gateway answering. Carrying the failure count through it pinned the
+   * topic to `reconnecting` from one earlier flake until the publisher wrote again, so `stalled` was
+   * unreachable for exactly the case it was written for, a publisher that has stopped for good.
+   */
+  it('lets an answered poll end a run of failures, whatever the answer carried', () => {
+    const { tracker, clock, seen, watch } = makeTracker();
+    watch();
+
+    tracker.recordGatewayFailure(TOPIC);
+    clock.advance(2_000);
+    unservedPastWindow(tracker, clock);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_STALLED);
+    assert.equal(tracker.backoffRemainingMs(TOPIC), 0, 'a gateway answering every poll was still being held off');
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_RECONNECTING, FEED_STATE_LIVE, FEED_STATE_STALLED]);
+  });
+
+  // And the backoff restarts from the base rather than resuming a run the gateway already broke.
+  it('starts the next backoff over after the gateway has answered in between', () => {
+    const { tracker, clock } = makeTracker();
+
+    tracker.recordGatewayFailure(TOPIC);
+    clock.advance(2_000);
+    tracker.recordUnservedSlot(TOPIC);
+    tracker.recordGatewayFailure(TOPIC);
+
+    assert.equal(tracker.backoffRemainingMs(TOPIC), 2_000);
+  });
+
+  it('reports a gateway that stopped answering mid-stall as the reconnection it is', () => {
+    const { tracker, clock } = makeTracker();
+
+    unservedPastWindow(tracker, clock);
+    tracker.recordGatewayFailure(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_RECONNECTING);
+  });
+});
+
+describe('FeedHealthTracker proof that did not come from a feed read', () => {
+  const OTHER_TOPIC = 'another-topic-on-the-same-gateway';
+
+  /**
+   * The measured defect this exists for. A viewer's gateway was stopped for 20.5 seconds on
+   * 2026-08-06 and the feed was not asked for again until 30 seconds, because the backoff doubles
+   * from the failure that set it and nothing shortens it. All the while hls.js was fetching segments
+   * through that same gateway and those started succeeding the moment it returned, so the client
+   * held the answer and threw it away. 16.2 of the 30.6 second freeze was that wait.
+   * `docs/bench/browser-crash-2026-08-06T05-31-04-624Z.md`.
+   */
+  it('ends the wait on every topic held off, since one gateway serves them all', () => {
+    const clock = makeClock();
+    const tracker = new FeedHealthTracker(clock.now);
+
+    tracker.recordGatewayFailure(TOPIC);
+    tracker.recordGatewayFailure(OTHER_TOPIC);
+    assert.ok(tracker.backoffRemainingMs(TOPIC) > 0 && tracker.backoffRemainingMs(OTHER_TOPIC) > 0);
+
+    tracker.recordGatewayReachable();
+
+    assert.equal(tracker.backoffRemainingMs(TOPIC), 0);
+    assert.equal(tracker.backoffRemainingMs(OTHER_TOPIC), 0, 'only the first topic was released');
+    assert.equal(tracker.state(TOPIC), FEED_STATE_LIVE);
+    assert.equal(tracker.state(OTHER_TOPIC), FEED_STATE_LIVE);
+  });
+
+  /**
+   * The reason this clears the backoff and not the unserved run, and the reason it is not
+   * `recordGatewayResponse`. A segment is fetched by chunk address, so it proves the gateway is
+   * serving bytes and says nothing at all about whether any publisher is still writing. A feed that
+   * stopped an hour ago goes on delivering the segments it already announced, and treating that as
+   * the feed advancing would erase a stall the viewer has already been told about.
+   */
+  it('leaves a stalled feed stalled, because a segment says nothing about a publisher', () => {
+    const { tracker, clock, seen, watch } = makeTracker();
+    watch();
+
+    unservedPastWindow(tracker, clock);
+    assert.equal(tracker.state(TOPIC), FEED_STATE_STALLED);
+
+    tracker.recordGatewayReachable();
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_STALLED);
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_STALLED]);
+  });
+
+  /**
+   * This runs once per segment loaded, which is four times a second at the shipping profile, so the
+   * healthy case has to be free. Nothing is in trouble, so there is nothing to release and nothing
+   * to say.
+   */
+  it('starts tracking nothing when no topic is in trouble', () => {
+    const { tracker, seen, watch } = makeTracker();
+    watch();
+
+    tracker.recordGatewayReachable();
+    tracker.recordGatewayReachable();
+
+    assert.deepEqual(seen, [FEED_STATE_LIVE]);
+    assert.equal(tracker.state(TOPIC), FEED_STATE_LIVE);
+  });
+
+  /**
+   * ⭐ The ladder half of the same defect, and why "a feed read only proves the gateway served that
+   * feed" was the wrong reading of it. One gateway serves every feed this tracker holds, so a feed
+   * read getting through is the same evidence a segment arriving is: the gateway is up. A viewer on
+   * the four rung ladder holds five entries, each backing off on its own count, and leaving four of
+   * them asleep while the fifth is demonstrably being served is four rungs of nothing to switch to.
+   *
+   * The two halves are split because they are proven by different things. Reaching the gateway is
+   * proven for everybody. That *this* feed reads cleanly is proven only where it was read, so the
+   * count stays where it stands: the overlay keeps saying reconnecting rather than flickering once
+   * per sibling poll, and a rung that fails again goes back to the wait it had earned rather than
+   * to the base.
+   */
+  it('lets every other held topic try again at once, and forgives only the one proven', () => {
+    const clock = makeClock();
+    const tracker = new FeedHealthTracker(clock.now);
+
+    tracker.recordGatewayFailure(TOPIC);
+    tracker.recordGatewayFailure(OTHER_TOPIC);
+    tracker.recordGatewayFailure(OTHER_TOPIC);
+    const earnedWaitMs = tracker.backoffRemainingMs(OTHER_TOPIC);
+    assert.ok(earnedWaitMs > 0, 'the rung under test was never held off in the first place');
+
+    tracker.recordGatewayReachable(TOPIC);
+
+    assert.equal(tracker.backoffRemainingMs(TOPIC), 0);
+    assert.equal(tracker.backoffRemainingMs(OTHER_TOPIC), 0, 'a rung was left asleep beside a rung being served');
+    assert.equal(tracker.state(TOPIC), FEED_STATE_LIVE);
+    assert.equal(
+      tracker.state(OTHER_TOPIC),
+      FEED_STATE_RECONNECTING,
+      'a sibling poll must not read as this feed recovering',
+    );
+
+    tracker.recordGatewayFailure(OTHER_TOPIC);
+    assert.ok(
+      tracker.backoffRemainingMs(OTHER_TOPIC) > earnedWaitMs,
+      'failing again restarted the schedule instead of continuing it',
+    );
+  });
+
+  /**
+   * Releasing a topic rewrites the map entry that is being walked. The tracker deletes before every
+   * write so that eviction takes the least recently updated, so an unguarded walk drops entries
+   * partway through and leaves some viewers held off by an outage that is over.
+   */
+  it('releases all of them, however many were held off at once', () => {
+    const clock = makeClock();
+    const tracker = new FeedHealthTracker(clock.now);
+    const topics = Array.from({ length: TRACKED_TOPIC_LIMIT }, (_, i) => `topic-${i}`);
+
+    for (const topic of topics) {
+      tracker.recordGatewayFailure(topic);
+    }
+    tracker.recordGatewayReachable();
+
+    const stillWaiting = topics.filter((topic) => tracker.backoffRemainingMs(topic) > 0);
+    assert.deepEqual(stillWaiting, [], `${stillWaiting.length} topics were left waiting out a finished outage`);
+  });
+});
+
+describe('FeedHealthTracker subscribers', () => {
+  /**
+   * The finding this exists for. A player mounting into an outage already under way is the common
+   * case rather than the rare one, because a fatal network error restarts the player, so the
+   * subscriber that arrives after an outage began is the one the outage itself created.
+   */
+  it('tells a subscriber the state that is already true, before subscribe returns', () => {
+    const { tracker, seen, watch } = makeTracker();
+
+    tracker.recordGatewayFailure(TOPIC);
+    watch();
+
+    assert.deepEqual(seen, [FEED_STATE_RECONNECTING]);
+  });
+
+  it('stops telling one that has unsubscribed', () => {
+    const { tracker, seen, watch } = makeTracker();
+    const unsubscribe = watch();
+
+    unsubscribe();
+    tracker.recordGatewayFailure(TOPIC);
+
+    assert.deepEqual(seen, [FEED_STATE_LIVE]);
+  });
+
+  it('tells only the subscribers of the topic that changed', () => {
+    const { tracker } = makeTracker();
+    const other: FeedState[] = [];
+    tracker.subscribe('a-different-topic', (state) => other.push(state));
+
+    tracker.recordGatewayFailure(TOPIC);
+
+    assert.deepEqual(other, [FEED_STATE_LIVE]);
+  });
+
+  /**
+   * Without this the throw travels back up the promise chain that reported the gateway answering,
+   * lands in the handler for the gateway not answering, and is recorded as the opposite of what
+   * happened, backing off a gateway that is working.
+   */
+  it('does not let one listener that throws become a report about the gateway', () => {
+    const { tracker, seen, watch } = makeTracker();
+    const realConsoleError = console.error;
+    console.error = () => {};
+    try {
+      tracker.subscribe(TOPIC, () => {
+        throw new Error('a render this listener drives failed');
+      });
+      watch();
+
+      tracker.recordGatewayFailure(TOPIC);
+
+      assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_RECONNECTING]);
+      assert.equal(tracker.backoffRemainingMs(TOPIC), 2_000, 'a listener throwing changed the backoff');
+    } finally {
+      console.error = realConsoleError;
+    }
+  });
+});
+
+describe('FeedHealthTracker bounds', () => {
+  // Only topics in trouble are held and a topic is dropped as soon as its gateway answers, so what
+  // accumulates otherwise is topics a viewer left while they were failing, which nothing comes back
+  // to clear.
+  it('forgets the least recently updated topic rather than growing without limit', () => {
+    const { tracker } = makeTracker();
+
+    for (let i = 0; i <= TRACKED_TOPIC_LIMIT; i++) {
+      tracker.recordGatewayFailure(`topic-${i}`);
+    }
+
+    assert.equal(tracker.state('topic-0'), FEED_STATE_LIVE, 'the oldest failing topic was still held');
+    assert.equal(tracker.state(`topic-${TRACKED_TOPIC_LIMIT}`), FEED_STATE_RECONNECTING);
+  });
+
+  // Forgetting a topic changes what the tracker reports about it, so a subscriber that is not told
+  // renders "Reconnecting" for the rest of the session while the tracker considers it healthy.
+  it('tells a subscriber when its topic is the one evicted', () => {
+    const { tracker } = makeTracker();
+    const seen: FeedState[] = [];
+    tracker.recordGatewayFailure('topic-0');
+    tracker.subscribe('topic-0', (state) => seen.push(state));
+
+    for (let i = 1; i <= TRACKED_TOPIC_LIMIT; i++) {
+      tracker.recordGatewayFailure(`topic-${i}`);
+    }
+
+    assert.deepEqual(seen, [FEED_STATE_RECONNECTING, FEED_STATE_LIVE]);
+  });
+
+  it('tells every subscriber when the whole tracker is cleared', () => {
+    const { tracker, seen, watch } = makeTracker();
+    tracker.recordGatewayFailure(TOPIC);
+    watch();
+
+    tracker.clear();
+
+    assert.deepEqual(seen, [FEED_STATE_RECONNECTING, FEED_STATE_LIVE]);
+  });
+
+  it('keeps a topic that is still failing ahead of ones that failed before it', () => {
+    const { tracker } = makeTracker();
+
+    tracker.recordGatewayFailure('topic-0');
+    for (let i = 1; i < TRACKED_TOPIC_LIMIT; i++) {
+      tracker.recordGatewayFailure(`topic-${i}`);
+    }
+    tracker.recordGatewayFailure('topic-0');
+    tracker.recordGatewayFailure('one-too-many');
+
+    assert.equal(tracker.state('topic-0'), FEED_STATE_RECONNECTING, 'the topic still failing was evicted');
+    assert.equal(tracker.state('topic-1'), FEED_STATE_LIVE);
+  });
+});
+
+/**
+ * A broadcast that ends is not a fault. The other states describe something being retried behind the
+ * overlay, and this one describes there being nothing left to retry, so it has to survive everything
+ * that would otherwise clear or overwrite it. The one thing that lifts it is the broadcaster coming
+ * back to the same feed, which a slow watch on the finished feed finds and records.
+ */
+describe('FeedHealthTracker on a broadcast that has ended', () => {
+  it('says the broadcast ended', () => {
+    const { tracker, seen, watch } = makeTracker();
+    watch();
+
+    tracker.recordFeedEnded(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_ENDED);
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_ENDED]);
+  });
+
+  it('says it once however many finalized manifests arrive', () => {
+    const { tracker, seen, watch } = makeTracker();
+    watch();
+
+    tracker.recordFeedEnded(TOPIC);
+    tracker.recordFeedEnded(TOPIC);
+    tracker.recordFeedEnded(TOPIC);
+
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_ENDED]);
+  });
+
+  /** A gateway going down after the broadcast finished does not make the broadcast unfinished. */
+  it('outranks a gateway that stops answering afterwards', () => {
+    const { tracker } = makeTracker();
+    tracker.recordFeedEnded(TOPIC);
+
+    tracker.recordGatewayFailure(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_ENDED);
+  });
+
+  it('outranks a feed that then sits on an unserved slot', () => {
+    const { tracker, clock } = makeTracker();
+    tracker.recordFeedEnded(TOPIC);
+
+    unservedPastWindow(tracker, clock);
+    clock.advance(UNSERVED_SLOT_STALL_MS);
+    tracker.recordUnservedSlot(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_ENDED);
+  });
+
+  /** `recordGatewayReachable` clears the other two states. It must not un-end a broadcast. */
+  it('is not cleared by the gateway answering again', () => {
+    const { tracker } = makeTracker();
+    tracker.recordFeedEnded(TOPIC);
+
+    tracker.recordGatewayReachable(TOPIC);
+    tracker.recordGatewayResponse(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_ENDED);
+  });
+
+  it('leaves a topic that never ended alone', () => {
+    const { tracker } = makeTracker();
+
+    tracker.recordFeedEnded('some-other-broadcast');
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_LIVE);
+  });
+
+  /**
+   * ⛔ The live failure this exists for, 2026-09-24. A declared stream's encoder dropped for longer
+   * than the reconnect window, the uploader finalized the broadcast, and the broadcaster came back on
+   * the same feeds eighty-one seconds later. A viewer who had watched it end was still being told it
+   * had ended fifteen minutes after that, while a viewer who opened the page fresh played it live.
+   */
+  it('lifts once the broadcaster is found publishing to the feed again', () => {
+    const { tracker, seen, watch } = makeTracker();
+    watch();
+    tracker.recordFeedEnded(TOPIC);
+
+    tracker.recordFeedResumed(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_LIVE);
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_ENDED, FEED_STATE_LIVE]);
+  });
+
+  it('ends again when the broadcast that came back finishes too', () => {
+    const { tracker, seen, watch } = makeTracker();
+    watch();
+    tracker.recordFeedEnded(TOPIC);
+    tracker.recordFeedResumed(TOPIC);
+
+    tracker.recordFeedEnded(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_ENDED);
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_ENDED, FEED_STATE_LIVE, FEED_STATE_ENDED]);
+  });
+
+  /**
+   * A feed sits on unserved slots for the whole reconnect window before the uploader finishes it, and
+   * the end then hides that run. Finding the broadcaster back means a slot was served, so the run is
+   * over, and a viewer must not be told the broadcast is still waiting to continue once it has.
+   */
+  it('comes back live rather than as the stall the broadcaster left behind', () => {
+    const { tracker, clock } = makeTracker();
+    unservedPastWindow(tracker, clock);
+    tracker.recordFeedEnded(TOPIC);
+
+    tracker.recordFeedResumed(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_LIVE, 'the run from before the end outlived the return');
+  });
+
+  /** The player rejoins on this, because a state leaving `ended` can also be an eviction. */
+  it('tells a resume listener which feed came back', () => {
+    const { tracker } = makeTracker();
+    const resumed: string[] = [];
+    tracker.onFeedResumed((topicId) => resumed.push(topicId));
+    tracker.recordFeedEnded(TOPIC);
+
+    tracker.recordFeedResumed(TOPIC);
+
+    assert.deepEqual(resumed, [TOPIC]);
+  });
+
+  it('says nothing to a resume listener about a feed that merely ended', () => {
+    const { tracker } = makeTracker();
+    const resumed: string[] = [];
+    tracker.onFeedResumed((topicId) => resumed.push(topicId));
+
+    tracker.recordFeedEnded(TOPIC);
+    tracker.recordGatewayResponse(TOPIC);
+    tracker.recordGatewayReachable();
+
+    assert.deepEqual(resumed, []);
+  });
+
+  /**
+   * ⛔ The tracker outlives every player on the page, so an end recorded while one viewer watched is
+   * still recorded after they leave. A viewer who came back through the app once the broadcaster had
+   * returned was told the broadcast had ended over a live picture, because only a watch cleared an end
+   * and the watch went with the session that ran it.
+   */
+  it('forgets an end an earlier session left once a fresh read finds the feed open', () => {
+    const { tracker, seen, watch } = makeTracker();
+    tracker.recordFeedEnded(TOPIC);
+    watch();
+
+    tracker.forgetStaleEnd(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_LIVE);
+    assert.deepEqual(seen, [FEED_STATE_ENDED, FEED_STATE_LIVE]);
+  });
+
+  /**
+   * ⛔ Silently. A viewer who has only just arrived has watched nothing yet, so there is nothing to
+   * rejoin, and a rejoin armed here would fire at the end of the live broadcast they go on to watch
+   * and restart them into its recording.
+   */
+  it('announces nothing when it forgets a stale end', () => {
+    const { tracker } = makeTracker();
+    const resumed: string[] = [];
+    tracker.onFeedResumed((topicId) => resumed.push(topicId));
+    tracker.recordFeedEnded(TOPIC);
+
+    tracker.forgetStaleEnd(TOPIC);
+
+    assert.deepEqual(resumed, []);
+  });
+
+  /**
+   * A restart into a stall reads the same open playlist a fresh session does, and the stall it has
+   * already reported has to survive that read. So a feed that has not ended is left exactly as it is.
+   */
+  it('leaves a feed that has not ended exactly as it was', () => {
+    const { tracker, clock } = makeTracker();
+    unservedPastWindow(tracker, clock);
+
+    tracker.forgetStaleEnd(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_STALLED);
+  });
+
+  it('stops telling a resume listener that has gone', () => {
+    const { tracker } = makeTracker();
+    const resumed: string[] = [];
+    const stopListening = tracker.onFeedResumed((topicId) => resumed.push(topicId));
+
+    stopListening();
+    tracker.recordFeedResumed(TOPIC);
+
+    assert.deepEqual(resumed, []);
+  });
+
+  it('does not let one resume listener that throws keep the return from the others', () => {
+    const { tracker } = makeTracker();
+    const realConsoleError = console.error;
+    console.error = () => {};
+    const resumed: string[] = [];
+    try {
+      tracker.onFeedResumed(() => {
+        throw new Error('a restart this listener drives failed');
+      });
+      tracker.onFeedResumed((topicId) => resumed.push(topicId));
+
+      tracker.recordFeedResumed(TOPIC);
+
+      assert.deepEqual(resumed, [TOPIC]);
+    } finally {
+      console.error = realConsoleError;
+    }
+  });
+});
+
+/**
+ * The fault the other three states cannot describe, from
+ * `docs/bench/the-fourteen-minute-collapse-2026-08-07.md`.
+ *
+ * A gateway answered every request it was given, correctly, for twenty minutes. For the last six of
+ * them it answered about five times more slowly than it had, the player's buffer never recovered, and
+ * the viewer watched a picture that stopped every couple of seconds. `feedStateMessage` was empty in
+ * all 1185 samples, because the other three states all describe a gateway failing to deliver and this
+ * one delivered.
+ *
+ * Counted from the viewer's own symptom rather than from a transfer time, so there is no threshold to
+ * pick per profile: the picture stopping is the thing worth saying, and a slow read the buffer
+ * absorbs is not.
+ */
+/** A run of stalls close enough together to be one bad patch, at whatever the clock currently reads. */
+function stall(tracker: FeedHealthTracker, times: number): void {
+  for (let count = 0; count < times; count++) {
+    tracker.recordPlaybackStall(TOPIC);
+  }
+}
+
+describe('FeedHealthTracker on a gateway that is slow rather than absent', () => {
+  /**
+   * Pinned against the archived runs rather than against the implementation, the way the two
+   * constants above are, and for the same reason: a test that loops `PLAYBACK_STALL_BURST` times
+   * against a comparison to `PLAYBACK_STALL_BURST` only ever compares a constant to itself.
+   *
+   * Both numbers come from replaying every archived browser run's rebuffer counter through candidate
+   * rules. In a rolling twenty seconds, excluding startup, the collapse run reaches 4 stalls and the
+   * only other degraded run reaches 4, while the worst run a viewer would call healthy reaches 1. The
+   * next rule down, 3 stalls in fifteen seconds, fires 2786 seconds into a clean hour.
+   */
+  it('is set to the burst that separated a degraded run from a healthy one', () => {
+    assert.equal(PLAYBACK_STALL_BURST, 4);
+    assert.equal(PLAYBACK_STALL_WINDOW_MS, 20_000);
+  });
+
+  /**
+   * Written in seconds and stalls rather than against the two constants, which is the discipline the
+   * backoff schedule above is written under and the one this block needed most. Every one of these
+   * driven off `PLAYBACK_STALL_BURST` passes at a burst of 1, where a single stall on any stream puts
+   * the overlay up, because a loop of `BURST - 1` runs zero times. Only the pin above failed it.
+   */
+  it('says nothing about the three stalls in a row a healthy stream can have', () => {
+    const { tracker, seen, watch } = makeTracker();
+    watch();
+
+    stall(tracker, 3);
+
+    assert.deepEqual(seen, [FEED_STATE_LIVE]);
+  });
+
+  it('calls the stream degraded on the fourth stall in twenty seconds', () => {
+    const { tracker, seen, watch } = makeTracker();
+    watch();
+
+    stall(tracker, 4);
+
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_DEGRADED]);
+  });
+
+  it('says it once, not once per stall in the burst', () => {
+    const { tracker, seen, watch } = makeTracker();
+    watch();
+
+    stall(tracker, 12);
+
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_DEGRADED]);
+  });
+
+  /**
+   * The window is what makes this a burst rather than a total. Without it a stream that stalls four
+   * times in an hour wears the overlay for the rest of the session, which describes nothing.
+   *
+   * Spaced by a real duration rather than by the window constant, which the first version of this
+   * test used. Advancing by the same value the implementation compares against passes at any window
+   * length at all, including one longer than a broadcast.
+   */
+  it('forgets a stall old enough to have been a different problem', () => {
+    const { tracker, clock } = makeTracker();
+
+    for (let stall = 0; stall < 16; stall++) {
+      tracker.recordPlaybackStall(TOPIC);
+      clock.advance(21_000);
+    }
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_LIVE);
+  });
+
+  /** The other side of the window: four stalls spread thinly are not the burst four together are. */
+  it('does not add up stalls a viewer would not have felt as one bad patch', () => {
+    const { tracker, clock } = makeTracker();
+
+    for (let stall = 0; stall < 4; stall++) {
+      tracker.recordPlaybackStall(TOPIC);
+      clock.advance(7_000);
+    }
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_LIVE);
+  });
+
+  /**
+   * ⭐ The case the collapse actually was, and the one the other states get wrong. Slots kept being
+   * served all the way through: 384 served against 34 empty after the onset, and the longest run of
+   * consecutive unserved slots in the whole run was 2. A served slot ends a stalled feed and a run of
+   * failures, because it disproves both. It disproves nothing about a player that cannot keep up.
+   */
+  it('is not cleared by the gateway serving a slot, because it never stopped serving them', () => {
+    const { tracker } = makeTracker();
+
+    for (let poll = 0; poll < 4; poll++) {
+      tracker.recordPlaybackStall(TOPIC);
+      tracker.recordGatewayResponse(TOPIC);
+      tracker.recordUnservedSlot(TOPIC);
+      tracker.recordGatewayReachable(TOPIC);
+    }
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_DEGRADED);
+  });
+
+  /**
+   * Clears itself off the back of the polling the fetcher is already doing, rather than off a timer.
+   * Every poll records something, and every record re-reads the clock, so a window that has emptied
+   * is noticed within a poll of emptying without this class ever having to schedule anything.
+   */
+  it('goes back to live on the first poll after the burst has aged out', () => {
+    const { tracker, clock, seen, watch } = makeTracker();
+    watch();
+
+    stall(tracker, 4);
+    clock.advance(PLAYBACK_STALL_WINDOW_MS + 1);
+    tracker.recordGatewayResponse(TOPIC);
+
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_DEGRADED, FEED_STATE_LIVE]);
+  });
+
+  it('forgets the stalls along with the topic when the tracker is cleared', () => {
+    const { tracker } = makeTracker();
+
+    stall(tracker, 4);
+    tracker.clear(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_LIVE);
+  });
+
+  /**
+   * The weakest of the four, deliberately. Each of the other three names something more specific
+   * about why the picture stopped, and a viewer told the stream is unsteady when the gateway has gone
+   * away entirely has been told the smaller half of the truth.
+   */
+  for (const [name, escalate] of [
+    ['a gateway that stopped answering', (tracker: FeedHealthTracker) => tracker.recordGatewayFailure(TOPIC)] as [
+      string,
+      (tracker: FeedHealthTracker, clock: { advance: (by: number) => void }) => void,
+    ],
+    ['a feed that stopped advancing', unservedPastWindow],
+    ['a broadcast that ended', (tracker: FeedHealthTracker) => tracker.recordFeedEnded(TOPIC)],
+  ] as const) {
+    it(`is outranked by ${name}`, () => {
+      const { tracker, clock } = makeTracker();
+      stall(tracker, 4);
+
+      escalate(tracker, clock);
+
+      assert.notEqual(tracker.state(TOPIC), FEED_STATE_DEGRADED);
+    });
+  }
+
+  it('is still there underneath once the stronger fault clears', () => {
+    const { tracker } = makeTracker();
+    stall(tracker, 4);
+
+    tracker.recordGatewayFailure(TOPIC);
+    tracker.recordGatewayReachable(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_DEGRADED);
+  });
+
+  it('keeps a degraded topic tracked, so the burst survives a poll that found nothing wrong', () => {
+    const { tracker } = makeTracker();
+    stall(tracker, 4);
+
+    tracker.recordGatewayResponse(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_DEGRADED);
+  });
+
+  /** The window is bounded by time, and the memory it costs must be bounded by the burst. */
+  it('does not grow its record of a stream that stalls without pause', () => {
+    const { tracker, clock } = makeTracker();
+
+    for (let stall = 0; stall < 10_000; stall++) {
+      tracker.recordPlaybackStall(TOPIC);
+      clock.advance(1);
+    }
+
+    assert.ok(
+      tracker.stallsRecorded(TOPIC) <= PLAYBACK_STALL_BURST,
+      `kept ${tracker.stallsRecorded(TOPIC)} stalls, which is a leak on any stream that never recovers`,
+    );
+  });
+});
+
+/**
+ * The ladder splits one broadcast across five feeds, and the overlay watches none of them.
+ *
+ * ⛔ **This is the fault V6 caught live on 2026-08-29.** A viewer's gateway was taken away for
+ * twenty-odd seconds. Every rung recorded its failures, the picture froze for 26.6s, and the client
+ * rendered nothing at all, which is how it says the feed is live. The viewer was told everything was
+ * fine while looking at a frozen frame.
+ *
+ * The overlay subscribes to the entry topic, the one in the `swarm://` source URL, because that is
+ * the only topic a viewer's link names and it is the one that survives a restart. The rung topics
+ * are per session and are discovered from the master playlist. So on the ladder every fault was
+ * being recorded against a topic nobody was watching, and the two states that describe a gateway
+ * problem, `reconnecting` and `stalled`, could not reach a viewer at all. `ended` reached them
+ * because {@link LadderFeedPoller} was already taught to record it against the group, and `degraded`
+ * reached them because playback stalls are counted off the video element against the entry topic.
+ *
+ * ⭐ **Every rung has to agree before the group says anything.** One gateway serves all five feeds,
+ * so a single rung being served is proof the gateway is answering, and the others are then behind
+ * for their own reasons. This is the same all-rungs rule the ended signal already uses.
+ */
+describe('FeedHealthTracker on a ladder, where the faults land on rungs and the overlay watches the group', () => {
+  const GROUP = 'entry-topic-the-viewer-linked';
+  const RUNG_1080 = 'rung-1080p';
+  const RUNG_360 = 'rung-360p';
+
+  function makeLadder() {
+    const clock = makeClock();
+    const seen: FeedState[] = [];
+    const tracker = new FeedHealthTracker(clock.now);
+    tracker.trackGroup(GROUP, [RUNG_1080, RUNG_360]);
+    tracker.subscribe(GROUP, (state) => seen.push(state));
+
+    return { clock, tracker, seen };
+  }
+
+  it('tells a viewer the gateway is gone when every rung has stopped reaching it', () => {
+    const { tracker, seen } = makeLadder();
+
+    tracker.recordGatewayFailure(RUNG_1080);
+    tracker.recordGatewayFailure(RUNG_360);
+
+    assert.equal(tracker.state(GROUP), FEED_STATE_RECONNECTING);
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_RECONNECTING]);
+  });
+
+  /** A served rung is proof the gateway answers, so the rung beside it is behind, not unreachable. */
+  it('stays quiet while one rung is still being served', () => {
+    const { tracker } = makeLadder();
+
+    tracker.recordGatewayFailure(RUNG_1080);
+
+    assert.equal(tracker.state(GROUP), FEED_STATE_LIVE);
+  });
+
+  it('takes the overlay down again when a rung reads cleanly', () => {
+    const { tracker, seen } = makeLadder();
+
+    tracker.recordGatewayFailure(RUNG_1080);
+    tracker.recordGatewayFailure(RUNG_360);
+    tracker.recordGatewayReachable(RUNG_1080);
+
+    assert.equal(tracker.state(GROUP), FEED_STATE_LIVE);
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_RECONNECTING, FEED_STATE_LIVE]);
+  });
+
+  /** The publisher stopping is the group's business; one rung caught up with it is not. */
+  it('calls the group stalled only once every rung has sat on an unserved slot', () => {
+    const { tracker, clock } = makeLadder();
+
+    tracker.recordUnservedSlot(RUNG_1080);
+    clock.advance(UNSERVED_SLOT_STALL_MS * 2);
+    assert.equal(tracker.state(GROUP), FEED_STATE_LIVE, 'rung 360 is still being served');
+
+    tracker.recordUnservedSlot(RUNG_360);
+    clock.advance(UNSERVED_SLOT_STALL_MS);
+    assert.equal(tracker.state(GROUP), FEED_STATE_STALLED);
+  });
+
+  /**
+   * The group's own entry still counts. Playback stalls are recorded against it directly, off the
+   * video element, and so is the end of the broadcast.
+   */
+  it('keeps the states that were already reaching the group', () => {
+    const { tracker } = makeLadder();
+
+    for (let stall = 0; stall < PLAYBACK_STALL_BURST; stall++) {
+      tracker.recordPlaybackStall(GROUP);
+    }
+    assert.equal(tracker.state(GROUP), FEED_STATE_DEGRADED);
+
+    tracker.recordFeedEnded(GROUP);
+    assert.equal(tracker.state(GROUP), FEED_STATE_ENDED);
+  });
+
+  /**
+   * A ladder's end is recorded once against the group and its return is found on a rung, so the group
+   * leaves `ended` only when it is told itself. `LadderFeedPoller` tells both.
+   */
+  it('takes the group back out of ended when its broadcaster comes back', () => {
+    const { tracker, seen } = makeLadder();
+    tracker.recordFeedEnded(GROUP);
+
+    tracker.recordFeedResumed(RUNG_1080);
+    assert.equal(tracker.state(GROUP), FEED_STATE_ENDED, 'a rung coming back was read as the whole ladder');
+
+    tracker.recordFeedResumed(GROUP);
+
+    assert.equal(tracker.state(GROUP), FEED_STATE_LIVE);
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_ENDED, FEED_STATE_LIVE]);
+  });
+
+  /**
+   * ⛔ The rung a viewer is on decides the unserved half of the group's state, and every rung sat on
+   * unserved slots for the whole reconnect window before the ladder finished. The rungs are found back
+   * one watch at a time, up to a whole watch interval apart when the uploader writes one just after its
+   * watch looked, so the rung the viewer is on is not necessarily the one found first. Its run from
+   * before the end is over all the same, because the broadcast it was waiting on is back.
+   */
+  it('comes back live on the rung the viewer is on, even when another rung is found back first', () => {
+    const { tracker, clock, seen } = makeLadder();
+    tracker.watchRung(GROUP, RUNG_1080);
+    tracker.recordUnservedSlot(RUNG_1080);
+    tracker.recordUnservedSlot(RUNG_360);
+    clock.advance(UNSERVED_SLOT_STALL_MS);
+    tracker.recordUnservedSlot(RUNG_1080);
+    tracker.recordUnservedSlot(RUNG_360);
+    tracker.recordFeedEnded(GROUP);
+
+    tracker.recordFeedResumed(RUNG_360);
+    tracker.recordFeedResumed(GROUP);
+
+    assert.equal(tracker.state(GROUP), FEED_STATE_LIVE, 'the viewer was told the broadcast that came back was waiting');
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_STALLED, FEED_STATE_ENDED, FEED_STATE_LIVE]);
+  });
+
+  /**
+   * An earlier session's rungs waited through the reconnect window before the end, and that wait is
+   * as stale as the end is once a fresh session finds the ladder open again. Forgetting only the end
+   * would show the next viewer "Waiting for the broadcast to continue" instead, until a rung was
+   * served.
+   */
+  it('forgets a stale end on a ladder without reporting the wait from before it as a stall', () => {
+    const { tracker, clock, seen } = makeLadder();
+    tracker.recordUnservedSlot(RUNG_1080);
+    tracker.recordUnservedSlot(RUNG_360);
+    clock.advance(UNSERVED_SLOT_STALL_MS);
+    tracker.recordUnservedSlot(RUNG_1080);
+    tracker.recordUnservedSlot(RUNG_360);
+    tracker.recordFeedEnded(GROUP);
+
+    tracker.forgetStaleEnd(GROUP);
+
+    assert.equal(tracker.state(GROUP), FEED_STATE_LIVE, 'the wait from before the end outlived it');
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_STALLED, FEED_STATE_ENDED, FEED_STATE_LIVE]);
+  });
+
+  /** What a ladder's return clears is the wait from before the end, and nothing a rung is failing at now. */
+  it('leaves a gateway every rung is failing to reach as the reconnection it is', () => {
+    const { tracker } = makeLadder();
+    tracker.recordFeedEnded(GROUP);
+    tracker.recordGatewayFailure(RUNG_1080);
+    tracker.recordGatewayFailure(RUNG_360);
+
+    tracker.recordFeedResumed(GROUP);
+
+    assert.equal(tracker.state(GROUP), FEED_STATE_RECONNECTING);
+  });
+
+  /** A stream with no ladder has no members, and folding nothing must leave it exactly as it was. */
+  it('leaves a single-rendition stream reading off its own topic', () => {
+    const clock = makeClock();
+    const tracker = new FeedHealthTracker(clock.now);
+
+    tracker.recordGatewayFailure(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_RECONNECTING);
+  });
+});
+
+/**
+ * ⛔⛔⛔ **`stalled` was unreachable on a ladder, and the threshold was the smaller half of why.**
+ *
+ * Two faults, found together on 2026-08-29 after V6 fixed the sibling one:
+ *
+ * 1. `LadderFeedPoller` never called {@link FeedHealthTracker.recordUnservedSlot} at all, so on a
+ *    ladder the counter behind this state was permanently zero and the state was dead code.
+ * 2. The threshold was a POLL COUNT, and the poll rate is not a constant: it collapses during
+ *    exactly the stall it counts. Measured on two recorded uploader crashes, feed reads went from a
+ *    264ms gap before the crash to 1064ms during the freeze, so thirty polls is about 8 seconds
+ *    while healthy and about 32 during a stall. A 12.4 second freeze accumulated 13 polls, never
+ *    reached the threshold, and the viewer was told nothing for twelve seconds.
+ *
+ * ⭐ **Eight seconds is the same number the poll count meant while healthy**, so a viewer at the
+ * live edge is no more likely to see the overlay than before. What changes is the stall case, where
+ * the count silently stretched to four times its intended duration. It is also
+ * {@link MANIFEST_RETRY_CAP_MS}, which is already this client's answer to how long a quiet feed may
+ * go unmentioned.
+ *
+ * A viewer who has merely caught up with the publisher cannot reach it: a segment lands every 0.5 to
+ * 2 seconds and each one ends the run. Eight seconds of an unbroken unserved run means the publisher
+ * really has stopped.
+ */
+describe('FeedHealthTracker calling a feed stalled by elapsed time rather than by poll count', () => {
+  it('says nothing on a burst of polls inside the window, however many', () => {
+    const { tracker, clock } = makeTracker();
+
+    for (let poll = 0; poll < 500; poll++) {
+      tracker.recordUnservedSlot(TOPIC);
+    }
+    clock.advance(UNSERVED_SLOT_STALL_MS - 1);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_LIVE);
+  });
+
+  it('calls it stalled once the run outlives the window, on as few as two polls', () => {
+    const { tracker, clock } = makeTracker();
+
+    tracker.recordUnservedSlot(TOPIC);
+    clock.advance(UNSERVED_SLOT_STALL_MS);
+    tracker.recordUnservedSlot(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_STALLED);
+  });
+
+  /** The run is what is timed, so a slot arriving restarts the clock rather than pausing it. */
+  it('starts the clock over when a slot is served', () => {
+    const { tracker, clock } = makeTracker();
+
+    tracker.recordUnservedSlot(TOPIC);
+    clock.advance(UNSERVED_SLOT_STALL_MS - 500);
+    tracker.recordGatewayResponse(TOPIC);
+
+    tracker.recordUnservedSlot(TOPIC);
+    clock.advance(UNSERVED_SLOT_STALL_MS - 500);
+    assert.equal(tracker.state(TOPIC), FEED_STATE_LIVE);
+  });
+
+  it('tells a group watcher only once every rung has been unserved for the window', () => {
+    const clock = makeClock();
+    const tracker = new FeedHealthTracker(clock.now);
+    const GROUP = 'entry-topic';
+    tracker.trackGroup(GROUP, ['rung-a', 'rung-b']);
+
+    tracker.recordUnservedSlot('rung-a');
+    clock.advance(UNSERVED_SLOT_STALL_MS);
+    tracker.recordUnservedSlot('rung-b');
+    assert.equal(tracker.state(GROUP), FEED_STATE_LIVE, 'rung-b has only just stopped being served');
+
+    clock.advance(UNSERVED_SLOT_STALL_MS);
+    tracker.recordUnservedSlot('rung-a');
+    assert.equal(tracker.state(GROUP), FEED_STATE_STALLED);
+  });
+
+  /** A gateway that is not answering at all is a different, more specific thing to say. */
+  it('still prefers reconnecting over stalled when the gateway is also failing', () => {
+    const { tracker, clock } = makeTracker();
+
+    tracker.recordUnservedSlot(TOPIC);
+    clock.advance(UNSERVED_SLOT_STALL_MS);
+    tracker.recordUnservedSlot(TOPIC);
+    tracker.recordGatewayFailure(TOPIC);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_RECONNECTING);
+  });
+});
+
+/**
+ * ⛔⛔⛔ **Three rungs outvoted the one the viewer could actually see.**
+ *
+ * Measured live on 2026-08-30, on both byte paths. One rung of a four rung ladder was silenced under
+ * a watching viewer, the picture stopped for 87.2 seconds in the tab and 103.2 through a gateway,
+ * three rungs published throughout, and the overlay said `live` for the whole of it. The group's
+ * health is what its rungs agree on, and three of four agreed nothing was wrong.
+ *
+ * ⭐ Agreement is still right for reaching the gateway, which is what it was built for: one gateway
+ * serves every feed, so a rung that cannot reach the host its siblings are reaching has a flake of
+ * its own and the viewer is still watching. It is wrong for a feed that has stopped advancing, which
+ * is a fault the viewer sees the instant it is the rung they are on. So only that half follows the
+ * watched rung, and only once a player has said which one it is on.
+ */
+describe('FeedHealthTracker judging the rung a viewer is actually watching', () => {
+  const GROUP = 'entry-topic-the-viewer-linked';
+  const RUNG_1080 = 'rung-1080p';
+  const RUNG_360 = 'rung-360p';
+
+  function makeLadder() {
+    const clock = makeClock();
+    const seen: FeedState[] = [];
+    const tracker = new FeedHealthTracker(clock.now);
+    tracker.trackGroup(GROUP, [RUNG_1080, RUNG_360]);
+    tracker.subscribe(GROUP, (state) => seen.push(state));
+
+    return { clock, tracker, seen };
+  }
+
+  /** Two polls and a clock, never a loop over the constant. See {@link unservedPastWindow}. */
+  function goesQuiet(tracker: FeedHealthTracker, clock: { advance: (by: number) => void }, rung: string): void {
+    tracker.recordUnservedSlot(rung);
+    clock.advance(UNSERVED_SLOT_STALL_MS);
+    tracker.recordUnservedSlot(rung);
+  }
+
+  it('tells the viewer their own rung has stopped, while the others carry on publishing', () => {
+    const { tracker, clock, seen } = makeLadder();
+    tracker.watchRung(GROUP, RUNG_1080);
+
+    goesQuiet(tracker, clock, RUNG_1080);
+
+    assert.equal(tracker.state(GROUP), FEED_STATE_STALLED);
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_STALLED]);
+  });
+
+  it('stays quiet when the rung that stopped is not the one being watched', () => {
+    const { tracker, clock } = makeLadder();
+    tracker.watchRung(GROUP, RUNG_360);
+
+    goesQuiet(tracker, clock, RUNG_1080);
+
+    assert.equal(tracker.state(GROUP), FEED_STATE_LIVE);
+  });
+
+  /**
+   * ⛔ The constraint the owner attached to this fix. A rung failing to reach a gateway its siblings
+   * are reaching is that rung's own flake, and raising the overlay on it is what the agreement rule
+   * exists to prevent. Watching the rung must not change that.
+   */
+  it('keeps the agreement rule for a gateway that one rung alone cannot reach', () => {
+    const { tracker } = makeLadder();
+    tracker.watchRung(GROUP, RUNG_1080);
+
+    tracker.recordGatewayFailure(RUNG_1080);
+
+    assert.equal(tracker.state(GROUP), FEED_STATE_LIVE);
+  });
+
+  it('moving to a living rung takes the overlay back down', () => {
+    const { tracker, clock, seen } = makeLadder();
+    tracker.watchRung(GROUP, RUNG_1080);
+    goesQuiet(tracker, clock, RUNG_1080);
+
+    tracker.watchRung(GROUP, RUNG_360);
+
+    assert.equal(tracker.state(GROUP), FEED_STATE_LIVE);
+    assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_STALLED, FEED_STATE_LIVE]);
+  });
+
+  /** The control. Without a named rung nothing about a ladder's health reads any differently. */
+  it('falls back to what every rung agrees on once no rung is named', () => {
+    const { tracker, clock } = makeLadder();
+    tracker.watchRung(GROUP, RUNG_1080);
+    goesQuiet(tracker, clock, RUNG_1080);
+
+    tracker.watchRung(GROUP, null);
+
+    assert.equal(tracker.state(GROUP), FEED_STATE_LIVE, 'rung 360 is still being served');
+  });
+
+  /**
+   * A player and a poller disagreeing about the shape of the stream. Believing the player would point
+   * the overlay at a feed nothing is reading, which never advances and so always reads as stalled.
+   */
+  it('refuses a rung the ladder does not walk, and keeps the one it had', () => {
+    const { tracker, clock } = makeLadder();
+    tracker.watchRung(GROUP, RUNG_1080);
+
+    tracker.watchRung(GROUP, 'a-rung-from-some-other-broadcast');
+    goesQuiet(tracker, clock, RUNG_1080);
+
+    assert.equal(tracker.state(GROUP), FEED_STATE_STALLED, 'the bogus rung replaced the one being watched');
+  });
+
+  it('keeps the watched rung when a poller re-tracks the group it still walks', () => {
+    const { tracker, clock } = makeLadder();
+    tracker.watchRung(GROUP, RUNG_1080);
+
+    tracker.trackGroup(GROUP, [RUNG_1080, RUNG_360]);
+    goesQuiet(tracker, clock, RUNG_1080);
+
+    assert.equal(tracker.state(GROUP), FEED_STATE_STALLED);
+  });
+
+  it('forgets the watched rung when the ladder it belonged to is torn down', () => {
+    const { tracker, clock } = makeLadder();
+    tracker.watchRung(GROUP, RUNG_1080);
+
+    tracker.untrackGroup(GROUP);
+    tracker.trackGroup(GROUP, [RUNG_1080, RUNG_360]);
+    goesQuiet(tracker, clock, RUNG_1080);
+
+    assert.equal(tracker.state(GROUP), FEED_STATE_LIVE, 'a torn down ladder kept a viewer on one of its rungs');
+  });
+});
+
+/**
+ * ⛔⛔⛔ **A Swarm feed that stops advancing does not error, so hls.js has nothing to react to.**
+ *
+ * hls.js changes level on a fragment load error. A rung whose transcode has stopped still serves its
+ * playlist perfectly, it just never grows, so a player waiting for a segment it was never offered
+ * waits for ever. Measured live 2026-08-30 on both byte paths: the viewer stayed on the dead rung for
+ * the whole outage and the picture stopped for 87.2 and 103.2 seconds with three healthy rungs beside
+ * it. The client already counted the unserved run per rung. Nothing read it.
+ *
+ * ⛔⛔⛔ **Telling that apart from a broadcast that stopped is the whole of the difficulty, and four
+ * attempts to do it by a clock produced three live regressions.** A gateway outage (V6), an uploader
+ * crash (V7) and the ordinary gap between two segments (V3) each made a healthy rung look silent,
+ * because a clock runs during every one of them. `RUNG_DEATH_LAG_SEGMENTS` replaced the clock with a
+ * count of segments the ladder actually delivered, which cannot move while nothing is being
+ * delivered, and the three cases below are kept as the regression tests they were bought with.
+ *
+ * ⭐ **Every case here has to make a sibling actually SERVE something.** Under the old rule a test
+ * could set up a dead rung by advancing a clock and leaving the siblings untouched, and an untouched
+ * sibling reads as healthy, so those cases were agreeing with an implementation that had nothing in
+ * it. What judges a rung now is evidence the ladder moved on, and evidence has to be produced.
+ */
+describe('FeedHealthTracker telling a rung that stopped being produced from a broadcast that stopped', () => {
+  const GROUP = 'entry-topic-the-viewer-linked';
+  const RUNG_1080 = 'rung-1080p';
+  const RUNG_720 = 'rung-720p';
+  const RUNG_480 = 'rung-480p';
+  const RUNG_360 = 'rung-360p';
+
+  /** One segment at the longest stage this project runs, so the clock in these cases is a real one. */
+  const SEGMENT_MS = 2_000;
+  const POLL_MS = 750;
+  /** `LadderFeedPoller.MAX_CATCH_UP_PER_PASS`: how far one rung can get ahead in a single pass. */
+  const CATCH_UP_PER_PASS = 25;
+
+  function makeLadder(rungs: readonly string[] = [RUNG_1080, RUNG_360]) {
+    const clock = makeClock();
+    const stopped: string[] = [];
+    const tracker = new FeedHealthTracker(clock.now);
+    tracker.trackGroup(GROUP, rungs);
+    const unsubscribe = tracker.onRungStopped((rung) => stopped.push(rung));
+
+    return { clock, tracker, stopped, unsubscribe };
+  }
+
+  /** The ladder delivering, one segment at a time, to the rungs that are still being produced. */
+  function ladderDelivers(
+    tracker: FeedHealthTracker,
+    clock: { advance: (by: number) => void },
+    rungs: readonly string[],
+    segments: number,
+  ): void {
+    for (let n = 0; n < segments; n++) {
+      clock.advance(SEGMENT_MS);
+      for (const rung of rungs) {
+        tracker.recordGatewayResponse(rung);
+      }
+    }
+  }
+
+  /**
+   * The threshold pinned from above, and {@link saysNothingOneSegmentShort} pins it from below.
+   *
+   * Between them the pair fails at every value but the one the constant holds, which a single case
+   * loop-driven off the constant itself could not do.
+   */
+  it('announces a rung the ladder has run four whole segments past', () => {
+    const { tracker, clock, stopped } = makeLadder();
+
+    tracker.recordUnservedSlot(RUNG_1080);
+    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS);
+
+    assert.deepEqual(stopped, [RUNG_1080]);
+  });
+
+  const saysNothingOneSegmentShort = 'says nothing while the ladder is one segment short of it';
+  it(saysNothingOneSegmentShort, () => {
+    const { tracker, clock, stopped } = makeLadder();
+
+    tracker.recordUnservedSlot(RUNG_1080);
+    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS - 1);
+
+    assert.deepEqual(stopped, []);
+  });
+
+  /**
+   * ⭐⭐⭐ **The property the whole rewrite exists for, and the one no clock can have.** Time alone is
+   * never evidence about a rung. A ladder left quiet for an hour has told nobody anything about which
+   * of its rungs is broken, because none of them was offered a segment the others got.
+   */
+  it('says nothing on elapsed time alone, however long a rung is left quiet', () => {
+    const { tracker, clock, stopped } = makeLadder();
+    const ONE_HOUR_MS = 60 * 60 * 1_000;
+
+    tracker.recordUnservedSlot(RUNG_1080);
+    for (let elapsed = 0; elapsed < ONE_HOUR_MS; elapsed += POLL_MS) {
+      clock.advance(POLL_MS);
+      tracker.recordUnservedSlot(RUNG_1080);
+    }
+
+    assert.equal(tracker.state(RUNG_1080), FEED_STATE_STALLED, 'the rung should certainly read as stalled');
+    assert.deepEqual(stopped, [], 'an hour of silence with nothing delivered beside it was read as a death');
+  });
+
+  /**
+   * ⛔ A whole broadcast stopping is the case that would cost a viewer their entire ladder, because
+   * its rungs go quiet one after another rather than together. Under the old rule the first rung past
+   * the window found its sibling still reading live and was judged dead on its own, then the next.
+   *
+   * The stagger here is two segments, wider than a real stop produces, and the run is left for four
+   * stall windows afterwards. Neither the stagger nor the waiting can reach the threshold, because
+   * neither delivers a segment.
+   */
+  it('announces nothing when the whole broadcast stops, however staggered the rungs are', () => {
+    const { tracker, clock, stopped } = makeLadder();
+
+    ladderDelivers(tracker, clock, [RUNG_1080, RUNG_360], 5);
+
+    // 1080 runs out of segments first, and 360 publishes two more before it stops too.
+    tracker.recordUnservedSlot(RUNG_1080);
+    ladderDelivers(tracker, clock, [RUNG_360], 2);
+    tracker.recordUnservedSlot(RUNG_360);
+
+    for (let elapsed = 0; elapsed < UNSERVED_SLOT_STALL_MS * 4; elapsed += POLL_MS) {
+      clock.advance(POLL_MS);
+      tracker.recordUnservedSlot(RUNG_1080);
+      tracker.recordUnservedSlot(RUNG_360);
+    }
+
+    assert.deepEqual(stopped, [], 'a broadcast that stopped was read as its rungs dying one by one');
+    assert.equal(tracker.state(GROUP), FEED_STATE_STALLED, 'and the group should still say so');
+  });
+
+  /**
+   * ⛔⛔⛔ **The regression V6 caught live on 2026-08-30, and it cost a viewer their picture.**
+   *
+   * A gateway was taken away for 20.5 seconds under a watching viewer and given back. The client then
+   * dropped 480p from the ladder, and the uploader log shows 480p publishing 24 segments across the
+   * window it was removed in. It was never dead. The viewer's playhead sat at zero for the rest of
+   * the run.
+   *
+   * The old rule read the length of an unserved run, and a rung that happened to be waiting on its
+   * next slot when the gateway went away carried that run right through the outage. Twenty seconds of
+   * nobody being able to read anything is not evidence about one rung, and a count of delivered
+   * segments does not accumulate any.
+   */
+  it('holds through a gateway outage, whatever the rungs were doing when it started', () => {
+    const { tracker, clock, stopped } = makeLadder();
+    const OUTAGE_MS = 20_500;
+
+    ladderDelivers(tracker, clock, [RUNG_1080, RUNG_360], 5);
+
+    // 1080 is between segments when the gateway goes away, which is the ordinary case.
+    tracker.recordUnservedSlot(RUNG_1080);
+    clock.advance(1_000);
+
+    // Neither rung can be reached, so both record failures rather than unserved slots.
+    for (let poll = 0; poll < 4; poll++) {
+      tracker.recordGatewayFailure(RUNG_1080);
+      tracker.recordGatewayFailure(RUNG_360);
+      clock.advance(OUTAGE_MS / 4);
+    }
+
+    // The gateway comes back. 360 is served first, 1080 asks once more and its slot is not up yet.
+    tracker.recordGatewayResponse(RUNG_360);
+    tracker.recordUnservedSlot(RUNG_1080);
+
+    assert.deepEqual(stopped, [], 'a rung that was merely waiting when the gateway died was called dead');
+  });
+
+  /**
+   * ⛔⛔⛔ **The SECOND regression, V7 live on 2026-08-30, which the gateway fix did not cover.**
+   *
+   * An uploader crash stops every rung at once, but unlike a gateway outage the gateway keeps
+   * ANSWERING throughout, so the rungs record unserved slots rather than failures and nothing clears
+   * them. When the uploader came back the rungs resumed at their own pace, the first one served read
+   * healthy on a fresh clock while the others still carried the whole outage, two rungs were
+   * amputated, and the viewer's playhead never left zero.
+   *
+   * A crash publishes nothing to anybody, so the counts come out of it exactly level.
+   */
+  it('holds through an uploader crash, where the gateway answers all the way through', () => {
+    const { tracker, clock, stopped } = makeLadder();
+    const CRASH_MS = 15_300;
+
+    ladderDelivers(tracker, clock, [RUNG_1080, RUNG_360], 5);
+
+    for (let elapsed = 0; elapsed < CRASH_MS; elapsed += POLL_MS) {
+      clock.advance(POLL_MS);
+      tracker.recordUnservedSlot(RUNG_1080);
+      tracker.recordUnservedSlot(RUNG_360);
+    }
+
+    // It comes back, and 360 is served one poll before 1080 is.
+    tracker.recordGatewayResponse(RUNG_360);
+    tracker.recordUnservedSlot(RUNG_1080);
+
+    assert.deepEqual(stopped, [], 'a rung a poll behind on recovery was called dead');
+  });
+
+  /**
+   * ⛔⛔⛔ **The THIRD regression, V3 live on 2026-08-31, and it disabled the feature outright.**
+   *
+   * The recovery re-arm added for V7 fired during ORDINARY operation. All four rungs of a ladder are
+   * written at about the same moment, so between segments every rung is unserved at once, which is
+   * indistinguishable from "the whole ladder went quiet" if you are looking at unserved runs. The
+   * dead rung's clock was re-armed every couple of seconds and never reached the window. V3 went
+   * straight back to its pre-fix numbers: 0 level changes, advance 0.099, froze 87.5s, overlay
+   * `live`.
+   *
+   * ⭐ This case was committed as a deliberately failing specification at `0a02361` while the rule was
+   * broken. It is a passing test now, which is what the `it.fails` there was waiting for.
+   */
+  it('judges a dead rung while its siblings are between segments, which is most of the time', () => {
+    const { tracker, clock, stopped } = makeLadder();
+
+    // 1080 has stopped. 360 keeps publishing, which means it is unserved between segments and served
+    // when one lands, over and over, exactly as the walker sees it.
+    tracker.recordUnservedSlot(RUNG_1080);
+    for (let elapsed = 0; elapsed < UNSERVED_SLOT_STALL_MS * 2; elapsed += SEGMENT_MS) {
+      tracker.recordUnservedSlot(RUNG_360);
+      clock.advance(POLL_MS);
+      tracker.recordUnservedSlot(RUNG_1080);
+      clock.advance(SEGMENT_MS - POLL_MS);
+      tracker.recordGatewayResponse(RUNG_360);
+      tracker.recordUnservedSlot(RUNG_1080);
+    }
+
+    assert.deepEqual(stopped, [RUNG_1080]);
+  });
+
+  /**
+   * ⭐⭐⭐ **The same lag, judged two ways, and the only difference is whether the rung is being served.**
+   *
+   * `LadderFeedPoller` lets one rung take up to 25 indices in a single pass, so two rungs walking a
+   * backlog after an outage can be a whole pass apart while both are perfectly healthy. Being far
+   * behind is therefore not enough on its own, and this pair is what says so: the first half would
+   * pass on the count alone, and only the second half proves the count is being read at all.
+   */
+  it('leaves a rung alone while it is walking a backlog, and judges it once it stops', () => {
+    const { tracker, clock, stopped } = makeLadder();
+
+    // Both rungs are catching up, and 360's pass runs to its limit before 1080's next one lands.
+    tracker.recordGatewayResponse(RUNG_1080);
+    ladderDelivers(tracker, clock, [RUNG_360], CATCH_UP_PER_PASS);
+
+    assert.deepEqual(stopped, [], 'a rung in the middle of its own catch-up was called dead for being behind');
+
+    tracker.recordUnservedSlot(RUNG_1080);
+
+    assert.deepEqual(stopped, [RUNG_1080], 'and the very same lag with nothing being served is a dead rung');
+  });
+
+  it('announces one death once, however far the ladder runs past it', () => {
+    const { tracker, clock, stopped } = makeLadder();
+
+    tracker.recordUnservedSlot(RUNG_1080);
+    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS * 5);
+
+    assert.deepEqual(stopped, [RUNG_1080]);
+  });
+
+  it('announces a rung that caught back up and then stopped again', () => {
+    const { tracker, clock, stopped } = makeLadder();
+
+    tracker.recordUnservedSlot(RUNG_1080);
+    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS);
+
+    // It comes back and walks its backlog until it is level with the ladder again.
+    ladderDelivers(tracker, clock, [RUNG_1080], RUNG_DEATH_LAG_SEGMENTS);
+
+    tracker.recordUnservedSlot(RUNG_1080);
+    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS);
+
+    assert.deepEqual(stopped, [RUNG_1080, RUNG_1080]);
+  });
+
+  /**
+   * ⛔ A second rung dying must not have its evidence erased by the first one being dealt with.
+   * Dropping a level makes the poller re-track the group, and a count that restarted there would put
+   * every surviving rung level again on the way out of every single death.
+   */
+  it('keeps what it has counted when the poller re-tracks the ladder it just dropped a rung from', () => {
+    const { tracker, clock, stopped } = makeLadder([RUNG_1080, RUNG_720, RUNG_480, RUNG_360]);
+
+    tracker.recordUnservedSlot(RUNG_1080);
+    tracker.recordUnservedSlot(RUNG_480);
+    ladderDelivers(tracker, clock, [RUNG_720, RUNG_360], RUNG_DEATH_LAG_SEGMENTS);
+
+    assert.deepEqual(stopped, [RUNG_1080, RUNG_480], 'both dead rungs should have been announced');
+
+    // The player drops 1080 and the poller re-tracks what is left, which is what really happens.
+    tracker.trackGroup(GROUP, [RUNG_720, RUNG_480, RUNG_360]);
+    tracker.recordUnservedSlot(RUNG_480);
+
+    assert.equal(
+      tracker.rungStoppedWhileOthersAdvance(RUNG_480),
+      true,
+      'a rung already four segments behind was made level again by its neighbour being dropped',
+    );
+  });
+
+  /**
+   * ⛔⛔⛔ **The fourth live regression, 2026-08-31, and the reference was a `Math.max`.**
+   *
+   * A viewer settled on 1080p and the client had already dropped 720p, 480p and 360p during the
+   * settle, before the run silenced anything. It then silenced the one rung left, the viewer had
+   * nowhere to go, and the result read exactly like the original defect it was meant to fix.
+   *
+   * ⭐⭐⭐ A maximum lets ONE rung condemn every other. It only takes one to run ahead, for any reason,
+   * and the rest of the ladder is instantly behind by however far it ran. `LadderFeedPoller` alone
+   * offers two ways in: a pass may consume up to 25 indices, and the rungs are separate feeds under
+   * no obligation to advance in step. A middle rung is a reference no single rung can move.
+   */
+  it('lets no single rung running ahead condemn the rest of a healthy ladder', () => {
+    const { tracker, clock, stopped } = makeLadder([RUNG_1080, RUNG_720, RUNG_480, RUNG_360]);
+
+    // Three rungs advance together, and one takes a whole catch-up pass in a single go.
+    ladderDelivers(tracker, clock, [RUNG_1080, RUNG_720, RUNG_480, RUNG_360], 3);
+    for (let index = 0; index < CATCH_UP_PER_PASS; index++) {
+      tracker.recordGatewayResponse(RUNG_1080);
+    }
+    // The moment that condemned them live: the other three are simply between segments.
+    for (const rung of [RUNG_720, RUNG_480, RUNG_360]) {
+      tracker.recordUnservedSlot(rung);
+    }
+
+    assert.deepEqual(stopped, [], 'one rung getting ahead was read as every other rung dying');
+  });
+
+  /**
+   * ⛔⛔⛔ **The fifth live regression, 2026-08-31, and it is why totals cannot be compared.**
+   *
+   * The rungs of a real ladder do not advance in lockstep. They are separate transcodes writing
+   * separate feeds at slightly different speeds, so any CUMULATIVE comparison drifts apart without
+   * bound for reasons that have nothing to do with failure. Live, the client dropped 480p, then
+   * 720p, then 1080p, then reported 360p as the only one left, each "4 segments behind the ladder"
+   * in turn, on a broadcast where nothing had been silenced.
+   *
+   * ⭐ Here 1080p is served once for every two segments its siblings get, for long enough that a
+   * cumulative rule would have condemned it many times over. What saves it is that its reading is
+   * reset every time it is served, so being slow costs it a bounded lag rather than a growing one.
+   */
+  it('never condemns a rung that is merely slower than the rest of the ladder', () => {
+    const { tracker, clock, stopped } = makeLadder([RUNG_1080, RUNG_720, RUNG_480, RUNG_360]);
+    const FAST = [RUNG_720, RUNG_480, RUNG_360];
+    const SEGMENTS = RUNG_DEATH_LAG_SEGMENTS * 20;
+
+    for (let segment = 0; segment < SEGMENTS; segment++) {
+      ladderDelivers(tracker, clock, FAST, 1);
+      // 1080p is between segments on the polls where it has nothing, exactly as the walker sees it.
+      if (segment % 2 === 1) {
+        ladderDelivers(tracker, clock, [RUNG_1080], 1);
+      } else {
+        tracker.recordUnservedSlot(RUNG_1080);
+      }
+    }
+
+    assert.deepEqual(stopped, [], 'a rung running at half the pace of its siblings was called dead');
+  });
+
+  /** And the ladder must still lose a rung that really stops, with the same reference. */
+  it('still judges a dead rung when the ladder around it is four strong', () => {
+    const { tracker, clock, stopped } = makeLadder([RUNG_1080, RUNG_720, RUNG_480, RUNG_360]);
+
+    tracker.recordUnservedSlot(RUNG_480);
+    ladderDelivers(tracker, clock, [RUNG_1080, RUNG_720, RUNG_360], RUNG_DEATH_LAG_SEGMENTS);
+
+    assert.deepEqual(stopped, [RUNG_480]);
+  });
+
+  /** A rung the ladder did not have a moment ago has missed nothing, whatever the others have counted. */
+  it('starts a newly announced rung level with the rung furthest ahead, never at zero', () => {
+    const { tracker, clock, stopped } = makeLadder();
+
+    ladderDelivers(tracker, clock, [RUNG_1080, RUNG_360], RUNG_DEATH_LAG_SEGMENTS * 5);
+    tracker.trackGroup(GROUP, [RUNG_1080, RUNG_480, RUNG_360]);
+    tracker.recordUnservedSlot(RUNG_480);
+
+    assert.deepEqual(stopped, [], 'a rung that had just joined was dropped for a history it was not there for');
+  });
+
+  /** A finished broadcast is not a broken rung, and dropping rungs off one helps nobody. */
+  it('says nothing about a rung whose own feed ended', () => {
+    const { tracker, clock, stopped } = makeLadder();
+
+    tracker.recordFeedEnded(RUNG_1080);
+    tracker.recordUnservedSlot(RUNG_1080);
+    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS * 2);
+
+    assert.deepEqual(stopped, []);
+  });
+
+  /**
+   * The same guard from the other side. A ladder's end is recorded once against the group, by
+   * `LadderFeedPoller.recordGroupEndedIfComplete`, and never against the rungs.
+   */
+  it('says nothing about a rung whose group has ended', () => {
+    const { tracker, clock, stopped } = makeLadder();
+
+    tracker.recordFeedEnded(GROUP);
+    tracker.recordUnservedSlot(RUNG_1080);
+    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS * 2);
+
+    assert.deepEqual(stopped, []);
+  });
+
+  /** A viewer of a single-rendition stream has nowhere to move to, so there is nothing to say. */
+  it('says nothing about a topic that is not a rung of any ladder', () => {
+    const clock = makeClock();
+    const stopped: string[] = [];
+    const tracker = new FeedHealthTracker(clock.now);
+    tracker.onRungStopped((rung) => stopped.push(rung));
+
+    unservedPastWindow(tracker, clock);
+
+    assert.equal(tracker.state(TOPIC), FEED_STATE_STALLED, 'the topic should still read as stalled');
+    assert.deepEqual(stopped, []);
+  });
+
+  it('stops announcing once the listener has gone', () => {
+    const { tracker, clock, stopped, unsubscribe } = makeLadder();
+
+    unsubscribe();
+    tracker.recordUnservedSlot(RUNG_1080);
+    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS * 2);
+
+    assert.deepEqual(stopped, []);
+  });
+});

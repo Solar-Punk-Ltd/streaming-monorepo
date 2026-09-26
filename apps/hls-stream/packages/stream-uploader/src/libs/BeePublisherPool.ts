@@ -1,0 +1,340 @@
+import { Bee } from '@ethersphere/bee-js';
+
+import { redactUrlSecrets } from '../utils/urlSecrets.js';
+
+import { Logger } from './Logger.js';
+
+/** One funded Bee node, and the postage batch it pays with. */
+export interface BeePublisher {
+  /** The rung this node publishes, or {@link SINGLE_PUBLISHER} when one node serves everything. */
+  readonly rung: string;
+  readonly url: string;
+  readonly stamp: string;
+  readonly bee: Bee;
+}
+
+/** One node, everything through it — what `rung` reads as when the deployment has not been split. */
+export const SINGLE_PUBLISHER = 'all';
+
+/** A publisher as configured, before a Bee client exists for it. */
+export interface PublisherSpec {
+  rung: string;
+  url: string;
+  stamp: string;
+}
+
+const RUNG_NAME = /^[a-zA-Z0-9._-]+$/;
+/** A postage batch id is 32 bytes of hex. Checked so a truncated paste fails at startup. */
+const BATCH_ID = /^[0-9a-fA-F]{64}$/;
+
+/**
+ * Which Bee node publishes what.
+ *
+ * A feed's address is a pure function of its signing key and its topic — the node that pushed the
+ * chunk is nowhere in it. `makeFeedIdentifier` is `keccak256(topic ‖ index)`, and bee-js signs the
+ * single owner chunk locally before POSTing it, so a node here is not the owner of anything: it is a
+ * pipe with a wallet. Which pipe carries which rung is therefore a routing decision, and this is
+ * where it lives.
+ *
+ * The routing matters because postage batches drain in proportion to bitrate. Across the shipped
+ * ladder 1080p burns roughly seven times the bytes of 360p, so batches of equal depth expire hours
+ * apart. A node per rung turns that from "the stage stops" into "one rung goes quiet and ABR steps
+ * down", which is the whole reason for splitting them.
+ */
+export class BeePublisherPool {
+  private readonly logger = Logger.getInstance();
+
+  private constructor(
+    /** Ascending rung height. That order is the routing decision — see {@link coordinator}. */
+    private readonly ordered: BeePublisher[],
+    private readonly byRung: Map<string, BeePublisher>,
+  ) {}
+
+  /**
+   * One node for everything.
+   *
+   * This is every deployment that has not been split per rung yet, and it is also the only shape a
+   * single-rendition deployment can have — with the ladder off there are no rungs to split by.
+   */
+  public static single(url: string, stamp: string, requestTimeoutMs: number): BeePublisherPool {
+    // The same eager validation parseEntry applies to each split node, so a truncated STAMP or a
+    // non-http BEE_URL refuses to start here too rather than failing on the first paid write.
+    assertBatchId('STAMP', stamp);
+    assertHttpUrl('BEE_URL', url);
+
+    const publisher: BeePublisher = {
+      rung: SINGLE_PUBLISHER,
+      url,
+      stamp,
+      bee: boundedBee(url, requestTimeoutMs),
+    };
+    return new BeePublisherPool([publisher], new Map([[SINGLE_PUBLISHER, publisher]]));
+  }
+
+  /**
+   * One node per rung, ordered by the ladder rather than by the order they were configured in.
+   *
+   * `rungOrder` is expected ascending by height, which is what `AbrLadder.rungs()` returns. Sorting
+   * here rather than trusting the config means the coordination decision below cannot be broken by
+   * writing BEE_PUBLISHERS in a different order.
+   *
+   * Coverage is exact in both directions: a ladder rung with no node would publish to whichever
+   * node the fallback picked and quietly spend the wrong batch, and a node named for a rung the
+   * ladder does not have is a typo that would otherwise sit unused until someone wondered why a
+   * rung was missing.
+   */
+  public static perRung(specs: PublisherSpec[], rungOrder: string[], requestTimeoutMs: number): BeePublisherPool {
+    const byRung = new Map<string, BeePublisher>(
+      specs.map((spec) => [
+        spec.rung,
+        { rung: spec.rung, url: spec.url, stamp: spec.stamp, bee: boundedBee(spec.url, requestTimeoutMs) },
+      ]),
+    );
+
+    const missing = rungOrder.filter((rung) => !byRung.has(rung));
+    if (missing.length > 0) {
+      throw new Error(
+        `BEE_PUBLISHERS has no node for rung(s) ${missing.join(', ')}; every rung in ABR_LADDER needs one`,
+      );
+    }
+
+    const unknown = specs.map((spec) => spec.rung).filter((rung) => !rungOrder.includes(rung));
+    if (unknown.length > 0) {
+      throw new Error(`BEE_PUBLISHERS names rung(s) ${unknown.join(', ')}, which ABR_LADDER does not have`);
+    }
+
+    return new BeePublisherPool(
+      rungOrder.map((rung) => byRung.get(rung)!),
+      byRung,
+    );
+  }
+
+  /**
+   * Every node this pool publishes through, in ladder order.
+   *
+   * Exists so a startup check can enumerate the deployment rather than rebuild the single-node
+   * versus per-rung decision from the config a second time. `index.ts` is the caller, and it hands
+   * the list to both `ChequebookGate` and `PostageGate`: reading the pool means a rung added to
+   * BEE_PUBLISHERS is checked without anyone remembering to widen a parallel list.
+   */
+  public nodes(): readonly BeePublisher[] {
+    return this.ordered;
+  }
+
+  /** The node a rung's segments and manifest feed go through. */
+  public forRung(rung: string): BeePublisher {
+    const publisher = this.byRung.get(rung) ?? this.byRung.get(SINGLE_PUBLISHER);
+    if (publisher) {
+      return publisher;
+    }
+
+    // Reachable when a stream recovered from disk names a rung the current ABR_LADDER no longer
+    // has. It keeps the group and topics its siblings already published under, so dropping it would
+    // strand a live ladder — it continues through the coordination head instead. Loud, because its
+    // segments now land on a batch sized for a different rung.
+    const fallback = this.ordered[0];
+    this.logger.warn(
+      `[BeePublisherPool] No node configured for rung "${rung}" — publishing through ${fallback.rung} ` +
+        `(${fallback.url}) instead. This rung is spending a batch that was not sized for it.`,
+    );
+    return fallback;
+  }
+
+  /**
+   * The node that coordination writes — the stream catalog, and a ladder's master playlist — go
+   * through. Also where a stream with no rung at all lands, which is any single-rendition stream.
+   *
+   * The lowest rung's node, because it has the longest-lived postage batch and the least upload
+   * pressure of the four, and because the master is the one address a viewer needs to open a stage
+   * at all. Riding it on the 1080p node would take discovery down first, while three rungs were
+   * still publishing perfectly well.
+   *
+   * TODO: the pool stays ordered so a dead node can be skipped by walking it. Failover is not wired
+   * up yet, so losing this node blocks new viewers from joining while existing ones play on.
+   */
+  public coordinator(): BeePublisher {
+    return this.ordered[0];
+  }
+
+  /**
+   * Which node and batch each rung publishes through, in a shape safe to hand an unauthenticated
+   * reader.
+   *
+   * ⛔ Exists because this decision was invisible from outside the process. A stage with one Bee node
+   * per rung and a stage pushing all four rungs through one looked identical on the wire, in the logs,
+   * and in every measurement taken off them, so a deployment that had never been split could not be
+   * told from one that had — and was not, for days. A reading that names a decision has to come from
+   * where the decision is made.
+   *
+   * Two things here are deliberately not verbatim. A configured URL's userinfo is removed, because
+   * bee accepts basic auth there and this is served without any. A batch id is truncated, because it
+   * is the whole of what authorises spending on a rung. Everything else passes through exactly as
+   * configured, so what an operator reads here compares against their own BEE_PUBLISHERS without
+   * having to allow for normalisation.
+   */
+  public routing(): PublisherRoute[] {
+    return this.ordered.map((publisher) => ({
+      rung: publisher.rung,
+      url: safeUrl(publisher.url),
+      batch: shortBatchId(publisher.stamp),
+    }));
+  }
+}
+
+/** One rung's routing, as an unauthenticated reader may safely be told it. */
+export interface PublisherRoute {
+  /** The rung, or {@link SINGLE_PUBLISHER} when one node carries everything. */
+  readonly rung: string;
+  /** As configured, minus any credential: see {@link safeUrl}. */
+  readonly url: string;
+  /** Enough of the batch id to tell two apart, and never the whole one. */
+  readonly batch: string;
+}
+
+/**
+ * Every Bee client this pool hands out, and the one place a request deadline is put on one.
+ *
+ * ⛔ **A client built with no options waits for ever.** bee-js passes axios
+ * `timeout: options?.timeout ?? 0`, and axios reads 0 as no timeout, so a node that accepts the
+ * connection and then answers nothing never fails the call that reached it. That is not one slow
+ * request: a rung's uploads run at concurrency 1, so it is the rung stopped, and on the coordinator it
+ * is the catalog stopped for every stream on the stage. The window comes from `BEE_REQUEST_TIMEOUT_MS`,
+ * whose default is derived from the retry windows that wrap these calls.
+ */
+function boundedBee(url: string, requestTimeoutMs: number): Bee {
+  return new Bee(url, { timeout: requestTimeoutMs });
+}
+
+/**
+ * Parses BEE_PUBLISHERS: space-separated `rung@url<batch>`, empty when unset.
+ *
+ * Deliberately the same shape as ABR_LADDER — one variable, one entry per rung, parsed and
+ * validated eagerly so a typo refuses to start rather than silently publishing a rung to the wrong
+ * node and the wrong batch.
+ *
+ * Split on the *first* `@` and the *last* bracket, so a URL carrying userinfo or a port survives
+ * intact. A rung name cannot contain either, and a batch id is hex, so the tail is unambiguous.
+ */
+export function parsePublisherSpecs(spec: string): PublisherSpec[] {
+  const entries = spec.trim().split(/\s+/).filter(Boolean);
+  if (entries.length === 0) {
+    return [];
+  }
+
+  const specs = entries.map((entry) => parseEntry(entry));
+
+  const seen = new Set<string>();
+  for (const publisher of specs) {
+    if (seen.has(publisher.rung)) {
+      throw new Error(`BEE_PUBLISHERS has two nodes for rung "${publisher.rung}"`);
+    }
+    seen.add(publisher.rung);
+  }
+
+  return specs;
+}
+
+/**
+ * One entry: `rung@url<batch>`.
+ *
+ * The batch is bracketed rather than introduced by a `#`, which is what this used to use and which
+ * was a bad choice: `#` opens a comment in a `.env` file, so dotenv truncated the value at the first
+ * one and handed the parser a URL with no batch on it. The error that produced named a string the
+ * operator had never typed.
+ *
+ * `#` is still accepted, so a config already written that way keeps working — a quoted value was
+ * always a legal way to escape it.
+ */
+function parseEntry(entry: string): PublisherSpec {
+  const at = entry.indexOf('@');
+  const open = entry.endsWith('>') ? entry.lastIndexOf('<') : entry.lastIndexOf('#');
+  const close = entry.endsWith('>') ? entry.length - 1 : entry.length;
+
+  if (at <= 0 || open <= at + 1 || open >= close - 1) {
+    throw new Error(
+      `BEE_PUBLISHERS entry "${entry}" must be rung@url<batch>, ` + `e.g. 360p@http://localhost:1633<0a1b2c…>`,
+    );
+  }
+
+  const rung = entry.slice(0, at);
+  const url = entry.slice(at + 1, open);
+  const stamp = entry.slice(open + 1, close);
+
+  if (!RUNG_NAME.test(rung)) {
+    throw new Error(`BEE_PUBLISHERS rung name "${rung}" must match ${RUNG_NAME}`);
+  }
+
+  assertBatchId(`BEE_PUBLISHERS batch id for "${rung}"`, stamp);
+  assertHttpUrl(`BEE_PUBLISHERS url for "${rung}"`, url);
+
+  return { rung, url, stamp };
+}
+
+/**
+ * Enough of a batch id to tell two apart in a log or a health payload, and never the whole thing.
+ *
+ * Lives here rather than beside either caller because this file owns what a batch id is — the shape
+ * {@link assertBatchId} enforces and the reason it is worth guarding.
+ */
+export function shortBatchId(stamp: string): string {
+  return `${stamp.slice(0, 8)}…`;
+}
+
+/**
+ * A configured node URL with any credential removed, for a reader that is not authenticated.
+ *
+ * Two places a URL can carry one. Userinfo is stripped here, since bee accepts basic auth in it, and
+ * {@link redactUrlSecrets} handles the query string, which is where a publish key arrives.
+ *
+ * ⚠️ A URL with no userinfo is returned **verbatim** rather than round-tripped through the parser.
+ * That is deliberate: this value exists to be compared against the operator's own BEE_PUBLISHERS
+ * entry, and `new URL('http://h:1633').toString()` appends a path, so normalising every URL would
+ * make an identical pair read as a mismatch. One that had a credential removed is rebuilt, and so
+ * normalised, because it is no longer what was configured either way.
+ */
+export function safeUrl(url: string): string {
+  const parsed = parseOrNull(url);
+  if (parsed === null) {
+    // ⛔ Never a throw. Every caller is already reporting something, and a TypeError here replaces
+    // that report with itself: a catalog refusing to call a feed empty read as "Invalid URL" rather
+    // than as the node being unreachable, found in review on 2026-09-17. Without a parse there is no
+    // userinfo to strip, so this is the query-string redaction alone, which is the most that can be
+    // said about a string nothing can read as a url.
+    return redactUrlSecrets(url);
+  }
+
+  if (parsed.username === '' && parsed.password === '') {
+    return redactUrlSecrets(url);
+  }
+
+  parsed.username = '';
+  parsed.password = '';
+  return redactUrlSecrets(parsed.toString());
+}
+
+function parseOrNull(url: string): URL | null {
+  try {
+    return new URL(url);
+  } catch {
+    return null;
+  }
+}
+
+function assertBatchId(subject: string, stamp: string): void {
+  if (!BATCH_ID.test(stamp)) {
+    throw new Error(`${subject} must be 64 hex characters, got ${stamp.length} ("${stamp.slice(0, 8)}…")`);
+  }
+}
+
+function assertHttpUrl(subject: string, url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`${subject} is not a URL: "${url}"`);
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`${subject} must be http or https, got "${parsed.protocol}"`);
+  }
+}

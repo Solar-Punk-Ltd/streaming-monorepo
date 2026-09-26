@@ -1,0 +1,649 @@
+/**
+ * What a viewer's browser did, sampled while it watched, and what that says about the buffer the
+ * player was configured with.
+ *
+ * The question this exists to answer is whether a player honours `LIVE_SYNC_DURATION_S`. It was
+ * derived from arrival times the bench measured, and derived is all it has ever been. A player
+ * configured to sit six seconds behind live can fail to in two directions, and only one of them is
+ * visible from outside a browser:
+ *
+ * - **Clamped short.** hls.js pins its sync position to the start of the playlist, so a first
+ *   manifest naming less media than the target asks for leaves a joining viewer nearer the edge than
+ *   configured, with correspondingly less runway. The uploader's window was ten segments until
+ *   2026-08-05, which is 2.5s at a 0.25s segment against a 6s target, and nothing in the bench could
+ *   have seen it.
+ * - **Run long.** Latency past `LIVE_MAX_LATENCY_DURATION_S` means the seek that is supposed to
+ *   recover it did not.
+ *
+ * Both are read off the player's own live latency, which is why {@link ViewerSample} carries it.
+ */
+
+import {
+  LIVE_MAX_LATENCY_DURATION_S,
+  LIVE_SYNC_DURATION_S,
+  MAX_LIVE_SYNC_PLAYBACK_RATE,
+} from '../bench/clientTuning.js';
+
+import { feedStatesSeen, type ViewerFeedState } from './feedState.js';
+
+/**
+ * How far below the configured target the latency may sit before it reads as clamped.
+ *
+ * A player is entitled to be somewhat nearer the edge than its target: hls.js reloads a live
+ * playlist once per target duration and corrects between reloads, so the position oscillates by
+ * about that much either way. One second covers that at every segment length this deployment runs,
+ * since the uploader declares `ceil(segment duration)` and nothing here is longer than a second.
+ */
+const LATENCY_TARGET_TOLERANCE_S = 1;
+
+/** Below this share of wall clock, playback is not advancing and the sample is a stall. */
+export const STALLED_ADVANCE_RATIO = 0.25;
+
+export interface ViewerSample {
+  /** Wall clock in the browser when the sample was taken. */
+  atMs: number;
+  /** `video.currentTime`, the media position actually being shown. */
+  currentTime: number;
+  paused: boolean;
+  /** `video.readyState`. 4 is HAVE_ENOUGH_DATA. */
+  readyState: number;
+  /** 1.1 while hls.js is catching up, 1 once it is at target. */
+  playbackRate: number;
+  /** Buffered media ahead of the playhead, in seconds. */
+  bufferAheadS: number;
+  /**
+   * Frames the decoder has produced since the session began, or null where the browser has no
+   * `getVideoPlaybackQuality`.
+   *
+   * Counted rather than rated, because a rate needs two samples and one of them belongs to whoever
+   * is asking. Against **media** time it gives the frame rate that arrived. See
+   * {@link SessionSummary.deliveredFps}.
+   */
+  decodedFrames: number | null;
+  /** `hls.latency` as the shipped QoE overlay reports it, or null before it has a value. */
+  liveLatencyS: number | null;
+  /**
+   * `hls.targetLatency`, which is the latency the player is steering to rather than the one it was
+   * configured with. Null before it has a value.
+   */
+  liveTargetLatencyS: number | null;
+  /** Non-fatal stalls the player counted, which are the only thing that moves the target. */
+  bufferStalls: number;
+  rebufferCount: number;
+  rebufferMs: number;
+  fatalErrors: number;
+  droppedFrames: number;
+  /** As the player decoded it, so `1280x720` here is what arrived rather than what was requested. */
+  resolution: string | null;
+  /**
+   * The rung the player is DECODING, by height, or null before it has played one.
+   *
+   * ⛔ **Read off `hls.currentLevel`, so it is what reached the screen and not what ABR decided.** The
+   * comment here used to say the opposite, and that cost a reading on 2026-08-30: a squeezed in-tab
+   * viewer reported 1080p for a whole 60s cap while their buffer sat at zero and then went negative,
+   * and it was taken to mean ABR had refused to step down. A player with a dry buffer keeps reporting
+   * the last rung it managed to decode whatever ABR has chosen since. {@link abrWouldPickHeight} is
+   * the field that says what ABR chose.
+   */
+  selectedRungHeight: number | null;
+  /**
+   * The rung ABR would pick next, by height, or null on a stream with no ladder to pick from.
+   *
+   * ⭐ The pair with {@link selectedRungHeight} is what makes a quality switch legible: this one moves
+   * when the player decides, that one moves when the decoder catches up, and a viewer who chose to
+   * step down and could not is the gap between them.
+   */
+  abrWouldPickHeight: number | null;
+  /** Level changes hls.js has counted this session, which moves on the decision rather than the frame. */
+  qualitySwitches: number;
+  /** Whether the player was choosing its own rung. False means ABR was not what produced this sample. */
+  abrEnabled: boolean;
+  /** What hls.js believed the connection could carry, in kbps, which is the input to its choice. */
+  bandwidthEstimateKbps: number | null;
+  /**
+   * Every rung the player parsed out of the master, by height, empty where it holds no ladder.
+   *
+   * ⭐ The player's view of the ladder rather than the deployment's. A recording whose master resolved
+   * but whose rung playlists did not is a player holding fewer levels than `ABR_LADDER` declares, and
+   * nothing else in a sample would show it.
+   */
+  ladderHeights: readonly number[];
+  /**
+   * What the shipped `FeedStateOverlay` was telling the viewer, or null when it was telling them
+   * nothing, which is what it renders while the feed is live.
+   *
+   * The one reading here that is about the product's words rather than its timing. A picture that
+   * has stopped is a different event from a picture that has stopped and says why, and only the
+   * second one is a viewer who knows to wait rather than to reload.
+   */
+  feedStateMessage: string | null;
+  /**
+   * The same overlay as a state, which is what a pass/fail suite can assert on.
+   *
+   * Kept beside the message rather than replacing it: a report a person reads wants the sentence the
+   * viewer saw, and a scenario asserting "this broadcast reached its end" must not be asserting on
+   * prose that a copy edit can move. See {@link readFeedState}, which refuses a message it does not
+   * recognise rather than reading it as live.
+   */
+  feedState: ViewerFeedState;
+}
+
+/**
+ * How much a target may sit above the configured one and still count as the configured one.
+ *
+ * The overlay formats to two decimals, so a target of exactly `LIVE_SYNC_DURATION_S` survives the
+ * round trip as itself and this only has to cover the formatting. Anything wider would swallow a
+ * real raise: hls.js's smallest is `liveSyncOnStallIncrease`, which is one second.
+ */
+const TARGET_ROUNDING_S = 0.01;
+
+export interface LatencyTargetVerdict {
+  /** The target the client asked for, and the one every latency claim in a report is judged against. */
+  configuredS: number;
+  /** The furthest-back target the player ever steered to, or null where it never reported one. */
+  worstS: number | null;
+  /** Seconds {@link worstS} sat above {@link configuredS}, which is what a stall bought. */
+  raisedByS: number;
+  /** Non-fatal stalls the player counted, summed across restarts. */
+  stalls: number;
+  /** Whether the run was measured against the target it was configured with, throughout. */
+  held: boolean;
+  /**
+   * Median of `latency - target` taken per sample, or null where no sample had both.
+   *
+   * ⭐ **The figure to compare across runs when {@link held} is false.** Raw latency is what a viewer
+   * got and is the right number for a viewer-facing claim, but it carries the stall penalty, so two
+   * runs of one configuration whose stalls differed are not comparable on it. This is what the
+   * segment length did, with the penalty subtracted out.
+   *
+   * Negative means nearer live than the player was steering for, which is ordinary: the catch-up
+   * only pushes latency down and overshoots, so a healthy session sawtooths just below its target.
+   *
+   * Per sample rather than median-minus-median, because the target can move part way through a run
+   * and a difference of medians would then describe neither half.
+   */
+  medianPastTargetS: number | null;
+}
+
+/**
+ * Whether the run's latency figures are against the target the client asked for.
+ *
+ * ⚠️ **Two runs whose targets differ are not comparable on latency**, however tidy each looks on its
+ * own. hls.js's `LatencyController` adds `min(stallCount * liveSyncOnStallIncrease, targetduration)`
+ * to the configured `liveSyncDuration`, `liveSyncOnStallIncrease` defaults to 1, and `stallCount`
+ * falls back to zero only when a fresh manifest loads. So one non-fatal stall moves the target by up
+ * to a target duration for the rest of the session, latency settles around the moved target, and the
+ * catch-up that would have pulled it back measures itself against the moved value and stops firing.
+ *
+ * That is not a hypothesis. On 2026-08-07 the 1080p ABA ran two identical 0.25s control arms twenty
+ * minutes apart and they came back 5.89s and 6.81s, against an effect of 0.85s, which voided the
+ * comparison. Inverting hls.js's catch-up curve against the archived samples puts the first arm's
+ * target at 6.0 and the third's at about 7.0, and the third joined with 0.12s buffered at
+ * `readyState 1`. All three arms reported zero rebuffers, zero stalled samples and zero fatal errors,
+ * because a stall is none of those things.
+ *
+ * Judged on the worst target the run ever saw rather than on a step between samples: the stall that
+ * cost that arm happened at its join, so every sample it took was already against the raised target
+ * and nothing about the series looked wrong.
+ */
+/**
+ * ⛔⛔⛔ `configuredS` IS A PARAMETER BECAUSE THE TARGET MOVES AT RUNTIME, AND THIS READ THE COMPILE-
+ * TIME CONSTANT UNTIL 2026-08-14. `BROWSER_TARGET_LATENCY_S` has steered arms at 6, 2 and 1.5 since
+ * PR #186, and every one of those runs had `raisedByS` and `held` judged against 6.
+ *
+ * The 2026-08-14 sitting is what exposed it: arms configured at 2s reported `worstS: 3`, so the
+ * player had been raised a full second past its target, and the verdict beside it read
+ * `raisedByS: 0, held: true`. Wrong, and wrong in the flattering direction.
+ *
+ * ⭐ Note which field survived: `medianPastTargetS` subtracts the target from the reading **per
+ * sample**, so it was right the whole time. That is gate lesson AHT stated as code. A verdict that
+ * compares against a constant is not measuring a setpoint that can move.
+ */
+export function judgeLatencyTarget(
+  samples: readonly ViewerSample[],
+  configuredS: number = LIVE_SYNC_DURATION_S,
+): LatencyTargetVerdict {
+  const observed = samples
+    .map((sample) => sample.liveTargetLatencyS)
+    .filter((value): value is number => value !== null);
+  const worstS = observed.length > 0 ? Math.max(...observed) : null;
+
+  const pastTarget = samples
+    .filter((sample) => sample.liveLatencyS !== null && sample.liveTargetLatencyS !== null)
+    .map((sample) => sample.liveLatencyS! - sample.liveTargetLatencyS!);
+
+  return {
+    configuredS,
+    worstS,
+    medianPastTargetS: pastTarget.length > 0 ? median(pastTarget) : null,
+    raisedByS: worstS === null ? 0 : Math.max(0, worstS - configuredS),
+    stalls: gainedAcrossRestarts(samples, (sample) => sample.bufferStalls),
+    // Null rather than true when nothing was observed: a run that never read a target has not shown
+    // that the target was steady, and an empty case that reads as a pass is how this project has been
+    // caught before.
+    held: worstS !== null && worstS <= configuredS + TARGET_ROUNDING_S,
+  };
+}
+
+interface PlaybackAdvance {
+  /** Media seconds gained per wall-clock second. ~1 playing, ~1.1 catching up, ~0 stalled. */
+  ratio: number;
+  wallMs: number;
+}
+
+/**
+ * How playback moved between consecutive samples.
+ *
+ * Separate from the latency reading because it answers a different question and answers it without
+ * trusting the overlay: `currentTime` against the wall clock is the one measurement here that cannot
+ * be wrong about whether a viewer was watching anything.
+ */
+export function playbackAdvances(samples: readonly ViewerSample[]): PlaybackAdvance[] {
+  return samples.slice(1).map((sample, i) => {
+    const previous = samples[i];
+    const wallMs = sample.atMs - previous.atMs;
+    const ratio = wallMs > 0 ? ((sample.currentTime - previous.currentTime) * 1000) / wallMs : 0;
+    return { ratio, wallMs };
+  });
+}
+
+export interface LatencyVerdict {
+  /** The player's latency on the first sample that had one, which is what a joining viewer got. */
+  joinLatencyS: number | null;
+  medianLatencyS: number | null;
+  minLatencyS: number | null;
+  maxLatencyS: number | null;
+  /**
+   * Whether the uploader named enough media for the player to start where it was told to.
+   *
+   * Judged on the **join** and on nothing else. hls.js pins its sync position to the start of the
+   * playlist at mount, so the first manifest is the only thing that can hold a joining viewer nearer
+   * the edge than configured. What the latency does afterwards is a different question with
+   * different causes, and answering it with a median was this module's own first mistake: the run of
+   * 2026-08-05 joined at 5.96s against a 6s target, which is the window working, and its median of
+   * 2.28s printed as "the window is too short".
+   */
+  reachedTargetAtJoin: boolean;
+  /** Whether it was still there later. False with {@link reachedTargetAtJoin} true means it drained. */
+  heldTarget: boolean;
+  /**
+   * Whether the join itself was past the seek threshold, so a viewer's first second was a jump.
+   *
+   * Reported apart from {@link ranLong} because it is a different event with a different cause and a
+   * different fix. hls.js pins its sync position to the start of the playlist, so a viewer joins as
+   * far back as the first manifest reaches, and the uploader's window is budgeted in bytes rather
+   * than in seconds: about 36 seconds of media at a 1.0s segment against a 6s target. Passing the
+   * threshold is what makes hls.js seek, and the seek is the designed response, so this is a
+   * question about how much media the uploader names and not about whether the player recovered.
+   */
+  joinedPastSeekThreshold: boolean;
+  /**
+   * True when latency ran past the point hls.js is supposed to seek rather than drift, **after** the
+   * join.
+   *
+   * The join is excluded because it is the one sample where being past the threshold is expected,
+   * and reading the plain maximum reported a run that joined 35.98s behind and was at 6.25s one
+   * sample later as one where the seek had not worked. Everything after the join is still judged on
+   * a single excursion: mid-session, one sample past the threshold is the whole signal.
+   */
+  ranLong: boolean;
+}
+
+export function judgeLatency(samples: readonly ViewerSample[]): LatencyVerdict {
+  const observed = samples.map((sample) => sample.liveLatencyS).filter((value): value is number => value !== null);
+  if (observed.length === 0) {
+    return {
+      joinLatencyS: null,
+      medianLatencyS: null,
+      minLatencyS: null,
+      maxLatencyS: null,
+      reachedTargetAtJoin: false,
+      heldTarget: false,
+      joinedPastSeekThreshold: false,
+      ranLong: false,
+    };
+  }
+
+  const floor = LIVE_SYNC_DURATION_S - LATENCY_TARGET_TOLERANCE_S;
+  const medianLatencyS = median(observed);
+  const joinLatencyS = joinLatency(samples) ?? observed[0];
+  const afterJoin = observed.slice(1);
+  return {
+    joinLatencyS,
+    medianLatencyS,
+    minLatencyS: Math.min(...observed),
+    maxLatencyS: Math.max(...observed),
+    reachedTargetAtJoin: joinLatencyS >= floor,
+    heldTarget: medianLatencyS >= floor,
+    joinedPastSeekThreshold: joinLatencyS > LIVE_MAX_LATENCY_DURATION_S,
+    ranLong: afterJoin.some((latency) => latency > LIVE_MAX_LATENCY_DURATION_S),
+  };
+}
+
+/**
+ * `readyState` at which the player has enough to play forward, which is `HAVE_FUTURE_DATA`.
+ *
+ * Below it the element has a position but nothing to move to, and `hls.latency` is computed against
+ * the playlist edge regardless, so it reports the whole live window rather than where a viewer
+ * landed.
+ */
+const PLAYABLE_READY_STATE = 3;
+
+/**
+ * Where the viewer actually started, taken from the first sample the player could play from.
+ *
+ * ⛔ **Not the first sample with a latency**, which is what this used to be. On 2026-08-07 a 1.0s arm
+ * took its first sample at `readyState 1` with 0.99s buffered and reported **37.00s** behind live,
+ * the entire live window. One second later the same run read 6.28s at `readyState 4`, and
+ * `currentTime` moved 31.01 to 32.17 across that pair, which is an ordinary step at the catch-up
+ * rate. **Nothing seeked.** The report nonetheless announced that the join was a jump and that hls.js
+ * had seeked to the edge, and `joinedPastSeekThreshold` is derived from the same number.
+ *
+ * Null when the player never reached a playable state, which leaves the caller to fall back rather
+ * than deciding here that such a run has no join at all.
+ */
+function joinLatency(samples: readonly ViewerSample[]): number | null {
+  const started = samples.find((sample) => sample.readyState >= PLAYABLE_READY_STATE && sample.liveLatencyS !== null);
+  return started?.liveLatencyS ?? null;
+}
+
+export interface SessionSummary {
+  samples: number;
+  /** Wall-clock span the samples cover. A median over a short span is a median over a short span. */
+  spanMs: number;
+  /** Samples where playback gained less than {@link STALLED_ADVANCE_RATIO} of wall clock. */
+  stalledSamples: number;
+  /**
+   * The advance ratio of a typical sample, which is 1.0 in any session that plays at all.
+   *
+   * Not the one to quote. Playback either runs at its rate or is stopped, so the median describes
+   * the sample rather than the session, and a viewer rebuffering a sixth of the time still scores
+   * 1.000 here. {@link overallAdvanceRatio} is the honest one.
+   */
+  medianAdvanceRatio: number;
+  /**
+   * Media seconds delivered per wall second across the whole session, stalls included.
+   *
+   * This is what a viewer experienced: 1.0 means the picture kept up with the world, and the
+   * shortfall below it is time they spent watching a frozen frame. Media the player jumped past is
+   * excluded, so this cannot exceed {@link MAX_LIVE_SYNC_PLAYBACK_RATE} however far it seeks.
+   */
+  overallAdvanceRatio: number;
+  /**
+   * Times the playhead moved forward by more than the clock allows, which is a seek and not
+   * playback.
+   *
+   * Non-zero is not a fault by itself. Every session that joins behind the live edge gets one, and
+   * hls.js seeking after a freeze is its designed recovery. It is here because
+   * {@link overallAdvanceRatio} now excludes those seconds, and a ratio that dropped wants the
+   * reason next to it.
+   */
+  forwardSeeks: number;
+  /** Media seconds those seeks passed over, which is media that existed and nobody saw. */
+  seekedPastS: number;
+  /** The overlay's own count, which counts a `waiting` event rather than a slow sample. */
+  rebufferCount: number;
+  rebufferMs: number;
+  fatalErrors: number;
+  droppedFrames: number;
+  resolution: string | null;
+  /**
+   * Frames the decoder produced per second of **media**, which is the frame rate that arrived.
+   *
+   * ⚠️ **The silent quality failure this exists for.** A consumer slower than the stream's bitrate
+   * does not drop frames or raise an error: it stretches media time, so the encoder's own log shows
+   * its keyframe interval hit exactly while the frame rate underneath collapsed. Reproduced at
+   * **12.2fps against a requested 30** with no engine error and no postage problem, which is the
+   * publisher throttle, and `check-axis.py` caught every instance of it while naming the wrong
+   * cause.
+   *
+   * Against media rather than wall time on purpose: a frozen picture decodes nothing, so a wall-time
+   * rate reads a freeze and a collapsed frame rate as the same number. Against media time a freeze
+   * cancels out of both halves and what is left is the content's own rate.
+   *
+   * Null when the run saw too little media, or where the browser has no `getVideoPlaybackQuality`.
+   */
+  deliveredFps: number | null;
+  medianBufferAheadS: number;
+  /**
+   * Each feed state the viewer was shown, once, in the order they first met it.
+   *
+   * A live session that was never interrupted reads `['live']`. A broadcast that ended cleanly under
+   * a watching viewer ends with `'ended'`, the state a viewer scenario asserts on. It is not terminal
+   * since 2026-09-24: a broadcaster who comes back takes the client out of it, and the player rejoins
+   * the live broadcast once the viewer reaches the end of what they were playing. This list cannot show
+   * that return, because each state appears once, where it was first met, and `'live'` was met first.
+   */
+  feedStatesSeen: readonly ViewerFeedState[];
+  latency: LatencyVerdict;
+  /**
+   * Whether {@link latency} was measured against the target the client was configured with.
+   *
+   * Read this before quoting any figure from {@link latency}, and before comparing one run's latency
+   * with another's. See {@link judgeLatencyTarget}.
+   */
+  latencyTarget: LatencyTargetVerdict;
+}
+
+/** Media that has to pass before a frame rate means anything, in seconds. */
+const MIN_MEDIA_FOR_FPS_S = 5;
+
+/**
+ * The frame rate that reached the viewer, from the frames the decoder counted over the media it
+ * played. Null when the run is too short for the ratio to say anything, rather than a number built
+ * from two samples that happen to straddle a stall.
+ *
+ * Media the player seeked past is out of the denominator because it is already out of the numerator:
+ * a seek decodes nothing it jumps over. Counting it understated the rate in every session with a
+ * join seek in it, which is most of them.
+ */
+function deliveredFps(samples: readonly ViewerSample[]): number | null {
+  const counted = samples.filter(
+    (sample): sample is ViewerSample & { decodedFrames: number } => sample.decodedFrames !== null,
+  );
+  if (counted.length < 2) {
+    return null;
+  }
+  const mediaS = mediaPlayed(counted).playedS;
+  if (mediaS < MIN_MEDIA_FOR_FPS_S) {
+    return null;
+  }
+  return gainedAcrossRestarts(counted, (sample) => sample.decodedFrames) / mediaS;
+}
+
+/**
+ * How far `currentTime` may fall between samples before it is a restart rather than a slow sample.
+ *
+ * The client destroys and remounts its player when a manifest will not parse, and a remounted player
+ * starts from the beginning of whatever it then loads. Nothing else moves the playhead backwards:
+ * there is no seek control on a live viewer.
+ */
+const RESTART_REWIND_S = 5;
+
+/**
+ * How much a counter the page maintains for the whole session GAINED across these samples.
+ *
+ * A remounted player starts these at zero, so the last sample carries only what happened since the
+ * most recent restart. That is zero for exactly the runs worth reading, because the restart is
+ * usually the last interesting thing to happen in one.
+ *
+ * ⛔⛔⛔ THE OPENING READING IS SUBTRACTED, AND FOR TWO YEARS IT WAS NOT.
+ *
+ * These counters run from the moment playback starts, and every arm of a byte-source sitting plays a
+ * 60 second settle before its window opens. Returning the final total charged that settle to the
+ * window: `deliveredFps` read 35.0 on a six-minute arm and 30.75 on a forty-minute one, on the same
+ * rig, the same night, at the same profile, when both were 30.0. Solving for a fixed excess gives
+ * exactly 1800 frames in each, which is sixty seconds at thirty frames.
+ *
+ * ⛔⛔ THE FRAME RATE INFLATED, WHICH IS THE DIRECTION THAT HIDES A FAULT. A starved encoder at the
+ * historical 26.5fps would have reported 30.9 on a six-minute arm and passed any guard set against 30.
+ * The counters move the other way: an arm reporting 3 rebuffers had 2, and 59 dropped frames had 42.
+ *
+ * ⭐ Every fixture that covered this started its counter at zero, where the total and the gain are the
+ * same number. A counter test that starts at zero tests half a counter.
+ */
+function gainedAcrossRestarts<T extends ViewerSample>(samples: readonly T[], of: (sample: T) => number): number {
+  if (samples.length === 0) {
+    return 0;
+  }
+  let carried = 0;
+  let peak = 0;
+
+  for (const sample of samples) {
+    const value = of(sample);
+    if (value < peak) {
+      carried += peak;
+    }
+    peak = value;
+  }
+
+  return carried + peak - of(samples[0]);
+}
+
+/**
+ * Slack for reading `currentTime` and the clock at slightly different instants.
+ *
+ * Sized against the gap it has to sit in rather than picked. Sampling is a second apart, so an
+ * honest interval gains at most {@link MAX_LIVE_SYNC_PLAYBACK_RATE} seconds, while the smallest seek
+ * hls.js can make is {@link LIVE_MAX_LATENCY_DURATION_S} minus {@link LIVE_SYNC_DURATION_S}, six
+ * seconds, because it only fires past the first and lands on the second. Anything between about a
+ * tenth of a second and five separates them, and this sits in the middle of that.
+ */
+const SEEK_TOLERANCE_S = 0.5;
+
+interface PlayedMedia {
+  /** Media seconds the playhead covered by playing, with seek jumps taken out. */
+  playedS: number;
+  forwardSeeks: number;
+  seekedPastS: number;
+}
+
+/**
+ * Media the viewer watched, told apart from media the player jumped over.
+ *
+ * Walks pairs rather than reading the ends, because the ends cannot tell a session that played
+ * throughout from one that froze and then seeked past the freeze. Two things break the run of
+ * ordinary playback and they are not the same event:
+ *
+ * - **Backwards past {@link RESTART_REWIND_S}** is the client remounting its player, which starts
+ *   again from whatever loads next. Nothing was watched or skipped, so the step counts as neither.
+ * - **Forwards past what the clock allows** is a seek. The ceiling is
+ *   {@link MAX_LIVE_SYNC_PLAYBACK_RATE} rather than the rate either sample reported, because hls.js
+ *   may raise the rate between two samples and a ceiling that trusted the samples would call that a
+ *   seek. What the step is credited is that ceiling, which is an upper bound on what could have
+ *   played rather than a guess at how much did: the player probably spent most of the interval
+ *   stalled, so this errs toward the flattering reading and still lands far below the old one.
+ */
+function mediaPlayed(samples: readonly ViewerSample[]): PlayedMedia {
+  let playedS = 0;
+  let forwardSeeks = 0;
+  let seekedPastS = 0;
+
+  for (let i = 1; i < samples.length; i += 1) {
+    const previous = samples[i - 1];
+    const sample = samples[i];
+    const gained = sample.currentTime - previous.currentTime;
+
+    if (gained < -RESTART_REWIND_S) {
+      continue;
+    }
+
+    const playable = ((sample.atMs - previous.atMs) / 1000) * MAX_LIVE_SYNC_PLAYBACK_RATE;
+    if (gained > playable + SEEK_TOLERANCE_S) {
+      forwardSeeks += 1;
+      seekedPastS += gained - playable;
+      playedS += playable;
+      continue;
+    }
+
+    playedS += gained;
+  }
+
+  return { playedS, forwardSeeks, seekedPastS };
+}
+
+/**
+ * @param configuredTargetS the latency target this run actually asked the player for. ⛔ Defaulting
+ *   to {@link LIVE_SYNC_DURATION_S} keeps callers that never move it honest, but a caller that sets
+ *   `BROWSER_TARGET_LATENCY_S` and omits this gets a target verdict judged against the wrong number.
+ */
+export function summarize(
+  samples: readonly ViewerSample[],
+  configuredTargetS: number = LIVE_SYNC_DURATION_S,
+): SessionSummary {
+  const last = samples[samples.length - 1];
+  const advances = playbackAdvances(samples);
+  const spanMs = samples.length > 1 ? last.atMs - samples[0].atMs : 0;
+  const played = mediaPlayed(samples);
+  return {
+    samples: samples.length,
+    spanMs,
+    stalledSamples: advances.filter((advance) => advance.ratio < STALLED_ADVANCE_RATIO).length,
+    medianAdvanceRatio: advances.length > 0 ? median(advances.map((advance) => advance.ratio)) : 0,
+    overallAdvanceRatio: spanMs > 0 ? (played.playedS * 1000) / spanMs : 0,
+    forwardSeeks: played.forwardSeeks,
+    seekedPastS: played.seekedPastS,
+    rebufferCount: gainedAcrossRestarts(samples, (sample) => sample.rebufferCount),
+    rebufferMs: gainedAcrossRestarts(samples, (sample) => sample.rebufferMs),
+    fatalErrors: gainedAcrossRestarts(samples, (sample) => sample.fatalErrors),
+    droppedFrames: gainedAcrossRestarts(samples, (sample) => sample.droppedFrames),
+    resolution: last?.resolution ?? null,
+    deliveredFps: deliveredFps(samples),
+    medianBufferAheadS: samples.length > 0 ? median(samples.map((sample) => sample.bufferAheadS)) : 0,
+    feedStatesSeen: feedStatesSeen(samples.map((sample) => sample.feedState)),
+    latency: judgeLatency(samples),
+    latencyTarget: judgeLatencyTarget(samples, configuredTargetS),
+  };
+}
+
+function median(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+}
+
+/** Media seconds per wall second over one stretch of a run, with the wall time it covers. */
+export interface PhaseAdvance {
+  ratio: number;
+  wallMs: number;
+  samples: number;
+}
+
+/** The samples of one stretch and the intervals between them. */
+export interface Phase {
+  samples: readonly ViewerSample[];
+  advances: readonly PlaybackAdvance[];
+}
+
+/**
+ * Split on the interval rather than on the sample.
+ *
+ * An advance describes the gap between two samples, so the interval that straddles the boundary
+ * belongs to neither side cleanly. It is assigned to the phase it **ends** in, which is the
+ * pessimistic reading: an interval half of which was already under the treatment counts as under it.
+ * The alternative would report the first frozen interval of every outage as part of the healthy
+ * baseline.
+ */
+export function phaseOf(samples: readonly ViewerSample[], from: number, to: number): Phase {
+  const advances = playbackAdvances(samples);
+  const kept: PlaybackAdvance[] = [];
+  const keptSamples: ViewerSample[] = [];
+
+  samples.forEach((sample, i) => {
+    if (sample.atMs < from || sample.atMs >= to) {
+      return;
+    }
+    keptSamples.push(sample);
+    if (i > 0) {
+      kept.push(advances[i - 1]);
+    }
+  });
+
+  return { samples: keptSamples, advances: kept };
+}
+
+export function advanceOf(phase: Phase): PhaseAdvance {
+  const wallMs = phase.advances.reduce((total, advance) => total + advance.wallMs, 0);
+  const mediaMs = phase.advances.reduce((total, advance) => total + advance.ratio * advance.wallMs, 0);
+  return { ratio: wallMs > 0 ? mediaMs / wallMs : 0, wallMs, samples: phase.samples.length };
+}

@@ -1,0 +1,121 @@
+#!/bin/bash
+set -e
+
+# shellcheck source=_lib.sh
+source "$(cd "$(dirname "$0")" && pwd)/_lib.sh"
+
+echo "=== Swarm HLS Stream: Setup ==="
+
+# 1. Check jq
+require_jq
+
+# 2. Create config.json if missing
+if [ ! -f "$CONFIG_FILE" ]; then
+  cp "$DEPLOY_DIR/config.sample.json" "$CONFIG_FILE"
+  echo ""
+  log_ok "Created config.json from config.sample.json"
+  echo "  Edit it to set deployment targets:"
+  echo "  $CONFIG_FILE"
+else
+  echo ""
+  log_ok "config.json already exists"
+fi
+
+# 3. Create .env if missing, or top up one that is missing sample keys.
+# Existence is not enough: pnpm stamp:setup creates .env when it records a batch id, so a run in
+# that order would otherwise leave a one-key file that this step skips and nothing ever fills in.
+missing_sample_keys() {
+  local key
+  while IFS= read -r key; do
+    grep -qE "^${key}=" "$ENV_FILE" || return 0
+  done < <(grep -oE '^[A-Z_][A-Z0-9_]*=' "$ENV_SAMPLE" | tr -d '=')
+  return 1
+}
+
+if [ -f "$ENV_FILE" ] && missing_sample_keys; then
+  log_warn ".env exists but is missing keys from .env.sample, appending them"
+  while IFS= read -r line; do
+    case "$line" in
+      [A-Z_]*=*)
+        key="${line%%=*}"
+        grep -qE "^${key}=" "$ENV_FILE" || echo "$line" >>"$ENV_FILE"
+        ;;
+      *) ;;
+    esac
+  done <"$ENV_SAMPLE"
+  log_ok "Topped up .env from .env.sample"
+fi
+
+if [ ! -f "$ENV_FILE" ]; then
+  cp "$ENV_SAMPLE" "$ENV_FILE"
+  echo ""
+  log_ok "Created .env from .env.sample"
+  echo ""
+  echo "  Required:"
+  echo "    STREAM_KEY     Private key (hex)"
+  echo "    API_AUTH_TOKEN Bearer token for the /stream routes: openssl rand -hex 32"
+  echo ""
+  echo "  Edit: $ENV_FILE"
+else
+  echo ""
+  log_ok ".env already exists"
+fi
+
+# 4. Create engine .env files for engines enabled in config.json
+for engine in "$SVC_SRS" "$SVC_OME"; do
+  engine_env="$ROOT_DIR/engines/$engine/.env"
+  engine_sample="$ROOT_DIR/engines/$engine/.env.sample"
+  if is_enabled "$(get_target "$engine")" && [ ! -f "$engine_env" ] && [ -f "$engine_sample" ]; then
+    cp "$engine_sample" "$engine_env"
+    log_ok "Created engines/$engine/.env from its .env.sample"
+    if [ "$engine" = "$SVC_OME" ]; then
+      log_warn "  Set OME_ADMISSION_SECRET in engines/$engine/.env before deploying: openssl rand -hex 32"
+      log_warn "  An ENGINE=ome deployment refuses to start while it is empty, which is deliberate."
+    fi
+    if [ "$engine" = "$SVC_SRS" ]; then
+      log_warn "  Set SRS_WEBHOOK_TOKEN in engines/$engine/.env before deploying: openssl rand -hex 32"
+      log_warn "  Both the SRS container and the uploader refuse to start while it is empty."
+      log_warn "  Use a different value from API_AUTH_TOKEN: they guard different surfaces."
+    fi
+  fi
+done
+
+# 5. Init bee data dirs for local services
+require_config
+load_env
+
+bee_uploader_target=$(get_target "$SVC_BEE_UPLOADER")
+bee_gateway_target=$(get_target "$SVC_BEE_GATEWAY")
+
+echo ""
+log_info "Initializing local bee data directories"
+
+if is_local "$bee_uploader_target"; then
+  require_safe_data_dir BEE_UPLOADER_DATA_DIR
+  "$ROOT_DIR/nodes/init-node.sh" "$(local_data_dir "${BEE_UPLOADER_DATA_DIR:-$DEFAULT_BEE_UPLOADER_DATA_DIR}")"
+fi
+
+if is_enabled "$bee_gateway_target" && is_local "$bee_gateway_target"; then
+  require_safe_data_dir BEE_GATEWAY_DATA_DIR
+  "$ROOT_DIR/nodes/init-node.sh" "$(local_data_dir "${BEE_GATEWAY_DATA_DIR:-$DEFAULT_BEE_GATEWAY_DATA_DIR}")"
+fi
+
+# 6. Build packages
+echo ""
+log_info "Building packages"
+cd "$ROOT_DIR"
+pnpm install
+pnpm build
+
+echo ""
+echo "=== Setup complete ==="
+echo ""
+echo "Next steps:"
+echo "  1. Edit config.json to set deployment targets"
+echo "  2. Edit .env with your STREAM_KEY and API_AUTH_TOKEN"
+echo "     The uploader refuses to start while API_AUTH_TOKEN is empty, which is deliberate."
+echo "     Engine secrets live in engines/<engine>/.env, not here. SRS needs SRS_WEBHOOK_TOKEN."
+echo "  3. Deploy bee node:    ./deploy/scripts/deploy.sh bee-uploader"
+echo "  4. Fund the node:      pnpm node:addresses  (send xDAI + BZZ)"
+echo "  5. Setup stamp:        pnpm stamp:setup"
+echo "  6. Deploy full stack:  ./deploy/scripts/deploy.sh"

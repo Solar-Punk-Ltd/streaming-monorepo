@@ -1,0 +1,505 @@
+/**
+ * A browser arm's state file, in the shape `browser/watch.ts` actually writes, and the extra sections
+ * `browser/crash.ts` adds on top of it.
+ *
+ * ⛔ Every field below is one the driver emits, and none of them is invented. `watch.ts` builds `run`
+ * out of `summarize` (`SessionSummary`), `judgeRun` (`InstrumentVerdict`), `summarizeNetwork`
+ * (`NetworkSummary`), the sampled `ViewerSample[]` and the byte-source arm, then `writeRunArtifacts`
+ * puts it through `JSON.stringify`. A fixture carrying a field the driver never writes would let the
+ * reader pass here and fail against the only file it will ever be handed in anger.
+ *
+ * ⭐ Trimmed rather than padded. The driver also writes `chromeVersion`, `screenshots`, `cost`,
+ * `gateway`, `gatewaySamples`, `arm` and `latencyTarget`, which the reader does not touch. Leaving
+ * them out is what shows it does not touch them: a reader that quietly needed one would fail on this
+ * fixture rather than on a paid run.
+ *
+ * ⛔ `instrumentProofs` was in that list until 2026-09-16 and is now the one trimmed field the reader
+ * does look at, so it has an override below. It stays ABSENT by default, and that is the whole
+ * default's meaning: an absent proof section is a silence about the file, which every artifact
+ * written before 2026-08-12 carries and the reader must still open. A proof that is present and says
+ * the instrument could not have failed is the opposite, and is refused.
+ */
+
+/** What a caller wants different about this run. Anything omitted is a clean weeb-3 watch. */
+interface ArmStateOverrides {
+  overallAdvanceRatio?: unknown;
+  /** The playback arm's readings at start and after its settle. Left out, as every live arm leaves them. */
+  startedPlaying?: Record<string, unknown>;
+  afterSettle?: Record<string, unknown>;
+  latency?: Record<string, unknown>;
+  resolutions?: readonly (string | null)[];
+  feedStatesSeen?: readonly string[] | undefined;
+  byteSource?: Record<string, unknown> | null;
+  instrument?: Record<string, unknown>;
+  /**
+   * The falsifiability proofs every driver takes. Null leaves the section out, which is what an
+   * artifact written before the proofs existed looks like and is the default here.
+   */
+  instrumentProofs?: readonly Record<string, unknown>[] | null;
+  segmentRequests?: number | undefined;
+  backend?: string;
+  /**
+   * The fault verdict `crash.ts` adds and `watch.ts` never writes. Null leaves it out, which is what
+   * a plain watch looks like, and is why {@link armState} defaults it that way.
+   */
+  recovery?: Record<string, unknown> | null;
+  /** The fault the run was, named the way `crash.ts` writes it. Null leaves the section out. */
+  scenario?: string | null;
+  /**
+   * The quality verdict `browser/quality.ts` adds and no other driver writes. Null leaves it out,
+   * which is what a plain watch and a crash arm both look like.
+   */
+  quality?: Record<string, unknown> | null;
+  /**
+   * The rung timeline `browser/rung-outage.ts` adds and no other driver writes, and the section
+   * naming what it silenced. Null leaves both out.
+   */
+  rungs?: Record<string, unknown> | null;
+  silenced?: Record<string, unknown> | null;
+  /** The playback verdict `browser/vod.ts` adds and no other driver writes. Null leaves it out. */
+  vod?: Record<string, unknown> | null;
+  /** The squeeze section `browser/quality.ts` writes, naming the rung and why it could not be asked. */
+  squeeze?: Record<string, unknown> | null;
+  /**
+   * Which level the player asked for, which only `browser/quality.ts` writes. Null leaves it out,
+   * ⛔ which is not an empty reading but a browser image built before the instrument existed.
+   */
+  fragmentRequests?: Record<string, unknown> | null;
+}
+
+const SAMPLE_COUNT = 240;
+
+/**
+ * One sampled second, carrying only what the reader looks at.
+ *
+ * The real `ViewerSample` has sixteen fields. The resolution is the one this reads, and a fixture
+ * that restated the other fifteen would be a fixture about `readSample` rather than about the reader.
+ */
+const sampleWith = (resolution: string | null): Record<string, unknown> => ({ resolution });
+
+export function armState(overrides: ArmStateOverrides = {}): unknown {
+  const {
+    overallAdvanceRatio = 0.999,
+    latency = {},
+    resolutions = ['1920x1080'],
+    feedStatesSeen = ['live'],
+    byteSource = {
+      requested: overrides.backend ?? 'weeb3',
+      reported: overrides.backend ?? 'weeb3',
+      settledForMs: 60_000,
+    },
+    instrument = { sound: true, failures: [], firedChecks: [], soundSamples: SAMPLE_COUNT },
+    instrumentProofs = null,
+    segmentRequests = 6,
+    recovery = null,
+    scenario = null,
+    quality = null,
+    rungs = null,
+    silenced = null,
+    vod = null,
+    squeeze = null,
+    fragmentRequests = null,
+  } = overrides;
+
+  const run: Record<string, unknown> = {
+    measuredAt: '2026-08-28T10:00:00.000Z',
+    watchUrl: 'http://127.0.0.1:10074/watch/abc?qoe=1',
+    gopSeconds: 0.5,
+    summary: {
+      samples: SAMPLE_COUNT,
+      spanMs: 240_000,
+      stalledSamples: 0,
+      medianAdvanceRatio: 1,
+      overallAdvanceRatio,
+      forwardSeeks: 1,
+      seekedPastS: 3.2,
+      rebufferCount: 0,
+      rebufferMs: 0,
+      fatalErrors: 0,
+      droppedFrames: 12,
+      resolution: resolutions[resolutions.length - 1] ?? null,
+      deliveredFps: 30,
+      medianBufferAheadS: 2.4,
+      feedStatesSeen,
+      latency: {
+        joinLatencyS: 2.11,
+        medianLatencyS: 2.03,
+        minLatencyS: 1.88,
+        maxLatencyS: 2.4,
+        reachedTargetAtJoin: true,
+        heldTarget: true,
+        joinedPastSeekThreshold: false,
+        ranLong: false,
+        ...latency,
+      },
+      latencyTarget: {
+        configuredS: 2,
+        worstS: 2,
+        medianPastTargetS: 0.03,
+        raisedByS: 0,
+        stalls: 0,
+        held: true,
+      },
+    },
+    instrument,
+    network: {
+      spanMs: 240_000,
+      segmentRequests,
+      distinctSegments: 6,
+      refusals: 0,
+      refusalShare: 0,
+      segmentsRefusedAtLeastOnce: 0,
+      segmentsNeverServed: 0,
+      medianTransferMs: 41,
+      totalWaitedBetweenAttemptsMs: 0,
+      segmentBytesPerSecond: 0,
+      segmentBytesDelivered: 0,
+      maxConcurrent: 1,
+    },
+    samples: resolutions.map(sampleWith),
+  };
+
+  if (byteSource !== null) {
+    run.byteSource = byteSource;
+  }
+  if (recovery !== null) {
+    run.recovery = recovery;
+  }
+  if (quality !== null) {
+    run.quality = quality;
+  }
+  if (rungs !== null) {
+    run.rungs = rungs;
+  }
+  if (silenced !== null) {
+    run.silenced = silenced;
+  }
+  if (vod !== null) {
+    run.vod = vod;
+  }
+  if (squeeze !== null) {
+    run.squeeze = squeeze;
+  }
+  if (fragmentRequests !== null) {
+    run.fragmentRequests = fragmentRequests;
+  }
+  if (instrumentProofs !== null) {
+    run.instrumentProofs = instrumentProofs;
+  }
+  if (scenario !== null) {
+    run.scenario = { name: scenario, service: 'bee-gateway', action: 'stop', downMs: 20_000 };
+    run.fault = { injectedAtMs: 1_756_377_600_000, liftedAtMs: 1_756_377_620_500, servingAtMs: 1_756_377_627_700 };
+  }
+  // ⛔ Keyed on the override being PRESENT, not on its value. A destructuring default replaces an
+  // explicit `undefined` with the default, so `{ feedStatesSeen: undefined }` would otherwise produce
+  // the ordinary fixture and the stale-driver test would pass against a field that was there.
+  // `JSON.stringify` drops an undefined field, so an absent one is what a caller is asking for.
+  if ('feedStatesSeen' in overrides && overrides.feedStatesSeen === undefined) {
+    delete (run.summary as Record<string, unknown>).feedStatesSeen;
+  }
+  if ('segmentRequests' in overrides && overrides.segmentRequests === undefined) {
+    delete (run.network as Record<string, unknown>).segmentRequests;
+  }
+
+  if (overrides.startedPlaying !== undefined) {
+    run.startedPlaying = overrides.startedPlaying;
+  }
+  if (overrides.afterSettle !== undefined) {
+    run.afterSettle = overrides.afterSettle;
+  }
+  return run;
+}
+
+/**
+ * The proofs `proveInstrumentCanFail` writes when both sensors noticed their own degraded page.
+ *
+ * One entry per sensor in `PROVEN_SENSORS`, because a proof of one says nothing about the other and
+ * the reader reports a sensor with no proof by name.
+ */
+export const INSTRUMENT_PROVEN: readonly Record<string, unknown>[] = [
+  {
+    sensor: 'visibilityState',
+    degradation: "document.visibilityState overridden to 'hidden'",
+    rejected: true,
+    firedChecks: ['visibilityState'],
+  },
+  {
+    sensor: 'timerDriftRatio',
+    degradation: 'its main thread blocked for 3000ms',
+    rejected: true,
+    firedChecks: ['timerDriftRatio'],
+  },
+];
+
+/** The same proofs with the timer sensor accepting the page it was meant to reject. */
+export const INSTRUMENT_UNPROVEN: readonly Record<string, unknown>[] = [
+  INSTRUMENT_PROVEN[0],
+  { ...INSTRUMENT_PROVEN[1], rejected: false, firedChecks: [] },
+];
+
+/**
+ * The recovery verdict `judgeRecovery` writes, holding the doc's own arm 1.
+ *
+ * The numbers are the 2026-08-27 in-tab gateway-outage arm as
+ * `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md` records it, so a reader tested against this is
+ * tested against a run that happened. Trimmed the same way the watch fixture is: `judgeRecovery` also
+ * writes `before`, `during`, `after`, `latencyBeforeS`, `latencyAfterS` and `targetRaisedByS`, which
+ * the reader does not touch.
+ */
+export const GATEWAY_OUTAGE_RECOVERY: Record<string, unknown> = {
+  longestFreezeMs: 28_600,
+  freezeStartedAfterFaultMs: 6_000,
+  recoveredAfterLiftMs: 10_700,
+  serviceStartupMs: 7_200,
+  recovered: true,
+  saidWhileFrozen: ['Reconnecting to the stream'],
+  explainedTheFreeze: true,
+};
+
+/**
+ * A crash arm's state file, which is a watch's plus the sections only `browser/crash.ts` writes.
+ *
+ * Defaults to the doc's arm 1: the gateway stopped under an in-tab viewer, who froze, was told why,
+ * and came back. A caller overriding `recovery` states the whole verdict rather than a patch of one,
+ * because a half-stated verdict is what the reader is supposed to refuse.
+ */
+export function crashArmState(overrides: ArmStateOverrides = {}): unknown {
+  return armState({
+    scenario: 'viewer-gateway-outage',
+    recovery: GATEWAY_OUTAGE_RECOVERY,
+    ...overrides,
+  });
+}
+
+/** One stretch of a squeeze arm, in the shape `judgeQualitySwitch` writes it. */
+function qualityPhase(rung: number | null, ratio: number, kbps: number | null): Record<string, unknown> {
+  return {
+    advance: { ratio, wallMs: 60_000, samples: 60 },
+    lowestRungHeight: rung,
+    tallestRungHeight: rung,
+    endedOnRungHeight: rung,
+    resolutions: rung === null ? [] : [`x${rung}`],
+    bandwidthEstimateKbps: kbps,
+  };
+}
+
+/**
+ * The quality verdict of a viewer who came down when their link was capped and went back up after.
+ *
+ * The shape V2 asserts, against the ladder `DEFAULT_LADDER_SPEC` declares: 1080p before the cap,
+ * 360p under a 1200 kbps cap, 1080p again once it lifted.
+ */
+export const STEPPED_DOWN_AND_BACK: Record<string, unknown> = {
+  throttledToKbps: 1200,
+  before: qualityPhase(1080, 1.0, 6_400),
+  during: qualityPhase(360, 0.98, 1_050),
+  after: qualityPhase(1080, 1.0, 6_100),
+  switchesCounted: 2,
+  abrEnabledThroughout: true,
+  steppedDownAfterMs: 7_000,
+  climbedBackAfterMs: 12_000,
+};
+
+const TOP_RUNG = 'swarm://0xowner/top';
+const BOTTOM_RUNG = 'swarm://0xowner/bottom';
+const CAPPED_AT_MS = 1_756_377_645_000;
+const LIFTED_AT_MS = CAPPED_AT_MS + 60_000;
+
+/** A stretch of requests for one level, one a second, in the shape the raw list carries them. */
+function askedRepeatedly(count: number, level: string, rung: string, fromMs: number, firstSn: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    atMs: fromMs + i * 1_000,
+    level,
+    sn: String(firstSn + i),
+    rung,
+  }));
+}
+
+/**
+ * The list the phase counts below are a bucketing of.
+ *
+ * ⛔ Generated from the same counts rather than written out, so the two halves of this fixture cannot
+ * drift apart. A reader tested against a file whose list and buckets disagreed would be tested against a
+ * shape no driver produces.
+ */
+const RAW_REQUESTS = [
+  ...askedRepeatedly(45, '3', TOP_RUNG, CAPPED_AT_MS - 45_000, 100),
+  ...askedRepeatedly(4, '3', TOP_RUNG, CAPPED_AT_MS, 145),
+  ...askedRepeatedly(36, '0', BOTTOM_RUNG, CAPPED_AT_MS + 4_000, 149),
+  ...askedRepeatedly(55, '3', TOP_RUNG, LIFTED_AT_MS, 185),
+];
+
+/** Every one of those requests, ended half a second later, with the four that failed under the cap. */
+const RAW_SETTLES = RAW_REQUESTS.map((request, i) => ({
+  atMs: request.atMs + 500,
+  level: request.level,
+  sn: request.sn,
+  outcome: i >= 45 && i < 49 ? 'errored' : 'loaded',
+  elapsedMs: i >= 45 && i < 49 ? 8_000 : 140,
+}));
+
+/**
+ * The retrievals this viewer walked away from and the node answered anyway, in the shape the driver
+ * writes them.
+ *
+ * ⭐ Under the cap and not outside it, which is the shape the reading exists for: a squeezed in-tab
+ * viewer abandons fragments the node is still fetching, and two of these arrive long after nobody wants
+ * them while one never arrives at all.
+ */
+const RAW_ABANDONED_ANSWERS = [
+  { atMs: CAPPED_AT_MS + 20_000, level: '3', sn: '145', answer: 'resolved', byteLength: 224_848, elapsedMs: 28_930 },
+  { atMs: CAPPED_AT_MS + 30_000, level: '3', sn: '146', answer: 'resolved', byteLength: 200_000, elapsedMs: 30_100 },
+  { atMs: CAPPED_AT_MS + 40_000, level: '3', sn: '147', answer: 'rejected', byteLength: null, elapsedMs: 31_400 },
+  { atMs: LIFTED_AT_MS + 5_000, level: '0', sn: '184', answer: 'resolved', byteLength: 90_000, elapsedMs: 9_200 },
+];
+
+/** One stretch's late answers, in the shape `judgeAbandonedAnswers` writes it. */
+function abandonedAnswerPhase(
+  answered: number,
+  resolved: number,
+  rejected: number,
+  bytes: number | null,
+): Record<string, unknown> {
+  return { answered, resolved, rejected, bytes };
+}
+
+/** One stretch's endings, in the shape `judgeFragmentSettles` writes it. */
+function settlePhase(
+  settled: number,
+  outcomes: readonly (readonly [string, number])[],
+  pairedToRequests: number,
+): Record<string, unknown> {
+  return {
+    settled,
+    outcomes: outcomes.map(([outcome, count]) => ({ outcome, settled: count })),
+    elapsed: { minMs: 140, medianMs: 140, maxMs: 8_000, samples: settled },
+    pairedToRequests,
+  };
+}
+
+/**
+ * The fragment requests of a viewer who asked for the top rung until the cap, and the bottom one
+ * under it.
+ *
+ * The shape a healthy squeeze produces: level 3 throughout the baseline, level 0 taking over while
+ * capped, level 3 again once it lifts. ⛔ V2's three reds are the opposite shape, level 3 in all
+ * three phases, and that is what this instrument was built to be able to state.
+ *
+ * ⭐ Carries the raw lists as well as the buckets, because a driver writes both. The artifact WITHOUT
+ * them is a real shape too, and it has its own case: it is a file written before the lists existed.
+ */
+export const ASKED_FOR_A_CHEAPER_RUNG: Record<string, unknown> = {
+  before: { requests: 45, levels: [{ level: '3', requests: 45, rungs: [TOP_RUNG] }] },
+  during: {
+    requests: 40,
+    levels: [
+      { level: '3', requests: 4, rungs: [TOP_RUNG] },
+      { level: '0', requests: 36, rungs: [BOTTOM_RUNG] },
+    ],
+  },
+  after: { requests: 55, levels: [{ level: '3', requests: 55, rungs: [TOP_RUNG] }] },
+  captured: 140,
+  state: 'recorded',
+  requests: RAW_REQUESTS,
+  settled: {
+    before: settlePhase(45, [['loaded', 45]], 45),
+    during: settlePhase(
+      40,
+      [
+        ['loaded', 36],
+        ['errored', 4],
+      ],
+      40,
+    ),
+    after: settlePhase(55, [['loaded', 55]], 55),
+    captured: 140,
+    state: 'recorded',
+    settles: RAW_SETTLES,
+  },
+  abandonedAnswers: {
+    before: abandonedAnswerPhase(0, 0, 0, null),
+    during: abandonedAnswerPhase(3, 2, 1, 424_848),
+    after: abandonedAnswerPhase(1, 1, 0, 90_000),
+    captured: 4,
+    state: 'recorded',
+    answers: RAW_ABANDONED_ANSWERS,
+  },
+};
+
+/**
+ * A squeeze arm's state file, which is a watch's plus the section only `browser/quality.ts` writes.
+ *
+ * A caller overriding `quality` states the whole verdict rather than a patch of one, for the same
+ * reason `crashArmState` does: a half-stated verdict is what the reader is supposed to refuse.
+ */
+export function qualityArmState(overrides: ArmStateOverrides = {}): unknown {
+  return armState({ quality: STEPPED_DOWN_AND_BACK, fragmentRequests: ASKED_FOR_A_CHEAPER_RUNG, ...overrides });
+}
+
+/**
+ * The rung timeline of a viewer who moved off a rung that stopped being produced, and kept watching.
+ *
+ * The shape V3 asserts: 720p before the outage, 480p while the 720p transcode was stopped, 720p again
+ * once it resumed.
+ */
+export const MOVED_OFF_A_DEAD_RUNG: Record<string, unknown> = {
+  before: qualityPhase(720, 1.0, 6_400),
+  during: qualityPhase(480, 0.97, 6_200),
+  after: qualityPhase(720, 1.0, 6_300),
+  switchesCounted: 2,
+  abrEnabledThroughout: true,
+  steppedDownAfterMs: 9_000,
+  climbedBackAfterMs: 14_000,
+};
+
+/**
+ * A rung-outage arm's state file: a crash arm's freeze verdict plus the rung timeline only
+ * `browser/rung-outage.ts` writes.
+ *
+ * ⛔ Carries BOTH `recovery` and `rungs`, because the suite asserts on both and either alone reads as
+ * a success on its own.
+ */
+export function rungArmState(overrides: ArmStateOverrides = {}): unknown {
+  return armState({
+    scenario: 'rung-outage',
+    recovery: GATEWAY_OUTAGE_RECOVERY,
+    rungs: MOVED_OFF_A_DEAD_RUNG,
+    silenced: { rung: '720p', height: 720, processes: [{ pid: 418, args: 'ffmpeg ... demo_720p?vhost=abr' }] },
+    ...overrides,
+  });
+}
+
+/**
+ * The reference the fixture recording's last segment carries on one rung.
+ *
+ * Distinct per rung and shaped like a real one, 64 lowercase hex, so a refusal naming the wrong rung
+ * is visible rather than plausible.
+ */
+export function lastSegmentRefFor(height: number): string {
+  return `${height}`.padStart(4, '0').repeat(16);
+}
+
+/** The four rungs of the fixture recording, each ending where the uploader stopped. */
+const RECORDED_RUNGS: readonly Record<string, unknown>[] = [1080, 720, 480, 360].map((height, index) => ({
+  height,
+  segments: 31,
+  durationS: 62.0,
+  lastSegmentRef: lastSegmentRefFor(height),
+  // The played rung is the player's own parse and the rest are read off their own feeds, which is
+  // what a healthy run looks like: hls.js loads a level playlist only when it plays that level.
+  readFrom: index === 0 ? 'player' : 'feed',
+}));
+
+/** A recording that played whole: finite timeline, the full ladder, every rung ending where it should. */
+export const PLAYED_THE_WHOLE_LADDER: Record<string, unknown> = {
+  openError: null,
+  durationS: 62.4,
+  seekableToS: 62.4,
+  ladderHeights: [1080, 720, 480, 360],
+  rungs: RECORDED_RUNGS,
+};
+
+/** A playback arm's state file, which is a watch's plus the section only `browser/vod.ts` writes. */
+export function vodArmState(overrides: ArmStateOverrides = {}): unknown {
+  return armState({ vod: PLAYED_THE_WHOLE_LADDER, ...overrides });
+}

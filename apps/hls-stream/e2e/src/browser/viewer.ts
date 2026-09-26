@@ -1,0 +1,554 @@
+/**
+ * Driving a real Chrome at the deployed client, and reading a viewer's session out of it.
+ *
+ * ## Why headed under Xvfb, and ⛔ why the throttling flags ARE passed anyway
+ *
+ * The point of the run is to find out whether a viewer's player holds the buffer it is configured
+ * with. That question is only answerable in a browser behaving as a foregrounded tab, and the
+ * previous attempt failed precisely because the page was permanently hidden. So this file passes no
+ * throttling flags of its own, and runs headed against a real X display, and the reasoning for that
+ * is sound.
+ *
+ * ⛔⛔ **It does not achieve what it says, because playwright-core passes them regardless.** Verified
+ * against the published 1.61.1 tarball on 2026-08-11: `--disable-background-timer-throttling`,
+ * `--disable-backgrounding-occluded-windows` and `--disable-renderer-backgrounding` are in its
+ * hardcoded default argument list, and it sends `Emulation.setFocusEmulationEnabled({enabled: true})`
+ * on every main frame, which forces `visibilityState` to `visible` on a genuinely hidden page.
+ *
+ * ⭐⭐⭐ So **both** checks in {@link judgeInstrument} pass by construction here: the visibility one
+ * because Playwright forces it, the timer one because Playwright unthrottles it. They are exactly the
+ * "restatement of its own command line" this comment was written to prevent, and the reasoning above
+ * is what makes that worth saying rather than quietly deleting.
+ *
+ * ⚠️ The runs are still believed: under Xvfb the page really is foregrounded, so the flags change
+ * nothing about what happened. What is gone is the **proof**, and a guard that cannot fail is not
+ * evidence that the thing it guards is true. Setting `ignoreDefaultArgs` does not fix it either, as
+ * the focus-emulation handle is keyed to Playwright's own CDP session and a second session cannot
+ * release it.
+ *
+ * The one flag that is passed relaxes the autoplay gate, which is not a degradation being masked: a
+ * viewer satisfies that gate by clicking, and there is nobody here to click.
+ *
+ * ## ⛔ Why real Chrome rather than the bundled Chromium, AND WHY THAT REASON HAS EXPIRED
+ *
+ * This installed Google Chrome because Playwright's Chromium was the open-source build with no H.264
+ * or AAC: it would load the page, run hls.js, fetch every segment from Swarm and decode none of them,
+ * which looks exactly like a delivery failure.
+ *
+ * **Playwright v1.57 replaced the bundled Chromium with Chrome for Testing, which has shipped the
+ * proprietary codecs since 119.** Measured 2026-08-11 on **linux64**, the platform
+ * `Dockerfile.browser` actually builds, using the pinned playwright-core 1.61.1 and its own browser
+ * revision 1228 / 149.0.7827.55: `isTypeSupported` and `canPlayType` both answer for
+ * `avc1.42E01E` and `mp4a.40.2`, and a bogus codec answers false, so the probe discriminates.
+ *
+ * ⚠️ The v1.57 notes carve out Arm64 Linux, which continues on Chromium. This was verified on x86-64
+ * only, which is what the image builds.
+ *
+ * So the codec argument no longer chooses anything, and no replacement argument is offered here
+ * rather than invented. Whether to drop the apt repository for Chrome for Testing, which would pin
+ * the browser by the lockfile instead of leaving it unpinnable, is an open decision.
+ *
+ * ⭐ `REQUIRED_CODECS` asserts this at runtime rather than trusting any of the above, which is the
+ * property that made it safe to re-examine at all. See `instrument.ts`.
+ */
+
+import { createServer } from 'node:net';
+import { type Browser, chromium, type Page, type Request } from 'playwright-core';
+
+import { readFeedState } from './feedState.js';
+import {
+  type InstrumentProof,
+  type InstrumentReading,
+  judgeInstrument,
+  REQUIRED_CODECS,
+  TIMER_PROBE_INTERVAL_MS,
+} from './instrument.js';
+import { type RequestRecord } from './network.js';
+import { type OverlayRow, readOverlayMetrics } from './overlay.js';
+import { secureContextArgs } from './secureContext.js';
+import { type ViewerSample } from './session.js';
+import { type WebSocketTraffic } from './webSocketTraffic.js';
+import { openBrowserCdp, watchWorkerTargets, type WorkerTargetWatch } from './workerTargets.js';
+
+/** Where the image puts Google Chrome. Overridable so a workstation with Chrome elsewhere can run this. */
+const CHROME_PATH = process.env.BROWSER_CHROME_PATH ?? '/opt/google/chrome/chrome';
+
+/** A desktop viewport, since that is what the client's layout is built for. */
+export const VIEWPORT = { width: 1440, height: 900 } as const;
+
+/** The card the browse page renders per stream, as `StreamPreview.tsx` classes it. */
+const STREAM_CARD = '.stream-preview';
+
+/** How long to wait for the catalog to produce a stream to watch. */
+const CATALOG_TIMEOUT_MS = 60_000;
+
+/**
+ * Find something to watch the way a viewer does: open the browse page and click a stream.
+ *
+ * The alternative is composing the watch URL from the owner and topic, which means knowing them,
+ * which means reading them out of the deployment rather than out of the product. Going through the
+ * catalog costs one page load and gets the discovery path exercised for free, so a run that cannot
+ * find a stream fails here, plainly, rather than as a player that never starts.
+ */
+export async function discoverWatchUrl(page: Page, clientUrl: string): Promise<string> {
+  await page.goto(clientUrl, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector(STREAM_CARD, { timeout: CATALOG_TIMEOUT_MS });
+  await page.click(STREAM_CARD);
+  await page.waitForURL(/\/watch\//, { timeout: CATALOG_TIMEOUT_MS });
+
+  // `qoe=1` turns on the shipped overlay, which is where `hls.latency` becomes readable from outside.
+  // Appended and reloaded rather than clicked into, so the session being sampled is one whose
+  // metrics were collected from its own first frame.
+  return `${page.url().split('?')[0]}?qoe=1`;
+}
+
+/**
+ * The port an outside sampler reads `Performance.getMetrics` through, or empty for none.
+ *
+ * ⭐⭐ **This exists because the process tree cannot answer the question the CPU figures raised.**
+ * `docker stats` reads the whole container cgroup, which is the right total for what a viewer costs a
+ * machine, and it said an in-tab node costs 0.6 of a core more than a gateway one. It cannot say
+ * whether weeb-3 is *out* of CPU, because weeb-3 is one JS thread by construction and a 3.8-core peak
+ * on a 48-core box says nothing about one thread. `TaskDuration` over wall time does say it.
+ *
+ * ⛔ Opt-in, and unset by default, so a run that does not ask for it launches exactly as before. The
+ * sampler lives outside this process (see `deploy/scripts/main-thread.mjs`) for the same reason the
+ * node metrics do: a reading taken by the thing under measurement stops when that thing stops.
+ */
+const CDP_PORT = process.env.VIEWER_CDP_PORT ?? '';
+
+/**
+ * @param remoteDebuggingPort A port to open Chrome's own debugging endpoint on, for a run that needs
+ *   a raw CDP client of its own. ⛔ Only a worker-target watch needs this: Playwright's sessions
+ *   reach pages and frames, and the node has run in a SharedWorker since weeb-3 0.0.341001. It beats
+ *   `VIEWER_CDP_PORT`, which stays what the outside main-thread sampler reads through.
+ */
+export async function launchViewer(remoteDebuggingPort?: number): Promise<Browser> {
+  const port = remoteDebuggingPort === undefined ? CDP_PORT : String(remoteDebuggingPort);
+  return chromium.launch({
+    executablePath: CHROME_PATH,
+    headless: false,
+    args: [
+      '--autoplay-policy=no-user-gesture-required',
+      ...(port ? [`--remote-debugging-port=${port}`] : []),
+      // The in-tab node needs a secure context, and an --own-network run reaches the client over
+      // plain http on a non-loopback name. See secureContext.ts for the failure this prevents.
+      ...secureContextArgs(process.env.BROWSER_CLIENT_URL),
+    ],
+  });
+}
+
+/**
+ * A port nothing is listening on, taken by binding one and letting it go.
+ *
+ * ⛔ Not `--remote-debugging-port=0`. Chrome writes the port it chose into `DevToolsActivePort` in
+ * its user data directory, and Playwright owns that directory and does not say where it put it, so
+ * the number would be unreadable. Binding first has a race with anything else on the machine that
+ * grabs the same port in the intervening milliseconds, which is why the endpoint read that follows
+ * refuses loudly rather than degrading.
+ */
+async function pickDebuggingPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.on('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (address === null || typeof address === 'string') {
+        server.close(() => reject(new Error('the kernel gave a bound socket no numeric port')));
+        return;
+      }
+      const { port } = address;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+/**
+ * A browser and the raw CDP client watching every worker target it makes.
+ *
+ * Not exported: it is reachable as the return type of {@link launchViewerWatchingWorkers}, and an
+ * exported name with no importer is what the repo's unused-export ratchet exists to catch.
+ */
+interface WorkerAwareViewer {
+  browser: Browser;
+  workers: WorkerTargetWatch;
+}
+
+/**
+ * Launch Chrome with its own debugging endpoint open, and attach to every worker target it makes.
+ *
+ * ⛔⛔⛔ **Every squeeze run has to open the browser this way.** The cap and the WebSocket recorder
+ * were both page scoped until 2026-09-02, and the node has lived in a SharedWorker since weeb-3
+ * 0.0.341001, so the cap reached nothing and the recorder saw nothing while both reported success.
+ * See `workerTargets.ts` for the mechanism and `capProof.ts` for the two refusals that mean a run
+ * can no longer publish under an unproved cap or an unproved recorder.
+ *
+ * @param into The traffic object the page recorder also appends to, so one reader sums both.
+ */
+export async function launchViewerWatchingWorkers(into: WebSocketTraffic): Promise<WorkerAwareViewer> {
+  // ⛔ `VIEWER_CDP_PORT` where it is set, rather than a second port beside it. That variable is what
+  // the outside main-thread sampler reads through (`deploy/scripts/main-thread.mjs`), and Chrome
+  // opens one debugging endpoint: picking our own would move the endpoint out from under a sampler
+  // that was told where to look, and it would fail with nothing to say why.
+  const named = Number(CDP_PORT);
+  const port = CDP_PORT !== '' && Number.isInteger(named) ? named : await pickDebuggingPort();
+  const browser = await launchViewer(port);
+  try {
+    return { browser, workers: await watchWorkerTargets(await openBrowserCdp(port), into) };
+  } catch (error: unknown) {
+    await browser.close().catch(() => undefined);
+    throw error;
+  }
+}
+
+/**
+ * Install the timer-fidelity probe, before the app runs.
+ *
+ * `addInitScript` rather than an `evaluate` after load, because the throttling this screens for is
+ * triggered by the first stall, and a probe installed after the app has started could miss the
+ * window it exists to catch.
+ */
+export async function installTimerProbe(page: Page): Promise<void> {
+  await page.addInitScript((intervalMs: number) => {
+    const probe = { lastIntervalMs: intervalMs, lastFireAtMs: performance.now() };
+    (window as unknown as Record<string, unknown>).__timerProbe = probe;
+    setInterval(() => {
+      const now = performance.now();
+      probe.lastIntervalMs = now - probe.lastFireAtMs;
+      probe.lastFireAtMs = now;
+    }, intervalMs);
+  }, TIMER_PROBE_INTERVAL_MS);
+}
+
+/**
+ * How long the throwaway page is made to stall.
+ *
+ * Thirty times {@link TIMER_PROBE_INTERVAL_MS}, so the reading lands an order of magnitude past the
+ * drift limit rather than near it. A proof that only just fires would be its own kind of unfalsifiable.
+ */
+const PROOF_STALL_MS = 3_000;
+
+/** What the visibility proof forces the throwaway document to report. */
+const PROOF_VISIBILITY_STATE = 'hidden';
+
+/**
+ * A blank page with the timer probe installed, in its own context, torn down afterwards.
+ *
+ * Its own context so the page under measurement is never degraded to prove a point about it.
+ */
+async function onThrowawayPage<T>(browser: Browser, use: (page: Page) => Promise<T>): Promise<T> {
+  const context = await browser.newContext({ viewport: VIEWPORT });
+  try {
+    const page = await context.newPage();
+    await installTimerProbe(page);
+    await page.goto('about:blank');
+    return await use(page);
+  } finally {
+    await context.close();
+  }
+}
+
+/**
+ * Show that each sensor the guard relies on can report a failure, on pages that are not the subject.
+ *
+ * ⛔ **A guard that cannot fail is not evidence**, and the two sensors have to be shown separately:
+ * proving the timer sensor says nothing about the visibility one. {@link describeProofs} reports any
+ * sensor that has no proof, so a report cannot quietly upgrade "one sensor works" into "the guard
+ * works".
+ */
+export async function proveInstrumentCanFail(browser: Browser): Promise<InstrumentProof[]> {
+  return [await proveTimerCanFail(browser), await proveVisibilityCanFail(browser)];
+}
+
+/**
+ * ⭐ **A blocked main thread is the one degradation here that no launch flag can mask.** Playwright
+ * passes `--disable-background-timer-throttling` and two siblings, so a genuinely backgrounded page
+ * still has punctual timers, but nothing can make a `setInterval` fire while script is running. The
+ * reading comes back with `lastIntervalMs` at the length of the stall.
+ */
+async function proveTimerCanFail(browser: Browser): Promise<InstrumentProof> {
+  return onThrowawayPage(browser, async (page) => {
+    await page.evaluate((stallMs: number) => {
+      const until = performance.now() + stallMs;
+      while (performance.now() < until) {
+        // Deliberately starving the main thread. A sleep would not do it: the point is that no task
+        // can run, which is what the timer probe exists to notice.
+      }
+    }, PROOF_STALL_MS);
+
+    const verdict = judgeInstrument(await readInstrument(page));
+    return {
+      sensor: 'timerDriftRatio',
+      degradation: `its main thread blocked for ${PROOF_STALL_MS}ms`,
+      rejected: !verdict.sound,
+      firedChecks: verdict.firedChecks,
+    };
+  });
+}
+
+/**
+ * ⚠️ **This is a weaker proof than the timer one, and the wording says so wherever it is printed.**
+ *
+ * Playwright sends `Emulation.setFocusEmulationEnabled({enabled: true})` on every main frame, so a
+ * page here cannot be genuinely hidden. The document's own answer is overridden instead, which tests
+ * that **the collection path reports what the document says rather than assuming `visible`**. That is
+ * the part that was untested and that a refactor could silently break.
+ *
+ * ⛔ What it still does not test is whether Chromium would ever report `hidden` to this harness. It
+ * would not, under these flags. So the visibility check protects against a future harness that drops
+ * them, and against nothing today.
+ */
+async function proveVisibilityCanFail(browser: Browser): Promise<InstrumentProof> {
+  return onThrowawayPage(browser, async (page) => {
+    await page.evaluate((state: string) => {
+      // ⛔ The getter below is a named function, and that is not obvious from looking at it. tsx
+      // compiles with esbuild's `keepNames`, which gives an arrow assigned to a `get` property the
+      // inferred name `get` and rewrites it to `__name(fn, 'get')` against a helper defined at
+      // module scope. Playwright serialises this body alone, so the helper is absent and the call
+      // dies on `ReferenceError: __name is not defined` before the override is installed.
+      //
+      // `installClockOverlay` states the rule and `playerProbe` carries the same shim. Both were
+      // written after the rule was learned from a function that looked anonymous, which is what this
+      // one looked like too.
+      (globalThis as unknown as { __name?: unknown }).__name ??= (fn: unknown) => fn;
+      Object.defineProperty(document, 'visibilityState', { get: () => state, configurable: true });
+    }, PROOF_VISIBILITY_STATE);
+    // Let the probe fire at least once after navigation, so a slow start does not trip the timer
+    // check as well and leave the proof looking like it fired for the reason it claims.
+    await page.waitForTimeout(TIMER_PROBE_INTERVAL_MS * 3);
+
+    const verdict = judgeInstrument(await readInstrument(page));
+    return {
+      sensor: 'visibilityState',
+      degradation: `document.visibilityState overridden to '${PROOF_VISIBILITY_STATE}'`,
+      rejected: !verdict.sound,
+      firedChecks: verdict.firedChecks,
+    };
+  });
+}
+
+export async function readInstrument(page: Page): Promise<InstrumentReading> {
+  return page.evaluate(
+    ([intervalMs, codecs]: [number, readonly string[]]) => {
+      const probe = (window as unknown as Record<string, { lastIntervalMs: number; lastFireAtMs: number }>)
+        .__timerProbe;
+      // The longer of "how late the last interval was" and "how long since it last fired". Without
+      // the second term a timer throttled to one a minute reads as healthy for the 59 seconds
+      // between fires, because the last completed interval is still the old, punctual one.
+      const sinceLastFire = performance.now() - probe.lastFireAtMs;
+      const worstMs = Math.max(probe.lastIntervalMs, sinceLastFire);
+
+      return {
+        visibilityState: document.visibilityState,
+        timerDriftRatio: worstMs / intervalMs,
+        codecSupport: Object.fromEntries(codecs.map((codec) => [codec, MediaSource.isTypeSupported(codec)])),
+      };
+    },
+    [TIMER_PROBE_INTERVAL_MS, REQUIRED_CODECS] as [number, readonly string[]],
+  );
+}
+
+interface RawSample {
+  atMs: number;
+  currentTime: number;
+  paused: boolean;
+  readyState: number;
+  playbackRate: number;
+  bufferAheadS: number;
+  decodedFrames: number | null;
+  overlayRows: OverlayRow[];
+  feedStateMessage: string | null;
+}
+
+/**
+ * The shipped feed-state overlay, which renders nothing at all while the feed is live.
+ *
+ * Read by class rather than by message text, so a reworded message stays readable here and a
+ * restyled one does not. `FeedStateOverlay.tsx`.
+ */
+const FEED_STATE_OVERLAY = '.swarm-hls-feed-state';
+
+/**
+ * One coherent snapshot of the player.
+ *
+ * The video element and the overlay are read in a single `evaluate` on purpose. Two round trips
+ * would let the media position and the latency come from different instants, which is a
+ * disagreement of exactly the size being measured.
+ */
+export async function readSample(page: Page): Promise<ViewerSample> {
+  const raw = await page.evaluate((feedStateSelector: string): RawSample | null => {
+    const video = document.querySelector('video');
+    if (!video) {
+      return null;
+    }
+
+    const buffered = video.buffered;
+    const bufferAheadS = buffered.length > 0 ? buffered.end(buffered.length - 1) - video.currentTime : 0;
+
+    const overlayRows = Array.from(document.querySelectorAll('.qoe-overlay__section')).flatMap((section) => {
+      const title = section.querySelector('.qoe-overlay__section-title')?.textContent?.trim() ?? '';
+      return Array.from(section.querySelectorAll('.qoe-overlay__row')).map((row) => ({
+        section: title,
+        label: row.querySelector('.qoe-overlay__label')?.textContent?.trim() ?? '',
+        value: row.querySelector('.qoe-overlay__value')?.textContent?.trim() ?? '',
+      }));
+    });
+
+    // Every frame the decoder has produced this session. Divided by media time rather than wall time
+    // it is the frame rate that actually arrived, which is the only way to see a stream whose frame
+    // rate collapsed: nothing errors, the picture just carries less motion than it was asked for.
+    const quality = typeof video.getVideoPlaybackQuality === 'function' ? video.getVideoPlaybackQuality() : null;
+
+    return {
+      atMs: Date.now(),
+      currentTime: video.currentTime,
+      paused: video.paused,
+      readyState: video.readyState,
+      playbackRate: video.playbackRate,
+      bufferAheadS,
+      decodedFrames: quality?.totalVideoFrames ?? null,
+      overlayRows,
+      feedStateMessage: document.querySelector(feedStateSelector)?.textContent?.trim() || null,
+    };
+  }, FEED_STATE_OVERLAY);
+
+  if (!raw) {
+    throw new Error('the watch page rendered no <video> element, so there is no session to sample');
+  }
+  if (raw.overlayRows.length === 0) {
+    throw new Error(
+      'the QoE overlay rendered no rows. It is turned on with ?qoe=1 and the run cannot read a latency without it.',
+    );
+  }
+
+  const metrics = readOverlayMetrics(raw.overlayRows);
+  return {
+    atMs: raw.atMs,
+    currentTime: raw.currentTime,
+    paused: raw.paused,
+    readyState: raw.readyState,
+    playbackRate: raw.playbackRate,
+    bufferAheadS: raw.bufferAheadS,
+    decodedFrames: raw.decodedFrames,
+    liveLatencyS: metrics.liveLatencyS,
+    liveTargetLatencyS: metrics.liveTargetLatencyS,
+    bufferStalls: metrics.bufferStalls,
+    rebufferCount: metrics.rebufferCount,
+    rebufferMs: metrics.rebufferMs,
+    selectedRungHeight: metrics.selectedRungHeight,
+    abrWouldPickHeight: metrics.abrWouldPickHeight,
+    qualitySwitches: metrics.qualitySwitches,
+    abrEnabled: metrics.abrEnabled,
+    bandwidthEstimateKbps: metrics.bandwidthEstimateKbps,
+    ladderHeights: metrics.ladderHeights,
+    fatalErrors: metrics.fatalErrors,
+    droppedFrames: metrics.droppedFrames,
+    resolution: metrics.resolution,
+    feedStateMessage: raw.feedStateMessage,
+    // ⛔ Throws on a message it does not recognise, here at the sample rather than later in the
+    // summary. Failing at the first sample costs a run its first second; failing in the summary would
+    // cost it the whole watch and the artifact with it.
+    feedState: readFeedState(raw.feedStateMessage),
+  };
+}
+
+/**
+ * Stamp the browser's own clock onto the page, so one screenshot carries both clocks.
+ *
+ * The publisher burns the host's wall clock into the picture as epoch seconds. This puts the
+ * viewer's clock beside it in the same pixels, and the difference between the two numbers in one
+ * screenshot is the whole path with the player's own buffering inside it. Read off one image rather
+ * than two calls, because anything crossing the wire between them lands in the answer: measured over
+ * ssh, that round trip is 2.5 to 3.1 seconds and asymmetric.
+ */
+/**
+ * Record every request the page makes, so a stall can be attributed rather than guessed at.
+ *
+ * Timings come from the harness's own clock at the request and response events rather than from the
+ * page's Resource Timing, because a refused request is the interesting one and the interval that
+ * matters is the **gap between** requests, which no per-request timing API reports.
+ *
+ * Sizes come from the response body length where the body is available. A 404 carries no segment, so
+ * it contributes nothing to throughput, which is what makes bytes-per-second a measure of delivery
+ * rather than of asking.
+ */
+export function recordRequests(page: Page, into: RequestRecord[]): void {
+  const startedAtMs = new Map<Request, number>();
+  page.on('request', (request) => startedAtMs.set(request, Date.now()));
+
+  const finish = (request: Request, status: number | null, bytes: number) => {
+    const started = startedAtMs.get(request);
+    if (started === undefined) {
+      return;
+    }
+    startedAtMs.delete(request);
+    into.push({ url: request.url(), status, startedAtMs: started, endedAtMs: Date.now(), bytes });
+  };
+
+  page.on('requestfailed', (request) => finish(request, null, 0));
+  page.on('response', (response) => {
+    // The body is read for its length only, and a response that cannot be read (redirect, aborted)
+    // still has to land in the log with its status, or a refusal would go uncounted.
+    response
+      .body()
+      .then((body) => finish(response.request(), response.status(), body.length))
+      .catch(() => finish(response.request(), response.status(), 0));
+  });
+}
+
+export const CLOCK_OVERLAY_ID = 'harness-clock';
+
+/**
+ * Called **after** navigating, not as an init script.
+ *
+ * An init script runs against a document with no `<body>` yet, so it has to defer to
+ * `DOMContentLoaded`, and from there any error it raises is swallowed with no report anywhere.
+ * Running it against a page that already exists means a failure comes back as a rejected call.
+ *
+ * **Nothing in the evaluated body may be a named function.** tsx transpiles with esbuild's
+ * `keepNames`, which wraps each named function in a `__name(...)` helper that exists in the harness
+ * and not in the page, so `const paint = () => {}` arrives as `ReferenceError: __name is not
+ * defined`. That is what the first version of this overlay did, and from inside an init script it
+ * failed silently: `browser:selfcheck` said `NOT RENDERED` while the run reported success. The
+ * repainting interval below is anonymous for that reason, not by preference.
+ */
+export async function installClockOverlay(page: Page): Promise<void> {
+  await page.evaluate((id: string) => {
+    if (document.getElementById(id)) {
+      return;
+    }
+    const node = document.createElement('div');
+    node.id = id;
+    // Bottom-left, because the publisher burns its clock into the bottom of the picture and the
+    // player's own QoE panel occupies the top right. Two clocks in one frame is the whole point, so
+    // neither may sit on top of the other.
+    node.style.cssText =
+      'position:fixed;left:0;bottom:0;z-index:2147483647;background:#000;color:#0f0;' +
+      'font:700 28px/1.2 monospace;padding:6px 10px;';
+    document.body.appendChild(node);
+    // Ten times the resolution of the tenth-of-a-second it prints, so the number in a screenshot is
+    // never more than one tick stale.
+    setInterval(() => {
+      node.textContent = `viewer ${(Date.now() / 1000).toFixed(1)}`;
+    }, 100);
+  }, CLOCK_OVERLAY_ID);
+}
+
+/**
+ * Screenshot with both clocks legible, then put the page back as it was.
+ *
+ * The player's QoE panel sits over the picture and covers the clock the publisher burned into it, so
+ * a screenshot taken as-is carries one clock and a panel. `q` is the overlay's own shipped toggle,
+ * which means the harness hides it the way a viewer would rather than by reaching into the page.
+ *
+ * The metrics are not lost by hiding it: the sample beside this screenshot already read them.
+ */
+export async function screenshotBothClocks(page: Page, path: string): Promise<boolean> {
+  await page.keyboard.press('q');
+  await page.screenshot({ path });
+  await page.keyboard.press('q');
+
+  // Reported rather than assumed. A missing overlay makes the screenshot carry one clock instead of
+  // two, which is invisible in a filename and fatal to the only measurement it exists for.
+  return page.evaluate((id: string) => document.getElementById(id) !== null, CLOCK_OVERLAY_ID);
+}
