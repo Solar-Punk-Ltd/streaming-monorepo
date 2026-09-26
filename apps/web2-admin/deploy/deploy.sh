@@ -17,9 +17,9 @@
 #   2. Writes the commit this checkout is at into deploy/.deployed-commit,
 #      with -dirty appended when the tree has changes, since this repository
 #      is often deployed before its work is committed.
-#   3. rsyncs the checkout to <remote-path> on the host, leaving out .git,
+#   3. rsyncs apps/web2-admin to <remote-path> on the host, leaving out .git,
 #      node_modules, build output, deploy/edge/ (the host's edge, which
-#      deploy/edge.sh maintains) and every env file but the one this profile
+#      infra/edge/edge.sh maintains) and every env file but the one this profile
 #      uses. --delete keeps the host's tree identical to this one. The other
 #      env files are left out rather than shipped because the host keeps one
 #      checkout for every profile: a laptop that has only .env.brand-a must not
@@ -541,12 +541,11 @@ else
     # profile's env file and the sample are sent, every other .env is neither
     # sent nor, being excluded, deleted on the host.
     #
-    # deploy/edge/ belongs to deploy/edge.sh, which puts the Caddyfile it
-    # renders there. That file is gitignored, so this checkout may not have
-    # it, or may have one rendered for another host, and --delete would then
-    # remove or replace the one the host's edge runs on. Excluded, the whole
-    # directory is neither sent nor deleted, so a web2-admin deploy never
-    # touches the edge.
+    # deploy/edge/ on the host belongs to infra/edge/edge.sh, which puts the
+    # edge's compose file and the Caddyfile it renders there. apps/web2-admin
+    # has no deploy/edge/ of its own, so --delete would remove the one the
+    # host's edge runs on. Excluded, the whole directory is neither sent nor
+    # deleted, so a web2-admin deploy never touches the edge.
     rsync -az --delete \
         -e "ssh ${SSH_OPTS[*]}" \
         --exclude '/deploy/edge/' \
