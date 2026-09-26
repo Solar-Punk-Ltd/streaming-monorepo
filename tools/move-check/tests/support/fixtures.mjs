@@ -44,7 +44,12 @@ export function makeTempDir(t, label = 'move-check-') {
 
 /** Runs git in a test repository and returns what it printed. */
 export function git(repo, ...args) {
-  return execFileSync('git', [...GIT_ISOLATION, ...args], { cwd: repo, env: TEST_ENV, encoding: 'utf8' });
+  return gitWithInput(repo, '', ...args);
+}
+
+/** Runs git in a test repository with `input` on its standard input. */
+export function gitWithInput(repo, input, ...args) {
+  return execFileSync('git', [...GIT_ISOLATION, ...args], { cwd: repo, env: TEST_ENV, encoding: 'utf8', input });
 }
 
 /** Makes an empty repository on a branch named main, removed when the test ends. */

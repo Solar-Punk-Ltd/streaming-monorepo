@@ -50,8 +50,9 @@ export function splitPair(value, flag, form = '<old>=<new>') {
   return [value.slice(0, separator), value.slice(separator + 1)];
 }
 
-function normalizePrefix(prefix) {
-  const trimmed = prefix.replace(/^(\.\/)+/, '').replace(/\/+$/, '');
+/** Writes a path relative to a root without a leading `./` or a trailing slash. The root itself is ''. */
+export function normalizeRelativePath(path) {
+  const trimmed = path.replace(/^(\.\/)+/, '').replace(/\/+$/, '');
   return trimmed === '.' ? '' : trimmed;
 }
 
@@ -62,7 +63,7 @@ function normalizePrefix(prefix) {
 export function parsePrefixMaps(values = [], flag = '--map') {
   const rules = values.map((value) => {
     const [from, to] = splitPair(value, flag);
-    return { from: normalizePrefix(from), to: normalizePrefix(to) };
+    return { from: normalizeRelativePath(from), to: normalizeRelativePath(to) };
   });
   const seen = new Set();
   for (const { from } of rules) {

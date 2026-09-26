@@ -11,6 +11,7 @@ import {
   formatJsonPath,
   formatJsonValue,
   isAllowedPath,
+  normalizeRelativePath,
   parseOptions,
   parsePrefixMaps,
   requireOption,
@@ -26,6 +27,18 @@ describe('splitPair', () => {
 
   it('refuses a value without an equals sign and names the flag', () => {
     assert.throws(() => splitPair('web2-admin', '--map'), (error) => error instanceof UsageError && /--map/.test(error.message));
+  });
+});
+
+describe('normalizeRelativePath', () => {
+  it('drops a leading ./ and trailing slashes', () => {
+    assert.equal(normalizeRelativePath('./apps/web2-admin//'), 'apps/web2-admin');
+  });
+
+  it('writes the root as an empty path', () => {
+    assert.equal(normalizeRelativePath('.'), '');
+    assert.equal(normalizeRelativePath('./'), '');
+    assert.equal(normalizeRelativePath(''), '');
   });
 });
 
