@@ -578,7 +578,7 @@ else
     # but a mistyped --remote-path would still scatter files into somebody's
     # directory. The target must be new, empty, a checkout of this repository
     # (the test deploy.sh uses), or a directory an earlier run wrote into.
-    if ! ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p '$REMOTE_PATH' && { { [ -f '$REMOTE_PATH/deploy/deploy.sh' ] && [ -d '$REMOTE_PATH/web2-admin' ]; } || [ -d '$REMOTE_PATH/$HOST_EDGE_DIR' ] || [ -z \"\$(ls -A '$REMOTE_PATH')\" ]; } && mkdir -p '$REMOTE_PATH/$HOST_EDGE_DIR'" </dev/null; then
+    if ! ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p '$REMOTE_PATH' && { { [ -f '$REMOTE_PATH/deploy/deploy.sh' ] && { [ -d '$REMOTE_PATH/web2-admin' ] || [ -f '$REMOTE_PATH/backend/Dockerfile' ]; }; } || [ -d '$REMOTE_PATH/$HOST_EDGE_DIR' ] || [ -z \"\$(ls -A '$REMOTE_PATH')\" ]; } && mkdir -p '$REMOTE_PATH/$HOST_EDGE_DIR'" </dev/null; then
         die "$HOST:$REMOTE_PATH could not be created, or it is a non-empty directory that is neither a checkout of this repository nor one an earlier edge.sh wrote into. Nothing was sent."
     fi
     # The two files the host needs. The env file stays here: the compose file
