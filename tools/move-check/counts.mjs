@@ -27,7 +27,9 @@ recursive run puts in front of every line, or the name in a
           the directory pnpm prints. The longest matching prefix wins.
 
 The check passes when every package has the same counts in both logs and no
-test failed, was cancelled or raised an error in either.
+test failed, was cancelled or raised an error in either. A package that pnpm
+ran a test script for but that printed no summary this check reads is a
+problem too, so a runner it cannot read is never skipped in silence.
 
 Exit codes: 0 match, 1 difference, 2 the check could not run.`;
 
@@ -45,6 +47,8 @@ const ANSI_ESCAPE = /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u00
 const CI_LINE_PREFIX = /^(?:[^\t]*\t[^\t]*\t)?\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z ?/;
 /** pnpm announces each package of a recursive run as `<dir> <script>$ <command>` and then prefixes its lines. */
 const PNPM_PACKAGE_HEADER = /^(\S+) (\S+)\$ /;
+/** The scripts whose packages must print a summary: `test` and `test:<anything>`. */
+const TEST_SCRIPT = /^test(?::|$)/;
 const RUN_BANNER = /^> ((?:@[^@\s/]+\/)?[^@\s]+)@\S+ \S+/;
 const NODE_TEST_COUNTER = /^(?:#|ℹ) (tests|suites|pass|fail|cancelled|skipped|todo) (\d+)$/;
 const VITEST_COUNT_LINE = /^\s*(Test Files|Tests)\s+(.+)$/;
@@ -138,7 +142,8 @@ function longestPrefixOf(line, prefixes) {
 /**
  * Reads every test summary in a log and groups them by the package printed before each one.
  * A pnpm prefix counts only after pnpm printed that package's header, so ordinary output that
- * happens to look like `word word: text` never names a package.
+ * happens to look like `word word: text` never names a package. A package pnpm ran a test script
+ * for is listed with no summaries when it printed none this reader knows.
  * @returns {SummariesByPackage}
  */
 export function parseTestLog(text) {
@@ -149,7 +154,9 @@ export function parseTestLog(text) {
     const line = cleanLine(rawLine);
     const header = PNPM_PACKAGE_HEADER.exec(line);
     if (header) {
-      packageByPrefix.set(`${header[1]} ${header[2]}: `, header[1]);
+      const [, dir, script] = header;
+      packageByPrefix.set(`${dir} ${script}: `, dir);
+      if (TEST_SCRIPT.test(script) && !summaries.has(dir)) summaries.set(dir, []);
       continue;
     }
     const prefix = longestPrefixOf(line, packageByPrefix);
@@ -212,6 +219,13 @@ function failures(key, side, list) {
 function packageProblems(key, beforeList, afterList) {
   if (beforeList === undefined) return [`${key}: only in the after log`];
   if (afterList === undefined) return [`${key}: only in the before log`];
+  const silentSides = [
+    ['before', beforeList],
+    ['after', afterList],
+  ].filter(([, list]) => list.length === 0);
+  if (silentSides.length > 0) {
+    return silentSides.map(([side]) => `${key}: its tests ran but printed no summary this check reads, in the ${side} log`);
+  }
   if (beforeList.length !== afterList.length) {
     return [`${key}: ${countOf(beforeList.length, 'summary', 'summaries')} in the before log, ${afterList.length} in the after log`];
   }
@@ -260,7 +274,7 @@ export async function main(argv) {
   }
   const problems = findCountProblems(before, after, rules);
   if (problems.length > 0) {
-    console.log([...problems, `counts: differs, ${countOf(problems.length, 'problem')}`].join('\n'));
+    console.log([...problems, `counts: does not match, ${countOf(problems.length, 'problem')}`].join('\n'));
     return EXIT.DIFFERENCE;
   }
   const summaries = [...after.values()].flat();
