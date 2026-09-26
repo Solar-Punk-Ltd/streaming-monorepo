@@ -1,35 +1,86 @@
 # streaming-monorepo
 
-Solar Punk's multi-brand Swarm streaming platform. The interactive design is at
+Solar Punk's multi-brand live streaming platform on [Swarm](https://www.ethswarm.org/). A brand
+signs in to a console, creates a stream and gets its OBS settings. The streaming stack takes the
+broadcast in, puts the video on Swarm as it happens and serves a viewer that plays it back without
+a CDN. A manager deploys stack versions onto hosts and looks after the Bee nodes, postage stamps
+and chequebooks they need. The interactive design of the whole is at
 https://solar-punk-ltd.github.io/devcon-streaming-partnership/?model=mvp.
 
-## Packages
+Every project of the platform lives here, each in its own folder with only its own dependencies.
+How the folders relate and the rules that keep them apart are in
+[docs/monorepo.md](docs/monorepo.md).
 
-| Package | What |
+## What is here
+
+| Folder | What it is |
 |---|---|
-| [apps/web2-admin/common](apps/web2-admin/common/) | API contract shared by backend and frontend. |
-| [apps/web2-admin/backend](apps/web2-admin/backend/) | Admin API: Express 5 + pg. |
-| [apps/web2-admin/frontend](apps/web2-admin/frontend/) | Brand console: React + MUI + Vite, modelled on msrs-client. |
+| [`apps/web2-admin`](apps/web2-admin/README.md) | The brand console: an API on Postgres, a React front end, the API contract the two share, and its deploy script. |
+| [`apps/hls-stream`](apps/hls-stream/README.md) | The streaming stack: SRS and OME ingest, the uploader that writes HLS segments to Swarm, the viewer, Bee node setup, the deploy scripts, and the e2e and bench harness. |
+| [`apps/infra-manager`](apps/infra-manager/README.md) | The manager: an API and a console that deploy stack versions onto hosts and handle profiles, port slots, stamps and chequebooks. |
+| [`infra/edge`](apps/web2-admin/deploy/README.md#public-https-the-hosts-edge) | The front door of a host: one Caddy that holds ports 80 and 443, gets the HTTPS certificates and sends each domain to the console behind it. |
+| [`infra/terraform`](infra/terraform/README.md) | The pilot's cloud hosts: the GCP stage and monitoring hosts, the Vultr Bee hosts, and the monitoring stack. |
+| [`docs`](docs/) | How the pieces fit: the layout and its rules, the host roles, the roadmap, the design briefs, what is deployed where, and notes on the neighbouring systems. |
 
-## Docs
+Scripts that serve the whole repository go under `tools/`, starting with the move-check kit, which
+proves that a move changed no file.
 
-- [Roadmap and checkpoints](docs/ROADMAP.md)
-- [Web2 admin layer design brief](docs/architecture/web2-admin.md)
-- [Infrastructure state](docs/infra-state.md)
-- [Deploying to a server](apps/web2-admin/deploy/README.md)
+## Working in an app
 
-## Getting started
+Each app is still a pnpm workspace of its own, with its own lockfile and its own pinned pnpm and
+Node. Go into the app first, then use its own commands:
 
-Node 24 and pnpm 10 (see `apps/web2-admin/.nvmrc` and `packageManager` in
-`apps/web2-admin/package.json`).
-
-```bash
-cd apps/web2-admin
+```sh
+cd apps/web2-admin      # or apps/hls-stream, or apps/infra-manager
 pnpm install
+pnpm test
 ```
 
-Then `pnpm -r build`, `pnpm -r test`, `pnpm -r typecheck`.
+The pnpm release an app is built with is the `packageManager` field of its `package.json`, and
+with corepack enabled `pnpm` in that folder is that release. The Node release is its `.nvmrc`
+where it has one, and otherwise the base image of its Dockerfiles. The three apps differ, so read
+the numbers from those files rather than assuming one toolchain. There is nothing to install at
+the root, and nothing at the root builds or tests all three at once.
 
-## License
+Each app's README says what its commands are and what a development setup needs:
+[the admin's](apps/web2-admin/README.md), [the stack's](apps/hls-stream/README.md) and
+[the manager's](apps/infra-manager/README.md).
 
-MIT, see [LICENSE](LICENSE).
+## Where the work happens for now
+
+The stack and the manager came in whole from their own repositories,
+[swarm-hls-stream](https://github.com/Solar-Punk-Ltd/swarm-hls-stream) and
+[streaming-infra-manager](https://github.com/Solar-Punk-Ltd/streaming-infra-manager), and are
+still developed there. Their folders here stay identical to those repositories: a change to the
+stack or the manager is made in its own repository, and `git subtree pull` brings the new commits
+into `apps/hls-stream` or `apps/infra-manager`. The same holds for `infra/terraform`, which came
+from the `terraform/` folder of
+[devcon-streaming-partnership](https://github.com/Solar-Punk-Ltd/devcon-streaming-partnership).
+The admin, the edge and the root documents are developed here. Once the switch is made, all work
+moves here and the old repositories are left as they are.
+
+The manager builds the stack from a pinned commit of the stack's own repository, recorded as the
+git submodule at `apps/infra-manager/manager/swarm-hls-stream`, which is what the root
+`.gitmodules` names. A plain clone leaves that folder empty, and only work on the manager needs
+it: the manager's README says how to fetch it.
+
+Every original commit of the imported repositories is in this one under its own id.
+[docs/monorepo.md](docs/monorepo.md#how-the-history-came-along) says how to read that history.
+
+## Documents
+
+- [docs/monorepo.md](docs/monorepo.md): the layout, the rules between projects, and how the history came along.
+- [docs/hosts.md](docs/hosts.md): the three kinds of host, the edge, and the names on the hosts that never change.
+- [docs/ROADMAP.md](docs/ROADMAP.md): the roadmap and the checkpoint log.
+- [docs/architecture/](docs/architecture/): the design briefs, starting with the [admin layer](docs/architecture/web2-admin.md).
+- [docs/infra-state.md](docs/infra-state.md): what is deployed where.
+- [docs/research/](docs/research/README.md): condensed notes on the systems the admin talks to.
+- Deploying: [the admin](apps/web2-admin/deploy/README.md), [the stack](apps/hls-stream/deploy/README.md), [the manager](apps/infra-manager/deploy/README.md), and [the pilot's hosts](infra/terraform/README.md).
+
+## Licences
+
+The root [LICENSE](LICENSE) is MIT, and it applies to everything here that carries no licence of
+its own. Each package keeps its own where it declares one: the admin's packages are MIT, and the
+stack's uploader and viewer carry Apache-2.0, in
+[packages/stream-uploader/LICENSE](apps/hls-stream/packages/stream-uploader/LICENSE) and
+[packages/client/LICENSE](apps/hls-stream/packages/client/LICENSE).
