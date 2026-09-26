@@ -1,6 +1,6 @@
-# web2-admin backend image. Build context is the repository root:
+# web2-admin backend image. Build context is apps/web2-admin:
 #
-#   docker build -f web2-admin/backend/Dockerfile .
+#   docker build -f backend/Dockerfile .
 #
 # Two stages, as in streaming-infra-manager: install + build the workspace,
 # then `pnpm deploy` a self-contained prod tree into the runtime image.
@@ -13,14 +13,14 @@ RUN corepack enable
 
 # Workspace manifests first so the install layer caches when sources change.
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY web2-admin/common/package.json ./web2-admin/common/
-COPY web2-admin/backend/package.json ./web2-admin/backend/
-COPY web2-admin/frontend/package.json ./web2-admin/frontend/
+COPY common/package.json ./common/
+COPY backend/package.json ./backend/
+COPY frontend/package.json ./frontend/
 
 RUN pnpm install --frozen-lockfile --filter @streaming-monorepo/web2-admin-backend...
 
-COPY web2-admin/common ./web2-admin/common
-COPY web2-admin/backend ./web2-admin/backend
+COPY common ./common
+COPY backend ./backend
 
 RUN pnpm --filter @streaming-monorepo/web2-admin-backend... build
 
