@@ -53,6 +53,11 @@ function ProtocolSection({
   );
 }
 
+/**
+ * OBS's SRT boxes: the Server line from `buildObsSrtServer`, which leaves the
+ * Stream Key box empty, and the Use authentication Password when the
+ * passphrase cannot ride on that line.
+ */
 function SrtSettings({ srt }: { srt: IngestDetails['srt'] }) {
   const { server, passphraseRoute } = buildObsSrtServer(
     srt.url,
@@ -92,6 +97,10 @@ function SrtSettings({ srt }: { srt: IngestDetails['srt'] }) {
   );
 }
 
+/**
+ * OBS's RTMP boxes. OBS publishes the Stream Key box as the RTMP stream name,
+ * so the key rides on it as `<topic>?key=<key>`.
+ */
 function RtmpSettings({ rtmp }: { rtmp: IngestDetails['rtmp'] }) {
   return (
     <ProtocolSection title="RTMP">
