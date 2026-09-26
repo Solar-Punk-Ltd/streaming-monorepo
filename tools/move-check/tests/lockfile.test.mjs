@@ -225,7 +225,7 @@ describe('lockfile.mjs', () => {
     assert.equal(result.status, 1);
     assert.match(result.stdout, /^ {2}from 6: "5"$/m);
     assert.doesNotMatch(result.stdout, /"6"/);
-    assert.match(result.stdout, /^ {2}from \.\.\. and 2 more differing lines$/m);
+    assert.match(result.stdout, /^ {2}from \.\.\. and 2 more lines up to the last difference$/m);
     assert.match(result.stdout, /^ {2}to {3}2: \(no line here, the rest matches\)$/m);
   });
 
