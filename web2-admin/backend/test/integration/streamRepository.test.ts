@@ -263,7 +263,7 @@ describe('markLive un-finishes a broadcast that comes back', () => {
 });
 
 describe('an unpublish keeps the recording for the next publish', () => {
-  it('takes the row off the catalogue and keeps the recording and every rung', async () => {
+  it("clears the row's catalogue columns and keeps the recording and every rung", async () => {
     const id = await recordedLadder();
 
     const draft = await streams.finishUnpublish(id, userId);
@@ -287,7 +287,7 @@ describe('an unpublish keeps the recording for the next publish', () => {
     );
   });
 
-  it('finishes the next publish as the recording it holds', async () => {
+  it('stores the vod status a publish hands it, with the recording still on the row', async () => {
     const id = await recordedLadder();
     const draft = await streams.finishUnpublish(id, userId);
     assert.ok(draft);

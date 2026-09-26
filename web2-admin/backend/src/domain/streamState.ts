@@ -52,7 +52,10 @@ export function hasGoneLive(status: StreamStatus): boolean {
   return status === 'live' || status === 'vod';
 }
 
-/** Where a first publish leaves the row. */
+/**
+ * Where a publish that claims the row leaves it: `published`, or `vod` for a
+ * draft that still holds a recording.
+ */
 export type PublishedStatus = Extract<StreamStatus, 'published' | 'vod'>;
 
 /**

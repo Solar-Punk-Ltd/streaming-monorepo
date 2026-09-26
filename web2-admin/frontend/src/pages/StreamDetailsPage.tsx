@@ -113,7 +113,10 @@ const UNPUBLISH_PROMPTS = {
 type UnpublishPrompt =
   (typeof UNPUBLISH_PROMPTS)[keyof typeof UNPUBLISH_PROMPTS];
 
-/** Only `published` and `vod` can be unpublished, and only `vod` has a recording. */
+/**
+ * The button offers Unpublish on `published` and `vod` only, and of those only
+ * `vod` holds a recording.
+ */
 function unpublishPromptFor(status: StreamStatus): UnpublishPrompt {
   return status === 'vod'
     ? UNPUBLISH_PROMPTS.recording

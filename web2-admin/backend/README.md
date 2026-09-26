@@ -130,12 +130,13 @@ normal and not a divergence.
 One writer, one feed, payload is the whole JSON array rewritten each time
 (`src/domain/PublishService.ts`). A publish claims the row into `publishing`,
 uploads the thumbnail if it has no reference yet, takes the current list and
-index from `feed_writes`, replaces or appends this stream's entry by
-`(owner, topic)` — entries written by anyone else are kept verbatim — writes at
+index from `feed_writes`, and replaces or appends this stream's entry by
+`(owner, topic)`, keeping entries written by anyone else verbatim. It writes at
 the next index, logs it in `feed_writes`, and only then marks the row
-`published`. Any failure puts the previous status back with `publish_error` set
-and answers `502 publish_failed`. Publish and unpublish are serialised through
-one in-process mutex.
+`published`, or `vod` when the draft still holds the recording of an earlier
+broadcast, so the row says what its entry says. Any failure puts the previous
+status back with `publish_error` set and answers `502 publish_failed`. Publish
+and unpublish are serialised through one in-process mutex.
 
 ### Where the next index comes from
 

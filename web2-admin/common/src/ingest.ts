@@ -8,7 +8,8 @@ import type { MediaType } from './api.js';
  * `stream` is the stream's topic UUID so the uploader can find the draft by
  * name later. The per-stream key rides in the `key=` query parameter, the
  * shape swarm-hls-stream's publisher-auth branch verifies. The SRT passphrase
- * is one value for the whole SRS server and is shown separately.
+ * is one value for the whole SRS server and comes as its own field, which
+ * `buildObsSrtServer` puts on the Server line wherever OBS can read it there.
  */
 export interface IngestDetails {
   streamId: string;
