@@ -319,8 +319,8 @@ background. Watch it on the host:
 ssh -t admin-host 'cd /opt/streaming/streaming-monorepo && docker compose -p edge -f deploy/edge/docker-compose.yml logs -f'
 ```
 
-`infra/edge/.env` is gitignored, because the names belong to one deployment;
-the sample carries example.org names only.
+`infra/edge/.env` is gitignored, because the names belong to one deployment.
+The sample carries example.org names only.
 
 | Key | What | Default |
 |---|---|---|

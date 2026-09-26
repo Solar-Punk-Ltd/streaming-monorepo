@@ -7,7 +7,7 @@
 # network, serving each console the host publishes on its loopback under its
 # own name: web2-admin's (apps/web2-admin/deploy/deploy.sh, 9090 by default)
 # and streaming-infra-manager's (8080). The names are in infra/edge/.env,
-# which is gitignored because they belong to one deployment; copy
+# which is gitignored because they belong to one deployment. Copy
 # infra/edge/.env.sample to make it. See "Public HTTPS: the host's edge" in
 # apps/web2-admin/deploy/README.md.
 #

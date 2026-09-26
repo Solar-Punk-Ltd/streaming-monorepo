@@ -17,7 +17,7 @@ Roadmap: [docs/ROADMAP.md](../../docs/ROADMAP.md).
 
 ```bash
 pnpm install
-cp backend/.env.sample backend/.env                         # set FEED_PRIVATE_KEY, INGEST_HOST; FEED_GATEWAY=fake needs no Bee
+cp backend/.env.sample backend/.env                         # set FEED_PRIVATE_KEY and INGEST_HOST. FEED_GATEWAY=fake needs no Bee
 pnpm --filter @streaming-monorepo/web2-admin-backend database:start
 pnpm dev                                                    # backend on :9877, frontend on :5081
 ```
