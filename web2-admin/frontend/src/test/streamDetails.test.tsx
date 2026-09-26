@@ -121,8 +121,8 @@ describe('StreamDetailsPage', () => {
     expect(screen.getByText('Manifest index')).toBeInTheDocument();
     expect(screen.getByText('412')).toBeInTheDocument();
 
-    // A recording is off the feed like any published stream, and republishing
-    // it keeps it a recording.
+    // A recording can be taken off the feed like any published stream, and
+    // republishing it keeps it a recording.
     expect(screen.getByRole('button', { name: 'Unpublish' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Republish' })).toBeEnabled();
   });

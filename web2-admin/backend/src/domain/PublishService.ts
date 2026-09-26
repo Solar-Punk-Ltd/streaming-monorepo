@@ -156,7 +156,8 @@ export interface PublishOutcome {
    * The ladder the entry was written with, ascending by height. Read inside
    * the mutex, in the same step as the write, so a rendition report answers
    * with exactly what its write put on the catalogue. Empty for a stream with
-   * no rungs, and after an unpublish.
+   * no rungs, and after an unpublish, which takes the entry off the feed while
+   * the rungs stay on the row.
    */
   renditions: Rendition[];
   /**
@@ -189,7 +190,11 @@ export interface FeedBootCheck {
   ghosts: string[];
 }
 
-/** A stream the uploader has reported on; its entry carries that state. */
+/**
+ * A stream whose status the uploader set, `live` or `vod`, so its entry
+ * carries that state. A draft that still holds a recording is not one:
+ * `doPublish` claims it and lists it as `vod` again.
+ */
 function hasReportedState(stream: StreamRow): boolean {
   return stream.status === 'live' || stream.status === 'vod';
 }
@@ -239,7 +244,7 @@ export class PublishService {
   async publish(id: string, userId: string): Promise<PublishOutcome> {
     return this.mutex.run(async () => {
       const before = await this.read(id, userId);
-      // A stream the uploader has reported on is republished as it is: the
+      // A stream that is `live` or `vod` is republished as it is: the
       // operator fixed a title mid-broadcast, and the entry must go back on
       // the feed still saying `live` (or `vod`, with its index and duration).
       // The `publishing` claim the first publish uses would lose that.
