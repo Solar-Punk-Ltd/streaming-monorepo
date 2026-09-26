@@ -2,7 +2,7 @@
  * End-to-end tests against the RUNNING backend: the draft lifecycle from login
  * to delete, driven over HTTP exactly as the console drives it.
  *
- * Prerequisites (from web2-admin/backend/):
+ * Prerequisites (from apps/web2-admin/backend/):
  *
  *   pnpm database:start                     # Postgres on 127.0.0.1:5433
  *   pnpm test:integration
