@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "web2-admin-frontend",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--dir", "apps/web2-admin", "--filter", "@streaming-monorepo/web2-admin-frontend", "dev"],
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd apps/web2-admin && exec pnpm --filter @streaming-monorepo/web2-admin-frontend dev"],
       "port": 5081
     }
   ]
