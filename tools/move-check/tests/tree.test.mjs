@@ -253,10 +253,10 @@ describe('tree.mjs', () => {
 
   it('refuses a map that sends two paths to one place', (t) => {
     const { repo, before, after } = repoWithMove(t);
-    const args = ['--from', before, '--to', after, '--map', 'web2-admin/backend=x', '--map', 'web2-admin/common=x'];
+    const args = ['--from', before, '--to', after, '--map', 'web2-admin/backend/src/app.ts=deploy/deploy.sh'];
     const result = runScript(TREE, args, { cwd: repo });
     assert.equal(result.status, 2);
-    assert.match(result.stderr, /--map sends both/);
+    assert.match(result.stderr, /--map sends both deploy\/deploy\.sh and web2-admin\/backend\/src\/app\.ts to deploy\/deploy\.sh/);
   });
 
   it('exits 2 with the usage when an option is missing', (t) => {
