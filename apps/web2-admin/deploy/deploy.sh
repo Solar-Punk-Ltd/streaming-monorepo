@@ -412,7 +412,9 @@ fi
 COMMIT="unknown"
 if git rev-parse --verify -q HEAD >/dev/null 2>&1; then
     COMMIT="$(git rev-parse HEAD)"
-    if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+    # Only this folder's changes count: the repository holds other projects,
+    # and a change in one of them is not a change to what this deploy ships.
+    if [ -n "$(git status --porcelain -- . 2>/dev/null)" ]; then
         COMMIT="$COMMIT-dirty"
     fi
 fi
