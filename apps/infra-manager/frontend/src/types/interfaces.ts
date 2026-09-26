@@ -1,0 +1,154 @@
+import type {
+  DeploymentPhase,
+  EngineConfigState,
+  EngineSettings,
+  NewDeploymentSetting,
+  NodeMode,
+  RpcEndpointSource,
+} from '@streaming-infra-manager/common';
+
+import type { ProfileKind, ProfileStatus } from './types';
+
+export interface Container {
+  service: string;
+  ports: Record<string, number>;
+  /** The build the container was seen to be started from, and its commit, or null before an observation. */
+  buildId: string | null;
+  buildCommit: string | null;
+}
+
+export interface Profile {
+  name: string;
+  port_slot: number;
+  kind: ProfileKind;
+  notes: string | null;
+  /** Moves with every change of the notes. A save carries the revision its page loaded. */
+  notes_revision: number;
+  host?: string | null;
+  /**
+   * Derived server-side: `host` with the ssh layer resolved away. `host` is a
+   * deploy target, so it may be an ssh alias that only the manager's ssh config
+   * can turn into an address. This is what to build links from.
+   */
+  network_host?: string | null;
+  components?: string[] | null;
+  feed_owner?: string | null;
+  feed_topic?: string | null;
+  /**
+   * Whether a signing key is stored. The key itself is never answered: it
+   * signs the feed, and whoever holds it can publish as this deployment for
+   * good, with nothing to revoke.
+   */
+  has_private_key: boolean;
+  public_key?: string | null;
+  stamp_id?: string | null;
+  /** Pasted BEE_PUBLISHERS: publishes to an ABR node pool instead of its own node. */
+  bee_publishers?: string | null;
+  /** Explicit bee API URL. Only applies when no local bee-uploader runs. */
+  bee_url?: string | null;
+  /** Whether a custom endpoint is stored. The URL itself is never answered. */
+  has_rpc_endpoint: boolean;
+  /** The custom endpoint's host and port, without its secret-bearing path. */
+  rpc_endpoint_host?: string | null;
+  /**
+   * Where this deployment's Bee node reaches the chain. Absent reads as the
+   * column's own default, the stack's endpoint. See `endpointSourceOf`.
+   */
+  rpc_endpoint_source?: RpcEndpointSource;
+  /**
+   * How much of a chain that node runs with, or null for the mode the stack
+   * starts it in. Chosen when the deployment is created and read through the
+   * shared `effectiveNodeMode`, never off this field alone.
+   */
+  node_mode?: NodeMode | null;
+  /**
+   * Whether an SRT passphrase of this deployment's own is stored. The value is
+   * never on the row: whoever holds it can publish into this ingest, and every
+   * page would hold every deployment's. The page about to show or copy a
+   * publish URL asks for that one through GET /profiles/:name/srt-passphrase.
+   * False falls back to the host-wide SRT_PASSPHRASE.
+   */
+  has_srt_passphrase: boolean;
+  /**
+   * Engine settings this deployment overrides, by env key. An absent key means
+   * the stack default. The column is NOT NULL, so the object is always there.
+   */
+  engine_settings: EngineSettings;
+  /** The engine runs on a config file of this deployment's own, not the stack's template. */
+  has_engine_config: boolean;
+  /** Why the latest config file rollout did not end applied, or a note from a check that ran after one that did, or null. */
+  engine_config_error: string | null;
+  /** Where the latest config file rollout stands, or null before the first. */
+  engine_config_state: EngineConfigState | null;
+  /** The deployment as it exists now. A removed and recreated name is another instance. */
+  instance_id: string;
+  /** Moves with every config file write. */
+  engine_config_revision: number;
+  /** Moves whenever an operator acts on the deployment. */
+  intent_revision: number;
+  status: ProfileStatus;
+  deployment_phase?: DeploymentPhase | null;
+  last_error: string | null;
+  last_error_at: string | null;
+  /** The commit of the last deploy that touched every service and found them agreeing, or null. */
+  last_full_deploy_commit: string | null;
+  created_at: string;
+  updated_at: string;
+  containers: Container[];
+  group_id?: number | null;
+  pendingStamp?: boolean;
+  /** Which version of the streaming stack this deployment runs. */
+  stack_version_id?: number | null;
+}
+
+export interface DeploymentGroup {
+  id: number;
+  name: string;
+  size: number;
+  /** 'standard' fan-out, or 'abr-node-pool'. */
+  kind: string;
+  created_at: string;
+}
+
+export interface CreateProfileBody {
+  name: string;
+  kind: ProfileKind;
+  notes?: string | null;
+  host?: string;
+  components?: string[];
+  feed_owner?: string;
+  private_key?: string;
+  public_key?: string;
+  stamp_id?: string;
+  /** null clears it on update, the uploader goes back to its own node + stamp. */
+  bee_publishers?: string | null;
+  bee_url?: string | null;
+  /** Sent exactly when the source is `custom`, and null clears it on update. */
+  rpc_endpoint?: string | null;
+  rpc_endpoint_source?: RpcEndpointSource;
+  /**
+   * Create-only in effect: an update may repeat the stored mode and is refused
+   * for any other, because a node's mode is chosen when it is created.
+   */
+  node_mode?: NodeMode | null;
+  srt_passphrase?: string;
+  /** The stack version to run. Absent means the manager's default one. */
+  stack_version_id?: number;
+  /**
+   * What the engine is created with. Absent leaves the deployment on whatever
+   * its version's own entrypoints fall back to, which is what an update body
+   * always means, so this is a create-only field.
+   */
+  engine_settings?: EngineSettings;
+  /**
+   * The stack settings the deployment is created with, each held to the
+   * version's settings list for it. Absent keeps the version's values. Create
+   * only: a deployment's page saves them afterwards.
+   */
+  stack_settings?: NewDeploymentSetting[];
+  /**
+   * True has the manager copy its stored web2 admin token into the deployment
+   * as it is inserted. The token never travels on the request.
+   */
+  use_manager_admin_token?: boolean;
+}

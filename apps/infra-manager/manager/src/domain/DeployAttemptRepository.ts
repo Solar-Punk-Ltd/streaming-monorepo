@@ -1,0 +1,85 @@
+import type {
+  AttemptOutcome,
+  DeployAttempt,
+  DeployAttemptKind,
+} from './deployAttempts.js';
+
+export interface AttemptSnapshotToken {
+  daemonId: string;
+  project: string;
+  /** Decimal text preserves the database identity without numeric coercion. Null means no retained history. */
+  latestAttemptId: string | null;
+}
+
+export interface NewDeployAttempt {
+  daemonId: string;
+  target?: string | null;
+  project: string;
+  jobId: string;
+  kind: DeployAttemptKind;
+  services: readonly string[];
+  preJobContainerIds: readonly string[];
+  snapshotToken?: AttemptSnapshotToken;
+}
+
+/**
+ * The durable rows of the project guard and the daemon lock. `open` applies
+ * the admission rules and inserts in one transaction under a lock per
+ * daemon, so two attempts admitted together cannot both pass, and throws
+ * `DeployAttemptRefusedError` naming what holds the guard.
+ */
+export interface DeployAttemptRepository {
+  captureSnapshotToken(daemonId: string, project: string): Promise<AttemptSnapshotToken>;
+  open(attempt: NewDeployAttempt): Promise<DeployAttempt>;
+  findByJob(jobId: string): Promise<DeployAttempt | null>;
+  listUnresolved(daemonId?: string): Promise<DeployAttempt[]>;
+  listBlocked(): Promise<DeployAttempt[]>;
+  /** Open to released or blocked, by evidence. */
+  resolve(id: number, outcome: AttemptOutcome): Promise<DeployAttempt | null>;
+  /** Released by a person who checked the host, from any unresolved state. */
+  release(id: number, by: string): Promise<DeployAttempt | null>;
+  /**
+   * Every unresolved attempt of a project on the daemon released, for a
+   * deployment that is being removed: its containers are gone, and the name
+   * may be used again. Answers what was released.
+   */
+  releaseProject(daemonId: string, project: string, by: string): Promise<DeployAttempt[]>;
+}
+
+/** One container of a project, as Docker has it now. */
+export interface ObservedContainer {
+  id: string;
+  /** Docker's own word: running, restarting, paused, exited, created, dead or removing. */
+  state: string;
+}
+
+/** What Docker says about the project an attempt is about. */
+export interface DaemonSnapshot {
+  daemonId: string;
+  containers: Map<string, ObservedContainer[]>;
+}
+
+/** Each service's container ids, for the callers that need identity rather than state. */
+export function containerIdsByService(
+  containers: ReadonlyMap<string, readonly ObservedContainer[]>,
+): Map<string, string[]> {
+  return new Map(
+    [...containers].map(([service, observed]) => [service, observed.map((container) => container.id)]),
+  );
+}
+
+/** Every container id in a snapshot, for the callers that compare identity across a job. */
+export function allContainerIds(
+  containers: ReadonlyMap<string, readonly ObservedContainer[]>,
+): string[] {
+  return [...containers.values()].flat().map((container) => container.id);
+}
+
+export interface DaemonObserver {
+  /** One target observation, including the identity of the daemon that supplied the containers. */
+  snapshot(project: string, target?: string): Promise<DaemonSnapshot>;
+  /** The daemon's own id, from `docker info`, so a lock never crosses hosts. */
+  daemonId(target?: string): Promise<string>;
+  /** Every container of the project by service, all states. */
+  containerIdsOf(project: string, target?: string): Promise<Map<string, string[]>>;
+}

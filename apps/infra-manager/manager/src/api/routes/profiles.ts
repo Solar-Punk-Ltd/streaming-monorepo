@@ -1,0 +1,149 @@
+import { Request, Response, Router } from 'express';
+
+import type { NewDeploymentSetting } from '@streaming-infra-manager/common';
+
+import { ProfileService } from '../../domain/ProfileService.js';
+import { UploaderHealthService } from '../../domain/UploaderHealthService.js';
+import { definedSettingValues } from '../../schemas/engineSettingValues.js';
+import {
+  CreateProfileInput,
+  UpdateNotesInput,
+  UpdateProfileInput,
+  RemoveProfileInput,
+  createProfileSchema,
+  profileNameSchema,
+  updateNotesSchema,
+  updateProfileSchema,
+  removeProfileSchema,
+} from '../../schemas/profile.js';
+import { ProfileKind } from '../../types/index.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
+import { validateBody, validateParams } from '../middleware/validate.js';
+
+/**
+ * @param managerHasEndpoint whether this manager has a chain endpoint of its
+ *   own to offer a new node. The schemas judge an endpoint choice against it,
+ *   and no request body carries it.
+ */
+export function createProfilesRouter(
+  profileService: ProfileService,
+  uploaderHealth: UploaderHealthService,
+  managerHasEndpoint: boolean,
+): Router {
+  const router = Router();
+  const schemaContext = () => ({ managerHasEndpoint });
+
+  router.post(
+    '/',
+    validateBody(createProfileSchema, schemaContext),
+    asyncHandler(async (req: Request, res: Response) => {
+      const body = req.body as CreateProfileInput;
+      const profile = await profileService.create({
+        name: body.name,
+        kind: (body.kind ?? 'custom') as ProfileKind,
+        notes: body.notes,
+        host: body.host,
+        components: body.components as string[] | undefined,
+        feed_owner: body.feed_owner,
+        feed_topic: body.feed_topic,
+        private_key: body.private_key,
+        public_key: body.public_key,
+        stamp_id: body.stamp_id,
+        bee_publishers: body.bee_publishers,
+        bee_url: body.bee_url,
+        rpc_endpoint: body.rpc_endpoint,
+        rpc_endpoint_source: body.rpc_endpoint_source,
+        node_mode: body.node_mode,
+        srt_passphrase: body.srt_passphrase,
+        stack_version_id: body.stack_version_id,
+        engine_settings:
+          body.engine_settings && definedSettingValues(body.engine_settings),
+        stack_settings: body.stack_settings as NewDeploymentSetting[] | undefined,
+        use_manager_admin_token: body.use_manager_admin_token,
+      });
+      res.status(202).json(profile);
+    }),
+  );
+
+  router.get(
+    '/',
+    asyncHandler(async (_req: Request, res: Response) => {
+      const profiles = await profileService.list();
+      res.json({ profiles });
+    }),
+  );
+
+  router.get(
+    '/:name',
+    validateParams(profileNameSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const profile = await profileService.getByName(req.params.name as string);
+      res.json(profile);
+    }),
+  );
+
+  // What this deployment's own stream-uploader says about itself, the Bee node
+  // it may still be waiting for included. The deployment page reads it every ten
+  // seconds, and since 2026-09-25 the overview and the Deployments page read it
+  // every thirty seconds for each running uploader, one request per deployment.
+  router.get(
+    '/:name/uploader-health',
+    validateParams(profileNameSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      res.json(await uploaderHealth.read(req.params.name as string));
+    }),
+  );
+
+  router.put(
+    '/:name',
+    validateParams(profileNameSchema),
+    validateBody(updateProfileSchema, schemaContext),
+    asyncHandler(async (req: Request, res: Response) => {
+      const body = req.body as UpdateProfileInput;
+      const profile = await profileService.update(req.params.name as string, {
+        notes: body.notes,
+        notes_revision: body.notes_revision ?? undefined,
+        feed_owner: body.feed_owner,
+        feed_topic: body.feed_topic,
+        private_key: body.private_key,
+        public_key: body.public_key,
+        stamp_id: body.stamp_id,
+        bee_publishers: body.bee_publishers,
+        bee_url: body.bee_url,
+        rpc_endpoint: body.rpc_endpoint,
+        rpc_endpoint_source: body.rpc_endpoint_source,
+        node_mode: body.node_mode,
+        srt_passphrase: body.srt_passphrase,
+      });
+      res.status(202).json(profile);
+    }),
+  );
+
+  // The notes alone: no claim, no gate, no deploy, so 200 and not 202.
+  router.patch(
+    '/:name/notes',
+    validateParams(profileNameSchema),
+    validateBody(updateNotesSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const body = req.body as UpdateNotesInput;
+      const profile = await profileService.updateNotes(
+        req.params.name as string,
+        body.notes,
+        body.notes_revision,
+      );
+      res.json(profile);
+    }),
+  );
+
+  router.delete(
+    '/:name',
+    validateParams(profileNameSchema),
+    validateBody(removeProfileSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const profile = await profileService.remove(req.params.name as string, req.body as RemoveProfileInput);
+      res.status(202).json(profile);
+    }),
+  );
+
+  return router;
+}

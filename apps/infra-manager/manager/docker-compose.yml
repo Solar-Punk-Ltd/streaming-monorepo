@@ -1,0 +1,112 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_DB: manager
+      POSTGRES_USER: manager
+    volumes:
+      - manager-pg:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U manager -d manager"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: manager/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Reach host-published bee node ports (per-profile stamp management) from
+    # inside the container via host.docker.internal — see StampService.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://manager:${POSTGRES_PASSWORD:-manager}@postgres:5432/manager
+      MANAGER_PORT: "9876"
+      PUBLIC_HOST: ${PUBLIC_HOST:-}
+      SHLS_ROOT: /opt/streaming/streaming-infra-manager/manager/swarm-hls-stream
+      BEE_DATA_ROOT: ${BEE_DATA_ROOT:-/opt/streaming/streaming-infra-manager-data}
+      STACK_VERSIONS_ROOT: ${STACK_VERSIONS_ROOT:-/opt/streaming/streaming-infra-manager-versions}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/streaming/streaming-infra-manager:/opt/streaming/streaming-infra-manager
+      - ${BEE_DATA_ROOT:-/opt/streaming/streaming-infra-manager-data}:${BEE_DATA_ROOT:-/opt/streaming/streaming-infra-manager-data}
+      # Added stack versions, at the same absolute path on both sides. Each
+      # checkout carries compose files with relative volumes, which the host
+      # docker daemon resolves as host paths, so the two must match.
+      - ${STACK_VERSIONS_ROOT:-/opt/streaming/streaming-infra-manager-versions}:${STACK_VERSIONS_ROOT:-/opt/streaming/streaming-infra-manager-versions}
+      # Read-only host visibility for the resource monitor (see HostCollector):
+      #   /host/proc   → host CPU + RAM + network usage
+      #                  (/proc/stat, /proc/meminfo, /proc/1/net/dev)
+      #   /host/rootfs → host disk used/total (statfs on the root filesystem)
+      - /proc:/host/proc:ro
+      - /:/host/rootfs:ro
+      # Deploying to other hosts: target verification and deploy.sh both shell
+      # out to ssh/rsync from inside this container, which has no identity of
+      # its own. manager-ssh/ on the host holds the deploy key, an ssh_config
+      # with a Host block per target alias, and a known_hosts the operator seeds
+      # with each target's host key. Verification runs with
+      # StrictHostKeyChecking=yes, so an unseeded target is refused, not trusted
+      # on first connect. See deploy/README.md for the ssh-keyscan step.
+      #
+      # The directory alone is mounted. The image links /etc/ssh/ssh_config to
+      # the ssh_config in it, so the aliases are read as the system-wide config
+      # (ssh refuses a per-user config another uid owns) and a host without the
+      # file starts with no config at all. deploy.sh creates the directory as
+      # the deploying user, because Docker would create a missing bind source
+      # as a root-owned directory nobody can write a key into.
+      - ${MANAGER_SSH_DIR:-/opt/streaming/manager-ssh}:/root/.ssh
+
+  web:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    # Loopback only. The edge reaches it by service name, and the SSH tunnel
+    # stays the way back in when the edge or its certificate is broken.
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:80/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # TLS termination, started only by `docker compose --profile public up`,
+  # which deploy.sh passes when MANAGER_DOMAIN is set. The two volumes hold the
+  # certificate and Caddy's account key, so a recreate does not ask Let's
+  # Encrypt for a new one and run into its rate limit.
+  edge:
+    image: caddy:2.11.4@sha256:df7f1c2fb114453b951de51a98efc010db1655a92c2e86be6706714e2417a78d
+    profiles:
+      - public
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      MANAGER_DOMAIN: ${MANAGER_DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./edge/Caddyfile:/etc/caddy/Caddyfile:ro
+      - edge-data:/data
+      - edge-config:/config
+
+volumes:
+  manager-pg:
+  edge-data:
+  edge-config:

@@ -1,0 +1,120 @@
+/**
+ * The value a setting falls back to when a deployment does not store one, which
+ * is not always the stack's own.
+ *
+ * `.env.<profile>` is a fresh copy of the stack's base `.env` on every deploy
+ * and `engineSettingsEnv` leaves an unset key out of it on purpose, so a key
+ * the host was configured with by hand is what the container starts with. A
+ * page that names the stack's value there, and a keyframe rule computed with
+ * it, both describe a deployment nobody is running.
+ *
+ * The stack's own value is the version's, too: main-v3 cuts 0.5 second
+ * segments where main-v2 cuts 1.5. A version's contract names what its
+ * entrypoints fall back to and that wins over the field, so the number on the
+ * field is what answers only for a version whose contract was not read.
+ *
+ * A field whose default the manager owns is the exception. Its number wins over
+ * every version's fallback, the manager writes it into `.env.<profile>` itself,
+ * and it is called the manager's. A value the host's base env sets still wins
+ * over it.
+ *
+ * The manager reads the base env and the contract and calls this. The offline
+ * mock calls it with its own stand-ins, so the two answer the same shape from
+ * one rule.
+ */
+import type { EngineName } from './engines.js';
+import {
+  type EngineSettingField,
+  type EngineSettings,
+  engineSettingFieldProblem,
+  engineSettingsFields,
+} from './engineSettings.js';
+
+/**
+ * Whether a default is the stack's own, one this host's base env sets, or the
+ * manager's own for a field whose default the manager owns.
+ */
+export type EngineDefaultSource = 'stack' | 'host' | 'manager';
+
+/** The origin of every default, by setting key. */
+export type EngineDefaultSources = Record<string, EngineDefaultSource>;
+
+export interface EngineDefaults {
+  /** Every key the engine reads, with the value an unset field falls back to. */
+  values: EngineSettings;
+  sources: EngineDefaultSources;
+  /**
+   * Keys the base env sets to something no field would accept, so the stack's
+   * own value stands instead. Returned rather than logged here, because this
+   * runs in the browser as well as in the manager.
+   */
+  rejected: readonly string[];
+}
+
+/** What a field falls back to where the host sets nothing the field accepts. */
+interface Fallback {
+  value: string;
+  source: Exclude<EngineDefaultSource, 'host'>;
+}
+
+interface ChosenDefault {
+  value: string;
+  source: EngineDefaultSource;
+  /** The host's value, when it is one the field would refuse. */
+  refused: string | null;
+}
+
+function fallbackFor(
+  field: EngineSettingField,
+  stackDefaults: EngineSettings,
+): Fallback {
+  if (field.managerOwnsDefault) {
+    return { value: field.defaultValue, source: 'manager' };
+  }
+  return {
+    value: stackDefaults[field.key]?.trim() || field.defaultValue,
+    source: 'stack',
+  };
+}
+
+function chooseDefault(
+  field: EngineSettingField,
+  hostValue: string | undefined,
+  fallback: Fallback,
+): ChosenDefault {
+  const value = hostValue?.trim();
+  if (!value) {
+    return { ...fallback, refused: null };
+  }
+  if (engineSettingFieldProblem(field, value)) {
+    return { ...fallback, refused: value };
+  }
+  return { value, source: 'host', refused: null };
+}
+
+/**
+ * What every setting of one engine falls back to on the host this base env
+ * came from, on the version whose entrypoint fallbacks `stackDefaults` are.
+ */
+export function effectiveEngineDefaults(
+  engine: EngineName,
+  baseEnv: Record<string, string> = {},
+  stackDefaults: EngineSettings = {},
+): EngineDefaults {
+  const values: EngineSettings = {};
+  const sources: EngineDefaultSources = {};
+  const rejected: string[] = [];
+
+  for (const field of engineSettingsFields(engine)) {
+    const chosen = chooseDefault(
+      field,
+      baseEnv[field.key],
+      fallbackFor(field, stackDefaults),
+    );
+    values[field.key] = chosen.value;
+    sources[field.key] = chosen.source;
+    if (chosen.refused !== null) rejected.push(field.key);
+  }
+
+  return { values, sources, rejected };
+}

@@ -1,0 +1,388 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Box, Button, CircularProgress, Paper, Stack } from '@mui/material';
+
+import {
+  type ChequebookHealth,
+  chequebookHealthFromPayload,
+  engineSettingsFields,
+  rungFromMemberName,
+  sameBatchId,
+  stampHealthFrom,
+  STREAM_UPLOADER_SERVICE,
+  suggestedRungDepth,
+} from '@streaming-infra-manager/common';
+
+import { useEditors } from '../app/EditorsContext';
+import { navigate, routes, type DeploymentFocus } from '../app/router';
+import { useActions } from '../app/useDeploymentActions';
+import { useDeployments } from '../app/useDeploymentsStore';
+import { EmptyState } from '../components/EmptyState';
+import { StaleReadings } from '../resources/StaleReadings';
+import { useMetrics } from '../useMetrics';
+import { beeReadinessView } from '../uploaders/beeReadiness';
+import { useBeeUtils, type BeeUtils } from '../uploaders/useBeeUtils';
+import type { Profile } from '../types';
+import { clientUrl } from '../urls';
+import { attemptHolding } from '../versions/attemptHold';
+import { ReleaseAttemptDialog } from '../versions/ReleaseAttemptDialog';
+import { useAttemptRelease } from '../versions/useAttemptRelease';
+import { AtAGlanceCard } from './AtAGlanceCard';
+import {
+  buildChecklist,
+  streamerFor,
+  type ChecklistInput,
+  type StepAction,
+} from './checklist';
+import { readySummary } from './readySummary';
+import { ConfigurationCard } from './ConfigurationCard';
+import { ContainersCard } from './ContainersCard';
+import { DeploymentHeader } from './DeploymentHeader';
+import { DeploymentSettingsCard } from './DeploymentSettingsCard';
+import { EngineCard } from './EngineCard';
+import { usePublishUrl } from './usePublishUrl';
+import { useSrtIngestHealth } from './useSrtIngestHealth';
+import { useUploaderHealth } from './useUploaderHealth';
+import { useEngineOverview } from './useEngineOverview';
+import { HeldAttemptCard } from './HeldAttemptCard';
+import { LastErrorCard } from './LastErrorCard';
+import { NextStepsCard } from './NextStepsCard';
+import { NotesCard } from './NotesCard';
+import { PoolTargetCard } from './PoolTargetCard';
+import { PublishCard } from './PublishCard';
+import { ReadinessCard } from './ReadinessCard';
+import { RemoveCard } from './RemoveCard';
+import { ownsBeeNode, readinessFor } from './readiness';
+import type { SettingReveal } from './settings/SettingsList';
+import { useDeploymentSettings } from './settings/useDeploymentSettings';
+import { SrtIngestCard } from './SrtIngestCard';
+import { offersLatencySetting, SRT_LATENCY_SETTING_KEY } from './srtIngestText';
+import { StorageCard } from './StorageCard';
+import { engineOf, isRunning, readsSrtIngest, shapeOf, streamersOf } from './shape';
+import { WatchCard } from './WatchCard';
+
+const STORAGE_ANCHOR = 'storage';
+
+export function DeploymentPage({
+  name,
+  focus,
+}: {
+  name: string;
+  focus: DeploymentFocus;
+}) {
+  const { profiles } = useDeployments();
+  const profile = profiles?.find((entry) => entry.name === name) ?? null;
+
+  if (!profiles) {
+    return (
+      <Stack alignItems="center" sx={{ py: 8 }}>
+        <CircularProgress />
+      </Stack>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <Paper>
+        <EmptyState
+          title={`No deployment called ${name}.`}
+          hint="It may have been removed. The list has everything this manager knows about."
+          action={
+            <Button variant="contained" onClick={() => navigate(routes.deployments)}>
+              Back to deployments
+            </Button>
+          }
+        />
+      </Paper>
+    );
+  }
+
+  // The hook has to run unconditionally, so the two cases are two components
+  // rather than one with a conditional call. A viewer has no Bee node to ask,
+  // and asking anyway would put a node-unreachable banner on every viewer page.
+  // The instance key is the deployment lifetime. Deleting and recreating the
+  // same name must discard every hook reading and copy action from the old node.
+  return ownsBeeNode(profile) ? (
+    <WithBeeNode key={profile.instance_id} profile={profile} focus={focus} />
+  ) : (
+    <DeploymentBody key={profile.instance_id} profile={profile} focus={focus} bee={null} />
+  );
+}
+
+function WithBeeNode({
+  profile,
+  focus,
+}: {
+  profile: Profile;
+  focus: DeploymentFocus;
+}) {
+  const bee = useBeeUtils(profile);
+  return <DeploymentBody profile={profile} focus={focus} bee={bee} />;
+}
+
+function DeploymentBody({
+  profile,
+  focus,
+  bee,
+}: {
+  profile: Profile;
+  focus: DeploymentFocus;
+  bee: BeeUtils | null;
+}) {
+  const { profiles, groups, serverHost, hostPassphrase, beeRpcEndpoint, reload, versions, attempts } =
+    useDeployments();
+  const actions = useActions();
+  const release = useAttemptRelease();
+  const { openEditDeployment } = useEditors();
+  const { snapshot, stale, staleSeconds } = useMetrics();
+  // The Engine card and the SRT ingest card lead to a setting in the Stack
+  // settings card rather than editing it themselves: one list of settings for
+  // the whole deployment (the owner, 2026-09-26).
+  const [settingsReveal, setSettingsReveal] = useState<SettingReveal | null>(null);
+  const revealSetting = useCallback(
+    (key: string) => setSettingsReveal((current) => ({ key, seq: (current?.seq ?? 0) + 1 })),
+    [],
+  );
+  // The Publish card puts this URL on screen, which is the operator opening
+  // it, so the passphrase is asked for as the page loads rather than on a
+  // click. It goes no further than this page.
+  const publish = usePublishUrl(profile, true);
+
+  useEffect(() => {
+    if (focus !== 'storage') return;
+    const target = document.getElementById(STORAGE_ANCHOR);
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [focus, profile.name]);
+
+  const shape = shapeOf(profile);
+  const engine = engineOf(profile);
+  const engineLoad = useEngineOverview(engine ? profile : null);
+  // One read for the Stack settings card, the Engine card and the side column.
+  // The two engine views read the stored settings, so they mark a value the
+  // running containers are behind on, and a save refreshes the deployment's
+  // row they read, since the manager announces no change for a save.
+  const settings = useDeploymentSettings(profile);
+  const savedNotApplied = settings.catalog?.drift.keys ?? [];
+  // Only where there is an uploader to ask. Since D16 one can be running and
+  // still waiting for a Bee node that never answered, which nothing on the
+  // container says.
+  const uploaderDeployed = profile.containers.some(
+    (container) => container.service === STREAM_UPLOADER_SERVICE,
+  );
+  const uploaderHealth = useUploaderHealth(uploaderDeployed ? profile : null);
+  const srtIngestShown = readsSrtIngest(profile);
+  const srtIngest = useSrtIngestHealth(srtIngestShown ? profile : null);
+  const group = groups.find((entry) => entry.id === profile.group_id) ?? null;
+  const version =
+    versions?.find((entry) => entry.id === profile.stack_version_id) ?? null;
+  const rung = group ? rungFromMemberName(group.name, profile.name) : null;
+  const stampHealth = stampHealthFrom(
+    profile.stamp_id,
+    bee?.stamps ?? null,
+    bee?.stampsFailure,
+  );
+  const chequebookHealth: ChequebookHealth | null = bee?.chequebook
+    ? chequebookHealthFromPayload(bee.chequebook.health)
+    : null;
+  const stampId = profile.stamp_id;
+  const currentStamp =
+    (stampId &&
+      bee?.stamps?.find((stamp) => sameBatchId(stamp.batchID, stampId))) ||
+    null;
+
+  const heldBy = attemptHolding(profile.name, attempts, profiles);
+  const publishUrl = publish.url;
+  const watchUrl = clientUrl(profile, serverHost);
+  const streamers = streamersOf(profiles ?? []);
+  const streamer = streamerFor(profile.feed_owner, streamers);
+
+  const checklistInput: ChecklistInput = {
+    profile,
+    nodeReadiness: bee ? beeReadinessView(bee.nodeObservation, bee.observationNow, bee.loading || profile.status !== 'RUNNING', bee.observationReceivedAt) : undefined,
+    wallet: bee?.wallet ?? null,
+    chequebook: chequebookHealth,
+    nodeAddress: bee?.address?.ethereum ?? null,
+    stampHealth,
+    currentStamp,
+    publishUrl,
+    clientUrl: watchUrl,
+    streamers,
+    ...(uploaderHealth ? { uploaderHealth } : {}),
+  };
+
+  const steps = buildChecklist(checklistInput);
+  const summary = readySummary(checklistInput, stampHealth);
+  const readiness = readinessFor(checklistInput);
+  const uploaderPending = Boolean(profile.pendingStamp);
+
+  const runStepAction = (action: StepAction) => {
+    switch (action.kind) {
+      case 'refresh-node':
+        void bee?.reload();
+        return;
+      case 'start':
+        actions.start(profile.name);
+        return;
+      case 'copy-address':
+        if (action.value) {
+          void navigator.clipboard.writeText(action.value).catch(() => undefined);
+        }
+        return;
+      case 'buy-stamp':
+      case 'dilute-stamp':
+      case 'top-up-stamp':
+      case 'fill-chequebook':
+        document
+          .getElementById(STORAGE_ANCHOR)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      case 'deploy-uploader':
+        actions.startUploader(profile.name);
+        return;
+      case 'edit':
+        openEditDeployment(profile.name);
+        return;
+      case 'open-stream':
+        if (action.value) navigate(routes.deployment(action.value));
+        return;
+    }
+  };
+
+  return (
+    <Box>
+      <DeploymentHeader
+        profile={profile}
+        serverHost={serverHost}
+        group={group}
+        rung={rung}
+        publishUrl={publishUrl}
+        publishUrlReady={readiness.tone === 'ok'}
+      />
+
+      <Box
+        sx={{
+          display: 'grid',
+          gap: 2,
+          gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) 300px' },
+          alignItems: 'start',
+        }}
+      >
+        <Stack spacing={2}>
+          {heldBy && (
+            <HeldAttemptCard attempt={heldBy} onRelease={() => release.open(heldBy)} />
+          )}
+
+          {profile.last_error && (
+            <LastErrorCard
+              message={profile.last_error}
+              at={profile.last_error_at}
+            />
+          )}
+
+          <ReadinessCard steps={steps} summary={summary} onAction={runStepAction} />
+
+          {srtIngestShown && (
+            <SrtIngestCard
+              load={srtIngest}
+              latencySettingOffered={offersLatencySetting(engineLoad.overview?.fields)}
+              onRaiseLatency={() => revealSetting(SRT_LATENCY_SETTING_KEY)}
+            />
+          )}
+
+          {publishUrl && (
+            <PublishCard
+              profile={profile}
+              url={publishUrl}
+              hostPassphrase={hostPassphrase}
+              ready={readiness.tone === 'ok'}
+              passphrasePending={publish.pending}
+            />
+          )}
+
+          {engine && (
+            <EngineCard
+              profile={profile}
+              engine={engine}
+              overview={engineLoad.overview}
+              loadError={engineLoad.loadError}
+              savedNotApplied={savedNotApplied}
+              onShowSettings={() => revealSetting(engineSettingsFields(engine)[0]!.key)}
+            />
+          )}
+
+          <DeploymentSettingsCard profile={profile} load={settings} onSaved={reload} reveal={settingsReveal} />
+
+          {watchUrl && (
+            <WatchCard
+              url={watchUrl}
+              feedOwner={profile.feed_owner}
+              streamerName={streamer?.name ?? null}
+            />
+          )}
+
+          {bee && (
+            <StorageCard
+              profile={profile}
+              bee={bee}
+              stampHealth={stampHealth}
+              chequebookHealth={chequebookHealth}
+              defaultDepth={rung ? suggestedRungDepth(rung) : undefined}
+              rung={rung}
+              onChanged={reload}
+            />
+          )}
+
+          {shape === 'abr-uploader' && <PoolTargetCard profile={profile} />}
+
+          {stale && <StaleReadings seconds={staleSeconds} />}
+
+          <ContainersCard
+            profile={profile}
+            host={serverHost}
+            snapshot={snapshot}
+            uploaderPending={uploaderPending}
+          />
+
+          <ConfigurationCard
+            profile={profile}
+            serverHost={serverHost}
+            hostPassphrase={hostPassphrase}
+            beeRpcEndpoint={beeRpcEndpoint}
+            streamerName={streamer?.name ?? null}
+            stampHealth={stampHealth}
+          />
+
+          <RemoveCard profile={profile} />
+        </Stack>
+
+        <Stack spacing={2}>
+          <AtAGlanceCard
+            profile={profile}
+            serverHost={serverHost}
+            readiness={readiness}
+            stampHealth={stampHealth}
+            group={group}
+            version={version}
+            engineOverview={engineLoad.overview}
+            engineLoadError={engineLoad.loadError}
+            savedNotApplied={savedNotApplied}
+          />
+          {shape === 'stream' && isRunning(profile) && (
+            <NextStepsCard streamName={profile.name} />
+          )}
+          <NotesCard
+            name={profile.name}
+            notes={profile.notes}
+            notesRevision={profile.notes_revision}
+          />
+        </Stack>
+      </Box>
+
+      <ReleaseAttemptDialog
+        attempt={release.releasing}
+        onClose={release.close}
+        onReleased={release.released}
+        onGone={release.gone}
+      />
+    </Box>
+  );
+}

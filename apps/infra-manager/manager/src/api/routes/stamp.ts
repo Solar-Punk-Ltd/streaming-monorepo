@@ -1,0 +1,141 @@
+import { Request, Response, Router } from 'express';
+
+import { StampService } from '../../domain/StampService.js';
+import { profileNameSchema } from '../../schemas/profile.js';
+import {
+  BuyStampBody,
+  DiluteStampBody,
+  SetStampBody,
+  TopUpStampBody,
+  buyStampSchema,
+  diluteStampSchema,
+  setStampSchema,
+  topUpStampSchema,
+} from '../../schemas/stamp.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
+import { validateBody, validateParams } from '../middleware/validate.js';
+
+/**
+ * Postage-stamp management against a profile's bee-uploader node.
+ *
+ * A read answers from a shared window over the bee HTTP API rather than a call
+ * of its own: concurrent callers join the call in flight and its answer stands
+ * for the length of `NODE_READ_WINDOW_MS`. See `NodeReadCache`. Buy creates a
+ * batch and sets it on the profile once bee calls it usable, unless another was
+ * set there meanwhile, see `StampService.buyStamp`. Set persists a stamp id on
+ * the profile and starts no redeploy, because the "deploy uploader" action is
+ * what brings the uploader up, and neither does the set that follows a buy.
+ * Top-up and dilute change a batch the node already holds and keep its id, so
+ * they touch no profile at all.
+ */
+export function createStampRouter(stampService: StampService): Router {
+  const router = Router();
+
+  router.get(
+    '/profiles/:name/stamp/readiness',
+    validateParams(profileNameSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      res.json(await stampService.getNodeObservation(req.params.name as string));
+    }),
+  );
+
+  router.get(
+    '/profiles/:name/stamp/address',
+    validateParams(profileNameSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const address = await stampService.getAddress(req.params.name as string);
+      res.json(address);
+    }),
+  );
+
+  router.get(
+    '/profiles/:name/stamp/wallet',
+    validateParams(profileNameSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const wallet = await stampService.getWallet(req.params.name as string);
+      res.json(wallet);
+    }),
+  );
+
+  router.get(
+    '/profiles/:name/stamp/chainstate',
+    validateParams(profileNameSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const chainState = await stampService.getChainState(
+        req.params.name as string,
+      );
+      res.json(chainState);
+    }),
+  );
+
+  router.get(
+    '/profiles/:name/stamp/stamps',
+    validateParams(profileNameSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const stamps = await stampService.listStamps(req.params.name as string);
+      res.json({ stamps });
+    }),
+  );
+
+  router.post(
+    '/profiles/:name/stamp/buy',
+    validateParams(profileNameSchema),
+    validateBody(buyStampSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const body = req.body as BuyStampBody;
+      const result = await stampService.buyStamp(req.params.name as string, {
+        amount: body.amount,
+        depth: body.depth,
+        label: body.label ?? undefined,
+        immutable: body.immutable ?? undefined,
+      });
+      res.status(202).json(result);
+    }),
+  );
+
+  router.post(
+    '/profiles/:name/stamp/topup',
+    validateParams(profileNameSchema),
+    validateBody(topUpStampSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const body = req.body as TopUpStampBody;
+      const result = await stampService.topUpStamp(
+        req.params.name as string,
+        body.batch_id,
+        body.amount,
+      );
+      res.status(202).json(result);
+    }),
+  );
+
+  router.post(
+    '/profiles/:name/stamp/dilute',
+    validateParams(profileNameSchema),
+    validateBody(diluteStampSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const body = req.body as DiluteStampBody;
+      const result = await stampService.diluteStamp(
+        req.params.name as string,
+        body.batch_id,
+        body.depth,
+      );
+      res.status(202).json(result);
+    }),
+  );
+
+  router.post(
+    '/profiles/:name/stamp/set',
+    validateParams(profileNameSchema),
+    validateBody(setStampSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const body = req.body as SetStampBody;
+      const profile = await stampService.setStamp(
+        req.params.name as string,
+        body.stamp_id,
+      );
+      res.json(profile);
+    }),
+  );
+
+  return router;
+}
