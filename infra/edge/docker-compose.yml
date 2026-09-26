@@ -1,8 +1,8 @@
 # The host's HTTPS edge: one Caddy for the whole host, in front of every
 # console the host publishes on its loopback (web2-admin's, 9090 by default,
-# and streaming-infra-manager's, 8080). Brought up by deploy/edge.sh, which
-# pins the project name (`-p edge`) and ships ./Caddyfile beside this file,
-# rendered from deploy/edge/.env on the machine it runs on.
+# and streaming-infra-manager's, 8080). Brought up by infra/edge/edge.sh,
+# which pins the project name (`-p edge`) and ships ./Caddyfile beside this
+# file, rendered from infra/edge/.env on the machine it runs on.
 #
 # It is its own compose project, not a service inside each console's project,
 # because ports 80 and 443 belong to one process per host. An edge in every
@@ -26,9 +26,9 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # /data holds the certificates and the ACME account key, and /config
       # the config Caddy saves, both persisted as the image asks. In volumes
-      # so that recreating the container, which every run of deploy/edge.sh
-      # does, keeps the certificates instead of asking Let's Encrypt again and
-      # running into its rate limits.
+      # so that recreating the container, which every run of
+      # infra/edge/edge.sh does, keeps the certificates instead of asking
+      # Let's Encrypt again and running into its rate limits.
       - caddy-data:/data
       - caddy-config:/config
 
