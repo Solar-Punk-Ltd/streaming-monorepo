@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# First-boot machine provisioning for a stage host. It installs the runtime the manager needs
+# and creates the paths it bind-mounts. It writes no application config: manager/.env, the
+# swarm-hls-stream env, ABR_LADDER, BEE_PUBLISHERS, stamps and keys are pushed by a human.
+set -euo pipefail
+
+# A failed run surfaces in `gcloud compute instances get-serial-port-output` instead of a host
+# that looks up but silently has no docker.
+trap 'echo "devcon: stage provisioning FAILED at line $LINENO" >/dev/kmsg' ERR
+
+MARKER=/var/lib/devcon-stage-provisioned
+
+if [ ! -f "$MARKER" ]; then
+  export DEBIAN_FRONTEND=noninteractive
+
+  # Lock timeout instead of a sleep: unattended-upgrades holds dpkg on a fresh boot. The retry
+  # covers transient mirror failures; the final failure exits into the ERR trap.
+  for attempt in 1 2 3; do
+    if apt-get -o DPkg::Lock::Timeout=300 update -y &&
+      apt-get -o DPkg::Lock::Timeout=300 install -y --no-install-recommends \
+        docker.io \
+        rsync \
+        jq \
+        prometheus-node-exporter; then
+      break
+    fi
+    [ "$attempt" -lt 3 ] || exit 1
+    sleep 15
+  done
+
+  # Compose v2 plugin: Ubuntu's archive names it docker-compose-v2, Docker's own apt repo names
+  # it docker-compose-plugin. Take whichever this host's sources offer.
+  apt-get -o DPkg::Lock::Timeout=300 install -y --no-install-recommends docker-compose-v2 ||
+    apt-get -o DPkg::Lock::Timeout=300 install -y --no-install-recommends docker-compose-plugin
+
+  touch "$MARKER"
+fi
+
+# User, group and paths are hardcoded upstream in streaming-infra-manager: its compose file
+# bind-mounts these literal paths on both sides. authorized_keys is deliberately not written
+# here -- instance metadata ssh-keys installs the key.
+if ! id -u ${host_user} >/dev/null 2>&1; then
+  useradd --create-home --shell /bin/bash ${host_user}
+fi
+usermod --append --groups docker ${host_user}
+
+install -d -o ${host_user} -g ${host_user} ${manager_repo_path}
+install -d -o ${host_user} -g ${host_user} ${manager_repo_path}/manager
+install -d -o ${host_user} -g ${host_user} ${bee_data_root}
+
+systemctl enable --now docker
+systemctl enable --now prometheus-node-exporter
+
+# Log shipping, rendered from templates/alloy_provision.sh.tftpl and shared with the monitoring
+# host. After docker is up, because it brings a container up.
+${alloy_provision}

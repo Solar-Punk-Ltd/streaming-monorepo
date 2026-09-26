@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# First-boot machine provisioning for a Bee host on Vultr. It installs the runtime one
+# streaming-infra-manager deploys onto over ssh, and creates the paths its compose files
+# bind-mount. It writes no application config: the Bee profiles, port slots, BEE_UPLOADER_NAT_ADDR,
+# BEE_PUBLISHERS, stamps and keys are the manager's, created in its UI on the manager host.
+#
+# Delivered as a Vultr startup script (see hosts.tf on why that rather than user_data) and run
+# once per instance by cloud-init, NOT on every boot. To apply an edit to a host that is already
+# up, re-run the rendered copy in place:
+#
+#   ssh -F ../rendered/vultr/ssh_config <alias> sudo bash -s < ../rendered/vultr/<alias>/provision.sh
+#
+# Everything below is idempotent so that re-run is safe: the apt work is behind a marker file,
+# the user and directory creation are conditional, and the Alloy stack is recreated from the
+# config it has just written.
+set -euo pipefail
+
+# A failed run otherwise produces a host that pings but silently has no docker. /dev/kmsg surfaces
+# in Vultr's web console; cloud-init also keeps the full transcript in
+# /var/log/cloud-init-output.log, which is the first place to look over ssh.
+trap 'echo "devcon: bee host provisioning FAILED at line $LINENO" >/dev/kmsg' ERR
+
+MARKER=/var/lib/devcon-bee-provisioned
+
+if [ ! -f "$MARKER" ]; then
+  export DEBIAN_FRONTEND=noninteractive
+
+  # Lock timeout instead of a sleep: unattended-upgrades holds dpkg on a fresh boot. The retry
+  # covers transient mirror failures; the final failure exits into the ERR trap.
+  for attempt in 1 2 3; do
+    if apt-get -o DPkg::Lock::Timeout=300 update -y &&
+      apt-get -o DPkg::Lock::Timeout=300 install -y --no-install-recommends \
+        docker.io \
+        rsync \
+        jq \
+        prometheus-node-exporter; then
+      break
+    fi
+    [ "$attempt" -lt 3 ] || exit 1
+    sleep 15
+  done
+
+  # Compose v2 plugin: Ubuntu's archive names it docker-compose-v2, Docker's own apt repo names
+  # it docker-compose-plugin. Take whichever this host's sources offer.
+  apt-get -o DPkg::Lock::Timeout=300 install -y --no-install-recommends docker-compose-v2 ||
+    apt-get -o DPkg::Lock::Timeout=300 install -y --no-install-recommends docker-compose-plugin
+
+  touch "$MARKER"
+fi
+
+# User, group and paths are hardcoded upstream in streaming-infra-manager: its compose file
+# bind-mounts these literal paths on both sides and its deploy.sh rsyncs to that literal path,
+# so they are a contract rather than a preference.
+if ! id -u ${host_user} >/dev/null 2>&1; then
+  useradd --create-home --shell /bin/bash ${host_user}
+fi
+usermod --append --groups docker ${host_user}
+
+# Passwordless sudo for the operator user. On the GCP hosts this comes for free from the metadata
+# ssh-keys mechanism (google-sudoers); here it has to be granted, or the re-run path at the top of
+# this file cannot work and root's own login is the only privileged way in. A drop-in in the
+# directory the packaged sudoers already includes, at the mode sudo insists on: it ignores a file
+# here that is group- or world-writable, so the mode is part of the correctness. visudo -c is the
+# syntax check, so a typo here fails this script instead of silently locking sudo.
+install -m 0440 /dev/stdin /etc/sudoers.d/${host_user} <<DEVCON_SUDOERS
+${host_user} ALL=(ALL) NOPASSWD:ALL
+DEVCON_SUDOERS
+visudo -cf /etc/sudoers.d/${host_user} >/dev/null
+
+# Vultr installs the registered ssh key for the default user, which with user_scheme = "root" is
+# root — so unlike the GCP hosts, where instance metadata installs keys directly for solarpunk,
+# solarpunk's roster is written here, from the tfvars (ssh_public_key plus
+# additional_ssh_public_keys: the manager host's deploy key). Written whole rather than appended,
+# so a re-run converges the file to the roster and a key removed from tfvars is removed here too.
+# Root keeps the copy Vultr installed, untouched: it is the recovery path for exactly the case
+# where this step went wrong.
+install -d -m 0700 -o ${host_user} -g ${host_user} /home/${host_user}/.ssh
+install -m 0600 -o ${host_user} -g ${host_user} /dev/stdin /home/${host_user}/.ssh/authorized_keys <<'DEVCON_KEYS'
+${ssh_public_key}
+%{ for key in additional_ssh_public_keys ~}
+${key}
+%{ endfor ~}
+DEVCON_KEYS
+
+# sshd hardening as a drop-in rather than an edit to sshd_config: the packaged file carries the
+# distribution's Include of this directory, so a drop-in survives an unattended-upgrades rewrite
+# of sshd_config that an in-place edit would not. Password and keyboard-interactive auth off
+# because this sshd is on a public address behind nothing but a source allowlist, and Vultr's
+# images ship a generated root password that would otherwise be a guessable credential.
+# PermitRootLogin prohibit-password, not no: root's key is the escape hatch above, and losing it
+# would leave the web console as the only way into a host holding Bee wallets.
+#
+# The file name is load-bearing. sshd keeps the FIRST value it reads for a keyword, and the Include
+# in sshd_config pulls this directory in lexical order — where Vultr's image already has
+# 50-cloud-init.conf saying `PasswordAuthentication yes`. A drop-in sorting after it is read and
+# ignored, and password auth stays on while the file that looks like it turned it off sits right
+# next to it. 10- sorts before 50-, so ours is read first and wins. Verify with `sshd -T`, which
+# prints the effective value, not with the contents of any one file.
+install -d -m 0755 /etc/ssh/sshd_config.d
+cat >/etc/ssh/sshd_config.d/10-devcon.conf <<'DEVCON_SSHD'
+# Written by the Vultr startup script from terraform/vultr/templates/bee_provision.sh.tftpl.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
+DEVCON_SSHD
+
+# Reload rather than restart, so an in-place re-run of this script cannot drop the ssh session
+# that is running it. The unit is `ssh` on Ubuntu (`sshd` is the RHEL name).
+systemctl reload ssh || systemctl reload sshd || true
+
+# ufw off, explicitly. Vultr's Ubuntu image ships it ACTIVE — default deny inbound, tcp/22 the
+# only allowance — which would silently drop the Prometheus scrape of node_exporter on 9100 while
+# the Bee ports, published by docker, sail past it (docker programs its own iptables chains ahead
+# of ufw's). That is the worst of both: a host firewall that blocks the traffic this design wants
+# and not the traffic it would want blocked. The Vultr firewall group in firewall.tf is the
+# control, enforced outside the host: a host-local firewall would put the same policy in a second
+# place with no coordination, so a rule added there would be invisible to `terraform plan` and a
+# rule removed here would look like it had taken effect. One place to read, one place to change.
+# `ufw disable` also stops it starting at boot, and is a no-op when it is already off.
+if command -v ufw >/dev/null 2>&1; then
+  ufw --force disable
+fi
+
+install -d -o ${host_user} -g ${host_user} ${manager_repo_path}
+install -d -o ${host_user} -g ${host_user} ${manager_repo_path}/manager
+
+# The Bee data root: one directory per Bee node under here, each holding that node's wallet, its
+# libp2p key and its chunk store. No separate disk to format, unlike the GCP monitoring host's
+# TSDB volume — a Vultr instance's local disk IS its root filesystem, so this is a directory on it.
+# Which is also why destroying the instance destroys the wallets: there is nothing that outlives
+# it. Back this path up before any -replace.
+install -d -o ${host_user} -g ${host_user} ${bee_data_root}
+
+systemctl enable --now docker
+systemctl enable --now prometheus-node-exporter
+
+# Log shipping, rendered from ../templates/alloy_provision.sh.tftpl and shared verbatim with the
+# GCP root. After docker is up, because it brings a container up. Its closing comment names
+# `google_metadata_script_runner`, which is the GCP re-run path; on this host the equivalent is
+# re-running the rendered provision.sh, as at the top of this file.
+${alloy_provision}

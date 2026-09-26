@@ -1,0 +1,25 @@
+# Rendered by Terraform (terraform/vultr/render.tf) for the streaming-infra-manager host's api
+# container. Mount it at /etc/ssh/ssh_config there — the system-wide file itself, not a drop-in under
+# ssh_config.d: OpenSSH permission-checks ~/.ssh/config AND every file an Include pulls in, and a
+# bind-mounted file keeps the host's uid, so both are refused with "Bad owner or permissions". The
+# top-level system file is the one path read without that check.
+#
+# Every host below is reached directly at a public address, so the host key IS the identity:
+# accept-new records it on first connect and refuses a changed one. After a deliberate rebuild of a
+# host, delete its line from the known_hosts file named here — never disable the check.
+#
+# Each block matches BOTH the alias and the bare address. The manager uses a profile's host value,
+# minus the user@, as the network address it writes into BEE_PUBLISHERS and the SRT URL, so
+# profiles are entered as solarpunk@<ip> and ssh is invoked with the address — which must still
+# pick up the key and the known_hosts pinning below. The alias stays for humans and for
+# `ssh -G`, which swarm-hls-stream uses only on dotless names.
+%{ for host in hosts ~}
+Host ${host.alias} ${host.ip}
+  HostName ${host.ip}
+  User ${user}
+  IdentityFile ${identity_file}
+  IdentitiesOnly yes
+  StrictHostKeyChecking accept-new
+  UserKnownHostsFile ${known_hosts}
+
+%{ endfor ~}
