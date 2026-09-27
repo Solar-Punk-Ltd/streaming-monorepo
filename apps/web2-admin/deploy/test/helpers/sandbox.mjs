@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -100,6 +101,16 @@ function writeTree(base, files) {
 
 export function removeSandboxes() {
   for (const dir of sandboxes.splice(0)) rmSync(dir, { recursive: true, force: true });
+}
+
+/**
+ * The command a script printed on a line of its own for the operator to run, as the one capture
+ * group of `pattern`. Fails the test, showing the output, when there is none.
+ */
+export function printedCommand(output, pattern) {
+  const match = pattern.exec(output);
+  assert.ok(match, `no command matching ${pattern} in:\n${output}`);
+  return match[1];
 }
 
 /**
