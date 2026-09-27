@@ -52,9 +52,7 @@ export function ValueField({
   };
 
   return (
-    <Stack direction="row" spacing={1} sx={{
-      alignItems: "flex-start"
-    }}>
+    <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
       <TextField
         label={label}
         value={hidden ? (maskedValue ?? MASK) : value}

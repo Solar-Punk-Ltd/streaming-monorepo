@@ -337,9 +337,7 @@ export function StreamFormPage() {
               a time with its shortcuts — so they sit side by side on a wide
               screen and stack on a narrow one.
             */}
-            <Grid container spacing={3} sx={{
-              alignItems: "flex-start"
-            }}>
+            <Grid container spacing={3} sx={{ alignItems: 'flex-start' }}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <TagsField
                   value={form.tags}
