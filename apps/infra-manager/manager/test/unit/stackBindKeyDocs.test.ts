@@ -36,7 +36,7 @@ function settableBindKeys(sample: string): string[] {
 function stackSample(): string {
   assert.ok(
     existsSync(STACK_SAMPLE),
-    `The stack submodule is missing at ${STACK_SAMPLE}, so the guide would be compared against nothing. Run git submodule update --init.`,
+    `There is no stack sample at ${STACK_SAMPLE}, the monorepo's apps/hls-stream, so the guide would be compared against nothing.`,
   );
   return readFileSync(STACK_SAMPLE, 'utf8');
 }

@@ -23,7 +23,7 @@ streaming-monorepo/
 │   │   ├── e2e/             fault-injection suites, the browser and bench harness
 │   │   └── docs/            bench records, reviews, scale notes
 │   └── infra-manager/       the manager
-│       ├── manager/         the API, and the pinned copy of the stack it builds
+│       ├── manager/         the API, and the script that builds stack versions
 │       ├── frontend/        the manager console
 │       ├── common/          types shared by its API and console
 │       ├── deploy/          its deploy script and what it sets up on a host
@@ -35,8 +35,7 @@ streaming-monorepo/
 ├── tools/                   scripts that serve the whole repository, starting with the move-check kit
 ├── docs/                    how the pieces fit
 ├── .github/                 CODEOWNERS
-├── AGENTS.md, CLAUDE.md     rules for the whole repository, and each app keeps its own pair
-└── .gitmodules              the manager's pinned copy of the stack
+└── AGENTS.md, CLAUDE.md     rules for the whole repository, and each app keeps its own pair
 ```
 
 Two things the tree shows are worth knowing before a first change. There is no `packages/` folder
@@ -100,10 +99,10 @@ repositories. Since 2026-09-27 all work on them happens here, like the rest of t
 repositories they came from are left as they are and get nothing new, and nothing more is pulled
 from them.
 
-The manager still builds the stack from a pinned commit of the stack's own repository, recorded as
-the git submodule at `apps/infra-manager/manager/swarm-hls-stream`, which is what the root
-`.gitmodules` names. A plain clone leaves that folder empty, and only work on the manager needs it
-filled.
+The manager builds the stack it bundles from `apps/hls-stream` of the commit it is deployed from,
+and every version added on its Versions page from this repository: `apps/hls-stream` for a commit
+made since the import, and the whole tree for a commit of the stack's own history from before it.
+A version built from swarm-hls-stream before the move keeps its record of coming from there.
 
 The workflows under `apps/hls-stream/.github` and `apps/infra-manager/.github` are those
 repositories' own. GitHub runs workflows from the root `.github` only, so they do not run here.

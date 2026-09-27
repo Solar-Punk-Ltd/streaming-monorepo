@@ -49,7 +49,7 @@ case "$IMAGE" in
 esac
 
 if [ ! -f "$STACK/engines/srs/srs.conf.template" ] || [ ! -f "$STACK/engines/srs/entrypoint.sh" ]; then
-  echo "FAIL: the stack submodule is not checked out at $STACK (git submodule update --init)" >&2
+  echo "FAIL: there is no stack at $STACK, which is the monorepo's apps/hls-stream" >&2
   exit 2
 fi
 
