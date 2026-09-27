@@ -1,7 +1,10 @@
 // Stands in for the docker CLI in tests. It records each call, then answers with the first reply in the
 // scenario whose `argsInclude` are all among the arguments and whose `cwd`, when given, is the directory it
 // runs in. `{{cwd}}` in a reply's stdout becomes that directory, which is how real compose writes paths.
-import { appendFileSync, createReadStream, readFileSync, realpathSync } from 'node:fs';
+// A reply's `sleepMs` holds the call that long first, which is how a test stands in for a slow build. Its
+// `progress` is written to stderr at once, before that, which is how a test stands in for a build that says where it
+// is and then stalls.
+import { appendFileSync, createReadStream, readFileSync, realpathSync, writeSync } from 'node:fs';
 
 const scenario = JSON.parse(readFileSync(process.env.FAKE_DOCKER_SCENARIO, 'utf8'));
 const args = process.argv.slice(2);
@@ -13,6 +16,9 @@ appendFileSync(process.env.FAKE_DOCKER_LOG, `${JSON.stringify({ args, cwd, env: 
 const reply = scenario.replies.find(
   (candidate) => candidate.argsInclude.every((arg) => args.includes(arg)) && (candidate.cwd === undefined || candidate.cwd === cwd),
 );
+
+if (reply?.progress) writeSync(2, reply.progress);
+if (reply?.sleepMs) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, reply.sleepMs);
 
 if (!reply) {
   process.stderr.write(`fake docker has no reply for: ${args.join(' ')}\n`);

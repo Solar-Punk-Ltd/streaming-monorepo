@@ -20,8 +20,9 @@ commits, though.
 
 They are plain Node scripts with no dependencies and nothing to install. They need Node 22
 or later and git, `compose.mjs` and `image.mjs` need the docker CLI, and `images.mjs` needs
-a Docker daemon to build with. Run them from the
-repository root.
+a Docker daemon to build with, plus whatever its manifest's prepare commands run. For
+[phase-1-images.json](phase-1-images.json) that is corepack, which Node 22 ships. Run them
+from the repository root.
 
 ## What the exit code means
 
@@ -191,31 +192,58 @@ image: match, 9 config fields equal, <n> identical filesystem entries, 1 allowed
 A difference is listed under `changed`, `missing` or `added`, a changed file with each field
 that moved, for example `/backend/Dockerfile  size 1827 -> 1882, sha256 d4ee1d73be62 -> 3c9c2e62348e`.
 
+A `--map old=new` renames a path of the before image, or a folder and everything under it,
+before the two are compared. It is for a folder the after image keeps under another name, such
+as pnpm's folder for a workspace package, whose name carries the package's path in the
+workspace. What is under the folder is still compared entry by entry, under its new name, so a
+file that changed inside it is still listed. The summary counts the renamed entries, and two
+paths sent to one are refused.
+
 ## images.mjs: every image builds the same from its new folder
 
 It reads a manifest of images, each with a before and an after commit, context and
 Dockerfile, and checks all of it first: every commit, context and Dockerfile must be in this
 repository, and no path may leave it. Then it exports each commit once with `git archive`,
 builds both sides from their own export with `--no-cache`, and compares each pair with
-`image.mjs`, handing it the manifest's `allow` list.
+`image.mjs`, handing it the manifest's `map` and `allow` lists.
 
 **It proves** that the files a move left in place build, from clean builds, into images that
 run the same way over the same files as the images built before the move.
 
 **It does not prove** anything about a later commit, or that a build is reproducible beyond
 the two builds it made. A base image or a package mirror that changes between the two builds
-shows up as a difference, so run it again before believing one.
+shows up as a difference, so run it again before believing one. It builds with each
+Dockerfile's default build arguments, not the ones a deploy passes, so it cannot see a defect
+in those. And when both sides of a pair build from identical files, a match says only that the
+image builds the same twice. Whether the files moved intact is then a question for `tree.mjs`.
+
+A side may carry `prepare`, commands to run in its context before it is built, each written
+as a list of its words and run without a shell. It is for an image whose Dockerfile copies
+something a deploy script builds first. The uploader's image copies
+`packages/stream-uploader/dist/`, which is built and never committed, so both of its sides
+install from their lockfile and build the uploader first. A side that prepares builds from an
+export of its own, so what it writes reaches no other image. Both sides are prepared before
+either is built, and a failed prepare is reported with its output, like a failed build.
 
 `--plan` prints the builds and runs none. `--only` picks images by name. `--keep` leaves the
 exports on disk, and `--remove-images` removes each pair and the build cache once the pair is
-compared, which is what a CI runner needs. A failed build is reported with its output, and the
-other images are still checked. It exits 0 when every image matches, 1 when one differs and 2
-when one could not be checked.
+compared, which is what a CI runner needs. What each build and prepare command prints goes to
+stderr as it comes, so a build that stalls shows where it stopped rather than nothing at all.
+A failed build is reported with its output, and the other images are still checked. It exits
+0 when every image matches, 1 when one differs and 2 when one could not be checked.
 
 [phase-1-images.json](phase-1-images.json) names the eight images of the admin, the stack and
 the manager, each built from its project's last commit before the move and from the merge
-that brought the project in. The `compare-images` workflow at the root runs it, started by
-hand from the Actions tab, and puts the report on the run's page.
+that brought the project in. Six of them, the stack's four and the manager's two, build from
+folders identical to the trees they were imported from, so their matches show only that
+those images build the same twice. The admin's two build from files the move edited. What
+they differ in is allowed by name, with the reason in the manifest, and the folder pnpm
+renamed for the moved common package is compared entry by entry through `map`. The one
+defect of the move known to have reached an image, the client's build stamp, which the
+stack's scripts looked up from the repository root rather than their own folder until #21,
+would have matched here, because the stamp is a build argument the deploy passes. The
+`compare-images` workflow at the root runs it, started by hand from the Actions tab, and puts
+the report on the run's page.
 
 ```bash
 node tools/move-check/images.mjs --manifest tools/move-check/phase-1-images.json --plan
