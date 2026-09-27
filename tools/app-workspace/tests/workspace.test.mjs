@@ -92,6 +92,16 @@ saveExact: true
     assert.equal(cut.includes('packages:\n  - server\n  - common\n  - "!server/fixtures"\n\n'), true);
   });
 
+  it('refuses a build permission of its packages that is neither true nor false, such as the placeholder pnpm writes', () => {
+    const root = ROOT_WORKSPACE.replace('  fsevents: false\n', '  fsevents: set this to true or false\n');
+
+    assert.throws(
+      () => cutWorkspace(root, ALPHA),
+      (error) => error instanceof Refusal && /fsevents/.test(error.message) && /set this to true or false/.test(error.message),
+    );
+    assert.doesNotThrow(() => cutWorkspace(root, BETA), 'beta has no fsevents, so the placeholder is not its to refuse');
+  });
+
   it('refuses a glob that reaches into the app from outside its folder', () => {
     const root = ROOT_WORKSPACE.replace('  - tools/*\n', '  - tools/*\n  - apps/*/server\n');
 
