@@ -43,7 +43,9 @@ export function PoolSettings(props: WizardStepProps) {
               <TableCell sx={{ fontFamily: MONO_STACK }}>
                 {poolName}-{rung.name}
                 {index === 0 && (
-                  <Typography component="span" variant="caption" color="text.secondary">
+                  <Typography component="span" variant="caption" sx={{
+                    color: "text.secondary"
+                  }}>
                     {' '}
                     coordinator
                   </Typography>

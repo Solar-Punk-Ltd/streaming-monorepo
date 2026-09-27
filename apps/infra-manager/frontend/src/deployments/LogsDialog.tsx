@@ -151,10 +151,11 @@ export function LogsDialog({
           <Stack
             direction="row"
             spacing={1}
-            alignItems="center"
-            flexWrap="wrap"
             useFlexGap
-          >
+            sx={{
+              alignItems: "center",
+              flexWrap: "wrap"
+            }}>
             {pane === 'logs' ? (
               <>
                 <TextField
@@ -172,12 +173,16 @@ export function LogsDialog({
                     </MenuItem>
                   ))}
                 </TextField>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>
                   Last {LOG_LINES} lines
                 </Typography>
               </>
             ) : (
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>
                 The config {engine ? ENGINE_LABEL[engine] : 'engine'} generated when it started. This
                 is what actually applied.
               </Typography>
@@ -207,7 +212,11 @@ export function LogsDialog({
             }}
           >
             {loading && text === null ? (
-              <Stack alignItems="center" sx={{ py: 8 }}>
+              <Stack
+                sx={{
+                  alignItems: "center",
+                  py: 8
+                }}>
                 <CircularProgress />
               </Stack>
             ) : text ? (

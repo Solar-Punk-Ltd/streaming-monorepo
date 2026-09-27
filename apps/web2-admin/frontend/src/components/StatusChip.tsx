@@ -30,7 +30,7 @@ export function StatusChip({
   publishError?: string | null;
 }) {
   return (
-    <Stack direction="row" spacing={0.75} alignItems="center">
+    <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
       <Chip
         size="small"
         label={STATUS_LABEL[status]}

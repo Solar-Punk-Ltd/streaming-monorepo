@@ -90,7 +90,7 @@ export function NotesCard({
       {draft === null ? (
         <Typography
           variant="body2"
-          color={notes ? 'text.primary' : 'text.secondary'}
+          sx={{ color: notes ? 'text.primary' : 'text.secondary' }}
         >
           {notes || 'No notes yet. Add one under Edit to say what this is for.'}
         </Typography>

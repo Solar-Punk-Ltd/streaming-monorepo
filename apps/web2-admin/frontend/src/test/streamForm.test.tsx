@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STREAM_LIMITS } from '@streaming-monorepo/web2-admin-common';
 
@@ -43,8 +43,17 @@ function renderEditForm(id: string) {
 const submit = () =>
   fireEvent.click(screen.getByRole('button', { name: 'Create Stream' }));
 
+/**
+ * The date picker's label names both its group of day, month and year sections
+ * and the input that holds the whole value. A lookup by that label asks for the
+ * input.
+ */
+const FORM_CONTROL = { selector: 'input, textarea' };
+
 const typeIn = (label: string, value: string) =>
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  fireEvent.change(screen.getByLabelText(label, FORM_CONTROL), {
+    target: { value },
+  });
 
 /** A File whose reported size is `size`, without allocating that many bytes. */
 function fakeImage(name: string, size: number, type = 'image/png'): File {
@@ -258,7 +267,9 @@ describe('StreamFormPage validation', () => {
 
     renderEditForm('live-id');
 
-    expect(await screen.findByLabelText('Scheduled Date *')).toBeDisabled();
+    expect(
+      await screen.findByLabelText('Scheduled Date *', FORM_CONTROL),
+    ).toBeDisabled();
     expect(screen.getByLabelText('Scheduled Time *')).toBeDisabled();
     expect(screen.getByText(SCHEDULE_LOCKED)).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Audio Only' })).toBeDisabled();
@@ -289,7 +300,9 @@ describe('StreamFormPage validation', () => {
 
     renderEditForm('live-blank');
 
-    expect(await screen.findByLabelText('Scheduled Date *')).toBeEnabled();
+    expect(
+      await screen.findByLabelText('Scheduled Date *', FORM_CONTROL),
+    ).toBeEnabled();
     expect(screen.getByLabelText('Scheduled Time *')).toBeEnabled();
     expect(screen.queryByText(SCHEDULE_LOCKED)).not.toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Audio Only' })).toBeDisabled();
@@ -306,7 +319,9 @@ describe('StreamFormPage validation', () => {
 
     renderEditForm('pub-2');
 
-    expect(await screen.findByLabelText('Scheduled Date *')).toBeEnabled();
+    expect(
+      await screen.findByLabelText('Scheduled Date *', FORM_CONTROL),
+    ).toBeEnabled();
     expect(screen.getByLabelText('Scheduled Time *')).toBeEnabled();
     expect(screen.queryByText(SCHEDULE_LOCKED)).not.toBeInTheDocument();
   });
@@ -544,7 +559,7 @@ describe('ScheduleField', () => {
   };
 
   const dateField = () =>
-    screen.getByLabelText<HTMLInputElement>('Scheduled Date *');
+    screen.getByLabelText<HTMLInputElement>('Scheduled Date *', FORM_CONTROL);
   const timeField = () =>
     screen.getByLabelText<HTMLInputElement>('Scheduled Time *');
 
@@ -709,7 +724,9 @@ describe('StreamFormPage schedule prefill', () => {
     renderCreateForm();
 
     const [day, time] = halves(nextFullHour(new Date()));
-    expect(screen.getByLabelText('Scheduled Date *')).toHaveValue(day);
+    expect(
+      screen.getByLabelText('Scheduled Date *', FORM_CONTROL),
+    ).toHaveValue(day);
     expect(screen.getByLabelText('Scheduled Time *')).toHaveValue(time);
   });
 
@@ -728,7 +745,9 @@ describe('StreamFormPage schedule prefill', () => {
     // Whatever the machine's zone, the field shows that instant in it — the
     // prefill must not have overwritten a stored time.
     const [day, time] = halves(new Date(iso));
-    expect(await screen.findByLabelText('Scheduled Date *')).toHaveValue(day);
+    expect(
+      await screen.findByLabelText('Scheduled Date *', FORM_CONTROL),
+    ).toHaveValue(day);
     expect(screen.getByLabelText('Scheduled Time *')).toHaveValue(time);
   });
 });

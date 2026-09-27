@@ -142,7 +142,9 @@ export function EditDeploymentDrawer({
             value={edits.stampId}
             onChange={(event) => update({ stampId: event.target.value })}
             placeholder="64 hex characters"
-            inputProps={{ style: { fontFamily: MONO_STACK } }}
+            slotProps={{
+              htmlInput: { style: { fontFamily: MONO_STACK } }
+            }}
           />
         </FormField>
       )}
@@ -159,7 +161,9 @@ export function EditDeploymentDrawer({
             value={edits.beeUrl}
             onChange={(event) => update({ beeUrl: event.target.value })}
             placeholder="http://10.0.0.7:1633"
-            inputProps={{ style: { fontFamily: MONO_STACK } }}
+            slotProps={{
+              htmlInput: { style: { fontFamily: MONO_STACK } }
+            }}
           />
         </FormField>
       )}
@@ -192,7 +196,9 @@ export function EditDeploymentDrawer({
             minRows={3}
             value={edits.poolString}
             onChange={(event) => update({ poolString: event.target.value })}
-            inputProps={{ style: { fontFamily: MONO_STACK } }}
+            slotProps={{
+              htmlInput: { style: { fontFamily: MONO_STACK } }
+            }}
           />
         </FormField>
       )}
@@ -204,7 +210,13 @@ export function EditDeploymentDrawer({
           error={addressProblem(edits.feedOwner)}
           hint={
             streams.length > 0 ? (
-              <Stack direction="row" spacing={0.5} flexWrap="wrap" alignItems="center">
+              <Stack
+                direction="row"
+                spacing={0.5}
+                sx={{
+                  flexWrap: "wrap",
+                  alignItems: "center"
+                }}>
                 <span>On this manager:</span>
                 {streams.map((stream) => (
                   <Button
@@ -227,7 +239,9 @@ export function EditDeploymentDrawer({
             value={edits.feedOwner}
             onChange={(event) => update({ feedOwner: event.target.value })}
             placeholder="0x plus 40 hex characters"
-            inputProps={{ style: { fontFamily: MONO_STACK } }}
+            slotProps={{
+              htmlInput: { style: { fontFamily: MONO_STACK } }
+            }}
           />
         </FormField>
       )}
@@ -242,7 +256,9 @@ export function EditDeploymentDrawer({
           error={notesProblem(edits.notes) !== null}
           value={edits.notes}
           onChange={(event) => update({ notes: event.target.value })}
-          inputProps={{ 'aria-describedby': messageIdFor('edit-notes') }}
+          slotProps={{
+            htmlInput: { 'aria-describedby': messageIdFor('edit-notes') }
+          }}
         />
       </FormField>
     </EditDrawerFrame>

@@ -55,7 +55,14 @@ export function AdminLinkTest({
 
   return (
     <Stack spacing={1} data-admin-link-test sx={{ minWidth: 0 }}>
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        sx={{
+          alignItems: "center",
+          flexWrap: "wrap"
+        }}>
         <Button
           size="small"
           variant="outlined"
@@ -66,16 +73,32 @@ export function AdminLinkTest({
           {testing ? 'Testing' : 'Test connection'}
         </Button>
         {run === null && blockedReason && (
-          <Typography variant="caption" color="text.secondary" sx={{ flex: '1 1 12rem', overflowWrap: 'anywhere' }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              flex: '1 1 12rem',
+              overflowWrap: 'anywhere'
+            }}>
             {blockedReason}
           </Typography>
         )}
       </Stack>
-      <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          overflowWrap: 'anywhere'
+        }}>
         {ADMIN_LINK_TEST_REACH}
       </Typography>
       {note && (
-        <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            overflowWrap: 'anywhere'
+          }}>
           {note}
         </Typography>
       )}

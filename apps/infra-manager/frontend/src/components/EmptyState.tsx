@@ -15,12 +15,25 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <Stack spacing={1.5} alignItems="center" sx={{ px: 3, py: 5 }}>
-      <Typography variant="body2" color="text.secondary">
+    <Stack
+      spacing={1.5}
+      sx={{
+        alignItems: "center",
+        px: 3,
+        py: 5
+      }}>
+      <Typography variant="body2" sx={{
+        color: "text.secondary"
+      }}>
         {title}
       </Typography>
       {hint && (
-        <Typography variant="caption" color="text.secondary" textAlign="center">
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            textAlign: "center"
+          }}>
           {hint}
         </Typography>
       )}

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { BEE_BRIDGE_CHECKS, CHEQUEBOOK_REFUSAL_CAUSES, chequebookPreflightSentence, chequebookRefusalSentence } from '@streaming-infra-manager/common';
 import { createMockChequebookJournal } from '../dev/mock-chequebook.mjs';
-import { buttonWithText, clickWhenEnabled, createProtocolClient, fillWhenPresent, launchChrome, pageShows, protocolTimeoutFor, readWhenPresent, throttleCpu, waitFor } from './support/chrome.mjs';
+import { buttonWithText, clickWhenEnabled, createProtocolClient, fillWhenPresent, launchChrome, pageShows, protocolTimeoutFor, readWhenPresent, reloadDocument, throttleCpu, waitFor } from './support/chrome.mjs';
 import { json, launchTransferFixture } from './support/transfer-fixture.mjs';
 
 const instanceId = '11111111-1111-4111-8111-111111111111';
@@ -167,7 +167,7 @@ test('actual dialog restores an unknown saved intent after balance failure, oppo
   await click(browser, 'Withdraw');
   await visible(browser, 'Saved fill to chequebook');
   await visible(browser, id);
-  await browser.call('Page.reload');
+  await reloadDocument(browser);
   await visible(browser, 'Storage and funding');
   await click(browser, 'Saved transfer');
   await visible(browser, id);

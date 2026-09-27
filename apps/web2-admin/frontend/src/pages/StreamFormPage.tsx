@@ -1,12 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import {
   Alert,
   Box,
   Button,
   CircularProgress,
   Divider,
-  Grid2 as Grid,
+  Grid,
   Paper,
   Stack,
   Typography,
@@ -337,7 +337,7 @@ export function StreamFormPage() {
               a time with its shortcuts — so they sit side by side on a wide
               screen and stack on a narrow one.
             */}
-            <Grid container spacing={3} alignItems="flex-start">
+            <Grid container spacing={3} sx={{ alignItems: 'flex-start' }}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <TagsField
                   value={form.tags}

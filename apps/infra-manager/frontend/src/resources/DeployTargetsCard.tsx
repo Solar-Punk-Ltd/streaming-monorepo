@@ -70,19 +70,30 @@ export function DeployTargetsCard() {
             The initial reservation inventory is incomplete. Verify any unreachable targets, then retry. New deployments wait until this check completes.
           </Alert>
         )}
-        {!data && !error && <Typography color="text.secondary">Loading targets…</Typography>}
+        {!data && !error && <Typography sx={{
+          color: "text.secondary"
+        }}>Loading targets…</Typography>}
         {data?.targets.map((target) => (
-          <Stack key={target.alias} direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+          <Stack key={target.alias} direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{
+            alignItems: { sm: 'center' }
+          }}>
             <Stack sx={{ flex: 1, minWidth: 0 }}>
               <Typography>{target.alias}</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                  overflowWrap: 'anywhere'
+                }}>
                 Docker daemon: {target.daemonId ?? 'not established'}
               </Typography>
-              <Typography variant="caption" color={target.verifiedAt ? 'text.secondary' : 'error.main'}>
+              <Typography variant="caption" sx={{ color: target.verifiedAt ? 'text.secondary' : 'error.main' }}>
                 {target.verifiedAt ? `Verified ${formatDateTime(target.verifiedAt)}` : 'Not verified'}
               </Typography>
-              {target.lastError && <Typography variant="body2" color="error.main">{target.lastError}</Typography>}
-              <Typography variant="caption" color={target.inventorySeededAt ? 'text.secondary' : 'warning.main'}>
+              {target.lastError && <Typography variant="body2" sx={{
+                color: "error.main"
+              }}>{target.lastError}</Typography>}
+              <Typography variant="caption" sx={{ color: target.inventorySeededAt ? 'text.secondary' : 'warning.main' }}>
                 {target.inventorySeededAt ? `Ports inventoried ${formatDateTime(target.inventorySeededAt)}` : 'Port inventory incomplete. Verify this target to scan it.'}
               </Typography>
             </Stack>

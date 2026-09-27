@@ -1,5 +1,5 @@
 import { useState, type MouseEvent } from 'react';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router';
 import {
   AppBar,
   Box,

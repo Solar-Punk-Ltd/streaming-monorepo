@@ -52,12 +52,20 @@ export function FormField({
   const message = error || hint || null;
   return (
     <Box>
-      <Stack direction="row" spacing={0.75} alignItems="baseline" sx={{ mb: 0.75 }}>
+      <Stack
+        direction="row"
+        spacing={0.75}
+        sx={{
+          alignItems: "baseline",
+          mb: 0.75
+        }}>
         <Typography variant="subtitle2" component="label" htmlFor={htmlFor} id={labelId}>
           {label}
         </Typography>
         {aside && (
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             {aside}
           </Typography>
         )}
@@ -71,9 +79,8 @@ export function FormField({
         <Typography
           id={messageId}
           variant="caption"
-          color={error ? 'warning.main' : 'text.secondary'}
           aria-live="polite"
-          sx={{ mt: message === null ? 0 : 0.75, display: 'block' }}
+          sx={{ color: error ? 'warning.main' : 'text.secondary', mt: message === null ? 0 : 0.75, display: 'block' }}
         >
           {message}
         </Typography>

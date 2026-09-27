@@ -59,7 +59,9 @@ function Detail({ accountId, detailKey }: { accountId: number; detailKey: Transf
   return <Stack spacing={2}>
     <Link href={routes.transfers}>Back to transfer history</Link>
     <Typography variant="h5">Saved transfer</Typography>
-    <Typography color="text.secondary">Recorded identity and transaction evidence. Reading this page does not send a transfer or check the chain.</Typography>
+    <Typography sx={{
+      color: "text.secondary"
+    }}>Recorded identity and transaction evidence. Reading this page does not send a transfer or check the chain.</Typography>
     <TransferValue label={detailKey.kind === 'request' ? 'Request ID' : 'Operation ID'} value={detailKey.id} copy />
     {notice && (state.status !== 'ready' || !state.value.detail) && <Alert severity={notice.severity}>{notice.message}</Alert>}
     {state.status === 'loading' && <Typography role="status">Reading saved evidence…</Typography>}

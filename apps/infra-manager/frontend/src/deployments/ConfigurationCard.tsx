@@ -80,7 +80,9 @@ export function ConfigurationCard({
     entries.push({
       key: 'SRT passphrase',
       value: profile.has_srt_passphrase ? (
-        <Stack direction="row" spacing={0.5} alignItems="center">
+        <Stack direction="row" spacing={0.5} sx={{
+          alignItems: "center"
+        }}>
           <Mono>{HIDDEN}</Mono>
           <span>own passphrase</span>
           {/* Asked for on the click. The card is told one is stored, never which. */}
@@ -101,7 +103,13 @@ export function ConfigurationCard({
     entries.push({
       key: 'Stream key',
       value: profile.public_key ? (
-        <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
+        <Stack
+          direction="row"
+          spacing={0.5}
+          sx={{
+            alignItems: "center",
+            flexWrap: "wrap"
+          }}>
           <Mono>{HIDDEN}</Mono>
           <span>address</span>
           <Mono>{shortHex(profile.public_key)}</Mono>
@@ -219,7 +227,9 @@ function Mono({ children }: { children: ReactNode }) {
 
 function Muted({ children }: { children: ReactNode }) {
   return (
-    <Typography component="span" variant="body2" color="text.secondary">
+    <Typography component="span" variant="body2" sx={{
+      color: "text.secondary"
+    }}>
       {children}
     </Typography>
   );
@@ -229,7 +239,9 @@ function Fixed({ children }: { children: ReactNode }) {
   return (
     <>
       {children}{' '}
-      <Typography component="span" variant="caption" color="text.secondary">
+      <Typography component="span" variant="caption" sx={{
+        color: "text.secondary"
+      }}>
         (fixed)
       </Typography>
     </>
