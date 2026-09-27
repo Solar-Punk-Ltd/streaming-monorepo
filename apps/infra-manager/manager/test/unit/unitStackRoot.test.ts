@@ -5,7 +5,7 @@
  * deploys, and envUtils reads that root out of SHLS_ROOT once, when it is
  * first imported. So a unit file that sets the variable after an import that
  * reaches envUtils, directly or through a harness, silently deploys into
- * manager/swarm-hls-stream and leaves a .env.<profile> there, merged from the
+ * apps/hls-stream and leaves a .env.<profile> there, merged from the
  * developer's own .env and mode 0600. That happened, it was invisible for the
  * length of the slice, and remembering to import dynamically is not a control.
  *
@@ -15,9 +15,7 @@
  */
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
-import { fileURLToPath } from 'node:url';
 
 import {
   FORWARDED_SIGNALS,
@@ -32,9 +30,8 @@ import {
 } from './run.mjs';
 
 import { BUNDLED_STACK_ROOT } from '../../src/utils/envUtils.js';
+import { STACK_CHECKOUT as shippedCheckout } from '../support/stackCheckout.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const shippedCheckout = resolve(here, '..', '..', 'swarm-hls-stream');
 const throughTheRunner = `Run the unit suite through pnpm test, which gives it a stack root of its own.`;
 
 describe('the stack root this suite deploys into', () => {
@@ -46,7 +43,7 @@ describe('the stack root this suite deploys into', () => {
     assert.notEqual(
       BUNDLED_STACK_ROOT,
       shippedCheckout,
-      `This run deploys into ${shippedCheckout}, the real submodule. ${throughTheRunner}`,
+      `This run deploys into ${shippedCheckout}, the real stack. ${throughTheRunner}`,
     );
   });
 });

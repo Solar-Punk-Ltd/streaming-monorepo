@@ -26,7 +26,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-STACK="$ROOT/manager/swarm-hls-stream"
+STACK="$(cd "$ROOT/../hls-stream" && pwd)"
 # latest resolved to v0.21.0 on 2026-09-08, and this digest is that manifest list.
 IMAGE="${OME_GATE_IMAGE:-airensoft/ovenmediaengine@sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6}"
 RUN="ome-gate-$$"

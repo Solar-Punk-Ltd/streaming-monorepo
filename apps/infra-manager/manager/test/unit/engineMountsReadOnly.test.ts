@@ -8,8 +8,8 @@
  * deploy of that build would be refused against the inventory record taken of
  * it. Read only is what keeps that from happening, and nothing asserted it.
  *
- * The compose files read here live in the swarm-hls-stream submodule, which
- * moves on its own schedule, at the commit this repository pins:
+ * The compose files read here are the stack's own, in `apps/hls-stream` of the
+ * same monorepo commit:
  * `engines/*` and `deploy/*` docker-compose files, which today are
  * engines/srs/docker-compose.yml, engines/ome/docker-compose.yml and the five
  * under deploy/. A new engine directory is picked up without changing this
@@ -21,9 +21,8 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { describe, it } from 'node:test';
-import { fileURLToPath } from 'node:url';
 
-const STACK = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'swarm-hls-stream');
+import { STACK_CHECKOUT as STACK } from '../support/stackCheckout.js';
 
 /** One bind mount, as the compose file writes it. */
 interface Mount {

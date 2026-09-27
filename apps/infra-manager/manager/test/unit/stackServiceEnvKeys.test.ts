@@ -13,13 +13,12 @@
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { fileURLToPath } from 'node:url';
 
 import { parseStackContract } from '@streaming-infra-manager/common';
 
 import { readServiceEnvKeys, readStackContract } from '../../src/domain/versions/stackContract.js';
 
-const STACK = fileURLToPath(new URL('../../swarm-hls-stream/', import.meta.url));
+import { STACK_CHECKOUT as STACK } from '../support/stackCheckout.js';
 
 const COMPOSE = `x-logging: &default-logging
   driver: 'json-file'

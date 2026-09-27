@@ -10,20 +10,19 @@
  * ports sat here in the two-part form for as long as the branch had already
  * moved them to `bind:published:container`, so only the four Bee lines ever
  * exercised the form the reader has to follow. The comparison is against the
- * submodule at manager/swarm-hls-stream, which is the checkout this manager
- * deploys.
+ * stack in apps/hls-stream, the one this manager deploys from the same commit.
  */
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { stackFile } from '../support/stackCheckout.js';
+
 const FIXTURE_COMPOSE = fileURLToPath(
   new URL('../fixtures/stack/v3/deploy/docker-compose.yml', import.meta.url),
 );
-const BRANCH_COMPOSE = fileURLToPath(
-  new URL('../../swarm-hls-stream/deploy/docker-compose.yml', import.meta.url),
-);
+const BRANCH_COMPOSE = stackFile('deploy', 'docker-compose.yml');
 
 /** A line a compose file carries under a `ports:` key, and where it sits. */
 interface PortLine {

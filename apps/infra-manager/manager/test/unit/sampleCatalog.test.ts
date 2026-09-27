@@ -13,13 +13,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { fileURLToPath } from 'node:url';
 
 import { STACK_SETTING_FIELDS } from '@streaming-infra-manager/common';
 
 import { sampleCatalogOf } from '../../src/domain/versions/envSettingsText.js';
 
-const STACK = fileURLToPath(new URL('../../swarm-hls-stream/', import.meta.url));
+import { stackFile } from '../support/stackCheckout.js';
 
 const SAMPLE = `# =====================================================
 # Single .env for the entire monorepo
@@ -79,7 +78,7 @@ describe('the keys a sample declares, by section', () => {
   });
 
   it('reads the bundled sample the way its sections are written', () => {
-    const catalog = sampleCatalogOf(readFileSync(`${STACK}.env.sample`, 'utf8'));
+    const catalog = sampleCatalogOf(readFileSync(stackFile('.env.sample'), 'utf8'));
     const entry = (key: string) => catalog.find((candidate) => candidate.key === key);
 
     assert.equal(entry('BEE_URL')?.section, 'Stream Uploader');
@@ -94,17 +93,15 @@ describe('the keys a sample declares, by section', () => {
 
 /**
  * Keys with a field that the bundled stack does not declare yet, each with the
- * stack pull request that adds it. The second test below fails once the pin
- * moves to a stack that declares one, which is the moment to take it off here.
+ * stack change that adds it. The second test below fails once apps/hls-stream
+ * declares one, which is the moment to take it off here.
  */
-const DECLARED_AFTER_THE_PIN_MOVES: Readonly<Record<string, string>> = {
-  CHEQUEBOOK_RECHECK_MS: 'Solar-Punk-Ltd/swarm-hls-stream#257',
-};
+const DECLARED_AFTER_THE_PIN_MOVES: Readonly<Record<string, string>> = {};
 
 describe('the typed fields against the bundled samples', () => {
   const declared = new Set(
     ['.env.sample', 'engines/srs/.env.sample', 'engines/ome/.env.sample'].flatMap((sample) =>
-      sampleCatalogOf(readFileSync(`${STACK}${sample}`, 'utf8')).map((entry) => entry.key),
+      sampleCatalogOf(readFileSync(stackFile(sample), 'utf8')).map((entry) => entry.key),
     ),
   );
 
