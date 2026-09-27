@@ -413,29 +413,12 @@ init_bee_dirs() {
 
 # --- The stack's lockfile in a checkout of the one workspace ---
 #
-# An image build reads pnpm-lock.yaml and pnpm-workspace.yaml at the root of the stack's folder. Every
-# build tree the manager makes holds them there, and so does a checkout from before the repository
-# became one workspace. A checkout of the one workspace holds them only at its root. A remote deploy
-# from one sends a pair cut out of the root's by tools/app-workspace, into a folder under $TMPDIR that
-# goes when this script exits, however it exits. A local one builds its two images from a copy of the
-# stack's folder that tools/app-workspace/in-copy.mjs makes the same way, while compose runs from here.
-# Nothing is written into the checkout, where a second pnpm-workspace.yaml would make the stack's
-# folder a workspace of its own.
-
-# The folder pnpm would take as the workspace root above the stack, when it holds the root lockfile.
-one_workspace_root() {
-  local dir
-  dir="$(dirname "$ROOT_DIR")"
-  while [ "$dir" != "/" ]; do
-    if [ -f "$dir/pnpm-workspace.yaml" ]; then
-      if [ -f "$dir/pnpm-lock.yaml" ]; then
-        printf '%s\n' "$dir"
-      fi
-      return 0
-    fi
-    dir="$(dirname "$dir")"
-  done
-}
+# See _workspace.sh. A remote deploy from such a checkout sends a pair cut out of the root's into a
+# folder under $TMPDIR that goes when this script exits, however it exits. A local one builds its two
+# images from a copy of the stack's folder that tools/app-workspace/in-copy.mjs makes the same way,
+# while compose runs from here.
+# shellcheck source=_workspace.sh
+source "$SCRIPT_DIR/_workspace.sh"
 
 CUT_DIR=""
 
@@ -444,7 +427,7 @@ cut_stack_lockfile() {
   [ -n "$CUT_DIR" ] && return 0
   CUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/stack-cut.XXXXXX")"
   trap 'rm -rf "$CUT_DIR"' EXIT
-  node "$WORKSPACE_ROOT/tools/app-workspace/cut.mjs" --root "$WORKSPACE_ROOT" --app "$STACK_APP" --out "$CUT_DIR/stack"
+  cut_stack_pair "$WORKSPACE_ROOT" "$STACK_APP" "$CUT_DIR/stack"
 }
 
 # Whether a list of services holds one of the two the stack builds an image for.
@@ -799,7 +782,7 @@ REMOTE_SCRIPT
 WORKSPACE_ROOT=""
 STACK_APP=""
 if [ ! -f "$ROOT_DIR/pnpm-lock.yaml" ]; then
-  WORKSPACE_ROOT="$(one_workspace_root)"
+  WORKSPACE_ROOT="$(one_workspace_root "$ROOT_DIR")"
   STACK_APP="${ROOT_DIR#"$WORKSPACE_ROOT"/}"
 fi
 
