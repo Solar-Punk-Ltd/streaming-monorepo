@@ -189,7 +189,7 @@ describe('finding the artifact a run wrote', () => {
   it('translates the container path onto the host checkout when the reader is the host', () => {
     assert.equal(
       artifactReadPath('/repo/docs/bench/browser-watch-1.json', '/srv/swarm-hls-bench', false),
-      '/opt/streaming/swarm-hls-bench/docs/bench/browser-watch-1.json',
+      '/srv/swarm-hls-bench/docs/bench/browser-watch-1.json',
     );
   });
 
