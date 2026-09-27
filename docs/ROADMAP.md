@@ -194,6 +194,11 @@ and 443 from the internet to the host's tag), the manager's address and deploy
 key in both roots' tfvars in place of the Vps host's, and a re-run of the
 Bee host's provisioning so the new key landed there.
 
+Since then the edge's sources live in `infra/edge/`, and the manager's own
+edge is gone: `infra/edge` is the one edge on every host, a host that runs the
+manager alone included, and the manager's domain goes in its env file like the
+admin's. [hosts.md](hosts.md) has the recipe.
+
 ## Ingest panel and unpublish (2026-09-26)
 
 Decided by the owner after a tester could not go live on the test host on
