@@ -31,10 +31,10 @@ streaming-monorepo/
 ├── infra/                   what hosts need, shared by every project
 │   ├── edge/                the front door of a host
 │   └── terraform/           the pilot's GCP and Vps hosts, and the monitoring stack
-├── packages/                code shared by two or more apps, none yet
+├── packages/                code shared by two or more apps: contracts, db-migrate, web-auth
 ├── tools/                   scripts that serve the whole repository: the boundary check and the app cut
 ├── docs/                    how the pieces fit
-├── .github/                 CODEOWNERS
+├── .github/                 CODEOWNERS and every workflow
 ├── package.json             the one workspace: the pnpm it runs, Nx, and the commands over every app
 ├── nx.json                  how Nx runs the apps' own scripts: order, cache, no cloud
 ├── pnpm-workspace.yaml      every app's projects, the security overrides, the workspace settings
@@ -42,13 +42,15 @@ streaming-monorepo/
 └── AGENTS.md, CLAUDE.md     rules for the whole repository, and each app keeps its own pair
 ```
 
-Two things the tree shows are worth knowing before a first change. There is no `packages/` folder
-yet, because no code is shared yet: what crosses between projects today is copied on each side,
-and shared packages come one contract at a time. And the repository is one pnpm workspace: the
-root `package.json` pins its pnpm, the root `pnpm-workspace.yaml` lists every app's projects under
-the app's own folder and holds the security overrides, and one lockfile covers all three apps.
-Each app keeps its own `package.json` and its own Node. The
-[README](../README.md#working-in-an-app) says how to work in one.
+Two things the tree shows are worth knowing before a first change. Code that two apps share lives
+once, in `packages/`: `contracts` holds the shapes the apps send each other, one schema each,
+checked by the side that receives it, `web-auth` the sign-in and session code of the two backends,
+and `db-migrate` the migration runner both backends use. Any app may depend on a package, and the
+boundary check refuses a package that depends on an app. And the repository is one pnpm workspace:
+the root `package.json` pins its pnpm, the root `pnpm-workspace.yaml` lists every app's projects
+under the app's own folder and holds the security overrides, and one lockfile covers all three apps.
+Each app keeps its own `package.json` and its own Node. The [README](../README.md#working-in-an-app)
+says how to work in one.
 
 ## The rules
 
@@ -118,9 +120,10 @@ and every version added on its Versions page from this repository: `apps/hls-str
 made since the import, and the whole tree for a commit of the stack's own history from before it.
 A version built from swarm-hls-stream before the move keeps its record of coming from there.
 
-The workflows under `apps/hls-stream/.github` and `apps/infra-manager/.github` are those
-repositories' own. GitHub runs workflows from the root `.github` only, so they do not run here.
-The root `.github` holds `CODEOWNERS`.
+Every workflow lives in the root `.github/workflows`, since GitHub runs workflows from there only:
+one per app (`hls-stream.yml`, `infra-manager.yml` with `infra-manager-docker.yml`,
+`web2-admin.yml`), one for the shared packages (`packages.yml`), one for `tools/` (`tools.yml`),
+and the boundary check (`boundaries.yml`). The root `.github` also holds `CODEOWNERS`.
 
 ## How the history came along
 
