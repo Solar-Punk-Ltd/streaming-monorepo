@@ -176,6 +176,12 @@ describe('the admin API client, looking a draft up by ingest id', () => {
     });
   });
 
+  it('takes an audio stream as it takes a video one', async () => {
+    await withAdmin(always(200, { ...DRAFT, mediaType: 'audio' }), async ({ client }) => {
+      assert.equal((await client.lookupByIngestId(STREAM_ID))?.mediaType, 'audio');
+    });
+  });
+
   it('throws on a media type the contract does not name', async () => {
     await withAdmin(always(200, { ...DRAFT, mediaType: 'hologram' }), async ({ client }) => {
       await assert.rejects(() => client.lookupByIngestId(STREAM_ID), /not a stream/);
