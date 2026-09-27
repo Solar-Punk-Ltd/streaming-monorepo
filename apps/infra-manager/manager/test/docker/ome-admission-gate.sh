@@ -10,7 +10,7 @@
 # uploader listens on, sign the admission request with the secret the
 # entrypoint substitutes, and publish a media playlist on the port and path
 # the uploader polls. That is the contract the manager's OME config check
-# protects. T22 verifies Swarm delivery on top of this later.
+# protects. The live acceptance run verifies Swarm delivery on top of this.
 #
 # Usage, from the repository root, with the stack submodule checked out:
 #   bash manager/test/docker/ome-admission-gate.sh

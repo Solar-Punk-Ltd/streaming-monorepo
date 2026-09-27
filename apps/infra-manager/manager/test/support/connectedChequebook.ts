@@ -214,7 +214,7 @@ export async function startConnectedChequebook(
       PUBLISHED_BEE_PORT,
     ]);
 
-    const directory = await mkdtemp(join(tmpdir(), 't09-connected-'));
+    const directory = await mkdtemp(join(tmpdir(), 'connected-'));
     teardown.push(() => rm(directory, { recursive: true, force: true }));
     const socketPath = join(directory, 'docker.sock');
     const fixtureCleanups: (() => void | Promise<void>)[] = [];

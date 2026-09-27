@@ -4,7 +4,7 @@
  *
  * Unit test, no database and no Docker. `pnpm test` in manager/.
  *
- * the owner okayed a warning when the settings a deployment would get now differ
+ * The page warns when the settings a deployment would get now differ
  * from what its running copy was started with (2026-09-25). A record therefore
  * has to answer "is this the same value" for every key its container's deploy
  * decided, secrets included, without holding a secret. It keeps a plain value

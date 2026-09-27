@@ -108,7 +108,7 @@ describe('a deploy attempt', () => {
     assert.equal(harness.attempts.rows[0]?.state, 'released');
   });
 
-  // the owner ruled on 2026-09-11: Compose leaves a container alone only when it has
+  // Since 2026-09-11 the rule is that Compose leaves a container alone only when it has
   // nothing to do with it, which it knows only once its build is over. Before
   // this every Retry of an unchanged deployment ended blocked.
   it('releases a deploy that ended cleanly and left a touched service on the container it had', async () => {
@@ -190,8 +190,8 @@ describe('what an unresolved attempt refuses', () => {
     harness.runner.finish(0, 1);
     await untilStatus(harness, 'stage', 'ERROR');
 
-    const released = await harness.orchestrator.releaseAttempt(harness.attempts.rows[0]!.id, 'owner');
-    assert.equal(released?.releasedBy, 'owner');
+    const released = await harness.orchestrator.releaseAttempt(harness.attempts.rows[0]!.id, 'operator');
+    assert.equal(released?.releasedBy, 'operator');
 
     await harness.orchestrator.startDeploy(row('stage'), undefined);
     assert.equal(harness.attempts.rows.length, 2);
@@ -312,7 +312,7 @@ describe('what the pages are told', () => {
     const told: string[] = [];
     harness.events.subscribe((event) => told.push(event.type));
 
-    await harness.orchestrator.releaseAttempt(harness.attempts.rows[0]!.id, 'owner');
+    await harness.orchestrator.releaseAttempt(harness.attempts.rows[0]!.id, 'operator');
 
     assert.deepEqual(told, ['attempt.changed']);
   });

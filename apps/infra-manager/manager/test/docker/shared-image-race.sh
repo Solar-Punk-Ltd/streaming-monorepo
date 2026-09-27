@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The shared image race (R04), reproduced and closed, in isolation.
+# The shared image race, reproduced and closed, in isolation.
 #
 # Two Compose projects build one image name. Compose creates a container by
 # tag name, so a build that finishes and moves the tag while the other

@@ -33,7 +33,7 @@ describe(
     let operations: PostgresChequebookOperationRepository;
     let profiles: ProfileRepository;
     beforeEach(async () => {
-      schema = `t09_gen_${randomBytes(8).toString('hex')}`;
+      schema = `gen_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 10, options: `-c search_path=${schema}` });

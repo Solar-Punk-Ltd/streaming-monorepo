@@ -48,7 +48,7 @@ describe(
     let schema: string;
     let repository: PostgresChequebookOperationRepository;
     beforeEach(async () => {
-      schema = `t09_target_${randomBytes(8).toString('hex')}`;
+      schema = `target_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({

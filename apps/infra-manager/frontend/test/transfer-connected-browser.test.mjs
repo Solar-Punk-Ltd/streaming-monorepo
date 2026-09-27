@@ -113,7 +113,7 @@ async function signedInBrowser(t, manager, fixture, path) {
     mobile: false,
   });
   // Sign in from a page with no app on it, so the app itself boots with the session already in place.
-  await browser.call('Page.navigate', { url: `${fixture.origin}/dev/t09-intent-tests.html` });
+  await browser.call('Page.navigate', { url: `${fixture.origin}/dev/transfer-intent-tests.html` });
   await waitFor(
     () => browser.evaluate('document.readyState === "complete"'),
     Boolean,
@@ -179,7 +179,7 @@ test(
   async (t) => {
     const manager = await connectedManager(t);
     const fixture = await launchViteFor(t, manager.url);
-    const browser = await signedInBrowser(t, manager, fixture, '/dev/t09-dialog-tests.html');
+    const browser = await signedInBrowser(t, manager, fixture, '/dev/transfer-dialog-tests.html');
     await visible(browser, 'Storage and funding');
     await useSignedInAccount(browser);
     await moveBzz(browser);
@@ -201,7 +201,7 @@ test(
   async (t) => {
     const manager = await connectedManager(t);
     const fixture = await launchViteFor(t, manager.url);
-    const browser = await signedInBrowser(t, manager, fixture, '/dev/t09-dialog-tests.html');
+    const browser = await signedInBrowser(t, manager, fixture, '/dev/transfer-dialog-tests.html');
     await visible(browser, 'Storage and funding');
     const accountId = await useSignedInAccount(browser);
     await manager.dropNextResponse();
@@ -220,7 +220,7 @@ test(
     await visible(pages, 'Submission outcome unknown');
     assert.equal((await manager.counts()).receiptReads, 0, 'recovery asked the chain for no receipt');
 
-    const otherOperator = await signedInBrowser(t, manager, fixture, '/dev/t09-dialog-tests.html');
+    const otherOperator = await signedInBrowser(t, manager, fixture, '/dev/transfer-dialog-tests.html');
     await visible(otherOperator, 'Storage and funding');
     await useSignedInAccount(otherOperator);
     await moveBzz(otherOperator);
@@ -236,7 +236,7 @@ test(
   async (t) => {
     const manager = await connectedManager(t);
     const fixture = await launchViteFor(t, manager.url);
-    const dialog = await signedInBrowser(t, manager, fixture, '/dev/t09-dialog-tests.html');
+    const dialog = await signedInBrowser(t, manager, fixture, '/dev/transfer-dialog-tests.html');
     await visible(dialog, 'Storage and funding');
     const accountId = await useSignedInAccount(dialog);
     await moveBzz(dialog);

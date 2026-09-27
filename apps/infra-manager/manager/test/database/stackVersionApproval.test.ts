@@ -35,7 +35,7 @@ describe(
     let id: number;
 
     beforeEach(async () => {
-      schema = `t08_${randomBytes(8).toString('hex')}`;
+      schema = `stack_version_approval_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, application_name: schema, options: `-c search_path=${schema}` });

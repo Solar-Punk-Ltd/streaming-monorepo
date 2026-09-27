@@ -47,8 +47,8 @@ describe(
     let harness: ReturnType<typeof orchestratorHarness>;
 
     beforeEach(async () => {
-      schema = `t11_capture_${randomBytes(8).toString('hex')}`;
-      root = await mkdtemp(join(tmpdir(), 't11-capture-sql-'));
+      schema = `capture_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'capture-sql-'));
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({

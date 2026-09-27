@@ -11,7 +11,7 @@
  * balance and a silent node are each a logged warning and the uploader starts.
  *
  * That second one has a history. Refusing only on an answer was the rule, then
- * D02 of 2026-09-07 made a silent node a refusal too, and decision D16 of
+ * a change of 2026-09-07 made a silent node a refusal too, and a change of
  * 2026-09-17 put it back. The owner then took it the whole way the same day:
  * this check never refuses a start at all. An operator who wants the uploader up
  * on an unfunded node gets it up, and what that costs is uploads that stall,

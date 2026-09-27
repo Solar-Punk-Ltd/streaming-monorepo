@@ -26,7 +26,7 @@ describe('captured config rollback artifact evidence', () => {
   let artifact: string;
   let version: StackVersionRecord;
   beforeEach(async () => {
-    parent = await mkdtemp(join(tmpdir(), 't01-recovery-descriptor-'));
+    parent = await mkdtemp(join(tmpdir(), 'recovery-descriptor-'));
     artifact = buildDirFor(parent, 'source-stack', A);
     await mkdir(artifact, { recursive: true });
     await writeFile(

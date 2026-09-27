@@ -82,8 +82,8 @@ describe(
     let initial: Profile, selected: StackVersionRecord;
 
     beforeEach(async () => {
-      root = await mkdtemp(join(tmpdir(), 't01-explicit-restore-'));
-      schema = `t01_explicit_restore_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'explicit-restore-'));
+      schema = `explicit_restore_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 10, options: `-c search_path=${schema} -c statement_timeout=10000` });

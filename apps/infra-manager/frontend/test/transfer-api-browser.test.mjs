@@ -59,7 +59,7 @@ function detail() {
 
 async function open(t, fixture) {
   const browser = await launchChrome(t, fixture.origin);
-  await browser.call('Page.navigate', { url: `${fixture.origin}/dev/t09-intent-tests.html` });
+  await browser.call('Page.navigate', { url: `${fixture.origin}/dev/transfer-intent-tests.html` });
   await waitFor(
     () => browser.evaluate("typeof document.querySelector('#run')?.onclick === 'function'"),
     Boolean,
@@ -98,7 +98,7 @@ test('fresh exact evidence bypasses a held older GET before authorizing pointer 
     globalThis.older = apiFetch(${JSON.stringify(exactPath)}).then(response => response.json());
     const { IndexedDbTransferIntentStore } = await import('/src/transfers/transferIntentStore.ts');
     const { TransferController } = await import('/src/transfers/TransferController.ts');
-    globalThis.store = new IndexedDbTransferIntentStore(indexedDB, 't09-http-held');
+    globalThis.store = new IndexedDbTransferIntentStore(indexedDB, 'http-held');
     await store.confirm(intent, null);
     globalThis.controller = new TransferController(store, api);
     controller.setContext(7, { name: intent.profileName, instanceId: intent.profileInstanceId });

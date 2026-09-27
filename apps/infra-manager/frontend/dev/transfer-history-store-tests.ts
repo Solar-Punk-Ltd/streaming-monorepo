@@ -7,7 +7,7 @@ const instanceId = '11111111-1111-4111-8111-111111111111';
 const requestId = (number: number) => `00000000-0000-4000-8000-${number.toString(16).padStart(12, '0')}`;
 
 export async function runHistoryStoreTests() {
-  const name = `t09-history-store-${crypto.randomUUID()}`;
+  const name = `history-store-${crypto.randomUUID()}`;
   const store = new IndexedDbTransferIntentStore(indexedDB, name);
   const pointers = new Map<number, string>();
   try {

@@ -88,8 +88,8 @@ describe(
     let initialOwner: ExpectedDeployOwner;
 
     beforeEach(async () => {
-      schema = `t04a_${randomBytes(8).toString('hex')}`;
-      root = await mkdtemp(join(tmpdir(), 't04a-artifacts-'));
+      schema = `build_snapshot_claim_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'artifacts-'));
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 5, options: `-c search_path=${schema}` });

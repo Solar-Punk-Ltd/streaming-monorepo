@@ -1,7 +1,7 @@
 /**
  * The whole money path, connected, with nothing real behind it.
  *
- * Every other T09 suite replaces one part: the SQL suite fakes the chain and
+ * Every other money suite replaces one part: the SQL suite fakes the chain and
  * the Bee session, the factory test fakes the journal, the browser suites fake
  * the manager. This one signs in over HTTP, goes through the real router into
  * a real PostgreSQL journal, over the owned Docker transport to a synthetic

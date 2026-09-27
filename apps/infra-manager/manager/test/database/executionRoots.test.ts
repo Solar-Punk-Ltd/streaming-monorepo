@@ -80,8 +80,8 @@ describe(
     };
 
     beforeEach(async () => {
-      root = await mkdtemp(join(tmpdir(), 't04b-execution-'));
-      schema = `t04b_execution_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'execution-'));
+      schema = `execution_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 10, options: `-c search_path=${schema} -c statement_timeout=10000` });

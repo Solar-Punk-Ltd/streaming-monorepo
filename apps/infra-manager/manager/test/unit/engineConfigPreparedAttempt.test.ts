@@ -5,7 +5,7 @@ import { after, it } from 'node:test';
 import { allContainerIds } from '../../src/domain/DeployAttemptRepository.js';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 
-const root = throwawayRoot('t01-prepared-attempt-');
+const root = throwawayRoot('prepared-attempt-');
 process.env.SHLS_ROOT = root;
 process.env.BEE_DATA_ROOT = join(root, 'data');
 mkdirSync(join(root, 'engines', 'srs'), { recursive: true });

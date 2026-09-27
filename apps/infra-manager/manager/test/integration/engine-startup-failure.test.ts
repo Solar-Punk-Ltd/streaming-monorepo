@@ -1,5 +1,5 @@
 /**
- * T01: a config file the manager's own check accepts and the stack's startup gate refuses.
+ * A config file the manager's own check accepts and the stack's startup gate refuses.
  *
  * The check asks SRS whether it would read the file. That is a parse, and a
  * parse cannot tell whether the engine will still be up in twenty seconds. So

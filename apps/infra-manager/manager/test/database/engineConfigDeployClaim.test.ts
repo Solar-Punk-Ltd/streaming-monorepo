@@ -47,8 +47,8 @@ describe(
     let selected: StackVersionRecord;
 
     beforeEach(async () => {
-      root = await mkdtemp(join(tmpdir(), 't01-config-claim-'));
-      schema = `t01_config_claim_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'config-claim-'));
+      schema = `config_claim_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 8, options: `-c search_path=${schema} -c statement_timeout=10000` });

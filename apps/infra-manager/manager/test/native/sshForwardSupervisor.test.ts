@@ -35,7 +35,7 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 async function fixture(t: TestContext, mode = 'normal') {
-  const directory = await mkdtemp(join(tmpdir(), 't09-supervisor-'));
+  const directory = await mkdtemp(join(tmpdir(), 'supervisor-'));
   const identity = await nativeForwardPaths.lstat(directory);
   assert.ok(identity);
   const path = `${directory}/docker.sock`;

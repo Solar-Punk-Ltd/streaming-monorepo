@@ -7,7 +7,7 @@
  * time. Behind a buffering proxy that is two faults at once: nothing reaches
  * the browser until the run ends, so the drawer sits there saying nothing, and
  * the proxy gives up on a gap between lines, so the browser is told 504 while
- * the manager goes on and finishes the work. the owner hit the second one starting
+ * the manager goes on and finishes the work. The second one was hit starting
  * an uploader on 2026-09-15.
  *
  * nginx takes the FIRST regex location that matches, so covering these routes

@@ -41,8 +41,8 @@ describe(
     let initial: Profile;
 
     beforeEach(async () => {
-      schema = `t12_claim_${randomBytes(8).toString('hex')}`;
-      root = await mkdtemp(join(tmpdir(), 't12-build-claim-'));
+      schema = `claim_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'build-claim-'));
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 5, options: `-c search_path=${schema} -c statement_timeout=10000` });

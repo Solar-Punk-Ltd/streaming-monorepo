@@ -39,7 +39,7 @@ describe(
     let schema: string;
     let versions: PostgresStackVersionRepository;
     beforeEach(async () => {
-      schema = `t04b_legacy_refresh_${randomBytes(8).toString('hex')}`;
+      schema = `legacy_refresh_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 5, options: `-c search_path=${schema} -c statement_timeout=10000` });

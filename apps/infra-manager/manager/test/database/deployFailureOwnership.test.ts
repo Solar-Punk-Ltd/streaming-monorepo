@@ -9,7 +9,7 @@ import { throwawayRoot } from '../support/throwawayRoot.js';
 import type { Profile } from '../../src/types/index.js';
 import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
-const root = throwawayRoot('t04b-deploy-failure-');
+const root = throwawayRoot('deploy-failure-');
 process.env.SHLS_ROOT = join(root, 'bundled');
 process.env.BEE_DATA_ROOT = join(root, 'data');
 mkdirSync(process.env.SHLS_ROOT);
@@ -55,7 +55,7 @@ describe(
     let initial: Profile;
 
     beforeEach(async () => {
-      schema = `t04b_failure_${randomBytes(8).toString('hex')}`;
+      schema = `failure_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 8, options: `-c search_path=${schema} -c statement_timeout=10000` });

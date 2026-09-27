@@ -69,7 +69,7 @@ describe(
     let saveArrived: Promise<void>;
 
     beforeEach(async () => {
-      schema = `t04b_${randomBytes(8).toString('hex')}`;
+      schema = `version_settings_save_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, application_name: schema, options: `-c search_path=${schema}` });

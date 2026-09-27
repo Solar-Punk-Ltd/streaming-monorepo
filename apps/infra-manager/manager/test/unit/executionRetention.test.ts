@@ -3,7 +3,7 @@
  *
  * Unit test, no database and no Docker. `pnpm test` in manager/.
  *
- * the owner's decision (D11): one copy per deployment, replaced on the next
+ * Retention: one copy per deployment, replaced on the next
  * successful deploy, the previous one kept until that deploy is healthy. So a
  * deploy that fails leaves the tree that last worked in place, and a deploy
  * that succeeds takes it. Anything older than the previous goes as soon as a

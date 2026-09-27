@@ -569,7 +569,7 @@ function browserGone(executable, ended, said) {
 export async function launchChrome(t, origin) {
   const executable = process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
   await access(executable);
-  const profile = await mkdtemp(join(tmpdir(), 't15-chrome-'));
+  const profile = await mkdtemp(join(tmpdir(), 'chrome-'));
   const identity = browserIdentity(process.getuid?.() ?? -1, await passwdFile());
   // mkdtemp makes the profile 0700 and owned by whoever asked for it, so a
   // browser running as somebody else cannot write the very directory it was
