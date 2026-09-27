@@ -1,5 +1,5 @@
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,9 +7,12 @@ import { fileURLToPath } from 'node:url';
 import {
   CheckError,
   EXIT,
+  MAX_COMMAND_OUTPUT_BYTES,
   UsageError,
   countOf,
+  describeCommandFailure,
   parseOptions,
+  parsePrefixMaps,
   requireOption,
   runCommand,
   runGit,
@@ -22,7 +25,8 @@ const USAGE = `Usage: node tools/move-check/images.mjs --manifest <file> [--only
 Builds every image a manifest names twice, once from its before commit and once
 from its after commit, and compares the two with image.mjs. Each side is built
 from a fresh export of its own commit, never from the working tree, and without
-the build cache, so both are real builds.
+the build cache, so both are real builds. What each build prints goes to stderr
+as it comes, so a build that stalls shows where it stopped.
 
 The manifest is JSON:
 
@@ -34,7 +38,15 @@ The manifest is JSON:
 
 A context and a Dockerfile are paths from the root of the repository at that
 commit, and a context of . is the root itself. Each allow is handed to
-image.mjs as --allow. A note is for whoever reads the manifest.
+image.mjs as --allow. An image may also carry "map", a list of renames each
+written <old>=<new>, handed to image.mjs as --map, for a folder the after image
+keeps under another name. A note is for whoever reads the manifest.
+
+A side may also carry "prepare", a list of commands, each a list of its words,
+such as [["corepack", "pnpm", "install", "--frozen-lockfile"]]. They run in the
+side's context, without a shell, before its build, for an image whose
+Dockerfile copies what a deploy script builds first. Such a side builds from an
+export of its own, so what it builds reaches no other image.
 
   --plan   finds every commit, context and Dockerfile, prints the builds and builds nothing
   --only   checks one image of the manifest by name, and can be given more than once
@@ -63,6 +75,7 @@ const COMMIT_ID = /^[0-9a-f]{7,40}$/;
 /** One name of a path: no leading dot or dash, so `..` and anything read as an option are out. */
 const PLAIN_NAME = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 const SHORT_COMMIT_LENGTH = 12;
+const STDOUT_FD = 1;
 
 /**
  * A path from the repository root, as a manifest writes it. The context may be `.`, the root, which is
@@ -77,6 +90,11 @@ function repositoryPath(value, label, { rootAllowed }) {
   return value;
 }
 
+/** A command as a manifest writes it: its words, the program first, none of them empty. */
+function isCommand(value) {
+  return Array.isArray(value) && value.length > 0 && value.every((word) => typeof word === 'string' && word !== '');
+}
+
 function readSide(entry, sideName) {
   const side = entry[sideName];
   const label = `${entry.name} ${sideName}`;
@@ -84,11 +102,31 @@ function readSide(entry, sideName) {
   if (typeof side.commit !== 'string' || !COMMIT_ID.test(side.commit)) {
     throw new CheckError(`${label}: commit is a commit id, got ${JSON.stringify(side.commit)}.`);
   }
+  const prepare = side.prepare ?? [];
+  if (!Array.isArray(prepare) || !prepare.every(isCommand)) {
+    throw new CheckError(`${label}: prepare is a list of commands, each a list of its words, got ${JSON.stringify(side.prepare)}.`);
+  }
   return {
     commit: side.commit,
     context: repositoryPath(side.context, `${label}: context`, { rootAllowed: true }),
     dockerfile: repositoryPath(side.dockerfile, `${label}: dockerfile`, { rootAllowed: false }),
+    prepare,
   };
+}
+
+/** An image's renames, each checked the way image.mjs will read it, so a broken one costs no build time. */
+function readMap(entry) {
+  const map = entry.map ?? [];
+  if (!Array.isArray(map) || !map.every((rename) => typeof rename === 'string')) {
+    throw new CheckError(`${entry.name}: map is a list of <old>=<new> renames, got ${JSON.stringify(entry.map)}.`);
+  }
+  try {
+    parsePrefixMaps(map, `${entry.name}: map`);
+  } catch (error) {
+    if (!(error instanceof UsageError)) throw error;
+    throw new CheckError(error.message);
+  }
+  return map;
 }
 
 function readEntry(entry, index) {
@@ -99,7 +137,7 @@ function readEntry(entry, index) {
   if (!Array.isArray(allow) || !allow.every((path) => typeof path === 'string' && path !== '')) {
     throw new CheckError(`${entry.name}: allow is a list of paths, got ${JSON.stringify(entry.allow)}.`);
   }
-  return { name: entry.name, allow, before: readSide(entry, 'before'), after: readSide(entry, 'after') };
+  return { name: entry.name, allow, map: readMap(entry), before: readSide(entry, 'before'), after: readSide(entry, 'after') };
 }
 
 /** Reads and checks the whole manifest before anything is built, so a mistake costs no build time. */
@@ -165,6 +203,7 @@ function printPlan(images) {
     for (const sideName of SIDES) {
       const side = image[sideName];
       const context = side.context === '' ? '.' : side.context;
+      for (const command of side.prepare) console.log(`  ${sideName} ${side.commit}: in ${context}: ${command.join(' ')}`);
       console.log(`  ${sideName} ${side.commit}: docker build --no-cache --file ${side.dockerfile} --tag ${tagOf(image.name, sideName)} ${context}`);
     }
   }
@@ -176,29 +215,73 @@ function indented(text) {
   return text.trim() === '' ? [] : text.trimEnd().split('\n').map((line) => `  ${line}`);
 }
 
-/** Exports each commit once, into a folder of its own under `root`, with git's own archive of it. */
+/**
+ * Exports each commit once, into a folder of its own under `root`, with git's own archive of it. An `owner`
+ * gets an export of its own, for a side whose prepare commands write into it.
+ */
 function commitExporter(root) {
   const exported = new Map();
-  return (commit) => {
-    if (!exported.has(commit)) {
-      const dir = join(root, commit);
+  return (commit, owner = null) => {
+    const key = owner === null ? commit : `${commit}-${owner}`;
+    if (!exported.has(key)) {
+      const dir = join(root, key);
       const archive = `${dir}.tar`;
       mkdirSync(dir);
       runGit(['archive', '--format=tar', `--output=${archive}`, commit]);
       runCommand('tar', ['-x', '-f', archive, '-C', dir]);
       rmSync(archive);
-      exported.set(commit, dir);
+      exported.set(key, dir);
     }
-    return exported.get(commit);
+    return exported.get(key);
   };
 }
 
-function build(image, sideName, exportOf) {
+/** The export a side builds from: its commit's shared one, or one of its own when it prepares first. */
+function exportFor(image, sideName, exportOf) {
   const side = image[sideName];
-  const dir = exportOf(side.commit);
+  return exportOf(side.commit, side.prepare.length > 0 ? `${image.name}-${sideName}` : null);
+}
+
+/**
+ * Runs a program without a shell and passes what it prints to stderr as it comes, so a build that stalls shows where
+ * it stopped. What it printed is kept as well, for the verdict when it fails.
+ */
+function runStreamed(command, args, { cwd } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const printed = { stdout: [], stderr: [] };
+    for (const name of Object.keys(printed)) {
+      child[name].on('data', (chunk) => {
+        printed[name].push(chunk);
+        process.stderr.write(chunk);
+      });
+    }
+    child.once('error', (error) => reject(new CheckError(describeCommandFailure(command, args, error))));
+    child.once('close', (status, signal) => {
+      if (status === 0) return resolve();
+      const textOf = (name) => Buffer.concat(printed[name]).toString('utf8');
+      return reject(new CheckError(describeCommandFailure(command, args, { status, signal, stdout: textOf('stdout'), stderr: textOf('stderr') })));
+    });
+  });
+}
+
+/** Runs a side's prepare commands in its context, in order, and stops at the first that fails. */
+async function prepare(image, sideName, exportOf) {
+  const side = image[sideName];
+  const dir = exportFor(image, sideName, exportOf);
+  const context = side.context === '' ? dir : join(dir, side.context);
+  for (const [command, ...args] of side.prepare) {
+    process.stderr.write(`${image.name}: preparing ${sideName}: ${[command, ...args].join(' ')}\n`);
+    await runStreamed(command, args, { cwd: context });
+  }
+}
+
+async function build(image, sideName, exportOf) {
+  const side = image[sideName];
+  const dir = exportFor(image, sideName, exportOf);
   process.stderr.write(`${image.name}: building ${sideName} from ${side.commit.slice(0, SHORT_COMMIT_LENGTH)}\n`);
   const context = side.context === '' ? dir : join(dir, side.context);
-  runCommand('docker', ['build', '--no-cache', '--file', join(dir, side.dockerfile), '--tag', tagOf(image.name, sideName), context]);
+  await runStreamed('docker', ['build', '--no-cache', '--file', join(dir, side.dockerfile), '--tag', tagOf(image.name, sideName), context]);
 }
 
 function unchecked(image, reason, detail) {
@@ -206,20 +289,29 @@ function unchecked(image, reason, detail) {
 }
 
 /** Builds both sides of one image, compares them with image.mjs, and says how that went. */
-function checkImage(image, exportOf) {
+async function checkImage(image, exportOf) {
   for (const sideName of SIDES) {
     try {
-      build(image, sideName, exportOf);
+      await prepare(image, sideName, exportOf);
+    } catch (error) {
+      if (!(error instanceof CheckError)) throw error;
+      return unchecked(image, `the ${sideName} prepare failed.`, error.message);
+    }
+  }
+  for (const sideName of SIDES) {
+    try {
+      await build(image, sideName, exportOf);
     } catch (error) {
       if (!(error instanceof CheckError)) throw error;
       return unchecked(image, `the ${sideName} build failed.`, error.message);
     }
   }
+  const renames = image.map.flatMap((rename) => ['--map', rename]);
   const allows = image.allow.flatMap((path) => ['--allow', path]);
   const compared = spawnSync(
     process.execPath,
-    [IMAGE_CHECK, '--before', tagOf(image.name, 'before'), '--after', tagOf(image.name, 'after'), ...allows],
-    { encoding: 'utf8' },
+    [IMAGE_CHECK, '--before', tagOf(image.name, 'before'), '--after', tagOf(image.name, 'after'), ...renames, ...allows],
+    { encoding: 'utf8', maxBuffer: MAX_COMMAND_OUTPUT_BYTES },
   );
   const lines = compared.stdout.trimEnd().split('\n');
   if (compared.status === EXIT.MATCH) return { outcome: 'match', lines: [`${image.name}: ${lines.at(-1)}`] };
@@ -236,7 +328,6 @@ function summarize(outcomes) {
   const parts = [`images: ${outcomes.length} compared`, `${count('match')} match`];
   if (differing > 0) parts.push(`${differing} ${differing === 1 ? 'differs' : 'differ'}`);
   if (notChecked > 0) parts.push(`${notChecked} could not be checked`);
-  for (const result of outcomes) console.log(result.lines.join('\n'));
   console.log(parts.join(', '));
   if (notChecked > 0) return EXIT.CANNOT_CHECK;
   return differing > 0 ? EXIT.DIFFERENCE : EXIT.MATCH;
@@ -258,13 +349,17 @@ function removeImages(image) {
   }
 }
 
-function checkImages(images, { keep, removeImagesAfter }) {
+async function checkImages(images, { keep, removeImagesAfter }) {
   const root = mkdtempSync(join(tmpdir(), 'move-check-images-'));
   const exportOf = commitExporter(root);
   const outcomes = [];
   try {
     for (const image of images) {
-      outcomes.push(checkImage(image, exportOf));
+      const outcome = await checkImage(image, exportOf);
+      outcomes.push(outcome);
+      // Written at once and synchronously: on some platforms a pipe write from console.log waits for the event
+      // loop, which the clean-up and the export of the next pair hold, so a run cut off there would lose this verdict.
+      writeSync(STDOUT_FD, `${outcome.lines.join('\n')}\n`);
       if (removeImagesAfter) removeImages(image);
     }
   } finally {

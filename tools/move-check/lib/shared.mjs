@@ -7,7 +7,7 @@ import { isDeepStrictEqual, parseArgs } from 'node:util';
 export const EXIT = Object.freeze({ MATCH: 0, DIFFERENCE: 1, CANNOT_CHECK: 2, HELP: 0 });
 
 /** Git trees, lockfiles and image exports can be large, far past execFileSync's 1 MiB default. */
-const MAX_COMMAND_OUTPUT_BYTES = 1024 ** 3;
+export const MAX_COMMAND_OUTPUT_BYTES = 1024 ** 3;
 const MAX_QUOTED_OUTPUT_CHARS = 4000;
 
 const PLAIN_JSON_KEY = /^[A-Za-z_$][\w$-]*$/;

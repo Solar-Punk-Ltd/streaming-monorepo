@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
@@ -8,6 +8,13 @@ import { commitAll, makeRepo, makeTempDir, runScript, writeFiles } from './suppo
 import { tarArchive, tarEntry } from './support/tar-builder.mjs';
 
 const IMAGES = 'images.mjs';
+
+/** Enough added files that image.mjs's report runs past the 1 MiB a child process's output gets by default. */
+const LARGE_DIFFERENCE_FILES = 20_000;
+
+/** A build that outlasts the cut-off, and a cut-off long enough for the first pair to be compared under load. */
+const SLOW_BUILD_MS = 60_000;
+const CUT_OFF_MS = 15_000;
 
 const CONFIG = {
   Entrypoint: null,
@@ -174,6 +181,111 @@ describe('images.mjs builds each image from both commits and compares them', () 
     assert.match(result.stdout, /^demo: image: match, .*1 allowed difference$/m);
   });
 
+  it("hands the manifest's map to image.mjs, which compares a folder kept under another name entry by entry", (t) => {
+    const { repo, before, after } = movedProject(t);
+    const beforeFiles = { ...FILES, 'app/old/x.js': { content: 'x\n' } };
+    const afterFiles = { ...FILES, 'app/new/x.js': { content: 'x\n' } };
+    const docker = dockerFor(t, [{ name: 'demo', beforeFiles, afterFiles }]);
+    const image = demoImage(before, after, { map: ['/app/old=/app/new'] });
+
+    const result = runScript(IMAGES, ['--manifest', manifestFile(t, [image])], { cwd: repo, env: docker.env });
+
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /^demo: image: match, 9 config fields equal, 4 identical filesystem entries, 1 entry renamed by --map$/m);
+  });
+
+  it('reports a difference too long for a default output buffer as a difference, with its whole listing', (t) => {
+    const { repo, before, after } = movedProject(t);
+    const afterFiles = { ...FILES };
+    for (let index = 0; index < LARGE_DIFFERENCE_FILES; index += 1) {
+      afterFiles[`app/generated/a-file-with-a-long-enough-name-${String(index).padStart(5, '0')}.js`] = { content: 'x\n' };
+    }
+    const docker = dockerFor(t, [{ name: 'demo', afterFiles }]);
+
+    const result = runScript(IMAGES, ['--manifest', manifestFile(t, [demoImage(before, after)])], { cwd: repo, env: docker.env });
+
+    assert.equal(result.status, 1, `${result.stdout.slice(-2000)}\n${result.stderr.slice(-2000)}`);
+    assert.doesNotMatch(result.stdout, /could not be checked/);
+    assert.match(result.stdout, /a-file-with-a-long-enough-name-19999\.js/, 'the last difference is in the listing');
+  });
+
+  it("runs each side's prepare commands in its context before building it, as a deploy script builds first", (t) => {
+    const { repo, before, after } = movedProject(t);
+    const docker = dockerFor(t, [{ name: 'demo' }]);
+    const prepare = [[process.execPath, '-e', "require('node:fs').writeFileSync('prepared.txt', 'built\\n'); console.log('prepared')"]];
+    const image = demoImage(before, after, {
+      before: { commit: before, context: '.', dockerfile: 'Dockerfile', prepare },
+      after: { commit: after, context: 'apps/demo', dockerfile: 'apps/demo/Dockerfile', prepare },
+    });
+
+    const result = runScript(IMAGES, ['--manifest', manifestFile(t, [image]), '--keep'], { cwd: repo, env: docker.env });
+    keptExports(t, result.stdout);
+
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.equal(builds(docker).length, 2);
+    for (const build of builds(docker)) assert.equal(existsSync(join(build.args.at(-1), 'prepared.txt')), true, build.args.at(-1));
+    assert.equal(result.stderr.match(/^prepared$/gm)?.length, 2, 'what each prepare command printed reached stderr');
+  });
+
+  it('stops with 2 when a prepare command fails, naming the side, and builds nothing of that pair', (t) => {
+    const { repo, before, after } = movedProject(t);
+    const docker = dockerFor(t, [{ name: 'demo' }]);
+    const image = demoImage(before, after, {
+      before: { commit: before, context: '.', dockerfile: 'Dockerfile', prepare: [[process.execPath, '-e', 'process.exit(3)']] },
+    });
+
+    const result = runScript(IMAGES, ['--manifest', manifestFile(t, [image])], { cwd: repo, env: docker.env });
+
+    assert.equal(result.status, 2, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /^demo: could not be checked: the before prepare failed/m);
+    assert.equal(builds(docker).length, 0);
+  });
+
+  it('refuses a prepare that is not a list of commands, before anything is built', (t) => {
+    const { repo, before, after } = movedProject(t);
+    const docker = dockerFor(t, [{ name: 'demo' }]);
+    const image = demoImage(before, after, { before: { commit: before, context: '.', dockerfile: 'Dockerfile', prepare: 'pnpm build' } });
+
+    const result = runScript(IMAGES, ['--manifest', manifestFile(t, [image])], { cwd: repo, env: docker.env });
+
+    assert.equal(result.status, 2);
+    assert.match(result.stderr + result.stdout, /prepare is a list of commands/);
+    assert.equal(builds(docker).length, 0);
+  });
+
+  it('prints each pair as it is compared, so a run cut off later keeps the verdicts it reached', (t) => {
+    const { repo, before, after } = movedProject(t);
+    const docker = dockerFor(t, [{ name: 'demo' }, { name: 'other' }], {
+      first: [{ argsInclude: ['build', 'move-check-images/other:before'], stdout: '', sleepMs: SLOW_BUILD_MS }],
+    });
+    const manifest = manifestFile(t, [demoImage(before, after), demoImage(before, after, { name: 'other' })]);
+    // A run cut off never reaches its own clean-up, so its exports go to a folder the test removes.
+    const scratch = makeTempDir(t, 'move-check-cut-off-');
+
+    const result = runScript(IMAGES, ['--manifest', manifest], { cwd: repo, env: { ...docker.env, TMPDIR: scratch }, timeoutMs: CUT_OFF_MS });
+
+    assert.equal(result.signal, 'SIGTERM', 'the run was cut off during the second pair');
+    assert.match(result.stdout, /^demo: .*match/m, 'the first pair was already reported');
+    assert.ok(readdirSync(scratch).some((name) => name.startsWith('move-check-images-')), 'the cut-off run left its exports where the test removes them');
+  });
+
+  it("passes each build's output to stderr as it comes, so a build that stalls shows where it stopped", (t) => {
+    const { repo, before, after } = movedProject(t);
+    const docker = dockerFor(t, [{ name: 'demo' }], {
+      first: [{ argsInclude: ['build', 'move-check-images/demo:before'], progress: '#5 [2/5] RUN apt-get update\n', sleepMs: SLOW_BUILD_MS }],
+    });
+    const scratch = makeTempDir(t, 'move-check-stall-');
+
+    const result = runScript(IMAGES, ['--manifest', manifestFile(t, [demoImage(before, after)])], {
+      cwd: repo,
+      env: { ...docker.env, TMPDIR: scratch },
+      timeoutMs: CUT_OFF_MS,
+    });
+
+    assert.equal(result.signal, 'SIGTERM', 'the run was cut off while the build stalled');
+    assert.match(result.stderr, /^#5 \[2\/5\] RUN apt-get update$/m, 'the step the build stalled in was already on stderr');
+  });
+
   it('reports an image that differs with what image.mjs found, and exits 1', (t) => {
     const { repo, before, after } = movedProject(t);
     const afterFiles = { ...FILES, 'app/app.js': { content: 'console.log(2)\n' } };
@@ -244,6 +356,23 @@ describe('images.mjs reads its manifest strictly', () => {
       const result = runScript(IMAGES, ['--manifest', manifestFile(t, [entry])], { cwd: repo, env: docker.env });
       assert.equal(result.status, 2, JSON.stringify(entry));
       assert.notEqual(result.stderr, '', JSON.stringify(entry));
+    }
+    assert.equal(builds(docker).length, 0);
+  });
+
+  it('refuses a map that is not a list of <old>=<new> renames, naming the image, before building', (t) => {
+    const { repo, before, after } = movedProject(t);
+    const docker = dockerFor(t, []);
+    const broken = [
+      demoImage(before, after, { map: '/app/old=/app/new' }),
+      demoImage(before, after, { map: ['/app/old'] }),
+      demoImage(before, after, { map: ['/app/old=/app/new', '/app/old=/app/other'] }),
+    ];
+
+    for (const entry of broken) {
+      const result = runScript(IMAGES, ['--manifest', manifestFile(t, [entry])], { cwd: repo, env: docker.env });
+      assert.equal(result.status, 2, JSON.stringify(entry));
+      assert.match(result.stderr, /^demo: map /m, JSON.stringify(entry));
     }
     assert.equal(builds(docker).length, 0);
   });
