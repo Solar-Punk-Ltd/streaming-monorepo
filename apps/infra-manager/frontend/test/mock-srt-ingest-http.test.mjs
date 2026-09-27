@@ -39,7 +39,7 @@ async function request(path, method = 'GET', body) {
       ...(cookie ? { cookie } : {}),
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal: AbortSignal.timeout(2_000),
   });
   assert.ok(response.ok, `${method} ${path} returned ${response.status}`);

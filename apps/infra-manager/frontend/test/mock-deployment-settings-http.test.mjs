@@ -47,7 +47,7 @@ async function call(path, method = 'GET', body) {
       ...(cookie ? { cookie } : {}),
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal: AbortSignal.timeout(5_000),
   });
   if (path === '/auth/login') cookie = response.headers.get('set-cookie').split(';')[0];
