@@ -64,7 +64,8 @@ export class BeeFeedGateway implements FeedGateway {
   async readLatest(): Promise<FeedSnapshot> {
     const owner = this.signer.publicKey().address();
     try {
-      const result = await this.bee.feed.makeReader(this.topic, owner)
+      const result = await this.bee.feed
+        .makeReader(this.topic, owner)
         .downloadPayload();
       const payload = result.payload.toJSON();
       if (!Array.isArray(payload)) {
@@ -93,7 +94,8 @@ export class BeeFeedGateway implements FeedGateway {
     // title is then counted as one unit but takes more than one byte, so a
     // list just under the limit would be rejected by the node.
     const payload = new TextEncoder().encode(JSON.stringify(entries));
-    const result = await this.bee.feed.makeWriter(this.topic, this.signer)
+    const result = await this.bee.feed
+      .makeWriter(this.topic, this.signer)
       .uploadPayload(this.postageBatchId, payload, {
         index: FeedIndex.fromBigInt(BigInt(index)),
       });
