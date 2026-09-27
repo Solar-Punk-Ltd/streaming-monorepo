@@ -440,10 +440,10 @@ publishing fine.
 
 ## Getting Started
 
-From the monorepo root:
+From the stack's folder, `apps/hls-stream`:
 
 ```bash
-# Install and build
+# Install the whole workspace, then build the stack
 pnpm install
 pnpm build
 

@@ -5,8 +5,8 @@ of the repository holds the rules that apply everywhere. This file adds the admi
 
 ## Layout
 
-- A pnpm workspace of its own. Packages are listed in `pnpm-workspace.yaml`: `common`, `backend`
-  and `frontend`. Package scope is `@streaming-monorepo/`. `common` is the API contract. Change
+- Three projects of the repository's one pnpm workspace, listed in the root
+  `pnpm-workspace.yaml`: `common`, `backend` and `frontend`. Install once at the root. Package scope is `@streaming-monorepo/`. `common` is the API contract. Change
   it deliberately and update both sides.
 - `deploy/` holds `deploy.sh` and the production compose file. `deploy/README.md` says how a
   host is set up and deployed to.
@@ -21,7 +21,7 @@ of the repository holds the rules that apply everywhere. This file adds the admi
 
 ## Conventions
 
-- TypeScript, ESM, exact-pinned dependencies (`saveExact: true` in `pnpm-workspace.yaml`).
+- TypeScript, ESM, exact-pinned dependencies (`saveExact: true` in the root `pnpm-workspace.yaml`).
 - Mirror the manager (`../infra-manager`) where a choice is arbitrary, so the two read as one
   team's work.
 - The admin never touches a wallet or a host directly. Anything that does goes through the

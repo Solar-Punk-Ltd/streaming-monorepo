@@ -32,7 +32,7 @@ guard sends the operator to `#/login`.
 ## Running it
 
 ```bash
-pnpm install                                              # from apps/web2-admin
+pnpm install                                              # anywhere in the repository, once for the whole workspace
 pnpm --filter @streaming-monorepo/web2-admin-frontend dev  # http://localhost:5081
 ```
 

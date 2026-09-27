@@ -9,10 +9,10 @@ name: infra-manager
 on:
   pull_request:
     branches: [main, main-v3]
-    paths: ['apps/infra-manager/**', 'apps/hls-stream/**', 'tools/app-workspace/**', '.github/workflows/infra-manager.yml']
+    paths: ['apps/infra-manager/**', 'apps/hls-stream/**', 'tools/app-workspace/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.github/workflows/infra-manager.yml']
   push:
     branches: [main, main-v3]
-    paths: ['apps/infra-manager/**', 'apps/hls-stream/**', 'tools/app-workspace/**', '.github/workflows/infra-manager.yml']
+    paths: ['apps/infra-manager/**', 'apps/hls-stream/**', 'tools/app-workspace/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.github/workflows/infra-manager.yml']
 
 permissions:
   contents: read
@@ -39,20 +39,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
-          package_json_file: apps/infra-manager/package.json
+          package_json_file: package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: apps/infra-manager/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
+        working-directory: .
 
       - name: Build common, which the other packages type against
         run: pnpm --filter @streaming-infra-manager/common build
 
       - name: Type checks, every package, tests included
-        run: pnpm -r typecheck
+        run: pnpm typecheck
 
       - name: Unit tests, common
         run: pnpm --filter @streaming-infra-manager/common test
@@ -137,14 +138,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
-          package_json_file: apps/infra-manager/package.json
+          package_json_file: package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: apps/infra-manager/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
+        working-directory: .
       - name: Build common, which the suites type against
         run: pnpm --filter @streaming-infra-manager/common build
 
@@ -205,14 +207,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
-          package_json_file: apps/infra-manager/package.json
+          package_json_file: package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: apps/infra-manager/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
+        working-directory: .
       - name: Build common, which the app and the mock manager both type against
         run: pnpm --filter @streaming-infra-manager/common build
 

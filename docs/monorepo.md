@@ -35,15 +35,19 @@ streaming-monorepo/
 ├── tools/                   scripts that serve the whole repository, starting with the move-check kit
 ├── docs/                    how the pieces fit
 ├── .github/                 CODEOWNERS
+├── package.json             the one workspace: the pnpm it runs, and nothing it depends on
+├── pnpm-workspace.yaml      every app's projects, the security overrides, the workspace settings
+├── pnpm-lock.yaml           the one lockfile of every app
 └── AGENTS.md, CLAUDE.md     rules for the whole repository, and each app keeps its own pair
 ```
 
 Two things the tree shows are worth knowing before a first change. There is no `packages/` folder
 yet, because no code is shared yet: what crosses between projects today is copied on each side,
-and shared packages come one contract at a time. And there is no `package.json` at the root: each
-app is a pnpm workspace of its own, with its own lockfile and its own pinned pnpm and Node, until
-one workspace covers them all. The [README](../README.md#working-in-an-app) says how to work in
-one.
+and shared packages come one contract at a time. And the repository is one pnpm workspace: the
+root `package.json` pins its pnpm, the root `pnpm-workspace.yaml` lists every app's projects under
+the app's own folder and holds the security overrides, and one lockfile covers all three apps.
+Each app keeps its own `package.json` and its own Node. The
+[README](../README.md#working-in-an-app) says how to work in one.
 
 ## The rules
 

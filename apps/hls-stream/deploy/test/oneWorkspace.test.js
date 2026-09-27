@@ -1,8 +1,19 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -106,7 +117,7 @@ function write(dir, files) {
  * holds no lockfile of its own unless `ownPair` gives it one, the way a checkout from before the root
  * lockfile does. A git repository, because in-copy.mjs copies the files git sees.
  */
-function oneWorkspace({ config, ownPair = false } = {}) {
+function oneWorkspace({ config, ownPair = false, realRsync = false } = {}) {
   const workspace = mkdtempSync(join(tmpdir(), 'one-workspace-'));
   workspaces.push(workspace);
   write(workspace, {
@@ -116,7 +127,7 @@ function oneWorkspace({ config, ownPair = false } = {}) {
     '.gitignore': 'node_modules/\ndist/\n.env\n.env.*\n',
   });
   cpSync(TOOL, join(workspace, 'tools', 'app-workspace'), { recursive: true });
-  const sandbox = makeSandbox({ config, root: join(workspace, 'apps', 'hls-stream') });
+  const sandbox = makeSandbox({ config, root: join(workspace, 'apps', 'hls-stream'), realRsync });
   write(sandbox.root, STACK_FILES);
   if (ownPair) {
     write(sandbox.root, {
@@ -126,6 +137,26 @@ function oneWorkspace({ config, ownPair = false } = {}) {
   }
   execFileSync('git', ['init', '-q', workspace]);
   return { workspace, sandbox };
+}
+
+/** Every file and link under `dir`, by its path from there: a file's text, or `-> ` and a link's target. */
+function treeOf(dir) {
+  const tree = {};
+  const walk = (folder) => {
+    for (const name of readdirSync(folder)) {
+      const path = join(folder, name);
+      const entry = lstatSync(path);
+      if (entry.isSymbolicLink()) {
+        tree[relative(dir, path)] = `-> ${readlinkSync(path)}`;
+      } else if (entry.isDirectory()) {
+        walk(path);
+      } else {
+        tree[relative(dir, path)] = readFileSync(path, 'utf8');
+      }
+    }
+  };
+  walk(dir);
+  return tree;
 }
 
 /** What tools/app-workspace writes for the stack of `workspace`, run here into a folder of the test's own. */
@@ -259,6 +290,47 @@ describe('bench-on-host.sh from a checkout of the one workspace', () => {
     assert.ok(existsSync(join(mirror, 'package.json')), "the stack's own files are mirrored as before");
     assert.deepEqual(readdirSync(tmp), [], 'the cut folder is gone');
     assert.equal(existsSync(join(sandbox.root, 'pnpm-lock.yaml')), false, 'nothing was written into the checkout');
+  });
+
+  /**
+   * Through this machine's own rsync, into a mirror seeded as an earlier run left it: the stack's own
+   * lockfile, a file the checkout no longer has, and what the harness wrote on the host, which the
+   * sync excludes. The same rsync run without the cut folder, into an identical mirror, is what
+   * --delete does from the stack alone. The two may differ by the pair and nothing else.
+   */
+  it("leaves the mirror as rsync --delete leaves it from the stack alone, and the stack's pair besides", async () => {
+    const { workspace, sandbox } = oneWorkspace({ realRsync: true });
+    writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
+    const earlier = {
+      'pnpm-lock.yaml': "lockfileVersion: '9.0'\n# the stack's own, from before the one workspace\n",
+      'stale.txt': 'a file the checkout no longer has\n',
+      'reports/kept.txt': 'a report the harness wrote on the host\n',
+      'docs/bench/kept.md': 'a result the harness wrote on the host\n',
+    };
+    write(join(sandbox.remoteHome, REMOTE_BENCH_DIR), earlier);
+    const alone = join(ownTmpdir(), 'mirror');
+    write(alone, earlier);
+    const tmp = ownTmpdir();
+
+    await runScriptOk(sandbox, 'bench-on-host.sh', ['--setup-only'], {
+      TMPDIR: tmp,
+      RSYNC_ALONE_DEST: alone,
+      RSYNC_ALONE_SKIP: tmp,
+    });
+
+    const cutSources = sandbox.rsyncArgv().filter((arg) => arg.startsWith(tmp));
+    assert.equal(cutSources.length, 1, `one source under TMPDIR, the cut: ${sandbox.rsyncArgv().join(' ')}`);
+    const cut = expectedCut(workspace);
+    const withoutPair = treeOf(alone);
+    assert.deepEqual(treeOf(sandbox.rsyncAfter), {
+      ...withoutPair,
+      'pnpm-lock.yaml': cut.lockfile,
+      'pnpm-workspace.yaml': cut.workspace,
+    });
+    assert.equal(withoutPair['stale.txt'], undefined, '--delete removed what the checkout no longer has');
+    assert.equal(withoutPair['pnpm-lock.yaml'], undefined, "alone, --delete would have removed the mirror's lockfile");
+    assert.equal(withoutPair['reports/kept.txt'], earlier['reports/kept.txt']);
+    assert.equal(withoutPair['docs/bench/kept.md'], earlier['docs/bench/kept.md']);
   });
 
   it('mirrors a stack that keeps its own lockfile as before', async () => {

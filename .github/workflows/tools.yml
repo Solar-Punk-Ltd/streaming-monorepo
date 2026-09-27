@@ -5,15 +5,17 @@
 # projects depend on each other, so a defect in it could let a dependency
 # between apps through. The app-workspace cut decides which packages each
 # app's images install, so a defect in it could build an image from a lockfile
-# that is not the root's. A script that lands under tools/ adds its own job here.
+# that is not the root's. Its tests also cut each app out of the repository's
+# own root files, so a change to those, or to an app's package.json, starts this
+# workflow too. A script that lands under tools/ adds its own job here.
 name: tools
 
 on:
   push:
     branches: [main, main-v3]
-    paths: ['tools/**', '.github/workflows/tools.yml']
+    paths: ['tools/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'apps/*/package.json', '.github/workflows/tools.yml']
   pull_request:
-    paths: ['tools/**', '.github/workflows/tools.yml']
+    paths: ['tools/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'apps/*/package.json', '.github/workflows/tools.yml']
 
 permissions:
   contents: read
