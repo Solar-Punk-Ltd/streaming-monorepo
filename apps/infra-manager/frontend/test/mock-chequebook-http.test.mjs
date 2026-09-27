@@ -84,7 +84,11 @@ before(async () => {
       child.off('message', onMessage);
       child.off('exit', onExit);
       child.off('error', finish);
-      error ? reject(error) : resolve();
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
     };
     child.on('message', onMessage);
     child.once('exit', onExit);
