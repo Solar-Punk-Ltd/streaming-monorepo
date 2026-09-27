@@ -1,0 +1,83 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "warn",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "rules": {
+    // Off because its advice is the opposite of the immutable update this repository writes:
+    // `map(x => ({ ...x, y }))` is what it flags, and its help text asks for Object.assign or a
+    // direct property assignment instead.
+    "oxc/no-map-spread": "off",
+
+    // Off because oxlint cannot autofix either one, since sort to toSorted is not behaviour
+    // preserving, and toSorted and toReversed are ES2023 while several projects here compile
+    // against an ES2022 or ES2020 lib, so the rewrite would not compile everywhere.
+    "unicorn/no-array-sort": "off",
+    "unicorn/no-array-reverse": "off",
+
+    // Off because awaiting one step at a time is often the point: a sequential walk or a
+    // sequential publish is the back-pressure, and Promise.all over it fans out unbounded.
+    "eslint/no-await-in-loop": "off",
+
+    // Off because it describes Express 4. Every Express here is 5, whose router hands a promise
+    // rejected by a handler or a middleware to next(err), so the error middleware receives it. The
+    // other async middlewares it reported are Vite dev-server fixtures in tests, which
+    // typescript/no-misused-promises reports as well.
+    "oxc/no-async-endpoint-handlers": "off",
+
+    // Type-aware, through oxlint-tsgolint and the TypeScript 7 compiler, run by `--type-aware`.
+    // A promise nobody awaits or catches, and a promise handed where a plain value is expected,
+    // both leave a rejection unhandled. Off until the findings they report today are fixed, then
+    // errors. node:test's test(), describe(), it() and suite() return promises the runner itself
+    // awaits, so those calls alone are known to be safe.
+    "typescript/no-floating-promises": [
+      "off",
+      {
+        "allowForKnownSafeCalls": [
+          { "from": "package", "name": ["test", "describe", "it", "suite"], "package": "node:test" }
+        ]
+      }
+    ],
+    "typescript/no-misused-promises": "off",
+
+    // The other type-aware rules in the three categories above, off by name, because
+    // `--type-aware` would otherwise switch them all on as warnings. The two promise rules
+    // above are the type-aware set this repository has chosen.
+    "typescript/await-thenable": "off",
+    "typescript/consistent-return": "off",
+    "typescript/no-array-delete": "off",
+    "typescript/no-base-to-string": "off",
+    "typescript/no-duplicate-type-constituents": "off",
+    "typescript/no-for-in-array": "off",
+    "typescript/no-implied-eval": "off",
+    "typescript/no-meaningless-void-operator": "off",
+    "typescript/no-misused-spread": "off",
+    "typescript/no-redundant-type-constituents": "off",
+    "typescript/no-unnecessary-boolean-literal-compare": "off",
+    "typescript/no-unnecessary-template-expression": "off",
+    "typescript/no-unnecessary-type-arguments": "off",
+    "typescript/no-unnecessary-type-assertion": "off",
+    "typescript/no-unnecessary-type-conversion": "off",
+    "typescript/no-unnecessary-type-parameters": "off",
+    "typescript/no-unsafe-enum-comparison": "off",
+    "typescript/no-unsafe-type-assertion": "off",
+    "typescript/no-unsafe-unary-minus": "off",
+    "typescript/no-useless-default-assignment": "off",
+    "typescript/require-array-sort-compare": "off",
+    "typescript/restrict-template-expressions": "off",
+    "typescript/unbound-method": "off"
+  },
+  "overrides": [
+    {
+      // In a test a helper is written where it is read, and hoisting it out of the describe
+      // block moves it away from the case it belongs to.
+      "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.test.js", "**/*.test.mjs"],
+      "rules": {
+        "unicorn/consistent-function-scoping": "off"
+      }
+    }
+  ],
+  "ignorePatterns": ["**/dist/**", "**/coverage/**", "**/reports/**", "**/.stryker-tmp/**", "infra/**"]
+}

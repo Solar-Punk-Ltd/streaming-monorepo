@@ -13,5 +13,5 @@
     "declaration": false,
     "sourceMap": true
   },
-  "include": ["src/**/*.ts", "../common/errorUtils.ts"]
+  "include": ["src/**/*.ts"]
 }
