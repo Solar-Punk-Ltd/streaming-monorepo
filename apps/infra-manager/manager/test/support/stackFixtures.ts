@@ -23,13 +23,23 @@ export const MONOREPO_STACK_FOLDER = 'apps/hls-stream';
 export const STACK_HISTORY_HEAD = 'fe655bc4b57cce0146dcb6df68b3528f79dcba65';
 export const SWARM_HLS_STREAM_URL = 'https://github.com/Solar-Punk-Ltd/swarm-hls-stream.git';
 
+/** The image and the pnpm the build script records for a stack that names no pnpm of its own. */
+export const PINNED_TOOLCHAIN = 'node:22-alpine pnpm@9.12.0';
+
 /**
  * What the build script leaves beside the built tree in a staging directory:
- * the commit it exported and the folder it took the stack from.
+ * the commit it exported, the folder it took the stack from, and the image and
+ * the pnpm it built with.
  */
-export function leaveBuildMarkers(staging: string, commit: string, folder = MONOREPO_STACK_FOLDER): void {
+export function leaveBuildMarkers(
+  staging: string,
+  commit: string,
+  folder = MONOREPO_STACK_FOLDER,
+  toolchain = PINNED_TOOLCHAIN,
+): void {
   writeFileSync(join(staging, '.stack-commit'), `${commit}\n`);
   writeFileSync(join(staging, '.stack-folder'), `${folder}\n`);
+  writeFileSync(join(staging, '.stack-toolchain'), `${toolchain}\n`);
 }
 
 /**

@@ -1,0 +1,12 @@
+# Used by deploy.sh alone, for a local deploy from a checkout of the one workspace, whose
+# apps/web2-admin holds no lockfile. The two images then build from a copy of that folder, made
+# outside the checkout with the admin's own lockfile cut into it, by
+# tools/app-workspace/in-copy.mjs, which names the copy in APP_WORKSPACE_COPY. Compose itself still
+# runs from the checkout, so the project, its env file and its data stay where they are.
+services:
+  api:
+    build:
+      context: ${APP_WORKSPACE_COPY:?set by tools/app-workspace/in-copy.mjs to the copy the images build from}
+  web:
+    build:
+      context: ${APP_WORKSPACE_COPY:?set by tools/app-workspace/in-copy.mjs to the copy the images build from}

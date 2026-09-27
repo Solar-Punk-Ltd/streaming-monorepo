@@ -291,7 +291,11 @@ provenance checks recorded here first.
 Build `frontend/Dockerfile` and `manager/Dockerfile` from `apps/infra-manager`,
 the manager's own folder, which is how `manager/docker-compose.yml` builds them
 on the host, and throw both images away. The deploy ships that folder alone, so
-the build context matches the host's. Nothing is pushed.
+the build context matches the host's. Nothing is pushed. Each build runs through
+`tools/app-workspace/in-copy.mjs`, in a copy of the folder made outside the
+checkout. When the repository keeps its one lockfile at its root, the copy
+carries the manager's own, cut out of it, which is what the deploy sends the
+host beside the folder.
 
 It proves that both images build from the committed tree: the pnpm the image
 installs with, the frozen lockfile against the workspace's settings, and each
@@ -582,7 +586,7 @@ Container images are pinned by digest, each with the date it was resolved:
 
 ## Running any of it here
 
-From the repository root, with Docker running.
+From `apps/infra-manager`, with Docker running.
 
 The SQL suites, on a disposable PostgreSQL of their own:
 
@@ -610,11 +614,14 @@ export T09_TEST_PG_PORT=55432
 pnpm --filter @streaming-infra-manager/frontend-prototype test:browser
 ```
 
-The two images, the way the `images` job and a deploy build them:
+The two images, the way the `images` job and a deploy build them, each from a
+copy of this folder made outside the checkout by
+`tools/app-workspace/in-copy.mjs`, which carries the manager's own lockfile, cut
+out of the repository's root one when the root keeps it:
 
 ```sh
-docker build --file frontend/Dockerfile --tag manager-web:checks .
-docker build --file manager/Dockerfile --tag manager-api:checks .
+node ../../tools/app-workspace/in-copy.mjs --app apps/infra-manager -- docker build --file frontend/Dockerfile --tag manager-web:checks .
+node ../../tools/app-workspace/in-copy.mjs --app apps/infra-manager -- docker build --file manager/Dockerfile --tag manager-api:checks .
 ```
 
 The native transport suites, which need nothing at all:

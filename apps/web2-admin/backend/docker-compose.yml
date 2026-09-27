@@ -1,7 +1,8 @@
 # Local development stack for the web2-admin backend.
 #
 #   pnpm database:start   → postgres only, on 127.0.0.1:5433 (host mode, `pnpm dev`)
-#   docker compose -p web2-admin --profile full up -d --build   → + the API image
+#   docker compose -p web2-admin --profile full up -d   → + the API image, built first
+#     from a copy of apps/web2-admin by tools/app-workspace/in-copy.mjs, as README.md shows
 #
 # Port 5433 rather than 5432 on purpose: streaming-infra-manager publishes its
 # own postgres on 5432 and both are often up on the same laptop.
@@ -33,7 +34,10 @@ services:
     profiles: ["full"]
     build:
       # apps/web2-admin: the image needs pnpm-lock.yaml and the workspace
-      # manifests to install the backend with its workspace dependency.
+      # manifests to install the backend with its workspace dependency. When
+      # the repository keeps its one lockfile at its root, only the copy
+      # tools/app-workspace/in-copy.mjs makes holds the admin's, so the image
+      # is built there, as README.md shows.
       context: ..
       dockerfile: backend/Dockerfile
     restart: unless-stopped

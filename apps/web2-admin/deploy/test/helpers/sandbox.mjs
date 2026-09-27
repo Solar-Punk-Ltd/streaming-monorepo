@@ -64,9 +64,24 @@ esac
 echo "ssh stub: refusing a command that does not name $FAKE_HOST_DIR: $command_line" >&2
 exit 97
 `,
-  rsync: journalOnly('rsync'),
+  // RSYNC_SNAPSHOT_DIR keeps a copy of every source folder but the checkout's own, for a source a
+  // deploy removes when it exits, such as the admin's pair cut out of the root's.
+  rsync: `#!/bin/sh
+printf 'rsync %s\\n' "$*" >> "$STUB_JOURNAL"
+if [ -n "$RSYNC_SNAPSHOT_DIR" ]; then
+  for arg in "$@"; do
+    case "$arg" in */) [ "$arg" != ./ ] && [ -d "$arg" ] && cp -R "$arg" "$RSYNC_SNAPSHOT_DIR" ;; esac
+  done
+fi
+exit 0
+`,
+  // The copy tools/app-workspace/in-copy.mjs names in APP_WORKSPACE_COPY is gone once compose
+  // returns, so what it held is listed while it is there.
   docker: `#!/bin/sh
 printf 'docker %s\\n' "$*" >> "$STUB_JOURNAL"
+if [ -n "$APP_WORKSPACE_COPY" ]; then
+  (cd "$APP_WORKSPACE_COPY" && find . -type f | LC_ALL=C sort) >> "$STUB_JOURNAL-copy"
+fi
 case " $* " in
   *" ps -q "*) echo stub-container ;;
   " inspect "*) echo healthy ;;
@@ -76,12 +91,26 @@ exit 0
 `,
   curl: journalOnly('curl'),
   dig: journalOnly('dig'),
+  // Which files a checkout holds is the real git's to answer, for in-copy.mjs. Every other question
+  // is answered "not a repository", as before.
   git: `#!/bin/sh
 printf 'git %s\\n' "$*" >> "$STUB_JOURNAL"
+if [ "$1" = ls-files ]; then
+  exec "$REAL_GIT" "$@"
+fi
 echo "fatal: not a git repository" >&2
 exit 128
 `,
 };
+
+/** The machine's own git, found before a sandbox puts its stub first on PATH. */
+const REAL_GIT = (process.env.PATH ?? '')
+  .split(delimiter)
+  .map((dir) => join(dir, 'git'))
+  .find((path) => existsSync(path));
+
+/** The repository's cut tool, which a checkout of the one workspace carries at its root. */
+const CUT_TOOL = 'tools/app-workspace';
 
 const RUN_TIMEOUT_MS = 30_000;
 
@@ -142,7 +171,7 @@ export function fakeEdgeEnv(marker) {
  * `checkout` and `host` map a path to the content written there. Without `host` the fake host does
  * not exist yet, which is a host nothing was deployed to.
  */
-export function makeSandbox({ checkout = {}, host } = {}) {
+export function makeSandbox({ checkout = {}, host, cutTool = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'web2-admin-deploy-'));
   sandboxes.push(dir);
   const root = join(dir, 'checkout');
@@ -154,6 +183,7 @@ export function makeSandbox({ checkout = {}, host } = {}) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     cpSync(join(REPOSITORY_ROOT, path), join(root, path));
   }
+  if (cutTool) cpSync(join(REPOSITORY_ROOT, CUT_TOOL), join(root, CUT_TOOL), { recursive: true });
   writeTree(root, { ...SAMPLES, ...checkout });
   if (host) writeTree(hostDir, host);
   writeTree(bin, STUBS);
@@ -166,6 +196,7 @@ export function makeSandbox({ checkout = {}, host } = {}) {
     FAKE_HOST_DIR: hostDir,
     HEALTH_TIMEOUT: '10',
     PROBE_TIMEOUT: '0',
+    REAL_GIT,
   };
   // A file bash would source before every script it starts.
   delete env.BASH_ENV;
@@ -174,9 +205,9 @@ export function makeSandbox({ checkout = {}, host } = {}) {
   const journalLines = () => (existsSync(journal) ? readFileSync(journal, 'utf8').split('\n').filter(Boolean) : []);
 
   /** Runs one command in the sandbox and returns its streams, its status and the stub calls it made. */
-  const spawn = (command, args, cwd) => {
+  const spawn = (command, args, cwd, extraEnv = {}) => {
     const before = journalLines().length;
-    const result = spawnSync(command, args, { cwd, env, encoding: 'utf8', input: '', timeout: RUN_TIMEOUT_MS });
+    const result = spawnSync(command, args, { cwd, env: { ...env, ...extraEnv }, encoding: 'utf8', input: '', timeout: RUN_TIMEOUT_MS });
     if (result.error) throw result.error;
     return {
       status: result.status,
@@ -192,8 +223,10 @@ export function makeSandbox({ checkout = {}, host } = {}) {
     hostDir,
     inCheckout: (path) => join(root, path),
     onHost: (path) => join(hostDir, path),
-    /** Runs one of the copied scripts, by its path from the repository root. */
-    runScript: (script, args = [], { cwd = root } = {}) => spawn('bash', [join(root, script), ...args], cwd),
+    /** Runs one of the copied scripts, by its path from the repository root, with `env` added to the sandbox's. */
+    runScript: (script, args = [], { cwd = root, env: extraEnv = {} } = {}) => spawn('bash', [join(root, script), ...args], cwd, extraEnv),
+    /** What each copy in-copy.mjs named to docker held, one sorted file list per docker call, as `./path` lines. */
+    copies: () => (existsSync(`${journal}-copy`) ? readFileSync(`${journal}-copy`, 'utf8').split('\n').filter(Boolean) : []),
     /** Runs a command line a script printed for the operator, with the same stubs. */
     runPrinted: (commandLine, { cwd = root } = {}) => spawn('sh', ['-c', commandLine], cwd),
   };

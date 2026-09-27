@@ -1,15 +1,16 @@
 # The web2 admin's checks: type checks and the unit suites of common, backend
 # and frontend, and the backend's integration suite against a real Postgres.
 # The admin's test script also runs the deploy scripts' tests, the edge's
-# among them, so a change under infra/edge starts this workflow too.
+# among them, so a change under infra/edge starts this workflow too. Those
+# tests run tools/app-workspace as well, so a change there starts it too.
 name: web2-admin
 
 on:
   push:
     branches: [main, main-v3]
-    paths: ['apps/web2-admin/**', 'infra/edge/**', '.github/workflows/web2-admin.yml']
+    paths: ['apps/web2-admin/**', 'infra/edge/**', 'tools/app-workspace/**', '.github/workflows/web2-admin.yml']
   pull_request:
-    paths: ['apps/web2-admin/**', 'infra/edge/**', '.github/workflows/web2-admin.yml']
+    paths: ['apps/web2-admin/**', 'infra/edge/**', 'tools/app-workspace/**', '.github/workflows/web2-admin.yml']
 
 permissions:
   contents: read
