@@ -1,6 +1,15 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, lstatSync, mkdirSync, readdirSync, readlinkSync, symlinkSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import {
+  chmodSync,
+  copyFileSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readlinkSync,
+  realpathSync,
+  symlinkSync,
+} from 'node:fs';
+import { basename, dirname, join, posix } from 'node:path';
 
 import { Refusal } from './refusal.mjs';
 
@@ -16,6 +25,38 @@ export function envFileAt(path) {
     if (found !== null) return found;
   }
   return null;
+}
+
+/** The first of `paths` that is or sits in an env file's name, or undefined. */
+export function envFileAmong(paths) {
+  return paths.find((path) => path.split('/').some((name) => ENV_FILE_NAME.test(name)));
+}
+
+/** Whether `root` is the top folder of a git checkout, rather than an export of one or a folder inside another. */
+export function isCheckoutRoot(root) {
+  let top;
+  try {
+    top = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return false;
+  }
+  return realpathSync(top) === realpathSync(root);
+}
+
+/** Every file and link under `folder`, as paths from the root, with each node_modules folder left out. */
+export function filesUnder(root, folder) {
+  const found = [];
+  for (const name of readdirSync(join(root, folder)).sort()) {
+    const path = posix.join(folder, name);
+    const entry = lstatSync(join(root, path));
+    if (!entry.isDirectory()) found.push(path);
+    else if (name !== 'node_modules') found.push(...filesUnder(root, path));
+  }
+  return found;
 }
 
 /** Every file git sees under `folder`, tracked or new and not ignored, as paths from the root. */
