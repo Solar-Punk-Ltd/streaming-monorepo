@@ -95,7 +95,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        # postgres:16-alpine, digest resolved 2026-09-10. Trust authentication
+        # postgres:16.15-alpine, the image the compose files run, digest resolved 2026-09-27. Trust authentication
         # because these databases are created empty here, hold synthetic rows
         # for the length of one job, and are reachable only from it.
         image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
@@ -165,7 +165,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        # The same pin as the database job, resolved 2026-09-10. Only the
+        # The same pin as the database job, resolved 2026-09-27. Only the
         # connected transfer suite needs it: it signs into a real manager over
         # a real journal with the browser as the only client.
         image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
