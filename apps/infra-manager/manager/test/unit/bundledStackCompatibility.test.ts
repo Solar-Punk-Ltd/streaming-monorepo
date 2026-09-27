@@ -1,8 +1,8 @@
 /**
- * The manager contract against the real swarm-hls-stream checkout, whichever
- * commit the submodule pins.
+ * The manager contract against the real stack, `apps/hls-stream` of the same
+ * monorepo commit.
  *
- * This file deliberately reads the submodule instead of a reduced fixture.
+ * This file deliberately reads the stack itself instead of a reduced fixture.
  * A release can change compose, env samples, or an engine entrypoint without
  * changing the fixture, and those are the files the manager deploys.
  */
@@ -18,7 +18,6 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
-import { fileURLToPath } from 'node:url';
 
 import { engineSettingsFieldsFor, OME_SERVICE, SRS_SERVICE } from '@streaming-infra-manager/common';
 
@@ -30,10 +29,8 @@ import { engineTemplateIn } from '../../src/domain/engineConfig/engineConfigTemp
 import { srsTemplateReadings } from '../../src/domain/engineConfig/srsSettingReadings.js';
 import { readStackContract } from '../../src/domain/versions/stackContract.js';
 import { writeProfileEnv } from '../../src/utils/envUtils.js';
+import { STACK_CHECKOUT as STACK } from '../support/stackCheckout.js';
 
-const STACK = fileURLToPath(
-  new URL('../../swarm-hls-stream/', import.meta.url),
-);
 const scratch = mkdtempSync(join(tmpdir(), 'bundled-stack-'));
 
 after(() => rmSync(scratch, { recursive: true, force: true }));
@@ -60,11 +57,11 @@ function composeServicesReading(compose: string, key: string): string[] {
   return readers;
 }
 
-describe('the bundled swarm-hls-stream contract', () => {
+describe('the bundled stack contract', () => {
   it('is a complete deployable contract with both engines', () => {
     assert.ok(
       existsSync(join(STACK, 'deploy', 'docker-compose.yml')),
-      'initialize manager/swarm-hls-stream before running this test',
+      'this checkout has no apps/hls-stream to hold the manager against',
     );
 
     const contract = readStackContract(STACK);

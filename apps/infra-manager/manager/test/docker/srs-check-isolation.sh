@@ -32,7 +32,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-STACK="$ROOT/manager/swarm-hls-stream"
+STACK="$(cd "$ROOT/../hls-stream" && pwd)"
 # ossrs/srs:6 resolved to this manifest list on 2026-09-10. The stack runs the
 # same tag, so the parser here is the parser a deployment gets.
 IMAGE="${SRS_CHECK_IMAGE:-ossrs/srs@sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3}"

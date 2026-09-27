@@ -8,8 +8,8 @@
  * password. Step 2 of deploy/README.md is where an operator is told to set
  * them, so a key the stack adds and the guide never names is a port left open
  * by a reader who did everything the guide asked: the three engine keys were
- * exactly that until 2026-09-16. The comparison is against the submodule at
- * manager/swarm-hls-stream, which is the checkout this manager deploys. The
+ * exactly that until 2026-09-16. The comparison is against the stack in
+ * apps/hls-stream, the one this manager deploys from the same commit. The
  * rung keys are commented out there and stay out of this, because they belong
  * to services the manager never starts.
  */
@@ -18,7 +18,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-const STACK_SAMPLE = fileURLToPath(new URL('../../swarm-hls-stream/.env.sample', import.meta.url));
+import { stackFile } from '../support/stackCheckout.js';
+
+const STACK_SAMPLE = stackFile('.env.sample');
 const DEPLOY_GUIDE = fileURLToPath(new URL('../../../deploy/README.md', import.meta.url));
 
 /** A key an operator can set, as the sample writes one: at the start of a line, never behind a #. */
