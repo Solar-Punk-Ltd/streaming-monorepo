@@ -145,6 +145,24 @@ describe('readTarSummaries', () => {
     for (const size of [1, 7, 511, 513, 4096]) assert.deepEqual(await readTarSummaries(inChunksOf(size, archive)), whole, `chunks of ${size}`);
   });
 
+  it('keeps the content of the regular files it is asked for, and of no other entry', async () => {
+    const kept = 'prunedAt: Thu, 01 Jan 2026 00:00:00 GMT\n'.repeat(40);
+    const archive = tarArchive(
+      tarEntry({ name: 'app/node_modules/.modules.yaml' }, kept),
+      tarEntry({ name: 'app/index.js' }, 'console.log(1)\n'),
+      tarEntry({ name: 'app/node_modules/', type: '5' }),
+    );
+    const keepContent = (path) => path.startsWith('app/node_modules');
+    for (const size of [1, 7, 511, 4096]) {
+      const summaries = await readTarSummaries(inChunksOf(size, archive), { keepContent });
+      assert.deepEqual(summaries, [
+        { ...file('app/node_modules/.modules.yaml', kept), content: Buffer.from(kept) },
+        file('app/index.js', 'console.log(1)\n'),
+        { path: 'app/node_modules', type: 'directory', mode: 0o644, uid: 0, gid: 0, size: 0 },
+      ], `chunks of ${size}`);
+    }
+  });
+
   it('reads from an async stream', async () => {
     const archive = tarArchive(tarEntry({ name: 'streamed' }, 'bytes'));
     async function* stream() {
