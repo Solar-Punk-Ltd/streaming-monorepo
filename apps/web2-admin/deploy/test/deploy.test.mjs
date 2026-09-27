@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { after, describe, it } from 'node:test';
 
 import { fakeAdminEnv, makeSandbox, printedCommand, removeSandboxes } from './helpers/sandbox.mjs';
@@ -19,6 +20,8 @@ const ENV_FILES = {
 };
 
 const MV_LINE = /^\[deploy\]\s+(mv \S+ \S+)$/m;
+
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 describe('deploy.sh in a checkout that deployed before the admin moved into apps/web2-admin', () => {
   for (const [profile, file] of Object.entries(ENV_FILES)) {
@@ -137,5 +140,65 @@ describe('deploy.sh to a host that was deployed to before the move', () => {
     assert.equal(deployed.status, 0, deployed.stderr);
     assert.doesNotMatch(deployed.stderr, /still has|'rm /);
     assert.ok(existsSync(sandbox.onHost(OLD_HOST_COPY.brandB)));
+  });
+});
+
+describe('deploy.sh names files by paths that work from the repository root', () => {
+  it('names the sample and the env file that way when the env file is missing', () => {
+    const sandbox = makeSandbox();
+
+    const refused = sandbox.runScript(DEPLOY, LOCAL_QA);
+
+    const advice = /Copy (\S+) to (\S+) and fill in/.exec(refused.stderr);
+    assert.ok(advice, refused.stderr);
+    const [, sample, target] = advice;
+    assert.ok(existsSync(sandbox.inCheckout(sample)), `${sample} is not there from the repository root`);
+    assert.equal(target, ENV_FILES.qa.now);
+  });
+
+  it('names the env file that way when a key in it is wrong', () => {
+    const broken = fakeAdminEnv('broken').replace(/^POSTGRES_PASSWORD=.*$/m, 'POSTGRES_PASSWORD=');
+    const sandbox = makeSandbox({ checkout: { [ENV_FILES.qa.now]: broken } });
+
+    const refused = sandbox.runScript(DEPLOY, LOCAL_QA);
+
+    assert.equal(refused.status, 1, refused.stderr);
+    assert.match(refused.stderr, new RegExp(`ERROR: ${escapeRegExp(ENV_FILES.qa.now)}: POSTGRES_PASSWORD is missing`));
+    const summary = /problem\(s\) in (\S+)\. Nothing was deployed\. See (\S+) for/.exec(refused.stderr);
+    assert.ok(summary, refused.stderr);
+    assert.equal(summary[1], ENV_FILES.qa.now);
+    assert.ok(existsSync(sandbox.inCheckout(summary[2])), `${summary[2]} is not there from the repository root`);
+  });
+
+  it('names the env file and the commit marker that way while it deploys', () => {
+    const sandbox = makeSandbox({ checkout: { [ENV_FILES.qa.now]: fakeAdminEnv('checkout') } });
+
+    const deployed = sandbox.runScript(DEPLOY, LOCAL_QA);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.match(deployed.stdout, new RegExp(`env file ${escapeRegExp(ENV_FILES.qa.now)}$`, 'm'));
+    const marker = /commit \S+ \(written to (\S+)\)/.exec(deployed.stdout);
+    assert.ok(marker, deployed.stdout);
+    assert.ok(existsSync(sandbox.inCheckout(marker[1])), `${marker[1]} is not there from the repository root`);
+  });
+
+  it('prints a first-user command that works from the repository root, and says so', () => {
+    const sandbox = makeSandbox({ checkout: { [ENV_FILES.qa.now]: fakeAdminEnv('checkout') } });
+
+    const deployed = sandbox.runScript(DEPLOY, LOCAL_QA);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    const userAdd = printedCommand(deployed.stdout, /^\[deploy\]\s+(\S.*user:add <username>)$/m);
+    const parts = /^(?:cd (\S+) && )?WEB2_ADMIN_ENV_FILE=(\S+) docker compose -p \S+ -f (\S+) --env-file (\S+) exec /.exec(userAdd);
+    assert.ok(parts, userAdd);
+    const [, folder = '.', envFromComposeDir, composeFile, envFile] = parts;
+    const runDir = sandbox.inCheckout(folder);
+    assert.ok(existsSync(join(runDir, composeFile)), `from the repository root, ${composeFile} is not there: ${userAdd}`);
+    assert.ok(existsSync(join(runDir, envFile)), `from the repository root, ${envFile} is not there: ${userAdd}`);
+    assert.ok(
+      existsSync(join(dirname(join(runDir, composeFile)), envFromComposeDir)),
+      `WEB2_ADMIN_ENV_FILE does not lead from the compose file to the env file: ${userAdd}`,
+    );
+    assert.match(deployed.stdout, /first user.*from the repository root/);
   });
 });
