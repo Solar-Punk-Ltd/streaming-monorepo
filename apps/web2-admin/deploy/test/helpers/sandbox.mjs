@@ -188,7 +188,9 @@ export function fakeAdminEnv(marker) {
 
 /** The edge's env file with one made-up name to serve. The marker is part of the name. */
 export function fakeEdgeEnv(marker) {
-  return ['# A test fixture, not a deployment.', `ADMIN_DOMAIN=${marker}.fixture.invalid`, 'ADMIN_PORT=9090', ''].join('\n');
+  return ['# A test fixture, not a deployment.', `ADMIN_DOMAIN=${marker}.fixture.invalid`, 'ADMIN_PORT=9090', ''].join(
+    '\n',
+  );
 }
 
 /**
@@ -235,7 +237,13 @@ export function makeSandbox({ checkout = {}, host, cutTool = false, realRsync = 
   /** Runs one command in the sandbox and returns its streams, its status and the stub calls it made. */
   const spawn = (command, args, cwd, extraEnv = {}) => {
     const before = journalLines().length;
-    const result = spawnSync(command, args, { cwd, env: { ...env, ...extraEnv }, encoding: 'utf8', input: '', timeout: RUN_TIMEOUT_MS });
+    const result = spawnSync(command, args, {
+      cwd,
+      env: { ...env, ...extraEnv },
+      encoding: 'utf8',
+      input: '',
+      timeout: RUN_TIMEOUT_MS,
+    });
     if (result.error) throw result.error;
     return {
       status: result.status,
@@ -252,9 +260,11 @@ export function makeSandbox({ checkout = {}, host, cutTool = false, realRsync = 
     inCheckout: (path) => join(root, path),
     onHost: (path) => join(hostDir, path),
     /** Runs one of the copied scripts, by its path from the repository root, with `env` added to the sandbox's. */
-    runScript: (script, args = [], { cwd = root, env: extraEnv = {} } = {}) => spawn('bash', [join(root, script), ...args], cwd, extraEnv),
+    runScript: (script, args = [], { cwd = root, env: extraEnv = {} } = {}) =>
+      spawn('bash', [join(root, script), ...args], cwd, extraEnv),
     /** What each copy in-copy.mjs named to docker held, one sorted file list per docker call, as `./path` lines. */
-    copies: () => (existsSync(`${journal}-copy`) ? readFileSync(`${journal}-copy`, 'utf8').split('\n').filter(Boolean) : []),
+    copies: () =>
+      existsSync(`${journal}-copy`) ? readFileSync(`${journal}-copy`, 'utf8').split('\n').filter(Boolean) : [],
     /** The arguments the rsync of a `realRsync` sandbox was given, as it was given them. */
     rsyncArgv: () => readFileSync(`${journal}-rsync-argv`, 'utf8').split('\0').slice(0, -1),
     /** The destination as the real rsync of a `realRsync` sandbox left it. */

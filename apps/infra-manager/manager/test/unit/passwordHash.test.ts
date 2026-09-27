@@ -13,12 +13,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  CURRENT_PARAMS,
-  hashPassword,
-  paramsOf,
-  verifyPassword,
-} from '../../src/domain/auth/passwordHash.js';
+import { CURRENT_PARAMS, hashPassword, paramsOf, verifyPassword } from '../../src/domain/auth/passwordHash.js';
 
 const PASSWORD = 'a-long-enough-password';
 
@@ -31,17 +26,8 @@ describe('password hashing', () => {
   it('refuses a wrong password', async () => {
     const stored = await hashPassword(PASSWORD);
 
-    for (const wrong of [
-      `${PASSWORD} `,
-      PASSWORD.toUpperCase(),
-      PASSWORD.slice(0, -1),
-      '',
-    ]) {
-      assert.equal(
-        await verifyPassword(wrong, stored),
-        false,
-        `should refuse ${JSON.stringify(wrong)}`,
-      );
+    for (const wrong of [`${PASSWORD} `, PASSWORD.toUpperCase(), PASSWORD.slice(0, -1), '']) {
+      assert.equal(await verifyPassword(wrong, stored), false, `should refuse ${JSON.stringify(wrong)}`);
     }
   });
 
@@ -91,11 +77,7 @@ describe('password hashing', () => {
     ];
 
     for (const stored of unreadable) {
-      assert.equal(
-        await verifyPassword(PASSWORD, stored),
-        false,
-        `should refuse ${JSON.stringify(stored)}`,
-      );
+      assert.equal(await verifyPassword(PASSWORD, stored), false, `should refuse ${JSON.stringify(stored)}`);
       assert.equal(paramsOf(stored), null);
     }
   });

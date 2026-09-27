@@ -20,10 +20,7 @@ const MAX_METRICS_CLIENTS = 50;
  *   curl -N -b cookies.txt localhost:9876/metrics/stream
  * The manager's README shows how the jar is filled.
  */
-export function createMetricsRouter(
-  collector: MetricsCollector,
-  openStreams: OpenStreams,
-): Router {
+export function createMetricsRouter(collector: MetricsCollector, openStreams: OpenStreams): Router {
   const router = Router();
   let clientCount = 0;
 
@@ -76,11 +73,7 @@ export function createMetricsRouter(
       res.write(': heartbeat\n\n');
     }, HEARTBEAT_MS);
 
-    const unregister = openStreams.open(
-      session.tokenHash,
-      session.user.id,
-      () => endEventStream(res),
-    );
+    const unregister = openStreams.open(session.tokenHash, session.user.id, () => endEventStream(res));
 
     let cleaned = false;
     const cleanup = (): void => {

@@ -14,9 +14,9 @@ services:
     volumes:
       - manager-pg:/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:5432:5432"
+      - '127.0.0.1:5432:5432'
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U manager -d manager"]
+      test: ['CMD-SHELL', 'pg_isready -U manager -d manager']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -32,11 +32,11 @@ services:
     # Reach host-published bee node ports (per-profile stamp management) from
     # inside the container via host.docker.internal — see StampService.
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - 'host.docker.internal:host-gateway'
     env_file: .env
     environment:
       DATABASE_URL: postgres://manager:${POSTGRES_PASSWORD:-manager}@postgres:5432/manager
-      MANAGER_PORT: "9876"
+      MANAGER_PORT: '9876'
       PUBLIC_HOST: ${PUBLIC_HOST:-}
       SHLS_ROOT: /home/solarpunk/streaming-infra-manager/manager/swarm-hls-stream
       BEE_DATA_ROOT: ${BEE_DATA_ROOT:-/home/solarpunk/streaming-infra-manager-data}
@@ -81,9 +81,9 @@ services:
     # Loopback only. The edge reaches it by service name, and the SSH tunnel
     # stays the way back in when the edge or its certificate is broken.
     ports:
-      - "127.0.0.1:${WEB_PORT:-8080}:80"
+      - '127.0.0.1:${WEB_PORT:-8080}:80'
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:80/"]
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:80/']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -103,9 +103,9 @@ services:
     environment:
       MANAGER_DOMAIN: ${MANAGER_DOMAIN:-}
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
     volumes:
       - ./edge/Caddyfile:/etc/caddy/Caddyfile:ro
       - edge-data:/data

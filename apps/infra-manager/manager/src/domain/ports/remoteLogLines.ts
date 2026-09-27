@@ -40,16 +40,9 @@ const RUNNING_CONTAINER = 'container=running';
 const LOGS_EXIT = 'docker-logs-exit=';
 const LOGS_READ_WHOLE = `${LOGS_EXIT}0`;
 
-export type RemoteLogLines =
-  | { container: 'none' }
-  | { container: 'running'; lines: string[] };
+export type RemoteLogLines = { container: 'none' } | { container: 'running'; lines: string[] };
 
-export function remoteLogLinesCommand(
-  project: string,
-  service: string,
-  lines: MarkedLines,
-  window: LogWindow,
-): string {
+export function remoteLogLinesCommand(project: string, service: string, lines: MarkedLines, window: LogWindow): string {
   if (!COMPOSE_NAME.test(project) || !COMPOSE_NAME.test(service)) {
     throw new Error('Invalid Compose project or service');
   }

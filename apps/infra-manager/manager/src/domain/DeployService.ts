@@ -10,11 +10,7 @@ export class DeployService {
     private readonly orchestrator: DeploymentOrchestrator,
   ) {}
 
-  async run(
-    profileName: string,
-    action: ActionKind,
-    input: ActionInput = {},
-  ): Promise<RunHandle> {
+  async run(profileName: string, action: ActionKind, input: ActionInput = {}): Promise<RunHandle> {
     const profile = await this.profileService.getByName(profileName);
 
     switch (action) {

@@ -5,14 +5,21 @@ import type { ChequebookReceiptObservation } from '@streaming-infra-manager/comm
 import { InMemoryChequebookOperations, operationCandidate, transactionHash } from '../support/chequebookOperations.js';
 
 const confirmed: ChequebookReceiptObservation = {
-  kind: 'settled', receiptBlockNumber: '501', receiptBlockHash: `0x${'77'.repeat(32)}`,
-  finalizedBlockNumber: '510', finalizedBlockHash: `0x${'88'.repeat(32)}`,
+  kind: 'settled',
+  receiptBlockNumber: '501',
+  receiptBlockHash: `0x${'77'.repeat(32)}`,
+  finalizedBlockNumber: '510',
+  finalizedBlockHash: `0x${'88'.repeat(32)}`,
 };
 
 async function setup() {
   const repository = new InMemoryChequebookOperations();
   const { operation } = await repository.admit(operationCandidate());
-  const submitted = await repository.recordSubmission(operation.id, { state: 'submitted', transactionHash, failureReason: null });
+  const submitted = await repository.recordSubmission(operation.id, {
+    state: 'submitted',
+    transactionHash,
+    failureReason: null,
+  });
   return { repository, submitted };
 }
 
@@ -22,14 +29,17 @@ describe('durable chequebook receipt checks', () => {
     const conflicted = { ...submitted, failureReason: 'hash_conflict' as const };
     repository.rows.set(submitted.id, conflicted);
     let inspections = 0;
-    const checker = new ChequebookReceiptCheck(repository, async () => { inspections++; return confirmed; });
+    const checker = new ChequebookReceiptCheck(repository, async () => {
+      inspections++;
+      return confirmed;
+    });
     assert.deepEqual(await checker.check(submitted.id), conflicted);
     assert.equal(inspections, 0);
   });
 
   it('returns the persisted result and supplies only the frozen transfer to its inspector', async () => {
     const { repository, submitted } = await setup();
-    const check = new ChequebookReceiptCheck(repository, async operation => {
+    const check = new ChequebookReceiptCheck(repository, async (operation) => {
       assert.equal(operation.transactionHash, transactionHash);
       assert.equal(operation.nodeAddress, submitted.nodeAddress);
       assert.equal(operation.amountPlur, submitted.amountPlur);
@@ -45,14 +55,21 @@ describe('durable chequebook receipt checks', () => {
     const { repository, submitted } = await setup();
     let release!: (value: ChequebookReceiptObservation) => void;
     let started!: () => void;
-    const observing = new Promise<void>(resolve => { started = resolve; });
+    const observing = new Promise<void>((resolve) => {
+      started = resolve;
+    });
     const oldCheck = new ChequebookReceiptCheck(repository, async () => {
       started();
-      return new Promise(resolve => { release = resolve; });
+      return new Promise((resolve) => {
+        release = resolve;
+      });
     });
     const old = oldCheck.check(submitted.id);
     await observing;
-    const newer = await new ChequebookReceiptCheck(repository, async () => ({ kind: 'could_not_check', reason: 'chain_changed' })).check(submitted.id);
+    const newer = await new ChequebookReceiptCheck(repository, async () => ({
+      kind: 'could_not_check',
+      reason: 'chain_changed',
+    })).check(submitted.id);
     release(confirmed);
     assert.deepEqual(await old, newer);
     assert.equal(newer.state, 'submitted');
@@ -61,18 +78,27 @@ describe('durable chequebook receipt checks', () => {
   it('does not inspect unknown submissions or already terminal records', async () => {
     const { repository, submitted } = await setup();
     let calls = 0;
-    const check = new ChequebookReceiptCheck(repository, async () => { calls++; return confirmed; });
+    const check = new ChequebookReceiptCheck(repository, async () => {
+      calls++;
+      return confirmed;
+    });
     await check.check(submitted.id);
     await check.check(submitted.id);
     const { operation } = await repository.admit(operationCandidate());
-    const unknown = await repository.recordSubmission(operation.id, { state: 'unknown', transactionHash: null, failureReason: 'response_unavailable' });
+    const unknown = await repository.recordSubmission(operation.id, {
+      state: 'unknown',
+      transactionHash: null,
+      failureReason: 'response_unavailable',
+    });
     assert.deepEqual(await check.check(unknown.id), unknown);
     assert.equal(calls, 1);
   });
 
   it('persists unexpected inspector failure as could not check without releasing protection', async () => {
     const { repository, submitted } = await setup();
-    const check = new ChequebookReceiptCheck(repository, async () => { throw new Error('synthetic-private-path'); });
+    const check = new ChequebookReceiptCheck(repository, async () => {
+      throw new Error('synthetic-private-path');
+    });
     const result = await check.check(submitted.id);
     assert.equal(result.state, 'submitted');
     assert.deepEqual(result.receiptObservation, { kind: 'could_not_check', reason: 'rpc_unavailable' });
@@ -82,21 +108,34 @@ describe('durable chequebook receipt checks', () => {
   it('leaves the revision alone when a re-check observes what the journal already holds', async () => {
     const { repository, submitted } = await setup();
     const first = await repository.recordReceipt(submitted, { kind: 'could_not_check', reason: 'rpc_unavailable' });
-    const again = await repository.recordReceipt(first, { reason: 'rpc_unavailable', kind: 'could_not_check', history: undefined });
-    assert.equal(again.revision, first.revision, 'the journal compares normalized observations, where key order and an absent field cannot differ');
+    const again = await repository.recordReceipt(first, {
+      reason: 'rpc_unavailable',
+      kind: 'could_not_check',
+      history: undefined,
+    });
+    assert.equal(
+      again.revision,
+      first.revision,
+      'the journal compares normalized observations, where key order and an absent field cannot differ',
+    );
     assert.equal(again.updatedAt, first.updatedAt);
     assert.deepEqual(again.receiptObservation, first.receiptObservation, 'and stores what it compared');
   });
 
   it('never answers settlement when its journal write fails', async () => {
     const { repository, submitted } = await setup();
-    repository.recordReceipt = async () => { throw new Error('synthetic-private-path'); };
-    await assert.rejects(new ChequebookReceiptCheck(repository, async () => confirmed).check(submitted.id), (error: unknown) => {
-      assert.ok(error instanceof Error);
-      assert.equal(error.name, 'ChequebookJournalError');
-      assert.ok(!error.message.includes('synthetic-private-path'));
-      return true;
-    });
+    repository.recordReceipt = async () => {
+      throw new Error('synthetic-private-path');
+    };
+    await assert.rejects(
+      new ChequebookReceiptCheck(repository, async () => confirmed).check(submitted.id),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.name, 'ChequebookJournalError');
+        assert.ok(!error.message.includes('synthetic-private-path'));
+        return true;
+      },
+    );
     assert.equal((await repository.findById(submitted.id))?.state, 'submitted');
   });
 });

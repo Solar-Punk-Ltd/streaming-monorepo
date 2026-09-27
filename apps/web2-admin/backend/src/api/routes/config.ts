@@ -8,10 +8,7 @@ import type { FeedIdentity } from '../../domain/feedIdentity.js';
  * needs to read the catalog from Swarm, and the login screen shows the viewer
  * link. Nothing secret is in here — no batch id, no keys, no ingest details.
  */
-export function createConfigRouter(
-  feed: FeedIdentity,
-  viewerBaseUrl: string,
-): Router {
+export function createConfigRouter(feed: FeedIdentity, viewerBaseUrl: string): Router {
   const router = Router();
 
   router.get('/', (_req: Request, res: Response) => {

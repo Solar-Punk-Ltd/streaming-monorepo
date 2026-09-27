@@ -64,11 +64,7 @@ async function logsOf(
   managerEndpoint: string | null,
 ): Promise<string> {
   const harness = profileServiceHarness([profile]);
-  const app = await startEngineTestApp(
-    harness.service,
-    containersServing(text),
-    managerEndpoint,
-  );
+  const app = await startEngineTestApp(harness.service, containersServing(text), managerEndpoint);
   apps.push(app);
   const res = await call(app, 'GET', `/profiles/${profile.name}/containers/bee-uploader/logs`);
   assert.equal(res.status, 200);
@@ -107,10 +103,7 @@ describe('the container log a page reads', () => {
   it('leaves a log that names no known endpoint exactly as it is', async () => {
     const plain = beeLog('https://rpc.gnosischain.com');
 
-    assert.equal(
-      await logsOf(makeProfile({ name: 'plain' }), plain, MANAGER_ENDPOINT),
-      plain,
-    );
+    assert.equal(await logsOf(makeProfile({ name: 'plain' }), plain, MANAGER_ENDPOINT), plain);
   });
 });
 
@@ -147,7 +140,7 @@ describe('what a failed deploy records', () => {
 
     const published = seen
       .filter((event) => event.type === 'profile.changed')
-      .map((event) => (event.type === 'profile.changed' ? event.profile.last_error ?? '' : ''))
+      .map((event) => (event.type === 'profile.changed' ? (event.profile.last_error ?? '') : ''))
       .join('\n');
     assert.doesNotMatch(published, /own-key/);
   });

@@ -2,7 +2,6 @@
   "name": "streaming-monorepo",
   "private": true,
   "description": "The Solar Punk streaming platform in one pnpm workspace: the HLS stack, the infra manager and the web2 admin.",
-  "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
   "scripts": {
     "build": "nx run-many -t build",
     "typecheck": "nx run-many -t typecheck",
@@ -12,14 +11,15 @@
     "format:check": "oxfmt --check .",
     "boundaries": "nx show projects > /dev/null && nx graph --file=.nx/boundary-graph.json && node tools/boundary-check/boundaries.mjs --graph .nx/boundary-graph.json --exceptions tools/boundary-check/exceptions.json"
   },
-  "engines": {
-    "node": ">=24"
-  },
   "devDependencies": {
     "nx": "23.2.1",
     "oxfmt": "0.67.0",
     "oxlint": "1.82.0",
     "oxlint-tsgolint": "7.0.2001",
     "typescript": "7.0.2"
-  }
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c"
 }

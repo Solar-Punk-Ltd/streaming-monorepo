@@ -14,7 +14,10 @@
  * unauthenticated reader is what the `publishers` block already tells them.
  */
 export class GateRefusalError extends Error {
-  constructor(message: string, readonly nodeUrl: string) {
+  constructor(
+    message: string,
+    readonly nodeUrl: string,
+  ) {
     super(message);
     this.name = 'GateRefusalError';
   }

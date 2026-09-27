@@ -20,7 +20,13 @@ describe('describeSettingsSave', () => {
     const said = describeSettingsSave({
       expectedGeneration: 3,
       files: [
-        { path: '.env', entries: [{ key: 'API_AUTH_TOKEN', value: VALUE }, { key: 'API_PORT', value: '3100' }] },
+        {
+          path: '.env',
+          entries: [
+            { key: 'API_AUTH_TOKEN', value: VALUE },
+            { key: 'API_PORT', value: '3100' },
+          ],
+        },
         { path: 'engines/srs/.env', entries: [{ key: 'SRS_WEBHOOK_TOKEN', value: VALUE }] },
       ],
     });

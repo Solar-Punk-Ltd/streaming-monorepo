@@ -22,13 +22,7 @@ import { endpointSourceOf, hasService, ownsAnyBeeNode, shapeOf } from '../deploy
 import type { UpdateProfileBody } from '../data';
 import type { Profile } from '../types';
 import type { PassphraseMode } from './PassphraseField';
-import {
-  addressProblem,
-  notesProblem,
-  passphraseProblem,
-  privateKeyProblem,
-  stampIdProblem,
-} from './validation';
+import { addressProblem, notesProblem, passphraseProblem, privateKeyProblem, stampIdProblem } from './validation';
 
 /** Everything the deployment drawer lets an operator change. */
 export interface DeploymentEdits {
@@ -184,13 +178,15 @@ export function editProblem(
       !edits.rpcEndpoint.trim() &&
       profile.has_rpc_endpoint &&
       endpointSourceOf(profile) === CUSTOM_RPC_ENDPOINT_SOURCE;
-    const problem = keepsStoredCustom ? null : rpcEndpointChoiceProblem({
-      source: edits.rpcEndpointSource,
-      url: edits.rpcEndpointSource === CUSTOM_RPC_ENDPOINT_SOURCE ? edits.rpcEndpoint : '',
-      managerHasEndpoint,
-      nodeMode: effectiveNodeMode(profile),
-      services: defaultServicesFor(profile),
-    });
+    const problem = keepsStoredCustom
+      ? null
+      : rpcEndpointChoiceProblem({
+          source: edits.rpcEndpointSource,
+          url: edits.rpcEndpointSource === CUSTOM_RPC_ENDPOINT_SOURCE ? edits.rpcEndpoint : '',
+          managerHasEndpoint,
+          nodeMode: effectiveNodeMode(profile),
+          services: defaultServicesFor(profile),
+        });
     if (problem) return `RPC endpoint: ${problem}`;
   }
   if (shown.poolString) {
@@ -209,9 +205,7 @@ export function editProblem(
 
 /** Whether the operator changed anything since the form opened. */
 export function hasEdits<T extends object>(initial: T, edits: T): boolean {
-  return (Object.keys(initial) as (keyof T)[]).some(
-    (field) => edits[field] !== initial[field],
-  );
+  return (Object.keys(initial) as (keyof T)[]).some((field) => edits[field] !== initial[field]);
 }
 
 /**
@@ -232,13 +226,12 @@ export function bodyFor(
   shown: ShownFields,
   loadedNotesRevision: number,
 ): UpdateProfileBody {
-  const changed = (field: keyof DeploymentEdits) =>
-    edits[field] !== initial[field];
+  const changed = (field: keyof DeploymentEdits) => edits[field] !== initial[field];
 
   const body: UpdateProfileBody = {
     kind: profile.kind,
     components: profile.components ?? undefined,
-    notes: changed('notes') ? edits.notes.trim() || null : profile.notes ?? null,
+    notes: changed('notes') ? edits.notes.trim() || null : (profile.notes ?? null),
     feed_owner: profile.feed_owner ?? undefined,
     public_key: profile.public_key ?? undefined,
     stamp_id: profile.stamp_id ?? undefined,

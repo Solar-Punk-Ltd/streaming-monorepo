@@ -77,10 +77,7 @@ describe('ingestDetailsFor', () => {
   });
 
   it('has no rotation timestamp until the key is rotated', () => {
-    assert.equal(
-      ingestDetailsFor(streamRow(), endpoint).publishKeyRotatedAt,
-      null,
-    );
+    assert.equal(ingestDetailsFor(streamRow(), endpoint).publishKeyRotatedAt, null);
   });
 
   it('follows the port slot the endpoint was configured with', () => {

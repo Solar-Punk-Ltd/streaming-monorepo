@@ -52,12 +52,19 @@ test('a teardown that throws leaves every teardown behind it undone', async (t) 
   const { NODE_TEST_CONTEXT: _inherited, ...env } = process.env;
   const child = spawn(process.execPath, ['--test', file], { stdio: ['ignore', 'pipe', 'pipe'], env });
   let output = '';
-  for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => { output += chunk; });
+  for (const stream of [child.stdout, child.stderr])
+    stream.on('data', (chunk) => {
+      output += chunk;
+    });
   // Not 'exit': the child can be gone with its output still on its way here.
   await once(child, 'close');
 
   assert.match(output, /ran first/, `the first hook ran, saw ${JSON.stringify(output.slice(0, 300))}`);
-  assert.doesNotMatch(output, /ran second/, 'and the hook registered after it never did, which is what strands a browser');
+  assert.doesNotMatch(
+    output,
+    /ran second/,
+    'and the hook registered after it never did, which is what strands a browser',
+  );
 });
 
 /** A Vite over an empty root with one endless response, which is the shape of the fixtures' `/events`. */
@@ -69,16 +76,18 @@ async function serverOverAThrowawayRoot() {
     configFile: false,
     logLevel: 'silent',
     server: { host: '127.0.0.1', port: 0, strictPort: true },
-    plugins: [{
-      name: 'endless-response',
-      configureServer(vite) {
-        vite.middlewares.use((req, res, next) => {
-          if (req.url?.split('?')[0] !== '/events') return next();
-          res.writeHead(200, { 'content-type': 'text/event-stream' });
-          res.write(': open\n\n');
-        });
+    plugins: [
+      {
+        name: 'endless-response',
+        configureServer(vite) {
+          vite.middlewares.use((req, res, next) => {
+            if (req.url?.split('?')[0] !== '/events') return next();
+            res.writeHead(200, { 'content-type': 'text/event-stream' });
+            res.write(': open\n\n');
+          });
+        },
       },
-    }],
+    ],
   });
   await server.listen();
   return { server, root, origin: `http://127.0.0.1:${server.httpServer.address().port}` };
@@ -95,8 +104,13 @@ async function settlesWithin(work, ms) {
   let timer;
   const late = Symbol('late');
   const outcome = await Promise.race([
-    work.then(() => 'settled', () => 'settled'),
-    new Promise(resolve => { timer = setTimeout(() => resolve(late), ms); }),
+    work.then(
+      () => 'settled',
+      () => 'settled',
+    ),
+    new Promise((resolve) => {
+      timer = setTimeout(() => resolve(late), ms);
+    }),
   ]);
   clearTimeout(timer);
   return outcome === 'settled';
@@ -114,7 +128,11 @@ test('endViteServer closes a real server, and nothing reaches it afterwards', as
   const held = await openEndlessRequest(origin);
   const said = recorder();
 
-  assert.equal(await settlesWithin(endViteServer(said, server), BOUND_MS), true, 'the server closed with a connection open');
+  assert.equal(
+    await settlesWithin(endViteServer(said, server), BOUND_MS),
+    true,
+    'the server closed with a connection open',
+  );
 
   assert.deepEqual(said.said, [], 'a clean close says nothing');
   held.destroy();
@@ -142,7 +160,11 @@ test('endViteServer reports a close that fails instead of throwing it at the hoo
 test('endViteServer survives a server that cannot even be asked', async () => {
   const said = recorder();
 
-  await endViteServer(said, { close: () => { throw new Error('already gone'); } });
+  await endViteServer(said, {
+    close: () => {
+      throw new Error('already gone');
+    },
+  });
 
   assert.match(said.said[0] ?? '', /could not be asked to close.*already gone/);
 });

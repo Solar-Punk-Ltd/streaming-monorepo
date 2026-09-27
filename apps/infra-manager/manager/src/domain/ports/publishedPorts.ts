@@ -2,7 +2,8 @@ import type { PublishedPortBinding, PublishedPortsSnapshot } from './PublishedPo
 import { portKeyOf } from './portReservations.js';
 
 function record(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Unreadable published port observation');
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Unreadable published port observation');
   return value as Record<string, unknown>;
 }
 
@@ -31,7 +32,11 @@ export function publishedBindings(value: unknown): PublishedPortBinding[] {
       const port = Number(hostPort);
       if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid published port');
       const binding: PublishedPortBinding = {
-        containerId: container.id, project, service, port, protocol: match[1] as 'tcp' | 'udp',
+        containerId: container.id,
+        project,
+        service,
+        port,
+        protocol: match[1] as 'tcp' | 'udp',
       };
       bindings.set(portKeyOf(binding), binding);
     }

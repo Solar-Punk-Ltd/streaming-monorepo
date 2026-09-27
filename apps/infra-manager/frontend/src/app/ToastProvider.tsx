@@ -1,11 +1,4 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 import { Alert, Snackbar } from '@mui/material';
 
 export type ToastTone = 'success' | 'error' | 'info' | 'warning';
@@ -59,12 +52,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
         {current ? (
-          <Alert
-            severity={current.tone}
-            variant="filled"
-            onClose={dismiss}
-            sx={{ maxWidth: 460 }}
-          >
+          <Alert severity={current.tone} variant="filled" onClose={dismiss} sx={{ maxWidth: 460 }}>
             {current.message}
           </Alert>
         ) : undefined}

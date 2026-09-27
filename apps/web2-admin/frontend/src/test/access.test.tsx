@@ -2,15 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { AccessPage } from '../pages/AccessPage';
-import {
-  jsonError,
-  jsonOk,
-  makeUser,
-  makeUserSummary,
-  mockFetch,
-  noContent,
-  renderWithAuth,
-} from './helpers';
+import { jsonError, jsonOk, makeUser, makeUserSummary, mockFetch, noContent, renderWithAuth } from './helpers';
 
 const SESSION = '/api/auth/session';
 const USERS = '/api/auth/users';
@@ -91,9 +83,7 @@ describe('the users table', () => {
     expect(own).toBeDisabled();
 
     fireEvent.mouseOver(own.parentElement as HTMLElement);
-    expect((await screen.findByRole('tooltip')).textContent).toContain(
-      'You cannot remove your own account',
-    );
+    expect((await screen.findByRole('tooltip')).textContent).toContain('You cannot remove your own account');
   });
 
   it('refuses to remove the last admin, which would leave nobody in charge', async () => {
@@ -121,9 +111,7 @@ describe('the users table', () => {
     const button = within(rowOf('root')).getByRole('button', { name: 'Remove' });
     expect(button).toBeDisabled();
     fireEvent.mouseOver(button.parentElement as HTMLElement);
-    expect((await screen.findByRole('tooltip')).textContent).toContain(
-      'This is the last admin',
-    );
+    expect((await screen.findByRole('tooltip')).textContent).toContain('This is the last admin');
   });
 
   it('refuses to remove the last user of all', async () => {
@@ -144,9 +132,7 @@ describe('the users table', () => {
     });
     expect(remove).toBeDisabled();
     fireEvent.mouseOver(remove.parentElement as HTMLElement);
-    expect((await screen.findByRole('tooltip')).textContent).toContain(
-      'Only an admin can remove a user',
-    );
+    expect((await screen.findByRole('tooltip')).textContent).toContain('Only an admin can remove a user');
 
     // And the add form is not there at all.
     expect(screen.queryByText('Add user')).not.toBeInTheDocument();
@@ -161,9 +147,7 @@ describe('the users table', () => {
     });
     expect(button).toBeDisabled();
     fireEvent.mouseOver(button.parentElement as HTMLElement);
-    expect((await screen.findByRole('tooltip')).textContent).toContain(
-      'no open sessions',
-    );
+    expect((await screen.findByRole('tooltip')).textContent).toContain('no open sessions');
   });
 
   it('removes a user once the dialog is confirmed, then reloads the list', async () => {
@@ -183,18 +167,13 @@ describe('the users table', () => {
     renderWithAuth(<AccessPage />, { route: '/access' });
     await screen.findByText('kim');
 
-    fireEvent.click(
-      within(rowOf('kim')).getByRole('button', { name: 'Remove' }),
-    );
+    fireEvent.click(within(rowOf('kim')).getByRole('button', { name: 'Remove' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
 
     await waitFor(() => {
       expect(screen.queryByText('kim')).not.toBeInTheDocument();
     });
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/auth/users/u2',
-      expect.objectContaining({ method: 'DELETE' }),
-    );
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/users/u2', expect.objectContaining({ method: 'DELETE' }));
   });
 
   it('shows the API error with a retry action', async () => {
@@ -213,8 +192,7 @@ describe('the users table', () => {
 });
 
 describe('adding a user', () => {
-  const type = (label: string, value: string) =>
-    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  const type = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
   it('refuses a username the database would refuse, before it is sent', async () => {
     renderAccess();
@@ -222,9 +200,7 @@ describe('adding a user', () => {
 
     type('Username', 'Not A Username');
 
-    expect(
-      await screen.findByText(/username must be 2 to 32 characters/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/username must be 2 to 32 characters/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add user' })).toBeDisabled();
   });
 
@@ -234,14 +210,10 @@ describe('adding a user', () => {
 
     type('Username', 'kim2');
     type('Password', 'short');
-    expect(
-      await screen.findByText('password must be at least 12 characters'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('password must be at least 12 characters')).toBeInTheDocument();
 
     type('Password', 'kim2-is-here-again');
-    expect(
-      await screen.findByText('password must not contain the username'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('password must not contain the username')).toBeInTheDocument();
   });
 
   it('refuses two passwords that are not the same', async () => {
@@ -252,24 +224,18 @@ describe('adding a user', () => {
     type('Password', 'a-long-enough-one');
     type('Password again', 'a-long-enough-two');
 
-    expect(
-      await screen.findByText('The two passwords are not the same.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('The two passwords are not the same.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add user' })).toBeDisabled();
   });
 
   it('posts the username, the password and the admin flag', async () => {
-    const fetchMock = renderAccess([ADMIN, KIM], {}, [
-      { method: 'POST', path: USERS, respond: () => jsonOk({}, 201) },
-    ]);
+    const fetchMock = renderAccess([ADMIN, KIM], {}, [{ method: 'POST', path: USERS, respond: () => jsonOk({}, 201) }]);
     await screen.findByText('kim');
 
     type('Username', 'kim2');
     type('Password', 'a-long-enough-one');
     type('Password again', 'a-long-enough-one');
-    fireEvent.click(
-      screen.getByLabelText(/Admin: can add and remove users/),
-    );
+    fireEvent.click(screen.getByLabelText(/Admin: can add and remove users/));
     fireEvent.click(screen.getByRole('button', { name: 'Add user' }));
 
     await waitFor(() => {
@@ -289,17 +255,12 @@ describe('adding a user', () => {
 });
 
 describe('changing my own password', () => {
-  const type = (label: string, value: string) =>
-    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  const type = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
   it('says what it will do to the other browsers before it does it', async () => {
     renderAccess();
 
-    expect(
-      await screen.findByText(
-        'This browser stays signed in. Every other one is signed out.',
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('This browser stays signed in. Every other one is signed out.')).toBeInTheDocument();
   });
 
   it('holds the new password to the shared rule', async () => {
@@ -309,12 +270,8 @@ describe('changing my own password', () => {
     type('Current password', 'whatever-it-was');
     type('New password', 'root-is-in-here');
 
-    expect(
-      await screen.findByText('password must not contain the username'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Change password' }),
-    ).toBeDisabled();
+    expect(await screen.findByText('password must not contain the username')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change password' })).toBeDisabled();
   });
 
   it('sends the change and keeps this browser signed in', async () => {
@@ -335,15 +292,8 @@ describe('changing my own password', () => {
     type('Repeat new password', 'a-long-enough-one');
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
 
-    expect(
-      await screen.findByText(
-        'Password changed. Your other browsers were signed out.',
-      ),
-    ).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/auth/password',
-      expect.objectContaining({ method: 'POST' }),
-    );
+    expect(await screen.findByText('Password changed. Your other browsers were signed out.')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/password', expect.objectContaining({ method: 'POST' }));
   });
 
   it('says the current password was wrong rather than signing you out', async () => {
@@ -361,9 +311,7 @@ describe('changing my own password', () => {
     type('Repeat new password', 'a-long-enough-one');
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
 
-    expect(
-      await screen.findByText('That is not your current password.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('That is not your current password.')).toBeInTheDocument();
     // Still on the page: a 401 here is an answer, not an eviction.
     expect(screen.getByLabelText('Current password')).toBeInTheDocument();
   });

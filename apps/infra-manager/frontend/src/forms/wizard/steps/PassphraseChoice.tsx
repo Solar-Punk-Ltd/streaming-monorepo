@@ -1,9 +1,6 @@
 import { Button, Stack, TextField, Typography } from '@mui/material';
 
-import {
-  generateSrtPassphrase,
-  SRT_PASSPHRASE_MESSAGE,
-} from '@streaming-infra-manager/common';
+import { generateSrtPassphrase, SRT_PASSPHRASE_MESSAGE } from '@streaming-infra-manager/common';
 
 import { MONO_STACK } from '../../../app/theme';
 import { ChoiceGroup } from '../../ChoiceGroup';
@@ -37,19 +34,14 @@ export function PassphraseChoice({ state, context, update }: WizardStepProps) {
                 direction="row"
                 spacing={1}
                 sx={{
-                  alignItems: "center",
-                  flexWrap: "wrap"
-                }}>
-                <Typography
-                  variant="caption"
-                  sx={{ fontFamily: MONO_STACK, wordBreak: 'break-all', flex: 1 }}
-                >
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <Typography variant="caption" sx={{ fontFamily: MONO_STACK, wordBreak: 'break-all', flex: 1 }}>
                   {state.generatedPassphrase}
                 </Typography>
-                <Button
-                  size="small"
-                  onClick={() => update({ generatedPassphrase: generateSrtPassphrase() })}
-                >
+                <Button size="small" onClick={() => update({ generatedPassphrase: generateSrtPassphrase() })}>
                   Regenerate
                 </Button>
               </Stack>
@@ -67,7 +59,7 @@ export function PassphraseChoice({ state, context, update }: WizardStepProps) {
                 onChange={(event) => update({ ownPassphrase: event.target.value })}
                 placeholder="my-stage-passphrase-2026"
                 slotProps={{
-                  htmlInput: { style: { fontFamily: MONO_STACK } }
+                  htmlInput: { style: { fontFamily: MONO_STACK } },
                 }}
               />
             ),

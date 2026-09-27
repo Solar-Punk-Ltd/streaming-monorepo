@@ -1,4 +1,10 @@
-import type { PortKey, PortPlanEntry, PortReconciliation, PortReservation, ReservationState } from './portReservations.js';
+import type {
+  PortKey,
+  PortPlanEntry,
+  PortReconciliation,
+  PortReservation,
+  ReservationState,
+} from './portReservations.js';
 
 /**
  * The reservation table, apart from the allocation that writes it inside a
@@ -14,7 +20,12 @@ export interface PortReservationRepository {
    * Planned rows for the deployment, one per entry it does not hold yet.
    * Throws when another deployment holds one, naming it.
    */
-  plan(daemonId: string, profileName: string, entries: readonly PortPlanEntry[], reason: string): Promise<PortReservation[]>;
+  plan(
+    daemonId: string,
+    profileName: string,
+    entries: readonly PortPlanEntry[],
+    reason: string,
+  ): Promise<PortReservation[]>;
   setState(ids: readonly number[], state: ReservationState): Promise<void>;
   /** Apply an observed handover under the allocation lock, retaining unresolved jobs and rollback holds. */
   reconcile(observation: PortReconciliation): Promise<void>;

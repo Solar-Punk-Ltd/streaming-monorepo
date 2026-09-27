@@ -49,7 +49,10 @@ export function managerAdminLinkDraftProblems(link: ManagerAdminLink, draft: Man
  * one, which never reaches the page and goes only to the origin it was saved
  * for. Null when there is no address, or no token to test with.
  */
-export function managerAdminLinkTestOf(link: ManagerAdminLink, draft: ManagerAdminLinkDraft): AdminLinkTestRequest | null {
+export function managerAdminLinkTestOf(
+  link: ManagerAdminLink,
+  draft: ManagerAdminLinkDraft,
+): AdminLinkTestRequest | null {
   if (draft.url === '') return null;
   if (draft.token !== '') return { url: draft.url, token: { source: 'typed', value: draft.token } };
   const stored = link.tokenStored && !draft.clearToken && sameAdminOrigin(draft.url, link.url ?? '');

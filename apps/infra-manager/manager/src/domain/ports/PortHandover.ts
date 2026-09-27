@@ -26,20 +26,35 @@ export class PortHandover {
     const containers = await this.daemon.snapshot(profile.name, target);
     const published = await this.observer.publishedPorts(target);
     if (containers.daemonId !== attempt.daemonId || published.daemonId !== attempt.daemonId) {
-      throw new TargetNotVerifiedError(target, 'Port handover observations came from a different Docker daemon. Reservations were retained.');
+      throw new TargetNotVerifiedError(
+        target,
+        'Port handover observations came from a different Docker daemon. Reservations were retained.',
+      );
     }
     if (published.unverifiedProjects?.length) return;
-    const planned = portPlanFor(portTableForEngine(contract, engineForComponents(profile.components)), profile.port_slot);
+    const planned = portPlanFor(
+      portTableForEngine(contract, engineForComponents(profile.components)),
+      profile.port_slot,
+    );
     const before = new Set(attempt.preJobContainerIds);
-    const services = attempt.services.filter(service => {
+    const services = attempt.services.filter((service) => {
       const observed = containers.containers.get(service) ?? [];
-      if (!observed.length || observed.some(container => before.has(container.id))) return false;
-      return planned.filter(port => port.service === service).every(port => published.bindings.some(binding =>
-        binding.project === profile.name && binding.service === service && portKeyOf(binding) === portKeyOf(port),
-      ));
+      if (!observed.length || observed.some((container) => before.has(container.id))) return false;
+      return planned
+        .filter((port) => port.service === service)
+        .every((port) =>
+          published.bindings.some(
+            (binding) =>
+              binding.project === profile.name && binding.service === service && portKeyOf(binding) === portKeyOf(port),
+          ),
+        );
     });
     await this.ports.reconcile({
-      profileName: profile.name, daemonId: attempt.daemonId, services, planned, bound: published.bindings,
+      profileName: profile.name,
+      daemonId: attempt.daemonId,
+      services,
+      planned,
+      bound: published.bindings,
     });
   }
 }

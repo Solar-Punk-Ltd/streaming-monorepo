@@ -22,10 +22,7 @@ import { StreamRepository } from './StreamRepository.js';
  * The SRT passphrase is a property of the SRS server, not of the stream; the
  * per-stream credential is `publishKey`, which rides in `key=`.
  */
-export function ingestDetailsFor(
-  stream: StreamRow,
-  endpoint: IngestConfig,
-): IngestDetails {
+export function ingestDetailsFor(stream: StreamRow, endpoint: IngestConfig): IngestDetails {
   const app = stream.media_type;
   const streamId = buildIngestStreamId(app, stream.topic);
   return {
@@ -33,9 +30,7 @@ export function ingestDetailsFor(
     app,
     stream: stream.topic,
     publishKey: stream.publish_key,
-    publishKeyRotatedAt: stream.publish_key_rotated_at
-      ? stream.publish_key_rotated_at.toISOString()
-      : null,
+    publishKeyRotatedAt: stream.publish_key_rotated_at ? stream.publish_key_rotated_at.toISOString() : null,
     srt: {
       url: buildSrtPublishUrl(endpoint, streamId, stream.publish_key),
       passphrase: endpoint.srtPassphrase,
@@ -65,11 +60,7 @@ export class IngestService {
    * status: the point of rotating is that the old one leaked.
    */
   async rotateKey(id: string, userId: string): Promise<IngestDetails> {
-    const rotated = await this.streams.rotatePublishKey(
-      id,
-      userId,
-      newPublishKey(),
-    );
+    const rotated = await this.streams.rotatePublishKey(id, userId, newPublishKey());
     if (!rotated) throw new StreamNotFoundError(id);
     return ingestDetailsFor(rotated, this.endpoint);
   }

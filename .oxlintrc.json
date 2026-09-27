@@ -27,20 +27,112 @@
     // typescript/no-misused-promises reports as well.
     "oxc/no-async-endpoint-handlers": "off",
 
+    // Off because reusing a name in an inner scope is how this code names things: a callback's
+    // parameter after the collection it walks (`candidates.find(candidate => ...)`), a function's
+    // parameter after the value callers pass it. The type checker already refuses the mix-ups
+    // shadowing can hide, and not one of its 134 findings was a bug.
+    "eslint/no-shadow": "off",
+
+    // Off because every dangling underscore here is a name something else chose: the `__name`
+    // helper the bundler calls in code a browser runs, and the `window.__*` hooks the browser
+    // measurement scripts leave for the harness that reads them.
+    "eslint/no-underscore-dangle": "off",
+
+    // Off because the arrays it flags hold a handful of fixed strings, where a Set buys nothing
+    // measurable and reads less plainly than the list it replaces.
+    "unicorn/prefer-set-has": "off",
+
+    // Off because a helper written inside the one function that uses it sits where its reader is.
+    // Hoisting it out moves it away from that reader for no gain anybody has measured.
+    "unicorn/consistent-function-scoping": "off",
+
+    // Off because most of what it flags is a copy made on purpose: listeners copied before they are
+    // called, so a listener that unsubscribes while the loop runs does not skip its neighbour.
+    "unicorn/no-useless-spread": "off",
+
+    // Off because the loops it flags wait for a variable that a callback, a timer or an event
+    // handler changes while the loop sleeps, which it cannot see.
+    "eslint/no-unmodified-loop-condition": "off",
+
+    // Off because `...(value ?? {})` says in the code that the value may be missing, and spreading
+    // undefined behaves the same, so the rewrite changes nothing but the reading.
+    "unicorn/no-useless-fallback-in-spread": "off",
+
+    // Off because an `onerror` or `onsuccess` property is how IndexedDB requests and WebSockets are
+    // commonly handled here, one handler that replaces the last, which addEventListener would stack.
+    "unicorn/prefer-add-event-listener": "off",
+
+    // Off because each pattern it flags matches control characters on purpose: settings, paths and
+    // log lines are checked or cleaned for exactly those characters.
+    "eslint/no-control-regex": "off",
+
+    // Off because the code it flags takes the last match (`filter(...).at(-1)`), which find, taking
+    // the first, would change.
+    "unicorn/prefer-array-find": "off",
+
+    // Off because each literal it flags is one long message split over two lines on purpose.
+    "eslint/no-useless-concat": "off",
+
+    // Off because the empty classes it flags are stand-ins in tests, where an empty class is the
+    // point.
+    "typescript/no-extraneous-class": "off",
+
+    // Off because the `then` it flags is the schema library's own `when({ is, then })` option.
+    "unicorn/no-thenable": "off",
+
+    // Off because a test constructing an object only for what its constructor does is what the
+    // test is about.
+    "eslint/no-new": "off",
+
+    // Off because `new Array(length)` is sized on purpose, for results written back by index in
+    // the order their inputs came.
+    "unicorn/no-new-array": "off",
+
+    // Off because `export {}` is what makes a declaration file that augments a global type a
+    // module, and without it the augmentation stops applying.
+    "unicorn/require-module-specifiers": "off",
+
+    // A property left out of an object by naming it next to `...rest` is used, by being left out. A
+    // leading underscore marks a name unused on purpose, which the rule accepts by default and
+    // forgets once any option is set.
+    "eslint/no-unused-vars": [
+      "error",
+      {
+        "ignoreRestSiblings": true,
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
+
     // Type-aware, through oxlint-tsgolint and the TypeScript 7 compiler, run by `--type-aware`.
     // A promise nobody awaits or catches, and a promise handed where a plain value is expected,
-    // both leave a rejection unhandled. Off until the findings they report today are fixed, then
-    // errors. node:test's test(), describe(), it() and suite() return promises the runner itself
-    // awaits, so those calls alone are known to be safe.
+    // both leave a rejection unhandled. Errors: each finding was fixed, or called with void beside
+    // the line that says why it cannot reject unhandled. node:test's test(), describe(), it() and
+    // suite() return promises the runner itself awaits, so those calls alone are known to be safe.
     "typescript/no-floating-promises": [
-      "off",
+      "error",
       {
         "allowForKnownSafeCalls": [
           { "from": "package", "name": ["test", "describe", "it", "suite"], "package": "node:test" }
         ]
       }
     ],
-    "typescript/no-misused-promises": "off",
+    "typescript/no-misused-promises": "error",
+
+    // Kept by the rule-by-rule triage of decision 52 and raised to errors by decision 56 once their
+    // findings were fixed. Each names a real defect, so a new one fails the lint rather than joining
+    // a list of warnings. The rest of the three categories stay warnings.
+    "eslint/no-unsafe-finally": "error",
+    "eslint/no-unsafe-optional-chaining": "error",
+    "eslint/no-unused-expressions": "error",
+    "eslint/no-useless-constructor": "error",
+    "eslint/preserve-caught-error": "error",
+    "oxc/no-accumulating-spread": "error",
+    "typescript/no-confusing-non-null-assertion": "error",
+    "unicorn/no-array-fill-with-reference-type": "error",
+    "unicorn/no-invalid-fetch-options": "error",
+    "unicorn/prefer-string-starts-ends-with": "error",
 
     // The other type-aware rules in the three categories above, off by name, because
     // `--type-aware` would otherwise switch them all on as warnings. The two promise rules
@@ -71,11 +163,73 @@
   },
   "overrides": [
     {
-      // In a test a helper is written where it is read, and hoisting it out of the describe
-      // block moves it away from the case it belongs to.
-      "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.test.js", "**/*.test.mjs"],
+      // MUI 9 ignores a style prop such as color="error.main" on these components without a word,
+      // which is how fifteen warning and error colours went missing in the manager console. The
+      // style belongs in sx. This replaced a test that matched the source with a regular expression
+      // and could not see past an arrow function in an earlier attribute.
+      // The react plugin is on here for that one rule. Its own rules in the three categories are off
+      // by name, since an override cannot set categories and nothing has chosen them.
+      "files": ["apps/infra-manager/frontend/src/**", "apps/web2-admin/frontend/src/**"],
+      "plugins": ["react"],
       "rules": {
-        "unicorn/consistent-function-scoping": "off"
+        "react/forbid-component-props": [
+          "error",
+          {
+            "forbid": [
+              {
+                "propNamePattern": "{color,bgcolor,fontWeight,fontFamily,fontSize,textAlign,display,whiteSpace,lineHeight,letterSpacing,width,height,minWidth,maxWidth,gap,alignItems,justifyContent,flexWrap,flex,m,mt,mb,ml,mr,mx,my,p,pt,pb,pl,pr,px,py}",
+                "disallowedFor": ["Box", "Stack", "Typography", "Link", "DialogContentText"],
+                "message": "MUI 9 takes no style props on this component. Put the style in sx."
+              }
+            ]
+          }
+        ],
+        "react/capitalized-calls": "off",
+        "react/error-boundaries": "off",
+        "react/exhaustive-deps": "off",
+        "react/exhaustive-effect-dependencies": "off",
+        "react/forward-ref-uses-ref": "off",
+        "react/globals": "off",
+        "react/hooks": "off",
+        "react/iframe-missing-sandbox": "off",
+        "react/immutability": "off",
+        "react/incompatible-library": "off",
+        "react/jsx-key": "off",
+        "react/jsx-no-comment-textnodes": "off",
+        "react/jsx-no-constructed-context-values": "off",
+        "react/jsx-no-duplicate-props": "off",
+        "react/jsx-no-script-url": "off",
+        "react/jsx-no-undef": "off",
+        "react/jsx-props-no-spread-multi": "off",
+        "react/memo-dependencies": "off",
+        "react/no-array-index-key": "off",
+        "react/no-children-prop": "off",
+        "react/no-danger-with-children": "off",
+        "react/no-deriving-state-in-effects": "off",
+        "react/no-did-mount-set-state": "off",
+        "react/no-did-update-set-state": "off",
+        "react/no-direct-mutation-state": "off",
+        "react/no-find-dom-node": "off",
+        "react/no-is-mounted": "off",
+        "react/no-namespace": "off",
+        "react/no-object-type-as-default-prop": "off",
+        "react/no-render-return-value": "off",
+        "react/no-string-refs": "off",
+        "react/no-this-in-sfc": "off",
+        "react/no-unsafe": "off",
+        "react/no-unstable-nested-components": "off",
+        "react/no-will-update-set-state": "off",
+        "react/preserve-manual-memoization": "off",
+        "react/purity": "off",
+        "react/react-in-jsx-scope": "off",
+        "react/refs": "off",
+        "react/set-state-in-effect": "off",
+        "react/set-state-in-render": "off",
+        "react/static-components": "off",
+        "react/style-prop-object": "off",
+        "react/use-memo": "off",
+        "react/void-dom-elements-no-children": "off",
+        "react/void-use-memo": "off"
       }
     }
   ],

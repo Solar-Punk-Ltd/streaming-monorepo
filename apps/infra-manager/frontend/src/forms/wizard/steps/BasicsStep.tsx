@@ -1,17 +1,6 @@
-import {
-  Box,
-  FormControlLabel,
-  MenuItem,
-  Stack,
-  Switch,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Box, FormControlLabel, MenuItem, Stack, Switch, TextField, Typography } from '@mui/material';
 
-import {
-  describeStackContract,
-  type StackVersion,
-} from '@streaming-infra-manager/common';
+import { describeStackContract, type StackVersion } from '@streaming-infra-manager/common';
 
 import { MONO_STACK } from '../../../app/theme';
 import { approvalStatusText, describeVersion, versionPlacementProblem } from '../../../versions/versionText';
@@ -39,8 +28,7 @@ const NAME_PLACEHOLDERS: Record<string, string> = {
 export function BasicsStep({ state, context, update }: WizardStepProps) {
   const goal = GOALS.find((entry) => entry.id === state.goal);
   const version = chosenVersion(state, context);
-  const nameLabel =
-    state.goal === 'abr-pool' ? 'Pool name' : state.group ? 'Group name' : 'Name';
+  const nameLabel = state.goal === 'abr-pool' ? 'Pool name' : state.group ? 'Group name' : 'Name';
   // An empty field shows the naming rule as its hint. The footer asks for a name.
   const nameFieldError = state.name ? nameError(state, context) : null;
   const notesFieldError = notesProblem(state.notes);
@@ -51,19 +39,17 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
         <Typography variant="h6" component="h3">
           Basics
         </Typography>
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {goal?.title}
         </Typography>
       </Box>
 
-      <FormField
-        label={nameLabel}
-        hint={namePreview(state)}
-        error={nameFieldError}
-        htmlFor="wizard-name"
-      >
+      <FormField label={nameLabel} hint={namePreview(state)} error={nameFieldError} htmlFor="wizard-name">
         <TextField
           id="wizard-name"
           size="small"
@@ -77,7 +63,7 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
             htmlInput: {
               style: { fontFamily: MONO_STACK },
               'aria-describedby': messageIdFor('wizard-name'),
-            }
+            },
           }}
         />
       </FormField>
@@ -105,7 +91,7 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
                   onChange={(event) => update({ hostCustom: event.target.value })}
                   placeholder="deploy@10.0.0.7"
                   slotProps={{
-                    htmlInput: { style: { fontFamily: MONO_STACK } }
+                    htmlInput: { style: { fontFamily: MONO_STACK } },
                   }}
                 />
               ),
@@ -132,7 +118,7 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
               select: {
                 'aria-label': 'Stack version',
                 SelectDisplayProps: { id: 'wizard-version' },
-              }
+              },
             }}
           >
             {choosableVersions(context).map((version) => (
@@ -147,18 +133,17 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
       {allowsGroup(state.goal) && (
         <Box>
           <FormControlLabel
-            control={
-              <Switch
-                checked={state.group}
-                onChange={(event) => update({ group: event.target.checked })}
-              />
-            }
+            control={<Switch checked={state.group} onChange={(event) => update({ group: event.target.checked })} />}
             label={
               <Typography variant="body2">
                 Deploy several at once as a group{' '}
-                <Typography component="span" variant="caption" sx={{
-                  color: "text.secondary"
-                }}>
+                <Typography
+                  component="span"
+                  variant="caption"
+                  sx={{
+                    color: 'text.secondary',
+                  }}
+                >
                   identical members sharing one configuration
                 </Typography>
               </Typography>
@@ -169,9 +154,10 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
               direction="row"
               spacing={1.5}
               sx={{
-                alignItems: "center",
-                mt: 1
-              }}>
+                alignItems: 'center',
+                mt: 1,
+              }}
+            >
               <TextField
                 size="small"
                 label="How many"
@@ -179,9 +165,12 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
                 onChange={(event) => update({ size: event.target.value })}
                 sx={{ width: 110 }}
               />
-              <Typography variant="caption" sx={{
-                color: "text.secondary"
-              }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                }}
+              >
                 {groupHint(state.size, state.goal)}
               </Typography>
             </Stack>
@@ -204,7 +193,7 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
             htmlInput: {
               maxLength: NOTES_MAX,
               'aria-describedby': messageIdFor('wizard-notes'),
-            }
+            },
           }}
         />
       </FormField>
@@ -224,9 +213,7 @@ function versionLabel(version: StackVersion): string {
 function versionHint(version: StackVersion | null): string {
   if (!version) return 'Pick the version the containers are built from.';
   const tested = approvalStatusText(version);
-  const contract = version.contract
-    ? ` ${describeStackContract(version.contract)}.`
-    : '';
+  const contract = version.contract ? ` ${describeStackContract(version.contract)}.` : '';
   return `${tested}${contract}`;
 }
 

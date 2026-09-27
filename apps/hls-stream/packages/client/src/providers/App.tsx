@@ -153,7 +153,8 @@ export const AppContextProvider = ({ children }: Props) => {
   }, [fetchAppState, setNewStreamList]);
 
   useEffect(() => {
-    initAppState();
+    // Catches its own failure and marks the list loaded either way.
+    void initAppState();
   }, [initAppState]);
 
   // Only present in a build made with VITE_EXPOSE_PLAYER, which no shipping build is. `setGatewayUrl`

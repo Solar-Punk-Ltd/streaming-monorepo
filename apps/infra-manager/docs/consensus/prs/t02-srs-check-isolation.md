@@ -22,30 +22,33 @@ The commit ids on the branch differ from these two after the cherry-pick. `git l
 
 ## Test evidence
 
-| # | Guarantee | Test (engineConfigCheck.test.ts) | On the test commit | On the fix commit |
-| --- | --- | --- | --- | --- |
-| 1 | The container runs on a `--mount type=bind` of `check-*/srs.conf`, read-only, and the directory is gone afterwards while the engine directory remains | "runs srs -t in a throwaway container of the version image on a filled copy" | fail, no `--mount` | pass |
-| 2 | Two checks held at a gate until both copies exist each read their own bytes, only the refused one is refused, nothing is left | "gives two checks in flight a copy each, and refuses only the refused one" | fail, one copy for both | pass |
-| 3 | A runner that throws leaves no directory and the failure is passed through | "removes its copy when the runner fails, and lets the failure through" | fail | pass |
-| 4 | A copy removed before the container starts yields a failure answer and creates nothing | "fails, and creates nothing, when its copy is gone by the time the container starts" | fail | pass |
-| 5 | An old `srs.conf.check` directory does not block a check and is left alone | "works beside a srs.conf.check directory the old scheme left behind" | fail, EISDIR | pass |
-| 6 | A hundred interleaved checks each answer for their own file and leave nothing behind | "leaves nothing behind after a hundred interleaved checks" | fail | pass |
+| #   | Guarantee                                                                                                                                             | Test (engineConfigCheck.test.ts)                                                     | On the test commit      | On the fix commit |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ----------------------- | ----------------- |
+| 1   | The container runs on a `--mount type=bind` of `check-*/srs.conf`, read-only, and the directory is gone afterwards while the engine directory remains | "runs srs -t in a throwaway container of the version image on a filled copy"         | fail, no `--mount`      | pass              |
+| 2   | Two checks held at a gate until both copies exist each read their own bytes, only the refused one is refused, nothing is left                         | "gives two checks in flight a copy each, and refuses only the refused one"           | fail, one copy for both | pass              |
+| 3   | A runner that throws leaves no directory and the failure is passed through                                                                            | "removes its copy when the runner fails, and lets the failure through"               | fail                    | pass              |
+| 4   | A copy removed before the container starts yields a failure answer and creates nothing                                                                | "fails, and creates nothing, when its copy is gone by the time the container starts" | fail                    | pass              |
+| 5   | An old `srs.conf.check` directory does not block a check and is left alone                                                                            | "works beside a srs.conf.check directory the old scheme left behind"                 | fail, EISDIR            | pass              |
+| 6   | A hundred interleaved checks each answer for their own file and leave nothing behind                                                                  | "leaves nothing behind after a hundred interleaved checks"                           | fail                    | pass              |
 
 Commands, in `manager/` after `pnpm --filter @streaming-infra-manager/common build`:
 
 ```
 pnpm exec tsx --conditions=development --test test/unit/engineConfigCheck.test.ts
 ```
+
 18 tests. 12 pass and 6 fail on the test commit, 18 pass on the fix commit.
 
 ```
 pnpm test
 ```
+
 499 tests, all pass.
 
 ```
 pnpm typecheck
 ```
+
 Clean.
 
 ## Review

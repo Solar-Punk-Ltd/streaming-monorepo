@@ -82,10 +82,7 @@ describe('removing a user', () => {
         // user and neither removal is ever the last one.
         await database.pool.query(FORGET_USER, [original[0]!.id]);
 
-        const outcomes = await Promise.all([
-          users.deleteUnlessLast(ann!),
-          users.deleteUnlessLast(bob!),
-        ]);
+        const outcomes = await Promise.all([users.deleteUnlessLast(ann!), users.deleteUnlessLast(bob!)]);
 
         assert.equal(
           outcomes.filter((outcome) => outcome === 'deleted').length,
@@ -118,9 +115,6 @@ describe('removing a user', () => {
   });
 
   it('says missing for an id nobody has', async () => {
-    assert.equal(
-      await users.deleteUnlessLast('00000000-0000-4000-8000-999999999999'),
-      'missing',
-    );
+    assert.equal(await users.deleteUnlessLast('00000000-0000-4000-8000-999999999999'), 'missing');
   });
 });

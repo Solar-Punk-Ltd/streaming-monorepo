@@ -110,7 +110,9 @@ export const CHECK_CASES: CheckCase[] = [...ACCEPTED_CASES, ...REFUSED_CASES];
 /** The file this case asks about, or a harness error when the template moved under it. */
 export function applyCase(template: string, one: CheckCase): string {
   if (!template.includes(one.anchor)) {
-    throw new Error(`The template has no anchor ${JSON.stringify(one.anchor)}, so the case ${one.name} cannot be built.`);
+    throw new Error(
+      `The template has no anchor ${JSON.stringify(one.anchor)}, so the case ${one.name} cannot be built.`,
+    );
   }
   return template.replace(one.anchor, one.replacement);
 }
@@ -195,7 +197,9 @@ async function main(): Promise<number> {
       })),
     );
     for (const answer of answers) {
-      console.log(`  ${answer.problem === null ? 'accepted' : 'refused '} ${answer.name}${answer.problem ? `: ${answer.problem}` : ''}`);
+      console.log(
+        `  ${answer.problem === null ? 'accepted' : 'refused '} ${answer.name}${answer.problem ? `: ${answer.problem}` : ''}`,
+      );
     }
 
     const wrong = wrongAnswers(answers);
@@ -207,7 +211,9 @@ async function main(): Promise<number> {
       for (const line of wrong) console.error(`FAIL: ${line}`);
       return WRONG_ANSWER;
     }
-    console.log('PASS: four valid files accepted, four refused each naming only its own directive, scratch directory empty');
+    console.log(
+      'PASS: four valid files accepted, four refused each naming only its own directive, scratch directory empty',
+    );
     return 0;
   } finally {
     await rm(scratchDir, { recursive: true, force: true });

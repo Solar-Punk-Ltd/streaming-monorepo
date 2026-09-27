@@ -65,7 +65,7 @@ the only source there is.
 - **The window.** The last 60 seconds of the `srs` container's log, and of those
   at most the last 20,000 lines (`SRT_INGEST_LOG_WINDOW`). Under loss libsrt
   writes a line per dropped packet into the same log, `RCV-DROPPED 1 packet(s).
-  Packet seqno %861816580 delayed for 4.5 ms`, about forty a second on
+Packet seqno %861816580 delayed for 4.5 ms`, about forty a second on
   2026-09-22, so a read that asked for the whole log would grow by megabytes a
   minute. The daemon applies the window before it sends anything, and both of
   its ends carry milliseconds, since a whole second put `until` behind the
@@ -102,13 +102,13 @@ the only source there is.
 The reports in the window are summed into one reading, across connections too,
 since a publisher that dropped out and came back is the same link.
 
-| `state` | When |
-| --- | --- |
-| `measured` | SRS printed at least one report in the window. The reading carries `reports`, `connections`, `counts`, `percent` and `verdict` |
-| `no_reports` | SRS is running and printed no report in the window |
-| `not_running` | No `srs` container is running for the deployment |
-| `unreadable` | The log could not be read. Says nothing about the link |
-| `not_srs` | The deployment's media server is not SRS |
+| `state`       | When                                                                                                                           |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `measured`    | SRS printed at least one report in the window. The reading carries `reports`, `connections`, `counts`, `percent` and `verdict` |
+| `no_reports`  | SRS is running and printed no report in the window                                                                             |
+| `not_running` | No `srs` container is running for the deployment                                                                               |
+| `unreadable`  | The log could not be read. Says nothing about the link                                                                         |
+| `not_srs`     | The deployment's media server is not SRS                                                                                       |
 
 `percent` is each count as a share of `received`, and `null` when nothing was
 received rather than a division by zero. The verdict is `healthy` when nothing

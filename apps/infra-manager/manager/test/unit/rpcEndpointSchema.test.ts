@@ -34,10 +34,7 @@ describe('the chain endpoint a body may carry', () => {
     });
 
     it(`still refuses a ${label} value that is not an address`, async () => {
-      await assert.rejects(
-        () => schema.validate({ ...base, rpc_endpoint: 'rpc.gnosischain.com' }),
-        /rpc_endpoint/,
-      );
+      await assert.rejects(() => schema.validate({ ...base, rpc_endpoint: 'rpc.gnosischain.com' }), /rpc_endpoint/);
     });
   }
 });

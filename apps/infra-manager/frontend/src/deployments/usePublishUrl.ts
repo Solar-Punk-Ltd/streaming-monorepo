@@ -42,11 +42,13 @@ interface RevealInputs {
 }
 
 function sameInputs(left: RevealInputs, right: RevealInputs): boolean {
-  return left.name === right.name &&
+  return (
+    left.name === right.name &&
     left.profileRevision === right.profileRevision &&
     left.holdsOwn === right.holdsOwn &&
     left.hostPassphrase === right.hostPassphrase &&
-    left.serverHost === right.serverHost;
+    left.serverHost === right.serverHost
+  );
 }
 
 /**

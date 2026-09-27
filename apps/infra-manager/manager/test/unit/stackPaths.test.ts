@@ -43,10 +43,7 @@ describe('stackPaths for the bundled version', () => {
 
   it('names the base env and one env file per deployment', () => {
     assert.equal(paths.baseEnv, join(BUNDLED_STACK_ROOT, '.env'));
-    assert.equal(
-      paths.envFile('main-stage'),
-      join(BUNDLED_STACK_ROOT, '.env.main-stage'),
-    );
+    assert.equal(paths.envFile('main-stage'), join(BUNDLED_STACK_ROOT, '.env.main-stage'));
   });
 
   it('carries the samples a fresh checkout has to be given', () => {
@@ -68,14 +65,8 @@ describe('stackPaths for an added version', () => {
 
   it('takes every path from the root of that version', () => {
     assert.equal(paths.root, ADDED_ROOT);
-    assert.equal(
-      paths.deploy,
-      join(ADDED_ROOT, 'deploy', 'scripts', 'deploy.sh'),
-    );
-    assert.equal(
-      paths.envFile('main-stage'),
-      join(ADDED_ROOT, '.env.main-stage'),
-    );
+    assert.equal(paths.deploy, join(ADDED_ROOT, 'deploy', 'scripts', 'deploy.sh'));
+    assert.equal(paths.envFile('main-stage'), join(ADDED_ROOT, '.env.main-stage'));
     assert.equal(paths.bootstrapPairs[0]?.dst, join(ADDED_ROOT, '.env'));
   });
 
@@ -109,7 +100,10 @@ describe('incomplete immutable build rows', () => {
 
   it('resolves a published bundled build from its explicit artifact root', () => {
     const buildId = 'a'.repeat(40);
-    assert.equal(stackRootOf({ rootPath: join(VERSIONS_ROOT, 'bundled'), layout: 'builds', buildId }), join(VERSIONS_ROOT, 'bundled.builds', buildId));
+    assert.equal(
+      stackRootOf({ rootPath: join(VERSIONS_ROOT, 'bundled'), layout: 'builds', buildId }),
+      join(VERSIONS_ROOT, 'bundled.builds', buildId),
+    );
   });
 });
 

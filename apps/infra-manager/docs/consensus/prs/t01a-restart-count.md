@@ -25,27 +25,30 @@ Reviewed by the TypeScript reviewer agent on 2026-09-08 against commits 1 and 2:
 
 ## Test evidence
 
-| # | Guarantee | Test | On f3e03fe | On 73b67ae |
-| --- | --- | --- | --- | --- |
-| 1 | Top-level `RestartCount: 2` maps to `restartCount: 2` | containerControl.test.ts, "reads the restart count from beside State, where Docker puts it" | fail, actual 0 | pass |
-| 2 | No container of that service answers null | containerControl.test.ts, "answers null when the deployment has no container of that service" | pass, existing behaviour | pass |
-| 3 | Through the real adapter, the watch sees the restarts and puts the previous file back | engineConfigService.test.ts, "sees a container that restarted on the new file and puts the previous one back" | fail, the new file stayed and no reason was recorded | pass |
+| #   | Guarantee                                                                             | Test                                                                                                          | On f3e03fe                                           | On 73b67ae |
+| --- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ---------- |
+| 1   | Top-level `RestartCount: 2` maps to `restartCount: 2`                                 | containerControl.test.ts, "reads the restart count from beside State, where Docker puts it"                   | fail, actual 0                                       | pass       |
+| 2   | No container of that service answers null                                             | containerControl.test.ts, "answers null when the deployment has no container of that service"                 | pass, existing behaviour                             | pass       |
+| 3   | Through the real adapter, the watch sees the restarts and puts the previous file back | engineConfigService.test.ts, "sees a container that restarted on the new file and puts the previous one back" | fail, the new file stayed and no reason was recorded | pass       |
 
 Commands, run in `manager/` after `pnpm --filter @streaming-infra-manager/common build`:
 
 ```
 pnpm exec tsx --conditions=development --test test/unit/containerControl.test.ts test/unit/engineConfigService.test.ts
 ```
+
 37 tests, 37 pass on the fix commit (35 pass and 2 fail on the test commit).
 
 ```
 pnpm test
 ```
+
 494 tests in 119 files, all pass.
 
 ```
 pnpm typecheck
 ```
+
 Clean on both commits.
 
 ## Not in this change

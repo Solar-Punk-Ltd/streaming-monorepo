@@ -92,10 +92,7 @@ describe('stampHealthFrom', () => {
 
   it('matches a recorded id whether or not it carries 0x', () => {
     assert.equal(stampHealthFrom(`0x${BATCH}`, [stamp()]).state, 'active');
-    assert.equal(
-      stampHealthFrom(BATCH, [stamp({ batchID: `0x${BATCH}` })]).state,
-      'active',
-    );
+    assert.equal(stampHealthFrom(BATCH, [stamp({ batchID: `0x${BATCH}` })]).state, 'active');
   });
 });
 
@@ -173,7 +170,11 @@ describe('stampHealthFrom, how full the batch is', () => {
   });
 
   it('carries no fill where nothing was read', () => {
-    for (const health of [stampHealthFrom(null, [hostBatch()]), stampHealthFrom(BATCH, null), stampHealthFrom(BATCH, [])]) {
+    for (const health of [
+      stampHealthFrom(null, [hostBatch()]),
+      stampHealthFrom(BATCH, null),
+      stampHealthFrom(BATCH, []),
+    ]) {
       assert.equal(health.fillRatio, null);
       assert.equal(health.immutable, null);
     }

@@ -11,9 +11,25 @@ name: tools
 on:
   push:
     branches: [main, main-v3]
-    paths: ['tools/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'apps/*/package.json', '.github/workflows/tools.yml']
+    paths:
+      [
+        'tools/**',
+        'package.json',
+        'pnpm-lock.yaml',
+        'pnpm-workspace.yaml',
+        'apps/*/package.json',
+        '.github/workflows/tools.yml',
+      ]
   pull_request:
-    paths: ['tools/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'apps/*/package.json', '.github/workflows/tools.yml']
+    paths:
+      [
+        'tools/**',
+        'package.json',
+        'pnpm-lock.yaml',
+        'pnpm-workspace.yaml',
+        'apps/*/package.json',
+        '.github/workflows/tools.yml',
+      ]
 
 permissions:
   contents: read

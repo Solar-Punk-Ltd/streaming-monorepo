@@ -64,7 +64,10 @@ export interface SettingsListProps {
   onUndo: (key: string) => void;
 }
 
-function countsOf(entries: readonly DeploymentSettingEntry[], states: ReadonlyMap<string, SettingRowState>): SectionCounts {
+function countsOf(
+  entries: readonly DeploymentSettingEntry[],
+  states: ReadonlyMap<string, SettingRowState>,
+): SectionCounts {
   const of = (entry: DeploymentSettingEntry) => states.get(entry.key);
   return {
     unsaved: entries.filter((entry) => of(entry)?.pending).length,
@@ -159,13 +162,17 @@ export function SettingsList({
             ),
           },
 
-          htmlInput: { 'aria-label': 'Search settings', spellCheck: false, autoComplete: 'off' }
-        }} />
+          htmlInput: { 'aria-label': 'Search settings', spellCheck: false, autoComplete: 'off' },
+        }}
+      />
 
       {sections.length === 0 ? (
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {query.trim() === '' ? 'This version declares no settings.' : noMatchText(query)}
         </Typography>
       ) : (

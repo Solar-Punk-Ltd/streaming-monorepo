@@ -39,10 +39,7 @@ export class StreamRenditionRepository {
    * the whole row as it should now stand — including a null index and duration
    * for a rung that has not finalized.
    */
-  async upsert(
-    streamId: string,
-    rendition: Rendition,
-  ): Promise<StreamRenditionRow> {
+  async upsert(streamId: string, rendition: Rendition): Promise<StreamRenditionRow> {
     const result = await this.pool.query<StreamRenditionRow>(
       `INSERT INTO stream_renditions (
          stream_id, name, width, height, topic, bandwidth, avg_bandwidth,

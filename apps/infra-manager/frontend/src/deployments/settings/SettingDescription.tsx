@@ -16,10 +16,11 @@ export function SettingDescription({ settingKey, description }: { settingKey: st
       <Typography
         variant="caption"
         sx={{
-          color: "text.secondary",
+          color: 'text.secondary',
           display: 'block',
-          overflowWrap: 'anywhere'
-        }}>
+          overflowWrap: 'anywhere',
+        }}
+      >
         {expanded || !preview.cut ? description : preview.text}
       </Typography>
       {preview.cut && (

@@ -21,10 +21,7 @@ import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
 
 import type { ContainerState } from '../../src/domain/ContainerControl.js';
 import type { EngineWatcher } from '../../src/domain/engineConfig/EngineConfigService.js';
-import type {
-  EngineConfigOperation,
-  EngineConfigOperationState,
-} from '../../src/domain/engineConfig/operations.js';
+import type { EngineConfigOperation, EngineConfigOperationState } from '../../src/domain/engineConfig/operations.js';
 
 const root = throwawayRoot('engine-config-ownership-');
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -34,18 +31,10 @@ mkdirSync(join(root, 'engines', 'srs'), { recursive: true });
 writeFileSync(join(root, 'engines', 'srs', 'srs.conf.template'), 'listen 1935;\n');
 writeFileSync(join(root, 'engines', 'srs', 'entrypoint.sh'), '');
 
-const { EngineConfigChecker } = await import(
-  '../../src/domain/engineConfig/engineConfigCheck.js'
-);
-const { EngineConfigService } = await import(
-  '../../src/domain/engineConfig/EngineConfigService.js'
-);
-const { profileRow, profileServiceHarness } = await import(
-  '../support/profileServiceHarness.js'
-);
-const { InMemoryEngineConfigOperations } = await import(
-  '../support/InMemoryEngineConfigOperations.js'
-);
+const { EngineConfigChecker } = await import('../../src/domain/engineConfig/engineConfigCheck.js');
+const { EngineConfigService } = await import('../../src/domain/engineConfig/EngineConfigService.js');
+const { profileRow, profileServiceHarness } = await import('../support/profileServiceHarness.js');
+const { InMemoryEngineConfigOperations } = await import('../support/InMemoryEngineConfigOperations.js');
 const { configureEngineConfigAdmission } = await import('../support/engineConfigAdmissionFixture.js');
 
 const V3_CONTRACT: StackContract = {
@@ -423,10 +412,7 @@ describe('what the operator does with an interrupted rollout', () => {
   it('refuses to go back when no rollout is interrupted', async () => {
     const { service, harness } = await setup();
 
-    await assert.rejects(
-      service.recreateOnPrevious('stream1'),
-      /no interrupted rollout/,
-    );
+    await assert.rejects(service.recreateOnPrevious('stream1'), /no interrupted rollout/);
     assert.deepEqual(harness.orchestrator.deploys, []);
   });
 });

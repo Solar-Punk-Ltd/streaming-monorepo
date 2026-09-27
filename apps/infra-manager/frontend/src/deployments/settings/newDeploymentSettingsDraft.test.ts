@@ -53,11 +53,22 @@ const LOG_LEVEL = entry({
   value: 'info',
   field: { kind: 'choice', choices: ['debug', 'log', 'info', 'warn', 'error', 'silent'] },
 });
-const MAX_QUEUE_SIZE = entry({ key: 'MAX_QUEUE_SIZE', versionValue: '100', value: '100', field: { kind: 'integer', min: 1 } });
+const MAX_QUEUE_SIZE = entry({
+  key: 'MAX_QUEUE_SIZE',
+  versionValue: '100',
+  value: '100',
+  field: { kind: 'integer', min: 1 },
+});
 const ADMIN_API_URL = entry({ key: 'ADMIN_API_URL', versionValue: '', value: '' });
 const ADMIN_API_TOKEN = entry({ key: 'ADMIN_API_TOKEN', secret: true, versionSet: false, source: 'unset' });
 const STAMP = entry({ key: 'STAMP', owner: 'stamp', source: 'manager' });
-const HLS_FRAGMENT = entry({ key: 'HLS_FRAGMENT', section: 'SRS Media Server', owner: 'engine-settings', source: 'manager', services: ['srs'] });
+const HLS_FRAGMENT = entry({
+  key: 'HLS_FRAGMENT',
+  section: 'SRS Media Server',
+  owner: 'engine-settings',
+  source: 'manager',
+  services: ['srs'],
+});
 
 const ENTRIES = [LOG_LEVEL, MAX_QUEUE_SIZE, ADMIN_API_URL, ADMIN_API_TOKEN, STAMP, HLS_FRAGMENT];
 
@@ -126,7 +137,11 @@ describe('what the create sends', () => {
 
 describe('what the manager would refuse', () => {
   it('names each refused key with the reason the manager gives, by its shared rules', () => {
-    const problems = newValueProblems(ENTRIES, { MAX_QUEUE_SIZE: '0', LOG_LEVEL: 'loud', ADMIN_API_URL: 'http://admin.internal' });
+    const problems = newValueProblems(ENTRIES, {
+      MAX_QUEUE_SIZE: '0',
+      LOG_LEVEL: 'loud',
+      ADMIN_API_URL: 'http://admin.internal',
+    });
 
     assert.deepEqual(problems, {
       LOG_LEVEL: 'LOG_LEVEL must be one of debug, log, info, warn, error, silent. Got "loud".',

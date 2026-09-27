@@ -88,7 +88,7 @@ function TextInput({ entry, value, disabled, problem, onChange, masked }: FieldP
           'aria-label': entry.key,
           ...(numeric ? { inputMode: entry.field?.kind === 'integer' ? 'numeric' : 'decimal' } : {}),
           ...(entry.field?.kind === 'url' ? { inputMode: 'url' } : {}),
-        }
+        },
       }}
     />
   );
@@ -104,7 +104,14 @@ function choiceLabel(choice: string, choices: readonly string[]): string {
  * offered even when it is not one of the stack's choices, so the list shows
  * what is stored rather than silently showing the first choice.
  */
-function ChoiceInput({ entry, value, disabled, problem, onChange, choices }: FieldProps & { choices: readonly string[] }) {
+function ChoiceInput({
+  entry,
+  value,
+  disabled,
+  problem,
+  onChange,
+  choices,
+}: FieldProps & { choices: readonly string[] }) {
   const options = [...new Set(['', ...choices, value])];
   return (
     <TextField
@@ -119,8 +126,9 @@ function ChoiceInput({ entry, value, disabled, problem, onChange, choices }: Fie
       onChange={(event) => onChange(event.target.value)}
       slotProps={{
         htmlInput: { 'aria-label': entry.key, style: { fontFamily: MONO_STACK, fontSize: 13 } },
-        select: { native: true }
-      }}>
+        select: { native: true },
+      }}
+    >
       {options.map((choice) => (
         <option key={choice} value={choice}>
           {choiceLabel(choice, choices)}
@@ -148,7 +156,7 @@ function BooleanInput({ entry, value, disabled, problem, onChange }: FieldProps)
             checked={value === BOOLEAN_TRUE}
             onChange={(event) => onChange(event.target.checked ? BOOLEAN_TRUE : BOOLEAN_FALSE)}
             slotProps={{
-              input: { 'aria-label': entry.key }
+              input: { 'aria-label': entry.key },
             }}
           />
         }
@@ -159,9 +167,12 @@ function BooleanInput({ entry, value, disabled, problem, onChange }: FieldProps)
         }
       />
       {problem && (
-        <Typography variant="caption" sx={{
-          color: "error.main"
-        }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'error.main',
+          }}
+        >
           {problem}
         </Typography>
       )}

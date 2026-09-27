@@ -26,10 +26,19 @@ export interface AttemptRow {
 
 export function toAttempt(row: AttemptRow): DeployAttempt {
   return {
-    id: row.id, daemonId: row.daemon_id, target: row.target, project: row.project,
-    jobId: row.job_id, kind: row.kind, services: row.services,
-    preJobContainerIds: row.pre_job_container_ids, state: row.state, reason: row.reason,
-    startedAt: row.started_at, resolvedAt: row.resolved_at, releasedBy: row.released_by,
+    id: row.id,
+    daemonId: row.daemon_id,
+    target: row.target,
+    project: row.project,
+    jobId: row.job_id,
+    kind: row.kind,
+    services: row.services,
+    preJobContainerIds: row.pre_job_container_ids,
+    state: row.state,
+    reason: row.reason,
+    startedAt: row.started_at,
+    resolvedAt: row.resolved_at,
+    releasedBy: row.released_by,
   };
 }
 
@@ -38,15 +47,23 @@ export async function lockAttemptDaemon(client: PoolClient, daemonId: string): P
 }
 
 /** Retained attempt history is a snapshot generation, never a deployment ownership token. */
-export async function captureAttemptSnapshotToken(client: PoolClient, daemonId: string, project: string): Promise<AttemptSnapshotToken> {
+export async function captureAttemptSnapshotToken(
+  client: PoolClient,
+  daemonId: string,
+  project: string,
+): Promise<AttemptSnapshotToken> {
   await lockAttemptDaemon(client, daemonId);
   const result = await client.query<{ latest: string | null; unresolved: boolean }>(
     `SELECT MAX(id)::text AS latest, COALESCE(bool_or(state <> 'released'), false) AS unresolved
-       FROM deploy_attempts WHERE daemon_id = $1 AND project = $2`, [daemonId, project],
+       FROM deploy_attempts WHERE daemon_id = $1 AND project = $2`,
+    [daemonId, project],
   );
   const row = result.rows[0]!;
   if (row.unresolved) {
-    throw new DeployAttemptRefusedError(project, `${project} has an unresolved deploy attempt. Its container snapshot cannot be captured yet.`);
+    throw new DeployAttemptRefusedError(
+      project,
+      `${project} has an unresolved deploy attempt. Its container snapshot cannot be captured yet.`,
+    );
   }
   return { daemonId, project, latestAttemptId: row.latest };
 }
@@ -57,25 +74,42 @@ export async function openDeployAttempt(client: PoolClient, input: NewDeployAtte
   await lockAttemptDaemon(client, attempt.daemonId);
   if (attempt.snapshotToken) {
     const token = attempt.snapshotToken;
-    if (token.daemonId !== attempt.daemonId || token.project !== attempt.project ||
-        (token.latestAttemptId !== null && !/^[1-9]\d*$/.test(token.latestAttemptId))) {
-      throw new DeployAttemptRefusedError(attempt.project, 'The container snapshot token does not match this target and project.');
+    if (
+      token.daemonId !== attempt.daemonId ||
+      token.project !== attempt.project ||
+      (token.latestAttemptId !== null && !/^[1-9]\d*$/.test(token.latestAttemptId))
+    ) {
+      throw new DeployAttemptRefusedError(
+        attempt.project,
+        'The container snapshot token does not match this target and project.',
+      );
     }
     const current = await captureAttemptSnapshotToken(client, attempt.daemonId, attempt.project);
     if (current.latestAttemptId !== token.latestAttemptId) {
-      throw new DeployAttemptRefusedError(attempt.project, 'Deploy attempt history changed while the container snapshot was read. Capture a fresh snapshot before retrying.');
+      throw new DeployAttemptRefusedError(
+        attempt.project,
+        'Deploy attempt history changed while the container snapshot was read. Capture a fresh snapshot before retrying.',
+      );
     }
   }
   const unresolved = await client.query<AttemptRow>(
-    `SELECT ${ATTEMPT_COLUMNS} FROM deploy_attempts WHERE daemon_id = $1 AND state <> 'released'`, [attempt.daemonId],
+    `SELECT ${ATTEMPT_COLUMNS} FROM deploy_attempts WHERE daemon_id = $1 AND state <> 'released'`,
+    [attempt.daemonId],
   );
   const refusal = whyAdmissionIsRefused(attempt, unresolved.rows.map(toAttempt));
   if (refusal) throw new DeployAttemptRefusedError(attempt.project, refusal);
   const inserted = await client.query<AttemptRow>(
     `INSERT INTO deploy_attempts (daemon_id, project, job_id, kind, services, pre_job_container_ids, target)
      VALUES ($1, $2, $3, $4, $5::text[], $6::text[], $7) RETURNING ${ATTEMPT_COLUMNS}`,
-    [attempt.daemonId, attempt.project, attempt.jobId, attempt.kind,
-      [...attempt.services], [...attempt.preJobContainerIds], attempt.target ?? null],
+    [
+      attempt.daemonId,
+      attempt.project,
+      attempt.jobId,
+      attempt.kind,
+      [...attempt.services],
+      [...attempt.preJobContainerIds],
+      attempt.target ?? null,
+    ],
   );
   return toAttempt(inserted.rows[0]!);
 }

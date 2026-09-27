@@ -34,7 +34,11 @@ const OTHER_TOKEN = 'synthetic-other-admin-token-9876543210fedcba';
 const session = {
   async sessionFor(token: string) {
     return token === 'test-session'
-      ? { user: { id: 7, username: 'operator', isAdmin: false }, tokenHash: 'test-hash', expiresAt: new Date(Date.now() + 60_000) }
+      ? {
+          user: { id: 7, username: 'operator', isAdmin: false },
+          tokenHash: 'test-hash',
+          expiresAt: new Date(Date.now() + 60_000),
+        }
       : null;
   },
 } as unknown as AuthService;
@@ -65,7 +69,12 @@ async function testApi() {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await response.text();
-    return { status: response.status, text, body: text ? (JSON.parse(text) as unknown) : undefined, cache: response.headers.get('cache-control') };
+    return {
+      status: response.status,
+      text,
+      body: text ? (JSON.parse(text) as unknown) : undefined,
+      cache: response.headers.get('cache-control'),
+    };
   }
 
   return {
@@ -137,7 +146,11 @@ describe('PUT /manager-settings/admin-link', () => {
     const api = await testApi();
     try {
       await api.save({ expectedRevision: 0, url: ADMIN_URL, token: TOKEN });
-      for (const elsewhere of ['https://admin2.example.com', 'http://admin.example.com', 'https://admin.example.com:8443']) {
+      for (const elsewhere of [
+        'https://admin2.example.com',
+        'http://admin.example.com',
+        'https://admin.example.com:8443',
+      ]) {
         const refused = await api.save({ expectedRevision: 1, url: elsewhere });
         assert.deepEqual(refusalOf(refused), [
           'The address moves to another one than the stored token was saved with, and the manager sends its stored token only to the address it was saved with. Type the token again for the new address, or clear it.',

@@ -43,18 +43,9 @@ import { protectedBuildIds } from './buildReferences.js';
 import { cloneBuildTree, type BuildTreeSharing } from './buildTreeClone.js';
 import { persistVersionRemoval } from './versionRemovalMarker.js';
 import { assertOwnedVersionParent } from './ownedVersionParent.js';
-import {
-  adoptHostConfig,
-  captureHostConfig,
-  envKeysIn,
-  withHostConfigLock,
-} from './hostConfigCapture.js';
+import { adoptHostConfig, captureHostConfig, envKeysIn, withHostConfigLock } from './hostConfigCapture.js';
 import { bundledPinProblem, readBundledPin } from './bundledCommit.js';
-import {
-  completeHostConfigFromSamples,
-  samplePairsIn,
-  type SamplePair,
-} from './hostConfigCompletion.js';
+import { completeHostConfigFromSamples, samplePairsIn, type SamplePair } from './hostConfigCompletion.js';
 import { describeSettingsSave, saveHostConfigSettings } from './hostConfigSave.js';
 import {
   readHostConfigSettings,
@@ -77,20 +68,13 @@ import {
   stagingDirFor,
   versionRootFor,
 } from './stackPaths.js';
-import type {
-  PublishOutcome,
-  StackVersionRecord,
-  StackVersionRepository,
-} from './StackVersionRepository.js';
+import type { PublishOutcome, StackVersionRecord, StackVersionRepository } from './StackVersionRepository.js';
 
 const logger = Logger.getInstance();
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** `dist/domain/versions` in the image, `src/domain/versions` under tsx. */
-export const BUILD_SCRIPT = resolve(
-  HERE,
-  '../../../scripts/stack-version-build.sh',
-);
+export const BUILD_SCRIPT = resolve(HERE, '../../../scripts/stack-version-build.sh');
 
 /** How much of the build log is kept as a failed version's reason. */
 const LOG_TAIL_BYTES = 4096;
@@ -99,7 +83,8 @@ const LOG_TAIL_BYTES = 4096;
  * The image the build script builds with, and the pnpm it falls back to for a
  * stack that names none in packageManager. The script's test keeps both in step.
  */
-export const BUILD_IMAGE = 'node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1';
+export const BUILD_IMAGE =
+  'node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1';
 export const PINNED_PNPM = 'pnpm@9.12.0';
 
 /** What the build script leaves in the staging directory: the commit it exported. */
@@ -157,8 +142,7 @@ export interface PrunedBuilds {
 const SETTINGS_FILE_MODE = 0o600;
 
 /** What a version left mid-build by a restart says when the manager comes back. */
-const INTERRUPTED_BUILD =
-  'Interrupted by a manager restart. Update the version to build it again.';
+const INTERRUPTED_BUILD = 'Interrupted by a manager restart. Update the version to build it again.';
 
 export interface StackBuild {
   version: StackVersionRecord;
@@ -207,13 +191,17 @@ export class StackVersionService {
     const snapshot = await this.versions.captureLegacyMetadata();
     if (!snapshot) {
       const current = await this.versions.findByName(BUNDLED_VERSION_NAME);
-      if (current?.layout === 'builds') logger.info(`[Versions] bundled deploys from build ${current.buildId ?? 'unknown'}`);
+      if (current?.layout === 'builds')
+        logger.info(`[Versions] bundled deploys from build ${current.buildId ?? 'unknown'}`);
       return;
     }
     let contract: StackVersionRecord['contract'] = null;
-    try { contract = readStackContract(snapshot.version.rootPath ?? bundledRoot); }
-    catch { logger.warn('[Versions] legacy bundled contract could not be read. No files were changed.'); }
-    if (!await this.versions.refreshLegacyMetadata(snapshot, { commitSha: legacyCommit, contract })) {
+    try {
+      contract = readStackContract(snapshot.version.rootPath ?? bundledRoot);
+    } catch {
+      logger.warn('[Versions] legacy bundled contract could not be read. No files were changed.');
+    }
+    if (!(await this.versions.refreshLegacyMetadata(snapshot, { commitSha: legacyCommit, contract }))) {
       logger.info('[Versions] bundled changed while legacy metadata was read. The newer row was preserved.');
     }
   }
@@ -240,8 +228,7 @@ export class StackVersionService {
    * leaves no container to be judged by.
    */
   async failInterruptedBuilds(): Promise<string[]> {
-    const interrupted =
-      await this.versions.failInterruptedBuilds(INTERRUPTED_BUILD);
+    const interrupted = await this.versions.failInterruptedBuilds(INTERRUPTED_BUILD);
     if (interrupted.length === 0) return [];
 
     this.publishChanged();
@@ -311,7 +298,9 @@ export class StackVersionService {
     if (!pin) {
       const problem = bundledPinProblem(this.bundledRoot);
       if (!problem) {
-        logger.info('[Versions] this manager pins no stack commit, so the bundled version stays on the tree it ships with');
+        logger.info(
+          '[Versions] this manager pins no stack commit, so the bundled version stays on the tree it ships with',
+        );
         return null;
       }
       logger.warn(`[Versions] ${problem}`);
@@ -408,9 +397,10 @@ export class StackVersionService {
           `${version.name} is at a commit this host cannot tell, so there is no build to mark as tested.`,
         );
       }
-      const identityMatches = version.layout === 'builds'
-        ? version.buildId !== null && version.buildId === forBuild
-        : version.buildId === null && forBuild === null;
+      const identityMatches =
+        version.layout === 'builds'
+          ? version.buildId !== null && version.buildId === forBuild
+          : version.buildId === null && forBuild === null;
       if (forCommit !== version.commitSha || !identityMatches) {
         throw new StackVersionChangedError(version.name, version.commitSha, version.status, version.buildId);
       }
@@ -440,15 +430,8 @@ export class StackVersionService {
   async saveSettings(id: number, save: StackSettingsSave): Promise<StackSettingsSaved> {
     const version = await this.require(id);
     const sources = readySettingsSources(version.name, this.settingsSourcesOf(version));
-    const generation = await saveHostConfigSettings(
-      version.name,
-      sources.configRoot,
-      save,
-      this.settingsLockWaitMs,
-    );
-    logger.info(
-      `[Versions] ${version.name} settings saved as revision ${generation}: ${describeSettingsSave(save)}`,
-    );
+    const generation = await saveHostConfigSettings(version.name, sources.configRoot, save, this.settingsLockWaitMs);
+    logger.info(`[Versions] ${version.name} settings saved as revision ${generation}: ${describeSettingsSave(save)}`);
     return { generation };
   }
 
@@ -482,10 +465,7 @@ export class StackVersionService {
     if (version.layout !== 'builds') {
       throw new StackSettingsNotReadyError(version.name, SETTINGS_NEED_A_MANAGED_BUILD);
     }
-    const { configRoot, buildRoot: from } = readySettingsSources(
-      version.name,
-      this.settingsSourcesOf(version),
-    );
+    const { configRoot, buildRoot: from } = readySettingsSources(version.name, this.settingsSourcesOf(version));
     const current = readBuildManifest(from);
     if (current.problem !== null) {
       throw new StackSettingsNotReadyError(
@@ -563,10 +543,7 @@ export class StackVersionService {
   }
 
   /** The revision's own bytes, never a link, owner only whatever the build it was made from had. */
-  private async writeSettingsInto(
-    staging: string,
-    files: ReadonlyMap<string, Buffer>,
-  ): Promise<void> {
+  private async writeSettingsInto(staging: string, files: ReadonlyMap<string, Buffer>): Promise<void> {
     for (const [relative, bytes] of files) {
       const target = join(staging, relative);
       await mkdir(dirname(target), { recursive: true });
@@ -589,7 +566,7 @@ export class StackVersionService {
     if (this.buildingName === version.name) {
       throw new StackBuildBusyError(version.name);
     }
-    const removed = await this.versions.removeGuarded(version, locked => this.removeCheckout(locked));
+    const removed = await this.versions.removeGuarded(version, (locked) => this.removeCheckout(locked));
     if (!removed) throw new StackVersionNotFoundError(id);
     this.publishChanged();
   }
@@ -622,9 +599,7 @@ export class StackVersionService {
     const attempt = randomBytes(6).toString('hex');
     const repo = repoRootFor(this.versionsRoot, version.name);
     const staging = stagingDirFor(this.versionsRoot, version.name, attempt);
-    logger.info(
-      `[Versions] building ${version.name} from ${version.gitRef}, attempt ${attempt}, in ${staging}`,
-    );
+    logger.info(`[Versions] building ${version.name} from ${version.gitRef}, attempt ${attempt}, in ${staging}`);
 
     const handle = this.runner.run(BUILD_SCRIPT, [
       repo,
@@ -693,9 +668,7 @@ export class StackVersionService {
     try {
       await rm(staging, { recursive: true, force: true });
     } catch (err) {
-      logger.warn(
-        `[Versions] could not remove staging ${staging}: ${getErrorMessage(err)}. Remove it by hand.`,
-      );
+      logger.warn(`[Versions] could not remove staging ${staging}: ${getErrorMessage(err)}. Remove it by hand.`);
     }
 
     try {
@@ -763,7 +736,14 @@ export class StackVersionService {
     await mkdir(buildsRoot, { recursive: true });
     const existing = await this.completeBuildOf(version.name, commit, inputs.generation);
     if (existing) {
-      return { buildId: existing.buildId, commitSha: commit, contract, rootPath: configRoot, source: builtFrom, reused: true };
+      return {
+        buildId: existing.buildId,
+        commitSha: commit,
+        contract,
+        rootPath: configRoot,
+        source: builtFrom,
+        reused: true,
+      };
     }
 
     await this.writeSettingsInto(staging, inputs.files);
@@ -790,10 +770,14 @@ export class StackVersionService {
   private async adoptLegacyHostConfig(configRoot: string): Promise<void> {
     const { carried, skipped } = await carryOverLegacyHostConfig(configRoot, this.bundledRoot);
     if (carried.length > 0) {
-      logger.info(`[Versions] took ${carried.join(', ')} over from ${this.bundledRoot} into ${configRoot}, which had none`);
+      logger.info(
+        `[Versions] took ${carried.join(', ')} over from ${this.bundledRoot} into ${configRoot}, which had none`,
+      );
     }
     if (skipped.length > 0) {
-      logger.warn(`[Versions] passed by ${skipped.join(', ')} in ${this.bundledRoot}, where the set wants a regular file or a plain directory. Nothing a link points at becomes a setting of this host.`);
+      logger.warn(
+        `[Versions] passed by ${skipped.join(', ')} in ${this.bundledRoot}, where the set wants a regular file or a plain directory. Nothing a link points at becomes a setting of this host.`,
+      );
     }
   }
 
@@ -840,11 +824,7 @@ export class StackVersionService {
   }
 
   /** A complete build of this commit whose inputs are the same generation, or null. */
-  private async completeBuildOf(
-    name: string,
-    commit: string,
-    generation: number,
-  ): Promise<BuildManifest | null> {
+  private async completeBuildOf(name: string, commit: string, generation: number): Promise<BuildManifest | null> {
     for (const id of await this.buildIdsOf(name, commit)) {
       const read = readBuildManifest(buildDirFor(this.versionsRoot, name, id));
       if (read.manifest && read.manifest.inputGeneration === generation) return read.manifest;
@@ -867,8 +847,9 @@ export class StackVersionService {
   private async buildIdsOf(name: string, commit: string): Promise<string[]> {
     const buildsRoot = buildsRootFor(this.versionsRoot, name);
     if (!existsSync(buildsRoot)) return [];
-    return (await readdir(buildsRoot)).filter((entry) =>
-      buildIdProblem(entry) === null && (entry === commit || entry.startsWith(`${commit}-r`)));
+    return (await readdir(buildsRoot)).filter(
+      (entry) => buildIdProblem(entry) === null && (entry === commit || entry.startsWith(`${commit}-r`)),
+    );
   }
 
   /**
@@ -904,7 +885,9 @@ export class StackVersionService {
         logger.warn(`[Versions] the inventory records beside ${buildsRoot} were not swept: ${getErrorMessage(err)}`);
       });
       if (outcome.removed.length > 0) {
-        logger.info(`[Versions] pruned ${version.name}: removed ${outcome.removed.join(', ')}, kept ${outcome.kept.join(', ') || 'none'}`);
+        logger.info(
+          `[Versions] pruned ${version.name}: removed ${outcome.removed.join(', ')}, kept ${outcome.kept.join(', ') || 'none'}`,
+        );
       }
       return outcome;
     };
@@ -940,7 +923,9 @@ export class StackVersionService {
         try {
           live = await fence.containerExists(`${BUILD_CONTAINER_PREFIX}${attempt}`);
         } catch (err) {
-          logger.warn(`[Versions] could not ask Docker about ${BUILD_CONTAINER_PREFIX}${attempt}: ${getErrorMessage(err)}. Keeping ${label}.`);
+          logger.warn(
+            `[Versions] could not ask Docker about ${BUILD_CONTAINER_PREFIX}${attempt}: ${getErrorMessage(err)}. Keeping ${label}.`,
+          );
         }
         if (live) {
           outcome.kept.push(label);
@@ -951,7 +936,9 @@ export class StackVersionService {
       }
     }
     if (outcome.removed.length > 0 || outcome.kept.length > 0) {
-      logger.info(`[Versions] build attempts at boot: removed ${outcome.removed.join(', ') || 'none'}, kept ${outcome.kept.join(', ') || 'none'}`);
+      logger.info(
+        `[Versions] build attempts at boot: removed ${outcome.removed.join(', ') || 'none'}, kept ${outcome.kept.join(', ') || 'none'}`,
+      );
     }
     return outcome;
   }
@@ -972,7 +959,8 @@ export class StackVersionService {
    */
   private async removeCheckout(version: StackVersionRecord): Promise<void> {
     const expected = versionRootFor(this.versionsRoot, version.name);
-    if (stackVersionNameProblem(version.name) || version.rootPath !== expected) throw new Error('Version root is not an owned version directory.');
+    if (stackVersionNameProblem(version.name) || version.rootPath !== expected)
+      throw new Error('Version root is not an owned version directory.');
     const directories = [
       expected,
       repoRootFor(this.versionsRoot, version.name),
@@ -983,7 +971,8 @@ export class StackVersionService {
     for (const directory of directories) {
       try {
         const info = await lstat(directory);
-        if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Owned version directory is a symbolic link or is not a directory.');
+        if (!info.isDirectory() || info.isSymbolicLink())
+          throw new Error('Owned version directory is a symbolic link or is not a directory.');
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       }
@@ -1002,10 +991,7 @@ export class StackVersionService {
   }
 }
 
-function toApiVersion(
-  version: StackVersionRecord,
-  deployments: number,
-): StackVersion {
+function toApiVersion(version: StackVersionRecord, deployments: number): StackVersion {
   return {
     id: version.id,
     name: version.name,
@@ -1076,7 +1062,9 @@ async function stagingToolchain(staging: string): Promise<string> {
   const toolchain = (await readFile(path, 'utf8')).trim();
   if (TOOLCHAIN_RE.test(toolchain)) return toolchain;
   const named = TOOLCHAIN_WORDS_RE.test(toolchain) ? `names ${toolchain}` : 'names nothing readable';
-  throw new Error(`${STACK_TOOLCHAIN_FILE} in ${staging} ${named}, which is no ${BUILD_IMAGE} and pnpm this manager builds with`);
+  throw new Error(
+    `${STACK_TOOLCHAIN_FILE} in ${staging} ${named}, which is no ${BUILD_IMAGE} and pnpm this manager builds with`,
+  );
 }
 
 /** The keys the build's .env.sample assigns, which the base env must carry. */

@@ -192,7 +192,7 @@ ssh-copy-id -i ~/manager-ssh/deploy_key.pub deploy@203.0.113.7
 ```
 
 One `Host` block per target in `~/manager-ssh/ssh_config`. `IdentityFile` is the
-path *inside the container*, where the directory is mounted at `/root/.ssh`:
+path _inside the container_, where the directory is mounted at `/root/.ssh`:
 
 ```
 Host bee-eu-1

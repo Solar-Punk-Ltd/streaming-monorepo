@@ -1,17 +1,6 @@
-import {
-  Button,
-  Link,
-  Stack,
-  TableCell,
-  TableRow,
-  Typography,
-} from '@mui/material';
+import { Button, Link, Stack, TableCell, TableRow, Typography } from '@mui/material';
 
-import type {
-  ChequebookHealth,
-  StampHealth,
-  UploaderHealthReading,
-} from '@streaming-infra-manager/common';
+import type { ChequebookHealth, StampHealth, UploaderHealthReading } from '@streaming-infra-manager/common';
 
 import { useEditors } from '../app/EditorsContext';
 import { navigate, routes } from '../app/router';
@@ -26,14 +15,7 @@ import { clientUrl, hostFor } from '../urls';
 import { PrimaryAction } from './PrimaryAction';
 import { readinessOf } from './readiness';
 import { usePublishUrl } from './usePublishUrl';
-import {
-  isRunning,
-  isTransitional,
-  SHAPE_LABEL,
-  servicesOf,
-  shapeOf,
-  statusLabelOf,
-} from './shape';
+import { isRunning, isTransitional, SHAPE_LABEL, servicesOf, shapeOf, statusLabelOf } from './shape';
 
 export function DeploymentRow({
   profile,
@@ -113,24 +95,18 @@ export function DeploymentRow({
   });
 
   return (
-    <TableRow
-      hover
-      sx={{ cursor: 'pointer' }}
-      onClick={() => navigate(routes.deployment(profile.name))}
-    >
+    <TableRow hover sx={{ cursor: 'pointer' }} onClick={() => navigate(routes.deployment(profile.name))}>
       <TableCell sx={{ width: 28, pl: indented ? 5 : 2 }}>
-        <StatusDot
-          tone={statusLabelOf(profile).tone}
-          pulsing={isTransitional(profile)}
-        />
+        <StatusDot tone={statusLabelOf(profile).tone} pulsing={isTransitional(profile)} />
       </TableCell>
       <TableCell>
-        <Typography sx={{ fontFamily: MONO_STACK, fontWeight: 600, fontSize: 13 }}>
-          {profile.name}
-        </Typography>
-        <Typography variant="caption" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography sx={{ fontFamily: MONO_STACK, fontWeight: 600, fontSize: 13 }}>{profile.name}</Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {subParts.join(' · ')}
         </Typography>
       </TableCell>
@@ -138,9 +114,13 @@ export function DeploymentRow({
         <ReadinessPill label={readiness.label} tone={readiness.tone} />
       </TableCell>
       <TableCell onClick={(event) => event.stopPropagation()}>
-        <Stack direction="row" spacing={0.5} sx={{
-          alignItems: "center"
-        }}>
+        <Stack
+          direction="row"
+          spacing={0.5}
+          sx={{
+            alignItems: 'center',
+          }}
+        >
           {copyable && (
             <Button size="small" onClick={() => void publish.copy()}>
               Copy publish URL
@@ -158,9 +138,10 @@ export function DeploymentRow({
           direction="row"
           spacing={0.5}
           sx={{
-            justifyContent: "flex-end",
-            alignItems: "center"
-          }}>
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+          }}
+        >
           <PrimaryAction profile={profile} />
           <RowMenu items={menuItems} ariaLabel={`more actions for ${profile.name}`} />
         </Stack>

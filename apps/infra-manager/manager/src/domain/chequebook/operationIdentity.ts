@@ -25,7 +25,8 @@ export function operationId(value: unknown): string {
 }
 
 export function normalizeTransferIntent(intent: ChequebookTransferIntent): ChequebookTransferIntent {
-  if (intent.direction !== 'deposit' && intent.direction !== 'withdraw') throw new ChequebookOperationInputError('direction');
+  if (intent.direction !== 'deposit' && intent.direction !== 'withdraw')
+    throw new ChequebookOperationInputError('direction');
   return Object.freeze({
     requestId: text(intent.requestId, 'request id', UUID).toLowerCase(),
     profileName: text(intent.profileName, 'deployment'),
@@ -37,7 +38,8 @@ export function normalizeTransferIntent(intent: ChequebookTransferIntent): Chequ
 }
 
 export function normalizeTransferContext(context: ChequebookTransferContext): ChequebookTransferContext {
-  if (!Number.isSafeInteger(context.chainId) || context.chainId < 1) throw new ChequebookOperationInputError('chain id');
+  if (!Number.isSafeInteger(context.chainId) || context.chainId < 1)
+    throw new ChequebookOperationInputError('chain id');
   return Object.freeze({
     chainId: context.chainId,
     nodeAddress: text(context.nodeAddress, 'node address', ADDRESS).toLowerCase(),
@@ -50,10 +52,19 @@ export function normalizeTransferContext(context: ChequebookTransferContext): Ch
   });
 }
 
-type SavedIntentIdentity = Omit<ChequebookTransferIntent, 'profileInstanceId'> & { readonly profileInstanceId: string | null };
+type SavedIntentIdentity = Omit<ChequebookTransferIntent, 'profileInstanceId'> & {
+  readonly profileInstanceId: string | null;
+};
 
 export function sameTransferIntent(a: SavedIntentIdentity, b: SavedIntentIdentity): boolean {
-  return a.requestId === b.requestId && a.profileName === b.profileName && a.profileInstanceId === b.profileInstanceId && a.requestedBy === b.requestedBy && a.direction === b.direction && a.amountPlur === b.amountPlur;
+  return (
+    a.requestId === b.requestId &&
+    a.profileName === b.profileName &&
+    a.profileInstanceId === b.profileInstanceId &&
+    a.requestedBy === b.requestedBy &&
+    a.direction === b.direction &&
+    a.amountPlur === b.amountPlur
+  );
 }
 
 export function isTransactionHash(value: unknown): value is string {

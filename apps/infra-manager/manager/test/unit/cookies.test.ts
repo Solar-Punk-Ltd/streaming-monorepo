@@ -43,11 +43,7 @@ describe('parseCookies', () => {
 
   it('is empty for nothing, and skips pairs that are not pairs', () => {
     for (const header of [undefined, '', '   ', ';;', 'novalue', '=orphan']) {
-      assert.equal(
-        parseCookies(header).size,
-        0,
-        `should read nothing from ${JSON.stringify(header)}`,
-      );
+      assert.equal(parseCookies(header).size, 0, `should read nothing from ${JSON.stringify(header)}`);
     }
   });
 

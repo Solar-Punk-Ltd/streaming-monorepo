@@ -6,8 +6,7 @@ import {
 } from '@streaming-infra-manager/common';
 import { boolean, InferType, object, string } from 'yup';
 
-const usernameField = () =>
-  string().required('username is required').matches(USERNAME_RE, USERNAME_MESSAGE);
+const usernameField = () => string().required('username is required').matches(USERNAME_RE, USERNAME_MESSAGE);
 
 /**
  * The sign-in body. Both fields are bounded and neither is shape-checked: a

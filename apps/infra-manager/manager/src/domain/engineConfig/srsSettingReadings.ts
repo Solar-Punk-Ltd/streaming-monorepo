@@ -1,6 +1,9 @@
 import {
   engineSettingFieldProblem,
-  type EngineSettingField, type EngineSettingReading, type EngineSettingReadings, type EngineSettingUnknownReason,
+  type EngineSettingField,
+  type EngineSettingReading,
+  type EngineSettingReadings,
+  type EngineSettingUnknownReason,
 } from '@streaming-infra-manager/common';
 
 import { parseSrsConfig, type SrsDirective } from './srsConfigSyntax.js';
@@ -13,7 +16,11 @@ interface Entry {
 
 /** The field whose config directive is stated in a different unit than the field. */
 const SEGMENT_MAX_KEY = 'HLS_SEGMENT_MAX';
-const HLS_DIRECTIVES: Record<string, string> = { HLS_FRAGMENT: 'hls_fragment', HLS_WINDOW: 'hls_window', [SEGMENT_MAX_KEY]: 'hls_aof_ratio' };
+const HLS_DIRECTIVES: Record<string, string> = {
+  HLS_FRAGMENT: 'hls_fragment',
+  HLS_WINDOW: 'hls_window',
+  [SEGMENT_MAX_KEY]: 'hls_aof_ratio',
+};
 /**
  * The SRT latency, read as the wait SRS applies to a broadcast it receives.
  *
@@ -34,16 +41,28 @@ const SRT_SERVER_SCOPE = ['srt_server'];
 /** The scopes of a file to read a field in, or the one reading that says why there are none. */
 type FieldScopes = { scopes: Entry[] } | { reading: EngineSettingReading };
 const ENCODER_DIRECTIVES: Record<string, string> = {
-  ABR_FPS: 'vfps', ABR_PRESET: 'vpreset', ABR_PROFILE: 'vprofile', ABR_THREADS: 'vthreads', ABR_ACODEC: 'acodec',
+  ABR_FPS: 'vfps',
+  ABR_PRESET: 'vpreset',
+  ABR_PROFILE: 'vprofile',
+  ABR_THREADS: 'vthreads',
+  ABR_ACODEC: 'acodec',
 };
 const ENCODER_SCOPE = ['vhost', 'transcode', 'engine'];
-const unknown = (reason: EngineSettingUnknownReason, environment: 'none' | 'unknown' = 'unknown'): EngineSettingReading =>
-  ({ kind: 'unverified', reason, environment });
+const unknown = (
+  reason: EngineSettingUnknownReason,
+  environment: 'none' | 'unknown' = 'unknown',
+): EngineSettingReading => ({ kind: 'unverified', reason, environment });
 
-function entriesIn(nodes: readonly SrsDirective[], ancestors: readonly SrsDirective[] = [], parentsUnique = true): Entry[] {
+function entriesIn(
+  nodes: readonly SrsDirective[],
+  ancestors: readonly SrsDirective[] = [],
+  parentsUnique = true,
+): Entry[] {
   const entries: Entry[] = [];
   for (const node of nodes) {
-    const matches = nodes.filter(other => other.name === node.name && JSON.stringify(other.args) === JSON.stringify(node.args));
+    const matches = nodes.filter(
+      (other) => other.name === node.name && JSON.stringify(other.args) === JSON.stringify(node.args),
+    );
     const unique = parentsUnique && matches.length === 1;
     const ancestry = [...ancestors, node];
     entries.push({ node, ancestry, unique });
@@ -52,27 +71,39 @@ function entriesIn(nodes: readonly SrsDirective[], ancestors: readonly SrsDirect
   return entries;
 }
 
-function scopeNames(entry: Entry): string[] { return entry.ancestry.map(node => node.name); }
+function scopeNames(entry: Entry): string[] {
+  return entry.ancestry.map((node) => node.name);
+}
 
 function sameNames(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((name, index) => name === right[index]);
 }
 
 function validScope(entry: Entry): boolean {
-  return entry.unique && entry.ancestry.every(node =>
-    node.name === 'vhost' || node.name === 'engine' ? node.args.length === 1
-      : node.name === 'transcode' ? node.args.length <= 1 : node.args.length === 0);
+  return (
+    entry.unique &&
+    entry.ancestry.every((node) =>
+      node.name === 'vhost' || node.name === 'engine'
+        ? node.args.length === 1
+        : node.name === 'transcode'
+          ? node.args.length <= 1
+          : node.args.length === 0,
+    )
+  );
 }
 
 function supportedGenerationScope(entry: Entry): boolean {
-  return validScope(entry) && (entry.node.name === 'ABR_VHOST_PLACEHOLDER'
-    ? entry.ancestry.length === 1
-    : sameNames(scopeNames(entry), ['vhost', 'TRANSCODE_PLACEHOLDER']));
+  return (
+    validScope(entry) &&
+    (entry.node.name === 'ABR_VHOST_PLACEHOLDER'
+      ? entry.ancestry.length === 1
+      : sameNames(scopeNames(entry), ['vhost', 'TRANSCODE_PLACEHOLDER']))
+  );
 }
 
 function scalarIn(scope: Entry, directive: string, placeholder?: string, source?: string): EngineSettingReading {
   if (!validScope(scope)) return unknown('ambiguous-path');
-  const values = scope.node.children?.filter(node => node.name === directive) ?? [];
+  const values = scope.node.children?.filter((node) => node.name === directive) ?? [];
   if (values.length > 1) return unknown('ambiguous-path');
   if (!values.length) return { kind: 'omitted' };
   const value = values[0]!;
@@ -88,39 +119,59 @@ function scalarIn(scope: Entry, directive: string, placeholder?: string, source?
 }
 
 function hasIncludeFor(entries: readonly Entry[], patterns: readonly (readonly string[])[]): boolean {
-  return entries.some(entry => {
+  return entries.some((entry) => {
     if (entry.node.name !== 'include') return false;
     const parent = scopeNames(entry).slice(0, -1);
-    return patterns.some(pattern => parent.length <= pattern.length && parent.every((name, index) => name === pattern[index]));
+    return patterns.some(
+      (pattern) => parent.length <= pattern.length && parent.every((name, index) => name === pattern[index]),
+    );
   });
 }
 
 /** Every scope of the file matching one where the version's template fills the field's placeholder into one of `directives`. */
-function scopesFilledIn(field: EngineSettingField, directives: readonly string[], template: readonly Entry[] | null, file: readonly Entry[]): FieldScopes {
+function scopesFilledIn(
+  field: EngineSettingField,
+  directives: readonly string[],
+  template: readonly Entry[] | null,
+  file: readonly Entry[],
+): FieldScopes {
   if (template === null || !field.placeholder) return { reading: unknown('metadata-unavailable') };
-  const required = template.filter(entry => directives.includes(entry.node.name)
-    && entry.node.children === null && entry.node.args.length === 1 && entry.node.args[0] === field.placeholder);
+  const required = template.filter(
+    (entry) =>
+      directives.includes(entry.node.name) &&
+      entry.node.children === null &&
+      entry.node.args.length === 1 &&
+      entry.node.args[0] === field.placeholder,
+  );
   if (!required.length) return { reading: unknown('metadata-unavailable') };
-  if (required.some(entry => !entry.unique)) return { reading: unknown('ambiguous-path') };
-  const patterns = required.map(entry => scopeNames(entry).slice(0, -1));
+  if (required.some((entry) => !entry.unique)) return { reading: unknown('ambiguous-path') };
+  const patterns = required.map((entry) => scopeNames(entry).slice(0, -1));
   if (hasIncludeFor(file, patterns)) return { reading: unknown('unsupported-syntax') };
-  const scopes = file.filter(entry => entry.node.children !== null && patterns.some(pattern => sameNames(scopeNames(entry), pattern)));
+  const scopes = file.filter(
+    (entry) => entry.node.children !== null && patterns.some((pattern) => sameNames(scopeNames(entry), pattern)),
+  );
   if (!scopes.length) return { reading: { kind: 'omitted' } };
   return { scopes };
 }
 
 /** One scalar directive, in every scope of the file where the version's template fills it with the field's placeholder. */
-function placeholderDirectiveReadings(field: EngineSettingField, directive: string, template: readonly Entry[] | null, file: readonly Entry[], source: string): EngineSettingReading[] {
+function placeholderDirectiveReadings(
+  field: EngineSettingField,
+  directive: string,
+  template: readonly Entry[] | null,
+  file: readonly Entry[],
+  source: string,
+): EngineSettingReading[] {
   const found = scopesFilledIn(field, [directive], template, file);
   if ('reading' in found) return [found.reading];
-  return found.scopes.map(scope => scalarIn(scope, directive, field.placeholder, source));
+  return found.scopes.map((scope) => scalarIn(scope, directive, field.placeholder, source));
 }
 
 /** The wait on ingest in one `srt_server` block, which is SRS's own 120 where the block sets no `recvlatency`. */
 function ingestLatencyIn(scope: Entry, placeholder: string | undefined, source: string): EngineSettingReading {
   const reading = scalarIn(scope, INGEST_LATENCY_DIRECTIVE, placeholder, source);
   if (reading.kind !== 'omitted') return reading;
-  const setsLatency = scope.node.children?.some(node => node.name === BOTH_WAYS_LATENCY_DIRECTIVE) ?? false;
+  const setsLatency = scope.node.children?.some((node) => node.name === BOTH_WAYS_LATENCY_DIRECTIVE) ?? false;
   return {
     kind: 'built-in',
     value: SRS_INGEST_LATENCY_DEFAULT_MS,
@@ -134,7 +185,7 @@ function ingestLatencyIn(scope: Entry, placeholder: string | undefined, source: 
  * and hands SRS the rest as the token itself.
  */
 function repeatsOnALine(source: string, placeholder: string): boolean {
-  return source.split('\n').some(line => line.indexOf(placeholder) !== line.lastIndexOf(placeholder));
+  return source.split('\n').some((line) => line.indexOf(placeholder) !== line.lastIndexOf(placeholder));
 }
 
 /**
@@ -142,25 +193,37 @@ function repeatsOnALine(source: string, placeholder: string): boolean {
  * placeholder: `latency` alone on v3.1, both directives since the stack's
  * a1b43f0a. Both sit in `srt_server`.
  */
-function srtLatencyReadings(field: EngineSettingField, template: readonly Entry[] | null, file: readonly Entry[], source: string): EngineSettingReading[] {
+function srtLatencyReadings(
+  field: EngineSettingField,
+  template: readonly Entry[] | null,
+  file: readonly Entry[],
+  source: string,
+): EngineSettingReading[] {
   const found = scopesFilledIn(field, [BOTH_WAYS_LATENCY_DIRECTIVE, INGEST_LATENCY_DIRECTIVE], template, file);
   if ('reading' in found) return [found.reading];
   if (field.placeholder && repeatsOnALine(source, field.placeholder)) return [unknown('unsupported-syntax')];
-  return found.scopes.map(scope => ingestLatencyIn(scope, field.placeholder, source));
+  return found.scopes.map((scope) => ingestLatencyIn(scope, field.placeholder, source));
 }
 
-function hlsReadings(field: EngineSettingField, template: readonly Entry[] | null, file: readonly Entry[], opaqueVhost: boolean, source: string): EngineSettingReading[] {
+function hlsReadings(
+  field: EngineSettingField,
+  template: readonly Entry[] | null,
+  file: readonly Entry[],
+  opaqueVhost: boolean,
+  source: string,
+): EngineSettingReading[] {
   if (opaqueVhost) return [unknown('unsupported-syntax')];
   return placeholderDirectiveReadings(field, HLS_DIRECTIVES[field.key]!, template, file, source);
 }
 
 function bitrateReadings(scopes: readonly Entry[]): EngineSettingReading[] {
-  const codecs = scopes.map(scope => scalarIn(scope, 'acodec'));
-  if (codecs.some(codec => codec.kind !== 'literal' || !['copy', 'aac'].includes(codec.value))) return [unknown('codec-unverified')];
-  const values = codecs.map(codec => codec.kind === 'literal' ? codec.value : '');
-  if (values.every(value => value === 'copy')) return [unknown('not-applicable', 'none')];
-  if (values.some(value => value === 'copy')) return [unknown('mixed-applicability')];
-  return scopes.map(scope => scalarIn(scope, 'abitrate'));
+  const codecs = scopes.map((scope) => scalarIn(scope, 'acodec'));
+  if (codecs.some((codec) => codec.kind !== 'literal' || !['copy', 'aac'].includes(codec.value)))
+    return [unknown('codec-unverified')];
+  const values = codecs.map((codec) => (codec.kind === 'literal' ? codec.value : ''));
+  if (values.every((value) => value === 'copy')) return [unknown('not-applicable', 'none')];
+  if (values.some((value) => value === 'copy')) return [unknown('mixed-applicability')];
+  return scopes.map((scope) => scalarIn(scope, 'abitrate'));
 }
 
 /** Read configured scalar evidence, including disabled scopes conservatively, without claiming runtime activation. */
@@ -171,42 +234,58 @@ export function srsSettingReadings(
   options: { abr: boolean },
 ): EngineSettingReadings {
   const parsedFile = parseSrsConfig(fileText);
-  if (parsedFile === null) return Object.fromEntries(fields.map(field => [field.key, [unknown(fileText === null ? 'metadata-unavailable' : 'unsupported-syntax')]]));
+  if (parsedFile === null)
+    return Object.fromEntries(
+      fields.map((field) => [field.key, [unknown(fileText === null ? 'metadata-unavailable' : 'unsupported-syntax')]]),
+    );
   const parsedTemplate = parseSrsConfig(templateText);
   const template = parsedTemplate === null ? null : entriesIn(parsedTemplate);
   const file = entriesIn(parsedFile);
-  if (options.abr && file.some(entry => entry.node.generated && !supportedGenerationScope(entry))) {
-    return Object.fromEntries(fields.map(field => [field.key, [unknown('unsupported-syntax')]]));
+  if (options.abr && file.some((entry) => entry.node.generated && !supportedGenerationScope(entry))) {
+    return Object.fromEntries(fields.map((field) => [field.key, [unknown('unsupported-syntax')]]));
   }
-  const activeMarker = (name: string) => options.abr && file.some(entry => entry.node.generated && entry.node.name === name);
+  const activeMarker = (name: string) =>
+    options.abr && file.some((entry) => entry.node.generated && entry.node.name === name);
   const opaqueVhost = activeMarker('ABR_VHOST_PLACEHOLDER');
   const opaqueEncoder = activeMarker('TRANSCODE_PLACEHOLDER') || hasIncludeFor(file, [ENCODER_SCOPE]);
-  const encoders = file.filter(entry => entry.node.children !== null && sameNames(scopeNames(entry), ENCODER_SCOPE));
-  return Object.fromEntries(fields.map(field => {
-    if (field.key in HLS_DIRECTIVES) {
-      const readings = hlsReadings(field, template, file, opaqueVhost, fileText ?? '');
-      // `hls_aof_ratio` is a multiple of `hls_fragment`, and the field is the
-      // seconds the entrypoint derives that multiple from. A config that writes
-      // a number there rather than the token is therefore not stating this
-      // setting, and reading it back would report a ratio as a duration.
-      return [field.key, field.key === SEGMENT_MAX_KEY
-        ? readings.map(reading => reading.kind === 'literal' ? unknown('unsupported-syntax') : reading)
-        : readings];
-    }
-    if (field.key === SRT_LATENCY_KEY) return [field.key, srtLatencyReadings(field, template, file, fileText ?? '')];
-    if (field.key === 'ABR_VBV_SECONDS' || opaqueEncoder) return [field.key, [unknown('unsupported-syntax')]];
-    if (!encoders.length) return [field.key, [{ kind: 'omitted' }]];
-    if (field.key === 'ABR_AUDIO_BITRATE') return [field.key, bitrateReadings(encoders)];
-    const directive = ENCODER_DIRECTIVES[field.key];
-    return [field.key, directive ? encoders.map(scope => scalarIn(scope, directive)) : [unknown('metadata-unavailable')]];
-  }));
+  const encoders = file.filter((entry) => entry.node.children !== null && sameNames(scopeNames(entry), ENCODER_SCOPE));
+  return Object.fromEntries(
+    fields.map((field) => {
+      if (field.key in HLS_DIRECTIVES) {
+        const readings = hlsReadings(field, template, file, opaqueVhost, fileText ?? '');
+        // `hls_aof_ratio` is a multiple of `hls_fragment`, and the field is the
+        // seconds the entrypoint derives that multiple from. A config that writes
+        // a number there rather than the token is therefore not stating this
+        // setting, and reading it back would report a ratio as a duration.
+        return [
+          field.key,
+          field.key === SEGMENT_MAX_KEY
+            ? readings.map((reading) => (reading.kind === 'literal' ? unknown('unsupported-syntax') : reading))
+            : readings,
+        ];
+      }
+      if (field.key === SRT_LATENCY_KEY) return [field.key, srtLatencyReadings(field, template, file, fileText ?? '')];
+      if (field.key === 'ABR_VBV_SECONDS' || opaqueEncoder) return [field.key, [unknown('unsupported-syntax')]];
+      if (!encoders.length) return [field.key, [{ kind: 'omitted' }]];
+      if (field.key === 'ABR_AUDIO_BITRATE') return [field.key, bitrateReadings(encoders)];
+      const directive = ENCODER_DIRECTIVES[field.key];
+      return [
+        field.key,
+        directive ? encoders.map((scope) => scalarIn(scope, directive)) : [unknown('metadata-unavailable')],
+      ];
+    }),
+  );
 }
 
 function takesPlaceholder(entries: readonly Entry[], placeholder: string): boolean {
-  return entries.some(entry => entry.node.args.some(arg => arg.includes(placeholder)));
+  return entries.some((entry) => entry.node.args.some((arg) => arg.includes(placeholder)));
 }
 
-const fixedByVersion = (value: string): EngineSettingReading => ({ kind: 'built-in', value, reason: 'version-without-setting' });
+const fixedByVersion = (value: string): EngineSettingReading => ({
+  kind: 'built-in',
+  value,
+  reason: 'version-without-setting',
+});
 
 /** A `recvlatency` a template writes itself: the wait it fixes, or unverified where the setting would refuse the value. */
 function writtenIngestLatency(field: EngineSettingField, value: string): EngineSettingReading {
@@ -219,10 +298,12 @@ function writtenIngestLatency(field: EngineSettingField, value: string): EngineS
  * writes none. Null for a template that runs no SRT server.
  */
 function ingestLatencyFixedBy(field: EngineSettingField, template: readonly Entry[]): EngineSettingReading[] | null {
-  const blocks = template.filter(entry => entry.node.children !== null && sameNames(scopeNames(entry), SRT_SERVER_SCOPE));
+  const blocks = template.filter(
+    (entry) => entry.node.children !== null && sameNames(scopeNames(entry), SRT_SERVER_SCOPE),
+  );
   if (!blocks.length) return null;
   if (hasIncludeFor(template, [SRT_SERVER_SCOPE])) return [unknown('unsupported-syntax')];
-  return blocks.map(block => {
+  return blocks.map((block) => {
     const reading = scalarIn(block, INGEST_LATENCY_DIRECTIVE);
     if (reading.kind === 'omitted') return fixedByVersion(SRS_INGEST_LATENCY_DEFAULT_MS);
     return reading.kind === 'literal' ? writtenIngestLatency(field, reading.value) : reading;
@@ -249,7 +330,7 @@ export function srsTemplateReadings(
   templateText: string | null,
   fields: readonly EngineSettingField[],
 ): EngineSettingReadings {
-  const field = fields.find(candidate => candidate.key === SRT_LATENCY_KEY);
+  const field = fields.find((candidate) => candidate.key === SRT_LATENCY_KEY);
   const parsed = parseSrsConfig(templateText);
   if (!field?.placeholder || parsed === null) return {};
   const template = entriesIn(parsed);
@@ -258,7 +339,7 @@ export function srsTemplateReadings(
     return fixed ? { [field.key]: fixed } : {};
   }
   const readings = srtLatencyReadings(field, template, template, templateText ?? '');
-  if (readings.every(reading => reading.kind === 'environment')) return {};
+  if (readings.every((reading) => reading.kind === 'environment')) return {};
   return {
     [field.key]: readings.map((reading): EngineSettingReading => {
       if (reading.kind === 'built-in' && reading.reason === 'latency-without-recvlatency') {

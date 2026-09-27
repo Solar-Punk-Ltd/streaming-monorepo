@@ -318,4 +318,5 @@ async function start() {
   }
 }
 
-start();
+// Catches its own failure and exits with status 1.
+void start();

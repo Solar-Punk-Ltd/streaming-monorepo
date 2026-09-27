@@ -1,19 +1,10 @@
-import {
-  type EngineName,
-  OME_SERVICE,
-  RESTARTABLE_SERVICES,
-  SRS_SERVICE,
-} from '@streaming-infra-manager/common';
+import { type EngineName, OME_SERVICE, RESTARTABLE_SERVICES, SRS_SERVICE } from '@streaming-infra-manager/common';
 import Docker from 'dockerode';
 import type { ExecutionDockerReader } from './versions/executionMountCapture.js';
 import { connect } from 'node:net';
 import { dirname } from 'node:path';
 
-import {
-  COMPOSE_PROJECT_LABEL,
-  COMPOSE_SERVICE_LABEL,
-  COMPOSE_WORKING_DIR_LABEL,
-} from './composeLabels.js';
+import { COMPOSE_PROJECT_LABEL, COMPOSE_SERVICE_LABEL, COMPOSE_WORKING_DIR_LABEL } from './composeLabels.js';
 import type { ObservedContainer } from './DeployAttemptRepository.js';
 import { answeredInTime, DOCKER_TIMEOUT_MS } from './dockerTimeout.js';
 import {
@@ -22,12 +13,7 @@ import {
   RestartInProgressError,
   UnknownServiceError,
 } from './errors/index.js';
-import {
-  completeLines,
-  demultiplexDockerStream,
-  readBounded,
-  type StreamBounds,
-} from './dockerStream.js';
+import { completeLines, demultiplexDockerStream, readBounded, type StreamBounds } from './dockerStream.js';
 import { EventBus } from './EventBus.js';
 import { LOCAL_PUBLISHED_HOST } from './localHost.js';
 import { Logger } from './Logger.js';
@@ -44,8 +30,7 @@ const RESTART_TIMEOUT_SECONDS = 10;
 const PORT_ATTEMPT_MS = 2_000;
 const PORT_RETRY_MS = 500;
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 function connects(host: string, port: number, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -138,9 +123,7 @@ const ENGINE_CONFIG_PATHS: Record<EngineName, string> = {
  */
 export interface ContainerHandle {
   restart(options: { t: number }): Promise<unknown>;
-  logs(
-    options: Docker.ContainerLogsOptions & { follow: true },
-  ): Promise<NodeJS.ReadableStream>;
+  logs(options: Docker.ContainerLogsOptions & { follow: true }): Promise<NodeJS.ReadableStream>;
   exec(options: Docker.ExecCreateOptions): Promise<ExecHandle>;
   inspect(): Promise<InspectedContainer>;
 }
@@ -184,9 +167,7 @@ export interface ListedContainer {
 export interface DockerEngine {
   /** `docker info`, for the daemon's own id. */
   info(): Promise<unknown>;
-  listContainers(
-    options: Docker.ContainerListOptions,
-  ): Promise<ListedContainer[]>;
+  listContainers(options: Docker.ContainerListOptions): Promise<ListedContainer[]>;
   getContainer(id: string): ContainerHandle;
 }
 
@@ -228,10 +209,7 @@ export class ContainerControl {
       this.docker.listContainers({
         all: false,
         filters: {
-          label: [
-            `${COMPOSE_PROJECT_LABEL}=${profile}`,
-            `${COMPOSE_SERVICE_LABEL}=${service}`,
-          ],
+          label: [`${COMPOSE_PROJECT_LABEL}=${profile}`, `${COMPOSE_SERVICE_LABEL}=${service}`],
         },
       }),
     );
@@ -240,9 +218,7 @@ export class ContainerControl {
     // daemon that ignored one of the label filters would hand back a container
     // belonging to another deployment, and this is a restart.
     const match = containers.find(
-      (info) =>
-        info.Labels?.[COMPOSE_PROJECT_LABEL] === profile &&
-        info.Labels?.[COMPOSE_SERVICE_LABEL] === service,
+      (info) => info.Labels?.[COMPOSE_PROJECT_LABEL] === profile && info.Labels?.[COMPOSE_SERVICE_LABEL] === service,
     );
     if (!match) throw new ContainerNotRunningError(profile, service);
 
@@ -260,17 +236,12 @@ export class ContainerControl {
       this.docker.listContainers({
         all: true,
         filters: {
-          label: [
-            `${COMPOSE_PROJECT_LABEL}=${profile}`,
-            `${COMPOSE_SERVICE_LABEL}=${service}`,
-          ],
+          label: [`${COMPOSE_PROJECT_LABEL}=${profile}`, `${COMPOSE_SERVICE_LABEL}=${service}`],
         },
       }),
     );
     const match = containers.find(
-      (info) =>
-        info.Labels?.[COMPOSE_PROJECT_LABEL] === profile &&
-        info.Labels?.[COMPOSE_SERVICE_LABEL] === service,
+      (info) => info.Labels?.[COMPOSE_PROJECT_LABEL] === profile && info.Labels?.[COMPOSE_SERVICE_LABEL] === service,
     );
     const workingDir = match?.Labels?.[COMPOSE_WORKING_DIR_LABEL];
     if (!workingDir) return null;
@@ -321,30 +292,35 @@ export class ContainerControl {
    * One reader bound to the local Docker client. It returns only the fields
    * execution retention needs, so container environment values never enter
    * the observation.
-  */
+   */
   executionMountReader(): ExecutionDockerReader {
     const read = async <T>(operation: () => Promise<T>, signal: AbortSignal): Promise<T> => {
       if (signal.aborted) throw new Error('Docker observation was aborted');
       let rejectAborted: ((reason?: unknown) => void) | undefined;
-      const aborted = new Promise<never>((_, reject) => { rejectAborted = reject; });
+      const aborted = new Promise<never>((_, reject) => {
+        rejectAborted = reject;
+      });
       const onAbort = () => rejectAborted?.(new Error('Docker observation was aborted'));
       signal.addEventListener('abort', onAbort, { once: true });
-      try { return await Promise.race([this.withinLimit(operation()), aborted]); }
-      finally { signal.removeEventListener('abort', onAbort); }
+      try {
+        return await Promise.race([this.withinLimit(operation()), aborted]);
+      } finally {
+        signal.removeEventListener('abort', onAbort);
+      }
     };
     return {
-      readDaemonId: async signal => {
-        const info = await read(() => this.docker.info(), signal) as { ID?: unknown };
+      readDaemonId: async (signal) => {
+        const info = (await read(() => this.docker.info(), signal)) as { ID?: unknown };
         return info.ID;
       },
-      listAllContainers: signal => read(() => this.docker.listContainers({ all: true }), signal),
+      listAllContainers: (signal) => read(() => this.docker.listContainers({ all: true }), signal),
       inspectContainer: async (id, signal) => {
         const inspected = await read(() => this.docker.getContainer(id).inspect(), signal);
         return {
           Id: inspected.Id,
           State: { Status: inspected.State.Status },
           Config: { Labels: inspected.Config?.Labels },
-          Mounts: inspected.Mounts?.map(mount => ({
+          Mounts: inspected.Mounts?.map((mount) => ({
             Type: mount.Type,
             Source: mount.Source,
             Destination: mount.Destination,
@@ -405,17 +381,12 @@ export class ContainerControl {
       this.docker.listContainers({
         all: true,
         filters: {
-          label: [
-            `${COMPOSE_PROJECT_LABEL}=${profile}`,
-            `${COMPOSE_SERVICE_LABEL}=${service}`,
-          ],
+          label: [`${COMPOSE_PROJECT_LABEL}=${profile}`, `${COMPOSE_SERVICE_LABEL}=${service}`],
         },
       }),
     );
     const match = containers.find(
-      (info) =>
-        info.Labels?.[COMPOSE_PROJECT_LABEL] === profile &&
-        info.Labels?.[COMPOSE_SERVICE_LABEL] === service,
+      (info) => info.Labels?.[COMPOSE_PROJECT_LABEL] === profile && info.Labels?.[COMPOSE_SERVICE_LABEL] === service,
     );
     if (!match) return null;
 
@@ -461,11 +432,7 @@ export class ContainerControl {
     this.events.publish({ type: 'engine.restarted', profile, service });
   }
 
-  async logs(
-    profile: string,
-    service: string,
-    tail: number = DEFAULT_LOG_LINES,
-  ): Promise<string> {
+  async logs(profile: string, service: string, tail: number = DEFAULT_LOG_LINES): Promise<string> {
     const container = await this.find(profile, service);
     // Followed rather than fetched whole: without `follow` the daemon assembles
     // the entire answer and hands it over as one buffer, so the line count is
@@ -492,12 +459,7 @@ export class ContainerControl {
    * carries secrets beside them, so every other line is dropped here and never
    * reaches a caller. A line the read cut short is dropped as well.
    */
-  async logLinesContaining(
-    profile: string,
-    service: string,
-    marker: string,
-    window: LogWindow,
-  ): Promise<string[]> {
+  async logLinesContaining(profile: string, service: string, marker: string, window: LogWindow): Promise<string[]> {
     const container = await this.find(profile, service);
     const nowSeconds = Date.now() / 1000;
     // Followed for the reason `logs` gives. `until` then ends the stream once
@@ -520,9 +482,7 @@ export class ContainerControl {
     );
 
     const raw = await readBounded(stream, this.limits.filteredLog);
-    return completeLines(demultiplexDockerStream(raw)).filter((line) =>
-      line.includes(marker),
-    );
+    return completeLines(demultiplexDockerStream(raw)).filter((line) => line.includes(marker));
   }
 
   /**
@@ -558,11 +518,7 @@ export class ContainerControl {
    * says nothing, and every one of these calls is answering an HTTP request.
    */
   private withinLimit<T>(call: Promise<T>): Promise<T> {
-    return answeredInTime(
-      call,
-      this.limits.dockerTimeoutMs,
-      () => new DockerUnavailableError(),
-    );
+    return answeredInTime(call, this.limits.dockerTimeoutMs, () => new DockerUnavailableError());
   }
 }
 

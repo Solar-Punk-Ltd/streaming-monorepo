@@ -35,7 +35,10 @@ export class MasterFeedWriter {
   private queue = new PQueue({ concurrency: 1 });
   private logger = Logger.getInstance();
 
-  constructor(private readonly publishers: BeePublisherPool, private readonly signer: PrivateKey) {}
+  constructor(
+    private readonly publishers: BeePublisherPool,
+    private readonly signer: PrivateKey,
+  ) {}
 
   public get owner(): string {
     return this.signer.publicKey().address().toHex();

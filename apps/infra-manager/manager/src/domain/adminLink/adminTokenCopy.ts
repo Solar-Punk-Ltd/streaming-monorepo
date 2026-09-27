@@ -13,8 +13,14 @@ import type { ManagerAdminTokenCopy } from '../ProfileRepository.js';
  * back. The link's row stays locked until the insert ends, so a save of the
  * link cannot swap the token for one saved for another address in between.
  */
-export async function copyManagerAdminToken(client: PoolClient, profileName: string, copy: ManagerAdminTokenCopy): Promise<void> {
-  const link = await client.query<{ url: string | null }>('SELECT url FROM manager_admin_link WHERE token IS NOT NULL FOR SHARE');
+export async function copyManagerAdminToken(
+  client: PoolClient,
+  profileName: string,
+  copy: ManagerAdminTokenCopy,
+): Promise<void> {
+  const link = await client.query<{ url: string | null }>(
+    'SELECT url FROM manager_admin_link WHERE token IS NOT NULL FOR SHARE',
+  );
   const stored = link.rows[0];
   if (!stored) throw new ManagerAdminTokenMissingError();
   if (!sameAdminOrigin(copy.url, stored.url ?? '')) throw new ManagerAdminTokenElsewhereError();

@@ -10,7 +10,8 @@ function physicalAnchor(path: string): string {
     const info = lstatSync(alias);
     if (!info.isSymbolicLink()) return path;
     const expected = `/private${alias}`;
-    if (resolve(dirname(alias), readlinkSync(alias)) !== expected || realpathSync(alias) !== expected) throw new Error(INVALID_PARENT);
+    if (resolve(dirname(alias), readlinkSync(alias)) !== expected || realpathSync(alias) !== expected)
+      throw new Error(INVALID_PARENT);
     return expected + path.slice(alias.length);
   }
   return path;
@@ -24,10 +25,12 @@ export function assertOwnedVersionParent(root: string, allowMissing = false): bo
     const expected = physicalAnchor(candidate);
     try {
       const info = lstatSync(expected);
-      if (!info.isDirectory() || info.isSymbolicLink() || realpathSync(candidate) !== expected) throw new Error(INVALID_PARENT);
+      if (!info.isDirectory() || info.isSymbolicLink() || realpathSync(candidate) !== expected)
+        throw new Error(INVALID_PARENT);
       return candidate === root;
     } catch (error) {
-      if (!allowMissing || (error as NodeJS.ErrnoException).code !== 'ENOENT' || candidate === dirname(candidate)) throw error;
+      if (!allowMissing || (error as NodeJS.ErrnoException).code !== 'ENOENT' || candidate === dirname(candidate))
+        throw error;
       candidate = dirname(candidate);
     }
   }

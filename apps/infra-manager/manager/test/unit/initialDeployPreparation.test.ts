@@ -24,19 +24,33 @@ describe('initial deployment preparation failure', () => {
       const profile = makeProfile({ status: 'DEPLOYING', components: ['srs'] });
       const h = orchestratorHarness([profile]);
       const errors: string[] = [];
-      h.events.subscribe(event => {
-        if (event.type === 'profile.changed' && event.profile.status === 'ERROR') errors.push(event.profile.last_error ?? '');
+      h.events.subscribe((event) => {
+        if (event.type === 'profile.changed' && event.profile.status === 'ERROR')
+          errors.push(event.profile.last_error ?? '');
       });
       let expected = /preparation failed/;
       if (failure === 'version read') {
-        h.versions.findById = async () => { throw new Error('version preparation failed'); };
+        h.versions.findById = async () => {
+          throw new Error('version preparation failed');
+        };
       } else if (failure === 'artifact check') {
-        const version = await h.versions.insert({ name: 'missing-build', gitRef: 'test', rootPath: join(root, 'missing'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
-        await h.versions.publish(version.id, { buildId: 'a'.repeat(40), commitSha: 'a'.repeat(40), contract: readStackContract(V3_FIXTURE) });
+        const version = await h.versions.insert({
+          name: 'missing-build',
+          gitRef: 'test',
+          rootPath: join(root, 'missing'),
+          sourceUrl: SWARM_HLS_STREAM_SOURCE.url,
+        });
+        await h.versions.publish(version.id, {
+          buildId: 'a'.repeat(40),
+          commitSha: 'a'.repeat(40),
+          contract: readStackContract(V3_FIXTURE),
+        });
         profile.stack_version_id = version.id;
         expected = /cannot be deployed from/;
       } else {
-        h.ledger.describe = async () => { throw new ProfileConfigError(profile.name, 'snapshot preparation failed'); };
+        h.ledger.describe = async () => {
+          throw new ProfileConfigError(profile.name, 'snapshot preparation failed');
+        };
       }
 
       await assert.rejects(h.orchestrator.startInitialDeploy(profile, ['srs']), expected);
@@ -56,7 +70,9 @@ describe('initial deployment preparation failure', () => {
   it('records a later runReserved failure once without replacing its reason', async () => {
     const profile = makeProfile({ status: 'DEPLOYING', components: ['srs'] });
     const h = orchestratorHarness([profile]);
-    h.runner.run = () => { throw new Error('runner refused'); };
+    h.runner.run = () => {
+      throw new Error('runner refused');
+    };
     await assert.rejects(h.orchestrator.startInitialDeploy(profile, ['srs']), /runner refused/);
     assert.deepEqual(h.profiles.markErrorCalls, [profile.name]);
     assert.equal(h.profiles.rows.get(profile.name)?.last_error, 'runner refused');

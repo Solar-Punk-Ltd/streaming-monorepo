@@ -101,7 +101,10 @@ describe('in-copy.mjs', () => {
 
   it('copies a path git ignores when --also names it, such as a build output an image copies in', (t) => {
     const root = makeCheckout(t, { '.gitignore': '.env\nnode_modules/\ndist/\n' });
-    writeFiles(root, { 'apps/web2-admin/backend/dist/index.js': 'built\n', 'apps/web2-admin/dist/other.js': 'not asked for\n' });
+    writeFiles(root, {
+      'apps/web2-admin/backend/dist/index.js': 'built\n',
+      'apps/web2-admin/dist/other.js': 'not asked for\n',
+    });
 
     const { result, seen } = listIn(t, root, { options: ['--also', 'backend/dist'] });
 
@@ -171,7 +174,18 @@ describe('in-copy.mjs', () => {
     const listThenWait = `${LIST_FILES.replace(/process\.exit\(.*\);\n$/, '')}setTimeout(() => {}, 60000);\n`;
     const child = spawn(
       process.execPath,
-      [join(TOOL_DIR, IN_COPY), '--root', root, '--app', 'apps/web2-admin', '--', process.execPath, '-e', listThenWait, listing],
+      [
+        join(TOOL_DIR, IN_COPY),
+        '--root',
+        root,
+        '--app',
+        'apps/web2-admin',
+        '--',
+        process.execPath,
+        '-e',
+        listThenWait,
+        listing,
+      ],
       { env: TEST_ENV, stdio: 'ignore' },
     );
     const exited = once(child, 'exit');

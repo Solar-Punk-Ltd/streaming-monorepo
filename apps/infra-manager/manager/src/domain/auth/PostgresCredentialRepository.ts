@@ -56,14 +56,11 @@ export class PostgresCredentialRepository implements CredentialRepository {
         await client.query('COMMIT');
         return false;
       }
-      await client.query('UPDATE users SET password_hash = $2 WHERE id = $1', [
+      await client.query('UPDATE users SET password_hash = $2 WHERE id = $1', [userId, passwordHash]);
+      await client.query('DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2', [
         userId,
-        passwordHash,
+        keepSessionTokenHash,
       ]);
-      await client.query(
-        'DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2',
-        [userId, keepSessionTokenHash],
-      );
       await client.query('COMMIT');
       return true;
     } catch (err) {

@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router';
 import {
   Alert,
@@ -44,19 +38,10 @@ import { MEDIA_TYPE_LABEL, StatusChip } from '../components/StatusChip';
 import { useSnackbar } from '../components/Snackbar';
 import { CopyButton } from '../components/CopyButton';
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Box>
-      <Typography
-        variant="caption"
-        sx={{ color: 'text.secondary', display: 'block' }}
-      >
+      <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
         {label}
       </Typography>
       <Box sx={{ mt: 0.25 }}>{children}</Box>
@@ -113,17 +98,14 @@ const UNPUBLISH_PROMPTS = {
   },
 } as const;
 
-type UnpublishPrompt =
-  (typeof UNPUBLISH_PROMPTS)[keyof typeof UNPUBLISH_PROMPTS];
+type UnpublishPrompt = (typeof UNPUBLISH_PROMPTS)[keyof typeof UNPUBLISH_PROMPTS];
 
 /**
  * The button offers Unpublish on `published` and `vod` only, and of those only
  * `vod` holds a recording.
  */
 function unpublishPromptFor(status: StreamStatus): UnpublishPrompt {
-  return status === 'vod'
-    ? UNPUBLISH_PROMPTS.recording
-    : UNPUBLISH_PROMPTS.scheduled;
+  return status === 'vod' ? UNPUBLISH_PROMPTS.recording : UNPUBLISH_PROMPTS.scheduled;
 }
 
 export function StreamDetailsPage() {
@@ -141,9 +123,7 @@ export function StreamDetailsPage() {
   // Chosen when the dialog opens and kept while it closes, so a successful
   // unpublish, which turns the stream into a draft, cannot swap the wording
   // under the closing dialog.
-  const [unpublishPrompt, setUnpublishPrompt] = useState<UnpublishPrompt>(
-    UNPUBLISH_PROMPTS.scheduled,
-  );
+  const [unpublishPrompt, setUnpublishPrompt] = useState<UnpublishPrompt>(UNPUBLISH_PROMPTS.scheduled);
 
   // Bumped on every load so a slow response for the previous stream cannot
   // overwrite the current one — showing one stream's ingest key under
@@ -175,7 +155,10 @@ export function StreamDetailsPage() {
         }
       });
     // The player link is optional: a missing viewer base URL is not an error.
-    api.fetchPublicConfig().then(setConfig).catch(() => undefined);
+    api
+      .fetchPublicConfig()
+      .then(setConfig)
+      .catch(() => undefined);
   }, [id, snackbar]);
 
   useEffect(() => {
@@ -189,16 +172,11 @@ export function StreamDetailsPage() {
   }, [load]);
 
   /** True when the API accepted it. A failure is reported here, not thrown. */
-  const runPublish = async (
-    action: 'publish' | 'unpublish',
-  ): Promise<boolean> => {
+  const runPublish = async (action: 'publish' | 'unpublish'): Promise<boolean> => {
     if (!id) return false;
     setBusy(true);
     try {
-      const result =
-        action === 'publish'
-          ? await api.publishStream(id)
-          : await api.unpublishStream(id);
+      const result = action === 'publish' ? await api.publishStream(id) : await api.unpublishStream(id);
       setStream(result.stream);
       setLastResult(result);
       snackbar.success(
@@ -208,15 +186,14 @@ export function StreamDetailsPage() {
       );
       return true;
     } catch (e) {
-      snackbar.error(
-        errorMessage(
-          e,
-          action === 'publish' ? 'Publish failed' : 'Unpublish failed',
-        ),
-      );
+      snackbar.error(errorMessage(e, action === 'publish' ? 'Publish failed' : 'Unpublish failed'));
       // The backend records publish_error on the row; re-read it so the page
       // shows what it stored rather than only the transient snackbar.
-      if (id) api.fetchStream(id).then(setStream).catch(() => undefined);
+      if (id)
+        api
+          .fetchStream(id)
+          .then(setStream)
+          .catch(() => undefined);
       return false;
     } finally {
       setBusy(false);
@@ -263,23 +240,15 @@ export function StreamDetailsPage() {
   const canPublish = stream.status !== 'publishing';
   // `publishing` keeps saying Publish: a first publish is in flight, and the
   // button is disabled anyway.
-  const publishLabel =
-    stream.status === 'draft' || stream.status === 'publishing'
-      ? 'Publish'
-      : 'Republish';
-  const canUnpublish =
-    stream.status === 'published' || stream.status === 'vod';
+  const publishLabel = stream.status === 'draft' || stream.status === 'publishing' ? 'Publish' : 'Republish';
+  const canUnpublish = stream.status === 'published' || stream.status === 'vod';
   const viewerBaseUrl = config?.viewerBaseUrl ?? null;
 
   return (
     // The same column width as the form the operator arrived from, so the two
     // screens do not jump about between each other.
     <Stack spacing={3} sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
-      <Stack
-        direction="row"
-        spacing={2}
-        sx={{ alignItems: 'center', flexWrap: 'wrap' }}
-      >
+      <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
         <Typography variant="h5" component="h1" sx={{ flexGrow: 1 }}>
           {stream.title}
         </Typography>
@@ -290,21 +259,11 @@ export function StreamDetailsPage() {
           looking at a screen that will not change.
         */}
         <Tooltip title="Refresh">
-          <IconButton
-            size="small"
-            aria-label="refresh stream"
-            onClick={load}
-            disabled={busy}
-          >
+          <IconButton size="small" aria-label="refresh stream" onClick={load} disabled={busy}>
             <RefreshIcon fontSize="small" />
           </IconButton>
         </Tooltip>
-        <Button
-          size="small"
-          startIcon={<EditIcon />}
-          component={RouterLink}
-          to={`/edit/${stream.id}`}
-        >
+        <Button size="small" startIcon={<EditIcon />} component={RouterLink} to={`/edit/${stream.id}`}>
           Edit
         </Button>
         <Button size="small" onClick={() => navigate('/')}>
@@ -312,11 +271,7 @@ export function StreamDetailsPage() {
         </Button>
       </Stack>
 
-      {stream.publishError ? (
-        <Alert severity="error">
-          Last publish attempt failed: {stream.publishError}
-        </Alert>
-      ) : null}
+      {stream.publishError ? <Alert severity="error">Last publish attempt failed: {stream.publishError}</Alert> : null}
 
       {/*
         An edit to a stream on the catalogue writes no feed entry, so the entry
@@ -325,9 +280,7 @@ export function StreamDetailsPage() {
         edit the entry was last rebuilt from.
       */}
       {stream.hasUnpublishedEdits ? (
-        <Alert severity="warning">
-          Edited since it was published. Republish to update the feed.
-        </Alert>
+        <Alert severity="warning">Edited since it was published. Republish to update the feed.</Alert>
       ) : null}
 
       <Paper variant="outlined" sx={{ p: 3 }}>
@@ -370,12 +323,7 @@ export function StreamDetailsPage() {
               </Field>
               <Field label="Tags">
                 {stream.tags.length ? (
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    useFlexGap
-                    sx={{ flexWrap: 'wrap' }}
-                  >
+                  <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
                     {stream.tags.map((tag) => (
                       <Chip key={tag} size="small" label={tag} />
                     ))}
@@ -392,30 +340,20 @@ export function StreamDetailsPage() {
                 padding relies on. So these fields stood 16px in from and 16px
                 below the ones above. The padding and width keep that layout.
               */}
-              <Grid
-                container
-                spacing={2}
-                sx={{ width: 'calc(100% + 16px)', pl: 2, pt: 2 }}
-              >
+              <Grid container spacing={2} sx={{ width: 'calc(100% + 16px)', pl: 2, pt: 2 }}>
                 <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Media type">
-                    <Typography variant="body2">
-                      {MEDIA_TYPE_LABEL[stream.mediaType]}
-                    </Typography>
+                    <Typography variant="body2">{MEDIA_TYPE_LABEL[stream.mediaType]}</Typography>
                   </Field>
                 </Grid>
                 <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Scheduled start">
-                    <Typography variant="body2">
-                      {formatDateTime(stream.scheduledStartTime)}
-                    </Typography>
+                    <Typography variant="body2">{formatDateTime(stream.scheduledStartTime)}</Typography>
                   </Field>
                 </Grid>
                 <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Published">
-                    <Typography variant="body2">
-                      {formatDateTime(stream.publishedAt)}
-                    </Typography>
+                    <Typography variant="body2">{formatDateTime(stream.publishedAt)}</Typography>
                   </Field>
                 </Grid>
                 <Grid size={{ xs: 6, sm: 4 }}>
@@ -430,23 +368,15 @@ export function StreamDetailsPage() {
                 </Grid>
                 <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Feed index">
-                    <Typography variant="body2">
-                      {stream.publishedFeedIndex ?? '—'}
-                    </Typography>
+                    <Typography variant="body2">{stream.publishedFeedIndex ?? '—'}</Typography>
                   </Field>
                 </Grid>
                 <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Thumbnail reference">
                     {stream.thumbnailRef ? (
-                      <Mono
-                        value={stream.thumbnailRef}
-                        label="Thumbnail reference"
-                      />
+                      <Mono value={stream.thumbnailRef} label="Thumbnail reference" />
                     ) : (
-                      <Typography
-                        variant="body2"
-                        sx={{ color: 'text.secondary' }}
-                      >
+                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                         —
                       </Typography>
                     )}
@@ -455,51 +385,39 @@ export function StreamDetailsPage() {
                 {stream.liveSince ? (
                   <Grid size={{ xs: 6, sm: 4 }}>
                     <Field label="Live since">
-                      <Typography variant="body2">
-                        {formatDateTime(stream.liveSince)}
-                      </Typography>
+                      <Typography variant="body2">{formatDateTime(stream.liveSince)}</Typography>
                     </Field>
                   </Grid>
                 ) : null}
                 {stream.endedAt ? (
                   <Grid size={{ xs: 6, sm: 4 }}>
                     <Field label="Ended">
-                      <Typography variant="body2">
-                        {formatDateTime(stream.endedAt)}
-                      </Typography>
+                      <Typography variant="body2">{formatDateTime(stream.endedAt)}</Typography>
                     </Field>
                   </Grid>
                 ) : null}
                 {stream.durationSeconds != null ? (
                   <Grid size={{ xs: 6, sm: 4 }}>
                     <Field label="Duration">
-                      <Typography variant="body2">
-                        {formatDuration(stream.durationSeconds)}
-                      </Typography>
+                      <Typography variant="body2">{formatDuration(stream.durationSeconds)}</Typography>
                     </Field>
                   </Grid>
                 ) : null}
                 {stream.manifestIndex != null ? (
                   <Grid size={{ xs: 6, sm: 4 }}>
                     <Field label="Manifest index">
-                      <Typography variant="body2">
-                        {stream.manifestIndex}
-                      </Typography>
+                      <Typography variant="body2">{stream.manifestIndex}</Typography>
                     </Field>
                   </Grid>
                 ) : null}
                 <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Created">
-                    <Typography variant="body2">
-                      {formatDateTime(stream.createdAt)}
-                    </Typography>
+                    <Typography variant="body2">{formatDateTime(stream.createdAt)}</Typography>
                   </Field>
                 </Grid>
                 <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Updated">
-                    <Typography variant="body2">
-                      {formatDateTime(stream.updatedAt)}
-                    </Typography>
+                    <Typography variant="body2">{formatDateTime(stream.updatedAt)}</Typography>
                   </Field>
                 </Grid>
               </Grid>
@@ -509,11 +427,7 @@ export function StreamDetailsPage() {
 
         <Divider sx={{ my: 3 }} />
 
-        <Stack
-          direction="row"
-          spacing={2}
-          sx={{ alignItems: 'center', flexWrap: 'wrap' }}
-        >
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <Button
             variant="contained"
             startIcon={<CloudUploadIcon />}
@@ -543,19 +457,11 @@ export function StreamDetailsPage() {
           ) : null}
         </Stack>
 
-        <Stack
-          direction="row"
-          spacing={0.5}
-          useFlexGap
-          sx={{ alignItems: 'center', flexWrap: 'wrap', mt: 1 }}
-        >
+        <Stack direction="row" spacing={0.5} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap', mt: 1 }}>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
             Direct stream route, once the stream has gone live:
           </Typography>
-          <Typography
-            variant="caption"
-            sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}
-          >
+          <Typography variant="caption" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
             {watchPath(stream)}
           </Typography>
           <CopyButton value={watchPath(stream)} label="stream route" />
@@ -564,20 +470,13 @@ export function StreamDetailsPage() {
         {lastResult ? (
           <Alert severity="info" sx={{ mt: 2 }}>
             Feed index {lastResult.feed.index} · {lastResult.feed.entryCount}{' '}
-            {lastResult.feed.entryCount === 1 ? 'entry' : 'entries'} · owner{' '}
-            {shortHex(lastResult.feed.owner, 10, 8)} · topic{' '}
-            {lastResult.feed.topic}
+            {lastResult.feed.entryCount === 1 ? 'entry' : 'entries'} · owner {shortHex(lastResult.feed.owner, 10, 8)} ·
+            topic {lastResult.feed.topic}
           </Alert>
         ) : null}
       </Paper>
 
-      {ingest ? (
-        <IngestPanel
-          streamId={stream.id}
-          details={ingest}
-          onRotated={setIngest}
-        />
-      ) : null}
+      {ingest ? <IngestPanel streamId={stream.id} details={ingest} onRotated={setIngest} /> : null}
 
       <ConfirmDialog
         open={unpublishOpen}

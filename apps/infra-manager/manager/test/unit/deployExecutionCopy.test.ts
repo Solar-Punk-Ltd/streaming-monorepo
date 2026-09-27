@@ -49,26 +49,42 @@ function buildOnDisk(versionsRoot: string, buildId: string): string {
   mkdirSync(join(dir, 'deploy', 'scripts'), { recursive: true });
   writeFileSync(join(dir, 'deploy', 'scripts', 'deploy.sh'), '#!/bin/sh\nexit 0\n');
   writeFileSync(join(dir, '.env.sample'), 'ENGINE=srs\n');
-  writeFileSync(join(dir, BUILD_MANIFEST_FILE), JSON.stringify({ commit: buildId.slice(0, 40), buildId, builtAt: new Date().toISOString(), toolchain: 't' }));
+  writeFileSync(
+    join(dir, BUILD_MANIFEST_FILE),
+    JSON.stringify({ commit: buildId.slice(0, 40), buildId, builtAt: new Date().toISOString(), toolchain: 't' }),
+  );
   writeFileSync(join(dir, BUILD_COMPLETE_MARKER), '');
   return dir;
 }
 
 async function setup(options: { copies?: boolean } = {}) {
   const versionsRoot = mkdtempSync(join(root, 'versions-'));
-  const profiles = [makeProfile({ name: 'stage', stack_version_id: 2, stamp_id: 'a'.repeat(64), instance_id: randomUUID() })];
-  const store = new InMemoryExecutionRoots(executionsRootFor(versionsRoot), name => {
+  const profiles = [
+    makeProfile({ name: 'stage', stack_version_id: 2, stamp_id: 'a'.repeat(64), instance_id: randomUUID() }),
+  ];
+  const store = new InMemoryExecutionRoots(executionsRootFor(versionsRoot), (name) => {
     const found = harness.profiles.rows.get(name);
     return found?.instance_id;
   });
-  const service = new ExecutionRootService(store, executionsRootFor(versionsRoot), async target => ({
+  const service = new ExecutionRootService(store, executionsRootFor(versionsRoot), async (target) => ({
     readDaemonId: async () => target.daemonId,
     listAllContainers: async () => [],
     inspectContainer: async () => null,
   }));
-  const harness = orchestratorHarness(profiles, undefined, versionsRoot, undefined, undefined,
-    options.copies === false ? undefined : service);
-  const v3 = await harness.versions.insert({ name: 'v3', gitRef: 'main-v3', rootPath: join(versionsRoot, 'v3'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
+  const harness = orchestratorHarness(
+    profiles,
+    undefined,
+    versionsRoot,
+    undefined,
+    undefined,
+    options.copies === false ? undefined : service,
+  );
+  const v3 = await harness.versions.insert({
+    name: 'v3',
+    gitRef: 'main-v3',
+    rootPath: join(versionsRoot, 'v3'),
+    sourceUrl: SWARM_HLS_STREAM_SOURCE.url,
+  });
   buildOnDisk(versionsRoot, COMMIT_A);
   await harness.versions.publish(v3.id, { buildId: COMMIT_A, commitSha: COMMIT_A, contract: CONTRACT });
   const row = () => {
@@ -90,7 +106,7 @@ async function deploy(harness: Awaited<ReturnType<typeof setup>>['harness'], row
 async function until(done: () => boolean, what: string): Promise<void> {
   for (let tick = 0; tick < 300; tick += 1) {
     if (done()) return;
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(what);
 }
@@ -131,7 +147,9 @@ describe('the tree a deploy runs in', () => {
   it('is recorded as launched before the script can have started', async () => {
     const { harness, store, row } = await setup();
     const seen: (string | null)[] = [];
-    harness.runner.onStart = () => { seen.push(store.stateOf(store.records[0]!.executionId)); };
+    harness.runner.onStart = () => {
+      seen.push(store.stateOf(store.records[0]!.executionId));
+    };
 
     await deploy(harness, row);
 
@@ -141,12 +159,17 @@ describe('the tree a deploy runs in', () => {
   it('goes with a deploy that never spawned anything, and the job is cancelled', async () => {
     const { harness, store, row, versionsRoot } = await setup();
     const reservation = await harness.orchestrator.reserveDeploy(row(), undefined);
-    harness.daemon.snapshot = async () => { throw new Error('the daemon did not answer'); };
+    harness.daemon.snapshot = async () => {
+      throw new Error('the daemon did not answer');
+    };
 
     await assert.rejects(harness.orchestrator.runReserved(reservation, row()), /did not answer/);
 
     assert.equal(harness.runner.runs.length, 0, 'nothing was spawned');
-    assert.deepEqual(store.records.map(record => record.state), ['released']);
+    assert.deepEqual(
+      store.records.map((record) => record.state),
+      ['released'],
+    );
     assert.deepEqual(await readdir(executionsRootFor(versionsRoot)), []);
     assert.equal(harness.ledger.openJobReferences('stage').length, 0);
   });
@@ -162,9 +185,11 @@ describe('the copies a deployment keeps', () => {
 
     // Retiring happens after the deploy is RUNNING and is not awaited by it,
     // so this waits for the state it is about rather than for the machine.
-    await until(() => store.records.filter(record => record.state !== 'released').length === 1,
-      'the copies this deploy replaced were never retired');
-    const live = store.records.filter(record => record.state !== 'released');
+    await until(
+      () => store.records.filter((record) => record.state !== 'released').length === 1,
+      'the copies this deploy replaced were never retired',
+    );
+    const live = store.records.filter((record) => record.state !== 'released');
     assert.equal(live.length, 1, 'a deploy that came up leaves only the copy it runs from');
     assert.equal(live[0]!.executionId, store.records[store.records.length - 1]!.executionId);
     assert.deepEqual(await readdir(executionsRootFor(versionsRoot)), [live[0]!.executionId]);
@@ -178,10 +203,15 @@ describe('the copies a deployment keeps', () => {
     harness.daemon.containers.delete('stage');
     harness.runner.finish(harness.runner.runs.length - 1);
     await until(() => !harness.profiles.rows.has('stage'), 'stage was never removed');
-    await until(() => store.records.every(record => record.state === 'released'),
-      'the copy of a removed deployment was never released');
+    await until(
+      () => store.records.every((record) => record.state === 'released'),
+      'the copy of a removed deployment was never released',
+    );
 
-    assert.deepEqual(store.records.map(record => record.state), ['released']);
+    assert.deepEqual(
+      store.records.map((record) => record.state),
+      ['released'],
+    );
     assert.deepEqual(await readdir(executionsRootFor(versionsRoot)), []);
   });
 });
@@ -207,6 +237,9 @@ describe('the other verbs', () => {
 
     await harness.orchestrator.startStop(row(), undefined);
 
-    assert.equal(harness.runner.runs[harness.runner.runs.length - 1]!.options.cwd, buildDirFor(versionsRoot, 'v3', COMMIT_A));
+    assert.equal(
+      harness.runner.runs[harness.runner.runs.length - 1]!.options.cwd,
+      buildDirFor(versionsRoot, 'v3', COMMIT_A),
+    );
   });
 });

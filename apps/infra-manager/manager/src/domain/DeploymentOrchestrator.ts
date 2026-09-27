@@ -45,7 +45,17 @@ import {
   profileDataRoot,
 } from './dataDirs.js';
 import { DeploymentGroupRepository } from './DeploymentGroupRepository.js';
-import { DeployAttemptRefusedError, ProfileBusyError, ProfileInstanceChangedError, ProfileNotFoundError, ProfileConfigError, ReservationInventoryPendingError, StackSettingsNotReadyError, StampRequiredError, TargetNotVerifiedError } from './errors/index.js';
+import {
+  DeployAttemptRefusedError,
+  ProfileBusyError,
+  ProfileInstanceChangedError,
+  ProfileNotFoundError,
+  ProfileConfigError,
+  ReservationInventoryPendingError,
+  StackSettingsNotReadyError,
+  StampRequiredError,
+  TargetNotVerifiedError,
+} from './errors/index.js';
 import type { PortReservationRepository } from './ports/PortReservationRepository.js';
 import { PortHandover } from './ports/PortHandover.js';
 import type { PublishedPortsProbe } from './ports/PublishedPortsProbe.js';
@@ -83,7 +93,14 @@ import {
   STREAM_UPLOADER_SERVICE,
 } from './stampLogic.js';
 import { omePortsFor, portTableOf } from './versions/portTable.js';
-import { deployOwnerOf, type BuildDescriptor, type BuildLedger, type DeployClaimOwnership, type ExpectedDeployOwner, type Observation } from './versions/buildLedger.js';
+import {
+  deployOwnerOf,
+  type BuildDescriptor,
+  type BuildLedger,
+  type DeployClaimOwnership,
+  type ExpectedDeployOwner,
+  type Observation,
+} from './versions/buildLedger.js';
 import {
   deployRootProblem,
   stackPaths,
@@ -106,8 +123,7 @@ const STDERR_TAIL_BYTES = 4096;
 const STDOUT_TAIL_BYTES = 4096;
 
 /** What a deployment that was in ERROR is told when a deploy had nothing to start. */
-const NOTHING_TO_DEPLOY =
-  'This deployment has no service to deploy, so nothing was started and it is as it was.';
+const NOTHING_TO_DEPLOY = 'This deployment has no service to deploy, so nothing was started and it is as it was.';
 
 /**
  * Every config file of the engine in the directory except `keep`, gone. A
@@ -120,11 +136,7 @@ const NOTHING_TO_DEPLOY =
  * directory behind on the host on 2026-09-07. Recursive, so that a directory
  * left by an earlier pass goes too.
  */
-async function removeStaleEngineConfigs(
-  dir: string,
-  engine: EngineName,
-  keep: string | null,
-): Promise<void> {
+async function removeStaleEngineConfigs(dir: string, engine: EngineName, keep: string | null): Promise<void> {
   const names = await readdir(dir).catch(() => [] as string[]);
   for (const name of names) {
     if (name === keep || !isEngineConfigFile(engine, name)) continue;
@@ -246,10 +258,16 @@ export function orphanRecoveryOf(
 ): OrphanRecovery {
   const restarted = `The manager restarted while this deployment was ${profile.status}`;
   if (!containers) {
-    return { status: 'ERROR', message: `${restarted}, and the Docker daemon did not answer, so what it left is unknown.` };
+    return {
+      status: 'ERROR',
+      message: `${restarted}, and the Docker daemon did not answer, so what it left is unknown.`,
+    };
   }
   if (expected.length === 0) {
-    return { status: 'ERROR', message: `${restarted}, and it runs no service whose containers could say how far it got.` };
+    return {
+      status: 'ERROR',
+      message: `${restarted}, and it runs no service whose containers could say how far it got.`,
+    };
   }
   const observedOf = (service: string): readonly ObservedContainer[] => containers.get(service) ?? [];
   const up = expected.filter((service) => isUp(observedOf(service)));
@@ -337,11 +355,7 @@ interface JobConfig {
 }
 
 const REDEPLOY_STATUS: ProfileStatus = 'DEPLOYING';
-const REDEPLOYABLE_FROM: readonly ProfileStatus[] = [
-  'RUNNING',
-  'STOPPED',
-  'ERROR',
-];
+const REDEPLOYABLE_FROM: readonly ProfileStatus[] = ['RUNNING', 'STOPPED', 'ERROR'];
 
 /**
  * A claim on a profile's next deployment.
@@ -457,8 +471,11 @@ export class DeploymentOrchestrator {
 
   private async targetDaemon(target: string): Promise<string> {
     const actual = await this.daemon.daemonId(target);
-    if (this.targets && actual !== await this.targets.daemonIdFor(target)) {
-      throw new TargetNotVerifiedError(target, 'This target reaches a different Docker daemon than its reservations. Verify it before deploying.');
+    if (this.targets && actual !== (await this.targets.daemonIdFor(target))) {
+      throw new TargetNotVerifiedError(
+        target,
+        'This target reaches a different Docker daemon than its reservations. Verify it before deploying.',
+      );
     }
     return actual;
   }
@@ -536,9 +553,7 @@ export class DeploymentOrchestrator {
       }
       return snapshot.containers;
     } catch (err) {
-      logger.warn(
-        `[Orchestrator] the containers of ${profile.name} could not be read: ${getErrorMessage(err)}`,
-      );
+      logger.warn(`[Orchestrator] the containers of ${profile.name} could not be read: ${getErrorMessage(err)}`);
       return null;
     }
   }
@@ -559,7 +574,10 @@ export class DeploymentOrchestrator {
 
   private deployVersionOrThrow<T extends DeployVersionSnapshot>(profile: Profile, version: T | null): T {
     if (!version) {
-      throw new ProfileConfigError(profile.name, `Stack version ${profile.stack_version_id} no longer exists. Restore the version before deploying. No deployment was started.`);
+      throw new ProfileConfigError(
+        profile.name,
+        `Stack version ${profile.stack_version_id} no longer exists. Restore the version before deploying. No deployment was started.`,
+      );
     }
     return version;
   }
@@ -642,10 +660,7 @@ export class DeploymentOrchestrator {
    * key the version answers and nothing stored is left to the version, as the
    * deploy leaves it.
    */
-  private async storedStackSecretsFor(
-    profile: Profile,
-    version: DeployVersionSnapshot | null,
-  ): Promise<StackSecrets> {
+  private async storedStackSecretsFor(profile: Profile, version: DeployVersionSnapshot | null): Promise<StackSecrets> {
     const required = version?.contract?.requiredSecrets ?? [];
     if (required.length === 0) return {};
     const stored = await this.profiles.stackSecretsOf(profile.name);
@@ -688,9 +703,17 @@ export class DeploymentOrchestrator {
    * token stored before origins were recorded is recorded here, for the
    * address this deploy gives the uploader.
    */
-  private async assertAdminTokenStaysHome(profile: Profile, stored: Record<string, string>, root: string, engine: EngineName): Promise<void> {
+  private async assertAdminTokenStaysHome(
+    profile: Profile,
+    stored: Record<string, string>,
+    root: string,
+    engine: EngineName,
+  ): Promise<void> {
     if (!stored[ADMIN_API_TOKEN_KEY]) return;
-    const files = { ...parseEnvText(readIfPresent(engineEnvPath(root, engine))), ...parseEnvText(readIfPresent(baseEnvPath(root))) };
+    const files = {
+      ...parseEnvText(readIfPresent(engineEnvPath(root, engine))),
+      ...parseEnvText(readIfPresent(baseEnvPath(root))),
+    };
     const url = stored[ADMIN_API_URL_KEY] ?? files[ADMIN_API_URL_KEY] ?? '';
     const storedWith = (await this.profiles.stackSettingsOf(profile.name))?.adminTokenOrigin ?? null;
     if (storedWith === null) {
@@ -710,7 +733,12 @@ export class DeploymentOrchestrator {
     profile: Profile,
     version: DeployVersionSnapshot | null,
     engine: EngineName,
-    read: { secrets: DeploySecrets; stackSecrets: StackSecrets; engineConfigFile: string | null; stored: Record<string, string> },
+    read: {
+      secrets: DeploySecrets;
+      stackSecrets: StackSecrets;
+      engineConfigFile: string | null;
+      stored: Record<string, string>;
+    },
   ): ProfileEnvValues {
     return {
       engine,
@@ -821,9 +849,7 @@ export class DeploymentOrchestrator {
     version: DeployVersionSnapshot | null,
   ): Promise<{ path: string; config: string } | null> {
     const supported = version?.contract?.engineConfig[engine] ?? false;
-    const config = supported
-      ? await this.profiles.engineConfigOf(profile.name)
-      : null;
+    const config = supported ? await this.profiles.engineConfigOf(profile.name) : null;
     if (config === null) return null;
     return { path: join(engineConfigDirFor(profile.name), engineConfigFileName(engine, config)), config };
   }
@@ -833,15 +859,24 @@ export class DeploymentOrchestrator {
     return (await this.pathsFor(profile)).root;
   }
 
-  async captureRolloutSnapshot(profile: Profile, admission: RolloutAdmissionProof): Promise<PreparedRolloutDeploy['snapshot']> {
+  async captureRolloutSnapshot(
+    profile: Profile,
+    admission: RolloutAdmissionProof,
+  ): Promise<PreparedRolloutDeploy['snapshot']> {
     const target = targetAlias(profile.host);
     const daemonId = await this.targetDaemon(target);
     if (admission.alias !== target || admission.daemonId !== daemonId) {
-      throw new TargetNotVerifiedError(target, 'The prepared rollout belongs to a different Docker daemon. No deploy was started.');
+      throw new TargetNotVerifiedError(
+        target,
+        'The prepared rollout belongs to a different Docker daemon. No deploy was started.',
+      );
     }
     const snapshot = await this.daemon.snapshot(profile.name, target);
     if (snapshot.daemonId !== daemonId) {
-      throw new TargetNotVerifiedError(target, 'The container snapshot came from a different Docker daemon. No deploy was started.');
+      throw new TargetNotVerifiedError(
+        target,
+        'The container snapshot came from a different Docker daemon. No deploy was started.',
+      );
     }
     return { daemonId, containerIds: allContainerIds(snapshot.containers) };
   }
@@ -870,10 +905,7 @@ export class DeploymentOrchestrator {
    * intent. A rollout is not the operator acting on the deployment, and its
    * own writes are conditional on the intent it started under.
    */
-  async reserveForRollout(
-    profile: Profile,
-    engine: EngineName,
-  ): Promise<DeployReservation> {
+  async reserveForRollout(profile: Profile, engine: EngineName): Promise<DeployReservation> {
     return this.claim(profile, [engine], 'preserve');
   }
 
@@ -896,9 +928,10 @@ export class DeploymentOrchestrator {
     intent: DeployClaimOwnership['intent'],
     capturedVersion?: StackVersionRecord,
   ): Promise<DeployReservation> {
-    const version = capturedVersion === undefined
-      ? structuredClone(await this.versionForDeploy(profile))
-      : structuredClone(capturedVersion);
+    const version =
+      capturedVersion === undefined
+        ? structuredClone(await this.versionForDeploy(profile))
+        : structuredClone(capturedVersion);
     const planned = this.planDeploy(profile, requested);
 
     await this.assertUploaderCanStart(profile, planned.services);
@@ -910,21 +943,24 @@ export class DeploymentOrchestrator {
     const problem = deployRootProblem(version);
     if (problem) throw new ProfileConfigError(profile.name, problem);
 
-    const claimed = await this.ledger.claim(
-      profile.name,
-      REDEPLOYABLE_FROM,
-      version,
-      planned.services,
-      { ...deployOwnerOf(profile), intent, supersedeReason: 'Redeployed by the operator before the file was verified.' },
-    );
+    const claimed = await this.ledger.claim(profile.name, REDEPLOYABLE_FROM, version, planned.services, {
+      ...deployOwnerOf(profile),
+      intent,
+      supersedeReason: 'Redeployed by the operator before the file was verified.',
+    });
     if (!claimed) {
       const current = await this.profiles.findByName(profile.name);
       if (!current) throw new ProfileNotFoundError(profile.name);
       if (current.instance_id !== profile.instance_id) throw new ProfileInstanceChangedError(profile.name);
       throw new ProfileBusyError(profile.name, current.status);
     }
-    const reservation = { ...planned, previousStatus: claimed.previousStatus, transitioned: true,
-      claimedProfile: claimed.profile, build: claimed.descriptor };
+    const reservation = {
+      ...planned,
+      previousStatus: claimed.previousStatus,
+      transitioned: true,
+      claimedProfile: claimed.profile,
+      build: claimed.descriptor,
+    };
     try {
       const daemonId = await this.reservePorts(claimed.profile, reservation);
       await this.publishChanged(claimed.profile);
@@ -938,25 +974,40 @@ export class DeploymentOrchestrator {
   private async reservePorts(profile: Profile, reservation: DeployReservation): Promise<string> {
     const contract = reservation.build?.version?.contract;
     if (!contract?.ports.length || contract.allocationProblem) {
-      throw new ProfileConfigError(profile.name, contract?.allocationProblem ?? 'The captured build has no readable port table. Rebuild the version before deploying.');
+      throw new ProfileConfigError(
+        profile.name,
+        contract?.allocationProblem ??
+          'The captured build has no readable port table. Rebuild the version before deploying.',
+      );
     }
     const plan = portPlanFor(portTableForEngine(contract, engineForComponents(profile.components)), profile.port_slot);
-    const exposureProblem = plan.map(portExposureProblem).find(problem => problem !== null);
+    const exposureProblem = plan.map(portExposureProblem).find((problem) => problem !== null);
     if (exposureProblem) throw new ProfileConfigError(profile.name, exposureProblem);
     if (profile.port_slot < 1 || profile.port_slot > slotCapFor(contract)) {
-      throw new ProfileConfigError(profile.name, `Slot ${profile.port_slot} is outside the supported range 1 to ${slotCapFor(contract)}. Existing resources were retained.`);
+      throw new ProfileConfigError(
+        profile.name,
+        `Slot ${profile.port_slot} is outside the supported range 1 to ${slotCapFor(contract)}. Existing resources were retained.`,
+      );
     }
-    if (!await this.ports?.inventorySeededAt()) throw new ReservationInventoryPendingError();
+    if (!(await this.ports?.inventorySeededAt())) throw new ReservationInventoryPendingError();
     const target = targetAlias(reservation.host ?? profile.host);
     const daemonId = await this.targetDaemon(target);
-    if (this.inventoryTargets && await this.inventoryTargets.daemonIdFor(target) !== daemonId) {
-      throw new TargetNotVerifiedError(target, 'The inventory belongs to a different Docker daemon. No deploy was started.');
+    if (this.inventoryTargets && (await this.inventoryTargets.daemonIdFor(target)) !== daemonId) {
+      throw new TargetNotVerifiedError(
+        target,
+        'The inventory belongs to a different Docker daemon. No deploy was started.',
+      );
     }
     if (reservation.daemonId && reservation.daemonId !== daemonId) {
-      throw new TargetNotVerifiedError(target, 'The reserved ports belong to a different Docker daemon. No deploy was started.');
+      throw new TargetNotVerifiedError(
+        target,
+        'The reserved ports belong to a different Docker daemon. No deploy was started.',
+      );
     }
     await this.ports!.plan(
-      daemonId, profile.name, plan,
+      daemonId,
+      profile.name,
+      plan,
       `build ${reservation.build!.buildId}, job reference ${reservation.build!.referenceId}`,
     );
     return daemonId;
@@ -966,7 +1017,11 @@ export class DeploymentOrchestrator {
   async cancelReservation(reservation: DeployReservation): Promise<void> {
     if (!reservation.transitioned) return;
     if (!reservation.claimedProfile || reservation.build?.referenceId == null) return;
-    const restored = await this.ledger.cancelClaim(reservation.claimedProfile, reservation.build.referenceId, reservation.previousStatus);
+    const restored = await this.ledger.cancelClaim(
+      reservation.claimedProfile,
+      reservation.build.referenceId,
+      reservation.previousStatus,
+    );
     if (restored) {
       await this.publishChanged(restored);
     }
@@ -977,25 +1032,28 @@ export class DeploymentOrchestrator {
    *
    * A failure marks ERROR only while the captured claim still owns the row.
    */
-  async runReserved(
-    reservation: DeployReservation,
-    profile: Profile,
-    hooks: DeployHooks = {},
-  ): Promise<RunHandle> {
+  async runReserved(reservation: DeployReservation, profile: Profile, hooks: DeployHooks = {}): Promise<RunHandle> {
     let prepared = reservation;
     let failure: DeployFailureOwner = {
       owner: deployOwnerOf(reservation.claimedProfile ?? profile),
       referenceId: reservation.build?.referenceId ?? null,
     };
     try {
-      const build = reservation.build ?? await this.ledger.describe(
-        profile.name, await this.versionForDeploy(profile), [...reservation.services], failure.owner,
-      );
+      const build =
+        reservation.build ??
+        (await this.ledger.describe(
+          profile.name,
+          await this.versionForDeploy(profile),
+          [...reservation.services],
+          failure.owner,
+        ));
       failure = { ...failure, referenceId: build.referenceId };
       const version = this.deployVersionOrThrow(profile, build.version);
-      const captured: CapturedDeployReservation = { ...reservation,
+      const captured: CapturedDeployReservation = {
+        ...reservation,
         claimedProfile: reservation.claimedProfile ?? (reservation.build === null ? profile : undefined),
-        build: { ...build, version } };
+        build: { ...build, version },
+      };
       prepared = captured;
       return await this.startReservedJob(captured, profile, hooks, failure);
     } catch (err) {
@@ -1015,10 +1073,7 @@ export class DeploymentOrchestrator {
     }
   }
 
-  async startDeploy(
-    profile: Profile,
-    requested: string[] | undefined,
-  ): Promise<RunHandle> {
+  async startDeploy(profile: Profile, requested: string[] | undefined): Promise<RunHandle> {
     const reservation = await this.reserveDeploy(profile, requested);
     return this.runReserved(reservation, reservation.claimedProfile ?? profile);
   }
@@ -1050,29 +1105,17 @@ export class DeploymentOrchestrator {
     if (!hasStampId(profile) && !hasBeePublishers(profile)) {
       throw new StampRequiredError(profile.name);
     }
-    const reservation = await this.reserveDeploy(profile, [
-      STREAM_UPLOADER_SERVICE,
-    ]);
+    const reservation = await this.reserveDeploy(profile, [STREAM_UPLOADER_SERVICE]);
     return this.runReserved(reservation, reservation.claimedProfile ?? profile);
   }
 
-  private servicesToDeploy(
-    profile: Profile,
-    requested: string[] | undefined,
-  ): string[] {
+  private servicesToDeploy(profile: Profile, requested: string[] | undefined): string[] {
     if (requested && requested.length > 0) return requested;
     return defaultServicesFor(profile);
   }
 
-  private planDeploy(
-    profile: Profile,
-    requested: string[] | undefined,
-    host?: string,
-  ): DeployReservation {
-    const { deployNow, heldBackForStamp } = splitDeployableServices(
-      profile,
-      this.servicesToDeploy(profile, requested),
-    );
+  private planDeploy(profile: Profile, requested: string[] | undefined, host?: string): DeployReservation {
+    const { deployNow, heldBackForStamp } = splitDeployableServices(profile, this.servicesToDeploy(profile, requested));
     return {
       profileName: profile.name,
       services: deployNow,
@@ -1092,10 +1135,7 @@ export class DeploymentOrchestrator {
    * put to the node could only time out. A profile that publishes through a
    * node pool or an external address has no node of its own to ask either.
    */
-  private async assertUploaderCanStart(
-    profile: Profile,
-    services: readonly string[],
-  ): Promise<void> {
+  private async assertUploaderCanStart(profile: Profile, services: readonly string[]): Promise<void> {
     if (!this.uploaderGate) return;
     if (!services.includes(STREAM_UPLOADER_SERVICE)) return;
     if (!ownsBeeNode(profile)) return;
@@ -1125,26 +1165,27 @@ export class DeploymentOrchestrator {
     if (owned) return owned;
     const row = await this.profiles.findByName(profileName);
     const mismatch = `it expected ${describeDeployOwner(failure)}, and the row says ${describeDeployRow(row)}.`;
-    const ended = await this.profiles.markDeployingError(profileName, failure.owner.instanceId, failure.referenceId, message);
+    const ended = await this.profiles.markDeployingError(
+      profileName,
+      failure.owner.instanceId,
+      failure.referenceId,
+      message,
+    );
     if (ended) {
       logger.warn(
         `[Orchestrator] the failure of ${profileName} was not written by the deploy that owned it: ${mismatch} ` +
-        'Written on the status and the instance instead, so the deployment does not stay in DEPLOYING.',
+          'Written on the status and the instance instead, so the deployment does not stay in DEPLOYING.',
       );
       return ended;
     }
     logger.warn(
       `[Orchestrator] the failure of ${profileName} was not written: ${mismatch} ` +
-      'Another claim owns the row now and its own outcome ends it.',
+        'Another claim owns the row now and its own outcome ends it.',
     );
     return null;
   }
 
-  private async markFailed(
-    profileName: string,
-    message: string,
-    deployFailure?: DeployFailureOwner,
-  ): Promise<boolean> {
+  private async markFailed(profileName: string, message: string, deployFailure?: DeployFailureOwner): Promise<boolean> {
     try {
       const errored = deployFailure
         ? await this.markDeployFailed(profileName, deployFailure, message)
@@ -1154,9 +1195,7 @@ export class DeploymentOrchestrator {
       }
       return errored !== null;
     } catch (err) {
-      logger.error(
-        `[Orchestrator] failed to mark ${profileName} ERROR: ${getErrorMessage(err)}`,
-      );
+      logger.error(`[Orchestrator] failed to mark ${profileName} ERROR: ${getErrorMessage(err)}`);
       return false;
     }
   }
@@ -1182,10 +1221,21 @@ export class DeploymentOrchestrator {
   ): Promise<RunHandle> {
     let launchPossible = false;
     try {
-      return await this.prepareReservedJob(reservation, profile, () => { launchPossible = true; }, hooks, failure);
+      return await this.prepareReservedJob(
+        reservation,
+        profile,
+        () => {
+          launchPossible = true;
+        },
+        hooks,
+        failure,
+      );
     } catch (err) {
-      if (!launchPossible && reservation.build?.referenceId != null &&
-          !(err instanceof DeployAttemptRefusedError && reservation.transitioned)) {
+      if (
+        !launchPossible &&
+        reservation.build?.referenceId != null &&
+        !(err instanceof DeployAttemptRefusedError && reservation.transitioned)
+      ) {
         await this.ledger.cancelUnstarted(profile.name, reservation.build.referenceId);
       }
       throw err;
@@ -1226,15 +1276,23 @@ export class DeploymentOrchestrator {
     // published as and keeps two deployments of one build out of each other's
     // files.
     const owner = reservation.claimedProfile ?? profile;
-    const execution = build.referenceId === null ? null : await this.executions?.prepare({
-      // DEPLOYING, and not the status this profile object carries: the claim
-      // put the row there, and a caller may hold the row as it was before.
-      profile: { name: owner.name, instanceId: owner.instance_id, intentRevision: owner.intent_revision, status: REDEPLOY_STATUS },
-      build: { versionId: version.id, buildId: build.buildId, root: build.root, layout: version.layout },
-      jobReferenceId: build.referenceId,
-      target: { alias: targetAlias(reservation.host ?? profile.host), daemonId },
-      services: reservation.services,
-    }) ?? null;
+    const execution =
+      build.referenceId === null
+        ? null
+        : ((await this.executions?.prepare({
+            // DEPLOYING, and not the status this profile object carries: the claim
+            // put the row there, and a caller may hold the row as it was before.
+            profile: {
+              name: owner.name,
+              instanceId: owner.instance_id,
+              intentRevision: owner.intent_revision,
+              status: REDEPLOY_STATUS,
+            },
+            build: { versionId: version.id, buildId: build.buildId, root: build.root, layout: version.layout },
+            jobReferenceId: build.referenceId,
+            target: { alias: targetAlias(reservation.host ?? profile.host), daemonId },
+            services: reservation.services,
+          })) ?? null);
     const paths = stackPathsForRoot(execution?.root ?? build.root);
     try {
       await this.ensureStackDefaults(paths);
@@ -1247,11 +1305,7 @@ export class DeploymentOrchestrator {
       // Read here and nowhere else: neither is a column of the row, so that no
       // page and no event carries them. This is where each becomes a line in a
       // file the containers read.
-      const rpcEndpoint = await this.profiles.rpcEndpointForDeploy(
-        profile.name,
-        failure.owner,
-        build.referenceId,
-      );
+      const rpcEndpoint = await this.profiles.rpcEndpointForDeploy(profile.name, failure.owner, build.referenceId);
       if (!rpcEndpoint) throw new ProfileInstanceChangedError(profile.name);
       const secrets: DeploySecrets = {
         streamKey: await this.profiles.privateKeyOf(profile.name),
@@ -1260,18 +1314,21 @@ export class DeploymentOrchestrator {
       };
       const stored = await this.operatorSettingsFor(profile, version, reservation.host);
       await this.assertAdminTokenStaysHome(profile, stored, paths.root, engine);
-      const written = writeProfileEnv(paths.root, profile.name, this.profileEnvValuesOf(profile, version, engine, {
-        secrets,
-        stackSecrets: await this.stackSecretsFor(profile, version, paths.root, engine),
-        engineConfigFile,
+      const written = writeProfileEnv(
+        paths.root,
+        profile.name,
+        this.profileEnvValuesOf(profile, version, engine, {
+          secrets,
+          stackSecrets: await this.stackSecretsFor(profile, version, paths.root, engine),
+          engineConfigFile,
+          stored,
+        }),
         stored,
-      }), stored);
-      logger.info(
-        `[Orchestrator] ${profile.name}: wrote profile env ${written} (engine=${engine})`,
       );
+      logger.info(`[Orchestrator] ${profile.name}: wrote profile env ${written} (engine=${engine})`);
 
       const services = [...reservation.services];
-        return await this.runJob({
+      return await this.runJob({
         profileName: profile.name,
         target: targetAlias(reservation.host ?? profile.host),
         reservedDaemonId: daemonId,
@@ -1283,14 +1340,21 @@ export class DeploymentOrchestrator {
         redactedEndpoints: [secrets.rpcEndpoint],
         guard: { kind: this.attemptKindOf(version), services },
         reservedAttempt: reservation.attempt,
-        beforeLaunch: execution && this.executions
-          ? async () => {
-            await this.executions!.claimLaunch(execution.executionId);
-            await this.executions!.retireSuperseded(profile.name, { keep: 2 });
-          }
-          : undefined,
+        beforeLaunch:
+          execution && this.executions
+            ? async () => {
+                await this.executions!.claimLaunch(execution.executionId);
+                await this.executions!.retireSuperseded(profile.name, { keep: 2 });
+              }
+            : undefined,
         onSuccess: async (attempt) => {
-          await this.snapshotContainers(profile, paths, version, services, targetAlias(reservation.host ?? profile.host));
+          await this.snapshotContainers(
+            profile,
+            paths,
+            version,
+            services,
+            targetAlias(reservation.host ?? profile.host),
+          );
           await this.observeMounts(profile, services);
           if (attempt && this.ports && this.portObserver) {
             const claimed = await this.profiles.findByName(profile.name);
@@ -1298,7 +1362,9 @@ export class DeploymentOrchestrator {
               try {
                 await new PortHandover(this.ports, this.portObserver, this.daemon).reconcile(claimed, build, attempt);
               } catch (err) {
-                logger.warn(`[Orchestrator] port handover for ${profile.name} could not be verified: ${getErrorMessage(err)}. Reservations were retained.`);
+                logger.warn(
+                  `[Orchestrator] port handover for ${profile.name} could not be verified: ${getErrorMessage(err)}. Reservations were retained.`,
+                );
               }
             }
           }
@@ -1308,10 +1374,7 @@ export class DeploymentOrchestrator {
             engineConfigFile === null ? null : basename(engineConfigFile),
           );
           // Last, because RUNNING is what tells everyone the deploy is over.
-          const updated = await this.profiles.markTerminal(
-            profile.name,
-            'RUNNING',
-          );
+          const updated = await this.profiles.markTerminal(profile.name, 'RUNNING');
           if (updated) {
             await this.publishChanged(updated);
           }
@@ -1354,14 +1417,13 @@ export class DeploymentOrchestrator {
       await this.ledger.cancelUnstarted(profile.name, referenceId);
     }
 
-    const restored = REDEPLOYABLE_FROM.includes(reservation.previousStatus)
-      ? reservation.previousStatus
-      : 'STOPPED';
+    const restored = REDEPLOYABLE_FROM.includes(reservation.previousStatus) ? reservation.previousStatus : 'STOPPED';
     // A row going back to ERROR keeps a reason, and the reason it had was
     // cleared by the claim, so this one says what this deploy did instead.
-    const updated = restored === 'ERROR'
-      ? await this.profiles.markError(profile.name, NOTHING_TO_DEPLOY)
-      : await this.profiles.markTerminal(profile.name, restored);
+    const updated =
+      restored === 'ERROR'
+        ? await this.profiles.markError(profile.name, NOTHING_TO_DEPLOY)
+        : await this.profiles.markTerminal(profile.name, restored);
     if (updated) {
       await this.publishChanged(updated);
     }
@@ -1370,10 +1432,7 @@ export class DeploymentOrchestrator {
     return { emitter, kill: () => undefined };
   }
 
-  async startStop(
-    profile: Profile,
-    services: string[] | undefined,
-  ): Promise<RunHandle> {
+  async startStop(profile: Profile, services: string[] | undefined): Promise<RunHandle> {
     const paths = await this.currentPathsFor(profile);
     return this.runJob({
       profileName: profile.name,
@@ -1384,16 +1443,10 @@ export class DeploymentOrchestrator {
       transitionTo: 'STOPPING',
       allowedFrom: ['RUNNING', 'ERROR'],
       afterClaim: async () => {
-        await this.operatorActed(
-          profile,
-          'Stopped by the operator before the file was verified.',
-        );
+        await this.operatorActed(profile, 'Stopped by the operator before the file was verified.');
       },
       onSuccess: async () => {
-        const updated = await this.profiles.markTerminal(
-          profile.name,
-          'STOPPED',
-        );
+        const updated = await this.profiles.markTerminal(profile.name, 'STOPPED');
         if (updated) {
           await this.publishChanged(updated);
         }
@@ -1422,7 +1475,13 @@ export class DeploymentOrchestrator {
       await this.publishChanged(claimed);
       await this.operations.supersedeOpen(claimed.instance_id, 'The deployment was removed.');
       const paths = await this.currentPathsFor(claimed);
-      const args = [`--profile=${claimed.name}`, `--host=${targetAlias(claimed.host)}`, `--portSlot=${claimed.port_slot}`, '--yes', '--volumes'];
+      const args = [
+        `--profile=${claimed.name}`,
+        `--host=${targetAlias(claimed.host)}`,
+        `--portSlot=${claimed.port_slot}`,
+        '--yes',
+        '--volumes',
+      ];
       if (input.all) args.push('--all');
       const handle = await this.runJob({
         profileName: claimed.name,
@@ -1454,37 +1513,60 @@ export class DeploymentOrchestrator {
   }
 
   private async assertNoCreatingAttempt(profileName: string): Promise<void> {
-    const unresolved = (await this.attempts.listUnresolved()).find(attempt => attempt.project === profileName);
+    const unresolved = (await this.attempts.listUnresolved()).find((attempt) => attempt.project === profileName);
     if (unresolved) {
-      throw new ProfileConfigError(profileName, `Deploy attempt ${unresolved.jobId} is unresolved. Resolve its creation guard before removing this deployment.`);
+      throw new ProfileConfigError(
+        profileName,
+        `Deploy attempt ${unresolved.jobId} is unresolved. Resolve its creation guard before removing this deployment.`,
+      );
     }
   }
 
   private async assertRemovalReady(profileName: string): Promise<void> {
     await this.assertNoCreatingAttempt(profileName);
-    if (!this.ports || !this.portObserver) throw new ProfileConfigError(profileName, 'Port removal observation is not configured. Reservations were retained.');
+    if (!this.ports || !this.portObserver)
+      throw new ProfileConfigError(
+        profileName,
+        'Port removal observation is not configured. Reservations were retained.',
+      );
     if (await this.ports.hasRemovalHold(profileName)) {
-      throw new ProfileConfigError(profileName, 'An unresolved rollback or creation hold must be resolved before cleanup.');
+      throw new ProfileConfigError(
+        profileName,
+        'An unresolved rollback or creation hold must be resolved before cleanup.',
+      );
     }
   }
 
   private async verifyPortRemoval(profile: Profile): Promise<void> {
     await this.assertRemovalReady(profile.name);
-    if (!this.ports || !this.portObserver) throw new ProfileConfigError(profile.name, 'Port removal observation is not configured. Reservations were retained.');
+    if (!this.ports || !this.portObserver)
+      throw new ProfileConfigError(
+        profile.name,
+        'Port removal observation is not configured. Reservations were retained.',
+      );
     const target = targetAlias(profile.host);
     const daemonId = await this.targetDaemon(target);
     const containers = await this.daemon.snapshot(profile.name, target);
     const published = await this.portObserver.publishedPorts(target);
     if (containers.daemonId !== daemonId || published.daemonId !== daemonId) {
-      throw new TargetNotVerifiedError(target, 'Removal observations came from a different Docker daemon. Reservations were retained.');
+      throw new TargetNotVerifiedError(
+        target,
+        'Removal observations came from a different Docker daemon. Reservations were retained.',
+      );
     }
-    if ([...containers.containers.values()].some(ids => ids.length) || published.unverifiedProjects?.length) {
-      throw new ProfileConfigError(profile.name, 'Container removal or port release could not be verified. Reservations were retained.');
+    if ([...containers.containers.values()].some((ids) => ids.length) || published.unverifiedProjects?.length) {
+      throw new ProfileConfigError(
+        profile.name,
+        'Container removal or port release could not be verified. Reservations were retained.',
+      );
     }
     const reservations = await this.ports.listByProfile(profile.name);
     const bound = new Set(published.bindings.map(portKeyOf));
-    if (reservations.some(port => port.daemonId !== daemonId || bound.has(portKeyOf(port)))) {
-      throw new ProfileConfigError(profile.name, 'Reserved ports are still bound or belong to another daemon. Reconcile them before removal.');
+    if (reservations.some((port) => port.daemonId !== daemonId || bound.has(portKeyOf(port)))) {
+      throw new ProfileConfigError(
+        profile.name,
+        'Reserved ports are still bound or belong to another daemon. Reconcile them before removal.',
+      );
     }
   }
 
@@ -1493,14 +1575,10 @@ export class DeploymentOrchestrator {
       try {
         const outcome = await this.groups.syncMembershipAfterRemoval(groupId);
         if (outcome === 'deleted') {
-          logger.info(
-            `[Orchestrator] Removed empty group ${groupId} after its last member left`,
-          );
+          logger.info(`[Orchestrator] Removed empty group ${groupId} after its last member left`);
         }
       } catch (err) {
-        logger.warn(
-          `[Orchestrator] could not reconcile group ${groupId}: ${getErrorMessage(err)}`,
-        );
+        logger.warn(`[Orchestrator] could not reconcile group ${groupId}: ${getErrorMessage(err)}`);
       }
     }
   }
@@ -1525,25 +1603,19 @@ export class DeploymentOrchestrator {
   private async runJob(cfg: JobConfig): Promise<RunHandle> {
     const daemonId = await this.targetDaemon(cfg.target);
     if (cfg.reservedDaemonId && cfg.reservedDaemonId !== daemonId) {
-      throw new TargetNotVerifiedError(cfg.target, 'The reserved ports belong to a different Docker daemon. No deploy was started.');
+      throw new TargetNotVerifiedError(
+        cfg.target,
+        'The reserved ports belong to a different Docker daemon. No deploy was started.',
+      );
     }
-    let attempt = cfg.reservedAttempt
-      ? await this.validatedReservedAttempt(cfg, daemonId)
-      : null;
+    let attempt = cfg.reservedAttempt ? await this.validatedReservedAttempt(cfg, daemonId) : null;
     await this.ensureStackDefaults(cfg.paths);
 
     if (cfg.transitionTo && cfg.allowedFrom) {
-      const transitioned = await this.profiles.transitionStatus(
-        cfg.profileName,
-        cfg.transitionTo,
-        cfg.allowedFrom,
-      );
+      const transitioned = await this.profiles.transitionStatus(cfg.profileName, cfg.transitionTo, cfg.allowedFrom);
       if (!transitioned) {
         const current = await this.profiles.findByName(cfg.profileName);
-        throw new ProfileBusyError(
-          cfg.profileName,
-          current?.status ?? 'REMOVING',
-        );
+        throw new ProfileBusyError(cfg.profileName, current?.status ?? 'REMOVING');
       }
       await this.publishChanged(transitioned);
       await cfg.afterClaim?.();
@@ -1562,7 +1634,10 @@ export class DeploymentOrchestrator {
       const snapshotToken = await this.attempts.captureSnapshotToken(daemonId, cfg.profileName);
       const before = await this.daemon.snapshot(cfg.profileName, cfg.target);
       if (before.daemonId !== daemonId) {
-        throw new TargetNotVerifiedError(cfg.target, 'The container snapshot came from a different Docker daemon. No deploy was started.');
+        throw new TargetNotVerifiedError(
+          cfg.target,
+          'The container snapshot came from a different Docker daemon. No deploy was started.',
+        );
       }
       attempt = await this.attempts.open({
         daemonId,
@@ -1577,9 +1652,7 @@ export class DeploymentOrchestrator {
       this.eventBus.publish({ type: 'attempt.changed' });
     }
 
-    logger.info(
-      `[Orchestrator] ${cfg.profileName} running: bash ${cfg.script} ${describeArgsForLog(cfg.args)}`,
-    );
+    logger.info(`[Orchestrator] ${cfg.profileName} running: bash ${cfg.script} ${describeArgsForLog(cfg.args)}`);
 
     await cfg.beforeLaunch?.();
     cfg.onLaunch?.();
@@ -1629,11 +1702,20 @@ export class DeploymentOrchestrator {
   private async validatedReservedAttempt(cfg: JobConfig, daemonId: string): Promise<DeployAttempt> {
     const expected = cfg.reservedAttempt!;
     const current = await this.attempts.findByJob(expected.jobId);
-    if (!cfg.guard || expected.state !== 'open' || expected.daemonId !== daemonId ||
-        expected.target !== cfg.target || expected.project !== cfg.profileName ||
-        expected.kind !== cfg.guard.kind || !isDeepStrictEqual(expected.services, cfg.guard.services) ||
-        !isDeepStrictEqual(current, expected)) {
-      throw new DeployAttemptRefusedError(cfg.profileName, 'The prepared deploy attempt changed or no longer owns this deployment. No deploy was started.');
+    if (
+      !cfg.guard ||
+      expected.state !== 'open' ||
+      expected.daemonId !== daemonId ||
+      expected.target !== cfg.target ||
+      expected.project !== cfg.profileName ||
+      expected.kind !== cfg.guard.kind ||
+      !isDeepStrictEqual(expected.services, cfg.guard.services) ||
+      !isDeepStrictEqual(current, expected)
+    ) {
+      throw new DeployAttemptRefusedError(
+        cfg.profileName,
+        'The prepared deploy attempt changed or no longer owns this deployment. No deploy was started.',
+      );
     }
     return current!;
   }
@@ -1653,7 +1735,11 @@ export class DeploymentOrchestrator {
       if (snapshot.daemonId !== attempt.daemonId) {
         throw new TargetNotVerifiedError(target, 'The attempt target now reaches a different Docker daemon');
       }
-      const judged: AttemptOutcome = attemptOutcome(attempt, containerIdsByService(snapshot.containers), scriptFinished);
+      const judged: AttemptOutcome = attemptOutcome(
+        attempt,
+        containerIdsByService(snapshot.containers),
+        scriptFinished,
+      );
       await this.attempts.resolve(attempt.id, judged);
       if (judged.state === 'blocked') {
         logger.warn(`[Orchestrator] attempt ${attempt.jobId} on ${attempt.project} is blocked: ${judged.reason}`);
@@ -1668,11 +1754,7 @@ export class DeploymentOrchestrator {
     }
   }
 
-  private async finalizeJob(
-    cfg: JobConfig,
-    outcome: JobOutcome,
-    attempt: DeployAttempt | null,
-  ): Promise<void> {
+  private async finalizeJob(cfg: JobConfig, outcome: JobOutcome, attempt: DeployAttempt | null): Promise<void> {
     try {
       if (outcome.code === 0) {
         await cfg.onSuccess(attempt);
@@ -1686,31 +1768,23 @@ export class DeploymentOrchestrator {
       } else if (await this.markFailed(cfg.profileName, message, cfg.deployFailure)) {
         await cfg.onFailure?.(message);
       }
-      logger.warn(
-        `[Orchestrator] ${cfg.profileName} ← ERROR (code=${outcome.code})\n${message}`,
-      );
+      logger.warn(`[Orchestrator] ${cfg.profileName} ← ERROR (code=${outcome.code})\n${message}`);
     } catch (err) {
       const message = getErrorMessage(err);
-      logger.error(
-        `[Orchestrator] failed to finalize ${cfg.profileName}: ${message}`,
-      );
+      logger.error(`[Orchestrator] failed to finalize ${cfg.profileName}: ${message}`);
       if (cfg.markFailure) {
-        try { await cfg.markFailure(message); }
-        catch (failure) { logger.error(`[Orchestrator] failed to record owned removal failure: ${getErrorMessage(failure)}`); }
+        try {
+          await cfg.markFailure(message);
+        } catch (failure) {
+          logger.error(`[Orchestrator] failed to record owned removal failure: ${getErrorMessage(failure)}`);
+        }
       } else await this.markFailed(cfg.profileName, message, cfg.deployFailure);
     }
   }
 
   /** Which deployment, on which slot and host, and which services this run is for. */
-  private buildScriptArgs(
-    profile: Profile,
-    services: string[],
-    hostOverride?: string,
-  ): string[] {
-    const args = [
-      `--profile=${profile.name}`,
-      `--portSlot=${profile.port_slot}`,
-    ];
+  private buildScriptArgs(profile: Profile, services: string[], hostOverride?: string): string[] {
+    const args = [`--profile=${profile.name}`, `--portSlot=${profile.port_slot}`];
     const host = hostOverride ?? profile.host ?? 'localhost';
     if (host) args.push(`--host=${host}`);
     args.push(...services);
@@ -1725,31 +1799,17 @@ export class DeploymentOrchestrator {
    * stored value the stack refuses fail those too, and a deployment that cannot
    * be stopped is the worst shape there is.
    */
-  private buildDeployScriptArgs(
-    profile: Profile,
-    services: string[],
-    hostOverride?: string,
-  ): string[] {
+  private buildDeployScriptArgs(profile: Profile, services: string[], hostOverride?: string): string[] {
     const overrides: string[] = [];
     if (profile.feed_owner) overrides.push(`--feed-owner=${profile.feed_owner}`);
     if (profile.feed_topic) overrides.push(`--feed-topic=${profile.feed_topic}`);
     if (profile.stamp_id) overrides.push(`--stamp-id=${profile.stamp_id}`);
-    return [
-      ...this.buildScriptArgs(profile, [], hostOverride),
-      ...overrides,
-      ...services,
-    ];
+    return [...this.buildScriptArgs(profile, [], hostOverride), ...overrides, ...services];
   }
 
   private async removeProfileDataDir(profileName: string): Promise<void> {
-    if (
-      !profileName ||
-      /[/\\]/.test(profileName) ||
-      profileName.includes('..')
-    ) {
-      throw new Error(
-        `refusing to remove data dir for suspicious name "${profileName}"`,
-      );
+    if (!profileName || /[/\\]/.test(profileName) || profileName.includes('..')) {
+      throw new Error(`refusing to remove data dir for suspicious name "${profileName}"`);
     }
     const dir = profileDataRoot(profileName);
     await rm(dir, { recursive: true, force: true });
@@ -1826,9 +1886,7 @@ export class DeploymentOrchestrator {
         await this.containers.upsert(profile.name, snapshot);
       }
     } catch (err) {
-      logger.warn(
-        `[Orchestrator] failed to snapshot containers for ${profile.name}: ${getErrorMessage(err)}`,
-      );
+      logger.warn(`[Orchestrator] failed to snapshot containers for ${profile.name}: ${getErrorMessage(err)}`);
     }
   }
 }

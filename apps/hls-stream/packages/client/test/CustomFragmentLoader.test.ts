@@ -684,7 +684,7 @@ describe('CustomFragmentLoader announcing which level hls.js asked for', () => {
 
   /** As much of an hls.js `Fragment` as this line reads: its level, its number and its playlist. */
   const fragmentOf = (level: number, sn: number | string, baseurl = RUNG) =>
-    ({ level, sn, baseurl } as FragmentLoaderContext['frag']);
+    ({ level, sn, baseurl }) as FragmentLoaderContext['frag'];
 
   let announced: string[];
 
@@ -815,7 +815,7 @@ describe('CustomFragmentLoader announcing how each attempt ended', () => {
   const RUNG = 'swarm://0x4f0e1c2b3a49586772635441302f1e0d0c0b0a09/9c4e1f60b8a2d357e0f1a2b3c4d5e6f7';
 
   const fragmentOf = (level: number, sn: number | string) =>
-    ({ level, sn, baseurl: RUNG } as FragmentLoaderContext['frag']);
+    ({ level, sn, baseurl: RUNG }) as FragmentLoaderContext['frag'];
 
   let announced: string[];
 
@@ -1350,7 +1350,7 @@ describe('CustomFragmentLoader settling a fragment abandoned before it was sent'
 describe('CustomFragmentLoader keeping one ending per attempt', () => {
   const RUNG = 'swarm://0x4f0e1c2b3a49586772635441302f1e0d0c0b0a09/9c4e1f60b8a2d357e0f1a2b3c4d5e6f7';
 
-  const fragmentOf = (level: number, sn: number) => ({ level, sn, baseurl: RUNG } as FragmentLoaderContext['frag']);
+  const fragmentOf = (level: number, sn: number) => ({ level, sn, baseurl: RUNG }) as FragmentLoaderContext['frag'];
 
   let announced: string[];
 

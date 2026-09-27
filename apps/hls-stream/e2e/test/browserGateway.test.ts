@@ -17,7 +17,7 @@ const GATEWAY_PORT = 11_077;
 
 /** The two fields `gatewayReader` reads, and nothing else it has no business in. */
 const cfgWith = (localHostAddress: string): E2EConfig =>
-  ({ localHostAddress, ports: { beeGatewayApi: GATEWAY_PORT } } as unknown as E2EConfig);
+  ({ localHostAddress, ports: { beeGatewayApi: GATEWAY_PORT } }) as unknown as E2EConfig;
 
 const HEALTHY_OUTPUT = [
   '0.031 200',

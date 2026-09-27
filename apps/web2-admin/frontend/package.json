@@ -1,10 +1,10 @@
 {
   "name": "@streaming-monorepo/web2-admin-frontend",
-  "private": true,
   "version": "0.1.0",
-  "type": "module",
+  "private": true,
   "description": "web2-admin console: React 18 + MUI + Vite, modelled on msrs-client.",
   "license": "MIT",
+  "type": "module",
   "scripts": {
     "lint": "oxlint --type-aware .",
     "dev": "vite",
@@ -40,6 +40,9 @@
     "vitest": "5.0.0"
   },
   "nx": {
-    "tags": ["scope:admin", "type:app"]
+    "tags": [
+      "scope:admin",
+      "type:app"
+    ]
   }
 }

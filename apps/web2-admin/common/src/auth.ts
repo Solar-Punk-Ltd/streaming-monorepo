@@ -23,20 +23,14 @@ export const PASSWORD_MAX_LENGTH = 128;
  * only thing that buys resistance to guessing, and a password carrying the
  * username is the first guess anyone makes.
  */
-export function passwordProblem(
-  password: string,
-  username: string,
-): string | null {
+export function passwordProblem(password: string, username: string): string | null {
   if (password.length < PASSWORD_MIN_LENGTH) {
     return `password must be at least ${PASSWORD_MIN_LENGTH} characters`;
   }
   if (password.length > PASSWORD_MAX_LENGTH) {
     return `password must be at most ${PASSWORD_MAX_LENGTH} characters`;
   }
-  if (
-    username.length > 0 &&
-    password.toLowerCase().includes(username.toLowerCase())
-  ) {
+  if (username.length > 0 && password.toLowerCase().includes(username.toLowerCase())) {
     return 'password must not contain the username';
   }
   return null;
@@ -105,8 +99,5 @@ export function lockoutMsFor(failures: number): number {
   if (failures <= LOGIN_FREE_ATTEMPTS) return 0;
 
   const doublings = failures - LOGIN_FREE_ATTEMPTS - 1;
-  return Math.min(
-    LOGIN_MAX_LOCKOUT_MS,
-    LOGIN_FIRST_LOCKOUT_MS * 2 ** doublings,
-  );
+  return Math.min(LOGIN_MAX_LOCKOUT_MS, LOGIN_FIRST_LOCKOUT_MS * 2 ** doublings);
 }

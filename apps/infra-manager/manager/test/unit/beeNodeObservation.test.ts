@@ -6,10 +6,15 @@ import { MAX_PROBE_TIMEOUT_MS } from '../../src/domain/beeNodeObservation.js';
 
 const servers: ReturnType<typeof createServer>[] = [];
 afterEach(async () => {
-  await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => {
-    server.closeAllConnections();
-    server.close(() => resolve());
-  })));
+  await Promise.all(
+    servers.splice(0).map(
+      (server) =>
+        new Promise<void>((resolve) => {
+          server.closeAllConnections();
+          server.close(() => resolve());
+        }),
+    ),
+  );
 });
 
 /**
@@ -27,7 +32,7 @@ const AMPLE_TIMEOUT_MS = 10_000;
 async function client(reply: (path: string, res: ServerResponse) => void, timeout = AMPLE_TIMEOUT_MS) {
   const server = createServer((req, res) => reply(req.url!, res));
   servers.push(server);
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
   return new BeeClient(`http://127.0.0.1:${address.port}`, timeout);
@@ -66,7 +71,9 @@ describe('Bee startup observations', () => {
   });
 
   it('requires both health and readiness evidence and keeps supplied block counts', async () => {
-    const bee = await client((path, res) => json(res, path === '/chainstate' ? { block: 12, chainTip: 20 } : { status: path === '/health' ? 'ok' : 'ready' }));
+    const bee = await client((path, res) =>
+      json(res, path === '/chainstate' ? { block: 12, chainTip: 20 } : { status: path === '/health' ? 'ok' : 'ready' }),
+    );
     const observed = await bee.getNodeObservation();
     assert.equal(observed.state, 'ready');
     assert.deepEqual(observed.chainProgress, { block: 12, chainTip: 20 });
@@ -77,7 +84,8 @@ describe('Bee startup observations', () => {
       const bee = await client((path, res) => {
         if (path === '/health') json(res, { status: 'ok' });
         else if (path === '/readiness' && mode === 'unreachable') res.destroy();
-        else if (path === '/readiness') json(res, { status: mode === 'malformed' ? 'unexpected' : 'ready' }, mode === 'wrong-status' ? 400 : 200);
+        else if (path === '/readiness')
+          json(res, { status: mode === 'malformed' ? 'unexpected' : 'ready' }, mode === 'wrong-status' ? 400 : 200);
         else json(res, { block: -1, chainTip: '20' });
       });
       const observed = await bee.getNodeObservation();
@@ -87,7 +95,9 @@ describe('Bee startup observations', () => {
   });
 
   it('distinguishes Bee reported unhealthy from unreachable', async () => {
-    const unhealthy = await client((path, res) => json(res, { status: path === '/health' ? 'nok' : 'notReady' }, path === '/readiness' ? 400 : 200));
+    const unhealthy = await client((path, res) =>
+      json(res, { status: path === '/health' ? 'nok' : 'notReady' }, path === '/readiness' ? 400 : 200),
+    );
     assert.equal((await unhealthy.getNodeObservation()).state, 'unhealthy');
     const unreachable = await client((_path, res) => res.destroy());
     assert.equal((await unreachable.getNodeObservation()).state, 'unreachable');
@@ -107,9 +117,7 @@ describe('Bee startup observations', () => {
 
   it('says unreadable when one probe answered whole and the other was cut off', async () => {
     const half = await client((path, res) =>
-      path === '/health'
-        ? json(res, { status: 'ok', version: '2.8.2' })
-        : cutOffAfterHeaders(res),
+      path === '/health' ? json(res, { status: 'ok', version: '2.8.2' }) : cutOffAfterHeaders(res),
     );
 
     const observed = await half.getNodeObservation();
@@ -119,7 +127,10 @@ describe('Bee startup observations', () => {
   });
 
   it('bounds slow bodies and oversized responses without exposing them', async () => {
-    const slow = await client((_path, res) => { res.writeHead(200); res.write('{'); }, 50);
+    const slow = await client((_path, res) => {
+      res.writeHead(200);
+      res.write('{');
+    }, 50);
     const start = Date.now();
     const observed = await slow.getNodeObservation();
     assert.notEqual(observed.state, 'ready');
@@ -134,10 +145,18 @@ describe('Bee startup observations', () => {
   // probe's, whatever the transport does with the signal.
   it('bounds a body read even when the transport ignores the abort signal', { timeout: 5_000 }, async () => {
     const realFetch = globalThis.fetch;
-    globalThis.fetch = async () => new Response(new ReadableStream<Uint8Array>({
-      start(controller) { controller.enqueue(new TextEncoder().encode('{')); },
-      cancel() { /* the transport that never gives up */ },
-    }), { status: 200 });
+    globalThis.fetch = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{'));
+          },
+          cancel() {
+            /* the transport that never gives up */
+          },
+        }),
+        { status: 200 },
+      );
     try {
       const start = Date.now();
       const observed = await new BeeClient('http://127.0.0.1:1', 50).getNodeObservation();
@@ -162,9 +181,10 @@ describe('Bee startup observations', () => {
 
   it('waits out a node slower than the old cap when its caller allowed for it', { timeout: 20_000 }, async () => {
     const slow = await client((path, res) => {
-      const body = path === '/readiness'
-        ? JSON.stringify({ status: 'ready' })
-        : JSON.stringify({ status: 'ok', version: '2.8.2', apiVersion: '8.1.1' });
+      const body =
+        path === '/readiness'
+          ? JSON.stringify({ status: 'ready' })
+          : JSON.stringify({ status: 'ok', version: '2.8.2', apiVersion: '8.1.1' });
       setTimeout(() => res.end(body), 4_000);
     });
 

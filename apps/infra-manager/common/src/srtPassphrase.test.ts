@@ -16,14 +16,8 @@ describe('isValidSrtPassphrase', () => {
   });
 
   it('rejects lengths libsrt itself would refuse', () => {
-    assert.equal(
-      isValidSrtPassphrase('a'.repeat(SRT_PASSPHRASE_MIN - 1)),
-      false,
-    );
-    assert.equal(
-      isValidSrtPassphrase('a'.repeat(SRT_PASSPHRASE_MAX + 1)),
-      false,
-    );
+    assert.equal(isValidSrtPassphrase('a'.repeat(SRT_PASSPHRASE_MIN - 1)), false);
+    assert.equal(isValidSrtPassphrase('a'.repeat(SRT_PASSPHRASE_MAX + 1)), false);
     assert.equal(isValidSrtPassphrase(''), false);
   });
 
@@ -53,11 +47,7 @@ describe('generateSrtPassphrase', () => {
     // is the check that catches the two drifting apart.
     for (let i = 0; i < 200; i += 1) {
       const generated = generateSrtPassphrase();
-      assert.equal(
-        isValidSrtPassphrase(generated),
-        true,
-        `generated an invalid passphrase: ${generated}`,
-      );
+      assert.equal(isValidSrtPassphrase(generated), true, `generated an invalid passphrase: ${generated}`);
     }
   });
 

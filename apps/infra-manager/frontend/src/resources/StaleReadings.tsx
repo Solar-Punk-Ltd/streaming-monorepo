@@ -8,9 +8,5 @@ import { Alert } from '@mui/material';
  * happening. Only the age of the newest reading separates the two.
  */
 export function StaleReadings({ seconds }: { seconds: number }) {
-  return (
-    <Alert severity="warning">
-      Readings are {seconds} seconds old, so these numbers are not live.
-    </Alert>
-  );
+  return <Alert severity="warning">Readings are {seconds} seconds old, so these numbers are not live.</Alert>;
 }

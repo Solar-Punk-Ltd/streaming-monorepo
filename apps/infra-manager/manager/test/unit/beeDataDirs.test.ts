@@ -20,10 +20,7 @@ import { beeDataDirsFor } from '../../src/domain/dataDirs.js';
 describe('beeDataDirsFor', () => {
   it('names both data dirs for a localhost deploy', () => {
     const dirs = beeDataDirsFor('stage1-abr-360p', 'localhost');
-    assert.deepEqual(Object.keys(dirs).sort(), [
-      'BEE_GATEWAY_DATA_DIR',
-      'BEE_UPLOADER_DATA_DIR',
-    ]);
+    assert.deepEqual(Object.keys(dirs).sort(), ['BEE_GATEWAY_DATA_DIR', 'BEE_UPLOADER_DATA_DIR']);
     assert.match(dirs.BEE_UPLOADER_DATA_DIR!, /\/stage1-abr-360p\/bee-uploader$/);
     assert.match(dirs.BEE_GATEWAY_DATA_DIR!, /\/stage1-abr-360p\/bee-gateway$/);
   });
@@ -48,7 +45,7 @@ describe('beeDataDirsFor', () => {
     assert.deepEqual(beeDataDirsFor('stage1-abr-360p', '127.0.0.1'), {});
   });
 
-  it('treats an empty target as local — targetAlias maps null and \'\' to localhost before this is reached', () => {
+  it("treats an empty target as local — targetAlias maps null and '' to localhost before this is reached", () => {
     const dirs = beeDataDirsFor('stage1-abr-360p', '');
     assert.equal(Object.keys(dirs).length, 2);
   });

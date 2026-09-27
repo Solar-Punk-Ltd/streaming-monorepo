@@ -4,21 +4,11 @@ import { navigate, routes } from '../app/router';
 import { SectionCard } from '../components/SectionCard';
 import { SegmentedBar } from '../components/SegmentedBar';
 import { MONO_STACK } from '../app/theme';
-import {
-  formatBytes,
-  formatCores,
-  formatPercent,
-} from '../format';
+import { formatBytes, formatCores, formatPercent } from '../format';
 import { hostShares, type ResourceShare } from '../resources/metricsMath';
 import type { MetricsSnapshot } from '../types';
 
-export function HostCard({
-  snapshot,
-  serverHost,
-}: {
-  snapshot: MetricsSnapshot | null;
-  serverHost: string;
-}) {
+export function HostCard({ snapshot, serverHost }: { snapshot: MetricsSnapshot | null; serverHost: string }) {
   return (
     <SectionCard
       title="Host"
@@ -36,9 +26,12 @@ export function HostCard({
       {snapshot ? (
         <Bars snapshot={snapshot} />
       ) : (
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           Waiting for the first sample…
         </Typography>
       )}
@@ -89,9 +82,10 @@ function Bar({
       <Stack
         direction="row"
         sx={{
-          justifyContent: "space-between",
-          alignItems: "baseline"
-        }}>
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+        }}
+      >
         <Typography variant="body2" sx={{ fontWeight: 500 }}>
           {label}
         </Typography>
@@ -102,9 +96,12 @@ function Bar({
       <Box sx={{ my: 0.75 }}>
         <SegmentedBar ours={share.ours} other={share.other} height={8} />
       </Box>
-      <Typography variant="caption" sx={{
-        color: "text.secondary"
-      }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
         {footnote}
       </Typography>
     </Box>

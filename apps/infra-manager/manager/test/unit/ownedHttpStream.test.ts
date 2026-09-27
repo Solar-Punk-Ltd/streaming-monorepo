@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import { OwnedHttpStream } from '../../src/domain/chequebook/OwnedHttpStream.js';
 
 describe('owned HTTP stream lifecycle', { timeout: 2000 }, () => {
-  it('implements native HTTP timeout and no-delay delegation without a connect event', async t => {
+  it('implements native HTTP timeout and no-delay delegation without a connect event', async (t) => {
     const inbound = new PassThrough();
     const outbound = new PassThrough();
     const raw = Duplex.from({ readable: inbound, writable: outbound });
@@ -14,7 +14,8 @@ describe('owned HTTP stream lifecycle', { timeout: 2000 }, () => {
     Object.assign(raw, {
       setNoDelay: (...args: unknown[]) => calls.push(['noDelay', ...args]),
       setKeepAlive: (...args: unknown[]) => calls.push(['keepAlive', ...args]),
-      ref: () => calls.push(['ref']), unref: () => calls.push(['unref']),
+      ref: () => calls.push(['ref']),
+      unref: () => calls.push(['unref']),
     });
     const stream = new OwnedHttpStream(raw);
     stream.on('error', () => {});
@@ -30,29 +31,37 @@ describe('owned HTTP stream lifecycle', { timeout: 2000 }, () => {
     await timeout;
     assert.equal(stream.connecting, false);
     assert.equal(stream.timeout, 25);
-    assert.ok(calls.some(call => call[0] === 'noDelay' && call[1] === true));
-    assert.ok(calls.some(call => call[0] === 'keepAlive' && call[2] === 100));
+    assert.ok(calls.some((call) => call[0] === 'noDelay' && call[1] === true));
+    assert.ok(calls.some((call) => call[0] === 'keepAlive' && call[2] === 100));
     assert.equal(stream.ref(), stream);
     assert.equal(stream.unref(), stream);
-    assert.ok(calls.some(call => call[0] === 'ref'));
-    assert.ok(calls.some(call => call[0] === 'unref'));
+    assert.ok(calls.some((call) => call[0] === 'ref'));
+    assert.ok(calls.some((call) => call[0] === 'unref'));
     stream.setTimeout(0);
     assert.equal(stream.timeout, 0);
   });
 
-  it('preserves binary writes, write backpressure and writable half-close', async t => {
+  it('preserves binary writes, write backpressure and writable half-close', async (t) => {
     const received: Buffer[] = [];
     let release: (() => void) | undefined;
     const raw = new Duplex({
       read() {},
-      write(chunk: Buffer, _encoding, callback) { received.push(chunk); release = callback; },
+      write(chunk: Buffer, _encoding, callback) {
+        received.push(chunk);
+        release = callback;
+      },
     });
     const stream = new OwnedHttpStream(raw);
     stream.on('error', () => {});
     t.after(() => stream.destroy());
     let completed = false;
     const bytes = Buffer.alloc(128 * 1024, 255);
-    assert.equal(stream.write(bytes, () => { completed = true; }), false);
+    assert.equal(
+      stream.write(bytes, () => {
+        completed = true;
+      }),
+      false,
+    );
     assert.equal(completed, false);
     release!();
     const finished = once(stream, 'finish');
@@ -69,7 +78,7 @@ describe('owned HTTP stream lifecycle', { timeout: 2000 }, () => {
     assert.equal(raw.destroyed, true);
   });
 
-  it('bounds buffered output for a slow consumer and resumes without loss', async t => {
+  it('bounds buffered output for a slow consumer and resumes without loss', async (t) => {
     const raw = new PassThrough();
     const stream = new OwnedHttpStream(raw);
     stream.on('error', () => {});
@@ -77,7 +86,7 @@ describe('owned HTTP stream lifecycle', { timeout: 2000 }, () => {
     const bytes = Buffer.alloc(512 * 1024, 128);
     raw.write(bytes);
     stream.read(0);
-    await new Promise(resolve => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
     assert.ok(stream.readableLength <= stream.readableHighWaterMark);
     assert.ok(raw.readableLength > 0);
     let read = 0;

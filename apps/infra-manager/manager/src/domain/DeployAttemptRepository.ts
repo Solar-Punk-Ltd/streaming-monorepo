@@ -1,8 +1,4 @@
-import type {
-  AttemptOutcome,
-  DeployAttempt,
-  DeployAttemptKind,
-} from './deployAttempts.js';
+import type { AttemptOutcome, DeployAttempt, DeployAttemptKind } from './deployAttempts.js';
 
 export interface AttemptSnapshotToken {
   daemonId: string;
@@ -63,15 +59,11 @@ export interface DaemonSnapshot {
 export function containerIdsByService(
   containers: ReadonlyMap<string, readonly ObservedContainer[]>,
 ): Map<string, string[]> {
-  return new Map(
-    [...containers].map(([service, observed]) => [service, observed.map((container) => container.id)]),
-  );
+  return new Map([...containers].map(([service, observed]) => [service, observed.map((container) => container.id)]));
 }
 
 /** Every container id in a snapshot, for the callers that compare identity across a job. */
-export function allContainerIds(
-  containers: ReadonlyMap<string, readonly ObservedContainer[]>,
-): string[] {
+export function allContainerIds(containers: ReadonlyMap<string, readonly ObservedContainer[]>): string[] {
   return [...containers.values()].flat().map((container) => container.id);
 }
 

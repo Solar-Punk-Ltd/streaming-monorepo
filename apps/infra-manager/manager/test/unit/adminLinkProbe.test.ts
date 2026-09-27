@@ -66,7 +66,10 @@ function adminAnswering(options: { owner?: string | null; configStatus?: number 
     }
     if (path === '/api/config') {
       if (options.configStatus) return json(response, options.configStatus, { error: 'internal_error' });
-      const feed = options.owner === null ? { topic: 'catalog' } : { owner: options.owner ?? OWNER, topic: 'catalog', topicHex: 'ab' };
+      const feed =
+        options.owner === null
+          ? { topic: 'catalog' }
+          : { owner: options.owner ?? OWNER, topic: 'catalog', topicHex: 'ab' };
       return json(response, 200, { feed, viewerBaseUrl: null });
     }
     return json(response, 404, { error: 'not_found', path });
@@ -91,7 +94,10 @@ describe('Test connection against a web2 admin', () => {
   it('reads the owner off the public config without the token, and calls the link whole when it is the stream address', async () => {
     const admin = await serve(adminAnswering());
 
-    assert.equal(await probeAdminLink({ url: admin.url, token: TOKEN, feedOwner: OWNER.toUpperCase().replace('0X', '0x') }), 'linked');
+    assert.equal(
+      await probeAdminLink({ url: admin.url, token: TOKEN, feedOwner: OWNER.toUpperCase().replace('0X', '0x') }),
+      'linked',
+    );
     assert.equal(await probeAdminLink({ url: admin.url, token: TOKEN, feedOwner: OWNER.slice(2) }), 'linked');
     assert.deepEqual(admin.seen[1], { path: '/api/config', authorization: undefined });
   });
@@ -158,14 +164,20 @@ describe('Test connection against a web2 admin', () => {
       response.end(JSON.stringify({ error: 'stream_not_found', padding: 'x'.repeat(200_000) }));
     });
 
-    assert.equal(await probeAdminLink({ url: huge.url, token: TOKEN, feedOwner: null }, { maxBodyBytes: 4096 }), 'not-admin');
+    assert.equal(
+      await probeAdminLink({ url: huge.url, token: TOKEN, feedOwner: null }, { maxBodyBytes: 4096 }),
+      'not-admin',
+    );
   });
 
   it('gives up after its timeout and says the admin is unreachable', async () => {
     const hanging = await serve(() => undefined);
     const started = performance.now();
 
-    assert.equal(await probeAdminLink({ url: hanging.url, token: TOKEN, feedOwner: null }, { timeoutMs: 300 }), 'unreachable');
+    assert.equal(
+      await probeAdminLink({ url: hanging.url, token: TOKEN, feedOwner: null }, { timeoutMs: 300 }),
+      'unreachable',
+    );
     assert.ok(performance.now() - started < 3_000, 'the timeout ended the wait');
   });
 

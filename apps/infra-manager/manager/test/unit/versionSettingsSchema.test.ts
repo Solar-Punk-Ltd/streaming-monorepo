@@ -62,10 +62,9 @@ describe('saveVersionSettingsSchema', () => {
       { abortEarly: false },
     );
 
-    assert.deepEqual(save.files.map((file) => file?.path), [
-      '.env',
-      'engines/srs/.env',
-      'deploy/config.json',
-    ]);
+    assert.deepEqual(
+      save.files.map((file) => file?.path),
+      ['.env', 'engines/srs/.env', 'deploy/config.json'],
+    );
   });
 });

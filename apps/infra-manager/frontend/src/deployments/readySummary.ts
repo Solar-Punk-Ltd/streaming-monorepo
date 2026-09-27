@@ -13,10 +13,7 @@ export interface ReadySummary {
   isLink?: boolean;
 }
 
-export function readySummary(
-  input: ChecklistInput,
-  health?: StampHealth,
-): ReadySummary {
+export function readySummary(input: ChecklistInput, health?: StampHealth): ReadySummary {
   const { profile, publishUrl, clientUrl } = input;
   const readiness = readinessFor(health ? { ...input, stampHealth: health } : input);
   const shape = shapeOf(profile);

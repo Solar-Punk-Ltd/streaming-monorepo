@@ -30,7 +30,11 @@ import { afterEach, beforeEach, it } from 'node:test';
 import { Logger } from '../../src/domain/Logger.js';
 import { buildInventoryRecordPath } from '../../src/domain/versions/buildInventoryRecord.js';
 import type { ExecutionRootRecord } from '../../src/domain/versions/ExecutionRoot.js';
-import { ExecutionRootService, PROGRESS_FLOOR, type ExecutionPreparation } from '../../src/domain/versions/ExecutionRootService.js';
+import {
+  ExecutionRootService,
+  PROGRESS_FLOOR,
+  type ExecutionPreparation,
+} from '../../src/domain/versions/ExecutionRootService.js';
 import { BUILD_COMPLETE_MARKER, BUILD_MANIFEST_FILE } from '../../src/domain/versions/buildManifest.js';
 import { inventoryOwnedTree, stampOwnedTree } from '../../src/domain/versions/ownedTreeInventory.js';
 import { InMemoryExecutionRoots } from '../support/InMemoryExecutionRoots.js';
@@ -57,10 +61,15 @@ beforeEach(async () => {
   await fsPromises.writeFile(join(build, 'deploy', 'scripts', 'deploy.sh'), '#!/bin/sh\nexit 0\n');
   await fsPromises.writeFile(join(build, '.env.sample'), 'ENGINE=synthetic\n');
   await fsPromises.symlink('deploy/scripts/deploy.sh', join(build, 'entry'));
-  await fsPromises.writeFile(join(build, BUILD_MANIFEST_FILE), JSON.stringify({ buildId: commit, commit, builtAt: '2026-09-09T00:00:00.000Z', toolchain: 'synthetic' }));
+  await fsPromises.writeFile(
+    join(build, BUILD_MANIFEST_FILE),
+    JSON.stringify({ buildId: commit, commit, builtAt: '2026-09-09T00:00:00.000Z', toolchain: 'synthetic' }),
+  );
   await fsPromises.writeFile(join(build, BUILD_COMPLETE_MARKER), '');
 });
-afterEach(async () => { await fsPromises.rm(root, { recursive: true, force: true }); });
+afterEach(async () => {
+  await fsPromises.rm(root, { recursive: true, force: true });
+});
 
 const storeFor = () => new InMemoryExecutionRoots(executions, () => randomUUID());
 const preparation = (jobReferenceId = 7): ExecutionPreparation => ({
@@ -87,10 +96,13 @@ it('stamps the paths an inventory stamps, so a later comparison is of like with 
   assert.deepEqual(await stampOwnedTree(build, BUILD_COMPLETE_MARKER), inventory.stamps);
 });
 
-it('reads each file of the build once for one prepare and copy, not once for every proof', async t => {
+it('reads each file of the build once for one prepare and copy, not once for every proof', async (t) => {
   const opened = t.mock.method(fsPromises, 'open');
   syncBuiltinESMExports();
-  t.after(() => { opened.mock.restore(); syncBuiltinESMExports(); });
+  t.after(() => {
+    opened.mock.restore();
+    syncBuiltinESMExports();
+  });
 
   await new ExecutionRootService(storeFor(), executions).prepare(preparation());
 
@@ -103,16 +115,23 @@ it('reads each file of the build once for one prepare and copy, not once for eve
   }
   assert.ok(reads.size > 0, 'no read of the build was seen at all, so this test counts nothing');
   const most = Math.max(...reads.values());
-  assert.ok(most <= READS_PER_PREPARE, `one prepare and copy read a file of the build ${most} times: ${
-    [...reads].filter(([, count]) => count === most).map(([path]) => path).join(', ')}`);
+  assert.ok(
+    most <= READS_PER_PREPARE,
+    `one prepare and copy read a file of the build ${most} times: ${[...reads]
+      .filter(([, count]) => count === most)
+      .map(([path]) => path)
+      .join(', ')}`,
+  );
 });
 
 for (const change of ['is rewritten', 'gains a file nothing inventoried'] as const) {
   it(`refuses a build that ${change} between its inventory and the links made from it`, async () => {
     const store = storeFor();
-    changeWhenTheCopyTakesItsToken(store, () => change === 'is rewritten'
-      ? fsPromises.writeFile(join(build, '.env.sample'), 'ENGINE=synthetic-and-changed\n')
-      : fsPromises.writeFile(join(build, 'deploy', 'late.txt'), 'arrived after the inventory\n'));
+    changeWhenTheCopyTakesItsToken(store, () =>
+      change === 'is rewritten'
+        ? fsPromises.writeFile(join(build, '.env.sample'), 'ENGINE=synthetic-and-changed\n')
+        : fsPromises.writeFile(join(build, 'deploy', 'late.txt'), 'arrived after the inventory\n'),
+    );
 
     await assert.rejects(new ExecutionRootService(store, executions).prepare(preparation()), /changed/);
 
@@ -132,10 +151,13 @@ function readsOfTheBuild(opened: { mock: { calls: { arguments: unknown[] }[] } }
   return reads;
 }
 
-it('hashes a build once ever, and answers every later copy from the record beside it', async t => {
+it('hashes a build once ever, and answers every later copy from the record beside it', async (t) => {
   const opened = t.mock.method(fsPromises, 'open');
   syncBuiltinESMExports();
-  t.after(() => { opened.mock.restore(); syncBuiltinESMExports(); });
+  t.after(() => {
+    opened.mock.restore();
+    syncBuiltinESMExports();
+  });
   const service = new ExecutionRootService(storeFor(), executions);
 
   await service.prepare(preparation(7));
@@ -145,8 +167,11 @@ it('hashes a build once ever, and answers every later copy from the record besid
   const second = readsOfTheBuild(opened);
 
   assert.ok(first.size > IDENTITY_FILES.length, 'the first prepare never read the build, so this test counts nothing');
-  assert.deepEqual([...second.keys()].sort(), [...IDENTITY_FILES].sort(),
-    'a second copy of the same build read more of it than the two files that say which build it is');
+  assert.deepEqual(
+    [...second.keys()].sort(),
+    [...IDENTITY_FILES].sort(),
+    'a second copy of the same build read more of it than the two files that say which build it is',
+  );
   assert.equal((await fsPromises.lstat(`${build}.inventory.json`)).mode & 0o7777, 0o600);
 });
 
@@ -159,14 +184,18 @@ for (const change of ['bytes', 'mode'] as const) {
     if (change === 'bytes') await fsPromises.writeFile(path, 'ENGINE=synthetic-and-changed\n');
     else await fsPromises.chmod(path, 0o600);
 
-    await assert.rejects(service.prepare(preparation(8)), (err: Error) =>
-      /changed/.test(err.message) && err.message.includes(buildInventoryRecordPath(build)));
+    await assert.rejects(
+      service.prepare(preparation(8)),
+      (err: Error) => /changed/.test(err.message) && err.message.includes(buildInventoryRecordPath(build)),
+    );
   });
 }
 
-it('says which build it is copying and how far it has got', async t => {
+it('says which build it is copying and how far it has got', async (t) => {
   const said: string[] = [];
-  t.mock.method(Logger.prototype, 'info', (...args: unknown[]) => { said.push(args.join(' ')); });
+  t.mock.method(Logger.prototype, 'info', (...args: unknown[]) => {
+    said.push(args.join(' '));
+  });
   for (let index = 0; index < PROGRESS_FLOOR; index += 1) {
     await fsPromises.writeFile(join(build, `page-${index}.txt`), `${index}\n`);
   }
@@ -174,9 +203,15 @@ it('says which build it is copying and how far it has got', async t => {
 
   await new ExecutionRootService(storeFor(), executions).prepare(preparation());
 
-  assert.ok(said.some(line => new RegExp(`inventoried build ${commit} once, ${files} files`).test(line)), said.join('\n'));
-  assert.ok(said.some(line => new RegExp(`preparing a copy of build ${commit}, ${files} files`).test(line)), said.join('\n'));
-  assert.ok(said.filter(line => /linked \d+ of \d+ files/.test(line)).length > 1, said.join('\n'));
+  assert.ok(
+    said.some((line) => new RegExp(`inventoried build ${commit} once, ${files} files`).test(line)),
+    said.join('\n'),
+  );
+  assert.ok(
+    said.some((line) => new RegExp(`preparing a copy of build ${commit}, ${files} files`).test(line)),
+    said.join('\n'),
+  );
+  assert.ok(said.filter((line) => /linked \d+ of \d+ files/.test(line)).length > 1, said.join('\n'));
 });
 
 it('takes a fresh inventory when the build under the record was rebuilt at the same id', async () => {
@@ -188,11 +223,18 @@ it('takes a fresh inventory when the build under the record was rebuilt at the s
   await fsPromises.rm(build, { recursive: true, force: true });
   await fsPromises.mkdir(join(build, 'deploy', 'scripts'), { recursive: true });
   await fsPromises.writeFile(join(build, 'deploy', 'scripts', 'deploy.sh'), '#!/bin/sh\nexit 1\n');
-  await fsPromises.writeFile(join(build, BUILD_MANIFEST_FILE), JSON.stringify({ buildId: commit, commit, builtAt: '2026-09-17T00:00:00.000Z', toolchain: 'synthetic' }));
+  await fsPromises.writeFile(
+    join(build, BUILD_MANIFEST_FILE),
+    JSON.stringify({ buildId: commit, commit, builtAt: '2026-09-17T00:00:00.000Z', toolchain: 'synthetic' }),
+  );
   await fsPromises.writeFile(join(build, BUILD_COMPLETE_MARKER), '');
 
   const prepared = await service.prepare(preparation(8));
 
   assert.ok(prepared, 'the rebuilt build was refused, so its id can never be deployed again');
-  assert.notEqual(await fsPromises.readFile(`${build}.inventory.json`, 'utf8'), stale, 'the record still describes the build that is gone');
+  assert.notEqual(
+    await fsPromises.readFile(`${build}.inventory.json`, 'utf8'),
+    stale,
+    'the record still describes the build that is gone',
+  );
 });

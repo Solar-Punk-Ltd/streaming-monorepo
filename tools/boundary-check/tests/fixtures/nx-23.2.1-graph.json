@@ -8,11 +8,7 @@
           "root": "apps/manager-app",
           "name": "manager-app",
           "includedScripts": [],
-          "tags": [
-            "npm:private",
-            "scope:manager",
-            "type:app"
-          ],
+          "tags": ["npm:private", "scope:manager", "type:app"],
           "metadata": {
             "targetGroups": {},
             "js": {
@@ -39,17 +35,10 @@
         "data": {
           "root": "apps/admin-app",
           "name": "admin-app",
-          "tags": [
-            "npm:private",
-            "scope:admin",
-            "type:app"
-          ],
+          "tags": ["npm:private", "scope:admin", "type:app"],
           "metadata": {
             "targetGroups": {
-              "NPM Scripts": [
-                "build",
-                "test"
-              ]
+              "NPM Scripts": ["build", "test"]
             },
             "js": {
               "packageName": "admin-app",
@@ -91,19 +80,11 @@
         "data": {
           "root": "libs/admin-lib",
           "name": "admin-lib",
-          "includedScripts": [
-            "lint"
-          ],
-          "tags": [
-            "npm:private",
-            "scope:admin",
-            "type:lib"
-          ],
+          "includedScripts": ["lint"],
+          "tags": ["npm:private", "scope:admin", "type:lib"],
           "metadata": {
             "targetGroups": {
-              "NPM Scripts": [
-                "lint"
-              ]
+              "NPM Scripts": ["lint"]
             },
             "js": {
               "packageName": "admin-lib",
@@ -127,9 +108,7 @@
             "test": {
               "dependsOn": [
                 {
-                  "projects": [
-                    "manager-app"
-                  ],
+                  "projects": ["manager-app"],
                   "target": "build"
                 }
               ],

@@ -19,7 +19,10 @@ const settingKeyField = () =>
   string()
     .required()
     .typeError('a settings key is text')
-    .matches(SETTINGS_KEY_RE, 'a settings key starts with a letter or an underscore and holds letters, digits and underscores');
+    .matches(
+      SETTINGS_KEY_RE,
+      'a settings key starts with a letter or an underscore and holds letters, digits and underscores',
+    );
 
 const withinValueLength = (value: unknown): boolean => typeof value !== 'string' || value.length <= MAX_VALUE_LENGTH;
 
@@ -45,7 +48,11 @@ const settingEditSchema = object({
   value: mixed<string>()
     .nullable()
     .defined('a settings value is text, or null to go back to the version')
-    .test('text-or-null', 'a settings value is text, or null to go back to the version', (value) => value === null || typeof value === 'string')
+    .test(
+      'text-or-null',
+      'a settings value is text, or null to go back to the version',
+      (value) => value === null || typeof value === 'string',
+    )
     .test('length', VALUE_LENGTH_MESSAGE, withinValueLength),
 })
   .noUnknown(true)

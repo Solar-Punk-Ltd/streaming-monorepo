@@ -34,11 +34,7 @@ export interface SessionRepository {
    * Which of these sessions are still live, in one query rather than one per
    * token hash. Asked about the sessions holding an event stream open.
    */
-  findLiveTokenHashes(
-    tokenHashes: readonly string[],
-    now: Date,
-    idleSince: Date,
-  ): Promise<Set<string>>;
+  findLiveTokenHashes(tokenHashes: readonly string[], now: Date, idleSince: Date): Promise<Set<string>>;
   /** Open sessions per user id, for the Access page's count. */
   countActiveByUser(now: Date, idleSince: Date): Promise<Map<number, number>>;
 }

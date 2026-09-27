@@ -25,9 +25,7 @@ process.env.BEE_DATA_ROOT = join(root, 'data');
 writeFileSync(join(root, '.env'), 'ENGINE=srs\n', 'utf8');
 
 const { makeProfile } = await import('../support/profileFixtures.js');
-const { orchestratorHarness, untilRunning } = await import(
-  '../support/orchestratorHarness.js'
-);
+const { orchestratorHarness, untilRunning } = await import('../support/orchestratorHarness.js');
 
 async function until(what: string, condition: () => boolean): Promise<void> {
   for (let tick = 0; tick < 300; tick += 1) {

@@ -61,9 +61,7 @@ export function createStampRouter(stampService: StampService): Router {
     '/profiles/:name/stamp/chainstate',
     validateParams(profileNameSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const chainState = await stampService.getChainState(
-        req.params.name as string,
-      );
+      const chainState = await stampService.getChainState(req.params.name as string);
       res.json(chainState);
     }),
   );
@@ -99,11 +97,7 @@ export function createStampRouter(stampService: StampService): Router {
     validateBody(topUpStampSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as TopUpStampBody;
-      const result = await stampService.topUpStamp(
-        req.params.name as string,
-        body.batch_id,
-        body.amount,
-      );
+      const result = await stampService.topUpStamp(req.params.name as string, body.batch_id, body.amount);
       res.status(202).json(result);
     }),
   );
@@ -114,11 +108,7 @@ export function createStampRouter(stampService: StampService): Router {
     validateBody(diluteStampSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as DiluteStampBody;
-      const result = await stampService.diluteStamp(
-        req.params.name as string,
-        body.batch_id,
-        body.depth,
-      );
+      const result = await stampService.diluteStamp(req.params.name as string, body.batch_id, body.depth);
       res.status(202).json(result);
     }),
   );
@@ -129,10 +119,7 @@ export function createStampRouter(stampService: StampService): Router {
     validateBody(setStampSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as SetStampBody;
-      const profile = await stampService.setStamp(
-        req.params.name as string,
-        body.stamp_id,
-      );
+      const profile = await stampService.setStamp(req.params.name as string, body.stamp_id);
       res.json(profile);
     }),
   );

@@ -12,7 +12,17 @@
  * Unit test over a scratch directory. `pnpm test` in manager/.
  */
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
@@ -75,7 +85,11 @@ describe('a legacy path that is not a regular file', () => {
 
     assert.deepEqual(carried, ['deploy/config.json'], 'the regular file still comes over');
     assert.deepEqual(skipped, ['.env']);
-    assert.equal(existsSync(join(configRoot, '.env')), false, 'nothing a link points at becomes a setting of this host');
+    assert.equal(
+      existsSync(join(configRoot, '.env')),
+      false,
+      'nothing a link points at becomes a setting of this host',
+    );
   });
 
   it('reads nothing through a deploy directory that is a link, and names that too', async () => {
@@ -112,8 +126,12 @@ describe('the modes the carried files land at', () => {
   // never wider than what the host already allowed. The umask is fixed here
   // so the answer is the manager's rather than the machine's.
   let umask: number;
-  before(() => { umask = process.umask(0o022); });
-  after(() => { process.umask(umask); });
+  before(() => {
+    umask = process.umask(0o022);
+  });
+  after(() => {
+    process.umask(umask);
+  });
 
   it('gives every one of them the owner only mode, whatever the legacy tree allowed', async () => {
     chmodSync(join(legacyRoot, '.env'), 0o644);

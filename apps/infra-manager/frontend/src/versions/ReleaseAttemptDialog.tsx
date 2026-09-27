@@ -81,30 +81,25 @@ export function ReleaseAttemptDialog({
   };
 
   return (
-    <Dialog
-      open={attempt !== null}
-      onClose={busy ? undefined : onClose}
-      maxWidth="sm"
-      fullWidth
-    >
+    <Dialog open={attempt !== null} onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Release attempt {shown?.jobId}?</DialogTitle>
       <DialogContent>
         {shown && (
           <Stack spacing={1.5}>
             <Typography variant="body2">
-              {describeAttemptHold(shown)} Started{' '}
-              {formatDateTime(shown.startedAt)}, touching{' '}
+              {describeAttemptHold(shown)} Started {formatDateTime(shown.startedAt)}, touching{' '}
               {shown.services.join(', ')}.
             </Typography>
             {shown.reason && (
               <Typography
                 variant="body2"
                 sx={{
-                  color: "text.secondary",
+                  color: 'text.secondary',
                   fontFamily: MONO_STACK,
                   fontSize: 12,
-                  whiteSpace: 'pre-wrap'
-                }}>
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
                 {shown.reason}
               </Typography>
             )}
@@ -115,9 +110,7 @@ export function ReleaseAttemptDialog({
               onChange={(event) => setTyped(event.target.value)}
               error={typed !== '' && problem !== null}
               helperText={
-                typed === ''
-                  ? `Type ${shown.jobId} to confirm you checked.`
-                  : (problem ?? 'That is this attempt.')
+                typed === '' ? `Type ${shown.jobId} to confirm you checked.` : (problem ?? 'That is this attempt.')
               }
               disabled={busy}
               autoComplete="off"
@@ -140,12 +133,7 @@ export function ReleaseAttemptDialog({
         <Button onClick={onClose} disabled={busy}>
           Cancel
         </Button>
-        <Button
-          variant="contained"
-          color="error"
-          disabled={busy || problem !== null}
-          onClick={() => void submit()}
-        >
+        <Button variant="contained" color="error" disabled={busy || problem !== null} onClick={() => void submit()}>
           Release
         </Button>
       </DialogActions>

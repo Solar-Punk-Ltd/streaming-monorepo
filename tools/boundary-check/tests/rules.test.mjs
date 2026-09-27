@@ -70,7 +70,10 @@ describe('findProblems: dependencies that keep to the boundaries', () => {
   });
 
   it('ignores tags that name neither a scope nor a type', () => {
-    const graph = graphOf([project('admin-backend', 'admin', 'app', 'e2e', 'owner:web2'), ADMIN_COMMON], [['admin-backend', 'admin-common']]);
+    const graph = graphOf(
+      [project('admin-backend', 'admin', 'app', 'e2e', 'owner:web2'), ADMIN_COMMON],
+      [['admin-backend', 'admin-common']],
+    );
     assert.deepEqual(findProblems(graph), []);
   });
 });
@@ -150,7 +153,9 @@ describe('findProblems: every kind of dependency counts', () => {
       ['admin-backend', 'manager-common', 'implicit'],
       ['admin-backend', 'manager-common', 'static'],
     ]);
-    assert.deepEqual(problems, [dependencyProblem('admin-backend', 'manager-common', [RULES.OTHER_SCOPE], ['implicit', 'static'])]);
+    assert.deepEqual(problems, [
+      dependencyProblem('admin-backend', 'manager-common', [RULES.OTHER_SCOPE], ['implicit', 'static']),
+    ]);
   });
 
   it('names every broken dependency, sorted by source and then target', () => {
@@ -199,15 +204,21 @@ describe('findProblems: every project carries one scope and one type', () => {
 
   it('judges no dependency of a project whose tags are wrong, and says so only once', () => {
     const untagged = { name: 'new-package', tags: ['type:lib'] };
-    const graph = graphOf([untagged, ADMIN_BACKEND], [
-      ['admin-backend', 'new-package'],
-      ['new-package', 'admin-backend'],
-    ]);
+    const graph = graphOf(
+      [untagged, ADMIN_BACKEND],
+      [
+        ['admin-backend', 'new-package'],
+        ['new-package', 'admin-backend'],
+      ],
+    );
     assert.deepEqual(findProblems(graph), [{ kind: 'tags', project: 'new-package', detail: 'has no scope tag' }]);
   });
 
   it('lists tag problems before dependency problems', () => {
-    const graph = graphOf([{ name: 'zz-untagged', tags: [] }, ADMIN_BACKEND, MANAGER_API], [['admin-backend', 'manager-api']]);
+    const graph = graphOf(
+      [{ name: 'zz-untagged', tags: [] }, ADMIN_BACKEND, MANAGER_API],
+      [['admin-backend', 'manager-api']],
+    );
     assert.deepEqual(
       findProblems(graph).map((problem) => problem.kind),
       ['tags', 'tags', 'dependency'],
@@ -216,26 +227,45 @@ describe('findProblems: every project carries one scope and one type', () => {
 });
 
 describe('findProblems: an exception for an app that depends on another app of its own scope', () => {
-  const FRONTEND_ON_API = { source: 'manager-frontend', target: 'manager-api', reason: 'the dev mocks reuse the API schemas' };
+  const FRONTEND_ON_API = {
+    source: 'manager-frontend',
+    target: 'manager-api',
+    reason: 'the dev mocks reuse the API schemas',
+  };
 
   it('lets exactly that dependency through', () => {
     assert.deepEqual(problemsOf([['manager-frontend', 'manager-api']], [FRONTEND_ON_API]), []);
   });
 
   it('does not let the dependency the other way through', () => {
-    assert.deepEqual(problemsOf([['manager-frontend', 'manager-api'], ['manager-api', 'manager-frontend']], [FRONTEND_ON_API]), [
-      dependencyProblem('manager-api', 'manager-frontend', [RULES.APP_TO_APP]),
-    ]);
+    assert.deepEqual(
+      problemsOf(
+        [
+          ['manager-frontend', 'manager-api'],
+          ['manager-api', 'manager-frontend'],
+        ],
+        [FRONTEND_ON_API],
+      ),
+      [dependencyProblem('manager-api', 'manager-frontend', [RULES.APP_TO_APP])],
+    );
   });
 
   it('names an exception whose dependency is gone', () => {
     assert.deepEqual(problemsOf([], [FRONTEND_ON_API]), [
-      { kind: 'exception', source: 'manager-frontend', target: 'manager-api', detail: 'the graph has no such dependency' },
+      {
+        kind: 'exception',
+        source: 'manager-frontend',
+        target: 'manager-api',
+        detail: 'the graph has no such dependency',
+      },
     ]);
   });
 
   it('names an exception whose dependency breaks no rule any more', () => {
-    const graph = graphOf([MANAGER_FRONTEND, project('manager-api', 'manager', 'lib')], [['manager-frontend', 'manager-api']]);
+    const graph = graphOf(
+      [MANAGER_FRONTEND, project('manager-api', 'manager', 'lib')],
+      [['manager-frontend', 'manager-api']],
+    );
     assert.deepEqual(findProblems(graph, [FRONTEND_ON_API]), [
       { kind: 'exception', source: 'manager-frontend', target: 'manager-api', detail: 'the dependency breaks no rule' },
     ]);
@@ -244,7 +274,12 @@ describe('findProblems: an exception for an app that depends on another app of i
   it('names an exception for a project the graph does not have', () => {
     const exception = { source: 'manager-frontend', target: 'manager-gone', reason: 'removed since' };
     assert.deepEqual(problemsOf([], [exception]), [
-      { kind: 'exception', source: 'manager-frontend', target: 'manager-gone', detail: 'names a project the graph does not have: manager-gone' },
+      {
+        kind: 'exception',
+        source: 'manager-frontend',
+        target: 'manager-gone',
+        detail: 'names a project the graph does not have: manager-gone',
+      },
     ]);
   });
 

@@ -6,15 +6,9 @@ import { SIGN_IN_MESSAGES, tooManyAttempts } from './messages';
 
 export type { SessionInfo } from '@streaming-infra-manager/common';
 
-export type SignedOutReason =
-  | 'notSignedIn'
-  | 'noUsers'
-  | 'ended'
-  | 'unreachable';
+export type SignedOutReason = 'notSignedIn' | 'noUsers' | 'ended' | 'unreachable';
 
-export type SessionProbe =
-  | { signedIn: true; session: SessionInfo }
-  | { signedIn: false; reason: SignedOutReason };
+export type SessionProbe = { signedIn: true; session: SessionInfo } | { signedIn: false; reason: SignedOutReason };
 
 export type SignInResult = { ok: true } | { ok: false; message: string };
 
@@ -28,9 +22,7 @@ async function retryAfterOf(res: Response): Promise<number> {
   } catch {
     /* the header below is the fallback */
   }
-  return Number.isFinite(header) && header > 0
-    ? header
-    : LOCKOUT_FALLBACK_SECONDS;
+  return Number.isFinite(header) && header > 0 ? header : LOCKOUT_FALLBACK_SECONDS;
 }
 
 /**
@@ -60,10 +52,7 @@ export async function probeSession(): Promise<SessionProbe> {
   }
 }
 
-export async function signIn(
-  username: string,
-  password: string,
-): Promise<SignInResult> {
+export async function signIn(username: string, password: string): Promise<SignInResult> {
   let res: Response;
   try {
     res = await apiFetch('/auth/login', {
@@ -96,11 +85,7 @@ export function fetchUsers(): Promise<UserSummary[]> {
   return getJson<UserSummary[]>('/auth/users');
 }
 
-export function addUser(
-  username: string,
-  password: string,
-  admin: boolean,
-): Promise<void> {
+export function addUser(username: string, password: string, admin: boolean): Promise<void> {
   return send('POST', '/auth/users', { username, password, admin });
 }
 
@@ -116,10 +101,7 @@ export function revokeSessions(id: number): Promise<void> {
  * A 401 here means the current password was wrong, not that the session has
  * gone, so it is answered rather than turned into a sign-out.
  */
-export async function changePassword(
-  current: string,
-  next: string,
-): Promise<void> {
+export async function changePassword(current: string, next: string): Promise<void> {
   const res = await apiFetch('/auth/password', {
     method: 'POST',
     body: { current, next },

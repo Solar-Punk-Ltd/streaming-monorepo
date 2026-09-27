@@ -29,16 +29,7 @@ import type {
 } from '@streaming-monorepo/web2-admin-common';
 import pg from 'pg';
 
-import {
-  api,
-  internalCall,
-  login,
-  raw,
-  releaseStack,
-  requireStack,
-  stack,
-  type RawResponse,
-} from './helpers.js';
+import { api, internalCall, login, raw, releaseStack, requireStack, stack, type RawResponse } from './helpers.js';
 
 const draft = {
   title: 'itest internal',
@@ -73,17 +64,12 @@ after(async () => {
   await releaseStack();
 });
 
-async function publishedStream(
-  overrides: Partial<typeof draft> = {},
-): Promise<Stream> {
+async function publishedStream(overrides: Partial<typeof draft> = {}): Promise<Stream> {
   const stream = await api<Stream>('POST', '/api/streams', {
     body: { ...draft, ...overrides },
   });
   created.add(stream.id);
-  const result = await api<PublishResult>(
-    'POST',
-    `/api/streams/${stream.id}/publish`,
-  );
+  const result = await api<PublishResult>('POST', `/api/streams/${stream.id}/publish`);
   return result.stream;
 }
 
@@ -112,9 +98,7 @@ async function catalogueEntry(topic: string): Promise<FeedStreamEntry> {
   );
   const payload = result.rows[0]?.payload;
   assert.ok(payload, `no feed write contains topic ${topic}`);
-  const entry = payload.find(
-    (e) => (e as FeedStreamEntry | null)?.topic === topic,
-  );
+  const entry = payload.find((e) => (e as FeedStreamEntry | null)?.topic === topic);
   assert.ok(entry, `topic ${topic} not in the payload`);
   return entry as FeedStreamEntry;
 }
@@ -153,10 +137,7 @@ describe('internal API authentication', () => {
   it('does not accept a console session cookie instead', async () => {
     // The two authentications are mounted on disjoint paths on purpose: a
     // logged-in operator is not the uploader.
-    const response = await raw(
-      'GET',
-      '/api/internal/streams/by-ingest/video/1867808f-7b1c-4e46-b437-f7423b466b39',
-    );
+    const response = await raw('GET', '/api/internal/streams/by-ingest/video/1867808f-7b1c-4e46-b437-f7423b466b39');
     assert.equal(response.status, 401);
   });
 });
@@ -190,11 +171,7 @@ describe('internal lookup by ingest stream id', () => {
     });
     created.add(unpublished.id);
 
-    const response = await raw(
-      'GET',
-      `/api/internal/streams/by-ingest/video/${unpublished.topic}`,
-      internalCall(),
-    );
+    const response = await raw('GET', `/api/internal/streams/by-ingest/video/${unpublished.topic}`, internalCall());
     assert.equal(response.status, 404);
     assert.equal((response.body as { error: string }).error, 'stream_not_found');
   });
@@ -202,11 +179,7 @@ describe('internal lookup by ingest stream id', () => {
   it('refuses the right topic under the wrong app', async () => {
     // `<mediaType>/<topic>` is the whole ingest address; half of it matching
     // is not a match.
-    const response = await raw(
-      'GET',
-      `/api/internal/streams/by-ingest/audio/${stream.topic}`,
-      internalCall(),
-    );
+    const response = await raw('GET', `/api/internal/streams/by-ingest/audio/${stream.topic}`, internalCall());
     assert.equal(response.status, 404);
     assert.equal((response.body as { error: string }).error, 'stream_not_found');
   });
@@ -219,16 +192,9 @@ describe('internal lookup by ingest stream id', () => {
     );
     assert.equal(unknown.status, 404);
 
-    const malformed = await raw(
-      'GET',
-      '/api/internal/streams/by-ingest/video/not-a-uuid',
-      internalCall(),
-    );
+    const malformed = await raw('GET', '/api/internal/streams/by-ingest/video/not-a-uuid', internalCall());
     assert.equal(malformed.status, 400);
-    assert.equal(
-      (malformed.body as { error: string }).error,
-      'validation_error',
-    );
+    assert.equal((malformed.body as { error: string }).error, 'validation_error');
   });
 });
 
@@ -262,29 +228,21 @@ describe('internal state reports', () => {
     ]);
     for (const response of both) {
       assert.equal(response.status, 400, response.text);
-      assert.equal(
-        (response.body as { error: string }).error,
-        'validation_error',
-      );
+      assert.equal((response.body as { error: string }).error, 'validation_error');
     }
   });
 
   it('goes live: the row, and the catalogue entry a viewer reads', async () => {
-    const result = await api<StreamStateResponse>(
-      'POST',
-      `/api/internal/streams/${stream.id}/state`,
-      { ...internalCall(), body: { state: 'live' } },
-    );
+    const result = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
+      ...internalCall(),
+      body: { state: 'live' },
+    });
 
     assert.equal(result.stream.status, 'live');
     assert.ok(result.stream.liveSince, 'liveSince is stamped');
     assert.equal(result.stream.endedAt ?? null, null);
     assert.equal(result.stream.publishedFeedIndex, result.feed.index);
-    assert.equal(
-      result.stream.hasUnpublishedEdits,
-      false,
-      'a report moves the row but is not an edit to republish',
-    );
+    assert.equal(result.stream.hasUnpublishedEdits, false, 'a report moves the row but is not an edit to republish');
 
     const entry = await catalogueEntry(stream.topic);
     assert.equal(entry.state, 'live');
@@ -294,18 +252,13 @@ describe('internal state reports', () => {
 
   it('takes a repeated live report as a no-op', async () => {
     const first = await api<Stream>('GET', `/api/streams/${stream.id}`);
-    const again = await api<StreamStateResponse>(
-      'POST',
-      `/api/internal/streams/${stream.id}/state`,
-      { ...internalCall(), body: { state: 'live' } },
-    );
+    const again = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
+      ...internalCall(),
+      body: { state: 'live' },
+    });
 
     assert.equal(again.stream.status, 'live');
-    assert.equal(
-      again.stream.liveSince,
-      first.liveSince,
-      'liveSince does not move when the uploader retries',
-    );
+    assert.equal(again.stream.liveSince, first.liveSince, 'liveSince does not move when the uploader retries');
   });
 
   it('refuses to delete or unpublish a stream while it is live', async () => {
@@ -316,18 +269,12 @@ describe('internal state reports', () => {
       const response = await raw(method, path);
       assert.equal(response.status, 409, `${method} ${path}`);
       assert.equal((response.body as { error: string }).error, 'stream_live');
-      assert.equal(
-        (response.body as { message: string }).message,
-        'Stop the broadcast first.',
-      );
+      assert.equal((response.body as { message: string }).message, 'Stop the broadcast first.');
     }
   });
 
   it('still serves the OBS details, so an encoder can reconnect', async () => {
-    const details = await api<{ streamId: string; publishKey: string }>(
-      'GET',
-      `/api/streams/${stream.id}/ingest`,
-    );
+    const details = await api<{ streamId: string; publishKey: string }>('GET', `/api/streams/${stream.id}/ingest`);
     assert.equal(details.streamId, `video/${stream.topic}`);
     assert.match(details.publishKey, /^[0-9a-f]{32}$/);
   });
@@ -348,10 +295,7 @@ describe('internal state reports', () => {
       },
     });
     assert.equal(rescheduled.status, 409);
-    assert.equal(
-      (rescheduled.body as { error: string }).error,
-      'stream_locked',
-    );
+    assert.equal((rescheduled.body as { error: string }).error, 'stream_locked');
     assert.equal(
       (rescheduled.body as { message: string }).message,
       'The schedule cannot change once the stream has gone live.',
@@ -359,10 +303,7 @@ describe('internal state reports', () => {
   });
 
   it('republishes by hand without ending the broadcast', async () => {
-    const result = await api<PublishResult>(
-      'POST',
-      `/api/streams/${stream.id}/publish`,
-    );
+    const result = await api<PublishResult>('POST', `/api/streams/${stream.id}/publish`);
     assert.equal(result.stream.status, 'live');
     assert.equal(result.stream.hasUnpublishedEdits, false, 'the edit went out');
 
@@ -372,11 +313,10 @@ describe('internal state reports', () => {
   });
 
   it('ends: the entry carries the manifest index and the duration', async () => {
-    const result = await api<StreamStateResponse>(
-      'POST',
-      `/api/internal/streams/${stream.id}/state`,
-      { ...internalCall(), body: { state: 'vod', index: 412, duration: 3725.5 } },
-    );
+    const result = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
+      ...internalCall(),
+      body: { state: 'vod', index: 412, duration: 3725.5 },
+    });
 
     assert.equal(result.stream.status, 'vod');
     assert.equal(result.stream.manifestIndex, 412);
@@ -400,11 +340,10 @@ describe('internal state reports', () => {
     // encoder resumes this stream rather than needing a new one. What it must
     // not keep is the previous recording: the entry would point a viewer at a
     // finished manifest while a new session writes over its head.
-    const result = await api<StreamStateResponse>(
-      'POST',
-      `/api/internal/streams/${stream.id}/state`,
-      { ...internalCall(), body: { state: 'live' } },
-    );
+    const result = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
+      ...internalCall(),
+      body: { state: 'live' },
+    });
 
     assert.equal(result.stream.status, 'live');
     assert.equal(result.stream.manifestIndex ?? null, null);
@@ -419,19 +358,15 @@ describe('internal state reports', () => {
 
     // And back to a recording, which is the state the rest of this sequence
     // starts from.
-    const ended = await api<StreamStateResponse>(
-      'POST',
-      `/api/internal/streams/${stream.id}/state`,
-      { ...internalCall(), body: { state: 'vod', index: 412, duration: 3725.5 } },
-    );
+    const ended = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
+      ...internalCall(),
+      body: { state: 'vod', index: 412, duration: 3725.5 },
+    });
     assert.equal(ended.stream.status, 'vod');
   });
 
   it('unpublishes a recording and keeps what the uploader reported', async () => {
-    const result = await api<PublishResult>(
-      'POST',
-      `/api/streams/${stream.id}/unpublish`,
-    );
+    const result = await api<PublishResult>('POST', `/api/streams/${stream.id}/unpublish`);
     assert.equal(result.stream.status, 'draft');
     assert.equal(result.stream.publishedFeedIndex ?? null, null);
     assert.equal(result.stream.manifestIndex, 412, 'where the recording is');
@@ -442,10 +377,7 @@ describe('internal state reports', () => {
   });
 
   it('publishes it again as the recording, never as a stream that has not started', async () => {
-    const result = await api<PublishResult>(
-      'POST',
-      `/api/streams/${stream.id}/publish`,
-    );
+    const result = await api<PublishResult>('POST', `/api/streams/${stream.id}/publish`);
     assert.equal(result.stream.status, 'vod');
     assert.equal(result.stream.manifestIndex, 412);
 
@@ -464,11 +396,7 @@ describe('internal rendition reports', () => {
    * rungs are never accidentally identical. The topic is a rung's own manifest
    * feed, which is a fresh UUID under the same owner — never the stream's.
    */
-  const rung = (
-    name: string,
-    height: number,
-    over: Partial<Rendition> = {},
-  ): Rendition => ({
+  const rung = (name: string, height: number, over: Partial<Rendition> = {}): Rendition => ({
     name,
     width: Math.round((height * 16) / 9),
     height,
@@ -479,21 +407,14 @@ describe('internal rendition reports', () => {
   });
 
   const report = (body: Rendition): Promise<RenditionReportResponse> =>
-    api<RenditionReportResponse>(
-      'POST',
-      `/api/internal/streams/${stream.id}/renditions`,
-      { ...internalCall(), body },
-    );
+    api<RenditionReportResponse>('POST', `/api/internal/streams/${stream.id}/renditions`, { ...internalCall(), body });
 
   before(async () => {
     stream = await publishedStream({ title: 'itest internal ladder' });
   });
 
   it('404s a stream id nobody handed the uploader', async () => {
-    const response = await reportRendition(
-      '1867808f-7b1c-4e46-b437-f7423b466b39',
-      rung('720p', 720),
-    );
+    const response = await reportRendition('1867808f-7b1c-4e46-b437-f7423b466b39', rung('720p', 720));
     assert.equal(response.status, 404);
     assert.equal((response.body as { error: string }).error, 'stream_not_found');
   });
@@ -522,10 +443,7 @@ describe('internal rendition reports', () => {
     ]);
     for (const response of bad) {
       assert.equal(response.status, 400, response.text);
-      assert.equal(
-        (response.body as { error: string }).error,
-        'validation_error',
-      );
+      assert.equal((response.body as { error: string }).error, 'validation_error');
     }
   });
 
@@ -538,11 +456,7 @@ describe('internal rendition reports', () => {
       flippedToFinished: false,
       duration: null,
     });
-    assert.equal(
-      result.stream.status,
-      'published',
-      'a rendition report never moves the status',
-    );
+    assert.equal(result.stream.status, 'published', 'a rendition report never moves the status');
     assert.equal(result.stream.publishedFeedIndex, result.feed.index);
 
     const entry = await catalogueEntry(stream.topic);
@@ -598,11 +512,7 @@ describe('internal rendition reports', () => {
     const result = await report(rung('720p', 720, { bandwidth: 9_000_000 }));
 
     assert.equal(result.ladder.finished, true);
-    assert.equal(
-      result.ladder.flippedToFinished,
-      false,
-      'it was already finished, so nothing flipped',
-    );
+    assert.equal(result.ladder.flippedToFinished, false, 'it was already finished, so nothing flipped');
     const kept = result.renditions.find((r) => r.name === '720p');
     assert.equal(kept?.index, 41, 'the recording it already closed');
     assert.equal(kept?.duration, 61.2);
@@ -641,11 +551,10 @@ describe('internal rendition reports', () => {
   });
 
   it('carries the ladder through a state report and a hand republish', async () => {
-    const ended = await api<StreamStateResponse>(
-      'POST',
-      `/api/internal/streams/${stream.id}/state`,
-      { ...internalCall(), body: { state: 'vod', index: 9, duration: 61.2 } },
-    );
+    const ended = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
+      ...internalCall(),
+      body: { state: 'vod', index: 9, duration: 61.2 },
+    });
     assert.equal(ended.stream.status, 'vod');
 
     const afterState = await catalogueEntry(stream.topic);
@@ -662,11 +571,10 @@ describe('internal rendition reports', () => {
     // Each rung continues on the feed it already owns, so the ladder survives
     // the resume — but not the indexes, which address the recording that just
     // ended. They come back one final report at a time.
-    const live = await api<StreamStateResponse>(
-      'POST',
-      `/api/internal/streams/${stream.id}/state`,
-      { ...internalCall(), body: { state: 'live' } },
-    );
+    const live = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
+      ...internalCall(),
+      body: { state: 'live' },
+    });
     assert.equal(live.stream.status, 'live');
 
     const rows = await pool.query<{
@@ -694,32 +602,22 @@ describe('internal rendition reports', () => {
     );
 
     // Back to a recording for the unpublish that follows.
-    await api<StreamStateResponse>(
-      'POST',
-      `/api/internal/streams/${stream.id}/state`,
-      { ...internalCall(), body: { state: 'vod', index: 9, duration: 61.2 } },
-    );
+    await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
+      ...internalCall(),
+      body: { state: 'vod', index: 9, duration: 61.2 },
+    });
   });
 
   it('keeps the ladder when the recording is unpublished, and publishes it back with it', async () => {
-    const result = await api<PublishResult>(
-      'POST',
-      `/api/streams/${stream.id}/unpublish`,
-    );
+    const result = await api<PublishResult>('POST', `/api/streams/${stream.id}/unpublish`);
     assert.equal(result.stream.status, 'draft');
     assert.equal(await isOnCatalogue(stream.topic), false, 'off the catalogue');
 
-    const rows = await pool.query(
-      'SELECT 1 FROM stream_renditions WHERE stream_id = $1',
-      [stream.id],
-    );
+    const rows = await pool.query('SELECT 1 FROM stream_renditions WHERE stream_id = $1', [stream.id]);
     assert.equal(rows.rowCount, 2, 'the rungs stay with the recording');
 
     // And the next publish lists the same recording, ladder and all.
-    const republished = await api<PublishResult>(
-      'POST',
-      `/api/streams/${stream.id}/publish`,
-    );
+    const republished = await api<PublishResult>('POST', `/api/streams/${stream.id}/publish`);
     assert.equal(republished.stream.status, 'vod');
     const entry = await catalogueEntry(stream.topic);
     assert.equal(entry.state, 'vod');

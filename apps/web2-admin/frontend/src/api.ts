@@ -32,19 +32,11 @@ const API = '/api';
 // --- auth -------------------------------------------------------------------
 
 /** Why nobody is signed in, which is the whole of what the login page says. */
-export type SignedOutReason =
-  | 'notSignedIn'
-  | 'noUsers'
-  | 'ended'
-  | 'unreachable';
+export type SignedOutReason = 'notSignedIn' | 'noUsers' | 'ended' | 'unreachable';
 
-export type SessionProbe =
-  | { signedIn: true; user: User }
-  | { signedIn: false; reason: SignedOutReason };
+export type SessionProbe = { signedIn: true; user: User } | { signedIn: false; reason: SignedOutReason };
 
-export type SignInResult =
-  | { ok: true; user: User }
-  | { ok: false; message: string };
+export type SignInResult = { ok: true; user: User } | { ok: false; message: string };
 
 /** What to say when a 429 carries neither a body nor a Retry-After header. */
 const LOCKOUT_FALLBACK_SECONDS = 60;
@@ -63,9 +55,7 @@ async function retryAfterOf(res: Response): Promise<number> {
   } catch {
     /* the header below is the fallback */
   }
-  return Number.isFinite(header) && header > 0
-    ? header
-    : LOCKOUT_FALLBACK_SECONDS;
+  return Number.isFinite(header) && header > 0 ? header : LOCKOUT_FALLBACK_SECONDS;
 }
 
 /**
@@ -77,11 +67,7 @@ async function retryAfterOf(res: Response): Promise<number> {
  */
 export async function probeSession(): Promise<SessionProbe> {
   try {
-    const res = await apiFetch(
-      `${API}/auth/session`,
-      {},
-      { allowUnauthorized: true },
-    );
+    const res = await apiFetch(`${API}/auth/session`, {}, { allowUnauthorized: true });
 
     if (res.ok) {
       return { signedIn: true, user: ((await res.json()) as MeResponse).user };
@@ -103,10 +89,7 @@ export async function probeSession(): Promise<SessionProbe> {
  * Logging in. Answers rather than throws, because every way it can fail is
  * something the form has to print above the password field.
  */
-export async function signIn(
-  username: string,
-  password: string,
-): Promise<SignInResult> {
+export async function signIn(username: string, password: string): Promise<SignInResult> {
   let res: Response;
   try {
     res = await apiFetch(
@@ -122,7 +105,13 @@ export async function signIn(
     return { ok: false, message: SIGN_IN_MESSAGES.unreachable };
   }
 
-  if (res.ok) return { ok: true, user: ((await res.json()) as MeResponse).user };
+  if (res.ok) {
+    try {
+      return { ok: true, user: ((await res.json()) as MeResponse).user };
+    } catch {
+      return { ok: false, message: SIGN_IN_MESSAGES.unreachable };
+    }
+  }
   if (res.status === 429) {
     return { ok: false, message: tooManyAttempts(await retryAfterOf(res)) };
   }
@@ -130,10 +119,7 @@ export async function signIn(
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     return {
       ok: false,
-      message:
-        body.error === 'no_users'
-          ? SIGN_IN_MESSAGES.noUsers
-          : SIGN_IN_MESSAGES.wrongPair,
+      message: body.error === 'no_users' ? SIGN_IN_MESSAGES.noUsers : SIGN_IN_MESSAGES.wrongPair,
     };
   }
   return {
@@ -153,9 +139,7 @@ export function logout(): Promise<void> {
  * Answers the updated user when the API returns one, so the console can show
  * the new `passwordChangedAt` without another round trip.
  */
-export async function changePassword(
-  body: ChangePasswordRequest,
-): Promise<User | null> {
+export async function changePassword(body: ChangePasswordRequest): Promise<User | null> {
   const res = await apiFetch(
     `${API}/auth/password`,
     {
@@ -167,11 +151,7 @@ export async function changePassword(
   );
 
   if (res.status === 401) {
-    throw new ApiError(
-      'That is not your current password.',
-      'invalid_credentials',
-      401,
-    );
+    throw new ApiError('That is not your current password.', 'invalid_credentials', 401);
   }
   if (!res.ok) await failWith(res, 'Could not change the password.');
 
@@ -211,15 +191,8 @@ export function createStream(input: StreamInput): Promise<Stream> {
   return sendJson<Stream>('POST', `${API}/streams`, input);
 }
 
-export function updateStream(
-  id: string,
-  input: StreamInput,
-): Promise<Stream> {
-  return sendJson<Stream>(
-    'PUT',
-    `${API}/streams/${encodeURIComponent(id)}`,
-    input,
-  );
+export function updateStream(id: string, input: StreamInput): Promise<Stream> {
+  return sendJson<Stream>('PUT', `${API}/streams/${encodeURIComponent(id)}`, input);
 }
 
 export async function deleteStream(id: string): Promise<void> {
@@ -238,9 +211,7 @@ export function uploadThumbnail(id: string, file: File): Promise<Stream> {
 }
 
 export async function deleteThumbnail(id: string): Promise<Stream | null> {
-  return sendDelete<Stream>(
-    `${API}/streams/${encodeURIComponent(id)}/thumbnail`,
-  );
+  return sendDelete<Stream>(`${API}/streams/${encodeURIComponent(id)}/thumbnail`);
 }
 
 /**
@@ -248,40 +219,27 @@ export async function deleteThumbnail(id: string): Promise<Stream | null> {
  * without it a replaced image keeps showing the old bytes.
  */
 export function thumbnailUrl(stream: Stream): string {
-  return `${API}/streams/${encodeURIComponent(stream.id)}/thumbnail?v=${encodeURIComponent(
-    stream.updatedAt,
-  )}`;
+  return `${API}/streams/${encodeURIComponent(stream.id)}/thumbnail?v=${encodeURIComponent(stream.updatedAt)}`;
 }
 
 // --- publish ----------------------------------------------------------------
 
 export function publishStream(id: string): Promise<PublishResult> {
-  return sendJson<PublishResult>(
-    'POST',
-    `${API}/streams/${encodeURIComponent(id)}/publish`,
-  );
+  return sendJson<PublishResult>('POST', `${API}/streams/${encodeURIComponent(id)}/publish`);
 }
 
 export function unpublishStream(id: string): Promise<PublishResult> {
-  return sendJson<PublishResult>(
-    'POST',
-    `${API}/streams/${encodeURIComponent(id)}/unpublish`,
-  );
+  return sendJson<PublishResult>('POST', `${API}/streams/${encodeURIComponent(id)}/unpublish`);
 }
 
 // --- ingest -----------------------------------------------------------------
 
 export function fetchIngest(id: string): Promise<IngestDetails> {
-  return getJson<IngestDetails>(
-    `${API}/streams/${encodeURIComponent(id)}/ingest`,
-  );
+  return getJson<IngestDetails>(`${API}/streams/${encodeURIComponent(id)}/ingest`);
 }
 
 export function rotateIngestKey(id: string): Promise<IngestDetails> {
-  return sendJson<IngestDetails>(
-    'POST',
-    `${API}/streams/${encodeURIComponent(id)}/ingest/rotate-key`,
-  );
+  return sendJson<IngestDetails>('POST', `${API}/streams/${encodeURIComponent(id)}/ingest/rotate-key`);
 }
 
 // --- public config ----------------------------------------------------------

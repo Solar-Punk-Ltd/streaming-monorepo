@@ -34,9 +34,7 @@ export function DeploymentHeader({
   const shape = shapeOf(profile);
   const status = statusLabelOf(profile);
 
-  const menuItems: RowMenuItem[] = [
-    { label: 'Edit', onSelect: () => openEditDeployment(profile.name) },
-  ];
+  const menuItems: RowMenuItem[] = [{ label: 'Edit', onSelect: () => openEditDeployment(profile.name) }];
   if (shape === 'stream' && isRunning(profile)) {
     menuItems.push({
       label: 'Create a viewer for this stream',
@@ -70,16 +68,18 @@ export function DeploymentHeader({
       sx={{
         alignItems: { sm: 'flex-start' },
         pt: 1.5,
-        pb: 2.25
-      }}>
+        pb: 2.25,
+      }}
+    >
       <Box sx={{ minWidth: 0, flexGrow: 1 }}>
         <Typography
           variant="caption"
           component="div"
           sx={{
-            color: "text.secondary",
-            mb: 1
-          }}>
+            color: 'text.secondary',
+            mb: 1,
+          }}
+        >
           <Link href={routes.deployments}>Deployments</Link>
           {group && (
             <>
@@ -93,15 +93,14 @@ export function DeploymentHeader({
           spacing={1.25}
           useFlexGap
           sx={{
-            alignItems: "center",
-            flexWrap: "wrap"
-          }}>
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
           <Typography variant="h1" sx={{ fontFamily: MONO_STACK }}>
             {profile.name}
           </Typography>
-          <ShapePill
-            label={SHAPE_LABEL[shape] + (rung ? ` · ${rung}` : '')}
-          />
+          <ShapePill label={SHAPE_LABEL[shape] + (rung ? ` · ${rung}` : '')} />
           <ReadinessPill label={status.label} tone={status.tone} />
         </Stack>
         <Stack
@@ -109,15 +108,18 @@ export function DeploymentHeader({
           spacing={0.75}
           useFlexGap
           sx={{
-            alignItems: "center",
-            flexWrap: "wrap",
-            mt: 0.75
-          }}>
-          <Typography variant="caption" sx={{
-            color: "text.secondary"
-          }}>
-            {hostFor(profile, serverHost)} · slot {profile.port_slot} · created{' '}
-            {formatDate(profile.created_at)}
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            mt: 0.75,
+          }}
+        >
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
+            {hostFor(profile, serverHost)} · slot {profile.port_slot} · created {formatDate(profile.created_at)}
           </Typography>
           {servicesOf(profile).map((service) => (
             <ServiceChip key={service} service={service} />
@@ -129,9 +131,10 @@ export function DeploymentHeader({
         direction="row"
         spacing={1}
         sx={{
-          alignItems: "center",
-          flex: 'none'
-        }}>
+          alignItems: 'center',
+          flex: 'none',
+        }}
+      >
         <PrimaryAction profile={profile} size="medium" />
         <Button onClick={() => openEditDeployment(profile.name)}>Edit</Button>
         <RowMenu items={menuItems} ariaLabel={`more actions for ${profile.name}`} />

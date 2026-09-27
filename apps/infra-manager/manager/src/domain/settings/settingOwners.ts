@@ -34,12 +34,7 @@ const FIELD_OWNERS: Readonly<Record<string, SettingOwner>> = {
 };
 
 /** Ports `deploy.sh` works out from a slotted port rather than from the table itself. */
-const DERIVED_PORT_KEYS: readonly string[] = [
-  'SRS_ADAPTER_PORT',
-  'OME_ADAPTER_PORT',
-  'OME_SRT_PORT',
-  'OME_HLS_PORT',
-];
+const DERIVED_PORT_KEYS: readonly string[] = ['SRS_ADAPTER_PORT', 'OME_ADAPTER_PORT', 'OME_SRT_PORT', 'OME_HLS_PORT'];
 
 /** Exported to the deploy script on the manager's own host, which beats any line of the file. */
 const DATA_DIR_KEYS: readonly string[] = ['BEE_UPLOADER_DATA_DIR', 'BEE_GATEWAY_DATA_DIR'];
@@ -74,7 +69,11 @@ export interface SettingOwnerContext {
 }
 
 /** Who sets an engine setting: the operator in the list, the engine settings, or nobody the deployment has. */
-function engineSettingOwnerOf(key: string, engine: EngineName, reader: EngineSettingsReader | undefined): SettingOwner | null {
+function engineSettingOwnerOf(
+  key: string,
+  engine: EngineName,
+  reader: EngineSettingsReader | undefined,
+): SettingOwner | null {
   if (!reader) return 'engine-settings';
   if (reader.engine !== engine) return ENGINE_ONLY_OWNER[engine];
   if (engineSettingFieldOf(key)?.abrOnly && !reader.abr) return 'abr-only';

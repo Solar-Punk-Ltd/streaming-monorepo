@@ -44,9 +44,7 @@ export const INTERNAL_API_TOKEN_MIN_LENGTH = 32;
 function requiredSecret(name: string, minLength: number): string {
   const value = required(name).trim();
   if (value.length < minLength) {
-    throw new Error(
-      `Env var ${name} must be at least ${minLength} characters, got ${value.length}`,
-    );
+    throw new Error(`Env var ${name} must be at least ${minLength} characters, got ${value.length}`);
   }
   return value;
 }
@@ -84,9 +82,7 @@ export interface AppConfig {
 function feedGateway(): FeedGatewayKind {
   const raw = optional('FEED_GATEWAY', 'bee').trim().toLowerCase();
   if (!FEED_GATEWAY_KINDS.includes(raw as FeedGatewayKind)) {
-    throw new Error(
-      `Env var FEED_GATEWAY must be one of ${FEED_GATEWAY_KINDS.join(' | ')}, got: ${raw}`,
-    );
+    throw new Error(`Env var FEED_GATEWAY must be one of ${FEED_GATEWAY_KINDS.join(' | ')}, got: ${raw}`);
   }
   return raw as FeedGatewayKind;
 }
@@ -104,9 +100,9 @@ function feedPrivateKey(): string {
     // private key" into a startup error that names the variable.
     new PrivateKey(value).publicKey().address();
   } catch (error) {
-    throw new Error(
-      `Env var FEED_PRIVATE_KEY is not a usable secp256k1 private key: ${getErrorMessage(error)}`,
-    );
+    throw new Error(`Env var FEED_PRIVATE_KEY is not a usable secp256k1 private key: ${getErrorMessage(error)}`, {
+      cause: error,
+    });
   }
   return value;
 }
@@ -121,10 +117,7 @@ export const config: AppConfig = {
   feedPrivateKey: feedPrivateKey(),
   feedTopic: optional('FEED_TOPIC', 'swarm-stream'),
   viewerBaseUrl: optional('VIEWER_BASE_URL', ''),
-  internalApiToken: requiredSecret(
-    'INTERNAL_API_TOKEN',
-    INTERNAL_API_TOKEN_MIN_LENGTH,
-  ),
+  internalApiToken: requiredSecret('INTERNAL_API_TOKEN', INTERNAL_API_TOKEN_MIN_LENGTH),
   ingest: {
     host: required('INGEST_HOST'),
     srtPort: optionalNumber('INGEST_SRT_PORT', 10061),

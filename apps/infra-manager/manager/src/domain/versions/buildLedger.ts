@@ -49,8 +49,12 @@ export interface DeployClaimOwnership extends ExpectedDeployOwner {
 }
 
 export function deployOwnerOf(profile: Profile): ExpectedDeployOwner {
-  return { instanceId: profile.instance_id, intentRevision: profile.intent_revision,
-    configRevision: profile.engine_config_revision, stackVersionId: profile.stack_version_id };
+  return {
+    instanceId: profile.instance_id,
+    intentRevision: profile.intent_revision,
+    configRevision: profile.engine_config_revision,
+    stackVersionId: profile.stack_version_id,
+  };
 }
 
 /**
@@ -71,7 +75,11 @@ export interface BuildLedger {
   /** Cancel only this job's reference when its caller knows no script was launched. Older jobs remain protected. */
   cancelUnstarted(profileName: string, referenceId: number): Promise<void>;
   /** Restore only the current unstarted claim. Historical and successor holds are independent. */
-  cancelClaim(profile: Pick<Profile, 'name' | 'instance_id' | 'intent_revision'>, referenceId: number, previousStatus: ProfileStatus): Promise<Profile | null>;
+  cancelClaim(
+    profile: Pick<Profile, 'name' | 'instance_id' | 'intent_revision'>,
+    referenceId: number,
+    previousStatus: ProfileStatus,
+  ): Promise<Profile | null>;
   /**
    * Moves the profile to DEPLOYING from one of `from` and records the job
    * reference in the same write. Null when the status claim fails, and then

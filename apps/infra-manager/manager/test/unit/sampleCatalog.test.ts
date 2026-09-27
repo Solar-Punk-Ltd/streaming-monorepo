@@ -74,7 +74,10 @@ describe('the keys a sample declares, by section', () => {
   });
 
   it('keeps the sample order', () => {
-    assert.deepEqual(sampleCatalogOf(SAMPLE).map((entry) => entry.key), ['STAMP', 'LOCAL_BEE_UPLOADER', 'LOG_LEVEL', 'LOG_FORMAT']);
+    assert.deepEqual(
+      sampleCatalogOf(SAMPLE).map((entry) => entry.key),
+      ['STAMP', 'LOCAL_BEE_UPLOADER', 'LOG_LEVEL', 'LOG_FORMAT'],
+    );
   });
 
   it('reads the bundled sample the way its sections are written', () => {
@@ -114,7 +117,11 @@ describe('the typed fields against the bundled samples', () => {
 
   it('still waits for the pin on every key it excuses', () => {
     for (const [key, pullRequest] of Object.entries(DECLARED_AFTER_THE_PIN_MOVES)) {
-      assert.equal(declared.has(key), false, `${key} is declared now, so ${pullRequest} reached the pin and ${key} comes off the list`);
+      assert.equal(
+        declared.has(key),
+        false,
+        `${key} is declared now, so ${pullRequest} reached the pin and ${key} comes off the list`,
+      );
     }
   });
 });

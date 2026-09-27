@@ -63,7 +63,8 @@ function urlProblem(key: string, value: string): string | null {
     return `${key} cannot carry a user name or a password.`;
   }
   // The raw text rather than `hash`, which is empty for a bare trailing #.
-  if (value.includes('#')) return `${key} cannot carry a # part, because the stack adds its own paths after the address.`;
+  if (value.includes('#'))
+    return `${key} cannot carry a # part, because the stack adds its own paths after the address.`;
   return null;
 }
 
@@ -81,7 +82,9 @@ export function stackSettingFieldProblem(key: string, value: string): string | n
 
   if (field.kind === 'choice') {
     const choices = field.choices ?? [];
-    return choices.includes(value) ? null : `${key} must be one of ${choices.filter(Boolean).join(', ')}. Got "${value}".`;
+    return choices.includes(value)
+      ? null
+      : `${key} must be one of ${choices.filter(Boolean).join(', ')}. Got "${value}".`;
   }
   if (field.kind === 'boolean') {
     return BOOLEAN_VALUES.includes(value) ? null : `${key} must be true or false. Got "${value}".`;

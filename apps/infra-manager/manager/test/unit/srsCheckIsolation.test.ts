@@ -12,13 +12,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  ACCEPTED_CASES,
-  CHECK_CASES,
-  REFUSED_CASES,
-  applyCase,
-  wrongAnswers,
-} from '../docker/srsCheckIsolation.js';
+import { ACCEPTED_CASES, CHECK_CASES, REFUSED_CASES, applyCase, wrongAnswers } from '../docker/srsCheckIsolation.js';
 
 /** The answers the pinned image gave on 2026-09-10, as the manager words them. */
 const RECORDED: Record<string, string> = {
@@ -34,7 +28,7 @@ const RECORDED: Record<string, string> = {
 
 const allRight = CHECK_CASES.map((one) => ({
   name: one.name,
-  problem: one.accepted ? null : RECORDED[one.name] ?? null,
+  problem: one.accepted ? null : (RECORDED[one.name] ?? null),
 }));
 
 /** A template that carries every anchor, so the edits are exercised without the submodule. */
@@ -132,8 +126,9 @@ describe('judging the eight answers', () => {
     // directives appear in no refused file. A refusal carrying one of them is
     // the same cross-talk as a refusal carrying another refused file's, so the
     // scan covers every case rather than only the four that are refused.
-    const onlyAccepted = ACCEPTED_CASES.map(one => one.directive)
-      .find(directive => !REFUSED_CASES.some(other => other.directive === directive))!;
+    const onlyAccepted = ACCEPTED_CASES.map((one) => one.directive).find(
+      (directive) => !REFUSED_CASES.some((other) => other.directive === directive),
+    )!;
     const answers = allRight.map((answer) =>
       answer.name === REFUSED_CASES[0].name
         ? { ...answer, problem: `${RECORDED[REFUSED_CASES[0].name]} and also token ${onlyAccepted}` }
@@ -145,15 +140,16 @@ describe('judging the eight answers', () => {
   });
 
   it('reports a directive two cases share once, not once per case', () => {
-    const shared = ACCEPTED_CASES.map(one => one.directive)
-      .find(directive => REFUSED_CASES.some(other => other.directive === directive))!;
-    const carrier = REFUSED_CASES.find(one => one.directive !== shared)!;
+    const shared = ACCEPTED_CASES.map((one) => one.directive).find((directive) =>
+      REFUSED_CASES.some((other) => other.directive === directive),
+    )!;
+    const carrier = REFUSED_CASES.find((one) => one.directive !== shared)!;
     const answers = allRight.map((answer) =>
       answer.name === carrier.name
         ? { ...answer, problem: `${RECORDED[carrier.name]} and also token ${shared}` }
         : answer,
     );
-    const wrong = wrongAnswers(answers).filter(line => line.includes(shared));
+    const wrong = wrongAnswers(answers).filter((line) => line.includes(shared));
     assert.equal(wrong.length, 1, wrong.join(' | '));
   });
 

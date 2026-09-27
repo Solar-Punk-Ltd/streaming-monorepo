@@ -2,12 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 
 import type { MediaType } from '@streaming-monorepo/web2-admin-common';
 
-import {
-  EDITABLE_STATUSES,
-  THUMBNAIL_MIME_TYPES,
-  type StreamRow,
-  type ThumbnailRow,
-} from '../types/index.js';
+import { EDITABLE_STATUSES, THUMBNAIL_MIME_TYPES, type StreamRow, type ThumbnailRow } from '../types/index.js';
 
 import {
   MediaTypeLockedError,
@@ -39,16 +34,9 @@ export interface StreamInputValues {
  * by that id, half of how the draft is found. A draft has told nobody anything
  * yet, and `publishing` is refused by the status transition instead.
  */
-export function isMediaTypeLocked(
-  stream: StreamRow,
-  mediaType: MediaType,
-): boolean {
+export function isMediaTypeLocked(stream: StreamRow, mediaType: MediaType): boolean {
   if (mediaType === stream.media_type) return false;
-  return (
-    stream.status === 'published' ||
-    stream.status === 'live' ||
-    stream.status === 'vod'
-  );
+  return stream.status === 'published' || stream.status === 'live' || stream.status === 'vod';
 }
 
 /** 16 random bytes hex: the `key=` credential in an ingest URL. */
@@ -95,11 +83,7 @@ export class StreamService {
    * recorded — a title fixed mid-broadcast reaches viewers on the next
    * republish, which keeps the state it is in.
    */
-  async update(
-    id: string,
-    userId: string,
-    input: StreamInputValues,
-  ): Promise<StreamRow> {
+  async update(id: string, userId: string, input: StreamInputValues): Promise<StreamRow> {
     const existing = await this.streams.findById(id, userId);
     if (!existing) throw new StreamNotFoundError(id);
     if (isMediaTypeLocked(existing, input.mediaType)) {
@@ -139,23 +123,12 @@ export class StreamService {
     throw new StreamPublishedError(id, existing.status);
   }
 
-  async setThumbnail(
-    id: string,
-    userId: string,
-    contentType: string,
-    bytes: Buffer,
-  ): Promise<StreamRow> {
+  async setThumbnail(id: string, userId: string, contentType: string, bytes: Buffer): Promise<StreamRow> {
     const mime = normaliseThumbnailMime(contentType);
     if (!THUMBNAIL_MIME_TYPES.includes(mime)) {
       throw new UnsupportedMediaTypeError(contentType, THUMBNAIL_MIME_TYPES);
     }
-    const updated = await this.streams.setThumbnail(
-      id,
-      userId,
-      bytes,
-      mime,
-      EDITABLE_STATUSES,
-    );
+    const updated = await this.streams.setThumbnail(id, userId, bytes, mime, EDITABLE_STATUSES);
     return updated ?? (await this.refuse(id, userId));
   }
 
@@ -171,11 +144,7 @@ export class StreamService {
   }
 
   async removeThumbnail(id: string, userId: string): Promise<StreamRow> {
-    const updated = await this.streams.clearThumbnail(
-      id,
-      userId,
-      EDITABLE_STATUSES,
-    );
+    const updated = await this.streams.clearThumbnail(id, userId, EDITABLE_STATUSES);
     return updated ?? (await this.refuse(id, userId));
   }
 

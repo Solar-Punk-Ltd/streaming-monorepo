@@ -40,37 +40,16 @@ import {
   STREAM_UPLOADER_SERVICE,
 } from '@streaming-infra-manager/common';
 
-import {
-  DeploymentGroupRepository,
-  MemberConfigWrite,
-  SharedProfileParams,
-} from './DeploymentGroupRepository.js';
+import { DeploymentGroupRepository, MemberConfigWrite, SharedProfileParams } from './DeploymentGroupRepository.js';
 
-import {
-  DeploymentGroup,
-  Profile,
-  ProfileKind,
-  ProfileWithContainers,
-  TRANSITIONAL_STATUSES,
-} from '../types/index.js';
+import { DeploymentGroup, Profile, ProfileKind, ProfileWithContainers, TRANSITIONAL_STATUSES } from '../types/index.js';
 
 import { portTableForEngine } from './versions/enginePortTable.js';
 
 import { ContainerRepository } from './ContainerRepository.js';
-import {
-  SHARED_ENGINE_SETTING_KEYS,
-  UPLOADER_ENGINE_SETTING_KEYS,
-} from './containerKeysSpec.js';
-import {
-  DeploymentOrchestrator,
-  DeployReservation,
-} from './DeploymentOrchestrator.js';
-import {
-  NodeReadLog,
-  readLogKey,
-  spellSuffix,
-  spellText,
-} from './nodeReadLog.js';
+import { SHARED_ENGINE_SETTING_KEYS, UPLOADER_ENGINE_SETTING_KEYS } from './containerKeysSpec.js';
+import { DeploymentOrchestrator, DeployReservation } from './DeploymentOrchestrator.js';
+import { NodeReadLog, readLogKey, spellSuffix, spellText } from './nodeReadLog.js';
 import {
   AllSlotsUsedError,
   TargetNotVerifiedError,
@@ -94,10 +73,7 @@ import { EventBus } from './EventBus.js';
 import { Logger } from './Logger.js';
 import { deploymentEngineReadings } from './engineConfig/deploymentEngineReadings.js';
 import { engineTemplateTextIn } from './engineConfig/engineConfigTemplates.js';
-import {
-  localPublisherHost,
-  type LocalPublisherHostReader,
-} from './localHost.js';
+import { localPublisherHost, type LocalPublisherHostReader } from './localHost.js';
 import { ProfileRepository } from './ProfileRepository.js';
 import { engineDefaultsAt } from './settings/engineHostDefaults.js';
 import {
@@ -116,10 +92,7 @@ import { portPlacementProblem } from './versions/stackContract.js';
 import type { InitialStackSettings, NewProfilePlacement, StoredStackSettings } from './ProfileRepository.js';
 import type { DeployTargets } from './ports/DeployTargets.js';
 import type { PortReservationRepository } from './ports/PortReservationRepository.js';
-import type {
-  StackVersionRecord,
-  StackVersionRepository,
-} from './versions/StackVersionRepository.js';
+import type { StackVersionRecord, StackVersionRepository } from './versions/StackVersionRepository.js';
 
 const logger = Logger.getInstance();
 
@@ -138,10 +111,7 @@ const PG_UNIQUE_VIOLATION = '23505';
  * `StampService.stampHealthFor`, which never throws and answers `'unknown'` for a
  * node it cannot reach.
  */
-export type StampHealthProbe = (
-  profile: Profile,
-  stampId: string | null | undefined,
-) => Promise<StampHealth>;
+export type StampHealthProbe = (profile: Profile, stampId: string | null | undefined) => Promise<StampHealth>;
 
 /**
  * Asks whether a bee node answers at the address the ladder publishes.
@@ -165,8 +135,7 @@ const REFUSES_EVERY_TARGET: DeployTargets = {
   },
 };
 
-const NO_STAMP_PROBE: StampHealthProbe = async (_profile, stampId) =>
-  stampHealthFrom(stampId, null);
+const NO_STAMP_PROBE: StampHealthProbe = async (_profile, stampId) => stampHealthFrom(stampId, null);
 const NO_URL_PROBE: PublishUrlProbe = async () => 'unknown';
 
 /**
@@ -188,11 +157,7 @@ function engineSettingKeysWithoutLadder(profile: Profile): readonly string[] | u
  * stepped over. A ladder rung's name says which rung it is, so a ladder builds
  * its names elsewhere and refuses a collision rather than skipping past it.
  */
-function nextFreeMemberNames(
-  groupName: string,
-  count: number,
-  taken: ReadonlySet<string>,
-): { name: string }[] {
+function nextFreeMemberNames(groupName: string, count: number, taken: ReadonlySet<string>): { name: string }[] {
   const names: { name: string }[] = [];
   let n = 1;
   while (names.length < count) {
@@ -215,7 +180,9 @@ function adminTokenOriginOf(stored: StoredStackSettings | null): Pick<InitialSta
 
 /** Whether a deployment of this shape runs a stream uploader, which is what reports to the web2 admin. */
 function runsStreamUploader({ kind, components }: NewDeploymentShape): boolean {
-  return defaultServicesFor({ kind, components: components ? [...components] : null }).includes(STREAM_UPLOADER_SERVICE);
+  return defaultServicesFor({ kind, components: components ? [...components] : null }).includes(
+    STREAM_UPLOADER_SERVICE,
+  );
 }
 
 /** What the create log says of the stack settings a deployment was given: their keys, never a value. */
@@ -237,15 +204,10 @@ function stackSettingsNote(settings: InitialStackSettings): string {
  * uploader dating segments by the old one. The intent stated here was always
  * right. The list it read was the wrong list.
  */
-function servicesToRecreate(
-  engine: EngineName,
-  before: EngineSettings,
-  after: EngineSettings,
-): string[] {
-  const uploaderChanged = [
-    ...UPLOADER_ENGINE_SETTING_KEYS,
-    ...SHARED_ENGINE_SETTING_KEYS,
-  ].some((key) => before[key] !== after[key]);
+function servicesToRecreate(engine: EngineName, before: EngineSettings, after: EngineSettings): string[] {
+  const uploaderChanged = [...UPLOADER_ENGINE_SETTING_KEYS, ...SHARED_ENGINE_SETTING_KEYS].some(
+    (key) => before[key] !== after[key],
+  );
   return uploaderChanged ? [engine, STREAM_UPLOADER_SERVICE] : [engine];
 }
 
@@ -342,9 +304,11 @@ export class ProfileService {
       throw new InvalidStackVersionError(`${version.name}: ${version.contract.allocationProblem}`);
     }
     if (!version.contract?.ports.length) {
-      throw new InvalidStackVersionError(`${version.name} has no readable port table. Rebuild the version before allocating a deployment.`);
+      throw new InvalidStackVersionError(
+        `${version.name} has no readable port table. Rebuild the version before allocating a deployment.`,
+      );
     }
-    if (!await this.reservations?.inventorySeededAt()) {
+    if (!(await this.reservations?.inventorySeededAt())) {
       throw new ReservationInventoryPendingError();
     }
     return {
@@ -366,10 +330,7 @@ export class ProfileService {
    * Without this a profile whose settings could not be written would sit in
    * DEPLOYING with no job to end it.
    */
-  private async writeOrCancel<T>(
-    reservations: readonly DeployReservation[],
-    write: () => Promise<T>,
-  ): Promise<T> {
+  private async writeOrCancel<T>(reservations: readonly DeployReservation[], write: () => Promise<T>): Promise<T> {
     try {
       return await write();
     } catch (err) {
@@ -378,9 +339,7 @@ export class ProfileService {
     }
   }
 
-  private async cancelAll(
-    reservations: readonly DeployReservation[],
-  ): Promise<void> {
+  private async cancelAll(reservations: readonly DeployReservation[]): Promise<void> {
     for (const reservation of reservations) {
       await this.orchestrator.cancelReservation(reservation);
     }
@@ -497,10 +456,7 @@ export class ProfileService {
       );
     } catch (err) {
       const pgErr = err as PgError;
-      if (
-        pgErr.code === PG_UNIQUE_VIOLATION &&
-        pgErr.constraint === 'profiles_pkey'
-      ) {
+      if (pgErr.code === PG_UNIQUE_VIOLATION && pgErr.constraint === 'profiles_pkey') {
         throw new ProfileExistsError(input.name);
       }
       throw err;
@@ -518,11 +474,7 @@ export class ProfileService {
 
     // The orchestrator marks the row ERROR if the deploy cannot start: it owns
     // the row from here, and marking it here too would overwrite the reason.
-    await this.orchestrator.startInitialDeploy(
-      row,
-      input.components ?? undefined,
-      { host: input.host ?? undefined },
-    );
+    await this.orchestrator.startInitialDeploy(row, input.components ?? undefined, { host: input.host ?? undefined });
 
     return withContainers;
   }
@@ -580,21 +532,15 @@ export class ProfileService {
     },
   ): Promise<ProfileWithContainers> {
     const existing = await this.getByName(name);
-    if (
-      (TRANSITIONAL_STATUSES as readonly string[]).includes(existing.status)
-    ) {
+    if ((TRANSITIONAL_STATUSES as readonly string[]).includes(existing.status)) {
       throw new ProfileBusyError(name, existing.status);
     }
 
     // Before the claim, so a drawer that loaded before another notes save is
     // refused without the deployment ever leaving its status. The write below
     // checks the revision again, for the save that lands in between.
-    const notesRevisionSent =
-      input.notes !== undefined ? input.notes_revision : undefined;
-    if (
-      notesRevisionSent !== undefined &&
-      notesRevisionSent !== existing.notes_revision
-    ) {
+    const notesRevisionSent = input.notes !== undefined ? input.notes_revision : undefined;
+    if (notesRevisionSent !== undefined && notesRevisionSent !== existing.notes_revision) {
       throw new NotesConflictError(name);
     }
 
@@ -614,10 +560,7 @@ export class ProfileService {
       bee_publishers: input.bee_publishers,
       bee_url: input.bee_url,
     });
-    const storedRpcEndpoint = await this.repo.rpcEndpointOf(
-      name,
-      deployOwnerOf(existing),
-    );
+    const storedRpcEndpoint = await this.repo.rpcEndpointOf(name, deployOwnerOf(existing));
     if (!storedRpcEndpoint) throw new ProfileInstanceChangedError(name);
     const sourceClearsRpcEndpoint =
       input.rpc_endpoint === undefined &&
@@ -658,10 +601,7 @@ export class ProfileService {
       rpc_endpoint_source: rpcEndpointSource,
       node_mode: modeEdit ?? existing.node_mode,
       has_private_key: keyEdit !== null || existing.has_private_key,
-      has_srt_passphrase:
-        passphraseEdit === undefined
-          ? existing.has_srt_passphrase
-          : passphraseEdit !== null,
+      has_srt_passphrase: passphraseEdit === undefined ? existing.has_srt_passphrase : passphraseEdit !== null,
     };
     this.assertNodeChoicesHold(name, {
       ...proposed,
@@ -685,17 +625,13 @@ export class ProfileService {
     // where nothing reads them and the settings page offers them only a reset.
     // They go out with the pool string, in one statement, so no state exists in
     // which the column holds settings the deployment cannot act on.
-    const laddersEnded =
-      hasBeePublishers(existing) && !proposed.bee_publishers?.trim();
+    const laddersEnded = hasBeePublishers(existing) && !proposed.bee_publishers?.trim();
 
     // Claimed before anything is written. Two concurrent PUTs both pass the
     // busy check above, so without the claim the loser would rewrite the row
     // and the env file under the winner's running deploy, then mark the profile
     // ERROR while that deploy was still going.
-    const reservation = await this.orchestrator.reserveDeploy(
-      proposed,
-      existing.components ?? undefined,
-    );
+    const reservation = await this.orchestrator.reserveDeploy(proposed, existing.components ?? undefined);
 
     const row = await this.writeOrCancel([reservation], async () => {
       const written = await this.repo.updateEditable(
@@ -709,18 +645,14 @@ export class ProfileService {
             : { rpc_endpoint: proposedRpcEndpoint }),
           rpc_endpoint_source: rpcEndpointSource,
           ...(modeEdit === undefined ? {} : { node_mode: modeEdit }),
-          ...(passphraseEdit === undefined
-            ? {}
-            : { srt_passphrase: passphraseEdit }),
+          ...(passphraseEdit === undefined ? {} : { srt_passphrase: passphraseEdit }),
           components: existing.components,
         },
         laddersEnded ? engineSettingKeysWithoutLadder(existing) : undefined,
         notesRevisionSent,
       );
       if (!written) {
-        throw (await this.repo.findByName(name))
-          ? new NotesConflictError(name)
-          : new ProfileNotFoundError(name);
+        throw (await this.repo.findByName(name)) ? new NotesConflictError(name) : new ProfileNotFoundError(name);
       }
       return written;
     });
@@ -749,16 +681,10 @@ export class ProfileService {
    * revision is the one the page loaded, and a note saved elsewhere since is
    * a refusal, not an overwrite.
    */
-  async updateNotes(
-    name: string,
-    notes: string | null,
-    loadedRevision: number,
-  ): Promise<ProfileWithContainers> {
+  async updateNotes(name: string, notes: string | null, loadedRevision: number): Promise<ProfileWithContainers> {
     const row = await this.repo.updateNotes(name, notes, loadedRevision);
     if (!row) {
-      throw (await this.repo.findByName(name))
-        ? new NotesConflictError(name)
-        : new ProfileNotFoundError(name);
+      throw (await this.repo.findByName(name)) ? new NotesConflictError(name) : new ProfileNotFoundError(name);
     }
     const withContainers = await this.containers.withContainers(row);
     this.publishChanged(withContainers);
@@ -773,13 +699,8 @@ export class ProfileService {
    * behind. Answered as a rejected body either way, because the reason is the
    * only useful text.
    */
-  private async versionForNewDeployment(
-    id: number | null | undefined,
-  ): Promise<StackVersionRecord> {
-    const version =
-      id == null
-        ? await this.versions.findDefault()
-        : await this.versions.findById(id);
+  private async versionForNewDeployment(id: number | null | undefined): Promise<StackVersionRecord> {
+    const version = id == null ? await this.versions.findDefault() : await this.versions.findById(id);
     if (!version) {
       throw new InvalidStackVersionError(
         id == null
@@ -805,9 +726,7 @@ export class ProfileService {
    * turns `ABR_ENABLED=true` on for. Reading it any other way would let the
    * settings route accept a value the deploy then refuses.
    */
-  private engineFacts(
-    profile: { name: string } & StampGatedProfile,
-  ): { engine: EngineName; abr: boolean } {
+  private engineFacts(profile: { name: string } & StampGatedProfile): { engine: EngineName; abr: boolean } {
     const engine = engineOfServices(defaultServicesFor(profile));
     if (!engine) {
       throw new ProfileConfigError(
@@ -836,11 +755,7 @@ export class ProfileService {
     settings: EngineSettings,
   ): void {
     const { engine, abr } = this.engineFacts(input);
-    const defaults = engineDefaultsAt(
-      stackRootOf(version),
-      engine,
-      version.contract,
-    );
+    const defaults = engineDefaultsAt(stackRootOf(version), engine, version.contract);
     const problem = engineSettingsProblem(engine, settings, {
       abr,
       defaults: defaults.values,
@@ -867,7 +782,12 @@ export class ProfileService {
       { template: engineTemplateTextIn(root, engine), hasOwn: profile.has_engine_config, own: engineConfig },
       { abr },
     );
-    const observed = assembleEngineSettingObservations({ fields, settings: profile.engine_settings, defaults, readings });
+    const observed = assembleEngineSettingObservations({
+      fields,
+      settings: profile.engine_settings,
+      defaults,
+      readings,
+    });
     return {
       identity,
       engine,
@@ -910,16 +830,17 @@ export class ProfileService {
     if (expectedInstanceId !== undefined && existing.instance_id !== expectedInstanceId) {
       throw new ProfileInstanceChangedError(name);
     }
-    if (
-      (TRANSITIONAL_STATUSES as readonly string[]).includes(existing.status)
-    ) {
+    if ((TRANSITIONAL_STATUSES as readonly string[]).includes(existing.status)) {
       throw new ProfileBusyError(name, existing.status);
     }
 
     const { engine, abr } = this.engineFacts(existing);
     const version = structuredClone(await this.versions.findById(existing.stack_version_id));
     if (!version) {
-      throw new ProfileConfigError(name, `Stack version ${existing.stack_version_id} no longer exists. Restore the version before deploying. No deployment was started.`);
+      throw new ProfileConfigError(
+        name,
+        `Stack version ${existing.stack_version_id} no longer exists. Restore the version before deploying. No deployment was started.`,
+      );
     }
     const defaults = engineDefaultsAt(stackRootOf(version), engine, version.contract);
     const problem = engineSettingsProblem(engine, settings, {
@@ -930,28 +851,22 @@ export class ProfileService {
       throw new ProfileConfigError(name, problem);
     }
 
-    const services = servicesToRecreate(
-      engine,
-      stored.engine,
-      settings,
-    );
+    const services = servicesToRecreate(engine, stored.engine, settings);
 
     // Claimed before the settings are written, for the same reason the PUT
     // path claims first: two saves that both pass the busy check would both
     // store, and the one refused the deploy would have left its settings behind
     // under the other one's running recreate.
-    const reservation = await this.orchestrator.reserveDeploy(
-      existing,
-      services,
-      version,
-    );
+    const reservation = await this.orchestrator.reserveDeploy(existing, services, version);
 
     const row = await this.writeOrCancel([reservation], async () => {
       const claimed = reservation.claimedProfile;
       const referenceId = reservation.build?.referenceId;
       if (!claimed || referenceId == null) throw new Error('An engine settings save has no claimed job.');
       const written = await this.repo.updateEngineSettings(name, settings, {
-        ...deployOwnerOf(claimed), jobReferenceId: referenceId, settingsRevision: stored.revision,
+        ...deployOwnerOf(claimed),
+        jobReferenceId: referenceId,
+        settingsRevision: stored.revision,
       });
       if (!written) {
         const current = await this.repo.findByName(name);
@@ -961,9 +876,7 @@ export class ProfileService {
       return written;
     });
 
-    logger.info(
-      `[ProfileService] Updated engine settings for ${name}; recreating ${services.join(', ')}`,
-    );
+    logger.info(`[ProfileService] Updated engine settings for ${name}; recreating ${services.join(', ')}`);
 
     this.publishChanged({
       ...row,
@@ -986,7 +899,12 @@ export class ProfileService {
       throw new ProfileBusyError(name, profile.status);
     }
     const removal = await this.orchestrator.startRemove(profile, input);
-    return { ...removal.profile, containers: profile.containers, pendingStamp: profile.pendingStamp, network_host: profile.network_host };
+    return {
+      ...removal.profile,
+      containers: profile.containers,
+      pendingStamp: profile.pendingStamp,
+      network_host: profile.network_host,
+    };
   }
 
   async listGroups(): Promise<DeploymentGroup[]> {
@@ -1007,9 +925,7 @@ export class ProfileService {
    * which rung each member publishes, read from its name. A member whose name
    * carries no rung is not one and is skipped.
    */
-  private async ladderMembersOf(
-    group: DeploymentGroup,
-  ): Promise<{ rung: string; profile: Profile }[]> {
+  private async ladderMembersOf(group: DeploymentGroup): Promise<{ rung: string; profile: Profile }[]> {
     const members = await this.groupRepo.listMembers(group.id);
     return members
       .map((profile) => ({
@@ -1136,9 +1052,7 @@ export class ProfileService {
         members.push({ name });
       }
     } else {
-      members.push(
-        ...nextFreeMemberNames(input.group_name, input.size, usedNames),
-      );
+      members.push(...nextFreeMemberNames(input.group_name, input.size, usedNames));
     }
 
     const placement = await this.placementFor(version, input.host ?? null, memberComponents);
@@ -1164,16 +1078,9 @@ export class ProfileService {
       table: placement.table,
     };
 
-    const kind: GroupKind = input.abr_ladder
-      ? ABR_NODE_POOL_GROUP_KIND
-      : STANDARD_GROUP_KIND;
+    const kind: GroupKind = input.abr_ladder ? ABR_NODE_POOL_GROUP_KIND : STANDARD_GROUP_KIND;
 
-    const { group, profiles } = await this.groupRepo.createGroupWithMembers(
-      input.group_name,
-      kind,
-      members,
-      shared,
-    );
+    const { group, profiles } = await this.groupRepo.createGroupWithMembers(input.group_name, kind, members, shared);
 
     logger.info(
       `[ProfileService] Created group ${group.name} with ${profiles.length} member(s)` +
@@ -1225,9 +1132,7 @@ export class ProfileService {
 
     const members = await this.ladderMembersOf(group);
     const publisherHost = await this.readLocalPublisherHost();
-    const urls = members.map(({ profile }) =>
-      beePublisherUrlFor(profile, publisherHost),
-    );
+    const urls = members.map(({ profile }) => beePublisherUrlFor(profile, publisherHost));
 
     // Both probes swallow their own failures. The catches guard an injected probe
     // that does not, so one bad node can never fail the whole request.
@@ -1316,9 +1221,7 @@ export class ProfileService {
     }
 
     const busy = members
-      .filter((m) =>
-        (TRANSITIONAL_STATUSES as readonly string[]).includes(m.status),
-      )
+      .filter((m) => (TRANSITIONAL_STATUSES as readonly string[]).includes(m.status))
       .map((m) => m.name);
     if (busy.length > 0) {
       throw new GroupBusyError(group.name, busy);
@@ -1338,8 +1241,7 @@ export class ProfileService {
     // Merge the requested changes onto each member. `undefined` means "not in
     // the request → keep the member's current value". An explicit value (incl.
     // null) is applied to every member.
-    const pick = <T>(next: T | undefined, current: T): T =>
-      next !== undefined ? next : current;
+    const pick = <T>(next: T | undefined, current: T): T => (next !== undefined ? next : current);
 
     const writes: MemberConfigWrite[] = members.map((m) => ({
       name: m.name,
@@ -1353,9 +1255,7 @@ export class ProfileService {
       // Not picked the way the others are: the member rows do not carry the
       // passphrase, so an edit that says nothing about it leaves the field out
       // and each member keeps its own.
-      ...(input.srt_passphrase === undefined
-        ? {}
-        : { srt_passphrase: input.srt_passphrase }),
+      ...(input.srt_passphrase === undefined ? {} : { srt_passphrase: input.srt_passphrase }),
     }));
 
     // Every member is claimed before the bulk write, so a group edit that
@@ -1367,10 +1267,7 @@ export class ProfileService {
       return {
         ...member,
         ...write,
-        has_srt_passphrase:
-          passphrase === undefined
-            ? member.has_srt_passphrase
-            : passphrase !== null,
+        has_srt_passphrase: passphrase === undefined ? member.has_srt_passphrase : passphrase !== null,
       };
     });
     const reservations = await this.reserveMembers(group, proposedMembers);
@@ -1379,9 +1276,7 @@ export class ProfileService {
       this.groupRepo.updateMembersConfig(writes),
     );
 
-    logger.info(
-      `[ProfileService] Updated group ${group.name} (${updated.length} member(s)); redeploying`,
-    );
+    logger.info(`[ProfileService] Updated group ${group.name} (${updated.length} member(s)); redeploying`);
 
     const profiles: ProfileWithContainers[] = [];
     for (const row of updated) {
@@ -1416,13 +1311,7 @@ export class ProfileService {
     const reservations = new Map<string, DeployReservation>();
     for (const member of members) {
       try {
-        reservations.set(
-          member.name,
-          await this.orchestrator.reserveDeploy(
-            member,
-            member.components ?? undefined,
-          ),
-        );
+        reservations.set(member.name, await this.orchestrator.reserveDeploy(member, member.components ?? undefined));
       } catch (err) {
         await this.cancelAll([...reservations.values()]);
         if (err instanceof ProfileBusyError) {
@@ -1441,16 +1330,11 @@ export class ProfileService {
    * and the row is re-read afterwards, so the response says per member what
    * happened.
    */
-  private async runMember(
-    reservation: DeployReservation,
-    row: Profile,
-  ): Promise<void> {
+  private async runMember(reservation: DeployReservation, row: Profile): Promise<void> {
     try {
       await this.orchestrator.runReserved(reservation, row);
     } catch (err) {
-      logger.warn(
-        `[ProfileService] ${row.name}: deploy did not start: ${getErrorMessage(err)}`,
-      );
+      logger.warn(`[ProfileService] ${row.name}: deploy did not start: ${getErrorMessage(err)}`);
     }
   }
 
@@ -1458,14 +1342,9 @@ export class ProfileService {
   private async startMember(member: Profile): Promise<void> {
     let reservation: DeployReservation;
     try {
-      reservation = await this.orchestrator.reserveDeploy(
-        member,
-        member.components ?? undefined,
-      );
+      reservation = await this.orchestrator.reserveDeploy(member, member.components ?? undefined);
     } catch (err) {
-      logger.warn(
-        `[ProfileService] ${member.name}: could not be claimed for deploy: ${getErrorMessage(err)}`,
-      );
+      logger.warn(`[ProfileService] ${member.name}: could not be claimed for deploy: ${getErrorMessage(err)}`);
       return;
     }
     await this.runMember(reservation, member);
@@ -1480,9 +1359,7 @@ export class ProfileService {
    * response carries the status and reason for the ones that did not take.
    * A replacement with the same name is not part of this creation response.
    */
-  private async deployNewMembers(
-    created: readonly Profile[],
-  ): Promise<ProfileWithContainers[]> {
+  private async deployNewMembers(created: readonly Profile[]): Promise<ProfileWithContainers[]> {
     const profiles: ProfileWithContainers[] = [];
     for (const member of created) {
       this.publishChanged(await this.containers.withContainers(member));
@@ -1510,10 +1387,7 @@ export class ProfileService {
 
     // `<group>-profile-N` is not a rung name, so an appended member would sit in
     // the group without ever being part of the ladder.
-    this.assertNotLadder(
-      group,
-      'its members are fixed to one per quality rung, so members cannot be appended',
-    );
+    this.assertNotLadder(group, 'its members are fixed to one per quality rung, so members cannot be appended');
 
     const canonical = members[0]!;
     const version = await this.versions.findById(canonical.stack_version_id);
@@ -1521,10 +1395,7 @@ export class ProfileService {
       throw new InvalidStackVersionError(`Stack version ${canonical.stack_version_id} does not exist`);
     }
     const placement = await this.placementFor(version, canonical.host, canonical.components);
-    const rpcEndpoint = await this.repo.rpcEndpointOf(
-      canonical.name,
-      deployOwnerOf(canonical),
-    );
+    const rpcEndpoint = await this.repo.rpcEndpointOf(canonical.name, deployOwnerOf(canonical));
     if (!rpcEndpoint) throw new ProfileInstanceChangedError(canonical.name);
     const shared: SharedProfileParams = {
       kind: canonical.kind,

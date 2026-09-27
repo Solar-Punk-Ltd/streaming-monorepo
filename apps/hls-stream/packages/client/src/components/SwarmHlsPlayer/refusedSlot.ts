@@ -36,7 +36,10 @@ export const PROBE_DISTANCES = [1, 2, 4, 8] as const;
 
 /** A response that arrived and was refused, as opposed to a transport failure or a timeout. */
 export class ManifestFetchError extends Error {
-  constructor(path: string, readonly status: number) {
+  constructor(
+    path: string,
+    readonly status: number,
+  ) {
     super(`Failed to fetch: ${path}`);
     this.name = 'ManifestFetchError';
   }

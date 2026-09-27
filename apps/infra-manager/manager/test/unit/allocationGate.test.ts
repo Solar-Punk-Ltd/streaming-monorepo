@@ -23,13 +23,16 @@ describe('allocation admission', () => {
     for (const obstacle of ['contract', 'missing', 'empty', 'inventory'] as const) {
       it(`refuses a new ${action} before any write or deploy when the ${obstacle} is not ready`, async () => {
         const harness = profileServiceHarness();
-        const group = action === 'member'
-          ? (await harness.service.createGroup({ group_name: 'pool', size: 1, kind: 'viewer' })).group
-          : null;
+        const group =
+          action === 'member'
+            ? (await harness.service.createGroup({ group_name: 'pool', size: 1, kind: 'viewer' })).group
+            : null;
         if (obstacle !== 'inventory') {
           const bundled = await harness.versions.findDefault();
-          bundled!.contract = obstacle === 'missing' ? null
-            : { ...BAD_CONTRACT, allocationProblem: obstacle === 'empty' ? null : BAD_CONTRACT.allocationProblem };
+          bundled!.contract =
+            obstacle === 'missing'
+              ? null
+              : { ...BAD_CONTRACT, allocationProblem: obstacle === 'empty' ? null : BAD_CONTRACT.allocationProblem };
         } else {
           harness.profiles.reservations.seededAt = null;
         }
@@ -39,17 +42,21 @@ describe('allocation admission', () => {
           ports: [...harness.profiles.reservations.rows],
           deploys: [...harness.orchestrator.deploys],
         };
-        const create = () => action === 'deployment'
-          ? harness.service.create({ name: 'stage', kind: 'viewer' })
-          : action === 'group'
-            ? harness.service.createGroup({ group_name: 'stage', size: 2, kind: 'viewer' })
-            : harness.service.addGroupMembers(group!.id, 1);
+        const create = () =>
+          action === 'deployment'
+            ? harness.service.create({ name: 'stage', kind: 'viewer' })
+            : action === 'group'
+              ? harness.service.createGroup({ group_name: 'stage', size: 2, kind: 'viewer' })
+              : harness.service.addGroupMembers(group!.id, 1);
 
-        await assert.rejects(create, obstacle === 'contract'
-          ? /deploy\/docker-compose\.yml line 6: cannot read the published port/
-          : obstacle === 'inventory'
-            ? /reservation inventory is still being built/
-            : /no readable port table/);
+        await assert.rejects(
+          create,
+          obstacle === 'contract'
+            ? /deploy\/docker-compose\.yml line 6: cannot read the published port/
+            : obstacle === 'inventory'
+              ? /reservation inventory is still being built/
+              : /no readable port table/,
+        );
         assert.deepEqual([...harness.profiles.rows.values()], before.profiles);
         assert.deepEqual(harness.groups.groups, before.groups);
         assert.deepEqual(harness.profiles.reservations.rows, before.ports);

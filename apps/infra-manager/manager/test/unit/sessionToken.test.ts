@@ -8,10 +8,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  createSessionToken,
-  hashSessionToken,
-} from '../../src/domain/auth/sessionToken.js';
+import { createSessionToken, hashSessionToken } from '../../src/domain/auth/sessionToken.js';
 
 describe('session token', () => {
   it('is 32 random bytes in base64url', () => {
@@ -22,9 +19,7 @@ describe('session token', () => {
   });
 
   it('is different every time', () => {
-    const tokens = new Set(
-      Array.from({ length: 100 }, () => createSessionToken()),
-    );
+    const tokens = new Set(Array.from({ length: 100 }, () => createSessionToken()));
     assert.equal(tokens.size, 100);
   });
 

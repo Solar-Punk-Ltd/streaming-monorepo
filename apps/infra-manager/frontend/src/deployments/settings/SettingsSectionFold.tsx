@@ -48,9 +48,13 @@ export function SettingsSectionFold({
             <Box component="span" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>
               {section.title}
             </Box>
-            <Typography component="span" variant="caption" sx={{
-              color: "text.secondary"
-            }}>
+            <Typography
+              component="span"
+              variant="caption"
+              sx={{
+                color: 'text.secondary',
+              }}
+            >
               {sectionSummary(section.entries.length, counts, target)}
             </Typography>
           </Stack>

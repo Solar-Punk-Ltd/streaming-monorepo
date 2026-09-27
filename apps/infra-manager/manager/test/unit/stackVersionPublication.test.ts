@@ -33,10 +33,7 @@ import {
   BUILD_MANIFEST_FILE,
   readBuildManifest,
 } from '../../src/domain/versions/buildManifest.js';
-import {
-  commitHostConfig,
-  CONFIG_REVISION_FILE,
-} from '../../src/domain/versions/hostConfigCapture.js';
+import { commitHostConfig, CONFIG_REVISION_FILE } from '../../src/domain/versions/hostConfigCapture.js';
 import { buildInventoryRecordPath } from '../../src/domain/versions/buildInventoryRecord.js';
 import {
   buildDirFor,
@@ -47,11 +44,7 @@ import {
   stackRootOf,
   stagingDirFor,
 } from '../../src/domain/versions/stackPaths.js';
-import {
-  BUILD_IMAGE,
-  BUILD_SCRIPT,
-  StackVersionService,
-} from '../../src/domain/versions/StackVersionService.js';
+import { BUILD_IMAGE, BUILD_SCRIPT, StackVersionService } from '../../src/domain/versions/StackVersionService.js';
 import { FakeScriptSpawner } from '../support/FakeScriptSpawner.js';
 import { InMemoryStackVersionRepository } from '../support/InMemoryStackVersionRepository.js';
 import {
@@ -76,7 +69,9 @@ beforeEach(() => {
   repository = new InMemoryStackVersionRepository();
   repository.seedBundled();
   runner = new FakeScriptSpawner();
-  service = new StackVersionService(repository, runner, new EventBus(), versionsRoot, { openReferences: async () => [] });
+  service = new StackVersionService(repository, runner, new EventBus(), versionsRoot, {
+    openReferences: async () => [],
+  });
 });
 
 const settle = (ms = 5) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -115,7 +110,9 @@ async function finished(name: string, code = 0, log = ''): Promise<void> {
   runner.finish(code, log);
   await until(`${name} to settle`, async () => {
     const row = await rowNamed(name);
-    return row.status !== 'building' && (code !== 0 || (row.builtAt?.getTime() ?? 0) > before || row.lastError !== null);
+    return (
+      row.status !== 'building' && (code !== 0 || (row.builtAt?.getTime() ?? 0) > before || row.lastError !== null)
+    );
   });
 }
 
@@ -170,7 +167,10 @@ describe('adding a version', () => {
     leaveBuildMarkers(staging, COMMIT_A, MONOREPO_STACK_FOLDER, `${BUILD_IMAGE} pnpm@11.11.0`);
     await finished('v3');
 
-    assert.equal(readBuildManifest(buildDirFor(versionsRoot, 'v3', COMMIT_A)).manifest?.toolchain, `${BUILD_IMAGE} pnpm@11.11.0`);
+    assert.equal(
+      readBuildManifest(buildDirFor(versionsRoot, 'v3', COMMIT_A)).manifest?.toolchain,
+      `${BUILD_IMAGE} pnpm@11.11.0`,
+    );
   });
 
   it('treats a build that left no word of its pnpm as failed, naming what is missing', async () => {
@@ -241,7 +241,9 @@ describe('updating a version', () => {
   it('gives the same commit with new host inputs a distinct identity, and keeps the previous build', async () => {
     const id = await addBuilt('v3', COMMIT_A);
     const configRoot = configRootFor(versionsRoot, 'v3');
-    await commitHostConfig(configRoot, { '.env': Buffer.from(`${readFileSync(join(configRoot, '.env'), 'utf8')}CHEQUEBOOK_MIN_BZZ=1\n`) });
+    await commitHostConfig(configRoot, {
+      '.env': Buffer.from(`${readFileSync(join(configRoot, '.env'), 'utf8')}CHEQUEBOOK_MIN_BZZ=1\n`),
+    });
     await service.setTested(id, true, COMMIT_A, COMMIT_A);
 
     await service.update(id);
@@ -256,19 +258,26 @@ describe('updating a version', () => {
     const rebuilt = buildDirFor(versionsRoot, 'v3', `${COMMIT_A}-r1`);
     assert.match(readFileSync(join(rebuilt, '.env'), 'utf8'), /CHEQUEBOOK_MIN_BZZ=1/);
     assert.equal(readBuildManifest(rebuilt).manifest?.buildId, `${COMMIT_A}-r1`);
-    assert.ok(existsSync(join(buildDirFor(versionsRoot, 'v3', COMMIT_A), BUILD_COMPLETE_MARKER)), 'the previous build stays');
+    assert.ok(
+      existsSync(join(buildDirFor(versionsRoot, 'v3', COMMIT_A), BUILD_COMPLETE_MARKER)),
+      'the previous build stays',
+    );
   });
 
   it('publishes again at a commit whose rebuild a deploy has already inventoried', async () => {
     // The record beside a build is not a build, and its name starts with the build id it belongs to.
     const id = await addBuilt('v3', COMMIT_A);
     const configRoot = configRootFor(versionsRoot, 'v3');
-    await commitHostConfig(configRoot, { '.env': Buffer.from(`${readFileSync(join(configRoot, '.env'), 'utf8')}CHEQUEBOOK_MIN_BZZ=1\n`) });
+    await commitHostConfig(configRoot, {
+      '.env': Buffer.from(`${readFileSync(join(configRoot, '.env'), 'utf8')}CHEQUEBOOK_MIN_BZZ=1\n`),
+    });
     await service.update(id);
     builtInStaging('v3', COMMIT_A);
     await finished('v3');
     writeFileSync(buildInventoryRecordPath(buildDirFor(versionsRoot, 'v3', `${COMMIT_A}-r1`)), '{}');
-    await commitHostConfig(configRoot, { '.env': Buffer.from(`${readFileSync(join(configRoot, '.env'), 'utf8')}CHEQUEBOOK_MIN_BZZ=2\n`) });
+    await commitHostConfig(configRoot, {
+      '.env': Buffer.from(`${readFileSync(join(configRoot, '.env'), 'utf8')}CHEQUEBOOK_MIN_BZZ=2\n`),
+    });
 
     await service.update(id);
     builtInStaging('v3', COMMIT_A);

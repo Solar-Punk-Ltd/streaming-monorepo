@@ -2,8 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const MANAGER_URL =
-  (globalThis as { process?: { env?: Record<string, string | undefined> } })
-    .process?.env?.VITE_MANAGER_URL ?? 'http://localhost:9876';
+  (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.VITE_MANAGER_URL ??
+  'http://localhost:9876';
 
 /**
  * Pass the browser's own Host through, the way nginx does in production with
@@ -27,7 +27,12 @@ export default defineConfig({
       // below. Above '/profiles' because vite takes the first entry whose key
       // matches and that one matches these by prefix. The regex is the nginx
       // location in front of production, written again.
-      '^/profiles/[^/]+/(deploy|deploy-uploader|stop|health)$': { ...managerApi(), ws: false, proxyTimeout: 0, timeout: 0 },
+      '^/profiles/[^/]+/(deploy|deploy-uploader|stop|health)$': {
+        ...managerApi(),
+        ws: false,
+        proxyTimeout: 0,
+        timeout: 0,
+      },
       '/profiles': managerApi(),
       '/chequebook': managerApi(),
       '/groups': managerApi(),

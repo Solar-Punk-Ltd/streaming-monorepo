@@ -3,13 +3,23 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 import { getErrorMessage } from '@streaming-infra-manager/common';
 
-import { captureManagerUpgradeRequest, runManagerUpgrade, type BundledBuildOutcome, type ManagerUpgradeOperations } from '../domain/versions/ManagerUpgrade.js';
+import {
+  captureManagerUpgradeRequest,
+  runManagerUpgrade,
+  type BundledBuildOutcome,
+  type ManagerUpgradeOperations,
+} from '../domain/versions/ManagerUpgrade.js';
 import { retainedUpgradePhase, UPGRADE_ALREADY_OWNED } from '../domain/versions/managerUpgradeGuard.js';
 import { managerUpgradeGuardRootFor } from '../domain/versions/stackPaths.js';
 import { config } from '../utils/config.js';
 import { BUNDLED_STACK_ROOT } from '../utils/envUtils.js';
 import { MANAGER_POSTGRES_VOLUME } from '../domain/versions/managerProject.js';
-import { apiHealthUrlFor, ComposeUpgradeOperations, DEFAULT_BUNDLED_BUILD_MS, type ComposeUpgradeSettings } from './ComposeUpgradeOperations.js';
+import {
+  apiHealthUrlFor,
+  ComposeUpgradeOperations,
+  DEFAULT_BUNDLED_BUILD_MS,
+  type ComposeUpgradeSettings,
+} from './ComposeUpgradeOperations.js';
 import { CLI_PREFIX, type CommandStreams } from './commandStreams.js';
 import { execFileCommandRunner } from './commandRunner.js';
 import { parseFlags, withUsage } from './flags.js';
@@ -35,7 +45,9 @@ function bundledTimeoutMs(value: string | undefined): number {
   if (value === undefined) return DEFAULT_BUNDLED_BUILD_MS;
   const seconds = Number(value);
   if (!Number.isInteger(seconds) || seconds < MIN_BUNDLED_TIMEOUT_SECONDS || seconds > MAX_BUNDLED_TIMEOUT_SECONDS) {
-    throw new Error(`${BUNDLED_TIMEOUT} must be a whole number of seconds between ${MIN_BUNDLED_TIMEOUT_SECONDS} and ${MAX_BUNDLED_TIMEOUT_SECONDS}.`);
+    throw new Error(
+      `${BUNDLED_TIMEOUT} must be a whole number of seconds between ${MIN_BUNDLED_TIMEOUT_SECONDS} and ${MAX_BUNDLED_TIMEOUT_SECONDS}.`,
+    );
   }
   return seconds * 1000;
 }
@@ -118,7 +130,9 @@ const composeOperations: UpgradeOperationsFactory = (settings) => {
 
 /** Everything a retained guard can tell a person, without removing anything. */
 function reportRetainedGuard(guardRoot: string, streams: CommandStreams, heldByAnEarlierRun: boolean): void {
-  const holder = heldByAnEarlierRun ? 'an earlier manager upgrade still holds' : 'this manager upgrade stopped and still holds';
+  const holder = heldByAnEarlierRun
+    ? 'an earlier manager upgrade still holds'
+    : 'this manager upgrade stopped and still holds';
   streams.err(`${CLI_PREFIX} ${holder} ${guardRoot}`);
   let phase: string | null = null;
   try {
@@ -149,7 +163,11 @@ export async function runManagerUpgradeCommand(
     return {
       // Checked before anything is opened, so a mistyped identity costs no connection and no ownership.
       request: captureManagerUpgradeRequest({
-        manager: { sourceCommit: flags.required(MANAGER_COMMIT), sourceDigest: flags.required(MANAGER_DIGEST), imageId: flags.required(IMAGE_ID) },
+        manager: {
+          sourceCommit: flags.required(MANAGER_COMMIT),
+          sourceDigest: flags.required(MANAGER_DIGEST),
+          imageId: flags.required(IMAGE_ID),
+        },
         project: flags.required(PROJECT),
       }),
       settings: {

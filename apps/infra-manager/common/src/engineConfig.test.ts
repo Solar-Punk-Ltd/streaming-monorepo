@@ -9,11 +9,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { OME_SERVICE, SRS_SERVICE } from './constants.js';
-import {
-  placeholdersIn,
-  settingsNotInConfig,
-  unknownPlaceholders,
-} from './engineConfig.js';
+import { placeholdersIn, settingsNotInConfig, unknownPlaceholders } from './engineConfig.js';
 
 const SRS_FILE =
   'listen 1935;\nsrt_server {\n    passphrase PASSPHRASE_PLACEHOLDER;\n}\nvhost __defaultVhost__ {\n    hls {\n        hls_fragment HLS_FRAGMENT_PLACEHOLDER;\n    }\nTRANSCODE_PLACEHOLDER\n}\n';
@@ -34,10 +30,9 @@ describe('placeholdersIn', () => {
 
 describe('unknownPlaceholders', () => {
   it('names the tokens the version does not fill', () => {
-    assert.deepEqual(
-      unknownPlaceholders(SRS_FILE, ['PASSPHRASE_PLACEHOLDER', 'HLS_FRAGMENT_PLACEHOLDER']),
-      ['TRANSCODE_PLACEHOLDER'],
-    );
+    assert.deepEqual(unknownPlaceholders(SRS_FILE, ['PASSPHRASE_PLACEHOLDER', 'HLS_FRAGMENT_PLACEHOLDER']), [
+      'TRANSCODE_PLACEHOLDER',
+    ]);
   });
 
   it('is empty for a file that only uses what is filled', () => {

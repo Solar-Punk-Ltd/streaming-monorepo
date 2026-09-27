@@ -46,7 +46,7 @@ function answering(text: string, headers: Record<string, string> = {}): typeof f
       status: 200,
       headers: new Headers(headers),
       text: async () => text,
-    } as unknown as Response)) as unknown as typeof fetch;
+    }) as unknown as Response) as unknown as typeof fetch;
 }
 
 describe('fetchWithTimeout (OBS-2, client half)', () => {

@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ABR_RUNG_COMPONENTS, BEE_GATEWAY_SERVICE, type ChequebookHealth, CLIENT_SERVICE, DEFAULT_ABR_RUNGS,
-  type StampHealth, stampHealthFrom, ULTRA_LIGHT_NODE_MODE, type UploaderHealthReading } from '@streaming-infra-manager/common';
+import {
+  ABR_RUNG_COMPONENTS,
+  BEE_GATEWAY_SERVICE,
+  type ChequebookHealth,
+  CLIENT_SERVICE,
+  DEFAULT_ABR_RUNGS,
+  type StampHealth,
+  stampHealthFrom,
+  ULTRA_LIGHT_NODE_MODE,
+  type UploaderHealthReading,
+} from '@streaming-infra-manager/common';
 
 import { rungStampHealth } from '../groups/rungStampHealth';
 import type { Profile } from '../types';
@@ -20,12 +29,27 @@ import {
 import { readySummary } from './readySummary';
 
 export const runningProfile: Profile = {
-  name: 'test-stream', kind: 'streamer', port_slot: 1, notes: null, notes_revision: 0,
-  status: 'RUNNING', last_error: null, last_error_at: null, last_full_deploy_commit: null,
-  created_at: '2026-09-08T00:00:00Z', updated_at: '2026-09-08T00:00:00Z',
-  engine_settings: {}, has_private_key: false, has_rpc_endpoint: false, has_srt_passphrase: false, has_engine_config: false, engine_config_error: null,
-  engine_config_state: null, instance_id: '00000000-0000-4000-8000-000000000001',
-  engine_config_revision: 0, intent_revision: 0,
+  name: 'test-stream',
+  kind: 'streamer',
+  port_slot: 1,
+  notes: null,
+  notes_revision: 0,
+  status: 'RUNNING',
+  last_error: null,
+  last_error_at: null,
+  last_full_deploy_commit: null,
+  created_at: '2026-09-08T00:00:00Z',
+  updated_at: '2026-09-08T00:00:00Z',
+  engine_settings: {},
+  has_private_key: false,
+  has_rpc_endpoint: false,
+  has_srt_passphrase: false,
+  has_engine_config: false,
+  engine_config_error: null,
+  engine_config_state: null,
+  instance_id: '00000000-0000-4000-8000-000000000001',
+  engine_config_revision: 0,
+  intent_revision: 0,
   containers: [
     { service: 'srs', ports: {}, buildId: null, buildCommit: null },
     { service: 'bee-uploader', ports: {}, buildId: null, buildCommit: null },
@@ -34,11 +58,16 @@ export const runningProfile: Profile = {
 
 function input(overrides: Partial<ChecklistInput> = {}): ChecklistInput {
   return {
-    profile: runningProfile, wallet: { nativeTokenBalance: '1', bzzBalance: '1' },
+    profile: runningProfile,
+    wallet: { nativeTokenBalance: '1', bzzBalance: '1' },
     chequebook: { state: 'empty', availablePlur: 0n, floorPlur: 5000000000000000n },
-    nodeAddress: '0x123', stampHealth: stampHealthFrom(null, null),
-    currentStamp: null, publishUrl: 'srt://example.test:1234', clientUrl: null,
-    streamers: [], ...overrides,
+    nodeAddress: '0x123',
+    stampHealth: stampHealthFrom(null, null),
+    currentStamp: null,
+    publishUrl: 'srt://example.test:1234',
+    clientUrl: null,
+    streamers: [],
+    ...overrides,
   };
 }
 
@@ -57,7 +86,10 @@ describe('one readiness blocker', () => {
     assert.equal(first?.title, 'Bee node funded');
     assert.equal(readinessFor(state).label, first?.problem);
     assert.equal(first?.action?.kind, 'fill-chequebook');
-    assert.deepEqual(steps.filter((step) => step.action?.primary), [first]);
+    assert.deepEqual(
+      steps.filter((step) => step.action?.primary),
+      [first],
+    );
     assert.match(readySummary(state).title, /chequebook empty/i);
   });
 
@@ -132,13 +164,20 @@ describe('one readiness blocker', () => {
       chequebook: { state: 'ok', availablePlur: 10000000000000000n, floorPlur: 5000000000000000n },
       nodeReadiness: { state: 'stale', label: 'Bee observation stale', detail: 'Previous check is stale.' },
     });
-    const uploader = buildChecklist(state).find(step => step.title === 'Uploader running');
+    const uploader = buildChecklist(state).find((step) => step.title === 'Uploader running');
     assert.equal(uploader?.action, undefined);
     assert.match(uploader?.detail ?? '', /earlier readiness checks/i);
   });
 
   it('does not call a recorded stamp and running containers ready or playable', () => {
-    const profile = { ...runningProfile, stamp_id: 'batch', containers: [...runningProfile.containers, { service: 'stream-uploader', ports: {}, buildId: null, buildCommit: null }] };
+    const profile = {
+      ...runningProfile,
+      stamp_id: 'batch',
+      containers: [
+        ...runningProfile.containers,
+        { service: 'stream-uploader', ports: {}, buildId: null, buildCommit: null },
+      ],
+    };
     assert.doesNotMatch(readinessOf(profile).label, /ready|watchable|playable/i);
     const viewer = { ...profile, kind: 'viewer' as const, components: ['client'], feed_owner: '0x123' };
     const summary = readySummary(input({ profile: viewer, clientUrl: 'http://example.test' }));
@@ -147,7 +186,9 @@ describe('one readiness blocker', () => {
   });
 
   it('offers the stamp as the next primary action after verified funding', () => {
-    const state = input({ chequebook: { state: 'ok', availablePlur: 10000000000000000n, floorPlur: 5000000000000000n } });
+    const state = input({
+      chequebook: { state: 'ok', availablePlur: 10000000000000000n, floorPlur: 5000000000000000n },
+    });
     const first = firstBlocker(buildChecklist(state));
     assert.equal(first?.action?.kind, 'buy-stamp');
     assert.equal(readinessFor(state).label, 'Needs a stamp');
@@ -169,7 +210,11 @@ describe('a list that never reads a wallet', () => {
   });
 
   it('calls funding checked once the node reports a chequebook it can pay from', () => {
-    const paying: ChequebookHealth = { state: 'ok', availablePlur: 10_000_000_000_000_000n, floorPlur: 5_000_000_000_000_000n };
+    const paying: ChequebookHealth = {
+      state: 'ok',
+      availablePlur: 10_000_000_000_000_000n,
+      floorPlur: 5_000_000_000_000_000n,
+    };
 
     assert.equal(fundingStepOf(stamped, paying)?.state, 'ok');
     assert.doesNotMatch(readinessOf(stamped, undefined, paying).label, /funding|chequebook/i);
@@ -184,7 +229,9 @@ describe('a list that never reads a wallet', () => {
 
   it('counts a node that answered the chequebook read with a failure, in its own words', () => {
     const unread: ChequebookHealth = {
-      state: 'unknown', availablePlur: null, floorPlur: 5_000_000_000_000_000n,
+      state: 'unknown',
+      availablePlur: null,
+      floorPlur: 5_000_000_000_000_000n,
       failure: { reason: 'timeout', elapsedMs: 3_012 },
     };
 
@@ -193,7 +240,11 @@ describe('a list that never reads a wallet', () => {
   });
 
   it('still asks for a stamp a running node has never had', () => {
-    const paying: ChequebookHealth = { state: 'ok', availablePlur: 10_000_000_000_000_000n, floorPlur: 5_000_000_000_000_000n };
+    const paying: ChequebookHealth = {
+      state: 'ok',
+      availablePlur: 10_000_000_000_000_000n,
+      floorPlur: 5_000_000_000_000_000n,
+    };
     const unstamped: Profile = { ...runningProfile, stamp_id: null };
 
     assert.equal(readinessOf(unstamped, undefined, paying).label, NEEDS_A_STAMP);
@@ -201,14 +252,21 @@ describe('a list that never reads a wallet', () => {
   });
 
   it('does not count a node for a stamp reading nobody took', () => {
-    const paying: ChequebookHealth = { state: 'ok', availablePlur: 10_000_000_000_000_000n, floorPlur: 5_000_000_000_000_000n };
+    const paying: ChequebookHealth = {
+      state: 'ok',
+      availablePlur: 10_000_000_000_000_000n,
+      floorPlur: 5_000_000_000_000_000n,
+    };
 
     assert.equal(readinessOf(stamped, undefined, paying).label, 'Stamp not checked');
     assert.equal(needsAttention(stamped, undefined, paying), false);
   });
 
   it('keeps funding not checked for the page that did ask the node', () => {
-    assert.equal(readinessFor(input({ profile: stamped, wallet: null, chequebook: null })).label, 'Funding not checked');
+    assert.equal(
+      readinessFor(input({ profile: stamped, wallet: null, chequebook: null })).label,
+      'Funding not checked',
+    );
   });
 });
 
@@ -220,10 +278,21 @@ describe('a pool member judged by the readings its page already holds', () => {
     containers: [{ service: 'bee-uploader', ports: {}, buildId: null, buildCommit: null }],
     stamp_id: `0x${'a'.repeat(64)}`,
   };
-  const paying: ChequebookHealth = { state: 'ok', availablePlur: 10_000_000_000_000_000n, floorPlur: 5_000_000_000_000_000n };
+  const paying: ChequebookHealth = {
+    state: 'ok',
+    availablePlur: 10_000_000_000_000_000n,
+    floorPlur: 5_000_000_000_000_000n,
+  };
 
   it('calls a funded rung whose batch the manager reports live ready', () => {
-    const live: StampHealth = { state: 'active', ok: true, dead: false, ttl: 500_000, fillRatio: null, immutable: null };
+    const live: StampHealth = {
+      state: 'active',
+      ok: true,
+      dead: false,
+      ttl: 500_000,
+      fillRatio: null,
+      immutable: null,
+    };
 
     assert.equal(readinessOf(member, live, paying).label, 'Node prerequisites checked');
     assert.equal(needsAttention(member, live, paying), false);
@@ -251,7 +320,11 @@ describe('a row that reads the wallet itself', () => {
     stamp_id: `0x${'a'.repeat(64)}`,
   };
   const live: StampHealth = { state: 'active', ok: true, dead: false, ttl: 500_000, fillRatio: null, immutable: null };
-  const paying: ChequebookHealth = { state: 'ok', availablePlur: 10_000_000_000_000_000n, floorPlur: 5_000_000_000_000_000n };
+  const paying: ChequebookHealth = {
+    state: 'ok',
+    availablePlur: 10_000_000_000_000_000n,
+    floorPlur: 5_000_000_000_000_000n,
+  };
 
   it('judges as a list does while the wallet reading has not arrived', () => {
     assert.equal(readinessOf(member, live, paying, { wallet: undefined }).label, 'Node prerequisites checked');
@@ -261,7 +334,10 @@ describe('a row that reads the wallet itself', () => {
     const spent = { nativeTokenBalance: '1000000000000000', bzzBalance: '0' };
 
     assert.equal(readinessOf(member, live, paying, { wallet: spent }).label, 'Node needs funding');
-    assert.equal(readinessOf(member, live, paying, { wallet: { nativeTokenBalance: '1', bzzBalance: '1' } }).label, 'Node prerequisites checked');
+    assert.equal(
+      readinessOf(member, live, paying, { wallet: { nativeTokenBalance: '1', bzzBalance: '1' } }).label,
+      'Node prerequisites checked',
+    );
   });
 
   it('keeps funding not checked for a row whose node did not answer', () => {
@@ -277,7 +353,11 @@ describe('a standalone Bee node a list polled for its batch', () => {
     containers: [{ service: 'bee-uploader', ports: {}, buildId: null, buildCommit: null }],
     stamp_id: `0x${'a'.repeat(64)}`,
   };
-  const paying: ChequebookHealth = { state: 'ok', availablePlur: 10_000_000_000_000_000n, floorPlur: 5_000_000_000_000_000n };
+  const paying: ChequebookHealth = {
+    state: 'ok',
+    availablePlur: 10_000_000_000_000_000n,
+    floorPlur: 5_000_000_000_000_000n,
+  };
 
   it('warns and counts once the node says the batch has run out', () => {
     const expired: StampHealth = { state: 'expired', ok: false, dead: true, ttl: 0, fillRatio: null, immutable: null };
@@ -301,7 +381,7 @@ describe('the readiness of a node that reaches no chain', () => {
     containers: [
       { service: CLIENT_SERVICE, ports: {}, buildId: null, buildCommit: null },
       { service: BEE_GATEWAY_SERVICE, ports: {}, buildId: null, buildCommit: null },
-      ],
+    ],
     feed_owner: `0x${'1'.repeat(40)}`,
   };
 
@@ -357,7 +437,11 @@ describe('the overview’s Needs attention, from the readings it holds', () => {
     containers: [{ service: 'bee-uploader', ports: {}, buildId: null, buildCommit: null }],
     stamp_id: `0x${'a'.repeat(64)}`,
   };
-  const paying: ChequebookHealth = { state: 'ok', availablePlur: 10_000_000_000_000_000n, floorPlur: 5_000_000_000_000_000n };
+  const paying: ChequebookHealth = {
+    state: 'ok',
+    availablePlur: 10_000_000_000_000_000n,
+    floorPlur: 5_000_000_000_000_000n,
+  };
 
   it('lists an uploader that reports a problem, as the Streams pill names it', () => {
     const refused: UploaderHealthReading = { state: 'unhealthy', reasons: ['postage_refused'] };
@@ -371,12 +455,17 @@ describe('the overview’s Needs attention, from the readings it holds', () => {
 
   it('lists an uploader waiting for its node, and one whose health route did not answer', () => {
     const waiting: UploaderHealthReading = {
-      state: 'waiting_for_node', reasons: ['node_unavailable'], node: { url: 'http://10.200.0.1:10015', attempts: 3 },
+      state: 'waiting_for_node',
+      reasons: ['node_unavailable'],
+      node: { url: 'http://10.200.0.1:10015', attempts: 3 },
     };
     const silent: UploaderHealthReading = { state: 'unreachable', reasons: [] };
 
     assert.equal(needsAttention(abrUploader, undefined, null, waiting), true);
-    assert.equal(readinessOf(abrUploader, undefined, null, { uploaderHealth: waiting }).label, UPLOADER_WAITING_FOR_NODE);
+    assert.equal(
+      readinessOf(abrUploader, undefined, null, { uploaderHealth: waiting }).label,
+      UPLOADER_WAITING_FOR_NODE,
+    );
     assert.equal(needsAttention(abrUploader, undefined, null, silent), true);
     assert.equal(readinessOf(abrUploader, undefined, null, { uploaderHealth: silent }).label, UPLOADER_NOT_ANSWERING);
   });
@@ -387,13 +476,29 @@ describe('the overview’s Needs attention, from the readings it holds', () => {
   });
 
   it('lists a rung whose node reports its batch full, from either reading the page holds', () => {
-    const fromNode = stampHealthFrom(rung.stamp_id, [{
-      batchID: 'a'.repeat(64), usable: true, batchTTL: 184_320,
-      depth: 23, bucketDepth: 16, utilization: 128, immutableFlag: true,
-    }]);
+    const fromNode = stampHealthFrom(rung.stamp_id, [
+      {
+        batchID: 'a'.repeat(64),
+        usable: true,
+        batchTTL: 184_320,
+        depth: 23,
+        bucketDepth: 16,
+        utilization: 128,
+        immutableFlag: true,
+      },
+    ]);
     const fromPool = rungStampHealth(
-      { rung: '1080p', name: rung.name, status: 'RUNNING', url: 'http://10.200.0.1:10045',
-        stampId: rung.stamp_id!, stampState: 'full', stampTtl: 184_320, stampFillRatio: 1, stampImmutable: true },
+      {
+        rung: '1080p',
+        name: rung.name,
+        status: 'RUNNING',
+        url: 'http://10.200.0.1:10045',
+        stampId: rung.stamp_id!,
+        stampState: 'full',
+        stampTtl: 184_320,
+        stampFillRatio: 1,
+        stampImmutable: true,
+      },
       rung.stamp_id,
     );
 

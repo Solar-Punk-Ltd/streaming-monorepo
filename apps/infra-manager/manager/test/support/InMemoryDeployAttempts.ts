@@ -1,8 +1,4 @@
-import {
-  type AttemptOutcome,
-  type DeployAttempt,
-  whyAdmissionIsRefused,
-} from '../../src/domain/deployAttempts.js';
+import { type AttemptOutcome, type DeployAttempt, whyAdmissionIsRefused } from '../../src/domain/deployAttempts.js';
 import {
   containerIdsByService,
   type DaemonObserver,
@@ -31,9 +27,15 @@ export class InMemoryDeployAttempts implements DeployAttemptRepository {
     if (attempt.snapshotToken) {
       const current = this.snapshotTokenFor(attempt.daemonId, attempt.project);
       const expected = attempt.snapshotToken;
-      if (expected.daemonId !== current.daemonId || expected.project !== current.project ||
-          expected.latestAttemptId !== current.latestAttemptId) {
-        throw new DeployAttemptRefusedError(attempt.project, 'Deploy attempt history changed while the container snapshot was read.');
+      if (
+        expected.daemonId !== current.daemonId ||
+        expected.project !== current.project ||
+        expected.latestAttemptId !== current.latestAttemptId
+      ) {
+        throw new DeployAttemptRefusedError(
+          attempt.project,
+          'Deploy attempt history changed while the container snapshot was read.',
+        );
       }
     }
     const refusal = whyAdmissionIsRefused(attempt, this.rows);
@@ -59,11 +61,11 @@ export class InMemoryDeployAttempts implements DeployAttemptRepository {
   }
 
   private snapshotTokenFor(daemonId: string, project: string): AttemptSnapshotToken {
-    const history = this.rows.filter(row => row.daemonId === daemonId && row.project === project);
-    if (history.some(row => row.state !== 'released')) {
+    const history = this.rows.filter((row) => row.daemonId === daemonId && row.project === project);
+    if (history.some((row) => row.state !== 'released')) {
       throw new DeployAttemptRefusedError(project, 'An unresolved deploy attempt prevents a container snapshot.');
     }
-    const latest = history.reduce<number | null>((id, row) => id === null || row.id > id ? row.id : id, null);
+    const latest = history.reduce<number | null>((id, row) => (id === null || row.id > id ? row.id : id), null);
     return { daemonId, project, latestAttemptId: latest === null ? null : String(latest) };
   }
 
@@ -119,7 +121,6 @@ export class FakeDaemon implements DaemonObserver {
 
   readonly containers = new Map<string, Map<string, ObservedContainer[]>>();
 
-
   async daemonId(_target?: string): Promise<string> {
     return this.id;
   }
@@ -145,7 +146,10 @@ export class FakeDaemon implements DaemonObserver {
   /** Containers a test did not give a state of its own are up, which is the ordinary case. */
   set(project: string, service: string, ids: string[], state = 'running'): void {
     const byService = this.containers.get(project) ?? new Map<string, ObservedContainer[]>();
-    byService.set(service, ids.map((id) => ({ id, state })));
+    byService.set(
+      service,
+      ids.map((id) => ({ id, state })),
+    );
     this.containers.set(project, byService);
   }
 }

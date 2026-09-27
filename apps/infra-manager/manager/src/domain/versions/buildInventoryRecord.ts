@@ -96,21 +96,32 @@ function agreesWithStamp(entry: { mode: number; type: OwnedTreeEntry['type'] }, 
  */
 export function parseBuildInventoryRecord(bytes: Buffer, buildId: string): BuildInventoryRecord | null {
   let raw: unknown;
-  try { raw = JSON.parse(bytes.toString('utf8')); } catch { return null; }
+  try {
+    raw = JSON.parse(bytes.toString('utf8'));
+  } catch {
+    return null;
+  }
   if (typeof raw !== 'object' || raw === null) return null;
   const record = raw as Record<string, unknown>;
   const { format, entries, rootMode, durableStamps, digest } = record;
-  if (format !== RECORD_FORMAT || record.buildId !== buildId || typeof digest !== 'string' ||
-      !Number.isInteger(rootMode) || !Array.isArray(entries) || !entries.every(isOwnedTreeEntry) ||
-      typeof durableStamps !== 'object' || durableStamps === null) {
+  if (
+    format !== RECORD_FORMAT ||
+    record.buildId !== buildId ||
+    typeof digest !== 'string' ||
+    !Number.isInteger(rootMode) ||
+    !Array.isArray(entries) ||
+    !entries.every(isOwnedTreeEntry) ||
+    typeof durableStamps !== 'object' ||
+    durableStamps === null
+  ) {
     return null;
   }
   const unchecked = durableStamps as Record<string, unknown>;
-  if (!Object.values(unchecked).every(stamp => typeof stamp === 'string')) return null;
+  if (!Object.values(unchecked).every((stamp) => typeof stamp === 'string')) return null;
   const stamped = unchecked as Record<string, string>;
   if (Object.keys(stamped).length !== entries.length + 1) return null;
   if (!agreesWithStamp({ mode: rootMode as number, type: 'directory' }, stamped[''])) return null;
-  if (!entries.every(entry => agreesWithStamp(entry, stamped[entry.path]))) return null;
+  if (!entries.every((entry) => agreesWithStamp(entry, stamped[entry.path]))) return null;
   const parsed: BuildInventoryRecord = {
     format: RECORD_FORMAT,
     buildId,
@@ -146,9 +157,12 @@ async function recordBytes(path: string): Promise<Buffer | null> {
   } catch (err) {
     const code = errnoOf(err);
     if (code === null) throw err;
-    if (code !== 'ENOENT') logger.warn(`[Executions] the inventory record ${path} could not be read (${code}). Its build is read again.`);
+    if (code !== 'ENOENT')
+      logger.warn(`[Executions] the inventory record ${path} could not be read (${code}). Its build is read again.`);
     return null;
-  } finally { await handle?.close(); }
+  } finally {
+    await handle?.close();
+  }
 }
 
 export async function readBuildInventoryRecord(buildRoot: string): Promise<BuildInventoryRecord | null> {
@@ -209,8 +223,10 @@ export async function forgetRecordsOfGoneBuilds(buildsParent: string): Promise<v
   for (const name of await readdir(buildsParent)) {
     const build = buildOfRecordName(name);
     if (build === null) continue;
-    const gone = await lstat(join(buildsParent, build))
-      .then(info => !info.isDirectory(), (err: unknown) => GONE.includes(errnoOf(err) ?? ''));
+    const gone = await lstat(join(buildsParent, build)).then(
+      (info) => !info.isDirectory(),
+      (err: unknown) => GONE.includes(errnoOf(err) ?? ''),
+    );
     if (gone) await unlink(join(buildsParent, name)).catch(() => undefined);
   }
 }
@@ -238,7 +254,7 @@ export async function forgetRecordsOfGoneBuilds(buildsParent: string): Promise<v
 async function takeBuildInventory(buildRoot: string): Promise<BuildInventory> {
   const started = Date.now();
   const existing = await readBuildInventoryRecord(buildRoot);
-  if (existing && existing.durableStamps[''] === await durablePathStamp(buildRoot)) {
+  if (existing && existing.durableStamps[''] === (await durablePathStamp(buildRoot))) {
     return { record: existing, hashed: false, tookMs: Date.now() - started };
   }
   const taken = await inventorySharedOwnedTree(buildRoot);
@@ -252,13 +268,17 @@ async function takeBuildInventory(buildRoot: string): Promise<BuildInventory> {
   };
   const buildsParent = dirname(buildRoot);
   if (!stampsEveryPath(record)) {
-    logger.warn(`[Executions] ${buildRoot} holds a path no record can stamp, so nothing is recorded for it and every deploy reads it again.`);
+    logger.warn(
+      `[Executions] ${buildRoot} holds a path no record can stamp, so nothing is recorded for it and every deploy reads it again.`,
+    );
   } else {
     try {
       await assertOwnedDirectory(buildsParent);
       await writeBuildInventoryRecord(buildRoot, record);
     } catch (err) {
-      logger.warn(`[Executions] the inventory of ${buildRoot} was not recorded: ${getErrorMessage(err)}. The next copy of this build reads it again.`);
+      logger.warn(
+        `[Executions] the inventory of ${buildRoot} was not recorded: ${getErrorMessage(err)}. The next copy of this build reads it again.`,
+      );
     }
   }
   try {

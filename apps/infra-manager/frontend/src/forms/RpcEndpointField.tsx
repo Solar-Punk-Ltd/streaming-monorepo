@@ -91,7 +91,7 @@ export function RpcEndpointField({
                   htmlInput: {
                     style: { fontFamily: MONO_STACK },
                     'aria-label': 'Custom RPC endpoint',
-                  }
+                  },
                 }}
               />
             ),

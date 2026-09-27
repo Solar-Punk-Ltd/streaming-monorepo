@@ -23,19 +23,19 @@ OvenMediaEngine's own loader turned out to be lenient. Checked on 2026-09-08 aga
 
 `latest` resolved on 2026-09-08 to `v0.21.0`, manifest list `sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6` (amd64 `sha256:c77bb2b090209b73b35f355a4dd63d624f3e97b29b9de7a69dda5c49e0525240`, arm64 `sha256:1323385441f031fdfbbb74bc2ea610586ca4c73699999afadbd6a9702d86bcd1`), pushed 2026-08-13. Run locally on arm64 with this stack's template and entrypoint, no network, bounded to 25 s each:
 
-| File | Outcome |
-| --- | --- |
-| The template as it is, the healthy control | running after 29 s, "All modules are initialized successfully", SRT listening |
-| A second root element appended | running after 29 s, the engine reads the first root and says nothing |
-| An entity XML does not define in the server name | running after 29 s, the engine says nothing |
-| The root's version attribute without quotes | exit 1 after 3 s, "An error occurred while load config: [Config] Could not read the file" |
+| File                                             | Outcome                                                                                   |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| The template as it is, the healthy control       | running after 29 s, "All modules are initialized successfully", SRT listening             |
+| A second root element appended                   | running after 29 s, the engine reads the first root and says nothing                      |
+| An entity XML does not define in the server name | running after 29 s, the engine says nothing                                               |
+| The root's version attribute without quotes      | exit 1 after 3 s, "An error occurred while load config: [Config] Could not read the file" |
 
 The healthy control also passed the integration gate above, with two segments in the media playlist, a signed opening call and a closing call for `video/gate`.
 
 The stack change is yours to commit in swarm-hls-stream, `deploy/docker-compose.yml` line 165:
 
 ```yaml
-    image: airensoft/ovenmediaengine:v0.21.0@sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6
+image: airensoft/ovenmediaengine:v0.21.0@sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6
 ```
 
 Nothing was pulled or run on the host.
@@ -63,25 +63,25 @@ Commits 5 to 9 leave the manager's typecheck red on two of T01's test files, who
 
 `manager/test/unit/omeContract.test.ts`, seventeen tests over the stack's template copied into `test/support/omeTemplate.ts`:
 
-| # | Guarantee (acceptance line) | On the test commit | After |
-| --- | --- | --- | --- |
-| 1 | The template keeps its own contract | fail | pass |
-| 2 | Applications and the blocks inside one in another order keep it | fail | pass |
-| 3 | More than the template has is allowed | fail | pass |
-| 4 | Comments and CDATA are read through | fail | pass |
-| 5 | A changed callback route with every placeholder in place is refused, naming ControlServerUrl | fail | pass |
-| 6 | The secret placeholder made a literal is refused | fail | pass |
-| 7 | A removed bind port is refused, naming it | fail | pass |
-| 8 | Admission enabled for another provider is refused | fail | pass |
-| 9 | A renamed application is refused, naming video | fail | pass |
-| 10 | An application without the template's provider is refused | fail | pass |
-| 11 | A changed stream name mapping is refused | fail | pass |
-| 12 | A file with no admission element is refused | fail | pass |
-| 13 | The segment duration as a literal in range is accepted, and T11 reports it as controlled by the file | fail | pass |
-| 14 | A literal outside the range is refused, naming the range | fail | pass |
-| 15 | A count that is not a whole number is refused | fail | pass |
-| 16 | A literal that is not a number is refused | fail | pass |
-| 17 | The setting removed from one application only is refused | fail | pass |
+| #   | Guarantee (acceptance line)                                                                          | On the test commit | After |
+| --- | ---------------------------------------------------------------------------------------------------- | ------------------ | ----- |
+| 1   | The template keeps its own contract                                                                  | fail               | pass  |
+| 2   | Applications and the blocks inside one in another order keep it                                      | fail               | pass  |
+| 3   | More than the template has is allowed                                                                | fail               | pass  |
+| 4   | Comments and CDATA are read through                                                                  | fail               | pass  |
+| 5   | A changed callback route with every placeholder in place is refused, naming ControlServerUrl         | fail               | pass  |
+| 6   | The secret placeholder made a literal is refused                                                     | fail               | pass  |
+| 7   | A removed bind port is refused, naming it                                                            | fail               | pass  |
+| 8   | Admission enabled for another provider is refused                                                    | fail               | pass  |
+| 9   | A renamed application is refused, naming video                                                       | fail               | pass  |
+| 10  | An application without the template's provider is refused                                            | fail               | pass  |
+| 11  | A changed stream name mapping is refused                                                             | fail               | pass  |
+| 12  | A file with no admission element is refused                                                          | fail               | pass  |
+| 13  | The segment duration as a literal in range is accepted, and T11 reports it as controlled by the file | fail               | pass  |
+| 14  | A literal outside the range is refused, naming the range                                             | fail               | pass  |
+| 15  | A count that is not a whole number is refused                                                        | fail               | pass  |
+| 16  | A literal that is not a number is refused                                                            | fail               | pass  |
+| 17  | The setting removed from one application only is refused                                             | fail               | pass  |
 
 `manager/test/unit/engineConfigCheck.test.ts`, the OvenMediaEngine block: the template passes without a command runner, a second root, an undefined entity and an unquoted attribute are refused with their line, a mismatched closing tag names the element and its line, an element left open is named, comments and CDATA and the declaration pass, a bare `<` says how to write one, a changed admission route is refused before anything runs, and the literalised segment duration passes. Five failed on the test commit.
 

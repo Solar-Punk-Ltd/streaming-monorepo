@@ -2,21 +2,27 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
-  assembleEngineSettingObservations, effectiveEngineDefaults, engineSettingsFieldsFor, environmentSettingReadings,
+  assembleEngineSettingObservations,
+  effectiveEngineDefaults,
+  engineSettingsFieldsFor,
+  environmentSettingReadings,
   type EngineSettings,
 } from '@streaming-infra-manager/common';
 import { srsSettingReadings, srsTemplateReadings } from '../../src/domain/engineConfig/srsSettingReadings.js';
 
-const template = 'vhost __defaultVhost__ { hls { hls_fragment HLS_FRAGMENT_PLACEHOLDER; hls_window HLS_WINDOW_PLACEHOLDER; }\nTRANSCODE_PLACEHOLDER\n}\nABR_VHOST_PLACEHOLDER\n';
+const template =
+  'vhost __defaultVhost__ { hls { hls_fragment HLS_FRAGMENT_PLACEHOLDER; hls_window HLS_WINDOW_PLACEHOLDER; }\nTRANSCODE_PLACEHOLDER\n}\nABR_VHOST_PLACEHOLDER\n';
 const hls = (fragment = '4', window = '30') => `hls { hls_fragment ${fragment}; hls_window ${window}; }`;
 const engine = (name: string, codec = 'aac', bitrate: string | null = '128', extra = '') =>
   `engine ${name} { vfps 25; vpreset fast; vprofile main; vthreads 2; acodec ${codec}; ${bitrate === null ? '' : `abitrate ${bitrate};`} ${extra} }`;
-const config = (encoders = '', hlsText = hls()) => `vhost main { ${hlsText} ${encoders ? `transcode { ${encoders} }` : ''} }`;
+const config = (encoders = '', hlsText = hls()) =>
+  `vhost main { ${hlsText} ${encoders ? `transcode { ${encoders} }` : ''} }`;
 
 function observe(file: string | null, abr = true, selectedTemplate: string | null = template) {
   const fields = engineSettingsFieldsFor('srs', { abr });
   return assembleEngineSettingObservations({
-    fields, settings: { HLS_FRAGMENT: '7', HLS_WINDOW: '45', ABR_FPS: '30' },
+    fields,
+    settings: { HLS_FRAGMENT: '7', HLS_WINDOW: '45', ABR_FPS: '30' },
     defaults: effectiveEngineDefaults('srs', { HLS_FRAGMENT: '6' }),
     readings: srsSettingReadings(selectedTemplate, file, fields, { abr }),
   });
@@ -63,8 +69,14 @@ describe('bounded SRS config observations', () => {
   it('reads every explicit encoder scalar and refuses to derive VBV from arithmetic', () => {
     const result = observe(config(engine('low', 'aac', '128', 'vparams { maxrate 700k; bufsize 1400k; }')));
     assert.deepEqual(result.effective, {
-      HLS_FRAGMENT: '4', HLS_WINDOW: '30', ABR_FPS: '25', ABR_PRESET: 'fast', ABR_PROFILE: 'main',
-      ABR_THREADS: '2', ABR_ACODEC: 'aac', ABR_AUDIO_BITRATE: '128',
+      HLS_FRAGMENT: '4',
+      HLS_WINDOW: '30',
+      ABR_FPS: '25',
+      ABR_PRESET: 'fast',
+      ABR_PROFILE: 'main',
+      ABR_THREADS: '2',
+      ABR_ACODEC: 'aac',
+      ABR_AUDIO_BITRATE: '128',
     });
     assert.equal(reason(result, 'ABR_VBV_SECONDS'), 'unsupported-syntax');
   });
@@ -122,7 +134,10 @@ describe('bounded SRS config observations', () => {
     ['transcode inside HLS', config(engine('low'), 'hls { hls_fragment 4; hls_window 30;\nTRANSCODE_PLACEHOLDER\n}')],
     ['transcode at root', `${config(engine('low'))}\nTRANSCODE_PLACEHOLDER\n`],
     ['vhost inside a vhost', config(engine('low')).replace('transcode {', '\nABR_VHOST_PLACEHOLDER\ntranscode {')],
-    ['transcode inside a nested vhost', `${config(engine('low'))}\nvhost outer { vhost inner {\nTRANSCODE_PLACEHOLDER\n} }`],
+    [
+      'transcode inside a nested vhost',
+      `${config(engine('low'))}\nvhost outer { vhost inner {\nTRANSCODE_PLACEHOLDER\n} }`,
+    ],
   ]) {
     it(`keeps ${placement} unverified when generation is enabled`, () => {
       const result = observe(file!);
@@ -137,7 +152,9 @@ describe('bounded SRS config observations', () => {
   }
 
   it('scopes include uncertainty and never follows include paths', () => {
-    const hlsInclude = observe(config(engine('low'), 'hls { hls_fragment 4; hls_window 30; include unavailable.conf; }'));
+    const hlsInclude = observe(
+      config(engine('low'), 'hls { hls_fragment 4; hls_window 30; include unavailable.conf; }'),
+    );
     assert.equal(hlsInclude.effective.HLS_FRAGMENT, undefined);
     assert.equal(hlsInclude.effective.ABR_FPS, '25');
     const encoderInclude = observe(config(engine('low', 'aac', '128', 'include unavailable.conf;')));
@@ -147,7 +164,13 @@ describe('bounded SRS config observations', () => {
   });
 
   it('does not invent values from malformed, oversized, deeply nested or absent config', () => {
-    for (const file of [null, 'vhost main {', 'vhost main { hls { hls_fragment "4; } }', 'x '.repeat(70_000), 'x {'.repeat(70) + '}'.repeat(70)]) {
+    for (const file of [
+      null,
+      'vhost main {',
+      'vhost main { hls { hls_fragment "4; } }',
+      'x '.repeat(70_000),
+      'x {'.repeat(70) + '}'.repeat(70),
+    ]) {
       assert.deepEqual(observe(file).effective, {});
     }
   });
@@ -209,14 +232,22 @@ describe("the SRT latency in a config file of the deployment's own", () => {
     const abr = options.abr ?? false;
     const fields = engineSettingsFieldsFor('srs', { abr });
     return assembleEngineSettingObservations({
-      fields, settings: { SRT_LATENCY: '3000' },
+      fields,
+      settings: { SRT_LATENCY: '3000' },
       defaults: effectiveEngineDefaults('srs'),
-      readings: srsSettingReadings(options.selectedTemplate === undefined ? fixedTemplate : options.selectedTemplate, file, fields, { abr }),
+      readings: srsSettingReadings(
+        options.selectedTemplate === undefined ? fixedTemplate : options.selectedTemplate,
+        file,
+        fields,
+        { abr },
+      ),
     });
   }
 
   it('reads the deployment value where the file keeps the recvlatency placeholder', () => {
-    const result = observeLatency(`${srtServer('latency SRT_LATENCY_PLACEHOLDER;', 'recvlatency SRT_LATENCY_PLACEHOLDER;')}${config()}`);
+    const result = observeLatency(
+      `${srtServer('latency SRT_LATENCY_PLACEHOLDER;', 'recvlatency SRT_LATENCY_PLACEHOLDER;')}${config()}`,
+    );
 
     assert.equal(result.effective.SRT_LATENCY, '3000');
     assert.equal(result.observations.SRT_LATENCY.source, 'deployment');
@@ -235,9 +266,17 @@ describe("the SRT latency in a config file of the deployment's own", () => {
     for (const latency of ['latency SRT_LATENCY_PLACEHOLDER;', 'latency 5000;']) {
       const result = observeLatency(`${srtServer(latency)}${config()}`);
 
-      assert.deepEqual(result.observations.SRT_LATENCY, {
-        status: 'known', source: 'built-in', value: '120', environment: 'none', reason: 'latency-without-recvlatency',
-      }, latency);
+      assert.deepEqual(
+        result.observations.SRT_LATENCY,
+        {
+          status: 'known',
+          source: 'built-in',
+          value: '120',
+          environment: 'none',
+          reason: 'latency-without-recvlatency',
+        },
+        latency,
+      );
       assert.equal(result.effective.SRT_LATENCY, '120');
       assert.ok(result.notInConfig.includes('SRT_LATENCY'), 'the override does not reach the wait on ingest');
     }
@@ -247,11 +286,15 @@ describe("the SRT latency in a config file of the deployment's own", () => {
     const result = observeLatency(`${srtServer('tlpktdrop on;')}${config()}`);
 
     assert.deepEqual(result.observations.SRT_LATENCY, {
-      status: 'known', source: 'built-in', value: '120', environment: 'none', reason: 'no-recvlatency',
+      status: 'known',
+      source: 'built-in',
+      value: '120',
+      environment: 'none',
+      reason: 'no-recvlatency',
     });
   });
 
-  it("reads a copy of the v3.1 template as SRS waiting its own 120, because that template fills only latency", () => {
+  it('reads a copy of the v3.1 template as SRS waiting its own 120, because that template fills only latency', () => {
     const result = observeLatency(v31Template, { selectedTemplate: v31Template });
 
     assert.equal(result.effective.SRT_LATENCY, '120');
@@ -273,9 +316,17 @@ describe("the SRT latency in a config file of the deployment's own", () => {
     ]) {
       const result = observeLatency(`${srtServer(line)}${config()}`);
 
-      assert.deepEqual(result.observations.SRT_LATENCY, {
-        status: 'unknown', source: 'unverified', value: null, reason: 'unsupported-syntax', environment: 'unknown',
-      }, line);
+      assert.deepEqual(
+        result.observations.SRT_LATENCY,
+        {
+          status: 'unknown',
+          source: 'unverified',
+          value: null,
+          reason: 'unsupported-syntax',
+          environment: 'unknown',
+        },
+        line,
+      );
     }
   });
 
@@ -304,7 +355,10 @@ describe("the SRT latency in a config file of the deployment's own", () => {
     const file = `${srtServer('recvlatency SRT_LATENCY_PLACEHOLDER;')}${config()}`;
 
     assert.equal(reason(observeLatency(file, { selectedTemplate: null }), 'SRT_LATENCY'), 'metadata-unavailable');
-    assert.equal(reason(observeLatency(file, { selectedTemplate: `srt_server { enabled on; }\n${template}` }), 'SRT_LATENCY'), 'metadata-unavailable');
+    assert.equal(
+      reason(observeLatency(file, { selectedTemplate: `srt_server { enabled on; }\n${template}` }), 'SRT_LATENCY'),
+      'metadata-unavailable',
+    );
   });
 });
 
@@ -339,9 +393,13 @@ describe('the SRT latency of a deployment that runs its version template', () =>
 
   it("reports SRS's own 120 for a template that never takes the setting, as v2's writes latency 200 and no recvlatency", () => {
     for (const neverTakes of [v2Template, `srt_server { enabled on; }\n${template}`]) {
-      assert.deepEqual(srsTemplateReadings(neverTakes, fields), {
-        SRT_LATENCY: [{ kind: 'built-in', value: '120', reason: 'version-without-setting' }],
-      }, neverTakes);
+      assert.deepEqual(
+        srsTemplateReadings(neverTakes, fields),
+        {
+          SRT_LATENCY: [{ kind: 'built-in', value: '120', reason: 'version-without-setting' }],
+        },
+        neverTakes,
+      );
     }
   });
 
@@ -357,17 +415,27 @@ describe('the SRT latency of a deployment that runs its version template', () =>
     for (const value of ['5', 'soon']) {
       const writesItsOwn = v2Template.replace('latency 200;', `latency 200;\nrecvlatency ${value};`);
 
-      assert.deepEqual(srsTemplateReadings(writesItsOwn, fields), {
-        SRT_LATENCY: [{ kind: 'unverified', reason: 'invalid-scalar', environment: 'unknown' }],
-      }, value);
+      assert.deepEqual(
+        srsTemplateReadings(writesItsOwn, fields),
+        {
+          SRT_LATENCY: [{ kind: 'unverified', reason: 'invalid-scalar', environment: 'unknown' }],
+        },
+        value,
+      );
     }
   });
 
   // SRS 6 applies `recvlatency` after `latency`, so on ingest a recvlatency
   // written into the template overrides a latency filled from the setting.
   it('reads the recvlatency a template writes itself beside a latency it fills from the setting', () => {
-    const fillsLatencyOnly = v31Template.replace('latency SRT_LATENCY_PLACEHOLDER;', 'latency SRT_LATENCY_PLACEHOLDER;\nrecvlatency 800;');
-    const refused = v31Template.replace('latency SRT_LATENCY_PLACEHOLDER;', 'latency SRT_LATENCY_PLACEHOLDER;\nrecvlatency soon;');
+    const fillsLatencyOnly = v31Template.replace(
+      'latency SRT_LATENCY_PLACEHOLDER;',
+      'latency SRT_LATENCY_PLACEHOLDER;\nrecvlatency 800;',
+    );
+    const refused = v31Template.replace(
+      'latency SRT_LATENCY_PLACEHOLDER;',
+      'latency SRT_LATENCY_PLACEHOLDER;\nrecvlatency soon;',
+    );
 
     assert.deepEqual(srsTemplateReadings(fillsLatencyOnly, fields), {
       SRT_LATENCY: [{ kind: 'built-in', value: '800', reason: 'version-without-setting' }],
@@ -383,12 +451,18 @@ describe('the SRT latency of a deployment that runs its version template', () =>
 
   it('makes the stored value one SRS never applies, and leaves the other fields to the environment', () => {
     const result = assembleEngineSettingObservations({
-      fields, settings: { SRT_LATENCY: '3000', HLS_WINDOW: '30' }, defaults: effectiveEngineDefaults('srs'),
+      fields,
+      settings: { SRT_LATENCY: '3000', HLS_WINDOW: '30' },
+      defaults: effectiveEngineDefaults('srs'),
       readings: { ...environmentSettingReadings(fields), ...srsTemplateReadings(v31Template, fields) },
     });
 
     assert.deepEqual(result.observations.SRT_LATENCY, {
-      status: 'known', source: 'built-in', value: '120', environment: 'none', reason: 'version-without-recvlatency',
+      status: 'known',
+      source: 'built-in',
+      value: '120',
+      environment: 'none',
+      reason: 'version-without-recvlatency',
     });
     assert.equal(result.effective.HLS_WINDOW, '30');
     assert.deepEqual(result.notInConfig, ['SRT_LATENCY']);
@@ -398,13 +472,23 @@ describe('the SRT latency of a deployment that runs its version template', () =>
     const storedAndUnset: EngineSettings[] = [{ SRT_LATENCY: '3000' }, {}];
     for (const settings of storedAndUnset) {
       const result = assembleEngineSettingObservations({
-        fields, settings, defaults: effectiveEngineDefaults('srs'),
+        fields,
+        settings,
+        defaults: effectiveEngineDefaults('srs'),
         readings: { ...environmentSettingReadings(fields), ...srsTemplateReadings(v2Template, fields) },
       });
 
-      assert.deepEqual(result.observations.SRT_LATENCY, {
-        status: 'known', source: 'built-in', value: '120', environment: 'none', reason: 'version-without-setting',
-      }, JSON.stringify(settings));
+      assert.deepEqual(
+        result.observations.SRT_LATENCY,
+        {
+          status: 'known',
+          source: 'built-in',
+          value: '120',
+          environment: 'none',
+          reason: 'version-without-setting',
+        },
+        JSON.stringify(settings),
+      );
       assert.deepEqual(result.notInConfig, ['SRT_LATENCY']);
     }
   });

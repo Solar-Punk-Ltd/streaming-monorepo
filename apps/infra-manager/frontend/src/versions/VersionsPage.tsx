@@ -1,17 +1,7 @@
 import { useMemo, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  Stack,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Stack, Typography } from '@mui/material';
 
-import {
-  getErrorMessage,
-  type StackVersion,
-} from '@streaming-infra-manager/common';
+import { getErrorMessage, type StackVersion } from '@streaming-infra-manager/common';
 
 import { useDeployments } from '../app/useDeploymentsStore';
 import { useToast } from '../app/ToastProvider';
@@ -26,13 +16,7 @@ import { ReleaseAttemptDialog } from './ReleaseAttemptDialog';
 import { useAttemptRelease } from './useAttemptRelease';
 import { VersionCard } from './VersionCard';
 import { BuildSlotProvider, useBuildAbort } from './buildSlot';
-import {
-  removeVersion,
-  setDefaultVersion,
-  setVersionTested,
-  updateVersion,
-  type BuildLine,
-} from './versionsApi';
+import { removeVersion, setDefaultVersion, setVersionTested, updateVersion, type BuildLine } from './versionsApi';
 
 const SET_DEFAULT_MEANS =
   'The new deployment wizard preselects this version from now on. Deployments that already exist stay where they are. Only a tested version can be the default.';
@@ -52,15 +36,8 @@ interface BuildLog {
  * each version is available alongside its build information.
  */
 export function VersionsPage() {
-  const {
-    versions,
-    versionsError,
-    reloadVersions,
-    attempts,
-    attemptsError,
-    reloadAttempts,
-    profiles,
-  } = useDeployments();
+  const { versions, versionsError, reloadVersions, attempts, attemptsError, reloadAttempts, profiles } =
+    useDeployments();
   const toast = useToast();
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const release = useAttemptRelease();
@@ -68,16 +45,9 @@ export function VersionsPage() {
   const [buildingName, setBuildingName] = useState<string | null>(null);
   const [log, setLog] = useState<BuildLog | null>(null);
   const signalForBuild = useBuildAbort();
-  const buildSlot = useMemo(
-    () => ({ buildingName, setBuildingName }),
-    [buildingName],
-  );
+  const buildSlot = useMemo(() => ({ buildingName, setBuildingName }), [buildingName]);
 
-  const run = async (
-    version: StackVersion,
-    done: string,
-    action: (id: number) => Promise<unknown>,
-  ) => {
+  const run = async (version: StackVersion, done: string, action: (id: number) => Promise<unknown>) => {
     setBusyId(version.id);
     try {
       await action(version.id);
@@ -98,17 +68,12 @@ export function VersionsPage() {
       const result = await updateVersion(
         version.id,
         {
-          onLine: (line) =>
-            setLog((prev) =>
-              prev ? { ...prev, lines: [...prev.lines, line] } : prev,
-            ),
+          onLine: (line) => setLog((prev) => (prev ? { ...prev, lines: [...prev.lines, line] } : prev)),
         },
         signal,
       );
       toast(
-        result.code === 0
-          ? `${version.name} is built and ready`
-          : `${version.name} failed to build. The log says why.`,
+        result.code === 0 ? `${version.name} is built and ready` : `${version.name} failed to build. The log says why.`,
         result.code === 0 ? 'success' : 'error',
       );
     } catch (caught) {
@@ -127,12 +92,7 @@ export function VersionsPage() {
       title: `Make ${version.name} the default?`,
       body: SET_DEFAULT_MEANS,
       confirmLabel: 'Set as default',
-      onConfirm: () =>
-        void run(
-          version,
-          `The wizard now preselects ${version.name}`,
-          setDefaultVersion,
-        ),
+      onConfirm: () => void run(version, `The wizard now preselects ${version.name}`, setDefaultVersion),
     });
 
   const askRemove = (version: StackVersion) =>
@@ -141,21 +101,21 @@ export function VersionsPage() {
       body: 'Its checkout is deleted from this host, about a gigabyte. Nothing that has already been deployed stops, and the version can be added again from the same branch.',
       confirmLabel: 'Remove',
       danger: true,
-      onConfirm: () =>
-        void run(version, `Removed ${version.name}`, removeVersion),
+      onConfirm: () => void run(version, `Removed ${version.name}`, removeVersion),
     });
 
   return (
     <BuildSlotProvider value={buildSlot}>
       <Stack spacing={2}>
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>
-          Each version is its own checkout of the streaming stack, built once on
-          this host. Deployments keep running the version they were deployed from
-          until they are deployed again. Adding a version runs that branch's
-          deploy scripts with the manager's Docker access, so only branches you
-          trust belong here.
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
+          Each version is its own checkout of the streaming stack, built once on this host. Deployments keep running the
+          version they were deployed from until they are deployed again. Adding a version runs that branch's deploy
+          scripts with the manager's Docker access, so only branches you trust belong here.
         </Typography>
 
         {(attempts.length > 0 || attemptsError) && (
@@ -195,9 +155,10 @@ export function VersionsPage() {
           {!versions && !versionsError && (
             <Stack
               sx={{
-                alignItems: "center",
-                py: 5
-              }}>
+                alignItems: 'center',
+                py: 5,
+              }}
+            >
               <CircularProgress size={24} />
             </Stack>
           )}
@@ -209,17 +170,13 @@ export function VersionsPage() {
                   key={version.id}
                   version={version}
                   busy={busyId === version.id || version.name === buildingName}
-                  buildingElsewhere={
-                    buildingName !== null && buildingName !== version.name
-                  }
+                  buildingElsewhere={buildingName !== null && buildingName !== version.name}
                   onUpdate={() => void rebuild(version)}
                   onSetDefault={() => askSetDefault(version)}
                   onSetTested={(tested) =>
                     void run(
                       version,
-                      tested
-                        ? `${version.name} is marked as tested`
-                        : `${version.name} is no longer marked as tested`,
+                      tested ? `${version.name} is marked as tested` : `${version.name} is no longer marked as tested`,
                       (id) => setVersionTested(id, tested, version.commitSha, version.buildId),
                     )
                   }
@@ -237,11 +194,7 @@ export function VersionsPage() {
           // rather than after whatever is building, because the Add form starts
           // builds of its own and this pane is not showing those.
           <SectionCard
-            title={
-              buildingName === log.versionName
-                ? `Building ${log.versionName}`
-                : `Build log, ${log.versionName}`
-            }
+            title={buildingName === log.versionName ? `Building ${log.versionName}` : `Build log, ${log.versionName}`}
             actions={
               buildingName === log.versionName ? null : (
                 <Button size="small" onClick={() => setLog(null)}>
@@ -250,10 +203,7 @@ export function VersionsPage() {
               )
             }
           >
-            <BuildLogPane
-              lines={log.lines}
-              running={buildingName === log.versionName}
-            />
+            <BuildLogPane lines={log.lines} running={buildingName === log.versionName} />
           </SectionCard>
         )}
 

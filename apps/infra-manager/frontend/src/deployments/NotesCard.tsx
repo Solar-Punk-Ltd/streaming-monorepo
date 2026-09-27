@@ -64,10 +64,7 @@ export function NotesCard({
       title="Notes"
       actions={
         draft === null ? (
-          <Button
-            size="small"
-            onClick={() => setEditing({ draft: notes ?? '', startedAt: notesRevision })}
-          >
+          <Button size="small" onClick={() => setEditing({ draft: notes ?? '', startedAt: notesRevision })}>
             Edit
           </Button>
         ) : (
@@ -88,10 +85,7 @@ export function NotesCard({
       }
     >
       {draft === null ? (
-        <Typography
-          variant="body2"
-          sx={{ color: notes ? 'text.primary' : 'text.secondary' }}
-        >
+        <Typography variant="body2" sx={{ color: notes ? 'text.primary' : 'text.secondary' }}>
           {notes || 'No notes yet. Add one under Edit to say what this is for.'}
         </Typography>
       ) : (
@@ -103,9 +97,7 @@ export function NotesCard({
             minRows={2}
             autoFocus
             value={draft}
-            onChange={(event) =>
-              setEditing((current) => current && { ...current, draft: event.target.value })
-            }
+            onChange={(event) => setEditing((current) => current && { ...current, draft: event.target.value })}
             placeholder="What this deployment is for"
           />
         </FormField>

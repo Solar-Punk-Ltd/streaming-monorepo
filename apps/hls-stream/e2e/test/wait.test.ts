@@ -106,13 +106,16 @@ describe('waitFor', () => {
   it('treats a throw as not yet and returns once the read recovers', async () => {
     let asked = 0;
 
-    await waitFor(async () => {
-      asked++;
-      if (asked < 3) {
-        throw new Error('ssh_exchange_identification: Connection closed by remote host');
-      }
-      return true;
-    }, opts({ timeoutMs: PATIENT_TIMEOUT_MS }));
+    await waitFor(
+      async () => {
+        asked++;
+        if (asked < 3) {
+          throw new Error('ssh_exchange_identification: Connection closed by remote host');
+        }
+        return true;
+      },
+      opts({ timeoutMs: PATIENT_TIMEOUT_MS }),
+    );
 
     assert.equal(asked, 3);
   });
@@ -123,9 +126,12 @@ describe('waitFor', () => {
    */
   it('names the last error and how many polls threw, so a broken read is not read as a broken product', async () => {
     await assert.rejects(
-      waitFor(async () => {
-        throw new Error('ssh exited 255');
-      }, opts({ label: 'the master drops the drained rung' })),
+      waitFor(
+        async () => {
+          throw new Error('ssh exited 255');
+        },
+        opts({ label: 'the master drops the drained rung' }),
+      ),
       (error: Error) => {
         assert.match(error.message, /the master drops the drained rung/);
         assert.match(error.message, /ssh exited 255/);
@@ -206,10 +212,13 @@ describe('waitFor', () => {
     let asked = 0;
 
     await assert.rejects(
-      waitFor(async () => {
-        asked++;
-        throw cannotHappen;
-      }, opts({ timeoutMs: PATIENT_TIMEOUT_MS })),
+      waitFor(
+        async () => {
+          asked++;
+          throw cannotHappen;
+        },
+        opts({ timeoutMs: PATIENT_TIMEOUT_MS }),
+      ),
       (error: Error) => {
         assert.equal(error, cannotHappen);
         return true;
@@ -238,14 +247,17 @@ describe('waitFor, once a read has stopped working altogether', () => {
     const clock = fakeClock();
     let asked = 0;
 
-    await waitFor(async () => {
-      asked++;
-      clock.advance(FAILED_READ_MS);
-      if (asked > 19) {
-        return true;
-      }
-      throw new Error('ssh_exchange_identification: Connection closed by remote host');
-    }, opts({ timeoutMs: UNREACHED_TIMEOUT_MS, clock }));
+    await waitFor(
+      async () => {
+        asked++;
+        clock.advance(FAILED_READ_MS);
+        if (asked > 19) {
+          return true;
+        }
+        throw new Error('ssh_exchange_identification: Connection closed by remote host');
+      },
+      opts({ timeoutMs: UNREACHED_TIMEOUT_MS, clock }),
+    );
 
     assert.equal(asked, 20, 'a run of failed reads one short of the bound has to keep the whole ceiling');
   });
@@ -255,14 +267,17 @@ describe('waitFor, once a read has stopped working altogether', () => {
     const clock = fakeClock();
     let asked = 0;
 
-    await waitFor(async () => {
-      asked++;
-      clock.advance(QUICK_FAILED_READ_MS);
-      if (asked > 25) {
-        return true;
-      }
-      throw new Error('connection refused');
-    }, opts({ timeoutMs: UNREACHED_TIMEOUT_MS, clock }));
+    await waitFor(
+      async () => {
+        asked++;
+        clock.advance(QUICK_FAILED_READ_MS);
+        if (asked > 25) {
+          return true;
+        }
+        throw new Error('connection refused');
+      },
+      opts({ timeoutMs: UNREACHED_TIMEOUT_MS, clock }),
+    );
 
     assert.equal(asked, 26, 'twenty quick failures inside a minute are a stack coming up, not a dead read');
     assert.ok(clock.now() < 60_000, 'this case has to stay inside the minute it is about');
@@ -275,14 +290,17 @@ describe('waitFor, once a read has stopped working altogether', () => {
     let asked = 0;
 
     await assert.rejects(
-      waitFor(async () => {
-        asked++;
-        clock.advance(FAILED_READ_MS);
-        if (asked >= EVENTUAL_RECOVERY_POLL) {
-          return true;
-        }
-        throw broken;
-      }, opts({ timeoutMs: UNREACHED_TIMEOUT_MS, label: 'the master drops the drained rung', clock })),
+      waitFor(
+        async () => {
+          asked++;
+          clock.advance(FAILED_READ_MS);
+          if (asked >= EVENTUAL_RECOVERY_POLL) {
+            return true;
+          }
+          throw broken;
+        },
+        opts({ timeoutMs: UNREACHED_TIMEOUT_MS, label: 'the master drops the drained rung', clock }),
+      ),
       (error: Error) => {
         assert.match(error.message, /the master drops the drained rung/);
         assert.match(error.message, /20 /, 'the refusal has to say how many reads in a row threw');
@@ -302,17 +320,20 @@ describe('waitFor, once a read has stopped working altogether', () => {
     const clock = fakeClock();
     let asked = 0;
 
-    await waitFor(async () => {
-      asked++;
-      clock.advance(FAILED_READ_MS);
-      if (asked === 20) {
-        return false;
-      }
-      if (asked > 39) {
-        return true;
-      }
-      throw new Error('ssh exited 255');
-    }, opts({ timeoutMs: UNREACHED_TIMEOUT_MS, clock }));
+    await waitFor(
+      async () => {
+        asked++;
+        clock.advance(FAILED_READ_MS);
+        if (asked === 20) {
+          return false;
+        }
+        if (asked > 39) {
+          return true;
+        }
+        throw new Error('ssh exited 255');
+      },
+      opts({ timeoutMs: UNREACHED_TIMEOUT_MS, clock }),
+    );
 
     assert.equal(asked, 40, 'nineteen throws either side of one answer is a link that works, not a dead read');
   });
@@ -323,10 +344,13 @@ describe('waitFor, once a read has stopped working altogether', () => {
     const refused = 'ssh: connect to host manager-host port 22: Connection refused';
 
     await assert.rejects(
-      waitFor(async () => {
-        clock.advance(FAILED_READ_MS);
-        throw refused;
-      }, opts({ timeoutMs: UNREACHED_TIMEOUT_MS, clock })),
+      waitFor(
+        async () => {
+          clock.advance(FAILED_READ_MS);
+          throw refused;
+        },
+        opts({ timeoutMs: UNREACHED_TIMEOUT_MS, clock }),
+      ),
       (error: Error) => {
         assert.match(error.message, /Connection refused/);
         assert.doesNotMatch(error.message, /undefined/);

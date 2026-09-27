@@ -42,13 +42,13 @@ describe('stampTtlSeconds', () => {
 
   it('handles large amounts that stay within safe-integer range', () => {
     // price 1 → seconds = amount × 5. Pick amount so result is large but safe.
-    const amount = (1_000_000_000_000n).toString(); // 1e12 × 5 = 5e12, safe
+    const amount = 1_000_000_000_000n.toString(); // 1e12 × 5 = 5e12, safe
     assert.equal(stampTtlSeconds(amount, '1'), 5_000_000_000_000);
   });
 
   it('returns null when the result exceeds Number.MAX_SAFE_INTEGER', () => {
     // amount × 5 / 1 must exceed MAX_SAFE_INTEGER (~9.007e15)
-    const amount = (2_000_000_000_000_000n).toString(); // ×5 = 1e16 > MAX_SAFE
+    const amount = 2_000_000_000_000_000n.toString(); // ×5 = 1e16 > MAX_SAFE
     assert.ok(2_000_000_000_000_000 * 5 > Number.MAX_SAFE_INTEGER);
     assert.equal(stampTtlSeconds(amount, '1'), null);
   });

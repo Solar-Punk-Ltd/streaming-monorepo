@@ -6,18 +6,33 @@ import { engineRoutes } from '../dev/mock-engine.mjs';
 
 function profileFor(has_engine_config) {
   return {
-    name: 'synthetic-ome', kind: 'custom', components: ['ome', 'stream-uploader'],
-    instance_id: 'synthetic-instance', engine_config_revision: 3, intent_revision: 4,
-    updated_at: '2026-09-09T00:00:00.000Z', stack_version_id: 1,
-    has_engine_config, engine_settings: { HLS_SEGMENT_DURATION: '7', OME_HLS_POLL_INTERVAL_MS: '750' },
+    name: 'synthetic-ome',
+    kind: 'custom',
+    components: ['ome', 'stream-uploader'],
+    instance_id: 'synthetic-instance',
+    engine_config_revision: 3,
+    intent_revision: 4,
+    updated_at: '2026-09-09T00:00:00.000Z',
+    stack_version_id: 1,
+    has_engine_config,
+    engine_settings: { HLS_SEGMENT_DURATION: '7', OME_HLS_POLL_INTERVAL_MS: '750' },
   };
 }
 
 function overviewOf(profile) {
   let body;
-  const routes = engineRoutes({ withProfile: handler => handler, deploy() {}, publish() {}, readBody() {} });
+  const routes = engineRoutes({ withProfile: (handler) => handler, deploy() {}, publish() {}, readBody() {} });
   const get = routes.find(([method, pattern]) => method === 'GET' && pattern.test(`/profiles/${profile.name}/engine`));
-  get[2]({}, { writeHead: status => assert.equal(status, 200), end: payload => { body = JSON.parse(payload); } }, profile);
+  get[2](
+    {},
+    {
+      writeHead: (status) => assert.equal(status, 200),
+      end: (payload) => {
+        body = JSON.parse(payload);
+      },
+    },
+    profile,
+  );
   return body;
 }
 
@@ -28,8 +43,14 @@ function overview(has_engine_config) {
 it('the mock emits the mandatory observation map and exact known projection', () => {
   const result = overview(false);
   assert.equal(result.observations.HLS_SEGMENT_DURATION.source, 'deployment');
-  assert.deepEqual(result.effective, Object.fromEntries(Object.entries(result.observations)
-    .filter(([, observation]) => observation.status === 'known').map(([key, observation]) => [key, observation.value])));
+  assert.deepEqual(
+    result.effective,
+    Object.fromEntries(
+      Object.entries(result.observations)
+        .filter(([, observation]) => observation.status === 'known')
+        .map(([key, observation]) => [key, observation.value]),
+    ),
+  );
 });
 
 it('the mock does not claim stored settings control an unobserved custom file', () => {
@@ -49,12 +70,19 @@ it("the mock reads an SRS deployment's wait on ingest off its v3.1 template, as 
   // The mock's template is v3.1's, which fills only `latency`, and SRS ignores
   // that on ingest without `recvlatency`, so the stored 3000 never applies.
   const result = overviewOf({
-    ...profileFor(false), name: 'synthetic-srs', kind: 'streamer', components: null,
+    ...profileFor(false),
+    name: 'synthetic-srs',
+    kind: 'streamer',
+    components: null,
     engine_settings: { SRT_LATENCY: '3000' },
   });
 
   assert.deepEqual(result.observations.SRT_LATENCY, {
-    status: 'known', source: 'built-in', value: '120', environment: 'none', reason: 'version-without-recvlatency',
+    status: 'known',
+    source: 'built-in',
+    value: '120',
+    environment: 'none',
+    reason: 'version-without-recvlatency',
   });
   assert.equal(result.effective.SRT_LATENCY, '120');
 });

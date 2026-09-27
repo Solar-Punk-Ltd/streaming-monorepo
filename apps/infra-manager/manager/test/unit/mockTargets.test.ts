@@ -9,7 +9,17 @@ it('lets the offline Host page recover inventory and display a failed target ver
     let payload = '';
     const route = routes.find(([verb, pattern]: [string, RegExp]) => verb === method && pattern.test(path));
     assert.ok(route, `${method} ${path} must be available offline`);
-    await route[2]({ body }, { writeHead: (value: number) => { status = value; }, end: (value: string) => { payload = value; } });
+    await route[2](
+      { body },
+      {
+        writeHead: (value: number) => {
+          status = value;
+        },
+        end: (value: string) => {
+          payload = value;
+        },
+      },
+    );
     return { status, body: JSON.parse(payload) };
   }
   assert.equal((await request('GET', '/targets')).body.inventorySeededAt, null);

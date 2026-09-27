@@ -6,32 +6,60 @@ import type { StackPortVar } from '@streaming-infra-manager/common';
 import type { PublishedPortsSnapshot } from '../../src/domain/ports/PublishedPortsProbe.js';
 
 function setup() {
-  const peer: StackPortVar = { name: 'BEE_GATEWAY_P2P_PORT', slotBase: 10008, defaultPort: 10008, protocol: 'tcp', service: 'bee-gateway' };
+  const peer: StackPortVar = {
+    name: 'BEE_GATEWAY_P2P_PORT',
+    slotBase: 10008,
+    defaultPort: 10008,
+    protocol: 'tcp',
+    service: 'bee-gateway',
+  };
   const state: FirewallState = {
-    inventoryReady: true, seededDaemons: ['daemon'],
+    inventoryReady: true,
+    seededDaemons: ['daemon'],
     targets: [{ alias: 'localhost', daemonId: 'daemon', verified: true }],
     profiles: [{ name: 'a', slot: 1, status: 'STOPPED', target: 'localhost', versionId: 1 }],
-    versions: [{ id: 1, name: 'v3', layout: 'builds', rootPath: '/fake/v3', buildId: 'a'.repeat(40), previousBuildId: null }],
-    references: [], attempts: [],
-    reservations: [{ daemonId: 'daemon', profileName: 'a', port: 10018, protocol: 'tcp', heldServices: ['bee-gateway'] }],
+    versions: [
+      { id: 1, name: 'v3', layout: 'builds', rootPath: '/fake/v3', buildId: 'a'.repeat(40), previousBuildId: null },
+    ],
+    references: [],
+    attempts: [],
+    reservations: [
+      { daemonId: 'daemon', profileName: 'a', port: 10018, protocol: 'tcp', heldServices: ['bee-gateway'] },
+    ],
   };
   const snapshot: PublishedPortsSnapshot = { daemonId: 'daemon', bindings: [] };
   const contracts = new Map([['a'.repeat(40), [peer]]]);
   const aliases = new Map<string, StackPortVar[]>();
   let reads = 0;
   let changeOnSecondRead = false;
-  const exporter = new FirewallInventoryExporter({ read: async () => {
-    const value = structuredClone(state);
-    if (++reads === 2 && changeOnSecondRead) value.profiles[0]!.slot = 2;
-    return value;
-  } }, { daemonId: async () => 'daemon', publishedPorts: async () => snapshot }, {
-    read: async (_version, buildId) => {
-      const ports = contracts.get(buildId);
-      if (!ports) throw new Error('missing immutable build');
-      return { ports, portAliases: aliases.get(buildId), maxSlot: 99, allocationProblem: null };
+  const exporter = new FirewallInventoryExporter(
+    {
+      read: async () => {
+        const value = structuredClone(state);
+        if (++reads === 2 && changeOnSecondRead) value.profiles[0]!.slot = 2;
+        return value;
+      },
     },
-  });
-  return { state, snapshot, peer, contracts, aliases, exporter, change: () => { changeOnSecondRead = true; } };
+    { daemonId: async () => 'daemon', publishedPorts: async () => snapshot },
+    {
+      read: async (_version, buildId) => {
+        const ports = contracts.get(buildId);
+        if (!ports) throw new Error('missing immutable build');
+        return { ports, portAliases: aliases.get(buildId), maxSlot: 99, allocationProblem: null };
+      },
+    },
+  );
+  return {
+    state,
+    snapshot,
+    peer,
+    contracts,
+    aliases,
+    exporter,
+    change: () => {
+      changeOnSecondRead = true;
+    },
+  };
 }
 
 describe('firewall evidence export', () => {
@@ -60,20 +88,30 @@ describe('firewall evidence export', () => {
         { name: 'SRS_SRT_PORT', slotBase: 10001, defaultPort: 10001, protocol: 'udp', service: 'srs' },
         { name: 'SRS_HTTP_PORT', slotBase: 10003, defaultPort: 10003, protocol: 'tcp', service: 'srs' },
       ];
-      const aliases = srs.map((port, index) => ({ ...port, name: index === 0 ? 'OME_SRT_PORT' : 'OME_HLS_PORT', service: 'ome' }));
+      const aliases = srs.map((port, index) => ({
+        ...port,
+        name: index === 0 ? 'OME_SRT_PORT' : 'OME_HLS_PORT',
+        service: 'ome',
+      }));
       h.contracts.set(oldId, srs);
       h.contracts.set(newId, srs);
       h.aliases.set(oldId, brokenBuild === 'retained' ? aliases.slice(0, 1) : aliases);
       h.aliases.set(newId, aliases.slice(0, 1));
       h.state.versions[0]!.buildId = newId;
       h.state.versions[0]!.previousBuildId = oldId;
-      h.state.references.push({ versionId: 1, buildId: oldId, holderKind: 'snapshot', holderId: 'a/ome', services: ['ome'] });
+      h.state.references.push({
+        versionId: 1,
+        buildId: oldId,
+        holderKind: 'snapshot',
+        holderId: 'a/ome',
+        services: ['ome'],
+      });
       h.state.reservations = [
         { daemonId: 'daemon', profileName: 'a', port: 10011, protocol: 'udp', heldServices: ['ome'] },
         { daemonId: 'daemon', profileName: 'a', port: 10013, protocol: 'tcp', heldServices: ['ome'] },
       ];
       if (brokenBuild === 'retained') await assert.rejects(h.exporter.export('localhost'), /OME|alias/);
-      else assert.ok((await h.exporter.export('localhost')).claims.every(claim => claim.buildId === oldId));
+      else assert.ok((await h.exporter.export('localhost')).claims.every((claim) => claim.buildId === oldId));
     });
   }
 
@@ -86,8 +124,14 @@ describe('firewall evidence export', () => {
       { name: 'SRS_HTTP_PORT', slotBase: 10003, defaultPort: 10003, protocol: 'tcp', service: 'srs' },
     ];
     h.contracts.set(current, srs);
-    h.aliases.set(current, srs.map((port, index) => ({ ...port, name: index === 0 ? 'OME_SRT_PORT' : 'OME_HLS_PORT', service: 'ome' })));
-    h.contracts.set(previous, srs.map(port => ({ ...port, slotBase: port.slotBase + 3000 })));
+    h.aliases.set(
+      current,
+      srs.map((port, index) => ({ ...port, name: index === 0 ? 'OME_SRT_PORT' : 'OME_HLS_PORT', service: 'ome' })),
+    );
+    h.contracts.set(
+      previous,
+      srs.map((port) => ({ ...port, slotBase: port.slotBase + 3000 })),
+    );
     h.state.references = [
       { versionId: 1, buildId: current, holderKind: 'snapshot', holderId: 'a/ome', services: ['ome'] },
       { versionId: 1, buildId: previous, holderKind: 'snapshot', holderId: 'a/srs', services: ['srs'] },
@@ -103,14 +147,22 @@ describe('firewall evidence export', () => {
       { project: 'a', service: 'ome', port: 10013, protocol: 'tcp' },
     ];
     const result = await h.exporter.export('localhost');
-    assert.ok(result.claims.some(claim => claim.portVar === 'OME_SRT_PORT' && claim.service === 'ome'));
-    assert.ok(result.claims.some(claim => claim.port === 13011 && claim.service === 'srs' && claim.buildId === previous));
-    assert.ok(!result.claims.some(claim => claim.port === 13011 && claim.service === 'ome'));
+    assert.ok(result.claims.some((claim) => claim.portVar === 'OME_SRT_PORT' && claim.service === 'ome'));
+    assert.ok(
+      result.claims.some((claim) => claim.port === 13011 && claim.service === 'srs' && claim.buildId === previous),
+    );
+    assert.ok(!result.claims.some((claim) => claim.port === 13011 && claim.service === 'ome'));
   });
 
   it('refuses snapshots without explicit service ownership', async () => {
     const h = setup();
-    h.state.references.push({ versionId: 1, buildId: 'a'.repeat(40), holderKind: 'snapshot', holderId: 'a/unknown', services: [] });
+    h.state.references.push({
+      versionId: 1,
+      buildId: 'a'.repeat(40),
+      holderKind: 'snapshot',
+      holderId: 'a/unknown',
+      services: [],
+    });
     await assert.rejects(h.exporter.export('localhost'), /snapshot.*service|ownership/);
   });
 
@@ -118,12 +170,24 @@ describe('firewall evidence export', () => {
     const h = setup();
     const oldId = 'b'.repeat(40);
     h.contracts.set(oldId, [{ ...h.peer, name: 'BEE_API_PORT', service: 'bee-uploader', slotBase: 13000 }]);
-    h.state.references.push({ versionId: 1, buildId: oldId, holderKind: 'snapshot', holderId: 'a/bee-uploader', services: ['bee-uploader'] });
-    h.state.reservations.push({ daemonId: 'daemon', profileName: 'a', port: 13010, protocol: 'tcp', heldServices: ['bee-uploader'] });
+    h.state.references.push({
+      versionId: 1,
+      buildId: oldId,
+      holderKind: 'snapshot',
+      holderId: 'a/bee-uploader',
+      services: ['bee-uploader'],
+    });
+    h.state.reservations.push({
+      daemonId: 'daemon',
+      profileName: 'a',
+      port: 13010,
+      protocol: 'tcp',
+      heldServices: ['bee-uploader'],
+    });
     const result = await h.exporter.export('localhost');
     assert.equal(result.daemonId, 'daemon');
     assert.equal(result.profiles[0]!.name, 'a');
-    assert.ok(result.claims.some(claim => claim.port === 13010 && claim.buildId === oldId));
+    assert.ok(result.claims.some((claim) => claim.port === 13010 && claim.buildId === oldId));
     assert.match(result.fingerprint, /^[0-9a-f]{64}$/);
   });
 
@@ -139,13 +203,19 @@ describe('firewall evidence export', () => {
     const h = setup();
     const oldId = 'a'.repeat(40);
     const newId = 'b'.repeat(40);
-    h.state.references.push({ versionId: 1, buildId: oldId, holderKind: 'snapshot', holderId: 'a/bee-gateway', services: ['bee-gateway'] });
+    h.state.references.push({
+      versionId: 1,
+      buildId: oldId,
+      holderKind: 'snapshot',
+      holderId: 'a/bee-gateway',
+      services: ['bee-gateway'],
+    });
     h.state.versions[0]!.buildId = newId;
     h.state.versions[0]!.previousBuildId = oldId;
     h.contracts.set(newId, [{ ...h.peer, slotBase: 14002 }]);
     const result = await h.exporter.export('localhost');
     assert.ok(result.claims.length > 0);
-    assert.ok(result.claims.every(claim => claim.port === 10018));
+    assert.ok(result.claims.every((claim) => claim.port === 10018));
   });
 
   it('does not require released ports merely because their old build is still the previous version', async () => {
@@ -153,7 +223,7 @@ describe('firewall evidence export', () => {
     h.state.versions[0]!.previousBuildId = 'b'.repeat(40);
     h.contracts.set('b'.repeat(40), [{ ...h.peer, slotBase: 14002 }]);
     const result = await h.exporter.export('localhost');
-    assert.ok(result.claims.every(claim => claim.port === 10018));
+    assert.ok(result.claims.every((claim) => claim.port === 10018));
   });
 
   it('requires each snapshot service owner in the reservation, not merely a row on the same tuple', async () => {
@@ -162,7 +232,13 @@ describe('firewall evidence export', () => {
     h.contracts.set('b'.repeat(40), [{ ...h.peer, name: 'API_PORT', service: 'old-service', slotBase: 13000 }]);
     h.state.reservations[0]!.port = 13010;
     h.state.reservations[0]!.heldServices = ['new-service'];
-    h.state.references.push({ versionId: 1, buildId: 'b'.repeat(40), holderKind: 'snapshot', holderId: 'a/old-service', services: ['old-service'] });
+    h.state.references.push({
+      versionId: 1,
+      buildId: 'b'.repeat(40),
+      holderKind: 'snapshot',
+      holderId: 'a/old-service',
+      services: ['old-service'],
+    });
     await assert.rejects(h.exporter.export('localhost'), /old-service|coverage|reservation/);
   });
 
@@ -177,11 +253,20 @@ describe('firewall evidence export', () => {
     h.state.reservations[0]!.heldServices = ['srs'];
     h.contracts.set('a'.repeat(40), [{ ...h.peer, name: 'SRS_RTMP_PORT', service: 'srs', slotBase: 10002 }]);
     const result = await h.exporter.export('localhost');
-    assert.ok(result.claims.some(claim => claim.port === 11012 && claim.service === 'srs'));
+    assert.ok(result.claims.some((claim) => claim.port === 11012 && claim.service === 'srs'));
     assert.equal(h.state.profiles[0]!.slot, 101);
   });
 
-  for (const missing of ['seed', 'legacy', 'build', 'owner', 'reference', 'binding', 'target', 'host-network'] as const) {
+  for (const missing of [
+    'seed',
+    'legacy',
+    'build',
+    'owner',
+    'reference',
+    'binding',
+    'target',
+    'host-network',
+  ] as const) {
     it(`refuses incomplete ${missing} evidence`, async () => {
       const h = setup();
       if (missing === 'seed') h.state.seededDaemons = [];
@@ -189,7 +274,8 @@ describe('firewall evidence export', () => {
       if (missing === 'build') h.contracts.clear();
       if (missing === 'owner') h.state.reservations[0]!.heldServices = [null];
       if (missing === 'reference') h.state.reservations[0]!.port = 13010;
-      if (missing === 'binding') h.snapshot.bindings = [{ project: 'outside', service: 'web', protocol: 'tcp', port: 10016 }];
+      if (missing === 'binding')
+        h.snapshot.bindings = [{ project: 'outside', service: 'web', protocol: 'tcp', port: 10016 }];
       if (missing === 'target') h.state.targets[0]!.verified = false;
       if (missing === 'host-network') h.snapshot.unverifiedProjects = ['outside'];
       await assert.rejects(h.exporter.export('localhost'));
@@ -201,7 +287,14 @@ describe('firewall evidence export', () => {
       const h = setup();
       if (busy === 'attempt') h.state.attempts.push({ project: 'a', daemonId: 'daemon' });
       else if (busy === 'status') h.state.profiles[0]!.status = 'DEPLOYING';
-      else h.state.references.push({ versionId: 1, buildId: 'a'.repeat(40), holderKind: busy, holderId: busy === 'job' ? 'a' : 'unknown-operation', services: ['srs'] });
+      else
+        h.state.references.push({
+          versionId: 1,
+          buildId: 'a'.repeat(40),
+          holderKind: busy,
+          holderId: busy === 'job' ? 'a' : 'unknown-operation',
+          services: ['srs'],
+        });
       await assert.rejects(h.exporter.export('localhost'), /unresolved|in progress/);
     });
   }

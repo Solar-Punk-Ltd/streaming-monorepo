@@ -10,10 +10,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  NodeReadLog,
-  READ_REMINDER_MS,
-} from '../../src/domain/nodeReadLog.js';
+import { NodeReadLog, READ_REMINDER_MS } from '../../src/domain/nodeReadLog.js';
 
 const WINDOW_MS = 3_000;
 const HOUR_MS = 60 * 60_000;
@@ -21,7 +18,12 @@ const HOUR_MS = 60 * 60_000;
 /** A clock a test moves by hand, so an hour costs no time to run. */
 function stoppedClock(): { now: () => number; advance: (ms: number) => void } {
   let at = 0;
-  return { now: () => at, advance: (ms: number) => { at += ms; } };
+  return {
+    now: () => at,
+    advance: (ms: number) => {
+      at += ms;
+    },
+  };
 }
 
 describe('the first failure and the recovery, and little in between', () => {
@@ -116,9 +118,6 @@ describe('an hour of one read failing every window', () => {
     assert.ok(reminders <= 12, `${reminders} reminders is more than twelve`);
     assert.equal(recovery?.failures, 1_200);
     assert.equal(recovery?.forMs, HOUR_MS);
-    assert.ok(
-      starts + reminders + 1 <= 14,
-      `${starts + reminders + 1} lines for 1,200 reads`,
-    );
+    assert.ok(starts + reminders + 1 <= 14, `${starts + reminders + 1} lines for 1,200 reads`);
   });
 });

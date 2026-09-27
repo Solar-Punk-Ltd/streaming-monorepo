@@ -37,7 +37,13 @@ export function sameFrozenTarget(input: unknown, current: FrozenChequebookTarget
 export function targetLockIdentity(input: unknown): Pick<FrozenChequebookTarget, 'alias' | 'daemonId'> {
   if (!input || typeof input !== 'object') throw new ChequebookTargetChangedError();
   const { alias, daemonId } = input as Record<string, unknown>;
-  if (typeof alias !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._@-]{0,127}$/.test(alias) ||
-      typeof daemonId !== 'string' || !daemonId.trim() || daemonId.length > 200) throw new ChequebookTargetChangedError();
+  if (
+    typeof alias !== 'string' ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9._@-]{0,127}$/.test(alias) ||
+    typeof daemonId !== 'string' ||
+    !daemonId.trim() ||
+    daemonId.length > 200
+  )
+    throw new ChequebookTargetChangedError();
   return { alias, daemonId };
 }

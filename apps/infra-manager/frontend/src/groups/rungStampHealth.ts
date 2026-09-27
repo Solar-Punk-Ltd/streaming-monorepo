@@ -38,13 +38,8 @@ export function rungStampHealth(
 }
 
 /** The same answer for every member of every pool a page holds a result for. */
-export function poolStampHealths(
-  results: PoolResults,
-  profiles: Profile[] | null,
-): StampHealths {
-  const recorded = new Map(
-    (profiles ?? []).map((profile) => [profile.name, profile.stamp_id]),
-  );
+export function poolStampHealths(results: PoolResults, profiles: Profile[] | null): StampHealths {
+  const recorded = new Map((profiles ?? []).map((profile) => [profile.name, profile.stamp_id]));
   const healths = new Map<string, StampHealth>();
   for (const result of results.values()) {
     for (const rung of result?.rungs ?? []) {
@@ -78,9 +73,6 @@ function healthOf(
  * answers for every node no pool result covers, and for a member whose pool
  * result has not arrived.
  */
-export function mergedStampHealths(
-  fromPools: StampHealths,
-  fromNodes: StampHealths,
-): StampHealths {
+export function mergedStampHealths(fromPools: StampHealths, fromNodes: StampHealths): StampHealths {
   return new Map([...fromNodes, ...fromPools]);
 }

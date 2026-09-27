@@ -151,7 +151,14 @@ export const OVERRIDES = `overrides:
   qs: ^6.16.0`;
 
 /** A lockfile as pnpm writes one: top-level sections apart by a blank line, and so is every entry of a keyed one. */
-export function lockfileText({ version = `'9.0'`, settings = SETTINGS.plain, extra = [OVERRIDES], importers, packages, snapshots }) {
+export function lockfileText({
+  version = `'9.0'`,
+  settings = SETTINGS.plain,
+  extra = [OVERRIDES],
+  importers,
+  packages,
+  snapshots,
+}) {
   const keyed = (name, entries) => `${name}:\n\n${entries.join('\n\n')}`;
   return `${[
     `lockfileVersion: ${version}`,
@@ -268,7 +275,9 @@ export function asRealApps(text) {
 
 /** The two-app workspace with its apps at `apps/infra-manager` and `apps/web2-admin`. */
 export function realAppFiles() {
-  return Object.fromEntries(Object.entries(workspaceFiles()).map(([path, text]) => [asRealApps(path), asRealApps(text)]));
+  return Object.fromEntries(
+    Object.entries(workspaceFiles()).map(([path, text]) => [asRealApps(path), asRealApps(text)]),
+  );
 }
 
 /** What the tool writes for one of the real-named apps, computed by the library its scripts run. */

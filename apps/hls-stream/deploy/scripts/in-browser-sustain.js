@@ -304,7 +304,8 @@
     };
   }
 
-  (async () => {
+  // Its catch records any failure in the page state that the operator reads.
+  void (async () => {
     try {
       P.gateReason = await waitForPeers();
       P.peersAtStart = readPeers();
@@ -367,7 +368,7 @@
         if (video.paused && video.readyState >= 2) {
           try {
             await video.play();
-          } catch (e) {
+          } catch {
             /* a rejected resume is recorded by the paused flag on the next sample */
           }
         }

@@ -6,21 +6,51 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
-import { buttonWithText, clickWhenEnabled, launchChrome, PAGE_TEXT, readWhenPresent, reloadDocument, waitFor, watchCompletedRequests } from './support/chrome.mjs';
+import {
+  buttonWithText,
+  clickWhenEnabled,
+  launchChrome,
+  PAGE_TEXT,
+  readWhenPresent,
+  reloadDocument,
+  waitFor,
+  watchCompletedRequests,
+} from './support/chrome.mjs';
 import { endViteServer } from './support/teardown.mjs';
 import { evidenceDirectory } from './support/evidence.mjs';
 import { viteCacheFor } from './support/vite-cache.mjs';
 const frontend = fileURLToPath(new URL('../', import.meta.url));
 const common = fileURLToPath(new URL('../../common/src/index.ts', import.meta.url));
-const base = { name: 'test-stream', instance_id: '11111111-1111-4111-8111-111111111111', kind: 'streamer', status: 'RUNNING', port_slot: 1, notes: null, last_error: null, last_error_at: null,
-  created_at: '2026-09-08T00:00:00Z', updated_at: '2026-09-08T00:00:00Z', engine_settings: {}, has_engine_config: false, engine_config_error: null,
-  intent_revision: 1, has_srt_passphrase: true, stamp_id: 'a'.repeat(64), public_key: '1'.repeat(40), containers: [{ service: 'srs', ports: {} }, { service: 'bee-uploader', ports: {} }], pendingStamp: false };
+const base = {
+  name: 'test-stream',
+  instance_id: '11111111-1111-4111-8111-111111111111',
+  kind: 'streamer',
+  status: 'RUNNING',
+  port_slot: 1,
+  notes: null,
+  last_error: null,
+  last_error_at: null,
+  created_at: '2026-09-08T00:00:00Z',
+  updated_at: '2026-09-08T00:00:00Z',
+  engine_settings: {},
+  has_engine_config: false,
+  engine_config_error: null,
+  intent_revision: 1,
+  has_srt_passphrase: true,
+  stamp_id: 'a'.repeat(64),
+  public_key: '1'.repeat(40),
+  containers: [
+    { service: 'srs', ports: {} },
+    { service: 'bee-uploader', ports: {} },
+  ],
+  pendingStamp: false,
+};
 const second = { ...base, name: 'second-stream', port_slot: 2 };
 async function freePort() {
   const server = createNetServer();
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address();
-  await new Promise(resolve => server.close(resolve));
+  await new Promise((resolve) => server.close(resolve));
   return port;
 }
 
@@ -32,57 +62,122 @@ test('readiness and container diagnostics use current observations in the browse
   let mode = 'ready';
   let hold = false;
   let holdWallet = false;
-  const held = [], heldPassphrases = [], logRequests = [], writes = [], events = new Set();
+  const held = [],
+    heldPassphrases = [],
+    logRequests = [],
+    writes = [],
+    events = new Set();
   const server = await createServer({
-    root: frontend, configFile: false, cacheDir: viteCacheFor('readiness'),
+    root: frontend,
+    configFile: false,
+    cacheDir: viteCacheFor('readiness'),
     resolve: { alias: { '@streaming-infra-manager/common': common } },
     server: { host: '127.0.0.1', port: await freePort(), strictPort: true },
-    plugins: [react(), { name: 't12-offline-fixture', configureServer(vite) {
-      vite.middlewares.use((req, res, next) => {
-        const path = req.url?.split('?')[0];
-        const json = (body, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
-        if (!/^\/(auth|profiles|groups|config|events|metrics|versions)(\/|$)/.test(path)) return next();
-        if (req.method !== 'GET') { writes.push({ path, method: req.method }); return json({}, 405); }
-        if (path === '/auth/session') return json({ username: 'readiness-review', isAdmin: true, expiresAt: '2099-01-01T00:00:00Z' });
-        if (path === '/profiles') return json({ profiles: [primary, second] });
-        if (path === '/groups') return json({ groups: [] });
-        if (path === '/versions') return json([]);
-        if (path === '/config') return json({ host: 'offline.example', srtPassphrase: null, chequebookFloorBzz: '0.5' });
-        if (path === '/events' || path.startsWith('/metrics')) {
-          res.writeHead(200, { 'content-type': 'text/event-stream' }); res.write(': fixture\n\n');
-          if (path === '/events') { events.add(res); req.on('close', () => events.delete(res)); }
-          return;
-        }
-        if (path.includes('/containers/') && path.endsWith('/logs')) {
-          logRequests.push(path); res.setHeader('content-type', 'text/plain');
-          return res.end(`Only ${path.split('/')[4]} logs for ${path.split('/')[2]}`);
-        }
-        if (path === '/profiles/test-stream/srt-passphrase') {
-          const captured = ownPassphrase;
-          if (holdPassphrases) {
-            res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-            res.flushHeaders();
-            heldPassphrases.push({ value: captured, reply: () => res.end(JSON.stringify({ srt_passphrase: captured })) });
-          } else {
-            heldPassphrases.push({ value: captured, reply: () => undefined });
-            json({ srt_passphrase: captured });
-          }
-          return;
-        }
-        function beeResponse() {
-          if (mode === 'failed' && /\/(wallet|stamps|chainstate)$/.test(path)) return json({ error: 'Node unavailable', code: 'bee_node_unreachable' }, 503);
-          if (path.endsWith('/readiness')) return json({ state: mode === 'failed' ? 'unreachable' : mode, observedAt: new Date().toISOString(), healthStatus: 'ok', readinessStatus: mode === 'ready' ? 'ready' : 'notReady', version: '2.8.2', apiVersion: '8.1.0', chainProgress: null });
-          if (path.endsWith('/address')) return json({ ethereum: nodeAddress });
-          if (path.endsWith('/wallet')) return json({ nativeTokenBalance: '1000000000000000000', bzzBalance: '10000000000000000' });
-          if (path.endsWith('/chainstate')) return json({ chainTip: 20, block: 20, totalAmount: '1', currentPrice: '1' });
-          if (path.endsWith('/stamps')) return json({ stamps: [{ batchID: primary.stamp_id, batchTTL: 500000, usable: true, exists: true, depth: 20, amount: '1', utilization: 0 }] });
-          if (path.endsWith('/chequebook')) return json({ address: '0x' + 'c'.repeat(40), totalBalance: '10000000000000000', availableBalance: '10000000000000000', totalSent: '0', totalReceived: '0', health: { state: 'ok', availablePlur: '10000000000000000', floorPlur: '5000000000000000' } });
-          return json({}, 404);
-        }
-        if (path.includes('/stamp/') || path.endsWith('/chequebook')) { if (hold || (holdWallet && path.endsWith('/wallet'))) held.push(beeResponse); else beeResponse(); return; }
-        return json({}, 404);
-      });
-    }}],
+    plugins: [
+      react(),
+      {
+        name: 't12-offline-fixture',
+        configureServer(vite) {
+          vite.middlewares.use((req, res, next) => {
+            const path = req.url?.split('?')[0];
+            const json = (body, status = 200) => {
+              res.writeHead(status, { 'content-type': 'application/json' });
+              res.end(JSON.stringify(body));
+            };
+            if (!/^\/(auth|profiles|groups|config|events|metrics|versions)(\/|$)/.test(path)) return next();
+            if (req.method !== 'GET') {
+              writes.push({ path, method: req.method });
+              return json({}, 405);
+            }
+            if (path === '/auth/session')
+              return json({ username: 'readiness-review', isAdmin: true, expiresAt: '2099-01-01T00:00:00Z' });
+            if (path === '/profiles') return json({ profiles: [primary, second] });
+            if (path === '/groups') return json({ groups: [] });
+            if (path === '/versions') return json([]);
+            if (path === '/config')
+              return json({ host: 'offline.example', srtPassphrase: null, chequebookFloorBzz: '0.5' });
+            if (path === '/events' || path.startsWith('/metrics')) {
+              res.writeHead(200, { 'content-type': 'text/event-stream' });
+              res.write(': fixture\n\n');
+              if (path === '/events') {
+                events.add(res);
+                req.on('close', () => events.delete(res));
+              }
+              return;
+            }
+            if (path.includes('/containers/') && path.endsWith('/logs')) {
+              logRequests.push(path);
+              res.setHeader('content-type', 'text/plain');
+              return res.end(`Only ${path.split('/')[4]} logs for ${path.split('/')[2]}`);
+            }
+            if (path === '/profiles/test-stream/srt-passphrase') {
+              const captured = ownPassphrase;
+              if (holdPassphrases) {
+                res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+                res.flushHeaders();
+                heldPassphrases.push({
+                  value: captured,
+                  reply: () => res.end(JSON.stringify({ srt_passphrase: captured })),
+                });
+              } else {
+                heldPassphrases.push({ value: captured, reply: () => undefined });
+                json({ srt_passphrase: captured });
+              }
+              return;
+            }
+            function beeResponse() {
+              if (mode === 'failed' && /\/(wallet|stamps|chainstate)$/.test(path))
+                return json({ error: 'Node unavailable', code: 'bee_node_unreachable' }, 503);
+              if (path.endsWith('/readiness'))
+                return json({
+                  state: mode === 'failed' ? 'unreachable' : mode,
+                  observedAt: new Date().toISOString(),
+                  healthStatus: 'ok',
+                  readinessStatus: mode === 'ready' ? 'ready' : 'notReady',
+                  version: '2.8.2',
+                  apiVersion: '8.1.0',
+                  chainProgress: null,
+                });
+              if (path.endsWith('/address')) return json({ ethereum: nodeAddress });
+              if (path.endsWith('/wallet'))
+                return json({ nativeTokenBalance: '1000000000000000000', bzzBalance: '10000000000000000' });
+              if (path.endsWith('/chainstate'))
+                return json({ chainTip: 20, block: 20, totalAmount: '1', currentPrice: '1' });
+              if (path.endsWith('/stamps'))
+                return json({
+                  stamps: [
+                    {
+                      batchID: primary.stamp_id,
+                      batchTTL: 500000,
+                      usable: true,
+                      exists: true,
+                      depth: 20,
+                      amount: '1',
+                      utilization: 0,
+                    },
+                  ],
+                });
+              if (path.endsWith('/chequebook'))
+                return json({
+                  address: '0x' + 'c'.repeat(40),
+                  totalBalance: '10000000000000000',
+                  availableBalance: '10000000000000000',
+                  totalSent: '0',
+                  totalReceived: '0',
+                  health: { state: 'ok', availablePlur: '10000000000000000', floorPlur: '5000000000000000' },
+                });
+              return json({}, 404);
+            }
+            if (path.includes('/stamp/') || path.endsWith('/chequebook')) {
+              if (hold || (holdWallet && path.endsWith('/wallet'))) held.push(beeResponse);
+              else beeResponse();
+              return;
+            }
+            return json({}, 404);
+          });
+        },
+      },
+    ],
   });
   await server.listen();
   t.after(() => endViteServer(t, server));
@@ -93,20 +188,35 @@ test('readiness and container diagnostics use current observations in the browse
   const { call, evaluate } = browser;
   const body = () => evaluate(PAGE_TEXT);
   const hasUploader = () => evaluate(`!!${buttonWithText('Start uploader')}`);
-  const click = text => clickWhenEnabled(evaluate, buttonWithText(text), `an enabled ${text} button`);
-  const clickSelected = (selector, description) => clickWhenEnabled(evaluate, `document.querySelector(${JSON.stringify(selector)})`, description);
-  const clickPublishCopy = () => clickWhenEnabled(evaluate, `[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Copy' && button.closest('.MuiPaper-root')?.innerText.includes('OBS, FFmpeg'))`, 'the publish URL Copy button');
+  const click = (text) => clickWhenEnabled(evaluate, buttonWithText(text), `an enabled ${text} button`);
+  const clickSelected = (selector, description) =>
+    clickWhenEnabled(evaluate, `document.querySelector(${JSON.stringify(selector)})`, description);
+  const clickPublishCopy = () =>
+    clickWhenEnabled(
+      evaluate,
+      `[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Copy' && button.closest('.MuiPaper-root')?.innerText.includes('OBS, FFmpeg'))`,
+      'the publish URL Copy button',
+    );
   function replacePrimary(patch) {
     primary = { ...primary, ...patch };
-    for (const response of events) response.write(`event: profile.changed\ndata: ${JSON.stringify({ profile: primary })}\n\n`);
+    for (const response of events)
+      response.write(`event: profile.changed\ndata: ${JSON.stringify({ profile: primary })}\n\n`);
   }
   await call('Page.navigate', { url: `${origin}/#/deployments/test-stream` });
-  try { await waitFor(body, text => text.includes('Bee reports its API is ready'), 'current Bee readiness'); }
-  catch (error) { console.log(await body(), browser.errors); throw error; }
+  try {
+    await waitFor(body, (text) => text.includes('Bee reports its API is ready'), 'current Bee readiness');
+  } catch (error) {
+    console.log(await body(), browser.errors);
+    throw error;
+  }
   assert.equal(await hasUploader(), true);
   assert.match(await body(), /Checked \d{4}-\d{2}-\d{2}T/);
   assert.doesNotMatch(await body(), /usually within a minute|Ready to stream|Watchable/);
-  await waitFor(() => events.size, count => count > 0, 'profile event stream');
+  await waitFor(
+    () => events.size,
+    (count) => count > 0,
+    'profile event stream',
+  );
   const oldAddress = nodeAddress;
   const replacementAddress = '0x' + 'd'.repeat(40);
   hold = true;
@@ -115,31 +225,41 @@ test('readiness and container diagnostics use current observations in the browse
     instance_id: '22222222-2222-4222-8222-222222222222',
     updated_at: '2026-09-08T00:00:01Z',
   });
-  await waitFor(() => held.length, count => count >= 1, 'replacement node checks');
+  await waitFor(
+    () => held.length,
+    (count) => count >= 1,
+    'replacement node checks',
+  );
   await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
   assert.doesNotMatch(await body(), new RegExp(oldAddress));
   assert.equal(await evaluate('document.querySelector(\'button[aria-label="copy address"]\') === null'), true);
   hold = false;
-  held.splice(0).forEach(reply => reply());
-  await waitFor(body, text => text.includes(replacementAddress), 'replacement node address');
+  held.splice(0).forEach((reply) => reply());
+  await waitFor(body, (text) => text.includes(replacementAddress), 'replacement node address');
   assert.doesNotMatch(await body(), new RegExp(oldAddress));
-  await waitFor(body, text => text.includes(`passphrase=${ownPassphrase}`), 'the first revealed passphrase');
-  await evaluate(`Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async value => { window.copiedPublishUrl = value; } } })`);
+  await waitFor(body, (text) => text.includes(`passphrase=${ownPassphrase}`), 'the first revealed passphrase');
+  await evaluate(
+    `Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async value => { window.copiedPublishUrl = value; } } })`,
+  );
   holdPassphrases = true;
   const oldRead = heldPassphrases.length;
   replacePrimary({ intent_revision: 2, updated_at: '2026-09-08T00:00:02Z', notes: 'old passphrase request started' });
-  await waitFor(body, text => text.includes('old passphrase request started'), 'the old passphrase revision');
-  await waitFor(() => heldPassphrases.length, count => count > oldRead, 'the held old-revision passphrase read');
+  await waitFor(body, (text) => text.includes('old passphrase request started'), 'the old passphrase revision');
+  await waitFor(
+    () => heldPassphrases.length,
+    (count) => count > oldRead,
+    'the held old-revision passphrase read',
+  );
   assert.equal(heldPassphrases.at(-1).value, 'alpha-passphrase');
   ownPassphrase = 'beta-passphrase';
   replacePrimary({ intent_revision: 3, updated_at: '2026-09-08T00:00:03Z', notes: 'replacement passphrase arrived' });
-  await waitFor(body, text => text.includes('replacement passphrase arrived'), 'the replacement passphrase revision');
+  await waitFor(body, (text) => text.includes('replacement passphrase arrived'), 'the replacement passphrase revision');
   await waitFor(
-    () => heldPassphrases.find(read => read.value === ownPassphrase) ?? null,
+    () => heldPassphrases.find((read) => read.value === ownPassphrase) ?? null,
     Boolean,
     'the replacement passphrase read',
   );
-  const replacementRead = heldPassphrases.find(read => read.value === ownPassphrase);
+  const replacementRead = heldPassphrases.find((read) => read.value === ownPassphrase);
   assert.equal(replacementRead.value, ownPassphrase);
   const publishCopyButton = `[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Copy' && button.closest('.MuiPaper-root')?.innerText.includes('OBS, FFmpeg'))`;
   assert.equal(
@@ -147,11 +267,7 @@ test('readiness and container diagnostics use current observations in the browse
     true,
     'the incomplete replacement URL cannot be copied',
   );
-  assert.match(
-    await body(),
-    /Reading this deployment's passphrase/,
-    'the held reveal is explained beside the URL',
-  );
+  assert.match(await body(), /Reading this deployment's passphrase/, 'the held reveal is explained beside the URL');
   assert.doesNotMatch(
     await body(),
     /already in the URL/,
@@ -165,10 +281,10 @@ test('readiness and container diagnostics use current observations in the browse
     'clicking a disabled Copy control writes no incomplete URL',
   );
   replacementRead.reply();
-  await waitFor(body, text => text.includes(`passphrase=${ownPassphrase}`), 'the replacement publish URL');
+  await waitFor(body, (text) => text.includes(`passphrase=${ownPassphrase}`), 'the replacement publish URL');
   await waitFor(
     () => evaluate(`(${publishCopyButton}).disabled`),
-    disabled => disabled === false,
+    (disabled) => disabled === false,
     'the complete replacement URL to become copyable',
   );
   heldPassphrases.at(oldRead).reply();
@@ -177,54 +293,98 @@ test('readiness and container diagnostics use current observations in the browse
   assert.doesNotMatch(await body(), /passphrase=alpha-passphrase/);
   holdPassphrases = false;
   await clickPublishCopy();
-  await waitFor(() => evaluate('window.copiedPublishUrl ?? null'), value => value?.includes('passphrase=beta-passphrase'), 'the copied replacement publish URL');
+  await waitFor(
+    () => evaluate('window.copiedPublishUrl ?? null'),
+    (value) => value?.includes('passphrase=beta-passphrase'),
+    'the copied replacement publish URL',
+  );
   for (const service of ['bee-uploader', 'srs']) {
     await clickSelected(`button[aria-label="View ${service} logs"]`, `the View ${service} logs button`);
-    await waitFor(body, text => text.includes(`Only ${service} logs`), `${service} selected logs`);
+    await waitFor(body, (text) => text.includes(`Only ${service} logs`), `${service} selected logs`);
     assert.equal(logRequests.at(-1), `/profiles/test-stream/containers/${service}/logs`);
     await clickSelected('button[aria-label="close"]', 'the log dialog close button');
-    await waitFor(() => evaluate('document.querySelector("[role=dialog]") === null'), Boolean, 'the log dialog to close');
+    await waitFor(
+      () => evaluate('document.querySelector("[role=dialog]") === null'),
+      Boolean,
+      'the log dialog to close',
+    );
   }
-  await evaluate('window.fixtureNow = performance.now.bind(performance); performance.now = () => window.fixtureNow() + 31000');
-  await waitFor(body, text => text.includes('Bee observation stale'), 'expired observation');
+  await evaluate(
+    'window.fixtureNow = performance.now.bind(performance); performance.now = () => window.fixtureNow() + 31000',
+  );
+  await waitFor(body, (text) => text.includes('Bee observation stale'), 'expired observation');
   assert.equal(await hasUploader(), true);
   hold = true;
   await click('Retry node checks');
-  await waitFor(() => held.length, count => count >= 1, 'held reload');
+  await waitFor(
+    () => held.length,
+    (count) => count >= 1,
+    'held reload',
+  );
   assert.equal(await hasUploader(), true);
-  mode = 'failed'; hold = false; held.splice(0).forEach(reply => reply());
-  await waitFor(body, text => text.includes('Bee unreachable'), 'failed reload');
+  mode = 'failed';
+  hold = false;
+  held.splice(0).forEach((reply) => reply());
+  await waitFor(body, (text) => text.includes('Bee unreachable'), 'failed reload');
   assert.equal(await hasUploader(), true);
-  mode = 'initializing'; await click('Retry node checks');
-  await waitFor(body, text => text.includes('Bee initializing'), 'initializing response');
+  mode = 'initializing';
+  await click('Retry node checks');
+  await waitFor(body, (text) => text.includes('Bee initializing'), 'initializing response');
   assert.match(await body(), /No completion estimate/);
   hold = true;
   await evaluate(`location.hash = '#/deployments/second-stream'`);
-  await waitFor(() => held.length, count => count >= 1, 'second deployment loading');
+  await waitFor(
+    () => held.length,
+    (count) => count >= 1,
+    'second deployment loading',
+  );
   assert.match(await body(), /No current Bee API observation/);
   assert.equal(await hasUploader(), true);
-  mode = 'ready'; hold = false; held.splice(0).forEach(reply => reply());
-  await waitFor(body, text => text.includes('Bee reports its API is ready') && text.includes('second-stream'), 'new deployment observations');
+  mode = 'ready';
+  hold = false;
+  held.splice(0).forEach((reply) => reply());
+  await waitFor(
+    body,
+    (text) => text.includes('Bee reports its API is ready') && text.includes('second-stream'),
+    'new deployment observations',
+  );
   assert.equal(await hasUploader(), true);
   // A sibling wallet request must not renew an earlier probe response.
   holdWallet = true;
   await evaluate('performance.now = () => window.fixtureNow() + 62000');
-  await waitFor(body, text => text.includes('Bee observation stale'), 'second expiry');
+  await waitFor(body, (text) => text.includes('Bee observation stale'), 'second expiry');
   const probeResponses = await watchCompletedRequests(evaluate, '/stamp/readiness');
   await click('Retry node checks');
-  await waitFor(() => held.length, count => count >= 1, 'held wallet sibling');
-  await waitFor(probeResponses, count => count > 0, 'probe response received before wallet');
+  await waitFor(
+    () => held.length,
+    (count) => count >= 1,
+    'held wallet sibling',
+  );
+  await waitFor(probeResponses, (count) => count > 0, 'probe response received before wallet');
   await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
   await evaluate('performance.now = () => window.fixtureNow() + 93000');
-  holdWallet = false; held.splice(0).forEach(reply => reply());
-  await waitFor(() => evaluate(`!![...document.querySelectorAll('#storage button')].find(button => button.textContent.trim() === 'Refresh' && !button.disabled)`), Boolean, 'the storage Refresh button to be enabled again');
+  holdWallet = false;
+  held.splice(0).forEach((reply) => reply());
+  await waitFor(
+    () =>
+      evaluate(
+        `!![...document.querySelectorAll('#storage button')].find(button => button.textContent.trim() === 'Refresh' && !button.disabled)`,
+      ),
+    Boolean,
+    'the storage Refresh button to be enabled again',
+  );
   assert.equal(await hasUploader(), true);
   assert.match(await body(), /Bee observation stale/);
   for (const phase of ['starting', 'restarting', null]) {
-    second.status = 'DEPLOYING'; second.deployment_phase = phase;
+    second.status = 'DEPLOYING';
+    second.deployment_phase = phase;
     await reloadDocument({ call, evaluate });
     const label = phase === 'starting' ? 'Starting' : phase === 'restarting' ? 'Restarting' : 'Deploying';
-    await waitFor(body, text => text.includes(`${label}. Ingest and current container state are not yet verified.`), `${label} after page reload`);
+    await waitFor(
+      body,
+      (text) => text.includes(`${label}. Ingest and current container state are not yet verified.`),
+      `${label} after page reload`,
+    );
     assert.doesNotMatch(await body(), /deployment is stopped|Stopped\. Start it/);
     assert.match(await body(), /Previous container records, current state not yet verified/);
     const engineText = await readWhenPresent(
@@ -239,7 +399,14 @@ test('readiness and container diagnostics use current observations in the browse
   assert.deepEqual(writes, []);
   assert.deepEqual(browser.errors, []);
   assert.deepEqual(browser.blockedRequests, []);
-  await writeFile(join(evidence, 'processes.json'), JSON.stringify({ chromePid: browser.pid, debuggingPort: browser.debuggingPort, vitePort: port, logRequests }, null, 2));
+  await writeFile(
+    join(evidence, 'processes.json'),
+    JSON.stringify(
+      { chromePid: browser.pid, debuggingPort: browser.debuggingPort, vitePort: port, logRequests },
+      null,
+      2,
+    ),
+  );
   const { data } = await call('Page.captureScreenshot', { captureBeyondViewport: true });
   await writeFile(join(evidence, 'readiness.png'), Buffer.from(data, 'base64'));
 });

@@ -64,9 +64,7 @@ export function runIdFrom(env: TargetEnv): string {
   const given = env[RUN_ID_VAR];
   if (given === undefined) return randomToken(RUN_ID_LENGTH);
   if (!RUN_ID_RE.test(given)) {
-    throw new Error(
-      `${RUN_ID_VAR} must be 1 to 8 lowercase letters or digits, it goes into deployment names`,
-    );
+    throw new Error(`${RUN_ID_VAR} must be 1 to 8 lowercase letters or digits, it goes into deployment names`);
   }
   return given;
 }

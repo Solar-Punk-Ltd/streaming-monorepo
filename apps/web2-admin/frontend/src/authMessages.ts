@@ -16,17 +16,14 @@ export const SIGN_IN_MESSAGES = {
   wrongPair: 'Wrong username or password.',
   sessionEnded: 'Your session ended. Log in again.',
   noUsers: 'No users yet. Create the first one on the host.',
-  unreachable:
-    'The server did not answer. Check that it is running, then try again.',
+  unreachable: 'The server did not answer. Check that it is running, then try again.',
 } as const;
 
 /** Said by both password forms, so they say it the same way. */
 export const PASSWORD_MISMATCH = 'The two passwords are not the same.';
 
 /** The rule, stated before it is broken rather than after. */
-export const PASSWORD_RULE =
-  `At least ${PASSWORD_MIN_LENGTH} characters, and it must not contain the ` +
-  'username.';
+export const PASSWORD_RULE = `At least ${PASSWORD_MIN_LENGTH} characters, and it must not contain the ` + 'username.';
 
 /**
  * The command that creates the first user, shown when there are none.
@@ -38,8 +35,7 @@ export const PASSWORD_RULE =
  * on the host can always look up. One constant, so the day the CLI is renamed
  * there is one line to change here.
  */
-export const FIRST_USER_COMMAND =
-  'docker exec -it <api-container> node dist/cli.js user:add <username>';
+export const FIRST_USER_COMMAND = 'docker exec -it <api-container> node dist/cli.js user:add <username>';
 
 /**
  * Said under the command. The names are compose's `<project>-<service>-1`:

@@ -34,10 +34,14 @@ async function request(path, method = 'GET', body) {
       ...(cookie ? { cookie } : {}),
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal: AbortSignal.timeout(2000),
   });
-  return { status: response.status, body: response.status === 204 ? null : await response.json(), cookie: response.headers.get('set-cookie') };
+  return {
+    status: response.status,
+    body: response.status === 204 ? null : await response.json(),
+    cookie: response.headers.get('set-cookie'),
+  };
 }
 
 /** For the action routes, which answer with a script's event stream and not JSON. */
@@ -58,23 +62,33 @@ before(async () => {
   socket.listen(0, '127.0.0.1');
   await once(socket, 'listening');
   const port = socket.address().port;
-  await new Promise(resolve => socket.close(resolve));
+  await new Promise((resolve) => socket.close(resolve));
   base = `http://127.0.0.1:${port}`;
-  child = spawn(process.execPath, ['--import', 'tsx', '--conditions=development', '--input-type=module', '-e', bootstrap], {
-    cwd: fileURLToPath(new URL('..', import.meta.url)),
-    env: { ...process.env, PORT: String(port) },
-    stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
-  });
+  child = spawn(
+    process.execPath,
+    ['--import', 'tsx', '--conditions=development', '--input-type=module', '-e', bootstrap],
+    {
+      cwd: fileURLToPath(new URL('..', import.meta.url)),
+      env: { ...process.env, PORT: String(port) },
+      stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+    },
+  );
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => finish(new Error('Owned funding mock did not start')), 8000);
-    const onMessage = message => { if (message?.ready) finish(); };
+    const onMessage = (message) => {
+      if (message?.ready) finish();
+    };
     const onExit = () => finish(new Error('Owned funding mock exited before startup'));
-    const finish = error => {
+    const finish = (error) => {
       clearTimeout(timeout);
       child.off('message', onMessage);
       child.off('exit', onExit);
       child.off('error', finish);
-      error ? reject(error) : resolve();
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
     };
     child.on('message', onMessage);
     child.once('exit', onExit);
@@ -90,7 +104,11 @@ after(async () => {
   const exited = once(child, 'exit');
   const timeout = setTimeout(() => child.kill('SIGKILL'), 2000);
   child.kill('SIGTERM');
-  try { await exited; } finally { clearTimeout(timeout); }
+  try {
+    await exited;
+  } finally {
+    clearTimeout(timeout);
+  }
 });
 
 /**

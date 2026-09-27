@@ -5,7 +5,9 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 export async function assertSeparateOwnedTrees(source: string, destination: string): Promise<void> {
   const sourcePath = await realpath(source);
   let destinationPath: string;
-  try { destinationPath = await realpath(destination); } catch (error) {
+  try {
+    destinationPath = await realpath(destination);
+  } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     destinationPath = join(await realpath(dirname(destination)), basename(destination));
   }
@@ -16,8 +18,13 @@ export async function assertSeparateOwnedTrees(source: string, destination: stri
 }
 
 export function assertRelativeTreePath(path: string): void {
-  if (!path || path.includes('\0') || path.includes('\\') || isAbsolute(path) ||
-      path.split('/').some((part) => !part || part === '.' || part === '..')) {
+  if (
+    !path ||
+    path.includes('\0') ||
+    path.includes('\\') ||
+    isAbsolute(path) ||
+    path.split('/').some((part) => !part || part === '.' || part === '..')
+  ) {
     throw new Error('Invalid owned-tree path.');
   }
 }
@@ -25,8 +32,15 @@ export function assertRelativeTreePath(path: string): void {
 export function assertOwnedLinkTarget(root: string, path: string, target: string): void {
   assertRelativeTreePath(path);
   const destination = relative(resolve(root), resolve(root, dirname(path), target));
-  if (!target || target.includes('\0') || target.includes('\\') || isAbsolute(target) ||
-      destination === '..' || destination.startsWith(`..${sep}`) || isAbsolute(destination)) {
+  if (
+    !target ||
+    target.includes('\0') ||
+    target.includes('\\') ||
+    isAbsolute(target) ||
+    destination === '..' ||
+    destination.startsWith(`..${sep}`) ||
+    isAbsolute(destination)
+  ) {
     throw new Error('Symbolic link target escapes the owned tree.');
   }
 }
@@ -74,9 +88,13 @@ export async function assertOwnedTreeLinks(root: string): Promise<void> {
 /** The caller owns the tree. Ancestors must be real directories, never link traversal. */
 export async function assertOwnedDirectory(root: string, path = ''): Promise<void> {
   if (path) assertRelativeTreePath(path);
-  for (const candidate of ['', ...(path ? path.split('/').map((_, index, parts) => parts.slice(0, index + 1).join('/')) : [])]) {
+  for (const candidate of [
+    '',
+    ...(path ? path.split('/').map((_, index, parts) => parts.slice(0, index + 1).join('/')) : []),
+  ]) {
     const info = await lstat(join(root, candidate));
-    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Owned-tree directory is missing or is a symbolic link.');
+    if (!info.isDirectory() || info.isSymbolicLink())
+      throw new Error('Owned-tree directory is missing or is a symbolic link.');
   }
 }
 
@@ -101,10 +119,17 @@ async function readOwnedFileWith(root: string, path: string, compareCtime: boole
   await assertOwnedDirectory(root, parent === '.' ? '' : parent);
   const fullPath = join(root, path);
   const before = await lstat(fullPath, { bigint: true });
-  if (!before.isFile() || before.isSymbolicLink()) throw new Error('Owned-tree file is not a regular file or is a symbolic link.');
-  const unchanged = (info: typeof before): boolean => info.isFile() && !info.isSymbolicLink() &&
-    info.dev === before.dev && info.ino === before.ino && info.size === before.size && info.mode === before.mode &&
-    info.mtimeNs === before.mtimeNs && (!compareCtime || info.ctimeNs === before.ctimeNs);
+  if (!before.isFile() || before.isSymbolicLink())
+    throw new Error('Owned-tree file is not a regular file or is a symbolic link.');
+  const unchanged = (info: typeof before): boolean =>
+    info.isFile() &&
+    !info.isSymbolicLink() &&
+    info.dev === before.dev &&
+    info.ino === before.ino &&
+    info.size === before.size &&
+    info.mode === before.mode &&
+    info.mtimeNs === before.mtimeNs &&
+    (!compareCtime || info.ctimeNs === before.ctimeNs);
   const handle = await open(fullPath, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const opened = await handle.stat({ bigint: true });
@@ -113,9 +138,11 @@ async function readOwnedFileWith(root: string, path: string, compareCtime: boole
     const after = await handle.stat({ bigint: true });
     const current = await lstat(fullPath, { bigint: true });
     await assertOwnedDirectory(root, parent === '.' ? '' : parent);
-    if ([after, current].some(info => !unchanged(info))) {
+    if ([after, current].some((info) => !unchanged(info))) {
       throw new Error('Owned-tree file changed while reading.');
     }
     return bytes;
-  } finally { await handle.close(); }
+  } finally {
+    await handle.close();
+  }
 }

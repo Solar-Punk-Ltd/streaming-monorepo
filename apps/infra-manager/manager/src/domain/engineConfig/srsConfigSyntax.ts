@@ -9,7 +9,8 @@ export interface SrsDirective {
   generated: boolean;
 }
 
-type Token = { kind: 'word'; value: string; quoted: boolean; lineStart: boolean; offset: number }
+type Token =
+  | { kind: 'word'; value: string; quoted: boolean; lineStart: boolean; offset: number }
   | { kind: '{' | '}' | ';' | 'newline' };
 
 const GENERATED = new Set(['TRANSCODE_PLACEHOLDER', 'ABR_VHOST_PLACEHOLDER']);
@@ -23,14 +24,25 @@ function tokensIn(text: string): Token[] | null {
   while (index < text.length) {
     if (tokens.length >= MAX_TOKENS) return null;
     const char = text[index]!;
-    if (char === '\n') { tokens.push({ kind: 'newline' }); lineStart = true; index += 1; continue; }
-    if (char === ' ' || char === '\t' || char === '\r') { index += 1; continue; }
+    if (char === '\n') {
+      tokens.push({ kind: 'newline' });
+      lineStart = true;
+      index += 1;
+      continue;
+    }
+    if (char === ' ' || char === '\t' || char === '\r') {
+      index += 1;
+      continue;
+    }
     if (char === '#') {
       while (index < text.length && text[index] !== '\n') index += 1;
       continue;
     }
     if (char === '{' || char === '}' || char === ';') {
-      tokens.push({ kind: char }); lineStart = false; index += 1; continue;
+      tokens.push({ kind: char });
+      lineStart = false;
+      index += 1;
+      continue;
     }
     const quoted = char === '"' || char === "'";
     const offset = index + (quoted ? 1 : 0);
@@ -68,7 +80,12 @@ function tokensIn(text: string): Token[] | null {
 export function parseSrsConfig(text: string | null): readonly SrsDirective[] | null {
   if (text === null || Buffer.byteLength(text) > ENGINE_CONFIG_MAX_BYTES) return null;
   // The entrypoint replaces entire marker lines, including occurrences inside comments and quotes.
-  if (text.split('\n').some(line => [...GENERATED].some(marker => line.includes(marker)) && !GENERATED.has(line.trim()))) return null;
+  if (
+    text
+      .split('\n')
+      .some((line) => [...GENERATED].some((marker) => line.includes(marker)) && !GENERATED.has(line.trim()))
+  )
+    return null;
   const tokens = tokensIn(text);
   if (tokens === null) return null;
   let index = 0;
@@ -79,7 +96,8 @@ export function parseSrsConfig(text: string | null): readonly SrsDirective[] | n
       const first = tokens[index++]!;
       if (first.kind === 'newline') continue;
       if (first.kind === '}' && depth > 0) return nodes;
-      if (first.kind !== 'word' || first.quoted || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(first.value)) throw new Error('directive');
+      if (first.kind !== 'word' || first.quoted || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(first.value))
+        throw new Error('directive');
       if (GENERATED.has(first.value)) {
         if (!first.lineStart || (tokens[index] && tokens[index]!.kind !== 'newline')) throw new Error('marker');
         nodes.push({ name: first.value, args: [], argOffsets: [], children: null, generated: true });
@@ -91,9 +109,19 @@ export function parseSrsConfig(text: string | null): readonly SrsDirective[] | n
       while (index < tokens.length) {
         const token = tokens[index++]!;
         if (token.kind === 'newline') continue;
-        if (token.kind === 'word') { args.push(token.value); argOffsets.push(token.offset); continue; }
+        if (token.kind === 'word') {
+          args.push(token.value);
+          argOffsets.push(token.offset);
+          continue;
+        }
         if (token.kind !== ';' && token.kind !== '{') throw new Error('terminator');
-        nodes.push({ name: first.value, args, argOffsets, children: token.kind === '{' ? block(depth + 1) : null, generated: false });
+        nodes.push({
+          name: first.value,
+          args,
+          argOffsets,
+          children: token.kind === '{' ? block(depth + 1) : null,
+          generated: false,
+        });
         ended = true;
         break;
       }
@@ -102,5 +130,9 @@ export function parseSrsConfig(text: string | null): readonly SrsDirective[] | n
     if (depth > 0) throw new Error('unclosed');
     return nodes;
   };
-  try { return block(0); } catch { return null; }
+  try {
+    return block(0);
+  } catch {
+    return null;
+  }
 }

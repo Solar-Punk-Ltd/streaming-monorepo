@@ -16,10 +16,7 @@ import { ValidationError } from 'yup';
 
 import { isPendingStamp, managesOwnStamp } from '@streaming-infra-manager/common';
 
-import {
-  createProfileSchema,
-  updateProfileSchema,
-} from '../../src/schemas/profile.js';
+import { createProfileSchema, updateProfileSchema } from '../../src/schemas/profile.js';
 import { splitDeployableServices } from '../../src/domain/stampLogic.js';
 import { ContainerRepository } from '../../src/domain/ContainerRepository.js';
 import { DeploymentGroupRepository } from '../../src/domain/DeploymentGroupRepository.js';
@@ -96,10 +93,7 @@ describe('pool-backed uploader — deploy gating', () => {
   });
 
   it('releases the uploader on BEE_PUBLISHERS alone', () => {
-    const split = splitDeployableServices(
-      streamer({ kind: 'abr-uploader', bee_publishers: PUBLISHERS }),
-      ABR_UPLOADER,
-    );
+    const split = splitDeployableServices(streamer({ kind: 'abr-uploader', bee_publishers: PUBLISHERS }), ABR_UPLOADER);
     assert.deepEqual(split.heldBackForStamp, []);
     assert.deepEqual(split.deployNow, ABR_UPLOADER);
   });
@@ -109,25 +103,16 @@ describe('pool-backed uploader — deploy gating', () => {
     const pool = streamer({ kind: 'abr-uploader', bee_publishers: PUBLISHERS });
     assert.equal(isPendingStamp(pool), false);
     // Whitespace is not a value.
-    assert.equal(
-      isPendingStamp({ ...pool, bee_publishers: '  ' }),
-      true,
-    );
+    assert.equal(isPendingStamp({ ...pool, bee_publishers: '  ' }), true);
   });
 
   it('keeps a pool-backed uploader out of the Uploaders tab', () => {
     // It has no Bee node, so a funding panel here would point at nothing; its
     // batches are managed on the pool's own card.
     assert.equal(managesOwnStamp(streamer()), true);
-    assert.equal(
-      managesOwnStamp(streamer({ kind: 'abr-uploader', bee_publishers: PUBLISHERS })),
-      false,
-    );
+    assert.equal(managesOwnStamp(streamer({ kind: 'abr-uploader', bee_publishers: PUBLISHERS })), false);
     // A bee-only rung of the pool itself still belongs there.
-    assert.equal(
-      managesOwnStamp({ kind: 'custom', components: ['bee-uploader'] }),
-      true,
-    );
+    assert.equal(managesOwnStamp({ kind: 'custom', components: ['bee-uploader'] }), true);
   });
 });
 
@@ -213,10 +198,7 @@ describe('pool-backed uploader — schema', () => {
     // throws `must be 64 hex characters, got 66`. stamp_id is routinely
     // 0x-prefixed here, so this string is easy to hand-assemble.
     const prefixed = ['360p', '480p', '720p', '1080p']
-      .map(
-        (rung, i) =>
-          `${rung}@http://192.0.2.58:${10015 + i * 10}<0x${BATCH(rung).toUpperCase()}>`,
-      )
+      .map((rung, i) => `${rung}@http://192.0.2.58:${10015 + i * 10}<0x${BATCH(rung).toUpperCase()}>`)
       .join(' ');
     const out = await createProfileSchema.validate({
       name: 'stage',
@@ -241,7 +223,7 @@ describe('pool-backed uploader — schema', () => {
     );
   });
 
-  it('requires a private key — it is the uploader\'s STREAM_KEY', async () => {
+  it("requires a private key — it is the uploader's STREAM_KEY", async () => {
     // The uploader declares `streamKey: required('STREAM_KEY')`; without one it
     // throws at config load and restarts forever while the manager, which only
     // watches the deploy script's exit code, reports RUNNING.

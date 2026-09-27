@@ -28,19 +28,11 @@ export function AccessPage() {
       </Typography>
 
       <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-        {canManage
-          ? 'You can add and remove users here.'
-          : 'Only an admin adds or removes a user.'}{' '}
-        A session lasts twelve hours of inactivity, and fourteen days at most.
+        {canManage ? 'You can add and remove users here.' : 'Only an admin adds or removes a user.'} A session lasts
+        twelve hours of inactivity, and fourteen days at most.
       </Typography>
 
-      <UsersCard
-        users={users}
-        error={error}
-        currentUsername={currentUsername}
-        canManage={canManage}
-        reload={reload}
-      />
+      <UsersCard users={users} error={error} currentUsername={currentUsername} canManage={canManage} reload={reload} />
       {canManage ? <AddUserCard onAdded={reload} /> : null}
       <ChangePasswordCard />
     </Stack>

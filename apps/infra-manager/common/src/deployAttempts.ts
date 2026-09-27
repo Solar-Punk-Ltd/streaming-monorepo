@@ -50,10 +50,7 @@ export function isAttemptUnresolved(attempt: Pick<DeployAttemptView, 'state'>): 
  * The manager applies it to the request and the dialog to the field, so a
  * refusal seen in the page is the refusal the manager gives.
  */
-export function attemptReleaseProblem(
-  typed: string,
-  attempt: Pick<DeployAttemptView, 'jobId'>,
-): string | null {
+export function attemptReleaseProblem(typed: string, attempt: Pick<DeployAttemptView, 'jobId'>): string | null {
   const jobId = typed.trim();
   if (jobId === '') return 'Type the job id of the attempt to release it.';
   if (jobId !== attempt.jobId) {
@@ -75,9 +72,6 @@ const HOLD_STATE: Record<DeployAttemptState, string> = {
 export function describeAttemptHold(attempt: DeployAttemptView): string {
   const state = HOLD_STATE[attempt.state];
   if (attempt.state === 'released') return `${state} Nothing is held now.`;
-  const daemon =
-    attempt.kind === 'shared'
-      ? ', and every deploy of a version with shared image tags on this host'
-      : '';
+  const daemon = attempt.kind === 'shared' ? ', and every deploy of a version with shared image tags on this host' : '';
   return `${state} It holds ${attempt.project}${daemon}.`;
 }

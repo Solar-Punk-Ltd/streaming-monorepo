@@ -22,10 +22,7 @@ export interface RouterCall {
 }
 
 /** @param mountPath where `api/server.ts` mounts this router, `/` for one that names its own paths. */
-export async function startRouterTestApp(
-  router: Router,
-  mountPath = '/',
-): Promise<RouterTestApp> {
+export async function startRouterTestApp(router: Router, mountPath = '/'): Promise<RouterTestApp> {
   const app = express();
   app.use(express.json({ limit: '256kb' }));
   app.use(mountPath, router);

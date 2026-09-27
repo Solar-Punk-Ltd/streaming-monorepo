@@ -6,9 +6,7 @@ export class StreamPublishedError extends Error {
     public readonly streamId: string,
     public readonly currentStatus: StreamStatus,
   ) {
-    super(
-      `Stream ${streamId} is ${currentStatus}; unpublish it before deleting`,
-    );
+    super(`Stream ${streamId} is ${currentStatus}; unpublish it before deleting`);
     this.name = 'StreamPublishedError';
   }
 }

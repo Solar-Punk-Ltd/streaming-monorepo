@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import {
-  getErrorMessage,
-  type UserSummary,
-} from '@streaming-infra-manager/common';
+import { getErrorMessage, type UserSummary } from '@streaming-infra-manager/common';
 
 import { fetchUsers } from '../auth/authApi';
 

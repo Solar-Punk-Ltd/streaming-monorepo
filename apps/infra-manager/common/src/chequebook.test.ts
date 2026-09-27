@@ -105,18 +105,10 @@ describe('plurToBzzExact', () => {
 
 describe('chequebookStateReason', () => {
   const reasonFor = (available: string) =>
-    chequebookStateReason(
-      chequebookHealthFrom(
-        { totalBalance: available, availableBalance: available },
-        FLOOR,
-      ),
-    );
+    chequebookStateReason(chequebookHealthFrom({ totalBalance: available, availableBalance: available }, FLOOR));
 
   it('says what an empty chequebook costs', () => {
-    assert.equal(
-      reasonFor('0'),
-      'Chequebook empty. Uploads stall until it is filled.',
-    );
+    assert.equal(reasonFor('0'), 'Chequebook empty. Uploads stall until it is filled.');
   });
 
   it('quotes both numbers when it is under the floor', () => {
@@ -158,57 +150,39 @@ describe('chequebookHealthFrom', () => {
   });
 
   it('reports unknown when the node answered with nonsense', () => {
-    const health = chequebookHealthFrom(
-      { totalBalance: '1', availableBalance: 'not a number' },
-      FLOOR,
-    );
+    const health = chequebookHealthFrom({ totalBalance: '1', availableBalance: 'not a number' }, FLOOR);
     assert.equal(health.state, 'unknown');
   });
 
   it('reports empty at zero', () => {
-    const health = chequebookHealthFrom(
-      { totalBalance: '0', availableBalance: '0' },
-      FLOOR,
-    );
+    const health = chequebookHealthFrom({ totalBalance: '0', availableBalance: '0' }, FLOOR);
     assert.equal(health.state, 'empty');
     assert.equal(health.availablePlur, 0n);
   });
 
   it('reports low below the floor', () => {
     assert.equal(
-      chequebookHealthFrom(
-        { totalBalance: '1200000000000000', availableBalance: '1200000000000000' },
-        FLOOR,
-      ).state,
+      chequebookHealthFrom({ totalBalance: '1200000000000000', availableBalance: '1200000000000000' }, FLOOR).state,
       'low',
     );
   });
 
   it('reports ok exactly at the floor', () => {
     assert.equal(
-      chequebookHealthFrom(
-        { totalBalance: '5000000000000000', availableBalance: '5000000000000000' },
-        FLOOR,
-      ).state,
+      chequebookHealthFrom({ totalBalance: '5000000000000000', availableBalance: '5000000000000000' }, FLOOR).state,
       'ok',
     );
   });
 
   it('reports ok above the floor', () => {
     assert.equal(
-      chequebookHealthFrom(
-        { totalBalance: '13100000000000000', availableBalance: '12400000000000000' },
-        FLOOR,
-      ).state,
+      chequebookHealthFrom({ totalBalance: '13100000000000000', availableBalance: '12400000000000000' }, FLOOR).state,
       'ok',
     );
   });
 
   it('answers on what is available, not on the total', () => {
-    const health = chequebookHealthFrom(
-      { totalBalance: '99000000000000000', availableBalance: '0' },
-      FLOOR,
-    );
+    const health = chequebookHealthFrom({ totalBalance: '99000000000000000', availableBalance: '0' }, FLOOR);
     assert.equal(health.state, 'empty');
   });
 
@@ -231,12 +205,7 @@ describe('drainedChequebooks', () => {
     new Map<string, ChequebookHealth>(
       Object.entries(available).map(([name, plur]) => [
         name,
-        chequebookHealthFrom(
-          plur === null
-            ? null
-            : { totalBalance: plur, availableBalance: plur },
-          FLOOR,
-        ),
+        chequebookHealthFrom(plur === null ? null : { totalBalance: plur, availableBalance: plur }, FLOOR),
       ]),
     );
 
@@ -260,47 +229,32 @@ describe('drainedChequebooks', () => {
   it('leaves a low rung out, because it can still pay', () => {
     // A low rung is a warning under the pool string, never a reason to call the
     // whole pool unready: an uploader publishing to it still lands segments.
-    assert.deepEqual(
-      drainedChequebooks(healths({ 'pool-360p': '1200000000000000' }), RUNGS),
-      [],
-    );
+    assert.deepEqual(drainedChequebooks(healths({ 'pool-360p': '1200000000000000' }), RUNGS), []);
   });
 
   it('says nothing about a rung that did not answer', () => {
-    assert.deepEqual(
-      drainedChequebooks(healths({ 'pool-360p': null }), RUNGS),
-      [],
-    );
+    assert.deepEqual(drainedChequebooks(healths({ 'pool-360p': null }), RUNGS), []);
     assert.deepEqual(drainedChequebooks(new Map(), RUNGS), []);
   });
 
   it('ignores readings for nodes outside the group', () => {
-    assert.deepEqual(
-      drainedChequebooks(healths({ 'some-other-node': '0' }), RUNGS),
-      [],
-    );
+    assert.deepEqual(drainedChequebooks(healths({ 'some-other-node': '0' }), RUNGS), []);
   });
 });
 
 describe('the health payload', () => {
   it('survives the round trip through JSON', () => {
-    const health = chequebookHealthFrom(
-      { totalBalance: '1', availableBalance: '1200000000000000' },
-      FLOOR,
-    );
-    const wire = JSON.parse(
-      JSON.stringify(chequebookHealthPayload(health)),
-    ) as ReturnType<typeof chequebookHealthPayload>;
+    const health = chequebookHealthFrom({ totalBalance: '1', availableBalance: '1200000000000000' }, FLOOR);
+    const wire = JSON.parse(JSON.stringify(chequebookHealthPayload(health))) as ReturnType<
+      typeof chequebookHealthPayload
+    >;
 
     assert.deepEqual(chequebookHealthFromPayload(wire), health);
   });
 
   it('keeps a missing reading missing', () => {
     const health = chequebookHealthFrom(null, FLOOR);
-    assert.deepEqual(
-      chequebookHealthFromPayload(chequebookHealthPayload(health)),
-      health,
-    );
+    assert.deepEqual(chequebookHealthFromPayload(chequebookHealthPayload(health)), health);
   });
 });
 
@@ -325,11 +279,7 @@ describe('why a reading is missing', () => {
   it('says nothing about a node that answered', () => {
     // A reason next to a reading that is there would be a reason for nothing,
     // and the page words it as the state of the node.
-    const health = chequebookHealthFrom(
-      { totalBalance: '1', availableBalance: '1200000000000000' },
-      FLOOR,
-      TIMED_OUT,
-    );
+    const health = chequebookHealthFrom({ totalBalance: '1', availableBalance: '1200000000000000' }, FLOOR, TIMED_OUT);
 
     assert.equal(health.state, 'low');
     assert.equal(health.failure, undefined);
@@ -358,10 +308,10 @@ describe('transferOutcome', () => {
   };
 
   const total = (totalBalance: string | null) => ({ totalBalance });
-  const balance = (
-    totalBalance: string,
-    availableBalance: string,
-  ): ChequebookBalance => ({ totalBalance, availableBalance });
+  const balance = (totalBalance: string, availableBalance: string): ChequebookBalance => ({
+    totalBalance,
+    availableBalance,
+  });
 
   it('settles a deposit once the total has risen by the amount', () => {
     assert.equal(transferOutcome(total(ONE), total(TWO), DEPOSIT), 'settled');
@@ -392,14 +342,8 @@ describe('transferOutcome', () => {
   });
 
   it('ignores the available balance, which every cheque moves', () => {
-    assert.equal(
-      transferOutcome(balance(TWO, TWO), balance(TWO, ONE), DEPOSIT),
-      'pending',
-    );
-    assert.equal(
-      transferOutcome(balance(TWO, ONE), balance(TWO, TWO), WITHDRAW),
-      'pending',
-    );
+    assert.equal(transferOutcome(balance(TWO, TWO), balance(TWO, ONE), DEPOSIT), 'pending');
+    assert.equal(transferOutcome(balance(TWO, ONE), balance(TWO, TWO), WITHDRAW), 'pending');
   });
 
   it('answers unknown for a reading that never arrived', () => {

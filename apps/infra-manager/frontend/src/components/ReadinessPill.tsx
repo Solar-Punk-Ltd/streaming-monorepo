@@ -3,15 +3,7 @@ import { Box } from '@mui/material';
 import { tonePillStyles, type Tone } from './tone';
 
 /** A short verdict on a coloured wash: "Ready to stream", "Needs a stamp". */
-export function ReadinessPill({
-  label,
-  tone,
-  title,
-}: {
-  label: string;
-  tone: Tone;
-  title?: string;
-}) {
+export function ReadinessPill({ label, tone, title }: { label: string; tone: Tone; title?: string }) {
   return (
     <Box
       component="span"

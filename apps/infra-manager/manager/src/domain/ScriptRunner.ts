@@ -98,9 +98,7 @@ export class ScriptRunner implements ScriptSpawner {
       return { emitter, kill: () => undefined };
     }
 
-    logger.info(
-      `[ScriptRunner] spawn ${scriptPath} ${describeArgsForLog(args)}`,
-    );
+    logger.info(`[ScriptRunner] spawn ${scriptPath} ${describeArgsForLog(args)}`);
 
     child.stdout?.on('data', (b: Buffer) => emitter.emit('stdout', b.toString('utf8')));
     child.stderr?.on('data', (b: Buffer) => emitter.emit('stderr', b.toString('utf8')));

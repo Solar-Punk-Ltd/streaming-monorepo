@@ -17,28 +17,48 @@ async function setup() {
     { name: 'RTMP_PORT', protocol: 'tcp' as const, service: 'srs', defaultPort: 10000, slotBase: 10000 },
     { name: 'HTTP_PORT', protocol: 'tcp' as const, service: 'stream-uploader', defaultPort: 10001, slotBase: 10001 },
   ];
-  const current = old.map(port => ({ ...port, slotBase: port.slotBase + 10000 }));
+  const current = old.map((port) => ({ ...port, slotBase: port.slotBase + 10000 }));
   await ports.plan('daemon-1', 'a', portPlanFor(old, 1), 'old build');
-  await ports.setState(ports.rows.map(row => row.id), 'active');
+  await ports.setState(
+    ports.rows.map((row) => row.id),
+    'active',
+  );
   await ports.plan('daemon-1', 'a', portPlanFor(current, 1), 'new build');
   const versions = new InMemoryStackVersionRepository();
   const version = versions.seedBundled();
   version.contract = { ...structuredClone(ALLOCATION_CONTRACT), ports: current };
   const build: BuildDescriptor = { version, buildId: 'new', referenceId: 42, root: '/fake/build' };
   const attempts = new InMemoryDeployAttempts();
-  const attempt = await attempts.open({ daemonId: 'daemon-1', project: 'a', target: 'localhost',
-    jobId: 'new-job', kind: 'fixed', services: ['srs'], preJobContainerIds: ['engine-old', 'uploader-old'] });
+  const attempt = await attempts.open({
+    daemonId: 'daemon-1',
+    project: 'a',
+    target: 'localhost',
+    jobId: 'new-job',
+    kind: 'fixed',
+    services: ['srs'],
+    preJobContainerIds: ['engine-old', 'uploader-old'],
+  });
   const daemon = new FakeDaemon();
   daemon.set('a', 'srs', ['engine-new']);
   daemon.set('a', 'stream-uploader', ['uploader-old']);
-  const snapshot: PublishedPortsSnapshot = { daemonId: 'daemon-1', bindings: [
-    { project: 'a', service: 'srs', protocol: 'tcp', port: 20010 },
-    { project: 'a', service: 'stream-uploader', protocol: 'tcp', port: 10011 },
-  ] };
+  const snapshot: PublishedPortsSnapshot = {
+    daemonId: 'daemon-1',
+    bindings: [
+      { project: 'a', service: 'srs', protocol: 'tcp', port: 20010 },
+      { project: 'a', service: 'stream-uploader', protocol: 'tcp', port: 10011 },
+    ],
+  };
   const handover = new PortHandover(ports, { publishedPorts: async () => snapshot }, daemon);
-  return { ports, profile, attempt, daemon, snapshot, handover, build,
+  return {
+    ports,
+    profile,
+    attempt,
+    daemon,
+    snapshot,
+    handover,
+    build,
     reconcile: () => handover.reconcile(profile, build, attempt),
-    held: async () => (await ports.listByProfile('a')).map(row => row.port).sort((a, b) => a - b),
+    held: async () => (await ports.listByProfile('a')).map((row) => row.port).sort((a, b) => a - b),
   };
 }
 
@@ -48,24 +68,36 @@ describe('observed per-service port handover', () => {
       const h = await setup();
       const b = [
         { name: 'RTMP_PORT', protocol: 'tcp' as const, service: 'srs', defaultPort: 20000, slotBase: 20000 },
-        { name: 'HTTP_PORT', protocol: 'tcp' as const, service: 'stream-uploader', defaultPort: 10000, slotBase: 10000 },
+        {
+          name: 'HTTP_PORT',
+          protocol: 'tcp' as const,
+          service: 'stream-uploader',
+          defaultPort: 10000,
+          slotBase: 10000,
+        },
       ];
       h.build.version!.contract!.ports = b;
       await h.ports.plan('daemon-1', 'a', portPlanFor(b, 1), 'B');
       h.daemon.set('a', 'srs', [firstServices.includes('srs') ? 'engine-B' : 'engine-old']);
       h.daemon.set('a', 'stream-uploader', ['uploader-B']);
-      h.snapshot.bindings = portPlanFor(b, 1).filter(port => firstServices.includes(port.service!)).map(port => ({ ...port, project: 'a' }));
+      h.snapshot.bindings = portPlanFor(b, 1)
+        .filter((port) => firstServices.includes(port.service!))
+        .map((port) => ({ ...port, project: 'a' }));
       await h.handover.reconcile(h.profile, h.build, { ...h.attempt, services: firstServices });
-      const c = b.map(port => port.service === 'stream-uploader' ? { ...port, slotBase: 30001 } : port);
+      const c = b.map((port) => (port.service === 'stream-uploader' ? { ...port, slotBase: 30001 } : port));
       h.build.version!.contract!.ports = c;
       await h.ports.plan('daemon-1', 'a', portPlanFor(c, 1), 'C');
       h.daemon.set('a', 'srs', ['engine-C']);
       h.snapshot.bindings = [{ project: 'a', service: 'srs', protocol: 'tcp', port: 20010 }];
-      const nextAttempt = { ...h.attempt, services: ['srs'], preJobContainerIds: ['engine-old', 'engine-B', 'uploader-B'] };
+      const nextAttempt = {
+        ...h.attempt,
+        services: ['srs'],
+        preJobContainerIds: ['engine-old', 'engine-B', 'uploader-B'],
+      };
       await h.handover.reconcile(h.profile, h.build, nextAttempt);
       assert.ok((await h.held()).includes(10010), 'the untouched stopped B uploader still needs P');
       h.daemon.set('a', 'stream-uploader', ['uploader-C']);
-      h.snapshot.bindings = portPlanFor(c, 1).map(port => ({ ...port, project: 'a' }));
+      h.snapshot.bindings = portPlanFor(c, 1).map((port) => ({ ...port, project: 'a' }));
       await h.handover.reconcile(h.profile, h.build, { ...nextAttempt, services: ['srs', 'stream-uploader'] });
       assert.ok(!(await h.held()).includes(10010), 'P can go once every former owner is replaced');
     });
@@ -75,12 +107,15 @@ describe('observed per-service port handover', () => {
     const h = await setup();
     await h.reconcile();
     assert.deepEqual(await h.held(), [10011, 20010, 20011]);
-    assert.equal(h.ports.rows.find(row => row.port === 20010)!.state, 'active');
+    assert.equal(h.ports.rows.find((row) => row.port === 20010)!.state, 'active');
   });
 
   it('retains an old port still bound anywhere on the daemon', async () => {
     const h = await setup();
-    h.snapshot.bindings = [...h.snapshot.bindings, { project: 'outside', service: 'web', protocol: 'tcp', port: 10010 }];
+    h.snapshot.bindings = [
+      ...h.snapshot.bindings,
+      { project: 'outside', service: 'web', protocol: 'tcp', port: 10010 },
+    ];
     await h.reconcile();
     assert.ok((await h.held()).includes(10010));
   });

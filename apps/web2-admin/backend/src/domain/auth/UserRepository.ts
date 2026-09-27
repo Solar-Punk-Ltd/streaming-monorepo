@@ -13,11 +13,7 @@ export interface UserRepository {
   findById(id: string): Promise<UserRow | null>;
   findByUsername(username: string): Promise<UserRow | null>;
   /** Null when the username is already taken. */
-  insert(
-    username: string,
-    passwordHash: string,
-    isAdmin: boolean,
-  ): Promise<UserRow | null>;
+  insert(username: string, passwordHash: string, isAdmin: boolean): Promise<UserRow | null>;
   markSignedIn(id: string, at: Date): Promise<void>;
   /**
    * Removes a user unless it is the only one left, or the only one left who
