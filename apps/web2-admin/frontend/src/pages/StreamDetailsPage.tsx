@@ -386,7 +386,17 @@ export function StreamDetailsPage() {
                   </Typography>
                 )}
               </Field>
-              <Grid container spacing={2}>
+              {/*
+                The Grid before MUI 7 sat here with its item padding, and the
+                Stack's margin reset cancelled the negative margins that
+                padding relies on. So these fields stood 16px in from and 16px
+                below the ones above. The padding and width keep that layout.
+              */}
+              <Grid
+                container
+                spacing={2}
+                sx={{ width: 'calc(100% + 16px)', pl: 2, pt: 2 }}
+              >
                 <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Media type">
                     <Typography variant="body2">
