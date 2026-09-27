@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { verifyPassword } from '@streaming-monorepo/web-auth';
+
 import { AuthService, type SessionInfo } from '../../src/domain/auth/AuthService.js';
 import type { CredentialRepository } from '../../src/domain/auth/CredentialRepository.js';
 import { LoginLimiter } from '../../src/domain/auth/LoginLimiter.js';
 import { OpenStreams } from '../../src/domain/auth/OpenStreams.js';
-import { verifyPassword } from '../../src/domain/auth/passwordHash.js';
 import { InMemoryCredentialRepository } from '../support/InMemoryCredentialRepository.js';
 import { InMemorySessionRepository } from '../support/InMemorySessionRepository.js';
 import { InMemoryUserRepository } from '../support/InMemoryUserRepository.js';
