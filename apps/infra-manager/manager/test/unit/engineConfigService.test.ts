@@ -226,7 +226,6 @@ describe('applying a file', () => {
     const { service, harness, watcher } = await setup();
 
     const profile = await service.apply('stream1', 'listen 1935;\nhls_fragment HLS_FRAGMENT_PLACEHOLDER;\n');
-    harness.orchestrator; // the fake finishes its runs on its own
     await settle();
 
     assert.equal(profile.has_engine_config, true);

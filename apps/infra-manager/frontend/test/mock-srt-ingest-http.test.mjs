@@ -78,7 +78,11 @@ before(async () => {
       child.stdout.off('data', onData);
       child.off('exit', onExit);
       child.off('error', finish);
-      error ? reject(error) : resolve();
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
     };
     child.stdout.on('data', onData);
     child.once('exit', onExit);

@@ -54,7 +54,11 @@ export async function startMockManager(t) {
       clearTimeout(bound);
       child.off('message', onMessage);
       child.off('exit', onExit);
-      error ? fail(error) : done();
+      if (error) {
+        fail(error);
+      } else {
+        done();
+      }
     };
     child.on('message', onMessage);
     child.once('exit', onExit);
