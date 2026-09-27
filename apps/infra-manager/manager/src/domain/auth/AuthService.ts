@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 
 import { passwordProblem, usernameProblem, type UserSummary } from '@streaming-infra-manager/common';
+import { createSessionToken, hashSessionToken } from '@streaming-monorepo/web-auth';
 
 import {
   CannotRemoveUserError,
@@ -20,7 +21,6 @@ import type { OpenStreams } from './OpenStreams.js';
 import { hashPassword, verifyPassword } from './passwordHash.js';
 import type { SessionRepository } from './SessionRepository.js';
 import { absoluteExpiryFrom, endsAt, hasExpired, idleSince, needsTouch } from './sessionLifetime.js';
-import { createSessionToken, hashSessionToken } from './sessionToken.js';
 import type { UserRepository } from './UserRepository.js';
 
 const logger = Logger.getInstance();
