@@ -51,18 +51,18 @@ gateway ran in `fake` mode; the bee-js integration test is skipped until
 `BEE_URL` and `POSTAGE_BATCH_ID` point at a real node. Docker image builds are
 unverified on this machine (no registry access).
 
-Real-Swarm test, same day: a team member pointed the backend at his Bee node, published
-two streams with thumbnails, and deployed a viewer built for the feed owner.
-Two defects came out of it. Publish reused a thumbnail reference minted by the
-fake gateway, so the real feed pointed at an image the node never had; publish
-now verifies a stored reference on the gateway before reusing it and re-uploads
-a missing one. The viewer ignored the catalogue's `thumbnail` field and probed
-each stream's manifest feed, which does not exist before the first segment;
-fixed on swarm-hls-stream branch `feat/catalogue-thumbnails` off `main-v3`
-(cards render the catalogue thumbnail, scheduled streams show "Upcoming", the
-watch page says the stream has not started). The viewer must be rebuilt from
-that branch. The player link in the console now opens the viewer catalogue,
-not the per-stream route, for the same reason.
+Real-Swarm test, same day: a colleague pointed the backend at their Bee node,
+published two streams with thumbnails, and deployed a viewer built for the feed
+owner. Two defects came out of it. Publish reused a thumbnail reference minted
+by the fake gateway, so the real feed pointed at an image the node never had;
+publish now verifies a stored reference on the gateway before reusing it and
+re-uploads a missing one. The viewer ignored the catalogue's `thumbnail` field
+and probed each stream's manifest feed, which does not exist before the first
+segment; fixed on swarm-hls-stream branch `feat/catalogue-thumbnails` off
+`main-v3` (cards render the catalogue thumbnail, scheduled streams show
+"Upcoming", the watch page says the stream has not started). The viewer must be
+rebuilt from that branch. The player link in the console now opens the viewer
+catalogue, not the per-stream route, for the same reason.
 
 Decided 2026-09-15, ABR ladder in admin mode (spec: the "ABR ladder in admin
 mode" section of docs/architecture/web2-admin-checkpoint-2.md). The declared
