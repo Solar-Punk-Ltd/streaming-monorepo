@@ -527,6 +527,18 @@ hls-only flags `--feed-owner`, `--feed-topic` and `--stamp-id`, which this
 script refuses; and the `stop.sh`, `health.sh` and `clean.sh` it expects
 beside `deploy.sh`, which this repo does not have.
 
+## The scripts' own tests
+
+`test/` runs `deploy.sh` and `edge.sh` in a throwaway checkout, beside a
+folder that stands in for the host. Stubs for ssh, rsync, docker, curl, dig
+and git come first on `PATH`, so nothing leaves the machine, and the ssh stub
+runs commands only in that stand-in host. No package script runs these tests
+yet. From the repository root:
+
+```sh
+node --test 'apps/web2-admin/deploy/test/*.test.mjs'
+```
+
 ## Deliberately not here
 
 - **Manager integration.** See the section above.
