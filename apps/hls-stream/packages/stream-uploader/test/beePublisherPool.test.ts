@@ -328,6 +328,39 @@ describe('the request timeout every pooled node is built with', () => {
       );
     }
   });
+
+  /**
+   * Each request gets a deadline of its own. The client's options are one object shared by every call,
+   * so a deadline written onto it, or made once when the client is built, is already spent for the call
+   * after the first: that client would fail every upload at once, on a node that answers, for the rest
+   * of the broadcast.
+   */
+  it('gives the next request on the same client a fresh deadline after one has run out', async () => {
+    let requests = 0;
+    const server = http.createServer((request, response) => {
+      requests += 1;
+      if (requests === 1) {
+        return;
+      }
+      request.resume();
+      request.on('end', () => {
+        response.writeHead(201, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ reference: 'a'.repeat(64) }));
+      });
+    });
+    servers.push(server);
+    server.listen(0, LOOPBACK_HOST);
+    await once(server, 'listening');
+    const url = `http://${LOOPBACK_HOST}:${(server.address() as AddressInfo).port}`;
+    const publisher = BeePublisherPool.single(url, BATCH['360p'], BOUND_MS).coordinator();
+
+    const first = watchSettlement(upload(publisher));
+    await waitFor(() => first() !== PENDING, SETTLE_BUDGET_MS);
+    assert.match(getErrorMessage(first()), /timeout/i, 'the first upload did not end on its deadline');
+
+    const second = await upload(publisher);
+    assert.equal(second.reference.toHex(), 'a'.repeat(64));
+  });
 });
 
 /**
