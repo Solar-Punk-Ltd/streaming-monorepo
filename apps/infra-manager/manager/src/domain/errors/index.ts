@@ -31,20 +31,22 @@ export { ChequebookBusyError } from './ChequebookBusyError.js';
 export { ChequebookFundsError } from './ChequebookFundsError.js';
 export { LadderGroupError } from './LadderGroupError.js';
 export { ProfileConfigError } from './ProfileConfigError.js';
-export { AdminRequiredError } from './AdminRequiredError.js';
+export {
+  AdminRequiredError,
+  CannotRemoveUserError,
+  CrossSiteRequestError,
+  InvalidCredentialsError,
+  InvalidUsernameError,
+  UserExistsError,
+  WeakPasswordError,
+} from '@streaming-monorepo/web-auth';
 export { BeeNodeError } from './BeeNodeError.js';
 export { BeeNotReadyError } from './BeeNotReadyError.js';
 export { BeeHttpError } from './BeeHttpError.js';
-export { InvalidCredentialsError } from './InvalidCredentialsError.js';
 export { LockedOutError } from './LockedOutError.js';
 export { NoUsersError } from './NoUsersError.js';
 export { NotSignedInError } from './NotSignedInError.js';
-export { CrossSiteRequestError } from './CrossSiteRequestError.js';
-export { CannotRemoveUserError } from './CannotRemoveUserError.js';
-export { UserExistsError } from './UserExistsError.js';
 export { UserNotFoundError } from './UserNotFoundError.js';
-export { WeakPasswordError } from './WeakPasswordError.js';
-export { InvalidUsernameError } from './InvalidUsernameError.js';
 export { StackVersionNotFoundError } from './StackVersionNotFoundError.js';
 export { StackVersionExistsError } from './StackVersionExistsError.js';
 export { StackVersionInUseError } from './StackVersionInUseError.js';

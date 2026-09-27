@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+
+import { viewerCatalogEntrySchema } from '@swarm-hls-stream/shared';
 
 import { AbrLadder, DEFAULT_LADDER_SPEC } from '../src/libs/AbrLadder.js';
 import { Logger } from '../src/libs/Logger.js';
@@ -20,6 +23,21 @@ function logsFromParsing(spec: string): string[] {
 }
 
 describe('AbrLadder.parse', () => {
+  it('is the four rungs the engine encodes when nothing else is set, tallest first', () => {
+    assert.equal(DEFAULT_LADDER_SPEC, '1080p:1920:1080:5000 720p:1280:720:2800 480p:854:480:1200 360p:640:360:700');
+  });
+
+  /** The engine and the uploader read the same variable, so the engine's sample must hold the uploader's default. */
+  it("matches the engine sample's ABR_LADDER", () => {
+    const sample = readFileSync(new URL('../../../engines/srs/.env.sample', import.meta.url), 'utf8');
+    assert.equal(/^ABR_LADDER=(.*)$/m.exec(sample)?.[1], DEFAULT_LADDER_SPEC);
+  });
+
+  it("matches the engine entrypoint's own fallback", () => {
+    const entrypoint = readFileSync(new URL('../../../engines/srs/entrypoint.sh', import.meta.url), 'utf8');
+    assert.equal(/ABR_LADDER="\$\{ABR_LADDER:-([^}]*)\}"/.exec(entrypoint)?.[1], DEFAULT_LADDER_SPEC);
+  });
+
   it('parses the default ladder into four rungs, lowest first', () => {
     const ladder = AbrLadder.parse(DEFAULT_LADDER_SPEC);
 
@@ -212,6 +230,25 @@ describe('buildLadderEntry', () => {
       entry.renditions?.map((r) => r.name),
       ['360p'],
     );
+  });
+
+  it('writes entries the viewer reads, while the ladder delivers and once it has finished', () => {
+    let previous: StreamEntry[] = [];
+    for (const [name, height] of [
+      ['720p', 720],
+      ['360p', 360],
+    ] as const) {
+      previous = [buildLadderEntry(identity, previous, rendition(name, height))];
+      assert.ok(viewerCatalogEntrySchema.safeParse(previous[0]).success, `delivering after ${name}`);
+    }
+    for (const [name, height] of [
+      ['720p', 720],
+      ['360p', 360],
+    ] as const) {
+      previous = [buildLadderEntry(identity, previous, rendition(name, height, { index: 4, duration: 61.5 }))];
+    }
+    assert.equal(previous[0].state, 'vod');
+    assert.ok(viewerCatalogEntrySchema.safeParse(previous[0]).success, 'finished');
   });
 });
 

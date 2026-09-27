@@ -12,7 +12,8 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
-import { hashSessionToken } from '../../src/domain/auth/sessionToken.js';
+import { hashSessionToken } from '@streaming-monorepo/web-auth';
+
 import { AuthTestApp, call, sessionCookieFrom, signIn, startAuthTestApp } from './support/authTestApp.js';
 
 const USERNAME = 'levi';

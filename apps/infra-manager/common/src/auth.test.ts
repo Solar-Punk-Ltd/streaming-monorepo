@@ -1,109 +1,50 @@
 /**
- * The rules the manager, the frontend and the mock all read from here.
+ * The manager's sign-in values, and the rules it takes from the shared web-auth
+ * package.
  *
- * The password rule is deliberately short: length, and not containing the
- * username. This pins the boundaries, because an off-by-one on the minimum is
- * the kind of thing nobody notices in review. The username rule is a copy of a
- * CHECK constraint in 008_auth.sql, so it is pinned against the same strings
- * the database would refuse. The lockout schedule is the whole brute-force
- * defence and every number in it is a decision someone could quietly change.
+ * The rules themselves are pinned in that package. What is pinned here is that
+ * the manager, its console and its mock read those same rules under the names
+ * they always had, and that the two values only the manager uses stay its own:
+ * a browser signed in to it holds a cookie by this name, and its console sends
+ * this header value on every write.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  LOGIN_FREE_ATTEMPTS,
-  LOGIN_MAX_LOCKOUT_MS,
-  lockoutMsFor,
-  PASSWORD_MAX_LENGTH,
-  PASSWORD_MIN_LENGTH,
-  passwordProblem,
-  USERNAME_MAX_LENGTH,
-  usernameProblem,
-} from './auth.js';
+import * as rules from '@streaming-monorepo/web-auth/rules';
 
-const USERNAME = 'levi';
+import * as auth from './auth.js';
 
-describe('password policy', () => {
-  it('accepts anything printable of the right length', () => {
-    const fine = [
-      'a'.repeat(PASSWORD_MIN_LENGTH),
-      'a'.repeat(PASSWORD_MAX_LENGTH),
-      'correct horse battery staple',
-      '!"#$%&/()=?*<>|;:_-.,',
-      'kávé és tejszínhab kérem',
-    ];
+const SHARED_RULES = [
+  'PASSWORD_MIN_LENGTH',
+  'PASSWORD_MAX_LENGTH',
+  'passwordProblem',
+  'USERNAME_RE',
+  'USERNAME_MAX_LENGTH',
+  'USERNAME_MESSAGE',
+  'usernameProblem',
+  'REQUESTED_WITH_HEADER',
+  'SESSION_IDLE_TIMEOUT_MS',
+  'SESSION_ABSOLUTE_TIMEOUT_MS',
+  'LOGIN_FREE_ATTEMPTS',
+  'LOGIN_FIRST_LOCKOUT_MS',
+  'LOGIN_MAX_LOCKOUT_MS',
+  'lockoutMsFor',
+] as const;
 
-    for (const password of fine) {
-      assert.equal(passwordProblem(password, USERNAME), null, `should accept ${JSON.stringify(password)}`);
+describe('the manager sign-in values', () => {
+  it('reads every shared rule from the web-auth package, under its old name', () => {
+    for (const name of SHARED_RULES) {
+      assert.equal(auth[name], rules[name], name);
     }
   });
 
-  it('refuses one character short of the minimum', () => {
-    assert.match(passwordProblem('a'.repeat(PASSWORD_MIN_LENGTH - 1), USERNAME) ?? '', /at least 12 characters/);
+  it('keeps its own session cookie name', () => {
+    assert.equal(auth.SESSION_COOKIE_NAME, 'sim_session');
   });
 
-  it('refuses one character past the maximum', () => {
-    assert.match(passwordProblem('a'.repeat(PASSWORD_MAX_LENGTH + 1), USERNAME) ?? '', /at most 128 characters/);
-  });
-
-  it('refuses a password carrying the username, in any case', () => {
-    for (const password of ['levi-is-my-name', 'my-name-is-LEVI-ok', 'xxxxLevixxxxx']) {
-      assert.equal(
-        passwordProblem(password, USERNAME),
-        'password must not contain the username',
-        `should refuse ${password}`,
-      );
-    }
-  });
-
-  it('reports length before it reports the username', () => {
-    // A short password that also carries the username should say what the
-    // operator will hit first, not the more surprising rule.
-    assert.match(passwordProblem('levi', USERNAME) ?? '', /at least/);
-  });
-});
-
-describe('username rules', () => {
-  it('accepts what the database CHECK accepts', () => {
-    for (const username of ['ab', 'levi', 'a.b_c-d', '0start', 'x'.repeat(USERNAME_MAX_LENGTH)]) {
-      assert.equal(usernameProblem(username), null, `should accept ${username}`);
-    }
-  });
-
-  it('refuses what the database CHECK refuses', () => {
-    for (const username of [
-      'a',
-      'A',
-      'Upper',
-      'has space',
-      '-lead',
-      '.lead',
-      'x'.repeat(USERNAME_MAX_LENGTH + 1),
-      '',
-    ]) {
-      assert.ok(usernameProblem(username), `should refuse ${username}`);
-    }
-  });
-});
-
-describe('the lockout schedule', () => {
-  it('is free up to the fourth failure', () => {
-    for (let failures = 0; failures <= LOGIN_FREE_ATTEMPTS; failures += 1) {
-      assert.equal(lockoutMsFor(failures), 0, `${failures} failures`);
-    }
-  });
-
-  it('starts at a minute on the fifth and doubles, capped at an hour', () => {
-    const minutes = [1, 2, 4, 8, 16, 32, 60, 60];
-
-    minutes.forEach((expected, index) => {
-      assert.equal(
-        lockoutMsFor(LOGIN_FREE_ATTEMPTS + 1 + index),
-        expected * 60 * 1000,
-        `failure ${LOGIN_FREE_ATTEMPTS + 1 + index}`,
-      );
-    });
-    assert.equal(lockoutMsFor(100), LOGIN_MAX_LOCKOUT_MS);
+  it('keeps its own request header value', () => {
+    assert.equal(auth.REQUESTED_WITH_HEADER, 'x-requested-with');
+    assert.equal(auth.REQUESTED_WITH_VALUE, 'streaming-infra-manager');
   });
 });

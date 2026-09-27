@@ -10,6 +10,12 @@ const LOCKFILE_VERSION = '9.0';
 const DOCUMENT_MARKER = '---';
 
 const INJECT_SETTING = 'injectWorkspacePackages';
+
+/** The root folder whose projects, one folder down, an app may link and a cut carries. */
+const SHARED_FOLDER = 'packages';
+/** Where a cut carries each shared package, `packages/<name>` becoming `workspace-packages/<name>`. */
+export const CARRIED_FOLDER = 'workspace-packages';
+
 const IMPORTER_DEPENDENCY_FIELDS = new Set(['dependencies', 'devDependencies', 'optionalDependencies']);
 const SNAPSHOT_EDGE_FIELDS = new Set(['dependencies', 'optionalDependencies']);
 
@@ -90,12 +96,13 @@ function valueAfterKey(line, depth) {
   return readScalar(body.slice(readKey(body).length + 1)).value;
 }
 
-/** Every `{ name, version }` in an importer's dependency fields. */
+/** Every `{ name, version, index }` in an importer's dependency fields, `index` being the version's line. */
 function importerDependencies(entry) {
   const found = [];
   let inField = false;
   let name = null;
-  for (const line of entry.lines.slice(1)) {
+  for (const [index, line] of entry.lines.entries()) {
+    if (index === 0) continue;
     const depth = indentOf(line);
     const key = readKey(line.slice(depth));
     if (depth === DEPTH.FIELD) {
@@ -104,7 +111,7 @@ function importerDependencies(entry) {
     } else if (inField && depth === DEPTH.DEPENDENCY) {
       name = key.value;
     } else if (inField && depth === DEPTH.DEPENDENCY_FIELD && name !== null && key?.value === 'version') {
-      found.push({ name, version: valueAfterKey(line, depth) });
+      found.push({ name, version: valueAfterKey(line, depth), index });
     }
   }
   return found;
@@ -143,16 +150,42 @@ function isIn(app, importer) {
   return importer === app || importer.startsWith(`${app}/`);
 }
 
-/** An importer of the app, renamed from its folder: the app's own is `.`. */
+/** A project one folder under the root's `packages`, as the root's `packages/*` glob lists it. */
+function isShared(importer) {
+  return posix.dirname(importer) === SHARED_FOLDER;
+}
+
+/** An importer's name in the cut: the app's named from its folder, its own as `.`, a shared package's carried. */
 function renameImporter(app, importer) {
+  if (!isIn(app, importer)) return `${CARRIED_FOLDER}/${posix.basename(importer)}`;
   return importer === app ? '.' : importer.slice(app.length + 1);
 }
 
+/** Where a `link:` from an importer leads, both as paths from the workspace root. */
+function linkTarget(importer, link) {
+  return posix.normalize(posix.join(importer, link.slice('link:'.length)));
+}
+
+/**
+ * An importer's lines under its name in the cut, each link whose target moved pointed at the target's place in the
+ * cut. A link between two projects that move together reads as the root has it.
+ */
 function renamedEntry(app, entry) {
   const renamed = renameImporter(app, entry.key.value);
-  const [keyLine, ...rest] = entry.lines;
-  const afterKey = keyLine.slice(DEPTH.ENTRY + entry.key.length);
-  return [`${' '.repeat(DEPTH.ENTRY)}${renamed === '.' ? '.' : spell(renamed, entry.key.quote)}${afterKey}`, ...rest];
+  const lines = [...entry.lines];
+  for (const { version, index } of importerDependencies(entry)) {
+    if (!version.startsWith('link:')) continue;
+    const target = renameImporter(app, linkTarget(entry.key.value, version));
+    if (linkTarget(renamed, version) === target) continue;
+    const body = lines[index].slice(DEPTH.DEPENDENCY_FIELD);
+    const key = readKey(body);
+    const { quote } = readScalar(body.slice(key.length + 1));
+    const link = `link:${posix.relative(`/${renamed}`, `/${target}`)}`;
+    lines[index] = `${' '.repeat(DEPTH.DEPENDENCY_FIELD)}${body.slice(0, key.length + 1)} ${spell(link, quote)}`;
+  }
+  const afterKey = lines[0].slice(DEPTH.ENTRY + entry.key.length);
+  lines[0] = `${' '.repeat(DEPTH.ENTRY)}${renamed === '.' ? '.' : spell(renamed, entry.key.quote)}${afterKey}`;
+  return lines;
 }
 
 function settingsFor(section, injectWorkspacePackages) {
@@ -173,14 +206,20 @@ function sectionNamed(sections, name) {
   return section;
 }
 
+/** @typedef {{ from: string, to: string }} SharedPackage  A shared package's folder in the root, and in the cut. */
+
 /**
  * Cuts one app's lockfile out of the root's. It keeps the app's importers, renamed from its folder, and exactly the
  * snapshots and packages they reach, each as the root has it, and every other section as it is. The settings carry
  * the app's own injection setting, which is the only line the cut writes that the root does not have.
  *
+ * A shared package the app links, a project one folder under the root's `packages`, is carried as
+ * `workspace-packages/<name>` with every package it links in turn, and the app's links to it point there. A shared
+ * package may link only other shared packages.
+ *
  * @param {string} text  the root pnpm-lock.yaml
  * @param {{ app: string, injectWorkspacePackages: boolean }} options  the app's folder from the root, and its setting
- * @returns {{ text: string, projects: string[], packageNames: Set<string>, packageCount: number, rootPackageCount: number }}
+ * @returns {{ text: string, projects: string[], sharedPackages: SharedPackage[], packageNames: Set<string>, packageCount: number, rootPackageCount: number }}
  */
 export function cutLockfile(text, { app, injectWorkspacePackages }) {
   const { packageManagerDocument, lockfile } = splitPackageManagerDocument(text);
@@ -193,26 +232,39 @@ export function cutLockfile(text, { app, injectWorkspacePackages }) {
     );
   }
 
-  const importers = readEntries(sectionNamed(sections, 'importers')).filter((entry) => isIn(app, entry.key.value));
-  if (!importers.some((entry) => entry.key.value === app)) {
+  const rootImporters = readEntries(sectionNamed(sections, 'importers'));
+  const appImporters = rootImporters.filter((entry) => isIn(app, entry.key.value));
+  if (!appImporters.some((entry) => entry.key.value === app)) {
     throw new Refusal(`The root lockfile has no importer for ${app}, so it is no project of this workspace.`);
   }
-  const importerIds = new Set(importers.map((entry) => entry.key.value));
+  const rootImportersById = new Map(rootImporters.map((entry) => [entry.key.value, entry]));
+  const carriedIds = new Set();
 
   const queue = [];
-  for (const importer of importers) {
+  const visiting = [...appImporters];
+  for (const importer of visiting) {
+    const importerIsShared = !isIn(app, importer.key.value);
     for (const { name, version: dependency } of importerDependencies(importer)) {
       if (dependency.startsWith('link:')) {
-        const target = posix.normalize(posix.join(importer.key.value, dependency.slice('link:'.length)));
-        if (!isIn(app, target)) {
+        const target = linkTarget(importer.key.value, dependency);
+        if (importerIsShared && !isShared(target)) {
+          throw new Refusal(
+            `${importer.key.value} links ${name} from ${target} at ${dependency}. A shared package is carried into each app's cut on its own, so it may link only other packages one folder under ${SHARED_FOLDER}.`,
+          );
+        }
+        if (!importerIsShared && !isIn(app, target) && !isShared(target)) {
           throw new Refusal(
             `${importer.key.value} links ${name} from ${target}, which is outside ${app}. A cut app folder cannot carry a package from outside it.`,
           );
         }
-        if (!importerIds.has(target)) {
+        if (!rootImportersById.has(target)) {
           throw new Refusal(
             `${importer.key.value} links ${name} from ${target}, which the root lockfile has no importer for.`,
           );
+        }
+        if (isShared(target) && !carriedIds.has(target)) {
+          carriedIds.add(target);
+          visiting.push(rootImportersById.get(target));
         }
       } else if (dependency.startsWith('file:')) {
         throw new Refusal(
@@ -251,6 +303,7 @@ export function cutLockfile(text, { app, injectWorkspacePackages }) {
       throw new Refusal(`${app} reaches ${key}, but the root lockfile holds no package entry for it.`);
   }
 
+  const importers = [...appImporters, ...rootImporters.filter((entry) => carriedIds.has(entry.key.value))];
   const written = sections.map((section) => {
     switch (section.key) {
       case 'settings':
@@ -278,6 +331,9 @@ export function cutLockfile(text, { app, injectWorkspacePackages }) {
   return {
     text: `${packageManagerDocument}${written.join('\n\n')}\n`,
     projects: importers.map((entry) => renameImporter(app, entry.key.value)).filter((id) => id !== '.'),
+    sharedPackages: rootImporters
+      .filter((entry) => carriedIds.has(entry.key.value))
+      .map((entry) => ({ from: entry.key.value, to: renameImporter(app, entry.key.value) })),
     packageNames: new Set([...keptPackageKeys].map(packageNameOf)),
     packageCount: keptPackageKeys.size,
     rootPackageCount: packages.length,

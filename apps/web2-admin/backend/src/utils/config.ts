@@ -1,6 +1,7 @@
 import 'dotenv/config';
 
 import { PrivateKey } from '@ethersphere/bee-js';
+import { ADMIN_API_TOKEN_MIN_LENGTH } from '@streaming-monorepo/contracts';
 
 import { getErrorMessage } from './errorUtils.js';
 
@@ -39,7 +40,7 @@ function optionalBoolean(name: string, fallback: boolean): boolean {
  * over a LAN, so the length is enforced here rather than trusted to whoever
  * wrote the .env.
  */
-export const INTERNAL_API_TOKEN_MIN_LENGTH = 32;
+export const INTERNAL_API_TOKEN_MIN_LENGTH = ADMIN_API_TOKEN_MIN_LENGTH;
 
 function requiredSecret(name: string, minLength: number): string {
   const value = required(name).trim();

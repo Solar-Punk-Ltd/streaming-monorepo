@@ -1,4 +1,4 @@
-import { packageNameOf } from './lockfile.mjs';
+import { CARRIED_FOLDER, packageNameOf } from './lockfile.mjs';
 import { Refusal } from './refusal.mjs';
 import { indentOf, readKey, readScalar, spell } from './yaml-lines.mjs';
 
@@ -74,13 +74,14 @@ function assertCovers(globs, projects, app) {
   }
 }
 
-/** The `packages:` block with the app's globs alone, each in the quote the root gave it. */
-function packagesBlock(lines, block, { app, projects }) {
+/** The `packages:` block with the app's globs alone, each in the quote the root gave it, and the carried packages'. */
+function packagesBlock(lines, block, { app, projects, sharedPackages }) {
   const items = lines
     .slice(block.start + 1, block.end)
     .filter((line) => line.trim().startsWith('- '))
     .map((line) => readScalar(line.trim().slice(2)));
   const globs = cutGlobs(items, app);
+  if (sharedPackages.length > 0) globs.push({ value: `${CARRIED_FOLDER}/*`, quote: '' });
   assertCovers(globs, projects, app);
   if (globs.length === 0) return ['packages: []'];
   return ['packages:', ...globs.map((glob) => `  - ${spell(glob.value, glob.quote)}`)];
@@ -112,20 +113,21 @@ function allowBuildsBlock(lines, block, packageNames) {
 /**
  * Cuts one app's workspace file out of the root's, as text: the root's lines, with the app's globs, its injection
  * setting and the build permissions of its own packages. Comments and every other setting stay as the root has them.
+ * When the lockfile carries shared packages, `workspace-packages/*` follows the app's globs.
  *
  * @param {string} text  the root pnpm-workspace.yaml
- * @param {{ app: string, injectWorkspacePackages: boolean, packageNames: Set<string>, projects: string[] }} options
- *   the app's folder from the root, its setting, and the packages and projects its cut lockfile keeps
+ * @param {{ app: string, injectWorkspacePackages: boolean, packageNames: Set<string>, projects: string[], sharedPackages?: import('./lockfile.mjs').SharedPackage[] }} options
+ *   the app's folder from the root, its setting, and the packages, projects and shared packages its cut lockfile keeps
  * @returns {string}
  */
-export function cutWorkspace(text, { app, injectWorkspacePackages, packageNames, projects }) {
+export function cutWorkspace(text, { app, injectWorkspacePackages, packageNames, projects, sharedPackages = [] }) {
   const lines = text.replace(/\n$/, '').split('\n');
   const packages = findBlock(lines, 'packages');
   if (packages === null)
     throw new Refusal('The root pnpm-workspace.yaml lists no packages, so there is no project to cut.');
 
   const edits = new Map([
-    [packages.start, { end: packages.end, lines: packagesBlock(lines, packages, { app, projects }) }],
+    [packages.start, { end: packages.end, lines: packagesBlock(lines, packages, { app, projects, sharedPackages }) }],
   ]);
 
   const inject = findBlock(lines, INJECT_SETTING);

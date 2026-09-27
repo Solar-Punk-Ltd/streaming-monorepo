@@ -1,23 +1,11 @@
-import { execFileSync, spawn } from 'node:child_process';
-import {
-  chmodSync,
-  copyFileSync,
-  cpSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readlinkSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-} from 'node:fs';
+import { spawn } from 'node:child_process';
+import { cpSync, existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { constants as osConstants, tmpdir } from 'node:os';
-import { basename, dirname, join, posix, relative, resolve } from 'node:path';
+import { join, posix, relative, resolve } from 'node:path';
 
 import { DEFAULT_ROOT, cutApp, normalizeApp } from './cut.mjs';
 import { UsageError, parseOptions, requireOption, runWhenStarted } from './lib/cli.mjs';
+import { copyFiles, envFileAt, gitFilesUnder } from './lib/files.mjs';
 import { Refusal } from './lib/refusal.mjs';
 
 const USAGE = `Usage: node tools/app-workspace/in-copy.mjs --app <folder> [--root <folder>] [--also <path>]... -- <command> [<argument>...]
@@ -52,43 +40,11 @@ const SIGNALLED = 128;
 
 /** Every file git sees in the app folder, tracked or new and not ignored, as paths from the root. */
 function listAppFiles(root, app) {
-  let output;
   try {
-    output = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', app], {
-      cwd: root,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    return gitFilesUnder(root, app);
   } catch (error) {
     const said = String(error.stderr ?? error.message).trim();
     throw new Refusal(`in-copy.mjs copies the files git sees, and git cannot list them in ${root}: ${said}`);
-  }
-  return [...new Set(output.split('\0').filter((path) => path !== ''))];
-}
-
-/** Copies each listed file into `copy`, named from the app folder. A file deleted but not yet committed stays out. */
-function copyAppFiles(root, app, paths, copy) {
-  for (const path of paths) {
-    const source = join(root, path);
-    const target = join(copy, path.slice(app.length + 1));
-    let entry;
-    try {
-      entry = lstatSync(source);
-    } catch (error) {
-      if (error.code === 'ENOENT') continue;
-      throw error;
-    }
-    if (entry.isDirectory())
-      throw new Refusal(
-        `${path} is a folder git records as one entry, such as a submodule, which in-copy.mjs does not copy.`,
-      );
-    mkdirSync(dirname(target), { recursive: true });
-    if (entry.isSymbolicLink()) {
-      symlinkSync(readlinkSync(source), target);
-    } else {
-      copyFileSync(source, target);
-      chmodSync(target, entry.mode);
-    }
   }
 }
 
@@ -99,20 +55,6 @@ function alsoPath(path) {
     throw new UsageError(`--also names a path inside the app, such as packages/stream-uploader/dist, not ${path}.`);
   }
   return normalized;
-}
-
-/** An env file's name: .env itself, or .env, a dot and anything after it, such as .env.local. */
-const ENV_FILE_NAME = /^\.env(\..+)?$/;
-
-/** The first env file at or under `path`, found by its name, with links looked at and never followed, or null. */
-function envFileAt(path) {
-  if (ENV_FILE_NAME.test(basename(path))) return path;
-  if (!lstatSync(path).isDirectory()) return null;
-  for (const name of readdirSync(path).sort()) {
-    const found = envFileAt(join(path, name));
-    if (found !== null) return found;
-  }
-  return null;
 }
 
 /**
@@ -183,7 +125,7 @@ export async function main(argv) {
   // The real path, so APP_WORKSPACE_COPY names the folder the way the command's working directory does.
   const copy = realpathSync(mkdtempSync(join(tmpdir(), 'app-workspace-')));
   try {
-    copyAppFiles(root, app, paths, copy);
+    copyFiles(root, app, paths, copy);
     copyAlsoPaths(root, app, also, copy);
     if (existsSync(join(root, 'pnpm-lock.yaml'))) process.stderr.write(`${cutApp({ root, app, out: copy })}\n`);
     process.stderr.write(`in-copy.mjs: running ${command.join(' ')} in a copy of ${app} at ${copy}\n`);

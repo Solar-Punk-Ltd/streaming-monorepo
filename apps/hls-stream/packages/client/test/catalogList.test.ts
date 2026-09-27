@@ -67,6 +67,12 @@ describe('the catalog a poll leaves on screen', () => {
     assert.deepEqual(nextStreamList({ ...ON_SCREEN, fetched, fetchedSlot: NEXT_SLOT, isSameGateway: true }), fetched);
   });
 
+  it('takes an audio entry as it takes a video one', () => {
+    const fetched = [streamAt(100), { ...streamAt(300), mediatype: 'audio' }];
+
+    assert.deepEqual(nextStreamList({ ...ON_SCREEN, fetched, fetchedSlot: NEXT_SLOT, isSameGateway: true }), fetched);
+  });
+
   it('keeps what is on screen when the same gateway has nothing newer', () => {
     const fetched = [streamAt(100), streamAt(200)];
 
