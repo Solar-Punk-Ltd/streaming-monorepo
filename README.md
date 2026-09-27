@@ -13,14 +13,15 @@ How the folders relate and the rules that keep them apart are in
 
 ## What is here
 
-| Folder                                                                       | What it is                                                                                                                                                              |
-| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`apps/web2-admin`](apps/web2-admin/README.md)                               | The brand console: an API on Postgres, a React front end, the API contract the two share, and its deploy script.                                                        |
-| [`apps/hls-stream`](apps/hls-stream/README.md)                               | The streaming stack: SRS and OME ingest, the uploader that writes HLS segments to Swarm, the viewer, Bee node setup, the deploy scripts, and the e2e and bench harness. |
-| [`apps/infra-manager`](apps/infra-manager/README.md)                         | The manager: an API and a console that deploy stack versions onto hosts and handle profiles, port slots, stamps and chequebooks.                                        |
-| [`infra/edge`](apps/web2-admin/deploy/README.md#public-https-the-hosts-edge) | The front door of a host: one Caddy that holds ports 80 and 443, gets the HTTPS certificates and sends each domain to the console behind it.                            |
-| [`infra/terraform`](infra/terraform/README.md)                               | The pilot's cloud hosts: the GCP stage and monitoring hosts, the Vultr Bee hosts, and the monitoring stack.                                                             |
-| [`docs`](docs/)                                                              | How the pieces fit: the layout and its rules, the host roles, the roadmap, the design briefs, what is deployed where, and notes on the neighbouring systems.            |
+| Folder                                                                       | What it is                                                                                                                                                                         |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`apps/web2-admin`](apps/web2-admin/README.md)                               | The brand console: an API on Postgres, a React front end, the API contract the two share, and its deploy script.                                                                   |
+| [`apps/hls-stream`](apps/hls-stream/README.md)                               | The streaming stack: SRS and OME ingest, the uploader that writes HLS segments to Swarm, the viewer, Bee node setup, the deploy scripts, and the e2e and bench harness.            |
+| [`apps/infra-manager`](apps/infra-manager/README.md)                         | The manager: an API and a console that deploy stack versions onto hosts and handle profiles, port slots, stamps and chequebooks.                                                   |
+| [`packages`](docs/monorepo.md)                                               | Code two apps share, once: the shapes they send each other (`contracts`), the sign-in and session code of the two backends (`web-auth`) and their migration runner (`db-migrate`). |
+| [`infra/edge`](apps/web2-admin/deploy/README.md#public-https-the-hosts-edge) | The front door of a host: one Caddy that holds ports 80 and 443, gets the HTTPS certificates and sends each domain to the console behind it.                                       |
+| [`infra/terraform`](infra/terraform/README.md)                               | The pilot's cloud hosts: the GCP stage and monitoring hosts, the Vultr Bee hosts, and the monitoring stack.                                                                        |
+| [`docs`](docs/)                                                              | How the pieces fit: the layout and its rules, the host roles, the roadmap, the design briefs, and notes on the neighbouring systems.                                               |
 
 Scripts that serve the whole repository go under `tools/`: the boundary check, which keeps the apps
 from depending on each other, and the cut of each app's own lockfile out of the root one.
