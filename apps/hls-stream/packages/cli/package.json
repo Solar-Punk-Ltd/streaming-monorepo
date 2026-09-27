@@ -10,17 +10,17 @@
   },
   "dependencies": {
     "@ethersphere/bee-js": "13.1.0",
-    "dotenv": "^16.4.7"
+    "dotenv": "17.4.2"
   },
   "devDependencies": {
-    "@types/node": "^22.8.1",
+    "@types/node": "24.13.4",
     "@typescript-eslint/eslint-plugin": "^6.14.0",
     "@typescript-eslint/parser": "^6.14.0",
     "eslint": "^8.55.0",
     "eslint-import-resolver-typescript": "^4.3.4",
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-simple-import-sort": "^10.0.0",
-    "tsx": "^4.23.1",
+    "tsx": "4.23.13",
     "typescript": "^6.0.2"
   },
   "nx": {
