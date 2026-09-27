@@ -1,3 +1,8 @@
+# The project name, written here rather than taken from the folder this file sits
+# in. deploy/deploy.sh finds the database volume as manager_manager-pg and tells
+# a first install from an upgrade by it, so a folder rename must not change it.
+name: manager
+
 services:
   postgres:
     image: postgres:16-alpine
