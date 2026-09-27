@@ -165,7 +165,6 @@ describe('local owned Docker connection', { timeout: 5000 }, () => {
     it(`refuses invalid options before invoking the resolver ${JSON.stringify(invalid)}`, async (t) => {
       const h = harness(t);
       let resolutions = 0;
-      // @ts-expect-error Deliberately malformed runtime options.
       await assert.rejects(
         acquireLocalDockerBeeStream(
           syntheticTarget,
@@ -173,6 +172,7 @@ describe('local owned Docker connection', { timeout: 5000 }, () => {
             resolutions++;
             return locator();
           },
+          // @ts-expect-error Deliberately malformed runtime options.
           invalid,
           qualified,
           undefined,
