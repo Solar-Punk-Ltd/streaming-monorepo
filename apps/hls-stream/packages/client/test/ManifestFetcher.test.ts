@@ -501,7 +501,7 @@ describe('keeping up with a publisher that writes faster than hls.js reloads', (
         return new Response('not found', { status: 404 });
       }
       const lines = [manifestForIndex(index!)];
-      if (index! === finalSlot) {
+      if (index === finalSlot) {
         lines.push('#EXT-X-ENDLIST');
       }
       return new Response(lines.join('\n'));
