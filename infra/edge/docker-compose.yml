@@ -6,11 +6,10 @@
 #
 # It is its own compose project, not a service inside each console's project,
 # because ports 80 and 443 belong to one process per host. An edge in every
-# project cannot coexist with a second project's, or with the manager's own
-# `public` edge, on the same host.
+# project could not coexist with a second project's on the same host.
 services:
   caddy:
-    # The manager's edge image, pinned by digest so every host runs the same
+    # Caddy's image, pinned by digest so every host runs the same
     # build and a retagged 2.11.4 cannot change it underneath us.
     image: caddy:2.11.4@sha256:df7f1c2fb114453b951de51a98efc010db1655a92c2e86be6706714e2417a78d
     restart: unless-stopped

@@ -33,7 +33,6 @@ const IMAGE_ID = '--image-id';
 const PROJECT = '--project';
 const COMPOSE_FILE = '--compose-file';
 const MUTABLE_ROOT = '--mutable-root';
-const PUBLIC_EDGE = '--public-edge';
 const FIRST_USE = '--first-use';
 const BUNDLED_TIMEOUT = '--bundled-timeout';
 
@@ -83,7 +82,7 @@ export const MANAGER_UPGRADE_USAGE = [
   `  node dist/cli.js ${MANAGER_UPGRADE} ${MANAGER_COMMIT} <sha> ${MANAGER_DIGEST} <sha256>`,
   `      ${IMAGE_ID} sha256:<sha256> ${PROJECT} <compose project>`,
   `      ${COMPOSE_FILE} <path> ${MUTABLE_ROOT} <path>`,
-  `      [${BUNDLED_TIMEOUT} <seconds>] [${PUBLIC_EDGE}] [${FIRST_USE}]`,
+  `      [${BUNDLED_TIMEOUT} <seconds>] [${FIRST_USE}]`,
   '',
   'Brings the project back up on the image the deploy has just built, holding',
   'one directory under the stack versions root for the whole run so a second',
@@ -96,9 +95,6 @@ export const MANAGER_UPGRADE_USAGE = [
   'is not given. A build that fails or',
   'never finishes is reported and this command exits non zero, after it has let',
   'go of the host, because the manager is up and the Versions page can retry it.',
-  '',
-  `${PUBLIC_EDGE} starts the TLS edge with the project. Without it the edge is`,
-  'removed by name and the removal is checked.',
   '',
   `${FIRST_USE} says the deploy found a host that has never run the manager, so`,
   'the database this upgrade reads has to be empty. The deploy decides that',
@@ -157,7 +153,7 @@ export async function runManagerUpgradeCommand(
   const { request, settings, environment } = withUsage(MANAGER_UPGRADE_USAGE, () => {
     const flags = parseFlags(argv, {
       valued: [MANAGER_COMMIT, MANAGER_DIGEST, IMAGE_ID, PROJECT, COMPOSE_FILE, MUTABLE_ROOT, BUNDLED_TIMEOUT],
-      switches: [PUBLIC_EDGE, FIRST_USE],
+      switches: [FIRST_USE],
     });
     assertComposeFileInside(flags.required(COMPOSE_FILE), flags.required(MUTABLE_ROOT));
     return {
@@ -174,7 +170,6 @@ export async function runManagerUpgradeCommand(
         versionsRoot,
         composeFile: flags.required(COMPOSE_FILE),
         bundledStackRoot: BUNDLED_STACK_ROOT,
-        publicEdge: flags.has(PUBLIC_EDGE),
         firstUse: flags.has(FIRST_USE),
         postgresVolume: MANAGER_POSTGRES_VOLUME,
         apiHealthUrl: apiHealthUrlFor(config.port),
