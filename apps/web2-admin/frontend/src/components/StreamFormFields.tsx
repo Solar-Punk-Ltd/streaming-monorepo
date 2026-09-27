@@ -54,13 +54,14 @@ export function NameField({
       placeholder="Enter your stream name"
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      inputProps={{ maxLength: STREAM_LIMITS.TITLE_MAX }}
       helperText={`${value.length}/${STREAM_LIMITS.TITLE_MAX}`}
-      FormHelperTextProps={{ sx: { textAlign: 'right', m: 0, mt: 0.5 } }}
       error={error}
       disabled={disabled}
       fullWidth
-    />
+      slotProps={{
+        htmlInput: { maxLength: STREAM_LIMITS.TITLE_MAX },
+        formHelperText: { sx: { textAlign: 'right', m: 0, mt: 0.5 } }
+      }} />
   );
 }
 
@@ -82,15 +83,16 @@ export function DescriptionField({
       placeholder="Describe your stream..."
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      inputProps={{ maxLength: STREAM_LIMITS.DESCRIPTION_MAX }}
       helperText={`${value.length}/${STREAM_LIMITS.DESCRIPTION_MAX}`}
-      FormHelperTextProps={{ sx: { textAlign: 'right', m: 0, mt: 0.5 } }}
       error={error}
       disabled={disabled}
       multiline
       rows={4}
       fullWidth
-    />
+      slotProps={{
+        htmlInput: { maxLength: STREAM_LIMITS.DESCRIPTION_MAX },
+        formHelperText: { sx: { textAlign: 'right', m: 0, mt: 0.5 } }
+      }} />
   );
 }
 
@@ -138,12 +140,13 @@ export function TagsField({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
-          inputProps={{ maxLength: STREAM_LIMITS.TAG_MAX_LENGTH }}
           helperText={`${value.length}/${STREAM_LIMITS.TAGS_MAX} tags`}
-          FormHelperTextProps={{ sx: { textAlign: 'right', m: 0, mt: 0.5 } }}
           disabled={disabled || full}
           fullWidth
-        />
+          slotProps={{
+            htmlInput: { maxLength: STREAM_LIMITS.TAG_MAX_LENGTH },
+            formHelperText: { sx: { textAlign: 'right', m: 0, mt: 0.5 } }
+          }} />
         <Button
           onClick={addTag}
           disabled={disabled || !draft.trim() || full}

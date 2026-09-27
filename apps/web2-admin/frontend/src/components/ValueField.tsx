@@ -62,14 +62,14 @@ export function ValueField({
         size="small"
         fullWidth
         inputRef={inputRef}
-        InputProps={{
-          readOnly: true,
-          sx: { fontFamily: 'monospace', fontSize: 13 },
-        }}
-        // Read-only display, not an editable field: keep it out of the tab
-        // order so copy buttons are the next stop after the previous control.
-        inputProps={{ 'aria-label': label, tabIndex: -1 }}
-      />
+        slotProps={{
+          input: {
+            readOnly: true,
+            sx: { fontFamily: 'monospace', fontSize: 13 },
+          },
+
+          htmlInput: { 'aria-label': label, tabIndex: -1 }
+        }} />
       <Stack direction="row" sx={{ pt: 0.5 }}>
         {secret ? (
           <Tooltip
