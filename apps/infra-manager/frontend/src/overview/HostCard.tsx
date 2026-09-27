@@ -36,7 +36,9 @@ export function HostCard({
       {snapshot ? (
         <Bars snapshot={snapshot} />
       ) : (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           Waiting for the first sample…
         </Typography>
       )}
@@ -84,7 +86,12 @@ function Bar({
 }) {
   return (
     <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="baseline">
+      <Stack
+        direction="row"
+        sx={{
+          justifyContent: "space-between",
+          alignItems: "baseline"
+        }}>
         <Typography variant="body2" sx={{ fontWeight: 500 }}>
           {label}
         </Typography>
@@ -95,7 +102,9 @@ function Bar({
       <Box sx={{ my: 0.75 }}>
         <SegmentedBar ours={share.ours} other={share.other} height={8} />
       </Box>
-      <Typography variant="caption" color="text.secondary">
+      <Typography variant="caption" sx={{
+        color: "text.secondary"
+      }}>
         {footnote}
       </Typography>
     </Box>

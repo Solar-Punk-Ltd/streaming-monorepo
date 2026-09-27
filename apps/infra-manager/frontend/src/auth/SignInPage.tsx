@@ -46,9 +46,13 @@ function AuthFrame({ children }: { children: ReactNode }) {
 export function CheckingSession() {
   return (
     <AuthFrame>
-      <Stack spacing={2} alignItems="center">
+      <Stack spacing={2} sx={{
+        alignItems: "center"
+      }}>
         <CircularProgress size={26} />
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           Checking your session
         </Typography>
       </Stack>
@@ -86,7 +90,9 @@ export function SignInPage() {
     <AuthFrame>
       <Paper sx={{ p: 3 }}>
         <Stack spacing={2.5} component="form" onSubmit={submit}>
-          <Stack direction="row" spacing={1.25} alignItems="center">
+          <Stack direction="row" spacing={1.25} sx={{
+            alignItems: "center"
+          }}>
             <Box
               sx={{
                 width: 30,
@@ -106,7 +112,9 @@ export function SignInPage() {
               <Typography sx={{ fontWeight: 600, lineHeight: 1.2 }}>
                 Streaming Infra
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>
                 Sign in to the manager
               </Typography>
             </Box>

@@ -73,7 +73,9 @@ export function DiluteStampDialog({
           />
           {view.shortLife && <Alert severity="error">{view.shortLife}</Alert>}
           {error && <Alert severity="error">{error}</Alert>}
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             The node sends the transaction itself, and the batch keeps its id,
             so nothing that names it has to change. Closing this dialog after
             confirming does not stop it.

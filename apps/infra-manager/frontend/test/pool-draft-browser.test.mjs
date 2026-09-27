@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
-import { buttonWithText, clickWhenEnabled, fillWhenPresent, launchChrome, PAGE_TEXT, readWhenPresent, waitFor, watchCompletedRequests } from './support/chrome.mjs';
+import { buttonWithText, clickWhenEnabled, fillWhenPresent, launchChrome, PAGE_TEXT, readWhenPresent, reloadDocument, waitFor, watchCompletedRequests } from './support/chrome.mjs';
 import { endViteServer } from './support/teardown.mjs';
 import { evidenceDirectory } from './support/evidence.mjs';
 import { viteCacheFor } from './support/vite-cache.mjs';
@@ -223,7 +223,7 @@ test('pool setup preserves the uploader draft and leaves unrelated creation path
   await waitFor(body, text => text.includes('Bee API not checked') && text.includes('Funding not checked'), 'unknown observations');
   holdRefresh = false; refreshes.splice(0).forEach(entry => entry.reply());
   await close(); await waitFor(() => evaluate('!document.querySelector("[role=dialog]")'), Boolean, 'the uploader dialog to close');
-  globalsReady = false; await call('Page.reload');
+  globalsReady = false; await reloadDocument({ call, evaluate });
   await waitFor(body, text => text.includes('New deployment'), 'the app to boot after the reload');
   // Fresh absence wins in both orders relative to older compatible global lists.
   for (const oldFirst of [false, true]) {
@@ -244,7 +244,7 @@ test('pool setup preserves the uploader draft and leaves unrelated creation path
     assert.equal(await evaluate(`document.querySelector('[role=combobox][aria-label="Storage pool"]')?.textContent.includes('chosen-pool') ?? false`), false);
     await assertDraft();
     await close(); await waitFor(() => evaluate('!document.querySelector("[role=dialog]")'), Boolean, 'the uploader dialog to close');
-    globalsReady = false; await call('Page.reload');
+    globalsReady = false; await reloadDocument({ call, evaluate });
     await waitFor(body, text => text.includes('New deployment'), 'the app to boot after the reload');
   }
   // Incompatible and refused creation keep the original uploader choice and draft.
@@ -279,7 +279,7 @@ test('pool setup preserves the uploader draft and leaves unrelated creation path
   resultMode = 'success'; held.splice(0).forEach(reply => reply());
   await new Promise(resolve => setTimeout(resolve, 100));
   assert.equal(await evaluate('location.hash'), routeBefore);
-  signedIn = true; await call('Page.reload');
+  signedIn = true; await reloadDocument({ call, evaluate });
   await waitFor(body, text => text.includes('New deployment'), 'the app to boot after the reload');
   await click('New deployment'); await choose('ABR uploader'); await next();
   assert.equal(await valueOf('input[placeholder="main-stage"]', 'the empty deployment name field'), '');

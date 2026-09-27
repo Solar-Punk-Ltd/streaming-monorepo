@@ -41,9 +41,16 @@ function HostMetrics() {
 
   if (!snapshot) {
     return (
-      <Stack alignItems="center" spacing={2} sx={{ py: 8 }}>
+      <Stack
+        spacing={2}
+        sx={{
+          alignItems: "center",
+          py: 8
+        }}>
         <CircularProgress />
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           {connected
             ? 'Waiting for the first sample…'
             : 'Connecting to the metrics stream…'}

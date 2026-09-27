@@ -150,18 +150,22 @@ export function SettingsList({
         value={query}
         placeholder="Search by key or description"
         onChange={(event) => setQuery(event.target.value)}
-        inputProps={{ 'aria-label': 'Search settings', spellCheck: false, autoComplete: 'off' }}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <SearchIcon fontSize="small" />
-            </InputAdornment>
-          ),
-        }}
-      />
+        slotProps={{
+          input: {
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          },
+
+          htmlInput: { 'aria-label': 'Search settings', spellCheck: false, autoComplete: 'off' }
+        }} />
 
       {sections.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           {query.trim() === '' ? 'This version declares no settings.' : noMatchText(query)}
         </Typography>
       ) : (

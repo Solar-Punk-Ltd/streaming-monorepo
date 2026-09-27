@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { launchHistoryFixture, historyInstanceId } from './support/history-fixture.mjs';
-import { buttonWithText, clickWhenEnabled, fillWhenPresent, launchChrome, PAGE_TEXT, pageShows, waitFor } from './support/chrome.mjs';
+import { buttonWithText, clickWhenEnabled, fillWhenPresent, launchChrome, PAGE_TEXT, pageShows, reloadDocument, waitFor } from './support/chrome.mjs';
 import { json, launchTransferFixture } from './support/transfer-fixture.mjs';
 
 test('account-scoped browser history continues beyond500 foreign records without changing pointers', async t => {
@@ -90,7 +90,7 @@ test('a browser-only request stays discoverable after profile deletion and404 wi
   await visible(browser, ids[0]);
   await visible(browser, '0.25 BZZ');
   assert.equal(await browser.evaluate("[...document.querySelectorAll('button')].some(button => /retry.*request|send|new transfer/i.test(button.textContent))"), false);
-  await browser.call('Page.reload');
+  await reloadDocument(browser);
   await visible(browser, ids[0]);
   await visible(browser, 'No manager record was returned for this request');
   assert.ok(h.reads.some(path => path.includes(`/by-request/${ids[0]}`)));

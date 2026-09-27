@@ -1,5 +1,5 @@
 import { Box, CircularProgress } from '@mui/material';
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router';
 
 import { useAuth } from '../auth';
 import { AppShell } from './AppShell';
