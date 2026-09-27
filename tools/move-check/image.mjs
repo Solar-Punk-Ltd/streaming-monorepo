@@ -17,6 +17,7 @@ import {
   runWhenStarted,
   showHelp,
 } from './lib/shared.mjs';
+import { MATCH_APART_FROM_PNPM, describeContentChange, pnpmOwnFileName } from './lib/pnpm-files.mjs';
 import { TarFormatError, readTarSummaries } from './lib/tar.mjs';
 
 const USAGE = `Usage: node tools/move-check/image.mjs --before <image> --after <image> [--map <old>=<new>]... [--allow <path>]...
@@ -30,6 +31,15 @@ docker export through a tar reader, and compares every entry's path, type,
 permission bits, owner, size, link target and, for a regular file, the sha256
 of its content. Modification times are ignored. The containers are removed
 afterwards, even when the check fails.
+
+The files pnpm writes about an install rather than for a package, which are
+.modules.yaml, .pnpm/lock.yaml, .pnpm-workspace-state-v1.json and
+.package-map.json in an install's own node_modules folder, are listed by name
+whenever they differ, with the pnpm that wrote each side and the keys that
+differ. They never fail the check and never count as allowed. When their
+install time is all that differs, the images match. When more does, as after
+a pnpm version change, the verdict is "match apart from pnpm's own files",
+which still exits 0.
 
   --map     renames a path of the before image, or a folder and everything
             under it, before the two are compared, for a folder the after image
@@ -64,6 +74,7 @@ export const INSPECTED_CONFIG_FIELDS = Object.freeze([
 const NEVER_STARTED_COMMAND = 'true';
 
 const COMPARED_ENTRY_FIELDS = ['type', 'mode', 'owner', 'size', 'sha256', 'linkTarget'];
+const CONTENT_FIELDS = new Set(['size', 'sha256']);
 const ENTRY_FIELD_LABEL = { type: 'type', mode: 'mode', owner: 'owner', size: 'size', sha256: 'sha256', linkTarget: 'target' };
 const DIFFERENCE_KINDS = ['changed', 'missing', 'added'];
 const SHORT_DIGEST_LENGTH = 12;
@@ -190,13 +201,16 @@ function waitForExit(child) {
   });
 }
 
-/** Streams `docker export` of a container through the tar reader. Both how docker ended and what the reader saw are reported. */
-async function exportFileSystem(containerId, label) {
+/**
+ * Streams `docker export` of a container through the tar reader, keeping the bytes of the files `keepContent` picks.
+ * Both how docker ended and what the reader saw are reported.
+ */
+async function exportFileSystem(containerId, label, keepContent) {
   const args = ['export', containerId];
   const child = spawn('docker', args, { stdio: ['ignore', 'pipe', 'pipe'] });
   const stderr = collectText(child.stderr);
   const exited = waitForExit(child);
-  const reading = readTarSummaries(child.stdout).catch((error) => {
+  const reading = readTarSummaries(child.stdout, { keepContent }).catch((error) => {
     child.kill();
     throw error;
   });
@@ -220,16 +234,43 @@ function formatFieldValue(name, value) {
   return String(value);
 }
 
+function formatField({ name, before, after }) {
+  return `${ENTRY_FIELD_LABEL[name]} ${formatFieldValue(name, before)} -> ${formatFieldValue(name, after)}`;
+}
+
 function describeFileSystemDifference(kind, difference) {
   const path = `/${difference.path}`;
   if (kind !== 'changed') return path;
-  const fields = difference.fields.map(
-    ({ name, before, after }) => `${ENTRY_FIELD_LABEL[name]} ${formatFieldValue(name, before)} -> ${formatFieldValue(name, after)}`,
-  );
-  return `${path}  ${fields.join(', ')}`;
+  return `${path}  ${difference.fields.map(formatField).join(', ')}`;
 }
 
-function formatFailure({ configDifferences, fileSystem, allows, notAllowedCount, allowedCount, renamedCount }) {
+/** One of pnpm's own files that differs: how, and whether its install time is all that did. */
+function describePnpmFile(kind, difference, beforeByPath, afterByPath) {
+  const { path } = difference;
+  if (kind !== 'changed') return { path, text: kind, installTimeOnly: false };
+  const entryFields = difference.fields.filter(({ name }) => !CONTENT_FIELDS.has(name));
+  const parts = entryFields.map(formatField);
+  let installTimeOnly = entryFields.length === 0;
+  const before = beforeByPath.get(path);
+  const after = afterByPath.get(path);
+  if (before.type === 'file' && after.type === 'file' && before.sha256 !== after.sha256) {
+    const change = describeContentChange(pnpmOwnFileName(path), before.content.toString('utf8'), after.content.toString('utf8'));
+    parts.push(...change.parts);
+    installTimeOnly &&= change.installTimeOnly;
+  }
+  return { path, text: parts.join(', '), installTimeOnly };
+}
+
+/** The listing of pnpm's own files that differ, and the part of the summary line that counts them. */
+function describePnpmFiles(pnpmFiles) {
+  if (pnpmFiles.length === 0) return { lines: [], summary: null };
+  const summary = pnpmFiles.every((file) => file.installTimeOnly)
+    ? countOf(pnpmFiles.length, "of pnpm's own files differs in its install time only", "of pnpm's own files differ in their install time only")
+    : countOf(pnpmFiles.length, "of pnpm's own files differs", "of pnpm's own files differ");
+  return { lines: [`pnpm's own files (${pnpmFiles.length}):`, ...pnpmFiles.map((file) => `  /${file.path}  ${file.text}`)], summary };
+}
+
+function formatFailure({ configDifferences, fileSystem, allows, notAllowedCount, allowedCount, renamedCount, pnpm }) {
   const configLines = configDifferences.map(
     (difference) => `${formatJsonPath(difference.path)}: before ${formatJsonValue(difference.before)}, after ${formatJsonValue(difference.after)}`,
   );
@@ -241,31 +282,41 @@ function formatFailure({ configDifferences, fileSystem, allows, notAllowedCount,
     }),
   ]);
   const allowedNote = allowedCount > 0 ? `, ${allowedCount} allowed` : '';
+  const pnpmNote = pnpm.summary === null ? '' : `, ${pnpm.summary}`;
   const renamedNote = renamedCount > 0 ? `, ${renamedPart(renamedCount)}` : '';
   return [
     ...configLines,
     ...fileSystemLines,
+    ...pnpm.lines,
     `identical: ${fileSystem.identical}`,
-    `image: differs, ${countOf(configDifferences.length, 'config difference')} and ${countOf(notAllowedCount, 'filesystem difference')} not allowed${allowedNote}${renamedNote}`,
+    `image: differs, ${countOf(configDifferences.length, 'config difference')} and ${countOf(notAllowedCount, 'filesystem difference')} not allowed${allowedNote}${pnpmNote}${renamedNote}`,
   ].join('\n');
 }
 
-function report(configDifferences, fileSystem, allows, renamedCount) {
-  const fileSystemDifferences = DIFFERENCE_KINDS.flatMap((kind) => fileSystem[kind]);
-  const allowedCount = fileSystemDifferences.filter((difference) => isAllowedPath(difference.path, allows)).length;
-  const notAllowedCount = fileSystemDifferences.length - allowedCount;
+function report({ configDifferences, fileSystem, allows, renamedCount, beforeByPath, afterByPath }) {
+  const isPnpmOwn = (difference) => pnpmOwnFileName(difference.path) !== null;
+  const pnpmFiles = DIFFERENCE_KINDS.flatMap((kind) =>
+    fileSystem[kind].filter(isPnpmOwn).map((difference) => describePnpmFile(kind, difference, beforeByPath, afterByPath)),
+  ).toSorted((left, right) => (left.path < right.path ? -1 : 1));
+  const pnpm = describePnpmFiles(pnpmFiles);
+  const others = { identical: fileSystem.identical };
+  for (const kind of DIFFERENCE_KINDS) others[kind] = fileSystem[kind].filter((difference) => !isPnpmOwn(difference));
+  const otherDifferences = DIFFERENCE_KINDS.flatMap((kind) => others[kind]);
+  const allowedCount = otherDifferences.filter((difference) => isAllowedPath(difference.path, allows)).length;
+  const notAllowedCount = otherDifferences.length - allowedCount;
   if (configDifferences.length > 0 || notAllowedCount > 0) {
-    console.log(formatFailure({ configDifferences, fileSystem, allows, notAllowedCount, allowedCount, renamedCount }));
+    console.log(formatFailure({ configDifferences, fileSystem: others, allows, notAllowedCount, allowedCount, renamedCount, pnpm }));
     return EXIT.DIFFERENCE;
   }
   const parts = [
-    'image: match',
+    pnpmFiles.every((file) => file.installTimeOnly) ? 'image: match' : `image: ${MATCH_APART_FROM_PNPM}`,
     `${countOf(INSPECTED_CONFIG_FIELDS.length, 'config field')} equal`,
     countOf(fileSystem.identical, 'identical filesystem entry', 'identical filesystem entries'),
   ];
   if (allowedCount > 0) parts.push(countOf(allowedCount, 'allowed difference'));
+  if (pnpm.summary !== null) parts.push(pnpm.summary);
   if (renamedCount > 0) parts.push(renamedPart(renamedCount));
-  console.log(parts.join(', '));
+  console.log([...pnpm.lines, parts.join(', ')].join('\n'));
   return EXIT.MATCH;
 }
 
@@ -284,10 +335,21 @@ export async function main(argv) {
 
   const containers = createContainerTracker();
   try {
-    const beforeEntries = await exportFileSystem(containers.create(beforeInspect.Id), `--before ${beforeImage}`);
-    const afterEntries = await exportFileSystem(containers.create(afterInspect.Id), `--after ${afterImage}`);
+    // A before path is compared under the name --map gives it, so that name decides whether its bytes are kept.
+    const isPnpmOwn = (path) => pnpmOwnFileName(path) !== null;
+    const beforeEntries = await exportFileSystem(containers.create(beforeInspect.Id), `--before ${beforeImage}`, (path) =>
+      isPnpmOwn(applyPrefixMaps(path, renames)),
+    );
+    const afterEntries = await exportFileSystem(containers.create(afterInspect.Id), `--after ${afterImage}`, isPnpmOwn);
     const renamed = renameEntries(beforeEntries, renames);
-    return report(configDifferences, compareFileSystems(renamed.entries, afterEntries), allows, renamed.renamedCount);
+    return report({
+      configDifferences,
+      fileSystem: compareFileSystems(renamed.entries, afterEntries),
+      allows,
+      renamedCount: renamed.renamedCount,
+      beforeByPath: new Map(renamed.entries.map((entry) => [entry.path, entry])),
+      afterByPath: new Map(afterEntries.map((entry) => [entry.path, entry])),
+    });
   } finally {
     containers.removeAll();
   }
