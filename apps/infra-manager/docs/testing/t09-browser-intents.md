@@ -113,9 +113,9 @@ settle without a click. A dropped Bee response leaves the operation unresolved,
 the fixture reports that no receipt was ever asked for, the detail page's search
 leaves it unresolved, and a second operator's move is refused with the blocking
 explanation. The history and detail pages then read the same journal. The three
-cases need `T09_TEST_PG_PORT`. Without it they skip with that reason printed
+cases need `CHEQUEBOOK_TEST_PG_PORT`. Without it they skip with that reason printed
 rather than passing quietly.
 
 ```
-T09_TEST_PG_PORT=55436 node --test frontend/test/transfer-connected-browser.test.mjs
+CHEQUEBOOK_TEST_PG_PORT=55436 node --test frontend/test/transfer-connected-browser.test.mjs
 ```

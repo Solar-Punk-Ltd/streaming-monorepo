@@ -25,8 +25,14 @@ const { ALLOCATION_CONTRACT } = await import('../support/allocationContract.js')
 const { orchestratorHarness } = await import('../support/orchestratorHarness.js');
 type GroupRepository = import('../../src/domain/DeploymentGroupRepository.js').DeploymentGroupRepository;
 
-const port = Number(process.env.T04B_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't04b_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.STACK_VERSIONS_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'stack_versions_test',
+  connectionTimeoutMillis: 10000,
+};
 
 function deferred() {
   let resolve!: () => void;

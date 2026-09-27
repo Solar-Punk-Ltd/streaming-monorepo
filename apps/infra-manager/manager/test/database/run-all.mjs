@@ -2,7 +2,7 @@
  * Runs every SQL suite in this directory against nine disposable databases,
  * and refuses anything short of all of them running.
  *
- * Each suite file gates itself on a task port variable and skips silently when
+ * Each suite file gates itself on a port variable and skips silently when
  * that variable is unset, which on a runner would report a green database
  * check for a database nothing ever opened. So the configuration is checked
  * here first, every file's gate is read here first, every database is
@@ -35,20 +35,20 @@ import { counted, runProblem, summaryOf } from '../support/tapJudge.mjs';
  * reads its port from. This table is the only place that list lives, and
  * docs/ci.md points at it rather than repeating it.
  */
-export const TASK_DATABASES = [
-  { database: 't01_test', variable: 'T01_TEST_PG_PORT' },
-  { database: 't04a_test', variable: 'T04A_TEST_PG_PORT' },
-  { database: 't04b_test', variable: 'T04B_TEST_PG_PORT' },
-  { database: 't06_test', variable: 'T06_TEST_PG_PORT' },
-  { database: 't08_test', variable: 'T08_TEST_PG_PORT' },
-  { database: 't09_test', variable: 'T09_TEST_PG_PORT' },
-  { database: 't10_test', variable: 'T10_TEST_PG_PORT' },
-  { database: 't11_test', variable: 'T11_TEST_PG_PORT' },
-  { database: 't12_test', variable: 'T12_TEST_PG_PORT' },
+export const SUITE_DATABASES = [
+  { database: 'engine_config_test', variable: 'ENGINE_CONFIG_TEST_PG_PORT' },
+  { database: 'build_references_test', variable: 'BUILD_REFERENCES_TEST_PG_PORT' },
+  { database: 'stack_versions_test', variable: 'STACK_VERSIONS_TEST_PG_PORT' },
+  { database: 'port_reservations_test', variable: 'PORT_RESERVATIONS_TEST_PG_PORT' },
+  { database: 'version_approval_test', variable: 'VERSION_APPROVAL_TEST_PG_PORT' },
+  { database: 'chequebook_test', variable: 'CHEQUEBOOK_TEST_PG_PORT' },
+  { database: 'profile_removal_test', variable: 'PROFILE_REMOVAL_TEST_PG_PORT' },
+  { database: 'deployment_settings_test', variable: 'DEPLOYMENT_SETTINGS_TEST_PG_PORT' },
+  { database: 'deploy_phases_test', variable: 'DEPLOY_PHASES_TEST_PG_PORT' },
 ];
 
 /** The database whose URL the manager's config module gets, since it requires one at load. */
-const CONFIG_DATABASE = 't04b_test';
+const CONFIG_DATABASE = 'stack_versions_test';
 
 const HOST = '127.0.0.1';
 const USER = 'postgres';
@@ -81,7 +81,7 @@ const SUITE_DIR = fileURLToPath(new URL('.', import.meta.url));
 const SUITE_FILE_SUFFIX = '.test.ts';
 
 /** Every variable a suite file could be gated on, whether or not this job sets it. */
-const PORT_VARIABLE_RE = /[A-Z0-9]+_TEST_PG_PORT/g;
+const PORT_VARIABLE_RE = /\b[A-Z][A-Z0-9_]*_TEST_PG_PORT\b/g;
 
 /** The connection one suite would make, so the preflight opens exactly what the suite opens. */
 export function connectionFor(entry, port) {
@@ -113,7 +113,7 @@ function portOf(env, variable) {
  */
 export function portProblems(env) {
   const problems = [];
-  for (const entry of TASK_DATABASES) {
+  for (const entry of SUITE_DATABASES) {
     const { problem } = portOf(env, entry.variable);
     if (problem === 'unset') {
       problems.push(
@@ -130,7 +130,7 @@ export function portProblems(env) {
 
 /** The nine ports, read after portProblems came back empty. */
 export function portsFrom(env) {
-  return TASK_DATABASES.map((entry) => ({ ...entry, port: portOf(env, entry.variable).port }));
+  return SUITE_DATABASES.map((entry) => ({ ...entry, port: portOf(env, entry.variable).port }));
 }
 
 /**
@@ -144,19 +144,19 @@ export function portsFrom(env) {
  * what the person who has to add a database needs.
  */
 export function gateProblems(suites) {
-  const known = new Set(TASK_DATABASES.map((entry) => entry.variable));
+  const known = new Set(SUITE_DATABASES.map((entry) => entry.variable));
   const problems = [];
   for (const { file, text } of suites) {
     const named = [...new Set([...text.matchAll(PORT_VARIABLE_RE)].map(([variable]) => variable))];
     if (named.length === 0) {
       problems.push(
-        `${file} reads no task port variable, so nothing here knows which database it opens and this run cannot set it.`,
+        `${file} reads no port variable, so nothing here knows which database it opens and this run cannot set it.`,
       );
       continue;
     }
     for (const variable of named.filter((variable) => !known.has(variable))) {
       problems.push(
-        `${file} is gated on ${variable}, which is not one of the ${TASK_DATABASES.length} this run sets, ` +
+        `${file} is gated on ${variable}, which is not one of the ${SUITE_DATABASES.length} this run sets, ` +
           `so it would skip in silence. Add its database to the table in this file.`,
       );
     }
@@ -181,7 +181,7 @@ export function suiteFiles(directory = SUITE_DIR) {
 /**
  * Tables that say a database belongs to a manager rather than to this run.
  *
- * A task database is created empty and every suite makes a schema of its own
+ * A suite database is created empty and every suite makes a schema of its own
  * in it, so nothing the suites do ever puts these in the public schema. Their
  * presence means the port leads somewhere that is not disposable.
  */

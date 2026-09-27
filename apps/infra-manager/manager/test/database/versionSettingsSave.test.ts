@@ -1,7 +1,7 @@
 /**
  * Two settings saves arriving together, against a real PostgreSQL.
  *
- * `T04B_TEST_PG_PORT` and database `t04b_test`, the way the rest of this
+ * `STACK_VERSIONS_TEST_PG_PORT` and database `stack_versions_test`, the way the rest of this
  * directory is run.
  *
  * The generation is what makes a settings save safe to offer on a page: two
@@ -37,12 +37,12 @@ import { PostgresStackVersionRepository } from '../../src/domain/versions/Postgr
 import { StackVersionService } from '../../src/domain/versions/StackVersionService.js';
 import { FakeScriptSpawner } from '../support/FakeScriptSpawner.js';
 
-const port = Number(process.env.T04B_TEST_PG_PORT);
+const port = Number(process.env.STACK_VERSIONS_TEST_PG_PORT);
 const connection = {
   host: '127.0.0.1',
   port,
   user: 'postgres',
-  database: 't04b_test',
+  database: 'stack_versions_test',
   connectionTimeoutMillis: 5000,
 };
 

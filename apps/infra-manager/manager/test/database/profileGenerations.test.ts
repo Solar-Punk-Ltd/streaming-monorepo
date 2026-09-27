@@ -15,8 +15,14 @@ import {
 import { PostgresChequebookTargetOwnership } from '../../src/domain/chequebook/PostgresChequebookTargetOwnership.js';
 import { seedSyntheticChequebookTarget } from '../support/syntheticChequebookTargets.js';
 
-const port = Number(process.env.T09_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't09_test', connectionTimeoutMillis: 30000 };
+const port = Number(process.env.CHEQUEBOOK_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'chequebook_test',
+  connectionTimeoutMillis: 30000,
+};
 describe(
   'profile lifetime generation in isolated PostgreSQL schemas',
   { skip: !Number.isInteger(port) || port < 1 || port > 65535 },

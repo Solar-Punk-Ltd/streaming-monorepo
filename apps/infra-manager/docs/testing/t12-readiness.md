@@ -26,7 +26,7 @@ A refresh immediately clears the balances, stamp list and chain state used by th
 
 Migration 021 persists starting or restarting in the same database update that claims DEPLOYING. RUNNING becomes restarting. STOPPED and a new direct DEPLOYING insert become starting. ERROR and legacy rows have no known phase and display Deploying. The phase describes manager intent only. Terminal and error writes clear it. Group members are inserted STOPPED and receive their phase when subsequently claimed.
 
-T04a and T06 add a separate direct claim in PostgresBuildLedger. That rule is applied and tested there: `manager/test/database/buildClaimPhase.test.ts` covers a competing claim recording the prior status's intent, a stale selected build refused without changing phase, status, errors or references, a rollback when recording the job reference fails, and the phase cleared when an admitted build finishes. It runs on `T12_TEST_PG_PORT` with the rest of the nine-database set.
+T04a and T06 add a separate direct claim in PostgresBuildLedger. That rule is applied and tested there: `manager/test/database/buildClaimPhase.test.ts` covers a competing claim recording the prior status's intent, a stale selected build refused without changing phase, status, errors or references, a rollback when recording the job reference fails, and the phase cleared when an admitted build finishes. It runs on `DEPLOY_PHASES_TEST_PG_PORT` with the rest of the nine-database set.
 
 ## Validation and remaining integration
 
@@ -62,7 +62,7 @@ Commit 8702ccb introduced passing browser acceptance coverage. Its message uses 
 - Frontend: 17 tests passed with `node --import tsx --conditions=development --test src/uploaders/beeReadiness.test.ts src/deployments/*.test.ts`.
 - Browser transport helper: three tests passed with `node --test test/support/chrome-protocol.test.mjs`.
 - Browser acceptance: passed with `node --test test/readiness-browser.test.mjs`, including the final stale engine assertion.
-- PostgreSQL: three tests passed with `T12_TEST_PG_PORT=<isolated loopback port> DATABASE_URL=postgres://unused node --import tsx --conditions=development --test test/database/deploymentPhase.test.ts`. The test database was disposable and has been removed.
+- PostgreSQL: three tests passed with `DEPLOY_PHASES_TEST_PG_PORT=<isolated loopback port> DATABASE_URL=postgres://unused node --import tsx --conditions=development --test test/database/deploymentPhase.test.ts`. The test database was disposable and has been removed.
 - All workspace typechecks and `git diff --check` passed.
 
 Scoped Node coverage reports 97.06 percent line and 96.61 percent branch coverage for the new Bee probe module. The new frontend observation, deployment phase and Logs selection helpers together report 96.30 percent line and 90 percent branch coverage. These are scoped helper results, not whole-project or browser coverage claims.

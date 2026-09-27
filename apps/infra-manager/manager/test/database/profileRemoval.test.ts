@@ -8,8 +8,14 @@ import { ProfileRepository, type ProfileRemovalClaim } from '../../src/domain/Pr
 import { PostgresPortReservationRepository } from '../../src/domain/ports/PostgresPortReservationRepository.js';
 import type { Profile } from '../../src/types/index.js';
 
-const port = Number(process.env.T10_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't10_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.PROFILE_REMOVAL_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'profile_removal_test',
+  connectionTimeoutMillis: 10000,
+};
 const placement = {
   stackVersionId: 1,
   slotCap: 100,

@@ -20,7 +20,7 @@ async function startVite(managerUrl, evidence) {
     cwd: fileURLToPath(new URL('../../', import.meta.url)),
     silent: true,
     execArgv: [],
-    env: { ...process.env, VITE_MANAGER_URL: managerUrl, T09_VITE_CACHE: VITE_CACHE },
+    env: { ...process.env, VITE_MANAGER_URL: managerUrl, TRANSFER_VITE_CACHE: VITE_CACHE },
   });
   for (const stream of [child.stdout, child.stderr])
     stream.on('data', (chunk) => {

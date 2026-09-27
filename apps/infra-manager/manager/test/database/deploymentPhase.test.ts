@@ -6,8 +6,8 @@ import pg, { type Pool } from 'pg';
 import { ProfileRepository } from '../../src/domain/ProfileRepository.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
 
-const port = Number(process.env.T12_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't12_test' };
+const port = Number(process.env.DEPLOY_PHASES_TEST_PG_PORT);
+const connection = { host: '127.0.0.1', port, user: 'postgres', database: 'deploy_phases_test' };
 const placement = { stackVersionId: 1, slotCap: 10, daemonId: 'synthetic-daemon', table: ALLOCATION_CONTRACT.ports };
 
 describe(

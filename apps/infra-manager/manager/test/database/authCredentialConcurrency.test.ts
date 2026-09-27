@@ -6,8 +6,14 @@ import pg, { type Pool, type PoolClient } from 'pg';
 
 import { PostgresCredentialRepository } from '../../src/domain/auth/PostgresCredentialRepository.js';
 
-const port = Number(process.env.T01_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't01_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.ENGINE_CONFIG_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'engine_config_test',
+  connectionTimeoutMillis: 10000,
+};
 const SIGNAL_TIMEOUT_MS = 2_000;
 
 function signal<T = void>() {

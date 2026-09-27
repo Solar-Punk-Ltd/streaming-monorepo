@@ -101,9 +101,9 @@ test('every fixture builds into the one shared Vite cache and never into one of 
 
 test('the Vite fixture binds the port it probed and never one from the environment', async (t) => {
   const planted = '54291';
-  process.env.T09_VITE_PORT = planted;
+  process.env.TRANSFER_VITE_PORT = planted;
   t.after(() => {
-    delete process.env.T09_VITE_PORT;
+    delete process.env.TRANSFER_VITE_PORT;
   });
   const fixture = await launchTransferFixture(t, (_req, res) => json(res, 404, {}));
   assert.notEqual(

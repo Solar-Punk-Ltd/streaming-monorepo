@@ -111,8 +111,8 @@ function shellStubs(): Router {
 }
 
 async function main(): Promise<void> {
-  const pgPort = Number(process.env.T09_TEST_PG_PORT);
-  if (!Number.isInteger(pgPort) || pgPort < 1 || pgPort > 65535) throw new Error('T09_TEST_PG_PORT is required');
+  const pgPort = Number(process.env.CHEQUEBOOK_TEST_PG_PORT);
+  if (!Number.isInteger(pgPort) || pgPort < 1 || pgPort > 65535) throw new Error('CHEQUEBOOK_TEST_PG_PORT is required');
   const backend = await startConnectedChequebook({ pgPort });
   try {
     const auth = await connectedChequebookAuth();
