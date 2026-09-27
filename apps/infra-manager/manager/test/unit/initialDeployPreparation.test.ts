@@ -6,6 +6,7 @@ import { ProfileConfigError } from '../../src/domain/errors/index.js';
 import { readStackContract } from '../../src/domain/versions/stackContract.js';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 import { V3_FIXTURE } from '../support/stackFixtures.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const root = throwawayRoot('t04a-initial-preparation-');
 process.env.SHLS_ROOT = join(root, 'bundled');
@@ -30,7 +31,7 @@ describe('initial deployment preparation failure', () => {
       if (failure === 'version read') {
         h.versions.findById = async () => { throw new Error('version preparation failed'); };
       } else if (failure === 'artifact check') {
-        const version = await h.versions.insert({ name: 'missing-build', gitRef: 'test', rootPath: join(root, 'missing') });
+        const version = await h.versions.insert({ name: 'missing-build', gitRef: 'test', rootPath: join(root, 'missing'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
         await h.versions.publish(version.id, { buildId: 'a'.repeat(40), commitSha: 'a'.repeat(40), contract: readStackContract(V3_FIXTURE) });
         profile.stack_version_id = version.id;
         expected = /cannot be deployed from/;

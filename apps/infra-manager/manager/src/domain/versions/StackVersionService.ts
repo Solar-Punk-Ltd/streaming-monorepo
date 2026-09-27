@@ -64,6 +64,7 @@ import {
 } from './hostConfigSettings.js';
 import { carryOverLegacyHostConfig } from './legacyHostConfig.js';
 import { readStackContract } from './stackContract.js';
+import { SWARM_HLS_STREAM_SOURCE } from './stackSources.js';
 import { BUNDLED_STACK_ROOT, parseBaseEnv } from '../../utils/envUtils.js';
 import {
   buildDirFor,
@@ -95,8 +96,7 @@ export const BUILD_SCRIPT = resolve(
  * The one repository a version may be built from. Never operator supplied: a
  * version is a ref of the stack this manager deploys, and nothing else.
  */
-export const STACK_REPO_URL =
-  'https://github.com/Solar-Punk-Ltd/swarm-hls-stream.git';
+export const STACK_REPO_URL = SWARM_HLS_STREAM_SOURCE.url;
 
 /** How much of the build log is kept as a failed version's reason. */
 const LOG_TAIL_BYTES = 4096;
@@ -257,6 +257,7 @@ export class StackVersionService {
         name,
         gitRef: ref,
         rootPath: configRootFor(this.versionsRoot, name),
+        sourceUrl: STACK_REPO_URL,
       });
       return this.startBuild(version);
     } catch (err) {
@@ -1006,6 +1007,7 @@ function toApiVersion(
     layout: version.layout,
     buildId: version.buildId,
     previousBuildId: version.previousBuildId,
+    source: version.source,
   };
 }
 

@@ -21,6 +21,7 @@ function version(id, input) {
     builtAt: '2026-09-08T10:00:00.000Z', lastError: null,
     contract: structuredClone(contract), deployments: 0,
     layout: 'builds', buildId: `${commit}-r2`, previousBuildId: commit,
+    source: { url: 'https://github.com/Solar-Punk-Ltd/swarm-hls-stream.git', folder: '.' },
     ...input,
   };
 }

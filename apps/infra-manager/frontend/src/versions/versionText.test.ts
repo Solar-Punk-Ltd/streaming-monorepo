@@ -30,6 +30,7 @@ function version(over: Partial<StackVersion> = {}): StackVersion {
     layout: 'builds',
     buildId: COMMIT,
     previousBuildId: null,
+    source: { url: 'https://github.com/Solar-Punk-Ltd/swarm-hls-stream.git', folder: '.' },
     ...over,
   };
 }

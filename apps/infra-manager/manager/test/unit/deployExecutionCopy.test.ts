@@ -24,6 +24,7 @@ import type { Profile } from '../../src/types/index.js';
 
 import { throwawayRoot } from '../support/throwawayRoot.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const root = throwawayRoot('deploy-execution-');
 process.env.SHLS_ROOT = join(root, 'bundled');
@@ -67,7 +68,7 @@ async function setup(options: { copies?: boolean } = {}) {
   }));
   const harness = orchestratorHarness(profiles, undefined, versionsRoot, undefined, undefined,
     options.copies === false ? undefined : service);
-  const v3 = await harness.versions.insert({ name: 'v3', gitRef: 'main-v3', rootPath: join(versionsRoot, 'v3') });
+  const v3 = await harness.versions.insert({ name: 'v3', gitRef: 'main-v3', rootPath: join(versionsRoot, 'v3'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
   buildOnDisk(versionsRoot, COMMIT_A);
   await harness.versions.publish(v3.id, { buildId: COMMIT_A, commitSha: COMMIT_A, contract: CONTRACT });
   const row = () => {

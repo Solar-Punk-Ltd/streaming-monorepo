@@ -23,6 +23,7 @@ import type { StackContract } from '@streaming-infra-manager/common';
 import { makeProfile } from '../support/profileFixtures.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
 import type { OrchestratorHarness } from '../support/orchestratorHarness.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const root = join(mkdtempSync(join(tmpdir(), 'deployment-settings-')), 'stack');
 mkdirSync(root);
@@ -154,7 +155,7 @@ const V3_CONTRACT: StackContract = {
 };
 
 async function versionRequiringSecrets(harness: OrchestratorHarness): Promise<number> {
-  const row = await harness.versions.insert({ name: 'main-v3', gitRef: 'main-v3', rootPath: root });
+  const row = await harness.versions.insert({ name: 'main-v3', gitRef: 'main-v3', rootPath: root, sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
   await harness.versions.markBuilt(row.id, { commitSha: 'abc1234', contract: V3_CONTRACT });
   return row.id;
 }

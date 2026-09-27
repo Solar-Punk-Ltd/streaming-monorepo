@@ -23,6 +23,7 @@ import type { Profile } from '../../src/types/index.js';
 import { missingStackSecrets } from '../../src/domain/versions/stackSecrets.js';
 import { makeProfile } from '../support/profileFixtures.js';
 import type { OrchestratorHarness } from '../support/orchestratorHarness.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const root = join(mkdtempSync(join(tmpdir(), 'stack-secrets-')), 'main-v3');
 mkdirSync(root);
@@ -55,6 +56,7 @@ async function versionRequiringSecrets(harness: OrchestratorHarness): Promise<nu
     name: 'main-v3',
     gitRef: 'main-v3',
     rootPath: root,
+    sourceUrl: SWARM_HLS_STREAM_SOURCE.url,
   });
   await harness.versions.markBuilt(row.id, {
     commitSha: 'abc1234',

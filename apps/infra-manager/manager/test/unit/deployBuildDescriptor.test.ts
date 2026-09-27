@@ -25,6 +25,7 @@ import {
   BUILD_MANIFEST_FILE,
 } from '../../src/domain/versions/buildManifest.js';
 import { portPlanFor } from '../../src/domain/ports/portReservations.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const root = throwawayRoot('deploy-descriptor-');
 process.env.SHLS_ROOT = join(root, 'bundled');
@@ -71,7 +72,7 @@ async function setup(buildId: string | null = COMMIT_A) {
     undefined,
     versionsRoot,
   );
-  const v3 = await harness.versions.insert({ name: 'v3', gitRef: 'main-v3', rootPath: join(versionsRoot, 'v3') });
+  const v3 = await harness.versions.insert({ name: 'v3', gitRef: 'main-v3', rootPath: join(versionsRoot, 'v3'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
   if (buildId) {
     buildOnDisk(versionsRoot, buildId);
     await harness.versions.publish(v3.id, { buildId, commitSha: buildId.slice(0, 40), contract: CONTRACT });
@@ -286,7 +287,7 @@ describe('what the success hook records', () => {
     harness.runner.finish(0);
     await untilRunning(harness.profiles, 'stage');
 
-    const v4 = await harness.versions.insert({ name: 'v4', gitRef: 'main-v4', rootPath: join(versionsRoot, 'v4') });
+    const v4 = await harness.versions.insert({ name: 'v4', gitRef: 'main-v4', rootPath: join(versionsRoot, 'v4'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
     buildOnDisk(versionsRoot, COMMIT_B, 'v4');
     await harness.versions.publish(v4.id, { buildId: COMMIT_B, commitSha: COMMIT_B, contract: CONTRACT });
     harness.profiles.write('stage', { stack_version_id: v4.id });
