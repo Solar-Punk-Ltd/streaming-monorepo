@@ -12,6 +12,8 @@ const REPOSITORY_ROOT = DEFAULT_ROOT;
 const LOCKFILE = 'pnpm-lock.yaml';
 const WORKSPACE_FILE = 'pnpm-workspace.yaml';
 const INJECT_SETTING = 'injectWorkspacePackages';
+/** The release-age gate of decision 51: one week, in minutes, strict, for every install in the repository. */
+const RELEASE_AGE_SETTINGS = ['minimumReleaseAge: 10080', 'minimumReleaseAgeStrict: true'];
 
 /** One of the repository's root files, failing in words when the repository keeps none. */
 function rootFile(name) {
@@ -99,6 +101,17 @@ describe("the cut of each app out of the repository's own root files", () => {
 
       assert.notEqual(packageManagerDocumentOf(root), '', 'the root lockfile has no document recording pnpm');
       assert.equal(packageManagerDocumentOf(cut.lockfile), packageManagerDocumentOf(root));
+    });
+
+    it(`carries the root's release-age gate into ${app}'s workspace file`, (t) => {
+      const root = rootFile(WORKSPACE_FILE);
+      const cut = cutOfRepository(t, app);
+
+      for (const setting of RELEASE_AGE_SETTINGS) {
+        const line = new RegExp(`^${setting}$`, 'm');
+        assert.ok(line.test(root), `the root ${WORKSPACE_FILE} sets no ${setting}`);
+        assert.ok(line.test(cut.workspace), `the cut of ${app} lost ${setting}`);
+      }
     });
 
     it(`gives ${app} its own injection setting, ${settings.injectWorkspacePackages}, in both files`, (t) => {
