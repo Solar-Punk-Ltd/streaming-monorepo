@@ -6,6 +6,8 @@ import {
   ChequebookSubmission,
   type PreparedChequebookTransfer,
 } from '../../src/domain/chequebook/ChequebookSubmission.js';
+import { ChequebookPreparationError } from '../../src/domain/errors/ChequebookPreparationError.js';
+import { ChequebookTargetChangedError } from '../../src/domain/errors/ChequebookTargetChangedError.js';
 import {
   InMemoryChequebookOperations,
   operationCandidate,
@@ -135,6 +137,20 @@ describe('durable chequebook submission', () => {
       throw new Error('database unavailable');
     };
     await assert.rejects(h.service().submit(transferIntent()), /journal/i);
+    assert.equal(h.submissions(), 0);
+  });
+
+  it('answers a target that changed before admission with its refusal, not as a journal failure', async () => {
+    const h = harness();
+    h.repository.admit = async () => {
+      throw new ChequebookTargetChangedError();
+    };
+    await assert.rejects(h.service().submit(transferIntent()), (error: unknown) => {
+      assert.ok(error instanceof ChequebookPreparationError, `got ${String(error)}`);
+      assert.deepEqual(error.refusal, { cause: 'target_changed', check: null });
+      assert.equal(error.message, chequebookRefusalSentence({ cause: 'target_changed', check: null }));
+      return true;
+    });
     assert.equal(h.submissions(), 0);
   });
 
