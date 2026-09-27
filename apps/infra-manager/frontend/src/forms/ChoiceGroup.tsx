@@ -59,7 +59,9 @@ export function ChoiceGroup<T extends string>({
                 disabled={choice.disabled}
                 onChange={() => onChange(choice.value)}
                 sx={{ p: 0.25, mt: 0.125 }}
-                inputProps={{ 'aria-label': choice.title }}
+                slotProps={{
+                  input: { 'aria-label': choice.title }
+                }}
               />
               <Box
                 onClick={() => {
