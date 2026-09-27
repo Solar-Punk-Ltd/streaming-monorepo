@@ -17,6 +17,7 @@ import { inventoryOwnedTree, sha256 } from '../../src/domain/versions/ownedTreeI
 import type { StackVersionRecord } from '../../src/domain/versions/StackVersionRepository.js';
 import type { Profile } from '../../src/types/index.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const port = Number(process.env.T01_TEST_PG_PORT);
 const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't01_test', connectionTimeoutMillis: 10000 };
@@ -51,7 +52,7 @@ describe('config rollout recovery representation and holds in PostgreSQL', { ski
     profiles = new ProfileRepository(pool);
     versions = new PostgresStackVersionRepository(pool);
     operations = new PostgresEngineConfigOperationRepository(pool, root);
-    const version = await versions.insert({ name: 'recovery-stack', gitRef: 'synthetic', rootPath: join(root, 'recovery-stack') });
+    const version = await versions.insert({ name: 'recovery-stack', gitRef: 'synthetic', rootPath: join(root, 'recovery-stack'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
     const artifact = buildDirFor(root, version.name, A);
     await mkdir(artifact, { recursive: true });
     await writeFile(join(artifact, BUILD_MANIFEST_FILE), JSON.stringify({ buildId: A, commit: A, builtAt: '2026-01-01T00:00:00Z', toolchain: 'synthetic' }));

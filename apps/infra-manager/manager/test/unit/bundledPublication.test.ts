@@ -33,14 +33,20 @@ import {
 } from '../../src/domain/versions/stackPaths.js';
 import {
   BUILD_SCRIPT,
-  STACK_REPO_URL,
   StackVersionService,
 } from '../../src/domain/versions/StackVersionService.js';
 import { BUNDLED_STACK_ROOT } from '../../src/utils/envUtils.js';
 import type { ScriptSpawner } from '../../src/domain/ScriptRunner.js';
 import { FakeScriptSpawner } from '../support/FakeScriptSpawner.js';
 import { InMemoryStackVersionRepository } from '../support/InMemoryStackVersionRepository.js';
-import { V3_FIXTURE } from '../support/stackFixtures.js';
+import {
+  leaveBuildMarkers,
+  MONOREPO_STACK_FOLDER,
+  MONOREPO_URL,
+  STACK_HISTORY_HEAD,
+  SWARM_HLS_STREAM_URL,
+  V3_FIXTURE,
+} from '../support/stackFixtures.js';
 
 const COMMIT_A = 'a'.repeat(40);
 const COMMIT_B = 'b'.repeat(40);
@@ -127,9 +133,9 @@ async function until(what: string, condition: () => Promise<boolean> | boolean, 
 
 /** What the build script leaves behind when it succeeds, then the run ending. */
 async function buildSucceeds(commit: string, name = 'bundled'): Promise<void> {
-  const staging = stagingDirFor(versionsRoot, name, runner.last.args[4]!);
+  const staging = stagingDirFor(versionsRoot, name, runner.last.args.at(-1)!);
   cpSync(V3_FIXTURE, staging, { recursive: true });
-  writeFileSync(join(staging, '.stack-commit'), `${commit}\n`);
+  leaveBuildMarkers(staging, commit);
   runner.finish(0);
   await until(`the ${name} row to settle`, async () => (await repository.findByName(name))?.status !== 'building');
 }
@@ -143,11 +149,13 @@ describe('what boot does about the pinned stack commit', () => {
     assert.ok(build, 'boot started a build');
     assert.equal(runner.spawned.length, 1);
     assert.equal(runner.last.script, BUILD_SCRIPT);
-    assert.deepEqual(runner.last.args.slice(0, 4), [
+    assert.deepEqual(runner.last.args.slice(0, 6), [
       repoRootFor(versionsRoot, 'bundled'),
-      stagingDirFor(versionsRoot, 'bundled', runner.last.args[4]!),
+      stagingDirFor(versionsRoot, 'bundled', runner.last.args.at(-1)!),
       PIN,
-      STACK_REPO_URL,
+      MONOREPO_URL,
+      MONOREPO_STACK_FOLDER,
+      STACK_HISTORY_HEAD,
     ]);
     assert.equal((await bundled()).gitRef, PIN, 'the row follows the pinned commit from now on');
     assert.equal((await bundled()).status, 'building');
@@ -181,6 +189,18 @@ describe('what boot does about the pinned stack commit', () => {
 
     assert.ok(await service.ensureBundledBuild());
     assert.equal(runner.last.args[2], PIN);
+  });
+
+  it('moves the bundled row onto the monorepo when the pinned build publishes, and not before', async () => {
+    pinned(PIN);
+    assert.deepEqual((await bundled()).source, { url: SWARM_HLS_STREAM_URL, folder: '.' }, 'every row that existed says swarm-hls-stream');
+
+    await service.ensureBundledBuild();
+    assert.equal((await bundled()).source.url, SWARM_HLS_STREAM_URL, 'the row keeps the source of the build it deploys while the next one runs');
+
+    await buildSucceeds(PIN);
+
+    assert.deepEqual((await bundled()).source, { url: MONOREPO_URL, folder: MONOREPO_STACK_FOLDER });
   });
 
   it('tries again after a build that failed, which is what makes a lost network heal on a restart', async () => {
@@ -413,9 +433,9 @@ describe('seeding a version that is being edited at the same time', () => {
     const edited = 'STAMP=the-operator-made-this-while-the-build-ran\n';
 
     await service.add('review-stack', 'main-v3');
-    const staging = stagingDirFor(versionsRoot, 'review-stack', runner.last.args[4]!);
+    const staging = stagingDirFor(versionsRoot, 'review-stack', runner.last.args.at(-1)!);
     cpSync(V3_FIXTURE, staging, { recursive: true });
-    writeFileSync(join(staging, '.stack-commit'), `${COMMIT_A}\n`);
+    leaveBuildMarkers(staging, COMMIT_A);
     runner.finish(0);
     await settle(50);
     writeFileSync(join(configRoot, '.env'), edited);

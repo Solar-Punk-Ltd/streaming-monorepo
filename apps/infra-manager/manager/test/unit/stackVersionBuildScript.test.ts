@@ -14,10 +14,10 @@
  * this can be exercised without git, docker and a network.
  */
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -136,6 +136,54 @@ describe('stack-version-build.sh refs', () => {
   });
 });
 
+/** Where the build script writes the folder it took the stack from, beside the commit. */
+const STACK_FOLDER_FILE = '.stack-folder';
+
+/** A committer time in the past, so a file dated by its commit cannot pass for one dated by the run. */
+const COMMITTED_AT = '2026-01-02T03:04:05Z';
+
+const git = (cwd: string, ...args: string[]): string =>
+  execFileSync('git', ['-c', 'user.email=build@example.invalid', '-c', 'user.name=Build', ...args], {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, GIT_AUTHOR_DATE: COMMITTED_AT, GIT_COMMITTER_DATE: COMMITTED_AT },
+  }).trim();
+
+/**
+ * A docker that does nothing, and a home that points `url` at `origin`.
+ *
+ * GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM and GIT_CONFIG_COUNT all outrank HOME,
+ * so a developer who has any of them set would send a fetch to github.com.
+ * Each is given its answer here rather than inherited.
+ */
+function offline(root: string, url: string, origin: string): NodeJS.ProcessEnv {
+  const bin = join(root, 'bin');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'docker'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+
+  const home = join(root, 'home');
+  mkdirSync(home);
+  writeFileSync(join(home, '.gitconfig'), `[url "${origin}"]\n\tinsteadOf = ${url}\n`);
+
+  return {
+    ...process.env,
+    HOME: home,
+    XDG_CONFIG_HOME: join(home, '.config'),
+    GIT_CONFIG_GLOBAL: join(home, '.gitconfig'),
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_COUNT: '0',
+    PATH: `${bin}:${process.env.PATH ?? ''}`,
+  };
+}
+
+/** Every file under `dir`, as paths relative to it, sorted. */
+function filesUnder(dir: string): string[] {
+  return readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(dir, join(entry.parentPath, entry.name)))
+    .sort();
+}
+
 /**
  * The commit path run for real, against a repository on this disk and a docker
  * that does nothing. Only git runs: the fetch, the detached checkout and the
@@ -148,8 +196,6 @@ describe('stack-version-build.sh refs', () => {
  */
 describe('stack-version-build.sh fetches a pinned commit', () => {
   const STACK_URL = 'https://github.com/Solar-Punk-Ltd/swarm-hls-stream.git';
-  const git = (cwd: string, ...args: string[]): string =>
-    execFileSync('git', ['-c', 'user.email=build@example.invalid', '-c', 'user.name=Build', ...args], { cwd, encoding: 'utf8' }).trim();
 
   /** An origin with two commits, a docker that does nothing, and a home that points the stack url here. */
   function fixture(root: string): { pinned: string; environment: NodeJS.ProcessEnv } {
@@ -166,34 +212,13 @@ describe('stack-version-build.sh fetches a pinned commit', () => {
     writeFileSync(join(origin, 'package.json'), '{"name":"moved-on"}\n');
     git(origin, 'commit', '-qam', 'second');
 
-    const bin = join(root, 'bin');
-    mkdirSync(bin);
-    writeFileSync(join(bin, 'docker'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-
-    const home = join(root, 'home');
-    mkdirSync(home);
-    writeFileSync(join(home, '.gitconfig'), `[url "${origin}"]\n\tinsteadOf = ${STACK_URL}\n`);
-
-    // GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM and GIT_CONFIG_COUNT all outrank
-    // HOME, so a developer who has any of them set would send this fetch to
-    // github.com. Each is given its answer here rather than inherited.
-    return {
-      pinned,
-      environment: {
-        ...process.env,
-        HOME: home,
-        XDG_CONFIG_HOME: join(home, '.config'),
-        GIT_CONFIG_GLOBAL: join(home, '.gitconfig'),
-        GIT_CONFIG_NOSYSTEM: '1',
-        GIT_CONFIG_COUNT: '0',
-        PATH: `${bin}:${process.env.PATH ?? ''}`,
-      },
-    };
+    return { pinned, environment: offline(root, STACK_URL, origin) };
   }
 
+  /** swarm-hls-stream's whole tree is the stack, so it has no folder and no history from before one. */
   function build(root: string, repo: string, ref: string, environment: NodeJS.ProcessEnv): string {
     const staging = join(root, `staging-${ref.slice(0, 8)}`);
-    execFileSync('bash', [BUILD_SCRIPT, repo, staging, ref, STACK_URL, 'abcdef01'], { env: environment });
+    execFileSync('bash', [BUILD_SCRIPT, repo, staging, ref, STACK_URL, '.', 'none', 'abcdef01'], { env: environment });
     return staging;
   }
 
@@ -244,5 +269,225 @@ describe('stack-version-build.sh fetches a pinned commit', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it('says the whole tree is the stack', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stack-build-whole-'));
+    try {
+      const { pinned, environment } = fixture(root);
+
+      const staging = build(root, join(root, 'stack.repo'), pinned, environment);
+
+      assert.equal(readFileSync(join(staging, STACK_FOLDER_FILE), 'utf8'), '.\n');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * The same path against a monorepo, where the stack sits in apps/hls-stream
+ * and the repository also holds the stack's own history from before it moved
+ * there, under the same commit ids.
+ */
+describe('stack-version-build.sh takes the stack out of its folder in a monorepo', () => {
+  const MONOREPO_URL = 'https://github.com/Solar-Punk-Ltd/streaming-monorepo.git';
+  const FOLDER = 'apps/hls-stream';
+
+  interface Monorepo {
+    /** A commit of the stack's own history, the stack at the root. */
+    stackOld: string;
+    /** The stack head the import took in. */
+    stackHead: string;
+    /** A commit of the other project's history, which holds no stack at all. */
+    adminOnly: string;
+    /** The head of main, after the import and one change to the stack. */
+    moved: string;
+    environment: NodeJS.ProcessEnv;
+  }
+
+  /**
+   * The monorepo in miniature: the stack's history with the stack at the root,
+   * another project's history beside it, a merge that takes the stack in under
+   * apps/hls-stream with its commit ids kept, and one stack change on top.
+   */
+  function monorepo(root: string): Monorepo {
+    const origin = join(root, 'origin');
+    mkdirSync(origin);
+    git(origin, 'init', '-q', '-b', 'stack');
+    git(origin, 'config', 'uploadpack.allowAnySHA1InWant', 'true');
+    mkdirSync(join(origin, 'deploy', 'scripts'), { recursive: true });
+    writeFileSync(join(origin, '.env.sample'), 'STACK_PORT=1\n');
+    writeFileSync(join(origin, 'deploy', 'scripts', '_lib.sh'), 'PORT_VARS=(STACK_PORT)\n');
+    writeFileSync(join(origin, 'package.json'), '{"name":"stack-old"}\n');
+    git(origin, 'add', '.');
+    git(origin, 'commit', '-qm', 'the stack, early');
+    const stackOld = git(origin, 'rev-parse', 'HEAD');
+    writeFileSync(join(origin, 'package.json'), '{"name":"stack-at-the-import"}\n');
+    git(origin, 'commit', '-qam', 'the stack, as the import takes it');
+    const stackHead = git(origin, 'rev-parse', 'HEAD');
+
+    git(origin, 'switch', '-q', '--orphan', 'main');
+    writeFileSync(join(origin, 'admin.txt'), 'another project\n');
+    git(origin, 'add', 'admin.txt');
+    git(origin, 'commit', '-qm', 'another project');
+    const adminOnly = git(origin, 'rev-parse', 'HEAD');
+
+    git(origin, 'merge', '-q', '-s', 'ours', '--no-commit', '--allow-unrelated-histories', stackHead);
+    git(origin, 'read-tree', `--prefix=${FOLDER}/`, '-u', stackHead);
+    git(origin, 'commit', '-qm', 'take the stack in');
+    writeFileSync(join(origin, FOLDER, 'package.json'), '{"name":"stack-in-the-monorepo"}\n');
+    git(origin, 'commit', '-qam', 'the stack moves on');
+    const moved = git(origin, 'rev-parse', 'HEAD');
+
+    return { stackOld, stackHead, adminOnly, moved, environment: offline(root, MONOREPO_URL, origin) };
+  }
+
+  interface Built {
+    staging: string;
+    status: number | null;
+    stderr: string;
+  }
+
+  function build(root: string, ref: string, historyHead: string, environment: NodeJS.ProcessEnv, folder = FOLDER): Built {
+    const staging = join(root, `staging-${ref.replaceAll('/', '-').slice(0, 12)}`);
+    const run = spawnSync(
+      'bash',
+      [BUILD_SCRIPT, join(root, 'monorepo.repo'), staging, ref, MONOREPO_URL, folder, historyHead, 'abcdef01'],
+      { env: environment, encoding: 'utf8' },
+    );
+    return { staging, status: run.status, stderr: run.stderr };
+  }
+
+  function withMonorepo(prefix: string, check: (root: string, repo: Monorepo) => void): void {
+    const root = mkdtempSync(join(tmpdir(), prefix));
+    try {
+      check(root, monorepo(root));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  it('exports a branch\'s apps/hls-stream and nothing else of the repository', () => {
+    withMonorepo('stack-build-mono-branch-', (root, repo) => {
+      const built = build(root, 'main', repo.stackHead, repo.environment);
+
+      assert.equal(built.status, 0, built.stderr);
+      const stack = git(join(root, 'origin'), 'ls-tree', '-r', '--name-only', `${repo.moved}:${FOLDER}`).split('\n');
+      assert.deepEqual(filesUnder(built.staging), [...stack, STACK_COMMIT_FILE, STACK_FOLDER_FILE].sort());
+      assert.equal(readFileSync(join(built.staging, 'package.json'), 'utf8'), '{"name":"stack-in-the-monorepo"}\n');
+      assert.equal(readFileSync(join(built.staging, STACK_COMMIT_FILE), 'utf8').trim(), repo.moved);
+      assert.equal(readFileSync(join(built.staging, STACK_FOLDER_FILE), 'utf8'), `${FOLDER}\n`);
+    });
+  });
+
+  it('exports a commit\'s apps/hls-stream the same way', () => {
+    withMonorepo('stack-build-mono-commit-', (root, repo) => {
+      const built = build(root, repo.moved, repo.stackHead, repo.environment);
+
+      assert.equal(built.status, 0, built.stderr);
+      assert.equal(existsSync(join(built.staging, 'admin.txt')), false, 'the other project is not the stack');
+      assert.equal(existsSync(join(built.staging, 'apps')), false, 'the folder is the root of the export');
+      assert.equal(readFileSync(join(built.staging, 'package.json'), 'utf8'), '{"name":"stack-in-the-monorepo"}\n');
+      assert.equal(readFileSync(join(built.staging, STACK_FOLDER_FILE), 'utf8'), `${FOLDER}\n`);
+    });
+  });
+
+  it('dates every file with the commit, as an export of the whole tree does', () => {
+    withMonorepo('stack-build-mono-times-', (root, repo) => {
+      const built = build(root, repo.moved, repo.stackHead, repo.environment);
+
+      assert.equal(built.status, 0, built.stderr);
+      for (const file of ['package.json', '.env.sample', join('deploy', 'scripts', '_lib.sh')]) {
+        assert.equal(statSync(join(built.staging, file)).mtimeMs, Date.parse(COMMITTED_AT), file);
+      }
+    });
+  });
+
+  it('builds a commit of the stack\'s own history whole, since there the stack is the root', () => {
+    withMonorepo('stack-build-mono-old-', (root, repo) => {
+      const built = build(root, repo.stackOld, repo.stackHead, repo.environment);
+
+      assert.equal(built.status, 0, built.stderr);
+      assert.equal(readFileSync(join(built.staging, 'package.json'), 'utf8'), '{"name":"stack-old"}\n');
+      assert.equal(readFileSync(join(built.staging, STACK_COMMIT_FILE), 'utf8').trim(), repo.stackOld);
+      assert.equal(readFileSync(join(built.staging, STACK_FOLDER_FILE), 'utf8'), '.\n');
+    });
+  });
+
+  it('refuses a commit that is neither, in words, and leaves no staging tree', () => {
+    withMonorepo('stack-build-mono-other-', (root, repo) => {
+      const built = build(root, repo.adminOnly, repo.stackHead, repo.environment);
+
+      assert.notEqual(built.status, 0);
+      assert.match(built.stderr, new RegExp(`${repo.adminOnly} has no ${FOLDER}`));
+      assert.equal(existsSync(built.staging), false);
+    });
+  });
+
+  it('decides by the layout when the stack\'s history cannot be fetched', () => {
+    withMonorepo('stack-build-mono-layout-', (root, repo) => {
+      const unreachable = 'f'.repeat(40);
+
+      const old = build(root, repo.stackOld, unreachable, repo.environment);
+      assert.equal(old.status, 0, old.stderr);
+      assert.equal(readFileSync(join(old.staging, STACK_FOLDER_FILE), 'utf8'), '.\n');
+
+      const other = build(root, repo.adminOnly, unreachable, repo.environment);
+      assert.notEqual(other.status, 0);
+      assert.equal(existsSync(other.staging), false);
+    });
+  });
+
+  it('refuses a folder that could leave the tree or be read as an option', () => {
+    withMonorepo('stack-build-mono-folder-', (root, repo) => {
+      for (const folder of ['../apps', 'apps/../..', '/apps', '-apps', 'apps/', '']) {
+        const built = build(root, repo.moved, repo.stackHead, repo.environment, folder);
+        assert.equal(built.status, 2, `${JSON.stringify(folder)}: ${built.stderr}`);
+        assert.match(built.stderr, /<stack-folder>/);
+      }
+    });
+  });
+
+  /**
+   * The build runs the ref's own install and build scripts over the staging
+   * tree, so what the script says it exported has to be written after them, as
+   * a fresh file: a file they rewrote would give the manager a false commit,
+   * and a link they left in its place would carry the write outside the tree.
+   */
+  it('writes what it exported after the build, so the build cannot change it or write through it', () => {
+    withMonorepo('stack-build-mono-hostile-', (root, repo) => {
+      const kept = join(root, 'kept.txt');
+      writeFileSync(kept, 'not the build\'s to write\n');
+      writeFileSync(
+        join(root, 'bin', 'docker'),
+        [
+          '#!/bin/sh',
+          'while [ "$#" -gt 0 ]; do if [ "$1" = -w ]; then dir="$2"; fi; shift; done',
+          'rm -f "$dir/.stack-commit" "$dir/.stack-folder"',
+          `ln -s '${kept}' "$dir/.stack-commit"`,
+          "printf '.\\n' > \"$dir/.stack-folder\"",
+          '',
+        ].join('\n'),
+        { mode: 0o755 },
+      );
+
+      const built = build(root, repo.moved, repo.stackHead, repo.environment);
+
+      assert.equal(built.status, 0, built.stderr);
+      assert.equal(readFileSync(kept, 'utf8'), 'not the build\'s to write\n', 'the write went through a link the build left');
+      assert.equal(lstatSync(join(built.staging, STACK_COMMIT_FILE)).isSymbolicLink(), false);
+      assert.equal(readFileSync(join(built.staging, STACK_COMMIT_FILE), 'utf8').trim(), repo.moved);
+      assert.equal(readFileSync(join(built.staging, STACK_FOLDER_FILE), 'utf8'), `${FOLDER}\n`);
+    });
+  });
+
+  it('refuses a history head that is not a whole commit', () => {
+    withMonorepo('stack-build-mono-head-', (root, repo) => {
+      const built = build(root, repo.moved, repo.stackHead.slice(0, 12), repo.environment);
+
+      assert.equal(built.status, 2);
+      assert.match(built.stderr, /<history-head>/);
+    });
   });
 });

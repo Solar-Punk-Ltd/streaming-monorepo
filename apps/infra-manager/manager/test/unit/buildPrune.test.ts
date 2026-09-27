@@ -25,6 +25,7 @@ import { buildDirFor, buildsRootFor } from '../../src/domain/versions/stackPaths
 import { StackVersionService } from '../../src/domain/versions/StackVersionService.js';
 import { FakeScriptSpawner } from '../support/FakeScriptSpawner.js';
 import { InMemoryStackVersionRepository } from '../support/InMemoryStackVersionRepository.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const CONTRACT: StackContract = {
   ports: [],
@@ -79,7 +80,7 @@ beforeEach(async () => {
     versionsRoot,
     { openReferences: async (id) => references.filter((r) => r.versionId === id && r.resolvedAt === null) },
   );
-  const v3 = await repository.insert({ name: 'v3', gitRef: 'main-v3', rootPath: join(versionsRoot, 'v3') });
+  const v3 = await repository.insert({ name: 'v3', gitRef: 'main-v3', rootPath: join(versionsRoot, 'v3'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
   versionId = v3.id;
   for (const id of [A, B, C, D, E]) buildOnDisk(id);
   mkdirSync(join(buildsRootFor(versionsRoot, 'v3'), 'tmp-deadbeef00'), { recursive: true });

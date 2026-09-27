@@ -53,10 +53,10 @@ from their own repositories, swarm-hls-stream and streaming-infra-manager, and `
 from the `terraform/` folder of devcon-streaming-partnership. Those repositories are left as they
 are: they get nothing new, and nothing more is pulled from them.
 
-The manager builds the stack from a pinned commit of the stack's own repository, recorded as the
-git submodule at `apps/infra-manager/manager/swarm-hls-stream`, which is what the root
-`.gitmodules` names. A plain clone leaves that folder empty, and only work on the manager needs
-it: the manager's README says how to fetch it.
+The manager builds the stack it bundles from `apps/hls-stream` of the same commit it is deployed
+from, and builds every version added on its Versions page from this repository too, so a plain
+clone has everything and nothing links back to the old repositories. A version built from
+swarm-hls-stream before the move keeps its record of where it came from.
 
 Every original commit of the imported repositories is in this one under its own id.
 [docs/monorepo.md](docs/monorepo.md#how-the-history-came-along) says how to read that history.

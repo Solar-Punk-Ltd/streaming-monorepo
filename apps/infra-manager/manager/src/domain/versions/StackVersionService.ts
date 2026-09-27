@@ -64,6 +64,7 @@ import {
 } from './hostConfigSettings.js';
 import { carryOverLegacyHostConfig } from './legacyHostConfig.js';
 import { readStackContract } from './stackContract.js';
+import { MONOREPO_STACK_SOURCE, stackSourceAt, type StackSource } from './stackSources.js';
 import { BUNDLED_STACK_ROOT, parseBaseEnv } from '../../utils/envUtils.js';
 import {
   buildDirFor,
@@ -91,13 +92,6 @@ export const BUILD_SCRIPT = resolve(
   '../../../scripts/stack-version-build.sh',
 );
 
-/**
- * The one repository a version may be built from. Never operator supplied: a
- * version is a ref of the stack this manager deploys, and nothing else.
- */
-export const STACK_REPO_URL =
-  'https://github.com/Solar-Punk-Ltd/swarm-hls-stream.git';
-
 /** How much of the build log is kept as a failed version's reason. */
 const LOG_TAIL_BYTES = 4096;
 
@@ -108,6 +102,8 @@ const BUILD_TOOLCHAIN = `${BUILD_IMAGE} ${PINNED_PNPM}`;
 
 /** What the build script leaves in the staging directory: the commit it exported. */
 export const STACK_COMMIT_FILE = '.stack-commit';
+/** And the folder of the repository it took the stack from, `.` for the whole tree. */
+export const STACK_FOLDER_FILE = '.stack-folder';
 
 /** The name the build script gives its container, so boot can tell a live builder from a dead one. */
 export const BUILD_CONTAINER_PREFIX = 'stack-build-';
@@ -115,6 +111,8 @@ export const BUILD_CONTAINER_PREFIX = 'stack-build-';
 const STAGING_PREFIX = 'tmp-';
 const BUILDS_SUFFIX = '.builds';
 const COMMIT_RE = /^[0-9a-f]{7,40}$/;
+/** A relative folder of plain names, the build script's own rule for one. */
+const FOLDER_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]*(\/[A-Za-z0-9_][A-Za-z0-9._-]*)*$/;
 
 /** The deploy config's own seed. The env files come from `samplePairsIn`, which completion walks too. */
 const DEPLOY_CONFIG_SEED: SamplePair = {
@@ -257,8 +255,9 @@ export class StackVersionService {
         name,
         gitRef: ref,
         rootPath: configRootFor(this.versionsRoot, name),
+        sourceUrl: MONOREPO_STACK_SOURCE.url,
       });
-      return this.startBuild(version);
+      return this.startBuild(version, MONOREPO_STACK_SOURCE);
     } catch (err) {
       this.buildingName = null;
       throw err;
@@ -266,19 +265,23 @@ export class StackVersionService {
   }
 
   /**
-   * Builds the version again. For the bundled one that means the stack commit
-   * this manager pins, which is also the ref its row is moved onto, so a
-   * rebuild after a manager deploy follows the new pin rather than the old one.
+   * Builds the version again, from the repository it came from. For the bundled
+   * one that means the stack commit this manager pins, a commit of the monorepo
+   * the manager itself was deployed from, which is also the ref its row is moved
+   * onto, so a rebuild after a manager deploy follows the new pin rather than
+   * the old one.
    */
   async update(id: number): Promise<StackBuild> {
     this.reserveBuild(`version ${id}`);
     try {
       const version = await this.require(id);
-      const gitRef = version.name === BUNDLED_VERSION_NAME ? this.pinnedStackCommit() : undefined;
+      const bundled = version.name === BUNDLED_VERSION_NAME;
+      const gitRef = bundled ? this.pinnedStackCommit() : undefined;
+      const source = bundled ? MONOREPO_STACK_SOURCE : sourceOf(version);
 
       const building = await this.versions.markBuilding(id, gitRef);
       if (!building) throw new StackVersionNotFoundError(id);
-      return this.startBuild(building);
+      return this.startBuild(building, source);
     } catch (err) {
       this.buildingName = null;
       throw err;
@@ -607,7 +610,7 @@ export class StackVersionService {
    * so an attempt a gone manager left behind can be told from a live one and
    * never shares a path with the next.
    */
-  private startBuild(version: StackVersionRecord): StackBuild {
+  private startBuild(version: StackVersionRecord, source: StackSource): StackBuild {
     this.buildingName = version.name;
     const attempt = randomBytes(6).toString('hex');
     const repo = repoRootFor(this.versionsRoot, version.name);
@@ -620,7 +623,9 @@ export class StackVersionService {
       repo,
       staging,
       version.gitRef,
-      STACK_REPO_URL,
+      source.url,
+      source.folder,
+      source.historyHead ?? 'none',
       attempt,
     ]);
 
@@ -632,7 +637,7 @@ export class StackVersionService {
     const settle = (code: number): void => {
       if (settled) return;
       settled = true;
-      void this.finishBuild(version, attempt, code, log);
+      void this.finishBuild(version, source, attempt, code, log);
     };
 
     handle.emitter.on('stdout', keepTail);
@@ -656,6 +661,7 @@ export class StackVersionService {
    */
   private async finishBuild(
     version: StackVersionRecord,
+    source: StackSource,
     attempt: string,
     code: number,
     log: string,
@@ -668,7 +674,7 @@ export class StackVersionService {
       if (code !== 0) {
         throw new Error(log.trim() || `the build exited with code ${code}`);
       }
-      outcome = await this.publishStaging(version, staging);
+      outcome = await this.publishStaging(version, source, staging);
     } catch (err) {
       failure = getErrorMessage(err);
     }
@@ -719,6 +725,7 @@ export class StackVersionService {
    */
   private async publishStaging(
     version: StackVersionRecord,
+    source: StackSource,
     staging: string,
   ): Promise<PublishedBuild> {
     const commitPath = join(staging, STACK_COMMIT_FILE);
@@ -729,6 +736,7 @@ export class StackVersionService {
     if (!COMMIT_RE.test(commit)) {
       throw new Error(`${STACK_COMMIT_FILE} in ${staging} does not hold a commit`);
     }
+    const builtFrom = { url: source.url, folder: await stagingFolder(staging, source) };
     const contract = readStackContract(staging);
 
     // The bundled row carries no root until its first build publishes one, and
@@ -747,7 +755,7 @@ export class StackVersionService {
     await mkdir(buildsRoot, { recursive: true });
     const existing = await this.completeBuildOf(version.name, commit, inputs.generation);
     if (existing) {
-      return { buildId: existing.buildId, commitSha: commit, contract, rootPath: configRoot, reused: true };
+      return { buildId: existing.buildId, commitSha: commit, contract, rootPath: configRoot, source: builtFrom, reused: true };
     }
 
     await this.writeSettingsInto(staging, inputs.files);
@@ -763,7 +771,7 @@ export class StackVersionService {
     await writeFile(join(staging, BUILD_MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}\n`);
     await writeFile(join(staging, BUILD_COMPLETE_MARKER), '');
     await rename(staging, buildDirFor(this.versionsRoot, version.name, buildId));
-    return { buildId, commitSha: commit, contract, rootPath: configRoot, reused: false };
+    return { buildId, commitSha: commit, contract, rootPath: configRoot, source: builtFrom, reused: false };
   }
 
   /**
@@ -1006,11 +1014,42 @@ function toApiVersion(
     layout: version.layout,
     buildId: version.buildId,
     previousBuildId: version.previousBuildId,
+    source: version.source,
   };
 }
 
 function refuse(problem: string | null): void {
   if (problem) throw new InvalidStackVersionError(problem);
+}
+
+/** The repository a version rebuilds from: the one its row names, when this manager builds from it. */
+function sourceOf(version: StackVersionRecord): StackSource {
+  const source = stackSourceAt(version.source.url);
+  if (!source) {
+    throw new InvalidStackVersionError(
+      `${version.name} is fetched from ${version.source.url}, which this manager does not build from.`,
+    );
+  }
+  return source;
+}
+
+/**
+ * The folder the build took the stack from, as the script wrote it: the
+ * source's own folder, or the whole tree for a commit of the stack's history.
+ * The build ran a branch's own scripts over this tree, so anything else is
+ * refused, and only a value shaped like a folder is repeated back.
+ */
+async function stagingFolder(staging: string, source: StackSource): Promise<string> {
+  const path = join(staging, STACK_FOLDER_FILE);
+  if (!existsSync(path)) {
+    throw new Error(`the build left no ${STACK_FOLDER_FILE} in ${staging}, so where it took the stack from is unknown`);
+  }
+  const folder = (await readFile(path, 'utf8')).trim();
+  if (folder === '.' || folder === source.folder) return folder;
+  const named = FOLDER_RE.test(folder) ? `names ${folder}` : 'does not name a folder';
+  throw new Error(
+    `${STACK_FOLDER_FILE} in ${staging} ${named}, and a build from ${source.url} takes the stack from ${source.folder} or the whole tree`,
+  );
 }
 
 /** The keys the build's .env.sample assigns, which the base env must carry. */

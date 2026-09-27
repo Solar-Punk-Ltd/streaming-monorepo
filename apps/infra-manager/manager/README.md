@@ -797,18 +797,23 @@ The stack's own notes are in `engines/README.md` under "Your own config file".
 
 ### Stack versions
 
-A version is a branch or tag of `swarm-hls-stream` pinned to a commit, checked
-out and built once, with its deploy contract read out of the checkout rather
-than assumed: the port table from `deploy/scripts/_lib.sh`, the port slot
-ceiling from `deploy.sh`, the secrets the containers refuse to start without
-from the `.env.sample` files, and the engine defaults from the entrypoints. A
-moving branch changes nothing until `update` is called.
+A version is a branch, tag or commit of the monorepo pinned to a commit, its
+`apps/hls-stream` exported and built once, with its deploy contract read out of
+that tree rather than assumed: the port table from `deploy/scripts/_lib.sh`, the
+port slot ceiling from `deploy.sh`, the secrets the containers refuse to start
+without from the `.env.sample` files, and the engine defaults from the
+entrypoints. A commit of the stack's own history from before it moved into the
+monorepo is built whole, since there the stack is the root. Each version
+records the repository and the folder it came from, and a version built from
+`swarm-hls-stream` before the move keeps rebuilding from there. A moving branch
+changes nothing until `update` is called.
 
 The **bundled** version is the stack commit the manager pins, and the host
 fetches and builds it there like any other version. The pin is
-`manager/.stack-commit`, which `deploy/deploy.sh` writes from the repository
-with `git rev-parse HEAD:manager/swarm-hls-stream`, so it is the submodule pin
-whether or not the submodule is checked out. The API reads it at boot and builds
+`manager/.stack-commit`, which `deploy/deploy.sh` writes with the commit being
+deployed, so the manager and the stack it bundles come from one monorepo commit.
+The deploy refuses a commit that no remote branch holds, because the host
+fetches the pin from GitHub. The API reads it at boot and builds
 that commit when it has no complete build of it, and **Update** on the bundled
 card builds it again. It is the default until another is chosen, and it cannot
 be removed. A manager that pins no commit, which is a developer machine, keeps
@@ -1123,7 +1128,7 @@ and where it reads the host's own numbers:
 
 | Variable              | Default                                            | What it points at                                                                  |
 | --------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `SHLS_ROOT`           | the submodule next to the manager source           | The legacy bundled checkout, read once to carry its settings over and still mounted by engines that were deployed from it. Set by `docker-compose.yml` to the host bind mount. |
+| `SHLS_ROOT`           | `apps/hls-stream` beside the manager               | The legacy bundled checkout, read once to carry its settings over and still mounted by engines that were deployed from it. Set by `docker-compose.yml` to the host bind mount. |
 | `STACK_VERSIONS_ROOT` | `/home/solarpunk/streaming-infra-manager-versions` | Where every version lives, the bundled one included: a clone, its builds and its settings files.                                |
 | `MANAGER_SSH_DIR`     | `/home/solarpunk/manager-ssh`                      | The ssh identity the manager deploys to other hosts with: the deploy key, `known_hosts`, and an `ssh_config` with a `Host` block per target alias. Mounted at `/root/.ssh` in the api container, whose image links `/etc/ssh/ssh_config` to the `ssh_config` in it. `deploy.sh` creates the directory, empty, so it is only filled when a deployment's host is not `localhost`. See [deploy/README.md](../deploy/README.md). |
 | `BEE_RPC_ENDPOINT`    | none                                               | The chain endpoint every Bee node created here is offered first, which is what `rpc_endpoint_source: manager` writes into a deployment's env file. Optional, and a malformed value stops the manager at startup rather than reverting to the stack's public RPC. Such a URL can carry an API key: `GET /config` answers only its host, the container logs this manager serves and the deploy output it stores have it taken out of them, and the manager's own boot line prints its host. The Bee node prints the whole address into its own container log on the host it runs on, which no manager code can prevent, so the safe shape is an address carrying no key, such as a proxy on the host that holds it. Removing the variable from a manager that has deployments on it refuses their next edit and their next deploy with it named, which is the alternative to moving them onto the public endpoint in silence. |

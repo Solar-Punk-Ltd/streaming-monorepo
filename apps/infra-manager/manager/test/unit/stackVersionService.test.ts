@@ -18,13 +18,20 @@ import { beforeEach, describe, it } from 'node:test';
 import { EventBus } from '../../src/domain/EventBus.js';
 import {
   BUILD_SCRIPT,
-  STACK_REPO_URL,
   StackVersionService,
 } from '../../src/domain/versions/StackVersionService.js';
 import { repoRootFor, stagingDirFor } from '../../src/domain/versions/stackPaths.js';
 import { FakeScriptSpawner } from '../support/FakeScriptSpawner.js';
 import { InMemoryStackVersionRepository } from '../support/InMemoryStackVersionRepository.js';
-import { scratchVersionsRoot, V3_FIXTURE } from '../support/stackFixtures.js';
+import {
+  leaveBuildMarkers,
+  MONOREPO_STACK_FOLDER,
+  MONOREPO_URL,
+  scratchVersionsRoot,
+  STACK_HISTORY_HEAD,
+  SWARM_HLS_STREAM_URL,
+  V3_FIXTURE,
+} from '../support/stackFixtures.js';
 
 const COMMIT = 'be440d65e0e82bcf9000a8a0dde905dc215255d6';
 const MOVED = 'c0ffee0000000000000000000000000000000000';
@@ -79,12 +86,13 @@ const settled = async (): Promise<void> => {
 
 /**
  * What the build script leaves in the newest attempt's staging directory
- * when it succeeds: the built tree and the commit it was exported from.
+ * when it succeeds: the built tree, the commit it was exported from and the
+ * folder the stack was taken from.
  */
-const built = (name: string, commit = COMMIT): void => {
-  const staging = stagingDirFor(versionsRoot, name, runner.last.args[4] ?? '');
+const built = (name: string, commit = COMMIT, folder = MONOREPO_STACK_FOLDER): void => {
+  const staging = stagingDirFor(versionsRoot, name, runner.last.args.at(-1) ?? '');
   cpSync(V3_FIXTURE, staging, { recursive: true });
-  writeFileSync(join(staging, '.stack-commit'), `${commit}\n`);
+  leaveBuildMarkers(staging, commit, folder);
 };
 
 /** A built version, marked tested the way an operator marks one. */
@@ -108,16 +116,18 @@ const rebuild = async (id: number, commit = COMMIT): Promise<void> => {
 };
 
 describe('adding a version', () => {
-  it('runs the build script with the clone, the staging directory, the ref, the fixed repository and the attempt', async () => {
+  it('runs the build script with the clone, the staging directory, the ref, the monorepo, the stack folder, the stack history head and the attempt', async () => {
     await service.add('v3', 'main-v3');
 
     assert.equal(runner.last.script, BUILD_SCRIPT);
-    const attempt = runner.last.args[4] ?? '';
+    const attempt = runner.last.args.at(-1) ?? '';
     assert.deepEqual(runner.last.args, [
       repoRootFor(versionsRoot, 'v3'),
       stagingDirFor(versionsRoot, 'v3', attempt),
       'main-v3',
-      STACK_REPO_URL,
+      MONOREPO_URL,
+      MONOREPO_STACK_FOLDER,
+      STACK_HISTORY_HEAD,
       attempt,
     ]);
   });
@@ -191,6 +201,76 @@ describe('adding a version', () => {
 
   it('refuses a name the database would refuse', async () => {
     await assert.rejects(() => service.add('Main V3', 'main-v3'), /lower case/);
+  });
+});
+
+describe('where a version\'s stack comes from', () => {
+  it('records the monorepo on the row it adds, and then the folder its build took the stack from', async () => {
+    await service.add('v3', 'main-v3');
+    assert.deepEqual((await repository.findByName('v3'))?.source, { url: MONOREPO_URL, folder: null });
+
+    built('v3');
+    runner.finish(0, 'built\n');
+    await settled();
+
+    assert.deepEqual((await repository.findByName('v3'))?.source, { url: MONOREPO_URL, folder: MONOREPO_STACK_FOLDER });
+  });
+
+  it('records the whole tree for a commit of the stack\'s own history', async () => {
+    await service.add('v3', 'stack/v3.4');
+    built('v3', COMMIT, '.');
+    runner.finish(0, 'built\n');
+    await settled();
+
+    assert.deepEqual((await repository.findByName('v3'))?.source, { url: MONOREPO_URL, folder: '.' });
+  });
+
+  it('rebuilds a version that came from swarm-hls-stream from there, as its whole tree', async () => {
+    const old = await repository.insert({ name: 'v3', gitRef: 'v3.4', rootPath: join(versionsRoot, 'v3'), sourceUrl: SWARM_HLS_STREAM_URL });
+
+    await service.update(old.id);
+
+    assert.deepEqual(runner.last.args.slice(2, 6), ['v3.4', SWARM_HLS_STREAM_URL, '.', 'none']);
+  });
+
+  it('refuses to rebuild a version from a repository this manager does not build from, and starts nothing', async () => {
+    const odd = await repository.insert({
+      name: 'v3',
+      gitRef: 'main',
+      rootPath: join(versionsRoot, 'v3'),
+      sourceUrl: 'https://github.com/example/elsewhere.git',
+    });
+    // An inserted row starts out building, so it is moved off that first, or
+    // the last line below could not tell a refusal from a build that began.
+    await repository.markFailed(odd.id, 'an earlier build failed');
+
+    await assert.rejects(service.update(odd.id), /elsewhere\.git/);
+    assert.equal(runner.spawned.length, 0);
+    assert.equal((await repository.findById(odd.id))?.status, 'failed', 'the row was never put to building');
+  });
+
+  it('fails a build whose folder is neither the one it asked for nor the whole tree', async () => {
+    await service.add('v3', 'main-v3');
+    built('v3', COMMIT, 'apps/elsewhere');
+    runner.finish(0, 'built\n');
+    await settled();
+
+    const version = await repository.findByName('v3');
+    assert.equal(version?.status, 'failed');
+    assert.match(version?.lastError ?? '', /apps\/elsewhere/);
+  });
+
+  it('fails a build that left no word of its folder', async () => {
+    await service.add('v3', 'main-v3');
+    const staging = stagingDirFor(versionsRoot, 'v3', runner.last.args.at(-1) ?? '');
+    cpSync(V3_FIXTURE, staging, { recursive: true });
+    writeFileSync(join(staging, '.stack-commit'), `${COMMIT}\n`);
+    runner.finish(0, 'built\n');
+    await settled();
+
+    const version = await repository.findByName('v3');
+    assert.equal(version?.status, 'failed');
+    assert.match(version?.lastError ?? '', /\.stack-folder/);
   });
 });
 

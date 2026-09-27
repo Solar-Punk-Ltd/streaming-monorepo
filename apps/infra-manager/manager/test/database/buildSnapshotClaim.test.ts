@@ -18,6 +18,7 @@ import { PostgresStackVersionRepository } from '../../src/domain/versions/Postgr
 import { buildDirFor, deployRootProblem } from '../../src/domain/versions/stackPaths.js';
 import type { StackVersionRecord } from '../../src/domain/versions/StackVersionRepository.js';
 import { StackVersionService } from '../../src/domain/versions/StackVersionService.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const port = Number(process.env.T04A_TEST_PG_PORT);
 const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't04a_test', connectionTimeoutMillis: 10000 };
@@ -84,7 +85,7 @@ describe('build snapshot claims in isolated PostgreSQL', { skip: !Number.isInteg
     ledger = new PostgresBuildLedger(claimantPool, observer, root);
     const pruneLedger = new PostgresBuildLedger(pool, observer, root);
     service = new StackVersionService(versions, { run: () => { throw new Error('this test must not build'); } }, new EventBus(), root, pruneLedger);
-    const version = await versions.insert({ name: 'test-stack', gitRef: 'test', rootPath: join(root, 'test-stack') });
+    const version = await versions.insert({ name: 'test-stack', gitRef: 'test', rootPath: join(root, 'test-stack'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
     await artifact(A);
     selected = (await versions.publish(version.id, { buildId: A, commitSha: A, contract: CONTRACT }))!;
     await profiles.insertWithFreeSlot('test-profile', 'streamer', 'RUNNING', {}, {

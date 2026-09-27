@@ -7,6 +7,7 @@ import { after, afterEach, beforeEach, describe, it } from 'node:test';
 import pg, { type Pool } from 'pg';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 import type { Profile } from '../../src/types/index.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const root = throwawayRoot('t04b-deploy-failure-');
 process.env.SHLS_ROOT = join(root, 'bundled');
@@ -171,7 +172,7 @@ describe('deploy failure ownership with real PostgreSQL and the real orchestrato
       if (change === 'intent') await pool.query('UPDATE profiles SET intent_revision = intent_revision + 1');
       if (change === 'config') await pool.query('UPDATE profiles SET engine_config_revision = engine_config_revision + 1');
       if (change === 'version') {
-        const other = await versions.insert({ name: 'other', gitRef: 'synthetic', rootPath: join(root, 'other') });
+        const other = await versions.insert({ name: 'other', gitRef: 'synthetic', rootPath: join(root, 'other'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
         await pool.query('UPDATE profiles SET stack_version_id = $1', [other.id]);
       }
       if (change === 'status') await profiles.markTerminal(initial.name, 'STOPPED');

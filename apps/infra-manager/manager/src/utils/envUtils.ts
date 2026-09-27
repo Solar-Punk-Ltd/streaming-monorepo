@@ -34,16 +34,16 @@ import {
 } from '../domain/versions/stackSecrets.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-// Default: the swarm-hls-stream submodule sits next to the manager source tree.
-// On the deploy server the submodule lives outside the image (bind-mounted
-// from the host) so the path differs from the in-image one. SHLS_ROOT lets
-// docker-compose.yml point at the bind-mount without code changes.
+// Default: the monorepo's apps/hls-stream, the stack of the same commit as
+// this manager. On the deploy server the tree lives outside the image
+// (bind-mounted from the host), so the path differs from the in-image one.
+// SHLS_ROOT lets docker-compose.yml point at the bind-mount without code changes.
 //
 // This is the bundled version's checkout. Added versions live under their own
 // roots, so every function here takes the root it is working in rather than
 // reading this one.
 export const BUNDLED_STACK_ROOT =
-  process.env.SHLS_ROOT ?? resolve(HERE, '../../swarm-hls-stream');
+  process.env.SHLS_ROOT ?? resolve(HERE, '../../../../hls-stream');
 
 /**
  * Every env file the manager writes, owner only.

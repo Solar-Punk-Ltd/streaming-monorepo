@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync } from 'node:fs';
+import { cpSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +11,26 @@ export const STACK_FIXTURES = join(here, '..', 'fixtures', 'stack');
 
 export const V2_FIXTURE = join(STACK_FIXTURES, 'v2');
 export const V3_FIXTURE = join(STACK_FIXTURES, 'v3');
+
+/*
+ * Where a new version is built from, written out rather than imported, so a
+ * test that finds them in the build script's arguments proves the values and
+ * not only that the manager hands its own constants along.
+ */
+export const MONOREPO_URL = 'https://github.com/Solar-Punk-Ltd/streaming-monorepo.git';
+export const MONOREPO_STACK_FOLDER = 'apps/hls-stream';
+/** The stack head the monorepo's import took in, the newest commit of the stack's own history. */
+export const STACK_HISTORY_HEAD = 'fe655bc4b57cce0146dcb6df68b3528f79dcba65';
+export const SWARM_HLS_STREAM_URL = 'https://github.com/Solar-Punk-Ltd/swarm-hls-stream.git';
+
+/**
+ * What the build script leaves beside the built tree in a staging directory:
+ * the commit it exported and the folder it took the stack from.
+ */
+export function leaveBuildMarkers(staging: string, commit: string, folder = MONOREPO_STACK_FOLDER): void {
+  writeFileSync(join(staging, '.stack-commit'), `${commit}\n`);
+  writeFileSync(join(staging, '.stack-folder'), `${folder}\n`);
+}
 
 /**
  * A throwaway versions root holding a copy of the `v3` fixture under the name

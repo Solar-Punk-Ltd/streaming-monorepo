@@ -48,12 +48,18 @@ import {
 } from '../../src/domain/versions/stackPaths.js';
 import {
   BUILD_SCRIPT,
-  STACK_REPO_URL,
   StackVersionService,
 } from '../../src/domain/versions/StackVersionService.js';
 import { FakeScriptSpawner } from '../support/FakeScriptSpawner.js';
 import { InMemoryStackVersionRepository } from '../support/InMemoryStackVersionRepository.js';
-import { scratchVersionsRoot, V3_FIXTURE } from '../support/stackFixtures.js';
+import {
+  leaveBuildMarkers,
+  MONOREPO_STACK_FOLDER,
+  MONOREPO_URL,
+  scratchVersionsRoot,
+  STACK_HISTORY_HEAD,
+  V3_FIXTURE,
+} from '../support/stackFixtures.js';
 
 const COMMIT_A = 'a'.repeat(40);
 const COMMIT_B = 'b'.repeat(40);
@@ -83,7 +89,7 @@ async function until(what: string, condition: () => Promise<boolean> | boolean, 
 
 /** The attempt id the service handed the script, from the script's arguments. */
 function attemptOf(): string {
-  const attempt = runner.last.args[4];
+  const attempt = runner.last.args.at(-1);
   assert.ok(attempt && /^[0-9a-f]{8,}$/.test(attempt), `an attempt id, got ${attempt}`);
   return attempt;
 }
@@ -92,7 +98,7 @@ function attemptOf(): string {
 function builtInStaging(name: string, commit: string): string {
   const staging = stagingDirFor(versionsRoot, name, attemptOf());
   cpSync(V3_FIXTURE, staging, { recursive: true });
-  writeFileSync(join(staging, '.stack-commit'), `${commit}\n`);
+  leaveBuildMarkers(staging, commit);
   return staging;
 }
 
@@ -119,7 +125,7 @@ async function addBuilt(name: string, commit: string): Promise<number> {
 }
 
 describe('adding a version', () => {
-  it('runs the build script with the clone, the staging directory of this attempt, the ref, the repository and the attempt', async () => {
+  it('runs the build script with the clone, the staging directory of this attempt, the ref, the monorepo, its stack folder, the stack history head and the attempt', async () => {
     await service.add('v3', 'main-v3');
 
     const attempt = attemptOf();
@@ -128,7 +134,9 @@ describe('adding a version', () => {
       repoRootFor(versionsRoot, 'v3'),
       stagingDirFor(versionsRoot, 'v3', attempt),
       'main-v3',
-      STACK_REPO_URL,
+      MONOREPO_URL,
+      MONOREPO_STACK_FOLDER,
+      STACK_HISTORY_HEAD,
       attempt,
     ]);
   });

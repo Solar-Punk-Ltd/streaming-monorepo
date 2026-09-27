@@ -1,4 +1,4 @@
-/** Bindings: $2 build id, $3 commit, $4 contract, $5 optional root anchor. */
+/** Bindings: $2 build id, $3 commit, $4 contract, $5 optional root anchor, $6 and $7 optional source url and folder. */
 export const STACK_PUBLICATION_ASSIGNMENTS = `
   status = 'ready',
   publication_revision = publication_revision + 1,
@@ -14,6 +14,8 @@ export const STACK_PUBLICATION_ASSIGNMENTS = `
   commit_sha = $3,
   contract = $4::jsonb,
   root_path = COALESCE($5, root_path),
+  source_url = COALESCE($6, source_url),
+  source_folder = COALESCE($7, source_folder),
   built_at = NOW(),
   last_error = NULL
 `;

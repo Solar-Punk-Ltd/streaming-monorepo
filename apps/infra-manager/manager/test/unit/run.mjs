@@ -4,8 +4,8 @@
  * A deployment writes its env file into the root of the checkout it deploys,
  * and src/utils/envUtils.js reads that root out of SHLS_ROOT once, when it is
  * first imported. A unit file that sets the variable after an import which
- * reaches envUtils therefore deploys into manager/swarm-hls-stream, the real
- * submodule, and leaves a .env.<profile> there merged from the developer's own
+ * reaches envUtils therefore deploys into apps/hls-stream, the real stack of
+ * this commit, and leaves a .env.<profile> there merged from the developer's own
  * .env. This run makes that impossible rather than asking every file to
  * remember: one throwaway root for the whole suite, removed when it ends.
  *

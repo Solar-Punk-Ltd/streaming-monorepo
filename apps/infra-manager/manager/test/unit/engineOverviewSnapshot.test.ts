@@ -7,6 +7,7 @@ import { engineOverviewIdentity, type EngineOverview, type EngineOverviewIdentit
 import type { Profile } from '../../src/types/index.js';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 import { OME_TEMPLATE } from '../support/omeTemplate.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const root = throwawayRoot('t11-overview-snapshot-');
 const previousRoot = process.env.SHLS_ROOT;
@@ -170,7 +171,7 @@ describe('engine overview identity through the real HTTP route', { timeout: 1500
     writeFileSync(join(selectedRoot, '.env'), 'OME_HLS_POLL_INTERVAL_MS=900\n');
     const profile = observedProfile({ stack_version_id: 2, engine_settings: {} });
     const { harness, app } = await appFor(profile, literal('4', template));
-    await harness.versions.insert({ name: 'selected', gitRef: 'fixture', rootPath: selectedRoot });
+    await harness.versions.insert({ name: 'selected', gitRef: 'fixture', rootPath: selectedRoot, sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
     try {
       const result = await callEngine(app, 'GET', '/profiles/stream1/engine');
       assert.equal(result.status, 200);

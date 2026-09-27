@@ -8,12 +8,13 @@ import { EventBus } from '../../src/domain/EventBus.js';
 import { StackVersionService } from '../../src/domain/versions/StackVersionService.js';
 import { FakeScriptSpawner } from '../support/FakeScriptSpawner.js';
 import { InMemoryStackVersionRepository } from '../support/InMemoryStackVersionRepository.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 it('an update whose version disappears during markBuilding refuses before filesystem or script work', { timeout: 5000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 't04a-removed-update-'));
   const versions = new InMemoryStackVersionRepository();
   versions.seedBundled();
-  const selected = await versions.insert({ name: 'review-stack', gitRef: 'review', rootPath: join(root, 'review-stack') });
+  const selected = await versions.insert({ name: 'review-stack', gitRef: 'review', rootPath: join(root, 'review-stack'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
   const runner = new FakeScriptSpawner();
   const service = new StackVersionService(versions, runner, new EventBus(), root, { openReferences: async () => [] });
   let entered!: () => void;

@@ -119,6 +119,17 @@ export interface StackContract {
   allocationProblem: string | null;
 }
 
+/**
+ * Where a version's stack comes from: the repository it is fetched from, and
+ * the folder of that repository its current build took the stack from.
+ */
+export interface StackVersionSource {
+  /** The https clone address. */
+  url: string;
+  /** `.` for the whole tree, a folder such as `apps/hls-stream`, or null until a first build publishes. */
+  folder: string | null;
+}
+
 /** One row of the Versions page, as `GET /versions` answers it. */
 export interface StackVersion {
   id: number;
@@ -147,6 +158,8 @@ export interface StackVersion {
   buildId: string | null;
   /** The build the current one replaced, kept for recovery, or null. */
   previousBuildId: string | null;
+  /** The repository and folder the stack is taken from. */
+  source: StackVersionSource;
 }
 
 /** Slot ceiling for a version whose deploy script names no other. */

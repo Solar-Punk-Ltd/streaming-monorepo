@@ -58,8 +58,9 @@ command that brings the project back up. The rsync leaves out `node_modules`,
 `manager/.env` is the one env file that travels with it, and `rsync --delete`
 means your checkout is the only source of truth for that file: an edit made on
 the server is undone by the next deploy. **The streaming stack's own `.env` is
-the opposite, and editing it in your checkout does nothing.** The submodule
-directory is excluded from the rsync, so nothing under it reaches the server.
+the opposite, and editing it in your checkout does nothing.** The deploy ships
+the manager's folder and not `apps/hls-stream`, and the rsync leaves the
+server's own `manager/swarm-hls-stream/`, which existing deployments mount, alone.
 The stack's settings live on the server and are edited there, as "Where the
 streaming stack's settings live" below describes.
 
@@ -69,15 +70,17 @@ The streaming stack the manager ships with is a version like any other, called
 `bundled`, and the server fetches and builds it there. The only thing about the
 stack a deploy carries is one commit.
 
-**Pin.** The deploy writes `manager/.stack-commit` from the repository itself,
-with `git rev-parse HEAD:manager/swarm-hls-stream`, so it is the commit the
-submodule pin records whether or not you have the submodule checked out. That
-file ships with the repo rsync. Nothing of the stack is installed or built on
-your machine.
+**Pin.** The deploy writes `manager/.stack-commit` with the commit being
+deployed: the monorepo commit that holds this manager and the stack it bundles,
+in `apps/hls-stream`, so the two always come from one commit. The server fetches
+that commit from GitHub, so the deploy refuses one that no remote branch holds:
+push it first, or `git fetch` when it was pushed from elsewhere. That file ships
+with the repo rsync. Nothing of the stack is installed or built on your machine.
 
 **Build, on the server.** When the API starts it reads that pin. If the bundled
 version is not already on a complete build of that commit, it fetches the commit
-from GitHub into `~/streaming-infra-manager-versions/bundled.repo` and builds it
+from the monorepo on GitHub into `~/streaming-infra-manager-versions/bundled.repo`
+and builds its `apps/hls-stream`
 in a throwaway `node:22-alpine` container, exactly as it does for a version you
 add in the UI. The build log is on the Versions page. A build that fails leaves
 a failed version row with the reason, and Update on the bundled card runs it

@@ -12,8 +12,8 @@
 import assert from 'node:assert/strict';
 import { chmodSync, copyFileSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, it } from 'node:test';
+import { stackFile } from '../support/stackCheckout.js';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 
 // Every case writes into a scratch checkout of its own, which is the root
@@ -34,9 +34,7 @@ const writeBaseEnv = (contents = BASE_ENV) =>
 // Read rather than quoted, because what this file has to prove is what the
 // shipped text actually carries: BEE_URL=http://localhost:1633, an address that
 // inside the uploader container is the container itself.
-const STACK_SAMPLE = fileURLToPath(
-  new URL('../../swarm-hls-stream/.env.sample', import.meta.url),
-);
+const STACK_SAMPLE = stackFile('.env.sample');
 const sampleBaseEnv = () => readFileSync(STACK_SAMPLE, 'utf8');
 
 writeBaseEnv();
