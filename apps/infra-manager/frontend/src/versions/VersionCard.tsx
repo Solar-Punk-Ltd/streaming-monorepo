@@ -21,7 +21,7 @@ import { ShapePill } from '../components/ShapePill';
 import type { Tone } from '../components/tone';
 import { formatDateTime, shortCommit } from '../format';
 import { ANOTHER_BUILDING } from './buildSlot';
-import { describeBuild, describePreviousBuild, lostApprovalWarning, updateHint, versionPlacementProblem } from './versionText';
+import { describeBuild, describePreviousBuild, describeSource, lostApprovalWarning, updateHint, versionPlacementProblem } from './versionText';
 
 const STATUS_LABELS: Record<StackVersion['status'], string> = {
   building: 'Building',
@@ -263,6 +263,7 @@ export function VersionCard({
         }}
       >
         <VersionFact label="Branch or tag">{version.gitRef}</VersionFact>
+        <VersionFact label="Repository">{describeSource(version)}</VersionFact>
         <VersionFact label="Built">
           {builtLabel(version)}
           <Typography

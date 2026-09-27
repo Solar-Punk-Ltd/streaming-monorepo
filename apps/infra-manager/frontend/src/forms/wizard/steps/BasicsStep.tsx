@@ -111,7 +111,7 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
       {(versionChoiceShown(context) || !version) && (
         <FormField
           label="Stack version"
-          aside="the swarm-hls-stream it runs"
+          aside="the streaming stack it runs"
           hint={versionHint(version)}
           error={version ? versionPlacementProblem(version) : null}
           htmlFor="wizard-version"
