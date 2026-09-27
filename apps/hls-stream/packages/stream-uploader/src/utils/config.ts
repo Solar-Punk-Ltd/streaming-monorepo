@@ -1,3 +1,5 @@
+import { ADMIN_API_TOKEN_KEY, ADMIN_API_URL_KEY } from '@swarm-hls-stream/shared';
+
 import { assertUsableAdminApiToken } from '../libs/AdminApiClient.js';
 import { parsePublisherSpecs, PublisherSpec } from '../libs/BeePublisherPool.js';
 import { gatePolicyFor, parseStartGateMode, START_GATE_CHEQUEBOOK_WARN } from '../libs/StartGates.js';
@@ -194,12 +196,12 @@ interface AdminConfig {
  * ladder granularity. See the "Admin mode" section of the package README and `libs/AdminLadderRegistry.ts`.
  */
 function readAdminConfig(): AdminConfig | null {
-  const apiUrl = optional('ADMIN_API_URL', '');
+  const apiUrl = optional(ADMIN_API_URL_KEY, '');
   if (!apiUrl) {
     return null;
   }
 
-  const apiToken = required('ADMIN_API_TOKEN');
+  const apiToken = required(ADMIN_API_TOKEN_KEY);
   assertUsableAdminApiToken(apiToken);
   return { apiUrl, apiToken };
 }

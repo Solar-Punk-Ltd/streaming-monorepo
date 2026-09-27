@@ -1,3 +1,5 @@
+import { ADMIN_API_TOKEN_MIN_LENGTH } from '@swarm-hls-stream/shared';
+
 import { MediaType, mediaTypeSchema, Rendition } from '../types.js';
 import { getErrorMessage } from '../utils/common.js';
 
@@ -42,7 +44,7 @@ import { Logger } from './Logger.js';
  */
 
 /** Minimum length for `ADMIN_API_TOKEN`, matching `API_AUTH_TOKEN`'s and the SRS webhook token's. */
-export const MIN_ADMIN_API_TOKEN_LENGTH = 32;
+export const MIN_ADMIN_API_TOKEN_LENGTH = ADMIN_API_TOKEN_MIN_LENGTH;
 
 /**
  * How long one lookup may take before the gate gives up on it.

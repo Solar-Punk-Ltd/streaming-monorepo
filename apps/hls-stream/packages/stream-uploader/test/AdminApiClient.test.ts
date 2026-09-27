@@ -493,6 +493,10 @@ describe('the admin API token', () => {
     );
   });
 
+  it('puts the floor at 32 characters, as the admin and the manager do', () => {
+    assert.equal(MIN_ADMIN_API_TOKEN_LENGTH, 32);
+  });
+
   it('accepts one exactly at the floor', () => {
     assert.doesNotThrow(
       () => new AdminApiClient({ baseUrl: 'http://admin.test', token: 'a'.repeat(MIN_ADMIN_API_TOKEN_LENGTH) }),
