@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -135,6 +135,49 @@ describe('deploy.sh from a checkout of the one workspace', () => {
     }
     assert.equal(copied.includes('./backend/.env.qa'), false, 'an env file stays in the checkout');
     assert.deepEqual(readdirSync(tmp), [], 'the copy is gone');
+  });
+});
+
+describe('docker-compose.copy.yml', () => {
+  const DEPLOY_DIR = new URL('..', import.meta.url).pathname;
+
+  /** The two compose files rendered as compose loads them, without a daemon, bounded against a wedged CLI. */
+  function render(copy) {
+    const env = { ...process.env, WEB2_ADMIN_ENV_FILE: '../backend/.env.sample', POSTGRES_PASSWORD: 'placeholder' };
+    if (copy === undefined) delete env.APP_WORKSPACE_COPY;
+    else env.APP_WORKSPACE_COPY = copy;
+    return spawnSync('docker', ['compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.copy.yml', 'config', '--format', 'json'], {
+      cwd: DEPLOY_DIR,
+      encoding: 'utf8',
+      env,
+      timeout: 30_000,
+    });
+  }
+
+  it("moves the two images' build context to the copy, each keeping its own Dockerfile", (t) => {
+    const rendered = render('/copy/of/the/admin');
+    if (rendered.error?.code === 'ENOENT') {
+      t.skip('docker is not available on this host');
+      return;
+    }
+
+    assert.equal(rendered.status, 0, rendered.stderr);
+    const { services } = JSON.parse(rendered.stdout);
+    assert.equal(services.api.build.context, '/copy/of/the/admin');
+    assert.equal(services.api.build.dockerfile, 'backend/Dockerfile');
+    assert.equal(services.web.build.context, '/copy/of/the/admin');
+    assert.equal(services.web.build.dockerfile, 'frontend/Dockerfile');
+  });
+
+  it('refuses to render without a copy named, rather than build from somewhere else', (t) => {
+    const rendered = render(undefined);
+    if (rendered.error?.code === 'ENOENT') {
+      t.skip('docker is not available on this host');
+      return;
+    }
+
+    assert.notEqual(rendered.status, 0, 'compose rendered a build context from an unset copy');
+    assert.match(rendered.stderr, /in-copy\.mjs/);
   });
 });
 
