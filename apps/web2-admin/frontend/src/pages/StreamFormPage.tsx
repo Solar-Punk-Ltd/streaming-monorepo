@@ -6,7 +6,7 @@ import {
   Button,
   CircularProgress,
   Divider,
-  Grid2 as Grid,
+  Grid,
   Paper,
   Stack,
   Typography,
