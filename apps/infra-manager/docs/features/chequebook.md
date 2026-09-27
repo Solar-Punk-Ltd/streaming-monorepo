@@ -10,7 +10,7 @@ written at `6dc33d1` on `feat/ai-remediation`, the head of pull request #40,
 which landed, and `main` has moved a long way past it since. It carries the
 journal, receipt recovery, the durable browser workflow, history, the account
 and instance guards, the owned transport factory and the automatic receipt
-polling. New submission preparation captures T06's SQL target proof and uses one
+polling. New submission preparation captures the SQL target proof from the port and firewall work and uses one
 qualified Docker and Bee connection. Local Unix and supervised SSH adapters are
 implemented, and acquisition uses a transport only with a matching qualified
 record, from the seed catalog or from the manager's own check of the image.
@@ -19,11 +19,11 @@ later ones found is in
 [../handover/main-v2-remediation.md](../handover/main-v2-remediation.md). A
 postage batch was bought with real money on 2026-09-13. No chequebook transfer
 has been made with real money. Corrected twice on 2026-09-17: the paragraph on
-new uploader starts, first against the code at `0c0354c` for decision D16, then
+new uploader starts, first against the code at `0c0354c` for the ruling that a node that does not answer no longer refuses a start, then
 in `50363c5` for the further ruling that the chequebook check never refuses a
 start, which `667aee5` built.
 
-Updated 2026-09-26 at `9e4e8c8f` (pull request #61), for Levi's ruling of
+Updated 2026-09-26 at `9e4e8c8f` (pull request #61), for the ruling of
 2026-09-25 that funding must work on any host a clone deploys to. A transfer no
 longer needs `CHEQUEBOOK_RPC_ENDPOINTS` or `CHEQUEBOOK_DOCKER_TRANSPORTS`: it
 reads the chain through the node's own endpoint, reaches Docker the way the
@@ -49,7 +49,7 @@ address and its copy action disappear as soon as the replacement profile
 arrives. They stay absent while the replacement node is unreadable, then only
 the replacement address is shown.
 
-Under decision D16 of 2026-09-17, which amends D02 of 2026-09-07, a node that
+Since 2026-09-17, amending the rule of 2026-09-07, a node that
 does not answer no longer refuses a new uploader start. The chequebook check
 never refuses at all, on the owner's further ruling the same day: a node that
 says nothing, a balance that cannot be read and a balance under the floor are
@@ -62,7 +62,7 @@ starting an uploader.
 A read-only balance or readiness check does not submit money. Filling the
 chequebook requires an explicit confirmed transfer intent. The manager does
 not offer arbitrary transfers from a node wallet to an outside address as
-part of T09.
+part of the transaction work.
 
 ## Confirm once and retain the request
 
@@ -170,7 +170,7 @@ available after a deployment is deleted, and so do checks while the chain can
 still be read for it, as the end of "Where a transfer reaches the node and the
 chain" below says.
 
-D10 permits a separate operator assertion only after a complete current
+The manager permits a separate operator assertion only after a complete current
 no-match result. The operator types the exact server-provided acknowledgement
 that retrying the recorded amount may pay twice. The journal retains the actor,
 time, amount and confirmation. A later result may still reveal a transaction
@@ -196,7 +196,7 @@ revision as a decimal string. A later journal change invalidates that assertion.
 | GET    | `/chequebook/operations/:id`                        | Read the operation and its response evidence together.                                                                                                                                  |
 | POST   | `/chequebook/operations/:id/check`                  | Request another evidence check with `{ expectedAccountId }`.                                                                                                                            |
 | POST   | `/chequebook/operations/:id/resolve`                | Supply `{ transactionHash, expectedAccountId }` for verification.                                                                                                                       |
-| POST   | `/chequebook/operations/:id/assert`                 | Submit `{ amountPlur, confirmation, expectedAccountId, expectedRevision }` using the recorded amount, exact duplicate-risk confirmation and reviewed revision under D10.                |
+| POST   | `/chequebook/operations/:id/assert`                 | Submit `{ amountPlur, confirmation, expectedAccountId, expectedRevision }` using the recorded amount, exact duplicate-risk confirmation and reviewed revision.                          |
 
 A busy response can name another operation. The browser must not attach that
 operation to its own saved intent as though its submission succeeded. History
@@ -321,8 +321,8 @@ the first time the default ssh forward runs anywhere: the connected suites use a
 synthetic transport, and the forward's arguments are pinned by a unit test
 rather than proven against a real `sshd`. The first automatic check of a real
 image will be the first transfer through an image the seed does not list.
-Real-money testing is a separately authorised T22 activity, which waits for
-Levi's D05 numbers and keeps strict ownership of cleanup.
+Real-money testing is a separately authorised part of the live acceptance run, which waits for
+its spending cap and duration to be set and keeps strict ownership of cleanup.
 
 The historical 0.5 BZZ fill on the funded `review-20260907` deployment remains
 unverified. Without transaction evidence, this document does not establish

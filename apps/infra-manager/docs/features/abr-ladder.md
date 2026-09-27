@@ -1,7 +1,7 @@
 # ABR Ladder
 
 Status, 2026-09-16: built and merged to `main-v2`, page checked against the code at ecaea40.
-Corrected 2026-09-17 against the code at `0c0354c`: "The address", the D16 paragraphs under
+Corrected 2026-09-17 against the code at `0c0354c`: "The address", the paragraphs on an unanswering node under
 "The ABR Uploader", and the "Manager" table. The first real pool on the live host had been
 handed a public address no Bee node listens on. Corrected 2026-09-23 against the code at
 `87673c99`: the Implementation tables no longer say how many tests each file holds. Five of the
@@ -14,7 +14,7 @@ topped up and diluted from the rung's own page, neither needs the string pasted 
 rung is told to dilute its batch or buy a new one. [postage-stamps.md](postage-stamps.md) has both.
 
 A deployment **group** whose members are one `bee-uploader` per ABR quality rung,
-used as the publish targets for a `stream-uploader`. Since T15 that uploader is
+used as the publish targets for a `stream-uploader`. That uploader is
 normally one this same manager deploys beside the pool, on the same host, and
 since 2026-09-17 the string it is handed names the pool at the address a
 container on that host reaches. An uploader on another machine is the older
@@ -131,7 +131,7 @@ removes.
 ## The ABR Uploader
 
 What crosses between the pool and the uploader is the string itself. The
-everyday case since T15 is one manager and one host: the wizard picks a local
+everyday case is one manager and one host: the wizard picks a local
 pool and copies the string into the uploader, and since 2026-09-17 the string
 carries the Docker bridge address a container on this host reaches the nodes on.
 The shape this page was first written for, the Bee nodes on bare metal where
@@ -196,7 +196,7 @@ nothing invalidates a copy that has gone wrong:
   manager pointing at the cause. Re-paste after rebuilding a rung.
 
 **Since 2026-09-17 a rung that is not answering does not stop the uploader
-starting** (decision D16, the owner: "we should be able to start the uploader but
+starting** (the ruling that day: "we should be able to start the uploader but
 maybe say its node not available, try to reconnect or something"). Both checks of
 the manager's own start gate, the batch and the chequebook, log a node that says
 nothing and let the start through, and on the owner's further ruling of the same
@@ -458,7 +458,7 @@ was only ever discoverable after everything had already stopped.
 **Corrected 2026-09-17.** The host half of a rung's URL used to be the manager's
 public address, on the theory that the uploader reading it runs on another
 machine. The uploader this manager deploys does not: it is a container on this
-same host, and the T06 bind step in `deploy/README.md` puts every local Bee API
+same host, and the bind step in `deploy/README.md` puts every local Bee API
 on the Docker bridge address and on nothing else. So the first real pool on the
 live host was handed `http://<public host>:10015` and its three siblings, and
 nothing answered there from the host, from a container or from anywhere. The
@@ -482,7 +482,7 @@ a node on, from `resolveLocalPublisherHost` in `src/domain/localHost.ts`:
 `beePublishersForGroup` reads that once for the whole pool, and the default
 reader resolves once per process, since a bridge address does not move while the
 manager runs. A member on a **declared remote host** keeps that host's own
-address, and the T06 caveat travels with it: that node's API has to be bound
+address, and the bind step's caveat travels with it: that node's API has to be bound
 somewhere this host can reach, which its own operator decides. An uploader
 running off this host needs an address this manager does not compose, and giving
 it one is `BEE_LOCAL_HOST` plus a bind that admits it.

@@ -7,7 +7,7 @@ node has no chain, no chequebook and no gas, and can only download. In bee's own
 terms ultra-light is a node with no RPC endpoint that is not a full node, and the
 SWAP switch takes no part in that.
 
-Status, 2026-09-17. Row T27 of `docs/consensus/issues/`, ruled by Levi that
+Status, 2026-09-17. The Bee node mode row of `docs/consensus/issues/`, decided that
 day: the mode and the endpoint are chosen when a node is created, the node's
 page shows both, an ultra-light node has no funding or stamp steps, and funding
 stays as it is, by hand, with no wallet held by the manager. The manager and
@@ -26,7 +26,7 @@ the three rung nodes, a chain endpoint read from `RPC_ENDPOINT`, with the public
 `https://rpc.gnosischain.com` as its default, and SWAP on. That endpoint took
 4568 refusals in two hours on 2026-09-15, which is why the manager offers its
 own first. The viewer gateway ships ultra-light: no endpoint and SWAP off, and
-since T27 those two are settings, `BEE_GATEWAY_RPC_ENDPOINT` and
+since 2026-09-17 those two are settings, `BEE_GATEWAY_RPC_ENDPOINT` and
 `BEE_GATEWAY_SWAP_ENABLE`, whose defaults are the old literals (stack commits
 75f9b1e1, 251bb1c1 and 5553652c on `feat/manager-line`, the rendered gateway
 with neither key measured byte-identical to the one before). A deployment

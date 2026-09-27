@@ -11,19 +11,19 @@ named `t<NN><a|b>-<slug>.md`. Each opens with a title line and then a single hea
 form:
 
 ```
-Source: R01. Priority: P1. Depends on: T01a. Decision: none. Size: M.
+Source: <finding>. Priority: P1. Depends on: <row>. Decision: none. Size: M.
 ```
 
 `Priority` is a P1 to P3 scale: P1 is fixed before anything ships, P2 is fixed when it fits a batch and recorded otherwise, P3 is documented and left. There is no separate `Status:` line on an issue file.
 
 The five triage labels the review used, `needs-triage`, `needs-info`, `ready-for-agent`,
 `ready-for-human` and `wontfix`, are defined and applied in `docs/consensus/PRD.md`, which also
-carries every review round, the task table and Levi's decisions D01 to D10. Decisions D11 to D14
-were taken during the slices built after the merge and live in their briefs and fixes files in the
-same directory, which `docs/consensus/README.md` lists in order. Decisions D15 and D16 (2026-09-17:
-the stack's uploader starts whatever its chequebook says, and the manager starts it even when its
-node does not answer, and decision 7 of the same day on the postage gate's two readings) live in `docs/consensus/issues/t25-uploader-start-gates.md`, and rows T23 to
-T27, added the same day, are listed at the end of `docs/consensus/issues/README.md`.
+carries every review round, the task table and the decisions taken on 2026-09-07. The decisions
+taken during the slices built after the merge live in their briefs and fixes files in the
+same directory, which `docs/consensus/README.md` lists in order. The decisions of 2026-09-17 (the
+stack's uploader starts whatever its chequebook says, the manager starts it even when its node does
+not answer, and the postage gate's handling of its two readings) live in `docs/consensus/issues/t25-uploader-start-gates.md`,
+and the rows added the same day are listed at the end of `docs/consensus/issues/README.md`.
 
 `docs/consensus/prs/` holds one draft pull request body per row, kept as the per-row record of
 what was built and checked. `docs/consensus/README.md` maps the whole directory.
