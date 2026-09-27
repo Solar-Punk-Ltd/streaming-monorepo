@@ -124,7 +124,7 @@ asserted.
 | Viewer variant, both byte sources, about 5 min each | about 0.30 |
 | First proving sitting, everything above             | under 0.6  |
 
-The build is one Opus agent working from this page, tests first, roughly a day. Two uploader
+The build is one agent working from this page, tests first, roughly a day. Two uploader
 redeploys per sitting, free.
 
 ## Decisions for the owner
