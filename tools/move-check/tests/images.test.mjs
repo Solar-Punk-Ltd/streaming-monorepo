@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
@@ -258,11 +258,14 @@ describe('images.mjs builds each image from both commits and compares them', () 
       first: [{ argsInclude: ['build', 'move-check-images/other:before'], stdout: '', sleepMs: SLOW_BUILD_MS }],
     });
     const manifest = manifestFile(t, [demoImage(before, after), demoImage(before, after, { name: 'other' })]);
+    // A run cut off never reaches its own clean-up, so its exports go to a folder the test removes.
+    const scratch = makeTempDir(t, 'move-check-cut-off-');
 
-    const result = runScript(IMAGES, ['--manifest', manifest], { cwd: repo, env: docker.env, timeoutMs: CUT_OFF_MS });
+    const result = runScript(IMAGES, ['--manifest', manifest], { cwd: repo, env: { ...docker.env, TMPDIR: scratch }, timeoutMs: CUT_OFF_MS });
 
     assert.equal(result.signal, 'SIGTERM', 'the run was cut off during the second pair');
     assert.match(result.stdout, /^demo: .*match/m, 'the first pair was already reported');
+    assert.ok(readdirSync(scratch).some((name) => name.startsWith('move-check-images-')), 'the cut-off run left its exports where the test removes them');
   });
 
   it('reports an image that differs with what image.mjs found, and exits 1', (t) => {
