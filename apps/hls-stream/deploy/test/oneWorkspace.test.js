@@ -215,6 +215,41 @@ describe('a local deploy from a checkout of the one workspace', () => {
   });
 });
 
+/** Where bench-on-host.sh mirrors the stack on its target, and the ledger it will not sync without. */
+const REMOTE_BENCH_DIR = 'swarm-hls-bench';
+const SPEND_LEDGER = '.spend-ledger.env';
+const OWNER_LEDGER = 'authorised_at=2026-09-03T09:32:45Z\n';
+
+describe('bench-on-host.sh from a checkout of the one workspace', () => {
+  it("mirrors the stack with its lockfile cut out of the root's, and leaves nothing behind", async () => {
+    const { workspace, sandbox } = oneWorkspace();
+    writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
+    const tmp = ownTmpdir();
+
+    await runScriptOk(sandbox, 'bench-on-host.sh', ['--setup-only'], { TMPDIR: tmp });
+
+    const cut = expectedCut(workspace);
+    const mirror = join(sandbox.remoteHome, REMOTE_BENCH_DIR);
+    assert.equal(readFileSync(join(mirror, 'pnpm-lock.yaml'), 'utf8'), cut.lockfile);
+    assert.equal(readFileSync(join(mirror, 'pnpm-workspace.yaml'), 'utf8'), cut.workspace);
+    assert.ok(existsSync(join(mirror, 'package.json')), "the stack's own files are mirrored as before");
+    assert.deepEqual(readdirSync(tmp), [], 'the cut folder is gone');
+    assert.equal(existsSync(join(sandbox.root, 'pnpm-lock.yaml')), false, 'nothing was written into the checkout');
+  });
+
+  it('mirrors a stack that keeps its own lockfile as before', async () => {
+    const { sandbox } = oneWorkspace({ ownPair: true });
+    writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
+
+    await runScriptOk(sandbox, 'bench-on-host.sh', ['--setup-only'], { TMPDIR: ownTmpdir() });
+
+    assert.equal(
+      readFileSync(join(sandbox.remoteHome, REMOTE_BENCH_DIR, 'pnpm-lock.yaml'), 'utf8'),
+      "lockfileVersion: '9.0'\n# the stack's own\n",
+    );
+  });
+});
+
 /** The two files rendered as compose loads them, with the stack's two images in play. */
 function renderWithCopy(env) {
   return spawnSync(
