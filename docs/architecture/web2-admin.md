@@ -91,5 +91,5 @@ Same as streaming-infra-manager, so the two codebases feel like one team's:
   repo run on startup, Node test runner through tsx (unit and integration).
 - `web2-admin/frontend`: React 18, MUI, Vite. The console is modelled on
   msrs-client (https://github.com/Solar-Punk-Ltd/msrs-client), which is the
-  admin UI operators use today at https://ethisstream.eth.limo/#/.
+  admin UI operators use today.
 - Package scope `@streaming-monorepo/`.
