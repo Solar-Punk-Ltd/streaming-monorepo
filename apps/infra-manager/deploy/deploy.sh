@@ -10,12 +10,14 @@
 #     LocalForward 8080 localhost:8080
 #
 # What it does:
-#   1. Writes the commit being deployed into manager/.stack-commit: the
-#      monorepo commit that holds this manager and the stack it bundles, in
-#      apps/hls-stream, so the two always come from one commit. That file is
-#      the only thing about the streaming stack a deploy carries. The host
-#      fetches that commit from GitHub and builds its apps/hls-stream there,
-#      through the same path a version added in the UI takes.
+#   1. Writes the stack pin into manager/.stack-commit: the last commit that
+#      changed apps/hls-stream, the stack this manager bundles, which holds the
+#      same stack tree as the commit being deployed. So a deploy that changes
+#      only the manager finds the bundled build the host already has, keeps
+#      its Tested mark and builds nothing. That file is the only thing about
+#      the streaming stack a deploy carries. The host fetches that commit from
+#      GitHub and builds its apps/hls-stream there if it has no complete build
+#      of it, through the same path a version added in the UI takes.
 #   2. rsyncs the repo to /home/solarpunk/streaming-infra-manager, without
 #      manager/swarm-hls-stream: the tree the engines of existing deployments
 #      mount is never written over again, so a container restart keeps the
