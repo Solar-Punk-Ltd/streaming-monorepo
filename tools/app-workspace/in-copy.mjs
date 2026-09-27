@@ -2,28 +2,34 @@ import { execFileSync, spawn } from 'node:child_process';
 import {
   chmodSync,
   copyFileSync,
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   symlinkSync,
 } from 'node:fs';
 import { constants as osConstants, tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, posix, resolve } from 'node:path';
 
 import { DEFAULT_ROOT, cutApp, normalizeApp } from './cut.mjs';
 import { UsageError, parseOptions, requireOption, runWhenStarted } from './lib/cli.mjs';
 import { Refusal } from './lib/refusal.mjs';
 
-const USAGE = `Usage: node tools/app-workspace/in-copy.mjs --app <folder> [--root <folder>] -- <command> [<argument>...]
+const USAGE = `Usage: node tools/app-workspace/in-copy.mjs --app <folder> [--root <folder>] [--also <path>]... -- <command> [<argument>...]
 
 Copies one app's folder, as git sees it on disk, into a new folder outside the checkout, cuts the app's
 pnpm-lock.yaml and pnpm-workspace.yaml into the copy, runs the command there without a shell, and removes the copy
 whatever the command does. Git's view is every file it tracks, with changes not yet committed, and every new file it
 does not ignore. Ignored files, such as node_modules, dist and every .env, stay behind. Where the root holds no
 lockfile, the apps keep their own, and the copy gets no cut.
+
+--also copies one more path of the app, from the app's folder, whether git ignores it or not, for a build output an
+image copies in, such as the stack uploader's dist. The command finds the copy's folder in APP_WORKSPACE_COPY as well
+as in its working directory.
 
 It is how an image builds from a working checkout, for example from apps/infra-manager:
   node ../../tools/app-workspace/in-copy.mjs --app apps/infra-manager -- docker build --file manager/Dockerfile --tag manager-api .
@@ -33,7 +39,11 @@ Exits with the command's own status, or 125 when it cannot make the copy or star
 const OPTION_SPECS = {
   app: { type: 'string' },
   root: { type: 'string' },
+  also: { type: 'string', multiple: true },
 };
+
+/** Where the command finds the copy, beside its working directory, for a tool that runs elsewhere. */
+const COPY_VARIABLE = 'APP_WORKSPACE_COPY';
 
 /** What in-copy.mjs itself exits with, apart from every status the command can give. */
 const OWN_FAILURE = 125;
@@ -78,6 +88,24 @@ function copyAppFiles(root, app, paths, copy) {
   }
 }
 
+/** A path --also names, from the app's folder, or a UsageError when it could name something outside the app. */
+function alsoPath(path) {
+  const normalized = posix.normalize(path.replaceAll('\\', '/')).replace(/\/+$/, '');
+  if (normalized === '.' || normalized === '..' || normalized.startsWith('../') || posix.isAbsolute(normalized)) {
+    throw new UsageError(`--also names a path inside the app, such as packages/stream-uploader/dist, not ${path}.`);
+  }
+  return normalized;
+}
+
+/** Copies each path --also names from the app's folder into the copy, links kept as links. */
+function copyAlsoPaths(root, app, paths, copy) {
+  for (const path of paths) {
+    const source = join(root, app, path);
+    if (!existsSync(source)) throw new Refusal(`--also names ${path}, and ${app} holds no ${path} to copy. Build it first.`);
+    cpSync(source, join(copy, path), { recursive: true, verbatimSymlinks: true });
+  }
+}
+
 /** Signals that stop in-copy.mjs, from a terminal or a cancelled job. Each is passed on, and the copy goes after. */
 const STOP_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
 
@@ -88,7 +116,7 @@ const STOP_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
  */
 function runCommand(command, cwd) {
   return new Promise((settle, fail) => {
-    const child = spawn(command[0], command.slice(1), { cwd, stdio: 'inherit' });
+    const child = spawn(command[0], command.slice(1), { cwd, stdio: 'inherit', env: { ...process.env, [COPY_VARIABLE]: cwd } });
     const passOn = (signal) => child.kill(signal);
     for (const signal of STOP_SIGNALS) process.on(signal, passOn);
     const stopListening = () => {
@@ -116,11 +144,14 @@ export async function main(argv) {
   if (command.length === 0) throw new UsageError('Name the command to run after --.');
   const app = normalizeApp(requireOption(options, 'app'));
   const root = resolve(options.root ?? DEFAULT_ROOT);
+  const also = (options.also ?? []).map(alsoPath);
 
   const paths = listAppFiles(root, app);
-  const copy = mkdtempSync(join(tmpdir(), 'app-workspace-'));
+  // The real path, so APP_WORKSPACE_COPY names the folder the way the command's working directory does.
+  const copy = realpathSync(mkdtempSync(join(tmpdir(), 'app-workspace-')));
   try {
     copyAppFiles(root, app, paths, copy);
+    copyAlsoPaths(root, app, also, copy);
     if (existsSync(join(root, 'pnpm-lock.yaml'))) process.stderr.write(`${cutApp({ root, app, out: copy })}\n`);
     process.stderr.write(`in-copy.mjs: running ${command.join(' ')} in a copy of ${app} at ${copy}\n`);
     return await runCommand(command, copy);
