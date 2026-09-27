@@ -44,11 +44,172 @@ These recipes start from a machine with nothing on it, made by hand or built by 
 `infra/terraform`. They describe new hosts only: nothing here moves a host that already runs
 something onto this layout.
 
-A stage host and a Bee host are prepared for the manager, and the manager then puts everything
-else on them. Both need a running control host first, because the manager there holds the deploy
-key it logs in with. The examples use the documentation addresses `203.0.113.7` for a stage host
-and `203.0.113.8` for a Bee host, and `deploy` as the account the manager logs in as. Put your
-own in their place.
+The control host comes first. A stage host and a Bee host are prepared for the manager, and the
+manager then puts everything else on them, so both need the running control host, whose manager
+holds the deploy key it logs in with. The examples use the documentation addresses `203.0.113.7`
+for a stage host and `203.0.113.8` for a Bee host, and `deploy` as the account the manager logs in
+as. Put your own in their place.
+
+### A control host, made by hand
+
+A control host runs the manager, the admin console and the edge in front of them. Each is brought
+up by its own script, run from a checkout of this repository on your own machine, in the order
+below: the manager first, because it puts the stack and the Bee nodes on the other hosts, then the
+admin, which needs a Bee node and an ingest address from them, and the edge last, because it
+checks that each console answers before it serves it.
+
+The manager and the admin expect the account `solarpunk`: the manager's compose file mounts paths
+under `/home/solarpunk`, and both scripts default to folders there. The examples use
+`203.0.113.6` for the control host, `control-1` as its ssh alias on your machine, and
+`manager.example.org` and `admin.example.org` as the two names.
+
+1. **Docker, Compose v2, rsync and curl.** On a Debian or Ubuntu host, as a user with sudo.
+
+   ```sh
+   sudo apt-get update
+   ```
+
+   ```sh
+   sudo apt-get install -y docker.io docker-compose-v2 rsync curl
+   ```
+
+   It worked when `docker compose version` prints a version.
+
+2. **The account `solarpunk`**, in the `docker` group, with your own key in its
+   `authorized_keys`.
+
+   ```sh
+   sudo useradd --create-home --shell /bin/bash solarpunk
+   ```
+
+   ```sh
+   sudo usermod -aG docker solarpunk
+   ```
+
+   It worked when `ssh solarpunk@203.0.113.6 docker ps` from your machine prints an empty table.
+
+3. **The firewall.** Tcp 22 from your own address, and tcp 80 and 443 from anywhere, because Let's
+   Encrypt checks the names from addresses it does not publish. Add udp 443 for HTTP/3 if you
+   want it. Nothing else: both consoles listen on the host's loopback only.
+
+4. **An ssh alias on your machine**, in `~/.ssh/config`. The forward is the way into the manager
+   before the edge serves it, and stays the way in when the edge is down.
+
+   ```
+   Host control-1
+     HostName 203.0.113.6
+     User solarpunk
+     LocalForward 8080 localhost:8080
+   ```
+
+5. **The manager.** On the host, make its folder:
+
+   ```sh
+   mkdir -p ~/streaming-infra-manager/manager
+   ```
+
+   On your machine, from `apps/infra-manager`, make `manager/.env` from the sample and set at
+   least `POSTGRES_PASSWORD`. The file travels with every deploy, so your checkout is its source.
+
+   ```sh
+   cp manager/.env.sample manager/.env
+   ```
+
+   Then deploy:
+
+   ```sh
+   ./deploy/deploy.sh control-1
+   ```
+
+   It worked when the deploy ends without an error and `ssh control-1` followed by
+   `http://localhost:8080` in a browser shows the manager's sign-in page. The first deploy takes
+   a while: the host builds the manager's images and the stack version it bundles.
+
+6. **The manager's first user**, on the host:
+
+   ```sh
+   cd ~/streaming-infra-manager/manager && docker compose exec -it api node dist/cli.js user:add <username>
+   ```
+
+   It asks for the password twice. It worked when you can sign in through the tunnel.
+
+7. **The manager's deploy key**, which it logs in to the stage and Bee hosts with. It lives on the
+   host in `~/manager-ssh/`, as a key pair named `deploy_key` beside an `ssh_config` and a
+   `known_hosts`. Make it there as "Deploying Bee nodes to other hosts" in
+   `apps/infra-manager/deploy/README.md` shows.
+
+   It worked when `~/manager-ssh/deploy_key.pub` holds one line. That line is what a stage host
+   and a Bee host authorize, in their recipes below.
+
+8. **The stage and Bee hosts**, by their recipes below, as far as a running ABR Uploader
+   deployment. The admin needs its ingest address and a Bee node with a usable postage batch.
+
+9. **The admin.** On your machine, from `apps/web2-admin`, make the profile's env file from the
+   sample and fill in what it asks for: `POSTGRES_PASSWORD`, `FEED_PRIVATE_KEY`,
+   `INTERNAL_API_TOKEN`, `BEE_URL` and `POSTAGE_BATCH_ID` of the Bee node it writes through, and
+   `INGEST_HOST`, the stage host encoders send to. The sample says what each one is, and the
+   script refuses a missing or malformed key before anything leaves your machine.
+
+   ```sh
+   cp backend/.env.sample backend/.env.brand-a
+   ```
+
+   Then deploy:
+
+   ```sh
+   ./deploy/deploy.sh --host=control-1 --profile=brand-a
+   ```
+
+   It worked when the deploy ends by reporting the API and the console healthy and prints the
+   console's loopback port, 9090 unless a port slot or `WEB2_ADMIN_WEB_PORT` says otherwise. It
+   also prints the command that makes the admin's first user. Run it once.
+
+10. **Link the uploader to the admin.** In the manager, give the ABR Uploader deployment the
+    admin's address and its `INTERNAL_API_TOKEN`, as `ADMIN_API_URL` and `ADMIN_API_TOKEN`.
+    `apps/infra-manager/docs/features/web2-admin-link.md` has the details.
+
+11. **The edge.** Point an A record for each name at the host first. A name that does not
+    resolve turns every certificate attempt into a failure, and Let's Encrypt limits those. Then,
+    from the repository root on your machine, make the edge's env file and set `MANAGER_DOMAIN`
+    and `ADMIN_DOMAIN`, and the two ports if they are not 8080 and 9090:
+
+    ```sh
+    cp infra/edge/.env.sample infra/edge/.env
+    ```
+
+    ```sh
+    ./infra/edge/edge.sh --host=control-1
+    ```
+
+    It worked when the run says each console answers on its loopback port and each name has a
+    valid certificate, and `https://manager.example.org` and `https://admin.example.org` show
+    the two sign-in pages. A certificate still coming does not fail the run: Caddy keeps asking,
+    usually for under a minute.
+
+The manager's own steps for going public, binding the node APIs and generating the host firewall,
+are in "Opening the manager to the internet" in `apps/infra-manager/deploy/README.md`, and apply
+to this host too when it also carries stack deployments.
+
+### A control host that runs the manager alone
+
+Steps 1 to 8 and 11 of the control host above, with `ADMIN_DOMAIN` left empty in the edge's env
+file. The edge makes its own folder on the host, `deploy/edge/` under
+`/home/solarpunk/streaming-monorepo`, where the admin's checkout would be.
+
+It worked when `https://manager.example.org` shows the manager's sign-in page.
+
+### A control host, all three at once
+
+**Not written yet.** This section will describe bringing up the edge, the manager and the admin
+together with the control-host compose file. Until it is here, use the steps above.
+
+### A control host built by the Terraform
+
+The GCP root in `infra/terraform` builds its monitoring host as the control host: steps 1 and 2
+are done by its first-boot script, and its firewall opens tcp 80 and 443 to the internet for the
+edge. Steps 3 to 11 are yours, with the host's external address. Put that address in
+`ssh_source_ranges` and the manager's `deploy_key.pub` in `additional_ssh_public_keys`, in both
+roots' tfvars, and apply both, so the stage and Bee hosts let the manager in.
 
 ### A stage host, made by hand
 
