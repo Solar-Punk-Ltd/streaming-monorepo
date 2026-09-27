@@ -18,3 +18,16 @@ deploy/.deployed-commit
 # progress.
 deploy/edge/Caddyfile
 deploy/edge/Caddyfile.tmp
+
+# Terraform's own output, as the devcon repository ignored it at its root, anchored at the folder the
+# Terraform now lives in. rendered/ holds each host's manager.env with its generated database password,
+# a saved plan holds secret values, and operator.auto.tfvars is an operator's own address for one test
+# window. The ** form covers both roots, infra/terraform/ and infra/terraform/vultr/.
+infra/terraform/**/.terraform/
+infra/terraform/**/*.tfstate
+infra/terraform/**/*.tfstate.*
+infra/terraform/rendered/*
+!infra/terraform/rendered/.gitkeep
+infra/terraform/**/*.tfplan
+infra/terraform/**/tfplan
+infra/terraform/**/operator.auto.tfvars

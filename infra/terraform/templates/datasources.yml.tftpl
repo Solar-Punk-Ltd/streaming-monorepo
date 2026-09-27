@@ -1,0 +1,18 @@
+# Rendered by Terraform, pushed by stacks/monitoring/push.sh. The URLs are compose service
+# names: nothing in this stack is reachable from off the host.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: ${prometheus_url}
+    isDefault: true
+    editable: false
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: ${loki_url}
+    editable: false
