@@ -93,8 +93,10 @@ export function Sidebar({
             sx={{ borderRadius: 2, mb: 0.25 }}
           >
             <ListItemText
-              primaryTypographyProps={{ fontWeight: 500 }}
               primary={item.label}
+              slotProps={{
+                primary: { fontWeight: 500 }
+              }}
             />
             {item.label === 'Deployments' && deploymentCount != null && (
               <Typography variant="caption" color="text.secondary">
