@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@streaming-monorepo/contracts": "workspace:*",
+    "@streaming-monorepo/web-auth": "workspace:*",
     "viem": "2.56.5"
   },
   "devDependencies": {

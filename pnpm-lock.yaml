@@ -408,6 +408,9 @@ importers:
       '@streaming-monorepo/contracts':
         specifier: workspace:*
         version: link:../../../packages/contracts
+      '@streaming-monorepo/web-auth':
+        specifier: workspace:*
+        version: link:../../../packages/web-auth
       viem:
         specifier: 2.56.5
         version: 2.56.5(typescript@7.0.2)(zod@4.6.4)
@@ -567,6 +570,9 @@ importers:
       '@streaming-monorepo/contracts':
         specifier: workspace:*
         version: link:../../../packages/contracts
+      '@streaming-monorepo/web-auth':
+        specifier: workspace:*
+        version: link:../../../packages/web-auth
     devDependencies:
       '@types/node':
         specifier: 24.13.4
