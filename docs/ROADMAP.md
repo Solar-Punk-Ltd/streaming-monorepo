@@ -175,15 +175,15 @@ section is the recipe, and edge.sh stays for hosts with no front door yet.
 
 First real run, 2026-09-25, on the GCP QA control host (the monitoring VM): both
 consoles deployed to loopback (manager 8080, web2-admin profile `qa` on 9091,
-because Prometheus has 9090 there), then `edge.sh --host=<control host>` twice, first
-with the manager's name alone while the admin name still pointed elsewhere, then
-with both. Each run validated the Caddyfile, recreated Caddy, proved both
-upstreams from the host, and saw valid certificates from outside within the
-probe window; the certificate obtained in the first run survived the second in
-the volume, as designed. What it took in Terraform: one firewall rule (tcp 80
-and 443 from the internet to the host's tag), the manager's address and deploy
-key in both roots' tfvars in place of the previous manager host's, and a re-run of the
-Bee host's provisioning so the new key landed there.
+because Prometheus has 9090 there), then `edge.sh --host=<control host>` twice,
+first with the manager's name alone while the admin name still pointed
+elsewhere, then with both. Each run validated the Caddyfile, recreated Caddy,
+proved both upstreams from the host, and saw valid certificates from outside
+within the probe window; the certificate obtained in the first run survived the
+second in the volume, as designed. What it took in Terraform: one firewall rule
+(tcp 80 and 443 from the internet to the host's tag), the manager's address and
+deploy key in both roots' tfvars in place of the previous manager host's, and a
+re-run of the Bee host's provisioning so the new key landed there.
 
 Since then the edge's sources live in `infra/edge/`, and the manager's own
 edge is gone: `infra/edge` is the one edge on every host, a host that runs the
