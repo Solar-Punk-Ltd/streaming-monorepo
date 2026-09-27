@@ -29,12 +29,13 @@
     },
     {
       "name": "hls-stream-bench",
-      "note": "bench-on-host.sh builds it with e2e/ as its context. Its build installs Debian packages and runs npm, which record when they ran, and two builds on GitHub's runner on 2026-09-27 differed in that noise alone, every file of the programs it installs the same: Node's compile cache under /tmp/node-compile-cache, written the first time npm and pnpm run, npm's cache index, whose entries carry a time, and its debug log, named for the time it started, the caches of fontconfig and ldconfig, and the logs of apt, dpkg and update-alternatives. A cache or log folder whose file names vary is allowed as a folder, and a single file by its path. npm's cached packages themselves, under _cacache/content-v2, are still compared.",
+      "note": "bench-on-host.sh builds it with e2e/ as its context. Its build installs Debian packages and runs npm, which record when they ran, and two builds on GitHub's runner on 2026-09-27 differed in that noise alone, every file of the programs it installs the same: Node's compile cache under /tmp/node-compile-cache, written the first time npm and pnpm run, npm's cache index, whose entries carry a time, and its debug log, named for the time it started, the caches of fontconfig and ldconfig, and the logs of apt, dpkg and update-alternatives. A cache or log folder whose file names vary is allowed as a folder, and a single file by its path. npm's cache holds what that npm install fetched, under _cacache/content-v2: the package file of the pnpm the image installs, stored under its checksum, so a new pnpm moves it, and pnpm's registry metadata, which changes whenever pnpm publishes a release. It is allowed as a folder, because the pnpm installed from it is compared anyway, and image.mjs names it as pnpm itself, with its version.",
       "context": "apps/hls-stream/e2e",
       "dockerfile": "apps/hls-stream/e2e/Dockerfile.bench",
       "allow": [
         "/tmp/node-compile-cache/",
         "/root/.npm/_cacache/index-v5/",
+        "/root/.npm/_cacache/content-v2/",
         "/root/.npm/_logs/",
         "/var/cache/fontconfig/",
         "/var/cache/ldconfig/aux-cache",
@@ -52,6 +53,7 @@
       "allow": [
         "/tmp/node-compile-cache/",
         "/root/.npm/_cacache/index-v5/",
+        "/root/.npm/_cacache/content-v2/",
         "/root/.npm/_logs/",
         "/var/cache/fontconfig/",
         "/var/cache/ldconfig/aux-cache",
