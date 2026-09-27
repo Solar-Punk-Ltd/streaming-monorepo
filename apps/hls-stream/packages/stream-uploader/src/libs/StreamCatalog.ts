@@ -261,7 +261,7 @@ export class StreamCatalog implements LadderRegistry {
     const persisted = this.indexStore?.load(owner.toString(), this.feedTopic.toString()) ?? null;
 
     try {
-      const feedReader = this.publisher.bee.makeFeedReader(this.feedTopic, owner);
+      const feedReader = this.publisher.bee.feed.makeReader(this.feedTopic, owner);
       const data = await feedReader.downloadPayload();
 
       if (persisted !== null && persisted.toBigInt() > data.feedIndex.toBigInt()) {
@@ -355,7 +355,7 @@ export class StreamCatalog implements LadderRegistry {
     }
 
     try {
-      await this.publisher.bee.getReadiness();
+      await this.publisher.bee.status.getReadiness();
       return true;
     } catch (readinessError) {
       this.logger.error(
@@ -386,7 +386,7 @@ export class StreamCatalog implements LadderRegistry {
       return false;
     }
 
-    if (await this.publisher.bee.isConnected()) {
+    if (await this.publisher.bee.connectivity.isConnected()) {
       return true;
     }
 
@@ -591,7 +591,7 @@ export class StreamCatalog implements LadderRegistry {
 
     const nextIndex = this.feedIndex ? this.feedIndex.next() : FeedIndex.fromBigInt(BigInt(0));
     const publisher = this.publisher;
-    const feedWriter = publisher.bee.makeFeedWriter(this.feedTopic, this.signer);
+    const feedWriter = publisher.bee.feed.makeWriter(this.feedTopic, this.signer);
 
     const payload = JSON.stringify(state);
     const result = await retryUntilDeadlineAsync(
@@ -653,7 +653,7 @@ export class StreamCatalog implements LadderRegistry {
 
   private async fetchCurrentState(): Promise<StreamEntry[]> {
     const owner = this.signer.publicKey().address();
-    const feedReader = this.publisher.bee.makeFeedReader(this.feedTopic, owner);
+    const feedReader = this.publisher.bee.feed.makeReader(this.feedTopic, owner);
     const data = await retryUntilDeadlineAsync(
       () => feedReader.downloadPayload({ index: this.feedIndex! }),
       CATALOG_RETRY_WINDOW_MS,

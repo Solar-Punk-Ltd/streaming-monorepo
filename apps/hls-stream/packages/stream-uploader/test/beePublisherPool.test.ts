@@ -293,7 +293,7 @@ describe('the request timeout every pooled node is built with', () => {
   /** Only spent when a case is failing, so it is generous on purpose. See `waitFor`. */
   const SETTLE_BUDGET_MS = 5_000;
 
-  const upload = (publisher: BeePublisher) => publisher.bee.uploadData(publisher.stamp, new Uint8Array([0x2a]));
+  const upload = (publisher: BeePublisher) => publisher.bee.data.upload(publisher.stamp, new Uint8Array([0x2a]));
 
   it('fails an upload to a node that never answers, and the control shows the node never does', async () => {
     const [boundedUrl, unboundedUrl] = await Promise.all([silentBee(), silentBee()]);
