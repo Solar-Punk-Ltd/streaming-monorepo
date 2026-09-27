@@ -70,12 +70,22 @@ The streaming stack the manager ships with is a version like any other, called
 `bundled`, and the server fetches and builds it there. The only thing about the
 stack a deploy carries is one commit.
 
-**Pin.** The deploy writes `manager/.stack-commit` with the commit being
-deployed: the monorepo commit that holds this manager and the stack it bundles,
-in `apps/hls-stream`, so the two always come from one commit. The server fetches
-that commit from GitHub, so the deploy refuses one that no remote branch holds:
-push it first, or `git fetch` when it was pushed from elsewhere. That file ships
-with the repo rsync. Nothing of the stack is installed or built on your machine.
+**Pin.** The deploy writes into `manager/.stack-commit` the last commit that
+changed `apps/hls-stream`, the stack this manager bundles. That commit holds the
+same stack as the commit being deployed, so a deploy that changes only the manager
+finds the bundled build the server already has: it builds nothing and the bundled
+version keeps its Tested mark. The server fetches the pin from GitHub, so the deploy
+refuses a commit that no remote branch holds: push it first, or `git fetch` when it
+was pushed from elsewhere. That file ships with the repo rsync. Nothing of the stack
+is installed or built on your machine.
+
+**The first deploy from the monorepo moves the bundled version off `v3.4`.** Until
+then the server's bundled version was the stack's release `v3.4`, the last pin of
+the manager's own repository. The first deploy from the monorepo pins
+`apps/hls-stream` as it is at the deployed commit, which is that release and every
+change to the stack since, so that deploy builds the stack once, the bundled
+version loses its Tested mark, and the Versions page shows the new commit. A
+version added from `v3.4` keeps running it.
 
 **Build, on the server.** When the API starts it reads that pin. If the bundled
 version is not already on a complete build of that commit, it fetches the commit

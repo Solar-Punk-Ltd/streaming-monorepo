@@ -103,11 +103,13 @@ else
 fi
 
 echo "==> Recording the stack commit this manager pins"
-# The commit being deployed, which the upgrade also records as the manager it
-# installed. It holds the stack this manager bundles, in apps/hls-stream, so the
-# pin is that commit itself. The host reads this file at boot and builds it if
-# it has no complete build of it, which is why the file sits next to the tree
-# the host keeps and is never committed.
+# The commit being deployed is what the upgrade records as the manager it
+# installed. The pin is the last commit that changed apps/hls-stream, the stack
+# this manager bundles, which holds the same stack tree as the deployed commit.
+# So a deploy that changes only the manager finds the bundled build the host
+# already has, keeps its Tested mark and builds nothing. The host reads this file
+# at boot and builds the pin if it has no complete build of it, which is why the
+# file sits next to the tree the host keeps and is never committed.
 MANAGER_COMMIT="$(git rev-parse HEAD)"
 # The host fetches this commit from GitHub by its name, so one only this
 # machine has would replace the manager and then fail its bundled build. A
@@ -119,7 +121,11 @@ if [ -z "$PUSHED_IN" ]; then
     echo "ERROR: no remote branch holds $MANAGER_COMMIT, the commit being deployed. The host fetches it from GitHub to build the stack it bundles, so push it first, or git fetch if it is pushed already." >&2
     exit 1
 fi
-printf '%s\n' "$MANAGER_COMMIT" > manager/.stack-commit
+# An ancestor of the deployed commit, which a remote branch holds, so the host
+# can fetch it too. :(top) reads the path from the repository root, wherever
+# this script runs from.
+STACK_COMMIT="$(git rev-list -1 HEAD -- ':(top)apps/hls-stream')"
+printf '%s\n' "$STACK_COMMIT" > manager/.stack-commit
 echo "[deploy] pinned stack commit: $(cat manager/.stack-commit)"
 
 # A digest of the manager's tree at that commit, listed from this folder, so it
