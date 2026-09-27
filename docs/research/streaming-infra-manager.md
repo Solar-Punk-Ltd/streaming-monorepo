@@ -45,7 +45,7 @@ Nothing server-side knows a stream name; no per-stream key distinct from the sig
 profiles(name PK, port_slot SMALLINT UNIQUE 1..999, kind, notes, components TEXT[], host, feed_owner, feed_topic, private_key(plaintext), public_key, stamp_id, bee_publishers, bee_url, srt_passphrase, status, last_error, last_error_at, created_at, updated_at, group_id FK) ; containers(profile_name FK cascade, service, ports JSONB, env JSONB, PK(profile_name,service)) snapshot ; deployment_groups(id SERIAL, name UNIQUE, size, kind standard|abr-node-pool, created_at).
 
 ## Docs/deploy
-docs/features/{abr-ladder.md, streamer-stamp-flow.md, group-deployment.md}; docs/agents/{domain,issue-tracker,triage-labels}.md. deploy/deploy.sh rsyncs to /home/solarpunk/streaming-infra-manager on ssh target, docker compose up -d --build, PUBLIC_HOST detected. Test host Ubuntu 22.04, 48 cores/270GB, ssh alias manager-host. UI via ssh LocalForward 8080.
+docs/features/{abr-ladder.md, streamer-stamp-flow.md, group-deployment.md}; docs/agents/{domain,issue-tracker,triage-labels}.md. deploy/deploy.sh rsyncs to /home/solarpunk/streaming-infra-manager on ssh target, docker compose up -d --build, PUBLIC_HOST detected. Test host Ubuntu 22.04, reached over ssh. UI via ssh LocalForward 8080.
 
 ## Consequence for web2-admin
 Must own "stream" (id, key, owner, OBS URL, state) itself and map to a manager profile by name. Manager gives: profile CRUD, SSE logs/events, container port snapshots, stamps, /config host+passphrase. Manager lacks: auth, ingest-URL endpoint, stream-name concept, per-stream keys, idempotency, webhooks.
