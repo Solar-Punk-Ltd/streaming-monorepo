@@ -482,7 +482,7 @@ profile section 7 predicted would fit.
 - **feed frontier resolved to bounded candidate 3445**, which is exactly the index our catalog records
   for that recording. **The native feed path works on our feeds**, at least for read.
 - ⭐ **It parses our absolute segment URLs.** Our manifests carry
-  `http://49.12.149.62:10077/bytes/<ref>`, and `swarm_bytes_reference` strips host and route to the
+  `http://<gateway host>:10077/bytes/<ref>`, and `swarm_bytes_reference` strips host and route to the
   bare reference, so **segments are fetched from Swarm and not through our gateway**. Verified in
   source and in the served playlist. That trap would have made a browser node look fast while
   measuring nothing.
