@@ -22,6 +22,11 @@ packages:
 # Every dependency is added at its exact version.
 saveExact: true
 
+# No version younger than one week (in minutes) is installed, transitive ones included, and an install fails rather
+# than fall back to an older version when nothing in a range is old enough. Each app's cut carries both lines.
+minimumReleaseAge: 10080
+minimumReleaseAgeStrict: true
+
 # No workspace package is injected, so a package links to another as it stands. pnpm 11 deploys without --legacy
 # only when injection is on for the whole workspace, so an image that deploys that way gets it in the workspace
 # file its own build reads, never here.
