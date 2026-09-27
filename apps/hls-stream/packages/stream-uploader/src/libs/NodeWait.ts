@@ -1,4 +1,5 @@
 import { NodeWaitReport } from '../types.js';
+import { describeFailure, transportCodeOf } from '../utils/transportFailure.js';
 
 import { safeUrl } from './BeePublisherPool.js';
 import { NodeUnreachableError } from './NodeUnreachableError.js';
@@ -175,13 +176,13 @@ export async function assertNodeReachable(node: ReachableNode): Promise<void> {
  *
  * ⛔ **The message is read as well as the code, and that is not belt and braces.** The two start
  * gates do not rethrow what bee-js threw: each wraps the cause in a sentence of its own, so the
- * `code` is gone by the time it arrives here and the only surviving evidence is the text. "timeout of
- * 20000ms exceeded" inside a `[ChequebookGate]` sentence is the shape today's gate budget produces.
- * The live failure of 2026-09-16 said 4000ms, because the gates were bounded by the upload loop's
- * deadline then.
+ * `code` is gone by the time it arrives here and the only surviving evidence is the text. Under bee-js 13
+ * a gate's budget running out reads "The operation was aborted due to timeout (ECONNABORTED)" inside a
+ * `[ChequebookGate]` sentence, the code added by {@link describeFailure} because bee-js 13 names none.
+ * The live failure of 2026-09-16 said "timeout of 4000ms exceeded", axios's words under bee-js 9.
  *
- * What is not wrapped arrives as bee-js threw it, and there the code is on `statusText` rather than
- * on `code`. See {@link transportCodeOf}, which is the whole of that story.
+ * What is not wrapped arrives as bee-js threw it, and bee-js 13 keeps no code on it at all. See
+ * {@link transportCodeOf}, which is the whole of that story.
  *
  * A 5xx counts, because a node that answers 500 is up and not ready, which is the same wait with a
  * different cause. A 4xx does not: the node answered and is refusing this request, and no amount of
@@ -205,26 +206,6 @@ export function isNodeUnavailable(error: unknown): boolean {
   }
 
   return UNREACHABLE_TEXT.test(describeFailure(error));
-}
-
-/**
- * The transport code, from wherever the thrower put it.
- *
- * ⛔ **bee-js puts it on `statusText` and never sets `code`.** Every failure it throws is
- * `new BeeResponseError(method, url, e.message, e.response?.data, e.response?.status, e.code)`
- * (9.8.1, `dist/mjs/utils/http.js:57`), so axios's code lands in the slot named for prose. Reading
- * `code` alone missed every one of them, and the miss was invisible because most such messages name
- * their own code and were caught by the text below: a dropped response body says "response stream
- * aborted" and names nothing, so that one reached a caller as "the node answered something wrong".
- *
- * Safe to read after {@link statusOf} and nowhere else. On a real answer bee-js fills the status
- * slot as well, and the check above has already returned, so a 4xx cannot be turned into a wait by
- * whatever its code says.
- */
-function transportCodeOf(error: unknown): string | null {
-  const carrier = error as { code?: unknown; statusText?: unknown } | null | undefined;
-  const code = typeof carrier?.code === 'string' ? carrier.code : carrier?.statusText;
-  return typeof code === 'string' ? code : null;
 }
 
 /**
@@ -281,10 +262,6 @@ function statusOf(error: unknown): number | null {
 function nodeUrlOf(error: unknown): string | null {
   const named = (error as { nodeUrl?: unknown } | null | undefined)?.nodeUrl;
   return typeof named === 'string' && named !== '' ? safeUrl(named) : null;
-}
-
-function describeFailure(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function defaultSleep(ms: number): Promise<void> {

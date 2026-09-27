@@ -1,5 +1,7 @@
 import { PostageBatch } from '@ethersphere/bee-js';
 
+import { describeFailure } from '../utils/transportFailure.js';
+
 import { safeUrl, shortBatchId } from './BeePublisherPool.js';
 import { gateReadingOfError } from './gateReadingOfError.js';
 import { GateRefusalError } from './GateRefusalError.js';
@@ -308,10 +310,6 @@ function distinctByNodeAndStamp(publishers: readonly StampedPublisher[]): Stampe
     seen.add(key);
     return true;
   });
-}
-
-function describeFailure(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function percent(ratio: number): string {
