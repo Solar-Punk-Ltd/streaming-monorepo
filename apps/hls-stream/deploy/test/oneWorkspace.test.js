@@ -1,0 +1,234 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { after, describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import { ALL_REMOTE, makeSandbox, removeSandboxes, runScript, runScriptOk } from './helpers/sandbox.js';
+
+after(removeSandboxes);
+
+const STACK = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+/** The repository's own cut tool, which a checkout of the one workspace carries at its root. */
+const TOOL = resolve(STACK, '../../tools/app-workspace');
+const DEPLOY_DIR_IN = (sandbox) => join(sandbox.root, 'deploy');
+
+/** Where `deploy.sh` puts a deployment on a remote host, as `_lib.sh` hardcodes it. */
+const REMOTE_BASE = 'swarm-hls-stream';
+const PACKAGE_MANAGER = 'pnpm@11.11.0+sha512.0123abcd';
+
+/** The root lockfile of a one-workspace checkout whose stack has one package of its own. */
+const ROOT_LOCKFILE = `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  apps/hls-stream:
+    devDependencies:
+      typescript:
+        specifier: 5.6.3
+        version: 5.6.3
+
+  apps/hls-stream/packages/shared:
+    dependencies:
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+
+  apps/web2-admin:
+    dependencies:
+      react:
+        specifier: 18.3.1
+        version: 18.3.1
+
+packages:
+
+  react@18.3.1:
+    resolution: {integrity: sha512-react}
+
+  typescript@5.6.3:
+    resolution: {integrity: sha512-typescript}
+
+  zod@4.4.3:
+    resolution: {integrity: sha512-zod}
+
+snapshots:
+
+  react@18.3.1: {}
+
+  typescript@5.6.3: {}
+
+  zod@4.4.3: {}
+`;
+
+const ROOT_WORKSPACE = 'packages:\n  - apps/hls-stream\n  - apps/hls-stream/packages/*\n  - apps/web2-admin\n';
+
+const manifest = (name) => `${JSON.stringify({ name, private: true, packageManager: PACKAGE_MANAGER })}\n`;
+
+/** The stack's files an image build reads, seeded as a checkout would hold them, the uploader's dist built. */
+const STACK_FILES = {
+  'package.json': manifest('swarm-hls-stream'),
+  'packages/shared/package.json': manifest('@swarm-hls-stream/shared'),
+  'packages/stream-uploader/package.json': manifest('@swarm-hls-stream/stream-uploader'),
+  'packages/stream-uploader/dist/index.js': 'built\n',
+  'packages/client/package.json': manifest('@swarm-hls-stream/client'),
+  'deploy/Dockerfile.uploader': 'FROM scratch\n',
+  'deploy/Dockerfile.client': 'FROM scratch\n',
+};
+
+const workspaces = [];
+after(() => {
+  for (const dir of workspaces) rmSync(dir, { recursive: true, force: true });
+});
+
+function write(dir, files) {
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), text);
+  }
+}
+
+/**
+ * A checkout of the one workspace with the stack in a sandbox at apps/hls-stream. The stack's folder
+ * holds no lockfile of its own unless `ownPair` gives it one, the way a checkout from before the root
+ * lockfile does. A git repository, because in-copy.mjs copies the files git sees.
+ */
+function oneWorkspace({ config, ownPair = false } = {}) {
+  const workspace = mkdtempSync(join(tmpdir(), 'one-workspace-'));
+  workspaces.push(workspace);
+  write(workspace, {
+    'package.json': manifest('monorepo'),
+    'pnpm-lock.yaml': ROOT_LOCKFILE,
+    'pnpm-workspace.yaml': ROOT_WORKSPACE,
+    '.gitignore': 'node_modules/\ndist/\n.env\n.env.*\n',
+  });
+  cpSync(TOOL, join(workspace, 'tools', 'app-workspace'), { recursive: true });
+  const sandbox = makeSandbox({ config, root: join(workspace, 'apps', 'hls-stream') });
+  write(sandbox.root, STACK_FILES);
+  if (ownPair) {
+    write(sandbox.root, { 'pnpm-lock.yaml': "lockfileVersion: '9.0'\n# the stack's own\n", 'pnpm-workspace.yaml': 'packages:\n  - packages/*\n' });
+  }
+  execFileSync('git', ['init', '-q', workspace]);
+  return { workspace, sandbox };
+}
+
+/** What tools/app-workspace writes for the stack of `workspace`, run here into a folder of the test's own. */
+function expectedCut(workspace) {
+  const out = mkdtempSync(join(tmpdir(), 'expected-cut-'));
+  workspaces.push(out);
+  execFileSync(process.execPath, [join(TOOL, 'cut.mjs'), '--root', workspace, '--app', 'apps/hls-stream', '--out', join(out, 'cut')]);
+  return {
+    lockfile: readFileSync(join(out, 'cut', 'pnpm-lock.yaml'), 'utf8'),
+    workspace: readFileSync(join(out, 'cut', 'pnpm-workspace.yaml'), 'utf8'),
+  };
+}
+
+/** A TMPDIR of the test's own, empty, so what a deploy leaves in it can be seen. */
+function ownTmpdir() {
+  const dir = mkdtempSync(join(tmpdir(), 'deploy-tmp-'));
+  workspaces.push(dir);
+  return dir;
+}
+
+/** Every argv of a local `docker compose ... up` call. */
+function composeUps(sandbox) {
+  return sandbox.calls().filter((call) => call.startsWith('compose ') && call.includes(' up '));
+}
+
+describe('a remote deploy from a checkout of the one workspace', () => {
+  it("sends the stack's lockfile and workspace file cut out of the root's, where the stack's own went", async () => {
+    const { workspace, sandbox } = oneWorkspace({ config: ALL_REMOTE });
+
+    await runScriptOk(sandbox, 'deploy.sh', ['stream-uploader'], { TMPDIR: ownTmpdir() });
+
+    const cut = expectedCut(workspace);
+    assert.equal(readFileSync(join(sandbox.remoteHome, REMOTE_BASE, 'pnpm-lock.yaml'), 'utf8'), cut.lockfile);
+    assert.equal(readFileSync(join(sandbox.remoteHome, REMOTE_BASE, 'pnpm-workspace.yaml'), 'utf8'), cut.workspace);
+    assert.ok(sandbox.remoteHas(join(REMOTE_BASE, 'package.json')), "the stack's own package.json still goes");
+  });
+
+  it('writes the cut outside the checkout and leaves nothing behind in the temporary folder', async () => {
+    const { workspace, sandbox } = oneWorkspace({ config: ALL_REMOTE });
+    const tmp = ownTmpdir();
+
+    await runScriptOk(sandbox, 'deploy.sh', ['client'], { TMPDIR: tmp });
+
+    assert.deepEqual(readdirSync(tmp), [], 'the cut folder is gone');
+    assert.equal(existsSync(join(sandbox.root, 'pnpm-lock.yaml')), false, 'nothing was written into the checkout');
+    assert.equal(existsSync(join(workspace, 'apps', 'hls-stream', 'pnpm-workspace.yaml')), false);
+  });
+
+  it('removes the cut folder when the deploy fails after it was made', async () => {
+    const { sandbox } = oneWorkspace({ config: ALL_REMOTE });
+    const tmp = ownTmpdir();
+
+    const run = await runScript(sandbox, 'deploy.sh', ['client'], { TMPDIR: tmp, DOCKER_STUB_UP_EXIT: '1' });
+
+    assert.notEqual(run.exitCode, 0, 'the far side refused the deploy');
+    assert.deepEqual(readdirSync(tmp), [], 'the cut folder is gone all the same');
+  });
+});
+
+describe('a local deploy from a checkout of the one workspace', () => {
+  it('builds the images from a copy with the cut in it, while compose runs from the checkout', async () => {
+    const { workspace, sandbox } = oneWorkspace();
+    const tmp = ownTmpdir();
+
+    await runScriptOk(sandbox, 'deploy.sh', ['--host=localhost', 'stream-uploader', 'client'], { TMPDIR: tmp });
+
+    const [up] = composeUps(sandbox);
+    assert.ok(up, 'compose was asked to bring the stack up');
+    assert.ok(up.includes(`--project-directory ${DEPLOY_DIR_IN(sandbox)}`), `compose runs from the checkout: ${up}`);
+    assert.ok(up.includes(`-f ${join(DEPLOY_DIR_IN(sandbox), 'docker-compose.copy.yml')}`), `the copy is the build context: ${up}`);
+
+    const [copy] = sandbox.copies();
+    assert.ok(copy, 'compose was pointed at a copy');
+    const cut = expectedCut(workspace);
+    for (const file of ['pnpm-lock.yaml', 'pnpm-workspace.yaml', 'packages/stream-uploader/dist/index.js', 'deploy/Dockerfile.uploader']) {
+      assert.ok(copy.files.includes(file), `the copy holds ${file}: ${copy.files.join(', ')}`);
+    }
+    assert.equal(copy.files.includes('.env'), false, 'an env file stays in the checkout');
+    assert.equal(existsSync(copy.copy), false, 'the copy is gone after the deploy');
+    assert.deepEqual(readdirSync(tmp), [], 'and nothing else is left in the temporary folder');
+    assert.ok(cut.lockfile.includes('zod@4.4.3'), 'the expected cut holds what the stack reaches');
+  });
+
+  it('leaves the copy behind neither when compose fails', async () => {
+    const { sandbox } = oneWorkspace();
+    const tmp = ownTmpdir();
+
+    const run = await runScript(sandbox, 'deploy.sh', ['--host=localhost', 'client'], { TMPDIR: tmp, DOCKER_STUB_UP_EXIT: '1' });
+
+    assert.notEqual(run.exitCode, 0);
+    assert.deepEqual(readdirSync(tmp), []);
+  });
+});
+
+describe('a stack that keeps its own lockfile', () => {
+  it('sends its own pair, as every build tree the manager makes does', async () => {
+    const { sandbox } = oneWorkspace({ config: ALL_REMOTE, ownPair: true });
+
+    await runScriptOk(sandbox, 'deploy.sh', ['client'], { TMPDIR: ownTmpdir() });
+
+    assert.equal(readFileSync(join(sandbox.remoteHome, REMOTE_BASE, 'pnpm-lock.yaml'), 'utf8'), "lockfileVersion: '9.0'\n# the stack's own\n");
+  });
+
+  it('builds locally from its own folder, as before', async () => {
+    const { sandbox } = oneWorkspace({ ownPair: true });
+
+    await runScriptOk(sandbox, 'deploy.sh', ['--host=localhost', 'client'], { TMPDIR: ownTmpdir() });
+
+    const [up] = composeUps(sandbox);
+    assert.ok(up, 'compose was asked to bring the stack up');
+    assert.equal(up.includes('docker-compose.copy.yml'), false, up);
+    assert.equal(up.includes('--project-directory'), false, up);
+    assert.deepEqual(sandbox.copies(), []);
+  });
+});

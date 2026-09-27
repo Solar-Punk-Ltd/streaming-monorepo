@@ -113,8 +113,12 @@ export function makeSandbox({
   config = ALL_LOCAL,
   envFiles = DEFAULT_ENV_FILES,
   pnpm = true,
+  root: givenRoot,
 } = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'deploy-clean-'));
+  // `root` places the stack somewhere a test built around it, such as apps/hls-stream of a checkout
+  // of the one workspace, whose root holds the lockfile the stack's own folder no longer does.
+  const root = givenRoot ?? mkdtempSync(join(tmpdir(), 'deploy-clean-'));
+  mkdirSync(root, { recursive: true });
   sandboxes.push(root);
 
   const deploy = join(root, 'deploy');
@@ -194,6 +198,15 @@ export function makeSandbox({
     remoteEnvFiles: () => readFileSync(envFileJournal(remoteJournal), 'utf8'),
     /** Whether a path exists on the stand-in remote host, relative to its home directory. */
     remoteHas: (relative) => existsSync(join(remoteHome, relative)),
+    /**
+     * Each copy a local `docker` call was pointed at through APP_WORKSPACE_COPY, with the files it
+     * held at that moment, relative to it. tools/app-workspace/in-copy.mjs removes a copy the moment
+     * its command returns, so this record is all a test has afterwards.
+     */
+    copies: () =>
+      existsSync(`${localJournal}-copies`)
+        ? readFileSync(`${localJournal}-copies`, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line))
+        : [],
   };
 }
 
@@ -354,9 +367,23 @@ if (rest[0] === 'status') {
   process.exit(0);
 }
 
+// Which files a checkout holds is the machine's own git's to say. tools/app-workspace/in-copy.mjs
+// asks it to copy a stack out of a checkout of the one workspace, and a stub that answered nothing
+// would hand it an empty stack.
+if (rest[0] === 'ls-files') {
+  const run = require('child_process').spawnSync(${JSON.stringify(REAL_GIT)}, argv, { stdio: 'inherit' });
+  process.exit(run.status === null ? 1 : run.status);
+}
+
 process.exit(0);
 `;
 }
+
+/** The machine's own git, found on the PATH the suite runs with, before any sandbox puts a stub ahead of it. */
+const REAL_GIT = (process.env.PATH ?? '')
+  .split(delimiter)
+  .map((dir) => join(dir, 'git'))
+  .find((path) => existsSync(path));
 
 /**
  * Records what a script asked pnpm to do, and does none of it.
@@ -394,6 +421,27 @@ for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--env-file' && argv[i + 1] && fs.existsSync(argv[i + 1])) {
     fs.appendFileSync(journal + '-env-files', fs.readFileSync(argv[i + 1], 'utf8'));
   }
+}
+
+// The copy tools/app-workspace/in-copy.mjs named as a build context, listed while it still exists.
+if (process.env.APP_WORKSPACE_COPY) {
+  const path = require('path');
+  const copy = process.env.APP_WORKSPACE_COPY;
+  const files = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else files.push(path.relative(copy, full));
+    }
+  };
+  walk(copy);
+  fs.appendFileSync(journal + '-copies', JSON.stringify({ copy, files: files.sort() }) + '\\n');
+}
+
+// A compose \`up\` that fails, for the paths that have to clean up after a deploy that did not land.
+if (argv[0] === 'compose' && argv.includes('up') && process.env.DOCKER_STUB_UP_EXIT) {
+  process.exit(Number(process.env.DOCKER_STUB_UP_EXIT));
 }
 
 const inventory = ${JSON.stringify(INVENTORY)};
