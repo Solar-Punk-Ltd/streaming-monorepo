@@ -141,7 +141,14 @@ export function VersionCard({
         '&:last-child': { borderBottom: 0 },
       }}
     >
-      <Stack direction="row" alignItems="center" flexWrap="wrap" useFlexGap spacing={1}>
+      <Stack
+        direction="row"
+        useFlexGap
+        spacing={1}
+        sx={{
+          alignItems: "center",
+          flexWrap: "wrap"
+        }}>
         <Typography
           id={headingId}
           component="h4"
@@ -158,22 +165,34 @@ export function VersionCard({
       </Stack>
 
       {approvalWarning && (
-        <Typography variant="body2" color="warning.main" component="p">
+        <Typography variant="body2" component="p" sx={{
+          color: "warning.main"
+        }}>
           {approvalWarning}
         </Typography>
       )}
 
-      <Stack direction="row" alignItems="center" flexWrap="wrap" useFlexGap spacing={2}>
+      <Stack
+        direction="row"
+        useFlexGap
+        spacing={2}
+        sx={{
+          alignItems: "center",
+          flexWrap: "wrap"
+        }}>
         <Typography
           variant="body2"
-          color="text.secondary"
-          sx={{ fontFamily: MONO_STACK }}
-        >
+          sx={{
+            color: "text.secondary",
+            fontFamily: MONO_STACK
+          }}>
           {version.commitSha
             ? `Commit ${shortCommit(version.commitSha)}`
             : 'Commit unknown on this host'}
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           {version.deployments} {version.deployments === 1 ? 'deployment' : 'deployments'}
         </Typography>
         <Tooltip title={testBlocked || TESTED_MEANS}>
@@ -201,7 +220,9 @@ export function VersionCard({
         </Tooltip>
       </Stack>
 
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+      <Stack direction="row" spacing={1} useFlexGap sx={{
+        flexWrap: "wrap"
+      }}>
         <Tooltip title={waiting || updateHint(version)}>
           <Box component="span">
             <Button
@@ -293,7 +314,9 @@ export function VersionCard({
       {/* Outside the details below on purpose: a version that can place nothing
           is the first thing to know about it, not a line in a collapsed list. */}
       {versionPlacementProblem(version) && (
-        <Typography variant="caption" color="error.main">
+        <Typography variant="caption" sx={{
+          color: "error.main"
+        }}>
           {versionPlacementProblem(version)}
         </Typography>
       )}
@@ -319,7 +342,9 @@ export function VersionCard({
             : ''}
         </Box>
         <Stack spacing={0.75} sx={{ pt: 1 }}>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             {version.contract
               ? describeStackContract(version.contract)
               : 'The contract is read from the checkout once the build finishes.'}
@@ -328,9 +353,10 @@ export function VersionCard({
             <Typography
               key={warning}
               variant="caption"
-              color="warning.main"
-              sx={{ fontFamily: MONO_STACK }}
-            >
+              sx={{
+                color: "warning.main",
+                fontFamily: MONO_STACK
+              }}>
               {warning}
             </Typography>
           ))}
@@ -343,7 +369,9 @@ export function VersionCard({
 function VersionFact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Box>
-      <Typography component="dt" variant="caption" color="text.secondary">
+      <Typography component="dt" variant="caption" sx={{
+        color: "text.secondary"
+      }}>
         {label}
       </Typography>
       <Typography component="dd" variant="body2" sx={{ m: 0 }}>

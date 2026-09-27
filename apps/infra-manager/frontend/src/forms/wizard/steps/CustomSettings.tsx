@@ -68,7 +68,9 @@ export function CustomSettings(props: WizardStepProps) {
                   <Typography variant="body2" sx={{ fontFamily: MONO_STACK }}>
                     {service}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{
+                    color: "text.secondary"
+                  }}>
                     {SERVICE_DESCRIPTIONS[service]}
                   </Typography>
                 </Box>

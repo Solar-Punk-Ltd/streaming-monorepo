@@ -121,7 +121,9 @@ export function AddVersionForm({ onBuilt }: { onBuilt: () => void }) {
   return (
     <SectionCard title="Add version">
       <Stack spacing={2} component="form" onSubmit={submit}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           A version is a branch or tag of the streaming stack, checked out and
           built once on this host. Adding one takes a few minutes and changes
           nothing about the deployments already running.
@@ -165,7 +167,9 @@ export function AddVersionForm({ onBuilt }: { onBuilt: () => void }) {
         {error && <Alert severity="error">{error}</Alert>}
         {done && <Alert severity="success">{done}</Alert>}
 
-        <Stack direction="row" justifyContent="flex-end" spacing={1}>
+        <Stack direction="row" spacing={1} sx={{
+          justifyContent: "flex-end"
+        }}>
           {!running && lines.length > 0 && (
             <Button
               onClick={() => {

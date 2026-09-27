@@ -129,7 +129,14 @@ export function EngineCard({
       title={ENGINE_LABEL[engine]}
       sub="media server"
       actions={
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Stack
+          direction="row"
+          spacing={1}
+          useFlexGap
+          sx={{
+            alignItems: "center",
+            flexWrap: "wrap"
+          }}>
           <ReadinessPill
             label={profile.status !== 'RUNNING' ? 'State not checked' : engineRunning ? 'Reported running' : 'No container reported'}
             tone={profile.status !== 'RUNNING' ? 'info' : engineRunning ? 'ok' : 'gray'}
@@ -209,7 +216,9 @@ export function EngineCard({
           </Alert>
         )}
         {profile.has_engine_config && (
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             {OWN_CONFIG_NOTE}
           </Typography>
         )}
@@ -250,7 +259,9 @@ export function EngineCard({
               bgcolor: 'action.hover',
             }}
           >
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>
               {overview
                 ? overview.liveUnavailableReason
                 : `Could not read the engine's settings. ${loadError}`}
@@ -286,17 +297,29 @@ function SettingsList({
       key: field.label,
       value: (
         <Stack spacing={0.5}>
-          <Stack direction="row" spacing={1} alignItems="baseline" flexWrap="wrap">
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{
+              alignItems: "baseline",
+              flexWrap: "wrap"
+            }}>
             <Box component="span" sx={{ fontFamily: MONO_STACK }}>{text.value}</Box>
             {observation?.status === 'known' && (
-              <Typography variant="caption" color="text.secondary">{text.source}</Typography>
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>{text.source}</Typography>
             )}
             {savedNotApplied.includes(field.key) && (
-              <Typography variant="caption" color="warning.main">{SAVED_NOT_APPLIED}</Typography>
+              <Typography variant="caption" sx={{
+                color: "warning.main"
+              }}>{SAVED_NOT_APPLIED}</Typography>
             )}
           </Stack>
           {text.detail && (
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>
               {text.detail}
             </Typography>
           )}

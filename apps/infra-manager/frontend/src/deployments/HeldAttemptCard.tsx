@@ -30,7 +30,9 @@ export function HeldAttemptCard({
             ? 'A blocked deploy attempt holds this deployment'
             : 'An unjudged deploy attempt holds this deployment'}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           Attempt {attempt.jobId}, started {formatDateTime(attempt.startedAt)}.{' '}
           {describeAttemptHold(attempt)}
         </Typography>

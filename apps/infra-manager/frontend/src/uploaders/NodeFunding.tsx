@@ -38,10 +38,14 @@ export function NodeFunding({
   return (
     <>
       <Box>
-        <Typography variant="overline" color="text.secondary">
+        <Typography variant="overline" sx={{
+          color: "text.secondary"
+        }}>
           Node funding address (Gnosis Chain)
         </Typography>
-        <Stack direction="row" alignItems="center" spacing={1}>
+        <Stack direction="row" spacing={1} sx={{
+          alignItems: "center"
+        }}>
           <Typography
             variant="body2"
             sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}
@@ -52,14 +56,18 @@ export function NodeFunding({
             <CopyButton value={address.ethereum} label="address" />
           )}
         </Stack>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           Send xDAI (gas) and BZZ (storage) here, then buy a stamp.
         </Typography>
       </Box>
 
       <Stack direction="row" spacing={3}>
         <Box>
-          <Typography variant="overline" color="text.secondary">
+          <Typography variant="overline" sx={{
+            color: "text.secondary"
+          }}>
             xDAI
           </Typography>
           <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
@@ -67,7 +75,9 @@ export function NodeFunding({
           </Typography>
         </Box>
         <Box>
-          <Typography variant="overline" color="text.secondary">
+          <Typography variant="overline" sx={{
+            color: "text.secondary"
+          }}>
             BZZ
           </Typography>
           <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>

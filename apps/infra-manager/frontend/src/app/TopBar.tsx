@@ -40,9 +40,9 @@ export function TopBar({
   return (
     <Stack
       direction="row"
-      alignItems="center"
       spacing={1.5}
       sx={{
+        alignItems: "center",
         px: { xs: 2, md: 3.5 },
         py: 1.75,
         position: 'sticky',
@@ -50,9 +50,8 @@ export function TopBar({
         zIndex: 5,
         bgcolor: 'background.default',
         borderBottom: 1,
-        borderColor: 'divider',
-      }}
-    >
+        borderColor: 'divider'
+      }}>
       <IconButton
         aria-label="open navigation"
         onClick={onOpenNav}
@@ -96,9 +95,13 @@ export function TopBar({
             : 'Not connected to the manager event stream. Reload the page.'
         }
       >
-        <Stack direction="row" spacing={0.75} alignItems="center">
+        <Stack direction="row" spacing={0.75} sx={{
+          alignItems: "center"
+        }}>
           <StatusDot tone={connected ? 'ok' : 'err'} />
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             {connected ? 'live' : 'offline'}
           </Typography>
         </Stack>

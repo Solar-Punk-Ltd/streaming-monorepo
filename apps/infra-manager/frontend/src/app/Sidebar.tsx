@@ -55,7 +55,15 @@ export function Sidebar({
 }) {
   return (
     <Stack sx={{ height: '100%' }}>
-      <Stack direction="row" spacing={1.25} alignItems="center" sx={{ px: 2.25, pt: 2.25, pb: 1.75 }}>
+      <Stack
+        direction="row"
+        spacing={1.25}
+        sx={{
+          alignItems: "center",
+          px: 2.25,
+          pt: 2.25,
+          pb: 1.75
+        }}>
         <Box
           sx={{
             width: 30,
@@ -75,7 +83,9 @@ export function Sidebar({
           <Typography sx={{ fontWeight: 600, lineHeight: 1.2 }}>
             Streaming Infra
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             manager · {serverHost}
           </Typography>
         </Box>
@@ -99,7 +109,9 @@ export function Sidebar({
               }}
             />
             {item.label === 'Deployments' && deploymentCount != null && (
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>
                 {deploymentCount}
               </Typography>
             )}
@@ -110,7 +122,12 @@ export function Sidebar({
       <Box sx={{ flexGrow: 1 }} />
       <Divider />
       <Stack spacing={1} sx={{ p: 1.5 }}>
-        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: MONO_STACK }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            fontFamily: MONO_STACK
+          }}>
           {serverHost}
         </Typography>
         <ThemeSwitch />
@@ -141,15 +158,21 @@ function SignedInAs() {
     <Stack
       direction="row"
       spacing={1}
-      alignItems="center"
-      sx={{ pt: 0.5, minWidth: 0 }}
-    >
+      sx={{
+        alignItems: "center",
+        pt: 0.5,
+        minWidth: 0
+      }}>
       <Typography
         variant="caption"
-        color="text.secondary"
-        sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}
         title={`Signed in as ${session.state.username}`}
-      >
+        sx={{
+          color: "text.secondary",
+          flex: 1,
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis'
+        }}>
         {session.state.username}
       </Typography>
       <Button size="small" onClick={() => void signOut()} disabled={leaving}>
@@ -164,7 +187,9 @@ function ThemeSwitch() {
 
   return (
     <Box>
-      <Typography variant="caption" color="text.secondary">
+      <Typography variant="caption" sx={{
+        color: "text.secondary"
+      }}>
         Theme
       </Typography>
       <ToggleButtonGroup

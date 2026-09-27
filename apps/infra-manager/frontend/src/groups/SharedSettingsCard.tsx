@@ -75,7 +75,13 @@ export function SharedSettingsCard({
       }
     >
       <KeyValueList entries={entries} />
-      <Typography variant="caption" color="text.secondary" sx={{ mt: 1.25, display: 'block' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          mt: 1.25,
+          display: 'block'
+        }}>
         New members inherit these. Keys and stamps are never bulk-applied.
       </Typography>
     </SectionCard>

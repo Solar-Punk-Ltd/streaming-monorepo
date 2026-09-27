@@ -138,7 +138,11 @@ export function UsersCard({
       )}
 
       {!users && !error && (
-        <Stack alignItems="center" sx={{ py: 5 }}>
+        <Stack
+          sx={{
+            alignItems: "center",
+            py: 5
+          }}>
           <CircularProgress size={24} />
         </Stack>
       )}
@@ -179,9 +183,10 @@ export function UsersCard({
                         <Typography
                           component="span"
                           variant="caption"
-                          color="text.secondary"
-                          sx={{ ml: 0.75 }}
-                        >
+                          sx={{
+                            color: "text.secondary",
+                            ml: 0.75
+                          }}>
                           manages users
                         </Typography>
                       )}
@@ -189,16 +194,19 @@ export function UsersCard({
                         <Typography
                           component="span"
                           variant="caption"
-                          color="text.secondary"
-                          sx={{ ml: 0.75 }}
-                        >
+                          sx={{
+                            color: "text.secondary",
+                            ml: 0.75
+                          }}>
                           you
                         </Typography>
                       )}
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: "text.secondary"
+                    }}>
                       {user.lastLoginAt
                         ? formatDateTime(user.lastLoginAt)
                         : NEVER_SIGNED_IN}
@@ -209,7 +217,9 @@ export function UsersCard({
                     <Stack
                       direction="row"
                       spacing={0.5}
-                      justifyContent="flex-end"
+                      sx={{
+                        justifyContent: "flex-end"
+                      }}
                     >
                       <Tooltip title={revokeBlocked}>
                         <Box component="span">

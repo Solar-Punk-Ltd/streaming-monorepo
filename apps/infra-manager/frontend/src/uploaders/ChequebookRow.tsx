@@ -45,12 +45,16 @@ export function ChequebookRow({
 
   return (
     <Box>
-      <Typography variant="overline" color="text.secondary">
+      <Typography variant="overline" sx={{
+        color: "text.secondary"
+      }}>
         Chequebook
       </Typography>
 
       {chequebook === null ? (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           {loading
             ? 'Loading…'
             : 'This node did not report a chequebook. Refresh once it is running, or check that it can be reached.'}
@@ -62,12 +66,16 @@ export function ChequebookRow({
             {formatTokenBalance(chequebook.totalBalance, BZZ_DECIMALS)} BZZ
           </Typography>
 
-          <Stack direction="row" alignItems="center" spacing={1}>
+          <Stack direction="row" spacing={1} sx={{
+            alignItems: "center"
+          }}>
             <Typography
               variant="body2"
-              sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}
-              color="text.secondary"
-            >
+              sx={{
+                color: "text.secondary",
+                fontFamily: 'monospace',
+                wordBreak: 'break-all'
+              }}>
               {chequebook.address ?? NO_VALUE}
             </Typography>
             {chequebook.address && (
@@ -112,7 +120,13 @@ export function ChequebookRow({
         </Button>
       </Stack>
 
-      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          mt: 0.75,
+          display: 'block'
+        }}>
         Paid out to peers so far{' '}
         {formatTokenBalance(chequebook?.totalSent, BZZ_DECIMALS)} BZZ · received{' '}
         {formatTokenBalance(chequebook?.totalReceived, BZZ_DECIMALS)} BZZ

@@ -89,11 +89,22 @@ function AttemptRow({
     <Stack
       direction={{ xs: 'column', sm: 'row' }}
       spacing={2}
-      alignItems={{ sm: 'center' }}
-      sx={{ px: 2.25, py: 1.5, borderBottom: 1, borderColor: 'divider' }}
-    >
+      sx={{
+        alignItems: { sm: 'center' },
+        px: 2.25,
+        py: 1.5,
+        borderBottom: 1,
+        borderColor: 'divider'
+      }}>
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Stack
+          direction="row"
+          spacing={1}
+          useFlexGap
+          sx={{
+            alignItems: "center",
+            flexWrap: "wrap"
+          }}>
           <Typography variant="body2" sx={{ fontWeight: 500 }}>
             {attempt.project}
           </Typography>
@@ -104,11 +115,15 @@ function AttemptRow({
           <Typography variant="caption" sx={{ fontFamily: MONO_STACK }}>
             {attempt.jobId}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             started {formatDateTime(attempt.startedAt)}
           </Typography>
         </Stack>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           {describeAttemptHold(attempt)}
         </Typography>
         <Typography

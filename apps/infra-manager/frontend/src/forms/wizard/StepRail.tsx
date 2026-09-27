@@ -20,7 +20,9 @@ export function StepRail({ step }: { step: number }) {
             component="li"
             direction="row"
             spacing={1}
-            alignItems="center"
+            sx={{
+              alignItems: "center"
+            }}
           >
             <Box
               sx={{
@@ -40,7 +42,9 @@ export function StepRail({ step }: { step: number }) {
             <Typography
               variant="body2"
               color={current ? 'text.primary' : 'text.secondary'}
-              fontWeight={current ? 600 : 400}
+              sx={{
+                fontWeight: current ? 600 : 400
+              }}
             >
               {label}
             </Typography>

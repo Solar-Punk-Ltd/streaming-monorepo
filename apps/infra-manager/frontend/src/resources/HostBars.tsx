@@ -65,19 +65,27 @@ function HostStat({
 }) {
   return (
     <Paper sx={{ p: 2 }}>
-      <Typography variant="overline" color="text.secondary">
+      <Typography variant="overline" sx={{
+        color: "text.secondary"
+      }}>
         {label}
       </Typography>
-      <Stack direction="row" spacing={1.25} alignItems="baseline">
+      <Stack direction="row" spacing={1.25} sx={{
+        alignItems: "baseline"
+      }}>
         <Typography sx={{ fontSize: 26, fontWeight: 600 }}>{value}</Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {sub}
         </Typography>
       </Stack>
       <Box sx={{ my: 1.25 }}>
         <SegmentedBar ours={share.ours} other={share.other} />
       </Box>
-      <Typography variant="caption" color="text.secondary">
+      <Typography variant="caption" sx={{
+        color: "text.secondary"
+      }}>
         {footnote}
       </Typography>
     </Paper>
@@ -86,7 +94,9 @@ function HostStat({
 
 export function HostLegend() {
   return (
-    <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+    <Stack direction="row" spacing={2} useFlexGap sx={{
+      flexWrap: "wrap"
+    }}>
       <LegendItem color={INFRA_COLOR} label="our stacks" />
       <LegendItem
         color={OTHER_COLOR}
@@ -99,9 +109,13 @@ export function HostLegend() {
 
 function LegendItem({ color, label }: { color: string; label: string }) {
   return (
-    <Stack direction="row" spacing={0.75} alignItems="center">
+    <Stack direction="row" spacing={0.75} sx={{
+      alignItems: "center"
+    }}>
       <Box sx={{ width: 10, height: 10, borderRadius: 0.5, bgcolor: color }} />
-      <Typography variant="caption" color="text.secondary">
+      <Typography variant="caption" sx={{
+        color: "text.secondary"
+      }}>
         {label}
       </Typography>
     </Stack>

@@ -43,7 +43,9 @@ export function BuildLogPane({
       }}
     >
       {lines.length === 0 && (
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {running
             ? 'Waiting for the first line of the build.'
             : 'The build log appears here once a version is added or updated.'}

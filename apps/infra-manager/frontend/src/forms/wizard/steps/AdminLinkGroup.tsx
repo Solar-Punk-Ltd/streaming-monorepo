@@ -61,18 +61,33 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
       <Typography variant="subtitle2" component="h4" sx={{ m: 0, fontWeight: 600 }}>
         Web2 admin
       </Typography>
-      <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 0.25, mb: 1, overflowWrap: 'anywhere' }}>
+      <Typography
+        variant="caption"
+        component="p"
+        sx={{
+          color: "text.secondary",
+          mt: 0.25,
+          mb: 1,
+          overflowWrap: 'anywhere'
+        }}>
         {ADMIN_LINK_GROUP_LEAD}
       </Typography>
 
       {availability === 'absent' || availability === 'unread' ? (
-        <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            overflowWrap: 'anywhere'
+          }}>
           {availability === 'absent' ? ADMIN_LINK_ABSENT : ADMIN_LINK_UNREAD}
         </Typography>
       ) : (
         <Stack spacing={1.5} sx={{ minWidth: 0 }}>
           {pending === 'reading' && (
-            <Typography variant="caption" color="text.secondary" role="status">
+            <Typography variant="caption" role="status" sx={{
+              color: "text.secondary"
+            }}>
               {ADMIN_LINK_MANAGER_READING}
             </Typography>
           )}
@@ -167,7 +182,12 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
               />
             </>
           ) : pending === null ? (
-            <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.secondary",
+                overflowWrap: 'anywhere'
+              }}>
               {ADMIN_LINK_OFF_NOTE}
             </Typography>
           ) : null}

@@ -49,7 +49,15 @@ export function SettingsEntryField({
 
   return (
     <Box component="li" sx={{ listStyle: 'none', py: 1.5, borderTop: 1, borderColor: 'divider' }}>
-      <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 0.5 }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        sx={{
+          alignItems: "center",
+          flexWrap: "wrap",
+          mb: 0.5
+        }}>
         <Typography variant="body2" sx={{ fontFamily: MONO_STACK, fontWeight: 600, wordBreak: 'break-all' }}>
           {entry.key}
         </Typography>
@@ -58,22 +66,46 @@ export function SettingsEntryField({
       </Stack>
 
       {entry.description && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            display: 'block',
+            mb: 1
+          }}>
           {entry.description}
         </Typography>
       )}
       {entry.generated && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            display: 'block',
+            mb: 1
+          }}>
           {GENERATED_NOTE}
         </Typography>
       )}
       {removed && (
-        <Typography variant="caption" color="warning.main" sx={{ display: 'block', mb: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "warning.main",
+            display: 'block',
+            mb: 1
+          }}>
           {REMOVED_NOTE}
         </Typography>
       )}
 
-      <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ minWidth: 0 }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{
+          alignItems: "flex-start",
+          minWidth: 0
+        }}>
         <TextField
           size="small"
           fullWidth
