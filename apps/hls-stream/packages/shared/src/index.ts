@@ -1,5 +1,7 @@
 export * from './abrTuning.js';
+export * from './adminAnswers.js';
 export * from './adminLink.js';
+export * from './catalog.js';
 export * from './clientLog.js';
 export * from './feedFollow.js';
 export * from './hlsTags.js';
@@ -10,4 +12,5 @@ export * from './mpegTs.js';
 export * from './qualityLadder.js';
 export * from './segmentSpan.js';
 export * from './streamStatus.js';
+export * from './uploaderHealth.js';
 export * from './uploaderLog.js';

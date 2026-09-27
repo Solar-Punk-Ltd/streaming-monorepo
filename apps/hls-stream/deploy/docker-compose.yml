@@ -392,6 +392,7 @@ services:
         # `client-shape` e2e preflight refuses rather than treating as a match.
         CLIENT_BUILD_CLIENT_TREE: ${CLIENT_BUILD_CLIENT_TREE:-}
         CLIENT_BUILD_SHARED_TREE: ${CLIENT_BUILD_SHARED_TREE:-}
+        CLIENT_BUILD_CONTRACTS_TREE: ${CLIENT_BUILD_CONTRACTS_TREE:-}
         CLIENT_BUILD_HEAD: ${CLIENT_BUILD_HEAD:-}
         CLIENT_BUILD_DIRTY: ${CLIENT_BUILD_DIRTY:-0}
         CLIENT_BUILD_AT: ${CLIENT_BUILD_AT:-}

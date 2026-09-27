@@ -175,6 +175,7 @@ describe('health wire contract', () => {
   it('publishes the documented status strings', () => {
     assert.equal(HEALTH_OK, 'ok');
     assert.equal(HEALTH_DEGRADED, 'degraded');
+    assert.equal(HEALTH_WAITING_FOR_NODE, 'waiting_for_node');
   });
 
   it('publishes the documented reason strings', () => {
@@ -192,6 +193,8 @@ describe('health wire contract', () => {
         HEALTH_REASON_FRAGMENT_MISMATCH,
         HEALTH_REASON_FRAGMENT_PUBLISHER_GOP,
         HEALTH_REASON_POSTAGE_REFUSED,
+        HEALTH_REASON_NODE_UNAVAILABLE,
+        HEALTH_REASON_START_GATE_WARNED,
       ],
       [
         'segment_upload_failure',
@@ -206,6 +209,8 @@ describe('health wire contract', () => {
         'fragment_mismatch',
         'fragment_publisher_gop',
         'postage_refused',
+        'node_unavailable',
+        'start_gate_warned',
       ],
     );
   });
