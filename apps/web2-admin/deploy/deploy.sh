@@ -41,6 +41,10 @@ set -euo pipefail
 
 readonly DEFAULT_REMOTE_PATH="/opt/streaming/streaming-monorepo"
 readonly ENV_DIR="backend"
+# Where a profile's env file was before the admin moved into apps/web2-admin,
+# from the repository root. Git leaves an ignored file where it is, so a
+# checkout that deployed before the move can still hold it there.
+readonly OLD_ENV_DIR="web2-admin/backend"
 readonly COMPOSE_FILE="deploy/docker-compose.yml"
 readonly KNOWN_SERVICES="postgres api web"
 # The loopback port the console gets without a port slot. The manager's own
@@ -233,8 +237,12 @@ if ! [[ "$HEALTH_TIMEOUT" =~ ^[0-9]+$ ]] || [ "$((10#$HEALTH_TIMEOUT))" -lt 1 ];
 fi
 HEALTH_TIMEOUT=$((10#$HEALTH_TIMEOUT))
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$REPO_ROOT"
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$APP_DIR/../.." && pwd)"
+# apps/web2-admin, the start of every path printed for the operator, so each
+# one works from the repository root.
+APP_DIR_FROM_ROOT="${APP_DIR#"$REPO_ROOT"/}"
+cd "$APP_DIR"
 
 PROJECT="web2-admin-$PROFILE"
 if [ "$PROFILE" = "default" ]; then
@@ -242,6 +250,8 @@ if [ "$PROFILE" = "default" ]; then
 else
     ENV_FILE="$ENV_DIR/.env.$PROFILE"
 fi
+ENV_FILE_FROM_ROOT="$APP_DIR_FROM_ROOT/$ENV_FILE"
+OLD_ENV_FILE="$OLD_ENV_DIR/${ENV_FILE##*/}"
 
 # --- The env file -------------------------------------------------------------
 
@@ -250,6 +260,14 @@ log "profile $PROFILE, compose project $PROJECT, env file $ENV_FILE"
 # A profile always means its own file. Falling back to .env would bring up a
 # second stack with the first one's signing key and database password.
 if [ ! -f "$ENV_FILE" ]; then
+    # Only whether the old file is there is asked, never what it holds, and
+    # moving it is left to the operator.
+    if [ -f "$REPO_ROOT/$OLD_ENV_FILE" ]; then
+        echo "[deploy] ERROR: $ENV_FILE_FROM_ROOT not found, but $OLD_ENV_FILE is there. It is this profile's env file from before the admin moved into $APP_DIR_FROM_ROOT, and git left it at its old path. Move it, from the repository root:" >&2
+        echo "[deploy]   mv $OLD_ENV_FILE $ENV_FILE_FROM_ROOT" >&2
+        echo "[deploy] Do not make a new one from the sample instead. A new POSTGRES_PASSWORD locks the API out of the profile's existing database, and a new FEED_PRIVATE_KEY makes every publish fail. Nothing was deployed." >&2
+        exit 1
+    fi
     die "$ENV_FILE not found. Copy $ENV_DIR/.env.sample to $ENV_FILE and fill in the required values."
 fi
 
@@ -522,7 +540,7 @@ HOST_SCRIPT
 }
 
 if [ "$LOCAL" = true ]; then
-    log "deploying on this machine, in $REPO_ROOT"
+    log "deploying on this machine, in $APP_DIR"
     host_script | bash -s
 else
     log "rsync to $HOST:$REMOTE_PATH"
