@@ -255,7 +255,7 @@ describe('refusals', () => {
   });
 
   it('accepts the ordinary ssh target spellings', () => {
-    for (const target of ['manager-host', 'deploy@10.0.0.4', 'streamer.example.com', 'host_1']) {
+    for (const target of ['bench-host', 'deploy@10.0.0.4', 'streamer.example.com', 'host_1']) {
       assert.equal(loadConfig({ env: { E2E_SSH_TARGET: target }, rootDir: rootDir() }).sshTarget, target);
     }
   });

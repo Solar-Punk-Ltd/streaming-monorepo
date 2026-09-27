@@ -9,14 +9,10 @@ import { ROUTES } from '@/routes';
 import { MEDIA_TYPE_AUDIO, MEDIA_TYPE_VIDEO, MediaType } from '@/types/stream';
 import { playableRenditions } from '@/utils/playableRenditions';
 import { scheduledStartLabel } from '@/utils/scheduledStart';
-import {
-  WATCH_VIEW_NOT_STARTED,
-  WATCH_VIEW_PLAYER,
-  WATCH_VIEW_UNAVAILABLE,
-  watchPageView,
-} from '@/utils/watchPageView';
+import { WATCH_VIEW_PLAYER, watchPageView } from '@/utils/watchPageView';
 
 import { useIsWaitingForStart } from './useIsWaitingForStart';
+import { WatchPlaceholder } from './WatchPlaceholder';
 
 import './StreamWatcher.scss';
 
@@ -66,17 +62,7 @@ export function StreamWatcher() {
 
   return (
     <div className="stream-item-page">
-      {view === WATCH_VIEW_NOT_STARTED && (
-        <div className="stream-placeholder">
-          <p>This stream has not started yet.</p>
-          {startsAt && <p className="stream-placeholder-detail">Scheduled for {startsAt}</p>}
-        </div>
-      )}
-      {view === WATCH_VIEW_UNAVAILABLE && (
-        <div className="stream-placeholder">
-          <p>This stream is no longer available.</p>
-        </div>
-      )}
+      <WatchPlaceholder view={view} startsAt={startsAt} />
       {view === WATCH_VIEW_PLAYER && (
         <SwarmHlsPlayer
           owner={owner}

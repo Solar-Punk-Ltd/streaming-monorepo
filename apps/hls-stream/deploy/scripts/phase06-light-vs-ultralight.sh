@@ -22,8 +22,8 @@
 # watching and wrong for a sitting that has to outlive the laptop closing. This is the same shape as
 # `sweep-interleaved.sh`: started detached on the host, it holds no session open and reports to disk.
 #
-#   scp phase06-light-vs-ultralight.sh manager-host:/home/solarpunk/phase06/
-#   ssh manager-host 'setsid nohup bash /home/solarpunk/phase06/phase06-light-vs-ultralight.sh >/dev/null 2>&1 &'
+#   scp phase06-light-vs-ultralight.sh <host>:~/phase06/
+#   ssh <host> 'setsid nohup bash ~/phase06/phase06-light-vs-ultralight.sh >/dev/null 2>&1 &'
 #
 # ## Why it proves itself before it spends the sitting
 #
@@ -247,9 +247,9 @@ spec_without_mode() {
 # back on a default port or with an empty data directory and still looks like it started, and the
 # whole arm would then be a measurement of a node that had never seen the stream.
 #
-# Both mode flags move between arms since T27, so the comparison is made with both taken out and each
-# one is then read off the container on its own. A check that expected only swap to move would report
-# every light arm as a container that had changed by more than its mode.
+# Both mode flags move between arms since 2026-09-17, so the comparison is made with both taken out
+# and each one is then read off the container on its own. A check that expected only swap to move
+# would report every light arm as a container that had changed by more than its mode.
 spec_matches_baseline_except_mode() {
   local now wantSwapFlag wantRpcFlag
   now="$(container_spec)"
@@ -424,7 +424,7 @@ wait_for_idle() {
 }
 
 # `--host=localhost` is what makes the repo's own publisher usable from the host it publishes to.
-# `config.json` names every service `manager-host`, which this machine cannot resolve for itself, and
+# `config.json` names every service `<host>`, which this machine cannot resolve for itself, and
 # the override makes `run_remote` shell out instead of dialling ssh. Going through `publish-clock.sh`
 # rather than composing ffmpeg here keeps the publish key derivation, the SRT spelling and the
 # detached container in the one place that already gets them right.
@@ -630,7 +630,7 @@ if [ -z "${BASELINE_SPEC}" ]; then
   exit 1
 fi
 # The arms of this comparison are set by writing the env file, so the compose file has to be the
-# thing that reads it, and since T27 on 2026-09-17 that is two keys rather than one. An endpoint is
+# thing that reads it, and since 2026-09-17 that is two keys rather than one. An endpoint is
 # what puts the node on a chain, an empty one is the whole of what makes it ultra-light, and swap is
 # what lets a node on a chain pay its peers. A stack that reads one and not the other cannot produce
 # the light arm, so both arms would be the same run and the contrast this sitting exists to draw

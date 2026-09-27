@@ -219,10 +219,10 @@ themselves are the check on it.
 
 ## Phase 0.6 ✅ MEASURED AT BOTH PROFILES — light against ultra-light
 
-⛔⛔ **Levi ruled the other way on 2026-09-15 and nothing in this section was rewritten.**
+⛔⛔ **The owner ruled the other way on 2026-09-15 and nothing in this section was rewritten.**
 `deploy/docker-compose.yml` ships the viewer gateway ultra-light and unfunded, with the cost stated
 beside it as LAT-10: such a node has no chequebook, lives on the free bandwidth allowance alone, and a
-viewer polling it sees the feed freeze 30 to 48s at a time. Since 2026-09-17 (T27) the two flags are
+viewer polling it sees the feed freeze 30 to 48s at a time. Since 2026-09-17 the two flags are
 settings, `BEE_GATEWAY_RPC_ENDPOINT` and `BEE_GATEWAY_SWAP_ENABLE`, empty and false by default, so a
 gateway created on the chain is two keys in the env file rather than an edit to the compose file. So
 everything below is the answer as it stood before that ruling, and a reader of this section alone
@@ -1105,12 +1105,12 @@ side.** In exchange the 128-viewer knee and the 43-44 MB/s plateau stop existing
 infrastructure cost goes to roughly zero.
 
 ⭐⭐ **weeb-3 speaks our dialect.** Its feed topic derivation is byte-identical to bee-js
-`Topic.fromString`, verified against the live deployment's own log. The topic in the link Abel is
+`Topic.fromString`, verified against the live deployment's own log. The topic in the link an outside tester is
 testing with is a v4 UUID, the exact shape our uploader's `streamRawTopic` produces. ⚠️ The POC
 repository reports that weeb-3's **native** feed reader still cannot read bee-js sequential feeds, so
 topic and index encoding have to be settled separately.
 
-⛔⛔ **The reason Abel's link struggles is the content, and a public gateway cannot serve it either.**
+⛔⛔ **The reason the tester's link struggles is the content, and a public gateway cannot serve it either.**
 That stream is 2560x1600 at ~8.5 Mbps with 4.17s segments. A public gateway delivered its segments at
 a median **665 KB/s**, the POC measured weeb-3 at ~580, and the research handoff's ultra-light bee
 baseline is ~670. **Three independent numbers inside 15% of each other, and the content needs 1.6x the

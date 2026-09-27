@@ -45,7 +45,7 @@ describe('reading what a run says it covers', () => {
 });
 
 /** A plausible host path, so a case about one missing thing is not also missing this. */
-const BENCH_DIR = '/home/solarpunk/swarm-hls-bench';
+const BENCH_DIR = '/srv/swarm-hls-bench';
 
 describe('whether a run may proceed', () => {
   it('lets a declared browser run with a named byte source through', () => {
