@@ -54,7 +54,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    api
+    // probeSession answers unreachable rather than rejecting.
+    void api
       .probeSession()
       .then((probe) => {
         if (!cancelled) apply(probe);

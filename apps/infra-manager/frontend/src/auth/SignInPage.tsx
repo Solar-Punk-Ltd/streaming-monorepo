@@ -67,6 +67,7 @@ export function SignInPage() {
   const reason = session.state.status === 'signedOut' ? session.state.reason : 'notSignedIn';
   const notice = NOTICES[reason];
 
+  // Signing in answers every failure as a message rather than rejecting, so the form calls it without awaiting.
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (pending) return;
@@ -85,7 +86,7 @@ export function SignInPage() {
   return (
     <AuthFrame>
       <Paper sx={{ p: 3 }}>
-        <Stack spacing={2.5} component="form" onSubmit={submit}>
+        <Stack spacing={2.5} component="form" onSubmit={(event) => void submit(event)}>
           <Stack
             direction="row"
             spacing={1.25}

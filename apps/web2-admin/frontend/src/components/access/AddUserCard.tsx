@@ -35,6 +35,7 @@ export function AddUserCard({ onAdded }: { onAdded: () => Promise<void> }) {
   const complete = username !== '' && form.password !== '' && form.again !== '';
   const valid = complete && usernameError === null && passwordError === null && againError === null;
 
+  // Catches every failure into the form's error line, so the form calls it without awaiting.
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (pending || !valid) return;
@@ -56,7 +57,7 @@ export function AddUserCard({ onAdded }: { onAdded: () => Promise<void> }) {
 
   return (
     <Paper variant="outlined" sx={{ p: 3, maxWidth: 520 }}>
-      <Stack spacing={2} component="form" onSubmit={submit} noValidate>
+      <Stack spacing={2} component="form" onSubmit={(event) => void submit(event)} noValidate>
         <Typography variant="h6">Add user</Typography>
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           Type a starting password, tell it to them in person, and ask them to change it here once they are in.

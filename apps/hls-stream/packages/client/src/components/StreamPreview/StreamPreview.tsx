@@ -105,7 +105,8 @@ export const StreamPreview = ({
     let hls: Hls | null = null;
     let blobUrl: string | null = null;
 
-    thumbnailQueue.add(async () => {
+    // The task catches its own failure and clears the spinner, so nothing waits on the queue.
+    void thumbnailQueue.add(async () => {
       if (abort.signal.aborted) {
         return;
       }

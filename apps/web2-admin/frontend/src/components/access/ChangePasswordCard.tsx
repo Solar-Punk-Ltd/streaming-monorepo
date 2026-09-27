@@ -32,6 +32,7 @@ export function ChangePasswordCard() {
   const complete = form.current !== '' && form.next !== '' && form.again !== '';
   const valid = complete && nextError === null && againError === null;
 
+  // Catches every failure into the form's error line, so the form calls it without awaiting.
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (saving || !valid) return;
@@ -70,7 +71,7 @@ export function ChangePasswordCard() {
           This browser stays signed in. Every other one is signed out.
         </Typography>
 
-        <Stack spacing={2} component="form" onSubmit={submit} noValidate>
+        <Stack spacing={2} component="form" onSubmit={(e) => void submit(e)} noValidate>
           {error ? <Alert severity="error">{error}</Alert> : null}
           <TextField
             id="current-password"

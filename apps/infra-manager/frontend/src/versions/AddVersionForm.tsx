@@ -62,6 +62,7 @@ export function AddVersionForm({ onBuilt }: { onBuilt: () => void }) {
   // table is a build this form cannot start beside.
   const elsewhere = buildingName !== null && buildingName !== effectiveName;
 
+  // Catches every failure into the form's error line, so the form calls it without awaiting.
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!ready || running || elsewhere) return;
@@ -104,7 +105,7 @@ export function AddVersionForm({ onBuilt }: { onBuilt: () => void }) {
 
   return (
     <SectionCard title="Add version">
-      <Stack spacing={2} component="form" onSubmit={submit}>
+      <Stack spacing={2} component="form" onSubmit={(event) => void submit(event)}>
         <Typography
           variant="body2"
           sx={{

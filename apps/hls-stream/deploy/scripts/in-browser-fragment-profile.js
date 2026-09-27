@@ -139,7 +139,8 @@
     };
   }
 
-  (async () => {
+  // Its catch records any failure in the page state that the operator reads.
+  void (async () => {
     try {
       const rounds = interleave(refsByGop);
       P.total = rounds.reduce((sum, r) => sum + r.length, 0);

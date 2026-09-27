@@ -10,6 +10,5 @@ server.on('error', () => {
   process.exitCode = 1;
   server.close();
 });
-server.listen(socketPath, async () => {
-  await chmod(socketPath, 0o600);
-});
+// A chmod that fails ends this fixture on the rejection, which its test reads as a failed start.
+server.listen(socketPath, () => void chmod(socketPath, 0o600));

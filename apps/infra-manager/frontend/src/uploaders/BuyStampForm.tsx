@@ -57,6 +57,7 @@ export function BuyStampForm({
   const costPlur = depthValid ? stampCostPlur(amount, depthNum) : null;
   const costBzz = costPlur != null ? formatTokenBalance(costPlur, BZZ_DECIMALS) : null;
 
+  // onBuy is the storage card's action runner, which catches every failure, so the button calls this without awaiting.
   const handleBuy = async () => {
     await onBuy({
       amount: amount.trim(),
@@ -123,7 +124,7 @@ export function BuyStampForm({
         />
         <Button
           variant="contained"
-          onClick={handleBuy}
+          onClick={() => void handleBuy()}
           disabled={!canBuy}
           startIcon={busy ? <CircularProgress size={16} /> : null}
         >

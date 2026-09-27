@@ -944,9 +944,11 @@ const server = createServer((req, res) => {
   for (const [method, pattern, handler] of ROUTES) {
     const match = pattern.exec(path);
     if (match && method === req.method) {
-      return Promise.resolve(handler(req, res, match.slice(1))).catch((error) =>
+      // The catch answers every failure with a 500.
+      void Promise.resolve(handler(req, res, match.slice(1))).catch((error) =>
         send(res, 500, { error: String(error) }),
       );
+      return;
     }
   }
 

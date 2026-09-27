@@ -237,7 +237,8 @@ export function useBeeUtils(profile: Profile, { withChequebook = true }: BeeUtil
     if (!waitingBatch) return;
 
     let attempts = 0;
-    const poll = setInterval(async () => {
+    // Catches every failed read itself, so the interval calls it without awaiting.
+    const pollOnce = async () => {
       attempts += 1;
       try {
         const fresh = await fetchStamps(profileName);
@@ -252,7 +253,8 @@ export function useBeeUtils(profile: Profile, { withChequebook = true }: BeeUtil
         setStamps(null);
         if (attempts >= STAMP_POLL_MAX_ATTEMPTS) setWaitingBatch(null);
       }
-    }, STAMP_POLL_INTERVAL_MS);
+    };
+    const poll = setInterval(() => void pollOnce(), STAMP_POLL_INTERVAL_MS);
 
     return () => clearInterval(poll);
   }, [waitingBatch, profileName]);

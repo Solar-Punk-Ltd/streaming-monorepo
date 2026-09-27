@@ -22,6 +22,7 @@ export function ChangePasswordCard({ onChanged }: { onChanged: () => Promise<voi
 
   const set = (field: keyof typeof EMPTY, value: string) => setForm((prev) => ({ ...prev, [field]: value }));
 
+  // Catches every failure into the form's error line, so the form calls it without awaiting.
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (pending) return;
@@ -49,7 +50,7 @@ export function ChangePasswordCard({ onChanged }: { onChanged: () => Promise<voi
 
   return (
     <SectionCard title="Change my password">
-      <Stack spacing={2} component="form" onSubmit={submit}>
+      <Stack spacing={2} component="form" onSubmit={(event) => void submit(event)}>
         <Typography
           variant="body2"
           sx={{
