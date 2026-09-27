@@ -27,7 +27,7 @@
   "devDependencies": {
     "@types/node": "^22.8.1",
     "tsx": "^4.23.1",
-    "typescript": "^6.0.2"
+    "typescript": "7.0.2"
   },
   "nx": {
     "tags": [
