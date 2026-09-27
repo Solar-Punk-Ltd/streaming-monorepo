@@ -138,6 +138,9 @@ const BUILD_LOG = [
 
 let nextId = 1;
 
+const MONOREPO_URL = 'https://github.com/Solar-Punk-Ltd/streaming-monorepo.git';
+const SWARM_HLS_STREAM_URL = 'https://github.com/Solar-Punk-Ltd/swarm-hls-stream.git';
+
 function makeVersion(input) {
   return {
     id: nextId++,
@@ -156,6 +159,8 @@ function makeVersion(input) {
     layout: input.layout ?? 'builds',
     buildId: input.buildId ?? null,
     previousBuildId: null,
+    // Added from the monorepo, whose folder its first build names.
+    source: input.source ?? { url: MONOREPO_URL, folder: null },
   };
 }
 
@@ -203,6 +208,7 @@ export function seedVersions() {
       contract: BUNDLED_CONTRACT,
       // Published by the manager's own deploy, so it deploys from a build of its own.
       buildId: 'ee99c368bd45c12defcb10ca726f0db0777defb0',
+      source: { url: SWARM_HLS_STREAM_URL, folder: '.' },
     }),
     makeVersion({
       name: 'main-v3',
@@ -211,6 +217,7 @@ export function seedVersions() {
       builtAt: '2026-09-05T21:05:00Z',
       contract: V3_CONTRACT,
       buildId: 'be440d65e0e82bcf9000a8a0dde905dc215255d6',
+      source: { url: MONOREPO_URL, folder: 'apps/hls-stream' },
     }),
   ];
 
@@ -334,6 +341,7 @@ function playBuild(res, version, publish) {
       version.commitSha = commit;
       version.builtAt = new Date().toISOString();
       version.contract = version.contract ?? V3_CONTRACT;
+      version.source = { url: MONOREPO_URL, folder: 'apps/hls-stream' };
     }
     frame('done', { code: willFail ? 1 : 0 });
     end();
