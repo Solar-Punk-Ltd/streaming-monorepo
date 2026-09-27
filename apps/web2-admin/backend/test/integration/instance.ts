@@ -26,7 +26,7 @@ const PACKAGE_ROOT = join(here, '..', '..');
 const TSX = join(PACKAGE_ROOT, 'node_modules', '.bin', 'tsx');
 
 /** Where to reach Postgres. The throwaway database is created beside it. */
-const ADMIN_DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://web2admin:web2admin@127.0.0.1:5433/web2admin';
+export const ADMIN_DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://web2admin:web2admin@127.0.0.1:5433/web2admin';
 
 export const ITEST_USERNAME = 'itest-admin';
 export const ITEST_PASSWORD = 'integration-suite-password';
@@ -45,7 +45,7 @@ export interface Instance {
   stop(): Promise<void>;
 }
 
-function databaseNameFor(url: string): { admin: string; name: string; target: string } {
+export function databaseNameFor(url: string): { admin: string; name: string; target: string } {
   const name = `web2admin_itest_${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
   const target = new URL(url);
   target.pathname = `/${name}`;
