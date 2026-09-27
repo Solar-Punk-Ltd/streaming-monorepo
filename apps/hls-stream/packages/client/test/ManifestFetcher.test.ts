@@ -470,7 +470,7 @@ describe('ManifestFetcher follow-up fetches (CON-29)', () => {
  *
  * The fix is not to poll faster. It is to stop treating one poll as worth one slot.
  */
-describe('keeping up with a publisher that writes faster than hls.js reloads (#84)', () => {
+describe('keeping up with a publisher that writes faster than hls.js reloads', () => {
   /** Advanced by `poll`, so a healthy feed's unserved run genuinely gets a chance to age. */
   let keepUpClockMs = 0;
 
@@ -1193,7 +1193,7 @@ describe('following the feed costs one head lookup (LAT-10)', () => {
  * than one segment per slot, because a fixture that gave each slot a single segment would make
  * jumping look lossy when it is not, and would test the fixture instead of the client.
  */
-describe('a refused slot that later slots are already behind (#71)', () => {
+describe('a refused slot that later slots are already behind', () => {
   /** How many segments of history each slot's manifest carries, as the live window does. */
   const WINDOW = 4n;
 
@@ -1391,7 +1391,7 @@ describe('a refused slot that later slots are already behind (#71)', () => {
  * viewer who joined earlier. The recording names every segment and starts earlier than a viewer who
  * joined partway through, which is the one measured live on 2026-08-06.
  */
-describe('a broadcast ending under a viewer who joined partway through (#94)', () => {
+describe('a broadcast ending under a viewer who joined partway through', () => {
   const TOPIC_ID = 'ending-topic';
   const seg = (n: number) => ({ extinf: '#EXTINF:2,', uri: `seg-${n}.ts` });
   const live = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => seg(from + i));
@@ -1462,7 +1462,7 @@ describe('a broadcast ending under a viewer who joined partway through (#94)', (
  * recording. So the uploader publishing a closing manifest first is necessary and not sufficient, and
  * the guard has to hold on the path the probe takes and not only where the manifests are folded in.
  */
-describe('the probe landing on the recording instead of the manifest that ended the stream (#94)', () => {
+describe('the probe landing on the recording instead of the manifest that ended the stream', () => {
   let fetcher: ManifestFetcher;
   let requested: bigint[];
 
