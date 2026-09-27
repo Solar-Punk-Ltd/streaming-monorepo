@@ -40,7 +40,30 @@ jobs:
   packages-checks:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        # The same pin as the apps' database jobs, for the packages whose suites run SQL against a real server.
+        # Trust authentication because the server starts empty, holds synthetic rows for one job, and is reachable
+        # only from it.
+        image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        # Published on loopback rather than on every interface. Nothing outside the runner needs it.
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # db-migrate's database suite reaches 127.0.0.1 at this port, in the t04b_test database, and skips without it.
+      T04B_TEST_PG_PORT: 5432
     steps:
+      - name: Create the database the package database suites open, through the service container's own client
+        run: docker exec ${{ job.services.postgres.id }} createdb -U postgres t04b_test
+
       # Pinned by commit, the tag in the comment, the same pins as the other root workflows. pnpm comes from
       # packageManager.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,6 +89,9 @@ jobs:
 
       - name: Tests, every package
         run: pnpm --filter './packages/*' run test
+
+      - name: Database tests, every package that has them
+        run: pnpm --filter './packages/*' --if-present run test:database
 
       - name: Build, every package, as a backend image runs it
         run: pnpm --filter './packages/*' run build
