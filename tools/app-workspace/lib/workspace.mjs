@@ -5,6 +5,9 @@ import { indentOf, readKey, readScalar, spell } from './yaml-lines.mjs';
 const INJECT_SETTING = 'injectWorkspacePackages';
 const GLOB_CHARACTERS = /[*?[{]/;
 
+/** What stands above an injection setting the cut changed, in place of the root's comment on its own value. */
+const OWN_SETTING_COMMENT = "# The app's own setting, from tools/app-workspace/apps.mjs.";
+
 const header = (app) => [
   `# The workspace of ${app} alone, cut from the repository's root pnpm-workspace.yaml by tools/app-workspace.`,
   "# Its projects, its injection setting and its build permissions are the app's own. Edit the root file, never this one.",
@@ -118,7 +121,12 @@ export function cutWorkspace(text, { app, injectWorkspacePackages, packageNames,
   const setting = `${INJECT_SETTING}: ${injectWorkspacePackages}`;
   if (inject !== null) {
     const current = readScalar(lines[inject.start].slice(INJECT_SETTING.length + 1)).value;
-    if (current !== String(injectWorkspacePackages)) edits.set(inject.start, { end: inject.end, lines: [setting] });
+    if (current !== String(injectWorkspacePackages)) {
+      // The comment right above the key explains the root's value, which this cut no longer has.
+      let comment = inject.start;
+      while (comment > 0 && lines[comment - 1].startsWith('#')) comment -= 1;
+      edits.set(comment, { end: inject.end, lines: [OWN_SETTING_COMMENT, setting] });
+    }
   } else if (injectWorkspacePackages) {
     const packagesEdit = edits.get(packages.start);
     packagesEdit.lines = [...packagesEdit.lines, '', setting];
