@@ -41,6 +41,12 @@ set -euo pipefail
 
 readonly DEFAULT_REMOTE_PATH="/home/solarpunk/streaming-monorepo"
 readonly ENV_DIR="backend"
+# Where a profile's env file was before the admin moved into apps/web2-admin:
+# from the repository root in a checkout, and from the remote path on a host,
+# since every deploy sent the repository root then. Git leaves an ignored file
+# where it is, so a checkout that deployed before the move can still hold it
+# there, and rsync leaves the host's copy, being excluded from --delete.
+readonly OLD_ENV_DIR="web2-admin/backend"
 readonly COMPOSE_FILE="deploy/docker-compose.yml"
 readonly KNOWN_SERVICES="postgres api web"
 # The loopback port the console gets without a port slot. The manager's own
@@ -55,8 +61,8 @@ usage() {
     cat <<'USAGE'
 Usage: deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path=<dir>] [service...]
 
-  deploy.sh --host=admin-host                          Deploy the default profile (backend/.env)
-  deploy.sh --host=admin-host --profile=brand-a        Deploy profile brand-a (backend/.env.brand-a)
+  deploy.sh --host=admin-host                          Deploy the default profile (apps/web2-admin/backend/.env)
+  deploy.sh --host=admin-host --profile=brand-a        Deploy profile brand-a (apps/web2-admin/backend/.env.brand-a)
   deploy.sh --host=admin-host --profile=brand-a --portSlot=3
                                                        Same, console on 127.0.0.1:11039 on the host
   deploy.sh --host=admin-host --profile=brand-a api    Rebuild and restart the API only
@@ -66,9 +72,9 @@ Flags (each also accepts a separate value, as in --host admin-host):
   --host=<target>       Required. An ssh alias from ~/.ssh/config, user@host, or
                         "localhost" for this machine. There is no default host.
   --profile=<name>      Profile name, ^[a-z0-9][a-z0-9-]{0,30}$. Default: "default".
-                        Selects backend/.env.<name> (plain .env for
-                        "default"), which must exist, and the compose project
-                        web2-admin-<name>.
+                        Selects apps/web2-admin/backend/.env.<name> (plain
+                        .env for "default"), which must exist, and the
+                        compose project web2-admin-<name>.
   --portSlot=<N> (1-99) Publishes the console on 11009 + N*10 on the host's
                         loopback. When set, the slot is authoritative:
                         WEB2_ADMIN_WEB_PORT in the env file is ignored.
@@ -233,8 +239,12 @@ if ! [[ "$HEALTH_TIMEOUT" =~ ^[0-9]+$ ]] || [ "$((10#$HEALTH_TIMEOUT))" -lt 1 ];
 fi
 HEALTH_TIMEOUT=$((10#$HEALTH_TIMEOUT))
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$REPO_ROOT"
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$APP_DIR/../.." && pwd)"
+# apps/web2-admin, the start of every path printed for the operator, so each
+# one works from the repository root.
+APP_DIR_FROM_ROOT="${APP_DIR#"$REPO_ROOT"/}"
+cd "$APP_DIR"
 
 PROJECT="web2-admin-$PROFILE"
 if [ "$PROFILE" = "default" ]; then
@@ -242,15 +252,26 @@ if [ "$PROFILE" = "default" ]; then
 else
     ENV_FILE="$ENV_DIR/.env.$PROFILE"
 fi
+ENV_FILE_FROM_ROOT="$APP_DIR_FROM_ROOT/$ENV_FILE"
+ENV_SAMPLE_FROM_ROOT="$APP_DIR_FROM_ROOT/$ENV_DIR/.env.sample"
+OLD_ENV_FILE="$OLD_ENV_DIR/${ENV_FILE##*/}"
 
 # --- The env file -------------------------------------------------------------
 
-log "profile $PROFILE, compose project $PROJECT, env file $ENV_FILE"
+log "profile $PROFILE, compose project $PROJECT, env file $ENV_FILE_FROM_ROOT"
 
 # A profile always means its own file. Falling back to .env would bring up a
 # second stack with the first one's signing key and database password.
 if [ ! -f "$ENV_FILE" ]; then
-    die "$ENV_FILE not found. Copy $ENV_DIR/.env.sample to $ENV_FILE and fill in the required values."
+    # Only whether the old file is there is asked, never what it holds, and
+    # moving it is left to the operator.
+    if [ -f "$REPO_ROOT/$OLD_ENV_FILE" ]; then
+        echo "[deploy] ERROR: $ENV_FILE_FROM_ROOT not found, but $OLD_ENV_FILE is there. It is this profile's env file from before the admin moved into $APP_DIR_FROM_ROOT, and git left it at its old path. Move it, from the repository root:" >&2
+        echo "[deploy]   mv $OLD_ENV_FILE $ENV_FILE_FROM_ROOT" >&2
+        echo "[deploy] Do not make a new one from the sample instead. A new POSTGRES_PASSWORD locks the API out of the profile's existing database, and a new FEED_PRIVATE_KEY makes every publish fail. Nothing was deployed." >&2
+        exit 1
+    fi
+    die "$ENV_FILE_FROM_ROOT not found. Copy $ENV_SAMPLE_FROM_ROOT to $ENV_FILE_FROM_ROOT and fill in the required values."
 fi
 
 # The value compose will see for KEY: the last assignment wins, a carriage
@@ -280,7 +301,7 @@ lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 # Every problem is reported before stopping, so one run lists all of them.
 PROBLEMS=0
 problem() {
-    echo "[deploy] ERROR: $ENV_FILE: $*" >&2
+    echo "[deploy] ERROR: $ENV_FILE_FROM_ROOT: $*" >&2
     PROBLEMS=$((PROBLEMS + 1))
 }
 
@@ -370,18 +391,18 @@ if [ -n "$ENV_WEB_PORT" ]; then
 fi
 
 if [ "$PROBLEMS" -gt 0 ]; then
-    die "$PROBLEMS problem(s) in $ENV_FILE. Nothing was deployed. See $ENV_DIR/.env.sample for what each key means."
+    die "$PROBLEMS problem(s) in $ENV_FILE_FROM_ROOT. Nothing was deployed. See $ENV_SAMPLE_FROM_ROOT for what each key means."
 fi
 
 if [ -n "$WEB_PORT" ]; then
     if [ -n "$ENV_WEB_PORT" ] && [ "$ENV_WEB_PORT" != "$WEB_PORT" ]; then
-        log "WEB2_ADMIN_WEB_PORT=$ENV_WEB_PORT in $ENV_FILE is ignored: port slot $PORT_SLOT decides the port"
+        log "WEB2_ADMIN_WEB_PORT=$ENV_WEB_PORT in $ENV_FILE_FROM_ROOT is ignored: port slot $PORT_SLOT decides the port"
     fi
     log "console port $WEB_PORT (port slot $PORT_SLOT)"
 else
     if [ -n "$ENV_WEB_PORT" ]; then
         WEB_PORT="$ENV_WEB_PORT"
-        log "console port $WEB_PORT (WEB2_ADMIN_WEB_PORT in $ENV_FILE)"
+        log "console port $WEB_PORT (WEB2_ADMIN_WEB_PORT in $ENV_FILE_FROM_ROOT)"
     else
         WEB_PORT="$DEFAULT_WEB_PORT"
         log "console port $WEB_PORT (the default: no port slot and no WEB2_ADMIN_WEB_PORT)"
@@ -419,9 +440,25 @@ if git rev-parse --verify -q HEAD >/dev/null 2>&1; then
     fi
 fi
 printf '%s\n' "$COMMIT" >deploy/.deployed-commit
-log "commit $COMMIT (written to deploy/.deployed-commit)"
+log "commit $COMMIT (written to $APP_DIR_FROM_ROOT/deploy/.deployed-commit)"
 
 # --- What runs on the host ----------------------------------------------------
+
+# The host's last step: say when this profile's env file from before the move
+# is still there. It is no longer read, but it keeps a second copy of the
+# signing key and token. Removing a file from a host is the owner's call, so
+# the step prints the command rather than running it. --host=localhost has no
+# host checkout to look in. The path, profile and host it names were held to
+# patterns above, as everything host_script interpolates is.
+old_env_file_check() {
+    [ "$LOCAL" = false ] || return 0
+    cat <<OLD_ENV_FILE_CHECK
+if [ -f '$OLD_ENV_FILE' ]; then
+    echo "[deploy] WARNING: this host still has $REMOTE_PATH/$OLD_ENV_FILE, the env file of profile $PROFILE from a deploy made before the admin moved into apps/web2-admin. The profile now runs on $REMOTE_PATH/$ENV_FILE and the old file is no longer read, but it keeps a second copy of the profile's signing key and token. Remove it when you are ready:" >&2
+    echo "[deploy]   ssh $HOST 'rm $REMOTE_PATH/$OLD_ENV_FILE'" >&2
+fi
+OLD_ENV_FILE_CHECK
+}
 
 # Every value interpolated below has been held to a pattern above (the path,
 # profile, port, services and commit), so none of them can end the single
@@ -516,13 +553,14 @@ case " \$SCOPE " in
 esac
 
 echo "[deploy] $PROJECT is up, console on 127.0.0.1:$WEB_PORT of this host"
+$(old_env_file_check)
 }
 deploy_on_host </dev/null
 HOST_SCRIPT
 }
 
 if [ "$LOCAL" = true ]; then
-    log "deploying on this machine, in $REPO_ROOT"
+    log "deploying on this machine, in $APP_DIR"
     host_script | bash -s
 else
     log "rsync to $HOST:$REMOTE_PATH"
@@ -574,8 +612,8 @@ USER_ADD="WEB2_ADMIN_ENV_FILE=../$ENV_FILE docker compose -p $PROJECT -f $COMPOS
 log "done: $PROJECT at commit $COMMIT"
 if [ "$LOCAL" = true ]; then
     log "open: http://127.0.0.1:$WEB_PORT"
-    log "first user, once per profile (prompts for the password):"
-    log "  $USER_ADD"
+    log "first user, once per profile, from the repository root (prompts for the password):"
+    log "  cd $APP_DIR_FROM_ROOT && $USER_ADD"
 else
     log "tunnel: ssh -L $WEB_PORT:localhost:$WEB_PORT $HOST"
     log "then open: http://localhost:$WEB_PORT"
