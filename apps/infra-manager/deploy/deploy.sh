@@ -108,14 +108,18 @@ echo "==> Recording the stack commit this manager pins"
 # host reads this file at boot and builds that commit if it has no complete
 # build of it. Written next to the checkout rather than inside it, because the
 # submodule's own .gitignore does not cover it and a file in there would show
-# up as an untracked change.
-git rev-parse HEAD:manager/swarm-hls-stream > manager/.stack-commit
+# up as an untracked change. The ./ reads the path from this folder rather than
+# from the repository root, so it resolves when another repository holds the
+# manager in a subfolder too.
+git rev-parse HEAD:./manager/swarm-hls-stream > manager/.stack-commit
 echo "[deploy] pinned stack commit: $(cat manager/.stack-commit)"
 
 # What the upgrade records as the manager it installed: the commit of this
-# checkout and a digest of the tree that commit names.
+# checkout and a digest of the manager's tree at that commit. Listed from this
+# folder, so a repository that holds more than the manager digests the manager
+# alone, and a checkout of this repository on its own digests what it did before.
 MANAGER_COMMIT="$(git rev-parse HEAD)"
-MANAGER_DIGEST="$(git ls-tree -r --full-tree HEAD | shasum -a 256 | cut -c1-64)"
+MANAGER_DIGEST="$(git ls-tree -r HEAD | shasum -a 256 | cut -c1-64)"
 
 echo "==> rsync → ${SSH_TARGET}:${REMOTE_PATH} (manager/swarm-hls-stream left as it is)"
 rsync -avz --delete \
