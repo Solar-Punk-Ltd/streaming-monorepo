@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
-import { buttonWithText, clickWhenEnabled, launchChrome, PAGE_TEXT, readWhenPresent, waitFor, watchCompletedRequests } from './support/chrome.mjs';
+import { buttonWithText, clickWhenEnabled, launchChrome, PAGE_TEXT, readWhenPresent, reloadDocument, waitFor, watchCompletedRequests } from './support/chrome.mjs';
 import { endViteServer } from './support/teardown.mjs';
 import { evidenceDirectory } from './support/evidence.mjs';
 import { viteCacheFor } from './support/vite-cache.mjs';
@@ -222,7 +222,7 @@ test('readiness and container diagnostics use current observations in the browse
   assert.match(await body(), /Bee observation stale/);
   for (const phase of ['starting', 'restarting', null]) {
     second.status = 'DEPLOYING'; second.deployment_phase = phase;
-    await call('Page.reload');
+    await reloadDocument({ call, evaluate });
     const label = phase === 'starting' ? 'Starting' : phase === 'restarting' ? 'Restarting' : 'Deploying';
     await waitFor(body, text => text.includes(`${label}. Ingest and current container state are not yet verified.`), `${label} after page reload`);
     assert.doesNotMatch(await body(), /deployment is stopped|Stopped\. Start it/);

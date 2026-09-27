@@ -33,6 +33,7 @@ import {
   launchChrome,
   PAGE_TEXT,
   paintedInView,
+  reloadDocument,
   stillWithin,
   waitFor,
 } from './support/chrome.mjs';
@@ -137,7 +138,7 @@ test('the SRT ingest card says how the link is holding up, and how to fix it', {
   const body = () => evaluate(PAGE_TEXT);
   const shows = (description, ...texts) => waitFor(body, (text) => texts.every((part) => text.includes(part)), description);
   const reload = async () => {
-    await call('Page.reload');
+    await reloadDocument({ call, evaluate });
     await shows('the deployment page', 'Readiness');
   };
 
