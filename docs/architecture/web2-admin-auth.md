@@ -10,6 +10,10 @@ Status: landed on `feat/web2admin-auth`, migration `005_auth_users.sql`. The
 manager's design has run on a host since 2026-09-11 and is public behind a TLS
 edge; this is the same design on a database that already had users in it.
 
+The pieces the two apps then held alike, named below, have since moved into the
+shared package `packages/web-auth`, which both backends import, so a fix to one
+of them lands once. Each app passes it its own cookie name and header value.
+
 ## Why port rather than design
 
 The admin layer had a login already — a users table, a sessions table holding
@@ -27,7 +31,7 @@ and being wrong about a different half of it.
 
 ## What was taken unchanged
 
-- **Hashing** (`src/domain/auth/passwordHash.ts`). Node's `crypto.scrypt`, no
+- **Hashing** (`packages/web-auth/src/passwordHash.ts`). Node's `crypto.scrypt`, no
   dependency. `N = 2^15, r = 8, p = 3`, 32 byte salt, 64 byte key, `maxmem`
   raised to 64 MiB because node's 32 MiB default is exactly what `N=2^15, r=8`
   needs for its mixing buffer alone and scrypt would otherwise refuse to run.
@@ -35,11 +39,11 @@ and being wrong about a different half of it.
   backend already wrote, so **the rows written with the old `N=16384, r=8, p=1`
   keep verifying with the parameters they were written with**. A test pins that
   against a hash built the old way.
-- **Sessions, two clocks** (`sessionLifetime.ts`). Idle 12 hours sliding on
+- **Sessions, two clocks** (`packages/web-auth/src/sessionLifetime.ts`). Idle 12 hours sliding on
   `last_seen_at`, absolute 14 days in `expires_at`, and the session ends at
   `min(expires_at, last_seen_at + idle)`. `last_seen_at` is written at most once
   a minute, or an open console would be a database write per request.
-- **The cookie** (`src/api/cookies.ts`). httpOnly, SameSite=Lax, Path=/, and no
+- **The cookie** (`src/api/cookies.ts`, over `packages/web-auth/src/cookies.ts`). httpOnly, SameSite=Lax, Path=/, and no
   `Max-Age` or `Expires` at all: the sessions row is the only clock, and a
   cookie with a deadline of its own would be a second one to keep in step.
   `Secure` is computed **per request** from the first `X-Forwarded-Proto` hop or
@@ -49,7 +53,7 @@ and being wrong about a different half of it.
   localhost then dropped the cookie it had just been given, so signing in came
   straight back to the sign-in page with nothing to show for it. `COOKIE_SECURE`
   is gone.
-- **The limiter** (`LoginLimiter.ts`). Keys are `username:<lowercased>`,
+- **The limiter** (`packages/web-auth/src/LoginLimiter.ts`). Keys are `username:<lowercased>`,
   `ip:<last X-Forwarded-For hop>` and `password-change:<userId>`. Four free
   attempts, the fifth locks for a minute, every failure after that doubles up to
   an hour, and a key with no failure for two hours is forgotten. The important
@@ -63,20 +67,22 @@ and being wrong about a different half of it.
   checked, against a throwaway hash built at startup, so the clock does not say
   which usernames exist. The old code skipped the hash entirely for an unknown
   name and said so in a comment; that comment is now wrong and is gone.
-- **The cross-site check** (`requireSameSite.ts`). Three layers, mounted ahead
+- **The cross-site check** (`src/api/middleware/requireSameSite.ts`, built by
+  `packages/web-auth/src/requireSameSite.ts`). Three layers, mounted ahead
   of the body parser so a write from another site is refused before its body is
   read: the browser's own `Sec-Fetch-Site: cross-site`, the `Origin` host
   against the `Host` asked for (compared by host, not origin, because a TLS edge
   makes the schemes differ while the host always matches), and a mandatory
   `x-requested-with: web2-admin` that no cross-origin page can add without a
   CORS preflight this API never answers. GET and HEAD are exempt.
-- **Users and roles** (`authSql.ts`, `PostgresUserRepository.deleteUnlessLast`).
+- **Users and roles** (`packages/web-auth/src/authSql.ts`,
+  `PostgresUserRepository.deleteUnlessLast`).
   The count and the DELETE run in one transaction under
   `pg_advisory_xact_lock`, because two browsers each removing the other both saw
   two users and both deleted, leaving a console nobody could sign in to. The
   first user ever added is an admin whatever the caller asked, because somebody
   has to be able to add the second.
-- **The CLI** (`src/cli.ts`, `src/cli/userAdd.ts`, `src/utils/secretInput.ts`).
+- **The CLI** (`src/cli.ts`, `src/cli/userAdd.ts`, `packages/web-auth/src/secretInput.ts`).
   Runs the migrations itself, validates the username before prompting so a bad
   name is not found out after the password has been typed twice, prompts twice
   with echo off, accepts `--password-stdin` for a vault, and takes a password
