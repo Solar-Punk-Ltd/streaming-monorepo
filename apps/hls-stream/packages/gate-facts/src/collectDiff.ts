@@ -35,43 +35,29 @@ async function git(args: string[]): Promise<string> {
 }
 
 /**
- * Resolve a base ref that exists, preferring the local branch and falling back to its remote.
- *
- * A CI checkout is shallow and single-branch, so a bare branch name such as `main` resolves on a
- * developer's machine and not on the runner. Failing over to `origin/` makes the same invocation work
- * in both, and failing loudly when neither resolves beats measuring against nothing.
- */
-async function resolveBase(base: string): Promise<string> {
-  for (const candidate of [base, `origin/${base}`]) {
-    const check = await run('git', ['rev-parse', '--verify', '--quiet', `${candidate}^{commit}`]);
-    if (check.exitCode === 0) {
-      return candidate;
-    }
-  }
-  throw new CollectionError(
-    describe('git', ['rev-parse', '--verify', base]),
-    `neither \`${base}\` nor \`origin/${base}\` resolves. A shallow or single-branch clone needs \`git fetch origin ${base}\` first.`,
-  );
-}
-
-/**
  * The facts the diff-size ceiling and the mutation trigger are both decided on.
  *
  * Both rules used to be settled by the author's own description of their own change, which is the
  * shape of claim this whole artifact exists to remove.
+ *
+ * `base` arrives resolved by `resolveBase`, the same ref the lockfile is read from.
  */
 export async function collectDiff(base: string, head: string): Promise<FactGroup> {
-  const range = `${await resolveBase(base)}..${head}`;
+  // In a diff `...` starts from the merge base, the commit the change branched from, so what the base
+  // gained after that is not counted as the change. In rev-list `..` already means the change's own
+  // commits, and `...` there would add the base's later commits back in.
+  const sinceBranchPoint = `${base}...${head}`;
+  const ownCommits = `${base}..${head}`;
   // `--relative` names each changed path from the working folder, which is the stack's, and leaves out
   // every path outside it. From the root of the stack's own repository it changes nothing.
-  const namesArgs = ['diff', '--name-only', '--relative', range];
+  const namesArgs = ['diff', '--name-only', '--relative', sinceBranchPoint];
   const paths = (await git(namesArgs)).split('\n').filter((p) => p.length > 0);
 
   // git reads a pathspec from the working folder already, so this counts the stack's source alone.
-  const srcArgs = ['diff', '--numstat', range, '--', '*/src/*'];
+  const srcArgs = ['diff', '--numstat', sinceBranchPoint, '--', '*/src/*'];
   const srcStat = await git(srcArgs);
 
-  const commitsArgs = ['rev-list', '--count', range];
+  const commitsArgs = ['rev-list', '--count', ownCommits];
   const commits = await git(commitsArgs);
 
   const surfaces = surfacesTouched(paths);

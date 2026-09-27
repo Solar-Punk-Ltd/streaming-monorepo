@@ -182,7 +182,9 @@ else
     ARCHIVE_REV="HEAD"
 fi
 
-COMMIT="$(git -C "$REPO" rev-parse "$ARCHIVE_REV")"
+# ^{commit}: fetching an annotated tag leaves FETCH_HEAD on the tag object,
+# and what a version records is the commit that tag points at.
+COMMIT="$(git -C "$REPO" rev-parse "$ARCHIVE_REV^{commit}")"
 echo "STACK_COMMIT=$COMMIT"
 # The commit itself from here on, because fetching the history head below
 # moves FETCH_HEAD, even when that fetch fails.

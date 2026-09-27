@@ -709,10 +709,10 @@ describe('formatFacts', () => {
 });
 
 describe('readCommandLine', () => {
-  it('compares against main when no base is given', () => {
-    // The default used to be a branch that no longer exists, so a run without --base stopped at its
-    // first git call.
-    assert.deepEqual(readCommandLine(['node', 'src/index.ts']), { base: 'main', head: undefined });
+  it('compares against main-v3, where pull requests go, when no base is given', () => {
+    // The monorepo's main is the admin's branch from before the monorepo, with no apps/ folder and a
+    // lockfile of its own at the root, so a run without --base stopped at the stack's lockfile read.
+    assert.deepEqual(readCommandLine(['node', 'src/index.ts']), { base: 'main-v3', head: undefined });
   });
 
   it('takes the base and the head named on the command line', () => {

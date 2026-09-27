@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { after, describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { collectChecks } from '../src/collectChecks.js';
 import { collectDiff } from '../src/collectDiff.js';
@@ -91,6 +92,29 @@ const CHANGE_COMMITS: readonly FixtureCommit[] = [
   },
 ];
 
+/**
+ * What the base gains after the change has branched off it: source and a CI file in the stack, and a
+ * file outside it, none of which the change touches.
+ */
+const BASE_MOVES_ON: FixtureCommit = {
+  stack: {
+    'packages/audit-gate/src/later.ts': ['export const later = 1;', 'export const laterStill = 2;', ''].join('\n'),
+    '.github/workflows/later.yml': 'name: later\n',
+  },
+  outside: { 'apps/web2-admin/src/later.ts': 'export const later = 1;\n' },
+};
+
+/** A change that leaves the lockfile exactly as it was where the change branched off. */
+const CHANGE_LEAVING_THE_LOCKFILE: readonly FixtureCommit[] = [
+  { stack: { 'packages/stream-uploader/src/engine.ts': "export const engine = 'ome';\n" }, outside: {} },
+];
+
+/** The base bumping a package the change never touched, after the change has branched off it. */
+const BASE_BUMPS_A_PACKAGE: FixtureCommit = {
+  stack: { 'pnpm-lock.yaml': lockfileOf(['express@5.2.2', 'left-pad@1.3.0']) },
+  outside: {},
+};
+
 const fixtureDirs: string[] = [];
 
 after(() => {
@@ -142,29 +166,56 @@ function writeTree(root: string, tree: FileTree): void {
   }
 }
 
+/** Writes `change` into the fixture and commits it on whichever branch is checked out. */
+function commitChange(fixture: Fixture, change: FixtureCommit, message: string): void {
+  writeTree(fixture.stack, change.stack);
+  if (fixture.stack !== fixture.repo) {
+    writeTree(fixture.repo, change.outside);
+  }
+  gitIn(fixture.repo, 'add', '-A');
+  gitIn(fixture.repo, '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', message);
+}
+
 /**
  * A throwaway repository with the stack at `stackPath` inside it: a base commit, a `base` branch on it,
- * and the change on top. An empty `stackPath` is the stack checked out on its own. `rootFiles` go into
- * the base commit at the root of a larger repository and never change.
+ * and the change on top, which is `CHANGE_COMMITS` unless `changes` names another. An empty `stackPath`
+ * is the stack checked out on its own. `rootFiles` go into the base commit at the root of a larger
+ * repository and never change.
  */
-function commitFixture(stackPath: string, rootFiles: FileTree = {}): Fixture {
+function commitFixture(
+  stackPath: string,
+  rootFiles: FileTree = {},
+  changes: readonly FixtureCommit[] = CHANGE_COMMITS,
+): Fixture {
   const repo = tempDir('gate-facts-repo-');
-  const stack = join(repo, stackPath);
-  const commit = (change: FixtureCommit, message: string): void => {
-    writeTree(stack, change.stack);
-    if (stackPath !== '') {
-      writeTree(repo, change.outside);
-    }
-    gitIn(repo, 'add', '-A');
-    gitIn(repo, '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', message);
-  };
+  const fixture = { repo, stack: join(repo, stackPath) };
 
   gitIn(repo, 'init', '-q');
   writeTree(repo, rootFiles);
-  commit(BASE_COMMIT, 'base');
+  commitChange(fixture, BASE_COMMIT, 'base');
   gitIn(repo, 'branch', BASE);
-  CHANGE_COMMITS.forEach((change, index) => commit(change, `change ${index + 1}`));
-  return { repo, stack };
+  changes.forEach((change, index) => commitChange(fixture, change, `change ${index + 1}`));
+  return fixture;
+}
+
+/**
+ * Commits `change` onto the base after the change under measurement has branched off it, the way the
+ * base moves on while a pull request is open, then checks the change out again.
+ */
+function moveBaseOn(fixture: Fixture, change: FixtureCommit = BASE_MOVES_ON): void {
+  const changeBranch = gitIn(fixture.repo, 'branch', '--show-current');
+  gitIn(fixture.repo, 'switch', '-q', BASE);
+  commitChange(fixture, change, 'the base moves on');
+  gitIn(fixture.repo, 'switch', '-q', changeBranch);
+}
+
+/**
+ * Leaves the base only as `origin/base`, which is how a single-branch clone, a CI checkout or a worktree
+ * holds it: no local branch of that name exists.
+ */
+function keepBaseOnlyAsRemote(fixture: Fixture): void {
+  gitIn(fixture.repo, 'update-ref', `refs/remotes/origin/${BASE}`, BASE);
+  gitIn(fixture.repo, 'branch', '-D', BASE);
 }
 
 /**
@@ -196,6 +247,41 @@ function failedKeys(group: FactGroup): string[] {
 function rowNamed(group: FactGroup, key: string): Fact {
   const row = group.facts.find((fact) => fact.key === key);
   assert.ok(row, `the ${group.title} group has no ${key} row`);
+  return row;
+}
+
+/** The tool's own entry point, which `pnpm gate:facts` runs through tsx. */
+const ENTRY_POINT = fileURLToPath(new URL('../src/index.ts', import.meta.url));
+
+/** Found from this package, because a fixture folder has no node_modules to find tsx in. */
+const TSX_LOADER = import.meta.resolve('tsx');
+
+interface ToolRun {
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Runs the whole tool from `folder` as `pnpm gate:facts` runs it, with the stand-ins first on PATH. Of
+ * this machine's environment only PATH and HOME reach it, for the reason `gitIn` gives, and tsx's cache
+ * stays off as the suite's own test script has it.
+ */
+function runGateFacts(folder: string, args: readonly string[]): ToolRun {
+  const result = spawnSync(process.execPath, ['--import', TSX_LOADER, ENTRY_POINT, ...args], {
+    cwd: folder,
+    encoding: 'utf8',
+    env: { PATH: [STUB_BIN, MACHINE_PATH].join(delimiter), HOME: process.env.HOME, TSX_DISABLE_CACHE: '1' },
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  return { stdout: result.stdout, stderr: result.stderr };
+}
+
+/** The artifact's table row for `key`, as a reader of the printed artifact sees it. */
+function artifactRow(run: ToolRun, key: string): string {
+  const row = run.stdout.split('\n').find((line) => line.startsWith(`| ${key} |`));
+  assert.ok(row, `the artifact has no ${key} row, and the tool wrote this to stderr:\n${run.stderr}`);
   return row;
 }
 
@@ -236,6 +322,19 @@ describe('the diff facts read by a real git, wherever the stack sits', () => {
 
     assert.deepEqual(await diffFrom(nested), await diffFrom(commitFixture('')));
   });
+
+  it('counts only the change once the base has moved on past the point the change branched from', async () => {
+    const movedOn = commitFixture(STACK_SUBFOLDER);
+    moveBaseOn(movedOn);
+    assert.notEqual(
+      gitIn(movedOn.stack, 'diff', '--name-only', '--relative', `${HEAD}...${BASE}`),
+      '',
+      'the fixture has to be one where the base changed files in the stack after the change branched off it',
+    );
+
+    // The commits row is held to the same count: the base's own commit is not the change's.
+    assert.deepEqual(await diffFrom(movedOn), await diffFrom(commitFixture('')));
+  });
 });
 
 describe('the provenance facts read by a real git, wherever the stack sits', () => {
@@ -248,7 +347,7 @@ describe('the provenance facts read by a real git, wherever the stack sits', () 
         {
           key: 'versions introduced',
           value: '0, though the lockfile did change. Nothing new resolved, so there is nothing to check.',
-          command: `git diff ${BASE}..${HEAD} -- pnpm-lock.yaml`,
+          command: `git diff ${BASE}...${HEAD} -- pnpm-lock.yaml`,
         },
       ],
     });
@@ -274,6 +373,19 @@ describe('the provenance facts read by a real git, wherever the stack sits', () 
     );
 
     assert.deepEqual(await provenanceFrom(nested), await provenanceFrom(commitFixture('')));
+  });
+
+  it('reports no version introduced when only the base bumped a package after the branch point', async () => {
+    const nested = commitFixture(STACK_SUBFOLDER, {}, CHANGE_LEAVING_THE_LOCKFILE);
+    moveBaseOn(nested, BASE_BUMPS_A_PACKAGE);
+    assert.notEqual(
+      gitIn(nested.stack, 'show', `${BASE}:./pnpm-lock.yaml`),
+      gitIn(nested.stack, 'show', `${HEAD}:./pnpm-lock.yaml`),
+      "the fixture's base has to hold a lockfile the change never had",
+    );
+
+    // No group at all, which is how the artifact says the change left the lockfile untouched.
+    assert.equal(await provenanceFrom(nested), null);
   });
 });
 
@@ -313,5 +425,31 @@ describe('the working tree row read by a real git, wherever the stack sits', () 
     editOutside(nested);
 
     assert.deepEqual(await checksFrom(nested), await checksFrom(standalone));
+  });
+});
+
+/**
+ * The diff and the lockfile have to be read from one base. The diff falls back to `origin/<base>` when
+ * no local branch of that name exists, and the lockfile read took the name as given, so in exactly the
+ * checkouts that fallback exists for the run stopped at "invalid object name" and printed nothing.
+ */
+describe('the whole tool run by a real git, where the base exists only as origin/base', () => {
+  it('reads the lockfile from the same origin/base the diff is measured from', () => {
+    const fixture = commitFixture(STACK_SUBFOLDER);
+    keepBaseOnlyAsRemote(fixture);
+    assert.throws(
+      () => gitIn(fixture.stack, 'show', `${BASE}:./pnpm-lock.yaml`),
+      /invalid object name/,
+      'the fixture has to be one where the base name alone names no commit',
+    );
+    const head = gitIn(fixture.stack, 'rev-parse', '--short', HEAD);
+
+    const run = runGateFacts(fixture.stack, ['--base', BASE]);
+
+    assert.equal(
+      artifactRow(run, 'versions introduced'),
+      `| versions introduced | 0, though the lockfile did change. Nothing new resolved, so there is nothing to check. | \`git diff origin/${BASE}...${head} -- pnpm-lock.yaml\` |`,
+    );
+    assert.equal(artifactRow(run, 'commits'), `| commits | 2 | \`git rev-list --count origin/${BASE}..${head}\` |`);
   });
 });
