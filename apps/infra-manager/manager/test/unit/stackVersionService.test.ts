@@ -240,10 +240,13 @@ describe('where a version\'s stack comes from', () => {
       rootPath: join(versionsRoot, 'v3'),
       sourceUrl: 'https://github.com/example/elsewhere.git',
     });
+    // An inserted row starts out building, so it is moved off that first, or
+    // the last line below could not tell a refusal from a build that began.
+    await repository.markFailed(odd.id, 'an earlier build failed');
 
     await assert.rejects(service.update(odd.id), /elsewhere\.git/);
     assert.equal(runner.spawned.length, 0);
-    assert.notEqual((await repository.findById(odd.id))?.status, 'building', 'the row was never put to building');
+    assert.equal((await repository.findById(odd.id))?.status, 'failed', 'the row was never put to building');
   });
 
   it('fails a build whose folder is neither the one it asked for nor the whole tree', async () => {
