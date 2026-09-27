@@ -30,7 +30,7 @@ function profile(over: Partial<Profile> = {}): Profile {
     notes: null,
     notes_revision: 0,
     components: ['bee-uploader'],
-    host: '203.0.113.58',
+    host: '192.0.2.58',
     feed_owner: null,
     feed_topic: null,
     has_private_key: false,
@@ -74,21 +74,21 @@ const publisherUrl = (over: Partial<Profile> = {}): string =>
 
 describe('beePublisherUrlFor', () => {
   it('puts the node on 10005 + slot*10, matching deploy.sh’s port bands', () => {
-    assert.equal(publisherUrl({ port_slot: 5 }), 'http://203.0.113.58:10055');
-    assert.equal(publisherUrl({ port_slot: 8 }), 'http://203.0.113.58:10085');
+    assert.equal(publisherUrl({ port_slot: 5 }), 'http://192.0.2.58:10055');
+    assert.equal(publisherUrl({ port_slot: 8 }), 'http://192.0.2.58:10085');
   });
 
   it('strips ssh user info, which addresses an account and not the node', () => {
     assert.equal(
-      publisherUrl({ host: 'deploy@203.0.113.58' }),
-      'http://203.0.113.58:10055',
+      publisherUrl({ host: 'deploy@192.0.2.58' }),
+      'http://192.0.2.58:10055',
     );
   });
 
   it('leaves no stray @ for the entry format to trip over', () => {
     // `rung@url<batch>` splits on the first @; a second one in the URL makes the
     // entry ambiguous to any consumer that does not split exactly that way.
-    const url = publisherUrl({ host: 'deploy@203.0.113.58' });
+    const url = publisherUrl({ host: 'deploy@192.0.2.58' });
     assert.equal(url.includes('@'), false);
   });
 
@@ -110,7 +110,7 @@ describe('beePublisherUrlFor', () => {
   it('keeps a member on a declared remote host at that host’s own address', () => {
     // The T06 caveat: that node's api has to be bound somewhere this host reaches,
     // and the local address says nothing about a machine that is not this one.
-    assert.equal(publisherUrl({ host: '203.0.113.58' }), 'http://203.0.113.58:10055');
+    assert.equal(publisherUrl({ host: '192.0.2.58' }), 'http://192.0.2.58:10055');
   });
 
   it('keeps an alias no ssh config knows, rather than losing the host', () => {
@@ -126,8 +126,8 @@ describe('beePublisherUrlFor', () => {
 describe('beeApiUrlFor', () => {
   it('strips ssh user info as well — the manager cannot use it either', () => {
     assert.equal(
-      beeApiUrlFor(profile({ host: 'deploy@203.0.113.58' })),
-      'http://203.0.113.58:10055',
+      beeApiUrlFor(profile({ host: 'deploy@192.0.2.58' })),
+      'http://192.0.2.58:10055',
     );
   });
 
