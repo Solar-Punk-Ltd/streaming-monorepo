@@ -152,7 +152,7 @@ describe('images.mjs builds each image from both commits and compares them', () 
 
     assert.equal(result.status, 1, result.stderr);
     assert.match(result.stdout, /^demo: image: differs/m);
-    assert.match(result.stdout, /^ {2}\/app\/app\.js {2}sha256/m, 'the changed file is named');
+    assert.match(result.stdout, /^ {4}\/app\/app\.js {2}sha256/m, 'the changed file is named, under its image');
     assert.match(result.stdout, /^images: 1 compared, 0 match, 1 differs$/m);
   });
 
