@@ -1,0 +1,1579 @@
+import {
+  slotCapFor,
+  ABR_NODE_POOL_GROUP_KIND,
+  ABR_RUNG_COMPONENTS,
+  assembleEngineSettingObservations,
+  assembleBeePublishers,
+  type BeePublishersResult,
+  beeTargetProblem,
+  defaultServicesFor,
+  type EngineName,
+  engineOfServices,
+  engineOverviewIdentity,
+  type EngineSettings,
+  engineForComponents,
+  engineSettingsFieldsFor,
+  type EngineSettingsOverview,
+  engineSettingsProblem,
+  getErrorMessage,
+  type GroupKind,
+  hasBeePublishers,
+  impliedRpcEndpointSource,
+  isLadderKind,
+  ladderMemberNames,
+  keptRpcEndpointSource,
+  liveUnavailableReason,
+  type NewDeploymentSetting,
+  type NodeMode,
+  effectiveNodeMode,
+  nodeModeProblem,
+  nullify,
+  type PublishUrlState,
+  type RpcEndpointSource,
+  rpcEndpointChoiceProblem,
+  rungFromMemberName,
+  rungOrder,
+  type StampGatedProfile,
+  type StampHealth,
+  stampHealthFrom,
+  STANDARD_GROUP_KIND,
+  STREAM_UPLOADER_SERVICE,
+} from '@streaming-infra-manager/common';
+
+import {
+  DeploymentGroupRepository,
+  MemberConfigWrite,
+  SharedProfileParams,
+} from './DeploymentGroupRepository.js';
+
+import {
+  DeploymentGroup,
+  Profile,
+  ProfileKind,
+  ProfileWithContainers,
+  TRANSITIONAL_STATUSES,
+} from '../types/index.js';
+
+import { portTableForEngine } from './versions/enginePortTable.js';
+
+import { ContainerRepository } from './ContainerRepository.js';
+import {
+  SHARED_ENGINE_SETTING_KEYS,
+  UPLOADER_ENGINE_SETTING_KEYS,
+} from './containerKeysSpec.js';
+import {
+  DeploymentOrchestrator,
+  DeployReservation,
+} from './DeploymentOrchestrator.js';
+import {
+  NodeReadLog,
+  readLogKey,
+  spellSuffix,
+  spellText,
+} from './nodeReadLog.js';
+import {
+  AllSlotsUsedError,
+  TargetNotVerifiedError,
+  ReservationInventoryPendingError,
+  GroupBusyError,
+  GroupRemovalRefusedError,
+  GroupExistsError,
+  GroupNotFoundError,
+  InvalidStackVersionError,
+  LadderGroupError,
+  ProfileBusyError,
+  ProfileInstanceChangedError,
+  EngineSettingsChangedError,
+  ProfileConfigError,
+  ProfileExistsError,
+  ProfileNotFoundError,
+  StackVersionNotFoundError,
+  NotesConflictError,
+} from './errors/index.js';
+import { EventBus } from './EventBus.js';
+import { Logger } from './Logger.js';
+import { deploymentEngineReadings } from './engineConfig/deploymentEngineReadings.js';
+import { engineTemplateTextIn } from './engineConfig/engineConfigTemplates.js';
+import {
+  localPublisherHost,
+  type LocalPublisherHostReader,
+} from './localHost.js';
+import { ProfileRepository } from './ProfileRepository.js';
+import { engineDefaultsAt } from './settings/engineHostDefaults.js';
+import {
+  initialStackSettingsFor,
+  initialStackSettingsOf,
+  leavesAdminLinkToManager,
+  managerLinkSettingsFor,
+  type NewDeploymentShape,
+} from './settings/newDeploymentSettings.js';
+import type { ManagerAdminLinkStore } from './adminLink/ManagerAdminLinkRepository.js';
+import { beePublisherUrlFor } from './StampService.js';
+import { isPendingStamp } from './stampLogic.js';
+import { stackRootOf } from './versions/stackPaths.js';
+import { deployOwnerOf } from './versions/buildLedger.js';
+import { portPlacementProblem } from './versions/stackContract.js';
+import type { InitialStackSettings, NewProfilePlacement, StoredStackSettings } from './ProfileRepository.js';
+import type { DeployTargets } from './ports/DeployTargets.js';
+import type { PortReservationRepository } from './ports/PortReservationRepository.js';
+import type {
+  StackVersionRecord,
+  StackVersionRepository,
+} from './versions/StackVersionRepository.js';
+
+const logger = Logger.getInstance();
+
+interface PgError {
+  code?: string;
+  constraint?: string;
+}
+
+const PG_UNIQUE_VIOLATION = '23505';
+
+/**
+ * Asks a rung's own bee node what state the batch recorded on it is in.
+ *
+ * Injected as functions rather than the whole StampService so this service keeps
+ * depending on nothing that talks to bee. Implemented by
+ * `StampService.stampHealthFor`, which never throws and answers `'unknown'` for a
+ * node it cannot reach.
+ */
+export type StampHealthProbe = (
+  profile: Profile,
+  stampId: string | null | undefined,
+) => Promise<StampHealth>;
+
+/**
+ * Asks whether a bee node answers at the address the ladder publishes.
+ *
+ * A separate probe from the one above, and deliberately so: that one reaches a
+ * node the way the manager itself does, while this one uses the exact URL the
+ * uploader is handed. For a member on a declared remote host the two addresses
+ * differ and verifying the first proves nothing about the second. For a local
+ * member they name the same port on the same host by two names, and the probe
+ * still proves the name the uploader gets rather than the one the manager uses.
+ * Implemented by `StampService.publishUrlStateFor`.
+ */
+export type PublishUrlProbe = (url: string) => Promise<PublishUrlState>;
+
+// The honest answers for a caller wired without probes: nothing asked, so nothing
+// is known. Readiness treats both as unverified, which is exactly what they are.
+/** A service built without a target reader can allocate nothing: a reservation needs a daemon. */
+const REFUSES_EVERY_TARGET: DeployTargets = {
+  daemonIdFor: async (host) => {
+    throw new TargetNotVerifiedError(host ?? 'localhost');
+  },
+};
+
+const NO_STAMP_PROBE: StampHealthProbe = async (_profile, stampId) =>
+  stampHealthFrom(stampId, null);
+const NO_URL_PROBE: PublishUrlProbe = async () => 'unknown';
+
+/**
+ * The engine settings this profile still reads once it stops encoding a
+ * ladder, or undefined for a profile that runs no engine, whose settings stay
+ * as they are. Keys rather than values, so the write keeps a value the
+ * settings page saved after this edit read the row.
+ */
+function engineSettingKeysWithoutLadder(profile: Profile): readonly string[] | undefined {
+  const engine = engineOfServices(defaultServicesFor(profile));
+  if (!engine) return undefined;
+  return engineSettingsFieldsFor(engine, { abr: false }).map((field) => field.key);
+}
+
+/**
+ * The next `count` free `<group>-profile-N` names, skipping any already taken.
+ *
+ * A fan-out member's name is a label rather than a position, so a taken one is
+ * stepped over. A ladder rung's name says which rung it is, so a ladder builds
+ * its names elsewhere and refuses a collision rather than skipping past it.
+ */
+function nextFreeMemberNames(
+  groupName: string,
+  count: number,
+  taken: ReadonlySet<string>,
+): { name: string }[] {
+  const names: { name: string }[] = [];
+  let n = 1;
+  while (names.length < count) {
+    let candidate = `${groupName}-profile-${n}`;
+    while (taken.has(candidate)) {
+      n += 1;
+      candidate = `${groupName}-profile-${n}`;
+    }
+    names.push({ name: candidate });
+    n += 1;
+  }
+  return names;
+}
+
+/** The origin a sibling's stored web2 admin token is for, where one is recorded, for a member that copies its settings. */
+function adminTokenOriginOf(stored: StoredStackSettings | null): Pick<InitialStackSettings, 'adminTokenOrigin'> {
+  const origin = stored?.adminTokenOrigin ?? null;
+  return origin === null ? {} : { adminTokenOrigin: origin };
+}
+
+/** Whether a deployment of this shape runs a stream uploader, which is what reports to the web2 admin. */
+function runsStreamUploader({ kind, components }: NewDeploymentShape): boolean {
+  return defaultServicesFor({ kind, components: components ? [...components] : null }).includes(STREAM_UPLOADER_SERVICE);
+}
+
+/** What the create log says of the stack settings a deployment was given: their keys, never a value. */
+function stackSettingsNote(settings: InitialStackSettings): string {
+  const keys = [...Object.keys(settings.plain), ...Object.keys(settings.secret)];
+  const named = keys.length > 0 ? ` with stack settings ${keys.join(', ')}` : '';
+  return settings.copyManagerAdminToken ? `${named} and the manager's web2 admin token` : named;
+}
+
+/**
+ * The containers a settings change has to bring back with the new values.
+ *
+ * The engine always, and the uploader as well when a key the uploader also
+ * reads has a different value than before. That is the keys compose hands to
+ * the uploader rather than to the engine, and the keys it hands to BOTH.
+ *
+ * ⛔ The second half was missing until 2026-09-15: only the first list was
+ * consulted, so changing the segment length recreated the engine and left the
+ * uploader dating segments by the old one. The intent stated here was always
+ * right. The list it read was the wrong list.
+ */
+function servicesToRecreate(
+  engine: EngineName,
+  before: EngineSettings,
+  after: EngineSettings,
+): string[] {
+  const uploaderChanged = [
+    ...UPLOADER_ENGINE_SETTING_KEYS,
+    ...SHARED_ENGINE_SETTING_KEYS,
+  ].some((key) => before[key] !== after[key]);
+  return uploaderChanged ? [engine, STREAM_UPLOADER_SERVICE] : [engine];
+}
+
+export class ProfileService {
+  /** One spell per probe, so a node that stays down says so once, not per read. */
+  private readonly readLog = new NodeReadLog();
+
+  constructor(
+    private readonly repo: ProfileRepository,
+    private readonly containers: ContainerRepository,
+    private readonly orchestrator: DeploymentOrchestrator,
+    private readonly events: EventBus,
+    private readonly groupRepo: DeploymentGroupRepository,
+    private readonly versions: StackVersionRepository,
+    /** Which daemon a deployment's host reaches, so its ports are reserved on that one. */
+    private readonly targets: DeployTargets = REFUSES_EVERY_TARGET,
+    private readonly probeStampHealth: StampHealthProbe = NO_STAMP_PROBE,
+    private readonly probePublishUrl: PublishUrlProbe = NO_URL_PROBE,
+    private readonly reservations?: Pick<PortReservationRepository, 'inventorySeededAt'>,
+    /** What a container on this host reaches a locally deployed node on. */
+    private readonly readLocalPublisherHost: LocalPublisherHostReader = localPublisherHost,
+    /**
+     * The manager's own chain endpoint, BEE_RPC_ENDPOINT, or null for none.
+     * Only whether there is one is decided here: the value itself becomes a
+     * line in an env file at deploy and reaches nothing else.
+     */
+    private readonly managerRpcEndpoint: string | null = null,
+    /** The web2 admin link every new uploader deployment starts with, where a create leaves the link to it. */
+    private readonly managerAdminLink?: Pick<ManagerAdminLinkStore, 'read'>,
+  ) {}
+
+  /**
+   * What a create is given of its stack settings: what it names, and the
+   * manager's own web2 admin link for a deployment that runs a stream
+   * uploader when the create names neither key and asks for no token, with the
+   * stored token copied in for that address.
+   */
+  private async createdStackSettings(
+    name: string,
+    version: StackVersionRecord,
+    shape: NewDeploymentShape,
+    input: { stack_settings?: readonly NewDeploymentSetting[] | null; use_manager_admin_token?: boolean | null },
+  ): Promise<InitialStackSettings> {
+    const named = input.stack_settings ?? [];
+    const asked = input.use_manager_admin_token === true;
+    const linked =
+      this.managerAdminLink && leavesAdminLinkToManager(named, asked) && runsStreamUploader(shape)
+        ? managerLinkSettingsFor(await this.managerAdminLink.read(), version, shape)
+        : [];
+    return initialStackSettingsFor(name, version, shape, [...named, ...linked], asked || linked.length > 0);
+  }
+
+  /**
+   * Both request paths ask the same two questions of the row they are about to
+   * store, over the whole row rather than over a patch. The request schema asks
+   * them too, with field-scoped messages, and cannot answer either on an
+   * update: no update body carries `kind` or `components`, so it cannot tell a
+   * gateway from a publisher.
+   */
+  private assertNodeChoicesHold(
+    name: string,
+    choice: {
+      kind: string;
+      components?: string[] | null;
+      node_mode?: NodeMode | null;
+      rpc_endpoint_source: RpcEndpointSource;
+      rpc_endpoint?: string | null;
+    },
+  ): void {
+    const modeProblem = nodeModeProblem(choice);
+    if (modeProblem) throw new ProfileConfigError(name, modeProblem);
+
+    const choiceProblem = rpcEndpointChoiceProblem({
+      source: choice.rpc_endpoint_source,
+      url: choice.rpc_endpoint,
+      managerHasEndpoint: Boolean(this.managerRpcEndpoint),
+      nodeMode: choice.node_mode,
+      services: defaultServicesFor(choice),
+    });
+    if (choiceProblem) throw new ProfileConfigError(name, choiceProblem);
+  }
+
+  /**
+   * Where a new deployment goes: the version it runs, the cap of the lower
+   * of its own maximum and the manager's, the daemon its host reaches, and
+   * the table every port of its slot is reserved from.
+   */
+  private async placementFor(
+    version: StackVersionRecord,
+    host: string | null,
+    components?: readonly string[] | null,
+  ): Promise<NewProfilePlacement> {
+    if (version.contract?.allocationProblem) {
+      throw new InvalidStackVersionError(`${version.name}: ${version.contract.allocationProblem}`);
+    }
+    if (!version.contract?.ports.length) {
+      throw new InvalidStackVersionError(`${version.name} has no readable port table. Rebuild the version before allocating a deployment.`);
+    }
+    if (!await this.reservations?.inventorySeededAt()) {
+      throw new ReservationInventoryPendingError();
+    }
+    return {
+      stackVersionId: version.id,
+      slotCap: slotCapFor(version.contract),
+      daemonId: await this.targets.daemonIdFor(host),
+      table: portTableForEngine(version.contract, engineForComponents(components)),
+    };
+  }
+
+  private publishChanged(profile: ProfileWithContainers): void {
+    this.events.publish({ type: 'profile.changed', profile });
+  }
+
+  /**
+   * Runs a write that a deploy claim has already been taken for, giving the
+   * claim back if the write fails.
+   *
+   * Without this a profile whose settings could not be written would sit in
+   * DEPLOYING with no job to end it.
+   */
+  private async writeOrCancel<T>(
+    reservations: readonly DeployReservation[],
+    write: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await write();
+    } catch (err) {
+      await this.cancelAll(reservations);
+      throw err;
+    }
+  }
+
+  private async cancelAll(
+    reservations: readonly DeployReservation[],
+  ): Promise<void> {
+    for (const reservation of reservations) {
+      await this.orchestrator.cancelReservation(reservation);
+    }
+  }
+
+  async create(input: {
+    name: string;
+    kind: ProfileKind;
+    notes?: string | null;
+    components?: string[] | null;
+    host?: string | null;
+    feed_owner?: string | null;
+    feed_topic?: string | null;
+    private_key?: string | null;
+    public_key?: string | null;
+    stamp_id?: string | null;
+    bee_publishers?: string | null;
+    bee_url?: string | null;
+    rpc_endpoint?: string | null;
+    /**
+     * Absent is read off the rest of the body: custom when an address is given,
+     * the stack's for an ultra-light node, else the manager's own endpoint when
+     * it has one and the stack's otherwise.
+     */
+    rpc_endpoint_source?: RpcEndpointSource | null;
+    /** Absent is the mode the stack ships this deployment's node in. */
+    node_mode?: NodeMode | null;
+    srt_passphrase?: string | null;
+    /** Absent means the default version. */
+    stack_version_id?: number | null;
+    /** Absent leaves the column empty, so the version's own fallbacks stand. */
+    engine_settings?: EngineSettings | null;
+    /** Absent stores none, so the version's values stand. Checked against the list its version gives this deployment. */
+    stack_settings?: readonly NewDeploymentSetting[] | null;
+    /** True copies the manager's stored web2 admin token into the deployment at its insert. */
+    use_manager_admin_token?: boolean | null;
+  }): Promise<ProfileWithContainers> {
+    const existing = await this.repo.findByName(input.name);
+    if (existing) {
+      throw new ProfileExistsError(input.name);
+    }
+
+    const version = await this.versionForNewDeployment(input.stack_version_id);
+
+    // The same rule the update path applies, over the same shape. The schema
+    // checks these per-field too, with nicer field-scoped messages. This is the
+    // one place both paths share, so they cannot drift apart again.
+    const configProblem = beeTargetProblem({
+      kind: input.kind,
+      components: input.components?.length ? input.components : null,
+      bee_publishers: input.bee_publishers ?? null,
+      bee_url: input.bee_url ?? null,
+    });
+    if (configProblem) {
+      throw new ProfileConfigError(input.name, configProblem);
+    }
+
+    // A body that names no source takes the manager's endpoint when there is
+    // one and this node runs a chain at all, and an address with no source is
+    // the custom one it has always been.
+    const createdComponents = input.components?.length ? input.components : null;
+    const rpcEndpointSource =
+      input.rpc_endpoint_source ??
+      impliedRpcEndpointSource({
+        url: input.rpc_endpoint,
+        managerHasEndpoint: Boolean(this.managerRpcEndpoint),
+        nodeMode: input.node_mode,
+        services: defaultServicesFor({ kind: input.kind, components: createdComponents }),
+      });
+    this.assertNodeChoicesHold(input.name, {
+      kind: input.kind,
+      components: createdComponents,
+      node_mode: input.node_mode,
+      rpc_endpoint_source: rpcEndpointSource,
+      rpc_endpoint: input.rpc_endpoint,
+    });
+
+    const engineSettings = input.engine_settings ?? {};
+    if (Object.keys(engineSettings).length > 0) {
+      this.assertCreatableEngineSettings(input, version, engineSettings);
+    }
+    const stackSettings = await this.createdStackSettings(
+      input.name,
+      version,
+      { kind: input.kind, components: createdComponents, host: input.host },
+      input,
+    );
+
+    let row;
+    try {
+      row = await this.repo.insertWithFreeSlot(
+        input.name,
+        input.kind,
+        'DEPLOYING',
+        {
+          notes: input.notes,
+          components: input.components?.length ? input.components : undefined,
+          host: input.host,
+          feed_owner: input.feed_owner,
+          feed_topic: input.feed_topic,
+          private_key: input.private_key,
+          public_key: input.public_key,
+          stamp_id: input.stamp_id,
+          bee_publishers: input.bee_publishers,
+          bee_url: input.bee_url,
+          rpc_endpoint: input.rpc_endpoint,
+          rpc_endpoint_source: rpcEndpointSource,
+          node_mode: input.node_mode,
+          srt_passphrase: input.srt_passphrase,
+        },
+        await this.placementFor(version, input.host ?? null, input.components),
+        engineSettings,
+        stackSettings,
+      );
+    } catch (err) {
+      const pgErr = err as PgError;
+      if (
+        pgErr.code === PG_UNIQUE_VIOLATION &&
+        pgErr.constraint === 'profiles_pkey'
+      ) {
+        throw new ProfileExistsError(input.name);
+      }
+      throw err;
+    }
+    if (!row) {
+      const cap = slotCapFor(version.contract);
+      throw new AllSlotsUsedError(cap, portPlacementProblem(version.contract?.ports ?? [], cap));
+    }
+
+    logger.info(
+      `[ProfileService] Created profile ${input.name} (kind=${input.kind}, slot=${row.port_slot}, version=${version.name})${stackSettingsNote(stackSettings)}`,
+    );
+    const withContainers = await this.containers.withContainers(row);
+    this.publishChanged(withContainers);
+
+    // The orchestrator marks the row ERROR if the deploy cannot start: it owns
+    // the row from here, and marking it here too would overwrite the reason.
+    await this.orchestrator.startInitialDeploy(
+      row,
+      input.components ?? undefined,
+      { host: input.host ?? undefined },
+    );
+
+    return withContainers;
+  }
+
+  async list(): Promise<ProfileWithContainers[]> {
+    const rows = await this.repo.list();
+    return Promise.all(rows.map((row) => this.containers.withContainers(row)));
+  }
+
+  async getByName(name: string): Promise<ProfileWithContainers> {
+    const row = await this.repo.findByName(name);
+    if (!row) throw new ProfileNotFoundError(name);
+    return this.containers.withContainers(row);
+  }
+
+  /**
+   * The SRT passphrase of one deployment, asked for by the page that is about
+   * to show or copy the URL carrying it. Null is a real answer: the deployment
+   * publishes under the host-wide passphrase, or under none. A deployment that
+   * is not there is not the same answer, so the row is read first.
+   */
+  async srtPassphraseOf(name: string): Promise<string | null> {
+    if (!(await this.repo.findByName(name))) {
+      throw new ProfileNotFoundError(name);
+    }
+    return this.repo.srtPassphraseOf(name);
+  }
+
+  /** A private read used only to remove this deployment's endpoint from logs. */
+  async rpcEndpointForRedaction(name: string): Promise<string | null> {
+    const snapshot = await this.repo.rpcEndpointOf(name);
+    if (!snapshot) throw new ProfileNotFoundError(name);
+    return snapshot.rpcEndpoint;
+  }
+
+  async update(
+    name: string,
+    input: {
+      notes?: string | null;
+      /** The revision the drawer loaded the notes at. Given, a moved one refuses the save. */
+      notes_revision?: number;
+      feed_owner?: string | null;
+      feed_topic?: string | null;
+      private_key?: string | null;
+      public_key?: string | null;
+      stamp_id?: string | null;
+      bee_publishers?: string | null;
+      bee_url?: string | null;
+      rpc_endpoint?: string | null;
+      /** Absent keeps the stored choice, unless the address it belongs to went. */
+      rpc_endpoint_source?: RpcEndpointSource | null;
+      /** A node's mode is chosen when it is created, so a different one is refused. */
+      node_mode?: NodeMode | null;
+      srt_passphrase?: string | null;
+    },
+  ): Promise<ProfileWithContainers> {
+    const existing = await this.getByName(name);
+    if (
+      (TRANSITIONAL_STATUSES as readonly string[]).includes(existing.status)
+    ) {
+      throw new ProfileBusyError(name, existing.status);
+    }
+
+    // Before the claim, so a drawer that loaded before another notes save is
+    // refused without the deployment ever leaving its status. The write below
+    // checks the revision again, for the save that lands in between.
+    const notesRevisionSent =
+      input.notes !== undefined ? input.notes_revision : undefined;
+    if (
+      notesRevisionSent !== undefined &&
+      notesRevisionSent !== existing.notes_revision
+    ) {
+      throw new NotesConflictError(name);
+    }
+
+    // The row the edit proposes, built once. The gate is asked about it, the
+    // claim is taken for it, and it is what is written and deployed, so the
+    // state that is judged is the state that lands. PUT replaces every
+    // editable field, so a field the body leaves out becomes null here the
+    // way the write stores it. The two secrets are the exception: neither is
+    // answered to a page, so a body that leaves one out keeps the stored one.
+    const { private_key: keyEdit, ...edits } = nullify({
+      notes: input.notes,
+      feed_owner: input.feed_owner,
+      feed_topic: input.feed_topic,
+      private_key: input.private_key,
+      public_key: input.public_key,
+      stamp_id: input.stamp_id,
+      bee_publishers: input.bee_publishers,
+      bee_url: input.bee_url,
+    });
+    const storedRpcEndpoint = await this.repo.rpcEndpointOf(
+      name,
+      deployOwnerOf(existing),
+    );
+    if (!storedRpcEndpoint) throw new ProfileInstanceChangedError(name);
+    const sourceClearsRpcEndpoint =
+      input.rpc_endpoint === undefined &&
+      input.rpc_endpoint_source !== undefined &&
+      input.rpc_endpoint_source !== null &&
+      input.rpc_endpoint_source !== 'custom';
+    const proposedRpcEndpoint =
+      input.rpc_endpoint !== undefined
+        ? input.rpc_endpoint
+        : sourceClearsRpcEndpoint
+          ? null
+          : storedRpcEndpoint.rpcEndpoint;
+    // Kept out of the nullify above, because for the passphrase an absent
+    // field and an explicit null are different answers: keep the stored one,
+    // and go back to the host-wide one.
+    const passphraseEdit = input.srt_passphrase;
+    // The mode is one of those too, and for a third reason: a node's mode is
+    // chosen when it is created, so a body may repeat the stored one and may
+    // not change it. Compared as the modes the node actually runs in, because
+    // a stored null is the mode the stack ships and a page shows that, not the
+    // null.
+    const modeEdit = input.node_mode ?? undefined;
+    if (modeEdit && modeEdit !== effectiveNodeMode(existing)) {
+      throw new ProfileConfigError(name, 'a node’s mode is chosen when it is created');
+    }
+    const rpcEndpointSource =
+      input.rpc_endpoint_source ??
+      keptRpcEndpointSource({
+        url: proposedRpcEndpoint,
+        stored: existing.rpc_endpoint_source,
+        managerHasEndpoint: Boolean(this.managerRpcEndpoint),
+        nodeMode: modeEdit ?? existing.node_mode,
+        services: defaultServicesFor(existing),
+      });
+    const proposed: Profile = {
+      ...existing,
+      ...edits,
+      rpc_endpoint_source: rpcEndpointSource,
+      node_mode: modeEdit ?? existing.node_mode,
+      has_private_key: keyEdit !== null || existing.has_private_key,
+      has_srt_passphrase:
+        passphraseEdit === undefined
+          ? existing.has_srt_passphrase
+          : passphraseEdit !== null,
+    };
+    this.assertNodeChoicesHold(name, {
+      ...proposed,
+      rpc_endpoint: proposedRpcEndpoint,
+    });
+
+    // A body that omits bee_publishers clears it. For an abr-uploader that
+    // silently removes the only thing it publishes through, and neither yup
+    // test can catch it: `kind` and `components` are not in an update body.
+    const configProblem = beeTargetProblem({
+      kind: proposed.kind,
+      components: proposed.components,
+      bee_publishers: proposed.bee_publishers,
+      bee_url: proposed.bee_url,
+    });
+    if (configProblem) {
+      throw new ProfileConfigError(name, configProblem);
+    }
+
+    // Turning the ladder off in this same write leaves the rung settings behind,
+    // where nothing reads them and the settings page offers them only a reset.
+    // They go out with the pool string, in one statement, so no state exists in
+    // which the column holds settings the deployment cannot act on.
+    const laddersEnded =
+      hasBeePublishers(existing) && !proposed.bee_publishers?.trim();
+
+    // Claimed before anything is written. Two concurrent PUTs both pass the
+    // busy check above, so without the claim the loser would rewrite the row
+    // and the env file under the winner's running deploy, then mark the profile
+    // ERROR while that deploy was still going.
+    const reservation = await this.orchestrator.reserveDeploy(
+      proposed,
+      existing.components ?? undefined,
+    );
+
+    const row = await this.writeOrCancel([reservation], async () => {
+      const written = await this.repo.updateEditable(
+        name,
+        existing.kind,
+        {
+          ...edits,
+          private_key: keyEdit,
+          ...(input.rpc_endpoint === undefined && !sourceClearsRpcEndpoint
+            ? {}
+            : { rpc_endpoint: proposedRpcEndpoint }),
+          rpc_endpoint_source: rpcEndpointSource,
+          ...(modeEdit === undefined ? {} : { node_mode: modeEdit }),
+          ...(passphraseEdit === undefined
+            ? {}
+            : { srt_passphrase: passphraseEdit }),
+          components: existing.components,
+        },
+        laddersEnded ? engineSettingKeysWithoutLadder(existing) : undefined,
+        notesRevisionSent,
+      );
+      if (!written) {
+        throw (await this.repo.findByName(name))
+          ? new NotesConflictError(name)
+          : new ProfileNotFoundError(name);
+      }
+      return written;
+    });
+
+    logger.info(`[ProfileService] Updated profile ${name}; redeploying`);
+
+    const withContainers: ProfileWithContainers = {
+      ...row,
+      containers: existing.containers,
+      pendingStamp: isPendingStamp(row),
+      network_host: existing.network_host,
+    };
+
+    this.publishChanged(withContainers);
+
+    await this.orchestrator.runReserved(reservation, row);
+
+    return this.containers.withContainers(row);
+  }
+
+  /**
+   * Saves the notes and nothing else: no claim, no gate, no deploy.
+   *
+   * A note is text on the row that no container reads, so it can be saved
+   * while a stamp is invalid, a node is unfunded, or a deploy is running. The
+   * revision is the one the page loaded, and a note saved elsewhere since is
+   * a refusal, not an overwrite.
+   */
+  async updateNotes(
+    name: string,
+    notes: string | null,
+    loadedRevision: number,
+  ): Promise<ProfileWithContainers> {
+    const row = await this.repo.updateNotes(name, notes, loadedRevision);
+    if (!row) {
+      throw (await this.repo.findByName(name))
+        ? new NotesConflictError(name)
+        : new ProfileNotFoundError(name);
+    }
+    const withContainers = await this.containers.withContainers(row);
+    this.publishChanged(withContainers);
+    return withContainers;
+  }
+
+  /**
+   * The version a new deployment runs: the one asked for, else the default.
+   *
+   * Only a version that finished building can be chosen. A building one has no
+   * scripts to run yet, and a failed one has whatever its failed build left
+   * behind. Answered as a rejected body either way, because the reason is the
+   * only useful text.
+   */
+  private async versionForNewDeployment(
+    id: number | null | undefined,
+  ): Promise<StackVersionRecord> {
+    const version =
+      id == null
+        ? await this.versions.findDefault()
+        : await this.versions.findById(id);
+    if (!version) {
+      throw new InvalidStackVersionError(
+        id == null
+          ? 'No stack version is the default. Set one on the Versions page.'
+          : `Stack version ${id} does not exist. Pick one from the Versions page.`,
+      );
+    }
+    if (version.status !== 'ready') {
+      throw new InvalidStackVersionError(
+        `${version.name} is ${version.status}. Only a version that finished building can run a deployment.`,
+      );
+    }
+    return version;
+  }
+
+  /**
+   * Which media server a deployment runs and whether it encodes a ladder.
+   *
+   * Takes the shape both doors have rather than a stored row, because the
+   * create path has to answer the same question before there is a row.
+   *
+   * ABR-ness follows the pool string, because that is what `writeProfileEnv`
+   * turns `ABR_ENABLED=true` on for. Reading it any other way would let the
+   * settings route accept a value the deploy then refuses.
+   */
+  private engineFacts(
+    profile: { name: string } & StampGatedProfile,
+  ): { engine: EngineName; abr: boolean } {
+    const engine = engineOfServices(defaultServicesFor(profile));
+    if (!engine) {
+      throw new ProfileConfigError(
+        profile.name,
+        `${profile.name} runs no media server, so it has no engine settings. Only a stream or an ABR uploader has them.`,
+      );
+    }
+    return { engine, abr: hasBeePublishers(profile) };
+  }
+
+  /**
+   * The gate a save of the engine settings passes, applied before the row exists.
+   *
+   * A value sent with the create body is written into `.env.<profile>` on the
+   * very first deploy, so a pair the engine refuses puts a brand new deployment
+   * straight into a crash loop with the reason only in its container logs. The
+   * engine settings route cannot catch it a moment later either, because it
+   * refuses a deployment that is still DEPLOYING. The version's own fallbacks are read
+   * for the same reason the update path reads them: either half of a pair may
+   * be unset, and judging one against the stack's own numbers passes a pair the
+   * host then refuses.
+   */
+  private assertCreatableEngineSettings(
+    input: { name: string } & StampGatedProfile,
+    version: StackVersionRecord,
+    settings: EngineSettings,
+  ): void {
+    const { engine, abr } = this.engineFacts(input);
+    const defaults = engineDefaultsAt(
+      stackRootOf(version),
+      engine,
+      version.contract,
+    );
+    const problem = engineSettingsProblem(engine, settings, {
+      abr,
+      defaults: defaults.values,
+    });
+    if (problem) throw new ProfileConfigError(input.name, problem);
+  }
+
+  /** What `GET /profiles/:name/engine` answers, minus the live block. */
+  async engineOverview(name: string): Promise<EngineSettingsOverview> {
+    const snapshot = await this.repo.engineOverviewSnapshot(name);
+    if (!snapshot) throw new ProfileNotFoundError(name);
+    const { profile, engineConfig } = snapshot;
+    const { engine, abr } = this.engineFacts(profile);
+    const identity = engineOverviewIdentity(profile);
+    const version = await this.versions.findById(profile.stack_version_id);
+    if (!version) throw new StackVersionNotFoundError(profile.stack_version_id);
+    const root = stackRootOf(version);
+    const contract = version.contract;
+    const defaults = engineDefaultsAt(root, engine, contract);
+    const fields = engineSettingsFieldsFor(engine, { abr });
+    const readings = deploymentEngineReadings(
+      engine,
+      fields,
+      { template: engineTemplateTextIn(root, engine), hasOwn: profile.has_engine_config, own: engineConfig },
+      { abr },
+    );
+    const observed = assembleEngineSettingObservations({ fields, settings: profile.engine_settings, defaults, readings });
+    return {
+      identity,
+      engine,
+      abr,
+      settings: profile.engine_settings,
+      defaults: defaults.values,
+      defaultSources: defaults.sources,
+      ...observed,
+      fields,
+      liveUnavailableReason: liveUnavailableReason(engine, contract?.features),
+    };
+  }
+
+  /**
+   * Stores the engine settings and recreates the containers that read them,
+   * for the engine settings route that scripts save and recreate through.
+   *
+   * Almost always that is the engine alone, and the Bee node and the uploader
+   * are left running because taking them down would interrupt an upload that
+   * has nothing to do with the change. The exceptions are the keys the uploader
+   * reads too: `OME_HLS_POLL_INTERVAL_MS`, which compose puts in the uploader's
+   * environment alone, and `HLS_FRAGMENT`, which both containers read. A change
+   * to either recreates the uploader as well, or the new value never reaches
+   * the process that reads it.
+   *
+   * The stored settings are read first, with the revision a deployment's
+   * settings page saves under, and the write is refused once a page save has
+   * moved that revision. The settings replace what is stored whole, so without
+   * that a page save landing between this read and the write would be undone
+   * with nobody told.
+   */
+  async updateEngineSettings(
+    name: string,
+    settings: EngineSettings,
+    expectedInstanceId?: string,
+  ): Promise<ProfileWithContainers> {
+    const stored = await this.repo.stackSettingsOf(name);
+    if (!stored) throw new ProfileNotFoundError(name);
+    const existing = await this.getByName(name);
+    if (expectedInstanceId !== undefined && existing.instance_id !== expectedInstanceId) {
+      throw new ProfileInstanceChangedError(name);
+    }
+    if (
+      (TRANSITIONAL_STATUSES as readonly string[]).includes(existing.status)
+    ) {
+      throw new ProfileBusyError(name, existing.status);
+    }
+
+    const { engine, abr } = this.engineFacts(existing);
+    const version = structuredClone(await this.versions.findById(existing.stack_version_id));
+    if (!version) {
+      throw new ProfileConfigError(name, `Stack version ${existing.stack_version_id} no longer exists. Restore the version before deploying. No deployment was started.`);
+    }
+    const defaults = engineDefaultsAt(stackRootOf(version), engine, version.contract);
+    const problem = engineSettingsProblem(engine, settings, {
+      abr,
+      defaults: defaults.values,
+    });
+    if (problem) {
+      throw new ProfileConfigError(name, problem);
+    }
+
+    const services = servicesToRecreate(
+      engine,
+      stored.engine,
+      settings,
+    );
+
+    // Claimed before the settings are written, for the same reason the PUT
+    // path claims first: two saves that both pass the busy check would both
+    // store, and the one refused the deploy would have left its settings behind
+    // under the other one's running recreate.
+    const reservation = await this.orchestrator.reserveDeploy(
+      existing,
+      services,
+      version,
+    );
+
+    const row = await this.writeOrCancel([reservation], async () => {
+      const claimed = reservation.claimedProfile;
+      const referenceId = reservation.build?.referenceId;
+      if (!claimed || referenceId == null) throw new Error('An engine settings save has no claimed job.');
+      const written = await this.repo.updateEngineSettings(name, settings, {
+        ...deployOwnerOf(claimed), jobReferenceId: referenceId, settingsRevision: stored.revision,
+      });
+      if (!written) {
+        const current = await this.repo.findByName(name);
+        if (current && current.instance_id !== claimed.instance_id) throw new ProfileInstanceChangedError(name);
+        throw new EngineSettingsChangedError(name);
+      }
+      return written;
+    });
+
+    logger.info(
+      `[ProfileService] Updated engine settings for ${name}; recreating ${services.join(', ')}`,
+    );
+
+    this.publishChanged({
+      ...row,
+      containers: existing.containers,
+      pendingStamp: isPendingStamp(row),
+      network_host: existing.network_host,
+    });
+
+    await this.orchestrator.runReserved(reservation, row);
+
+    return this.containers.withContainers(row);
+  }
+
+  async remove(
+    name: string,
+    input: { all?: boolean; expectedInstanceId?: string } = {},
+  ): Promise<ProfileWithContainers> {
+    const profile = await this.getByName(name);
+    if ((TRANSITIONAL_STATUSES as readonly string[]).includes(profile.status)) {
+      throw new ProfileBusyError(name, profile.status);
+    }
+    const removal = await this.orchestrator.startRemove(profile, input);
+    return { ...removal.profile, containers: profile.containers, pendingStamp: profile.pendingStamp, network_host: profile.network_host };
+  }
+
+  async listGroups(): Promise<DeploymentGroup[]> {
+    return this.groupRepo.list();
+  }
+
+  async removeEmptyGroup(id: number, expectedName: string): Promise<void> {
+    const result = await this.groupRepo.removeEmptyGroup(id, expectedName);
+    if (result === 'changed' || result === 'not_empty') throw new GroupRemovalRefusedError(id, result);
+  }
+
+  /**
+   * Members of a pool, in ascending rung order.
+   *
+   * Pool-ness itself is *not* derived here: it is `deployment_groups.kind`, so
+   * a pool with a rung removed is still a pool, which is the moment an operator
+   * most needs it reported as one. What this derives is the narrower question of
+   * which rung each member publishes, read from its name. A member whose name
+   * carries no rung is not one and is skipped.
+   */
+  private async ladderMembersOf(
+    group: DeploymentGroup,
+  ): Promise<{ rung: string; profile: Profile }[]> {
+    const members = await this.groupRepo.listMembers(group.id);
+    return members
+      .map((profile) => ({
+        rung: rungFromMemberName(group.name, profile.name),
+        profile,
+      }))
+      .filter((m): m is { rung: string; profile: Profile } => m.rung !== null)
+      .sort((a, b) => rungOrder(a.rung) - rungOrder(b.rung));
+  }
+
+  private assertNotLadder(group: DeploymentGroup, reason: string): void {
+    if (isLadderKind(group.kind)) {
+      throw new LadderGroupError(group.name, reason);
+    }
+  }
+
+  async createGroup(input: {
+    group_name: string;
+    size: number;
+    kind: ProfileKind;
+    notes?: string | null;
+    components?: string[];
+    host?: string;
+    feed_owner?: string;
+    feed_topic?: string;
+    private_key?: string;
+    public_key?: string;
+    stamp_id?: string;
+    srt_passphrase?: string;
+    abr_ladder?: boolean;
+    /** One answer for every member. See SharedProfileParams. */
+    node_mode?: NodeMode | null;
+    rpc_endpoint_source?: RpcEndpointSource | null;
+    rpc_endpoint?: string | null;
+    /** Absent means the default version. */
+    stack_version_id?: number | null;
+    /**
+     * What every member is created with. Absent leaves each column empty, so
+     * the version's own fallbacks stand for the whole group.
+     */
+    engine_settings?: EngineSettings | null;
+    /** What every member is created with, checked against the list its version gives such a member. Absent stores none. */
+    stack_settings?: readonly NewDeploymentSetting[] | null;
+    /** True copies the manager's stored web2 admin token into every member at its insert. */
+    use_manager_admin_token?: boolean | null;
+  }): Promise<{ group: DeploymentGroup; profiles: ProfileWithContainers[] }> {
+    // The same invariant updateGroupConfig enforces, at the other door. A pool's
+    // rungs each pay with their own batch, sized for that rung's bitrate, so one
+    // stamp across all four is exactly the failure a node per rung exists to
+    // prevent, and `shared` below is applied to every member, so accepting it
+    // here would write it four times. Refusing it only on the update path meant
+    // POST could create the state PATCH then refused to change.
+    if (input.abr_ladder && input.stamp_id) {
+      throw new LadderGroupError(
+        input.group_name,
+        'each rung buys its own postage batch, so one stamp cannot be set for the whole pool — create it first, then buy per rung from the Uploaders tab',
+      );
+    }
+
+    const existingGroup = await this.groupRepo.findByName(input.group_name);
+    if (existingGroup) {
+      throw new GroupExistsError(input.group_name);
+    }
+
+    const version = await this.versionForNewDeployment(input.stack_version_id);
+
+    const memberComponents = input.abr_ladder
+      ? [...ABR_RUNG_COMPONENTS]
+      : input.components && input.components.length > 0
+        ? input.components
+        : null;
+
+    // The gate the single create applies, over the services the members are
+    // actually given. A node pool is bee-uploaders alone, so this is where it
+    // is told that it runs no engine to read them.
+    const engineSettings = input.engine_settings ?? {};
+    if (Object.keys(engineSettings).length > 0) {
+      this.assertCreatableEngineSettings(
+        { name: input.group_name, kind: input.kind, components: memberComponents },
+        version,
+        engineSettings,
+      );
+    }
+    const stackSettings = await this.createdStackSettings(
+      input.group_name,
+      version,
+      { kind: input.kind, components: memberComponents, host: input.host },
+      input,
+    );
+
+    // The same two questions the single create asks, over the services the
+    // members are actually given: a pool's rungs are Bee nodes whatever the
+    // body's components say, so an ultra-light pool is refused here rather than
+    // deployed as four nodes that cannot upload.
+    const rpcEndpointSource =
+      input.rpc_endpoint_source ??
+      impliedRpcEndpointSource({
+        url: input.rpc_endpoint,
+        managerHasEndpoint: Boolean(this.managerRpcEndpoint),
+        nodeMode: input.node_mode,
+        services: defaultServicesFor({ kind: input.kind, components: memberComponents }),
+      });
+    this.assertNodeChoicesHold(input.group_name, {
+      kind: input.kind,
+      components: memberComponents,
+      node_mode: input.node_mode,
+      rpc_endpoint_source: rpcEndpointSource,
+      rpc_endpoint: input.rpc_endpoint,
+    });
+
+    const usedNames = new Set((await this.repo.list()).map((p) => p.name));
+
+    const members: { name: string }[] = [];
+
+    if (input.abr_ladder) {
+      // A ladder's names are not negotiable: the rung lives in the name, so a
+      // taken name cannot be skipped past the way a fan-out member can. Fail
+      // loudly instead of quietly building a ladder with a gap in it.
+      for (const name of ladderMemberNames(input.group_name)) {
+        if (usedNames.has(name)) {
+          throw new ProfileExistsError(name);
+        }
+        usedNames.add(name);
+        members.push({ name });
+      }
+    } else {
+      members.push(
+        ...nextFreeMemberNames(input.group_name, input.size, usedNames),
+      );
+    }
+
+    const placement = await this.placementFor(version, input.host ?? null, memberComponents);
+    const shared: SharedProfileParams = {
+      kind: input.kind,
+      notes: input.notes ?? null,
+      components: memberComponents,
+      host: input.host ?? null,
+      feed_owner: input.feed_owner ?? null,
+      feed_topic: input.feed_topic ?? null,
+      private_key: input.private_key ?? null,
+      public_key: input.public_key ?? null,
+      stamp_id: input.stamp_id ?? null,
+      srt_passphrase: input.srt_passphrase ?? null,
+      node_mode: input.node_mode ?? null,
+      rpc_endpoint_source: rpcEndpointSource,
+      rpc_endpoint: input.rpc_endpoint ?? null,
+      stack_version_id: version.id,
+      engine_settings: engineSettings,
+      stack_settings: stackSettings,
+      slot_cap: placement.slotCap,
+      daemon_id: placement.daemonId,
+      table: placement.table,
+    };
+
+    const kind: GroupKind = input.abr_ladder
+      ? ABR_NODE_POOL_GROUP_KIND
+      : STANDARD_GROUP_KIND;
+
+    const { group, profiles } = await this.groupRepo.createGroupWithMembers(
+      input.group_name,
+      kind,
+      members,
+      shared,
+    );
+
+    logger.info(
+      `[ProfileService] Created group ${group.name} with ${profiles.length} member(s)` +
+        `${input.abr_ladder ? ' (ABR node pool)' : ''} on ${version.name}${stackSettingsNote(stackSettings)}; deploying`,
+    );
+
+    return { group, profiles: await this.deployNewMembers(profiles) };
+  }
+
+  /**
+   * The BEE_PUBLISHERS value for a ladder group.
+   *
+   * Emitted only when every rung has a batch that will still be honoured.
+   * `BeePublisherPool.perRung` refuses a ladder with a rung missing, so a partial
+   * string would fail later and less clearly than naming the rung that is not
+   * ready, and a string built from expired batches is worse again, because it
+   * looks finished and fails on every upload.
+   *
+   * Neither the profile row nor the composed URL can answer that on its own:
+   *
+   *  - `profiles.stamp_id` records which batch a rung was pointed at, not whether
+   *    the batch is still alive. Batches are paid, finite leases. They run out on
+   *    their own and nothing writes that back.
+   *  - the URL is a host plus `10005 + slot*10`, so it always *looks* like an
+   *    address whether or not anything is there, and its host half comes either
+   *    from a field that holds a *deploy* target, which may be an ssh alias or
+   *    `user@host` rather than a network address, or, for a member deployed here,
+   *    from `readLocalPublisherHost`, which is resolved once for the whole pool.
+   *
+   * So each rung is checked twice, all rungs in parallel on a short timeout: its
+   * node is asked about its batch, and the exact address that goes into the string
+   * is asked whether anything answers. A check that cannot be completed leaves its
+   * rung *unverified* rather than unready, an unreachable node or an address the
+   * manager cannot loop back to is not evidence of a fault, so it degrades to a
+   * caution instead of a false alarm.
+   */
+  async beePublishersForGroup(groupId: number): Promise<BeePublishersResult> {
+    const group = await this.groupRepo.findById(groupId);
+    if (!group) {
+      throw new GroupNotFoundError(groupId);
+    }
+
+    if (!isLadderKind(group.kind)) {
+      throw new LadderGroupError(
+        group.name,
+        'this group is not an ABR node pool, so it has no BEE_PUBLISHERS to assemble',
+      );
+    }
+
+    const members = await this.ladderMembersOf(group);
+    const publisherHost = await this.readLocalPublisherHost();
+    const urls = members.map(({ profile }) =>
+      beePublisherUrlFor(profile, publisherHost),
+    );
+
+    // Both probes swallow their own failures. The catches guard an injected probe
+    // that does not, so one bad node can never fail the whole request.
+    const probedAt = Date.now();
+    const since = () => Date.now() - probedAt;
+    const [stamps, urlStates] = await Promise.all([
+      Promise.all(
+        members.map(({ profile }) => {
+          const key = readLogKey(profile.name, 'stamp-probe');
+          return this.probeStampHealth(profile, profile.stamp_id)
+            .then((health) => {
+              this.readLog.noteRecovery(
+                key,
+                (note) => `[ProfileService] ${profile.name}: the stamp probe returns again, after ${spellText(note)}`,
+              );
+              return health;
+            })
+            .catch((err) => {
+              this.readLog.noteFailure(
+                key,
+                (note) =>
+                  `[ProfileService] ${profile.name}: stamp probe threw after ${since()}ms: ${getErrorMessage(err)}${spellSuffix(note)}`,
+              );
+              return stampHealthFrom(profile.stamp_id, null);
+            });
+        }),
+      ),
+      Promise.all(
+        urls.map((url, index) => {
+          const name = members[index]!.profile.name;
+          const key = readLogKey(name, 'url-probe');
+          return this.probePublishUrl(url)
+            .then((state) => {
+              this.readLog.noteRecovery(
+                key,
+                (note) => `[ProfileService] ${name}: the url probe returns again, after ${spellText(note)}`,
+              );
+              return state;
+            })
+            .catch((err) => {
+              this.readLog.noteFailure(
+                key,
+                (note) =>
+                  `[ProfileService] ${name}: url probe threw after ${since()}ms: ${getErrorMessage(err)}${spellSuffix(note)}`,
+              );
+              return 'unknown' as PublishUrlState;
+            });
+        }),
+      ),
+    ]);
+
+    return assembleBeePublishers(
+      members.map(({ rung, profile }, index) => ({
+        rung,
+        name: profile.name,
+        status: profile.status,
+        url: urls[index]!,
+        stampId: profile.stamp_id,
+        stampState: stamps[index]!.state,
+        stampTtl: stamps[index]!.ttl,
+        stampFillRatio: stamps[index]!.fillRatio,
+        stampImmutable: stamps[index]!.immutable,
+        urlState: urlStates[index],
+      })),
+    );
+  }
+
+  async updateGroupConfig(
+    groupId: number,
+    input: {
+      notes?: string | null;
+      feed_owner?: string | null;
+      feed_topic?: string | null;
+      stamp_id?: string | null;
+      srt_passphrase?: string | null;
+    },
+  ): Promise<{ group: DeploymentGroup; profiles: ProfileWithContainers[] }> {
+    const group = await this.groupRepo.findById(groupId);
+    if (!group) {
+      throw new GroupNotFoundError(groupId);
+    }
+
+    const members = await this.groupRepo.listMembers(groupId);
+    if (members.length === 0) {
+      throw new GroupNotFoundError(groupId);
+    }
+
+    const busy = members
+      .filter((m) =>
+        (TRANSITIONAL_STATUSES as readonly string[]).includes(m.status),
+      )
+      .map((m) => m.name);
+    if (busy.length > 0) {
+      throw new GroupBusyError(group.name, busy);
+    }
+
+    // Bulk-applying one stamp across a ladder would hand every rung the same
+    // batch, which is exactly the failure a node per rung exists to prevent:
+    // the batches are deliberately different sizes, bought per rung. Other
+    // shared fields stay bulk-editable.
+    if (input.stamp_id !== undefined && isLadderKind(group.kind)) {
+      throw new LadderGroupError(
+        group.name,
+        'each rung pays with its own postage batch, so a stamp cannot be applied to the whole group — buy one per rung from the Uploaders tab',
+      );
+    }
+
+    // Merge the requested changes onto each member. `undefined` means "not in
+    // the request → keep the member's current value". An explicit value (incl.
+    // null) is applied to every member.
+    const pick = <T>(next: T | undefined, current: T): T =>
+      next !== undefined ? next : current;
+
+    const writes: MemberConfigWrite[] = members.map((m) => ({
+      name: m.name,
+      kind: m.kind,
+      notes: pick(input.notes, m.notes),
+      components: m.components,
+      feed_owner: pick(input.feed_owner, m.feed_owner),
+      feed_topic: pick(input.feed_topic, m.feed_topic),
+      public_key: m.public_key,
+      stamp_id: pick(input.stamp_id, m.stamp_id),
+      // Not picked the way the others are: the member rows do not carry the
+      // passphrase, so an edit that says nothing about it leaves the field out
+      // and each member keeps its own.
+      ...(input.srt_passphrase === undefined
+        ? {}
+        : { srt_passphrase: input.srt_passphrase }),
+    }));
+
+    // Every member is claimed before the bulk write, so a group edit that
+    // cannot own all of its deployments changes none of them. Each claim is
+    // for the row that member is about to become, so the gate judges the
+    // stamp the edit proposes and not the one it replaces.
+    const proposedMembers: Profile[] = members.map((member, index) => {
+      const { srt_passphrase: passphrase, ...write } = writes[index]!;
+      return {
+        ...member,
+        ...write,
+        has_srt_passphrase:
+          passphrase === undefined
+            ? member.has_srt_passphrase
+            : passphrase !== null,
+      };
+    });
+    const reservations = await this.reserveMembers(group, proposedMembers);
+
+    const updated = await this.writeOrCancel([...reservations.values()], () =>
+      this.groupRepo.updateMembersConfig(writes),
+    );
+
+    logger.info(
+      `[ProfileService] Updated group ${group.name} (${updated.length} member(s)); redeploying`,
+    );
+
+    const profiles: ProfileWithContainers[] = [];
+    for (const row of updated) {
+      this.publishChanged(await this.containers.withContainers(row));
+
+      const reservation = reservations.get(row.name);
+      if (reservation) {
+        await this.runMember(reservation, row);
+      }
+
+      const latest = await this.repo.findByName(row.name);
+      if (!latest) {
+        throw new ProfileNotFoundError(row.name);
+      }
+
+      profiles.push(await this.containers.withContainers(latest));
+    }
+
+    return { group, profiles };
+  }
+
+  /**
+   * A claim on every member's next deployment, or none at all.
+   *
+   * A member that cannot be claimed gives back the claims already taken, so a
+   * half-deployed group edit is not a state the API can produce.
+   */
+  private async reserveMembers(
+    group: DeploymentGroup,
+    members: readonly Profile[],
+  ): Promise<Map<string, DeployReservation>> {
+    const reservations = new Map<string, DeployReservation>();
+    for (const member of members) {
+      try {
+        reservations.set(
+          member.name,
+          await this.orchestrator.reserveDeploy(
+            member,
+            member.components ?? undefined,
+          ),
+        );
+      } catch (err) {
+        await this.cancelAll([...reservations.values()]);
+        if (err instanceof ProfileBusyError) {
+          throw new GroupBusyError(group.name, [err.profileName]);
+        }
+        throw err;
+      }
+    }
+    return reservations;
+  }
+
+  /**
+   * Starts one member's deploy, letting the rest of the group carry on.
+   *
+   * The orchestrator has already marked a failed member ERROR with its reason,
+   * and the row is re-read afterwards, so the response says per member what
+   * happened.
+   */
+  private async runMember(
+    reservation: DeployReservation,
+    row: Profile,
+  ): Promise<void> {
+    try {
+      await this.orchestrator.runReserved(reservation, row);
+    } catch (err) {
+      logger.warn(
+        `[ProfileService] ${row.name}: deploy did not start: ${getErrorMessage(err)}`,
+      );
+    }
+  }
+
+  /** Claims and starts one member that has just been created. */
+  private async startMember(member: Profile): Promise<void> {
+    let reservation: DeployReservation;
+    try {
+      reservation = await this.orchestrator.reserveDeploy(
+        member,
+        member.components ?? undefined,
+      );
+    } catch (err) {
+      logger.warn(
+        `[ProfileService] ${member.name}: could not be claimed for deploy: ${getErrorMessage(err)}`,
+      );
+      return;
+    }
+    await this.runMember(reservation, member);
+  }
+
+  /**
+   * Deploys the members a group creation or resize has just inserted.
+   *
+   * A single deployment created through the same wizard is deployed at once, so
+   * a group is too: leaving its members STOPPED under a "Deploying" toast said
+   * one thing and did another. Each member is read back after its start, so the
+   * response carries the status and reason for the ones that did not take.
+   * A replacement with the same name is not part of this creation response.
+   */
+  private async deployNewMembers(
+    created: readonly Profile[],
+  ): Promise<ProfileWithContainers[]> {
+    const profiles: ProfileWithContainers[] = [];
+    for (const member of created) {
+      this.publishChanged(await this.containers.withContainers(member));
+      await this.startMember(member);
+      const latest = await this.repo.findByName(member.name);
+      const owned = latest?.instance_id === member.instance_id ? latest : member;
+      profiles.push(await this.containers.withContainers(owned));
+    }
+    return profiles;
+  }
+
+  async addGroupMembers(
+    groupId: number,
+    count: number,
+  ): Promise<{ group: DeploymentGroup; profiles: ProfileWithContainers[] }> {
+    const group = await this.groupRepo.findById(groupId);
+    if (!group) {
+      throw new GroupNotFoundError(groupId);
+    }
+
+    const members = await this.groupRepo.listMembers(groupId);
+    if (members.length === 0) {
+      throw new GroupNotFoundError(groupId);
+    }
+
+    // `<group>-profile-N` is not a rung name, so an appended member would sit in
+    // the group without ever being part of the ladder.
+    this.assertNotLadder(
+      group,
+      'its members are fixed to one per quality rung, so members cannot be appended',
+    );
+
+    const canonical = members[0]!;
+    const version = await this.versions.findById(canonical.stack_version_id);
+    if (!version) {
+      throw new InvalidStackVersionError(`Stack version ${canonical.stack_version_id} does not exist`);
+    }
+    const placement = await this.placementFor(version, canonical.host, canonical.components);
+    const rpcEndpoint = await this.repo.rpcEndpointOf(
+      canonical.name,
+      deployOwnerOf(canonical),
+    );
+    if (!rpcEndpoint) throw new ProfileInstanceChangedError(canonical.name);
+    const shared: SharedProfileParams = {
+      kind: canonical.kind,
+      notes: canonical.notes,
+      components: canonical.components,
+      host: canonical.host,
+      feed_owner: canonical.feed_owner,
+      feed_topic: canonical.feed_topic,
+      // Every member of a group publishes the same feed, so an appended member
+      // needs the key the others sign with. It is read on its own, because the
+      // member rows this is built from do not carry it.
+      private_key: await this.repo.privateKeyOf(canonical.name),
+      public_key: canonical.public_key,
+      stamp_id: canonical.stamp_id,
+      // Every member's ingest takes the same passphrase, and this one is read
+      // on its own too, because the member rows do not carry it either.
+      srt_passphrase: await this.repo.srtPassphraseOf(canonical.name),
+      // So an appended member reaches the chain the way its siblings do, and
+      // with the same amount of chain. Neither is asked for again: a node's
+      // mode is chosen when it is created, and this member is joining a group
+      // that already made both choices.
+      node_mode: canonical.node_mode,
+      rpc_endpoint_source: canonical.rpc_endpoint_source,
+      rpc_endpoint: rpcEndpoint.rpcEndpoint,
+      stack_version_id: canonical.stack_version_id,
+      // So an appended member cuts the same segments as the siblings it joins,
+      // and runs with the same stack settings, the secret ones included, which
+      // the member rows do not carry either, and its web2 admin token goes only
+      // where theirs does.
+      engine_settings: canonical.engine_settings,
+      stack_settings: {
+        ...initialStackSettingsOf(await this.repo.stackSettingsForDeploy(canonical.name)),
+        ...adminTokenOriginOf(await this.repo.stackSettingsOf(canonical.name)),
+      },
+      slot_cap: placement.slotCap,
+      daemon_id: placement.daemonId,
+      table: placement.table,
+    };
+
+    const usedNames = new Set((await this.repo.list()).map((p) => p.name));
+    const seeds = nextFreeMemberNames(group.name, count, usedNames);
+
+    const created = await this.groupRepo.addMembers(groupId, seeds, shared);
+
+    const refreshed = (await this.groupRepo.findById(groupId)) ?? group;
+    logger.info(
+      `[ProfileService] Added ${created.length} member(s) to group ${group.name} (size now ${refreshed.size}); deploying`,
+    );
+
+    return { group: refreshed, profiles: await this.deployNewMembers(created) };
+  }
+}

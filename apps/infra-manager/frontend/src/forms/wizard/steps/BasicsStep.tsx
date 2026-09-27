@@ -1,0 +1,218 @@
+import {
+  Box,
+  FormControlLabel,
+  MenuItem,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+} from '@mui/material';
+
+import {
+  describeStackContract,
+  type StackVersion,
+} from '@streaming-infra-manager/common';
+
+import { MONO_STACK } from '../../../app/theme';
+import { approvalStatusText, describeVersion, versionPlacementProblem } from '../../../versions/versionText';
+import { ChoiceGroup } from '../../ChoiceGroup';
+import { FormField, messageIdFor } from '../../FormField';
+import { NOTES_MAX, notesProblem } from '../../validation';
+import { nameError } from '../wizardError';
+import { GOALS } from '../wizardGoals';
+import {
+  allowsGroup,
+  choosableVersions,
+  chosenVersion,
+  namePreview,
+  versionChoiceShown,
+  type WizardStepProps,
+} from '../wizardState';
+
+const LARGE_GROUP = 20;
+
+const NAME_PLACEHOLDERS: Record<string, string> = {
+  viewer: 'viewer-eu',
+  'abr-pool': 'abr-pool-2',
+};
+
+export function BasicsStep({ state, context, update }: WizardStepProps) {
+  const goal = GOALS.find((entry) => entry.id === state.goal);
+  const version = chosenVersion(state, context);
+  const nameLabel =
+    state.goal === 'abr-pool' ? 'Pool name' : state.group ? 'Group name' : 'Name';
+  // An empty field shows the naming rule as its hint. The footer asks for a name.
+  const nameFieldError = state.name ? nameError(state, context) : null;
+  const notesFieldError = notesProblem(state.notes);
+
+  return (
+    <Stack spacing={2.5}>
+      <Box>
+        <Typography variant="h6" component="h3">
+          Basics
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {goal?.title}
+        </Typography>
+      </Box>
+
+      <FormField
+        label={nameLabel}
+        hint={namePreview(state)}
+        error={nameFieldError}
+        htmlFor="wizard-name"
+      >
+        <TextField
+          id="wizard-name"
+          size="small"
+          fullWidth
+          autoFocus
+          error={nameFieldError !== null}
+          value={state.name}
+          onChange={(event) => update({ name: event.target.value })}
+          placeholder={NAME_PLACEHOLDERS[state.goal ?? ''] ?? 'main-stage'}
+          inputProps={{
+            style: { fontFamily: MONO_STACK },
+            'aria-describedby': messageIdFor('wizard-name'),
+          }}
+        />
+      </FormField>
+
+      <FormField label="Host" aside="where the containers run">
+        <ChoiceGroup
+          name="wizard-host"
+          value={state.host}
+          onChange={(host) => update({ host })}
+          choices={[
+            {
+              value: 'this',
+              title: `This machine (${context.serverHost})`,
+              detail: 'Default. Ports are opened on this host.',
+            },
+            {
+              value: 'custom',
+              title: 'Another host over SSH',
+              detail: 'An ssh alias or user@host that this manager can reach.',
+              extra: (
+                <TextField
+                  size="small"
+                  fullWidth
+                  value={state.hostCustom}
+                  onChange={(event) => update({ hostCustom: event.target.value })}
+                  placeholder="deploy@10.0.0.7"
+                  inputProps={{ style: { fontFamily: MONO_STACK } }}
+                />
+              ),
+            },
+          ]}
+        />
+      </FormField>
+
+      {(versionChoiceShown(context) || !version) && (
+        <FormField
+          label="Stack version"
+          aside="the swarm-hls-stream it runs"
+          hint={versionHint(version)}
+          error={version ? versionPlacementProblem(version) : null}
+          htmlFor="wizard-version"
+        >
+          <TextField
+            select
+            size="small"
+            fullWidth
+            value={state.versionId ?? ''}
+            onChange={(event) => update({ versionId: event.target.value === '' ? null : Number(event.target.value) })}
+            SelectProps={{
+              'aria-label': 'Stack version',
+              SelectDisplayProps: { id: 'wizard-version' },
+            }}
+          >
+            {choosableVersions(context).map((version) => (
+              <MenuItem key={version.id} value={version.id}>
+                {versionLabel(version)}
+              </MenuItem>
+            ))}
+          </TextField>
+        </FormField>
+      )}
+
+      {allowsGroup(state.goal) && (
+        <Box>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={state.group}
+                onChange={(event) => update({ group: event.target.checked })}
+              />
+            }
+            label={
+              <Typography variant="body2">
+                Deploy several at once as a group{' '}
+                <Typography component="span" variant="caption" color="text.secondary">
+                  identical members sharing one configuration
+                </Typography>
+              </Typography>
+            }
+          />
+          {state.group && (
+            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mt: 1 }}>
+              <TextField
+                size="small"
+                label="How many"
+                value={state.size}
+                onChange={(event) => update({ size: event.target.value })}
+                sx={{ width: 110 }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                {groupHint(state.size, state.goal)}
+              </Typography>
+            </Stack>
+          )}
+        </Box>
+      )}
+
+      <FormField label="Notes" aside="optional" error={notesFieldError} htmlFor="wizard-notes">
+        <TextField
+          id="wizard-notes"
+          size="small"
+          fullWidth
+          multiline
+          minRows={2}
+          error={notesFieldError !== null}
+          value={state.notes}
+          onChange={(event) => update({ notes: event.target.value })}
+          placeholder="What is this for?"
+          inputProps={{
+            maxLength: NOTES_MAX,
+            'aria-describedby': messageIdFor('wizard-notes'),
+          }}
+        />
+      </FormField>
+    </Stack>
+  );
+}
+
+function versionLabel(version: StackVersion): string {
+  const suffix = version.isDefault ? ', the default' : '';
+  return `${describeVersion(version)} (${version.gitRef}${suffix})`;
+}
+
+/**
+ * What the pick means: whether anyone has run a real deployment on it, and
+ * what its deploy contract says, in the same words the Versions page uses.
+ */
+function versionHint(version: StackVersion | null): string {
+  if (!version) return 'Pick the version the containers are built from.';
+  const tested = approvalStatusText(version);
+  const contract = version.contract
+    ? ` ${describeStackContract(version.contract)}.`
+    : '';
+  return `${tested}${contract}`;
+}
+
+function groupHint(size: string, goal: string | null): string {
+  if (Number(size) > LARGE_GROUP) return 'Large group, double check before deploying.';
+  return goal === 'stream'
+    ? 'All members will share one stream key. Fine for fan-out tests, rarely for a real stage.'
+    : '';
+}

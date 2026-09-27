@@ -1,0 +1,202 @@
+/**
+ * How a deployment's own engine config reaches the container.
+ *
+ * Unit test, no database and no Docker. `pnpm test` in manager/.
+ *
+ * The stack's compose override mounts whatever path SRS_CONF_FILE names, so
+ * two things have to hold at every deploy: the stored file is on disk at that
+ * path, in the deployment's data directory which is bind-mounted into the api
+ * container at the same absolute path, and the key is in `.env.<profile>`.
+ * And on a version that has no such override the key must stay out, or a
+ * later version that does have one would pick up a file nobody applied.
+ */
+import assert from 'node:assert/strict';
+import { throwawayRoot } from '../support/throwawayRoot.js';
+import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, it } from 'node:test';
+
+import type { StackContract } from '@streaming-infra-manager/common';
+
+const root = throwawayRoot('engine-config-deploy-');
+const dataRoot = join(root, 'data');
+process.env.SHLS_ROOT = root;
+process.env.BEE_DATA_ROOT = dataRoot;
+
+const { makeProfile } = await import('../support/profileFixtures.js');
+const { orchestratorHarness, untilRunning } = await import(
+  '../support/orchestratorHarness.js'
+);
+const { writeProfileEnv } = await import('../../src/utils/envUtils.js');
+
+const WITH_HOOK: StackContract = {
+  ports: [...ALLOCATION_CONTRACT.ports],
+  maxSlot: 99,
+  requiredSecrets: [],
+  engineDefaults: {},
+  features: { srsApiPort: true, chequebookGate: false, sharedImageTags: true },
+  chequebookMinBzz: null,
+  engineConfig: { srs: true, ome: false },
+  engineImages: { srs: 'ossrs/srs:6', ome: null },
+  warnings: [],
+  allocationProblem: null,
+};
+
+const CONFIG = 'listen 1935;\nhls_fragment HLS_FRAGMENT_PLACEHOLDER;\n';
+
+const CONFIG_FILE_RE = /^srs\.[0-9a-f]{12}\.conf$/;
+
+/** The engine directory's config files, which should be one or none. */
+function configFilesOf(name: string): string[] {
+  const dir = join(dataRoot, name, 'engine');
+  return existsSync(dir) ? readdirSync(dir).filter((file) => CONFIG_FILE_RE.test(file)) : [];
+}
+
+function envLine(name: string, key: string): string | undefined {
+  return readFileSync(join(root, `.env.${name}`), 'utf8')
+    .split('\n')
+    .find((line) => line.startsWith(`${key}=`));
+}
+
+describe('writeProfileEnv and the config file key', () => {
+  it('writes the key for the engine the deployment runs', () => {
+    writeFileSync(join(root, '.env'), 'ENGINE=srs\n', 'utf8');
+
+    writeProfileEnv(root, 'keyed', {
+      engine: 'srs',
+      engineConfigFile: '/data/keyed/engine/srs.conf',
+    });
+
+    assert.equal(envLine('keyed', 'SRS_CONF_FILE'), 'SRS_CONF_FILE=/data/keyed/engine/srs.conf');
+    assert.equal(envLine('keyed', 'OME_CONF_FILE'), undefined);
+  });
+
+  it('refuses a path that is not a plain absolute one', () => {
+    writeFileSync(join(root, '.env'), 'ENGINE=srs\n', 'utf8');
+
+    assert.throws(
+      () =>
+        writeProfileEnv(root, 'odd', {
+          engine: 'srs',
+          engineConfigFile: 'engine/srs.conf',
+        }),
+      /not a plain absolute path/,
+    );
+    assert.throws(
+      () =>
+        writeProfileEnv(root, 'odd', {
+          engine: 'srs',
+          engineConfigFile: "/data/it's here/srs.conf",
+        }),
+      /not a plain absolute path/,
+    );
+  });
+});
+
+describe('a deploy with a stored config file', () => {
+  it('writes the file into the data directory and names it in the env, on a version with the hook', async () => {
+    writeFileSync(join(root, '.env'), 'ENGINE=srs\n', 'utf8');
+    const harness = orchestratorHarness([]);
+    await harness.versions.setContract(1, WITH_HOOK);
+    const stored = makeProfile({ name: 'stage', stamp_id: 'a'.repeat(64) });
+    harness.profiles.rows.set('stage', stored);
+    harness.profiles.engineConfigs.set('stage', CONFIG);
+
+    await harness.orchestrator.startDeploy(stored, ['srs']);
+
+    const files = configFilesOf('stage');
+    assert.equal(files.length, 1, `expected one config file, found ${files.join(', ')}`);
+    const file = join(dataRoot, 'stage', 'engine', files[0]!);
+    assert.equal(readFileSync(file, 'utf8'), CONFIG);
+    assert.equal(envLine('stage', 'SRS_CONF_FILE'), `SRS_CONF_FILE=${file}`);
+  });
+
+  it('writes a changed file under a new name, so the mount changes and compose recreates', async () => {
+    writeFileSync(join(root, '.env'), 'ENGINE=srs\n', 'utf8');
+    const harness = orchestratorHarness([]);
+    await harness.versions.setContract(1, WITH_HOOK);
+    const stored = makeProfile({ name: 'again', stamp_id: 'a'.repeat(64) });
+    harness.profiles.rows.set('again', stored);
+    harness.profiles.engineConfigs.set('again', CONFIG);
+    await harness.orchestrator.startDeploy(stored, ['srs']);
+    harness.runner.finish(0);
+    await untilRunning(harness.profiles, 'again');
+    const first = envLine('again', 'SRS_CONF_FILE');
+
+    harness.profiles.engineConfigs.set('again', CONFIG + 'max_connections 2000;\n');
+    await harness.orchestrator.startDeploy(harness.profiles.rows.get('again')!, ['srs']);
+
+    const second = envLine('again', 'SRS_CONF_FILE');
+    assert.notEqual(second, first, 'the same path would leave the container on the old text');
+    assert.match(readFileSync(second!.slice('SRS_CONF_FILE='.length), 'utf8'), /max_connections 2000/);
+    // Both files are there while the recreate runs: a container still being
+    // restarted on the old one would otherwise get a directory in its place.
+    assert.equal(configFilesOf('again').length, 2, 'the old file stays until the recreate is done');
+
+    harness.runner.finish(1, 0);
+    await untilRunning(harness.profiles, 'again');
+
+    assert.equal(configFilesOf('again').length, 1, 'the stale file is removed once the run succeeded');
+  });
+
+  it('removes a directory Docker left under a stale name, and the untagged name of the first build', async () => {
+    writeFileSync(join(root, '.env'), 'ENGINE=srs\n', 'utf8');
+    const harness = orchestratorHarness([]);
+    await harness.versions.setContract(1, WITH_HOOK);
+    const stored = makeProfile({ name: 'tidy', stamp_id: 'a'.repeat(64) });
+    harness.profiles.rows.set('tidy', stored);
+    harness.profiles.engineConfigs.set('tidy', CONFIG);
+    const dir = join(dataRoot, 'tidy', 'engine');
+    await import('node:fs/promises').then((fs) => fs.mkdir(join(dir, 'srs.0123456789ab.conf'), { recursive: true }));
+    writeFileSync(join(dir, 'srs.conf'), 'from the first build\n', 'utf8');
+
+    await harness.orchestrator.startDeploy(stored, ['srs']);
+    harness.runner.finish(0);
+    await untilRunning(harness.profiles, 'tidy');
+
+    assert.equal(existsSync(join(dir, 'srs.0123456789ab.conf')), false);
+    assert.equal(existsSync(join(dir, 'srs.conf')), false);
+    assert.equal(configFilesOf('tidy').length, 1);
+  });
+
+  it('leaves the key out and removes a stale file on a version without the hook', async () => {
+    writeFileSync(join(root, '.env'), 'ENGINE=srs\n', 'utf8');
+    const stored = makeProfile({ name: 'plain', stamp_id: 'a'.repeat(64) });
+    const harness = orchestratorHarness([stored]);
+    harness.profiles.engineConfigs.set('plain', CONFIG);
+    const file = join(dataRoot, 'plain', 'engine', 'srs.0123456789ab.conf');
+    writeFileSync(join(root, '.env'), 'ENGINE=srs\n', 'utf8');
+    await import('node:fs/promises').then((fs) =>
+      fs.mkdir(join(dataRoot, 'plain', 'engine'), { recursive: true }),
+    );
+    writeFileSync(file, 'left over\n', 'utf8');
+
+    await harness.orchestrator.startDeploy(stored, ['srs']);
+    harness.runner.finish(0);
+    await untilRunning(harness.profiles, 'plain');
+
+    assert.equal(existsSync(file), false);
+    assert.equal(envLine('plain', 'SRS_CONF_FILE'), undefined);
+  });
+
+  it('removes the file once the deployment is back on the template', async () => {
+    writeFileSync(join(root, '.env'), 'ENGINE=srs\n', 'utf8');
+    const harness = orchestratorHarness([]);
+    await harness.versions.setContract(1, WITH_HOOK);
+    const stored = makeProfile({ name: 'reset', stamp_id: 'a'.repeat(64) });
+    harness.profiles.rows.set('reset', stored);
+    harness.profiles.engineConfigs.set('reset', CONFIG);
+    await harness.orchestrator.startDeploy(stored, ['srs']);
+    harness.runner.finish(0);
+    await untilRunning(harness.profiles, 'reset');
+    harness.profiles.engineConfigs.delete('reset');
+
+    await harness.orchestrator.startDeploy(harness.profiles.rows.get('reset')!, ['srs']);
+    harness.runner.finish(1, 0);
+    await untilRunning(harness.profiles, 'reset');
+
+    assert.deepEqual(configFilesOf('reset'), []);
+    assert.equal(envLine('reset', 'SRS_CONF_FILE'), undefined);
+  });
+});

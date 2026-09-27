@@ -1,0 +1,347 @@
+import type {
+  EngineSettings,
+  GroupKind,
+  NodeMode,
+  RpcEndpointSource,
+  StackPortVar,
+} from '@streaming-infra-manager/common';
+import { Pool, PoolClient } from 'pg';
+import { DeploymentGroup, Profile } from '../types/interfaces.js';
+import { ProfileKind } from '../types/types.js';
+import { copyManagerAdminToken } from './adminLink/adminTokenCopy.js';
+import { AllSlotsUsedError } from './errors/index.js';
+import type { InitialStackSettings } from './ProfileRepository.js';
+import { reserveSlotFor } from './ports/reservationSql.js';
+import { portPlacementProblem } from './versions/stackContract.js';
+import { PROFILE_COLUMNS, PROFILE_SLOT_LOCK_KEY } from './profileSql.js';
+
+export interface SharedProfileParams {
+  kind: ProfileKind;
+  notes: string | null;
+  components: string[] | null;
+  host: string | null;
+  feed_owner: string | null;
+  feed_topic: string | null;
+  private_key: string | null;
+  public_key: string | null;
+  stamp_id: string | null;
+  srt_passphrase: string | null;
+  /**
+   * The chain every member of the group reaches, and how much of it each
+   * member's Bee node runs with.
+   *
+   * One answer for the whole group rather than one per member, for the reason
+   * the postage is per rung and this is not: a pool whose members reached the
+   * chain through different endpoints, or with the chain on in some and off in
+   * others, is a pool nobody could reason about, and the failure would show up
+   * as one rung quietly not publishing. Null `node_mode` is the mode the stack
+   * ships that node in, as it is for a single deployment.
+   */
+  node_mode: NodeMode | null;
+  rpc_endpoint_source: RpcEndpointSource;
+  rpc_endpoint: string | null;
+  /** Every member of a group runs one version, the one the group was made on. */
+  stack_version_id: number;
+  /**
+   * Every member starts with the same engine settings. An empty object writes
+   * no key, so the version's own fallbacks stand for the whole group.
+   */
+  engine_settings: EngineSettings;
+  /** Every member starts with the same stack settings. Empty halves store none, so the version's values stand. */
+  stack_settings: InitialStackSettings;
+  /** The highest slot a member may get: the version's own maximum, never above the manager's. */
+  slot_cap: number;
+  /** The daemon the members' ports belong to, from `docker info`. */
+  daemon_id: string;
+  /** The version's port table, every port of which each member's slot reserves. */
+  table: readonly StackPortVar[];
+}
+
+export interface MemberSeed {
+  name: string;
+}
+
+/**
+ * What a group config edit writes to every member. The signing key is not
+ * here: a group edit never changes it, and the member rows this is built from
+ * do not carry it, so the column keeps what it holds.
+ */
+export interface MemberConfigWrite {
+  name: string;
+  kind: ProfileKind;
+  notes: string | null;
+  components: string[] | null;
+  feed_owner: string | null;
+  feed_topic: string | null;
+  public_key: string | null;
+  stamp_id: string | null;
+  /**
+   * Absent keeps each member's own passphrase, which is what an edit that said
+   * nothing about it means. The member rows do not carry the value, so keeping
+   * it is the database's job rather than a value read and written back. Null
+   * puts the whole group on the host-wide passphrase.
+   */
+  srt_passphrase?: string | null;
+}
+
+export type EmptyGroupRemoval = 'deleted' | 'absent' | 'changed' | 'not_empty';
+
+export class DeploymentGroupRepository {
+  constructor(private readonly pool: Pool) {}
+
+  async removeEmptyGroup(groupId: number, expectedName: string): Promise<EmptyGroupRemoval> {
+    return this.updateAfterRemoval(groupId, expectedName);
+  }
+
+  async findByName(name: string): Promise<DeploymentGroup | null> {
+    const r = await this.pool.query<DeploymentGroup>(
+      'SELECT id, name, size, kind, created_at FROM deployment_groups WHERE name = $1',
+      [name],
+    );
+    return r.rowCount && r.rowCount > 0 ? r.rows[0]! : null;
+  }
+
+  async findById(id: number): Promise<DeploymentGroup | null> {
+    const r = await this.pool.query<DeploymentGroup>(
+      'SELECT id, name, size, kind, created_at FROM deployment_groups WHERE id = $1',
+      [id],
+    );
+    return r.rowCount && r.rowCount > 0 ? r.rows[0]! : null;
+  }
+
+  async list(): Promise<DeploymentGroup[]> {
+    const r = await this.pool.query<DeploymentGroup>(
+      'SELECT id, name, size, kind, created_at FROM deployment_groups ORDER BY created_at ASC',
+    );
+    return r.rows;
+  }
+
+  async syncMembershipAfterRemoval(
+    groupId: number,
+  ): Promise<'deleted' | 'resized'> {
+    const result = await this.updateAfterRemoval(groupId);
+    return result === 'deleted' || result === 'absent' ? 'deleted' : 'resized';
+  }
+
+  private async updateAfterRemoval(groupId: number, expectedName?: string): Promise<EmptyGroupRemoval> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock($1)', [PROFILE_SLOT_LOCK_KEY]);
+      const group = await client.query<{ name: string }>(
+        'SELECT name FROM deployment_groups WHERE id = $1 FOR UPDATE', [groupId],
+      );
+      if (!group.rows[0]) {
+        await client.query('COMMIT');
+        return 'absent';
+      }
+      if (expectedName !== undefined && group.rows[0].name !== expectedName) {
+        await client.query('COMMIT');
+        return 'changed';
+      }
+      // Take a fresh statement snapshot after the parent lock waits for any FK insert.
+      const count = await client.query<{ count: number }>(
+        'SELECT COUNT(*)::integer AS count FROM profiles WHERE group_id = $1', [groupId],
+      );
+      const size = count.rows[0]!.count;
+      if (size === 0) {
+        await client.query('DELETE FROM deployment_groups WHERE id = $1', [groupId]);
+        await client.query('COMMIT');
+        return 'deleted';
+      }
+      if (expectedName === undefined) {
+        await client.query('UPDATE deployment_groups SET size = $2 WHERE id = $1', [groupId, size]);
+      }
+      await client.query('COMMIT');
+      return 'not_empty';
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async listMembers(groupId: number): Promise<Profile[]> {
+    const r = await this.pool.query<Profile>(
+      `SELECT ${PROFILE_COLUMNS} FROM profiles WHERE group_id = $1 ORDER BY port_slot ASC`,
+      [groupId],
+    );
+    return r.rows;
+  }
+
+  async updateMembersConfig(writes: MemberConfigWrite[]): Promise<Profile[]> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const profiles: Profile[] = [];
+      for (const w of writes) {
+        const r = await client.query<Profile>(
+          `UPDATE profiles
+             SET kind = $2,
+                 notes = $3,
+                 components = $4,
+                 feed_owner = $5,
+                 feed_topic = $6,
+                 public_key = $7,
+                 stamp_id = $8,
+                 srt_passphrase = CASE WHEN $9::boolean THEN $10::text ELSE srt_passphrase END,
+                 updated_at = NOW()
+           WHERE name = $1
+           RETURNING ${PROFILE_COLUMNS}`,
+          [
+            w.name,
+            w.kind,
+            w.notes,
+            w.components,
+            w.feed_owner,
+            w.feed_topic,
+            w.public_key,
+            w.stamp_id,
+            w.srt_passphrase !== undefined,
+            w.srt_passphrase ?? null,
+          ],
+        );
+
+        if (!r.rowCount || r.rowCount === 0) {
+          throw new Error(
+            `profile not found during group config update: ${w.name}`,
+          );
+        }
+
+        profiles.push(r.rows[0]!);
+      }
+      await client.query('COMMIT');
+      return profiles;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async insertMemberWithFreeSlot(
+    client: PoolClient,
+    name: string,
+    shared: SharedProfileParams,
+    groupId: number,
+  ): Promise<Profile> {
+    const placement = { slotCap: shared.slot_cap, daemonId: shared.daemon_id, table: shared.table };
+    const slot = await reserveSlotFor(client, name, placement);
+    if (slot === null) {
+      throw new AllSlotsUsedError(shared.slot_cap, portPlacementProblem(shared.table, shared.slot_cap));
+    }
+    const r = await client.query<Profile>(
+      `INSERT INTO profiles (
+         name, port_slot, kind, notes, status,
+         components, host, feed_owner, feed_topic, private_key, public_key, stamp_id,
+         srt_passphrase, group_id, stack_version_id, engine_settings,
+         node_mode, rpc_endpoint_source, rpc_endpoint, stack_settings, stack_settings_secret,
+         admin_token_origin
+       )
+       VALUES ($1, $2, $3, $4, 'STOPPED', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb,
+               $16, COALESCE($17::text, 'stack'), $18, $19::jsonb, $20::jsonb, $21)
+       RETURNING ${PROFILE_COLUMNS}`,
+      [
+        name,
+        slot,
+        shared.kind,
+        shared.notes,
+        shared.components,
+        shared.host,
+        shared.feed_owner,
+        shared.feed_topic,
+        shared.private_key,
+        shared.public_key,
+        shared.stamp_id,
+        shared.srt_passphrase,
+        groupId,
+        shared.stack_version_id,
+        JSON.stringify(shared.engine_settings),
+        shared.node_mode,
+        shared.rpc_endpoint_source,
+        shared.rpc_endpoint,
+        JSON.stringify(shared.stack_settings.plain),
+        JSON.stringify(shared.stack_settings.secret),
+        shared.stack_settings.adminTokenOrigin ?? null,
+      ],
+    );
+    if (shared.stack_settings.copyManagerAdminToken) await copyManagerAdminToken(client, name, shared.stack_settings.copyManagerAdminToken);
+    return r.rows[0]!;
+  }
+
+  async createGroupWithMembers(
+    groupName: string,
+    kind: GroupKind,
+    members: MemberSeed[],
+    shared: SharedProfileParams,
+  ): Promise<{ group: DeploymentGroup; profiles: Profile[] }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock($1)', [
+        PROFILE_SLOT_LOCK_KEY,
+      ]);
+
+      const groupResult = await client.query<DeploymentGroup>(
+        `INSERT INTO deployment_groups (name, size, kind)
+         VALUES ($1, $2, $3)
+         RETURNING id, name, size, kind, created_at`,
+        [groupName, members.length, kind],
+      );
+      const group = groupResult.rows[0]!;
+
+      const profiles: Profile[] = [];
+      for (const m of members) {
+        profiles.push(
+          await this.insertMemberWithFreeSlot(client, m.name, shared, group.id),
+        );
+      }
+
+      await client.query('COMMIT');
+      return { group, profiles };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async addMembers(
+    groupId: number,
+    members: MemberSeed[],
+    shared: SharedProfileParams,
+  ): Promise<Profile[]> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock($1)', [
+        PROFILE_SLOT_LOCK_KEY,
+      ]);
+
+      const profiles: Profile[] = [];
+      for (const m of members) {
+        profiles.push(
+          await this.insertMemberWithFreeSlot(client, m.name, shared, groupId),
+        );
+      }
+
+      await client.query(
+        `UPDATE deployment_groups
+            SET size = (SELECT COUNT(*) FROM profiles WHERE group_id = $1)
+          WHERE id = $1`,
+        [groupId],
+      );
+
+      await client.query('COMMIT');
+      return profiles;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+}

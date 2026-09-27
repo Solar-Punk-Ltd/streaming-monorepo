@@ -1,0 +1,193 @@
+import { useState } from 'react';
+import {
+  Box,
+  Button,
+  Checkbox,
+  CircularProgress,
+  FormControlLabel,
+  Link,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
+import { minimumStampAmountPlur, stampCostPlur, stampTtlSeconds } from '@streaming-infra-manager/common';
+
+import type { BuyStampInput } from './stampApi';
+import {
+  BZZ_DECIMALS,
+  formatTokenBalance,
+  formatTtl,
+  NO_VALUE,
+} from '../format';
+
+const DEFAULT_DEPTH = '17';
+
+export function BuyStampForm({
+  busy,
+  onBuy,
+  currentPrice,
+  defaultDepth,
+  newBatchReach,
+}: {
+  busy: boolean;
+  onBuy: (input: BuyStampInput) => Promise<void>;
+  currentPrice: string | null;
+  /**
+   * Starting depth. An ABR rung passes its own: a batch fills in proportion to
+   * the rung's bitrate, so a flat depth across the ladder puts the four expiries
+   * hours apart, the failure a node per rung exists to contain.
+   */
+  defaultDepth?: number;
+  /** What a batch set on this deployment reaches, and when, where that is not at once. */
+  newBatchReach?: string | null;
+}) {
+  const [amount, setAmount] = useState('');
+  const [depth, setDepth] = useState(
+    defaultDepth === undefined ? DEFAULT_DEPTH : String(defaultDepth),
+  );
+  const [label, setLabel] = useState('');
+  const [immutable, setImmutable] = useState(false);
+
+  const amountShaped = /^[1-9][0-9]*$/.test(amount.trim());
+  /**
+   * Bee refuses a batch that would not last a day and buys nothing, so the form
+   * refuses it here rather than after the operator has committed to spending.
+   */
+  const minimumAmount = minimumStampAmountPlur(currentPrice);
+  const belowMinimum =
+    amountShaped && minimumAmount !== null && BigInt(amount.trim()) < BigInt(minimumAmount);
+  const amountValid = amountShaped && !belowMinimum;
+  const depthNum = Number(depth);
+  const depthValid =
+    Number.isInteger(depthNum) && depthNum >= 17 && depthNum <= 40;
+  const canBuy = !busy && amountValid && depthValid;
+
+  const ttlSeconds = stampTtlSeconds(amount, currentPrice);
+  const costPlur = depthValid ? stampCostPlur(amount, depthNum) : null;
+  const costBzz =
+    costPlur != null ? formatTokenBalance(costPlur, BZZ_DECIMALS) : null;
+
+  const handleBuy = async () => {
+    await onBuy({
+      amount: amount.trim(),
+      depth: Number(depth),
+      label: label.trim() || undefined,
+      immutable,
+    });
+    setAmount('');
+    setLabel('');
+  };
+
+  return (
+    <Box>
+      <Typography variant="overline" color="text.secondary">
+        Buy a stamp
+      </Typography>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={2}
+        alignItems={{ sm: 'flex-start' }}
+        sx={{ mt: 1 }}
+      >
+        <TextField
+          label="Amount (PLUR / chunk)"
+          size="small"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          error={amount.length > 0 && !amountValid}
+          helperText={amountHint(amount, minimumAmount, belowMinimum)}
+          slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
+        />
+        <TextField
+          label="Depth"
+          size="small"
+          value={depth}
+          onChange={(e) => setDepth(e.target.value)}
+          error={!depthValid}
+          helperText={
+            !depthValid
+              ? '17–40'
+              : defaultDepth !== undefined && depthNum === defaultDepth
+                ? `batch size (2^depth), suggested for this rung`
+                : 'batch size (2^depth)'
+          }
+          slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
+        />
+        <TextField
+          label="Label"
+          size="small"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          helperText="optional"
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              size="small"
+              checked={immutable}
+              onChange={(e) => setImmutable(e.target.checked)}
+            />
+          }
+          label="Immutable"
+        />
+        <Button
+          variant="contained"
+          onClick={handleBuy}
+          disabled={!canBuy}
+          startIcon={busy ? <CircularProgress size={16} /> : null}
+        >
+          Buy
+        </Button>
+      </Stack>
+      <Stack
+        direction="row"
+        spacing={3}
+        sx={{ mt: 1 }}
+        divider={<Box sx={{ borderLeft: 1, borderColor: 'divider' }} />}
+      >
+        <Typography variant="body2" color="text.secondary">
+          Estimated life:{' '}
+          <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
+            {amountValid ? formatTtl(ttlSeconds) : NO_VALUE}
+          </Box>
+          {amountValid && ttlSeconds == null && currentPrice == null
+            ? ' (price unavailable)'
+            : ''}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Cost:{' '}
+          <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
+            {costBzz != null ? `${costBzz} BZZ` : NO_VALUE}
+          </Box>
+        </Typography>
+      </Stack>
+      <Typography variant="caption" color="text.secondary">
+        A new batch takes a few minutes to become usable and is then set on
+        this deployment automatically, unless another batch is set here with
+        Use first. {newBatchReach ? `${newBatchReach} ` : ''}The readiness
+        checklist above says what comes next. Need funds?{' '}
+        <Link
+          href="https://docs.ethswarm.org/docs/bee/installation/fund-your-node"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Funding guide
+        </Link>
+        .
+      </Typography>
+    </Box>
+  );
+}
+
+/** What to say under the amount, the floor Bee will not go below included. */
+function amountHint(
+  amount: string,
+  minimum: string | null,
+  belowMinimum: boolean,
+): string {
+  if (belowMinimum) return `at least ${minimum}, one day of life at today's price`;
+  if (amount.length > 0 && !/^[1-9][0-9]*$/.test(amount.trim())) return 'positive integer';
+  return minimum === null
+    ? 'per-chunk amount. Higher buys a longer life'
+    : `per-chunk amount, ${minimum} or more today. Higher buys a longer life`;
+}

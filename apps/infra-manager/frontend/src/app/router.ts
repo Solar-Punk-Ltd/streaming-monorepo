@@ -1,0 +1,101 @@
+import { useCallback, useEffect, useState } from 'react';
+
+/** Where the deployment page should scroll once it has painted. */
+export type DeploymentFocus = 'storage' | null;
+
+export type Route =
+  | { page: 'overview' }
+  | { page: 'deployments' }
+  | { page: 'deployment'; name: string; focus: DeploymentFocus }
+  | { page: 'group'; id: number }
+  | { page: 'host' }
+  | { page: 'versions' }
+  | { page: 'versionSettings'; id: number }
+  | { page: 'access' }
+  | { page: 'managerSettings' }
+  | { page: 'transfers' }
+  | { page: 'transfer'; id: string }
+  | { page: 'transferRequest'; requestId: string };
+
+export const routes = {
+  overview: '#/',
+  deployments: '#/deployments',
+  host: '#/host',
+  versions: '#/versions',
+  versionSettings: (id: number): string => `#/versions/${id}/settings`,
+  access: '#/access',
+  managerSettings: '#/manager-settings',
+  transfers: '#/transfers',
+  transfer: (id: string): string => `#/transfers/${encodeURIComponent(id)}`,
+  transferRequest: (requestId: string): string => `#/transfers/request/${encodeURIComponent(requestId)}`,
+  deployment: (name: string): string =>
+    `#/deployments/${encodeURIComponent(name)}`,
+  deploymentStorage: (name: string): string =>
+    `#/deployments/${encodeURIComponent(name)}/storage`,
+  group: (id: number): string => `#/groups/${id}`,
+};
+
+export function navigate(hash: string): void {
+  if (window.location.hash === hash) return;
+  window.location.hash = hash;
+}
+
+function parse(hash: string): Route {
+  const segments = hash
+    .replace(/^#\/?/, '')
+    .split('/')
+    .filter(Boolean)
+    .map(decodeURIComponent);
+
+  if (segments.length === 0) return { page: 'overview' };
+  if (segments[0] === 'host') return { page: 'host' };
+  if (segments[0] === 'versions') {
+    const id = Number.parseInt(segments[1] ?? '', 10);
+    if (segments[2] === 'settings' && Number.isInteger(id)) {
+      return { page: 'versionSettings', id };
+    }
+    return { page: 'versions' };
+  }
+  if (segments[0] === 'access') return { page: 'access' };
+  if (segments[0] === 'manager-settings') return { page: 'managerSettings' };
+
+  if (segments[0] === 'transfers') {
+    if (segments[1] === 'request' && segments[2]) return { page: 'transferRequest', requestId: segments[2] };
+    if (segments[1]) return { page: 'transfer', id: segments[1] };
+    return { page: 'transfers' };
+  }
+
+  if (segments[0] === 'deployments') {
+    if (segments.length === 1) return { page: 'deployments' };
+    return {
+      page: 'deployment',
+      name: segments[1],
+      focus: segments[2] === 'storage' ? 'storage' : null,
+    };
+  }
+
+  if (segments[0] === 'groups' && segments[1]) {
+    const id = Number.parseInt(segments[1], 10);
+    if (Number.isInteger(id)) return { page: 'group', id };
+  }
+
+  return { page: 'overview' };
+}
+
+export function useRoute(): Route {
+  const [route, setRoute] = useState<Route>(() =>
+    parse(window.location.hash),
+  );
+
+  const sync = useCallback(() => {
+    setRoute(parse(window.location.hash));
+    window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('hashchange', sync);
+    return () => window.removeEventListener('hashchange', sync);
+  }, [sync]);
+
+  return route;
+}
