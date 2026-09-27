@@ -12,11 +12,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
-import type {
-  MeResponse,
-  UserListResponse,
-  UserSummary,
-} from '@streaming-monorepo/web2-admin-common';
+import type { MeResponse, UserListResponse, UserSummary } from '@streaming-monorepo/web2-admin-common';
 
 import { LoginLimiter } from '../../src/domain/auth/LoginLimiter.js';
 import {
@@ -269,15 +265,9 @@ describe('a burst of sign-ins sent at once', () => {
     );
 
     const checked = app.users.usernameLookups() - before;
-    assert.ok(
-      checked <= 5,
-      `${checked} of ${sent} guesses reached the password check`,
-    );
+    assert.ok(checked <= 5, `${checked} of ${sent} guesses reached the password check`);
     assert.equal(answers.filter((res) => res.status === 401).length, checked);
-    assert.equal(
-      answers.filter((res) => res.status === 429).length,
-      sent - checked,
-    );
+    assert.equal(answers.filter((res) => res.status === 429).length, sent - checked);
   });
 });
 
@@ -531,12 +521,7 @@ describe('managing users', () => {
   });
 
   it('answers 404 for an id that is not a user', async () => {
-    const res = await call(
-      app,
-      'DELETE',
-      `${USERS}/00000000-0000-4000-8000-999999999999`,
-      { cookie },
-    );
+    const res = await call(app, 'DELETE', `${USERS}/00000000-0000-4000-8000-999999999999`, { cookie });
 
     assert.equal(res.status, 404);
     assert.equal((res.body as { error: string }).error, 'user_not_found');
@@ -552,20 +537,14 @@ describe('managing users', () => {
     const mate = (await list()).find((row) => row.username === 'mate');
     assert.ok(mate);
     const mateCookie = (await signIn(app, 'mate', OTHER_PASSWORD)).cookie;
-    assert.equal(
-      (await call(app, 'GET', '/api/streams', { cookie: mateCookie })).status,
-      200,
-    );
+    assert.equal((await call(app, 'GET', '/api/streams', { cookie: mateCookie })).status, 200);
 
     const revoked = await call(app, 'POST', `${USERS}/${mate.id}/revoke`, {
       cookie,
     });
 
     assert.equal(revoked.status, 204);
-    assert.equal(
-      (await call(app, 'GET', '/api/streams', { cookie: mateCookie })).status,
-      401,
-    );
+    assert.equal((await call(app, 'GET', '/api/streams', { cookie: mateCookie })).status, 401);
   });
 
   it('removes another user, and their sessions with them', async () => {
@@ -577,10 +556,7 @@ describe('managing users', () => {
 
     assert.equal(removed.status, 204);
     assert.equal((await list()).length, 1);
-    assert.equal(
-      (await call(app, 'GET', '/api/streams', { cookie: mateCookie })).status,
-      401,
-    );
+    assert.equal((await call(app, 'GET', '/api/streams', { cookie: mateCookie })).status, 401);
   });
 
   it('changes your password, keeps this session, drops your others', async () => {
@@ -594,10 +570,7 @@ describe('managing users', () => {
     assert.equal(changed.status, 200);
     assert.ok((changed.body as MeResponse).user.passwordChangedAt);
     assert.equal((await call(app, 'GET', '/api/streams', { cookie })).status, 200);
-    assert.equal(
-      (await call(app, 'GET', '/api/streams', { cookie: elsewhere })).status,
-      401,
-    );
+    assert.equal((await call(app, 'GET', '/api/streams', { cookie: elsewhere })).status, 401);
 
     // And the new password is the one that works now.
     await signIn(app, USERNAME, OTHER_PASSWORD);
@@ -626,8 +599,7 @@ describe('who may manage users', () => {
     app = await startAuthTestApp();
     // Asked for a plain user, and made an admin anyway: somebody has to be
     // able to add the second.
-    adminId = (await app.authService.addUser(USERNAME, PASSWORD, { admin: false }))
-      .id;
+    adminId = (await app.authService.addUser(USERNAME, PASSWORD, { admin: false })).id;
     plainId = (await app.authService.addUser('mate', OTHER_PASSWORD)).id;
     adminCookie = (await signIn(app, USERNAME, PASSWORD)).cookie;
     plainCookie = (await signIn(app, 'mate', OTHER_PASSWORD)).cookie;
@@ -704,9 +676,7 @@ describe('who may manage users', () => {
     assert.equal(promoted.status, 201);
     assert.equal((promoted.body as UserSummary).isAdmin, true);
 
-    const secondAdminCookie = (
-      await signIn(app, 'second-admin', 'yet-another-fine-password')
-    ).cookie;
+    const secondAdminCookie = (await signIn(app, 'second-admin', 'yet-another-fine-password')).cookie;
     const removedAdmin = await call(app, 'DELETE', `${USERS}/${adminId}`, {
       cookie: secondAdminCookie,
     });

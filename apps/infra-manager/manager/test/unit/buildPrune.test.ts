@@ -54,7 +54,9 @@ let versionId: number;
 
 const at = (seconds: number) => new Date(seconds * 1000);
 
-function reference(over: Partial<BuildReference> & Pick<BuildReference, 'id' | 'holderKind' | 'buildId'>): BuildReference {
+function reference(
+  over: Partial<BuildReference> & Pick<BuildReference, 'id' | 'holderKind' | 'buildId'>,
+): BuildReference {
   return { versionId, holderId: 'stage', services: ['srs'], createdAt: at(1), resolvedAt: null, ...over };
 }
 
@@ -73,14 +75,15 @@ beforeEach(async () => {
   repository = new InMemoryStackVersionRepository();
   repository.seedBundled();
   references = [];
-  service = new StackVersionService(
-    repository,
-    new FakeScriptSpawner(),
-    new EventBus(),
-    versionsRoot,
-    { openReferences: async (id) => references.filter((r) => r.versionId === id && r.resolvedAt === null) },
-  );
-  const v3 = await repository.insert({ name: 'v3', gitRef: 'main-v3', rootPath: join(versionsRoot, 'v3'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
+  service = new StackVersionService(repository, new FakeScriptSpawner(), new EventBus(), versionsRoot, {
+    openReferences: async (id) => references.filter((r) => r.versionId === id && r.resolvedAt === null),
+  });
+  const v3 = await repository.insert({
+    name: 'v3',
+    gitRef: 'main-v3',
+    rootPath: join(versionsRoot, 'v3'),
+    sourceUrl: SWARM_HLS_STREAM_SOURCE.url,
+  });
   versionId = v3.id;
   for (const id of [A, B, C, D, E]) buildOnDisk(id);
   mkdirSync(join(buildsRootFor(versionsRoot, 'v3'), 'tmp-deadbeef00'), { recursive: true });
@@ -124,9 +127,15 @@ describe('pruneBuilds', () => {
 
     await service.pruneBuilds(versionId);
 
-    assert.equal(existsSync(buildInventoryRecordPath(buildDirFor(versionsRoot, 'v3', A))), false,
-      'the record of a removed build outlives it, so the next build at that id inherits it');
-    assert.ok(existsSync(buildInventoryRecordPath(buildDirFor(versionsRoot, 'v3', D))), 'the current build lost its record');
+    assert.equal(
+      existsSync(buildInventoryRecordPath(buildDirFor(versionsRoot, 'v3', A))),
+      false,
+      'the record of a removed build outlives it, so the next build at that id inherits it',
+    );
+    assert.ok(
+      existsSync(buildInventoryRecordPath(buildDirFor(versionsRoot, 'v3', D))),
+      'the current build lost its record',
+    );
   });
 
   it('protects a build only a snapshot names, whatever the row says', async () => {

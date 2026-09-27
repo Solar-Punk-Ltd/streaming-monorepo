@@ -45,10 +45,7 @@ describe('engine settings on a new group', () => {
       kind: 'streamer',
     });
 
-    assert.deepEqual(
-      harness.profiles.rows.get('studio-profile-1')?.engine_settings,
-      {},
-    );
+    assert.deepEqual(harness.profiles.rows.get('studio-profile-1')?.engine_settings, {});
   });
 
   it('holds the group to the rule a single create applies, and stores nothing', async () => {

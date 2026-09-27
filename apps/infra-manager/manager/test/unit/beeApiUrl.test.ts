@@ -69,8 +69,7 @@ function profile(over: Partial<Profile> = {}): Profile {
  */
 const LOCAL_PUBLISHER_HOST = '10.200.0.1';
 
-const publisherUrl = (over: Partial<Profile> = {}): string =>
-  beePublisherUrlFor(profile(over), LOCAL_PUBLISHER_HOST);
+const publisherUrl = (over: Partial<Profile> = {}): string => beePublisherUrlFor(profile(over), LOCAL_PUBLISHER_HOST);
 
 describe('beePublisherUrlFor', () => {
   it('puts the node on 10005 + slot*10, matching deploy.sh’s port bands', () => {
@@ -79,10 +78,7 @@ describe('beePublisherUrlFor', () => {
   });
 
   it('strips ssh user info, which addresses an account and not the node', () => {
-    assert.equal(
-      publisherUrl({ host: 'deploy@192.0.2.58' }),
-      'http://192.0.2.58:10055',
-    );
+    assert.equal(publisherUrl({ host: 'deploy@192.0.2.58' }), 'http://192.0.2.58:10055');
   });
 
   it('leaves no stray @ for the entry format to trip over', () => {
@@ -101,10 +97,7 @@ describe('beePublisherUrlFor', () => {
 
   it('resolves a stripped local target the same as a bare one', () => {
     // 'deploy@localhost' is still local, so it must take the local host too.
-    assert.equal(
-      publisherUrl({ host: 'deploy@localhost' }),
-      publisherUrl({ host: 'localhost' }),
-    );
+    assert.equal(publisherUrl({ host: 'deploy@localhost' }), publisherUrl({ host: 'localhost' }));
   });
 
   it('keeps a member on a declared remote host at that host’s own address', () => {
@@ -116,19 +109,13 @@ describe('beePublisherUrlFor', () => {
   it('keeps an alias no ssh config knows, rather than losing the host', () => {
     // The floor under resolution: a name nothing can resolve still composes to
     // the address it always did, so this can only improve on the old behaviour.
-    assert.equal(
-      publisherUrl({ host: 'no-such-ssh-alias-000' }),
-      'http://no-such-ssh-alias-000:10055',
-    );
+    assert.equal(publisherUrl({ host: 'no-such-ssh-alias-000' }), 'http://no-such-ssh-alias-000:10055');
   });
 });
 
 describe('beeApiUrlFor', () => {
   it('strips ssh user info as well — the manager cannot use it either', () => {
-    assert.equal(
-      beeApiUrlFor(profile({ host: 'deploy@192.0.2.58' })),
-      'http://192.0.2.58:10055',
-    );
+    assert.equal(beeApiUrlFor(profile({ host: 'deploy@192.0.2.58' })), 'http://192.0.2.58:10055');
   });
 
   it('keeps resolving a local profile to a locally reachable host', () => {
@@ -136,10 +123,6 @@ describe('beeApiUrlFor', () => {
     // BEE_LOCAL_HOST or the docker host alias, and separate from the address a
     // pool string publishes.
     const url = beeApiUrlFor(profile({ host: 'localhost' }));
-    assert.ok(
-      url === 'http://127.0.0.1:10055' ||
-        url === 'http://host.docker.internal:10055',
-      url,
-    );
+    assert.ok(url === 'http://127.0.0.1:10055' || url === 'http://host.docker.internal:10055', url);
   });
 });

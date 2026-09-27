@@ -24,10 +24,7 @@ import { ProfileKind } from '../../types/types.js';
  *   own to offer the nodes a group creates. As on the profiles router: no
  *   request body carries it and the schema judges an endpoint choice against it.
  */
-export function createGroupsRouter(
-  profileService: ProfileService,
-  managerHasEndpoint: boolean,
-): Router {
+export function createGroupsRouter(profileService: ProfileService, managerHasEndpoint: boolean): Router {
   const router = Router();
 
   router.post(
@@ -53,8 +50,7 @@ export function createGroupsRouter(
         rpc_endpoint_source: body.rpc_endpoint_source,
         rpc_endpoint: body.rpc_endpoint,
         stack_version_id: body.stack_version_id,
-        engine_settings:
-          body.engine_settings && definedSettingValues(body.engine_settings),
+        engine_settings: body.engine_settings && definedSettingValues(body.engine_settings),
         stack_settings: body.stack_settings as NewDeploymentSetting[] | undefined,
         use_manager_admin_token: body.use_manager_admin_token,
       });
@@ -87,9 +83,7 @@ export function createGroupsRouter(
     '/:id/bee-publishers',
     validateParams(groupIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const result = await profileService.beePublishersForGroup(
-        parseInt(req.params.id as string, 10),
-      );
+      const result = await profileService.beePublishersForGroup(parseInt(req.params.id as string, 10));
       res.json(result);
     }),
   );
@@ -100,16 +94,13 @@ export function createGroupsRouter(
     validateBody(updateGroupConfigSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as UpdateGroupConfigInput;
-      const result = await profileService.updateGroupConfig(
-        parseInt(req.params.id as string, 10),
-        {
-          notes: body.notes,
-          feed_owner: body.feed_owner,
-          feed_topic: body.feed_topic,
-          stamp_id: body.stamp_id,
-          srt_passphrase: body.srt_passphrase,
-        },
-      );
+      const result = await profileService.updateGroupConfig(parseInt(req.params.id as string, 10), {
+        notes: body.notes,
+        feed_owner: body.feed_owner,
+        feed_topic: body.feed_topic,
+        stamp_id: body.stamp_id,
+        srt_passphrase: body.srt_passphrase,
+      });
       res.status(202).json(result);
     }),
   );
@@ -120,10 +111,7 @@ export function createGroupsRouter(
     validateBody(addMembersSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as AddMembersInput;
-      const result = await profileService.addGroupMembers(
-        parseInt(req.params.id as string, 10),
-        body.count,
-      );
+      const result = await profileService.addGroupMembers(parseInt(req.params.id as string, 10), body.count);
       res.status(202).json(result);
     }),
   );

@@ -33,12 +33,12 @@ export class InMemoryExecutionRoots implements ExecutionRootStore {
   ) {}
 
   async listUnreleased(): Promise<ExecutionRootRecord[]> {
-    return this.records.filter(record => record.state !== 'released').map(record => structuredClone(record));
+    return this.records.filter((record) => record.state !== 'released').map((record) => structuredClone(record));
   }
 
   async register(input: ExecutionRootRegistration): Promise<ExecutionRootRecord> {
     assertExecutionRegistration(input);
-    if (this.records.some(record => record.jobReferenceId === input.jobReferenceId)) {
+    if (this.records.some((record) => record.jobReferenceId === input.jobReferenceId)) {
       throw new Error('The job already owns an execution root.');
     }
     this.made += 1;
@@ -84,13 +84,20 @@ export class InMemoryExecutionRoots implements ExecutionRootStore {
   async claimRetiredCleanup(id: string): Promise<ExecutionRootRecord | null> {
     const record = this.find(id);
     if (!record || record.state !== 'launch-uncertain') return null;
-    const replaced = this.records.some(other => other.profile.name === record.profile.name
-      && other.state === 'launch-uncertain' && other.createdAt > record.createdAt);
+    const replaced = this.records.some(
+      (other) =>
+        other.profile.name === record.profile.name &&
+        other.state === 'launch-uncertain' &&
+        other.createdAt > record.createdAt,
+    );
     if (!replaced && this.instanceOf(record.profile.name) === record.profile.instanceId) return null;
     return this.change(id, ['launch-uncertain'], 'deleting');
   }
 
-  async completeCleanup(id: string, removeOwnedRoot: (record: ExecutionRootRecord) => Promise<void>): Promise<ExecutionRootRecord> {
+  async completeCleanup(
+    id: string,
+    removeOwnedRoot: (record: ExecutionRootRecord) => Promise<void>,
+  ): Promise<ExecutionRootRecord> {
     const record = this.find(id);
     if (!record) throw new Error('Execution was not found.');
     if (record.state === 'released') return structuredClone(record);
@@ -105,10 +112,15 @@ export class InMemoryExecutionRoots implements ExecutionRootStore {
   }
 
   private find(id: string): ExecutionRootRecord | undefined {
-    return this.records.find(record => record.executionId === id);
+    return this.records.find((record) => record.executionId === id);
   }
 
-  private change(id: string, from: ExecutionRootState[], to: ExecutionRootState, copyToken?: string): ExecutionRootRecord | null {
+  private change(
+    id: string,
+    from: ExecutionRootState[],
+    to: ExecutionRootState,
+    copyToken?: string,
+  ): ExecutionRootRecord | null {
     const record = this.find(id);
     if (!record || !from.includes(record.state)) return null;
     record.state = to;

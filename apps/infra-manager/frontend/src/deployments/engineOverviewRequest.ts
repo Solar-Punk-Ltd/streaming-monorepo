@@ -1,4 +1,8 @@
-import { engineOverviewIdentity, engineOverviewIdentityKey, type EngineOverviewIdentityInput } from '@streaming-infra-manager/common';
+import {
+  engineOverviewIdentity,
+  engineOverviewIdentityKey,
+  type EngineOverviewIdentityInput,
+} from '@streaming-infra-manager/common';
 
 type OverviewProfile = Omit<EngineOverviewIdentityInput, 'stack_version_id'> & { stack_version_id?: number | null };
 

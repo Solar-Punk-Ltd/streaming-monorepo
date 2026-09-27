@@ -26,9 +26,7 @@ const logger = Logger.getInstance();
  * A router of its own rather than another route on the profiles one, so that
  * the one door the value leaves by is a file somebody can read whole.
  */
-export function createSrtPassphraseRouter(
-  profileService: ProfileService,
-): Router {
+export function createSrtPassphraseRouter(profileService: ProfileService): Router {
   const router = Router();
 
   router.get(

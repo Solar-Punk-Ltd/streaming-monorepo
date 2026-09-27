@@ -156,7 +156,11 @@ describe("completing a base env from the version's sample", () => {
 
     await completeHostConfigFromSamples(configRoot, staging);
 
-    assert.equal(baseEnv().includes('HLS_FRAGMENT'), false, 'a commented sample line is the entrypoint default, not a setting');
+    assert.equal(
+      baseEnv().includes('HLS_FRAGMENT'),
+      false,
+      'a commented sample line is the entrypoint default, not a setting',
+    );
   });
 
   it('writes nothing when the version ships no sample at all', async () => {
@@ -192,7 +196,10 @@ describe('completing an engine env from the engine sample', () => {
     const added = await completeHostConfigFromSamples(configRoot, staging);
 
     assert.deepEqual(added, { 'engines/srs/.env': ['SRS_LOG_LEVEL'] });
-    assert.equal(readFileSync(join(configRoot, 'engines', 'srs', '.env'), 'utf8'), 'SRS_API_PORT=1985\nSRS_LOG_LEVEL=trace\n');
+    assert.equal(
+      readFileSync(join(configRoot, 'engines', 'srs', '.env'), 'utf8'),
+      'SRS_API_PORT=1985\nSRS_LOG_LEVEL=trace\n',
+    );
   });
 
   it('leaves an engine the host keeps no env for alone, because the deploy makes that file', async () => {
@@ -212,8 +219,12 @@ describe('the modes completion leaves behind', () => {
   // a key the version declares is no reason to widen it. The umask is fixed
   // here so the answer is the manager's rather than the machine's.
   let umask: number;
-  before(() => { umask = process.umask(0o022); });
-  after(() => { process.umask(umask); });
+  before(() => {
+    umask = process.umask(0o022);
+  });
+  after(() => {
+    process.umask(umask);
+  });
 
   for (const mode of [0o600, 0o640]) {
     it(`keeps the ${mode.toString(8)} the base env it completes already had`, async () => {

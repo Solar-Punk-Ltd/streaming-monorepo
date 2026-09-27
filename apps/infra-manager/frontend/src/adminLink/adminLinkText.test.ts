@@ -26,12 +26,15 @@ describe('the sentence for each Test connection outcome', () => {
   });
 
   it('says what each outcome means for the uploader', () => {
-    assert.equal(adminLinkTestText('linked'), "Linked: the web2 admin took the token and signs its catalog with this deployment's stream address.");
+    assert.equal(
+      adminLinkTestText('linked'),
+      "Linked: the web2 admin took the token and signs its catalog with this deployment's stream address.",
+    );
     assert.equal(adminLinkTestText('token-refused'), 'The web2 admin answered but refused the token.');
     assert.equal(adminLinkTestText('unreachable'), 'The web2 admin did not answer from where the manager runs.');
     assert.equal(
       adminLinkTestText('stored-token-elsewhere'),
-      "The stored token was saved for another address, so it was not sent here, and the token has to be typed again for this address.",
+      'The stored token was saved for another address, so it was not sent here, and the token has to be typed again for this address.',
     );
     assert.equal(
       adminLinkTestText('owner-mismatch'),
@@ -44,7 +47,16 @@ describe('the sentence for each Test connection outcome', () => {
     assert.equal(adminLinkTestSeverity('token-accepted'), 'success');
     assert.equal(adminLinkTestSeverity('owner-unconfirmed'), 'warning');
     assert.equal(adminLinkTestSeverity('not-linked'), 'info');
-    for (const outcome of ['owner-mismatch', 'token-refused', 'not-admin', 'redirected', 'unreachable', 'invalid-address', 'no-token', 'stored-token-elsewhere'] as const) {
+    for (const outcome of [
+      'owner-mismatch',
+      'token-refused',
+      'not-admin',
+      'redirected',
+      'unreachable',
+      'invalid-address',
+      'no-token',
+      'stored-token-elsewhere',
+    ] as const) {
       assert.equal(adminLinkTestSeverity(outcome), 'error', outcome);
     }
   });
@@ -54,8 +66,14 @@ describe('the sentence for each Test connection outcome', () => {
       ADMIN_LINK_OFF_NOTE,
       'Off, this deployment stores an empty ADMIN_API_URL, so its uploader runs standalone even when its version turns admin mode on.',
     );
-    assert.equal(storedTokenDetail(true), 'The manager copies it into this deployment when it is created. It never reaches this page.');
-    assert.equal(storedTokenDetail(false), 'The manager stores no token. Save one on Manager settings, or type one here.');
+    assert.equal(
+      storedTokenDetail(true),
+      'The manager copies it into this deployment when it is created. It never reaches this page.',
+    );
+    assert.equal(
+      storedTokenDetail(false),
+      'The manager stores no token. Save one on Manager settings, or type one here.',
+    );
   });
 
   it('says in one line where the test runs from', () => {

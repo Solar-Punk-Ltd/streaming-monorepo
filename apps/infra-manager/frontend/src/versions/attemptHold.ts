@@ -14,10 +14,7 @@ const DEPLOYING = 'DEPLOYING';
  * not judge when its script ended. An open attempt behind a running deploy
  * is that deploy, and it resolves on its own when the script ends.
  */
-export function needsRelease(
-  attempt: DeployAttemptView,
-  deployments: readonly DeploymentInFlight[] | null,
-): boolean {
+export function needsRelease(attempt: DeployAttemptView, deployments: readonly DeploymentInFlight[] | null): boolean {
   if (attempt.state === 'blocked') return true;
   if (attempt.state !== 'open') return false;
   const deployment = deployments?.find((entry) => entry.name === attempt.project);
@@ -30,9 +27,5 @@ export function attemptHolding(
   attempts: readonly DeployAttemptView[],
   deployments: readonly DeploymentInFlight[] | null,
 ): DeployAttemptView | null {
-  return (
-    attempts.find(
-      (attempt) => attempt.project === name && needsRelease(attempt, deployments),
-    ) ?? null
-  );
+  return attempts.find((attempt) => attempt.project === name && needsRelease(attempt, deployments)) ?? null;
 }

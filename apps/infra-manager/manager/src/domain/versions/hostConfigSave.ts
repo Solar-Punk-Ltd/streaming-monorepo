@@ -1,10 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type {
-  StackSettingsFileEdit,
-  StackSettingsSave,
-} from '@streaming-infra-manager/common';
+import type { StackSettingsFileEdit, StackSettingsSave } from '@streaming-infra-manager/common';
 
 import { InvalidStackVersionError } from '../errors/InvalidStackVersionError.js';
 import { StackSettingsChangedError } from '../errors/StackSettingsChangedError.js';
@@ -33,8 +30,7 @@ import { SETTINGS_NEED_A_REVISION } from './hostConfigSettings.js';
  * comments in these files are the documentation of the host.
  */
 
-const NOT_A_FILE_HERE =
-  'This version keeps no settings file at that path. Reload the settings and save again.';
+const NOT_A_FILE_HERE = 'This version keeps no settings file at that path. Reload the settings and save again.';
 
 /** Nothing under a versions root is followed, so a link at one of these paths is passed by. */
 const NOT_A_PLAIN_FILE =
@@ -83,10 +79,6 @@ async function editedBytes(path: string, edit: StackSettingsFileEdit): Promise<B
 /** What a save touched, key names only. A value of these files never reaches a log. */
 export function describeSettingsSave(save: StackSettingsSave): string {
   return save.files
-    .map((file) =>
-      'text' in file
-        ? file.path
-        : `${file.path} ${file.entries.map((entry) => entry.key).join(' ')}`,
-    )
+    .map((file) => ('text' in file ? file.path : `${file.path} ${file.entries.map((entry) => entry.key).join(' ')}`))
     .join(', ');
 }

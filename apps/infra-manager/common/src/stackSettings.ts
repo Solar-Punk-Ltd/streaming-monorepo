@@ -123,20 +123,11 @@ export const NAMED_SECRET_SETTING_KEYS: readonly string[] = [
 ];
 
 /** What a key ending in one of these holds is a secret whatever version declares it. */
-const SECRET_KEY_SUFFIXES: readonly string[] = [
-  '_TOKEN',
-  '_SECRET',
-  '_PASSPHRASE',
-  '_PASSWORD',
-  '_KEY',
-];
+const SECRET_KEY_SUFFIXES: readonly string[] = ['_TOKEN', '_SECRET', '_PASSPHRASE', '_PASSWORD', '_KEY'];
 
 /** Whether a settings key holds a value the page masks until it is revealed. */
 export function isSecretSettingKey(key: string): boolean {
-  return (
-    NAMED_SECRET_SETTING_KEYS.includes(key) ||
-    SECRET_KEY_SUFFIXES.some((suffix) => key.endsWith(suffix))
-  );
+  return NAMED_SECRET_SETTING_KEYS.includes(key) || SECRET_KEY_SUFFIXES.some((suffix) => key.endsWith(suffix));
 }
 
 // ----------------------------------------------------------- the generated
@@ -145,18 +136,12 @@ export function isSecretSettingKey(key: string): boolean {
  * The keys the manager writes into every deployment's own env file from the
  * deployment's own fields, whatever the version's contract declares.
  */
-export const PER_DEPLOYMENT_SETTING_KEYS: readonly string[] = [
-  'SRT_PASSPHRASE',
-  'STREAM_KEY',
-];
+export const PER_DEPLOYMENT_SETTING_KEYS: readonly string[] = ['SRT_PASSPHRASE', 'STREAM_KEY'];
 
 /**
  * Whether the manager fills this key per deployment, so a value left empty
  * here is filled in rather than missing.
  */
-export function isGeneratedSettingKey(
-  key: string,
-  requiredSecrets: readonly string[],
-): boolean {
+export function isGeneratedSettingKey(key: string, requiredSecrets: readonly string[]): boolean {
   return requiredSecrets.includes(key) || PER_DEPLOYMENT_SETTING_KEYS.includes(key);
 }

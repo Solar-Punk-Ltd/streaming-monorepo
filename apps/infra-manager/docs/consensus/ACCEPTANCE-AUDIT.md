@@ -148,6 +148,7 @@ First upgrade must use the newly built exact manager image in a one-off CLI cont
 Activation must not prune before mount/reference recovery. Existing T04b boot catches failed reconciliation and still reaches syncBundled/pruneAll, so add a failed-observer retention regression and preserve all artifacts until recovery succeeds. Check migration serialization before introducing concurrent one-off CLI commands. Keep those corrections distinct from source capture.
 
 Current bounded assignment to the T04a/T06 worker: create an isolated worktree for the existing T04b branch, merge accepted T06b65f8d9, validate the dependency merge, then implement pinned source/private input capture and sealed unique package helpers with test-first synthetic fixtures. Root reviews before the journal, CLI or broad deploy-script integration. The specifically rejected T12 patch remains untouched and awaits Levi. Stop on any new automatic rejection without bypassing it.
+
 ## Latest T04b helper review, 2026-09-09
 
 Cross-provider review, OpenAI-hosted. RED `f60a29b` is committed. Initial GREEN helpers are uncommitted in `/private/tmp/t04b-codex` and are not accepted. The initial RED was a missing-module failure, not separately executed behavioral failures. All 31 focused GREEN cases and manager types pass, with logs `/private/tmp/t04b-source-capture-{red,green,types}.log`.

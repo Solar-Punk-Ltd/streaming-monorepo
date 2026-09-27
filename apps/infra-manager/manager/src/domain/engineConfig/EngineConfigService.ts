@@ -12,33 +12,18 @@ import {
   OME_SERVICE,
 } from '@streaming-infra-manager/common';
 
-import {
-  Profile,
-  ProfileStatus,
-  ProfileWithContainers,
-  TRANSITIONAL_STATUSES,
-} from '../../types/index.js';
+import { Profile, ProfileStatus, ProfileWithContainers, TRANSITIONAL_STATUSES } from '../../types/index.js';
 import { ContainerRepository } from '../ContainerRepository.js';
 import type { ContainerState } from '../ContainerControl.js';
 import { engineConfigDirFor } from '../dataDirs.js';
-import {
-  DeploymentOrchestrator,
-  type DeployReservation,
-} from '../DeploymentOrchestrator.js';
-import {
-  ProfileBusyError,
-  ProfileConfigError,
-  ProfileNotFoundError,
-} from '../errors/index.js';
+import { DeploymentOrchestrator, type DeployReservation } from '../DeploymentOrchestrator.js';
+import { ProfileBusyError, ProfileConfigError, ProfileNotFoundError } from '../errors/index.js';
 import { EventBus } from '../EventBus.js';
 import { Logger } from '../Logger.js';
 import { ProfileRepository } from '../ProfileRepository.js';
 import { redactEngineOutput } from '../redactEngineOutput.js';
 import { omePortsFor, portTableOf } from '../versions/portTable.js';
-import type {
-  StackVersionRecord,
-  StackVersionRepository,
-} from '../versions/StackVersionRepository.js';
+import type { StackVersionRecord, StackVersionRepository } from '../versions/StackVersionRepository.js';
 import { deployRootProblem, stackRootOf } from '../versions/stackPaths.js';
 
 import { EngineConfigChecker } from './engineConfigCheck.js';
@@ -123,10 +108,7 @@ export class EngineConfigService {
     const profile = await this.require(name);
     const engine = engineOf(profile);
     const version = await this.versions.findById(profile.stack_version_id);
-    const template = engineTemplateIn(
-      await this.orchestrator.stackRootFor(profile),
-      engine,
-    );
+    const template = engineTemplateIn(await this.orchestrator.stackRootFor(profile), engine);
     const supported = supportsEngineConfig(version, engine);
     return {
       engine,
@@ -214,9 +196,11 @@ export class EngineConfigService {
       throw new ProfileConfigError(name, 'There is no interrupted rollout to go back from.');
     }
     const begun = await this.operations.beginRestorePreviousDeploy({
-      profile: existing, engine, ownership: ownershipOf(open),
-      message: 'Restoring the previous config file at the operator\'s request.',
-      ...await this.prepareAdmission(existing),
+      profile: existing,
+      engine,
+      ownership: ownershipOf(open),
+      message: "Restoring the previous config file at the operator's request.",
+      ...(await this.prepareAdmission(existing)),
     });
     if (!begun) throw new ProfileConfigError(name, 'The interrupted rollout changed. Reload and try again.');
     await this.publish(begun.profile);
@@ -250,7 +234,8 @@ export class EngineConfigService {
       }
       if (operation.state === 'reverting') {
         await this.operations.transition(ownership, ['reverting'], 'interrupted', {
-          message: 'Recovery interrupted by a manager restart. The previous file is stored, the engine was not verified.',
+          message:
+            'Recovery interrupted by a manager restart. The previous file is stored, the engine was not verified.',
         });
         continue;
       }
@@ -296,7 +281,13 @@ export class EngineConfigService {
     engine: EngineName,
     config: string | null,
   ): Promise<ProfileWithContainers> {
-    return this.rollOut(existing, engine, config === null ? 'reset' : 'apply', config, await this.deployVersion(existing));
+    return this.rollOut(
+      existing,
+      engine,
+      config === null ? 'reset' : 'apply',
+      config,
+      await this.deployVersion(existing),
+    );
   }
 
   private async rollOut(
@@ -307,9 +298,15 @@ export class EngineConfigService {
     version: StackVersionRecord,
   ): Promise<ProfileWithContainers> {
     const started = await this.operations.beginDeploy({
-      profile: existing, version, engine, kind, config, ...await this.prepareAdmission(existing),
+      profile: existing,
+      version,
+      engine,
+      kind,
+      config,
+      ...(await this.prepareAdmission(existing)),
     });
-    if (!started) throw new ProfileConfigError(existing.name, 'The deployment or config file changed. Reload and try again.');
+    if (!started)
+      throw new ProfileConfigError(existing.name, 'The deployment or config file changed. Reload and try again.');
 
     logger.info(
       `[EngineConfig] ${existing.name}: ${config === null ? 'back to the template' : 'applying a config file'}, operation ${started.operation.id}, recreating ${engine}`,
@@ -319,8 +316,7 @@ export class EngineConfigService {
     try {
       await this.orchestrator.runReserved(reservationOf(started), started.profile, {
         afterRunning: () => this.afterRecreate(started.operation),
-        afterFailure: (message) =>
-          this.revertOwned(started.operation, 'ERROR', null, 'failed', message),
+        afterFailure: (message) => this.revertOwned(started.operation, 'ERROR', null, 'failed', message),
       });
     } catch (err) {
       await this.interruptPreparation(started, getErrorMessage(err));
@@ -342,9 +338,7 @@ export class EngineConfigService {
       });
       return;
     }
-    const container = await this.control
-      .inspect(operation.profileName, operation.engine)
-      .catch(() => null);
+    const container = await this.control.inspect(operation.profileName, operation.engine).catch(() => null);
     const watching = await this.operations.transition(ownership, ['applying'], 'watching', {
       containerId: container?.id ?? null,
       containerStartedAt: container?.startedAt ?? null,
@@ -357,9 +351,7 @@ export class EngineConfigService {
   /** The watch runs for its whole duration, and the success hook that started it must not wait on it. */
   private watchInBackground(operation: EngineConfigOperation): void {
     this.watchEngine(operation).catch((err: unknown) => {
-      logger.error(
-        `[EngineConfig] the watch on ${operation.profileName} failed: ${getErrorMessage(err)}`,
-      );
+      logger.error(`[EngineConfig] the watch on ${operation.profileName} failed: ${getErrorMessage(err)}`);
     });
   }
 
@@ -454,12 +446,12 @@ export class EngineConfigService {
     ]);
     return Boolean(
       current &&
-        profile &&
-        states.includes(current.state) &&
-        profile.instance_id === operation.profileInstanceId &&
-        profile.engine_config_revision === operation.appliedRevision &&
-        profile.intent_revision === operation.intentRevision &&
-        (status === null || profile.status === status),
+      profile &&
+      states.includes(current.state) &&
+      profile.instance_id === operation.profileInstanceId &&
+      profile.engine_config_revision === operation.appliedRevision &&
+      profile.intent_revision === operation.intentRevision &&
+      (status === null || profile.status === status),
     );
   }
 
@@ -485,17 +477,18 @@ export class EngineConfigService {
     const profile = await this.profiles.findByName(operation.profileName);
     if (!profile) return;
 
-    const tail = await this.control
-      .logs(operation.profileName, operation.engine, LOG_TAIL_LINES)
-      .catch(() => '');
+    const tail = await this.control.logs(operation.profileName, operation.engine, LOG_TAIL_LINES).catch(() => '');
     const message = failure
       ? `${ENGINE_DISPLAY_NAMES[operation.engine]} could not be recreated on the new config file (${failure}), so the previous one is back.`
       : revertMessage(operation.engine, state, tail);
     let begun: ClaimedRolloutDeploy | null;
     try {
       begun = await this.operations.beginRevertDeploy({
-        profile, engine: operation.engine, ownership: ownershipOf(operation), message,
-        ...await this.prepareAdmission(profile),
+        profile,
+        engine: operation.engine,
+        ownership: ownershipOf(operation),
+        message,
+        ...(await this.prepareAdmission(profile)),
       });
     } catch (err) {
       const reason = failure
@@ -513,7 +506,12 @@ export class EngineConfigService {
     await this.runRecovery(begun, terminal, message);
   }
 
-  private async runRecovery(begun: ClaimedRolloutDeploy, terminal: 'reverted' | 'failed', message: string, propagateError = false): Promise<void> {
+  private async runRecovery(
+    begun: ClaimedRolloutDeploy,
+    terminal: 'reverted' | 'failed',
+    message: string,
+    propagateError = false,
+  ): Promise<void> {
     const reverting = ownershipOf(begun.operation);
     try {
       await this.orchestrator.runReserved(reservationOf(begun), begun.profile, {
@@ -529,7 +527,10 @@ export class EngineConfigService {
         },
       });
     } catch (err) {
-      await this.interruptPreparation(begun, `${message} The previous file could not be recreated on: ${getErrorMessage(err)}`);
+      await this.interruptPreparation(
+        begun,
+        `${message} The previous file could not be recreated on: ${getErrorMessage(err)}`,
+      );
       if (propagateError) throw err;
     }
   }
@@ -537,9 +538,15 @@ export class EngineConfigService {
   private async interruptPreparation(claimed: ClaimedRolloutDeploy, message: string): Promise<void> {
     const referenceId = claimed.descriptor.referenceId;
     if (referenceId === null) return;
-    await this.operations.transition(ownershipOf(claimed.operation), ['applying', 'reverting'], 'interrupted', {
-      message: `Deployment preparation interrupted: ${message}`,
-    }, referenceId);
+    await this.operations.transition(
+      ownershipOf(claimed.operation),
+      ['applying', 'reverting'],
+      'interrupted',
+      {
+        message: `Deployment preparation interrupted: ${message}`,
+      },
+      referenceId,
+    );
   }
 
   // ---------------------------------------------------------- the plumbing
@@ -551,7 +558,8 @@ export class EngineConfigService {
 
   private async deployVersion(profile: Profile): Promise<StackVersionRecord> {
     const version = await this.versions.findById(profile.stack_version_id);
-    if (!version) throw new ProfileConfigError(profile.name, `Stack version ${profile.stack_version_id} no longer exists.`);
+    if (!version)
+      throw new ProfileConfigError(profile.name, `Stack version ${profile.stack_version_id} no longer exists.`);
     const problem = deployRootProblem(version);
     if (problem) throw new ProfileConfigError(profile.name, problem);
     return version;
@@ -571,11 +579,16 @@ export class EngineConfigService {
 
 function reservationOf(claimed: ClaimedRolloutDeploy): DeployReservation {
   return {
-    profileName: claimed.profile.name, claimedProfile: claimed.profile,
-    services: claimed.attempt.services, heldBackForStamp: [],
-    previousStatus: claimed.previousStatus, transitioned: true,
-    host: claimed.attempt.target ?? claimed.profile.host ?? undefined, daemonId: claimed.attempt.daemonId,
-    build: claimed.descriptor, attempt: claimed.attempt,
+    profileName: claimed.profile.name,
+    claimedProfile: claimed.profile,
+    services: claimed.attempt.services,
+    heldBackForStamp: [],
+    previousStatus: claimed.previousStatus,
+    transitioned: true,
+    host: claimed.attempt.target ?? claimed.profile.host ?? undefined,
+    daemonId: claimed.attempt.daemonId,
+    build: claimed.descriptor,
+    attempt: claimed.attempt,
   };
 }
 
@@ -598,17 +611,11 @@ function refuseWhileTransitional(profile: Profile): void {
   }
 }
 
-function supportsEngineConfig(
-  version: StackVersionRecord | null,
-  engine: EngineName,
-): boolean {
+function supportsEngineConfig(version: StackVersionRecord | null, engine: EngineName): boolean {
   return version?.contract?.engineConfig[engine] ?? false;
 }
 
-function unsupportedReason(
-  version: StackVersionRecord | null,
-  engine: EngineName,
-): string {
+function unsupportedReason(version: StackVersionRecord | null, engine: EngineName): string {
   const name = version?.name ?? 'This stack version';
   return (
     `${name} renders the ${ENGINE_DISPLAY_NAMES[engine]} config from its template and cannot run a file of its own. ` +
@@ -618,10 +625,7 @@ function unsupportedReason(
 
 function refuseBySize(name: string, config: string): void {
   if (!config.trim()) {
-    throw new ProfileConfigError(
-      name,
-      'The file is empty. Use Back to the template to run the template again.',
-    );
+    throw new ProfileConfigError(name, 'The file is empty. Use Back to the template to run the template again.');
   }
   const bytes = Buffer.byteLength(config, 'utf8');
   if (bytes > ENGINE_CONFIG_MAX_BYTES) {
@@ -654,11 +658,7 @@ function reasonLines(tail: string): string {
   return redactEngineOutput(kept.join('\n').slice(-LOG_TAIL_BYTES));
 }
 
-function revertMessage(
-  engine: EngineName,
-  state: ContainerState | null,
-  tail: string,
-): string {
+function revertMessage(engine: EngineName, state: ContainerState | null, tail: string): string {
   const lines = reasonLines(tail);
   const head = `${ENGINE_DISPLAY_NAMES[engine]} ${describeState(state)} on the new config file, so the previous one is back.`;
   return lines ? `${head} The engine's last lines:\n${lines}` : head;

@@ -1,9 +1,6 @@
 import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 
-import {
-  describeAttemptHold,
-  type DeployAttemptView,
-} from '@streaming-infra-manager/common';
+import { describeAttemptHold, type DeployAttemptView } from '@streaming-infra-manager/common';
 
 import { MONO_STACK } from '../app/theme';
 import { ReadinessPill } from '../components/ReadinessPill';
@@ -94,53 +91,57 @@ function AttemptRow({
         px: 2.25,
         py: 1.5,
         borderBottom: 1,
-        borderColor: 'divider'
-      }}>
+        borderColor: 'divider',
+      }}
+    >
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
         <Stack
           direction="row"
           spacing={1}
           useFlexGap
           sx={{
-            alignItems: "center",
-            flexWrap: "wrap"
-          }}>
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
           <Typography variant="body2" sx={{ fontWeight: 500 }}>
             {attempt.project}
           </Typography>
-          <ReadinessPill
-            label={STATE_LABELS[attempt.state]}
-            tone={STATE_TONES[attempt.state]}
-          />
+          <ReadinessPill label={STATE_LABELS[attempt.state]} tone={STATE_TONES[attempt.state]} />
           <Typography variant="caption" sx={{ fontFamily: MONO_STACK }}>
             {attempt.jobId}
           </Typography>
-          <Typography variant="caption" sx={{
-            color: "text.secondary"
-          }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
             started {formatDateTime(attempt.startedAt)}
           </Typography>
         </Stack>
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {describeAttemptHold(attempt)}
         </Typography>
         <Typography
           variant="caption"
-          sx={{ color: attempt.reason ? 'error.main' : 'text.secondary', display: 'block', fontFamily: MONO_STACK, whiteSpace: 'pre-wrap' }}
+          sx={{
+            color: attempt.reason ? 'error.main' : 'text.secondary',
+            display: 'block',
+            fontFamily: MONO_STACK,
+            whiteSpace: 'pre-wrap',
+          }}
         >
           {attempt.reason ?? (releasable ? NEVER_JUDGED : RUNNING_RESOLVES_ITSELF)}
         </Typography>
       </Box>
       {releasable && (
-        <Button
-          size="small"
-          color="error"
-          variant="outlined"
-          onClick={onRelease}
-          sx={{ flex: 'none' }}
-        >
+        <Button size="small" color="error" variant="outlined" onClick={onRelease} sx={{ flex: 'none' }}>
           Release
         </Button>
       )}

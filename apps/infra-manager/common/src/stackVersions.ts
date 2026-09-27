@@ -22,11 +22,7 @@ export const BUNDLED_VERSION_NAME = 'bundled';
 
 export type StackVersionStatus = 'building' | 'ready' | 'failed';
 
-export const STACK_VERSION_STATUSES: readonly StackVersionStatus[] = [
-  'building',
-  'ready',
-  'failed',
-];
+export const STACK_VERSION_STATUSES: readonly StackVersionStatus[] = ['building', 'ready', 'failed'];
 
 /** The transport a port is published on. Docker's port mapping names it, tcp when it does not. */
 export type PortProtocol = 'tcp' | 'udp';
@@ -330,8 +326,7 @@ export function parseStackContract(value: unknown): StackContract | null {
       // classified, and unknown must not run concurrently.
       sharedImageTags: features.sharedImageTags !== false,
     },
-    chequebookMinBzz:
-      typeof value.chequebookMinBzz === 'string' ? value.chequebookMinBzz : null,
+    chequebookMinBzz: typeof value.chequebookMinBzz === 'string' ? value.chequebookMinBzz : null,
     // Absent from a contract read by an older manager, which is a version
     // that was never asked and so is not known to support it.
     engineConfig: engineConfigOf(value.engineConfig),
@@ -339,8 +334,7 @@ export function parseStackContract(value: unknown): StackContract | null {
     ...(isRecord(value.serviceEnvKeys) ? { serviceEnvKeys: stringListMapOf(value.serviceEnvKeys) } : {}),
     warnings: stringsOf(value.warnings),
     // Absent from a contract an older manager stored, which read no mapping.
-    allocationProblem:
-      typeof value.allocationProblem === 'string' ? value.allocationProblem : null,
+    allocationProblem: typeof value.allocationProblem === 'string' ? value.allocationProblem : null,
   };
 }
 
@@ -388,9 +382,7 @@ function parsePorts(value: unknown): StackPortVar[] | null {
 }
 
 function stringsOf(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((entry): entry is string => typeof entry === 'string')
-    : [];
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
 }
 
 function stringListMapOf(value: Record<string, unknown>): Record<string, string[]> {

@@ -712,7 +712,7 @@ export class FeedHealthTracker {
     return foldLadderHealth(
       this.topics.get(topicId),
       rungs.map((rung) => this.topics.get(rung)),
-      watched === undefined ? null : this.topics.get(watched) ?? HEALTHY,
+      watched === undefined ? null : (this.topics.get(watched) ?? HEALTHY),
     );
   }
 

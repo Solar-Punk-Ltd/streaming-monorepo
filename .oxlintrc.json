@@ -97,7 +97,12 @@
     // forgets once any option is set.
     "eslint/no-unused-vars": [
       "warn",
-      { "ignoreRestSiblings": true, "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "caughtErrorsIgnorePattern": "^_" }
+      {
+        "ignoreRestSiblings": true,
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
     ],
 
     // Type-aware, through oxlint-tsgolint and the TypeScript 7 compiler, run by `--type-aware`.

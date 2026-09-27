@@ -56,7 +56,11 @@ describe('the keys each compose service reads', () => {
   it('adds what an override file gives the same service', () => {
     const override = 'services:\n  client:\n    volumes:\n      - ${CLIENT_CONF_FILE}:/etc/nginx.conf:ro\n';
 
-    assert.deepEqual(readServiceEnvKeys([COMPOSE, override]).client, ['CLIENT_CONF_FILE', 'CLIENT_PORT', 'VITE_APP_OWNER']);
+    assert.deepEqual(readServiceEnvKeys([COMPOSE, override]).client, [
+      'CLIENT_CONF_FILE',
+      'CLIENT_PORT',
+      'VITE_APP_OWNER',
+    ]);
   });
 
   it('reads the uploader keys of the bundled stack that the hand-kept list never had', () => {

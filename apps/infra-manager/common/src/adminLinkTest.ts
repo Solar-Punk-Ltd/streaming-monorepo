@@ -57,7 +57,8 @@ export function adminLinkTestProblems({ url, token }: AdminLinkTestRequest): str
   const urlProblem = url === '' ? 'Type the address of the web2 admin to test.' : adminUrlProblem(url);
   if (urlProblem) problems.push(urlProblem);
   if (token.source === 'typed') {
-    const tokenProblem = token.value === '' ? 'Type a token to test with, or test with the stored one.' : adminTokenProblem(token.value);
+    const tokenProblem =
+      token.value === '' ? 'Type a token to test with, or test with the stored one.' : adminTokenProblem(token.value);
     if (tokenProblem) problems.push(tokenProblem);
   }
   return problems;

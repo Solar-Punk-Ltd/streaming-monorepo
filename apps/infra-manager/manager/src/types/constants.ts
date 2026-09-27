@@ -10,12 +10,7 @@ import {
 
 import { ProfileKind, ProfileStatus, ServiceName } from './types.js';
 
-export const PROFILE_KINDS = [
-  'streamer',
-  'viewer',
-  'custom',
-  'abr-uploader',
-] as const;
+export const PROFILE_KINDS = ['streamer', 'viewer', 'custom', 'abr-uploader'] as const;
 
 export const ALL_SERVICES = [
   BEE_UPLOADER_SERVICE,
@@ -27,20 +22,8 @@ export const ALL_SERVICES = [
 ] as const;
 
 /** Default service set per profile kind. Overridable per request. */
-export const KIND_DEFAULT_SERVICES: Record<ProfileKind, readonly ServiceName[]> =
-  SHARED_KIND_DEFAULT_SERVICES;
+export const KIND_DEFAULT_SERVICES: Record<ProfileKind, readonly ServiceName[]> = SHARED_KIND_DEFAULT_SERVICES;
 
-export const PROFILE_STATUSES = [
-  'DEPLOYING',
-  'RUNNING',
-  'STOPPING',
-  'STOPPED',
-  'REMOVING',
-  'ERROR',
-] as const;
+export const PROFILE_STATUSES = ['DEPLOYING', 'RUNNING', 'STOPPING', 'STOPPED', 'REMOVING', 'ERROR'] as const;
 
-export const TRANSITIONAL_STATUSES: readonly ProfileStatus[] = [
-  'DEPLOYING',
-  'STOPPING',
-  'REMOVING',
-];
+export const TRANSITIONAL_STATUSES: readonly ProfileStatus[] = ['DEPLOYING', 'STOPPING', 'REMOVING'];

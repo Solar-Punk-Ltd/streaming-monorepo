@@ -13,10 +13,7 @@ import { dilutionPreview, topUpPreview } from '@streaming-infra-manager/common';
 import { DiluteDepthError } from '../../manager/src/domain/errors/DiluteDepthError.ts';
 import { DiluteLifeError } from '../../manager/src/domain/errors/DiluteLifeError.ts';
 import { StampNotFoundError } from '../../manager/src/domain/errors/StampNotFoundError.ts';
-import {
-  diluteStampSchema,
-  topUpStampSchema,
-} from '../../manager/src/schemas/stamp.ts';
+import { diluteStampSchema, topUpStampSchema } from '../../manager/src/schemas/stamp.ts';
 import { send } from './mock-http.mjs';
 import { hex, node } from './mock-seed.mjs';
 

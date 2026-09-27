@@ -8,9 +8,31 @@ name: web2-admin
 on:
   push:
     branches: [main, main-v3]
-    paths: ['apps/web2-admin/**', 'infra/edge/**', 'tools/app-workspace/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.oxlintrc.json', '.oxfmtrc.json', '.github/workflows/web2-admin.yml']
+    paths:
+      [
+        'apps/web2-admin/**',
+        'infra/edge/**',
+        'tools/app-workspace/**',
+        'package.json',
+        'pnpm-lock.yaml',
+        'pnpm-workspace.yaml',
+        '.oxlintrc.json',
+        '.oxfmtrc.json',
+        '.github/workflows/web2-admin.yml',
+      ]
   pull_request:
-    paths: ['apps/web2-admin/**', 'infra/edge/**', 'tools/app-workspace/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.oxlintrc.json', '.oxfmtrc.json', '.github/workflows/web2-admin.yml']
+    paths:
+      [
+        'apps/web2-admin/**',
+        'infra/edge/**',
+        'tools/app-workspace/**',
+        'package.json',
+        'pnpm-lock.yaml',
+        'pnpm-workspace.yaml',
+        '.oxlintrc.json',
+        '.oxfmtrc.json',
+        '.github/workflows/web2-admin.yml',
+      ]
 
 permissions:
   contents: read

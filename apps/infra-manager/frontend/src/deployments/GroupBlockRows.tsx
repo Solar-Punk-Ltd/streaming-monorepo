@@ -1,12 +1,5 @@
 import { Fragment, useState } from 'react';
-import {
-  Button,
-  IconButton,
-  Stack,
-  TableCell,
-  TableRow,
-  Typography,
-} from '@mui/material';
+import { Button, IconButton, Stack, TableCell, TableRow, Typography } from '@mui/material';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
@@ -29,11 +22,7 @@ import { DeploymentRow } from './DeploymentRow';
 import type { UploaderHealths } from './useUploaderHealths';
 import { isRunning, isTransitional } from './shape';
 
-function groupSubLabel(
-  group: DeploymentGroup,
-  members: Profile[],
-  memberNoun: string,
-): string {
+function groupSubLabel(group: DeploymentGroup, members: Profile[], memberNoun: string): string {
   if (isLadderKind(group.kind)) {
     return `ABR node pool · ${ABR_LADDER_SIZE} Bee nodes, one per quality`;
   }
@@ -91,20 +80,17 @@ export function GroupBlockRows({
               setOpen((value) => !value);
             }}
           >
-            {open ? (
-              <ExpandMoreIcon fontSize="small" />
-            ) : (
-              <ChevronRightIcon fontSize="small" />
-            )}
+            {open ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
           </IconButton>
         </TableCell>
         <TableCell>
-          <Typography sx={{ fontFamily: MONO_STACK, fontWeight: 600, fontSize: 13 }}>
-            {group.name}
-          </Typography>
-          <Typography variant="caption" sx={{
-            color: "text.secondary"
-          }}>
+          <Typography sx={{ fontFamily: MONO_STACK, fontWeight: 600, fontSize: 13 }}>{group.name}</Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
             {groupSubLabel(group, members, memberNoun)}
           </Typography>
         </TableCell>
@@ -112,27 +98,30 @@ export function GroupBlockRows({
           <ReadinessPill label={readiness.label} tone={readiness.tone} />
         </TableCell>
         <TableCell>
-          <Typography variant="caption" sx={{
-            color: "text.secondary"
-          }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
             {running}/{members.length} running
           </Typography>
         </TableCell>
         <TableCell align="right" onClick={(event) => event.stopPropagation()}>
-          <Stack direction="row" spacing={0.5} sx={{
-            justifyContent: "flex-end"
-          }}>
+          <Stack
+            direction="row"
+            spacing={0.5}
+            sx={{
+              justifyContent: 'flex-end',
+            }}
+          >
             {running > 0 && (
               <Button size="small" onClick={() => actions.stopGroup(group, members)}>
                 Stop all
               </Button>
             )}
             {startable && (
-              <Button
-                size="small"
-                variant="contained"
-                onClick={() => actions.startGroup(group, members)}
-              >
+              <Button size="small" variant="contained" onClick={() => actions.startGroup(group, members)}>
                 Start all
               </Button>
             )}

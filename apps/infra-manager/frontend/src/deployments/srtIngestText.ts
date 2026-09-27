@@ -105,16 +105,11 @@ const UNMEASURED_PILL: Record<SrtIngestUnmeasuredState, SrtIngestView['pill']> =
 const NOT_READ_PILL: SrtIngestView['pill'] = { label: 'Not read', tone: 'gray' };
 const READING_PILL: SrtIngestView['pill'] = { label: 'Reading', tone: 'info' };
 
-export function offersLatencySetting(
-  fields: readonly { key: string }[] | null | undefined,
-): boolean {
+export function offersLatencySetting(fields: readonly { key: string }[] | null | undefined): boolean {
   return fields?.some((field) => field.key === SRT_LATENCY_SETTING_KEY) ?? false;
 }
 
-export function srtIngestView(
-  load: SrtIngestLoad,
-  options: SrtIngestViewOptions,
-): SrtIngestView {
+export function srtIngestView(load: SrtIngestLoad, options: SrtIngestViewOptions): SrtIngestView {
   const { reading, loadError } = load;
   if (!reading) {
     return nothingToShow(
@@ -199,8 +194,7 @@ function remedyFor(
   const raiseLatency = `Raise the SRT latency of this deployment, to ${SUGGESTED_LATENCY_MS} ms for example`;
   return {
     severity: verdict === SRT_LINK_BAD ? 'error' : 'warning',
-    title:
-      "The broadcaster's connection is losing packets, and some arrive too late to use, so the picture breaks up.",
+    title: "The broadcaster's connection is losing packets, and some arrive too late to use, so the picture breaks up.",
     steps: [
       latencySettingOffered
         ? { text: `${raiseLatency}, in its stack settings.`, action: RAISE_LATENCY_ACTION }
@@ -213,7 +207,7 @@ function remedyFor(
         text:
           `Or add &latency=${OBS_SUGGESTED_LATENCY} to the end of the SRT address in OBS. OBS counts ` +
           `microseconds, so that is ${SUGGESTED_LATENCY_MS / 1_000} seconds. SRT uses the larger of the two ` +
-          "sides, so this only helps when it is above the SRT latency this deployment runs with.",
+          'sides, so this only helps when it is above the SRT latency this deployment runs with.',
       },
       { text: 'Lower the bitrate OBS broadcasts at.' },
       { text: 'Use a wired connection instead of WiFi.' },

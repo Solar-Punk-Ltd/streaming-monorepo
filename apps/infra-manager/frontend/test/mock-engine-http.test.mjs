@@ -19,7 +19,7 @@ async function candidatePort() {
   socket.listen(0, '127.0.0.1');
   await once(socket, 'listening');
   const port = socket.address().port;
-  await new Promise(resolve => socket.close(resolve));
+  await new Promise((resolve) => socket.close(resolve));
   return port;
 }
 
@@ -60,12 +60,12 @@ before(async () => {
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => finish(new Error('Owned mock did not start')), 8_000);
     let output = '';
-    const onData = chunk => {
+    const onData = (chunk) => {
       output = (output + chunk.toString()).slice(-4_096);
       if (output.includes(`mock manager on ${base} `)) finish();
     };
     const onExit = () => finish(new Error('Owned mock exited before startup'));
-    const finish = error => {
+    const finish = (error) => {
       clearTimeout(timeout);
       child.stdout.off('data', onData);
       child.off('exit', onExit);
@@ -84,26 +84,41 @@ after(async () => {
   const exited = once(child, 'exit');
   const timeout = setTimeout(() => child.kill('SIGKILL'), 2_000);
   child.kill('SIGTERM');
-  try { await exited; } finally { clearTimeout(timeout); }
+  try {
+    await exited;
+  } finally {
+    clearTimeout(timeout);
+  }
 });
 
 async function profileFor(engine, name = `mock-observation-${nextProfile++}`) {
   await request('/profiles', 'POST', {
-    name, kind: 'custom', components: [engine, 'stream-uploader'], stack_version_id: 2,
-    engine_settings: { HLS_FRAGMENT: '7', HLS_WINDOW: '45', HLS_SEGMENT_DURATION: '7', OME_HLS_POLL_INTERVAL_MS: '750' },
+    name,
+    kind: 'custom',
+    components: [engine, 'stream-uploader'],
+    stack_version_id: 2,
+    engine_settings: {
+      HLS_FRAGMENT: '7',
+      HLS_WINDOW: '45',
+      HLS_SEGMENT_DURATION: '7',
+      OME_HLS_POLL_INTERVAL_MS: '750',
+    },
   });
-  await until(`/profiles/${name}`, profile => profile.status === 'RUNNING');
+  await until(`/profiles/${name}`, (profile) => profile.status === 'RUNNING');
   const path = `/profiles/${name}/engine-config`;
   const { template } = await request(path);
   return {
-    name, path, template,
-    put: config => request(path, 'PUT', { config }),
+    name,
+    path,
+    template,
+    put: (config) => request(path, 'PUT', { config }),
     overview: () => request(`/profiles/${name}/engine`),
-    settled: () => until(`/profiles/${name}`, profile => profile.status === 'RUNNING'),
+    settled: () => until(`/profiles/${name}`, (profile) => profile.status === 'RUNNING'),
   };
 }
 
-const omeLiteral = template => template.replace('SEGMENT_DURATION_PLACEHOLDER', '4').replace('SEGMENT_COUNT_PLACEHOLDER', '5');
+const omeLiteral = (template) =>
+  template.replace('SEGMENT_DURATION_PLACEHOLDER', '4').replace('SEGMENT_COUNT_PLACEHOLDER', '5');
 const srsScope = (name, fragment = '4') => `vhost ${name} { hls { hls_fragment ${fragment}; hls_window 30; } }`;
 
 describe('stored config observations over authenticated mock HTTP', { concurrency: false, timeout: 60_000 }, () => {
@@ -111,7 +126,8 @@ describe('stored config observations over authenticated mock HTTP', { concurrenc
     const profile = await profileFor('ome');
     const current = await profile.settled();
     const saved = await request(`/profiles/${profile.name}/engine-settings`, 'PUT', {
-      HLS_SEGMENT_DURATION: '9', expectedInstanceId: current.instance_id,
+      HLS_SEGMENT_DURATION: '9',
+      expectedInstanceId: current.instance_id,
     });
     assert.deepEqual(saved.engine_settings, { HLS_SEGMENT_DURATION: '9' });
     assert.equal(saved.instance_id, current.instance_id);
@@ -121,12 +137,14 @@ describe('stored config observations over authenticated mock HTTP', { concurrenc
     const profile = await profileFor('ome');
     const original = await profile.settled();
     await request(`/profiles/${profile.name}`, 'DELETE');
-    await until('/profiles', result => result.profiles.every(row => row.name !== profile.name));
+    await until('/profiles', (result) => result.profiles.every((row) => row.name !== profile.name));
     const replacement = await profileFor('ome', profile.name);
     const before = await replacement.settled();
     const result = await fetch(`${base}/profiles/${profile.name}/engine-settings`, {
-      method: 'PUT', headers: { cookie, [REQUESTED_WITH_HEADER]: REQUESTED_WITH_VALUE, 'content-type': 'application/json' },
-      body: JSON.stringify({ HLS_SEGMENT_DURATION: '9', expectedInstanceId: original.instance_id }), signal: AbortSignal.timeout(2000),
+      method: 'PUT',
+      headers: { cookie, [REQUESTED_WITH_HEADER]: REQUESTED_WITH_VALUE, 'content-type': 'application/json' },
+      body: JSON.stringify({ HLS_SEGMENT_DURATION: '9', expectedInstanceId: original.instance_id }),
+      signal: AbortSignal.timeout(2000),
     });
     assert.equal(result.status, 409);
     assert.equal((await result.json()).error, 'profile_instance_changed');
@@ -138,8 +156,10 @@ describe('stored config observations over authenticated mock HTTP', { concurrenc
     const before = await profile.settled();
     const typed = 'typed-value-4711';
     const result = await fetch(`${base}/profiles/${profile.name}/engine-settings`, {
-      method: 'PUT', headers: { cookie, [REQUESTED_WITH_HEADER]: REQUESTED_WITH_VALUE, 'content-type': 'application/json' },
-      body: JSON.stringify({ HLS_FRAGMNT: typed, expectedInstanceId: before.instance_id }), signal: AbortSignal.timeout(2000),
+      method: 'PUT',
+      headers: { cookie, [REQUESTED_WITH_HEADER]: REQUESTED_WITH_VALUE, 'content-type': 'application/json' },
+      body: JSON.stringify({ HLS_FRAGMNT: typed, expectedInstanceId: before.instance_id }),
+      signal: AbortSignal.timeout(2000),
     });
     const refusal = await result.json();
     assert.equal(result.status, 400);
@@ -171,7 +191,12 @@ describe('stored config observations over authenticated mock HTTP', { concurrenc
     assert.equal(missing.observations.HLS_SEGMENT_DURATION.source, 'omitted');
     assert.equal(missing.effective.HLS_SEGMENT_COUNT, '5');
     await profile.settled();
-    await profile.put(config.replace('<SegmentDuration>4</SegmentDuration>', '<SegmentDuration>4</SegmentDuration><SegmentDuration>4</SegmentDuration>'));
+    await profile.put(
+      config.replace(
+        '<SegmentDuration>4</SegmentDuration>',
+        '<SegmentDuration>4</SegmentDuration><SegmentDuration>4</SegmentDuration>',
+      ),
+    );
     const duplicate = await profile.overview();
     assert.equal(duplicate.observations.HLS_SEGMENT_DURATION.reason, 'ambiguous-path');
     assert.equal(duplicate.effective.HLS_SEGMENT_DURATION, undefined);
@@ -226,7 +251,7 @@ describe('stored config observations over authenticated mock HTTP', { concurrenc
     await profile.put(omeLiteral(profile.template));
     await profile.settled();
     await request(`/profiles/${profile.name}`, 'DELETE');
-    await until('/profiles', result => result.profiles.every(row => row.name !== profile.name));
+    await until('/profiles', (result) => result.profiles.every((row) => row.name !== profile.name));
     const replacement = await profileFor('ome', profile.name);
     assert.equal((await request(replacement.path)).config, null);
     assert.equal((await replacement.overview()).observations.HLS_SEGMENT_DURATION.source, 'deployment');
@@ -239,7 +264,7 @@ describe('stored config observations over authenticated mock HTTP', { concurrenc
     await profile.settled();
     await profile.put(original.replace('<SegmentDuration>4', '<SegmentDuration>5') + '\n<!-- fail -->');
     const removed = await request(`/profiles/${profile.name}`, 'DELETE');
-    await until('/profiles', result => result.profiles.every(row => row.name !== profile.name));
+    await until('/profiles', (result) => result.profiles.every((row) => row.name !== profile.name));
     const replacement = await profileFor('ome', profile.name);
     const current = await replacement.settled();
     assert.notEqual(current.instance_id, removed.instance_id);
@@ -252,16 +277,18 @@ describe('stored config observations over authenticated mock HTTP', { concurrenc
     const profile = await profileFor('ome');
     const original = omeLiteral(profile.template);
     await profile.put(original.replace('<SegmentDuration>4', '<SegmentDuration>5') + '\n<!-- crash -->');
-    await until(`/profiles/${profile.name}`, row => row.engine_config_state === 'watching');
+    await until(`/profiles/${profile.name}`, (row) => row.engine_config_state === 'watching');
     await request(`/profiles/${profile.name}`, 'DELETE');
-    await until('/profiles', result => result.profiles.every(row => row.name !== profile.name));
+    await until('/profiles', (result) => result.profiles.every((row) => row.name !== profile.name));
     const replacement = await profileFor('ome', profile.name);
     const replacementConfig = omeLiteral(replacement.template).replace('<SegmentDuration>4', '<SegmentDuration>6');
     await replacement.put(replacementConfig);
     await replacement.settled();
     assert.equal((await request(replacement.path)).config, replacementConfig);
-    await replacement.put(replacementConfig.replace('<SegmentDuration>6', '<SegmentDuration>7') + '\n<!-- interrupt -->');
-    await until(`/profiles/${profile.name}`, row => row.engine_config_state === 'interrupted');
+    await replacement.put(
+      replacementConfig.replace('<SegmentDuration>6', '<SegmentDuration>7') + '\n<!-- interrupt -->',
+    );
+    await until(`/profiles/${profile.name}`, (row) => row.engine_config_state === 'interrupted');
     await request(`${replacement.path}/restore-previous`, 'POST');
     await replacement.settled();
     assert.equal((await request(replacement.path)).config, replacementConfig);

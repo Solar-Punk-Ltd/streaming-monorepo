@@ -26,18 +26,25 @@ export class InMemoryPortReservations implements PortReservationRepository {
   releaseBlocked: (profileName: string) => boolean = () => false;
   removalBlocked: (profileName: string) => boolean = () => false;
 
-  async hasRemovalHold(profileName: string): Promise<boolean> { return this.removalBlocked(profileName); }
+  async hasRemovalHold(profileName: string): Promise<boolean> {
+    return this.removalBlocked(profileName);
+  }
 
   private nextId = 1;
 
   private clock = 0;
 
   /** The lowest slot up to the cap no record holds and no port of which anyone holds on the daemon, or null. */
-  freeSlot(daemonId: string, table: readonly StackPortVar[], slotCap: number, takenSlots: ReadonlySet<number>): number | null {
+  freeSlot(
+    daemonId: string,
+    table: readonly StackPortVar[],
+    slotCap: number,
+    takenSlots: ReadonlySet<number>,
+  ): number | null {
     for (let slot = 1; slot <= Math.min(slotCap, MANAGER_SLOT_CAP); slot += 1) {
       if (takenSlots.has(slot)) continue;
       const plan = portPlanFor(table, slot);
-      if (plan.some(entry => portExposureProblem(entry))) continue;
+      if (plan.some((entry) => portExposureProblem(entry))) continue;
       if (plan.some((entry) => this.holderOf(daemonId, entry))) continue;
       return slot;
     }
@@ -63,7 +70,12 @@ export class InMemoryPortReservations implements PortReservationRepository {
     );
   }
 
-  async plan(daemonId: string, profileName: string, entries: readonly PortPlanEntry[], reason: string): Promise<PortReservation[]> {
+  async plan(
+    daemonId: string,
+    profileName: string,
+    entries: readonly PortPlanEntry[],
+    reason: string,
+  ): Promise<PortReservation[]> {
     for (const entry of entries) {
       const holder = this.holderOf(daemonId, entry);
       if (holder && holder.profileName !== profileName) throw new PortReservedError(profileName, holder);
@@ -120,18 +132,30 @@ export class InMemoryPortReservations implements PortReservationRepository {
   }
 
   async reconcile(observation: PortReconciliation): Promise<void> {
-    const rows = this.rows.filter(row => row.profileName === observation.profileName && row.daemonId === observation.daemonId);
+    const rows = this.rows.filter(
+      (row) => row.profileName === observation.profileName && row.daemonId === observation.daemonId,
+    );
     const bound = new Set(observation.bound.map(portKeyOf));
     const planned = new Set(observation.planned.map(portKeyOf));
-    await this.setState(rows.filter(row => bound.has(portKeyOf(row))).map(row => row.id), 'active');
+    await this.setState(
+      rows.filter((row) => bound.has(portKeyOf(row))).map((row) => row.id),
+      'active',
+    );
     if (this.releaseBlocked(observation.profileName)) return;
     for (const row of rows) {
-      const current = observation.planned.filter(entry => portKeyOf(entry) === portKeyOf(row));
-      row.heldServices = ownersAfterHandover(row.heldServices, current.map(entry => entry.service), observation.services);
-      row.service = current.find(entry => entry.service !== null && observation.services.includes(entry.service))?.service ?? row.service;
+      const current = observation.planned.filter((entry) => portKeyOf(entry) === portKeyOf(row));
+      row.heldServices = ownersAfterHandover(
+        row.heldServices,
+        current.map((entry) => entry.service),
+        observation.services,
+      );
+      row.service =
+        current.find((entry) => entry.service !== null && observation.services.includes(entry.service))?.service ??
+        row.service;
     }
-    const releasing = rows.filter(row => row.heldServices.length === 0
-      && !bound.has(portKeyOf(row)) && !planned.has(portKeyOf(row))).map(row => row.id);
+    const releasing = rows
+      .filter((row) => row.heldServices.length === 0 && !bound.has(portKeyOf(row)) && !planned.has(portKeyOf(row)))
+      .map((row) => row.id);
     await this.setState(releasing, 'releasing');
     await this.remove(releasing);
   }
@@ -157,7 +181,7 @@ export class InMemoryPortReservations implements PortReservationRepository {
   }
 
   async inventorySeededAt(daemonId?: string): Promise<Date | null> {
-    return daemonId === undefined ? this.seededAt : this.seededDaemons.get(daemonId) ?? null;
+    return daemonId === undefined ? this.seededAt : (this.seededDaemons.get(daemonId) ?? null);
   }
 
   async markInventorySeeded(daemonId?: string): Promise<void> {

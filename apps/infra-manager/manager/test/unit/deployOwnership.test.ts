@@ -20,9 +20,7 @@ import { profileServiceHarness } from '../support/profileServiceHarness.js';
 
 describe('updating one deployment', () => {
   it('lets one of two concurrent updates through and writes only its change', async () => {
-    const harness = profileServiceHarness([
-      makeProfile({ name: 'stage', notes: 'before' }),
-    ]);
+    const harness = profileServiceHarness([makeProfile({ name: 'stage', notes: 'before' })]);
 
     // Both requests read the profile while it is still RUNNING, so both get
     // past the busy check and only the claim can separate them.
@@ -33,9 +31,7 @@ describe('updating one deployment', () => {
 
     assert.equal(outcomes[0]!.status, 'fulfilled');
     assert.equal(outcomes[1]!.status, 'rejected');
-    assert.ok(
-      (outcomes[1] as PromiseRejectedResult).reason instanceof ProfileBusyError,
-    );
+    assert.ok((outcomes[1] as PromiseRejectedResult).reason instanceof ProfileBusyError);
 
     assert.deepEqual(harness.profiles.updateEditableCalls, ['stage']);
     assert.equal(harness.profiles.rows.get('stage')?.notes, 'winner');
@@ -43,9 +39,7 @@ describe('updating one deployment', () => {
   });
 
   it('leaves the winner deploying rather than letting the loser mark it ERROR', async () => {
-    const harness = profileServiceHarness([
-      makeProfile({ name: 'stage', notes: 'before' }),
-    ]);
+    const harness = profileServiceHarness([makeProfile({ name: 'stage', notes: 'before' })]);
 
     await Promise.allSettled([
       harness.service.update('stage', { notes: 'winner' }),
@@ -60,10 +54,7 @@ describe('updating one deployment', () => {
     const harness = profileServiceHarness([makeProfile({ name: 'stage' })]);
     harness.orchestrator.failingDeploys.add('stage');
 
-    await assert.rejects(
-      harness.service.update('stage', { notes: 'after' }),
-      /deploy could not start/,
-    );
+    await assert.rejects(harness.service.update('stage', { notes: 'after' }), /deploy could not start/);
 
     // The orchestrator owns the claim, so it is the only thing that marks it.
     assert.deepEqual(harness.profiles.markErrorCalls, ['stage']);
@@ -71,15 +62,10 @@ describe('updating one deployment', () => {
   });
 
   it('gives the claim back when the settings write fails', async () => {
-    const harness = profileServiceHarness([
-      makeProfile({ name: 'stage', notes: 'before' }),
-    ]);
+    const harness = profileServiceHarness([makeProfile({ name: 'stage', notes: 'before' })]);
     harness.profiles.writesRefused.add('stage');
 
-    await assert.rejects(
-      harness.service.update('stage', { notes: 'after' }),
-      /write refused/,
-    );
+    await assert.rejects(harness.service.update('stage', { notes: 'after' }), /write refused/);
 
     assert.deepEqual(harness.orchestrator.cancelled, ['stage']);
     assert.equal(harness.profiles.statusOf('stage'), 'RUNNING');
@@ -91,9 +77,7 @@ describe('updating one deployment', () => {
 describe('updating a group', () => {
   const groupOf = (names: readonly string[]) =>
     profileServiceHarness(
-      names.map((name, index) =>
-        makeProfile({ name, group_id: 1, port_slot: index + 1, notes: 'before' }),
-      ),
+      names.map((name, index) => makeProfile({ name, group_id: 1, port_slot: index + 1, notes: 'before' })),
     );
 
   const withGroup = (names: readonly string[]) => {
@@ -112,10 +96,7 @@ describe('updating a group', () => {
     const harness = withGroup(['pool-1', 'pool-2', 'pool-3']);
     harness.profiles.claimsRefused.add('pool-2');
 
-    await assert.rejects(
-      harness.service.updateGroupConfig(1, { notes: 'after' }),
-      GroupBusyError,
-    );
+    await assert.rejects(harness.service.updateGroupConfig(1, { notes: 'after' }), GroupBusyError);
 
     assert.deepEqual(harness.groups.configWrites, []);
     assert.deepEqual(harness.profiles.updateEditableCalls, []);
@@ -129,10 +110,7 @@ describe('updating a group', () => {
     const harness = withGroup(['pool-1', 'pool-2', 'pool-3']);
     harness.profiles.claimsRefused.add('pool-3');
 
-    await assert.rejects(
-      harness.service.updateGroupConfig(1, { notes: 'after' }),
-      GroupBusyError,
-    );
+    await assert.rejects(harness.service.updateGroupConfig(1, { notes: 'after' }), GroupBusyError);
 
     assert.deepEqual(harness.orchestrator.cancelled, ['pool-1', 'pool-2']);
     assert.equal(harness.profiles.statusOf('pool-1'), 'RUNNING');
@@ -187,11 +165,7 @@ describe('creating and growing a group', () => {
       kind: 'viewer',
     });
 
-    assert.deepEqual(harness.orchestrator.reserved, [
-      'pool-profile-1',
-      'pool-profile-2',
-      'pool-profile-3',
-    ]);
+    assert.deepEqual(harness.orchestrator.reserved, ['pool-profile-1', 'pool-profile-2', 'pool-profile-3']);
     assert.deepEqual(
       profiles.map((profile) => profile.status),
       ['DEPLOYING', 'DEPLOYING', 'DEPLOYING'],

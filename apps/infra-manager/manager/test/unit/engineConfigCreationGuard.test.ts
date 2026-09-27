@@ -27,21 +27,33 @@ const A = 'listen 1935; # new\n';
 async function until(condition: () => boolean): Promise<void> {
   for (let tick = 0; tick < 300; tick++) {
     if (condition()) return;
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error('The owned rollout did not finish handling its script failure');
 }
 
 async function setup() {
   const h = orchestratorHarness([makeProfile({ name: 'stage', has_engine_config: true })], undefined, root);
-  await h.versions.setContract(1, { ...ALLOCATION_CONTRACT, engineConfig: { srs: true, ome: false }, engineImages: { srs: 'ossrs/srs:6', ome: null } });
+  await h.versions.setContract(1, {
+    ...ALLOCATION_CONTRACT,
+    engineConfig: { srs: true, ome: false },
+    engineImages: { srs: 'ossrs/srs:6', ome: null },
+  });
   await publishEngineConfigFixture(h.versions, root);
   h.profiles.engineConfigs.set('stage', OLD);
   h.daemon.autoRecreate = false;
   const watcher: EngineWatcher = { inspect: async () => null, logs: async () => '', reachable: async () => false };
-  const service = new EngineConfigService(h.profiles.asRepository(), h.containers.asRepository(), h.orchestrator,
-    h.versions, watcher, new EngineConfigChecker(async () => ({ code: 0, stdout: '', stderr: '' })), h.events, h.operations,
-    { intervalMs: 5, durationMs: 25, probeBudgetMs: 5 });
+  const service = new EngineConfigService(
+    h.profiles.asRepository(),
+    h.containers.asRepository(),
+    h.orchestrator,
+    h.versions,
+    watcher,
+    new EngineConfigChecker(async () => ({ code: 0, stdout: '', stderr: '' })),
+    h.events,
+    h.operations,
+    { intervalMs: 5, durationMs: 25, probeBudgetMs: 5 },
+  );
   return { h, service, watcher, row: () => h.profiles.rows.get('stage')! };
 }
 
@@ -65,9 +77,11 @@ it('keeps a failed config rollout interrupted when unchanged containers still ho
   assert.doesNotMatch(operation.message ?? '', /previous one is back/);
   assert.equal(row().engine_config_error, operation.message);
   assert.match(row().last_error ?? '', /exited with code 17/);
-  assert.ok(rolloutNotice(row().engine_config_state, { engine: 'SRS', hasConfig: true }, null)?.offers.includes('previous'));
+  assert.ok(
+    rolloutNotice(row().engine_config_state, { engine: 'SRS', hasConfig: true }, null)?.offers.includes('previous'),
+  );
   await service.reconcileAtBoot();
-  await new Promise(resolve => setTimeout(resolve, 35));
+  await new Promise((resolve) => setTimeout(resolve, 35));
   assert.equal(h.runner.runs.length, 1, 'Neither failure handling nor reconciliation retries the script');
   await assert.rejects(service.recreateOnPrevious('stage'), /blocked|attempt|unfinished/i);
   assert.equal(h.profiles.engineConfigs.get('stage'), A);
@@ -90,7 +104,7 @@ it('does not relabel or rewrite a rollout whose ownership changes before the ref
   await service.apply('stage', A);
   h.runner.finish(0, 17);
   await until(() => hookFinished);
-  await new Promise(resolve => setTimeout(resolve, 35));
+  await new Promise((resolve) => setTimeout(resolve, 35));
   assert.deepEqual(row(), afterOperator);
   assert.equal(h.operations.rows[0]?.state, 'superseded');
   assert.equal(h.operations.rows[0]?.message, 'Stopped by the operator');

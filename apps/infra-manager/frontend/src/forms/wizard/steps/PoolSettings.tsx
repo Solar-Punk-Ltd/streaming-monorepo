@@ -1,18 +1,6 @@
-import {
-  Box,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Typography,
-} from '@mui/material';
+import { Box, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
 
-import {
-  DEFAULT_ABR_LADDER,
-  suggestedRungDepth,
-} from '@streaming-infra-manager/common';
+import { DEFAULT_ABR_LADDER, suggestedRungDepth } from '@streaming-infra-manager/common';
 
 import { MONO_STACK } from '../../../app/theme';
 import type { WizardStepProps } from '../wizardState';
@@ -43,9 +31,13 @@ export function PoolSettings(props: WizardStepProps) {
               <TableCell sx={{ fontFamily: MONO_STACK }}>
                 {poolName}-{rung.name}
                 {index === 0 && (
-                  <Typography component="span" variant="caption" sx={{
-                    color: "text.secondary"
-                  }}>
+                  <Typography
+                    component="span"
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                    }}
+                  >
                     {' '}
                     coordinator
                   </Typography>

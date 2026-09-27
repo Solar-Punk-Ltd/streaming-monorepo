@@ -116,16 +116,13 @@ export class InMemoryStackVersionRepository implements StackVersionRepository {
   }
 
   async markBuilding(id: number, gitRef?: string): Promise<StackVersionRecord | null> {
-    const current = this.rows.find(row => row.id === id);
+    const current = this.rows.find((row) => row.id === id);
     const problem = current ? versionRemovalProblem(current) : null;
     if (problem) throw new StackVersionRemovalHeldError(current!.name, 'marker');
     return this.patch(id, { status: 'building', lastError: null, ...(gitRef ? { gitRef } : {}) });
   }
 
-  async markBuilt(
-    id: number,
-    outcome: BuildOutcome,
-  ): Promise<StackVersionRecord | null> {
+  async markBuilt(id: number, outcome: BuildOutcome): Promise<StackVersionRecord | null> {
     const before = this.rows.find((row) => row.id === id);
     if (!before) return null;
 
@@ -139,8 +136,10 @@ export class InMemoryStackVersionRepository implements StackVersionRepository {
       commitSha: outcome.commitSha,
       contract: outcome.contract,
       tested: before.tested && before.commitSha === outcome.commitSha,
-      testedInvalidatedAt: before.tested && before.commitSha !== outcome.commitSha
-        ? before.testedInvalidatedAt ?? new Date() : before.testedInvalidatedAt,
+      testedInvalidatedAt:
+        before.tested && before.commitSha !== outcome.commitSha
+          ? (before.testedInvalidatedAt ?? new Date())
+          : before.testedInvalidatedAt,
       builtAt: new Date(),
       lastError: null,
     });
@@ -166,29 +165,29 @@ export class InMemoryStackVersionRepository implements StackVersionRepository {
       commitSha: outcome.commitSha,
       contract: outcome.contract,
       tested: before.tested && before.buildId === outcome.buildId,
-      testedInvalidatedAt: before.tested && before.buildId !== outcome.buildId
-        ? before.testedInvalidatedAt ?? new Date() : before.testedInvalidatedAt,
+      testedInvalidatedAt:
+        before.tested && before.buildId !== outcome.buildId
+          ? (before.testedInvalidatedAt ?? new Date())
+          : before.testedInvalidatedAt,
       builtAt: new Date(),
       lastError: null,
       source: outcome.source ?? before.source,
     });
   }
 
-  async markUpdateFailed(id: number, lastError: string, gitRef: string | null = null): Promise<StackVersionRecord | null> {
-    return this.patch(id, { status: 'ready', lastError, ...(gitRef ? { gitRef } : {}) });
-  }
-
-  async markFailed(
+  async markUpdateFailed(
     id: number,
     lastError: string,
     gitRef: string | null = null,
   ): Promise<StackVersionRecord | null> {
+    return this.patch(id, { status: 'ready', lastError, ...(gitRef ? { gitRef } : {}) });
+  }
+
+  async markFailed(id: number, lastError: string, gitRef: string | null = null): Promise<StackVersionRecord | null> {
     return this.patch(id, { status: 'failed', lastError, ...(gitRef ? { gitRef } : {}) });
   }
 
-  async failInterruptedBuilds(
-    lastError: string,
-  ): Promise<StackVersionRecord[]> {
+  async failInterruptedBuilds(lastError: string): Promise<StackVersionRecord[]> {
     const interrupted = this.rows.filter((row) => row.status === 'building');
     for (const row of interrupted) {
       const usable = row.layout === 'builds' ? row.buildId !== null : row.commitSha !== null;
@@ -204,8 +203,10 @@ export class InMemoryStackVersionRepository implements StackVersionRepository {
     await this.patch(id, {
       commitSha,
       tested: before.tested && before.commitSha === commitSha,
-      testedInvalidatedAt: before.tested && before.commitSha !== commitSha
-        ? before.testedInvalidatedAt ?? new Date() : before.testedInvalidatedAt,
+      testedInvalidatedAt:
+        before.tested && before.commitSha !== commitSha
+          ? (before.testedInvalidatedAt ?? new Date())
+          : before.testedInvalidatedAt,
     });
   }
 
@@ -215,20 +216,29 @@ export class InMemoryStackVersionRepository implements StackVersionRepository {
   }
 
   async captureLegacyMetadata(): Promise<LegacyMetadataSnapshot | null> {
-    const version = this.rows.find(row => row.name === 'bundled' && row.layout === 'legacy');
-    return version ? { version: structuredClone(version), publicationRevision: String(this.metadataRevisions.get(version.id) ?? 0n) } : null;
+    const version = this.rows.find((row) => row.name === 'bundled' && row.layout === 'legacy');
+    return version
+      ? { version: structuredClone(version), publicationRevision: String(this.metadataRevisions.get(version.id) ?? 0n) }
+      : null;
   }
 
   async refreshLegacyMetadata(expected: LegacyMetadataSnapshot, metadata: LegacyMetadata): Promise<boolean> {
-    const row = this.rows.find(item => item.id === expected.version.id);
-    if (!row || row.layout !== 'legacy' || !isDeepStrictEqual(row, expected.version) ||
-        String(this.metadataRevisions.get(row.id) ?? 0n) !== expected.publicationRevision) return false;
+    const row = this.rows.find((item) => item.id === expected.version.id);
+    if (
+      !row ||
+      row.layout !== 'legacy' ||
+      !isDeepStrictEqual(row, expected.version) ||
+      String(this.metadataRevisions.get(row.id) ?? 0n) !== expected.publicationRevision
+    )
+      return false;
     this.metadataRevisions.set(row.id, (this.metadataRevisions.get(row.id) ?? 0n) + 1n);
     await this.patch(row.id, {
       ...structuredClone(metadata),
       tested: row.tested && row.commitSha === metadata.commitSha,
-      testedInvalidatedAt: row.tested && row.commitSha !== metadata.commitSha
-        ? row.testedInvalidatedAt ?? new Date() : row.testedInvalidatedAt,
+      testedInvalidatedAt:
+        row.tested && row.commitSha !== metadata.commitSha
+          ? (row.testedInvalidatedAt ?? new Date())
+          : row.testedInvalidatedAt,
     });
     return true;
   }
@@ -245,24 +255,31 @@ export class InMemoryStackVersionRepository implements StackVersionRepository {
   ): Promise<StackVersionRecord | null> {
     const before = this.rows.find((row) => row.id === id);
     if (!before) return null;
-    const identityMatches = before.layout === 'builds'
-      ? before.buildId !== null && before.buildId === forBuild
-      : before.buildId === null && forBuild === null;
-    if (tested && (before.status !== 'ready' || forCommit === null || before.commitSha !== forCommit || !identityMatches)) {
+    const identityMatches =
+      before.layout === 'builds'
+        ? before.buildId !== null && before.buildId === forBuild
+        : before.buildId === null && forBuild === null;
+    if (
+      tested &&
+      (before.status !== 'ready' || forCommit === null || before.commitSha !== forCommit || !identityMatches)
+    ) {
       return null;
     }
     return this.patch(id, { tested, testedInvalidatedAt: null });
   }
 
-  async removeGuarded(expected: StackVersionRecord, removeOwnedFiles: (locked: StackVersionRecord) => Promise<void>): Promise<boolean> {
+  async removeGuarded(
+    expected: StackVersionRecord,
+    removeOwnedFiles: (locked: StackVersionRecord) => Promise<void>,
+  ): Promise<boolean> {
     const captured = structuredClone(expected);
-    const current = this.rows.find(row => row.id === captured.id);
+    const current = this.rows.find((row) => row.id === captured.id);
     if (!current) return false;
     assertVersionRemovable(captured, current);
     const deployments = this.deployments.get(current.id) ?? [];
     if (deployments.length) throw new StackVersionInUseError(current.name, deployments);
     await removeOwnedFiles(current);
-    this.rows = this.rows.filter(row => row.id !== current.id);
+    this.rows = this.rows.filter((row) => row.id !== current.id);
     this.deployments.delete(current.id);
     return true;
   }
@@ -271,10 +288,7 @@ export class InMemoryStackVersionRepository implements StackVersionRepository {
     return this.deployments.get(id) ?? [];
   }
 
-  private async patch(
-    id: number,
-    fields: Partial<StackVersionRecord>,
-  ): Promise<StackVersionRecord | null> {
+  private async patch(id: number, fields: Partial<StackVersionRecord>): Promise<StackVersionRecord | null> {
     const found = this.rows.find((row) => row.id === id);
     if (!found) return null;
 

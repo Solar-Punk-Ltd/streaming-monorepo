@@ -49,9 +49,5 @@ export function engineSummary(
       `playlist ${setting('HLS_SEGMENT_COUNT', 'pieces')}`,
     ].join(' · ');
   }
-  return [
-    'SRS',
-    `segment ${setting('HLS_FRAGMENT', 's')}`,
-    `window ${setting('HLS_WINDOW', 's')}`,
-  ].join(' · ');
+  return ['SRS', `segment ${setting('HLS_FRAGMENT', 's')}`, `window ${setting('HLS_WINDOW', 's')}`].join(' · ');
 }

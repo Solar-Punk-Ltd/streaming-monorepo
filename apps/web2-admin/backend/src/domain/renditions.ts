@@ -74,10 +74,7 @@ function sameTopic(left: string, right: string): boolean {
  * describes a recording this one has nothing to say about, so it is taken as
  * it arrived.
  */
-export function mergeRendition(
-  stored: Rendition | null,
-  incoming: Rendition,
-): Rendition {
+export function mergeRendition(stored: Rendition | null, incoming: Rendition): Rendition {
   if (stored === null) return incoming;
   if (incoming.index !== undefined) return incoming;
   if (stored.index === undefined) return incoming;
@@ -96,10 +93,7 @@ export function mergeRendition(
  * reported, so there is nothing to have finished.
  */
 export function isLadderFinished(renditions: readonly Rendition[]): boolean {
-  return (
-    renditions.length > 0 &&
-    renditions.every((rendition) => rendition.index !== undefined)
-  );
+  return renditions.length > 0 && renditions.every((rendition) => rendition.index !== undefined);
 }
 
 /**
@@ -107,12 +101,7 @@ export function isLadderFinished(renditions: readonly Rendition[]): boolean {
  * broadcast and differ by fractions of a segment, and the viewer's seek bar
  * must not stop short of the longest one. Null while the ladder is unfinished.
  */
-export function ladderDuration(
-  renditions: readonly Rendition[],
-): number | null {
+export function ladderDuration(renditions: readonly Rendition[]): number | null {
   if (!isLadderFinished(renditions)) return null;
-  return renditions.reduce(
-    (longest, rendition) => Math.max(longest, rendition.duration ?? 0),
-    0,
-  );
+  return renditions.reduce((longest, rendition) => Math.max(longest, rendition.duration ?? 0), 0);
 }

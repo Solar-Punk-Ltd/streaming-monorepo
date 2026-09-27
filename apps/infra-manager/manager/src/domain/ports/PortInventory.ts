@@ -30,8 +30,11 @@ export class PortInventory implements DeployTargets {
     }
     const scan = this.seedTarget(alias, daemonId);
     this.scans.set(daemonId, scan);
-    try { await scan; }
-    finally { this.scans.delete(daemonId); }
+    try {
+      await scan;
+    } finally {
+      this.scans.delete(daemonId);
+    }
     return daemonId;
   }
 
@@ -43,9 +46,16 @@ export class PortInventory implements DeployTargets {
       if (profileDaemon !== daemonId) continue;
       const contract = (await this.versions.findById(profile.stack_version_id))?.contract;
       if (!contract?.ports.length || contract.allocationProblem) {
-        throw new InvalidStackVersionError(`Cannot seed ${profile.name}: ${contract?.allocationProblem ?? 'its version has no readable port table'}`);
+        throw new InvalidStackVersionError(
+          `Cannot seed ${profile.name}: ${contract?.allocationProblem ?? 'its version has no readable port table'}`,
+        );
       }
-      await this.ports.plan(daemonId, profile.name, portPlanFor(portTableForEngine(contract, engineForComponents(profile.components)), profile.port_slot), 'existing deployment inventory');
+      await this.ports.plan(
+        daemonId,
+        profile.name,
+        portPlanFor(portTableForEngine(contract, engineForComponents(profile.components)), profile.port_slot),
+        'existing deployment inventory',
+      );
     }
     await this.observeTarget(alias, daemonId, daemonByProfile);
   }
@@ -65,9 +75,16 @@ export class PortInventory implements DeployTargets {
       const version = await this.versions.findById(profile.stack_version_id);
       const contract = version?.contract;
       if (!contract?.ports.length || contract.allocationProblem) {
-        throw new InvalidStackVersionError(`Cannot seed ${profile.name}: ${contract?.allocationProblem ?? 'its version has no readable port table'}`);
+        throw new InvalidStackVersionError(
+          `Cannot seed ${profile.name}: ${contract?.allocationProblem ?? 'its version has no readable port table'}`,
+        );
       }
-      await this.ports.plan(daemonId, profile.name, portPlanFor(portTableForEngine(contract, engineForComponents(profile.components)), profile.port_slot), 'existing deployment inventory');
+      await this.ports.plan(
+        daemonId,
+        profile.name,
+        portPlanFor(portTableForEngine(contract, engineForComponents(profile.components)), profile.port_slot),
+        'existing deployment inventory',
+      );
     }
 
     for (const [daemonId, alias] of targetByDaemon) {
@@ -76,29 +93,44 @@ export class PortInventory implements DeployTargets {
     await this.ports.markInventorySeeded();
   }
 
-  private async observeTarget(alias: string, daemonId: string, daemonByProfile: ReadonlyMap<string, string>): Promise<void> {
-      const snapshot = await this.observer.publishedPorts(alias);
-      if (snapshot.daemonId !== daemonId) {
-        throw new TargetNotVerifiedError(alias, 'The port observation came from a different Docker daemon');
-      }
-      if (snapshot.unverifiedProjects?.length) {
-        throw new InvalidStackVersionError('A host-network container has unknown bindings. Its ports must be accounted for before allocation can continue.');
-      }
-      for (const binding of snapshot.bindings) {
-        const owner = binding.project && daemonByProfile.get(binding.project) === daemonId
-          ? binding.project
-          : externalOwner(binding);
-        await this.ports.plan(daemonId, owner, [{
-          protocol: binding.protocol,
-          port: binding.port,
-          service: binding.service,
-          portVar: 'observed binding',
-        }], 'observed published port');
-      }
-      const activeKeys = new Set(snapshot.bindings.map(portKeyOf));
-      const rows = await this.ports.listByDaemon(daemonId);
-      await this.ports.setState(rows.filter((row) => activeKeys.has(portKeyOf(row))).map((row) => row.id), 'active');
-      await this.ports.markInventorySeeded(daemonId);
+  private async observeTarget(
+    alias: string,
+    daemonId: string,
+    daemonByProfile: ReadonlyMap<string, string>,
+  ): Promise<void> {
+    const snapshot = await this.observer.publishedPorts(alias);
+    if (snapshot.daemonId !== daemonId) {
+      throw new TargetNotVerifiedError(alias, 'The port observation came from a different Docker daemon');
+    }
+    if (snapshot.unverifiedProjects?.length) {
+      throw new InvalidStackVersionError(
+        'A host-network container has unknown bindings. Its ports must be accounted for before allocation can continue.',
+      );
+    }
+    for (const binding of snapshot.bindings) {
+      const owner =
+        binding.project && daemonByProfile.get(binding.project) === daemonId ? binding.project : externalOwner(binding);
+      await this.ports.plan(
+        daemonId,
+        owner,
+        [
+          {
+            protocol: binding.protocol,
+            port: binding.port,
+            service: binding.service,
+            portVar: 'observed binding',
+          },
+        ],
+        'observed published port',
+      );
+    }
+    const activeKeys = new Set(snapshot.bindings.map(portKeyOf));
+    const rows = await this.ports.listByDaemon(daemonId);
+    await this.ports.setState(
+      rows.filter((row) => activeKeys.has(portKeyOf(row))).map((row) => row.id),
+      'active',
+    );
+    await this.ports.markInventorySeeded(daemonId);
   }
 }
 

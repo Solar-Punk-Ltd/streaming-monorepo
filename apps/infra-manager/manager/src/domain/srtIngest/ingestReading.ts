@@ -16,10 +16,7 @@ const NO_PACKETS: SrtLinkCounts = { received: 0, lost: 0, retransmitted: 0, drop
  * came back is still the one link this deployment takes in. The connections
  * are counted here and their ids go no further.
  */
-export function ingestReadingFrom(
-  reports: readonly TransportStatsReport[],
-  windowSeconds: number,
-): SrtIngestReading {
+export function ingestReadingFrom(reports: readonly TransportStatsReport[], windowSeconds: number): SrtIngestReading {
   if (reports.length === 0) return { state: SRT_INGEST_NO_REPORTS, windowSeconds };
   return measuredSrtIngest({
     windowSeconds,

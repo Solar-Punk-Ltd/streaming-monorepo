@@ -3,7 +3,11 @@ import { array, object, string, InferType } from 'yup';
 import { ALL_SERVICES } from '../types/index.js';
 
 const serviceList = array()
-  .of(string().required().oneOf([...ALL_SERVICES], 'unknown service'))
+  .of(
+    string()
+      .required()
+      .oneOf([...ALL_SERVICES], 'unknown service'),
+  )
   .notRequired();
 
 export const deployBodySchema = object({

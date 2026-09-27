@@ -1,11 +1,5 @@
 import { useMemo } from 'react';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-} from '@mui/material';
+import { Table, TableBody, TableCell, TableHead, TableRow } from '@mui/material';
 
 import type { MetricsSnapshot } from '../types';
 import { GroupBlock } from './GroupBlock';
@@ -18,10 +12,7 @@ export function ContainerTable({
   diskByProject,
   onExpandProject,
 }: { snapshot: MetricsSnapshot } & LiveMetricsProps) {
-  const groups = useMemo(
-    () => groupByProject(snapshot.containers),
-    [snapshot.containers],
-  );
+  const groups = useMemo(() => groupByProject(snapshot.containers), [snapshot.containers]);
 
   return (
     <Table>

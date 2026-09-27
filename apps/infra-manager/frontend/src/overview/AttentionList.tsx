@@ -110,20 +110,12 @@ function ProfileAlertRow({
   const openStorage = () => navigate(routes.deploymentStorage(profile.name));
   const buttons: Record<AttentionAction, ReactNode> = {
     retry: (
-      <Button
-        size="small"
-        variant="contained"
-        onClick={() => actions.start(profile.name)}
-      >
+      <Button size="small" variant="contained" onClick={() => actions.start(profile.name)}>
         Retry
       </Button>
     ),
     'start-uploader': (
-      <Button
-        size="small"
-        variant="contained"
-        onClick={() => actions.startUploader(profile.name)}
-      >
+      <Button size="small" variant="contained" onClick={() => actions.startUploader(profile.name)}>
         Start uploader
       </Button>
     ),
@@ -185,21 +177,23 @@ function AlertRow({
       direction="row"
       spacing={1.5}
       sx={{
-        alignItems: "center",
+        alignItems: 'center',
         px: 2.25,
         py: 1.5,
         borderTop: 1,
         borderColor: 'divider',
-        '&:first-of-type': { borderTop: 0 }
-      }}>
+        '&:first-of-type': { borderTop: 0 },
+      }}
+    >
       <StatusDot tone={tone} />
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-        <Typography sx={{ fontFamily: MONO_STACK, fontWeight: 600, fontSize: 13 }}>
-          {name}
-        </Typography>
-        <Typography variant="caption" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography sx={{ fontFamily: MONO_STACK, fontWeight: 600, fontSize: 13 }}>{name}</Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {text}
         </Typography>
       </Box>

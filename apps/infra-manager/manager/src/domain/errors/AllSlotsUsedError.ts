@@ -9,7 +9,10 @@
  * live host on 2026-09-13, where six slots of ninety nine were in use.
  */
 export class AllSlotsUsedError extends Error {
-  constructor(public readonly slotCap: number, reason?: string | null) {
+  constructor(
+    public readonly slotCap: number,
+    reason?: string | null,
+  ) {
     super(
       reason ??
         `Every port slot from 1 to ${slotCap} is taken, by a deployment record or by ports another deployment holds on this daemon. Remove a deployment to free one.`,

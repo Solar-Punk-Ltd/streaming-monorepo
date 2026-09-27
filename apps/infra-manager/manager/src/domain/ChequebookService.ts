@@ -17,25 +17,12 @@ import {
 
 import { BeeClient } from './BeeClient.js';
 import { beeCallFailed } from './beeFailure.js';
-import {
-  ChequebookBusyError,
-  ChequebookFundsError,
-  ProfileNotFoundError,
-} from './errors/index.js';
+import { ChequebookBusyError, ChequebookFundsError, ProfileNotFoundError } from './errors/index.js';
 import { EventBus } from './EventBus.js';
 import { Logger } from './Logger.js';
 import { NodeReadCache, nodeReadKey } from './nodeReadCache.js';
-import {
-  NodeReadLog,
-  readLogKey,
-  spellSuffix,
-  spellText,
-} from './nodeReadLog.js';
-import {
-  failureOf,
-  type NodeRead,
-  readNode,
-} from './nodeReadFailure.js';
+import { NodeReadLog, readLogKey, spellSuffix, spellText } from './nodeReadLog.js';
+import { failureOf, type NodeRead, readNode } from './nodeReadFailure.js';
 import { ProfileRepository } from './ProfileRepository.js';
 import { beeApiUrlFor, type BeeClientFactory } from './StampService.js';
 
@@ -61,8 +48,7 @@ export class ChequebookService {
     private readonly profiles: ProfileRepository,
     private readonly floorPlur: bigint,
     private readonly events: EventBus,
-    private readonly clientFactory: BeeClientFactory = (url, timeoutMs) =>
-      new BeeClient(url, timeoutMs),
+    private readonly clientFactory: BeeClientFactory = (url, timeoutMs) => new BeeClient(url, timeoutMs),
     private readonly reads: NodeReadCache = new NodeReadCache(),
     private readonly readLog: NodeReadLog = new NodeReadLog(),
   ) {}
@@ -81,9 +67,7 @@ export class ChequebookService {
    * error for the whole page.
    */
   async summary(name: string): Promise<ChequebookSummary> {
-    return this.reads.read(nodeReadKey(name, CHEQUEBOOK_ROUTE), () =>
-      this.askForSummary(name),
-    );
+    return this.reads.read(nodeReadKey(name, CHEQUEBOOK_ROUTE), () => this.askForSummary(name));
   }
 
   private async askForSummary(name: string): Promise<ChequebookSummary> {
@@ -112,9 +96,7 @@ export class ChequebookService {
       availableBalance: reportedBalance?.availableBalance ?? null,
       totalSent: reportedSettlements?.totalSent ?? null,
       totalReceived: reportedSettlements?.totalReceived ?? null,
-      health: chequebookHealthPayload(
-        chequebookHealthFrom(reportedBalance, this.floorPlur, reads.balance),
-      ),
+      health: chequebookHealthPayload(chequebookHealthFrom(reportedBalance, this.floorPlur, reads.balance)),
       reads,
     };
   }
@@ -127,17 +109,13 @@ export class ChequebookService {
 
       const bzz = parsePlur(wallet.bzzBalance) ?? 0n;
       if (bzz < amountPlur) {
-        throw new ChequebookFundsError(
-          depositOverWalletReason(bzz, amountPlur),
-        );
+        throw new ChequebookFundsError(depositOverWalletReason(bzz, amountPlur));
       }
       if ((parsePlur(wallet.nativeTokenBalance) ?? 0n) === 0n) {
         throw new ChequebookFundsError(NO_XDAI_FOR_GAS_REASON);
       }
 
-      const result = await this.ask(name, () =>
-        client.depositChequebook(amountPlur),
-      );
+      const result = await this.ask(name, () => client.depositChequebook(amountPlur));
       logger.info(
         `[ChequebookService] ${name}: deposit of ${plurToBzz(amountPlur)} BZZ submitted, tx ${result.transactionHash}`,
       );
@@ -153,14 +131,10 @@ export class ChequebookService {
 
       const available = parsePlur(balance.availableBalance) ?? 0n;
       if (available < amountPlur) {
-        throw new ChequebookFundsError(
-          withdrawalOverChequebookReason(available, amountPlur),
-        );
+        throw new ChequebookFundsError(withdrawalOverChequebookReason(available, amountPlur));
       }
 
-      const result = await this.ask(name, () =>
-        client.withdrawChequebook(amountPlur),
-      );
+      const result = await this.ask(name, () => client.withdrawChequebook(amountPlur));
       logger.info(
         `[ChequebookService] ${name}: withdrawal of ${plurToBzz(amountPlur)} BZZ submitted, tx ${result.transactionHash}`,
       );
@@ -233,10 +207,7 @@ export class ChequebookService {
    * for the balance to move, and holding the node for two minutes would refuse
    * a second, perfectly fundable transfer.
    */
-  private async asTheOnlyTransfer<T>(
-    name: string,
-    move: () => Promise<T>,
-  ): Promise<T> {
+  private async asTheOnlyTransfer<T>(name: string, move: () => Promise<T>): Promise<T> {
     if (this.transfersInFlight.has(name)) throw new ChequebookBusyError(name);
     this.transfersInFlight.add(name);
     try {
@@ -253,13 +224,8 @@ export class ChequebookService {
    * storage card took three seconds ago is the one thing the window must not be
    * allowed to do.
    */
-  private freshBalance(
-    name: string,
-    client: BeeClient,
-  ): Promise<ChequebookBalance> {
-    return this.reads.readFresh(nodeReadKey(name, CHEQUEBOOK_ROUTE), () =>
-      client.getChequebookBalance(),
-    );
+  private freshBalance(name: string, client: BeeClient): Promise<ChequebookBalance> {
+    return this.reads.readFresh(nodeReadKey(name, CHEQUEBOOK_ROUTE), () => client.getChequebookBalance());
   }
 
   private async clientFor(name: string): Promise<BeeClient> {
@@ -315,9 +281,7 @@ function reasonOf(read: NodeRead<unknown>): string {
  * cannot parse has nothing wrong with its call, and saying "not checked" there
  * sends an operator to look at the network.
  */
-function balanceFailure(
-  read: NodeRead<ChequebookBalance>,
-): ReadFailure | undefined {
+function balanceFailure(read: NodeRead<ChequebookBalance>): ReadFailure | undefined {
   if (!read.ok) return failureOf(read);
   return parsePlur(read.value.availableBalance) === null
     ? { reason: 'malformed', elapsedMs: read.elapsedMs }

@@ -1,9 +1,4 @@
-import {
-  type EngineSettings,
-  engineSettingsFields,
-  OME_SERVICE,
-  SRS_SERVICE,
-} from '@streaming-infra-manager/common';
+import { type EngineSettings, engineSettingsFields, OME_SERVICE, SRS_SERVICE } from '@streaming-infra-manager/common';
 import { string } from 'yup';
 
 /**
@@ -32,9 +27,7 @@ export const ENGINE_SETTING_VALUE_FIELDS = Object.fromEntries(
  * absent ones as `undefined`. Stored as they are, they would become JSON nulls
  * in the column and then values the engine tries to read.
  */
-export function definedSettingValues(
-  body: Record<string, unknown>,
-): EngineSettings {
+export function definedSettingValues(body: Record<string, unknown>): EngineSettings {
   const settings: EngineSettings = {};
   for (const [key, value] of Object.entries(body)) {
     if (typeof value === 'string') settings[key] = value;

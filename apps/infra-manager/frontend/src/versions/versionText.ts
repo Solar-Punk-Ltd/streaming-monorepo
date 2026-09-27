@@ -18,9 +18,10 @@ export function lostApprovalWarning(version: StackVersion): string | null {
 }
 
 export function approvalStatusText(version: StackVersion): string {
-  return lostApprovalWarning(version) ?? (version.tested
-    ? 'Tested on this host.'
-    : 'Not currently marked as tested on this host.');
+  return (
+    lostApprovalWarning(version) ??
+    (version.tested ? 'Tested on this host.' : 'Not currently marked as tested on this host.')
+  );
 }
 
 /**
@@ -48,7 +49,12 @@ export function describeSource(version: StackVersion): string {
 
 /** `streaming-monorepo` out of its clone address. */
 function repositoryName(url: string): string {
-  return url.replace(/\.git$/, '').split('/').at(-1) ?? url;
+  return (
+    url
+      .replace(/\.git$/, '')
+      .split('/')
+      .at(-1) ?? url
+  );
 }
 
 /**

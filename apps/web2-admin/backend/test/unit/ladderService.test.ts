@@ -13,16 +13,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type {
-  FeedStreamEntry,
-  Rendition,
-} from '@streaming-monorepo/web2-admin-common';
+import type { FeedStreamEntry, Rendition } from '@streaming-monorepo/web2-admin-common';
 
-import {
-  InvalidStateError,
-  PublishFailedError,
-  StreamNotFoundError,
-} from '../../src/domain/errors/index.js';
+import { InvalidStateError, PublishFailedError, StreamNotFoundError } from '../../src/domain/errors/index.js';
 import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
 import { LadderService } from '../../src/domain/LadderService.js';
@@ -41,16 +34,11 @@ import {
 const feed: FeedIdentity = {
   owner: TEST_OWNER,
   topic: 'swarm-stream',
-  topicHex:
-    'cfbbc155d709547b198638d0fb11d733359561538d8bd606a9ab257354d13bcc',
+  topicHex: 'cfbbc155d709547b198638d0fb11d733359561538d8bd606a9ab257354d13bcc',
 };
 
 /** A rung as the uploader reports it: live, or final with index and length. */
-function rung(
-  name: string,
-  height: number,
-  final?: { index: number; duration: number },
-): Rendition {
+function rung(name: string, height: number, final?: { index: number; duration: number }): Rendition {
   return {
     name,
     width: (height * 16) / 9,
@@ -72,13 +60,7 @@ async function setup() {
   const renditions = new FakeRenditionStore();
   const store = new FakeStreamStore(renditions);
   const gateway = new FakeFeedGateway();
-  const publishService = new PublishService(
-    store,
-    renditions,
-    new FakeFeedWriteLog(),
-    gateway,
-    feed,
-  );
+  const publishService = new PublishService(store, renditions, new FakeFeedWriteLog(), gateway, feed);
   const service = new LadderService(store, renditions, publishService);
   const state = new StreamStateService(store, publishService);
   const stream = store.add(streamRow());
@@ -87,16 +69,10 @@ async function setup() {
 }
 
 /** The stream's entry as the write at `index` left it on the feed. */
-function entryAt(
-  gateway: FakeFeedGateway,
-  index: number,
-  topic: string,
-): FeedStreamEntry {
+function entryAt(gateway: FakeFeedGateway, index: number, topic: string): FeedStreamEntry {
   const write = gateway.writes.find((w) => w.index === index);
   assert.ok(write, `a write at index ${index}`);
-  const entry = (write.entries as FeedStreamEntry[]).find(
-    (e) => e.topic === topic,
-  );
+  const entry = (write.entries as FeedStreamEntry[]).find((e) => e.topic === topic);
   assert.ok(entry, `an entry for ${topic} at index ${index}`);
   return entry;
 }
@@ -107,19 +83,14 @@ describe('LadderService.report', () => {
     const draft = store.add(streamRow());
     const publishing = store.add(streamRow({ status: 'publishing' }));
 
-    await assert.rejects(
-      () => service.report('00000000-0000-4000-8000-0000000000ff', LIVE_360),
-      StreamNotFoundError,
-    );
+    await assert.rejects(() => service.report('00000000-0000-4000-8000-0000000000ff', LIVE_360), StreamNotFoundError);
     await assert.rejects(
       () => service.report(draft.id, LIVE_360),
-      (err: unknown) =>
-        err instanceof InvalidStateError && err.currentStatus === 'draft',
+      (err: unknown) => err instanceof InvalidStateError && err.currentStatus === 'draft',
     );
     await assert.rejects(
       () => service.report(publishing.id, LIVE_360),
-      (err: unknown) =>
-        err instanceof InvalidStateError && err.currentStatus === 'publishing',
+      (err: unknown) => err instanceof InvalidStateError && err.currentStatus === 'publishing',
     );
   });
 
@@ -135,11 +106,7 @@ describe('LadderService.report', () => {
     });
     assert.deepEqual(outcome.renditions, [LIVE_360]);
     assert.equal(outcome.publish.stream.status, 'published');
-    assert.equal(
-      store.get(stream.id).status,
-      'published',
-      'a rung never moves it',
-    );
+    assert.equal(store.get(stream.id).status, 'published', 'a rung never moves it');
     const entry = entryAt(gateway, outcome.publish.feed.index, stream.topic);
     assert.equal(entry.group, stream.topic);
     assert.deepEqual(entry.renditions, [LIVE_360]);
@@ -193,10 +160,7 @@ describe('LadderService.report', () => {
     await service.report(stream.id, FINAL_360);
     gateway.failNextWrite = new Error('bee unreachable');
 
-    await assert.rejects(
-      () => service.report(stream.id, FINAL_720),
-      PublishFailedError,
-    );
+    await assert.rejects(() => service.report(stream.id, FINAL_720), PublishFailedError);
 
     const retried = await service.report(stream.id, FINAL_720);
     assert.equal(retried.ladder.finished, true);
@@ -213,10 +177,7 @@ describe('LadderService.report', () => {
     await service.report(stream.id, LIVE_720);
     const before = gateway.writes.length;
 
-    const outcomes = await Promise.all([
-      service.report(stream.id, FINAL_360),
-      service.report(stream.id, FINAL_720),
-    ]);
+    const outcomes = await Promise.all([service.report(stream.id, FINAL_360), service.report(stream.id, FINAL_720)]);
 
     const flipped = outcomes.filter((o) => o.ladder.flippedToFinished);
     assert.equal(flipped.length, 1);
@@ -283,18 +244,13 @@ describe('LadderService.report', () => {
     // both rungs.
     const { gateway, service, stream } = await setup();
 
-    const outcomes = await Promise.all([
-      service.report(stream.id, LIVE_360),
-      service.report(stream.id, LIVE_720),
-    ]);
+    const outcomes = await Promise.all([service.report(stream.id, LIVE_360), service.report(stream.id, LIVE_720)]);
 
     for (const outcome of outcomes) {
       const entry = entryAt(gateway, outcome.publish.feed.index, stream.topic);
       assert.deepEqual(outcome.renditions, entry.renditions);
     }
-    const [, later] = [...outcomes].sort(
-      (a, b) => a.publish.feed.index - b.publish.feed.index,
-    );
+    const [, later] = [...outcomes].sort((a, b) => a.publish.feed.index - b.publish.feed.index);
     assert.deepEqual(
       later!.renditions.map((r) => r.name),
       ['360p', '720p'],

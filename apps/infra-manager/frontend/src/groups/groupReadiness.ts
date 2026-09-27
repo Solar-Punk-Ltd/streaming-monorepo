@@ -27,10 +27,7 @@ import type { ChequebookHealths } from '../uploaders/useChequebookHealths';
  * rung that cannot pay its peers is still listed in the string, and an uploader
  * publishing to it uploads nothing on that rung.
  */
-export function poolProblems(
-  result: BeePublishersResult | null,
-  chequebooks: ChequebookHealths,
-): string[] {
+export function poolProblems(result: BeePublishersResult | null, chequebooks: ChequebookHealths): string[] {
   if (!result) return [];
 
   const blocked = new Set(result.missing.map((note) => note.rung));
@@ -66,17 +63,10 @@ function shortProblem(rung: LadderRungState | undefined): string {
 
 /** A batch its node still takes uploads on, as far as anything read it. */
 function stampStillPays(rung: LadderRungState): boolean {
-  return (
-    Boolean(rung.stampId) &&
-    !isDeadStampState(rung.stampState) &&
-    rung.stampState !== 'full'
-  );
+  return Boolean(rung.stampId) && !isDeadStampState(rung.stampState) && rung.stampState !== 'full';
 }
 
-function stampedRungCount(
-  result: BeePublishersResult | null,
-  members: Profile[],
-): number {
+function stampedRungCount(result: BeePublishersResult | null, members: Profile[]): number {
   if (!result) return members.filter(hasStampId).length;
   return result.rungs.filter(stampStillPays).length;
 }

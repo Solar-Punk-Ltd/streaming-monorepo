@@ -56,29 +56,24 @@ export function StreamKeyField({
             onChange={(event) => onChange(event.target.value)}
             placeholder="0x plus 64 hex characters"
             slotProps={{
-              htmlInput: { style: { fontFamily: MONO_STACK } }
+              htmlInput: { style: { fontFamily: MONO_STACK } },
             }}
           />
-          <Button
-            size="small"
-            onClick={() => onChange(generatePrivateKey())}
-            sx={{ flex: 'none' }}
-          >
+          <Button size="small" onClick={() => onChange(generatePrivateKey())} sx={{ flex: 'none' }}>
             {value ? 'Regenerate' : 'Generate'}
           </Button>
           {masked && (
-            <Button
-              size="small"
-              onClick={() => setReplacing(true)}
-              sx={{ flex: 'none' }}
-            >
+            <Button size="small" onClick={() => setReplacing(true)} sx={{ flex: 'none' }}>
               Paste another
             </Button>
           )}
         </Stack>
-        <Typography variant="caption" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {address ? `Address ${shortHex(address)}` : 'No address yet'}
         </Typography>
       </Stack>

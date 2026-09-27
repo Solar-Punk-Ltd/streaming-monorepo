@@ -18,10 +18,7 @@ export interface SessionSweep {
  * dead rows on a backend nobody has signed in to for a while. The timer is
  * unref'd: a daily sweep must never be the reason the process will not exit.
  */
-export function startSessionSweep(
-  authService: AuthService,
-  intervalMs: number = DAY_MS,
-): SessionSweep {
+export function startSessionSweep(authService: AuthService, intervalMs: number = DAY_MS): SessionSweep {
   const sweep = async (): Promise<void> => {
     try {
       const removed = await authService.deleteExpiredSessions();

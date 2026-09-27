@@ -78,7 +78,9 @@ function assertOutFolder({ root, out }) {
   }
   for (const name of [LOCKFILE, WORKSPACE_FILE]) {
     if (existsSync(join(out, name))) {
-      throw new Refusal(`${out} already holds ${name}. An app that keeps its own lockfile builds from it as it is, and a cut replaces nothing.`);
+      throw new Refusal(
+        `${out} already holds ${name}. An app that keeps its own lockfile builds from it as it is, and a cut replaces nothing.`,
+      );
     }
   }
 }
@@ -108,12 +110,16 @@ function assertSamePackageManager(root, app) {
 export function cutApp({ root, app, out }) {
   const settings = APP_SETTINGS[app];
   if (settings === undefined) {
-    throw new Refusal(`tools/app-workspace/apps.mjs names no injection setting for ${app}. Add the app there with the setting its image build needs.`);
+    throw new Refusal(
+      `tools/app-workspace/apps.mjs names no injection setting for ${app}. Add the app there with the setting its image build needs.`,
+    );
   }
   assertOutFolder({ root, out });
   for (const name of [LOCKFILE, WORKSPACE_FILE]) {
     if (!existsSync(join(root, name))) {
-      throw new Refusal(`${root} holds no ${name}, so its apps keep their own lockfiles and build from them as they are.`);
+      throw new Refusal(
+        `${root} holds no ${name}, so its apps keep their own lockfiles and build from them as they are.`,
+      );
     }
   }
   assertSamePackageManager(root, app);

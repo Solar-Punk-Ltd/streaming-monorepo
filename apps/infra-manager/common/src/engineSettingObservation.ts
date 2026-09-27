@@ -2,9 +2,17 @@ import type { EngineDefaults, EngineDefaultSource } from './engineDefaults.js';
 import { engineSettingFieldProblem, type EngineSettingField, type EngineSettings } from './engineSettings.js';
 
 export type EngineSettingEnvironment = 'all' | 'none' | 'partial' | 'unknown';
-export type EngineSettingUnknownReason = 'missing-directive' | 'conflicting-values' | 'mixed-sources'
-  | 'ambiguous-path' | 'unsupported-syntax' | 'invalid-scalar' | 'metadata-unavailable'
-  | 'not-applicable' | 'mixed-applicability' | 'codec-unverified';
+export type EngineSettingUnknownReason =
+  | 'missing-directive'
+  | 'conflicting-values'
+  | 'mixed-sources'
+  | 'ambiguous-path'
+  | 'unsupported-syntax'
+  | 'invalid-scalar'
+  | 'metadata-unavailable'
+  | 'not-applicable'
+  | 'mixed-applicability'
+  | 'codec-unverified';
 
 /**
  * Why a setting sits at a value no override reaches: the config the engine
@@ -15,13 +23,33 @@ export type EngineSettingUnknownReason = 'missing-directive' | 'conflicting-valu
  * never takes the setting at all, and one that writes the directive itself
  * holds the value at what it writes.
  */
-export type EngineSettingBuiltInReason = 'latency-without-recvlatency' | 'no-recvlatency' | 'version-without-recvlatency'
+export type EngineSettingBuiltInReason =
+  | 'latency-without-recvlatency'
+  | 'no-recvlatency'
+  | 'version-without-recvlatency'
   | 'version-without-setting';
 
 export type EngineSettingObservation =
-  | { status: 'known'; source: 'deployment' | EngineDefaultSource | 'config-file'; value: string; environment: EngineSettingEnvironment }
-  | { status: 'known'; source: 'built-in'; value: string; environment: EngineSettingEnvironment; reason: EngineSettingBuiltInReason }
-  | { status: 'unknown'; source: 'omitted' | 'unverified'; value: null; reason: EngineSettingUnknownReason; environment: EngineSettingEnvironment };
+  | {
+      status: 'known';
+      source: 'deployment' | EngineDefaultSource | 'config-file';
+      value: string;
+      environment: EngineSettingEnvironment;
+    }
+  | {
+      status: 'known';
+      source: 'built-in';
+      value: string;
+      environment: EngineSettingEnvironment;
+      reason: EngineSettingBuiltInReason;
+    }
+  | {
+      status: 'unknown';
+      source: 'omitted' | 'unverified';
+      value: null;
+      reason: EngineSettingUnknownReason;
+      environment: EngineSettingEnvironment;
+    };
 
 export type EngineSettingObservations = Record<string, EngineSettingObservation>;
 
@@ -52,43 +80,54 @@ export interface EngineSettingObservationResult {
 
 /** Use only where the selected startup contract proves environment-based settings. */
 export function environmentSettingReadings(fields: readonly EngineSettingField[]): EngineSettingReadings {
-  return Object.fromEntries(fields.map(field => [field.key, [{ kind: 'environment' }]]));
+  return Object.fromEntries(fields.map((field) => [field.key, [{ kind: 'environment' }]]));
 }
 
 function environmentOf(readings: readonly EngineSettingReading[]): EngineSettingEnvironment {
   if (!readings.length) return 'unknown';
-  const sources = readings.map(reading => reading.kind === 'environment' ? 'all'
-    : reading.kind === 'unverified' ? reading.environment ?? 'unknown' : 'none');
+  const sources = readings.map((reading) =>
+    reading.kind === 'environment'
+      ? 'all'
+      : reading.kind === 'unverified'
+        ? (reading.environment ?? 'unknown')
+        : 'none',
+  );
   if (sources.includes('unknown')) return 'unknown';
-  if (sources.every(source => source === 'all')) return 'all';
-  if (sources.every(source => source === 'none')) return 'none';
+  if (sources.every((source) => source === 'all')) return 'all';
+  if (sources.every((source) => source === 'none')) return 'none';
   return 'partial';
 }
 
 function observeField(field: EngineSettingField, input: EngineSettingObservationInput): EngineSettingObservation {
   const readings = input.readings[field.key] ?? [];
   const environment = environmentOf(readings);
-  const unknown = (reason: EngineSettingUnknownReason, source: 'omitted' | 'unverified' = 'unverified'): EngineSettingObservation =>
-    ({ status: 'unknown', source, value: null, reason, environment });
+  const unknown = (
+    reason: EngineSettingUnknownReason,
+    source: 'omitted' | 'unverified' = 'unverified',
+  ): EngineSettingObservation => ({ status: 'unknown', source, value: null, reason, environment });
   if (!readings.length) return unknown('metadata-unavailable');
-  const unverified = readings.find(reading => reading.kind === 'unverified');
+  const unverified = readings.find((reading) => reading.kind === 'unverified');
   if (unverified?.kind === 'unverified') return unknown(unverified.reason);
-  if (readings.some(reading => reading.kind === 'omitted')) return unknown('missing-directive', 'omitted');
-  const builtIns: BuiltInReading[] = readings.flatMap(reading => reading.kind === 'built-in' ? [reading] : []);
+  if (readings.some((reading) => reading.kind === 'omitted')) return unknown('missing-directive', 'omitted');
+  const builtIns: BuiltInReading[] = readings.flatMap((reading) => (reading.kind === 'built-in' ? [reading] : []));
   if (builtIns.length) {
     if (builtIns.length !== readings.length) return unknown('mixed-sources');
     const first = builtIns[0]!;
-    if (builtIns.some(reading => reading.value !== first.value || reading.reason !== first.reason)) return unknown('conflicting-values');
+    if (builtIns.some((reading) => reading.value !== first.value || reading.reason !== first.reason))
+      return unknown('conflicting-values');
     return { status: 'known', source: 'built-in', value: first.value, environment, reason: first.reason };
   }
-  if (readings.some(reading => reading.kind === 'literal') && readings.some(reading => reading.kind === 'environment')) {
+  if (
+    readings.some((reading) => reading.kind === 'literal') &&
+    readings.some((reading) => reading.kind === 'environment')
+  ) {
     return unknown('mixed-sources');
   }
-  const literals = readings.filter(reading => reading.kind === 'literal');
+  const literals = readings.filter((reading) => reading.kind === 'literal');
   if (literals.length) {
-    const values = literals.map(reading => reading.value.trim());
-    if (values.some(value => engineSettingFieldProblem(field, value) !== null)) return unknown('invalid-scalar');
-    if (values.some(value => value !== values[0])) return unknown('conflicting-values');
+    const values = literals.map((reading) => reading.value.trim());
+    if (values.some((value) => engineSettingFieldProblem(field, value) !== null)) return unknown('invalid-scalar');
+    if (values.some((value) => value !== values[0])) return unknown('conflicting-values');
     return { status: 'known', source: 'config-file', value: values[0]!, environment };
   }
   const stored = input.settings[field.key]?.trim();
@@ -100,7 +139,9 @@ function observeField(field: EngineSettingField, input: EngineSettingObservation
 }
 
 /** The observation map is the only authority for effective values and environment applicability. */
-export function assembleEngineSettingObservations(input: EngineSettingObservationInput): EngineSettingObservationResult {
+export function assembleEngineSettingObservations(
+  input: EngineSettingObservationInput,
+): EngineSettingObservationResult {
   const observations: EngineSettingObservations = {};
   const effective: EngineSettings = {};
   const notInConfig: string[] = [];

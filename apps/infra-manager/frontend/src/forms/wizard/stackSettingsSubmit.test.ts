@@ -17,7 +17,13 @@ import { describe, it } from 'node:test';
 import type { DeploymentSettingEntry, ManagerAdminLink, StackVersion } from '@streaming-infra-manager/common';
 
 import type { NewDeploymentSettingsLoad } from '../../deployments/settings/useNewDeploymentSettings';
-import { createdShapeOf, initialWizardState, type WizardContext, type WizardGoal, type WizardState } from './wizardState';
+import {
+  createdShapeOf,
+  initialWizardState,
+  type WizardContext,
+  type WizardGoal,
+  type WizardState,
+} from './wizardState';
 import { submitWizard } from './wizardSubmit';
 
 const TOKEN = 'synthetic-admin-token-for-the-body';
@@ -123,7 +129,10 @@ describe('stack settings on the wizard create body', () => {
   });
 
   it('leaves out a typed key the list for these choices does not take', async (t) => {
-    const { body } = await bodyOf(t, stateFor('stream', { stackSettings: { LOG_LEVEL: 'debug', SRS_LOG_TANK: 'file', STAMP: 'ab'.repeat(32) } }));
+    const { body } = await bodyOf(
+      t,
+      stateFor('stream', { stackSettings: { LOG_LEVEL: 'debug', SRS_LOG_TANK: 'file', STAMP: 'ab'.repeat(32) } }),
+    );
 
     assert.deepEqual(body.stack_settings, [{ key: 'LOG_LEVEL', value: 'debug' }]);
   });
@@ -153,10 +162,14 @@ describe('stack settings on the wizard create body', () => {
     for (const goal of ['viewer', 'abr-uploader'] as const) {
       const { body } = await bodyOf(t, stateFor(goal));
 
-      assert.deepEqual(body.stack_settings, [
-        { key: 'LOG_LEVEL', value: 'debug' },
-        { key: 'ADMIN_API_TOKEN', value: TOKEN },
-      ], goal);
+      assert.deepEqual(
+        body.stack_settings,
+        [
+          { key: 'LOG_LEVEL', value: 'debug' },
+          { key: 'ADMIN_API_TOKEN', value: TOKEN },
+        ],
+        goal,
+      );
       t.mock.restoreAll();
     }
   });
@@ -204,7 +217,11 @@ describe('the web2 admin link on the wizard create body', () => {
     return { ...contextWith(WITH_ADMIN), managerAdminLink };
   }
 
-  async function sentWith(t: Parameters<typeof sentRequest>[0], state: WizardState, context: WizardContext): Promise<SentRequest> {
+  async function sentWith(
+    t: Parameters<typeof sentRequest>[0],
+    state: WizardState,
+    context: WizardContext,
+  ): Promise<SentRequest> {
     const sent = await sentRequest(t, state, context);
     assert.ok(sent, 'the wizard sent a request');
     return sent;
@@ -213,7 +230,10 @@ describe('the web2 admin link on the wizard create body', () => {
   it("carries the address among the stack settings and asks for the manager's stored token, which the page never holds", async (t) => {
     const { body } = await sentWith(t, stateFor('stream', { stackSettings: { LOG_LEVEL: 'debug' } }), linkedContext());
 
-    assert.deepEqual(body.stack_settings, [{ key: 'LOG_LEVEL', value: 'debug' }, { key: 'ADMIN_API_URL', value: ADMIN_URL }]);
+    assert.deepEqual(body.stack_settings, [
+      { key: 'LOG_LEVEL', value: 'debug' },
+      { key: 'ADMIN_API_URL', value: ADMIN_URL },
+    ]);
     assert.equal(body.use_manager_admin_token, true);
   });
 

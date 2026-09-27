@@ -28,8 +28,7 @@ export function CopyButton({
     if (onCopyUnavailable) {
       onCopyUnavailable();
       snackbar.error(
-        `This browser will not let the page copy for you. The ${name} is ` +
-          'selected — copy it with your keyboard.',
+        `This browser will not let the page copy for you. The ${name} is ` + 'selected — copy it with your keyboard.',
       );
       return;
     }

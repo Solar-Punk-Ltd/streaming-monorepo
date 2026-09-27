@@ -1,9 +1,6 @@
 import { Box, Button, Stack, Typography } from '@mui/material';
 
-import {
-  describeAttemptHold,
-  type DeployAttemptView,
-} from '@streaming-infra-manager/common';
+import { describeAttemptHold, type DeployAttemptView } from '@streaming-infra-manager/common';
 
 import { MONO_STACK } from '../app/theme';
 import { SectionCard } from '../components/SectionCard';
@@ -14,13 +11,7 @@ import { formatDateTime } from '../format';
  * still counted as running because the manager could not judge it when its
  * script ended. Either way the next deploy is refused until it is released.
  */
-export function HeldAttemptCard({
-  attempt,
-  onRelease,
-}: {
-  attempt: DeployAttemptView;
-  onRelease: () => void;
-}) {
+export function HeldAttemptCard({ attempt, onRelease }: { attempt: DeployAttemptView; onRelease: () => void }) {
   const blocked = attempt.state === 'blocked';
   return (
     <SectionCard tone="error">
@@ -30,11 +21,13 @@ export function HeldAttemptCard({
             ? 'A blocked deploy attempt holds this deployment'
             : 'An unjudged deploy attempt holds this deployment'}
         </Typography>
-        <Typography variant="caption" sx={{
-          color: "text.secondary"
-        }}>
-          Attempt {attempt.jobId}, started {formatDateTime(attempt.startedAt)}.{' '}
-          {describeAttemptHold(attempt)}
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
+          Attempt {attempt.jobId}, started {formatDateTime(attempt.startedAt)}. {describeAttemptHold(attempt)}
         </Typography>
         {attempt.reason && (
           <Box

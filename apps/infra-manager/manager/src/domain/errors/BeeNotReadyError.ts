@@ -5,9 +5,7 @@
  */
 export class BeeNotReadyError extends Error {
   constructor(public readonly profileName: string) {
-    super(
-      'the Bee node is still starting and answers 503 until it has synced, usually within a minute',
-    );
+    super('the Bee node is still starting and answers 503 until it has synced, usually within a minute');
     this.name = 'BeeNotReadyError';
   }
 }

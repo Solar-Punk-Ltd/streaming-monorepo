@@ -18,11 +18,7 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
-import {
-  type EngineName,
-  getErrorMessage,
-  saysContainerNotRunning,
-} from '@streaming-infra-manager/common';
+import { type EngineName, getErrorMessage, saysContainerNotRunning } from '@streaming-infra-manager/common';
 
 import { CopyButton } from '../CopyButton';
 import { MONO_STACK } from '../app/theme';
@@ -44,9 +40,7 @@ function emptyHint(error: string | null): string {
   if (!error) {
     return 'The container has written nothing yet. Press Refresh in a moment.';
   }
-  return saysContainerNotRunning(error)
-    ? 'Start the deployment, then press Refresh.'
-    : 'Press Refresh to try again.';
+  return saysContainerNotRunning(error) ? 'Start the deployment, then press Refresh.' : 'Press Refresh to try again.';
 }
 
 /**
@@ -79,9 +73,8 @@ export function LogsDialog({
 
   // Derived rather than stored, so the select's value can never be a container
   // the deployment has stopped running. A pick that comes back is used again.
-  const service = picked !== null && services.includes(picked)
-    ? picked
-    : initialLogService(services, engine, initialService);
+  const service =
+    picked !== null && services.includes(picked) ? picked : initialLogService(services, engine, initialService);
 
   // The guard is what makes the last read the one on screen: a switch of pane
   // or container while a slow one is still out flips it, and that answer is
@@ -99,9 +92,7 @@ export function LogsDialog({
     setError(null);
 
     const reading =
-      pane === 'config'
-        ? fetchEngineConfig(profile.name)
-        : fetchContainerLogs(profile.name, service!, LOG_LINES);
+      pane === 'config' ? fetchEngineConfig(profile.name) : fetchContainerLogs(profile.name, service!, LOG_LINES);
 
     reading
       .then((loaded) => {
@@ -110,9 +101,7 @@ export function LogsDialog({
       .catch((caught) => {
         if (!current) return;
         setText(null);
-        setError(
-          getErrorMessage(caught, 'could not read it from the container'),
-        );
+        setError(getErrorMessage(caught, 'could not read it from the container'));
       })
       .finally(() => {
         if (current) setLoading(false);
@@ -125,10 +114,7 @@ export function LogsDialog({
 
   return (
     <Dialog open onClose={onClose} maxWidth="lg" fullWidth>
-      <DialogTitle
-        component="div"
-        sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
-      >
+      <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Typography variant="h6" component="h2" sx={{ flex: 1 }}>
           {profile.name}
         </Typography>
@@ -153,9 +139,10 @@ export function LogsDialog({
             spacing={1}
             useFlexGap
             sx={{
-              alignItems: "center",
-              flexWrap: "wrap"
-            }}>
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
             {pane === 'logs' ? (
               <>
                 <TextField
@@ -173,18 +160,24 @@ export function LogsDialog({
                     </MenuItem>
                   ))}
                 </TextField>
-                <Typography variant="caption" sx={{
-                  color: "text.secondary"
-                }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: 'text.secondary',
+                  }}
+                >
                   Last {LOG_LINES} lines
                 </Typography>
               </>
             ) : (
-              <Typography variant="caption" sx={{
-                color: "text.secondary"
-              }}>
-                The config {engine ? ENGINE_LABEL[engine] : 'engine'} generated when it started. This
-                is what actually applied.
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                }}
+              >
+                The config {engine ? ENGINE_LABEL[engine] : 'engine'} generated when it started. This is what actually
+                applied.
               </Typography>
             )}
             <Box sx={{ flexGrow: 1 }} />
@@ -214,9 +207,10 @@ export function LogsDialog({
             {loading && text === null ? (
               <Stack
                 sx={{
-                  alignItems: "center",
-                  py: 8
-                }}>
+                  alignItems: 'center',
+                  py: 8,
+                }}
+              >
                 <CircularProgress />
               </Stack>
             ) : text ? (

@@ -8,11 +8,7 @@ import type { ReactNode } from 'react';
 
 import { ServiceChip } from '../../../components/ServiceChip';
 import { GOALS } from '../wizardGoals';
-import {
-  withGoal,
-  type WizardGoal,
-  type WizardStepProps,
-} from '../wizardState';
+import { withGoal, type WizardGoal, type WizardStepProps } from '../wizardState';
 
 const GOAL_ICONS: Record<WizardGoal, ReactNode> = {
   stream: <PlayArrowIcon fontSize="small" />,
@@ -36,9 +32,12 @@ export function GoalStep({ state, context, update }: WizardStepProps) {
         <Typography variant="h6" component="h3" id="wizard-goal-question">
           {QUESTION}
         </Typography>
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           Only the settings that matter for your choice will be asked.
         </Typography>
       </Box>
@@ -69,19 +68,21 @@ export function GoalStep({ state, context, update }: WizardStepProps) {
                 onClick={() => update(withGoal(state, goal.id, context))}
                 sx={{ p: 1.75, height: '100%', alignItems: 'flex-start' }}
               >
-                <Stack direction="row" spacing={1.5} sx={{
-                  alignItems: "flex-start"
-                }}>
-                  <Box sx={{ color: 'primary.main', mt: 0.25 }}>
-                    {GOAL_ICONS[goal.id]}
-                  </Box>
+                <Stack
+                  direction="row"
+                  spacing={1.5}
+                  sx={{
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  <Box sx={{ color: 'primary.main', mt: 0.25 }}>{GOAL_ICONS[goal.id]}</Box>
                   <Box>
                     <Typography variant="subtitle2">{goal.title}</Typography>
                     <Typography
                       variant="caption"
                       component="p"
                       sx={{
-                        color: "text.secondary"
+                        color: 'text.secondary',
                       }}
                     >
                       {goal.detail}
@@ -91,9 +92,10 @@ export function GoalStep({ state, context, update }: WizardStepProps) {
                         direction="row"
                         spacing={0.5}
                         sx={{
-                          flexWrap: "wrap",
-                          mt: 0.75
-                        }}>
+                          flexWrap: 'wrap',
+                          mt: 0.75,
+                        }}
+                      >
                         {goal.services.map((service) => (
                           <ServiceChip key={service} service={service} />
                         ))}

@@ -58,8 +58,9 @@ function EngineNumberInput({ entry, field, value, disabled, problem, onChange }:
           inputMode: field.kind === 'integer' ? 'numeric' : 'decimal',
         },
 
-        formHelperText: announcedHelperOf(entry.key)
-      }} />
+        formHelperText: announcedHelperOf(entry.key),
+      }}
+    />
   );
 }
 
@@ -89,8 +90,9 @@ function EngineChoiceInput({ entry, field, value, disabled, problem, onChange }:
         },
 
         select: { native: true },
-        formHelperText: announcedHelperOf(entry.key)
-      }}>
+        formHelperText: announcedHelperOf(entry.key),
+      }}
+    >
       {options.map((choice) => (
         <option key={choice} value={choice}>
           {choice}

@@ -18,7 +18,9 @@ describe('loading the env files', () => {
       log.mock.restore();
     }
 
-    const dotenvLines = log.mock.calls.map((call) => String(call.arguments[0])).filter((line) => /injected env|dotenv/i.test(line));
+    const dotenvLines = log.mock.calls
+      .map((call) => String(call.arguments[0]))
+      .filter((line) => /injected env|dotenv/i.test(line));
     assert.deepEqual(dotenvLines, []);
   });
 });

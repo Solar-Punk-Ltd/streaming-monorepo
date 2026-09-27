@@ -59,10 +59,7 @@ export function buildSrtPublishUrl(
   return `srt://${endpoint.host}:${endpoint.srtPort}?streamid=#!::r=${streamId}?key=${publishKey},m=publish`;
 }
 
-export function buildRtmpServer(
-  endpoint: Pick<IngestEndpoint, 'host' | 'rtmpPort'>,
-  app: MediaType,
-): string {
+export function buildRtmpServer(endpoint: Pick<IngestEndpoint, 'host' | 'rtmpPort'>, app: MediaType): string {
   return `rtmp://${endpoint.host}:${endpoint.rtmpPort}/${app}`;
 }
 
@@ -98,10 +95,7 @@ const SERVER_LINE_SAFE_PASSPHRASE = /^[A-Za-z0-9._~-]+$/;
  * the "Use authentication" Password and wins, so the passphrase rides there
  * whenever it can.
  */
-export function buildObsSrtServer(
-  srtUrl: string,
-  passphrase: string | null,
-): ObsSrtServer {
+export function buildObsSrtServer(srtUrl: string, passphrase: string | null): ObsSrtServer {
   if (!passphrase) return { server: srtUrl, passphraseRoute: 'none' };
   if (!SERVER_LINE_SAFE_PASSPHRASE.test(passphrase)) {
     return { server: srtUrl, passphraseRoute: 'authentication' };

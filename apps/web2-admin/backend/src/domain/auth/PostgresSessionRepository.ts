@@ -3,11 +3,7 @@ import { Pool } from 'pg';
 import type { UserRow } from '../../types/index.js';
 import { JOINED_USER_COLUMNS } from '../userSql.js';
 
-import type {
-  NewSession,
-  SessionRepository,
-  StoredSession,
-} from './SessionRepository.js';
+import type { NewSession, SessionRepository, StoredSession } from './SessionRepository.js';
 
 interface SessionJoinRow {
   token_hash: string;
@@ -51,13 +47,7 @@ export class PostgresSessionRepository implements SessionRepository {
     await this.pool.query(
       `INSERT INTO sessions (token_hash, user_id, expires_at, ip, user_agent)
        VALUES ($1, $2, $3, $4, $5)`,
-      [
-        session.tokenHash,
-        session.userId,
-        session.expiresAt,
-        session.ip,
-        session.userAgent,
-      ],
+      [session.tokenHash, session.userId, session.expiresAt, session.ip, session.userAgent],
     );
   }
 
@@ -75,16 +65,11 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   async touch(tokenHash: string, seenAt: Date): Promise<void> {
-    await this.pool.query(
-      'UPDATE sessions SET last_seen_at = $2 WHERE token_hash = $1',
-      [tokenHash, seenAt],
-    );
+    await this.pool.query('UPDATE sessions SET last_seen_at = $2 WHERE token_hash = $1', [tokenHash, seenAt]);
   }
 
   async deleteByTokenHash(tokenHash: string): Promise<void> {
-    await this.pool.query('DELETE FROM sessions WHERE token_hash = $1', [
-      tokenHash,
-    ]);
+    await this.pool.query('DELETE FROM sessions WHERE token_hash = $1', [tokenHash]);
   }
 
   async deleteForUser(userId: string): Promise<void> {
@@ -92,17 +77,14 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   async deleteExpired(now: Date, idleSince: Date): Promise<number> {
-    const result = await this.pool.query(
-      'DELETE FROM sessions WHERE expires_at <= $1 OR last_seen_at <= $2',
-      [now, idleSince],
-    );
+    const result = await this.pool.query('DELETE FROM sessions WHERE expires_at <= $1 OR last_seen_at <= $2', [
+      now,
+      idleSince,
+    ]);
     return result.rowCount ?? 0;
   }
 
-  async countActiveByUser(
-    now: Date,
-    idleSince: Date,
-  ): Promise<Map<string, number>> {
+  async countActiveByUser(now: Date, idleSince: Date): Promise<Map<string, number>> {
     const result = await this.pool.query<{ user_id: string; count: number }>(
       `SELECT user_id, COUNT(*)::int AS count
          FROM sessions

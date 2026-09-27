@@ -1,9 +1,6 @@
 import { Request, Response, Router } from 'express';
 
-import {
-  attemptReleaseProblem,
-  type DeployAttemptView,
-} from '@streaming-infra-manager/common';
+import { attemptReleaseProblem, type DeployAttemptView } from '@streaming-infra-manager/common';
 
 import type { DeploymentOrchestrator } from '../../domain/DeploymentOrchestrator.js';
 import type { DeployAttempt } from '../../domain/deployAttempts.js';
@@ -35,10 +32,7 @@ function toApiAttempt(attempt: DeployAttempt): DeployAttemptView {
  * still running is what the guard exists to prevent, and a person who
  * checked the host is the only one who can know.
  */
-export function createAttemptsRouter(
-  orchestrator: DeploymentOrchestrator,
-  whoIs: (req: Request) => string,
-): Router {
+export function createAttemptsRouter(orchestrator: DeploymentOrchestrator, whoIs: (req: Request) => string): Router {
   const router = Router();
 
   router.get(

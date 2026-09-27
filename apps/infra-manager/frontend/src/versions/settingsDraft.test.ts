@@ -35,7 +35,14 @@ const SETTINGS: StackSettings = {
       kind: 'env',
       entries: [
         { key: 'API_PORT', value: '3000', sampleValue: '3000', description: '', secret: false, generated: false },
-        { key: 'API_AUTH_TOKEN', value: 'kept', sampleValue: '', description: 'The token.', secret: true, generated: true },
+        {
+          key: 'API_AUTH_TOKEN',
+          value: 'kept',
+          sampleValue: '',
+          description: 'The token.',
+          secret: true,
+          generated: true,
+        },
         { key: 'EXTRA_LOCAL_KEY', value: 'own', sampleValue: null, description: '', secret: false, generated: false },
       ],
     },
@@ -71,30 +78,22 @@ describe('editedFiles', () => {
   it('sends only the keys whose value moved', () => {
     const draft = withEntry(draftOf(SETTINGS), '.env', 'API_PORT', '3100');
 
-    assert.deepEqual(editedFiles(SETTINGS, draft), [
-      { path: '.env', entries: [{ key: 'API_PORT', value: '3100' }] },
-    ]);
+    assert.deepEqual(editedFiles(SETTINGS, draft), [{ path: '.env', entries: [{ key: 'API_PORT', value: '3100' }] }]);
   });
 
   it('sends a json file only once its text differs', () => {
     const draft = withText(draftOf(SETTINGS), 'deploy/config.json', '{"a":2}');
 
-    assert.deepEqual(editedFiles(SETTINGS, draft), [
-      { path: 'deploy/config.json', text: '{"a":2}' },
-    ]);
+    assert.deepEqual(editedFiles(SETTINGS, draft), [{ path: 'deploy/config.json', text: '{"a":2}' }]);
   });
 
   it('sends every file that moved in one save', () => {
-    const draft = withText(
-      withEntry(draftOf(SETTINGS), '.env', 'API_AUTH_TOKEN', 'new'),
-      'deploy/config.json',
-      '{}',
-    );
+    const draft = withText(withEntry(draftOf(SETTINGS), '.env', 'API_AUTH_TOKEN', 'new'), 'deploy/config.json', '{}');
 
-    assert.deepEqual(editedFiles(SETTINGS, draft).map((file) => file.path), [
-      '.env',
-      'deploy/config.json',
-    ]);
+    assert.deepEqual(
+      editedFiles(SETTINGS, draft).map((file) => file.path),
+      ['.env', 'deploy/config.json'],
+    );
   });
 
   it('sends a key the operator removed as the removal it is', () => {
@@ -146,11 +145,7 @@ describe('isAtSampleValue', () => {
 
 describe('keysWithAValueProblem', () => {
   it('names nothing while every edited value is one the readers agree on', () => {
-    const draft = withText(
-      withEntry(draftOf(SETTINGS), '.env', 'API_PORT', '3100'),
-      'deploy/config.json',
-      '{"a":2}',
-    );
+    const draft = withText(withEntry(draftOf(SETTINGS), '.env', 'API_PORT', '3100'), 'deploy/config.json', '{"a":2}');
 
     assert.deepEqual(keysWithAValueProblem(editedFiles(SETTINGS, draft)), []);
   });

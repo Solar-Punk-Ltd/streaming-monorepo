@@ -31,7 +31,11 @@ describe('edge.sh in a checkout that ran the edge before it moved to infra/edge'
     assert.equal(refused.status, 1, refused.stderr);
     assert.ok(existsSync(sandbox.inCheckout(ENV_FILE.before)), 'the script moved the old file itself');
     assert.equal(existsSync(sandbox.inCheckout(ENV_FILE.now)), false, 'the script made an env file');
-    assert.doesNotMatch(refused.stdout + refused.stderr, /old-path\.fixture\.invalid/, 'the output holds what the env file holds');
+    assert.doesNotMatch(
+      refused.stdout + refused.stderr,
+      /old-path\.fixture\.invalid/,
+      'the output holds what the env file holds',
+    );
     assert.deepEqual(refused.calls, [], 'a tool ran before the refusal');
   });
 
@@ -57,7 +61,10 @@ describe('edge.sh in a checkout that ran the edge before it moved to infra/edge'
     const refused = sandbox.runScript(EDGE, ['--host=admin-host']);
 
     assert.equal(refused.status, 1, refused.stderr);
-    assert.match(refused.stderr, /infra\/edge\/\.env not found\. Copy infra\/edge\/\.env\.sample to infra\/edge\/\.env/);
+    assert.match(
+      refused.stderr,
+      /infra\/edge\/\.env not found\. Copy infra\/edge\/\.env\.sample to infra\/edge\/\.env/,
+    );
     assert.doesNotMatch(refused.stderr, /\bmv\b/);
   });
 });

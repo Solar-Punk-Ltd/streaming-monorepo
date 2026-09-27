@@ -27,31 +27,32 @@ export function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <Paper
-      id={id}
-      sx={{ overflow: 'hidden', borderColor: tone === 'error' ? 'error.main' : 'divider' }}
-    >
+    <Paper id={id} sx={{ overflow: 'hidden', borderColor: tone === 'error' ? 'error.main' : 'divider' }}>
       {(title || actions) && (
         <Stack
           direction="row"
           spacing={1.25}
           sx={{
-            alignItems: "center",
+            alignItems: 'center',
             px: 2.25,
             py: 1.5,
             borderBottom: 1,
             borderColor: 'divider',
-            flexWrap: 'wrap'
-          }}>
+            flexWrap: 'wrap',
+          }}
+        >
           {title && (
             <Typography variant="h6" component="h3">
               {title}
             </Typography>
           )}
           {sub && (
-            <Typography variant="body2" sx={{
-              color: "text.secondary"
-            }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+              }}
+            >
               {sub}
             </Typography>
           )}

@@ -1,14 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  Paper,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Paper, Stack, TextField, Typography } from '@mui/material';
 
 import { useSession } from '../app/useSession';
 import { CopyBox } from '../components/CopyBox';
@@ -46,13 +37,19 @@ function AuthFrame({ children }: { children: ReactNode }) {
 export function CheckingSession() {
   return (
     <AuthFrame>
-      <Stack spacing={2} sx={{
-        alignItems: "center"
-      }}>
+      <Stack
+        spacing={2}
+        sx={{
+          alignItems: 'center',
+        }}
+      >
         <CircularProgress size={26} />
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           Checking your session
         </Typography>
       </Stack>
@@ -67,8 +64,7 @@ export function SignInPage() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  const reason =
-    session.state.status === 'signedOut' ? session.state.reason : 'notSignedIn';
+  const reason = session.state.status === 'signedOut' ? session.state.reason : 'notSignedIn';
   const notice = NOTICES[reason];
 
   const submit = async (event: FormEvent) => {
@@ -90,9 +86,13 @@ export function SignInPage() {
     <AuthFrame>
       <Paper sx={{ p: 3 }}>
         <Stack spacing={2.5} component="form" onSubmit={submit}>
-          <Stack direction="row" spacing={1.25} sx={{
-            alignItems: "center"
-          }}>
+          <Stack
+            direction="row"
+            spacing={1.25}
+            sx={{
+              alignItems: 'center',
+            }}
+          >
             <Box
               sx={{
                 width: 30,
@@ -109,12 +109,13 @@ export function SignInPage() {
               SI
             </Box>
             <Box>
-              <Typography sx={{ fontWeight: 600, lineHeight: 1.2 }}>
-                Streaming Infra
-              </Typography>
-              <Typography variant="caption" sx={{
-                color: "text.secondary"
-              }}>
+              <Typography sx={{ fontWeight: 600, lineHeight: 1.2 }}>Streaming Infra</Typography>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                }}
+              >
                 Sign in to the manager
               </Typography>
             </Box>
@@ -124,9 +125,7 @@ export function SignInPage() {
             <Alert severity={reason === 'noUsers' ? 'info' : 'warning'}>
               <Stack spacing={1}>
                 <span>{notice}</span>
-                {reason === 'noUsers' && (
-                  <CopyBox value={FIRST_USER_COMMAND} />
-                )}
+                {reason === 'noUsers' && <CopyBox value={FIRST_USER_COMMAND} />}
               </Stack>
             </Alert>
           )}
@@ -163,11 +162,7 @@ export function SignInPage() {
 
           {error && <Alert severity="error">{error}</Alert>}
 
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={pending || username.trim() === '' || password === ''}
-          >
+          <Button type="submit" variant="contained" disabled={pending || username.trim() === '' || password === ''}>
             {pending ? 'Signing in' : 'Sign in'}
           </Button>
         </Stack>

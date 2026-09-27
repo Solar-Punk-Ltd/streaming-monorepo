@@ -72,7 +72,8 @@ function readEntries(section) {
     if (line.trim() === '') continue;
     if (indentOf(line) === DEPTH.ENTRY) {
       const key = readKey(line.slice(DEPTH.ENTRY));
-      if (key === null) throw new Refusal(`The root lockfile's ${section.key} has an entry this tool cannot read: ${line}`);
+      if (key === null)
+        throw new Refusal(`The root lockfile's ${section.key} has an entry this tool cannot read: ${line}`);
       entries.push({ key, lines: [line] });
     } else if (indentOf(line) > DEPTH.ENTRY && entries.length > 0) {
       entries.at(-1).lines.push(line);
@@ -117,7 +118,8 @@ function snapshotEdges(entry) {
     const depth = indentOf(line);
     const key = readKey(line.slice(depth));
     if (depth === DEPTH.FIELD) inField = SNAPSHOT_EDGE_FIELDS.has(key?.value);
-    else if (inField && depth === DEPTH.DEPENDENCY) found.push({ name: key.value, version: valueAfterKey(line, depth) });
+    else if (inField && depth === DEPTH.DEPENDENCY)
+      found.push({ name: key.value, version: valueAfterKey(line, depth) });
   }
   return found;
 }
@@ -208,7 +210,9 @@ export function cutLockfile(text, { app, injectWorkspacePackages }) {
           );
         }
         if (!importerIds.has(target)) {
-          throw new Refusal(`${importer.key.value} links ${name} from ${target}, which the root lockfile has no importer for.`);
+          throw new Refusal(
+            `${importer.key.value} links ${name} from ${target}, which the root lockfile has no importer for.`,
+          );
         }
       } else if (dependency.startsWith('file:')) {
         throw new Refusal(
@@ -226,11 +230,14 @@ export function cutLockfile(text, { app, injectWorkspacePackages }) {
     const key = queue.pop();
     if (reached.has(key)) continue;
     const snapshot = snapshots.get(key);
-    if (snapshot === undefined) throw new Refusal(`${app} reaches ${key}, but the root lockfile holds no snapshot of it.`);
+    if (snapshot === undefined)
+      throw new Refusal(`${app} reaches ${key}, but the root lockfile holds no snapshot of it.`);
     reached.add(key);
     for (const { name, version: dependency } of snapshotEdges(snapshot)) {
       if (dependency.startsWith('link:') || dependency.startsWith('file:')) {
-        throw new Refusal(`The snapshot ${key} depends on ${name} at ${dependency}, which a cut app folder cannot carry.`);
+        throw new Refusal(
+          `The snapshot ${key} depends on ${name} at ${dependency}, which a cut app folder cannot carry.`,
+        );
       }
       queue.push(snapshotKeyOf(name, dependency));
     }
@@ -240,7 +247,8 @@ export function cutLockfile(text, { app, injectWorkspacePackages }) {
   const packageKeys = new Set(packages.map((entry) => entry.key.value));
   const keptPackageKeys = new Set([...reached].map(packageKeyOf));
   for (const key of keptPackageKeys) {
-    if (!packageKeys.has(key)) throw new Refusal(`${app} reaches ${key}, but the root lockfile holds no package entry for it.`);
+    if (!packageKeys.has(key))
+      throw new Refusal(`${app} reaches ${key}, but the root lockfile holds no package entry for it.`);
   }
 
   const written = sections.map((section) => {
@@ -248,11 +256,20 @@ export function cutLockfile(text, { app, injectWorkspacePackages }) {
       case 'settings':
         return settingsFor(section, injectWorkspacePackages).join('\n');
       case 'importers':
-        return keyedSection('importers', importers.map((entry) => renamedEntry(app, entry)));
+        return keyedSection(
+          'importers',
+          importers.map((entry) => renamedEntry(app, entry)),
+        );
       case 'packages':
-        return keyedSection('packages', packages.filter((entry) => keptPackageKeys.has(entry.key.value)).map((entry) => entry.lines));
+        return keyedSection(
+          'packages',
+          packages.filter((entry) => keptPackageKeys.has(entry.key.value)).map((entry) => entry.lines),
+        );
       case 'snapshots':
-        return keyedSection('snapshots', [...snapshots.values()].filter((entry) => reached.has(entry.key.value)).map((entry) => entry.lines));
+        return keyedSection(
+          'snapshots',
+          [...snapshots.values()].filter((entry) => reached.has(entry.key.value)).map((entry) => entry.lines),
+        );
       default:
         return section.lines.join('\n');
     }

@@ -88,10 +88,7 @@ function withLines(current: Buffer, lines: readonly string[]): Buffer {
  * ships no sample for, is left alone: only what is already the host's own is
  * ever written to.
  */
-export async function completeHostConfigFromSamples(
-  configRoot: string,
-  staging: string,
-): Promise<CompletedSettings> {
+export async function completeHostConfigFromSamples(configRoot: string, staging: string): Promise<CompletedSettings> {
   // The live files are read and written back under one acquisition of the
   // lock, so an edit that lands between the two is not overwritten.
   return withHostConfigLock(configRoot, async (commit) => {

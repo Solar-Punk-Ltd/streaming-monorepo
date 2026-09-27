@@ -13,12 +13,7 @@ import {
 import { minimumStampAmountPlur, stampCostPlur, stampTtlSeconds } from '@streaming-infra-manager/common';
 
 import type { BuyStampInput } from './stampApi';
-import {
-  BZZ_DECIMALS,
-  formatTokenBalance,
-  formatTtl,
-  NO_VALUE,
-} from '../format';
+import { BZZ_DECIMALS, formatTokenBalance, formatTtl, NO_VALUE } from '../format';
 
 const DEFAULT_DEPTH = '17';
 
@@ -42,9 +37,7 @@ export function BuyStampForm({
   newBatchReach?: string | null;
 }) {
   const [amount, setAmount] = useState('');
-  const [depth, setDepth] = useState(
-    defaultDepth === undefined ? DEFAULT_DEPTH : String(defaultDepth),
-  );
+  const [depth, setDepth] = useState(defaultDepth === undefined ? DEFAULT_DEPTH : String(defaultDepth));
   const [label, setLabel] = useState('');
   const [immutable, setImmutable] = useState(false);
 
@@ -54,18 +47,15 @@ export function BuyStampForm({
    * refuses it here rather than after the operator has committed to spending.
    */
   const minimumAmount = minimumStampAmountPlur(currentPrice);
-  const belowMinimum =
-    amountShaped && minimumAmount !== null && BigInt(amount.trim()) < BigInt(minimumAmount);
+  const belowMinimum = amountShaped && minimumAmount !== null && BigInt(amount.trim()) < BigInt(minimumAmount);
   const amountValid = amountShaped && !belowMinimum;
   const depthNum = Number(depth);
-  const depthValid =
-    Number.isInteger(depthNum) && depthNum >= 17 && depthNum <= 40;
+  const depthValid = Number.isInteger(depthNum) && depthNum >= 17 && depthNum <= 40;
   const canBuy = !busy && amountValid && depthValid;
 
   const ttlSeconds = stampTtlSeconds(amount, currentPrice);
   const costPlur = depthValid ? stampCostPlur(amount, depthNum) : null;
-  const costBzz =
-    costPlur != null ? formatTokenBalance(costPlur, BZZ_DECIMALS) : null;
+  const costBzz = costPlur != null ? formatTokenBalance(costPlur, BZZ_DECIMALS) : null;
 
   const handleBuy = async () => {
     await onBuy({
@@ -80,9 +70,12 @@ export function BuyStampForm({
 
   return (
     <Box>
-      <Typography variant="overline" sx={{
-        color: "text.secondary"
-      }}>
+      <Typography
+        variant="overline"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
         Buy a stamp
       </Typography>
       <Stack
@@ -90,8 +83,9 @@ export function BuyStampForm({
         spacing={2}
         sx={{
           alignItems: { sm: 'flex-start' },
-          mt: 1
-        }}>
+          mt: 1,
+        }}
+      >
         <TextField
           label="Amount (PLUR / chunk)"
           size="small"
@@ -124,13 +118,7 @@ export function BuyStampForm({
           helperText="optional"
         />
         <FormControlLabel
-          control={
-            <Checkbox
-              size="small"
-              checked={immutable}
-              onChange={(e) => setImmutable(e.target.checked)}
-            />
-          }
+          control={<Checkbox size="small" checked={immutable} onChange={(e) => setImmutable(e.target.checked)} />}
           label="Immutable"
         />
         <Button
@@ -148,33 +136,39 @@ export function BuyStampForm({
         sx={{ mt: 1 }}
         divider={<Box sx={{ borderLeft: 1, borderColor: 'divider' }} />}
       >
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           Estimated life:{' '}
           <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
             {amountValid ? formatTtl(ttlSeconds) : NO_VALUE}
           </Box>
-          {amountValid && ttlSeconds == null && currentPrice == null
-            ? ' (price unavailable)'
-            : ''}
+          {amountValid && ttlSeconds == null && currentPrice == null ? ' (price unavailable)' : ''}
         </Typography>
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           Cost:{' '}
           <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
             {costBzz != null ? `${costBzz} BZZ` : NO_VALUE}
           </Box>
         </Typography>
       </Stack>
-      <Typography variant="caption" sx={{
-        color: "text.secondary"
-      }}>
-        A new batch takes a few minutes to become usable and is then set on
-        this deployment automatically, unless another batch is set here with
-        Use first. {newBatchReach ? `${newBatchReach} ` : ''}The readiness
-        checklist above says what comes next. Need funds?{' '}
+      <Typography
+        variant="caption"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
+        A new batch takes a few minutes to become usable and is then set on this deployment automatically, unless
+        another batch is set here with Use first. {newBatchReach ? `${newBatchReach} ` : ''}The readiness checklist
+        above says what comes next. Need funds?{' '}
         <Link
           href="https://docs.ethswarm.org/docs/bee/installation/fund-your-node"
           target="_blank"
@@ -189,11 +183,7 @@ export function BuyStampForm({
 }
 
 /** What to say under the amount, the floor Bee will not go below included. */
-function amountHint(
-  amount: string,
-  minimum: string | null,
-  belowMinimum: boolean,
-): string {
+function amountHint(amount: string, minimum: string | null, belowMinimum: boolean): string {
   if (belowMinimum) return `at least ${minimum}, one day of life at today's price`;
   if (amount.length > 0 && !/^[1-9][0-9]*$/.test(amount.trim())) return 'positive integer';
   return minimum === null

@@ -99,10 +99,7 @@ export function placeholdersIn(text: string): string[] {
  * token the stack leaves in place reaches the engine as it stands, and the
  * engine either refuses the file or runs with a literal nobody meant.
  */
-export function unknownPlaceholders(
-  config: string,
-  filled: readonly string[],
-): string[] {
+export function unknownPlaceholders(config: string, filled: readonly string[]): string[] {
   return placeholdersIn(config).filter((token) => !filled.includes(token));
 }
 
@@ -113,10 +110,7 @@ export function unknownPlaceholders(
  * the container's environment, but nothing in the file reads it. Said on the
  * setting's row rather than silently ignored.
  */
-export function settingsNotInConfig(
-  engine: EngineName,
-  config: string,
-): string[] {
+export function settingsNotInConfig(engine: EngineName, config: string): string[] {
   const present = new Set(placeholdersIn(config));
   return engineSettingsFields(engine)
     .filter((field) => field.placeholder && !present.has(field.placeholder))

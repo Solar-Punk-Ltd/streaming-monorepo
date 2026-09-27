@@ -1,4 +1,3 @@
-
 import {
   classifyPublishUrl,
   type BeeNodeObservation,
@@ -14,14 +13,7 @@ import {
 import { Profile, ProfileWithContainers } from '../types/index.js';
 import { resolveNetworkHost } from '../utils/deployHost.js';
 
-import {
-  BeeAddresses,
-  BeeChainState,
-  BeeClient,
-  BeeStamp,
-  BeeWallet,
-  BuyStampInput,
-} from './BeeClient.js';
+import { BeeAddresses, BeeChainState, BeeClient, BeeStamp, BeeWallet, BuyStampInput } from './BeeClient.js';
 import { beeCallFailed } from './beeFailure.js';
 import { ContainerRepository } from './ContainerRepository.js';
 import {
@@ -35,12 +27,7 @@ import {
 import { EventBus } from './EventBus.js';
 import { Logger } from './Logger.js';
 import { NodeReadCache, nodeReadKey } from './nodeReadCache.js';
-import {
-  NodeReadLog,
-  readLogKey,
-  spellSuffix,
-  spellText,
-} from './nodeReadLog.js';
+import { NodeReadLog, readLogKey, spellSuffix, spellText } from './nodeReadLog.js';
 import { readFailureFrom } from './nodeReadFailure.js';
 import { ProfileRepository } from './ProfileRepository.js';
 import { LOCAL_DEPLOY_TARGETS, LOCAL_PUBLISHED_HOST } from './localHost.js';
@@ -67,8 +54,7 @@ const PUBLISH_URL_PROBE_KEY = (url: string): string => `publish-url:${url}`;
 /** Waits between polls of a bought batch. A test passes one that does not wait out the interval. */
 export type PollPause = (ms: number) => Promise<void>;
 
-const sleep: PollPause = (ms) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+const sleep: PollPause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Bee's own spelling of a batch id, which is what a stamp path and a key want. */
 const batchIdOf = (stampId: string): string => stampId.replace(/^0x/, '');
@@ -81,10 +67,7 @@ function sameRecordedStamp(a: string | null, b: string | null): boolean {
   return sameBatchId(recordedA, recordedB);
 }
 
-export type BeeClientFactory = (
-  baseUrl: string,
-  timeoutMs?: number,
-) => BeeClient;
+export type BeeClientFactory = (baseUrl: string, timeoutMs?: number) => BeeClient;
 
 /**
  * The node's network address, taken out of a deploy target.
@@ -127,10 +110,7 @@ export function beeApiUrlFor(profile: Profile): string {
  * the T06 caveat: the remote node's API has to be bound somewhere this host can
  * reach, which its own operator decides.
  */
-export function beePublisherUrlFor(
-  profile: Profile,
-  localPublisherHost: string,
-): string {
+export function beePublisherUrlFor(profile: Profile, localPublisherHost: string): string {
   const port = BEE_UPLOADER_API_BASE_PORT + profile.port_slot * 10;
   const declared = networkHostOf((profile.host ?? '').trim());
   const host = LOCAL_DEPLOY_TARGETS.has(declared) ? localPublisherHost : declared;
@@ -144,17 +124,14 @@ export class StampService {
     private readonly profiles: ProfileRepository,
     private readonly containers: ContainerRepository,
     private readonly events: EventBus,
-    private readonly clientFactory: BeeClientFactory = (url, timeoutMs) =>
-      new BeeClient(url, timeoutMs),
+    private readonly clientFactory: BeeClientFactory = (url, timeoutMs) => new BeeClient(url, timeoutMs),
     private readonly reads: NodeReadCache = new NodeReadCache(),
     private readonly readLog: NodeReadLog = new NodeReadLog(),
     private readonly pause: PollPause = sleep,
   ) {}
 
   async getNodeObservation(name: string): Promise<BeeNodeObservation> {
-    return this.shared(name, 'observation', (client) =>
-      client.getNodeObservation(),
-    );
+    return this.shared(name, 'observation', (client) => client.getNodeObservation());
   }
 
   async getAddress(name: string): Promise<BeeAddresses> {
@@ -182,10 +159,7 @@ export class StampService {
    * or running out. The one choice that outranks the purchase is a later one: a
    * batch set with Use while this one settled is kept.
    */
-  async buyStamp(
-    name: string,
-    input: BuyStampInput,
-  ): Promise<{ batchID: string }> {
+  async buyStamp(name: string, input: BuyStampInput): Promise<{ batchID: string }> {
     const profile = await this.profiles.findByName(name);
     if (!profile) throw new ProfileNotFoundError(name);
 
@@ -203,18 +177,12 @@ export class StampService {
    * every chunk of it, paid from that node's wallet. That buys the batch life
    * and changes nothing else, so it stays set wherever it was set.
    */
-  async topUpStamp(
-    name: string,
-    batchId: string,
-    amountPerChunkPlur: string,
-  ): Promise<BeeStampTransaction> {
+  async topUpStamp(name: string, batchId: string, amountPerChunkPlur: string): Promise<BeeStampTransaction> {
     const profile = await this.profiles.findByName(name);
     if (!profile) throw new ProfileNotFoundError(name);
 
     await this.heldStamp(profile, batchId);
-    const result = await this.callOn(profile, (client) =>
-      client.topUpStamp(batchIdOf(batchId), amountPerChunkPlur),
-    );
+    const result = await this.callOn(profile, (client) => client.topUpStamp(batchIdOf(batchId), amountPerChunkPlur));
     this.reads.forget(name);
     logger.info(
       `[StampService] ${name}: topped up stamp ${batchIdOf(batchId)} (amount=${amountPerChunkPlur}), transaction ${result.txHash}`,
@@ -228,11 +196,7 @@ export class StampService {
    * the postage contract accepts. Every step doubles what the batch holds and
    * halves its life, and it costs the node's wallet only the transaction fee.
    */
-  async diluteStamp(
-    name: string,
-    batchId: string,
-    depth: number,
-  ): Promise<BeeStampTransaction> {
+  async diluteStamp(name: string, batchId: string, depth: number): Promise<BeeStampTransaction> {
     const profile = await this.profiles.findByName(name);
     if (!profile) throw new ProfileNotFoundError(name);
 
@@ -244,9 +208,7 @@ export class StampService {
     if (after?.underMinimumValidity && after.ttl !== null) {
       throw new DiluteLifeError(name, batchIdOf(batchId), depth, after.ttl);
     }
-    const result = await this.callOn(profile, (client) =>
-      client.diluteStamp(batchIdOf(batchId), depth),
-    );
+    const result = await this.callOn(profile, (client) => client.diluteStamp(batchIdOf(batchId), depth));
     this.reads.forget(name);
     logger.info(
       `[StampService] ${name}: diluted stamp ${batchIdOf(batchId)} (depth=${held.depth} to ${depth}), transaction ${result.txHash}`,
@@ -280,17 +242,14 @@ export class StampService {
    * down is no evidence about its batch, so a caller can degrade to a caution
    * rather than a false alarm.
    */
-  async stampHealthFor(
-    profile: Profile,
-    stampId: string | null | undefined,
-  ): Promise<StampHealth> {
+  async stampHealthFor(profile: Profile, stampId: string | null | undefined): Promise<StampHealth> {
     if (!stampId || !stampId.trim()) return stampHealthFrom(null, []);
 
     return this.reads.read(this.stampKey(profile.name, stampId), async () => {
       const client = this.clientFactory(beeApiUrlFor(profile), PROBE_TIMEOUT_MS);
       const started = Date.now();
       const logKey = readLogKey(profile.name, 'stamp');
-      const answered = <T,>(health: T): T => {
+      const answered = <T>(health: T): T => {
         this.readLog.noteRecovery(
           logKey,
           (note) => `[StampService] ${profile.name}: the node answers about its stamps again, after ${spellText(note)}`,
@@ -348,10 +307,7 @@ export class StampService {
         // /health is the best signal, but a non-2xx from *something* still tells us
         // the address is not the problem.
         await res.text().catch(() => undefined);
-        this.readLog.noteRecovery(
-          logKey,
-          (note) => `[StampService] ${url} answers again, after ${spellText(note)}`,
-        );
+        this.readLog.noteRecovery(logKey, (note) => `[StampService] ${url} answers again, after ${spellText(note)}`);
         return 'ok' as PublishUrlState;
       } catch (err) {
         const failure = readFailureFrom(err, Date.now() - started);
@@ -386,15 +342,10 @@ export class StampService {
     const client = this.clientFactory(nodeUrl);
     let stamp: BeeStamp;
     try {
-      stamp = await this.reads.readFresh(this.stampKey(name, stampId), () =>
-        client.getStamp(batchIdOf(stampId)),
-      );
+      stamp = await this.reads.readFresh(this.stampKey(name, stampId), () => client.getStamp(batchIdOf(stampId)));
     } catch (err) {
       if (err instanceof BeeHttpError && err.status === 404) {
-        throw new StampNotUsableError(
-          name,
-          'the configured stamp is unknown to this bee node',
-        );
+        throw new StampNotUsableError(name, 'the configured stamp is unknown to this bee node');
       }
       logger.warn(
         `[StampService] ${name}: the Bee node at ${nodeUrl} did not answer the stamp check (${getErrorMessage(err)}). ` +
@@ -404,9 +355,7 @@ export class StampService {
     }
     if (!stamp.usable) {
       const reason =
-        stamp.batchTTL === 0
-          ? 'the configured stamp has expired'
-          : 'the configured stamp is not usable yet';
+        stamp.batchTTL === 0 ? 'the configured stamp has expired' : 'the configured stamp is not usable yet';
       throw new StampNotUsableError(name, reason);
     }
   }
@@ -441,27 +390,17 @@ export class StampService {
     }
   }
 
-  private shared<T>(
-    name: string,
-    route: string,
-    fn: (client: BeeClient) => Promise<T>,
-  ): Promise<T> {
+  private shared<T>(name: string, route: string, fn: (client: BeeClient) => Promise<T>): Promise<T> {
     return this.reads.read(nodeReadKey(name, route), () => this.call(name, fn));
   }
 
-  private async call<T>(
-    name: string,
-    fn: (client: BeeClient) => Promise<T>,
-  ): Promise<T> {
+  private async call<T>(name: string, fn: (client: BeeClient) => Promise<T>): Promise<T> {
     const profile = await this.profiles.findByName(name);
     if (!profile) throw new ProfileNotFoundError(name);
     return this.callOn(profile, fn);
   }
 
-  private async callOn<T>(
-    profile: Profile,
-    fn: (client: BeeClient) => Promise<T>,
-  ): Promise<T> {
+  private async callOn<T>(profile: Profile, fn: (client: BeeClient) => Promise<T>): Promise<T> {
     const client = this.clientFactory(beeApiUrlFor(profile));
     try {
       return await fn(client);
@@ -470,28 +409,18 @@ export class StampService {
     }
   }
 
-  private awaitUsableAndSet(
-    name: string,
-    batchID: string,
-    recordedAtBuy: string | null | undefined,
-  ): void {
+  private awaitUsableAndSet(name: string, batchID: string, recordedAtBuy: string | null | undefined): void {
     const key = `${name}:${batchID}`;
     if (this.pendingUsableWaits.has(key)) return;
     this.pendingUsableWaits.add(key);
     void this.runUsableWait(name, batchID, recordedAtBuy ?? null)
       .catch((err) =>
-        logger.error(
-          `[StampService] ${name}: usable-wait for ${batchID} failed: ${getErrorMessage(err)}`,
-        ),
+        logger.error(`[StampService] ${name}: usable-wait for ${batchID} failed: ${getErrorMessage(err)}`),
       )
       .finally(() => this.pendingUsableWaits.delete(key));
   }
 
-  private async runUsableWait(
-    name: string,
-    batchID: string,
-    recordedAtBuy: string | null,
-  ): Promise<void> {
+  private async runUsableWait(name: string, batchID: string, recordedAtBuy: string | null): Promise<void> {
     const profile = await this.profiles.findByName(name);
     if (!profile) return;
     const client = this.clientFactory(beeApiUrlFor(profile));
@@ -528,14 +457,10 @@ export class StampService {
           type: 'profile.changed',
           profile: withContainers,
         });
-        logger.info(
-          `[StampService] ${name}: stamp ${batchID} usable → set as active`,
-        );
+        logger.info(`[StampService] ${name}: stamp ${batchID} usable → set as active`);
       }
       return;
     }
-    logger.warn(
-      `[StampService] ${name}: stamp ${batchID} not usable within ${USABLE_WAIT_MS}ms`,
-    );
+    logger.warn(`[StampService] ${name}: stamp ${batchID} not usable within ${USABLE_WAIT_MS}ms`);
   }
 }

@@ -74,13 +74,7 @@ export function checkoutCommit(checkout: string): string {
  * manager reads off a rebuilt checkout is the commit and not the files.
  */
 export function advanceCheckout(checkout: string): string {
-  git(checkout, [
-    'commit',
-    '--quiet',
-    '--allow-empty',
-    '--message',
-    'the branch moved',
-  ]);
+  git(checkout, ['commit', '--quiet', '--allow-empty', '--message', 'the branch moved']);
   return checkoutCommit(checkout);
 }
 

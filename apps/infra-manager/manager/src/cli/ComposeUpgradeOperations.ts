@@ -87,7 +87,12 @@ function parseServiceContainers(stdout: string): ServiceContainer[] {
   if (!text) return [];
   let parsed: unknown;
   try {
-    parsed = text.startsWith('[') ? JSON.parse(text) : text.split('\n').filter(Boolean).map((line) => JSON.parse(line));
+    parsed = text.startsWith('[')
+      ? JSON.parse(text)
+      : text
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => JSON.parse(line));
   } catch {
     throw new Error('The container listing of this Compose project could not be read as JSON.');
   }
@@ -99,7 +104,10 @@ function parseServiceContainers(stdout: string): ServiceContainer[] {
 }
 
 function idsOf(stdout: string): string[] {
-  return stdout.split('\n').map((line) => line.trim()).filter(Boolean);
+  return stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 /**
@@ -109,7 +117,13 @@ function idsOf(stdout: string): string[] {
  * the project, which carries the database password inside DATABASE_URL, so
  * none of its output belongs in a deploy log a person pastes into a message.
  */
-function commandFailure(what: string, project: string, program: string, result: CommandResult, timeoutMs: number): string {
+function commandFailure(
+  what: string,
+  project: string,
+  program: string,
+  result: CommandResult,
+  timeoutMs: number,
+): string {
   const outcome = result.killed
     ? `It was killed after ${Math.round(timeoutMs / 1000)} seconds.`
     : `It exited with ${result.code}.`;
@@ -126,8 +140,13 @@ function commandFailure(what: string, project: string, program: string, result: 
  * the row as building, and the boot that swallows that leaves the error of an
  * earlier one standing.
  */
-function outcomeOf(bundled: BundledVersionState | null, commit: string, before: BundledVersionState | null | undefined): BundledBuildOutcome | null {
-  if (!bundled) return { state: 'failed', commit, buildId: null, problem: 'this database holds no bundled version row' };
+function outcomeOf(
+  bundled: BundledVersionState | null,
+  commit: string,
+  before: BundledVersionState | null | undefined,
+): BundledBuildOutcome | null {
+  if (!bundled)
+    return { state: 'failed', commit, buildId: null, problem: 'this database holds no bundled version row' };
   if (deploysBuildOf(bundled, commit)) {
     return { state: 'ready', commit, buildId: bundled.buildId, problem: null };
   }
@@ -183,7 +202,9 @@ export class ComposeUpgradeOperations implements ManagerUpgradeOperations {
     const firstUse = await this.startPostgres(request.project);
     const publication = await this.database.readPublication();
     if (firstUse && publication.schema !== 'fresh') {
-      throw new Error('This host has no manager database volume, so its database should be empty, and it is not. Look at the host before deploying again.');
+      throw new Error(
+        'This host has no manager database volume, so its database should be empty, and it is not. Look at the host before deploying again.',
+      );
     }
     return publication;
   }
@@ -191,7 +212,8 @@ export class ComposeUpgradeOperations implements ManagerUpgradeOperations {
   async stopApi(request: ManagerUpgradeRequest): Promise<void> {
     await this.compose(request.project, ['stop', API_SERVICE]);
     const running = await this.containerIds(request.project, ['ps', '-q', API_SERVICE]);
-    if (running.length > 0) throw new Error('An api container is still running after it was stopped, so this upgrade cannot go on.');
+    if (running.length > 0)
+      throw new Error('An api container is still running after it was stopped, so this upgrade cannot go on.');
   }
 
   async migrate(): Promise<void> {
@@ -236,7 +258,9 @@ export class ComposeUpgradeOperations implements ManagerUpgradeOperations {
     // Dropping a profile does not stop a container already running under it, so the edge goes by name.
     await this.compose(request.project, [...PUBLIC_PROFILE, 'rm', '-sf', EDGE_SERVICE]);
     if (await this.edgeIsRunning(request.project)) {
-      throw new Error('MANAGER_DOMAIN is empty and the edge is still running, so the host is still answering on 80 and 443. Stop it by hand before deploying again.');
+      throw new Error(
+        'MANAGER_DOMAIN is empty and the edge is still running, so the host is still answering on 80 and 443. Stop it by hand before deploying again.',
+      );
     }
   }
 
@@ -245,9 +269,11 @@ export class ComposeUpgradeOperations implements ManagerUpgradeOperations {
     await this.assertApiRunsTheBuiltImage(request);
     const running = await this.edgeIsRunning(request.project);
     if (running !== this.settings.publicEdge) {
-      throw new Error(running
-        ? 'The public edge is running although this deploy set no domain, so the host is answering on 80 and 443.'
-        : 'This deploy set a domain but the public edge is not running, so the host is not answering on 443.');
+      throw new Error(
+        running
+          ? 'The public edge is running although this deploy set no domain, so the host is answering on 80 and 443.'
+          : 'This deploy set a domain but the public edge is not running, so the host is not answering on 443.',
+      );
     }
   }
 
@@ -263,22 +289,37 @@ export class ComposeUpgradeOperations implements ManagerUpgradeOperations {
   private async assertApiRunsTheBuiltImage(request: ManagerUpgradeRequest): Promise<void> {
     const [container] = await this.containerIds(request.project, ['ps', '-q', API_SERVICE]);
     if (!container) {
-      throw new Error(`Something answered the health check but no ${API_SERVICE} container of the ${request.project} project is running, so what answered cannot be checked.`);
+      throw new Error(
+        `Something answered the health check but no ${API_SERVICE} container of the ${request.project} project is running, so what answered cannot be checked.`,
+      );
     }
     const argv = ['docker', 'inspect', '--format', '{{.Image}}', container];
     const result = await this.run(argv, { timeoutMs: this.timeouts.command });
     if (result.code !== 0) {
-      throw new Error(commandFailure(`inspect ${API_SERVICE}`, request.project, 'docker', result, this.timeouts.command));
+      throw new Error(
+        commandFailure(`inspect ${API_SERVICE}`, request.project, 'docker', result, this.timeouts.command),
+      );
     }
     const image = result.stdout.trim();
     if (image !== request.manager.imageId) {
-      throw new Error(`The ${API_SERVICE} container that came up runs image ${image} and this upgrade built ${request.manager.imageId}, so another deploy retagged it in between. Look at the host before deploying again.`);
+      throw new Error(
+        `The ${API_SERVICE} container that came up runs image ${image} and this upgrade built ${request.manager.imageId}, so another deploy retagged it in between. Look at the host before deploying again.`,
+      );
     }
   }
 
   private composeArgv(project: string, args: readonly string[]): string[] {
-    return ['docker', 'compose', '-p', project, '-f', this.settings.composeFile,
-      '--project-directory', dirname(this.settings.composeFile), ...args];
+    return [
+      'docker',
+      'compose',
+      '-p',
+      project,
+      '-f',
+      this.settings.composeFile,
+      '--project-directory',
+      dirname(this.settings.composeFile),
+      ...args,
+    ];
   }
 
   private async compose(project: string, args: readonly string[]): Promise<CommandResult> {
@@ -304,10 +345,17 @@ export class ComposeUpgradeOperations implements ManagerUpgradeOperations {
    * like one that already has an api container.
    */
   private async serviceContainerIds(project: string, service: string): Promise<string[]> {
-    const argv = ['docker', 'ps', '-aq',
-      '--filter', `label=${COMPOSE_PROJECT_LABEL}=${project}`,
-      '--filter', `label=${COMPOSE_SERVICE_LABEL}=${service}`,
-      '--filter', `label=${COMPOSE_ONE_OFF_LABEL}=False`];
+    const argv = [
+      'docker',
+      'ps',
+      '-aq',
+      '--filter',
+      `label=${COMPOSE_PROJECT_LABEL}=${project}`,
+      '--filter',
+      `label=${COMPOSE_SERVICE_LABEL}=${service}`,
+      '--filter',
+      `label=${COMPOSE_ONE_OFF_LABEL}=False`,
+    ];
     const result = await this.run(argv, { timeoutMs: this.timeouts.command });
     if (result.code !== 0) {
       throw new Error(commandFailure(`ps -aq ${service}`, project, 'docker', result, this.timeouts.command));
@@ -359,7 +407,9 @@ export class ComposeUpgradeOperations implements ManagerUpgradeOperations {
     if (!hasVolume) {
       const api = await this.serviceContainerIds(project, API_SERVICE);
       if (api.length > 0) {
-        throw new Error(`This host has an ${API_SERVICE} container but no ${project}_${this.settings.postgresVolume} volume, so its database was removed under a manager that is still installed. Look at the host before deploying again.`);
+        throw new Error(
+          `This host has an ${API_SERVICE} container but no ${project}_${this.settings.postgresVolume} volume, so its database was removed under a manager that is still installed. Look at the host before deploying again.`,
+        );
       }
     }
     await this.compose(project, ['up', '-d', '--no-build', POSTGRES_SERVICE]);
@@ -372,7 +422,9 @@ export class ComposeUpgradeOperations implements ManagerUpgradeOperations {
     for (;;) {
       if (someContainerIsHealthy(await this.serviceContainers(project, POSTGRES_SERVICE))) return;
       if (Date.now() >= deadline) {
-        throw new Error(`The ${POSTGRES_SERVICE} container of the ${project} project did not become healthy in ${Math.round(this.timeouts.postgresReady / 1000)} seconds.`);
+        throw new Error(
+          `The ${POSTGRES_SERVICE} container of the ${project} project did not become healthy in ${Math.round(this.timeouts.postgresReady / 1000)} seconds.`,
+        );
       }
       await sleep(this.timeouts.pollPause);
     }
@@ -390,7 +442,9 @@ export class ComposeUpgradeOperations implements ManagerUpgradeOperations {
         lastProblem = (error as Error).message;
       }
       if (Date.now() >= deadline) {
-        throw new Error(`The new api did not answer ${this.settings.apiHealthUrl} within ${Math.round(this.timeouts.apiHealthy / 1000)} seconds. ${lastProblem}`);
+        throw new Error(
+          `The new api did not answer ${this.settings.apiHealthUrl} within ${Math.round(this.timeouts.apiHealthy / 1000)} seconds. ${lastProblem}`,
+        );
       }
       await sleep(this.timeouts.pollPause);
     }

@@ -1,11 +1,7 @@
 import { Request, Response, Router } from 'express';
 
 import type { OpenStreams } from '../../domain/auth/OpenStreams.js';
-import {
-  EventBus,
-  MAX_EVENT_CLIENTS,
-  ManagerEvent,
-} from '../../domain/EventBus.js';
+import { EventBus, MAX_EVENT_CLIENTS, ManagerEvent } from '../../domain/EventBus.js';
 import { signedInSession } from '../middleware/requireSession.js';
 import { endEventStream } from '../sse.js';
 
@@ -16,10 +12,7 @@ export interface EventsRouter {
   closeAll(): void;
 }
 
-export function createEventsRouter(
-  bus: EventBus,
-  openStreams: OpenStreams,
-): EventsRouter {
+export function createEventsRouter(bus: EventBus, openStreams: OpenStreams): EventsRouter {
   const router = Router();
   const active = new Set<Response>();
 
@@ -51,11 +44,7 @@ export function createEventsRouter(
     }, HEARTBEAT_MS);
 
     active.add(res);
-    const unregister = openStreams.open(
-      session.tokenHash,
-      session.user.id,
-      () => endEventStream(res),
-    );
+    const unregister = openStreams.open(session.tokenHash, session.user.id, () => endEventStream(res));
 
     let cleaned = false;
     const cleanup = (): void => {

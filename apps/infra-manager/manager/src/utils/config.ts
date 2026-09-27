@@ -1,10 +1,6 @@
 import 'dotenv/config';
 
-import {
-  bzzToPlur,
-  DEFAULT_CHEQUEBOOK_FLOOR_BZZ,
-  rpcEndpointProblem,
-} from '@streaming-infra-manager/common';
+import { bzzToPlur, DEFAULT_CHEQUEBOOK_FLOOR_BZZ, rpcEndpointProblem } from '@streaming-infra-manager/common';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -32,9 +28,7 @@ function chequebookFloorPlur(): bigint {
   const raw = optional('CHEQUEBOOK_FLOOR_BZZ', DEFAULT_CHEQUEBOOK_FLOOR_BZZ);
   const plur = bzzToPlur(raw);
   if (plur === null) {
-    throw new Error(
-      `CHEQUEBOOK_FLOOR_BZZ must be a BZZ amount above zero with at most 16 decimal places, got: ${raw}`,
-    );
+    throw new Error(`CHEQUEBOOK_FLOOR_BZZ must be a BZZ amount above zero with at most 16 decimal places, got: ${raw}`);
   }
   return plur;
 }
@@ -88,9 +82,6 @@ export const config: AppConfig = {
   databaseUrl: required('DATABASE_URL'),
   logLevel: optional('LOG_LEVEL', 'info'),
   chequebookFloorPlur: chequebookFloorPlur(),
-  stackVersionsRoot: optional(
-    'STACK_VERSIONS_ROOT',
-    '/home/solarpunk/streaming-infra-manager-versions',
-  ),
+  stackVersionsRoot: optional('STACK_VERSIONS_ROOT', '/home/solarpunk/streaming-infra-manager-versions'),
   beeRpcEndpoint: beeRpcEndpoint(process.env.BEE_RPC_ENDPOINT),
 };

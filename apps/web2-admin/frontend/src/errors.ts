@@ -3,24 +3,20 @@
  * locked, and as the answer to the backend's `media_type_locked` — one
  * sentence for one rule.
  */
-export const MEDIA_TYPE_LOCKED =
-  'Unpublish the stream to change the media type; it is part of the OBS ' +
-  'stream id.';
+export const MEDIA_TYPE_LOCKED = 'Unpublish the stream to change the media type; it is part of the OBS ' + 'stream id.';
 
 /**
  * Shown as the schedule field's helper text once the stream has gone live, and
  * as the answer to the backend's `stream_locked` — the same sentence the
  * backend puts in the error, so the console never contradicts it.
  */
-export const SCHEDULE_LOCKED =
-  'The schedule cannot change once the stream has gone live.';
+export const SCHEDULE_LOCKED = 'The schedule cannot change once the stream has gone live.';
 
 /**
  * The same sentence for the backend's `unsupported_media_type` and for the
  * form's own check, which rejects the file before it is ever sent.
  */
-export const UNSUPPORTED_IMAGE_TYPE =
-  'That image type is not supported. Use PNG, JPEG, WebP or GIF.';
+export const UNSUPPORTED_IMAGE_TYPE = 'That image type is not supported. Use PNG, JPEG, WebP or GIF.';
 
 /**
  * The API answers with snake_case codes. Showing "invalid_credentials" to an
@@ -30,20 +26,17 @@ export const UNSUPPORTED_IMAGE_TYPE =
  */
 const FRIENDLY: Record<string, string> = {
   invalid_credentials: 'Wrong username or password.',
-  too_many_attempts:
-    'Too many login attempts for this username. Try again in a few minutes.',
+  too_many_attempts: 'Too many login attempts for this username. Try again in a few minutes.',
   unauthenticated: 'Your session ended. Log in again.',
   no_users: 'No users yet. Create the first one on the host.',
   invalid_password: 'Your current password is not correct.',
   // A write that reached the API without the header the console puts on every
   // one of them. Either something else sent it, or a proxy stripped it.
-  cross_site_request:
-    'That request was refused as cross-site. Reload the console and try again.',
+  cross_site_request: 'That request was refused as cross-site. Reload the console and try again.',
   admin_required: 'Only an admin can do that.',
   user_exists: 'That username is taken.',
   user_not_found: 'That user no longer exists. Reload the list.',
-  cannot_remove_user:
-    'That user cannot be removed: it is the last one, the last admin, or your own account.',
+  cannot_remove_user: 'That user cannot be removed: it is the last one, the last admin, or your own account.',
   stream_busy: 'This stream is being published right now. Try again in a moment.',
   stream_published: 'Unpublish the stream before deleting it.',
   media_type_locked: MEDIA_TYPE_LOCKED,

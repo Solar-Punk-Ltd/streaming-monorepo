@@ -1,15 +1,5 @@
 import { useState } from 'react';
-import {
-  Box,
-  Button,
-  Link,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Typography,
-} from '@mui/material';
+import { Box, Button, Link, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
 
 import { STREAM_UPLOADER_SERVICE } from '@streaming-infra-manager/common';
 
@@ -41,20 +31,24 @@ export function ContainersCard({
   const [logService, setLogService] = useState<string | null>(null);
 
   const metricsFor = (service: string): ContainerMetrics | null =>
-    snapshot?.containers.find(
-      (c) => c.project === profile.name && c.service === service,
-    ) ?? null;
+    snapshot?.containers.find((c) => c.project === profile.name && c.service === service) ?? null;
 
   return (
     <>
       <SectionCard
         title="Containers"
-        sub={isTransitional(profile) ? 'Previous container records, current state not yet verified' : containers.length ? `${containers.length} container records` : 'no container records'}
+        sub={
+          isTransitional(profile)
+            ? 'Previous container records, current state not yet verified'
+            : containers.length
+              ? `${containers.length} container records`
+              : 'no container records'
+        }
         flush
       >
         {containers.length === 0 ? (
           <EmptyState
-            title={isTransitional(profile) ? "Waiting for container observations." : "No containers reported."}
+            title={isTransitional(profile) ? 'Waiting for container observations.' : 'No containers reported.'}
             hint="Open logs or refresh the deployment to check its current state."
           />
         ) : (
@@ -83,35 +77,34 @@ export function ContainersCard({
                         <ServiceChip service={container.service} />
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2" sx={{
-                          color: "text.secondary"
-                        }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: 'text.secondary',
+                          }}
+                        >
                           {SERVICE_DESCRIPTIONS[container.service] ?? 'part of this stack'}
                         </Typography>
                       </TableCell>
                       <TableCell>
                         {ports.length === 0 ? (
-                          <Typography variant="caption" sx={{
-                            color: "text.secondary"
-                          }}>
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: 'text.secondary',
+                            }}
+                          >
                             none exposed
                           </Typography>
                         ) : (
                           ports.map(([key, port]) => (
-                            <PortCell
-                              key={key}
-                              portKey={key}
-                              port={port}
-                              host={hostFor(profile, host)}
-                            />
+                            <PortCell key={key} portKey={key} port={port} host={hostFor(profile, host)} />
                           ))
                         )}
                       </TableCell>
                       <TableCell>
                         {metrics ? (
-                          <Typography variant="body2">
-                            {formatCores(metrics.cpuPercent)} cores
-                          </Typography>
+                          <Typography variant="body2">{formatCores(metrics.cpuPercent)} cores</Typography>
                         ) : (
                           <Dash />
                         )}
@@ -119,17 +112,14 @@ export function ContainersCard({
                       <TableCell>
                         {metrics && snapshot ? (
                           <>
-                            <Typography variant="body2">
-                              {formatBytes(metrics.memUsageBytes)}
-                            </Typography>
-                            <Typography variant="caption" sx={{
-                              color: "text.secondary"
-                            }}>
-                              {formatSharePercent(
-                                metrics.memUsageBytes,
-                                snapshot.host.memTotalBytes,
-                              )}{' '}
-                              of the machine
+                            <Typography variant="body2">{formatBytes(metrics.memUsageBytes)}</Typography>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: 'text.secondary',
+                              }}
+                            >
+                              {formatSharePercent(metrics.memUsageBytes, snapshot.host.memTotalBytes)} of the machine
                             </Typography>
                           </>
                         ) : (
@@ -137,7 +127,13 @@ export function ContainersCard({
                         )}
                       </TableCell>
                       <TableCell>
-                        <Button size="small" aria-label={`View ${container.service} logs`} onClick={() => setLogService(container.service)}>Logs</Button>
+                        <Button
+                          size="small"
+                          aria-label={`View ${container.service} logs`}
+                          onClick={() => setLogService(container.service)}
+                        >
+                          Logs
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );
@@ -148,9 +144,12 @@ export function ContainersCard({
                       <ServiceChip service={STREAM_UPLOADER_SERVICE} />
                     </TableCell>
                     <TableCell colSpan={5}>
-                      <Typography variant="body2" sx={{
-                        color: "text.secondary"
-                      }}>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: 'text.secondary',
+                        }}
+                      >
                         not started yet, waiting for a stamp
                       </Typography>
                     </TableCell>
@@ -161,7 +160,14 @@ export function ContainersCard({
           </Box>
         )}
       </SectionCard>
-      {logService && <LogsDialog profile={profile} engine={engineOf(profile)} initialService={logService} onClose={() => setLogService(null)} />}
+      {logService && (
+        <LogsDialog
+          profile={profile}
+          engine={engineOf(profile)}
+          initialService={logService}
+          onClose={() => setLogService(null)}
+        />
+      )}
     </>
   );
 }
@@ -171,15 +177,7 @@ export function ContainersCard({
  * the form its tool takes, then who it is for. The number is a link only when
  * a browser is meant to open it.
  */
-function PortCell({
-  portKey,
-  port,
-  host,
-}: {
-  portKey: string;
-  port: number;
-  host: string;
-}) {
+function PortCell({ portKey, port, host }: { portKey: string; port: number; host: string }) {
   const kind = endpointKindOf(portKey);
   const address = endpointAddress(kind, host, port);
   return (
@@ -202,9 +200,13 @@ function PortCell({
         )}
         <CopyButton value={address} label={address} />
       </Box>
-      <Typography variant="caption" component="div" sx={{
-        color: "text.secondary"
-      }}>
+      <Typography
+        variant="caption"
+        component="div"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
         {kind.label}
       </Typography>
     </Box>
@@ -213,9 +215,13 @@ function PortCell({
 
 function Dash() {
   return (
-    <Typography variant="caption" sx={{
-      color: "text.secondary"
-    }}>no sample
-          </Typography>
+    <Typography
+      variant="caption"
+      sx={{
+        color: 'text.secondary',
+      }}
+    >
+      no sample
+    </Typography>
   );
 }

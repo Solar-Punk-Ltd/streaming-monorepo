@@ -1,7 +1,4 @@
-import {
-  REQUESTED_WITH_HEADER,
-  REQUESTED_WITH_VALUE,
-} from '@streaming-infra-manager/common';
+import { REQUESTED_WITH_HEADER, REQUESTED_WITH_VALUE } from '@streaming-infra-manager/common';
 import { NextFunction, Request, Response } from 'express';
 
 import { CrossSiteRequestError } from '../../domain/errors/index.js';
@@ -62,11 +59,7 @@ function headerValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-export function requireSameSite(
-  req: Request,
-  _res: Response,
-  next: NextFunction,
-): void {
+export function requireSameSite(req: Request, _res: Response, next: NextFunction): void {
   const reason = crossSiteReason({
     method: req.method,
     host: req.headers.host,

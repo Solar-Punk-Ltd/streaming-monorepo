@@ -16,29 +16,22 @@ export function AccessPage() {
   const session = useSession();
   const { users, error, reload } = useUsers();
 
-  const currentUsername =
-    session.state.status === 'signedIn' ? session.state.username : '';
-  const canManage =
-    session.state.status === 'signedIn' && session.state.isAdmin;
+  const currentUsername = session.state.status === 'signedIn' ? session.state.username : '';
+  const canManage = session.state.status === 'signedIn' && session.state.isAdmin;
 
   return (
     <Stack spacing={2}>
-      <Typography variant="body2" sx={{
-        color: "text.secondary"
-      }}>
-        {canManage
-          ? 'You can add and remove users here.'
-          : 'Only a user who can manage users adds or removes one.'}{' '}
-        A session lasts twelve hours of inactivity, and fourteen days at most.
+      <Typography
+        variant="body2"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
+        {canManage ? 'You can add and remove users here.' : 'Only a user who can manage users adds or removes one.'} A
+        session lasts twelve hours of inactivity, and fourteen days at most.
       </Typography>
 
-      <UsersCard
-        users={users}
-        error={error}
-        currentUsername={currentUsername}
-        canManage={canManage}
-        reload={reload}
-      />
+      <UsersCard users={users} error={error} currentUsername={currentUsername} canManage={canManage} reload={reload} />
       {canManage && <AddUserCard onAdded={reload} />}
       <ChangePasswordCard onChanged={reload} />
     </Stack>

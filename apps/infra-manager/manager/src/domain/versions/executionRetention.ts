@@ -7,13 +7,17 @@ import type { ExecutionRootRecord } from './ExecutionRoot.js';
  * same rows agree on which copy is the current one.
  */
 function newestFirst(records: readonly ExecutionRootRecord[]): ExecutionRootRecord[] {
-  return [...records].sort((left, right) =>
-    right.createdAt.valueOf() - left.createdAt.valueOf() || right.executionId.localeCompare(left.executionId));
+  return [...records].sort(
+    (left, right) =>
+      right.createdAt.valueOf() - left.createdAt.valueOf() || right.executionId.localeCompare(left.executionId),
+  );
 }
 
 /** Only a launched copy can be the one a deployment runs from, or one it replaced. */
 function launchedFor(records: readonly ExecutionRootRecord[], profileName: string): ExecutionRootRecord[] {
-  return newestFirst(records.filter(record => record.profile.name === profileName && record.state === 'launch-uncertain'));
+  return newestFirst(
+    records.filter((record) => record.profile.name === profileName && record.state === 'launch-uncertain'),
+  );
 }
 
 /**
@@ -28,7 +32,7 @@ export function currentExecutionOf(
   records: readonly ExecutionRootRecord[],
   profile: { name: string; instanceId: string },
 ): ExecutionRootRecord | null {
-  return launchedFor(records, profile.name).find(record => record.profile.instanceId === profile.instanceId) ?? null;
+  return launchedFor(records, profile.name).find((record) => record.profile.instanceId === profile.instanceId) ?? null;
 }
 
 /**

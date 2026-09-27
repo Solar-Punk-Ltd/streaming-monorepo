@@ -5,9 +5,29 @@ on:
   # scripts' tests run that tool.
   push:
     branches: [main, main-v3]
-    paths: ['apps/hls-stream/**', 'tools/app-workspace/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.oxlintrc.json', '.oxfmtrc.json', '.github/workflows/hls-stream.yml']
+    paths:
+      [
+        'apps/hls-stream/**',
+        'tools/app-workspace/**',
+        'package.json',
+        'pnpm-lock.yaml',
+        'pnpm-workspace.yaml',
+        '.oxlintrc.json',
+        '.oxfmtrc.json',
+        '.github/workflows/hls-stream.yml',
+      ]
   pull_request:
-    paths: ['apps/hls-stream/**', 'tools/app-workspace/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.oxlintrc.json', '.oxfmtrc.json', '.github/workflows/hls-stream.yml']
+    paths:
+      [
+        'apps/hls-stream/**',
+        'tools/app-workspace/**',
+        'package.json',
+        'pnpm-lock.yaml',
+        'pnpm-workspace.yaml',
+        '.oxlintrc.json',
+        '.oxfmtrc.json',
+        '.github/workflows/hls-stream.yml',
+      ]
   # An advisory gets published against a tree nobody has touched, so the audit
   # job needs a trigger that is not a diff. Two limits to know before relying on
   # it. GitHub only runs scheduled workflows on the default branch, so this

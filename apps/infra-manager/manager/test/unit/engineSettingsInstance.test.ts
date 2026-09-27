@@ -29,12 +29,22 @@ const initial = () => makeProfile({ name: 'observed', instance_id: originalId, s
 
 async function setup() {
   const harness = orchestratorHarness([initial()]);
-  const service = new ProfileService(harness.profiles.asRepository(), harness.containers.asRepository(),
-    harness.orchestrator, harness.events, {} as DeploymentGroupRepository, harness.versions);
+  const service = new ProfileService(
+    harness.profiles.asRepository(),
+    harness.containers.asRepository(),
+    harness.orchestrator,
+    harness.events,
+    {} as DeploymentGroupRepository,
+    harness.versions,
+  );
   const app = await startEngineTestApp(service, new ContainerControl(harness.events, fakeDocker([])));
   const events: ManagerEvent[] = [];
-  harness.events.subscribe(event => events.push(event));
-  return { ...harness, service, app, events,
+  harness.events.subscribe((event) => events.push(event));
+  return {
+    ...harness,
+    service,
+    app,
+    events,
     replace() {
       return harness.profiles.write('observed', {
         instance_id: replacementId,
@@ -48,10 +58,25 @@ async function setup() {
 function hold() {
   let arrive!: () => void;
   let release!: () => void;
-  const arrived = new Promise<void>(resolve => { arrive = resolve; });
-  const resume = new Promise<void>(resolve => { release = resolve; });
-  return { arrive, release, resume, wait: () => Promise.race([arrived,
-    new Promise<never>((_, reject) => { const timer = setTimeout(() => reject(new Error('Held request did not arrive')), 2000); timer.unref(); })]) };
+  const arrived = new Promise<void>((resolve) => {
+    arrive = resolve;
+  });
+  const resume = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return {
+    arrive,
+    release,
+    resume,
+    wait: () =>
+      Promise.race([
+        arrived,
+        new Promise<never>((_, reject) => {
+          const timer = setTimeout(() => reject(new Error('Held request did not arrive')), 2000);
+          timer.unref();
+        }),
+      ]),
+  };
 }
 
 function changed(result: { status: number; body: unknown }) {
@@ -65,63 +90,115 @@ describe('engine settings saves are bound to the observed instance', { timeout: 
     const replacement = h.replace();
     let versionReads = 0;
     const find = h.versions.findById.bind(h.versions);
-    h.versions.findById = async id => { versionReads += 1; return find(id); };
+    h.versions.findById = async (id) => {
+      versionReads += 1;
+      return find(id);
+    };
     try {
-      changed(await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', { HLS_FRAGMENT: '2', expectedInstanceId: originalId }));
+      changed(
+        await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', {
+          HLS_FRAGMENT: '2',
+          expectedInstanceId: originalId,
+        }),
+      );
       assert.equal(versionReads, 0);
       assert.deepEqual(h.profiles.rows.get('observed'), replacement);
       assert.deepEqual(h.events, []);
       assert.deepEqual(h.runner.runs, []);
-    } finally { await h.app.close(); }
+    } finally {
+      await h.app.close();
+    }
   });
 
   for (const explicit of [true, false]) {
     it(`refuses replacement after defaults began, with ${explicit ? 'explicit' : 'legacy captured'} identity`, async () => {
-      const h = await setup(); const gate = hold();
+      const h = await setup();
+      const gate = hold();
       const find = h.versions.findById.bind(h.versions);
-      h.versions.findById = async id => { const captured = await find(id); gate.arrive(); await gate.resume; return captured; };
+      h.versions.findById = async (id) => {
+        const captured = await find(id);
+        gate.arrive();
+        await gate.resume;
+        return captured;
+      };
       const pending = callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', {
-        HLS_FRAGMENT: '2', ...(explicit ? { expectedInstanceId: originalId } : {}),
+        HLS_FRAGMENT: '2',
+        ...(explicit ? { expectedInstanceId: originalId } : {}),
       });
       try {
-        await gate.wait(); const replacement = h.replace(); gate.release();
+        await gate.wait();
+        const replacement = h.replace();
+        gate.release();
         changed(await pending);
         assert.deepEqual(h.profiles.rows.get('observed'), replacement);
         assert.deepEqual(h.events, []);
         assert.deepEqual(h.runner.runs, []);
-      } finally { gate.release(); await pending; await h.app.close(); }
+      } finally {
+        gate.release();
+        await pending;
+        await h.app.close();
+      }
     });
   }
 
   it('does not write settings or restore the old status on a replacement after claiming', async () => {
-    const h = await setup(); const gate = hold();
+    const h = await setup();
+    const gate = hold();
     const write = h.profiles.updateEngineSettings.bind(h.profiles);
-    h.profiles.updateEngineSettings = async (...args) => { gate.arrive(); await gate.resume; return write(...args); };
-    const pending = callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', { HLS_FRAGMENT: '2', expectedInstanceId: originalId });
+    h.profiles.updateEngineSettings = async (...args) => {
+      gate.arrive();
+      await gate.resume;
+      return write(...args);
+    };
+    const pending = callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', {
+      HLS_FRAGMENT: '2',
+      expectedInstanceId: originalId,
+    });
     try {
-      await gate.wait(); const replacement = h.replace(); gate.release();
+      await gate.wait();
+      const replacement = h.replace();
+      gate.release();
       changed(await pending);
       assert.deepEqual(h.profiles.rows.get('observed'), replacement);
       assert.deepEqual(h.runner.runs, []);
-      assert.equal(h.events.filter(event => event.type === 'profile.changed' && event.profile.instance_id === replacementId).length, 0);
-    } finally { gate.release(); await pending; await h.app.close(); }
+      assert.equal(
+        h.events.filter((event) => event.type === 'profile.changed' && event.profile.instance_id === replacementId)
+          .length,
+        0,
+      );
+    } finally {
+      gate.release();
+      await pending;
+      await h.app.close();
+    }
   });
 
   it('cannot bump the replacement intent when the operator action resumes after a claim', async () => {
-    const h = await setup(); const gate = hold();
+    const h = await setup();
+    const gate = hold();
     const claim = h.ledger.claim.bind(h.ledger);
     h.ledger.claim = async (...args) => {
       const claimed = await claim(...args);
-      gate.arrive(); await gate.resume;
+      gate.arrive();
+      await gate.resume;
       return claimed;
     };
-    const pending = callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', { HLS_FRAGMENT: '2', expectedInstanceId: originalId });
+    const pending = callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', {
+      HLS_FRAGMENT: '2',
+      expectedInstanceId: originalId,
+    });
     try {
-      await gate.wait(); const replacement = h.replace(); gate.release();
+      await gate.wait();
+      const replacement = h.replace();
+      gate.release();
       changed(await pending);
       assert.deepEqual(h.profiles.rows.get('observed'), replacement);
       assert.deepEqual(h.runner.runs, []);
-    } finally { gate.release(); await pending; await h.app.close(); }
+    } finally {
+      gate.release();
+      await pending;
+      await h.app.close();
+    }
   });
 
   it('retains the winning claim identity when a later row replaces the name', async () => {
@@ -134,23 +211,36 @@ describe('engine settings saves are bound to the observed instance', { timeout: 
       const replacement = h.replace();
       await h.orchestrator.cancelReservation(reservation);
       assert.deepEqual(h.profiles.rows.get('observed'), replacement);
-    } finally { await h.app.close(); }
+    } finally {
+      await h.app.close();
+    }
   });
 
   for (const intent of ['advance', 'preserve'] as const) {
     it(`cannot write or cancel a same-instance successor with ${intent} intent after its own write was held`, async () => {
-      const h = await setup(); const gate = hold();
+      const h = await setup();
+      const gate = hold();
       const version = (await h.versions.findById(1))!;
       await h.ledger.seedJob('independent-owner', version, ['srs']);
       const write = h.profiles.updateEngineSettings.bind(h.profiles);
-      h.profiles.updateEngineSettings = async (...args) => { gate.arrive(); await gate.resume; return write(...args); };
-      const pending = callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', { HLS_FRAGMENT: '2', expectedInstanceId: originalId });
+      h.profiles.updateEngineSettings = async (...args) => {
+        gate.arrive();
+        await gate.resume;
+        return write(...args);
+      };
+      const pending = callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', {
+        HLS_FRAGMENT: '2',
+        expectedInstanceId: originalId,
+      });
       try {
         await gate.wait();
         const oldClaim = h.profiles.rows.get('observed')!;
         const oldReference = h.profiles.activeDeployJobs.get('observed')!;
         const reset = (await h.ledger.cancelClaim(oldClaim, oldReference, 'RUNNING'))!;
-        const successor = (await h.ledger.claim('observed', ['RUNNING'], version, ['srs'], { ...deployOwnerOf(reset), intent }))!;
+        const successor = (await h.ledger.claim('observed', ['RUNNING'], version, ['srs'], {
+          ...deployOwnerOf(reset),
+          intent,
+        }))!;
         const before = structuredClone(successor.profile);
         const references = structuredClone(h.ledger.references);
         const events = structuredClone(h.events);
@@ -160,10 +250,18 @@ describe('engine settings saves are bound to the observed instance', { timeout: 
         assert.equal(result.status, 409);
         assert.equal((result.body as { error: string }).error, 'engine_settings_changed');
         assert.equal(h.profiles.activeDeployJobs.get('observed'), successor.descriptor.referenceId);
-        assert.deepEqual(h.ledger.references, references, 'cancellation must leave successor and independent holds intact');
+        assert.deepEqual(
+          h.ledger.references,
+          references,
+          'cancellation must leave successor and independent holds intact',
+        );
         assert.deepEqual(h.runner.runs, []);
         assert.deepEqual(h.events, events, 'refused settings must not publish another change');
-      } finally { gate.release(); await pending; await h.app.close(); }
+      } finally {
+        gate.release();
+        await pending;
+        await h.app.close();
+      }
     });
   }
 
@@ -174,11 +272,21 @@ describe('engine settings saves are bound to the observed instance', { timeout: 
         const before = structuredClone(h.profiles.rows.get('observed'));
         assert.ok(before);
         assert.equal('rpc_endpoint' in before, false);
-        assert.equal((await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', { HLS_FRAGMENT: '2', expectedInstanceId })).status, 400);
+        assert.equal(
+          (
+            await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', {
+              HLS_FRAGMENT: '2',
+              expectedInstanceId,
+            })
+          ).status,
+          400,
+        );
         assert.deepEqual(h.profiles.rows.get('observed'), before);
         assert.deepEqual(h.events, []);
         assert.deepEqual(h.runner.runs, []);
-      } finally { await h.app.close(); }
+      } finally {
+        await h.app.close();
+      }
     });
   }
 
@@ -186,23 +294,41 @@ describe('engine settings saves are bound to the observed instance', { timeout: 
     const h = await setup();
     try {
       h.profiles.rows.delete('observed');
-      assert.equal((await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', { HLS_FRAGMENT: '2', expectedInstanceId: originalId })).status, 404);
+      assert.equal(
+        (
+          await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', {
+            HLS_FRAGMENT: '2',
+            expectedInstanceId: originalId,
+          })
+        ).status,
+        404,
+      );
       h.profiles.rows.set('observed', { ...initial(), status: 'DEPLOYING' });
-      const busy = await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', { HLS_FRAGMENT: '2', expectedInstanceId: originalId });
+      const busy = await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', {
+        HLS_FRAGMENT: '2',
+        expectedInstanceId: originalId,
+      });
       assert.equal(busy.status, 409);
       assert.equal((busy.body as { error: string }).error, 'profile_busy');
-    } finally { await h.app.close(); }
+    } finally {
+      await h.app.close();
+    }
   });
 
   it('accepts the current instance without storing the guard as a setting', async () => {
     const h = await setup();
     try {
-      const result = await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', { HLS_FRAGMENT: '2', expectedInstanceId: originalId });
+      const result = await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', {
+        HLS_FRAGMENT: '2',
+        expectedInstanceId: originalId,
+      });
       assert.equal(result.status, 202);
       assert.equal((result.body as Profile).instance_id, originalId);
       assert.deepEqual(h.profiles.rows.get('observed')?.engine_settings, { HLS_FRAGMENT: '2' });
       assert.equal(h.profiles.rows.get('observed')?.intent_revision, 1);
       assert.equal(h.runner.runs.length, 1);
-    } finally { await h.app.close(); }
+    } finally {
+      await h.app.close();
+    }
   });
 });

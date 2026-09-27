@@ -44,7 +44,10 @@ function root(over: { env?: string; config?: string; generation?: number } = {})
   writeFileSync(join(dir, 'deploy', 'config.json'), config);
   writeFileSync(
     join(dir, CONFIG_REVISION_FILE),
-    JSON.stringify({ generation: over.generation ?? 3, files: { '.env': sha(env), 'deploy/config.json': sha(config) } }),
+    JSON.stringify({
+      generation: over.generation ?? 3,
+      files: { '.env': sha(env), 'deploy/config.json': sha(config) },
+    }),
   );
   return dir;
 }
@@ -145,7 +148,10 @@ describe('captureHostConfig', () => {
     writeFileSync(join(dir, 'deploy', 'config.json'), '{"revision":"B"}\n');
     writeFileSync(
       join(dir, CONFIG_REVISION_FILE),
-      JSON.stringify({ generation: 4, files: { '.env': sha('ENGINE=srs\nAPI_PORT=4000\n'), 'deploy/config.json': sha('{"revision":"B"}\n') } }),
+      JSON.stringify({
+        generation: 4,
+        files: { '.env': sha('ENGINE=srs\nAPI_PORT=4000\n'), 'deploy/config.json': sha('{"revision":"B"}\n') },
+      }),
     );
     await release();
 
@@ -205,8 +211,12 @@ describe('the modes commitHostConfig leaves behind', () => {
   // These files hold the stream passphrase, the api token and the bee
   // passphrase, and the versions root above them is world readable.
   let umask: number;
-  before(() => { umask = process.umask(0o022); });
-  after(() => { process.umask(umask); });
+  before(() => {
+    umask = process.umask(0o022);
+  });
+  after(() => {
+    process.umask(umask);
+  });
 
   const modeOf = (path: string): number => statSync(path).mode & 0o777;
 
@@ -238,7 +248,10 @@ describe('adoptHostConfig', () => {
 
     const adopted = await withHostConfigLock(fresh, (commit) => adoptHostConfig(fresh, commit));
     assert.equal(adopted?.generation, 1);
-    assert.equal(JSON.parse(readFileSync(join(fresh, CONFIG_REVISION_FILE), 'utf8')).files['.env'], sha('ENGINE=srs\nAPI_PORT=3000\n'));
+    assert.equal(
+      JSON.parse(readFileSync(join(fresh, CONFIG_REVISION_FILE), 'utf8')).files['.env'],
+      sha('ENGINE=srs\nAPI_PORT=3000\n'),
+    );
 
     const committed = root({ generation: 7 });
     assert.equal(await withHostConfigLock(committed, (commit) => adoptHostConfig(committed, commit)), null);

@@ -38,7 +38,10 @@ const browserThatRefuses = () => process.execPath;
 test('says what the browser said when it refuses to start', async (t) => {
   process.env.CHROME_BIN = browserThatRefuses();
 
-  const failure = await launchChrome(t, 'http://127.0.0.1:1').then(() => null, (error) => error);
+  const failure = await launchChrome(t, 'http://127.0.0.1:1').then(
+    () => null,
+    (error) => error,
+  );
 
   assert.ok(failure, 'a browser that exited must not look like a browser that started');
   // Whatever it objected to, it objected in its own words about our own first
@@ -50,7 +53,10 @@ test('gives up when the browser is gone rather than waiting out the budget', asy
   process.env.CHROME_BIN = browserThatRefuses();
   const startedAt = Date.now();
 
-  await launchChrome(t, 'http://127.0.0.1:1').then(() => null, () => null);
+  await launchChrome(t, 'http://127.0.0.1:1').then(
+    () => null,
+    () => null,
+  );
 
   // The port wait alone is fifteen seconds. A process that has already exited
   // is never going to write the file it is waiting for.
@@ -60,7 +66,10 @@ test('gives up when the browser is gone rather than waiting out the budget', asy
 test('reports the exit status, because a refusal and a crash are different faults', async (t) => {
   process.env.CHROME_BIN = browserThatRefuses();
 
-  const failure = await launchChrome(t, 'http://127.0.0.1:1').then(() => null, (error) => error);
+  const failure = await launchChrome(t, 'http://127.0.0.1:1').then(
+    () => null,
+    (error) => error,
+  );
 
   assert.match(failure.message, /(exited \d+|was killed by \w+)/, `the exit status is missing: ${failure.message}`);
 });
@@ -101,7 +110,10 @@ test('does not mistake another account for pwuser', () => {
 });
 
 test('ignores a line it cannot read rather than inventing an account', () => {
-  assert.deepEqual(browserIdentity(0, 'pwuser:x:notanumber:1001::/home/pwuser:/bin/sh'), { runAs: null, sandbox: false });
+  assert.deepEqual(browserIdentity(0, 'pwuser:x:notanumber:1001::/home/pwuser:/bin/sh'), {
+    runAs: null,
+    sandbox: false,
+  });
 });
 
 /**
@@ -116,7 +128,10 @@ test('ignores a line it cannot read rather than inventing an account', () => {
 test('gives a browser running as somebody else a home it can write', () => {
   const identity = { runAs: { uid: 1001, gid: 1001 }, sandbox: true };
 
-  assert.equal(browserEnvironment(identity, '/nowhere/profile', { HOME: '/root', PATH: '/usr/bin' }).HOME, '/nowhere/profile');
+  assert.equal(
+    browserEnvironment(identity, '/nowhere/profile', { HOME: '/root', PATH: '/usr/bin' }).HOME,
+    '/nowhere/profile',
+  );
   assert.equal(browserEnvironment(identity, '/nowhere/profile', { HOME: '/root', PATH: '/usr/bin' }).PATH, '/usr/bin');
 });
 

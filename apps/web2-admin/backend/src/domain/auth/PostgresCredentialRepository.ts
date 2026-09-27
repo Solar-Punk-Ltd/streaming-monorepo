@@ -5,11 +5,7 @@ import type { CredentialRepository } from './CredentialRepository.js';
 export class PostgresCredentialRepository implements CredentialRepository {
   constructor(private readonly pool: Pool) {}
 
-  async changePassword(
-    userId: string,
-    passwordHash: string,
-    keepSessionTokenHash: string,
-  ): Promise<void> {
+  async changePassword(userId: string, passwordHash: string, keepSessionTokenHash: string): Promise<void> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -21,10 +17,10 @@ export class PostgresCredentialRepository implements CredentialRepository {
           WHERE id = $1`,
         [userId, passwordHash],
       );
-      await client.query(
-        'DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2',
-        [userId, keepSessionTokenHash],
-      );
+      await client.query('DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2', [
+        userId,
+        keepSessionTokenHash,
+      ]);
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK').catch(() => {});

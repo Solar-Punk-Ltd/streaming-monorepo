@@ -77,7 +77,10 @@ describe('what a save of a deployment settings refuses', () => {
   });
 
   it('refuses a value outside its field', () => {
-    assert.match(settingEditProblems([{ key: 'LOG_LEVEL', value: 'loud' }], ENTRIES)[0] ?? '', /LOG_LEVEL must be one of debug, log, info/);
+    assert.match(
+      settingEditProblems([{ key: 'LOG_LEVEL', value: 'loud' }], ENTRIES)[0] ?? '',
+      /LOG_LEVEL must be one of debug, log, info/,
+    );
   });
 
   it('refuses a secret the engine would read as sed syntax, and never repeats it', () => {
@@ -90,7 +93,13 @@ describe('what a save of a deployment settings refuses', () => {
 
   it('refuses a key named twice in one save', () => {
     assert.deepEqual(
-      settingEditProblems([{ key: 'LOG_LEVEL', value: 'info' }, { key: 'LOG_LEVEL', value: 'debug' }], ENTRIES),
+      settingEditProblems(
+        [
+          { key: 'LOG_LEVEL', value: 'info' },
+          { key: 'LOG_LEVEL', value: 'debug' },
+        ],
+        ENTRIES,
+      ),
       ['LOG_LEVEL is named twice in this save.'],
     );
   });

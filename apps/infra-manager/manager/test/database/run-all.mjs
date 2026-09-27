@@ -186,8 +186,7 @@ export function suiteFiles(directory = SUITE_DIR) {
  * presence means the port leads somewhere that is not disposable.
  */
 const MANAGER_TABLES = ['_migrations', 'profiles'];
-const MANAGER_TABLE_QUERY =
-  'SELECT tablename FROM pg_tables WHERE schemaname = $1 AND tablename = ANY($2)';
+const MANAGER_TABLE_QUERY = 'SELECT tablename FROM pg_tables WHERE schemaname = $1 AND tablename = ANY($2)';
 const PUBLIC_SCHEMA = 'public';
 
 const openClient = (connection) => new pg.Client(connection);

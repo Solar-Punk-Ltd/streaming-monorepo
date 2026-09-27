@@ -40,8 +40,7 @@ function run(authorization: string | undefined): unknown {
   return outcome;
 }
 
-const passed = (authorization: string | undefined) =>
-  run(authorization) === null;
+const passed = (authorization: string | undefined) => run(authorization) === null;
 
 describe('requireInternalToken', () => {
   it('lets the configured token through', () => {
@@ -55,24 +54,13 @@ describe('requireInternalToken', () => {
 
   it('refuses a missing, empty or non-bearer header', () => {
     for (const header of [undefined, '', 'Bearer', 'Bearer ', TOKEN, `Basic ${TOKEN}`]) {
-      assert.ok(
-        run(header) instanceof UnauthenticatedError,
-        `accepted: ${String(header)}`,
-      );
+      assert.ok(run(header) instanceof UnauthenticatedError, `accepted: ${String(header)}`);
     }
   });
 
   it('refuses a token that is close but not equal', () => {
-    for (const wrong of [
-      TOKEN.slice(0, -1),
-      `${TOKEN}0`,
-      TOKEN.toUpperCase(),
-      TOKEN.replace('b6', 'b7'),
-    ]) {
-      assert.ok(
-        run(`Bearer ${wrong}`) instanceof UnauthenticatedError,
-        `accepted: ${wrong}`,
-      );
+    for (const wrong of [TOKEN.slice(0, -1), `${TOKEN}0`, TOKEN.toUpperCase(), TOKEN.replace('b6', 'b7')]) {
+      assert.ok(run(`Bearer ${wrong}`) instanceof UnauthenticatedError, `accepted: ${wrong}`);
     }
   });
 });

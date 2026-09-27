@@ -4,13 +4,7 @@ import { REQUESTED_WITH_HEADER } from '@streaming-monorepo/web2-admin-common';
 
 import { FIRST_USER_COMMAND, FIRST_USER_HINT } from '../authMessages';
 import { LoginPage } from '../pages/LoginPage';
-import {
-  jsonError,
-  jsonOk,
-  makeUser,
-  mockFetch,
-  renderWithAuth,
-} from './helpers';
+import { jsonError, jsonOk, makeUser, mockFetch, renderWithAuth } from './helpers';
 
 const SESSION = '/api/auth/session';
 const LOGIN = '/api/auth/login';
@@ -43,9 +37,7 @@ describe('LoginPage', () => {
 
     await fillAndSubmit('admin', 'wrong');
 
-    expect(
-      await screen.findByText('Wrong username or password.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Wrong username or password.')).toBeInTheDocument();
   });
 
   it('reads the lockout from the body and says how long to wait', async () => {
@@ -54,12 +46,7 @@ describe('LoginPage', () => {
       {
         method: 'POST',
         path: LOGIN,
-        respond: () =>
-          jsonError(
-            429,
-            { error: 'too_many_attempts', retryAfterSeconds: 240 },
-            { 'retry-after': '240' },
-          ),
+        respond: () => jsonError(429, { error: 'too_many_attempts', retryAfterSeconds: 240 }, { 'retry-after': '240' }),
       },
     ]);
 
@@ -67,9 +54,7 @@ describe('LoginPage', () => {
 
     await fillAndSubmit('admin', 'admin12345678');
 
-    expect(
-      await screen.findByText('Too many attempts. Try again in 4 minutes.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Too many attempts. Try again in 4 minutes.')).toBeInTheDocument();
   });
 
   it('falls back to the Retry-After header, which is all nginx sends', async () => {
@@ -95,27 +80,19 @@ describe('LoginPage', () => {
 
     await fillAndSubmit('admin', 'admin12345678');
 
-    expect(
-      await screen.findByText('Too many attempts. Try again in 2 minutes.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Too many attempts. Try again in 2 minutes.')).toBeInTheDocument();
   });
 
   it('tells the operator how to create the first user when there are none', async () => {
-    mockFetch([
-      { path: SESSION, respond: () => jsonError(401, { error: 'no_users' }) },
-    ]);
+    mockFetch([{ path: SESSION, respond: () => jsonError(401, { error: 'no_users' }) }]);
 
     renderWithAuth(<LoginPage />, { route: '/login' });
 
-    expect(
-      await screen.findByText('No users yet. Create the first one on the host.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('No users yet. Create the first one on the host.')).toBeInTheDocument();
     expect(screen.getByLabelText('Command')).toHaveValue(FIRST_USER_COMMAND);
     // The form that works from any directory, on a server profile and on the
     // dev stack alike, with the names to put in it and how to find them.
-    expect(FIRST_USER_COMMAND).toBe(
-      'docker exec -it <api-container> node dist/cli.js user:add <username>',
-    );
+    expect(FIRST_USER_COMMAND).toBe('docker exec -it <api-container> node dist/cli.js user:add <username>');
     expect(screen.getByText(FIRST_USER_HINT)).toBeInTheDocument();
     expect(FIRST_USER_HINT).toContain('web2-admin-<profile>-api-1');
     expect(FIRST_USER_HINT).toContain('web2-admin-api-1');
@@ -144,9 +121,7 @@ describe('LoginPage', () => {
     renderWithAuth(<LoginPage />, { route: '/login' });
 
     expect(
-      await screen.findByText(
-        'The server did not answer. Check that it is running, then try again.',
-      ),
+      await screen.findByText('The server did not answer. Check that it is running, then try again.'),
     ).toBeInTheDocument();
   });
 
@@ -201,9 +176,7 @@ describe('LoginPage', () => {
         path: LOGIN,
         respond: () => {
           attempt += 1;
-          return attempt === 1
-            ? jsonError(401, { error: 'invalid_credentials' })
-            : jsonOk({ user });
+          return attempt === 1 ? jsonError(401, { error: 'invalid_credentials' }) : jsonOk({ user });
         },
       },
     ]);
@@ -211,16 +184,12 @@ describe('LoginPage', () => {
     renderWithAuth(<LoginPage />, { route: '/login' });
 
     await fillAndSubmit('admin', 'wrong');
-    expect(
-      await screen.findByText('Wrong username or password.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Wrong username or password.')).toBeInTheDocument();
 
     await fillAndSubmit('admin', 'admin12345678');
     // Logged in: the page redirects, so the form is gone.
     await waitFor(() => {
-      expect(
-        screen.queryByRole('button', { name: 'Log in' }),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
     });
   });
 });

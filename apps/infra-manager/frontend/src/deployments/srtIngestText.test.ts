@@ -12,18 +12,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  measuredSrtIngest,
-  type SrtIngestReading,
-  type SrtLinkCounts,
-} from '@streaming-infra-manager/common';
+import { measuredSrtIngest, type SrtIngestReading, type SrtLinkCounts } from '@streaming-infra-manager/common';
 
-import {
-  offersLatencySetting,
-  RAISE_LATENCY_ACTION,
-  srtIngestView,
-  type SrtIngestView,
-} from './srtIngestText';
+import { offersLatencySetting, RAISE_LATENCY_ACTION, srtIngestView, type SrtIngestView } from './srtIngestText';
 
 const measured = (counts: SrtLinkCounts, reports = 6, connections = 1): SrtIngestReading =>
   measuredSrtIngest({ windowSeconds: 60, reports, connections, counts });
@@ -163,7 +154,10 @@ describe('the SRT latency step of the remedy', () => {
     const [first] = read(BROKEN_UP, true).remedy!.steps;
 
     assert.equal(first!.action, RAISE_LATENCY_ACTION);
-    assert.equal(first!.text, 'Raise the SRT latency of this deployment, to 4000 ms for example, in its stack settings.');
+    assert.equal(
+      first!.text,
+      'Raise the SRT latency of this deployment, to 4000 ms for example, in its stack settings.',
+    );
   });
 
   it('points at the OBS side when this version does not offer it', () => {
@@ -172,7 +166,7 @@ describe('the SRT latency step of the remedy', () => {
     assert.equal(first!.action, undefined);
     assert.equal(
       first!.text,
-      'Raise the SRT latency of this deployment, to 4000 ms for example. Until this manager offers that setting, the change in OBS below does the same from the broadcaster\'s side.',
+      "Raise the SRT latency of this deployment, to 4000 ms for example. Until this manager offers that setting, the change in OBS below does the same from the broadcaster's side.",
     );
   });
 
@@ -247,10 +241,7 @@ describe('an SRT link the card has no numbers for', () => {
   });
 
   it('says the manager could not be asked, with its reason', () => {
-    const view = srtIngestView(
-      { reading: null, loadError: 'request failed (502)' },
-      { latencySettingOffered: false },
-    );
+    const view = srtIngestView({ reading: null, loadError: 'request failed (502)' }, { latencySettingOffered: false });
 
     assert.deepEqual(view.pill, { label: 'Not read', tone: 'gray' });
     assert.equal(view.summary, 'Could not ask the manager. request failed (502)');

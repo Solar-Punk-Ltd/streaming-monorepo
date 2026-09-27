@@ -15,13 +15,22 @@ beforeEach(async () => {
   outcome = 'deleted';
   const harness = profileServiceHarness();
   Object.assign(harness.groups, {
-    removeEmptyGroup: async (...args: unknown[]) => { calls.push(args); return outcome; },
-    findById: async () => { throw new Error('Cleanup must not read then delete'); },
-    listMembers: async () => { throw new Error('Cleanup must not adopt current members'); },
+    removeEmptyGroup: async (...args: unknown[]) => {
+      calls.push(args);
+      return outcome;
+    },
+    findById: async () => {
+      throw new Error('Cleanup must not read then delete');
+    },
+    listMembers: async () => {
+      throw new Error('Cleanup must not adopt current members');
+    },
   });
   app = await startRouterTestApp(createGroupsRouter(harness.service, false), '/groups');
 });
-afterEach(async () => { await app?.close(); });
+afterEach(async () => {
+  await app?.close();
+});
 
 for (const result of ['deleted', 'absent'] as const) {
   it(`accepts an atomic ${result} result through the real service`, async () => {
@@ -42,7 +51,15 @@ for (const result of ['changed', 'not_empty'] as const) {
   });
 }
 
-for (const body of [undefined, {}, { expectedName: '' }, { expectedName: null }, { expectedName: 12 }, { expectedName: 'bad/name' }, { expectedName: 'owned', cascade: true }]) {
+for (const body of [
+  undefined,
+  {},
+  { expectedName: '' },
+  { expectedName: null },
+  { expectedName: 12 },
+  { expectedName: 'bad/name' },
+  { expectedName: 'owned', cascade: true },
+]) {
   it(`rejects an invalid ownership body ${JSON.stringify(body)} before repository work`, async () => {
     assert.equal((await call(app, 'DELETE', '/groups/42', body)).status, 400);
     assert.deepEqual(calls, []);

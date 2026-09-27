@@ -5,12 +5,7 @@ import { render, type RenderResult } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { vi } from 'vitest';
 import type { ReactNode } from 'react';
-import type {
-  IngestDetails,
-  Stream,
-  User,
-  UserSummary,
-} from '@streaming-monorepo/web2-admin-common';
+import type { IngestDetails, Stream, User, UserSummary } from '@streaming-monorepo/web2-admin-common';
 
 import { AuthProvider } from '../auth';
 import { SnackbarProvider } from '../components/Snackbar';
@@ -73,17 +68,13 @@ export interface Route {
  * unmatched rejects loudly rather than hanging a test on a pending promise.
  */
 export function mockFetch(routes: Route[]) {
-  const fetchMock = vi.fn(
-    async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input).split('?')[0];
-      const method = (init?.method ?? 'GET').toUpperCase();
-      const route = routes.find(
-        (r) => r.path === url && (r.method ?? 'GET').toUpperCase() === method,
-      );
-      if (!route) throw new Error(`unmocked request: ${method} ${url}`);
-      return route.respond(init);
-    },
-  );
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input).split('?')[0];
+    const method = (init?.method ?? 'GET').toUpperCase();
+    const route = routes.find((r) => r.path === url && (r.method ?? 'GET').toUpperCase() === method);
+    if (!route) throw new Error(`unmocked request: ${method} ${url}`);
+    return route.respond(init);
+  });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
 }
@@ -95,10 +86,7 @@ export function pendingFetch() {
   return fetchMock;
 }
 
-export function renderWithProviders(
-  ui: ReactNode,
-  { route = '/' }: { route?: string } = {},
-): RenderResult {
+export function renderWithProviders(ui: ReactNode, { route = '/' }: { route?: string } = {}): RenderResult {
   return render(
     <ThemeProvider theme={theme}>
       <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -110,10 +98,7 @@ export function renderWithProviders(
   );
 }
 
-export function renderWithAuth(
-  ui: ReactNode,
-  { route = '/' }: { route?: string } = {},
-): RenderResult {
+export function renderWithAuth(ui: ReactNode, { route = '/' }: { route?: string } = {}): RenderResult {
   return render(
     <ThemeProvider theme={theme}>
       <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -139,9 +124,7 @@ export function makeUser(overrides: Partial<User> = {}): User {
   };
 }
 
-export function makeUserSummary(
-  overrides: Partial<UserSummary> = {},
-): UserSummary {
+export function makeUserSummary(overrides: Partial<UserSummary> = {}): UserSummary {
   return {
     id: 'u1',
     username: 'admin',
@@ -180,9 +163,7 @@ export function makeStream(overrides: Partial<Stream> = {}): Stream {
   };
 }
 
-export function makeIngest(
-  overrides: Partial<IngestDetails> = {},
-): IngestDetails {
+export function makeIngest(overrides: Partial<IngestDetails> = {}): IngestDetails {
   return {
     streamId: 'video/00000001-0000-4000-8000-000000000000',
     app: 'video',
@@ -195,8 +176,7 @@ export function makeIngest(
     },
     rtmp: {
       server: 'rtmp://ingest.example.test:10062/video',
-      streamKey:
-        '00000001-0000-4000-8000-000000000000?key=a1b2c3d4e5f60718293a4b5c6d7e8f90',
+      streamKey: '00000001-0000-4000-8000-000000000000?key=a1b2c3d4e5f60718293a4b5c6d7e8f90',
     },
     keyVerified: false,
     ...overrides,

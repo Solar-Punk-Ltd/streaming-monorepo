@@ -17,7 +17,12 @@ const USER_ID = 7;
 
 function signal<T = void>() {
   let resolve!: (value: T) => void;
-  return { promise: new Promise<T>(done => { resolve = done; }), resolve };
+  return {
+    promise: new Promise<T>((done) => {
+      resolve = done;
+    }),
+    resolve,
+  };
 }
 
 async function within<T>(promise: Promise<T>, label: string): Promise<T> {
@@ -37,7 +42,12 @@ async function within<T>(promise: Promise<T>, label: string): Promise<T> {
 function runHandle() {
   const emitter = new EventEmitter();
   let kills = 0;
-  const handle: RunHandle = { emitter, kill: () => { kills += 1; } };
+  const handle: RunHandle = {
+    emitter,
+    kill: () => {
+      kills += 1;
+    },
+  };
   return { handle, kills: () => kills };
 }
 
@@ -54,18 +64,20 @@ async function listen(router: express.Router) {
   });
   app.use(router);
   const server = http.createServer(app);
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('test server has no port');
   return {
     url: `http://127.0.0.1:${address.port}`,
-    close: () => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())),
+    close: () => new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))),
   };
 }
 
 describe('authenticated action and build streams', () => {
   const servers: Array<{ close(): Promise<void> }> = [];
-  afterEach(async () => { await Promise.all(servers.splice(0).map(server => server.close())); });
+  afterEach(async () => {
+    await Promise.all(servers.splice(0).map((server) => server.close()));
+  });
 
   it('ends a live deploy stream on revocation without killing the accepted deploy', async () => {
     const streams = new OpenStreams();
@@ -74,7 +86,9 @@ describe('authenticated action and build streams', () => {
     const server = await listen(createActionsRouter(service, streams));
     servers.push(server);
     const response = await fetch(`${server.url}/profiles/stage/deploy`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
     });
 
     running.handle.emitter.emit('stdout', 'before-revocation');
@@ -106,7 +120,8 @@ describe('authenticated action and build streams', () => {
     servers.push(server);
     const abort = new AbortController();
     const request = fetch(`${server.url}/`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'candidate', ref: 'main-v3' }),
       signal: abort.signal,
     }).catch(() => undefined);
@@ -115,7 +130,7 @@ describe('authenticated action and build streams', () => {
       assert.deepEqual(streams.openTokenHashes(), [TOKEN_HASH]);
       assert.equal(streams.closeSession(TOKEN_HASH), 1);
       release.resolve({ version: { name: 'candidate', gitRef: 'main-v3' }, handle: running.handle });
-      await new Promise(resolve => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
       running.handle.emitter.emit('stdout', 'after-revocation');
       assert.deepEqual(streams.openTokenHashes(), []);
       assert.equal(running.handle.emitter.listenerCount('stdout'), 0);

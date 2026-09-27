@@ -141,11 +141,7 @@ export function createFakeBee(options: FakeBeeOptions = {}): FakeBee {
     stamp: {
       getAll: async () => (options.existingBatches ?? []).map((b) => batch(b.batchID, b.usable)),
 
-      create: async (
-        _amount: string,
-        _depth: number,
-        opts?: { waitForUsable?: boolean; immutableFlag?: boolean },
-      ) => {
+      create: async (_amount: string, _depth: number, opts?: { waitForUsable?: boolean; immutableFlag?: boolean }) => {
         purchases += 1;
         purchaseOpts = opts;
         if (options.purchaseError) {

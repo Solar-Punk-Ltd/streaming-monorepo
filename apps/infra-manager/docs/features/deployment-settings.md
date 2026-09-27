@@ -23,14 +23,14 @@ to the engine's own rules, as [The engine settings](#the-engine-settings) below 
 
 Each key of the list says where the value its next deploy writes comes from:
 
-| Source | Meaning |
-| --- | --- |
-| deployment | stored for this deployment |
-| version | set by the version's build, in its base or its engine env file, and for an engine setting what the version falls back to where the host sets nothing |
-| manager-default | an engine setting's default that is the manager's own, the SRT latency's 2000 |
-| manager | decided by one of the deployment's own controls, named on the key |
-| generated | a secret the manager generated for this deployment |
-| unset | set by nothing, so the stack's own default applies |
+| Source          | Meaning                                                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| deployment      | stored for this deployment                                                                                                                           |
+| version         | set by the version's build, in its base or its engine env file, and for an engine setting what the version falls back to where the host sets nothing |
+| manager-default | an engine setting's default that is the manager's own, the SRT latency's 2000                                                                        |
+| manager         | decided by one of the deployment's own controls, named on the key                                                                                    |
+| generated       | a secret the manager generated for this deployment                                                                                                   |
+| unset           | set by nothing, so the stack's own default applies                                                                                                   |
 
 The controls that decide a key are the services the deployment runs, its postage stamp, its node pool,
 its chain endpoint and the gateway's node mode, its Bee URL, its SRT passphrase, its feed key, owner

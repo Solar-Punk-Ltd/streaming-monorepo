@@ -38,8 +38,7 @@ const PAGE_TITLES: Record<Route['page'], string> = {
 
 export function AppShell() {
   const route = useRoute();
-  const { profiles, serverHost, connected, loadError, reload } =
-    useDeployments();
+  const { profiles, serverHost, connected, loadError, reload } = useDeployments();
   const actions = useActions();
   const [search, setSearch] = useState('');
   const [navOpen, setNavOpen] = useState(false);
@@ -123,9 +122,7 @@ function Page({ route, search }: { route: Route; search: string }) {
     // hook keeps the last answer it got, and without a fresh instance one
     // node's wallet and stamps could sit under another deployment's name.
     case 'deployment':
-      return (
-        <DeploymentPage key={route.name} name={route.name} focus={route.focus} />
-      );
+      return <DeploymentPage key={route.name} name={route.name} focus={route.focus} />;
     case 'group':
       return <GroupPage key={route.id} id={route.id} />;
     case 'host':

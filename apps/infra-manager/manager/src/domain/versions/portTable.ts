@@ -40,12 +40,8 @@ function bundledServiceOf(name: string): string {
   return 'bee-gateway';
 }
 
-export function portTableOf(
-  contract: StackContract | null | undefined,
-): readonly StackPortVar[] {
-  return contract && contract.ports.length > 0
-    ? contract.ports
-    : BUNDLED_PORT_TABLE;
+export function portTableOf(contract: StackContract | null | undefined): readonly StackPortVar[] {
+  return contract && contract.ports.length > 0 ? contract.ports : BUNDLED_PORT_TABLE;
 }
 
 /** The highest port slot the version's deploy script accepts. */
@@ -67,10 +63,7 @@ export interface OmePorts {
  * The OME ports a slot resolves to, from the table the version has, or none
  * for slot 0, where the engine's own env file decides.
  */
-export function omePortsFor(
-  portSlot: number,
-  table: readonly StackPortVar[],
-): OmePorts {
+export function omePortsFor(portSlot: number, table: readonly StackPortVar[]): OmePorts {
   if (portSlot <= 0) return {};
   const byName = new Map(table.map((port) => [port.name, port]));
   const srt = byName.get(OME_PORT_SOURCES.OME_SRT_PORT!);

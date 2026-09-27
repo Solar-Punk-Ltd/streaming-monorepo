@@ -8,11 +8,9 @@ declare module '@mui/material/styles' {
   }
 }
 
-export const MONO_STACK =
-  'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+export const MONO_STACK = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 
-const SANS_STACK =
-  '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+const SANS_STACK = '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
 const PILL_RADIUS = 99;
 

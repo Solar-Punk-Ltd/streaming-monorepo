@@ -48,10 +48,7 @@ const POOL_NAME_TOO_LONG = `Pool name: at most ${LADDER_GROUP_NAME_MAX} characte
  * next to a disabled Continue, so the order here is the order the fields should
  * be fixed in.
  */
-export function wizardError(
-  state: WizardState,
-  context: WizardContext,
-): string | null {
+export function wizardError(state: WizardState, context: WizardContext): string | null {
   if (state.step === 2) return basicsError(state, context);
   if (state.step === 3) return settingsError(state, context);
   // The review re-checks everything against live data: a pool can stop being
@@ -72,11 +69,7 @@ export function wizardError(
  * taken, by the deployment being created, which is not something an operator
  * can act on and not something to say while they wait.
  */
-export function footerError(
-  state: WizardState,
-  context: WizardContext,
-  submitting: boolean,
-): string | null {
+export function footerError(state: WizardState, context: WizardContext, submitting: boolean): string | null {
   return submitting ? null : wizardError(state, context);
 }
 
@@ -86,10 +79,7 @@ export function footerError(
  * One answer for the line under the field and for the footer next to the
  * disabled Continue, so the two never disagree about the same name.
  */
-export function nameError(
-  state: WizardState,
-  context: WizardContext,
-): string | null {
+export function nameError(state: WizardState, context: WizardContext): string | null {
   const name = nameProblem(state.name);
   if (name) return name;
   if (state.goal === 'abr-pool' && state.name.length > LADDER_GROUP_NAME_MAX) {
@@ -117,10 +107,7 @@ export function poolStringError(value: string): string | null {
  * so the wizard refuses exactly what the manager would rather than sending a
  * filled-in form to be refused at the API.
  */
-export function rpcEndpointError(
-  state: WizardState,
-  context: WizardContext,
-): string | null {
+export function rpcEndpointError(state: WizardState, context: WizardContext): string | null {
   if (!offersRpcEndpoint(state)) return null;
   const problem = rpcEndpointChoiceProblem({
     source: state.rpcEndpointSource,
@@ -135,10 +122,7 @@ export function rpcEndpointError(
   return problem === null ? null : `RPC endpoint: ${problem}`;
 }
 
-function basicsError(
-  state: WizardState,
-  context: WizardContext,
-): string | null {
+function basicsError(state: WizardState, context: WizardContext): string | null {
   const name = nameError(state, context);
   if (name) return name;
   if (state.host === 'custom') {
@@ -157,10 +141,7 @@ function basicsError(
   return notesProblem(state.notes);
 }
 
-function settingsError(
-  state: WizardState,
-  context: WizardContext,
-): string | null {
+function settingsError(state: WizardState, context: WizardContext): string | null {
   if (state.goal === 'custom' && state.components.length === 0) {
     return 'Pick at least one component';
   }
@@ -224,10 +205,7 @@ function settingsError(
   return advancedSettingsError(state, context);
 }
 
-function poolError(
-  state: WizardState,
-  context: WizardContext,
-): string | null {
+function poolError(state: WizardState, context: WizardContext): string | null {
   if (state.poolMode === 'pick') {
     if (state.poolId == null) return 'Pick a node pool';
     return poolValueIn(context, state.poolId) === null

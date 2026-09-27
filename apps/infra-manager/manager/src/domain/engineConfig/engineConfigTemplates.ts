@@ -1,11 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import {
-  type EngineName,
-  OME_SERVICE,
-  SRS_SERVICE,
-} from '@streaming-infra-manager/common';
+import { type EngineName, OME_SERVICE, SRS_SERVICE } from '@streaming-infra-manager/common';
 
 import { placeholdersFilledBy } from './placeholders.js';
 
@@ -36,14 +32,10 @@ export interface EngineTemplate {
 export function engineTemplateIn(root: string, engine: EngineName): EngineTemplate {
   const templatePath = join(root, TEMPLATE_PATHS[engine]);
   if (!existsSync(templatePath)) {
-    throw new Error(
-      `${templatePath} is missing, so this version has no ${engine} template to start from.`,
-    );
+    throw new Error(`${templatePath} is missing, so this version has no ${engine} template to start from.`);
   }
   const entrypointPath = join(root, ENTRYPOINT_PATHS[engine]);
-  const entrypoint = existsSync(entrypointPath)
-    ? readFileSync(entrypointPath, 'utf8')
-    : '';
+  const entrypoint = existsSync(entrypointPath) ? readFileSync(entrypointPath, 'utf8') : '';
   return {
     text: readFileSync(templatePath, 'utf8'),
     placeholders: placeholdersFilledBy(entrypoint),

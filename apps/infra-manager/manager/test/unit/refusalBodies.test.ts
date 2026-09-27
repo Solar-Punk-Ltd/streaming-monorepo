@@ -18,12 +18,7 @@ let app: RouterTestApp;
 before(async () => {
   const router = Router();
   router.post('/deploy', (_req, _res, next) =>
-    next(
-      new DeployAttemptRefusedError(
-        'stage',
-        'stage has an unresolved deploy attempt, job-abc123 (still running).',
-      ),
-    ),
+    next(new DeployAttemptRefusedError('stage', 'stage has an unresolved deploy attempt, job-abc123 (still running).')),
   );
   app = await startRouterTestApp(router);
 });

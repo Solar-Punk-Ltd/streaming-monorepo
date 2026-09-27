@@ -1,9 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-import {
-  configuredBeeRpcEndpoint,
-  type GroupKind,
-} from '@streaming-infra-manager/common';
+import { configuredBeeRpcEndpoint, type GroupKind } from '@streaming-infra-manager/common';
 
 import {
   DeploymentGroupRepository,
@@ -11,11 +8,13 @@ import {
   MemberSeed,
   SharedProfileParams,
 } from '../../src/domain/DeploymentGroupRepository.js';
+import { DeploymentOrchestrator, DeployReservation } from '../../src/domain/DeploymentOrchestrator.js';
 import {
-  DeploymentOrchestrator,
-  DeployReservation,
-} from '../../src/domain/DeploymentOrchestrator.js';
-import { AllSlotsUsedError, ProfileBusyError, ProfileInstanceChangedError, ProfileNotFoundError } from '../../src/domain/errors/index.js';
+  AllSlotsUsedError,
+  ProfileBusyError,
+  ProfileInstanceChangedError,
+  ProfileNotFoundError,
+} from '../../src/domain/errors/index.js';
 import { EventBus } from '../../src/domain/EventBus.js';
 import { ProfileService } from '../../src/domain/ProfileService.js';
 import { RunHandle } from '../../src/domain/ScriptRunner.js';
@@ -33,11 +32,7 @@ import type { RolloutAdmissionProof } from '../../src/domain/engineConfig/rollou
 /** One host, one daemon: what every deployment of these tests reserves its ports on. */
 export const ONE_DAEMON: DeployTargets = { daemonIdFor: async () => 'daemon-1' };
 
-const REDEPLOYABLE_FROM: readonly ProfileStatus[] = [
-  'RUNNING',
-  'STOPPED',
-  'ERROR',
-];
+const REDEPLOYABLE_FROM: readonly ProfileStatus[] = ['RUNNING', 'STOPPED', 'ERROR'];
 
 function finishedHandle(code = 0): RunHandle {
   const emitter = new EventEmitter();
@@ -109,10 +104,7 @@ export class FakeOrchestrator {
     return { daemonId: admission.daemonId, containerIds: [`${profile.name}-before`] };
   }
 
-  async reserveDeploy(
-    profile: Profile,
-    requested: string[] | undefined,
-  ): Promise<DeployReservation> {
+  async reserveDeploy(profile: Profile, requested: string[] | undefined): Promise<DeployReservation> {
     this.judged.push(profile);
     if (this.gate) await this.gate(profile);
     const claimed = await this.profiles.transitionStatus(
@@ -151,9 +143,16 @@ export class FakeOrchestrator {
     const claimed = reservation.claimedProfile;
     const current = this.profiles.rows.get(reservation.profileName);
     const referenceId = reservation.build?.referenceId;
-    if (reservation.transitioned && claimed && current && referenceId != null && current.status === 'DEPLOYING' &&
-        current.instance_id === claimed.instance_id && current.intent_revision === claimed.intent_revision &&
-        this.profiles.activeDeployJobs.get(current.name) === referenceId) {
+    if (
+      reservation.transitioned &&
+      claimed &&
+      current &&
+      referenceId != null &&
+      current.status === 'DEPLOYING' &&
+      current.instance_id === claimed.instance_id &&
+      current.intent_revision === claimed.intent_revision &&
+      this.profiles.activeDeployJobs.get(current.name) === referenceId
+    ) {
       this.profiles.activeDeployJobs.delete(current.name);
       await this.profiles.markTerminal(
         reservation.profileName,
@@ -163,11 +162,7 @@ export class FakeOrchestrator {
     }
   }
 
-  async runReserved(
-    reservation: DeployReservation,
-    profile: Profile,
-    hooks: DeployHooks = {},
-  ): Promise<RunHandle> {
+  async runReserved(reservation: DeployReservation, profile: Profile, hooks: DeployHooks = {}): Promise<RunHandle> {
     this.deployedRows.push(profile);
     this.deploys.push({
       profileName: profile.name,
@@ -186,7 +181,8 @@ export class FakeOrchestrator {
     // under the guards named above in the real one.
     handle.emitter.once('done', () => {
       void (async () => {
-        if (reservation.attempt) await this.rolloutAttempts?.resolve(reservation.attempt.id, { state: 'released', reason: null });
+        if (reservation.attempt)
+          await this.rolloutAttempts?.resolve(reservation.attempt.id, { state: 'released', reason: null });
         if (code === 0) {
           await this.profiles.markTerminal(profile.name, 'RUNNING');
           await hooks.afterRunning?.();
@@ -200,18 +196,12 @@ export class FakeOrchestrator {
     return handle;
   }
 
-  async startDeploy(
-    profile: Profile,
-    requested: string[] | undefined,
-  ): Promise<RunHandle> {
+  async startDeploy(profile: Profile, requested: string[] | undefined): Promise<RunHandle> {
     const reservation = await this.reserveDeploy(profile, requested);
     return this.runReserved(reservation, profile);
   }
 
-  async startInitialDeploy(
-    profile: Profile,
-    requested: string[] | undefined,
-  ): Promise<RunHandle> {
+  async startInitialDeploy(profile: Profile, requested: string[] | undefined): Promise<RunHandle> {
     return this.runReserved(
       {
         profileName: profile.name,
@@ -282,11 +272,7 @@ export class InMemoryGroups {
     return { group, profiles: placed };
   }
 
-  async addMembers(
-    groupId: number,
-    members: MemberSeed[],
-    shared: SharedProfileParams,
-  ): Promise<Profile[]> {
+  async addMembers(groupId: number, members: MemberSeed[], shared: SharedProfileParams): Promise<Profile[]> {
     const group = this.groups.find((candidate) => candidate.id === groupId);
     const placed: Profile[] = [];
     try {
@@ -310,9 +296,7 @@ export class InMemoryGroups {
         feed_topic: write.feed_topic,
         public_key: write.public_key,
         stamp_id: write.stamp_id,
-        ...('srt_passphrase' in write
-          ? { srt_passphrase: write.srt_passphrase }
-          : {}),
+        ...('srt_passphrase' in write ? { srt_passphrase: write.srt_passphrase } : {}),
       });
       if (row) updated.push(row);
     }
@@ -320,11 +304,7 @@ export class InMemoryGroups {
   }
 
   /** Members are created STOPPED, the way the real insert does it. */
-  private insert(
-    name: string,
-    shared: SharedProfileParams,
-    groupId: number,
-  ): Profile {
+  private insert(name: string, shared: SharedProfileParams, groupId: number): Profile {
     const slot = this.profiles.reservations.freeSlot(
       shared.daemon_id,
       shared.table,

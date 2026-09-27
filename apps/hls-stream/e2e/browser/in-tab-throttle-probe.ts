@@ -598,8 +598,8 @@ async function main(): Promise<void> {
   const h0 = external
     ? `H0 does not apply, the cap is a real shaper proved by the preflight at ${externalCapMeasuredBps} B/s`
     : lowIdle === undefined
-    ? 'H0 was not checked, no low-capped idle window'
-    : h0Check(lowIdle, recorderProof);
+      ? 'H0 was not checked, no low-capped idle window'
+      : h0Check(lowIdle, recorderProof);
 
   console.log(`\nprobe: wrote ${stem}.md`);
   console.log('probe: the instrument, proved by effect');

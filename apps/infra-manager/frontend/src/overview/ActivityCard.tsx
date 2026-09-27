@@ -22,19 +22,21 @@ export function ActivityCard({ entries }: { entries: ActivityEntry[] }) {
               direction="row"
               spacing={1.5}
               sx={{
-                alignItems: "center",
+                alignItems: 'center',
                 px: 2.25,
                 py: 1.25,
                 borderTop: 1,
                 borderColor: 'divider',
-                '&:first-of-type': { borderTop: 0 }
-              }}>
+                '&:first-of-type': { borderTop: 0 },
+              }}
+            >
               <Typography
                 variant="caption"
                 sx={{
-                  color: "text.secondary",
-                  width: 44
-                }}>
+                  color: 'text.secondary',
+                  width: 44,
+                }}
+              >
                 {entry.time}
               </Typography>
               <StatusDot tone={entry.tone} />

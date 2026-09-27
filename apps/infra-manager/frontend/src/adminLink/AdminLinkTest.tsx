@@ -47,7 +47,8 @@ export function AdminLinkTest({
       const { outcome } = await run();
       if (request === asked.current) setResult({ kind: 'outcome', outcome });
     } catch (caught) {
-      if (request === asked.current) setResult({ kind: 'failed', message: getErrorMessage(caught, 'The test could not be run.') });
+      if (request === asked.current)
+        setResult({ kind: 'failed', message: getErrorMessage(caught, 'The test could not be run.') });
     } finally {
       if (request === asked.current) setTesting(false);
     }
@@ -60,9 +61,10 @@ export function AdminLinkTest({
         spacing={1}
         useFlexGap
         sx={{
-          alignItems: "center",
-          flexWrap: "wrap"
-        }}>
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}
+      >
         <Button
           size="small"
           variant="outlined"
@@ -76,10 +78,11 @@ export function AdminLinkTest({
           <Typography
             variant="caption"
             sx={{
-              color: "text.secondary",
+              color: 'text.secondary',
               flex: '1 1 12rem',
-              overflowWrap: 'anywhere'
-            }}>
+              overflowWrap: 'anywhere',
+            }}
+          >
             {blockedReason}
           </Typography>
         )}
@@ -87,24 +90,29 @@ export function AdminLinkTest({
       <Typography
         variant="caption"
         sx={{
-          color: "text.secondary",
-          overflowWrap: 'anywhere'
-        }}>
+          color: 'text.secondary',
+          overflowWrap: 'anywhere',
+        }}
+      >
         {ADMIN_LINK_TEST_REACH}
       </Typography>
       {note && (
         <Typography
           variant="caption"
           sx={{
-            color: "text.secondary",
-            overflowWrap: 'anywhere'
-          }}>
+            color: 'text.secondary',
+            overflowWrap: 'anywhere',
+          }}
+        >
           {note}
         </Typography>
       )}
       <div role="status" aria-live="polite">
         {result?.kind === 'outcome' && (
-          <Alert severity={adminLinkTestSeverity(result.outcome)} sx={{ '& .MuiAlert-message': { minWidth: 0, overflowWrap: 'anywhere' } }}>
+          <Alert
+            severity={adminLinkTestSeverity(result.outcome)}
+            sx={{ '& .MuiAlert-message': { minWidth: 0, overflowWrap: 'anywhere' } }}
+          >
             {adminLinkTestText(result.outcome)}
           </Alert>
         )}

@@ -43,9 +43,7 @@ describe('updateEngineSettings: which containers come back', () => {
 
     await service.updateEngineSettings('stream1', { HLS_FRAGMENT: '2' });
 
-    assert.deepEqual(deploys, [
-      { name: 'stream1', services: ['srs', 'stream-uploader'] },
-    ]);
+    assert.deepEqual(deploys, [{ name: 'stream1', services: ['srs', 'stream-uploader'] }]);
   });
 
   it('recreates the engine alone for the SRT latency, which only the engine reads', async () => {
@@ -59,17 +57,13 @@ describe('updateEngineSettings: which containers come back', () => {
   it('recreates the uploader too when the poll interval changes', async () => {
     // OME_HLS_POLL_INTERVAL_MS is in the uploader's environment, not the
     // engine's, so recreating the engine alone would apply nothing.
-    const { service, deploys } = harnessFor(
-      profileRow({ components: ['ome', 'stream-uploader'] }),
-    );
+    const { service, deploys } = harnessFor(profileRow({ components: ['ome', 'stream-uploader'] }));
 
     await service.updateEngineSettings('stream1', {
       OME_HLS_POLL_INTERVAL_MS: '250',
     });
 
-    assert.deepEqual(deploys, [
-      { name: 'stream1', services: ['ome', 'stream-uploader'] },
-    ]);
+    assert.deepEqual(deploys, [{ name: 'stream1', services: ['ome', 'stream-uploader'] }]);
   });
 
   it('recreates the uploader too when the poll interval goes back to the default', async () => {
@@ -84,9 +78,7 @@ describe('updateEngineSettings: which containers come back', () => {
 
     await service.updateEngineSettings('stream1', {});
 
-    assert.deepEqual(deploys, [
-      { name: 'stream1', services: ['ome', 'stream-uploader'] },
-    ]);
+    assert.deepEqual(deploys, [{ name: 'stream1', services: ['ome', 'stream-uploader'] }]);
   });
 
   it('leaves the uploader alone when the poll interval is unchanged', async () => {
@@ -108,10 +100,7 @@ describe('updateEngineSettings: which containers come back', () => {
 
 describe('update: clearing the ABR pool string', () => {
   const LADDER = ['1080p', '720p', '480p', '360p']
-    .map(
-      (rung, index) =>
-        `${rung}@http://10.0.0.7:${10015 + index * 10}<${'a'.repeat(64)}>`,
-    )
+    .map((rung, index) => `${rung}@http://10.0.0.7:${10015 + index * 10}<${'a'.repeat(64)}>`)
     .join(' ');
 
   function withLadder() {

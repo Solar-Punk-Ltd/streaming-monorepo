@@ -140,16 +140,16 @@ CREATE INDEX sessions_user_idx ON sessions (user_id);
 
 `manager/src/api/routes/auth.ts`, all JSON, all validated with yup:
 
-| Method | Path | Body | Answer |
-|---|---|---|---|
-| POST | `/auth/login` | `{ username, password }` | 204 and the cookie, 401 wrong pair, 429 locked, 409 `no_users` when none has been created |
-| POST | `/auth/logout` | | 204, cookie cleared, session row deleted |
-| GET | `/auth/session` | | `{ id, username, isAdmin, expiresAt }`, or 401 with `not_signed_in` or `no_users` |
-| POST | `/auth/password` | `{ current, next }` | 204, all other sessions of the user revoked |
-| GET | `/auth/users` | | `[{ id, username, isAdmin, createdAt, lastLoginAt, sessions }]` |
-| POST | `/auth/users` | `{ username, password, admin? }` | 201 and the new user's row, 403 `admin_required` unless you are an admin, 409 taken |
-| DELETE | `/auth/users/:id` | | 204, 403 `admin_required` unless you are an admin, 404 no such user, 409 for yourself, the last user or the last admin |
-| POST | `/auth/users/:id/revoke-sessions` | | 204 for your own id, and for anyone's if you are an admin, otherwise 403 `admin_required`. 404 no such user |
+| Method | Path                              | Body                             | Answer                                                                                                                 |
+| ------ | --------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/auth/login`                     | `{ username, password }`         | 204 and the cookie, 401 wrong pair, 429 locked, 409 `no_users` when none has been created                              |
+| POST   | `/auth/logout`                    |                                  | 204, cookie cleared, session row deleted                                                                               |
+| GET    | `/auth/session`                   |                                  | `{ id, username, isAdmin, expiresAt }`, or 401 with `not_signed_in` or `no_users`                                      |
+| POST   | `/auth/password`                  | `{ current, next }`              | 204, all other sessions of the user revoked                                                                            |
+| GET    | `/auth/users`                     |                                  | `[{ id, username, isAdmin, createdAt, lastLoginAt, sessions }]`                                                        |
+| POST   | `/auth/users`                     | `{ username, password, admin? }` | 201 and the new user's row, 403 `admin_required` unless you are an admin, 409 taken                                    |
+| DELETE | `/auth/users/:id`                 |                                  | 204, 403 `admin_required` unless you are an admin, 404 no such user, 409 for yourself, the last user or the last admin |
+| POST   | `/auth/users/:id/revoke-sessions` |                                  | 204 for your own id, and for anyone's if you are an admin, otherwise 403 `admin_required`. 404 no such user            |
 
 Middleware `requireSession` in `manager/src/api/middleware/requireSession.ts` runs before every
 router in `server.ts` except the two open routes, attaches `req.user`, refreshes `last_seen_at`.
@@ -309,6 +309,7 @@ moved and are marked where they do.
    rewriting the destination and forwarding the packet, which never reaches the input hook a host
    firewall filters. The forward rules of step 3 do reach it, but they filter one way in where the
    bind closes the port outright.
+
 3. Firewall, default deny inbound. Allowed: 22 (or `--ssh-port`), 80 and 443 TCP, and 443 UDP for
    the edge's HTTP/3. In the 10000 to 19999 band the stack uses, allowed only: TCP on the Bee P2P
    ports (last digit 6 and 8), TCP on the viewer ports (last digit 4), UDP on the SRT ingest ports
@@ -346,6 +347,7 @@ moved and are marked where they do.
    cap, not because a second band would meet RTMP there. `deploy/README.md` step 3 carries the
    current wording, and a port the deployment page calls public has to be one of those four bands,
    which a test holds.
+
 4. Point a DNS A record at the host, set `MANAGER_DOMAIN` in `manager/.env`, deploy PR 2.
    `deploy.sh` reads that name, adds `--profile public` so the edge starts, and says which of the
    two it did. Watch `docker compose logs -f edge` for the certificate, open the domain, sign in.

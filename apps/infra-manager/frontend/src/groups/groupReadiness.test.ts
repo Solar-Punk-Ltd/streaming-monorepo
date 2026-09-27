@@ -28,13 +28,29 @@ const pool: DeploymentGroup = {
 };
 
 const member = (rung: string): Profile => ({
-  name: `abr-pool-1-${rung}`, kind: 'streamer', port_slot: 1, notes: null, notes_revision: 0,
-  status: 'RUNNING', last_error: null, last_error_at: null, last_full_deploy_commit: null,
-  created_at: '2026-09-15T00:00:00Z', updated_at: '2026-09-15T00:00:00Z',
-  engine_settings: {}, has_private_key: false, has_rpc_endpoint: false, has_srt_passphrase: false, has_engine_config: false,
-  engine_config_error: null, engine_config_state: null, group_id: 1,
+  name: `abr-pool-1-${rung}`,
+  kind: 'streamer',
+  port_slot: 1,
+  notes: null,
+  notes_revision: 0,
+  status: 'RUNNING',
+  last_error: null,
+  last_error_at: null,
+  last_full_deploy_commit: null,
+  created_at: '2026-09-15T00:00:00Z',
+  updated_at: '2026-09-15T00:00:00Z',
+  engine_settings: {},
+  has_private_key: false,
+  has_rpc_endpoint: false,
+  has_srt_passphrase: false,
+  has_engine_config: false,
+  engine_config_error: null,
+  engine_config_state: null,
+  group_id: 1,
   instance_id: '00000000-0000-4000-8000-000000000003',
-  engine_config_revision: 0, intent_revision: 0, components: ['bee-uploader'],
+  engine_config_revision: 0,
+  intent_revision: 0,
+  components: ['bee-uploader'],
   containers: [{ service: 'bee-uploader', ports: {}, buildId: null, buildCommit: null }],
 });
 
@@ -57,7 +73,11 @@ const ready: BeePublishersResult = {
 };
 
 const drained: ChequebookHealth = { state: 'empty', availablePlur: 0n, floorPlur: 5_000_000_000_000_000n };
-const paying: ChequebookHealth = { state: 'ok', availablePlur: 10_000_000_000_000_000n, floorPlur: 5_000_000_000_000_000n };
+const paying: ChequebookHealth = {
+  state: 'ok',
+  availablePlur: 10_000_000_000_000_000n,
+  floorPlur: 5_000_000_000_000_000n,
+};
 const healths = (entries: [string, ChequebookHealth][]): ChequebookHealths => new Map(entries);
 
 describe('the pill on a pool the manager calls ready', () => {
@@ -71,7 +91,7 @@ describe('the pill on a pool the manager calls ready', () => {
     assert.deepEqual(poolProblems(ready, readings), []);
   });
 
-  it("refuses to call it ready while a rung cannot pay its peers", () => {
+  it('refuses to call it ready while a rung cannot pay its peers', () => {
     const readings = healths([
       [members[0]!.name, paying],
       [members[1]!.name, drained],
@@ -102,9 +122,7 @@ describe('a pool whose rung holds a full batch', () => {
     ready: false,
     value: null,
     rungs: ready.rungs.map((rung) =>
-      (rung.rung === '1080p'
-        ? { ...rung, stampState: 'full' as const, stampFillRatio: 1, stampImmutable: true }
-        : rung),
+      rung.rung === '1080p' ? { ...rung, stampState: 'full' as const, stampFillRatio: 1, stampImmutable: true } : rung,
     ),
     missing: [{ rung: '1080p', reason: 'the postage batch on this rung is full' }],
   };

@@ -64,11 +64,23 @@ describe('port reservations in isolated PostgreSQL schemas', { skip: !Number.isI
 
   it('captures a sanitized firewall snapshot including stopped legacy profiles and open holds', async () => {
     const { PostgresFirewallStateSource } = await import('../../src/domain/ports/PostgresFirewallStateSource.js');
-    await profiles.insertWithFreeSlot('a', 'viewer', 'STOPPED', {}, { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table });
+    await profiles.insertWithFreeSlot(
+      'a',
+      'viewer',
+      'STOPPED',
+      {},
+      { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table },
+    );
     await pool.query("UPDATE profiles SET port_slot = 101 WHERE name = 'a'");
-    await pool.query("INSERT INTO deploy_targets (alias, daemon_id, verified_at) VALUES ('localhost', 'daemon', NOW())");
-    await pool.query("INSERT INTO build_references (version_id, build_id, holder_kind, holder_id) VALUES (1, 'legacy', 'operation', 'rollback')");
-    await pool.query("INSERT INTO deploy_attempts (daemon_id, project, job_id, kind) VALUES ('daemon', 'a', 'open', 'fixed')");
+    await pool.query(
+      "INSERT INTO deploy_targets (alias, daemon_id, verified_at) VALUES ('localhost', 'daemon', NOW())",
+    );
+    await pool.query(
+      "INSERT INTO build_references (version_id, build_id, holder_kind, holder_id) VALUES (1, 'legacy', 'operation', 'rollback')",
+    );
+    await pool.query(
+      "INSERT INTO deploy_attempts (daemon_id, project, job_id, kind) VALUES ('daemon', 'a', 'open', 'fixed')",
+    );
     const snapshot = await new PostgresFirewallStateSource(pool).read();
     assert.equal(snapshot.profiles[0]?.slot, 101);
     assert.equal(snapshot.profiles[0]?.status, 'STOPPED');
@@ -98,37 +110,69 @@ describe('port reservations in isolated PostgreSQL schemas', { skip: !Number.isI
     // 10006 is the bee-uploader peer band base, so every slot of this table lands
     // on a tuple the firewall opens for somebody else.
     const unsafe = [{ ...table[0]!, slotBase: 10006 }];
-    assert.equal(await profiles.insertWithFreeSlot('a', 'viewer', 'DEPLOYING', {}, { stackVersionId: 1, slotCap: 2, daemonId: 'daemon', table: unsafe }), null);
+    assert.equal(
+      await profiles.insertWithFreeSlot(
+        'a',
+        'viewer',
+        'DEPLOYING',
+        {},
+        { stackVersionId: 1, slotCap: 2, daemonId: 'daemon', table: unsafe },
+      ),
+      null,
+    );
     assert.deepEqual(await ports.listByDaemon('daemon'), []);
   });
 
   it('resolves bundled legacy job references from the observed bundled root', async () => {
-    await profiles.insertWithFreeSlot('a', 'viewer', 'RUNNING', {}, { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table });
+    await profiles.insertWithFreeSlot(
+      'a',
+      'viewer',
+      'RUNNING',
+      {},
+      { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table },
+    );
     const version = (await new PostgresStackVersionRepository(pool).findById(1))!;
     const ledger = new PostgresBuildLedger(pool, { mountedRootOf: async () => stackRootOf(version) }, '/fake/versions');
-    await ledger.claim('a', ['RUNNING'], version, ['srs'], { ...deployOwnerOf((await profiles.findByName('a'))!), intent: 'preserve' });
+    await ledger.claim('a', ['RUNNING'], version, ['srs'], {
+      ...deployOwnerOf((await profiles.findByName('a'))!),
+      intent: 'preserve',
+    });
     await ledger.observe('a', ['srs']);
     const open = await ledger.openReferences(1);
-    assert.equal(open.filter(reference => reference.holderKind === 'job').length, 0);
-    assert.ok(open.some(reference => reference.holderId === 'a/srs'));
+    assert.equal(open.filter((reference) => reference.holderKind === 'job').length, 0);
+    assert.ok(open.some((reference) => reference.holderId === 'a/srs'));
   });
 
   it('cancels only the exact unstarted job reference belonging to the profile', async () => {
     const version = (await new PostgresStackVersionRepository(pool).findById(1))!;
     const ledger = new PostgresBuildLedger(pool, { mountedRootOf: async () => null }, '/fake/versions');
-    const seed = async (services: string[]) => ({ referenceId: (await pool.query<{ id: number }>(
-      "INSERT INTO build_references (version_id, build_id, holder_kind, holder_id, services) VALUES ($1, 'bundled', 'job', 'a', $2) RETURNING id", [version.id, services],
-    )).rows[0]!.id });
+    const seed = async (services: string[]) => ({
+      referenceId: (
+        await pool.query<{ id: number }>(
+          "INSERT INTO build_references (version_id, build_id, holder_kind, holder_id, services) VALUES ($1, 'bundled', 'job', 'a', $2) RETURNING id",
+          [version.id, services],
+        )
+      ).rows[0]!.id,
+    });
     const older = await seed(['srs', 'stream-uploader']);
     const current = await seed(['srs']);
     await ledger.cancelUnstarted('other', current.referenceId!);
     assert.equal((await ledger.openReferences(1)).length, 2);
     await ledger.cancelUnstarted('a', current.referenceId!);
-    assert.deepEqual((await ledger.openReferences(1)).map(reference => reference.id), [older.referenceId]);
+    assert.deepEqual(
+      (await ledger.openReferences(1)).map((reference) => reference.id),
+      [older.referenceId],
+    );
   });
 
   it('retains unresolved job and rollback plans, then releases only observed superseded service ports', async () => {
-    await profiles.insertWithFreeSlot('a', 'viewer', 'DEPLOYING', {}, { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table });
+    await profiles.insertWithFreeSlot(
+      'a',
+      'viewer',
+      'DEPLOYING',
+      {},
+      { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table },
+    );
     const next = [{ ...entries[1]!, port: 20011 }];
     await ports.plan('daemon', 'a', next, 'new build');
     const observation = { profileName: 'a', daemonId: 'daemon', services: ['srs'], planned: next, bound: next };
@@ -138,77 +182,159 @@ describe('port reservations in isolated PostgreSQL schemas', { skip: !Number.isI
         [kind, kind === 'job' ? 'a' : 'rollback-operation'],
       );
       await ports.reconcile(observation);
-      assert.ok((await ports.listByProfile('a')).some(port => port.port === 10011));
+      assert.ok((await ports.listByProfile('a')).some((port) => port.port === 10011));
       await pool.query('UPDATE build_references SET resolved_at = NOW() WHERE id = $1', [reference.rows[0]!.id]);
     }
     await ports.reconcile(observation);
-    assert.deepEqual((await ports.listByProfile('a')).map(port => [port.port, port.state]), [[10010, 'planned'], [20011, 'active']]);
+    assert.deepEqual(
+      (await ports.listByProfile('a')).map((port) => [port.port, port.state]),
+      [
+        [10010, 'planned'],
+        [20011, 'active'],
+      ],
+    );
   });
 
   it('does not release stopped profiles or profiles with an unresolved creation attempt', async () => {
-    await profiles.insertWithFreeSlot('a', 'viewer', 'STOPPED', {}, { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table });
+    await profiles.insertWithFreeSlot(
+      'a',
+      'viewer',
+      'STOPPED',
+      {},
+      { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table },
+    );
     const observation = { profileName: 'a', daemonId: 'daemon', services: ['srs'], planned: [], bound: [] };
     await ports.reconcile(observation);
     assert.equal((await ports.listByProfile('a')).length, 2);
     await profiles.transitionStatus('a', 'DEPLOYING', ['STOPPED']);
-    await pool.query("INSERT INTO deploy_attempts (daemon_id, project, job_id, kind) VALUES ('daemon', 'a', 'orphan', 'fixed')");
+    await pool.query(
+      "INSERT INTO deploy_attempts (daemon_id, project, job_id, kind) VALUES ('daemon', 'a', 'orphan', 'fixed')",
+    );
     await ports.reconcile(observation);
     assert.equal((await ports.listByProfile('a')).length, 2);
   });
 
   it('retains all service owners of a port across full and partial contract handovers', async () => {
-    await profiles.insertWithFreeSlot('a', 'viewer', 'DEPLOYING', {}, { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table });
+    await profiles.insertWithFreeSlot(
+      'a',
+      'viewer',
+      'DEPLOYING',
+      {},
+      { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table },
+    );
     const p = { protocol: 'tcp' as const, port: 10010, portVar: 'API_PORT', service: 'stream-uploader' };
     const q = { ...p, port: 20010, service: 'stream-uploader' };
     await ports.plan('daemon', 'a', [{ ...p, service: 'srs' }, q], 'B');
-    await ports.reconcile({ profileName: 'a', daemonId: 'daemon', services: ['srs', 'stream-uploader'], planned: [{ ...p, service: 'srs' }, q], bound: [p, q] });
+    await ports.reconcile({
+      profileName: 'a',
+      daemonId: 'daemon',
+      services: ['srs', 'stream-uploader'],
+      planned: [{ ...p, service: 'srs' }, q],
+      bound: [p, q],
+    });
     const next = [{ ...p, port: 30010, service: 'srs' }, q];
     await ports.plan('daemon', 'a', next, 'C');
-    await ports.reconcile({ profileName: 'a', daemonId: 'daemon', services: ['stream-uploader'], planned: next, bound: next });
-    assert.ok((await ports.listByProfile('a')).some(row => row.port === p.port), 'untouched engine ownership survives');
-    await ports.reconcile({ profileName: 'a', daemonId: 'daemon', services: ['srs', 'stream-uploader'], planned: next, bound: next });
-    assert.ok(!(await ports.listByProfile('a')).some(row => row.port === p.port));
+    await ports.reconcile({
+      profileName: 'a',
+      daemonId: 'daemon',
+      services: ['stream-uploader'],
+      planned: next,
+      bound: next,
+    });
+    assert.ok(
+      (await ports.listByProfile('a')).some((row) => row.port === p.port),
+      'untouched engine ownership survives',
+    );
+    await ports.reconcile({
+      profileName: 'a',
+      daemonId: 'daemon',
+      services: ['srs', 'stream-uploader'],
+      planned: next,
+      bound: next,
+    });
+    assert.ok(!(await ports.listByProfile('a')).some((row) => row.port === p.port));
   });
 
   for (const temporarilyBound of [false, true]) {
     it(`retires owners across separate service replacements with a ${temporarilyBound ? 'bound' : 'free'} old port`, async () => {
-      await profiles.insertWithFreeSlot('a', 'viewer', 'DEPLOYING', {}, { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table });
+      await profiles.insertWithFreeSlot(
+        'a',
+        'viewer',
+        'DEPLOYING',
+        {},
+        { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table },
+      );
       const p = entries[0]!;
       await ports.plan('daemon', 'a', [{ ...p, service: 'srs' }], 'second owner');
-      const next = [{ ...p, port: 20010, service: 'srs' }, { ...p, port: 30010 }];
+      const next = [
+        { ...p, port: 20010, service: 'srs' },
+        { ...p, port: 30010 },
+      ];
       await ports.plan('daemon', 'a', next, 'new table');
       await ports.reconcile({ profileName: 'a', daemonId: 'daemon', services: ['srs'], planned: next, bound: [] });
-      assert.deepEqual((await ports.listByProfile('a')).find(row => row.port === p.port)?.heldServices, ['stream-uploader']);
-      await ports.reconcile({ profileName: 'a', daemonId: 'daemon', services: ['stream-uploader'], planned: next, bound: temporarilyBound ? [p] : [] });
+      assert.deepEqual((await ports.listByProfile('a')).find((row) => row.port === p.port)?.heldServices, [
+        'stream-uploader',
+      ]);
+      await ports.reconcile({
+        profileName: 'a',
+        daemonId: 'daemon',
+        services: ['stream-uploader'],
+        planned: next,
+        bound: temporarilyBound ? [p] : [],
+      });
       if (temporarilyBound) {
-        assert.deepEqual((await ports.listByProfile('a')).find(row => row.port === p.port)?.heldServices, []);
+        assert.deepEqual((await ports.listByProfile('a')).find((row) => row.port === p.port)?.heldServices, []);
         await ports.reconcile({ profileName: 'a', daemonId: 'daemon', services: [], planned: next, bound: [] });
       }
-      assert.ok(!(await ports.listByProfile('a')).some(row => row.port === p.port));
+      assert.ok(!(await ports.listByProfile('a')).some((row) => row.port === p.port));
     });
   }
 
   it('deletes the profile and its reservations together after removal and resolves its build references', async () => {
-    const claimed = await profiles.insertWithFreeSlot('a', 'viewer', 'REMOVING', {}, { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table });
+    const claimed = await profiles.insertWithFreeSlot(
+      'a',
+      'viewer',
+      'REMOVING',
+      {},
+      { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table },
+    );
     assert.ok(claimed);
-    await pool.query("INSERT INTO build_references (version_id, build_id, holder_kind, holder_id, services) VALUES (1, 'old', 'job', 'a', '{srs}')");
+    await pool.query(
+      "INSERT INTO build_references (version_id, build_id, holder_kind, holder_id, services) VALUES (1, 'old', 'job', 'a', '{srs}')",
+    );
     await profiles.completeRemoval(claimed, async () => {});
     assert.equal(await profiles.findByName('a'), null);
     assert.deepEqual(await ports.listByProfile('a'), []);
-    assert.equal((await pool.query("SELECT * FROM build_references WHERE holder_id = 'a' AND resolved_at IS NULL")).rowCount, 0);
+    assert.equal(
+      (await pool.query("SELECT * FROM build_references WHERE holder_id = 'a' AND resolved_at IS NULL")).rowCount,
+      0,
+    );
   });
 
   it('refuses database removal while an attempt can still create containers, retaining the entire profile', async () => {
-    const claimed = await profiles.insertWithFreeSlot('a', 'viewer', 'REMOVING', {}, { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table });
+    const claimed = await profiles.insertWithFreeSlot(
+      'a',
+      'viewer',
+      'REMOVING',
+      {},
+      { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table },
+    );
     assert.ok(claimed);
-    await pool.query("INSERT INTO deploy_attempts (daemon_id, project, job_id, kind) VALUES ('daemon', 'a', 'orphan', 'fixed')");
-    await assert.rejects(profiles.completeRemoval(claimed, async () => {}), /unresolved|attempt/);
+    await pool.query(
+      "INSERT INTO deploy_attempts (daemon_id, project, job_id, kind) VALUES ('daemon', 'a', 'orphan', 'fixed')",
+    );
+    await assert.rejects(
+      profiles.completeRemoval(claimed, async () => {}),
+      /unresolved|attempt/,
+    );
     assert.ok(await profiles.findByName('a'));
     assert.equal((await ports.listByProfile('a')).length, 2);
   });
 
   it('lets exactly one competing profile hold a port and names that owner to the others', async () => {
-    const outcomes = await Promise.allSettled(Array.from({ length: 20 }, (_, n) => ports.plan('daemon', `p${n}`, entries, 'admission')));
+    const outcomes = await Promise.allSettled(
+      Array.from({ length: 20 }, (_, n) => ports.plan('daemon', `p${n}`, entries, 'admission')),
+    );
     assert.equal(outcomes.filter((outcome) => outcome.status === 'fulfilled').length, 1);
     for (const outcome of outcomes) {
       if (outcome.status === 'rejected') assert.ok(outcome.reason instanceof PortReservedError);
@@ -216,21 +342,52 @@ describe('port reservations in isolated PostgreSQL schemas', { skip: !Number.isI
   });
 
   it('allocates concurrent profiles atomically without duplicate slots or port reservations', async () => {
-    const rows = await Promise.all(Array.from({ length: 20 }, (_, n) =>
-      profiles.insertWithFreeSlot(`p${n}`, 'viewer', 'DEPLOYING', {}, { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table })));
+    const rows = await Promise.all(
+      Array.from({ length: 20 }, (_, n) =>
+        profiles.insertWithFreeSlot(
+          `p${n}`,
+          'viewer',
+          'DEPLOYING',
+          {},
+          { stackVersionId: 1, slotCap: 100, daemonId: 'daemon', table },
+        ),
+      ),
+    );
     assert.equal(new Set(rows.map((row) => row!.port_slot)).size, 20);
     assert.equal((await ports.listByDaemon('daemon')).length, 40);
   });
 
   it('rolls back the group, members and reservations when the whole group cannot fit', async () => {
     const shared: SharedProfileParams = {
-      kind: 'viewer', notes: null, components: null, host: null,
-      feed_owner: null, feed_topic: null, private_key: null, public_key: null, stamp_id: null, srt_passphrase: null,
-      node_mode: null, rpc_endpoint_source: 'stack', rpc_endpoint: null,
-      stack_version_id: 1, engine_settings: {}, stack_settings: NO_STACK_SETTINGS, slot_cap: 1, daemon_id: 'daemon', table,
+      kind: 'viewer',
+      notes: null,
+      components: null,
+      host: null,
+      feed_owner: null,
+      feed_topic: null,
+      private_key: null,
+      public_key: null,
+      stamp_id: null,
+      srt_passphrase: null,
+      node_mode: null,
+      rpc_endpoint_source: 'stack',
+      rpc_endpoint: null,
+      stack_version_id: 1,
+      engine_settings: {},
+      stack_settings: NO_STACK_SETTINGS,
+      slot_cap: 1,
+      daemon_id: 'daemon',
+      table,
     };
-    await assert.rejects(new DeploymentGroupRepository(pool).createGroupWithMembers('pool', 'standard',
-      [{ name: 'a' }, { name: 'b' }], shared), AllSlotsUsedError);
+    await assert.rejects(
+      new DeploymentGroupRepository(pool).createGroupWithMembers(
+        'pool',
+        'standard',
+        [{ name: 'a' }, { name: 'b' }],
+        shared,
+      ),
+      AllSlotsUsedError,
+    );
     assert.equal((await profiles.list()).length, 0);
     assert.equal((await ports.listByDaemon('daemon')).length, 0);
     assert.equal((await pool.query('SELECT * FROM deployment_groups')).rowCount, 0);
@@ -241,14 +398,33 @@ describe('port reservations in isolated PostgreSQL schemas', { skip: !Number.isI
     // shape only proves itself against a real database. A member reading back
     // as {} is the half-second fallback the group was created to replace.
     const shared: SharedProfileParams = {
-      kind: 'streamer', notes: null, components: null, host: null,
-      feed_owner: null, feed_topic: null, private_key: null, public_key: null, stamp_id: null, srt_passphrase: null,
-      node_mode: null, rpc_endpoint_source: 'stack', rpc_endpoint: null,
-      stack_version_id: 1, engine_settings: { HLS_FRAGMENT: '2' }, stack_settings: NO_STACK_SETTINGS, slot_cap: 100, daemon_id: 'daemon', table,
+      kind: 'streamer',
+      notes: null,
+      components: null,
+      host: null,
+      feed_owner: null,
+      feed_topic: null,
+      private_key: null,
+      public_key: null,
+      stamp_id: null,
+      srt_passphrase: null,
+      node_mode: null,
+      rpc_endpoint_source: 'stack',
+      rpc_endpoint: null,
+      stack_version_id: 1,
+      engine_settings: { HLS_FRAGMENT: '2' },
+      stack_settings: NO_STACK_SETTINGS,
+      slot_cap: 100,
+      daemon_id: 'daemon',
+      table,
     };
 
     const { profiles: members } = await new DeploymentGroupRepository(pool).createGroupWithMembers(
-      'studio', 'standard', [{ name: 'a' }, { name: 'b' }], shared);
+      'studio',
+      'standard',
+      [{ name: 'a' }, { name: 'b' }],
+      shared,
+    );
 
     assert.deepEqual(
       members.map((member) => member.engine_settings),

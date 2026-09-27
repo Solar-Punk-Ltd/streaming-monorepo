@@ -481,7 +481,7 @@ describe('stampSetup, OPS-1: no path loses the batch id after a spend', () => {
           stamp: {
             getAll: async () => [],
           },
-        } as unknown as Bee),
+        }) as unknown as Bee,
     });
 
     assert.equal(result.spends, 0, 'buying with the balance unknown is the least defensible spend');
@@ -512,7 +512,7 @@ describe('stampSetup, OPS-1: no path loses the batch id after a spend', () => {
               { usable: true, batchID: { toHex: () => existing }, depth: 20, amount: '1', immutableFlag: false },
             ],
           },
-        } as unknown as Bee),
+        }) as unknown as Bee,
     });
 
     assert.equal(result.spends, 0);
@@ -533,7 +533,7 @@ describe('stampSetup, OPS-1: no path loses the batch id after a spend', () => {
               throw new Error('Request failed with status code 500');
             },
           },
-        } as unknown as Bee),
+        }) as unknown as Bee,
     });
 
     assert.equal(result.spends, 0, 'a duplicate batch is a whole batch of wasted money');

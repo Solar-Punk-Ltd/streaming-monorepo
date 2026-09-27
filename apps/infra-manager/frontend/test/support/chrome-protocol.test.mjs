@@ -18,7 +18,9 @@ for (const event of ['close', 'error']) {
     const requests = [client.call('Runtime.enable'), client.call('Page.enable')];
     socket.dispatchEvent(new Event(event));
     const results = await Promise.allSettled(requests);
-    assert.ok(results.every((result) => result.status === 'rejected' && /Chrome connection ended/.test(result.reason.message)));
+    assert.ok(
+      results.every((result) => result.status === 'rejected' && /Chrome connection ended/.test(result.reason.message)),
+    );
     await assert.rejects(client.call('Page.navigate'), /Chrome connection ended/);
   });
 }

@@ -16,11 +16,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 
-import {
-  OME_SERVICE,
-  type StackContract,
-  STREAM_UPLOADER_SERVICE,
-} from '@streaming-infra-manager/common';
+import { OME_SERVICE, type StackContract, STREAM_UPLOADER_SERVICE } from '@streaming-infra-manager/common';
 
 import type { ContainerState } from '../../src/domain/ContainerControl.js';
 import type { EngineWatcher } from '../../src/domain/engineConfig/EngineConfigService.js';
@@ -43,18 +39,10 @@ mkdirSync(join(root, 'engines', 'srs'), { recursive: true });
 writeFileSync(join(root, 'engines', 'srs', 'srs.conf.template'), 'listen 1935;\n');
 writeFileSync(join(root, 'engines', 'srs', 'entrypoint.sh'), '');
 
-const { EngineConfigChecker } = await import(
-  '../../src/domain/engineConfig/engineConfigCheck.js'
-);
-const { EngineConfigService } = await import(
-  '../../src/domain/engineConfig/EngineConfigService.js'
-);
-const { profileRow, profileServiceHarness } = await import(
-  '../support/profileServiceHarness.js'
-);
-const { InMemoryEngineConfigOperations } = await import(
-  '../support/InMemoryEngineConfigOperations.js'
-);
+const { EngineConfigChecker } = await import('../../src/domain/engineConfig/engineConfigCheck.js');
+const { EngineConfigService } = await import('../../src/domain/engineConfig/EngineConfigService.js');
+const { profileRow, profileServiceHarness } = await import('../support/profileServiceHarness.js');
+const { InMemoryEngineConfigOperations } = await import('../support/InMemoryEngineConfigOperations.js');
 const { configureEngineConfigAdmission } = await import('../support/engineConfigAdmissionFixture.js');
 
 const V3_CONTRACT: StackContract = {

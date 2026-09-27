@@ -1,11 +1,6 @@
 import { Chip, Stack, TableCell, TableRow, Typography } from '@mui/material';
 
-import {
-  formatBytes,
-  formatCores,
-  formatRate,
-  formatSharePercent,
-} from '../format';
+import { formatBytes, formatCores, formatRate, formatSharePercent } from '../format';
 import { Sparkline } from '../Sparkline';
 import type { ContainerMetrics } from '../types';
 import { cpuFractionOfHost, fractionOf } from './metricsMath';
@@ -33,15 +28,11 @@ export function ContainerRow({
           spacing={0.75}
           useFlexGap
           sx={{
-            alignItems: "center",
-            flexWrap: 'wrap'
-          }}>
-          <Chip
-            size="small"
-            label={c.state}
-            color={c.state === 'running' ? 'success' : 'default'}
-            variant="outlined"
-          />
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          <Chip size="small" label={c.state} color={c.state === 'running' ? 'success' : 'default'} variant="outlined" />
           {/* A container that dies and comes back reads as running between its
               restarts, so the count is the only thing that tells a recovery
               from a loop. */}
@@ -56,45 +47,50 @@ export function ContainerRow({
         </Stack>
       </TableCell>
       <TableCell sx={{ minWidth: 160 }}>
-        <Stack direction="row" spacing={1} sx={{
-          alignItems: "center"
-        }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{
+            alignItems: 'center',
+          }}
+        >
           <Typography variant="body2" sx={{ minWidth: 52 }}>
             {formatSharePercent(c.cpuPercent, ncpu * 100)}
           </Typography>
           {history && <Sparkline values={history} />}
         </Stack>
-        <Typography variant="caption" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {formatCores(c.cpuPercent)} cores
         </Typography>
-        <UsageBar
-          segments={[{ fraction: cpuFraction, color: INFRA_COLOR }]}
-          height={6}
-        />
+        <UsageBar segments={[{ fraction: cpuFraction, color: INFRA_COLOR }]} height={6} />
       </TableCell>
       <TableCell sx={{ minWidth: 150 }}>
-        <Typography variant="body2">
-          {formatSharePercent(c.memUsageBytes, memTotalBytes)}
-        </Typography>
-        <Typography variant="caption" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography variant="body2">{formatSharePercent(c.memUsageBytes, memTotalBytes)}</Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {formatBytes(c.memUsageBytes)} / {formatBytes(c.memLimitBytes)}
         </Typography>
-        <UsageBar
-          segments={[{ fraction: memFraction, color: INFRA_COLOR }]}
-          height={6}
-        />
+        <UsageBar segments={[{ fraction: memFraction, color: INFRA_COLOR }]} height={6} />
       </TableCell>
       <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
         <Typography variant="body2">
           ↓ {formatBytes(c.netRxBytes)} ↑ {formatBytes(c.netTxBytes)}
         </Typography>
-        <Typography variant="caption" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           now ↓ {formatRate(c.netRxRate)} ↑ {formatRate(c.netTxRate)}
         </Typography>
       </TableCell>
@@ -102,9 +98,12 @@ export function ContainerRow({
         <Typography variant="body2">
           R {formatBytes(c.blkReadBytes)} W {formatBytes(c.blkWriteBytes)}
         </Typography>
-        <Typography variant="caption" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           now R {formatRate(c.blkReadRate)} W {formatRate(c.blkWriteRate)}
         </Typography>
       </TableCell>

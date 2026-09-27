@@ -111,9 +111,7 @@ describe('StampService.stampHealthFor', () => {
   });
 
   it('reports expired at zero TTL', async () => {
-    const { service } = serviceAnswering(async () =>
-      stamp({ batchTTL: 0, usable: false }),
-    );
+    const { service } = serviceAnswering(async () => stamp({ batchTTL: 0, usable: false }));
     assert.equal((await service.stampHealthFor(PROFILE, BATCH)).state, 'expired');
   });
 

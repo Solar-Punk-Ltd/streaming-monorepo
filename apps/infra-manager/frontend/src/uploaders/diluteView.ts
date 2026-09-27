@@ -79,19 +79,13 @@ export function diluteView({ stamp, depth }: DiluteInput): DiluteView {
 }
 
 /** What the Storage card says once bee has answered a dilute. */
-export function diluteSentNotice(
-  stamp: BeeStamp,
-  depth: number,
-  sent: BeeStampTransaction,
-): string {
+export function diluteSentNotice(stamp: BeeStamp, depth: number, sent: BeeStampTransaction): string {
   return `Bee sent the dilution of batch ${shortHex(stamp.batchID)} to depth ${depth} in transaction ${shortHex(sent.txHash)}, which is mined. The new depth and life show here once the node has read it back from the chain, usually within a minute.`;
 }
 
 function holdsText(chunks: number, bucketChunks: number | null): string {
   const whole = `${chunks.toLocaleString('en-GB')} chunks`;
-  return bucketChunks === null
-    ? whole
-    : `${whole}, ${bucketChunks.toLocaleString('en-GB')} in each bucket`;
+  return bucketChunks === null ? whole : `${whole}, ${bucketChunks.toLocaleString('en-GB')} in each bucket`;
 }
 
 function shortLifeRefusal(ttl: number | null): string {

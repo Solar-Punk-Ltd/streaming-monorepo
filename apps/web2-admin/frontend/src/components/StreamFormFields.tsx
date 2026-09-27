@@ -14,10 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 import CancelIcon from '@mui/icons-material/Cancel';
-import {
-  STREAM_LIMITS,
-  type MediaType,
-} from '@streaming-monorepo/web2-admin-common';
+import { STREAM_LIMITS, type MediaType } from '@streaming-monorepo/web2-admin-common';
 
 /**
  * The fields, labels and limits are msrs-client's, reproduced in MUI so the
@@ -29,12 +26,7 @@ import {
  * offer SVG and HEIC, which save the row and then fail the thumbnail with a
  * 415 — better not to offer them at all.
  */
-export const THUMBNAIL_MIME_TYPES = [
-  'image/png',
-  'image/jpeg',
-  'image/webp',
-  'image/gif',
-] as const;
+export const THUMBNAIL_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
 
 export function NameField({
   value,
@@ -132,11 +124,7 @@ export function TagsField({
         <TextField
           id="stream-tags"
           label="Tags"
-          placeholder={
-            full
-              ? `Maximum ${STREAM_LIMITS.TAGS_MAX} tags reached`
-              : 'Add a tag and press Enter'
-          }
+          placeholder={full ? `Maximum ${STREAM_LIMITS.TAGS_MAX} tags reached` : 'Add a tag and press Enter'}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
@@ -148,11 +136,7 @@ export function TagsField({
             formHelperText: { sx: { textAlign: 'right', m: 0, mt: 0.5 } },
           }}
         />
-        <Button
-          onClick={addTag}
-          disabled={disabled || !draft.trim() || full}
-          sx={{ mt: 0.5 }}
-        >
+        <Button onClick={addTag} disabled={disabled || !draft.trim() || full} sx={{ mt: 0.5 }}>
           Add
         </Button>
       </Stack>
@@ -163,9 +147,7 @@ export function TagsField({
               key={tag}
               label={tag}
               size="small"
-              onDelete={
-                disabled ? undefined : () => onChange(value.filter((t) => t !== tag))
-              }
+              onDelete={disabled ? undefined : () => onChange(value.filter((t) => t !== tag))}
               // Chip clones the delete icon and attaches its own onClick; the
               // label is what tells ten otherwise identical X buttons apart.
               deleteIcon={<CancelIcon aria-label={`Remove tag ${tag}`} />}
@@ -197,16 +179,8 @@ export function MediaTypeField({
         value={value}
         onChange={(e) => onChange(e.target.value as MediaType)}
       >
-        <FormControlLabel
-          value="video"
-          control={<Radio size="small" />}
-          label="Video Stream"
-        />
-        <FormControlLabel
-          value="audio"
-          control={<Radio size="small" />}
-          label="Audio Only"
-        />
+        <FormControlLabel value="video" control={<Radio size="small" />} label="Video Stream" />
+        <FormControlLabel value="audio" control={<Radio size="small" />} label="Audio Only" />
       </RadioGroup>
       {helperText ? <FormHelperText>{helperText}</FormHelperText> : null}
     </FormControl>
@@ -235,9 +209,7 @@ export function ThumbnailField({
 
   return (
     <Stack spacing={1}>
-      <FormLabel htmlFor="stream-thumbnail">
-        Upload Thumbnail (Max 5MB)
-      </FormLabel>
+      <FormLabel htmlFor="stream-thumbnail">Upload Thumbnail (Max 5MB)</FormLabel>
       {/*
         A native file input, like msrs-client's, so the label and the picker
         stay plain and testable. Its browser-chrome button is light even in a
@@ -290,12 +262,7 @@ export function ThumbnailField({
                 {fileName}
               </Typography>
             ) : null}
-            <Button
-              size="small"
-              color="error"
-              onClick={onRemove}
-              disabled={disabled}
-            >
+            <Button size="small" color="error" onClick={onRemove} disabled={disabled}>
               Remove
             </Button>
           </Stack>

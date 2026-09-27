@@ -82,11 +82,7 @@ describe('group config edit (Feature A): bulk feed change redeploys every member
       ),
     );
     for (const m of afterEdit) {
-      assert.equal(
-        m.feed_owner,
-        FEED_OWNER_B,
-        `${m.name} should have the new group feed_owner`,
-      );
+      assert.equal(m.feed_owner, FEED_OWNER_B, `${m.name} should have the new group feed_owner`);
     }
 
     // Remove members; the group should auto-delete once its last member is gone.
@@ -97,9 +93,6 @@ describe('group config edit (Feature A): bulk feed change redeploys every member
     }
     await waitForGroupGone(group.id);
     const groups = await listGroups();
-    assert.ok(
-      !groups.some((g) => g.id === group.id),
-      'group should be auto-removed after its last member is deleted',
-    );
+    assert.ok(!groups.some((g) => g.id === group.id), 'group should be auto-removed after its last member is deleted');
   });
 });

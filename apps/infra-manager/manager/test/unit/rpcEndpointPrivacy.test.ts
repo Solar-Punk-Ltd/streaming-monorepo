@@ -59,19 +59,18 @@ describe('custom RPC endpoint privacy', () => {
     }
     const appended = await harness.service.addGroupMembers(created.group.id, 1);
     assertEndpointIsPrivate(appended.profiles);
-    assert.equal(
-      (await harness.profiles.rpcEndpointOf(appended.profiles[0]!.name))?.rpcEndpoint,
-      SECRET_ENDPOINT,
-    );
+    assert.equal((await harness.profiles.rpcEndpointOf(appended.profiles[0]!.name))?.rpcEndpoint, SECRET_ENDPOINT);
   });
 
   it('preserves an omitted custom URL and deploys with the stored value', async () => {
-    const harness = profileServiceHarness([makeProfile({
-      name: 'stage',
-      kind: 'streamer',
-      rpc_endpoint_source: 'custom',
-      rpc_endpoint: SECRET_ENDPOINT,
-    })]);
+    const harness = profileServiceHarness([
+      makeProfile({
+        name: 'stage',
+        kind: 'streamer',
+        rpc_endpoint_source: 'custom',
+        rpc_endpoint: SECRET_ENDPOINT,
+      }),
+    ]);
 
     await harness.service.update('stage', { notes: 'kept' });
 
@@ -79,12 +78,14 @@ describe('custom RPC endpoint privacy', () => {
   });
 
   it('replaces the URL only when a new one is sent and clears it on a source switch', async () => {
-    const harness = profileServiceHarness([makeProfile({
-      name: 'stage',
-      kind: 'streamer',
-      rpc_endpoint_source: 'custom',
-      rpc_endpoint: SECRET_ENDPOINT,
-    })]);
+    const harness = profileServiceHarness([
+      makeProfile({
+        name: 'stage',
+        kind: 'streamer',
+        rpc_endpoint_source: 'custom',
+        rpc_endpoint: SECRET_ENDPOINT,
+      }),
+    ]);
 
     await harness.service.update('stage', {
       rpc_endpoint_source: 'custom',
@@ -102,12 +103,14 @@ describe('custom RPC endpoint privacy', () => {
   });
 
   it('clears the URL when the API switches source without repeating it', async () => {
-    const harness = profileServiceHarness([makeProfile({
-      name: 'stage',
-      kind: 'streamer',
-      rpc_endpoint_source: 'custom',
-      rpc_endpoint: SECRET_ENDPOINT,
-    })]);
+    const harness = profileServiceHarness([
+      makeProfile({
+        name: 'stage',
+        kind: 'streamer',
+        rpc_endpoint_source: 'custom',
+        rpc_endpoint: SECRET_ENDPOINT,
+      }),
+    ]);
 
     await harness.service.update('stage', {
       rpc_endpoint_source: 'stack',

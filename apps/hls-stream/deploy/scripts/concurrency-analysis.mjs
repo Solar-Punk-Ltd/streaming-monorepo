@@ -156,8 +156,8 @@ export function summariseSweep(rows) {
     control: !warmMs.length
       ? CONTROL_NOT_RUN
       : median(warmMs) * WARM_CONTROL_FACTOR <= coldP50
-      ? CONTROL_VALID
-      : CONTROL_INVALID,
+        ? CONTROL_VALID
+        : CONTROL_INVALID,
     warmControlMs: warmMs.length ? median(warmMs) : null,
     coldP50Ms: coldP50,
     degradedRounds,

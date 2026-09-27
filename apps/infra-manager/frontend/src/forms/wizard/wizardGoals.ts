@@ -32,15 +32,13 @@ export const GOALS: GoalCard[] = [
   {
     id: 'abr-pool',
     title: 'ABR node pool',
-    detail:
-      'Four Bee nodes, one per quality (360p to 1080p), as upload targets for an ABR uploader.',
+    detail: 'Four Bee nodes, one per quality (360p to 1080p), as upload targets for an ABR uploader.',
     services: [`${BEE_UPLOADER_SERVICE} ×4`],
   },
   {
     id: 'abr-uploader',
     title: 'ABR uploader',
-    detail:
-      'Ingest and encode a quality ladder, publishing to a node pool. No Bee node of its own.',
+    detail: 'Ingest and encode a quality ladder, publishing to a node pool. No Bee node of its own.',
     services: [SRS_SERVICE, STREAM_UPLOADER_SERVICE],
   },
   {
@@ -62,8 +60,4 @@ export const CUSTOM_COMPONENTS: string[] = [
 ];
 
 /** What a custom deployment starts ticked with: an engine and a player. */
-export const DEFAULT_CUSTOM_COMPONENTS: string[] = [
-  SRS_SERVICE,
-  CLIENT_SERVICE,
-  BEE_GATEWAY_SERVICE,
-];
+export const DEFAULT_CUSTOM_COMPONENTS: string[] = [SRS_SERVICE, CLIENT_SERVICE, BEE_GATEWAY_SERVICE];

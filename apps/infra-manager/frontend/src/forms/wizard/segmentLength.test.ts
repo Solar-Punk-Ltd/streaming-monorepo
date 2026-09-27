@@ -15,17 +15,8 @@ import { describe, it } from 'node:test';
 
 import { OME_SERVICE, SRS_SERVICE } from '@streaming-infra-manager/common';
 
-import {
-  SEGMENT_LENGTH_FIELD,
-  segmentLengthError,
-  segmentLengthSettings,
-} from './segmentLength';
-import {
-  initialWizardState,
-  offersSegmentLength,
-  type WizardContext,
-  type WizardState,
-} from './wizardState';
+import { SEGMENT_LENGTH_FIELD, segmentLengthError, segmentLengthSettings } from './segmentLength';
+import { initialWizardState, offersSegmentLength, type WizardContext, type WizardState } from './wizardState';
 
 const context: WizardContext = {
   profiles: [],
@@ -71,33 +62,21 @@ describe('where the segment length is offered', () => {
   });
 
   it('is not a viewer, which runs no media server at all', () => {
-    assert.equal(
-      offersSegmentLength(initialWizardState({ goal: 'viewer' }, context)),
-      false,
-    );
+    assert.equal(offersSegmentLength(initialWizardState({ goal: 'viewer' }, context)), false);
   });
 
   it('is an ABR uploader, which always runs SRS', () => {
-    assert.equal(
-      offersSegmentLength(initialWizardState({ goal: 'abr-uploader' }, context)),
-      true,
-    );
+    assert.equal(offersSegmentLength(initialWizardState({ goal: 'abr-uploader' }, context)), true);
   });
 
   it('is not a node pool, which is Bee nodes and no engine', () => {
-    assert.equal(
-      offersSegmentLength(initialWizardState({ goal: 'abr-pool' }, context)),
-      false,
-    );
+    assert.equal(offersSegmentLength(initialWizardState({ goal: 'abr-pool' }, context)), false);
   });
 
   it('follows the components a custom deployment picked', () => {
     const custom = initialWizardState({ goal: 'custom' }, context);
 
-    assert.equal(
-      offersSegmentLength({ ...custom, components: [SRS_SERVICE] }),
-      true,
-    );
+    assert.equal(offersSegmentLength({ ...custom, components: [SRS_SERVICE] }), true);
     assert.equal(offersSegmentLength({ ...custom, components: [] }), false);
   });
 });

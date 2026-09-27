@@ -26,14 +26,7 @@ import { fetchSrtPassphrase } from '../data';
 import { beeApiUrl, hostFor } from '../urls';
 import { nodeModeLabel, rpcEndpointLabel } from './nodeText';
 import { isStreamLike } from './readiness';
-import {
-  endpointSourceOf,
-  hasService,
-  ownsAnyBeeNode,
-  servicesOf,
-  SHAPE_LABEL,
-  shapeOf,
-} from './shape';
+import { endpointSourceOf, hasService, ownsAnyBeeNode, servicesOf, SHAPE_LABEL, shapeOf } from './shape';
 
 const HIDDEN = '••••••••';
 
@@ -72,7 +65,11 @@ export function ConfigurationCard({
     },
     {
       key: 'Host',
-      value: <Fixed><Mono>{hostFor(profile, serverHost)}</Mono></Fixed>,
+      value: (
+        <Fixed>
+          <Mono>{hostFor(profile, serverHost)}</Mono>
+        </Fixed>
+      ),
     },
   ];
 
@@ -80,16 +77,17 @@ export function ConfigurationCard({
     entries.push({
       key: 'SRT passphrase',
       value: profile.has_srt_passphrase ? (
-        <Stack direction="row" spacing={0.5} sx={{
-          alignItems: "center"
-        }}>
+        <Stack
+          direction="row"
+          spacing={0.5}
+          sx={{
+            alignItems: 'center',
+          }}
+        >
           <Mono>{HIDDEN}</Mono>
           <span>own passphrase</span>
           {/* Asked for on the click. The card is told one is stored, never which. */}
-          <CopyButton
-            value={() => fetchSrtPassphrase(profile.name)}
-            label="SRT passphrase"
-          />
+          <CopyButton value={() => fetchSrtPassphrase(profile.name)} label="SRT passphrase" />
         </Stack>
       ) : hostPassphrase ? (
         <span>host-wide passphrase (default)</span>
@@ -107,9 +105,10 @@ export function ConfigurationCard({
           direction="row"
           spacing={0.5}
           sx={{
-            alignItems: "center",
-            flexWrap: "wrap"
-          }}>
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
           <Mono>{HIDDEN}</Mono>
           <span>address</span>
           <Mono>{shortHex(profile.public_key)}</Mono>
@@ -126,9 +125,13 @@ export function ConfigurationCard({
     entries.push({
       key: 'Bee node',
       value: hasService(profile, BEE_UPLOADER_SERVICE) ? (
-        <span>own node · <Mono>{api ?? 'address unavailable'}</Mono></span>
+        <span>
+          own node · <Mono>{api ?? 'address unavailable'}</Mono>
+        </span>
       ) : (
-        <span>external · <Mono>{profile.bee_url || 'the deploy default'}</Mono></span>
+        <span>
+          external · <Mono>{profile.bee_url || 'the deploy default'}</Mono>
+        </span>
       ),
     });
   }
@@ -206,10 +209,7 @@ export function ConfigurationCard({
  * it: an endpoint URL can carry an API key in its path or its user info, and
  * this page is one anybody signed in can open.
  */
-function endpointHost(
-  profile: Profile,
-  beeRpcEndpoint: ConfiguredBeeRpcEndpoint,
-): string | null {
+function endpointHost(profile: Profile, beeRpcEndpoint: ConfiguredBeeRpcEndpoint): string | null {
   const source = endpointSourceOf(profile);
   if (source === CUSTOM_RPC_ENDPOINT_SOURCE) {
     return profile.rpc_endpoint_host ?? null;
@@ -227,9 +227,13 @@ function Mono({ children }: { children: ReactNode }) {
 
 function Muted({ children }: { children: ReactNode }) {
   return (
-    <Typography component="span" variant="body2" sx={{
-      color: "text.secondary"
-    }}>
+    <Typography
+      component="span"
+      variant="body2"
+      sx={{
+        color: 'text.secondary',
+      }}
+    >
       {children}
     </Typography>
   );
@@ -239,9 +243,13 @@ function Fixed({ children }: { children: ReactNode }) {
   return (
     <>
       {children}{' '}
-      <Typography component="span" variant="caption" sx={{
-        color: "text.secondary"
-      }}>
+      <Typography
+        component="span"
+        variant="caption"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
         (fixed)
       </Typography>
     </>

@@ -37,7 +37,10 @@ describe('receipt polling constants', () => {
       receiptPollUntil: '2026-09-10T14:32:00.000Z',
     } satisfies Pick<ChequebookOperation, 'receiptCheckedAt' | 'receiptPollUntil'>;
     assert.equal(operation.receiptPollUntil, '2026-09-10T14:32:00.000Z');
-    const unpolled = { receiptCheckedAt: null, receiptPollUntil: null } satisfies Pick<ChequebookOperation, 'receiptCheckedAt' | 'receiptPollUntil'>;
+    const unpolled = { receiptCheckedAt: null, receiptPollUntil: null } satisfies Pick<
+      ChequebookOperation,
+      'receiptCheckedAt' | 'receiptPollUntil'
+    >;
     assert.equal(unpolled.receiptPollUntil, null);
   });
 });

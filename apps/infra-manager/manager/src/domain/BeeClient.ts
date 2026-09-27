@@ -102,16 +102,11 @@ export class BeeClient {
   }
 
   async getStamp(batchId: string): Promise<BeeStamp> {
-    return this.request<BeeStamp>(
-      'GET',
-      `/stamps/${encodeURIComponent(batchId)}`,
-    );
+    return this.request<BeeStamp>('GET', `/stamps/${encodeURIComponent(batchId)}`);
   }
 
   async buyStamp(input: BuyStampInput): Promise<{ batchID: string }> {
-    const query = input.label
-      ? `?label=${encodeURIComponent(input.label)}`
-      : '';
+    const query = input.label ? `?label=${encodeURIComponent(input.label)}` : '';
     const headers: Record<string, string> = {};
     if (input.immutable !== undefined) {
       headers.immutable = input.immutable ? 'true' : 'false';
@@ -129,10 +124,7 @@ export class BeeClient {
    * holds, paid from the node's wallet. That buys the batch life and changes
    * nothing else.
    */
-  async topUpStamp(
-    batchId: string,
-    amountPerChunkPlur: string,
-  ): Promise<BeeStampTransaction> {
+  async topUpStamp(batchId: string, amountPerChunkPlur: string): Promise<BeeStampTransaction> {
     return this.request<BeeStampTransaction>(
       'PATCH',
       `/stamps/topup/${encodeURIComponent(batchId)}/${encodeURIComponent(amountPerChunkPlur)}`,
@@ -215,10 +207,7 @@ export class BeeClient {
     const text = await res.text();
     if (!res.ok) {
       const detail = text.trim().slice(0, 500) || `HTTP ${res.status}`;
-      throw new BeeHttpError(
-        res.status,
-        `bee ${method} ${path} → ${res.status}: ${detail}`,
-      );
+      throw new BeeHttpError(res.status, `bee ${method} ${path} → ${res.status}: ${detail}`);
     }
 
     try {

@@ -97,17 +97,11 @@ export function createEngineRouter(
       });
       const name = req.params.name as string;
       const rpcEndpoint = await profileService.rpcEndpointForRedaction(name);
-      const text = await containers.logs(
-        name,
-        req.params.service as string,
-        tail ?? DEFAULT_LOG_LINES,
-      );
+      const text = await containers.logs(name, req.params.service as string, tail ?? DEFAULT_LOG_LINES);
       // Bee prints its chain endpoint on every start, and again when it cannot
       // reach the chain, so a key in that URL's path would land on the page
       // rendering this. The host stays, which is what tells two endpoints apart.
-      res
-        .type(TEXT_PLAIN)
-        .send(redactEndpoints(text, [managerRpcEndpoint, rpcEndpoint]));
+      res.type(TEXT_PLAIN).send(redactEndpoints(text, [managerRpcEndpoint, rpcEndpoint]));
     }),
   );
 

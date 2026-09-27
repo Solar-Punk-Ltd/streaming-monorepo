@@ -8,11 +8,7 @@
  */
 import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 
-import {
-  DEFAULT_RPC_ENDPOINT_SOURCE,
-  PLUR_PER_BZZ,
-  stampBucketCapacity,
-} from '@streaming-infra-manager/common';
+import { DEFAULT_RPC_ENDPOINT_SOURCE, PLUR_PER_BZZ, stampBucketCapacity } from '@streaming-infra-manager/common';
 
 import { commitOfVersion } from './mock-versions.mjs';
 
@@ -41,16 +37,14 @@ export const RUNGS = [
 ];
 
 /** A BZZ amount as the PLUR string bee would answer with. */
-export const bzz = (whole, hundredths = 0) =>
-  String((PLUR_PER_BZZ * BigInt(whole * 100 + hundredths)) / 100n);
+export const bzz = (whole, hundredths = 0) => String((PLUR_PER_BZZ * BigInt(whole * 100 + hundredths)) / 100n);
 
 export const hex = (bytes) => randomBytes(bytes).toString('hex');
 /** A readable fake SRT passphrase, distinct per run like every other secret here. */
 export const passphrase = (label) => `${label}-${hex(6)}`;
 // MOCK_HOST_PASSPHRASE='' runs the mock as a host without a shared passphrase,
 // which is the host the wizard's passphrase default is about.
-export const HOST_PASSPHRASE =
-  process.env.MOCK_HOST_PASSPHRASE === '' ? null : passphrase('lab-host');
+export const HOST_PASSPHRASE = process.env.MOCK_HOST_PASSPHRASE === '' ? null : passphrase('lab-host');
 const key = () => `0x${hex(32)}`;
 const address = () => `0x${hex(20)}`;
 const batchId = () => hex(32);
@@ -101,7 +95,6 @@ export const CPU_BY_SERVICE = {
   'bee-gateway': 6,
 };
 
-
 // Slots and group ids are handed out here, because the seed takes the first of
 // them and every later create has to continue the same sequence.
 let nextSlot = 1;
@@ -144,9 +137,7 @@ export function setSrtPassphrase(profile, passphrase) {
 }
 
 export function servicesOf(profile) {
-  return profile.components?.length
-    ? profile.components
-    : (KIND_SERVICES[profile.kind] ?? []);
+  return profile.components?.length ? profile.components : (KIND_SERVICES[profile.kind] ?? []);
 }
 
 function portsFor(service, slot) {
@@ -231,8 +222,7 @@ export function needsStamp(profile) {
 }
 
 export function refreshDerived(profile) {
-  profile.pendingStamp =
-    needsStamp(profile) && !profile.stamp_id && !profile.bee_publishers;
+  profile.pendingStamp = needsStamp(profile) && !profile.stamp_id && !profile.bee_publishers;
   profile.updated_at = new Date().toISOString();
 }
 
@@ -256,12 +246,7 @@ export function nodeIfKnown(name) {
   return state.nodes.get(name) ?? null;
 }
 
-export function makeChequebook({
-  total = '0',
-  available = total,
-  totalSent = '0',
-  totalReceived = '0',
-} = {}) {
+export function makeChequebook({ total = '0', available = total, totalSent = '0', totalReceived = '0' } = {}) {
   return { address: address(), total, available, totalSent, totalReceived };
 }
 
@@ -269,14 +254,7 @@ export function makeChequebook({
 const BUCKET_DEPTH = 16;
 
 /** @param full whether the fullest bucket holds all a bucket can, which an immutable batch then refuses past. */
-export function makeStamp({
-  depth,
-  ttl,
-  usable = true,
-  amount = '48000000',
-  immutable = false,
-  full = false,
-}) {
+export function makeStamp({ depth, ttl, usable = true, amount = '48000000', immutable = false, full = false }) {
   const bucketCapacity = stampBucketCapacity({ depth, bucketDepth: BUCKET_DEPTH });
   return {
     batchID: batchId(),
@@ -365,9 +343,9 @@ export function seed() {
     notes: 'Encodes the ladder and publishes to the bare-metal pool.',
     private_key: key(),
     public_key: address(),
-    bee_publishers: RUNGS.map(
-      (rung, index) => `${rung.name}@http://10.0.0.7:${10015 + index * 10}<${batchId()}>`,
-    ).join(' '),
+    bee_publishers: RUNGS.map((rung, index) => `${rung.name}@http://10.0.0.7:${10015 + index * 10}<${batchId()}>`).join(
+      ' ',
+    ),
     // One deployment starts with the engine tuned away from the stack defaults,
     // so the Engine card has something other than "default" to render.
     engine_settings: { ABR_PRESET: 'faster', HLS_FRAGMENT: '2' },
@@ -381,8 +359,7 @@ export function seed() {
     notes: 'Experiment: player served from the same box as ingest.',
     feed_owner: mainAddress,
     status: 'ERROR',
-    last_error:
-      'deploy.sh exited 1: bind for 0.0.0.0:10052 failed, port is already allocated',
+    last_error: 'deploy.sh exited 1: bind for 0.0.0.0:10052 failed, port is already allocated',
     last_error_at: '2026-09-05T07:58:00Z',
     created_at: '2026-09-05T07:55:00Z',
   });
@@ -403,15 +380,7 @@ export function seed() {
   oldNode.stamps = [deadStamp];
   oldDemo.stamp_id = deadStamp.batchID;
 
-  state.profiles.push(
-    mainStage,
-    backupStage,
-    fieldUnit,
-    viewerEu,
-    abrGcp,
-    edgeTest,
-    oldDemo,
-  );
+  state.profiles.push(mainStage, backupStage, fieldUnit, viewerEu, abrGcp, edgeTest, oldDemo);
 
   const loadtest = {
     id: nextGroupId++,

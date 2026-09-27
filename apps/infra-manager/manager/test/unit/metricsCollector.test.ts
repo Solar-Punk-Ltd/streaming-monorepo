@@ -71,16 +71,15 @@ function containerStats(): Docker.ContainerStats {
   } as unknown as Docker.ContainerStats;
 }
 
-const never = <T,>(): Promise<T> => new Promise<T>(() => undefined);
+const never = <T>(): Promise<T> => new Promise<T>(() => undefined);
 
 /** Long enough to answer within the deadline one call carries, and not twice over. */
 const SLOW_STATS_MS = 25;
 
-const nine = (): Docker.ContainerInfo[] =>
-  Array.from({ length: 9 }, (_unused, index) => containerInfo(`srs-${index}`));
+const nine = (): Docker.ContainerInfo[] => Array.from({ length: 9 }, (_unused, index) => containerInfo(`srs-${index}`));
 
 /** Settles after the event loop has turned, so calls made together overlap. */
-const soon = <T,>(value: T, afterMs: number): Promise<T> =>
+const soon = <T>(value: T, afterMs: number): Promise<T> =>
   new Promise<T>((resolve) => setTimeout(() => resolve(value), afterMs));
 
 class FakeDockerEngine implements MetricsDockerEngine {
@@ -137,11 +136,7 @@ class FakeHost implements HostSampler {
   }
 }
 
-async function waitFor(
-  ready: () => boolean,
-  timeoutMs: number,
-  what: string,
-): Promise<void> {
+async function waitFor(ready: () => boolean, timeoutMs: number, what: string): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!ready()) {
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
@@ -151,16 +146,8 @@ async function waitFor(
 
 describe('MetricsCollector', () => {
   it('leaves out a container whose stats never answer and samples again', async () => {
-    const docker = new FakeDockerEngine(
-      [containerInfo('srs'), containerInfo('wedged')],
-      new Set(['id-wedged']),
-    );
-    const collector = new MetricsCollector(
-      docker,
-      new FakeHost(),
-      DOCKER_TIMEOUT_MS * 3,
-      DOCKER_TIMEOUT_MS,
-    );
+    const docker = new FakeDockerEngine([containerInfo('srs'), containerInfo('wedged')], new Set(['id-wedged']));
+    const collector = new MetricsCollector(docker, new FakeHost(), DOCKER_TIMEOUT_MS * 3, DOCKER_TIMEOUT_MS);
 
     const seen: MetricsSnapshot[] = [];
     const unsubscribe = collector.subscribe((snapshot) => seen.push(snapshot));

@@ -18,11 +18,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 
-import {
-  type EngineOverview,
-  SRS_SERVICE,
-  STREAM_UPLOADER_SERVICE,
-} from '@streaming-infra-manager/common';
+import { type EngineOverview, SRS_SERVICE, STREAM_UPLOADER_SERVICE } from '@streaming-infra-manager/common';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 
 // envUtils reads SHLS_ROOT once when it loads, and ProfileService reads the
@@ -47,10 +43,7 @@ type Harness = ReturnType<typeof harnessFor>;
 
 async function engineApp(): Promise<{ app: EngineTestApp; harness: Harness }> {
   const harness = harnessFor(profileRow());
-  const app = await startEngineTestApp(
-    harness.service,
-    new ContainerControl(new EventBus(), fakeDocker([])),
-  );
+  const app = await startEngineTestApp(harness.service, new ContainerControl(new EventBus(), fakeDocker([])));
   return { app, harness };
 }
 
@@ -68,12 +61,7 @@ describe('PUT /profiles/:name/engine-settings with an SRT latency', () => {
   });
 
   it('stores it and recreates the engine that reads it', async () => {
-    const res = await callEngine(
-      accepting.app,
-      'PUT',
-      '/profiles/stream1/engine-settings',
-      { SRT_LATENCY: '3000' },
-    );
+    const res = await callEngine(accepting.app, 'PUT', '/profiles/stream1/engine-settings', { SRT_LATENCY: '3000' });
 
     assert.equal(res.status, 202);
     assert.deepEqual(accepting.harness.stored().engine_settings, { SRT_LATENCY: '3000' });
@@ -81,12 +69,7 @@ describe('PUT /profiles/:name/engine-settings with an SRT latency', () => {
   });
 
   it('refuses a value outside the bounds, and starts nothing', async () => {
-    const res = await callEngine(
-      refusing.app,
-      'PUT',
-      '/profiles/stream1/engine-settings',
-      { SRT_LATENCY: '20000' },
-    );
+    const res = await callEngine(refusing.app, 'PUT', '/profiles/stream1/engine-settings', { SRT_LATENCY: '20000' });
 
     assert.equal(res.status, 400);
     assert.match(JSON.stringify(res.body), /SRT latency must be at most 10000/);
@@ -99,8 +82,7 @@ describe('GET /profiles/:name/engine for an SRS deployment', () => {
   it('offers the SRT latency beside the segment settings', async () => {
     const { app } = await engineApp();
     try {
-      const overview = (await callEngine(app, 'GET', '/profiles/stream1/engine'))
-        .body as EngineOverview;
+      const overview = (await callEngine(app, 'GET', '/profiles/stream1/engine')).body as EngineOverview;
 
       const field = overview.fields.find((candidate) => candidate.key === 'SRT_LATENCY');
       assert.ok(field, 'the Engine card is handed no SRT latency field');
@@ -163,11 +145,9 @@ describe('what a deploy hands SRS for the SRT latency', () => {
   });
 
   it('hands SRS what the deployment stored over both', async () => {
-    const { file, snapshot } = await deployed(
-      'latency-stored',
-      `${BASE_ENV}SRT_LATENCY=500\n`,
-      { SRT_LATENCY: '3000' },
-    );
+    const { file, snapshot } = await deployed('latency-stored', `${BASE_ENV}SRT_LATENCY=500\n`, {
+      SRT_LATENCY: '3000',
+    });
 
     assert.match(file, /^SRT_LATENCY=3000$/m);
     assert.equal(snapshot?.SRT_LATENCY, '3000');
@@ -180,7 +160,8 @@ describe('what a deploy hands SRS for the SRT latency', () => {
  * 120 without it, whatever `latency` says.
  */
 describe('GET /profiles/:name/engine for a deployment with a config file of its own', () => {
-  const FIXED_SRS_TEMPLATE = 'srt_server {\n    enabled on;\n    latency SRT_LATENCY_PLACEHOLDER;\n    recvlatency SRT_LATENCY_PLACEHOLDER;\n}\n';
+  const FIXED_SRS_TEMPLATE =
+    'srt_server {\n    enabled on;\n    latency SRT_LATENCY_PLACEHOLDER;\n    recvlatency SRT_LATENCY_PLACEHOLDER;\n}\n';
 
   before(() => {
     mkdirSync(join(root, 'engines', 'srs'), { recursive: true });
@@ -192,10 +173,7 @@ describe('GET /profiles/:name/engine for a deployment with a config file of its 
       profileRow({ has_engine_config: true, engine_settings: { SRT_LATENCY: '3000' } }),
     ]);
     harness.profiles.engineConfigs.set('stream1', config);
-    const app = await startEngineTestApp(
-      harness.service,
-      new ContainerControl(new EventBus(), fakeDocker([])),
-    );
+    const app = await startEngineTestApp(harness.service, new ContainerControl(new EventBus(), fakeDocker([])));
     try {
       return (await callEngine(app, 'GET', '/profiles/stream1/engine')).body as EngineOverview;
     } finally {
@@ -208,7 +186,11 @@ describe('GET /profiles/:name/engine for a deployment with a config file of its 
 
     assert.equal(overview.effective.SRT_LATENCY, '120', 'not the stored 3000, which SRS never applies here');
     assert.deepEqual(overview.observations.SRT_LATENCY, {
-      status: 'known', source: 'built-in', value: '120', environment: 'none', reason: 'latency-without-recvlatency',
+      status: 'known',
+      source: 'built-in',
+      value: '120',
+      environment: 'none',
+      reason: 'latency-without-recvlatency',
     });
     assert.ok(overview.notInConfig.includes('SRT_LATENCY'));
   });
@@ -230,19 +212,15 @@ describe('GET /profiles/:name/engine for a deployment with a config file of its 
  */
 describe('GET /profiles/:name/engine for a deployment that runs its version template', () => {
   const V31_SRS_TEMPLATE = 'srt_server {\n    enabled on;\n    latency SRT_LATENCY_PLACEHOLDER;\n}\n';
-  const FIXED_SRS_TEMPLATE = 'srt_server {\n    enabled on;\n    latency SRT_LATENCY_PLACEHOLDER;\n    recvlatency SRT_LATENCY_PLACEHOLDER;\n}\n';
+  const FIXED_SRS_TEMPLATE =
+    'srt_server {\n    enabled on;\n    latency SRT_LATENCY_PLACEHOLDER;\n    recvlatency SRT_LATENCY_PLACEHOLDER;\n}\n';
   const V2_SRS_TEMPLATE = 'srt_server {\n    enabled on;\n    listen 10080;\n    latency 200;\n    tlpktdrop on;\n}\n';
 
   async function overviewOn(templateText: string, settings: Record<string, string> = {}): Promise<EngineOverview> {
     mkdirSync(join(root, 'engines', 'srs'), { recursive: true });
     writeFileSync(join(root, 'engines', 'srs', 'srs.conf.template'), templateText, 'utf8');
-    const harness = profileServiceHarness([
-      profileRow({ has_engine_config: false, engine_settings: settings }),
-    ]);
-    const app = await startEngineTestApp(
-      harness.service,
-      new ContainerControl(new EventBus(), fakeDocker([])),
-    );
+    const harness = profileServiceHarness([profileRow({ has_engine_config: false, engine_settings: settings })]);
+    const app = await startEngineTestApp(harness.service, new ContainerControl(new EventBus(), fakeDocker([])));
     try {
       return (await callEngine(app, 'GET', '/profiles/stream1/engine')).body as EngineOverview;
     } finally {
@@ -253,9 +231,17 @@ describe('GET /profiles/:name/engine for a deployment that runs its version temp
   it("shows SRS's own 120 on a version whose template fills only latency, whatever is stored", async () => {
     const overview = await overviewOn(V31_SRS_TEMPLATE, { SRT_LATENCY: '3000' });
 
-    assert.equal(overview.effective.SRT_LATENCY, '120', 'not the stored 3000, which this version never hands SRS for ingest');
+    assert.equal(
+      overview.effective.SRT_LATENCY,
+      '120',
+      'not the stored 3000, which this version never hands SRS for ingest',
+    );
     assert.deepEqual(overview.observations.SRT_LATENCY, {
-      status: 'known', source: 'built-in', value: '120', environment: 'none', reason: 'version-without-recvlatency',
+      status: 'known',
+      source: 'built-in',
+      value: '120',
+      environment: 'none',
+      reason: 'version-without-recvlatency',
     });
     assert.ok(overview.notInConfig.includes('SRT_LATENCY'));
     assert.equal(overview.observations.HLS_WINDOW.source, 'stack', 'the other settings still read as the environment');
@@ -280,7 +266,11 @@ describe('GET /profiles/:name/engine for a deployment that runs its version temp
 
     assert.equal(overview.effective.SRT_LATENCY, '120', 'the 2000 in the env file is read by nothing on this version');
     assert.deepEqual(overview.observations.SRT_LATENCY, {
-      status: 'known', source: 'built-in', value: '120', environment: 'none', reason: 'version-without-setting',
+      status: 'known',
+      source: 'built-in',
+      value: '120',
+      environment: 'none',
+      reason: 'version-without-setting',
     });
     assert.ok(overview.notInConfig.includes('SRT_LATENCY'));
   });

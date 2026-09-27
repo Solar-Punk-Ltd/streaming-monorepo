@@ -10,12 +10,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  effectiveNodeMode,
-  isLightGateway,
-  nodeModeProblem,
-  shippedNodeMode,
-} from './nodeMode.js';
+import { effectiveNodeMode, isLightGateway, nodeModeProblem, shippedNodeMode } from './nodeMode.js';
 
 const STREAMER = { kind: 'streamer' };
 const VIEWER = { kind: 'viewer' };
@@ -31,10 +26,7 @@ describe('effectiveNodeMode', () => {
 
   it('takes the mode the profile names over the shipped one', () => {
     assert.equal(effectiveNodeMode({ ...VIEWER, node_mode: 'light' }), 'light');
-    assert.equal(
-      effectiveNodeMode({ ...POOL_MEMBER, node_mode: 'ultra-light' }),
-      'ultra-light',
-    );
+    assert.equal(effectiveNodeMode({ ...POOL_MEMBER, node_mode: 'ultra-light' }), 'ultra-light');
   });
 
   it('answers the shipped mode per service list', () => {
@@ -57,21 +49,12 @@ describe('nodeModeProblem', () => {
   it('refuses a bee-uploader asked to run with no chain', () => {
     // An ultra-light node has no chequebook, so it cannot pay for a stamp and
     // cannot upload. The uploader would start and land nothing.
-    assert.equal(
-      nodeModeProblem({ ...STREAMER, node_mode: 'ultra-light' }),
-      'an ultra-light node cannot upload',
-    );
-    assert.equal(
-      nodeModeProblem({ ...POOL_MEMBER, node_mode: 'ultra-light' }),
-      'an ultra-light node cannot upload',
-    );
+    assert.equal(nodeModeProblem({ ...STREAMER, node_mode: 'ultra-light' }), 'an ultra-light node cannot upload');
+    assert.equal(nodeModeProblem({ ...POOL_MEMBER, node_mode: 'ultra-light' }), 'an ultra-light node cannot upload');
   });
 
   it('says nothing about a deployment that runs no Bee node of its own', () => {
-    assert.equal(
-      nodeModeProblem({ kind: 'abr-uploader', node_mode: 'ultra-light' }),
-      null,
-    );
+    assert.equal(nodeModeProblem({ kind: 'abr-uploader', node_mode: 'ultra-light' }), null);
   });
 });
 

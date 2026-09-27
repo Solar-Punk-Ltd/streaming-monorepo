@@ -31,7 +31,10 @@ describe('changedRanges', () => {
       path: 'apps/hls-stream/packages/stream-uploader/src/uploader.ts',
       hunks: ['@@ -10,2 +10,3 @@', '@@ -40 +41 @@'],
     });
-    assert.deepEqual(changedRanges(text, uploader), new Map([['packages/stream-uploader/src/uploader.ts', ['10-12', '41-41']]]));
+    assert.deepEqual(
+      changedRanges(text, uploader),
+      new Map([['packages/stream-uploader/src/uploader.ts', ['10-12', '41-41']]]),
+    );
   });
 
   it('leaves out a pure deletion, which has no line left to mutate', () => {
@@ -58,7 +61,10 @@ describe('mutateArgument', () => {
       ['packages/shared/src/a.ts', ['1-2', '9-9']],
       ['packages/shared/src/b.ts', ['4-4']],
     ]);
-    assert.equal(mutateArgument(ranges), 'packages/shared/src/a.ts:1-2,packages/shared/src/a.ts:9-9,packages/shared/src/b.ts:4-4');
+    assert.equal(
+      mutateArgument(ranges),
+      'packages/shared/src/a.ts:1-2,packages/shared/src/a.ts:9-9,packages/shared/src/b.ts:4-4',
+    );
   });
 });
 

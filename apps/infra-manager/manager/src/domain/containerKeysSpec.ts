@@ -23,9 +23,7 @@ import { digestOf, isRecordedInClear, newRecordSalt } from './settings/runningRe
  * `ProfileService.updateEngineSettings` reads the same list to decide which
  * containers a saved change has to recreate.
  */
-export const UPLOADER_ENGINE_SETTING_KEYS: readonly string[] = [
-  'OME_HLS_POLL_INTERVAL_MS',
-];
+export const UPLOADER_ENGINE_SETTING_KEYS: readonly string[] = ['OME_HLS_POLL_INTERVAL_MS'];
 
 /**
  * Engine settings that BOTH the engine and the uploader read, so a change to one

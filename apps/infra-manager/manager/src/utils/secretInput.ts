@@ -24,20 +24,13 @@ class HidableOutput extends Writable {
     super();
   }
 
-  override _write(
-    chunk: Buffer,
-    _encoding: BufferEncoding,
-    callback: (error?: Error | null) => void,
-  ): void {
+  override _write(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
     if (!this.hidden) this.destination.write(chunk);
     callback();
   }
 }
 
-export function promptSecret(
-  prompt: string,
-  streams: SecretInputStreams = {},
-): Promise<string> {
+export function promptSecret(prompt: string, streams: SecretInputStreams = {}): Promise<string> {
   const echo = streams.echo ?? process.stdout;
   const output = new HidableOutput(echo);
   const rl = createInterface({
@@ -62,12 +55,12 @@ export function promptSecret(
  * The whole of stdin as the secret, minus one trailing newline, which is what
  * `op read ... | ...` and `echo ... |` both add.
  */
-export async function readSecretFromStdin(
-  input: NodeJS.ReadableStream = process.stdin,
-): Promise<string> {
+export async function readSecretFromStdin(input: NodeJS.ReadableStream = process.stdin): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of input) {
     chunks.push(typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk);
   }
-  return Buffer.concat(chunks).toString('utf8').replace(/\r?\n$/, '');
+  return Buffer.concat(chunks)
+    .toString('utf8')
+    .replace(/\r?\n$/, '');
 }

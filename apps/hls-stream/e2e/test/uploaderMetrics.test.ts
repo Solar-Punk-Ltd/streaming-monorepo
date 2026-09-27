@@ -225,7 +225,7 @@ describe('the scrape program, run', () => {
         ['-e', uploaderMetricsScript()],
         { env: { API_PORT: String(port), API_AUTH_TOKEN: TOKEN }, timeout: 20_000 },
         (error, stdout, stderr) => {
-          const status = error === null ? 0 : (error as NodeJS.ErrnoException & { code?: number }).code ?? null;
+          const status = error === null ? 0 : ((error as NodeJS.ErrnoException & { code?: number }).code ?? null);
           resolve({ status: typeof status === 'number' ? status : null, stdout, stderr });
         },
       );

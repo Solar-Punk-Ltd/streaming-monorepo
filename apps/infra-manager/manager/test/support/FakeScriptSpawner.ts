@@ -1,10 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-import type {
-  RunHandle,
-  RunOptions,
-  ScriptSpawner,
-} from '../../src/domain/ScriptRunner.js';
+import type { RunHandle, RunOptions, ScriptSpawner } from '../../src/domain/ScriptRunner.js';
 
 export interface SpawnedScript {
   script: string;

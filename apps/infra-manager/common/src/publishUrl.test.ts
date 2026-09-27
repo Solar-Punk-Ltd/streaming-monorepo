@@ -32,14 +32,8 @@ describe('classifyPublishUrl', () => {
   // profiles.host holds a deploy target, "localhost, an ssh alias, or
   // user@host", and the user@ form is not a network address.
   it('rejects an ssh target used as an address', () => {
-    assert.equal(
-      classifyPublishUrl('http://deploy@192.0.2.58:10055'),
-      'ssh-target',
-    );
-    assert.equal(
-      classifyPublishUrl('http://deploy:pw@192.0.2.58:10055'),
-      'ssh-target',
-    );
+    assert.equal(classifyPublishUrl('http://deploy@192.0.2.58:10055'), 'ssh-target');
+    assert.equal(classifyPublishUrl('http://deploy:pw@192.0.2.58:10055'), 'ssh-target');
   });
 
   it('rejects what is not a URL at all', () => {
@@ -134,10 +128,7 @@ describe('an address that has to survive an env file', () => {
     });
 
     it(`refuses ${label} in a chain endpoint`, () => {
-      assert.ok(
-        rpcEndpointProblem(value),
-        `${label} was accepted as a chain endpoint`,
-      );
+      assert.ok(rpcEndpointProblem(value), `${label} was accepted as a chain endpoint`);
     });
   }
 

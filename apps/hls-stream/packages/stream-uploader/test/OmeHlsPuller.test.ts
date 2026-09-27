@@ -258,7 +258,7 @@ describe('OmeHlsPuller injected fetcher (S0.6)', () => {
       // Segment payloads are always served: these tests are about playlist resolution, and an
       // unrouted segment would 404 and be skipped, which reads as a resolution failure instead.
       const route = routes[url] ?? (url.endsWith('.ts') ? {} : undefined);
-      const status = route ? route.status ?? 200 : 404;
+      const status = route ? (route.status ?? 200) : 404;
       return {
         status,
         ok: status >= 200 && status < 300,
@@ -508,11 +508,11 @@ describe('OmeHlsPuller segment loss (OBS-11)', () => {
           ok: true,
           status: 200,
           arrayBuffer: () => Promise.reject(new Error('aborted: socket hang up')),
-        } as unknown as Response),
+        }) as unknown as Response,
     },
     {
       name: 'an origin error status',
-      respond: async () => ({ ok: false, status: 503 } as unknown as Response),
+      respond: async () => ({ ok: false, status: 503 }) as unknown as Response,
     },
   ];
 
@@ -1081,7 +1081,7 @@ describe('OmeHlsPuller keepalive through an origin outage (CON-10)', () => {
   it('tells the orchestrator it is still trying on every poll a silent origin answers', async () => {
     const keptAlive: string[] = [];
     const fetcher = (async () =>
-      ({ ok: false, status: 404, text: async () => '' } as unknown as Response)) as unknown as Fetcher;
+      ({ ok: false, status: 404, text: async () => '' }) as unknown as Response) as unknown as Fetcher;
     const orchestrator = {
       handleSegment: () => ({ accepted: true }),
       handleSegmentLoss: () => true,
@@ -1197,7 +1197,7 @@ describe('OmeHlsPuller stopped mid-poll (CON-16)', () => {
   it('does halt on a 404 past the threshold while it is still running', async () => {
     const halts: string[] = [];
     const fetcher = (async () =>
-      ({ ok: false, status: 404, text: async () => '' } as unknown as Response)) as unknown as Fetcher;
+      ({ ok: false, status: 404, text: async () => '' }) as unknown as Response) as unknown as Fetcher;
     const orchestrator = {
       handleSegment: () => ({ accepted: true }),
       handleSegmentLoss: () => true,
@@ -1556,7 +1556,7 @@ describe('OmeHlsPuller unusable origin (OBS-6, OBS-18)', () => {
    */
   it('halts on a proxy answering 502, not only on a 404', async () => {
     const { halts } = makeCounters();
-    const fetcher = (async () => ({ ok: false, status: 502, text: async () => '' } as unknown as Response)) as Fetcher;
+    const fetcher = (async () => ({ ok: false, status: 502, text: async () => '' }) as unknown as Response) as Fetcher;
     const puller = new TrackedPuller('stream-test', 'app', 'stream', 'http://ome/hls', 1, makeOrchestratorStub(), {
       fetcher,
       haltAfterNotFoundMs: 0,
@@ -1667,7 +1667,7 @@ describe('OmeHlsPuller unusable origin (OBS-6, OBS-18)', () => {
    */
   it('keeps the ordinary interval while the outage is younger than the grace', async () => {
     const armed: ArmedPoll[] = [];
-    const fetcher = (async () => ({ ok: false, status: 404, text: async () => '' } as unknown as Response)) as Fetcher;
+    const fetcher = (async () => ({ ok: false, status: 404, text: async () => '' }) as unknown as Response) as Fetcher;
 
     const puller = new TrackedPuller(
       'stream-test',
@@ -1705,7 +1705,7 @@ describe('OmeHlsPuller unusable origin (OBS-6, OBS-18)', () => {
 
   it('slows a still-unusable origin only once the grace has run, and keeps it slowed', async () => {
     const armed: ArmedPoll[] = [];
-    const fetcher = (async () => ({ ok: false, status: 404, text: async () => '' } as unknown as Response)) as Fetcher;
+    const fetcher = (async () => ({ ok: false, status: 404, text: async () => '' }) as unknown as Response) as Fetcher;
 
     const startedAt = Date.now();
     const puller = new TrackedPuller(

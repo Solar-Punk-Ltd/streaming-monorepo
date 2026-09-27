@@ -20,8 +20,7 @@ export function ChangePasswordCard({ onChanged }: { onChanged: () => Promise<voi
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  const set = (field: keyof typeof EMPTY, value: string) =>
-    setForm((prev) => ({ ...prev, [field]: value }));
+  const set = (field: keyof typeof EMPTY, value: string) => setForm((prev) => ({ ...prev, [field]: value }));
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -46,15 +45,17 @@ export function ChangePasswordCard({ onChanged }: { onChanged: () => Promise<voi
     }
   };
 
-  const complete =
-    form.current !== '' && form.next !== '' && form.again !== '';
+  const complete = form.current !== '' && form.next !== '' && form.again !== '';
 
   return (
     <SectionCard title="Change my password">
       <Stack spacing={2} component="form" onSubmit={submit}>
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           This browser stays signed in. Every other one is signed out.
         </Typography>
 
@@ -92,9 +93,12 @@ export function ChangePasswordCard({ onChanged }: { onChanged: () => Promise<voi
 
         {error && <Alert severity="error">{error}</Alert>}
 
-        <Stack direction="row" sx={{
-          justifyContent: "flex-end"
-        }}>
+        <Stack
+          direction="row"
+          sx={{
+            justifyContent: 'flex-end',
+          }}
+        >
           <Button type="submit" variant="contained" disabled={pending || !complete}>
             {pending ? 'Changing' : 'Change password'}
           </Button>

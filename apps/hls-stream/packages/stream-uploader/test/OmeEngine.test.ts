@@ -1686,7 +1686,7 @@ describe('createOmeEngine admission decision (TEST-25)', () => {
 
   /** An origin that answers nothing, so no test here depends on a puller making progress. */
   const silentOrigin = (async () =>
-    ({ ok: false, status: 404, text: async () => '' } as Response)) as unknown as Fetcher;
+    ({ ok: false, status: 404, text: async () => '' }) as Response) as unknown as Fetcher;
 
   function makeEngine(failOpen = false): EnginePlugin {
     return trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, {

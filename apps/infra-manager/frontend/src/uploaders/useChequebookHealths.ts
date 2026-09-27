@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import {
-  type ChequebookHealth,
-  chequebookHealthFromPayload,
-} from '@streaming-infra-manager/common';
+import { type ChequebookHealth, chequebookHealthFromPayload } from '@streaming-infra-manager/common';
 
 import { ownsBeeNode } from '../deployments/readiness';
 import { isRunning } from '../deployments/shape';
@@ -35,9 +32,7 @@ const REFRESH_MS = 30_000;
  * Only running deployments are asked. A stopped one has nothing listening, so
  * the request could only ever fail.
  */
-export function useChequebookHealths(
-  profiles: Profile[] | null,
-): ChequebookHealths {
+export function useChequebookHealths(profiles: Profile[] | null): ChequebookHealths {
   const [healths, setHealths] = useState<ChequebookHealths>(new Map());
 
   const askable = (profiles ?? [])
@@ -61,14 +56,7 @@ export function useChequebookHealths(
         }),
       );
       if (cancelled) return;
-      setHealths(
-        new Map(
-          entries.filter(
-            (entry): entry is readonly [string, ChequebookHealth] =>
-              entry[1] !== null,
-          ),
-        ),
-      );
+      setHealths(new Map(entries.filter((entry): entry is readonly [string, ChequebookHealth] => entry[1] !== null)));
     };
 
     void askEveryone();

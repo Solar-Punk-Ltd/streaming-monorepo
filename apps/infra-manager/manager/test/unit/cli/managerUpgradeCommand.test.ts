@@ -38,21 +38,32 @@ interface CommandRun {
 }
 
 describe('manager:upgrade', () => {
-  let root: string; let versionsRoot: string; let mutableRoot: string;
-  let opened: number; let closed: number;
+  let root: string;
+  let versionsRoot: string;
+  let mutableRoot: string;
+  let opened: number;
+  let closed: number;
   let settings: ComposeUpgradeSettings | null;
   let bundled: BundledBuildOutcome;
-  let factoryFailure: Error | null; let overrides: Partial<ManagerUpgradeOperations>;
+  let factoryFailure: Error | null;
+  let overrides: Partial<ManagerUpgradeOperations>;
 
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 't04b-upgrade-command-'));
-    versionsRoot = join(root, 'versions'); mutableRoot = join(root, 'manager');
-    await mkdir(versionsRoot); await mkdir(mutableRoot);
-    opened = 0; closed = 0; settings = null;
+    versionsRoot = join(root, 'versions');
+    mutableRoot = join(root, 'manager');
+    await mkdir(versionsRoot);
+    await mkdir(mutableRoot);
+    opened = 0;
+    closed = 0;
+    settings = null;
     bundled = { state: 'ready', commit: PIN, buildId: PIN, problem: null };
-    factoryFailure = null; overrides = {};
+    factoryFailure = null;
+    overrides = {};
   });
-  afterEach(async () => { await rm(root, { recursive: true, force: true }); });
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
 
   function operations(): ManagerUpgradeOperations {
     return {
@@ -67,24 +78,41 @@ describe('manager:upgrade', () => {
 
   function argvWith(overrides: Record<string, string> = {}, switches: readonly string[] = []): string[] {
     const flags: Record<string, string> = {
-      '--manager-commit': MANAGER_COMMIT, '--manager-digest': MANAGER_DIGEST, '--image-id': IMAGE_ID,
-      '--project': 'manager', '--compose-file': join(mutableRoot, 'docker-compose.yml'),
-      '--mutable-root': mutableRoot, '--bundled-timeout': BUNDLED_TIMEOUT, ...overrides,
+      '--manager-commit': MANAGER_COMMIT,
+      '--manager-digest': MANAGER_DIGEST,
+      '--image-id': IMAGE_ID,
+      '--project': 'manager',
+      '--compose-file': join(mutableRoot, 'docker-compose.yml'),
+      '--mutable-root': mutableRoot,
+      '--bundled-timeout': BUNDLED_TIMEOUT,
+      ...overrides,
     };
     return [...Object.entries(flags).flat(), ...switches];
   }
 
   async function upgrade(argv: string[]): Promise<CommandRun> {
-    const stdout: string[] = []; const stderr: string[] = []; let error: Error | null = null;
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    let error: Error | null = null;
     try {
-      await runManagerUpgradeCommand(argv, { out: (line) => stdout.push(line), err: (line) => stderr.push(line) }, {
-        versionsRoot,
-        operations: (given) => {
-          opened += 1; settings = given;
-          if (factoryFailure) throw factoryFailure;
-          return { operations: { ...operations(), ...overrides }, close: async () => { closed += 1; } };
+      await runManagerUpgradeCommand(
+        argv,
+        { out: (line) => stdout.push(line), err: (line) => stderr.push(line) },
+        {
+          versionsRoot,
+          operations: (given) => {
+            opened += 1;
+            settings = given;
+            if (factoryFailure) throw factoryFailure;
+            return {
+              operations: { ...operations(), ...overrides },
+              close: async () => {
+                closed += 1;
+              },
+            };
+          },
         },
-      });
+      );
     } catch (thrown) {
       error = thrown as Error;
     }
@@ -149,7 +177,10 @@ describe('manager:upgrade', () => {
     const run = await upgrade([...argvWith(), '--shipment-id', '3f1c2b64-5a2e-4d7b-8c19-6a0f4d2e8b71']);
 
     assert.match(run.error?.message ?? '', /--shipment-id/);
-    assert.ok((run.error?.message ?? '').includes(MANAGER_UPGRADE_USAGE), 'the usage of this command comes with the refusal');
+    assert.ok(
+      (run.error?.message ?? '').includes(MANAGER_UPGRADE_USAGE),
+      'the usage of this command comes with the refusal',
+    );
     assert.equal(opened, 0);
   });
 
@@ -157,7 +188,10 @@ describe('manager:upgrade', () => {
     const run = await upgrade([...argvWith(), '--profile', 'public']);
 
     assert.match(run.error?.message ?? '', /--profile/);
-    assert.ok((run.error?.message ?? '').includes(MANAGER_UPGRADE_USAGE), 'the usage of this command comes with the refusal');
+    assert.ok(
+      (run.error?.message ?? '').includes(MANAGER_UPGRADE_USAGE),
+      'the usage of this command comes with the refusal',
+    );
     assert.equal(opened, 0);
   });
 
@@ -179,12 +213,19 @@ describe('manager:upgrade', () => {
     const run = await upgrade(argvWith({ '--compose-file': 'manager/docker-compose.yml' }));
 
     assert.match(run.error?.message ?? '', /--compose-file/);
-    assert.ok((run.error?.message ?? '').includes(MANAGER_UPGRADE_USAGE), 'the usage of this command comes with the refusal');
+    assert.ok(
+      (run.error?.message ?? '').includes(MANAGER_UPGRADE_USAGE),
+      'the usage of this command comes with the refusal',
+    );
     assert.equal(opened, 0, 'nothing on the host was opened');
   });
 
   it('refuses a compose file whose path walks up through itself', async () => {
-    const run = await upgrade(argvWith({ '--compose-file': join(mutableRoot, 'deploy', '..', 'docker-compose.yml') + '/../docker-compose.yml' }));
+    const run = await upgrade(
+      argvWith({
+        '--compose-file': join(mutableRoot, 'deploy', '..', 'docker-compose.yml') + '/../docker-compose.yml',
+      }),
+    );
 
     assert.match(run.error?.message ?? '', /--compose-file/);
     assert.equal(opened, 0);
@@ -203,7 +244,10 @@ describe('manager:upgrade', () => {
     Logger.getInstance().writeEverythingToStandardError();
     const written: string[] = [];
     const original = process.stdout.write;
-    process.stdout.write = ((chunk: string | Uint8Array) => { written.push(String(chunk)); return true; }) as typeof process.stdout.write;
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      written.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
     try {
       await runManagerUpgradeCommand(argvWith(), processStreams, {
         versionsRoot,
@@ -238,7 +282,11 @@ describe('manager:upgrade', () => {
       assert.deepEqual(JSON.parse(run.stdout[0]!).bundled, outcome);
       assert.match(run.error?.message ?? '', /bundled/i);
       assert.match(run.error?.message ?? '', /Versions page/);
-      assert.equal(existsSync(managerUpgradeGuardRootFor(versionsRoot)), false, 'the manager is up, so nothing is held for a person');
+      assert.equal(
+        existsSync(managerUpgradeGuardRootFor(versionsRoot)),
+        false,
+        'the manager is up, so nothing is held for a person',
+      );
       assert.deepEqual(run.stderr, [], 'and no retained guard is reported, because there is none');
     });
   }
@@ -264,7 +312,11 @@ describe('manager:upgrade', () => {
   });
 
   it('names the guard this run is still holding, and the phase it stopped in', async () => {
-    overrides = { verifyProject: async () => { throw new Error('synthetic health failure'); } };
+    overrides = {
+      verifyProject: async () => {
+        throw new Error('synthetic health failure');
+      },
+    };
 
     const run = await upgrade(argvWith());
 
@@ -281,8 +333,11 @@ describe('manager:upgrade', () => {
   it('names the retained directory and the phase it stopped in when an earlier upgrade still holds the host', async () => {
     const guard = managerUpgradeGuardRootFor(versionsRoot);
     await mkdir(guard, { mode: 0o700 });
-    await writeFile(join(guard, 'owner.json'),
-      JSON.stringify({ schema: 1, ownerId: MANAGER_COMMIT, request: {}, phase: HELD_PHASE }), { mode: 0o600 });
+    await writeFile(
+      join(guard, 'owner.json'),
+      JSON.stringify({ schema: 1, ownerId: MANAGER_COMMIT, request: {}, phase: HELD_PHASE }),
+      { mode: 0o600 },
+    );
 
     const run = await upgrade(argvWith());
 
@@ -302,7 +357,11 @@ describe('manager:upgrade', () => {
 
     assert.equal(run.error, null);
     assert.deepEqual(settings, {
-      versionsRoot, composeFile, bundledStackRoot: BUNDLED_STACK_ROOT, publicEdge: true, firstUse: false,
+      versionsRoot,
+      composeFile,
+      bundledStackRoot: BUNDLED_STACK_ROOT,
+      publicEdge: true,
+      firstUse: false,
       postgresVolume: MANAGER_POSTGRES_VOLUME,
       apiHealthUrl: `http://api:${config.port}/health`,
       timeouts: { bundledBuild: Number(BUNDLED_TIMEOUT) * 1000 },

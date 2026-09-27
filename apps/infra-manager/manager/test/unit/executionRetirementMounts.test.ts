@@ -26,7 +26,9 @@ beforeEach(async () => {
   store = new InMemoryExecutionRoots(executions, () => INSTANCE);
 });
 
-afterEach(async () => { await rm(root, { recursive: true, force: true }); });
+afterEach(async () => {
+  await rm(root, { recursive: true, force: true });
+});
 
 async function launched(services: string[]): Promise<ExecutionRootRecord> {
   const executionId = randomUUID();
@@ -50,27 +52,31 @@ async function launched(services: string[]): Promise<ExecutionRootRecord> {
   const copying = (await store.beginCopy(executionId))!;
   await store.markReady(executionId, copying.copyToken!, record.source.artifactDigest);
   await store.claimLaunch(executionId);
-  return store.records.find(row => row.executionId === executionId)!;
+  return store.records.find((row) => row.executionId === executionId)!;
 }
 
 function inspected(record: ExecutionRootRecord, service: string, id: string) {
   return {
     Id: id.repeat(64),
     State: { Status: 'running' },
-    Config: { Labels: {
-      'com.docker.compose.project': PROFILE,
-      'com.docker.compose.service': service,
-      'com.docker.compose.project.working_dir': `${record.root}/deploy`,
-    } },
-    Mounts: [{ Type: 'bind', Source: `${record.root}/engines/${service}/entrypoint.sh`, Destination: '/entrypoint.sh' }],
+    Config: {
+      Labels: {
+        'com.docker.compose.project': PROFILE,
+        'com.docker.compose.service': service,
+        'com.docker.compose.project.working_dir': `${record.root}/deploy`,
+      },
+    },
+    Mounts: [
+      { Type: 'bind', Source: `${record.root}/engines/${service}/entrypoint.sh`, Destination: '/entrypoint.sh' },
+    ],
   };
 }
 
 function reader(rows: Array<{ Id: string } & Record<string, unknown>>): ExecutionDockerReader {
   return {
     readDaemonId: async () => DAEMON,
-    listAllContainers: async () => rows.map(row => ({ Id: row.Id })),
-    inspectContainer: async id => rows.find(row => row.Id === id),
+    listAllContainers: async () => rows.map((row) => ({ Id: row.Id })),
+    inspectContainer: async (id) => rows.find((row) => row.Id === id),
   };
 }
 
@@ -78,10 +84,9 @@ describe('launched execution retirement', () => {
   it('keeps the full execution when an uploader-only success leaves its engine mounted', async () => {
     const full = await launched(['srs', 'stream-uploader']);
     const uploader = await launched(['stream-uploader']);
-    const service = new ExecutionRootService(store, executions, async () => reader([
-      inspected(full, 'srs', 'a'),
-      inspected(uploader, 'stream-uploader', 'b'),
-    ]));
+    const service = new ExecutionRootService(store, executions, async () =>
+      reader([inspected(full, 'srs', 'a'), inspected(uploader, 'stream-uploader', 'b')]),
+    );
 
     await service.retireSuperseded(PROFILE, { keep: 1 });
 
@@ -104,9 +109,7 @@ describe('launched execution retirement', () => {
     const working = await launched(['srs', 'stream-uploader']);
     await launched(['stream-uploader']);
     await launched(['stream-uploader']);
-    const service = new ExecutionRootService(store, executions, async () => reader([
-      inspected(working, 'srs', 'e'),
-    ]));
+    const service = new ExecutionRootService(store, executions, async () => reader([inspected(working, 'srs', 'e')]));
 
     await service.retireSuperseded(PROFILE, { keep: 2 });
 
@@ -150,10 +153,9 @@ describe('launched execution retirement', () => {
   it('retires the previous execution after every observed mount has moved', async () => {
     const previous = await launched(['srs', 'stream-uploader']);
     const current = await launched(['srs', 'stream-uploader']);
-    const service = new ExecutionRootService(store, executions, async () => reader([
-      inspected(current, 'srs', 'c'),
-      inspected(current, 'stream-uploader', 'd'),
-    ]));
+    const service = new ExecutionRootService(store, executions, async () =>
+      reader([inspected(current, 'srs', 'c'), inspected(current, 'stream-uploader', 'd')]),
+    );
 
     await service.retireSuperseded(PROFILE, { keep: 1 });
 
@@ -167,21 +169,21 @@ describe('launched execution retirement', () => {
     const managerApi = {
       Id: '9'.repeat(64),
       State: { Status: 'running' },
-      Config: { Labels: {
-        'com.docker.compose.project': 'manager',
-        'com.docker.compose.service': 'api',
-        'com.docker.compose.project.working_dir': '/home/solarpunk/streaming-infra-manager/manager',
-      } },
+      Config: {
+        Labels: {
+          'com.docker.compose.project': 'manager',
+          'com.docker.compose.service': 'api',
+          'com.docker.compose.project.working_dir': '/home/solarpunk/streaming-infra-manager/manager',
+        },
+      },
       Mounts: [
         { Type: 'bind', Source: dirname(executions), Destination: dirname(executions) },
         { Type: 'bind', Source: '/', Destination: '/host/rootfs' },
       ],
     };
-    const service = new ExecutionRootService(store, executions, async () => reader([
-      managerApi,
-      inspected(current, 'srs', '7'),
-      inspected(current, 'stream-uploader', '8'),
-    ]));
+    const service = new ExecutionRootService(store, executions, async () =>
+      reader([managerApi, inspected(current, 'srs', '7'), inspected(current, 'stream-uploader', '8')]),
+    );
 
     await service.retireSuperseded(PROFILE, { keep: 1 });
 
@@ -198,11 +200,9 @@ describe('launched execution retirement', () => {
       Config: { Labels: {} },
       Mounts: [{ Type: 'bind', Source: executions, Destination: '/data' }],
     };
-    const service = new ExecutionRootService(store, executions, async () => reader([
-      foreign,
-      inspected(current, 'srs', '4'),
-      inspected(current, 'stream-uploader', '5'),
-    ]));
+    const service = new ExecutionRootService(store, executions, async () =>
+      reader([foreign, inspected(current, 'srs', '4'), inspected(current, 'stream-uploader', '5')]),
+    );
 
     await service.retireSuperseded(PROFILE, { keep: 1 });
 

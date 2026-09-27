@@ -27,12 +27,8 @@ const DATA_PREFIX = 'data: ';
 
 export function parseScriptFrame(frame: string): ScriptEvent | null {
   const lines = frame.split('\n');
-  const event = lines
-    .find((line) => line.startsWith(EVENT_PREFIX))
-    ?.slice(EVENT_PREFIX.length);
-  const data = lines
-    .find((line) => line.startsWith(DATA_PREFIX))
-    ?.slice(DATA_PREFIX.length);
+  const event = lines.find((line) => line.startsWith(EVENT_PREFIX))?.slice(EVENT_PREFIX.length);
+  const data = lines.find((line) => line.startsWith(DATA_PREFIX))?.slice(DATA_PREFIX.length);
   if (!event || data === undefined) return null;
 
   const payload = parsePayload(data);

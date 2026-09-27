@@ -17,11 +17,21 @@ import { runEveryStep } from './teardown.mjs';
 test('every step runs, in order, even when the first one throws', async () => {
   const ran = [];
 
-  await assert.rejects(runEveryStep([
-    () => { ran.push('stop the Vite child'); throw new Error('the child was already gone'); },
-    () => { ran.push('write the evidence log'); },
-    async () => { ran.push('close the synthetic API'); },
-  ]), /the child was already gone/);
+  await assert.rejects(
+    runEveryStep([
+      () => {
+        ran.push('stop the Vite child');
+        throw new Error('the child was already gone');
+      },
+      () => {
+        ran.push('write the evidence log');
+      },
+      async () => {
+        ran.push('close the synthetic API');
+      },
+    ]),
+    /the child was already gone/,
+  );
 
   assert.deepEqual(ran, ['stop the Vite child', 'write the evidence log', 'close the synthetic API']);
 });
@@ -29,19 +39,31 @@ test('every step runs, in order, even when the first one throws', async () => {
 test('a step that rejects is caught the same way as one that throws', async () => {
   const ran = [];
 
-  await assert.rejects(runEveryStep([
-    () => Promise.reject(new Error('the log had nowhere to go')),
-    () => { ran.push('close the synthetic API'); },
-  ]), /the log had nowhere to go/);
+  await assert.rejects(
+    runEveryStep([
+      () => Promise.reject(new Error('the log had nowhere to go')),
+      () => {
+        ran.push('close the synthetic API');
+      },
+    ]),
+    /the log had nowhere to go/,
+  );
 
   assert.deepEqual(ran, ['close the synthetic API']);
 });
 
 test('the first failure is the one reported, since it is the one that explains the rest', async () => {
-  await assert.rejects(runEveryStep([
-    () => { throw new Error('the Vite child would not stop'); },
-    () => { throw new Error('and so its log was never written'); },
-  ]), /the Vite child would not stop/);
+  await assert.rejects(
+    runEveryStep([
+      () => {
+        throw new Error('the Vite child would not stop');
+      },
+      () => {
+        throw new Error('and so its log was never written');
+      },
+    ]),
+    /the Vite child would not stop/,
+  );
 });
 
 test('a teardown whose steps all passed reports nothing', async () => {

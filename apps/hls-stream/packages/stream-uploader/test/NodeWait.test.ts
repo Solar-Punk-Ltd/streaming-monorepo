@@ -457,7 +457,10 @@ describe('the reachability probe in front of the boot', () => {
  */
 describe('which node the report names', () => {
   class RefusalAboutANode extends Error {
-    constructor(message: string, readonly nodeUrl: string) {
+    constructor(
+      message: string,
+      readonly nodeUrl: string,
+    ) {
       super(message);
     }
   }
