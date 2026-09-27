@@ -25,7 +25,7 @@ const STACK_UPLOADER = project('stack-uploader', 'stack', 'app');
 const STACK_SHARED = project('stack-shared', 'stack', 'lib');
 const CONTRACTS = project('contracts', 'shared', 'lib');
 const CONTRACT_HELPERS = project('contract-helpers', 'shared', 'lib');
-const MOVE_CHECK = project('move-check', 'tools', 'app');
+const APP_WORKSPACE = project('app-workspace', 'tools', 'app');
 
 const EVERY_PROJECT = [
   ADMIN_BACKEND,
@@ -37,7 +37,7 @@ const EVERY_PROJECT = [
   STACK_SHARED,
   CONTRACTS,
   CONTRACT_HELPERS,
-  MOVE_CHECK,
+  APP_WORKSPACE,
 ];
 
 /** The problems a graph of every project above has, given only these dependencies. */
@@ -60,7 +60,7 @@ describe('findProblems: dependencies that keep to the boundaries', () => {
       ['admin-backend', 'contracts'],
       ['admin-common', 'contracts'],
       ['contracts', 'contract-helpers'],
-      ['move-check', 'contracts'],
+      ['app-workspace', 'contracts'],
     ]);
     assert.deepEqual(problems, []);
   });
@@ -103,14 +103,14 @@ describe("findProblems: a project depends on another scope's internals", () => {
   });
 
   it('names a tool that depends on an app', () => {
-    assert.deepEqual(problemsOf([['move-check', 'stack-uploader']]), [
-      dependencyProblem('move-check', 'stack-uploader', [RULES.APP_TO_APP, RULES.OTHER_SCOPE]),
+    assert.deepEqual(problemsOf([['app-workspace', 'stack-uploader']]), [
+      dependencyProblem('app-workspace', 'stack-uploader', [RULES.APP_TO_APP, RULES.OTHER_SCOPE]),
     ]);
   });
 
   it('names an app that depends on a tool', () => {
-    assert.deepEqual(problemsOf([['stack-uploader', 'move-check']]), [
-      dependencyProblem('stack-uploader', 'move-check', [RULES.APP_TO_APP, RULES.OTHER_SCOPE]),
+    assert.deepEqual(problemsOf([['stack-uploader', 'app-workspace']]), [
+      dependencyProblem('stack-uploader', 'app-workspace', [RULES.APP_TO_APP, RULES.OTHER_SCOPE]),
     ]);
   });
 
