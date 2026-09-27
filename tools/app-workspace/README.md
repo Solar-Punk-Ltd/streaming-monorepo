@@ -50,8 +50,7 @@ runs in. The root keeps it off.
 A cut writes nothing and says why when:
 
 - the output folder is inside the workspace, where a second `pnpm-workspace.yaml` would make that folder a workspace
-  of its own, which pnpm before 11.28 ignores without a word. `--in-export` allows it inside a git archive export, a
-  tree without `.git` that is thrown away after its build, and nowhere else
+  of its own, which pnpm before 11.28 ignores without a word
 - the output folder already holds a lockfile or a workspace file
 - the root or the app names no `packageManager`, or the two name different ones. A build from the app folder runs the
   app's pnpm, so it must be the root's
