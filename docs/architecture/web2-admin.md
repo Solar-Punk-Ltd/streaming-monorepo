@@ -90,6 +90,6 @@ Same as streaming-infra-manager, so the two codebases feel like one team's:
 - `apps/web2-admin/backend`: Express 5, `pg`, yup validation, SQL migrations in
   the repo run on startup, Node test runner through tsx (unit and integration).
 - `apps/web2-admin/frontend`: React 18, MUI, Vite. The console is modelled on
-  msrs-client (https://github.com/Solar-Punk-Ltd/msrs-client), which is the
-  admin UI operators use today.
+  msrs-client (https://github.com/Solar-Punk-Ltd/msrs-client), the deprecated
+  admin UI this console replaces.
 - Package scope `@streaming-monorepo/`.

@@ -184,7 +184,7 @@ section is the recipe, and edge.sh stays for hosts with no front door yet.
 
 First real run, 2026-09-25, on the GCP QA control host (the monitoring VM): both
 consoles deployed to loopback (manager 8080, web2-admin profile `qa` on 9091,
-because Prometheus has 9090 there), then `edge.sh --host=monitoring` twice, first
+because Prometheus has 9090 there), then `edge.sh --host=<control host>` twice, first
 with the manager's name alone while the admin name still pointed elsewhere, then
 with both. Each run validated the Caddyfile, recreated Caddy, proved both
 upstreams from the host, and saw valid certificates from outside within the

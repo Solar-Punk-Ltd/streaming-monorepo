@@ -177,7 +177,7 @@ describe("V9 — a viewer plays through the hole a writer's outage tears", { ski
     assert.equal(untrue, null, `the client told this viewer something untrue about their picture: ${untrue}`);
     console.log(
       `  observed, not asserted: the client ${
-        recovery.explainedTheFreeze ? 'explained the freeze' : 'said NOTHING while the picture was stopped (#100)'
+        recovery.explainedTheFreeze ? 'explained the freeze' : 'said NOTHING while the picture was stopped'
       }`,
     );
   });
