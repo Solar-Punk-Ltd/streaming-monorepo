@@ -7,11 +7,11 @@
 FROM node:22-alpine AS install
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+RUN corepack enable && corepack prepare pnpm@11.11.0+sha512.4463f65fd80ed80d69bc1d4bf163ee94f605c7380fc318bb5b2ebe15f8cd12d49c51a4d59e951b401e764d3b6ca751cbf51bc50ed7001a6bcb4935e684c34882 --activate
 
-# The workspace lockfile and the ROOT manifest, not the uploader's alone. `pnpm.overrides` in the
-# root manifest is where a provenance-checked pin lives, and the lockfile is the tree those checks
-# were run against. Installing from one manifest with no lockfile re-resolved every transitive range
+# The workspace lockfile, the ROOT manifest and the workspace file, not the uploader's manifest alone.
+# The workspace file's `overrides` are where a provenance-checked pin lives, and the lockfile is the
+# tree those checks were run against. Installing from one manifest with no lockfile re-resolved every transitive range
 # at build time, so the image shipped whatever the registry offered that day: measured 2026-09-05,
 # the override pinned axios at ^0.33.0, the workspace resolved 0.33.0 and the image ran 0.30.3.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -25,15 +25,17 @@ COPY packages/shared/package.json packages/shared/
 # Two passes, because only one of them refuses.
 #
 # `install --frozen-lockfile` is the gate. It exits ERR_PNPM_OUTDATED_LOCKFILE when a manifest has
-# drifted from the lockfile, which is what keeps the audited tree the tree that ships. `deploy` does
+# drifted from the lockfile, which is what keeps the audited tree the tree that ships. `deploy` did
 # not honour that flag on pnpm 9.12.0: measured against a manifest whose zod range had been moved off
 # the lockfile's, it re-resolved to the drifted version and exited 0, while `install` with the same
 # flag refused. So a deploy alone would reintroduce exactly the defect this file was rewritten for.
 #
 # `deploy` is then what makes the runtime stage one COPY. It writes a self-contained tree at a single
-# path, with no workspace symlinks to keep in step and no pnpm store to carry into the image.
+# path, with no workspace symlinks to keep in step and no pnpm store to carry into the image. It takes
+# `--legacy` because pnpm 10 and later deploy without it only from a workspace that injects its
+# packages, which this one does not, and the legacy deploy is the one pnpm 9 ran.
 RUN pnpm install --frozen-lockfile --prod --filter @swarm-hls-stream/stream-uploader \
- && pnpm --filter @swarm-hls-stream/stream-uploader --prod deploy /runtime
+ && pnpm --filter @swarm-hls-stream/stream-uploader --prod deploy --legacy /runtime
 
 # --- Runtime stage ------------------------------------------------------
 FROM node:22-alpine
