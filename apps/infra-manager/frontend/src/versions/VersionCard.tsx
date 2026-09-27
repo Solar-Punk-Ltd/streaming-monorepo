@@ -191,7 +191,9 @@ export function VersionCard({
                   checked={version.tested}
                   disabled={busy || cannotApprove}
                   onChange={(event) => onSetTested(event.target.checked)}
-                  inputProps={{ 'aria-label': `${version.name} tested` }}
+                  slotProps={{
+                    input: { 'aria-label': `${version.name} tested` }
+                  }}
                 />
               }
             />

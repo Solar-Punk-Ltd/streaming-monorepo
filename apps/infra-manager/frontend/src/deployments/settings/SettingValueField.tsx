@@ -147,7 +147,9 @@ function BooleanInput({ entry, value, disabled, problem, onChange }: FieldProps)
             size="small"
             checked={value === BOOLEAN_TRUE}
             onChange={(event) => onChange(event.target.checked ? BOOLEAN_TRUE : BOOLEAN_FALSE)}
-            inputProps={{ 'aria-label': entry.key }}
+            slotProps={{
+              input: { 'aria-label': entry.key }
+            }}
           />
         }
         label={
