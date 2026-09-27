@@ -199,16 +199,13 @@ describe('the manager upgrade against one Compose project', () => {
     };
   }
 
-  function operations(
-    options: { publicEdge?: boolean; firstUse?: boolean; health?: number[] } = {},
-  ): ComposeUpgradeOperations {
+  function operations(options: { firstUse?: boolean; health?: number[] } = {}): ComposeUpgradeOperations {
     const statuses = [...(options.health ?? [200])];
     return new ComposeUpgradeOperations(
       {
         versionsRoot,
         composeFile: COMPOSE_FILE,
         bundledStackRoot,
-        publicEdge: options.publicEdge ?? false,
         firstUse: options.firstUse ?? false,
         postgresVolume: MANAGER_POSTGRES_VOLUME,
         apiHealthUrl: HEALTH_URL,
@@ -571,28 +568,10 @@ describe('the manager upgrade against one Compose project', () => {
   });
 
   describe('starting the project', () => {
-    it('starts the public edge with the project when the deploy asked for it', async () => {
-      await operations({ publicEdge: true }).startProject(request);
-
-      assert.deepEqual(runner.seen, ['--profile public up -d --no-build --remove-orphans']);
-    });
-
-    it('removes the edge by name without a domain, and checks that it is gone', async () => {
-      runner.answer('--profile public ps -q edge', { stdout: '' });
-
+    it('brings the project up on the images the deploy built', async () => {
       await operations().startProject(request);
 
-      assert.deepEqual(runner.seen, [
-        'up -d --no-build --remove-orphans',
-        '--profile public rm -sf edge',
-        '--profile public ps -q edge',
-      ]);
-    });
-
-    it('refuses when the edge is still running with no domain set, because the host answers on 80 and 443', async () => {
-      runner.answer('--profile public ps -q edge', { stdout: 'c0ffee\n' });
-
-      await assert.rejects(operations().startProject(request), /80 and 443/);
+      assert.deepEqual(runner.seen, ['up -d --no-build --remove-orphans']);
     });
   });
 
@@ -605,13 +584,12 @@ describe('the manager upgrade against one Compose project', () => {
       runner.answer(INSPECT_API, { stdout: `${IMAGE_ID}\n` });
     }
 
-    it('waits for the api to answer its health check and for the edge to match the deploy', async () => {
+    it('waits for the api to answer its health check', async () => {
       scriptApiOfThisUpgrade();
-      runner.answer('--profile public ps -q edge', { stdout: '' });
 
       await operations({ health: [503, 200] }).verifyProject(request);
 
-      assert.deepEqual(runner.seen, ['ps -q api', INSPECT_API, '--profile public ps -q edge']);
+      assert.deepEqual(runner.seen, ['ps -q api', INSPECT_API]);
     });
 
     it('refuses when another deploy retagged the image between this build and this start', async () => {
@@ -636,20 +614,6 @@ describe('the manager upgrade against one Compose project', () => {
         assert.match(error.message, new RegExp(HEALTH_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
         return true;
       });
-    });
-
-    it('refuses when the edge is running and the deploy did not ask for it', async () => {
-      scriptApiOfThisUpgrade();
-      runner.answer('--profile public ps -q edge', { stdout: 'deadbeef\n' });
-
-      await assert.rejects(operations().verifyProject(request), /edge/i);
-    });
-
-    it('refuses when the deploy asked for the edge and it is not running', async () => {
-      scriptApiOfThisUpgrade();
-      runner.answer('--profile public ps -q edge', { stdout: '' });
-
-      await assert.rejects(operations({ publicEdge: true }).verifyProject(request), /edge/i);
     });
   });
 
@@ -686,7 +650,6 @@ describe('the manager upgrade against one Compose project', () => {
       runner.answer(API_CONTAINERS, { stdout: '' });
       runner.answer('ps -q api', { stdout: '' }, { stdout: `${API_CONTAINER}\n` });
       runner.answer(`docker inspect --format {{.Image}} ${API_CONTAINER}`, { stdout: `${IMAGE_ID}\n` });
-      runner.answer('--profile public ps -q edge', { stdout: '' });
     }
 
     it('finishes a first use run, whose own migration turns the empty schema into the current one', async () => {

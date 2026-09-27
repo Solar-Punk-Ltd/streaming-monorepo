@@ -361,10 +361,7 @@ admin.example.org {
   Encrypt's challenge and redirects everything else to https.
 - **Nothing else on 80 or 443.** Only one process per host can hold them.
   `edge.sh` refuses, naming it, when a container publishes either port, or
-  when something that is not a container listens there. The usual one is the
-  manager's own `public` edge (`manager-edge-1`): empty `MANAGER_DOMAIN` in the
-  manager's `manager/.env` and deploy the manager again, which removes it, and
-  put the manager's name in this edge's env file instead.
+  when something that is not a container listens there.
 - **The consoles, deployed.** `edge.sh` checks that each one answers on the
   host's loopback, so deploy them first.
 
@@ -405,9 +402,10 @@ The sample carries example.org names only.
 | `ACME_EMAIL`     | Contact address on the Let's Encrypt account. With it set, Caddy also lists ZeroSSL as a fallback authority.                   | empty   |
 
 At least one domain must be set, and a host that runs one console leaves the
-other empty. The manager's site is served only when `MANAGER_DOMAIN` is set
-here, and only proxied: this does not deploy, configure or restart the manager,
-which has its own repository and deploy script.
+other empty, so a host that runs the manager alone sets `MANAGER_DOMAIN` only.
+The manager's site is only proxied: this does not deploy, configure or restart
+the manager, which has its own deploy script, `apps/infra-manager/deploy/deploy.sh`.
+This edge is the manager's only HTTPS, since the manager has no edge of its own.
 
 The grammar:
 
