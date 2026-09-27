@@ -91,7 +91,7 @@ RUN apt-get update \
 # Pinned to the version the root manifest names, for the reason `Dockerfile.bench` records at
 # length: a corepack activation done as root at build time is invisible to the invoking user at run
 # time.
-ARG PNPM_VERSION=11.11.0
+ARG PNPM_VERSION=12.4.1
 RUN npm install -g "pnpm@${PNPM_VERSION}" && pnpm --version
 
 # The X server puts its socket here and cannot create the directory itself, because the container
