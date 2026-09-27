@@ -99,7 +99,7 @@ describe('in-copy.mjs', () => {
     const root = makeCheckout(t);
     const { seen } = listIn(t, root);
 
-    assert.equal(realpathSync(seen.cwd).startsWith(`${realpathSync(root)}${sep}`), false);
+    assert.equal(seen.cwd.startsWith(`${realpathSync(root)}${sep}`), false);
   });
 
   it("removes the copy after the command, and exits with the command's status", (t) => {
