@@ -1,8 +1,9 @@
 # The tests of the scripts under tools/, which serve the whole repository and
-# check the rest of it. Today that is the move-check kit, whose image
-# comparison is the proof for every pull request that changes how an image
-# builds, so a defect in it could report a false match on every later proof.
-# A script that lands under tools/ adds its own job here.
+# check the rest of it. The move-check kit's image comparison is the proof for
+# every pull request that changes how an image builds, so a defect in it could
+# report a false match on every later proof. The boundary check judges how the
+# projects depend on each other, so a defect in it could let a dependency
+# between apps through. A script that lands under tools/ adds its own job here.
 name: tools
 
 on:
@@ -38,4 +39,21 @@ jobs:
       # docker with a script, and one of them also renders a compose file
       # with the runner's own docker.
       - name: The kit's own tests
+        run: node --test
+
+  boundary-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tools/boundary-check
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      # Node's standard library alone, so there is nothing to install. The
+      # tests read a graph file Nx 23.2.1 wrote, kept as a fixture, so Nx is
+      # not needed here either.
+      - name: The boundary check's own tests
         run: node --test

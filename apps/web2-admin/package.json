@@ -1,5 +1,5 @@
 {
-  "name": "streaming-monorepo",
+  "name": "@streaming-monorepo/web2-admin",
   "private": true,
   "version": "0.1.0",
   "description": "Solar Punk multi-brand Swarm streaming platform: the Web2 admin layer and the packages around it.",
