@@ -17,6 +17,11 @@
 map, and a 2026-08-15 audit found claims that had been retired years-of-corpus-time earlier still
 reading as live because nobody landing on the file could tell.
 
+The raw `*.requests.json` logs name the bench host's gateway as `203.0.113.10`, an address reserved
+for documentation, which replaced its real public address on 2026-09-27. That one address was
+replaced everywhere it appeared and nothing else was touched, so no reading taken from the logs
+changes.
+
 ⭐ **Status column, and what it means for reading:**
 
 | | |

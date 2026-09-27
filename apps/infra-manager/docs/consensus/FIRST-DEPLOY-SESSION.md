@@ -6,11 +6,11 @@ A runbook for one session with Levi present. It deploys `feat/ai-remediation` to
 
 ## What the host holds today
 
-Host 157.90.34.105 (Hetzner, user `solarpunk`, key `ll_1`, `IdentitiesOnly`). The manager there is main-v2 at d046ebf, deploy round 10 of 2026-09-08, public at https://streamtestinfra.swarmens.limo behind the Caddy edge, with the nft firewall applied and the tunnel `host-157-tunnel` (localhost:8090) as the way back in. Migrations 001 to 012 are applied. Four deployments: `livetest-stream` (slot 1, bundled main-v2, its stamp expired on 2026-09-08), `livetest-viewer` (slot 2), `v3-config-test` (slot 3, main-v3, unfunded) and `review-20260907` (slot 4, main-v3, funded, never disposable, its 0.5 BZZ chequebook fill has an unverified submission). Two versions: `bundled` (main-v2 ee99c36, the flat tree at `~/streaming-infra-manager/manager/swarm-hls-stream` with the host's own `.env`) and `main-v3` (a flat checkout Levi has Updated). Users: `claude` (admin) and any Levi added. The postgres password rotation is still open.
+The test host (Hetzner, user `solarpunk`, reached over ssh with a key of its own). The manager there is main-v2 at d046ebf, deploy round 10 of 2026-09-08, public at the test deployment's domain behind the Caddy edge, with the nft firewall applied and an ssh tunnel (localhost:8090) as the way back in. Migrations 001 to 012 are applied. Four deployments: `livetest-stream` (slot 1, bundled main-v2, its stamp expired on 2026-09-08), `livetest-viewer` (slot 2), `v3-config-test` (slot 3, main-v3, unfunded) and `review-20260907` (slot 4, main-v3, funded, never disposable, its 0.5 BZZ chequebook fill has an unverified submission). Two versions: `bundled` (main-v2 ee99c36, the flat tree at `~/streaming-infra-manager/manager/swarm-hls-stream` with the host's own `.env`) and `main-v3` (a flat checkout Levi has Updated). Users: one admin and any Levi added.
 
 ## What the deploy does to it
 
-`bash deploy/deploy.sh 157.90.34.105` from the laptop, on the merged branch:
+`bash deploy/deploy.sh <test host>` from the laptop, on the merged branch:
 
 1. rsyncs the manager only. The stack tree is excluded. The local `manager/.env` ships with it and holds `MANAGER_DOMAIN` and the postgres password, so the public edge stays.
 2. builds the images on the host and runs `manager:upgrade` in a one-off container: checking (the guard directory, and whether this is an installed manager with its data volume), stopping the old api, migrating 013 to 030 (18 migrations, once, one way, no rollback by D08), starting, verifying `/health`, then waiting up to twenty minutes for the api's own boot to build the pinned stack commit 9f1255b (main-v3) on the host.
@@ -22,7 +22,7 @@ If the upgrade stops half way the guard directory stays and the next deploy refu
 ## What Levi does
 
 1. Names a time. About one hour for the deploy and the checks, more for the walkthrough.
-2. Approves the 1Password prompt for `ll_1` on the first ssh, and again if the vault re-locks.
+2. Approves the password manager's prompt for the ssh key on the first ssh, and again if the vault re-locks.
 3. Signs in himself in the browser. Nobody types a password for him.
 4. Decides whether the host is a test target for the integration suite. The suite creates and removes only its own `itest-*` deployments, refuses everything else, and the nodes it makes are unfunded, one slot each. If yes: a user `itest` created on the host with `--password-stdin` from 1Password, and `manager/test/integration/env.itest` on the laptop holding `op://` references only, with `MANAGER_URL` and `MANAGER_TEST_TARGET` both `http://localhost:8090`.
 5. Funds nothing. The paid part waits for the D05 numbers.
