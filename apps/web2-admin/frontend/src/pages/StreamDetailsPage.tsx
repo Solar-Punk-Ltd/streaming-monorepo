@@ -53,7 +53,12 @@ function Field({
 }) {
   return (
     <Box>
-      <Typography variant="caption" color="text.secondary" display="block">
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          display: "block"
+        }}>
         {label}
       </Typography>
       <Box sx={{ mt: 0.25 }}>{children}</Box>
@@ -63,7 +68,9 @@ function Field({
 
 function Mono({ value, label }: { value: string; label: string }) {
   return (
-    <Stack direction="row" spacing={0.5} alignItems="center">
+    <Stack direction="row" spacing={0.5} sx={{
+      alignItems: "center"
+    }}>
       <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
         {shortHex(value, 10, 8)}
       </Typography>
@@ -272,7 +279,13 @@ export function StreamDetailsPage() {
     // The same column width as the form the operator arrived from, so the two
     // screens do not jump about between each other.
     <Stack spacing={3} sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
-      <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap">
+      <Stack
+        direction="row"
+        spacing={2}
+        sx={{
+          alignItems: "center",
+          flexWrap: "wrap"
+        }}>
         <Typography variant="h5" component="h1" sx={{ flexGrow: 1 }}>
           {stream.title}
         </Typography>
@@ -373,13 +386,17 @@ export function StreamDetailsPage() {
               </Field>
               <Field label="Tags">
                 {stream.tags.length ? (
-                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  <Stack direction="row" spacing={1} useFlexGap sx={{
+                    flexWrap: "wrap"
+                  }}>
                     {stream.tags.map((tag) => (
                       <Chip key={tag} size="small" label={tag} />
                     ))}
                   </Stack>
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" sx={{
+                    color: "text.secondary"
+                  }}>
                     —
                   </Typography>
                 )}
@@ -459,7 +476,9 @@ export function StreamDetailsPage() {
                         label="Thumbnail reference"
                       />
                     ) : (
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant="body2" sx={{
+                        color: "text.secondary"
+                      }}>
                         —
                       </Typography>
                     )}
@@ -546,7 +565,13 @@ export function StreamDetailsPage() {
 
         <Divider sx={{ my: 3 }} />
 
-        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+        <Stack
+          direction="row"
+          spacing={2}
+          sx={{
+            alignItems: "center",
+            flexWrap: "wrap"
+          }}>
           <Button
             variant="contained"
             startIcon={<CloudUploadIcon />}
@@ -579,12 +604,15 @@ export function StreamDetailsPage() {
         <Stack
           direction="row"
           spacing={0.5}
-          alignItems="center"
           useFlexGap
-          flexWrap="wrap"
-          sx={{ mt: 1 }}
-        >
-          <Typography variant="caption" color="text.secondary">
+          sx={{
+            alignItems: "center",
+            flexWrap: "wrap",
+            mt: 1
+          }}>
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             Direct stream route, once the stream has gone live:
           </Typography>
           <Typography
