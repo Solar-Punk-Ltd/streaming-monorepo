@@ -13,7 +13,7 @@ A launched execution root is removed only when a complete local Docker observati
 The regression was written before production changes. The focused RED command was:
 
 ```text
-bash /Users/kisslevente/Documents/git/estate/tools/lane.sh --name infra-retention -- env DATABASE_URL=postgres://unused@localhost/unused BEE_LOCAL_HOST=127.0.0.1 SHLS_ROOT=/private/tmp/infra-retention-stack ./manager/node_modules/.bin/tsx --conditions=development --test manager/test/unit/executionRetirementMounts.test.ts
+env DATABASE_URL=postgres://unused@localhost/unused BEE_LOCAL_HOST=127.0.0.1 SHLS_ROOT=/private/tmp/infra-retention-stack ./manager/node_modules/.bin/tsx --conditions=development --test manager/test/unit/executionRetirementMounts.test.ts
 ```
 
 RED ran three cases. Two failed for the intended defect. An uploader-only success and an unavailable observation both changed the previous root from `launch-uncertain` to `released`. The moved-mount control passed.
@@ -23,7 +23,7 @@ A follow-up review found that the first manager-mount exception also ignored a f
 The focused GREEN command covered retention, restart recovery, the production local reader, deploy copies and both existing mount helper suites:
 
 ```text
-bash /Users/kisslevente/Documents/git/estate/tools/lane.sh --name infra-retention -- env DATABASE_URL=postgres://unused@localhost/unused BEE_LOCAL_HOST=127.0.0.1 SHLS_ROOT=/private/tmp/infra-retention-stack ./manager/node_modules/.bin/tsx --conditions=development --test manager/test/unit/executionRetirementMounts.test.ts manager/test/unit/executionBootRecovery.test.ts manager/test/unit/containerControl.test.ts manager/test/unit/deployExecutionCopy.test.ts manager/test/unit/executionMountAttribution.test.ts manager/test/unit/executionMountCapture.test.ts
+env DATABASE_URL=postgres://unused@localhost/unused BEE_LOCAL_HOST=127.0.0.1 SHLS_ROOT=/private/tmp/infra-retention-stack ./manager/node_modules/.bin/tsx --conditions=development --test manager/test/unit/executionRetirementMounts.test.ts manager/test/unit/executionBootRecovery.test.ts manager/test/unit/containerControl.test.ts manager/test/unit/deployExecutionCopy.test.ts manager/test/unit/executionMountAttribution.test.ts manager/test/unit/executionMountCapture.test.ts
 ```
 
 GREEN passed 92 tests in 17 suites with no failures, skips or cancellations. The cases cover a full SRS and uploader execution, a successful uploader-only replacement that retains the engine's root, later failed launches, unavailable and malformed observation, unregistered execution mounts, interrupted `deleting` recovery, the manager API's administrative versions-root and host-root mounts, a foreign parent bind, and cleanup after all deployment mounts move.
