@@ -59,6 +59,18 @@ export const ingestLookupParamsSchema = z.looseObject({
   stream: z.string().regex(UUID_PATTERN, 'stream must be a UUID'),
 });
 
+/**
+ * The path of the ingest lookup for an engine's own `app/stream` id. Each `/`-separated segment is percent-encoded on
+ * its own, so an id can never write a path of its own while its separators stay separators.
+ */
+export function ingestLookupPath(ingestId: string): string {
+  const path = ingestId
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  return `/api/internal/streams/by-ingest/${path}`;
+}
+
 export const STREAM_STATE_REPORTS = ['live', 'vod'] as const;
 
 /**
