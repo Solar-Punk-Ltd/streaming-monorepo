@@ -15,13 +15,13 @@ commits, though.
 | `lockfile.mjs` | two `pnpm-lock.yaml` files |
 | `compose.mjs` | a compose file as docker compose renders it |
 | `image.mjs` | two docker images, config and files |
-| `images.mjs` | every image of a manifest, built from two commits |
+| `images.mjs` | every image of a manifest, built from a base and a head commit |
 | `counts.mjs` | the test counts in two test-run logs |
 
 They are plain Node scripts with no dependencies and nothing to install. They need Node 22
 or later and git, `compose.mjs` and `image.mjs` need the docker CLI, and `images.mjs` needs
 a Docker daemon to build with, plus whatever its manifest's prepare commands run. For
-[phase-1-images.json](phase-1-images.json) that is corepack, which Node 22 ships. Run them
+[images.json](images.json) that is corepack, which Node 22 ships. Run them
 from the repository root.
 
 ## What the exit code means
@@ -173,20 +173,34 @@ same files.
 
 **It does not prove** that a build is reproducible. It compares the two images you built, so
 build each from its own checkout first. Nothing is pulled. Modification times are ignored on
-purpose, but a build can still write different bytes each time, such as pnpm's
-`node_modules/.modules.yaml`, which records when the install ran. Allow such a file by its
-path, exactly or by a prefix ending in `/`.
+purpose, but a build can still write different bytes each time, such as Alpine's
+`/var/log/apk.log`, which records when `apk add` ran. Allow such a file by its path, exactly
+or by a prefix ending in `/`.
+
+pnpm writes four files about an install rather than for any package, in the install's own
+`node_modules` folder: `.modules.yaml`, `.pnpm/lock.yaml`, `.pnpm-workspace-state-v1.json`
+from pnpm 10, and `.package-map.json` from pnpm 11. They are never allowed away and never
+fail the check. One that differs is listed by name under `pnpm's own files`, with the pnpm
+that wrote each side, the change of format where pnpm 9's YAML became JSON, and otherwise
+the top-level keys that differ. `.modules.yaml` and the workspace state record when the
+install ran, so every rebuild changes them, and when that is all that differs the images
+match. When more differs, as after a pnpm version change, the verdict is
+`match apart from pnpm's own files`, which still exits 0. So a pnpm version change is
+reported as one rather than hidden in an allow list.
 
 ```bash
-docker build -f ../before/web2-admin/backend/Dockerfile -t web2-admin-backend:before ../before
-docker build -f ../after/apps/web2-admin/backend/Dockerfile -t web2-admin-backend:after ../after
+docker build -f ../base/apps/infra-manager/manager/Dockerfile -t infra-manager-api:base ../base/apps/infra-manager
+docker build -f ../head/apps/infra-manager/manager/Dockerfile -t infra-manager-api:head ../head/apps/infra-manager
 node tools/move-check/image.mjs \
-  --before web2-admin-backend:before --after web2-admin-backend:after \
-  --allow /app/node_modules/.modules.yaml
+  --before infra-manager-api:base --after infra-manager-api:head \
+  --allow /var/log/apk.log
 ```
 
 ```text
-image: match, 9 config fields equal, <n> identical filesystem entries, 1 allowed difference
+pnpm's own files (2):
+  /app/node_modules/.modules.yaml  its install time only: prunedAt
+  /app/node_modules/.pnpm-workspace-state-v1.json  its install time only: lastValidatedTimestamp
+image: match, 9 config fields equal, <n> identical filesystem entries, 1 allowed difference, 2 of pnpm's own files differ in their install time only
 ```
 
 A difference is listed under `changed`, `missing` or `added`, a changed file with each field
@@ -199,25 +213,29 @@ workspace. What is under the folder is still compared entry by entry, under its 
 file that changed inside it is still listed. The summary counts the renamed entries, and two
 paths sent to one are refused.
 
-## images.mjs: every image builds the same from its new folder
+## images.mjs: a pull request builds the same images as its base
 
-It reads a manifest of images, each with a before and an after commit, context and
-Dockerfile, and checks all of it first: every commit, context and Dockerfile must be in this
+It reads a manifest of images, each with its build context and Dockerfile, from two commits: a
+base, such as a pull request's base, and a head, such as the pull request merged into it. Each
+side is built as its own commit's copy of the manifest says, so a pull request that changes how
+an image builds changes its entry with it, and its base still builds as it did. A base without
+the manifest is built as the head's copy says, and an image only one copy names is reported and
+not built. It checks all of it first: every commit, context and Dockerfile must be in this
 repository, and no path may leave it. Then it exports each commit once with `git archive`,
 builds both sides from their own export with `--no-cache`, and compares each pair with
-`image.mjs`, handing it the manifest's `map` and `allow` lists.
+`image.mjs`, handing it the `map` and `allow` lists of the head's copy. What may differ is the
+head's to say.
 
-**It proves** that the files a move left in place build, from clean builds, into images that
-run the same way over the same files as the images built before the move.
+**It proves** that the head builds, from clean builds, into images that run the same way over
+the same files as its base's, apart from what the head's manifest allows and pnpm's own files,
+which `image.mjs` names whenever they differ.
 
-**It does not prove** anything about a later commit, or that a build is reproducible beyond
-the two builds it made. A base image or a package mirror that changes between the two builds
-shows up as a difference, so run it again before believing one. It builds with each
-Dockerfile's default build arguments, not the ones a deploy passes, so it cannot see a defect
-in those. And when both sides of a pair build from identical files, a match says only that the
-image builds the same twice. Whether the files moved intact is then a question for `tree.mjs`.
+**It does not prove** that a build is reproducible beyond the two builds it made. A base image
+or a package mirror that changes between the two builds shows up as a difference, so run it
+again before believing one. It builds with each Dockerfile's default build arguments, not the
+ones a deploy passes, so it cannot see a defect in those.
 
-A side may carry `prepare`, commands to run in its context before it is built, each written
+An image may carry `prepare`, commands to run in its context before it is built, each written
 as a list of its words and run without a shell. It is for an image whose Dockerfile copies
 something a deploy script builds first. The uploader's image copies
 `packages/stream-uploader/dist/`, which is built and never committed, so both of its sides
@@ -230,23 +248,22 @@ exports on disk, and `--remove-images` removes each pair and the build cache onc
 compared, which is what a CI runner needs. What each build and prepare command prints goes to
 stderr as it comes, so a build that stalls shows where it stopped rather than nothing at all.
 A failed build is reported with its output, and the other images are still checked. It exits
-0 when every image matches, 1 when one differs and 2 when one could not be checked.
+0 when every image matches, counting one that matches apart from pnpm's own files, 1 when one
+differs and 2 when one could not be checked.
 
-[phase-1-images.json](phase-1-images.json) names the eight images of the admin, the stack and
-the manager, each built from its project's last commit before the move and from the merge
-that brought the project in. Six of them, the stack's four and the manager's two, build from
-folders identical to the trees they were imported from, so their matches show only that
-those images build the same twice. The admin's two build from files the move edited. What
-they differ in is allowed by name, with the reason in the manifest, and the folder pnpm
-renamed for the moved common package is compared entry by entry through `map`. The one
-defect of the move known to have reached an image, the client's build stamp, which the
-stack's scripts looked up from the repository root rather than their own folder until #21,
-would have matched here, because the stamp is a build argument the deploy passes. The
-`compare-images` workflow at the root runs it, started by hand from the Actions tab, and puts
-the report on the run's page.
+[images.json](images.json) names the eight images of the admin, the stack and the manager.
+What it allows is build noise that differs between any two builds, each with its reason. The
+`compare-images` workflow at the root runs it when a pull request gets the label
+`compare-images`, with the pull request's base and the pull request merged into it, and puts
+the report on the run's page. Removing the label and adding it again runs it again.
+
+Phase 1 of the monorepo used this check to compare each project's last commit before the move
+with the merge that brought it in, and all eight images matched in the run on #38. That
+manifest, `phase-1-images.json`, and the mode that read it are in the history of this folder.
 
 ```bash
-node tools/move-check/images.mjs --manifest tools/move-check/phase-1-images.json --plan
+node tools/move-check/images.mjs --manifest tools/move-check/images.json \
+  --base origin/main-v3 --head HEAD --plan
 ```
 
 ```text
