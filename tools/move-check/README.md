@@ -192,13 +192,20 @@ image: match, 9 config fields equal, <n> identical filesystem entries, 1 allowed
 A difference is listed under `changed`, `missing` or `added`, a changed file with each field
 that moved, for example `/backend/Dockerfile  size 1827 -> 1882, sha256 d4ee1d73be62 -> 3c9c2e62348e`.
 
+A `--map old=new` renames a path of the before image, or a folder and everything under it,
+before the two are compared. It is for a folder the after image keeps under another name, such
+as pnpm's folder for a workspace package, whose name carries the package's path in the
+workspace. What is under the folder is still compared entry by entry, under its new name, so a
+file that changed inside it is still listed. The summary counts the renamed entries, and two
+paths sent to one are refused.
+
 ## images.mjs: every image builds the same from its new folder
 
 It reads a manifest of images, each with a before and an after commit, context and
 Dockerfile, and checks all of it first: every commit, context and Dockerfile must be in this
 repository, and no path may leave it. Then it exports each commit once with `git archive`,
 builds both sides from their own export with `--no-cache`, and compares each pair with
-`image.mjs`, handing it the manifest's `allow` list.
+`image.mjs`, handing it the manifest's `map` and `allow` lists.
 
 **It proves** that the files a move left in place build, from clean builds, into images that
 run the same way over the same files as the images built before the move.

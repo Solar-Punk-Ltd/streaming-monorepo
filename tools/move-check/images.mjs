@@ -11,6 +11,7 @@ import {
   UsageError,
   countOf,
   parseOptions,
+  parsePrefixMaps,
   requireOption,
   runCommand,
   runGit,
@@ -35,7 +36,9 @@ The manifest is JSON:
 
 A context and a Dockerfile are paths from the root of the repository at that
 commit, and a context of . is the root itself. Each allow is handed to
-image.mjs as --allow. A note is for whoever reads the manifest.
+image.mjs as --allow. An image may also carry "map", a list of renames each
+written <old>=<new>, handed to image.mjs as --map, for a folder the after image
+keeps under another name. A note is for whoever reads the manifest.
 
 A side may also carry "prepare", a list of commands, each a list of its words,
 such as [["corepack", "pnpm", "install", "--frozen-lockfile"]]. They run in the
@@ -109,6 +112,21 @@ function readSide(entry, sideName) {
   };
 }
 
+/** An image's renames, each checked the way image.mjs will read it, so a broken one costs no build time. */
+function readMap(entry) {
+  const map = entry.map ?? [];
+  if (!Array.isArray(map) || !map.every((rename) => typeof rename === 'string')) {
+    throw new CheckError(`${entry.name}: map is a list of <old>=<new> renames, got ${JSON.stringify(entry.map)}.`);
+  }
+  try {
+    parsePrefixMaps(map, `${entry.name}: map`);
+  } catch (error) {
+    if (!(error instanceof UsageError)) throw error;
+    throw new CheckError(error.message);
+  }
+  return map;
+}
+
 function readEntry(entry, index) {
   if (entry === null || typeof entry !== 'object' || typeof entry.name !== 'string' || !IMAGE_NAME.test(entry.name)) {
     throw new CheckError(`Image ${index + 1} of the manifest needs a name of lower case letters, digits and dashes, got ${JSON.stringify(entry?.name)}.`);
@@ -117,7 +135,7 @@ function readEntry(entry, index) {
   if (!Array.isArray(allow) || !allow.every((path) => typeof path === 'string' && path !== '')) {
     throw new CheckError(`${entry.name}: allow is a list of paths, got ${JSON.stringify(entry.allow)}.`);
   }
-  return { name: entry.name, allow, before: readSide(entry, 'before'), after: readSide(entry, 'after') };
+  return { name: entry.name, allow, map: readMap(entry), before: readSide(entry, 'before'), after: readSide(entry, 'after') };
 }
 
 /** Reads and checks the whole manifest before anything is built, so a mistake costs no build time. */
@@ -263,10 +281,11 @@ function checkImage(image, exportOf) {
       return unchecked(image, `the ${sideName} build failed.`, error.message);
     }
   }
+  const renames = image.map.flatMap((rename) => ['--map', rename]);
   const allows = image.allow.flatMap((path) => ['--allow', path]);
   const compared = spawnSync(
     process.execPath,
-    [IMAGE_CHECK, '--before', tagOf(image.name, 'before'), '--after', tagOf(image.name, 'after'), ...allows],
+    [IMAGE_CHECK, '--before', tagOf(image.name, 'before'), '--after', tagOf(image.name, 'after'), ...renames, ...allows],
     { encoding: 'utf8', maxBuffer: MAX_COMMAND_OUTPUT_BYTES },
   );
   const lines = compared.stdout.trimEnd().split('\n');
