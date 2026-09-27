@@ -18,13 +18,13 @@ to end for four features, improved later. The four features:
    a stream key.
 
 Research behind every decision here is in [docs/research/](../research/)
-(msrs-client, streaming-infra-manager, swarm-hls-stream ingest and feed). The
+(streaming-infra-manager, swarm-hls-stream ingest and feed). The
 short version of what they found:
 
 - msrs-client (deprecated) creates a stream by uploading the thumbnail, then
   writing one GSOC chunk carrying an encrypted token; an off-client aggregator
-  rewrites the list feed. Private keys and shared server secrets live in the
-  browser. Failure loses the stream, success is inferred by polling.
+  rewrites the list feed.
+  Failure loses the stream, success is inferred by polling.
 - swarm-hls-stream (the stack the test infra runs) has no draft concept. OBS
   pushes to SRS, the uploader mints a random topic on `on_publish`, and the
   catalog feed entry it writes has only a date for a title. Its `main` is
@@ -36,9 +36,9 @@ short version of what they found:
 
 | Package | Name | Role |
 |---|---|---|
-| `web2-admin/common` | `@streaming-monorepo/web2-admin-common` | The API contract: types and the ingest URL builders. Written by the orchestrator; agents extend it only when the contract changes and say so. |
-| `web2-admin/backend` | `@streaming-monorepo/web2-admin-backend` | Express 5 + pg API. |
-| `web2-admin/frontend` | `@streaming-monorepo/web2-admin-frontend` | React 18 + MUI + Vite console. |
+| `apps/web2-admin/common` | `@streaming-monorepo/web2-admin-common` | The API contract: types and the ingest URL builders. Written by the orchestrator; agents extend it only when the contract changes and say so. |
+| `apps/web2-admin/backend` | `@streaming-monorepo/web2-admin-backend` | Express 5 + pg API. |
+| `apps/web2-admin/frontend` | `@streaming-monorepo/web2-admin-frontend` | React 18 + MUI + Vite console. |
 
 Conventions are streaming-infra-manager's, listed in the manager research
 report: ESM with `.js` import suffixes, exact-pinned versions (typescript
