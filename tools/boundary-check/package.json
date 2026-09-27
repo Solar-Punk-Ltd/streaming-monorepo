@@ -1,0 +1,14 @@
+{
+  "name": "boundary-check",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fails when a project in the Nx project graph depends on another across the boundaries their tags draw.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}
