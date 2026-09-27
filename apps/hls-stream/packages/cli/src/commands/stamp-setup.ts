@@ -72,7 +72,7 @@ export async function stampSetup(args: StampCommandArgs = {}, seams: StampSetupS
   // failing RPC must not block the one path that costs the operator nothing.
   let batches;
   try {
-    batches = await bee.getPostageBatches();
+    batches = await bee.stamp.getAll();
   } catch (err) {
     // Indistinguishable from "there are none", and the difference costs a whole batch: carrying on
     // buys a duplicate and orphans whichever one STAMP does not name. See OPS-12.
@@ -124,8 +124,8 @@ export async function stampSetup(args: StampCommandArgs = {}, seams: StampSetupS
 
   let funding: { affordsBatch: boolean; hasGas: boolean; address: string; balance: string; cost: string };
   try {
-    const addresses = await bee.getNodeAddresses();
-    const wallet = await bee.getWalletBalance();
+    const addresses = await bee.connectivity.getNodeAddresses();
+    const wallet = await bee.wallet.getBalance();
 
     table('Node address', addresses.ethereum.toHex());
     table('BZZ balance', wallet.bzzBalance.toDecimalString());

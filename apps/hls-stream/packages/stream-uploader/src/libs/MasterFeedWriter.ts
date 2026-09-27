@@ -63,7 +63,7 @@ export class MasterFeedWriter {
       const playlist = buildMasterPlaylist(this.owner, renditions);
       const publisher = this.publishers.coordinator();
 
-      const writer = publisher.bee.makeFeedWriter(topic, this.signer);
+      const writer = publisher.bee.feed.makeWriter(topic, this.signer);
       await retryUntilDeadlineAsync(
         () => writer.uploadPayload(publisher.stamp, playlist, { index, deferred: true }),
         MASTER_RETRY_WINDOW_MS,
@@ -101,7 +101,7 @@ export class MasterFeedWriter {
 
   private async readIndex(topic: Topic): Promise<FeedIndex | null> {
     try {
-      const reader = this.publishers.coordinator().bee.makeFeedReader(topic, this.signer.publicKey().address());
+      const reader = this.publishers.coordinator().bee.feed.makeReader(topic, this.signer.publicKey().address());
       const data = await reader.downloadPayload();
       return data.feedIndex;
     } catch (error) {
