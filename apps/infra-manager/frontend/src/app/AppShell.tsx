@@ -3,6 +3,7 @@ import { Alert, Box, Button, Drawer } from '@mui/material';
 
 import { AccessPage } from '../access/AccessPage';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { PageErrorBoundary } from '../components/PageErrorBoundary';
 import { DeploymentPage } from '../deployments/DeploymentPage';
 import { DeploymentsPage } from '../deployments/DeploymentsPage';
 import { GroupPage } from '../groups/GroupPage';
@@ -105,13 +106,25 @@ export function AppShell() {
               Could not read the deployments from the manager. {loadError}
             </Alert>
           )}
-          <Page route={route} search={search} />
+          <PageErrorBoundary key={pageIdentity(route)}>
+            <Page route={route} search={search} />
+          </PageErrorBoundary>
         </Box>
       </Box>
 
       <ConfirmDialog request={actions.confirm} onClose={actions.closeConfirm} />
     </Box>
   );
+}
+
+/** Which page is shown, without where on it: a new page starts its error boundary clean, a scroll target does not. */
+function pageIdentity(route: Route): string {
+  if (route.page === 'deployment') return `deployment:${route.name}`;
+  if (route.page === 'group' || route.page === 'versionSettings' || route.page === 'transfer') {
+    return `${route.page}:${route.id}`;
+  }
+  if (route.page === 'transferRequest') return `transferRequest:${route.requestId}`;
+  return route.page;
 }
 
 function Page({ route, search }: { route: Route; search: string }) {
