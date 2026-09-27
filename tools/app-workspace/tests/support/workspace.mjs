@@ -50,7 +50,7 @@ export const IMPORTERS = {
       zod:
         specifier: 4.0.0
         version: 4.0.0`,
-  tools: `  tools/move-check: {}`,
+  tools: `  tools/app-workspace: {}`,
 };
 
 export const PACKAGES = {
