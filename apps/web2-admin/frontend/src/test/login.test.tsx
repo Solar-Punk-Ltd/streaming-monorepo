@@ -144,7 +144,8 @@ describe('LoginPage', () => {
     expect(
       await screen.findByText('The server did not answer. Check that it is running, then try again.'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled();
+    // The failure path ran to its end, which is what clears the field for another try.
+    expect(screen.getByLabelText('Password')).toHaveValue('');
   });
 
   it('keeps the log in button disabled until both fields are filled', async () => {
