@@ -7,8 +7,8 @@ import { parseCookies } from '../utils/cookies.js';
  * The session cookie, by hand: no cookie-parser, no session middleware. One
  * cookie, one value, read and written in one place.
  *
- * httpOnly so script cannot read the token (msrs-client kept its whole session
- * in localStorage) and sameSite lax so a normal navigation to the console still
+ * httpOnly so script cannot read the token and
+ * sameSite lax so a normal navigation to the console still
  * sends it.
  *
  * No `maxAge` and no `expires`, so the browser holds it for the life of the
