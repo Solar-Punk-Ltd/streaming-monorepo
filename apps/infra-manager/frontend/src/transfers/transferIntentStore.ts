@@ -350,17 +350,15 @@ export class IndexedDbTransferIntentStore implements TransferIntentStore {
                 complete({ kind: 'conflict' });
                 return;
               }
-              transaction
-                .objectStore(LINKS)
-                .put({
-                  requestId,
-                  own: link,
-                  blockingOperationId:
-                    typeof record?.blockingOperationId === 'string' && UUID.test(record.blockingOperationId)
-                      ? record.blockingOperationId
-                      : null,
-                  nodeKey: [link.accountId, link.chainId, link.nodeAddress],
-                } satisfies LinkRecord);
+              transaction.objectStore(LINKS).put({
+                requestId,
+                own: link,
+                blockingOperationId:
+                  typeof record?.blockingOperationId === 'string' && UUID.test(record.blockingOperationId)
+                    ? record.blockingOperationId
+                    : null,
+                nodeKey: [link.accountId, link.chainId, link.nodeAddress],
+              } satisfies LinkRecord);
               complete({ kind: 'recorded' });
             });
         });
@@ -384,14 +382,12 @@ export class IndexedDbTransferIntentStore implements TransferIntentStore {
                 complete();
                 return;
               }
-              transaction
-                .objectStore(LINKS)
-                .put({
-                  requestId,
-                  own,
-                  blockingOperationId: operationId,
-                  ...(own ? { nodeKey: [own.accountId, own.chainId, own.nodeAddress] } : {}),
-                } satisfies LinkRecord);
+              transaction.objectStore(LINKS).put({
+                requestId,
+                own,
+                blockingOperationId: operationId,
+                ...(own ? { nodeKey: [own.accountId, own.chainId, own.nodeAddress] } : {}),
+              } satisfies LinkRecord);
               complete();
             });
         });
