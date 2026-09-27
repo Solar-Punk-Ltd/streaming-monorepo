@@ -482,6 +482,9 @@ importers:
       '@streaming-monorepo/contracts':
         specifier: workspace:*
         version: link:../../../packages/contracts
+      '@streaming-monorepo/web-auth':
+        specifier: workspace:*
+        version: link:../../../packages/web-auth
       dockerode:
         specifier: 5.0.1
         version: 5.0.1(supports-color@7.2.0)
@@ -533,6 +536,9 @@ importers:
       '@streaming-monorepo/contracts':
         specifier: workspace:*
         version: link:../../../packages/contracts
+      '@streaming-monorepo/web-auth':
+        specifier: workspace:*
+        version: link:../../../packages/web-auth
       '@streaming-monorepo/web2-admin-common':
         specifier: workspace:*
         version: link:../common
