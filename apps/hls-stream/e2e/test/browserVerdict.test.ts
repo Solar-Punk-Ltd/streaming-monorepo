@@ -1,0 +1,392 @@
+import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import { GATEWAY_BYTES, WEEB3_BYTES } from '../src/browser/fetchBackendSweep.js';
+import { type BrowserArmResult, parseBrowserArmState } from '../src/harness/browser.js';
+import {
+  byteSourceArmRefusal,
+  ladderResolutionRefusal,
+  viewerPlaybackRefusal,
+  weeb3ArmRefusal,
+} from '../src/harness/browserVerdict.js';
+
+import { armState, INSTRUMENT_PROVEN, INSTRUMENT_UNPROVEN } from './helpers/browserArmFixtures.js';
+
+/**
+ * The two questions a viewer scenario asks, kept out of the suites so their rules are covered by the
+ * unit run. Nothing under `suites/` runs in CI, so a verdict written inline in a scenario is a
+ * verdict nothing checks until a paid broadcast is already burning.
+ *
+ * ⭐ Both return the reason a run is not what it claims, or null. That is the idiom the byte-source
+ * and gateway gates already use: a boolean would let a suite print "assertion failed" where the
+ * harness could have said which of four things went wrong.
+ */
+
+const E2E_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+const CLEAN = parseBrowserArmState(armState());
+const watched = (overrides: Partial<BrowserArmResult>): BrowserArmResult => ({ ...CLEAN, ...overrides });
+
+describe('whether a viewer actually watched the broadcast', () => {
+  it('passes a session that decoded a picture, moved it forward and errored at nothing', () => {
+    assert.equal(viewerPlaybackRefusal(CLEAN), null);
+  });
+
+  /**
+   * ⛔ First, and before any figure is looked at. A hidden or throttled page produces numbers that
+   * are properties of the harness rather than of the product, and the previous attempt at this ran
+   * in a pane reporting `visibilityState: hidden` permanently and ended 578 seconds behind live. A
+   * suite that passed on those figures would be certifying the harness.
+   */
+  it('refuses a run whose browser was not a usable instrument, whatever its figures say', () => {
+    const degraded = watched({ instrumentSound: false, instrumentFailures: ['timer drift 61x the interval'] });
+
+    assert.match(String(viewerPlaybackRefusal(degraded)), /timer drift 61x the interval/);
+  });
+
+  it('refuses a run before its playback figures, so a degraded browser is never the reported cause', () => {
+    const degradedAndStalled = watched({
+      instrumentSound: false,
+      instrumentFailures: ['hidden page'],
+      advanceRatio: 0,
+    });
+
+    assert.match(String(viewerPlaybackRefusal(degradedAndStalled)), /hidden page/);
+  });
+
+  /**
+   * ⛔⛔⛔ The other half of the check above, which gated nothing until 2026-09-16. Both sensors pass
+   * on the subject page by construction, because Playwright forces focus and unthrottles timers, so
+   * the drivers degrade a throwaway page and require the instrument to notice. That proof was written
+   * into the artifact and rendered into the markdown, and nothing that could fail a run read it.
+   * `proveVisibilityCanFail` has already shipped broken once, and was found twenty minutes into a
+   * paid broadcast.
+   */
+  it('refuses a run whose instrument was never shown able to report a failure', () => {
+    const unproven = parseBrowserArmState(armState({ instrumentProofs: INSTRUMENT_UNPROVEN }));
+
+    assert.match(String(viewerPlaybackRefusal(unproven)), /restatement of the launch flags rather than evidence/);
+    assert.match(String(viewerPlaybackRefusal(unproven)), /main thread blocked for 3000ms/);
+  });
+
+  it('passes a run whose every sensor rejected its own degraded page', () => {
+    assert.equal(viewerPlaybackRefusal(parseBrowserArmState(armState({ instrumentProofs: INSTRUMENT_PROVEN }))), null);
+  });
+
+  /**
+   * ⛔ A proof that fired by another check has demonstrated that other check. Without this a
+   * visibility proof taken on a page that happened to also stall would read as visibility working.
+   */
+  it('refuses a proof that was rejected by a check other than the one it claims', () => {
+    const wrongReason = parseBrowserArmState(
+      armState({
+        instrumentProofs: [{ ...INSTRUMENT_PROVEN[0], firedChecks: ['timerDriftRatio'] }, INSTRUMENT_PROVEN[1]],
+      }),
+    );
+
+    assert.match(String(viewerPlaybackRefusal(wrongReason)), /rather than by visibilityState/);
+  });
+
+  it('refuses a run that proved one sensor and left the other unmentioned', () => {
+    const halfProven = parseBrowserArmState(armState({ instrumentProofs: [INSTRUMENT_PROVEN[1]] }));
+
+    assert.match(String(viewerPlaybackRefusal(halfProven)), /visibilityState check was never shown able to fail/);
+  });
+
+  /**
+   * ⛔ A file with no proof section at all is a silence about the FILE, not about the run: every
+   * artifact written before 2026-08-12 has none, and a reader that refused them could not re-derive
+   * the archive it exists to re-derive. The markdown still says the verdict is untested.
+   */
+  it('still opens an artifact written before the proofs existed', () => {
+    assert.deepEqual(parseBrowserArmState(armState()).instrumentUnproven, []);
+    assert.equal(viewerPlaybackRefusal(parseBrowserArmState(armState())), null);
+  });
+
+  it('refuses a proof naming a sensor this harness does not know, rather than ignoring it', () => {
+    assert.throws(
+      () => parseBrowserArmState(armState({ instrumentProofs: [{ ...INSTRUMENT_PROVEN[0], sensor: 'colourDepth' }] })),
+      /no sensor this harness proves at run.instrumentProofs\[0\]\.sensor/,
+    );
+  });
+
+  it('refuses a player that raised a fatal error, which is a viewer whose picture stopped for good', () => {
+    assert.match(String(viewerPlaybackRefusal(watched({ fatalErrors: 2 }))), /2/);
+  });
+
+  /**
+   * ⛔ A run that decoded nothing reports zero rebuffers, zero fatal errors and no resolution at all,
+   * which is the same shape as a flawless one on every field but this. `#41` cost this project the
+   * same confusion elsewhere: "I could not find X" and "there is no X" are the same return value.
+   */
+  it('refuses a run that named no resolution, whose silence looks exactly like a clean run', () => {
+    assert.match(String(viewerPlaybackRefusal(watched({ resolutions: [] }))), /resolution/);
+  });
+
+  /**
+   * ⛔ The picture has to have moved. A session that decoded a first frame and then sat on it for
+   * four minutes reports a resolution and no error, which is the shape of a watch on every field but
+   * this one, and it is the one outcome that means the feature did not work.
+   */
+  it('refuses a session whose picture never moved forward at all', () => {
+    assert.match(String(viewerPlaybackRefusal(watched({ advanceRatio: 0 }))), /never moved/);
+  });
+
+  /**
+   * ⭐ The owner's ruling of 2026-08-29: an e2e suite checks that the feature works, and how fast it
+   * worked is an observation rather than a gate. A viewer who kept up with 0.62 of the wall clock
+   * watched the broadcast, on a configuration that delivers less of it per second, and a suite that
+   * failed them would be reporting a performance difference as a broken product.
+   */
+  it('passes a session that kept up slowly, which is a performance reading rather than a defect', () => {
+    assert.equal(viewerPlaybackRefusal(watched({ advanceRatio: 0.62 })), null);
+  });
+});
+
+describe('whether the arm was the in-tab node it is filed as', () => {
+  const SINGLE_DIGIT = { maxSegmentRequests: 9 };
+
+  it('passes an arm that asked for the node, landed on it, and barely touched the gateway', () => {
+    assert.equal(weeb3ArmRefusal(CLEAN, SINGLE_DIGIT), null);
+  });
+
+  it('refuses an arm that never asked for the node at all', () => {
+    const gateway = parseBrowserArmState(armState({ backend: GATEWAY_BYTES }));
+
+    assert.match(String(weeb3ArmRefusal(gateway, SINGLE_DIGIT)), new RegExp(GATEWAY_BYTES));
+  });
+
+  it('refuses an arm that named no condition, since a verdict needs one', () => {
+    const unswitched = parseBrowserArmState(armState({ byteSource: null }));
+
+    assert.notEqual(weeb3ArmRefusal(unswitched, SINGLE_DIGIT), null);
+  });
+
+  /**
+   * ⛔ A switch that silently did nothing puts both conditions on one, every metric agrees, and the
+   * run reports that an in-tab Swarm node performs exactly like a gateway. That is the most
+   * attractive headline this line of work has, produced by nothing happening.
+   */
+  it('refuses an arm that asked for the node and landed on the gateway', () => {
+    const landedElsewhere = watched({
+      proof: { requested: WEEB3_BYTES, reported: GATEWAY_BYTES, settledForMs: 60_000 },
+    });
+
+    assert.match(String(weeb3ArmRefusal(landedElsewhere, SINGLE_DIGIT)), new RegExp(GATEWAY_BYTES));
+  });
+
+  /**
+   * ⭐ The readback above proves what the client BELIEVES. This is what the network DID, and on
+   * 2026-08-13 those disagreed while both arms of a paid sitting fetched all their video from one
+   * node. An in-tab arm reads through the gateway while its own node boots, so a handful is expected
+   * and a hundred is a viewer whose video came from the gateway after all.
+   */
+  it('refuses an arm that went on reading segments from the gateway', () => {
+    const refusal = weeb3ArmRefusal(watched({ segmentRequests: 512 }), SINGLE_DIGIT);
+
+    assert.match(String(refusal), /512/);
+    assert.match(String(refusal), /9/);
+  });
+
+  it('accepts an arm sitting exactly on the ceiling', () => {
+    assert.equal(weeb3ArmRefusal(watched({ segmentRequests: 9 }), SINGLE_DIGIT), null);
+  });
+});
+
+/**
+ * The three-branch rule every viewer suite applies to its arm, stated once.
+ *
+ * ⛔⛔ It was stated four times: inline in `qualityArm`, `rungArm` and `crashArm`, and nowhere at
+ * all for V4 and V5, which is how those two came to pass in the in-browser profile whatever served
+ * them. A rule with four copies and two gaps is the shape the copies produce. Those three modules
+ * call this one since 2026-09-05.
+ *
+ * ⭐ The gateway condition passes with no ceiling applied, and that is the branch worth a test of
+ * its own. A gateway arm reads every segment through the gateway by definition, so holding one to
+ * the in-tab ceiling would refuse the only arm the in-tab readings are ever compared against.
+ */
+describe('whether an arm was the byte source it is filed as, in either condition', () => {
+  const SINGLE_DIGIT = { maxSegmentRequests: 9 };
+
+  it('passes an in-tab arm that asked for the node, landed on it and barely touched the gateway', () => {
+    assert.equal(byteSourceArmRefusal(CLEAN, SINGLE_DIGIT), null);
+  });
+
+  it('passes a gateway arm that landed on the gateway, however many segments it read there', () => {
+    const gateway = parseBrowserArmState(armState({ backend: GATEWAY_BYTES, segmentRequests: 512 }));
+
+    assert.equal(byteSourceArmRefusal(gateway, SINGLE_DIGIT), null);
+  });
+
+  /** A verdict filed against a condition nobody chose is a verdict about nothing. */
+  it('refuses an arm that named no byte source at all', () => {
+    const unswitched = parseBrowserArmState(armState({ byteSource: null }));
+
+    assert.match(String(byteSourceArmRefusal(unswitched, SINGLE_DIGIT)), /named no byte source/);
+  });
+
+  /**
+   * ⛔ A switch that silently did nothing puts both conditions on one, every metric agrees, and the
+   * run reports that an in-tab Swarm node performs exactly like a gateway. That is the most
+   * attractive headline this line of work has, produced by nothing happening.
+   */
+  it('refuses an arm that asked for the node and landed on the gateway', () => {
+    const landedElsewhere = watched({
+      proof: { requested: WEEB3_BYTES, reported: GATEWAY_BYTES, settledForMs: 60_000 },
+    });
+
+    assert.match(String(byteSourceArmRefusal(landedElsewhere, SINGLE_DIGIT)), /switch did not take/);
+  });
+
+  /** Both directions, because the control condition drifting is as wrong as the subject drifting. */
+  it('refuses an arm that asked for the gateway and landed on the node', () => {
+    const landedElsewhere = watched({
+      proof: { requested: GATEWAY_BYTES, reported: WEEB3_BYTES, settledForMs: 60_000 },
+    });
+
+    assert.match(String(byteSourceArmRefusal(landedElsewhere, SINGLE_DIGIT)), /switch did not take/);
+  });
+
+  /**
+   * ⭐ The readback above is what the client BELIEVES. This is what the network DID, and on
+   * 2026-08-13 those disagreed while both arms of a paid sitting fetched all their video from one
+   * node.
+   */
+  it('refuses an in-tab arm that went on reading segments from the gateway', () => {
+    const refusal = byteSourceArmRefusal(watched({ segmentRequests: 512 }), SINGLE_DIGIT);
+
+    assert.match(String(refusal), /512/);
+    assert.match(String(refusal), /9/);
+  });
+
+  /**
+   * ⛔⛔ The claim `byteSourceArmRefusal`'s own docblock makes, held against the suites it is about.
+   *
+   * That every suite under `suites/viewer/` files its verdict through one of the arm refusals here
+   * is the whole reason those two gaps of 2026-09-04 were worth closing, and it was written in prose
+   * next to files nothing in continuous integration ever opens. A twelfth suite added tomorrow with
+   * no arm proof at all would leave the sentence there and untrue.
+   *
+   * ⚠️ Read out of the source. A suite file registers against a deployment at import time, so it
+   * cannot be loaded here, which is the same arrangement `weeb3RequestCeilingAgreement.test.ts` and
+   * `suiteConfigAtModuleScope.test.ts` use for their own structural claims about these files.
+   */
+  const ARM_VERDICTS = [
+    'crashArmRefusal',
+    'qualityArmRefusal',
+    'rungArmRefusal',
+    'byteSourceArmRefusal',
+    'vodByteSourceRefusal',
+    'weeb3ArmRefusal',
+  ];
+
+  it('is one of the verdicts every viewer suite files its arm proof through', () => {
+    const viewerDir = join(E2E_DIR, 'suites', 'viewer');
+    const unproven = readdirSync(viewerDir)
+      .filter((name) => name.endsWith('.test.ts'))
+      .filter((name) => {
+        const source = readFileSync(join(viewerDir, name), 'utf8');
+        return !ARM_VERDICTS.some((verdict) => source.includes(verdict));
+      })
+      .sort();
+
+    assert.deepEqual(
+      unproven,
+      [],
+      `${unproven.join(', ')} names none of ${ARM_VERDICTS.join(', ')}. Either that suite files no arm ` +
+        'proof at all, in which case an in-browser run of it passes whatever served it, or it files ' +
+        'one through a route nothing here knows about, in which case add it to this list and to the ' +
+        'docblock on byteSourceArmRefusal that counts them.',
+    );
+  });
+
+  /**
+   * ⛔⛔ The other half of the same claim: one statement of the rule, not one per arm module.
+   *
+   * `qualityArm`, `rungArm` and `crashArm` each carried a byte-identical copy of the three branches
+   * until 2026-09-05, so the rule had four statements. A change to any one of them would have left
+   * the other three saying something else, and nothing would have shown it: the copies agreed, and
+   * the first place a divergence surfaces is an artifact a paid broadcast produced.
+   *
+   * ⚠️ Read out of the source rather than by calling them, because four identical copies and one
+   * shared call behave the same on every input. Same arrangement `weeb3RequestCeilingAgreement.test.ts`
+   * uses for the ceiling, and for the same reason.
+   */
+  const ASKS_THE_RULE = ['crashArm.ts', 'qualityArm.ts', 'rungArm.ts', 'vodArm.ts'];
+  const RESTATEMENT = 'this arm named no byte source, so its verdict';
+
+  it('is the one statement of the rule, which the arm modules delegate to rather than restate', () => {
+    const wrong = ASKS_THE_RULE.flatMap((name) => {
+      const source = readFileSync(join(E2E_DIR, 'src', 'harness', name), 'utf8');
+      if (source.includes(RESTATEMENT)) {
+        return [`${name} carries its own copy of the branches`];
+      }
+      return source.includes('byteSourceArmRefusal') ? [] : [`${name} asks the rule through neither route`];
+    });
+
+    assert.deepEqual(
+      wrong,
+      [],
+      `${wrong.join(', ')}. Every arm module puts its byte-source question through byteSourceArmRefusal, ` +
+        'so that a change to what counts as the wrong condition reaches all of them at once. An inline ' +
+        'copy drifts silently and is first read in an artifact somebody paid a broadcast for.',
+    );
+  });
+});
+
+/**
+ * Whether the viewer received a quality the deployment actually configured.
+ *
+ * ⛔⛔ **Phase 1 of `docs/e2e-viewer-coverage-plan.md`.** Every watching suite already captured the
+ * resolutions a viewer passed through and printed them under "observed, not asserted", so a viewer
+ * silently riding a rung outside the ladder passed every test. The reading was there the whole time
+ * and nothing could fail on it.
+ *
+ * ⭐ **It asks whether the rung is one the ladder declares, never which one.** Which rung a player
+ * picks is its own adaptive decision, and pinning it would be a performance assertion wearing a
+ * correctness coat. Owner rule of 2026-08-29.
+ *
+ * ⚠️ It cannot catch a failure to SWITCH. A viewer pinned to one legitimate rung for the whole watch
+ * passes here and is exactly what V2 exists to catch.
+ */
+describe('whether the viewer got a quality the ladder declares', () => {
+  const LADDER = ['1920×1080', '1280×720', '854×480', '640×360'] as const;
+
+  it('passes a viewer who stayed on one rung of the ladder', () => {
+    assert.equal(ladderResolutionRefusal(watched({ resolutions: ['1280×720'] }), LADDER), null);
+  });
+
+  it('passes a viewer who moved between rungs of the ladder', () => {
+    assert.equal(ladderResolutionRefusal(watched({ resolutions: ['640×360', '1280×720', '1920×1080'] }), LADDER), null);
+  });
+
+  it('refuses a resolution the ladder never declared', () => {
+    const refusal = ladderResolutionRefusal(watched({ resolutions: ['1280×720', '426×240'] }), LADDER);
+
+    assert.match(refusal ?? '', /426×240/, `the refusal must name the rung nobody configured: ${refusal}`);
+  });
+
+  /**
+   * ⛔ The client renders U+00D7, not the letter x. A check built with `${w}x${h}` matches nothing
+   * and passes every run, which is the same shape of silence this whole phase exists to remove.
+   */
+  it('matches the multiplication sign the client actually renders', () => {
+    assert.equal(ladderResolutionRefusal(watched({ resolutions: ['1280x720'] }), LADDER), null);
+  });
+
+  /** A single-rendition deployment has no ladder to be outside of, so there is nothing to refuse. */
+  it('says nothing when the deployment declares no ladder', () => {
+    assert.equal(ladderResolutionRefusal(watched({ resolutions: ['1280×720'] }), []), null);
+  });
+
+  /**
+   * Deliberately silent, because `viewerPlaybackRefusal` already refuses it with the far better
+   * account: no resolution at all is a viewer who saw no picture, not one who saw a wrong quality.
+   */
+  it('leaves a viewer who decoded nothing to the refusal that explains it', () => {
+    assert.equal(ladderResolutionRefusal(watched({ resolutions: [] }), LADDER), null);
+  });
+});

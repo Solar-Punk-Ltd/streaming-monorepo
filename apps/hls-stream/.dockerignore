@@ -1,0 +1,36 @@
+# Keep `docker build` context small, both Dockerfile.uploader and Dockerfile.client
+# use the repo root (`..` from deploy/) as their context.
+
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+**/.cache
+
+# Dockerfile.uploader copies the prebuilt JS in, un-ignore it.
+# (Dockerfile.client builds inside the container, so its dist stays excluded.)
+!packages/stream-uploader/dist
+!packages/stream-uploader/dist/**
+
+# weeb-3's runtime, copied out of node_modules by the client's `prebuild`. Excluded so the image
+# serves the version its own install resolved rather than whatever a developer's tree happened to
+# hold, and so 4 MB of wasm stays out of the context.
+packages/client/public/weeb-3
+
+# Ignore everything bee/srs persists on the host
+deploy/data
+nodes/data
+state
+
+# Misc dev junk
+.git
+**/.DS_Store
+**/*.log
+**/*.tsbuildinfo
+.vscode
+.env
+.env.*
+!.env.sample
+
+# Other deploys' artifacts
+deploy/.env.deploy*

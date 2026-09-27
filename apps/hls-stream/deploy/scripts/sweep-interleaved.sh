@@ -1,0 +1,427 @@
+#!/bin/bash
+#
+# The screening sweep, run ON the deployment host so it outlives the laptop that started it.
+#
+# ## Why it interleaves
+#
+# Measured 2026-08-05: two sittings of one configuration, 720p 2500kbps at a 2.0s GOP, differed by
+# **1.05s** while runs within a sitting agreed to 0.1s. It is not the postage batch, which was
+# controlled for, and not the publisher, whose `segment` and `upload` hops were identical. Both hops
+# that moved were the ones where Swarm delivers to a reader. See `docs/bench/between-session-drift.md`.
+#
+# That drift is larger than most of what a profile sweep is trying to detect, so a blocked sweep
+# (A,A,A then B,B,B) would report it as the difference between A and B and it would look like a
+# result. This runs one round of every configuration before repeating any of them, and **reverses the
+# order on even rounds**, so position within a round cannot favour a configuration either.
+#
+# ## Why nothing here redeploys, and the condition that makes that safe
+#
+# SRS prefers to cut on a keyframe at or after `HLS_FRAGMENT`, but force-closes a segment at
+# `HLS_FRAGMENT * HLS_AOF_RATIO` whether a keyframe arrived or not. So the publisher's GOP decides the
+# segment only while **`HLS_FRAGMENT <= GOP <= HLS_FRAGMENT * HLS_AOF_RATIO`**, and inside that range
+# every configuration below is reachable from the bench container alone, with no compose redeploy and
+# therefore no laptop.
+#
+# Getting that wrong is not hypothetical. On 2026-08-05 a fragment of 0.25 against SRS's default ratio
+# of 2.1 force-cut every segment at 0.53s regardless of a GOP swept from 0.5s to 2.0s, and twelve runs
+# reported an axis that had never moved. The caller must set the fragment at or below the smallest GOP
+# here, the ratio high enough to cover the largest, and confirm the SRT ingest is bound.
+#
+# ## The guard, which is why that cannot happen twice quietly
+#
+# Every run is checked against its own request before it counts: measured segment span against the
+# requested GOP, packets per segment against what the frame rate implies, and the share of segments
+# that could not be read. A run whose axis did not move is recorded as AXIS-FAIL rather than as a row.
+#
+# ## Why it checks that it can afford to finish
+#
+# On 2026-08-05 a sweep spent seven of its twelve runs before anyone noticed the uploader's chequebook
+# had reached exactly zero. That is worse than losing the remaining runs. A bee node that cannot pay
+# is refused service by its peers, so the runs on either side of the exhaustion are not comparable,
+# and the whole point of interleaving is that rows within one sitting can be read against each other.
+#
+# So funding is checked twice: once before the first run against the whole sweep, and again before
+# every run against that one run. Running out is then a clean stop with a named reason rather than a
+# quiet slide into measuring starvation.
+#
+# ## And why "can the nodes pay" is not the same question as "may this spend"
+#
+# Until 2026-09-16 that funding check was the whole of what stood between this sweep and the money,
+# and it authorises the entire balance, because a node can pay right up to an empty chequebook. It
+# also cannot see what an earlier sitting the same night already spent, so two sweeps that each pass
+# it land past the owner's total together. `within_ceiling` is the one that reads the authorisation
+# in `.spend-ledger.env`, and it is asked at the same two moments, with no way to skip it.
+#
+# Usage, from the repo root on the laptop:
+#   rsync -a deploy/scripts/ manager-host:~/swarm-hls-bench/deploy/scripts/   # the DIRECTORY, it sources burn-rates.sh
+#   ssh manager-host 'setsid nohup bash ~/swarm-hls-bench/sweep-interleaved.sh >/dev/null 2>&1 &'
+set -u
+
+REPO_DIR="${REPO_DIR:-/home/solarpunk/swarm-hls-bench}"
+IMAGE="${IMAGE:-swarm-hls-bench:latest}"
+PROFILE="${PROFILE:-latbench}"
+PORT_SLOT="${PORT_SLOT:-7}"
+ROUNDS="${ROUNDS:-2}"
+MINUTES="${MINUTES:-3}"
+
+# Both bee nodes are paid, not only the one that writes: the uploader pays peers to take chunks and
+# the gateway pays to pull them back.
+#
+# ⛔⛔⛔ This file carried 0.0437/0.0355 BZZ per minute until 2026-08-13, quoting "eight arms over 41
+# minutes cost the uploader 1.792 BZZ, so 2.62 per broadcast hour". **No sitting on the host reads
+# anything like that.** Every sitting that bracketed itself falls between 0.70 and 0.78 on the
+# uploader and 0.58 and 0.64 on the gateway, and this script has not run since 2026-08-05, so the
+# figure was copied in from an analysis rather than measured here.
+#
+# It was 3.4x the real rate, in a guard that refuses, which blocks affordable work.
+RATES="$(dirname "${BASH_SOURCE[0]}")/burn-rates.sh"
+# shellcheck source=deploy/scripts/burn-rates.sh
+. "${RATES}" || {
+  # `set -u` without `set -e` would carry on to an "unbound variable" inside a funding function,
+  # naming neither the file nor the fix. A script that prices a sitting does not guess.
+  echo "cannot read ${RATES}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
+
+# origin + slot*10, matching apply_port_slot in _lib.sh, where BEE_UPLOADER_API_PORT has origin 10005
+# and BEE_GATEWAY_API_PORT has origin 10007.
+UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((10005 + PORT_SLOT * 10))}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
+
+# Deliberately outside REPO_DIR. That tree is an rsync target with `--delete`, so anything written
+# there is removed the next time the laptop syncs, which is exactly when someone would be checking on
+# a sweep still running.
+OUT_DIR="${OUT_DIR:-/home/solarpunk/sweep-runs}"
+LOG="${OUT_DIR}/sweep.log"
+# One line per finished run, so progress can be read without parsing the log.
+STATE="${OUT_DIR}/sweep-state.tsv"
+mkdir -p "${OUT_DIR}"
+
+# name:size:kbps:gop
+#
+# The first row is the reference and is measured in every round like any other, which is what makes it
+# a reference: each row can be read against the one taken beside it rather than against a number from
+# another sitting. It is also the configuration with six prior runs behind it, so a round that puts it
+# somewhere unfamiliar is saying something about the round.
+#
+# 1080p is deliberately absent. On 2026-08-05 three of its four rows failed the axis guard by
+# delivering ~26.5fps against a requested 30: the packet count per segment was always exactly right
+# for the GOP while the declared duration ran ~13% long, so the encoder was falling behind real time
+# rather than dropping frames. A row that was not delivered at the GOP it asked for cannot be read as
+# that GOP, and at 6000kbps it costs 2.4x the bitrate of a 720p row to learn nothing.
+#
+# The quarter second row is back. It was rejected once, and both instrument defects found since then
+# push a fast configuration to look worse: the broken feed reader, and a wrap fold that discarded any
+# sample beating the publisher's own 1.39s lead. It can only be judged against rows taken beside it,
+# which is what this sweep is for.
+#
+# `SWEEP_CONFIGS` overrides the grid with a space-separated list in the same form. The point is to
+# answer one question with the runs it needs rather than the whole screen: a focused pair still gets
+# the interleaving, the reversal, the axis guard and the funding check, and a question that needs two
+# configurations should not cost four. Keep a reference row in any override, since a row read against
+# nothing taken beside it is a number from another sitting.
+if [ -n "${SWEEP_CONFIGS:-}" ]; then
+  read -r -a CONFIGS <<< "${SWEEP_CONFIGS}"
+else
+  CONFIGS=(
+    "ref-720-2.0:1280x720:2500:2.0"
+    "720-0.25:1280x720:2500:0.25"
+    "720-0.5:1280x720:2500:0.5"
+    "720-1.0:1280x720:2500:1.0"
+  )
+fi
+
+say() {
+  echo "[$(date -u +%H:%M:%S)] $*" >> "${LOG}"
+}
+
+# Whether the postage batch can carry what this sweep intends to publish, which until 2026-08-13 this
+# script never asked. Funding and capacity are not interchangeable: a node out of BZZ is refused
+# service by its peers and that is loud, while a full immutable batch refuses the upload and a full
+# mutable one silently overwrites with every health signal still green. Sourced after `say`, which it
+# refuses without, so its refusals land in this log.
+GATES="$(dirname "${BASH_SOURCE[0]}")/capacity-gate.sh"
+# shellcheck source=deploy/scripts/capacity-gate.sh
+. "${GATES}" || {
+  echo "cannot read ${GATES}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
+# Whether the owner authorised what this sweep would spend, which is a different question from
+# whether the nodes can pay it. Sourced further down, after `available_plur`, because it reads a
+# chequebook through that function and refuses a caller that has not defined one yet.
+CEILING="$(dirname "${BASH_SOURCE[0]}")/spend-ceiling.sh"
+
+# What the nodes themselves say each run did. ⛔ Every row this sweep has ever produced was scored on
+# what the bench saw across the network, while both bee nodes kept a complete account of the same
+# events that nothing read. `bee_pusher_sync_time` IS the publish race the bench times with a
+# stopwatch, and `bee_retrieval_*` IS the fetch hop.
+BRACKET="$(dirname "${BASH_SOURCE[0]}")/metrics-bracket.sh"
+# shellcheck source=deploy/scripts/metrics-bracket.sh
+. "${BRACKET}" || {
+  echo "cannot read ${BRACKET}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
+
+# PLUR to BZZ at three decimals, because bash has no floats and a raw 16-digit integer is unreadable
+# in a log someone is skimming to find out why their sweep stopped.
+bzz() {
+  printf '%d.%03d' "$(($1 / 10000000000000000))" "$((($1 % 10000000000000000) / 10000000000000))"
+}
+
+# Prints the node's spendable chequebook balance in PLUR, or nothing at all if it cannot be read.
+#
+# Empty is meaningfully different from zero. A node running with swap disabled has no chequebook and
+# answers 405, which is a deployment shape rather than a shortfall, so the caller decides what to do
+# about it rather than this reporting a confident 0.
+#
+# `availableBalance` is total minus cheques already issued, and it is NOT restored when a peer cashes
+# one. Only a deposit raises it, so waiting for it to recover never works.
+#
+# Named `available_plur` because `spend-ceiling.sh` reads every chequebook through a function of that
+# name that the caller owes it, and the five other publishing drivers all spell it this way.
+available_plur() {
+  curl -s --max-time 10 "http://127.0.0.1:${1}/chequebook/balance" 2>/dev/null |
+    python3 -c 'import sys,json;print(json.load(sys.stdin)["availableBalance"])' 2>/dev/null
+}
+
+# Zero when both nodes can pay for the given minutes of publishing, non-zero otherwise. Reports every
+# node rather than stopping at the first shortfall, because the two are funded separately and an
+# operator about to go on chain wants both numbers in one message.
+funds_cover_minutes() {
+  local minutes="$1" label="$2"
+  local short=0
+  local port rate who need have
+  for spec in "${UPLOADER_BEE_PORT}:${UPLOADER_BURN_PLUR_PER_MIN}:uploader" \
+    "${GATEWAY_BEE_PORT}:${GATEWAY_BURN_PLUR_PER_MIN}:gateway"; do
+    IFS=: read -r port rate who <<< "${spec}"
+    # Dividing before applying the margin keeps a long sweep clear of the 64-bit ceiling: at 600
+    # minutes the other order reaches 2.7e19 and wraps. The truncation it costs is under 14000 PLUR
+    # against a threshold around 1.6e16, so it is twelve orders of magnitude below anything decidable.
+    # shellcheck disable=SC2017
+    need=$((rate * minutes / 100 * FUNDS_MARGIN_PERCENT))
+    have="$(available_plur "${port}")"
+    if [ -z "${have}" ]; then
+      say "  ${label}: ${who} chequebook on ${port} did not answer, so funding is unknown"
+      short=1
+    elif [ "${have}" -lt "${need}" ]; then
+      say "  ${label}: ${who} has $(bzz "${have}") BZZ, needs $(bzz "${need}") for ${minutes} min SHORT"
+      short=1
+    else
+      say "  ${label}: ${who} has $(bzz "${have}") BZZ, needs $(bzz "${need}") for ${minutes} min, ok"
+    fi
+  done
+  return ${short}
+}
+
+# Sourced here rather than beside the other gates, because it reads a chequebook through
+# available_plur() and refuses a caller that has not defined one yet.
+# shellcheck source=deploy/scripts/spend-ceiling.sh
+. "${CEILING}" || {
+  echo "cannot read ${CEILING}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
+
+run_one() {
+  local name="$1" size="$2" kbps="$3" gop="$4" round="$5"
+  local started slug="round${round}-${name}"
+  started="$(date -u +%s)"
+
+  say "round ${round}: ${name} (${size} ${kbps}kbps gop ${gop}) starting"
+
+  # ⭐ Bracketed per run rather than per sweep. The sweep interleaves two configurations, so a total
+  # taken across the whole sitting cannot say which of them moved `bee_pusher_sync_time`, which is
+  # the difference the sitting exists to measure.
+  snapshot_metrics "${METRICS_DIR}/${slug}-before.json" "${slug}-before"
+  start_sampler "${METRICS_DIR}/${slug}-series" "${slug}"
+
+  # `SWEEP_EXTRA_ENV` is a space-separated list of NAME=VALUE handed to every run, for the bench knobs
+  # this driver has no opinion about. It exists because a sitting's expensive part is the broadcast:
+  # a follow-up question answerable from the same minutes should not cost a second one. Applied to
+  # every arm rather than to a chosen few, so it cannot become a difference between rows.
+  local extra=()
+  local pair
+  for pair in ${SWEEP_EXTRA_ENV:-}; do
+    extra+=(-e "${pair}")
+  done
+
+  docker run --rm --network host \
+    ${extra[@]+"${extra[@]}"} \
+    -u "$(id -u):$(id -g)" \
+    --group-add "$(getent group docker | cut -d: -f3)" \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "${REPO_DIR}:/repo" \
+    -e HOME=/tmp \
+    -w /repo \
+    -e E2E_SSH_TARGET=local \
+    -e E2E_PUBLIC_HOST=127.0.0.1 \
+    -e "E2E_PROFILE=${PROFILE}" \
+    -e "E2E_PORT_SLOT=${PORT_SLOT}" \
+    -e "BENCH_RUN_MINUTES=${MINUTES}" \
+    -e "BENCH_SIZE=${size}" \
+    -e "BENCH_BITRATE_KBPS=${kbps}" \
+    -e "BENCH_GOP_SECONDS=${gop}" \
+    -e BENCH_FPS=30 \
+    "${IMAGE}" pnpm bench:longrun >> "${LOG}" 2>&1
+  local status=$?
+
+  stop_sampler
+  snapshot_metrics "${METRICS_DIR}/${slug}-after.json" "${slug}-after"
+  diff_metrics "${METRICS_DIR}/${slug}-before.json" "${METRICS_DIR}/${slug}-after.json" \
+    "${METRICS_DIR}/${slug}-diff.txt" "  what the nodes say this run did:"
+
+  # Checked against what it asked for, not merely that it exited zero. A run that swept nothing still
+  # exits zero and still writes a report full of plausible numbers.
+  local verdict
+  if [ ${status} -ne 0 ]; then
+    verdict="RUN-FAILED(${status})"
+  else
+    local newest="" candidate
+    for candidate in "${REPO_DIR}"/docs/bench/longrun-*.json; do
+      [ -e "${candidate}" ] || continue
+      if [ -z "${newest}" ] || [ "${candidate}" -nt "${newest}" ]; then
+        newest="${candidate}"
+      fi
+    done
+    if [ -z "${newest}" ]; then
+      verdict="NO-REPORT"
+    else
+      verdict="$(python3 "${REPO_DIR}/e2e/src/probes/check-axis.py" "${newest}" "${gop}" 30 2>&1)"
+    fi
+  fi
+  say "  ${verdict}"
+
+  # A failed run loses that run and nothing else. Every run is a real broadcast paid for with real
+  # postage, so aborting the sweep would throw away everything already measured.
+  printf '%s\t%s\t%s\t%s\t%s\t%ss\t%s\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${round}" "${name}" "${size}" "${kbps}" "${gop}" "${verdict}" >> "${STATE}"
+  say "round ${round}: ${name} finished in $(( $(date -u +%s) - started ))s, status ${status}"
+}
+
+: > "${LOG}"
+: > "${STATE}"
+say "sweep starting: ${#CONFIGS[@]} configs x ${ROUNDS} rounds x ${MINUTES} min, interleaved"
+
+# ⛔ Before anything is priced or published. A floor crossed by an earlier sitting is still crossed:
+# the node does not refill between them, so starting here would measure a starved node and file it as
+# a configuration. `overnight-chain.sh` points a whole night at one shared STOP_FILE for this reason.
+if [ -f "${STOP_FILE}" ]; then
+  say "REFUSING TO START: a floor was already crossed and ${STOP_FILE} says so:"
+  sed 's/^/  /' "${STOP_FILE}" >> "${LOG}"
+  exit 1
+fi
+# Logged rather than assumed remembered: a knob that changes what the instrument counts is part of
+# the configuration a report has to name, and this one is invisible in the row it produces.
+[ -n "${SWEEP_EXTRA_ENV:-}" ] && say "  extra bench env on every arm: ${SWEEP_EXTRA_ENV}"
+
+TOTAL_MINUTES=$((${#CONFIGS[@]} * ROUNDS * MINUTES))
+if [ "${SKIP_FUNDS_CHECK:-0}" = "1" ]; then
+  say "funding check skipped by SKIP_FUNDS_CHECK, so this sweep may stop partway"
+else
+  say "checking both chequebooks cover ${TOTAL_MINUTES} min of publishing at a ${FUNDS_MARGIN_PERCENT}% margin"
+  if ! funds_cover_minutes "${TOTAL_MINUTES}" "preflight"; then
+    say "REFUSING TO START: this sweep cannot pay for itself, and a sweep that stops partway"
+    say "  produces rows measured on a node its peers have stopped serving. Deposit into the short"
+    say "  node's chequebook, or lower ROUNDS, MINUTES or the config count, then start again."
+    exit 1
+  fi
+fi
+
+# Capacity is the other half of the same precondition, and there is deliberately no way to skip it.
+# `SKIP_FUNDS_CHECK` exists because a chequebook can be topped up between rounds; a full immutable
+# batch cannot, so the only answer to this refusal is a dilute, which stamp-guard prints.
+if ! has_capacity "${TOTAL_MINUTES}"; then
+  say "REFUSING TO START: the postage batch cannot carry this sweep."
+  exit 1
+fi
+
+# ⛔ Distinct from `funds_cover_minutes` above, which asks whether the nodes CAN pay and so authorises
+# the whole balance right down to an empty chequebook. This asks whether the owner said they may, and
+# it is the only check here that can see what an earlier sitting tonight already spent, so two sweeps
+# that each pass the funding check cannot land past the authorisation together. It also reads every
+# node that can spend rather than the uploader and the gateway alone: since the per-rung split most
+# publishing spend lands on the 480p, 720p and 1080p nodes, which `funds_cover_minutes` never reads.
+#
+# ⛔⛔ Outside the SKIP_FUNDS_CHECK branch on purpose. That switch exists because a chequebook can be
+# topped up between rounds, which is a fact about the nodes. It says nothing about the authorisation,
+# and there is deliberately no way to skip this.
+if ! within_ceiling "${TOTAL_MINUTES}"; then
+  say "REFUSING TO START: this sweep would spend past the authorisation in ${SPEND_LEDGER}"
+  exit 1
+fi
+
+# Answering "can I afford this?" should not require starting it, since the answer decides whether an
+# operator goes on chain first. Exit code is the answer, and the log holds the per-node figures.
+if [ "${PREFLIGHT_ONLY:-0}" = "1" ]; then
+  say "PREFLIGHT_ONLY, so stopping here without publishing anything"
+  exit 0
+fi
+
+# The whole instrument surface either side of the sitting as well as either side of each run, so a
+# drift across the hour has a reading that spans it.
+snapshot_metrics "${METRICS_DIR}/sweep-before.json" "sweep-before"
+trap 'stop_sampler' EXIT INT TERM
+
+for round in $(seq 1 "${ROUNDS}"); do
+  # Reversed on even rounds. With a fixed order the first configuration is always measured at the top
+  # of a round, so any drift within a round would land on it systematically.
+  ordered=()
+  if [ $((round % 2)) -eq 0 ]; then
+    for ((i = ${#CONFIGS[@]} - 1; i >= 0; i--)); do ordered+=("${CONFIGS[$i]}"); done
+  else
+    ordered=("${CONFIGS[@]}")
+  fi
+
+  for row in "${ordered[@]}"; do
+    IFS=: read -r name size kbps gop <<< "${row}"
+
+    # ⭐ A crossed floor is not a reason to throw away the runs already measured. It is a reason not
+    # to buy another one, and a record of where the sitting stopped being trustworthy.
+    if [ -f "${STOP_FILE}" ]; then
+      say "STOPPING after $(wc -l < "${STATE}") runs: a floor was crossed and ${STOP_FILE} says so."
+      sed 's/^/  /' "${STOP_FILE}" >> "${LOG}"
+      printf '%s\t%s\t%s\t%s\t%s\t%ss\t%s\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${round}" "${name}" "${size}" "${kbps}" "${gop}" \
+        "NOT-RUN(floor crossed)" >> "${STATE}"
+      break 2
+    fi
+
+    # Re-checked per run rather than trusted from the preflight, because the estimate is a straight
+    # line through a rate measured once and the real cost varies with what is being published.
+    if [ "${SKIP_FUNDS_CHECK:-0}" != "1" ] && ! funds_cover_minutes "${MINUTES}" "before ${name}"; then
+      say "STOPPING after $(wc -l < "${STATE}") runs: cannot pay for the next one."
+      printf '%s\t%s\t%s\t%s\t%s\t%ss\t%s\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${round}" "${name}" "${size}" "${kbps}" "${gop}" \
+        "NOT-RUN(funds exhausted)" >> "${STATE}"
+      break 2
+    fi
+
+    # Re-asked per run like the funding is, and for a sharper reason: the sweep's own broadcasts are
+    # what fill the batch, so a sitting long enough to matter can start inside the stop line and
+    # cross it under itself. Asking once is asking about a batch that no longer exists by run four.
+    if ! has_capacity "${MINUTES}"; then
+      say "STOPPING after $(wc -l < "${STATE}") runs: the batch cannot carry the next one."
+      printf '%s\t%s\t%s\t%s\t%s\t%ss\t%s\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${round}" "${name}" "${size}" "${kbps}" "${gop}" \
+        "NOT-RUN(postage exhausted)" >> "${STATE}"
+      break 2
+    fi
+
+    # Re-asked per run for the same reason the other two are: the sweep's own broadcasts are what
+    # spend, so a sitting long enough to matter can start inside the authorisation and cross it under
+    # itself, and the preflight measured a night that no longer exists by run four.
+    if ! within_ceiling "${MINUTES}"; then
+      say "STOPPING after $(wc -l < "${STATE}") runs: the next one would spend past the authorisation."
+      printf '%s\t%s\t%s\t%s\t%s\t%ss\t%s\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${round}" "${name}" "${size}" "${kbps}" "${gop}" \
+        "NOT-RUN(past the authorisation)" >> "${STATE}"
+      break 2
+    fi
+
+    run_one "${name}" "${size}" "${kbps}" "${gop}" "${round}"
+  done
+done
+
+snapshot_metrics "${METRICS_DIR}/sweep-after.json" "sweep-after"
+diff_metrics "${METRICS_DIR}/sweep-before.json" "${METRICS_DIR}/sweep-after.json" \
+  "${METRICS_DIR}/sweep-diff.txt" "what the nodes say the whole sweep did:"
+say "sweep done: $(grep -c "axis ok" "${STATE}") axis-ok, $(grep -cE "AXIS FAIL|READER BEHIND|RUN-FAILED|NO-REPORT" "${STATE}") bad, $(grep -c "UNREADABLE-HIGH" "${STATE}") with high unreadable share"

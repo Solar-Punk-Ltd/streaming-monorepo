@@ -1,0 +1,98 @@
+# Multi-stage build for the React client.
+# Build context is the monorepo root (see `context: ..` in docker-compose.yml).
+#
+# Per-profile VITE_APP_OWNER / VITE_APP_RAW_TOPIC are baked into the bundle at
+# build time; with docker compose project namespacing each profile gets its
+# own image, so streamer1 and streamer2 ship their own pre-built JS.
+
+# --- Build stage --------------------------------------------------------
+FROM node:22-alpine AS build
+WORKDIR /app
+
+# Build args (declare → ENV so Vite picks them up via process.env.VITE_*).
+# VITE_READER_BEE_URL defaults to "/bee" so the bundle calls a relative path
+# served by this container's nginx, which proxies to the bee-gateway service.
+ARG VITE_READER_BEE_URL=/bee
+ARG VITE_APP_OWNER=
+ARG VITE_APP_RAW_TOPIC=swarm-stream
+# ⛔ Empty by default, and a deployment serving viewers must leave it that way. Set, the bundle
+# publishes the hls.js instance on `globalThis` so a measurement harness can move the player's
+# latency target between arms of one broadcast. Unset, Vite substitutes the flag with a literal and
+# the whole thing is eliminated, which `packages/client/test/bundle.test.ts` asserts.
+ARG VITE_EXPOSE_PLAYER=
+# ⛔ Empty by default, meaning segments come from the viewer's bee gateway. Set to `weeb3`, the bundle
+# fetches segment bytes from a Swarm node running in the viewer's own tab instead. Experimental: it
+# pulls in a few megabytes of WebAssembly (3.87 MB at the pinned @lat-murmeldjur/weeb_3 0.0.341001),
+# as a lazy chunk no gateway-backed viewer ever downloads. The feed and the manifests still travel
+# through the gateway either way.
+ARG VITE_BROWSER_FETCH_BACKEND=
+ENV VITE_READER_BEE_URL=$VITE_READER_BEE_URL \
+    VITE_APP_OWNER=$VITE_APP_OWNER \
+    VITE_APP_RAW_TOPIC=$VITE_APP_RAW_TOPIC \
+    VITE_EXPOSE_PLAYER=$VITE_EXPOSE_PLAYER \
+    VITE_BROWSER_FETCH_BACKEND=$VITE_BROWSER_FETCH_BACKEND
+
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+
+# Workspace lockfile + just the package manifests first, for layer caching. The trailing "..." in
+# the filter below means "and its workspace dependencies", so the shared manifest has to be here
+# too or the install resolves a link target that does not exist.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/client/package.json packages/client/
+COPY packages/shared/package.json packages/shared/
+
+RUN pnpm install --frozen-lockfile --filter "@swarm-hls-stream/client..."
+
+# Now the sources, separate layer so manifest-only changes don't bust install. Shared is consumed
+# as TypeScript, with no build of its own, so vite compiles it as part of the client bundle.
+COPY packages/shared packages/shared
+COPY packages/client packages/client
+
+# The client's `prebuild` copies weeb-3's worker, glue, wasm and snippets out of node_modules into
+# `public/weeb-3/`, which vite then copies into `dist/`. That directory is gitignored, so the build
+# context carries none of it and this install layer is where the bytes come from. pnpm runs `pre`
+# scripts by default, which is what makes `build` alone enough.
+RUN pnpm --filter @swarm-hls-stream/client build
+
+# What this bundle was built from, minted by `deploy/scripts/deploy.sh` out of git.
+#
+# Declared here rather than beside the VITE args on purpose. A build arg's value is part of the cache
+# key of every layer after it, and CLIENT_BUILD_HEAD moves on every commit, so above the install and
+# the build it would rebuild both for a checkout whose client sources never changed.
+ARG CLIENT_BUILD_CLIENT_TREE=
+ARG CLIENT_BUILD_SHARED_TREE=
+ARG CLIENT_BUILD_HEAD=
+ARG CLIENT_BUILD_DIRTY=0
+ARG CLIENT_BUILD_AT=
+
+# Read back over HTTP at `/build-stamp.json` by the `client-shape` e2e preflight, which refuses a
+# sitting whose served client was not built from the sources the harness was checked out with. It
+# lands in `dist/`, so the runtime stage's COPY below carries it into the site and nginx serves it
+# off the filesystem with no template change.
+#
+# ⚠️ `dirty` is written as a JSON boolean, because the gate refuses on it and a quoted "0" would be
+# truthy on the way in. An image built by a deploy script that passes none of these args still
+# builds, and the empty clientTree is what the gate then refuses on, which asks for a redeploy.
+RUN printf '{"clientTree":"%s","sharedTree":"%s","head":"%s","dirty":%s,"builtAt":"%s","fetchBackend":"%s","exposePlayer":"%s"}\n' \
+      "$CLIENT_BUILD_CLIENT_TREE" \
+      "$CLIENT_BUILD_SHARED_TREE" \
+      "$CLIENT_BUILD_HEAD" \
+      "$(if [ "$CLIENT_BUILD_DIRTY" = "1" ]; then echo true; else echo false; fi)" \
+      "$CLIENT_BUILD_AT" \
+      "$VITE_BROWSER_FETCH_BACKEND" \
+      "$VITE_EXPOSE_PLAYER" \
+      > /app/packages/client/dist/build-stamp.json
+
+# --- Runtime stage ------------------------------------------------------
+FROM nginx:1.27-alpine
+
+COPY --from=build /app/packages/client/dist /usr/share/nginx/html
+COPY deploy/client-nginx.conf.template /etc/nginx/templates/default.conf.template
+
+# Restrict envsubst to *our* placeholders so nginx's own $variables ($host, etc.)
+# are left alone when the entrypoint processes the template.
+ENV NGINX_ENVSUBST_FILTER='BEE_GATEWAY_HOST|BEE_GATEWAY_PORT' \
+    BEE_GATEWAY_HOST=bee-gateway \
+    BEE_GATEWAY_PORT=1733
+
+EXPOSE 80

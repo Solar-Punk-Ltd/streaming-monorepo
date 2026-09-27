@@ -1,0 +1,1802 @@
+import express from 'express';
+import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
+import { afterEach, beforeEach, describe, it } from 'node:test';
+import { setTimeout as sleep } from 'node:timers/promises';
+
+import { createOmeEngine, createOmeEngineFromEnv } from '../src/engines/ome.js';
+import { Fetcher } from '../src/engines/ome/interfaces.js';
+import { DEFAULT_FETCH_TIMEOUT_MS } from '../src/engines/ome/OmeHlsPuller.js';
+import { EnginePlugin, RawBodyRequest } from '../src/engines/types.js';
+import { StreamOrchestrator } from '../src/libs/StreamOrchestrator.js';
+import { STREAM_STATUS_VOD } from '../src/types.js';
+
+import {
+  makeFakeCatalog,
+  makeFakeOrchestrator,
+  makeFakeRecoveryStore,
+  makeRecordingCatalog,
+  makeTestOrchestrator,
+} from './helpers/fakes.js';
+import { listenOnLoopback } from './helpers/loopbackServer.js';
+import { waitAndConfirmNothingHappened, waitFor } from './helpers/waiting.js';
+
+/**
+ * Every engine a test builds, so its pull loops can be stopped whether or not the test ended a stream.
+ *
+ * ⛔ **A pulling engine holds the whole test process open, and no test could reach in to stop it.** The
+ * pullers live in a map closed over inside `createOmeEngine`, each one holding a `setTimeout` for its
+ * next pass, and the only things that stop one are an `on_unpublish` for that stream or a replacing
+ * announce. A test that opens a stream and asserts on the first pass leaves the loop armed for a poll
+ * interval, or for the sixty second retry window if the origin went quiet. node:test runs each file in
+ * its own child process, so that child sat there long after its last assertion, and
+ * `--test-force-exit` was added to the package script to paper over it. Force-exit then killed
+ * late-registering FILES uncounted with exit 0: five consecutive runs reported 1017, 987, 980, 996 and
+ * 1005 tests out of 1025, a different subset each time.
+ *
+ * {@link EnginePlugin.stopIngest} was added for this, and it is the reason that flag can stay deleted.
+ */
+const builtEngines: EnginePlugin[] = [];
+
+function tracked(engine: EnginePlugin): EnginePlugin {
+  builtEngines.push(engine);
+  return engine;
+}
+
+const trackedOmeEngine = (...args: Parameters<typeof createOmeEngine>): EnginePlugin =>
+  tracked(createOmeEngine(...args));
+
+const trackedOmeEngineFromEnv = (...args: Parameters<typeof createOmeEngineFromEnv>): EnginePlugin =>
+  tracked(createOmeEngineFromEnv(...args));
+
+afterEach(() => {
+  while (builtEngines.length > 0) {
+    builtEngines.pop()?.stopIngest?.();
+  }
+});
+
+/** The catalog entry shape these tests read back, narrowed from what StreamCatalog accepts. */
+interface VodEntry {
+  state: string;
+  duration: number;
+}
+
+/**
+ * Posts a signed admission webhook to the engine's real route over HTTP, the way OME does. Every hop
+ * the engine takes on an announce is behind this call: signature check, app/stream parse, the
+ * orchestrator handoff, and the puller lifecycle.
+ */
+async function postAdmission(
+  engine: EnginePlugin,
+  orchestrator: StreamOrchestrator,
+  status: 'opening' | 'closing',
+  secret: string,
+  streamUrl: string,
+  /**
+   * The publisher's socket, which real OME sends on every admission and which is the only field that
+   * tells one session of a stream from the next. Captured from a live SRT publish: a session's
+   * opening and its closing carry the same port, and two sessions of one stream carry different
+   * ones. Omit it to reproduce a payload that carries no session identity at all.
+   *
+   * Typed looser than the interface declares on purpose. This goes out as JSON over a socket, so the
+   * engine has to survive the shapes a wire format can produce rather than the shapes TypeScript
+   * promises, and `null` is one it can produce for every field.
+   */
+  client?: { address?: string | null; port?: number | null },
+  /**
+   * `request.time`, which OME issues on every admission as ISO 8601 with an offset. It is the second
+   * discriminator: a session's own closing is issued after its opening, so a closing issued before the
+   * live session was admitted cannot be for it. That is what separates two sessions the socket cannot,
+   * which is any pair that reconnects on the same source port. See CON-23.
+   */
+  requestTime?: string,
+): Promise<unknown> {
+  return postAdmissionBody(engine, orchestrator, secret, {
+    ...(client ? { client } : {}),
+    request: { direction: 'incoming', status, url: streamUrl, ...(requestTime ? { time: requestTime } : {}) },
+  });
+}
+
+/**
+ * The transport half of `postAdmission`, for the payload shapes its parameters cannot express. Signs
+ * whatever it is given, so a test can send a direction, a url or a request field OME would never
+ * pair together and still reach the handler rather than the signature check.
+ */
+async function postAdmissionBody(
+  engine: EnginePlugin,
+  orchestrator: StreamOrchestrator,
+  secret: string,
+  payload: unknown,
+): Promise<unknown> {
+  const app = express();
+  // Mirrors the raw-body capture in api/server.ts, which is what the signature is computed over.
+  app.use(
+    express.json({
+      verify: (req, _res, buf) => {
+        (req as RawBodyRequest).rawBody = buf;
+      },
+    }),
+  );
+  app.use(engine.prefix, engine.createRouter(orchestrator));
+
+  const { server, baseUrl } = await listenOnLoopback(app);
+  try {
+    const body = JSON.stringify(payload);
+    const response = await fetch(`${baseUrl}${engine.prefix}/admission`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-ome-signature': createHmac('sha1', secret).update(Buffer.from(body)).digest('base64url'),
+      },
+      body,
+    });
+    // Returned so a caller can assert what OME is actually told. TEST-25 records that nothing else in
+    // this suite reads the admission reply, which is how an inverted allow/deny stayed green.
+    return await response.json();
+  } finally {
+    server.close();
+  }
+}
+
+// A recovered OME stream gets no fresh admission (the broadcaster's SRT session stayed open across the
+// uploader crash), so resumeRecoveredStream must restart the HLS puller itself — proven here by the
+// puller polling the stream's OME playlist. Without the fix nothing pulls and the stream is VOD-ed at
+// the recovery timer.
+describe('createOmeEngine resumeRecoveredStream (F: OME crash recovery)', () => {
+  let originalFetch: typeof globalThis.fetch;
+  let fetchedUrls: string[];
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    fetchedUrls = [];
+    // A 404 with a long poll interval means the puller polls once then idles far out of the test
+    // window, so a single recorded fetch is enough to prove it started.
+    globalThis.fetch = (async (input: string | URL) => {
+      fetchedUrls.push(input.toString());
+      return { ok: false, status: 404, text: async () => '' } as Response;
+    }) as unknown as typeof globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('restarts the HLS puller for a recovered stream (polls its OME playlist)', async () => {
+    const engine = trackedOmeEngine('http://ome:8081', 60_000);
+    const orchestrator = makeFakeOrchestrator();
+
+    const { resumeRecoveredStream } = engine;
+    assert.ok(resumeRecoveredStream, 'OME engine must expose resumeRecoveredStream');
+
+    resumeRecoveredStream(orchestrator, 'video/stream');
+    await sleep(50);
+
+    assert.ok(
+      fetchedUrls.includes('http://ome:8081/video/stream/ts:playlist.m3u8'),
+      `resuming a recovered OME stream must restart its puller; fetched: ${fetchedUrls.join(', ') || '(none)'}`,
+    );
+  });
+});
+
+/**
+ * The test above resumes into an empty puller map, which is the case a crash leaves behind only when
+ * the process is new. The one that mattered is the other one: a puller still mapped for the stream
+ * because it died without ever calling `onHalt`. `startPuller` used to early-return on exactly that,
+ * so the resumed stream pulled nothing and was VOD-ed at the recovery timer, and nothing here could
+ * see the difference. See CON-5.
+ */
+describe('createOmeEngine resumeRecoveredStream over a stale puller (CON-5)', () => {
+  const SECRET = 'stale-puller-secret';
+  const HLS_BASE = 'http://ome:8081';
+  const STREAM_URL = 'srt://ome:10080/video/demo';
+  const STREAM_ID = 'video/demo';
+  const PLAYLIST_URL = `${HLS_BASE}/${STREAM_ID}/ts:playlist.m3u8`;
+  const POLL_INTERVAL_MS = 20;
+  const DELIVERY_TIMEOUT_MS = 5_000;
+  const SEGMENTS = ['seg_0.ts', 'seg_1.ts'];
+
+  /**
+   * Deliberately without `#EXT-X-PROGRAM-DATE-TIME`. The handover floor CON-20 added is what stops a
+   * replacement puller re-ingesting the outgoing session's media, and it is keyed on that tag. Leaving
+   * it out is what a resume after a crash actually sees, since the floor is recorded per stream in
+   * memory and the process that recorded it is the one that died.
+   */
+  const PLAYLIST = [
+    '#EXTM3U',
+    '#EXT-X-VERSION:3',
+    '#EXT-X-TARGETDURATION:2',
+    '#EXT-X-MEDIA-SEQUENCE:0',
+    ...SEGMENTS.flatMap((uri) => ['#EXTINF:2.0,', uri]),
+  ].join('\n');
+
+  it('replaces a puller that is still mapped, so the recovered stream produces segments again', async () => {
+    const delivered: number[] = [];
+    const fetcher = (async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url === PLAYLIST_URL) {
+        return { ok: true, status: 200, text: async () => PLAYLIST } as Response;
+      }
+      return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(8) } as Response;
+    }) as unknown as Fetcher;
+
+    const orchestrator = makeFakeOrchestrator({
+      handleSegment: (_streamId: string, seq: number) => {
+        delivered.push(seq);
+        return { accepted: true };
+      },
+    });
+
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher });
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL);
+    await waitFor(() => delivered.length === SEGMENTS.length, DELIVERY_TIMEOUT_MS);
+
+    // A fresh puller starts at `lastSeq = -1` against a reset duplicate filter, so it re-pulls what
+    // the origin is still serving. The blocked puller cannot: it carries the high-water it reached
+    // above, and every index in the playlist is at or below it, forever.
+    engine.resumeRecoveredStream?.(orchestrator, STREAM_ID);
+    await waitFor(() => delivered.filter((seq) => seq === 0).length > 1, DELIVERY_TIMEOUT_MS);
+
+    assert.ok(
+      delivered.filter((seq) => seq === 0).length > 1,
+      `the resumed stream never pulled anything, so it would be VOD-ed at the recovery timer; delivered: ${
+        delivered.join(', ') || '(none)'
+      }`,
+    );
+  });
+});
+
+describe('createOmeEngineFromEnv validation (OBS-12)', () => {
+  const OME_VARS = ['OME_ADMISSION_SECRET', 'OME_FETCH_TIMEOUT_MS', 'OME_HLS_POLL_INTERVAL_MS'] as const;
+  let saved: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    saved = Object.fromEntries(OME_VARS.map((name) => [name, process.env[name]]));
+    process.env.OME_ADMISSION_SECRET = 'test-secret';
+  });
+
+  afterEach(() => {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+  });
+
+  // Each of these ran happily past startup and only showed up once a stream started pulling: zero
+  // aborted every request, the overflow was clamped to 1ms while the log reported the window the
+  // operator wrote, and the negative threw a RangeError per tick so no HTTP request was ever made.
+  for (const badWindow of ['0', '-1', '2147483648', '10s']) {
+    it(`refuses to build an engine with OME_FETCH_TIMEOUT_MS=${badWindow}`, () => {
+      process.env.OME_FETCH_TIMEOUT_MS = badWindow;
+
+      assert.throws(() => trackedOmeEngineFromEnv(), { message: /OME_FETCH_TIMEOUT_MS/ });
+    });
+  }
+
+  it('builds an engine when the window is a usable integer', () => {
+    process.env.OME_FETCH_TIMEOUT_MS = '2500';
+
+    assert.equal(trackedOmeEngineFromEnv().name, 'ome');
+  });
+});
+
+describe('createOmeEngineFromEnv fetch timeout plumbing (TEST-15)', () => {
+  const CONFIGURED_WINDOW_MS = 150;
+  const PLUMBING_SECRET = 'plumbing-secret';
+  const STREAM_URL = 'srt://ome:10080/video/demo';
+  const ENV_VARS = ['OME_ADMISSION_SECRET', 'OME_FETCH_TIMEOUT_MS', 'OME_HLS_POLL_INTERVAL_MS', 'OME_HLS_URL'] as const;
+
+  let saved: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    saved = Object.fromEntries(ENV_VARS.map((name) => [name, process.env[name]]));
+  });
+
+  afterEach(() => {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+  });
+
+  /**
+   * OME_FETCH_TIMEOUT_MS reached the puller through four hops and no test crossed any of them, so
+   * each hop could be severed with the whole suite, typecheck and lint still green.
+   *
+   * The window is read back from the call the puller makes rather than timed with a clock. Timing it
+   * was the second flaky test the TEST-31 hunt exposed, twice in 160 runs: the puller creates the
+   * signal and then calls the fetcher, while the fetcher can only start its stopwatch once it is
+   * running, so any scheduling stall between those two points is subtracted from what it measures.
+   * Under an 8-wide parallel run that produced 120ms and 128ms against a 150ms window and a 20ms
+   * tolerance. Reading the argument is also exact where the band was approximate: it separates the
+   * configured window from a neighbouring wrong value, which no tolerance wide enough to survive
+   * contention could do.
+   */
+  it('applies the environment window to the pullers it starts', async () => {
+    process.env.OME_ADMISSION_SECRET = PLUMBING_SECRET;
+    process.env.OME_FETCH_TIMEOUT_MS = String(CONFIGURED_WINDOW_MS);
+    // One poll inside the test window, so the window recorded below is the first fetch and only fetch.
+    process.env.OME_HLS_POLL_INTERVAL_MS = '1000000';
+    process.env.OME_HLS_URL = 'http://ome:8081';
+
+    // Correlated to the signal rather than collected as they are handed out. Pullers other tests in
+    // this file started are still polling on the built-in default, so a flat list of every window
+    // requested during this test is mostly theirs: the first run of this assertion read
+    // `10000, 150, 10000, ...`. This records only the windows arming *this* engine's requests.
+    const windowForSignal = new WeakMap<AbortSignal, number>();
+    const realTimeout = AbortSignal.timeout;
+    AbortSignal.timeout = ((ms: number) => {
+      const signal = realTimeout.call(AbortSignal, ms);
+      windowForSignal.set(signal, ms);
+      return signal;
+    }) as typeof AbortSignal.timeout;
+
+    const armedWindowsMs: (number | undefined)[] = [];
+    const aborts: number[] = [];
+    const fetcher = ((_input: RequestInfo | URL, init?: RequestInit) => {
+      armedWindowsMs.push(init?.signal ? windowForSignal.get(init.signal) : undefined);
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          aborts.push(aborts.length);
+          reject(init.signal?.reason);
+        });
+      });
+    }) as unknown as Fetcher;
+
+    const engine = trackedOmeEngineFromEnv({ fetcher });
+    const orchestrator = makeFakeOrchestrator();
+    try {
+      await postAdmission(engine, orchestrator, 'opening', PLUMBING_SECRET, STREAM_URL);
+      await waitFor(() => aborts.length > 0, DEFAULT_FETCH_TIMEOUT_MS / 5);
+      await postAdmission(engine, orchestrator, 'closing', PLUMBING_SECRET, STREAM_URL);
+    } finally {
+      AbortSignal.timeout = realTimeout;
+    }
+
+    // Keeps the wiring in the assertion and not only the number: a window handed to a signal that
+    // never reaches the request would satisfy the check below on its own.
+    assert.equal(
+      aborts.length,
+      1,
+      `the puller's fetch never aborted inside ${
+        DEFAULT_FETCH_TIMEOUT_MS / 5
+      }ms, so the window it was given is not the one arming its requests`,
+    );
+    assert.deepEqual(
+      [...new Set(armedWindowsMs)],
+      [CONFIGURED_WINDOW_MS],
+      `the puller armed its requests with ${
+        armedWindowsMs.join(', ') || '(nothing)'
+      } rather than the configured ${CONFIGURED_WINDOW_MS}ms, so a hop between the environment and the request is dropping it`,
+    );
+  });
+});
+
+describe('createOmeEngine origin restart (CON-16)', () => {
+  const RESTART_SECRET = 'restart-secret';
+  const HLS_BASE = 'http://ome:8081';
+  const STREAM_URL = 'srt://ome:10080/video/demo';
+  const PLAYLIST_URL = `${HLS_BASE}/video/demo/ts:playlist.m3u8`;
+  const POLL_INTERVAL_MS = 20;
+  const DELIVERY_TIMEOUT_MS = 5_000;
+
+  function mediaPlaylist(uris: string[], mediaSeq = 0): string {
+    return [
+      '#EXTM3U',
+      '#EXT-X-VERSION:3',
+      '#EXT-X-TARGETDURATION:2',
+      `#EXT-X-MEDIA-SEQUENCE:${mediaSeq}`,
+      ...uris.flatMap((uri) => ['#EXTINF:2.0,', uri]),
+    ].join('\n');
+  }
+
+  // Deliberately the same four names in both sessions. A restarted OME reuses its segment file names,
+  // and the puller's own restart detection is blind here by construction: the indexes are the ones it
+  // already delivered and the names at them are unchanged, so this playlist is indistinguishable from
+  // an idle poll. Replacing the puller on the announce is the only thing that can rescue it, which is
+  // what makes this test fail if the engine half of the fix is removed.
+  const SESSION_PLAYLIST = mediaPlaylist(['seg_0.ts', 'seg_1.ts', 'seg_2.ts', 'seg_3.ts']);
+
+  /**
+   * An origin whose segment bodies carry the session they belong to, so what reached Bee says which
+   * session produced it. Both sessions number from `#EXT-X-MEDIA-SEQUENCE:0`, which is what a
+   * restarted OME serves and what puts the new indexes at or below the ones already delivered.
+   *
+   * `shutDown` is the first half of a restart, for a test that has to say what the origin serves
+   * between its old session going and the new one producing media: nothing, answered 404 until
+   * `restart`. A real OME whose session is gone answers its playlist with 404. See CON-20.
+   */
+  function makeOrigin(): {
+    fetcher: Fetcher;
+    shutDown(): void;
+    restart(next?: string): void;
+    playlistPolls(): number;
+  } {
+    let session = 's1';
+    let playlist = SESSION_PLAYLIST;
+    let playlistPolls = 0;
+    let isDown = false;
+    const fetcher = (async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url === PLAYLIST_URL) {
+        playlistPolls++;
+      }
+      if (isDown) {
+        return { ok: false, status: 404, text: async () => '' } as Response;
+      }
+      if (url === PLAYLIST_URL) {
+        return { ok: true, status: 200, text: async () => playlist } as Response;
+      }
+      const body = `${session}-${url.slice(url.lastIndexOf('/') + 1)}`;
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => new TextEncoder().encode(body).buffer,
+      } as Response;
+    }) as unknown as Fetcher;
+
+    return {
+      fetcher,
+      shutDown: () => {
+        isDown = true;
+      },
+      restart: (next?: string) => {
+        isDown = false;
+        session = 's2';
+        if (next) {
+          playlist = next;
+        }
+      },
+      playlistPolls: () => playlistPolls,
+    };
+  }
+
+  /**
+   * Finalizing the outgoing session has to yield to the event loop, or this test proves nothing.
+   *
+   * The defect lives in the window between a re-announce and the old session leaving the live maps.
+   * A fake whose writes resolve without ever yielding closes that window inside one microtask
+   * cascade, ahead of the new puller's first tick, so the test passes against code that fails in
+   * production on every restart. What reopens it is crossing a macrotask boundary at all, which any
+   * real Bee call does and `sleep(0)` already does. The duration below is margin, not the mechanism.
+   */
+  const FINALIZE_LATENCY_MS = 25;
+
+  // The whole failure is invisible one layer up: the puller keeps polling, every response is a 200,
+  // and the orchestrator has an uploader registered throughout. Only what reaches Bee shows that the
+  // second session was discarded, so that is where this asserts.
+  it('delivers the new session after the origin restarts its media sequence', async () => {
+    const uploaded: string[] = [];
+    const origin = makeOrigin();
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, {
+      admissionSecret: RESTART_SECRET,
+      fetcher: origin.fetcher,
+    });
+    const slowCatalog = makeFakeCatalog({
+      addStream: async () => {
+        await sleep(FINALIZE_LATENCY_MS);
+      },
+    });
+    const orchestrator = makeTestOrchestrator(
+      {},
+      {
+        uploadData: async (_stamp: string, data: Uint8Array) => {
+          uploaded.push(new TextDecoder().decode(data));
+          return { reference: { toHex: () => `ref${uploaded.length}` } };
+        },
+        uploadPayload: async (index: number) => {
+          await sleep(FINALIZE_LATENCY_MS);
+          return { reference: { toHex: () => `soc${index}` } };
+        },
+      },
+      undefined,
+      slowCatalog,
+    );
+
+    await postAdmission(engine, orchestrator, 'opening', RESTART_SECRET, STREAM_URL);
+    await waitFor(() => uploaded.some((body) => body.startsWith('s1-')), DELIVERY_TIMEOUT_MS);
+    assert.ok(
+      uploaded.some((body) => body.startsWith('s1-')),
+      'the first session never reached Bee, so the test proves nothing about the second',
+    );
+
+    origin.restart();
+    // OME announces the new session exactly as it announced the first one.
+    await postAdmission(engine, orchestrator, 'opening', RESTART_SECRET, STREAM_URL);
+    await waitFor(() => uploaded.some((body) => body.startsWith('s2-')), DELIVERY_TIMEOUT_MS);
+    await postAdmission(engine, orchestrator, 'closing', RESTART_SECRET, STREAM_URL);
+
+    assert.ok(
+      uploaded.some((body) => body.startsWith('s2-')),
+      `nothing from the restarted origin was ever uploaded, so the stream is silent for good; uploaded: ${
+        uploaded.join(', ') || '(nothing)'
+      }`,
+    );
+  });
+
+  // The other half of the same window. When the restarted origin numbers above where the old session
+  // got to, its segments are not absorbed by the duplicate filter: they are accepted, uploaded and
+  // added to a manifest.
+  //
+  // ⚠️ **Which manifest is what changed.** A re-admission resumes the live session rather than
+  // replacing it, so there is one broadcast and the restarted origin's media belongs in it, after a
+  // break. What must still be true is that nothing is finalized while the broadcast is running and
+  // that the recording, when it comes, is the length of both runs and no more — a recording longer
+  // than what was sent is still the tell, and it is now the only one, since there is no second VOD to
+  // compare against.
+  it('records the restarted origin as part of the broadcast it resumed, and nothing twice', async () => {
+    const SEGMENT_SECONDS = 2;
+    const FIRST_SESSION_SEGMENTS = 4;
+    const RESTARTED_SEGMENTS = 4;
+    const RESTARTED_HIGH = mediaPlaylist(['seg_9.ts', 'seg_10.ts', 'seg_11.ts', 'seg_12.ts'], 9);
+    const published: VodEntry[] = [];
+    const uploaded: string[] = [];
+    const uploadedFrom = (session: string): number => uploaded.filter((body) => body.startsWith(`${session}-`)).length;
+    const origin = makeOrigin();
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, {
+      admissionSecret: RESTART_SECRET,
+      fetcher: origin.fetcher,
+    });
+    const orchestrator = makeTestOrchestrator(
+      {},
+      {
+        uploadData: async (_stamp: string, data: Uint8Array) => {
+          uploaded.push(new TextDecoder().decode(data));
+          return { reference: { toHex: () => `ref${uploaded.length}` } };
+        },
+        uploadPayload: async (index: number) => {
+          await sleep(FINALIZE_LATENCY_MS);
+          return { reference: { toHex: () => `soc${index}` } };
+        },
+      },
+      undefined,
+      makeRecordingCatalog(published),
+    );
+
+    await postAdmission(engine, orchestrator, 'opening', RESTART_SECRET, STREAM_URL);
+    await waitFor(() => published.length > 0, DELIVERY_TIMEOUT_MS);
+
+    // The origin goes down, the announce comes, and only then does the restarted origin serve media,
+    // which is the order OME gives: the admission webhook is admission control, so the republish does
+    // not produce a segment until this call has answered it. Restarting ahead of the announce instead
+    // leaves the replaced puller polling an origin nothing has told the engine about, and its
+    // high-water is below these indexes, so it delivers them into the session they replace. That
+    // window is real but no signal closes it, since a jump from 3 to 9 is what rolling the playlist
+    // window forward looks like too. See CON-19.
+    //
+    // Down is what a restarted origin serves in between, and this test depends on it. The resumed puller
+    // first polls on a zero-delay timer armed inside the announce, and this test restarts the origin
+    // only once the announce's HTTP reply is back, so nothing orders the two. On a contended machine
+    // the poll came first, found the first session's playlist still up and undated, and the resumed
+    // session took the first run a second time: 24 seconds recorded where 16 were sent, on a loaded,
+    // shared runner on 2026-09-23. No real OME serves that. A restarted one has no playlist yet,
+    // and one still holding a dropped session stamps every segment with `#EXT-X-PROGRAM-DATE-TIME`,
+    // which the handover floor skips. See CON-20. The wait makes that early poll happen on every run.
+    origin.shutDown();
+    await postAdmission(engine, orchestrator, 'opening', RESTART_SECRET, STREAM_URL);
+    // The replaced puller was stopped inside that announce, so every poll from here is the resumed one's.
+    const pollsWhenAnnounced = origin.playlistPolls();
+    await waitFor(() => origin.playlistPolls() > pollsWhenAnnounced, DELIVERY_TIMEOUT_MS);
+    origin.restart(RESTARTED_HIGH);
+    // The closing stops the puller, so it waits for the restarted run to reach Bee first. Sent straight
+    // after the restart it raced the resumed puller's next poll, and a closing handled first records the
+    // first run alone. Same condition the CON-20 tests below wait on.
+    await waitFor(() => uploadedFrom('s2') === RESTARTED_SEGMENTS, DELIVERY_TIMEOUT_MS);
+    // Nothing may be finalized while the broadcast is still running, which is the whole of the
+    // reconnect window: the closing below is what ends it.
+    assert.deepEqual(
+      published.filter((entry) => entry.state === STREAM_STATUS_VOD),
+      [],
+      'a recording was published while the broadcast was still being fed',
+    );
+    await postAdmission(engine, orchestrator, 'closing', RESTART_SECRET, STREAM_URL);
+    await waitFor(() => published.some((entry) => entry.state === STREAM_STATUS_VOD), DELIVERY_TIMEOUT_MS);
+
+    const vods = published.filter((entry) => entry.state === STREAM_STATUS_VOD);
+    assert.equal(vods.length, 1, 'one broadcast is one recording, whatever its origin did in the middle');
+    assert.equal(
+      vods[0].duration,
+      SEGMENT_SECONDS * (FIRST_SESSION_SEGMENTS + RESTARTED_SEGMENTS),
+      `the recording is not the length of the two runs it holds, so media was published into it twice or lost from it; durations: ${vods
+        .map((entry) => entry.duration)
+        .join(', ')}`,
+    );
+    // The duration is an aggregate and cannot say whose media it holds. The first run uploaded twice
+    // with the restarted run lost comes to the same 16 seconds and passed it. Every body names the
+    // origin session that served it, so these two can tell.
+    assert.equal(
+      uploadedFrom('s1'),
+      FIRST_SESSION_SEGMENTS,
+      `the first session's segments did not reach Bee exactly once each, so the recording holds some of them twice or lost some; uploaded: ${uploaded.join(
+        ', ',
+      )}`,
+    );
+    assert.equal(
+      uploadedFrom('s2'),
+      RESTARTED_SEGMENTS,
+      `the restarted run did not reach Bee exactly once per segment; uploaded: ${uploaded.join(', ')}`,
+    );
+  });
+
+  // Dropping the replaced puller from the map without stopping it leaves it polling OME forever for a
+  // session nobody can reach: it is no longer under its stream id, so no close, halt or shutdown can
+  // ever reach it either. Invisible in what gets uploaded, because its own position is already past
+  // everything the restarted origin advertises. A closed stream not polling its origin is the only
+  // thing that shows it.
+  it('leaves nothing polling the origin once the replaced stream closes', async () => {
+    const origin = makeOrigin();
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, {
+      admissionSecret: RESTART_SECRET,
+      fetcher: origin.fetcher,
+    });
+    const orchestrator = makeTestOrchestrator();
+
+    await postAdmission(engine, orchestrator, 'opening', RESTART_SECRET, STREAM_URL);
+    await waitFor(() => origin.playlistPolls() > 0, DELIVERY_TIMEOUT_MS);
+
+    origin.restart();
+    await postAdmission(engine, orchestrator, 'opening', RESTART_SECRET, STREAM_URL);
+    await waitFor(() => origin.playlistPolls() > 2, DELIVERY_TIMEOUT_MS);
+    await postAdmission(engine, orchestrator, 'closing', RESTART_SECRET, STREAM_URL);
+
+    const afterClose = origin.playlistPolls();
+    await sleep(POLL_INTERVAL_MS * 5);
+
+    assert.equal(
+      origin.playlistPolls(),
+      afterClose,
+      'a puller kept polling after its stream closed, so a replaced one was orphaned rather than stopped',
+    );
+  });
+});
+
+/**
+ * The mirror image of CON-16, and measured against a real OvenMediaEngine rather than argued from the
+ * code. On an abrupt publisher drop OME keeps both the SRT session and its HLS output alive until the
+ * peer-idle timeout, which took 5.0s on 2026-07-31 against `airensoft/ovenmediaengine:latest` with
+ * this repo's own `Server.xml.template`. A reconnect inside that window is put to the admission
+ * webhook first, so the uploader opens a new session, resets its duplicate filter and starts a puller
+ * whose high-water is -1, while the playlist the puller reads still holds the previous broadcast.
+ *
+ * The probe answered the admission at the same point in the tick order the puller polls at, and read
+ * `#EXT-X-MEDIA-SEQUENCE:5` with the outgoing session's five segments. So the new session's manifest
+ * opens with up to a full playlist window of the previous broadcast, and a VOD is paid for with
+ * postage to record it.
+ */
+describe('createOmeEngine reconnect inside the origin idle window (CON-20)', () => {
+  const SECRET = 'reconnect-secret';
+  const HLS_BASE = 'http://ome:8081';
+  const STREAM_URL = 'srt://ome:10080/video/demo';
+  const PLAYLIST_URL = `${HLS_BASE}/video/demo/ts:playlist.m3u8`;
+  const POLL_INTERVAL_MS = 20;
+  const DELIVERY_TIMEOUT_MS = 5_000;
+  const FINALIZE_LATENCY_MS = 25;
+
+  /**
+   * OME's own HLS output, including the per-segment `#EXT-X-PROGRAM-DATE-TIME` it emits by default and
+   * which the CON-16 fixtures leave out. Both sessions number from zero and reuse the same segment
+   * file names, because that is what OME does: it derives them from the app and stream name, so the
+   * live capture showed `seg_917977731947844006_0_hls.ts` in two different broadcasts. That leaves the
+   * date-time as the only thing in the playlist that tells the two apart.
+   */
+  function omePlaylist(uris: string[], mediaSeq: number, firstSegmentAt: Date, segmentSeconds: number): string {
+    return [
+      '#EXTM3U',
+      '#EXT-X-VERSION:3',
+      `#EXT-X-TARGETDURATION:${Math.ceil(segmentSeconds)}`,
+      `#EXT-X-MEDIA-SEQUENCE:${mediaSeq}`,
+      ...uris.flatMap((uri, offset) => [
+        `#EXT-X-PROGRAM-DATE-TIME:${new Date(firstSegmentAt.getTime() + offset * segmentSeconds * 1000).toISOString()}`,
+        `#EXTINF:${segmentSeconds}.0,`,
+        uri,
+      ]),
+    ].join('\n');
+  }
+
+  const OUTGOING_SEGMENTS = ['seg_0.ts', 'seg_1.ts', 'seg_2.ts', 'seg_3.ts'];
+  const RECONNECTED_SEGMENTS = ['seg_0.ts', 'seg_1.ts', 'seg_2.ts'];
+
+  /**
+   * The two sessions run at different segment durations so that the recorded length of a VOD says
+   * which broadcast is inside it, not merely how much of something is.
+   *
+   * With equal durations the assertion was satisfiable by the wrong media: leaking three stale
+   * segments and then discarding all three real ones came to the same total as delivering the three
+   * real ones, and a mutation that shrank the floor to a single segment passed because of it. No
+   * subset of four 2-second segments and three 5-second ones reaches 15 except the three real ones.
+   */
+  const OUTGOING_SEGMENT_SECONDS = 2;
+  const RECONNECTED_SEGMENT_SECONDS = 5;
+
+  /**
+   * An origin that keeps serving the outgoing broadcast after its publisher is gone, and only turns
+   * over when the test says so. The turnover is explicit because leaving it to timing is what made
+   * this reproduce 5 times in 8 rather than every time.
+   */
+  function makeIdlingOrigin(
+    outgoing: string,
+    reconnected: string,
+  ): {
+    fetcher: Fetcher;
+    turnOver(): void;
+    playlistPolls(): number;
+  } {
+    let session = 'outgoing';
+    let playlist = outgoing;
+    let playlistPolls = 0;
+    const fetcher = (async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url === PLAYLIST_URL) {
+        playlistPolls++;
+        return { ok: true, status: 200, text: async () => playlist } as Response;
+      }
+      const body = `${session}-${url.slice(url.lastIndexOf('/') + 1)}`;
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => new TextEncoder().encode(body).buffer,
+      } as Response;
+    }) as unknown as Fetcher;
+
+    return {
+      fetcher,
+      turnOver: () => {
+        session = 'reconnected';
+        playlist = reconnected;
+      },
+      playlistPolls: () => playlistPolls,
+    };
+  }
+
+  /**
+   * ⚠️ **One recording rather than two, because a re-admission now resumes the live session instead
+   * of replacing it.** What the floor is for is unchanged and is what this still reads: the stale
+   * playlist the origin is still serving must not be uploaded a second time. The per-body counts
+   * below are that fact, and they were always the sharper half — the durations were an aggregate,
+   * and an aggregate cannot say whose media it is made of.
+   */
+  it('keeps the outgoing broadcast from being uploaded again into the session that resumes', async () => {
+    const outgoingStartedAt = new Date(Date.now() - 60_000);
+    const reconnectedStartedAt = new Date(Date.now() - 20_000);
+    const published: VodEntry[] = [];
+    const uploaded: string[] = [];
+    const origin = makeIdlingOrigin(
+      omePlaylist(OUTGOING_SEGMENTS, 0, outgoingStartedAt, OUTGOING_SEGMENT_SECONDS),
+      omePlaylist(RECONNECTED_SEGMENTS, 0, reconnectedStartedAt, RECONNECTED_SEGMENT_SECONDS),
+    );
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, {
+      admissionSecret: SECRET,
+      fetcher: origin.fetcher,
+    });
+    const orchestrator = makeTestOrchestrator(
+      {},
+      {
+        uploadData: async (_stamp: string, data: Uint8Array) => {
+          uploaded.push(new TextDecoder().decode(data));
+          return { reference: { toHex: () => `ref${uploaded.length}` } };
+        },
+        uploadPayload: async (index: number) => {
+          await sleep(FINALIZE_LATENCY_MS);
+          return { reference: { toHex: () => `soc${index}` } };
+        },
+      },
+      undefined,
+      makeRecordingCatalog(published),
+    );
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL);
+    await waitFor(() => published.length > 0, DELIVERY_TIMEOUT_MS);
+
+    // The reconnect is announced while the origin is still serving the broadcast that is ending, which
+    // is the state the live probe found at this exact point. The origin turns over only after the
+    // replacement puller has had polls to spend on the stale playlist, so the window is closed by the
+    // test rather than by luck.
+    const beforeReconnect = origin.playlistPolls();
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL);
+    await waitFor(() => origin.playlistPolls() > beforeReconnect + 2, DELIVERY_TIMEOUT_MS);
+    origin.turnOver();
+
+    // Waits for the replacement session's own media to land, which is what this actually needed. It
+    // used to wait for a second VOD here, before the closing that creates the second VOD had been
+    // sent, so the condition could not come true and the wait was five seconds of accidental sleep
+    // that the test then depended on. Same condition the sibling test below already used.
+    await waitFor(
+      () => uploaded.filter((body) => body.startsWith('reconnected-')).length === RECONNECTED_SEGMENTS.length,
+      DELIVERY_TIMEOUT_MS,
+    );
+    await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL);
+    await waitFor(() => published.filter((entry) => entry.state === STREAM_STATUS_VOD).length > 0, DELIVERY_TIMEOUT_MS);
+
+    const vods = published.filter((entry) => entry.state === STREAM_STATUS_VOD);
+    assert.equal(
+      vods.length,
+      1,
+      `the resumed broadcast is one recording, not two; durations: ${vods.map((entry) => entry.duration).join(', ')}`,
+    );
+    assert.equal(
+      vods[0].duration,
+      OUTGOING_SEGMENT_SECONDS * OUTGOING_SEGMENTS.length + RECONNECTED_SEGMENT_SECONDS * RECONNECTED_SEGMENTS.length,
+      `the recording is not the length of the two runs it holds, so media was published into it twice or lost from it; durations: ${vods
+        .map((entry) => entry.duration)
+        .join(', ')}`,
+    );
+
+    // The durations above are aggregates, and an aggregate cannot say whose media it is made of. This
+    // fixture labels every segment body with the session that served it, and until these two lines
+    // existed it labelled them for nobody: making both sessions return byte-identical bodies, or
+    // making the origin switch playlists while still serving the outgoing bytes, left the whole suite
+    // green. The second of those is the shape of the defect under test, since OME reuses its segment
+    // file names across broadcasts.
+    assert.equal(
+      uploaded.filter((body) => body.startsWith('outgoing-')).length,
+      OUTGOING_SEGMENTS.length,
+      `more of the outgoing broadcast reached Bee than it ever served, so the origin's stale window was uploaded a second time into the resumed session; uploaded: ${uploaded.join(
+        ', ',
+      )}`,
+    );
+    assert.equal(
+      uploaded.filter((body) => body.startsWith('reconnected-')).length,
+      RECONNECTED_SEGMENTS.length,
+      `the reconnected broadcast did not all reach Bee; uploaded: ${uploaded.join(', ')}`,
+    );
+  });
+
+  function undatedPlaylist(uris: string[], segmentSeconds: number): string {
+    return [
+      '#EXTM3U',
+      '#EXT-X-VERSION:3',
+      `#EXT-X-TARGETDURATION:${Math.ceil(segmentSeconds)}`,
+      '#EXT-X-MEDIA-SEQUENCE:0',
+      ...uris.flatMap((uri) => [`#EXTINF:${segmentSeconds}.0,`, uri]),
+    ].join('\n');
+  }
+
+  /**
+   * A segment with no date-time under a floor is undecidable, not stale, and the two directions fail
+   * very differently. Dropping it loses a live broadcast for as long as the origin keeps publishing
+   * that way, silently, which is the CON-16 failure this register rates worst. Delivering it costs at
+   * most the stale window once. So the undecidable case degrades to the behaviour that predates the
+   * floor, and it is pinned here because nothing else in the suite could tell the two apart.
+   */
+  it('still delivers a session whose segments carry no date-time to judge them by', async () => {
+    const outgoingStartedAt = new Date(Date.now() - 60_000);
+    const published: VodEntry[] = [];
+    // Recorded only so the wait below has an exact condition. This test asserts on durations rather
+    // than on bodies, but "the replacement session's segments have landed" is the thing that has to be
+    // true before the closing, and a poll count is a proxy for it rather than the fact itself.
+    const uploaded: string[] = [];
+    const origin = makeIdlingOrigin(
+      omePlaylist(OUTGOING_SEGMENTS, 0, outgoingStartedAt, OUTGOING_SEGMENT_SECONDS),
+      undatedPlaylist(RECONNECTED_SEGMENTS, RECONNECTED_SEGMENT_SECONDS),
+    );
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, {
+      admissionSecret: SECRET,
+      fetcher: origin.fetcher,
+    });
+    const orchestrator = makeTestOrchestrator(
+      {},
+      {
+        uploadData: async (_stamp: string, data: Uint8Array) => {
+          uploaded.push(new TextDecoder().decode(data));
+          return { reference: { toHex: () => `ref${uploaded.length}` } };
+        },
+        uploadPayload: async (index: number) => {
+          await sleep(FINALIZE_LATENCY_MS);
+          return { reference: { toHex: () => `soc${index}` } };
+        },
+      },
+      undefined,
+      makeRecordingCatalog(published),
+    );
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL);
+    await waitFor(() => published.length > 0, DELIVERY_TIMEOUT_MS);
+
+    const beforeReconnect = origin.playlistPolls();
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL);
+    await waitFor(() => origin.playlistPolls() > beforeReconnect + 2, DELIVERY_TIMEOUT_MS);
+    origin.turnOver();
+
+    // Waits for the replacement session's own media to land, which is what this actually needed. It
+    // used to wait for a second VOD here, before the closing that creates the second VOD had been
+    // sent, so the condition could not come true and the wait was five seconds of accidental sleep
+    // that the test then depended on. Same condition the sibling test below already used.
+    await waitFor(
+      () => uploaded.filter((body) => body.startsWith('reconnected-')).length === RECONNECTED_SEGMENTS.length,
+      DELIVERY_TIMEOUT_MS,
+    );
+    await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL);
+    await waitFor(() => published.filter((entry) => entry.state === STREAM_STATUS_VOD).length > 0, DELIVERY_TIMEOUT_MS);
+
+    const vods = published.filter((entry) => entry.state === STREAM_STATUS_VOD);
+    assert.equal(
+      vods.length,
+      1,
+      `the undated session never reached a recording at all, so the floor swallowed a live broadcast; durations: ${vods
+        .map((entry) => entry.duration)
+        .join(', ')}`,
+    );
+    // Both runs, because the resumed session records the whole broadcast. The undecidable segments
+    // are in there on purpose: delivering them costs the stale window once, and dropping them loses a
+    // live broadcast for as long as the origin keeps publishing that way.
+    assert.equal(
+      vods[0].duration,
+      OUTGOING_SEGMENT_SECONDS * OUTGOING_SEGMENTS.length + RECONNECTED_SEGMENT_SECONDS * RECONNECTED_SEGMENTS.length,
+      `the undated session's media did not all reach the recording, so the floor is dropping segments it cannot judge; durations: ${vods
+        .map((entry) => entry.duration)
+        .join(', ')}`,
+    );
+  });
+
+  /**
+   * The sequence a real OME produces, and the one that defeated the first version of this fix.
+   *
+   * When a broadcaster reconnects inside the idle window OME answers the admission webhook, then
+   * rejects the publish as a duplicate stream name and sends `closing` 111ms later. A broadcaster
+   * whose client retries again therefore announces after a close, not after another open. Reading the
+   * floor off the outgoing puller lost it there, because the close had already destroyed the puller,
+   * and the warning that should have said so was itself gated on the puller still existing.
+   */
+  it('still knows where the outgoing broadcast ended after a closing has come and gone', async () => {
+    const outgoingStartedAt = new Date(Date.now() - 60_000);
+    const reconnectedStartedAt = new Date(Date.now() - 20_000);
+    const published: VodEntry[] = [];
+    const uploaded: string[] = [];
+    const origin = makeIdlingOrigin(
+      omePlaylist(OUTGOING_SEGMENTS, 0, outgoingStartedAt, OUTGOING_SEGMENT_SECONDS),
+      omePlaylist(RECONNECTED_SEGMENTS, 0, reconnectedStartedAt, RECONNECTED_SEGMENT_SECONDS),
+    );
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, {
+      admissionSecret: SECRET,
+      fetcher: origin.fetcher,
+    });
+    const orchestrator = makeTestOrchestrator(
+      {},
+      {
+        uploadData: async (_stamp: string, data: Uint8Array) => {
+          uploaded.push(new TextDecoder().decode(data));
+          return { reference: { toHex: () => `ref${uploaded.length}` } };
+        },
+        uploadPayload: async (index: number) => {
+          await sleep(FINALIZE_LATENCY_MS);
+          return { reference: { toHex: () => `soc${index}` } };
+        },
+      },
+      undefined,
+      makeRecordingCatalog(published),
+    );
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL);
+    await waitFor(() => uploaded.length >= OUTGOING_SEGMENTS.length, DELIVERY_TIMEOUT_MS);
+
+    // The rejected republish: OME opens, is refused the name, and closes again.
+    await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL);
+
+    const beforeRetry = origin.playlistPolls();
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL);
+    await waitFor(() => origin.playlistPolls() > beforeRetry + 2, DELIVERY_TIMEOUT_MS);
+    origin.turnOver();
+    await waitFor(
+      () => uploaded.filter((body) => body.startsWith('reconnected-')).length === RECONNECTED_SEGMENTS.length,
+      DELIVERY_TIMEOUT_MS,
+    );
+    await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL);
+
+    assert.equal(
+      uploaded.filter((body) => body.startsWith('outgoing-')).length,
+      OUTGOING_SEGMENTS.length,
+      `the outgoing broadcast was uploaded again after a closing destroyed the puller holding the boundary; uploaded: ${uploaded.join(
+        ', ',
+      )}`,
+    );
+  });
+
+  // The protection is only as real as the origin's date-times, and an origin that publishes none
+  // leaves the uploader exactly where it was before this fix. That has to be audible: nothing about a
+  // floor matching zero segments looks different from a floor holding, and this repo has already
+  // shipped two green suites over defects that were stubbed out of view.
+  it('says so when the origin gives it nothing to tell the two sessions apart', async () => {
+    const undated = undatedPlaylist(OUTGOING_SEGMENTS, OUTGOING_SEGMENT_SECONDS);
+    const origin = makeIdlingOrigin(undated, undated);
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, {
+      admissionSecret: SECRET,
+      fetcher: origin.fetcher,
+    });
+    const orchestrator = makeTestOrchestrator();
+
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => warnings.push(args.map(String).join(' '));
+    try {
+      await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL);
+      await waitFor(() => origin.playlistPolls() > 0, DELIVERY_TIMEOUT_MS);
+      await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL);
+      await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL);
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.ok(
+      warnings.some((line) => line.includes('EXT-X-PROGRAM-DATE-TIME') && line.includes('video/demo')),
+      `replacing a puller with no date-time to go on has to be reported, or an unprotected deployment looks like a protected one; warnings: ${
+        warnings.join(' | ') || '(none)'
+      }`,
+    );
+  });
+});
+
+/**
+ * CON-21: a `closing` carries no session identity, so a delayed one can finalize the session that
+ * replaced the session it was actually sent for.
+ *
+ * The `closing` branch keys on the stream URL alone and stops whatever currently holds that id. Two
+ * admissions for one stream are independent HTTP requests against a 3000ms admission timeout, so a
+ * slow `closing` for a dropped session can be processed after an `opening` that OME did admit.
+ *
+ * The reachability reported by the PR #43 concurrency lens is refuted in the register: OME rejects a
+ * reconnect admitted while the dropped session is still up, 4 of 4, so the ordinary timeline lands
+ * both closings first. What remains is the reordered webhook, which is what this drives.
+ *
+ * The fix rests on a measurement rather than on the interface. A real OME publish, kill and
+ * republish on 2026-08-01 produced four admissions carrying `client.port`, and the port matches its
+ * own session's opening and closing while differing between sessions: 44546 for the first, 22138 for
+ * the second. The interface declares that field optional; a real SRT publish always populates it.
+ */
+describe('createOmeEngine reordered closing (CON-21)', () => {
+  const SECRET = 'session-identity-secret';
+  const HLS_BASE = 'http://ome:8081';
+  const STREAM_URL = 'srt://ome:10080/video/demo';
+  const STREAM_ID = 'video/demo';
+  const PLAYLIST_URL = `${HLS_BASE}/${STREAM_ID}/ts:playlist.m3u8`;
+  const POLL_INTERVAL_MS = 20;
+  const SETTLE_MS = 5_000;
+
+  // What a drain of an already-retired stream leaves behind, from `StreamOrchestrator.performDrain`.
+  // It is the only outward trace of the second stop, because the first one took the puller and the
+  // uploader with it, so nothing else about the process looks different afterwards.
+  const DRAIN_OF_A_RETIRED_STREAM = 'found no live session';
+
+  // The two sockets the live capture recorded, kept as the real numbers so the fixture cannot drift
+  // into a shape OME does not produce.
+  const SESSION_A = { address: '192.168.65.1', port: 44546 };
+  const SESSION_B = { address: '192.168.65.1', port: 22138 };
+
+  const PLAYLIST = [
+    '#EXTM3U',
+    '#EXT-X-VERSION:3',
+    '#EXT-X-TARGETDURATION:2',
+    '#EXT-X-MEDIA-SEQUENCE:0',
+    '#EXT-X-PROGRAM-DATE-TIME:2026-08-01T00:00:00.000+00:00',
+    '#EXTINF:2.000,',
+    'seg_0_hls.ts',
+    '',
+  ].join('\n');
+
+  let originalEnv: NodeJS.ProcessEnv;
+
+  beforeEach(() => {
+    originalEnv = { ...process.env };
+    process.env.OME_HLS_BASE_URL = HLS_BASE;
+    process.env.OME_HLS_POLL_INTERVAL_MS = String(POLL_INTERVAL_MS);
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  function makePollCountingOrigin(): { fetcher: Fetcher; polls(): number } {
+    let polls = 0;
+    const fetcher = (async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url === PLAYLIST_URL) {
+        polls++;
+        return { ok: true, status: 200, text: async () => PLAYLIST } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => new TextEncoder().encode('seg').buffer,
+      } as Response;
+    }) as unknown as Fetcher;
+    return { fetcher, polls: () => polls };
+  }
+
+  it('leaves the live session alone when a closing for the session it replaced arrives late', async () => {
+    const origin = makePollCountingOrigin();
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+    const published: VodEntry[] = [];
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+    // Session A publishes, then drops without a clean close.
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SESSION_A);
+    await waitFor(() => origin.polls() > 0, SETTLE_MS);
+
+    // Session B reconnects and is admitted, replacing A. Replacing A finalizes A, so A's own VOD is
+    // expected here and is not the defect. What must not happen is a second one.
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SESSION_B);
+    const pollsWhenBWasLive = origin.polls();
+    await waitFor(() => origin.polls() > pollsWhenBWasLive, SETTLE_MS);
+    const vodsBeforeStaleClosing = published.filter((entry) => entry.state === STREAM_STATUS_VOD).length;
+
+    // A's closing finally arrives, out of order, carrying A's socket rather than B's.
+    const staleReply = await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SESSION_A);
+
+    const pollsAfterStaleClosing = origin.polls();
+    await sleep(POLL_INTERVAL_MS * 8);
+
+    assert.ok(
+      origin.polls() > pollsAfterStaleClosing,
+      `a closing for a session that has already been replaced must not stop the live puller, but polling stopped at ${pollsAfterStaleClosing}`,
+    );
+    assert.equal(
+      published.filter((entry) => entry.state === STREAM_STATUS_VOD).length,
+      vodsBeforeStaleClosing,
+      'the live session was VOD-finalized by a closing that was sent for the session it replaced',
+    );
+    assert.deepEqual(
+      staleReply,
+      { allowed: true, lifetime: 0, reason: 'ok (closing for a replaced session)' },
+      'OME still needs its acknowledgement, and TEST-25 records that nothing else asserts what this route answers',
+    );
+  });
+
+  it('still stops the stream when the closing matches the live session', async () => {
+    // The guard must not turn into a stream that never finalizes, which would be the worse failure:
+    // a leaked puller and no VOD at all.
+    const origin = makePollCountingOrigin();
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+    const published: VodEntry[] = [];
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SESSION_A);
+    await waitFor(() => origin.polls() > 0, SETTLE_MS);
+    await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SESSION_A);
+
+    await waitFor(() => published.some((entry) => entry.state === STREAM_STATUS_VOD), SETTLE_MS);
+    assert.equal(
+      published.filter((entry) => entry.state === STREAM_STATUS_VOD).length,
+      1,
+      'a closing carrying the live session’s own socket has to finalize it',
+    );
+  });
+
+  it('still stops a stream nothing was ever recorded for, even when the closing carries a socket', async () => {
+    // The arm of the guard that reads the recorded side, which no other test reaches: every one of them
+    // has an opening that recorded something. Crash recovery has not. `resumeRecoveredStream` starts a
+    // puller with no admission at all, so a closing arriving afterwards is the first identity the
+    // registry has ever seen for that stream. Judging it foreign for want of anything to compare it
+    // against leaves the recovered puller polling with nothing left that can stop it.
+    const origin = makePollCountingOrigin();
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+    const published: VodEntry[] = [];
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL);
+    await waitFor(() => origin.polls() > 0, SETTLE_MS);
+    await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SESSION_A);
+
+    await waitFor(() => published.some((entry) => entry.state === STREAM_STATUS_VOD), SETTLE_MS);
+    assert.equal(
+      published.filter((entry) => entry.state === STREAM_STATUS_VOD).length,
+      1,
+      'nothing recorded is no evidence, so a closing that carries an identity still has to be honoured',
+    );
+  });
+
+  it('forgets the recorded socket when a later announce carries none', async () => {
+    // An announce with no socket has to clear the key rather than leave the previous one standing,
+    // because a stale key outlives the session it belonged to and then rejects the closing the current
+    // session does send. Reaching that needs three admissions: only the third, carrying a socket that
+    // does not match the stale one, can tell a cleared registry from an uncleared one.
+    const origin = makePollCountingOrigin();
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+    const published: VodEntry[] = [];
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SESSION_A);
+    await waitFor(() => origin.polls() > 0, SETTLE_MS);
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL);
+    const pollsWhenUnidentified = origin.polls();
+    await waitFor(() => origin.polls() > pollsWhenUnidentified, SETTLE_MS);
+    await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SESSION_B);
+
+    // Asserted on the puller rather than on the VOD count, because the second announce retires session
+    // A and publishes its VOD before the closing lands, so a VOD assertion here holds whether the
+    // closing was honoured or dropped. The first version of this test asserted exactly that and
+    // survived the mutation it was written for.
+    const pollsAtClosing = origin.polls();
+    await waitAndConfirmNothingHappened(() => origin.polls() === pollsAtClosing, POLL_INTERVAL_MS * 10);
+    assert.equal(
+      origin.polls(),
+      pollsAtClosing,
+      'the socket from two announces ago cannot be what a closing is judged against, so this closing has to stop the puller',
+    );
+  });
+
+  it('tells two sessions apart when they share a port and differ only by address', async () => {
+    // The key is address plus port, but the capture that justified it varied only the port, so the
+    // address half was pinned by nothing. This drives it from the closing side: the live session and
+    // the closing share a port and differ only by address, so nothing but the address half can tell
+    // them apart.
+    //
+    // The two openings share an address deliberately. SEC-26 now refuses an opening from a different
+    // address over a stream that is still producing, so a reconnect that changed address cannot reach
+    // the live state this needs, and driving it that way would be testing the takeover guard instead
+    // of this one.
+    const SAME_PORT = 22138;
+    const FIRST = { address: '192.168.65.1', port: 44546 };
+    const RECONNECT = { address: '192.168.65.1', port: SAME_PORT };
+    const ELSEWHERE = { address: '10.0.0.5', port: SAME_PORT };
+
+    const origin = makePollCountingOrigin();
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+    const published: VodEntry[] = [];
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, FIRST);
+    await waitFor(() => origin.polls() > 0, SETTLE_MS);
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, RECONNECT);
+    const pollsWhenSecondWasLive = origin.polls();
+    await waitFor(() => origin.polls() > pollsWhenSecondWasLive, SETTLE_MS);
+    await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, ELSEWHERE);
+
+    const pollsAfterStaleClosing = origin.polls();
+    await waitFor(() => origin.polls() > pollsAfterStaleClosing, SETTLE_MS);
+    assert.ok(
+      origin.polls() > pollsAfterStaleClosing,
+      'a closing from another address must not stop the live session that shares its port',
+    );
+  });
+
+  it('stops the stream when the opening carried a socket and the closing does not', async () => {
+    // The asymmetric case, and the one the no-identity test above cannot reach: there IS a recorded
+    // key, and the closing has none to match it with. Judging that as foreign would leave the stream
+    // running forever. Mutation found this: forcing sessionKey to always return a key survived the
+    // suite, because in the no-identity test nothing was recorded either.
+    const origin = makePollCountingOrigin();
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+    const published: VodEntry[] = [];
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SESSION_A);
+    await waitFor(() => origin.polls() > 0, SETTLE_MS);
+    await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL);
+
+    await waitFor(() => published.some((entry) => entry.state === STREAM_STATUS_VOD), SETTLE_MS);
+    assert.equal(
+      published.filter((entry) => entry.state === STREAM_STATUS_VOD).length,
+      1,
+      'a closing with no socket cannot be shown to be foreign, so it has to be honoured',
+    );
+  });
+
+  it('stops the stream when the payload carries no session identity at all', async () => {
+    // OME populates client on every real SRT publish, but the field is optional in the protocol and a
+    // future transport might omit it. Refusing to stop without evidence would leak the stream, so the
+    // guard is strict only when it has an identity to be strict with.
+    const origin = makePollCountingOrigin();
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+    const published: VodEntry[] = [];
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL);
+    await waitFor(() => origin.polls() > 0, SETTLE_MS);
+    await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL);
+
+    await waitFor(() => published.some((entry) => entry.state === STREAM_STATUS_VOD), SETTLE_MS);
+    assert.equal(
+      published.filter((entry) => entry.state === STREAM_STATUS_VOD).length,
+      1,
+      'a payload with no client cannot be matched, so the closing has to be honoured rather than dropped',
+    );
+  });
+
+  /**
+   * CON-22: the guard was armed only while a session was recorded, and the accepted-closing path
+   * deleted the record before doing anything else. From that instant until the next accepted opening
+   * an absent record read as "no evidence", so a repeat of the closing just honoured was acted on
+   * again: a second `stopStream` for a stream the first one had already drained and retired.
+   */
+  it('does not act on a closing twice when OME repeats one it has already been given', async () => {
+    const origin = makePollCountingOrigin();
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+    const published: VodEntry[] = [];
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SESSION_A);
+    await waitFor(() => origin.polls() > 0, SETTLE_MS);
+    const firstReply = await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SESSION_A);
+    // Waiting for the VOD is what makes the repeat deterministic: it proves the first drain finished,
+    // so a second one cannot be mistaken for the first still running.
+    await waitFor(() => published.some((entry) => entry.state === STREAM_STATUS_VOD), SETTLE_MS);
+
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => warnings.push(args.map(String).join(' '));
+    let repeatReply: unknown;
+    try {
+      repeatReply = await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SESSION_A);
+      // The drain is started without being awaited, so its own warning lands after the reply.
+      await waitAndConfirmNothingHappened(
+        () => !warnings.some((line) => line.includes(DRAIN_OF_A_RETIRED_STREAM)),
+        POLL_INTERVAL_MS * 10,
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.deepEqual(firstReply, { allowed: true, lifetime: 0, reason: 'ok' }, 'the first closing is the real one');
+    assert.deepEqual(
+      repeatReply,
+      { allowed: true, lifetime: 0, reason: 'ok (closing for a session already closed)' },
+      'OME still needs its acknowledgement for a closing that is dropped, the same as for one that is acted on',
+    );
+    assert.ok(
+      !warnings.some((line) => line.includes(DRAIN_OF_A_RETIRED_STREAM)),
+      `a repeated closing drained the stream a second time; warnings: ${warnings.join(' | ') || '(none)'}`,
+    );
+  });
+
+  it('stops guarding a closed session once its record has expired', async () => {
+    // The record is bounded, because one per stream id ever closed grows without bound where one per
+    // live stream id does not. Past the window a repeat closing is acted on again, which costs a drain
+    // of a stream already retired and is the trade the bound is worth. The window only has to outlive
+    // the one in which a repeat can still arrive, which OME's 3000ms admission timeout bounds.
+    const origin = makePollCountingOrigin();
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, {
+      admissionSecret: SECRET,
+      fetcher: origin.fetcher,
+      closedSessionTtlMs: 0,
+    });
+    const published: VodEntry[] = [];
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SESSION_A);
+    await waitFor(() => origin.polls() > 0, SETTLE_MS);
+    await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SESSION_A);
+    await waitFor(() => published.some((entry) => entry.state === STREAM_STATUS_VOD), SETTLE_MS);
+    // The record has to be older than the window rather than merely at it, and the wait above returns
+    // the instant its condition holds, which can be the same millisecond the record was written.
+    await sleep(POLL_INTERVAL_MS);
+
+    const repeatReply = await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SESSION_A);
+    assert.deepEqual(
+      repeatReply,
+      { allowed: true, lifetime: 0, reason: 'ok' },
+      'an expired record is no record, so the closing is acted on the way it was before any of this',
+    );
+  });
+
+  it('does not accumulate a record per stream id ever closed', async () => {
+    // The bound has to be paid on the path that creates records, which is a stream closing and never
+    // reopening. Expiring only where a record is read expires nothing there, so the map keeps one entry
+    // for every stream id the process has ever seen. That is the growth the window exists to prevent,
+    // and it is memory rather than behaviour, so nothing observable from outside the engine can see it.
+    //
+    // Reached by recording what `createOmeEngine` constructs. The alternative was an unkillable line
+    // with a comment explaining why no test can see it, which this register has one of already.
+    const maps: Map<string, unknown>[] = [];
+    const RealMap = global.Map;
+    class RecordingMap<K, V> extends RealMap<K, V> {
+      constructor(entries?: readonly (readonly [K, V])[] | null) {
+        super(entries);
+        maps.push(this as unknown as Map<string, unknown>);
+      }
+    }
+    global.Map = RecordingMap as unknown as MapConstructor;
+    let engine: EnginePlugin;
+    try {
+      engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, {
+        admissionSecret: SECRET,
+        fetcher: makePollCountingOrigin().fetcher,
+        closedSessionTtlMs: 0,
+      });
+    } finally {
+      global.Map = RealMap;
+    }
+
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog([]));
+    const CLOSED_STREAM_COUNT = 12;
+    for (let i = 0; i < CLOSED_STREAM_COUNT; i++) {
+      const url = `srt://ome:10080/video/broadcast-${i}`;
+      await postAdmission(engine, orchestrator, 'opening', SECRET, url, SESSION_A);
+      await postAdmission(engine, orchestrator, 'closing', SECRET, url, SESSION_A);
+    }
+
+    const sessionRecords = maps.filter((map) =>
+      [...map.values()].some((value) => (value as { phase?: string })?.phase === 'closed'),
+    );
+    assert.equal(sessionRecords.length, 1, 'the session registry could not be identified among the engine’s maps');
+    assert.ok(
+      sessionRecords[0].size <= 1,
+      `every stream id ever closed stayed on record, holding ${sessionRecords[0].size} of ${CLOSED_STREAM_COUNT}`,
+    );
+  });
+
+  it('arms again for the session that opens after a closed one, and stops it when its own closing arrives', async () => {
+    // The other half of CON-22: remembering that a stream was closed must not become a stream that can
+    // never be closed again. The session opening here is a different one on a different socket, which
+    // is the ordinary reconnect.
+    const origin = makePollCountingOrigin();
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+    const published: VodEntry[] = [];
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SESSION_A);
+    await waitFor(() => origin.polls() > 0, SETTLE_MS);
+    await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SESSION_A);
+    await waitFor(() => published.some((entry) => entry.state === STREAM_STATUS_VOD), SETTLE_MS);
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SESSION_B);
+    const pollsWhenBWasLive = origin.polls();
+    await waitFor(() => origin.polls() > pollsWhenBWasLive, SETTLE_MS);
+    const reply = await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SESSION_B);
+
+    assert.deepEqual(reply, { allowed: true, lifetime: 0, reason: 'ok' }, 'the second session has to be closable');
+    const pollsAtClosing = origin.polls();
+    await waitAndConfirmNothingHappened(() => origin.polls() === pollsAtClosing, POLL_INTERVAL_MS * 10);
+    assert.equal(origin.polls(), pollsAtClosing, 'the second session’s own closing has to stop its puller');
+  });
+
+  it('leaves a resumed stream closable, whatever the registry held before the crash', async () => {
+    // `resumeRecoveredStream` starts a puller with no admission behind it, so nothing re-records who
+    // holds the stream. A closed record surviving into that puller's lifetime would reject the only
+    // closing that can ever stop it. Recovery runs once at startup against an empty registry today,
+    // so this is a contract on the method rather than a reachable interleaving, and it is here because
+    // the alternative is an argument about call ordering that the next change is free to invalidate.
+    const origin = makePollCountingOrigin();
+    const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+    const published: VodEntry[] = [];
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SESSION_A);
+    await waitFor(() => origin.polls() > 0, SETTLE_MS);
+    await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SESSION_A);
+    await waitFor(() => published.some((entry) => entry.state === STREAM_STATUS_VOD), SETTLE_MS);
+
+    orchestrator.startStream(STREAM_ID, 'video');
+    engine.resumeRecoveredStream?.(orchestrator, STREAM_ID);
+    const pollsWhenResumed = origin.polls();
+    await waitFor(() => origin.polls() > pollsWhenResumed, SETTLE_MS);
+
+    const reply = await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SESSION_B);
+    assert.deepEqual(reply, { allowed: true, lifetime: 0, reason: 'ok' }, 'a resumed stream has to be closable');
+    const pollsAtClosing = origin.polls();
+    await waitAndConfirmNothingHappened(() => origin.polls() === pollsAtClosing, POLL_INTERVAL_MS * 10);
+    assert.equal(origin.polls(), pollsAtClosing, 'the closing for a resumed stream has to stop its puller');
+  });
+
+  /**
+   * CON-23: the socket is not enough on its own. `address:port` compared for equality gives two
+   * sessions one key whenever the second reconnects on the source port the first used, which a pinned
+   * local port, an SRT rendezvous, or a NAT holding its mapping all produce. The guard then goes inert
+   * and CON-21 is back in full, without self-healing, because the live SRT session stays up and no
+   * further admission arrives.
+   *
+   * Both times below are OME's own, so the comparison never touches this host's clock.
+   */
+  describe('two sessions on one socket (CON-23)', () => {
+    const SHARED_SOCKET = { address: '192.168.65.1', port: 44546 };
+    const A_OPENED_AT = '2026-08-01T09:14:02.113+02:00';
+    const A_CLOSED_AT = '2026-08-01T09:14:41.775+02:00';
+    const B_OPENED_AT = '2026-08-01T09:14:44.298+02:00';
+    const B_CLOSED_AT = '2026-08-01T09:15:12.006+02:00';
+
+    it('leaves the live session alone when the closing was issued before that session opened', async () => {
+      const origin = makePollCountingOrigin();
+      const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+      const published: VodEntry[] = [];
+      const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+      await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SHARED_SOCKET, A_OPENED_AT);
+      await waitFor(() => origin.polls() > 0, SETTLE_MS);
+      await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SHARED_SOCKET, B_OPENED_AT);
+      const pollsWhenBWasLive = origin.polls();
+      await waitFor(() => origin.polls() > pollsWhenBWasLive, SETTLE_MS);
+
+      const staleReply = await postAdmission(
+        engine,
+        orchestrator,
+        'closing',
+        SECRET,
+        STREAM_URL,
+        SHARED_SOCKET,
+        A_CLOSED_AT,
+      );
+
+      const pollsAfterStaleClosing = origin.polls();
+      await waitFor(() => origin.polls() > pollsAfterStaleClosing, SETTLE_MS);
+      assert.deepEqual(
+        staleReply,
+        { allowed: true, lifetime: 0, reason: 'ok (closing for a replaced session)' },
+        'a closing the socket cannot place, and the clock can, still has to be acknowledged',
+      );
+    });
+
+    it('still stops the live session when its own closing was issued after it opened', async () => {
+      // The strictness has to point one way only. A closing issued after the live session was admitted
+      // is the live session's own, and refusing it would leak the puller and publish no VOD, which is
+      // worse than what the guard protects against.
+      const origin = makePollCountingOrigin();
+      const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+      const published: VodEntry[] = [];
+      const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+      await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SHARED_SOCKET, B_OPENED_AT);
+      await waitFor(() => origin.polls() > 0, SETTLE_MS);
+      await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SHARED_SOCKET, B_CLOSED_AT);
+
+      await waitFor(() => published.some((entry) => entry.state === STREAM_STATUS_VOD), SETTLE_MS);
+      assert.equal(
+        published.filter((entry) => entry.state === STREAM_STATUS_VOD).length,
+        1,
+        'a closing issued after its own opening is that session’s own and has to finalize it',
+      );
+    });
+
+    it('still stops the live session when only the opening carried a time', async () => {
+      // The asymmetric case, and the one every other test here misses because they set both times or
+      // neither. Mutation found it: turning the second `&&` in the ordering check into `||` makes a
+      // recorded time on its own enough to refuse, so every closing from a transport that omits the
+      // field would be dropped and its puller left polling with nothing able to stop it.
+      const origin = makePollCountingOrigin();
+      const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+      const published: VodEntry[] = [];
+      const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+      await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SHARED_SOCKET, B_OPENED_AT);
+      await waitFor(() => origin.polls() > 0, SETTLE_MS);
+      await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SHARED_SOCKET);
+
+      await waitFor(() => published.some((entry) => entry.state === STREAM_STATUS_VOD), SETTLE_MS);
+      assert.equal(
+        published.filter((entry) => entry.state === STREAM_STATUS_VOD).length,
+        1,
+        'a time on one side only orders nothing, so the closing has to be honoured',
+      );
+    });
+
+    it('still stops the live session when the closing was issued in the same instant as the opening', async () => {
+      // The boundary. Strictly-before is what says "issued for an earlier session", and equal says
+      // nothing at all, so it has to fall on the act side. Two admissions inside one millisecond is
+      // reachable: OME stamps these itself and a closing can follow an opening immediately when the
+      // publisher is refused.
+      const origin = makePollCountingOrigin();
+      const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+      const published: VodEntry[] = [];
+      const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+      await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SHARED_SOCKET, B_OPENED_AT);
+      await waitFor(() => origin.polls() > 0, SETTLE_MS);
+      await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SHARED_SOCKET, B_OPENED_AT);
+
+      await waitFor(() => published.some((entry) => entry.state === STREAM_STATUS_VOD), SETTLE_MS);
+      assert.equal(
+        published.filter((entry) => entry.state === STREAM_STATUS_VOD).length,
+        1,
+        'an equal time is not an earlier one, so the closing has to be honoured',
+      );
+    });
+
+    it('still stops the live session when the admissions carry no time to order them by', async () => {
+      // The protocol declares `request.time` optional. Reading an absent one as evidence would make
+      // every closing from a transport that omits it look stale.
+      const origin = makePollCountingOrigin();
+      const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+      const published: VodEntry[] = [];
+      const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+      await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SHARED_SOCKET);
+      await waitFor(() => origin.polls() > 0, SETTLE_MS);
+      await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SHARED_SOCKET);
+
+      await waitFor(() => published.some((entry) => entry.state === STREAM_STATUS_VOD), SETTLE_MS);
+      assert.equal(
+        published.filter((entry) => entry.state === STREAM_STATUS_VOD).length,
+        1,
+        'no time on either side is no evidence, so the closing has to be honoured',
+      );
+    });
+
+    it('still stops the live session when the times are unparseable rather than absent', async () => {
+      // A field that is present and not a date is the same amount of evidence as no field at all, and
+      // `Date.parse` reports it as NaN rather than throwing, which every comparison then reads as false.
+      const origin = makePollCountingOrigin();
+      const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+      const published: VodEntry[] = [];
+      const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+      await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SHARED_SOCKET, 'not a timestamp');
+      await waitFor(() => origin.polls() > 0, SETTLE_MS);
+      await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, SHARED_SOCKET, 'nor is this');
+
+      await waitFor(() => published.some((entry) => entry.state === STREAM_STATUS_VOD), SETTLE_MS);
+      assert.equal(
+        published.filter((entry) => entry.state === STREAM_STATUS_VOD).length,
+        1,
+        'a time that does not parse is an absent time, not an earlier one',
+      );
+    });
+  });
+
+  /**
+   * A `client` block that is present but incomplete. Omitting the field is only the tidiest way a
+   * payload can carry no identity, and the engine parses these off the wire rather than out of a
+   * TypeScript value, so each of these reaches it as readily as a real socket does.
+   */
+  const INCOMPLETE_SOCKETS: ReadonlyArray<{ name: string; client: { address?: string | null; port?: number | null } }> =
+    [
+      { name: 'null fields, which is how JSON says a field is absent', client: { address: null, port: null } },
+      {
+        name: 'port 0, which is what a socket torn down before the closing reports',
+        client: { address: '192.168.65.1', port: 0 },
+      },
+      { name: 'an empty address', client: { address: '', port: 44546 } },
+      {
+        name: 'a port that is not a whole number, which no socket has',
+        client: { address: '192.168.65.1', port: 44546.5 },
+      },
+    ];
+
+  for (const { name, client } of INCOMPLETE_SOCKETS) {
+    it(`stops the stream when the closing carries ${name}`, async () => {
+      const origin = makePollCountingOrigin();
+      const engine = trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, { admissionSecret: SECRET, fetcher: origin.fetcher });
+      const published: VodEntry[] = [];
+      const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), makeRecordingCatalog(published));
+
+      await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, SESSION_A);
+      await waitFor(() => origin.polls() > 0, SETTLE_MS);
+      await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, client);
+
+      await waitFor(() => published.some((entry) => entry.state === STREAM_STATUS_VOD), SETTLE_MS);
+      assert.equal(
+        published.filter((entry) => entry.state === STREAM_STATUS_VOD).length,
+        1,
+        'half a socket is an absent identity, not a different one, so this closing has to be honoured',
+      );
+    });
+  }
+});
+
+/**
+ * TEST-25: nothing asserted the admission webhook's allow-or-deny decision, so the ingest gate could
+ * be inverted and the suite stayed green. Hand-verified when it was filed: flipping the
+ * orchestrator-rejected reply to `allowed: true` left 294 of 294 passing.
+ *
+ * The consequence of that one flip is the reason this is a HIGH and not a coverage nit. When the
+ * orchestrator refuses a stream, OME is told the publish is allowed, so the broadcaster sees a
+ * healthy connection and goes live while every segment is dropped. Neither side is told anything.
+ *
+ * `reply` is the only thing OME reads. Every other assertion in this file is about what the process
+ * did afterwards, which is why an inverted decision was invisible to all of them: a denied publish
+ * that starts no puller looks exactly like an allowed one whose origin never answered.
+ */
+describe('createOmeEngine admission decision (TEST-25)', () => {
+  const SECRET = 'admission-decision-secret';
+  const HLS_BASE = 'http://ome:8081';
+  const POLL_INTERVAL_MS = 20;
+  const STREAM_URL = 'srt://ome:10080/video/demo';
+
+  /** An origin that answers nothing, so no test here depends on a puller making progress. */
+  const silentOrigin = (async () =>
+    ({ ok: false, status: 404, text: async () => '' } as Response)) as unknown as Fetcher;
+
+  function makeEngine(failOpen = false): EnginePlugin {
+    return trackedOmeEngine(HLS_BASE, POLL_INTERVAL_MS, {
+      admissionSecret: SECRET,
+      fetcher: silentOrigin,
+      failOpen,
+    });
+  }
+
+  it('allows an opening the orchestrator accepts', async () => {
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore());
+
+    const reply = await postAdmission(makeEngine(), orchestrator, 'opening', SECRET, STREAM_URL);
+
+    assert.deepEqual(reply, { allowed: true, lifetime: 0, reason: 'ok' }, 'a denied opening is a broadcast refused');
+    await orchestrator.cleanup();
+  });
+
+  // The flip that was hand-verified as invisible. It needs a fake orchestrator because
+  // `StreamOrchestrator.startStream` returns true on all three of its paths, so `!accepted` is
+  // unreachable against the real one. See TEST-29.
+  it('denies an opening the orchestrator refuses, rather than telling OME to let it publish', async () => {
+    const orchestrator = makeFakeOrchestrator({ startStream: () => false });
+
+    const reply = await postAdmission(makeEngine(), orchestrator, 'opening', SECRET, STREAM_URL);
+
+    assert.deepEqual(
+      reply,
+      { allowed: false, reason: 'orchestrator rejected' },
+      'allowing here puts a broadcaster live into a pipeline that drops every segment, silently',
+    );
+  });
+
+  it('allows the closing of the session that is live', async () => {
+    const engine = makeEngine();
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore());
+    const session = { address: '192.168.65.1', port: 44546 };
+
+    await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, session);
+    const reply = await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, session);
+
+    assert.deepEqual(
+      reply,
+      { allowed: true, lifetime: 0, reason: 'ok' },
+      'OME only wants the acknowledgement, and refusing it leaves the session unclosed on its side',
+    );
+    await orchestrator.cleanup();
+  });
+
+  it('denies a url it cannot parse into an app and a stream', async () => {
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore());
+
+    const reply = await postAdmission(makeEngine(), orchestrator, 'opening', SECRET, 'not a url at all');
+
+    assert.deepEqual(reply, { allowed: false, reason: 'invalid url' });
+    await orchestrator.cleanup();
+  });
+
+  /**
+   * SEC-25. These parse as URLs and used to admit, under the stream ids `undefined/undefined` and
+   * `video/undefined`. Both are collision points: every publish missing a stream name shared one,
+   * so one broadcaster's closing ended another's session.
+   */
+  for (const url of ['srt://ome:10080', 'srt://ome:10080/video', 'srt://ome:10080?streamid=srt://ome:10080/video']) {
+    it(`denies ${url}, which parses as a url but names no stream`, async () => {
+      const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore());
+
+      const reply = await postAdmission(makeEngine(), orchestrator, 'opening', SECRET, url);
+
+      assert.deepEqual(reply, { allowed: false, reason: 'invalid url' });
+      assert.equal(orchestrator.getActiveStreamCount(), 0, 'a denied publish must leave no stream registered');
+      await orchestrator.cleanup();
+    });
+  }
+
+  it('allows an outgoing session untouched, since this hook governs ingest only', async () => {
+    const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore());
+
+    const reply = await postAdmissionBody(makeEngine(), orchestrator, SECRET, {
+      request: { direction: 'outgoing', status: 'opening', url: STREAM_URL },
+    });
+
+    assert.deepEqual(
+      reply,
+      { allowed: true, lifetime: 0, reason: 'ignored (not incoming)' },
+      'denying here would refuse every playback session OME hands this hook',
+    );
+    await orchestrator.cleanup();
+  });
+
+  /**
+   * The two halves of the fail-open switch, which is the one place where the same failure has to
+   * produce opposite decisions. An operator sets it to choose between a broadcast lost to a bug in
+   * this handler and a broadcast admitted while the handler is broken, and neither answer is safe
+   * enough to be the only one.
+   */
+  for (const [failOpen, expected] of [
+    [false, { allowed: false, reason: 'handler error' }],
+    [true, { allowed: true, reason: 'handler error (fail-open)' }],
+  ] as const) {
+    it(`answers ${JSON.stringify(expected.allowed)} when the handler throws and failOpen is ${failOpen}`, async () => {
+      const orchestrator = makeFakeOrchestrator({
+        startStream: () => {
+          throw new Error('orchestrator exploded');
+        },
+      });
+
+      const reply = await postAdmission(makeEngine(failOpen), orchestrator, 'opening', SECRET, STREAM_URL);
+
+      assert.deepEqual(reply, expected);
+    });
+  }
+});
