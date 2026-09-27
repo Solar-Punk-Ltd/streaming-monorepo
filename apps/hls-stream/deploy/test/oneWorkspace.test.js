@@ -89,7 +89,9 @@ const STACK_FILES = {
 
 const workspaces = [];
 after(() => {
-  for (const dir of workspaces) rmSync(dir, { recursive: true, force: true });
+  for (const dir of workspaces) {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 function write(dir, files) {
@@ -117,7 +119,10 @@ function oneWorkspace({ config, ownPair = false } = {}) {
   const sandbox = makeSandbox({ config, root: join(workspace, 'apps', 'hls-stream') });
   write(sandbox.root, STACK_FILES);
   if (ownPair) {
-    write(sandbox.root, { 'pnpm-lock.yaml': "lockfileVersion: '9.0'\n# the stack's own\n", 'pnpm-workspace.yaml': 'packages:\n  - packages/*\n' });
+    write(sandbox.root, {
+      'pnpm-lock.yaml': "lockfileVersion: '9.0'\n# the stack's own\n",
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
+    });
   }
   execFileSync('git', ['init', '-q', workspace]);
   return { workspace, sandbox };
@@ -127,7 +132,15 @@ function oneWorkspace({ config, ownPair = false } = {}) {
 function expectedCut(workspace) {
   const out = mkdtempSync(join(tmpdir(), 'expected-cut-'));
   workspaces.push(out);
-  execFileSync(process.execPath, [join(TOOL, 'cut.mjs'), '--root', workspace, '--app', 'apps/hls-stream', '--out', join(out, 'cut')]);
+  execFileSync(process.execPath, [
+    join(TOOL, 'cut.mjs'),
+    '--root',
+    workspace,
+    '--app',
+    'apps/hls-stream',
+    '--out',
+    join(out, 'cut'),
+  ]);
   return {
     lockfile: readFileSync(join(out, 'cut', 'pnpm-lock.yaml'), 'utf8'),
     workspace: readFileSync(join(out, 'cut', 'pnpm-workspace.yaml'), 'utf8'),
@@ -190,12 +203,20 @@ describe('a local deploy from a checkout of the one workspace', () => {
     const [up] = composeUps(sandbox);
     assert.ok(up, 'compose was asked to bring the stack up');
     assert.ok(up.includes(`--project-directory ${DEPLOY_DIR_IN(sandbox)}`), `compose runs from the checkout: ${up}`);
-    assert.ok(up.includes(`-f ${join(DEPLOY_DIR_IN(sandbox), 'docker-compose.copy.yml')}`), `the copy is the build context: ${up}`);
+    assert.ok(
+      up.includes(`-f ${join(DEPLOY_DIR_IN(sandbox), 'docker-compose.copy.yml')}`),
+      `the copy is the build context: ${up}`,
+    );
 
     const [copy] = sandbox.copies();
     assert.ok(copy, 'compose was pointed at a copy');
     const cut = expectedCut(workspace);
-    for (const file of ['pnpm-lock.yaml', 'pnpm-workspace.yaml', 'packages/stream-uploader/dist/index.js', 'deploy/Dockerfile.uploader']) {
+    for (const file of [
+      'pnpm-lock.yaml',
+      'pnpm-workspace.yaml',
+      'packages/stream-uploader/dist/index.js',
+      'deploy/Dockerfile.uploader',
+    ]) {
       assert.ok(copy.files.includes(file), `the copy holds ${file}: ${copy.files.join(', ')}`);
     }
     assert.equal(copy.files.includes('.env'), false, 'an env file stays in the checkout');
@@ -208,7 +229,10 @@ describe('a local deploy from a checkout of the one workspace', () => {
     const { sandbox } = oneWorkspace();
     const tmp = ownTmpdir();
 
-    const run = await runScript(sandbox, 'deploy.sh', ['--host=localhost', 'client'], { TMPDIR: tmp, DOCKER_STUB_UP_EXIT: '1' });
+    const run = await runScript(sandbox, 'deploy.sh', ['--host=localhost', 'client'], {
+      TMPDIR: tmp,
+      DOCKER_STUB_UP_EXIT: '1',
+    });
 
     assert.notEqual(run.exitCode, 0);
     assert.deepEqual(readdirSync(tmp), []);
@@ -254,7 +278,20 @@ describe('bench-on-host.sh from a checkout of the one workspace', () => {
 function renderWithCopy(env) {
   return spawnSync(
     'docker',
-    ['compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.copy.yml', '--profile', 'stream-uploader', '--profile', 'client', 'config', '--format', 'json'],
+    [
+      'compose',
+      '-f',
+      'docker-compose.yml',
+      '-f',
+      'docker-compose.copy.yml',
+      '--profile',
+      'stream-uploader',
+      '--profile',
+      'client',
+      'config',
+      '--format',
+      'json',
+    ],
     {
       cwd: join(STACK, 'deploy'),
       encoding: 'utf-8',
@@ -305,7 +342,10 @@ describe('a stack that keeps its own lockfile', () => {
 
     await runScriptOk(sandbox, 'deploy.sh', ['client'], { TMPDIR: ownTmpdir() });
 
-    assert.equal(readFileSync(join(sandbox.remoteHome, REMOTE_BASE, 'pnpm-lock.yaml'), 'utf8'), "lockfileVersion: '9.0'\n# the stack's own\n");
+    assert.equal(
+      readFileSync(join(sandbox.remoteHome, REMOTE_BASE, 'pnpm-lock.yaml'), 'utf8'),
+      "lockfileVersion: '9.0'\n# the stack's own\n",
+    );
   });
 
   it('builds locally from its own folder, as before', async () => {

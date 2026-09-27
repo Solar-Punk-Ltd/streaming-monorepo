@@ -139,7 +139,9 @@ export function makeSandbox({
   // A stack placed at a given root is mirrored whole by bench-on-host.sh, and the rsync stub honours
   // no --exclude, so its stand-in host lives in a folder of its own rather than inside the stack.
   const remoteHome = givenRoot ? mkdtempSync(join(tmpdir(), 'remote-home-')) : join(root, 'remote-home');
-  if (givenRoot) sandboxes.push(remoteHome);
+  if (givenRoot) {
+    sandboxes.push(remoteHome);
+  }
   const remoteBase = join(remoteHome, REMOTE_DIR);
   mkdirSync(join(remoteBase, 'deploy'), { recursive: true });
   cpSync(join(DEPLOY_DIR, 'scripts'), join(remoteBase, 'deploy', 'scripts'), { recursive: true });
@@ -209,7 +211,10 @@ export function makeSandbox({
      */
     copies: () =>
       existsSync(`${localJournal}-copies`)
-        ? readFileSync(`${localJournal}-copies`, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line))
+        ? readFileSync(`${localJournal}-copies`, 'utf8')
+            .split('\n')
+            .filter(Boolean)
+            .map((line) => JSON.parse(line))
         : [],
   };
 }
