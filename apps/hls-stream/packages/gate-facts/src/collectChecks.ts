@@ -69,7 +69,9 @@ export async function collectChecks(repoRoot: string): Promise<FactGroup> {
   const gateArgs = ['audit:check'];
   const gate = await run('pnpm', gateArgs);
 
-  const statusArgs = ['status', '--porcelain'];
+  // The pathspec narrows the status to the working folder, which is the stack's. The checks above ran
+  // there, so dirt elsewhere in a larger repository says nothing about what they measured.
+  const statusArgs = ['status', '--porcelain', '--', '.'];
   const status = await run('git', statusArgs);
 
   const suites = parseSuiteCounts(verify.stdout);
