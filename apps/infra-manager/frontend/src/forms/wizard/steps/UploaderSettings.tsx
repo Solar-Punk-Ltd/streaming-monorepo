@@ -48,8 +48,10 @@ export function UploaderSettings(props: WizardStepProps) {
                   fullWidth
                   select
                   value={state.poolId == null ? '' : String(state.poolId)}
-                  SelectProps={{ SelectDisplayProps: { 'aria-label': 'Storage pool' } }}
                   onChange={(event) => update({ poolId: Number(event.target.value) })}
+                  slotProps={{
+                    select: { SelectDisplayProps: { 'aria-label': 'Storage pool' } }
+                  }}
                 >
                   {pools.map((pool) => {
                     const ready = poolValueIn(context, pool.id) !== null;
@@ -78,10 +80,12 @@ export function UploaderSettings(props: WizardStepProps) {
                   value={state.poolString}
                   onChange={(event) => update({ poolString: event.target.value })}
                   placeholder={POOL_PLACEHOLDER}
-                  inputProps={{
-                    style: { fontFamily: MONO_STACK },
-                    'aria-label': 'Pool string',
-                    'aria-describedby': messageIdFor('wizard-pool-string'),
+                  slotProps={{
+                    htmlInput: {
+                      style: { fontFamily: MONO_STACK },
+                      'aria-label': 'Pool string',
+                      'aria-describedby': messageIdFor('wizard-pool-string'),
+                    }
                   }}
                 />
               ),

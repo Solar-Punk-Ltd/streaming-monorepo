@@ -60,7 +60,9 @@ export function PassphraseChoice({ state, context, update }: WizardStepProps) {
                 value={state.ownPassphrase}
                 onChange={(event) => update({ ownPassphrase: event.target.value })}
                 placeholder="my-stage-passphrase-2026"
-                inputProps={{ style: { fontFamily: MONO_STACK } }}
+                slotProps={{
+                  htmlInput: { style: { fontFamily: MONO_STACK } }
+                }}
               />
             ),
           },

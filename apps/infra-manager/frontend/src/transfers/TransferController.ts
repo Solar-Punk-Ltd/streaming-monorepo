@@ -129,7 +129,7 @@ export class TransferController {
     if (!detail) { this.patch({ phase: 'ready', detail: null, issue: 'lookup_missing' }); return null; }
     if (!isCompleteTransferDetail(detail)) { this.patch({ phase: 'ready', detail: null, issue: 'incomplete_response' }); return null; }
     if (!isExactTransfer(intent, detail.operation)) { await this.blocked(task, intent, detail, 'identity_conflict'); return null; }
-    return await this.exact(task, intent, detail) ? detail : null;
+    return (await this.exact(task, intent, detail)) ? detail : null;
   }
 
   private async send(task: ActiveTask, intent: StoredTransferIntent): Promise<void> {

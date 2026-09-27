@@ -55,7 +55,9 @@ export function StreamKeyField({
             disabled={masked}
             onChange={(event) => onChange(event.target.value)}
             placeholder="0x plus 64 hex characters"
-            inputProps={{ style: { fontFamily: MONO_STACK } }}
+            slotProps={{
+              htmlInput: { style: { fontFamily: MONO_STACK } }
+            }}
           />
           <Button
             size="small"

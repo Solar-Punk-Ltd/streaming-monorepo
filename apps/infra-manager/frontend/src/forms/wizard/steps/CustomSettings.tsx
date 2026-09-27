@@ -104,7 +104,9 @@ export function CustomSettings(props: WizardStepProps) {
             value={state.beeUrl}
             onChange={(event) => update({ beeUrl: event.target.value })}
             placeholder="http://10.0.0.7:1633"
-            inputProps={{ style: { fontFamily: MONO_STACK } }}
+            slotProps={{
+              htmlInput: { style: { fontFamily: MONO_STACK } }
+            }}
           />
         </FormField>
       )}

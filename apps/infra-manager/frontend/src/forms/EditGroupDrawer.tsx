@@ -158,7 +158,9 @@ export function EditGroupDrawer({
             value={edits.feedOwner}
             onChange={(event) => update({ feedOwner: event.target.value })}
             placeholder="0x plus 40 hex characters"
-            inputProps={{ style: { fontFamily: MONO_STACK } }}
+            slotProps={{
+              htmlInput: { style: { fontFamily: MONO_STACK } }
+            }}
           />
         </FormField>
       )}
