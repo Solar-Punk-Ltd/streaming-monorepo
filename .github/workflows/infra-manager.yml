@@ -52,7 +52,7 @@ jobs:
         run: pnpm --filter @streaming-infra-manager/common build
 
       - name: Type checks, every package, tests included
-        run: pnpm -r typecheck
+        run: pnpm typecheck
 
       - name: Unit tests, common
         run: pnpm --filter @streaming-infra-manager/common test
