@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { after, describe, it } from 'node:test';
 
-import { fakeAdminEnv, makeSandbox, removeSandboxes } from './helpers/sandbox.mjs';
+import { REAL_RSYNC, fakeAdminEnv, makeSandbox, removeSandboxes } from './helpers/sandbox.mjs';
 
 after(removeSandboxes);
 
@@ -93,6 +93,29 @@ function expectedCut(sandbox) {
   return (file) => readFileSync(join(out, file), 'utf8');
 }
 
+/** Every file and link under `dir`, by its path from there: a file's text, or `-> ` and a link's target. */
+function treeOf(dir) {
+  const tree = {};
+  const walk = (folder) => {
+    for (const name of readdirSync(folder)) {
+      const path = join(folder, name);
+      const entry = lstatSync(path);
+      if (entry.isSymbolicLink()) tree[relative(dir, path)] = `-> ${readlinkSync(path)}`;
+      else if (entry.isDirectory()) walk(path);
+      else tree[relative(dir, path)] = readFileSync(path, 'utf8');
+    }
+  };
+  walk(dir);
+  return tree;
+}
+
+function writeInto(dir, files) {
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), text);
+  }
+}
+
 /** The rsync line in a run's stub calls, as its words. */
 const rsyncWords = (deployed) => (deployed.calls.find((call) => call.startsWith('rsync ')) ?? '').split(' ');
 
@@ -135,6 +158,46 @@ describe('deploy.sh from a checkout of the one workspace', () => {
     }
     assert.equal(copied.includes('./backend/.env.qa'), false, 'an env file stays in the checkout');
     assert.deepEqual(readdirSync(tmp), [], 'the copy is gone');
+  });
+});
+
+describe('deploy.sh with the real rsync', () => {
+  /** A host an admin deploy reached before the one workspace: its own lockfile, a file since deleted, and the edge's. */
+  const EARLIER_HOST = {
+    ...HOST_WITH_PROFILE,
+    'pnpm-lock.yaml': "lockfileVersion: '9.0'\n# the admin's own, from before the one workspace\n",
+    'stale.txt': 'a file the checkout no longer has\n',
+    'deploy/edge/docker-compose.yml': "# the host's edge, which an admin deploy never touches\n",
+  };
+
+  it("leaves the host as rsync --delete leaves it from the admin's folder alone, and the admin's pair besides", () => {
+    const sandbox = makeSandbox({ checkout: oneWorkspaceCheckout(), cutTool: true, host: EARLIER_HOST, realRsync: true });
+    const tmp = ownFolder('admin-tmp-');
+
+    const deployed = sandbox.runScript(DEPLOY, ['--host=fixture-host', '--profile=qa', `--remote-path=${sandbox.hostDir}`], {
+      env: { TMPDIR: tmp },
+    });
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    const argv = sandbox.rsyncArgv();
+    const cutSources = argv.filter((arg) => arg.startsWith(tmp));
+    assert.equal(cutSources.length, 1, `one source under TMPDIR, the cut: ${argv.join(' ')}`);
+    const alone = join(ownFolder('admin-alone-'), 'host');
+    writeInto(alone, EARLIER_HOST);
+    const aloneArgv = [...argv.filter((arg) => arg !== cutSources[0]).slice(0, -1), `${alone}/`];
+    const aloneRun = spawnSync(REAL_RSYNC, aloneArgv, { cwd: sandbox.inCheckout('apps/web2-admin'), encoding: 'utf8' });
+    assert.equal(aloneRun.status, 0, aloneRun.stderr);
+
+    const cut = expectedCut(sandbox);
+    const withoutPair = treeOf(alone);
+    assert.deepEqual(treeOf(sandbox.rsyncAfter), {
+      ...withoutPair,
+      'pnpm-lock.yaml': cut('pnpm-lock.yaml'),
+      'pnpm-workspace.yaml': cut('pnpm-workspace.yaml'),
+    });
+    assert.equal(withoutPair['stale.txt'], undefined, '--delete removed what the checkout no longer has');
+    assert.equal(withoutPair['pnpm-lock.yaml'], undefined, "alone, --delete would have removed the host's lockfile");
+    assert.equal(withoutPair['deploy/edge/docker-compose.yml'], EARLIER_HOST['deploy/edge/docker-compose.yml']);
   });
 });
 
