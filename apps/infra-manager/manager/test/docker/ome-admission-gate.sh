@@ -26,7 +26,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-STACK="$ROOT/manager/swarm-hls-stream"
+STACK="$(cd "$ROOT/../hls-stream" && pwd)"
 # latest resolved to v0.21.0 on 2026-09-08, and this digest is that manifest list.
 IMAGE="${OME_GATE_IMAGE:-airensoft/ovenmediaengine@sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6}"
 RUN="ome-gate-$$"
@@ -44,7 +44,7 @@ CLOSING_WAIT_SECONDS=20
 FFMPEG_WAIT_SECONDS=300
 
 if [ ! -f "$STACK/engines/ome/Server.xml.template" ] || [ ! -f "$STACK/engines/ome/entrypoint.sh" ]; then
-  echo "FAIL: the stack submodule is not checked out at $STACK (git submodule update --init)" >&2
+  echo "FAIL: there is no stack at $STACK, which is the monorepo's apps/hls-stream" >&2
   exit 2
 fi
 

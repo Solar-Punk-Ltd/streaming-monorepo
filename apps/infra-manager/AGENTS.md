@@ -37,7 +37,7 @@ copy under `docs/consensus/` is the one to reference.
 This repository has no `CONTEXT.md` and no `docs/adr/`. Domain vocabulary and architectural
 reasoning live in the pages that describe the feature they belong to:
 
-- `README.md` for the layout and the submodule.
+- `README.md` for the layout and the stack it bundles.
 - `deploy/README.md` for putting the manager on a server and opening it to the internet.
 - `manager/README.md` for the API, the authentication model and the environment.
 - `docs/features/` for one page per feature.

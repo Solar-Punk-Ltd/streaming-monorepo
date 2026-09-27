@@ -18,6 +18,7 @@ import {
   profileServiceHarness,
   type ProfileServiceHarness,
 } from '../support/profileServiceHarness.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 async function addVersion(
   harness: ProfileServiceHarness,
@@ -28,6 +29,7 @@ async function addVersion(
     name,
     gitRef: name,
     rootPath: `/versions/${name}`,
+    sourceUrl: SWARM_HLS_STREAM_SOURCE.url,
   });
   if (status === 'ready') {
     await harness.versions.markBuilt(row.id, {

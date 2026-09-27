@@ -25,17 +25,13 @@ See [docs/features/abr-ladder.md](docs/features/abr-ladder.md).
 
 ## Layout
 
-- `manager/swarm-hls-stream/`: a git submodule pointing at
-  [Solar-Punk-Ltd/swarm-hls-stream](https://github.com/Solar-Punk-Ltd/swarm-hls-stream),
-  pinned to the stack's release `v3.4`, commit
-  `dc0c55e10651367d939b2b0c2c4ff6302fc65899`, as of 2026-09-25, with `main` as
-  its tracked branch. This is the upstream application source, with the
-  packages under `packages/` and the engine trees under `engines/`. The commit
-  it records is the **bundled** stack version, and that version is the default
-  until another is chosen. A deploy does not carry this tree. It writes the
-  recorded commit into `manager/.stack-commit`, and the server fetches and
-  builds that commit itself, the same way it builds any version added on the
-  Versions page.
+- `../hls-stream/`, the monorepo's `apps/hls-stream`: the streaming stack, with
+  the packages under `packages/` and the engine trees under `engines/`. The
+  monorepo commit a manager is deployed from holds both, and the stack in it is
+  the **bundled** stack version, the default until another is chosen. A deploy
+  does not carry this tree. It writes that commit into `manager/.stack-commit`,
+  and the server fetches it and builds its `apps/hls-stream` itself, the same
+  way it builds any version added on the Versions page.
 - `/opt/streaming/streaming-infra-manager-versions/` on the deploy host
   (`STACK_VERSIONS_ROOT`). Each version keeps three siblings there:
   `<name>.repo/`, the clone it builds from, `<name>.builds/<build id>/`, one
@@ -116,99 +112,16 @@ run any of it on a laptop: [docs/ci.md](docs/ci.md).
 - [docs/ux/](docs/ux/): the UX rework brief and the clickable mockup it was
   decided from. Merged 2026-09-05.
 
-## Cloning this repository
+## The stack this manager bundles
 
-This repo uses a **git submodule** (the `manager/swarm-hls-stream/` directory). A plain
-`git clone` will leave that directory empty, which will break every later step.
-Use one of the two flows below.
+The stack sits beside the manager in the monorepo, in `apps/hls-stream`, so a
+plain clone of the monorepo holds both and nothing more has to be fetched. A
+manager deploy bundles the stack of the commit it deploys, so moving the bundled
+stack on is a change to `apps/hls-stream` in the same repository, reviewed and
+merged like any other.
 
-### Option A, clone everything in one go (recommended)
-
-```sh
-git clone --recurse-submodules https://github.com/Solar-Punk-Ltd/streaming-monorepo.git
-cd streaming-infra-manager
-```
-
-The `--recurse-submodules` flag tells git to also fetch the contents of every
-submodule. After this completes, `manager/swarm-hls-stream/` will be populated.
-
-### Option B, you already cloned without the flag
-
-If you ran a plain `git clone` and `manager/swarm-hls-stream/` is empty, run this once
-inside the repo:
-
-```sh
-cd streaming-infra-manager
-git submodule update --init --recursive
-```
-
-`--init` registers the submodule locally, which is needed the first time only.
-`--recursive` also pulls any submodules of submodules. Re-running this is safe
-at any time and does not overwrite committed work.
-
-### How to tell it worked
-
-```sh
-ls manager/swarm-hls-stream/packages
-```
-
-That should print several package directories, `cli`, `client` and
-`stream-uploader` among them. If the directory is empty, the submodule was not
-fetched. Go back to Option A or B.
-
-## Updating the upstream submodule
-
-The bundled stack is pinned to the stack's release `v3.4`, commit `dc0c55e1`,
-as of 2026-09-25. It builds on `v3.1`, pinned from 2026-09-19, which
-brought PR #241 and the manager integration work previously carried by
-`feat/manager-line`. Over `v3.1` it makes SRT ingest wait 2000 ms for a lost
-packet by default, where `v3.1` asked for 200 ms and SRS waited its own
-120 ms, because the template filled `latency` and not `recvlatency`. An SRS
-encoder that drops and returns inside the reap window, 60 s by default, now
-resumes its broadcast instead of starting a new one, while OME still ends it.
-Both came with `v3.2`. `v3.3` adds three fixes for what a tester hit on
-2026-09-23. A ladder with a rung that cannot finish, such as one whose postage
-batch filled, is listed as a recording of the rungs that did finish, instead of
-staying live for good and hiding every broadcast after it. A rung whose uploads
-are refused stays out of the master playlist until it uploads cleanly again.
-And the viewer's stream cards show their picture behind its `/bee` proxy.
-`v3.4` adds the fixes from that tester's stage and from a live test of it on
-2026-09-24 and 2026-09-25. The uploader starts on a full mutable postage
-batch, whose node overwrites its oldest chunks rather than refusing an upload,
-and holds only an immutable batch to its start ceiling. A long recording's card
-shows its picture. The viewer's page tells browsers to check for a new copy on
-every load, so a redeploy reaches every browser. A viewer who saw a broadcast end follows it when it comes back,
-and a watch page opened before a scheduled stream starts picks it up when it
-does. An ordinary end of a broadcast no longer logs that the engine may have
-died. And the ingest refuses a publish nobody authenticated unless the stack's
-own transcoder sent it from the same host.
-The upstream default branch is `main`.
-
-Pin an explicit release or commit when upgrading the bundled stack, a release
-when one carries the change you need and a commit when none does yet. `<ref>`
-below is either one, a tag such as `v3.4` or a full commit id such as
-`8c5c583a9fdd4604a602433112410f5a996952ee`:
-
-```sh
-git -C manager/swarm-hls-stream fetch origin --tags
-git -C manager/swarm-hls-stream checkout --detach <ref>
-git add manager/swarm-hls-stream
-git commit -m "chore: pin swarm-hls-stream <ref>"
-```
-
-The fetch brings every branch and every tag of the stack, so a release tag and
-a commit on any branch both resolve.
-
-To test the latest upstream `main` instead, use the tracked branch:
-
-```sh
-git submodule update --remote manager/swarm-hls-stream
-git add manager/swarm-hls-stream
-git commit -m "chore: bump swarm-hls-stream"
-```
-
-Give the path, `manager/swarm-hls-stream`, and not the submodule's name. The
-first command moves the submodule to the tip of the tracked branch. The next
-two record that move as a commit here, so every clone pins the same version,
-and so does the next deploy, which writes that commit into
-`manager/.stack-commit` for the server to build.
+Until the monorepo, this repository pinned the stack as a git submodule. The
+last pin was the stack's release `v3.4`, commit `dc0c55e1`, as of 2026-09-25.
+Its commits are in the monorepo's history under the same ids, so a version of
+that release can still be added on the Versions page, by its tag `stack/v3.4`
+or by its commit, and it is built as the whole tree it was then.

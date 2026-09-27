@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fetch one version of the streaming stack and build it into a staging tree.
 #
-#   stack-version-build.sh <repo-root> <staging-dir> <ref> <repo-url> <attempt-id>
+#   stack-version-build.sh <repo-root> <staging-dir> <ref> <repo-url> <stack-folder> <history-head> <attempt-id>
 #
 # <repo-root>   the clone, on the host and inside the api container alike.
 #               Never deployed from: it only fetches.
@@ -10,15 +10,23 @@
 # <ref>         branch or tag to follow, or the forty character commit the
 #               manager pins for the bundled version. The commit only moves
 #               when this runs.
-# <repo-url>    where the stack comes from. A constant in the manager, never
-#               operator supplied.
+# <repo-url>    the repository the stack comes from. A constant in the
+#               manager, never operator supplied.
+# <stack-folder> where the stack sits in that repository: . for the whole
+#               tree, or a folder such as apps/hls-stream. A constant in the
+#               manager too.
+# <history-head> a commit whose ancestors are the stack's own history, from
+#               before it moved into <stack-folder>, or none. A commit that
+#               lacks <stack-folder> is built whole when it is one of those,
+#               because there the stack is the root, and refused otherwise.
 # <attempt-id>  names this attempt's build container, stack-build-<attempt-id>,
 #               so a manager that comes back can tell a live builder from a
 #               dead one before it removes the staging tree.
 #
-# Writes the exported commit into <staging-dir>/.stack-commit, which is what
-# the manager reads: a real build prints far more than the manager keeps of
-# this stream, and the clone may have moved on by the time it looks.
+# Writes the exported commit into <staging-dir>/.stack-commit and the folder the
+# stack was taken from into <staging-dir>/.stack-folder, which is what the
+# manager reads: a real build prints far more than the manager keeps of this
+# stream, and the clone may have moved on by the time it looks.
 #
 # The packages are built in a throwaway node container rather than in the api
 # image, so the api image keeps carrying no toolchain of its own. That container
@@ -39,8 +47,8 @@ readonly BUILD_IMAGE="node:22-alpine"
 readonly PINNED_PNPM='pnpm@9.12.0'
 readonly BUILD_COMMAND="corepack enable && corepack prepare ${PINNED_PNPM} --activate && pnpm install --frozen-lockfile && pnpm -r build"
 
-if [ "$#" -ne 5 ]; then
-    echo "usage: stack-version-build.sh <repo-root> <staging-dir> <ref> <repo-url> <attempt-id>" >&2
+if [ "$#" -ne 7 ]; then
+    echo "usage: stack-version-build.sh <repo-root> <staging-dir> <ref> <repo-url> <stack-folder> <history-head> <attempt-id>" >&2
     exit 2
 fi
 
@@ -48,7 +56,9 @@ REPO="$1"
 STAGING="$2"
 REF="$3"
 REPO_URL="$4"
-ATTEMPT="$5"
+STACK_FOLDER="$5"
+HISTORY_HEAD="$6"
+ATTEMPT="$7"
 
 # Checked here as well as in the manager, because these values land in
 # `git clone --branch`, `git -C`, `docker run -v` and `docker run --name`,
@@ -84,6 +94,18 @@ if ! [[ "$REPO_URL" =~ ^https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\.git
     echo "ERROR: <repo-url> must be an https github clone url (got: $REPO_URL)" >&2
     exit 2
 fi
+# The folder lands in `git archive` and in `tar --strip-components`, so it is
+# a relative path of plain names: no .., and no name that starts with a dot or
+# a dash.
+readonly FOLDER_RE='^[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$'
+if [ "$STACK_FOLDER" != . ] && { ! [[ "$STACK_FOLDER" =~ $FOLDER_RE ]] || [[ "$STACK_FOLDER" == *..* ]]; }; then
+    echo "ERROR: <stack-folder> must be . or a relative folder of plain names (got: $STACK_FOLDER)" >&2
+    exit 2
+fi
+if [ "$HISTORY_HEAD" != none ] && ! [[ "$HISTORY_HEAD" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "ERROR: <history-head> must be none or a forty character commit (got: $HISTORY_HEAD)" >&2
+    exit 2
+fi
 if ! [[ "$ATTEMPT" =~ ^[0-9a-f]{8,32}$ ]]; then
     echo "ERROR: <attempt-id> must be 8 to 32 hex digits (got: $ATTEMPT)" >&2
     exit 2
@@ -96,6 +118,31 @@ fi
 # A failed attempt takes its staging tree with it. A successful one leaves it
 # for the manager, which publishes it or removes it.
 trap 'code=$?; if [ "$code" -ne 0 ]; then rm -rf "$STAGING"; fi' EXIT
+
+# Whether a commit is one of the stack's own, from before it moved into
+# <stack-folder>: an ancestor of <history-head>. A clone holds only what its
+# fetches brought, so the head is fetched when it is missing. Only when that
+# history cannot be read, in a shallow clone or for a head the fetch cannot
+# reach, does the layout decide: no apps folder, and at the root the two files
+# the manager reads a stack's contract from.
+in_stack_history() {
+    local commit="$1"
+    [ "$HISTORY_HEAD" != none ] || return 1
+    if [ "$(git -C "$REPO" rev-parse --is-shallow-repository)" = false ]; then
+        if ! git -C "$REPO" cat-file -e "$HISTORY_HEAD^{commit}" 2>/dev/null; then
+            echo "==> Fetching the stack's history head $HISTORY_HEAD"
+            git -C "$REPO" fetch --quiet origin "$HISTORY_HEAD" ||
+                echo "==> $HISTORY_HEAD could not be fetched, so the layout decides"
+        fi
+        if git -C "$REPO" cat-file -e "$HISTORY_HEAD^{commit}" 2>/dev/null; then
+            git -C "$REPO" merge-base --is-ancestor "$commit" "$HISTORY_HEAD"
+            return
+        fi
+    fi
+    ! git -C "$REPO" cat-file -e "$commit:apps" 2>/dev/null &&
+        git -C "$REPO" cat-file -e "$commit:.env.sample" 2>/dev/null &&
+        git -C "$REPO" cat-file -e "$commit:deploy/scripts/_lib.sh" 2>/dev/null
+}
 
 # Git only, up to here. Nothing out of the fetched tree has run yet.
 if [ -d "$REPO/.git" ]; then
@@ -137,12 +184,37 @@ fi
 
 COMMIT="$(git -C "$REPO" rev-parse "$ARCHIVE_REV")"
 echo "STACK_COMMIT=$COMMIT"
+# The commit itself from here on, because fetching the history head below
+# moves FETCH_HEAD, even when that fetch fails.
+ARCHIVE_REV="$COMMIT"
 
-echo "==> Exporting $COMMIT into $STAGING"
+# Which folder of this commit holds the stack. A commit made since the stack
+# moved has <stack-folder>. One of the stack's own history is the stack at the
+# root. Anything else holds no stack, and nothing of it runs.
+EXPORT_FOLDER="."
+if [ "$STACK_FOLDER" != . ]; then
+    if [ "$(git -C "$REPO" cat-file -t "$COMMIT:$STACK_FOLDER" 2>/dev/null)" = tree ]; then
+        EXPORT_FOLDER="$STACK_FOLDER"
+    elif ! in_stack_history "$COMMIT"; then
+        echo "ERROR: $COMMIT has no $STACK_FOLDER and is not a commit of the stack's own history, so it holds no stack to build" >&2
+        exit 2
+    fi
+fi
+echo "STACK_FOLDER=$EXPORT_FOLDER"
+
+echo "==> Exporting $COMMIT:$EXPORT_FOLDER into $STAGING"
 mkdir -p "$STAGING"
-git -C "$REPO" archive "$ARCHIVE_REV" | tar -x -C "$STAGING"
-printf '%s\n' "$COMMIT" > "$STAGING/.stack-commit"
-
+if [ "$EXPORT_FOLDER" = . ]; then
+    git -C "$REPO" archive "$ARCHIVE_REV" | tar -x -C "$STAGING"
+else
+    # The commit narrowed to the folder, rather than the folder's own tree,
+    # because git dates the files with the commit's time only when it archives
+    # a commit. That keeps the file times a whole-tree export has. The folder's
+    # path is then stripped, one component for each name in it.
+    IFS=/ read -r -a FOLDER_NAMES <<< "$EXPORT_FOLDER"
+    git -C "$REPO" archive "$ARCHIVE_REV" -- "$EXPORT_FOLDER" |
+        tar -x --strip-components="${#FOLDER_NAMES[@]}" -C "$STAGING"
+fi
 # No -e and no --env-file: the container gets the staging tree, a cpu and memory
 # ceiling, a process ceiling, a name the manager can ask Docker about, and
 # nothing else of this host.
@@ -155,5 +227,13 @@ docker run --rm \
     -v "$STAGING:$STAGING" \
     -w "$STAGING" \
     "$BUILD_IMAGE" sh -c "$BUILD_COMMAND"
+
+# What this script exported, written only now that the ref's own scripts have
+# run over the tree, so none of them can change it. Whatever they left at these
+# two names goes first, because a link left there would carry the write out of
+# the tree, and the container has exited, so nothing can put one back.
+rm -rf "$STAGING/.stack-commit" "$STAGING/.stack-folder"
+printf '%s\n' "$COMMIT" > "$STAGING/.stack-commit"
+printf '%s\n' "$EXPORT_FOLDER" > "$STAGING/.stack-folder"
 
 echo "==> Built $COMMIT in $STAGING"

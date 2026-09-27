@@ -22,7 +22,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import type { StackVersion } from '@streaming-infra-manager/common';
 
 import { writeProfileEnv } from '../../src/utils/envUtils.js';
-import { scratchVersionsRoot, V3_FIXTURE } from '../support/stackFixtures.js';
+import { leaveBuildMarkers, scratchVersionsRoot, V3_FIXTURE } from '../support/stackFixtures.js';
 import {
   nextVersionChange,
   startVersionsTestApp,
@@ -52,7 +52,7 @@ afterEach(() => app.close());
 function builtInStaging(args: string[]): void {
   const staging = args[1] ?? '';
   cpSync(V3_FIXTURE, staging, { recursive: true });
-  writeFileSync(join(staging, '.stack-commit'), `${APPLY_COMMIT}\n`);
+  leaveBuildMarkers(staging, APPLY_COMMIT);
   symlinkSync('deploy/scripts/deploy.sh', join(staging, 'run-deploy'));
 }
 

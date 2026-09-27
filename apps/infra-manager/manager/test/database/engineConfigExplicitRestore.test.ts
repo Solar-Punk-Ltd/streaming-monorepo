@@ -22,6 +22,7 @@ import { buildDirFor } from '../../src/domain/versions/stackPaths.js';
 import type { StackVersionRecord } from '../../src/domain/versions/StackVersionRepository.js';
 import type { Profile } from '../../src/types/index.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const port = Number(process.env.T01_TEST_PG_PORT);
 const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't01_test', connectionTimeoutMillis: 10000 };
@@ -56,7 +57,7 @@ describe('explicit interrupted restore in PostgreSQL', { skip: !Number.isInteger
     operations = new PostgresEngineConfigOperationRepository(pool, root);
     attempts = new PostgresDeployAttemptRepository(pool);
     ledger = new PostgresBuildLedger(pool, observer, root);
-    const version = await versions.insert({ name: 'retained-stack', gitRef: 'synthetic', rootPath: join(root, 'retained-stack') });
+    const version = await versions.insert({ name: 'retained-stack', gitRef: 'synthetic', rootPath: join(root, 'retained-stack'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
     for (const id of [A, B, C, D, `${A}-r1`, `${A}-r2`]) await artifact(id, id.slice(0, 40));
     selected = (await versions.publish(version.id, { buildId: A, commitSha: A, contract }))!;
     initial = (await profiles.insertWithFreeSlot('retained-owner', 'streamer', 'RUNNING', { host: 'localhost', components: ['srs'] }, {

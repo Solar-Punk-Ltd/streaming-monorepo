@@ -16,6 +16,7 @@ import { buildDirFor } from '../../src/domain/versions/stackPaths.js';
 import type { StackVersionRecord } from '../../src/domain/versions/StackVersionRepository.js';
 import type { Profile } from '../../src/types/index.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const port = Number(process.env.T01_TEST_PG_PORT);
 const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't01_test', connectionTimeoutMillis: 10000 };
@@ -50,7 +51,7 @@ describe('atomic config operation and final deploy job in PostgreSQL', { skip: !
     versions = new PostgresStackVersionRepository(pool);
     operations = new PostgresEngineConfigOperationRepository(pool, root);
     attempts = new PostgresDeployAttemptRepository(pool);
-    const version = await versions.insert({ name: 'operation-stack', gitRef: 'synthetic', rootPath: join(root, 'operation-stack') });
+    const version = await versions.insert({ name: 'operation-stack', gitRef: 'synthetic', rootPath: join(root, 'operation-stack'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
     for (const buildId of [A, B]) {
       const artifact = buildDirFor(root, version.name, buildId);
       await mkdir(artifact, { recursive: true });

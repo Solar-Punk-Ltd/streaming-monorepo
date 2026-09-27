@@ -22,6 +22,7 @@ import { buildDirFor } from '../../src/domain/versions/stackPaths.js';
 import type { StackVersionRecord } from '../../src/domain/versions/StackVersionRepository.js';
 import type { Profile } from '../../src/types/index.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const port = Number(process.env.T01_TEST_PG_PORT);
 const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't01_test', connectionTimeoutMillis: 10000 };
@@ -56,7 +57,7 @@ describe('retained rollout artifact recovery in PostgreSQL', { skip: !Number.isI
     operations = new PostgresEngineConfigOperationRepository(pool, root);
     attempts = new PostgresDeployAttemptRepository(pool);
     ledger = new PostgresBuildLedger(pool, observer, root);
-    const version = await versions.insert({ name: 'retained-stack', gitRef: 'synthetic', rootPath: join(root, 'retained-stack') });
+    const version = await versions.insert({ name: 'retained-stack', gitRef: 'synthetic', rootPath: join(root, 'retained-stack'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
     for (const id of [A, B, C, D, `${A}-r1`, `${A}-r2`]) await artifact(id, id.slice(0, 40));
     selected = (await versions.publish(version.id, { buildId: A, commitSha: A, contract }))!;
     initial = (await profiles.insertWithFreeSlot('retained-owner', 'streamer', 'RUNNING', { host: 'localhost', components: ['srs'] }, {
@@ -252,7 +253,7 @@ describe('retained rollout artifact recovery in PostgreSQL', { skip: !Number.isI
 
   it('refuses an independent hold bound to another version', async () => {
     const applied = await apply();
-    const other = await versions.insert({ name: 'other-version', gitRef: 'synthetic', rootPath: join(root, 'other-version') });
+    const other = await versions.insert({ name: 'other-version', gitRef: 'synthetic', rootPath: join(root, 'other-version'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
     await pool.query('UPDATE build_references SET version_id = $1 WHERE id = $2', [other.id, applied.operation.recoveryReferenceId]);
     const before = await mutationSnapshot();
     await refused(operations.beginRevertDeploy(await legacyRequest(applied)));
@@ -375,7 +376,7 @@ describe('retained rollout artifact recovery in PostgreSQL', { skip: !Number.isI
   it('locks every located source and additional version in numeric order before the profile', async () => {
     const applied = await apply();
     const bundled = (await versions.findByName('bundled'))!;
-    const other = await versions.insert({ name: 'other-version', gitRef: 'synthetic', rootPath: join(root, 'other-version') });
+    const other = await versions.insert({ name: 'other-version', gitRef: 'synthetic', rootPath: join(root, 'other-version'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
     for (const versionId of [other.id, bundled.id]) await pool.query(
       `INSERT INTO build_references (version_id, build_id, holder_kind, holder_id, services, profile_instance_id, intent_revision)
        VALUES ($1, $2, 'operation', $3, ARRAY['bee-node'], $4, $5)`,
@@ -404,7 +405,7 @@ describe('retained rollout artifact recovery in PostgreSQL', { skip: !Number.isI
     const pending = gate.repository.beginRevertDeploy(input);
     try {
       await reachedCapture(gate, pending);
-      const other = await versions.insert({ name: 'late-version', gitRef: 'synthetic', rootPath: join(root, 'late-version') });
+      const other = await versions.insert({ name: 'late-version', gitRef: 'synthetic', rootPath: join(root, 'late-version'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
       await pool.query(
         `INSERT INTO build_references (version_id, build_id, holder_kind, holder_id, services, profile_instance_id, intent_revision)
          VALUES ($1, $2, 'operation', $3, ARRAY['bee-node'], $4, $5)`,

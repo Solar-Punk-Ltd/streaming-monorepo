@@ -13,6 +13,7 @@ import { inventoryOwnedTree, sha256 } from '../../src/domain/versions/ownedTreeI
 import { buildDirFor } from '../../src/domain/versions/stackPaths.js';
 import { copyExecutionRoot } from '../../src/domain/versions/executionRootFiles.js';
 import type { StackVersionRecord } from '../../src/domain/versions/StackVersionRepository.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
 
 const A = 'a'.repeat(40);
@@ -30,7 +31,7 @@ describe('captured config rollback artifact evidence', () => {
     await symlink('source.sh', join(artifact, 'internal-link'));
     version = { id: 9, name: 'source-stack', gitRef: 'synthetic', rootPath: join(parent, 'source-stack'), layout: 'builds', buildId: A,
       previousBuildId: null, commitSha: A, contract: ALLOCATION_CONTRACT, status: 'ready', isDefault: false, tested: false, testedInvalidatedAt: null,
-      createdAt: new Date(0), builtAt: new Date(0), lastError: null };
+      createdAt: new Date(0), builtAt: new Date(0), lastError: null, source: { url: SWARM_HLS_STREAM_SOURCE.url, folder: '.' } };
   });
   afterEach(async () => { if (parent) await rm(parent, { recursive: true, force: true }); });
 

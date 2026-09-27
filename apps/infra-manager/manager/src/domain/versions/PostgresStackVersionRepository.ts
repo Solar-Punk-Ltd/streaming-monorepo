@@ -25,7 +25,7 @@ import type {
 
 const VERSION_COLUMNS = `
   id, name, git_ref, commit_sha, status, root_path, layout, build_id, previous_build_id, contract,
-  is_default, tested, tested_invalidated_at, built_at, last_error, created_at
+  is_default, tested, tested_invalidated_at, built_at, last_error, created_at, source_url, source_folder
 `;
 
 /**
@@ -50,6 +50,8 @@ interface StackVersionDbRow {
   built_at: Date | null;
   last_error: string | null;
   created_at: Date;
+  source_url: string;
+  source_folder: string | null;
 }
 
 interface StackVersionUsageDbRow extends StackVersionDbRow {
@@ -99,9 +101,9 @@ export class PostgresStackVersionRepository implements StackVersionRepository {
     try {
       await client.query('BEGIN');
       const result = await client.query<StackVersionDbRow>(
-        `INSERT INTO stack_versions (name, git_ref, root_path, status)
-         VALUES ($1, $2, $3, 'building') RETURNING ${VERSION_COLUMNS}`,
-        [captured.name, captured.gitRef, captured.rootPath],
+        `INSERT INTO stack_versions (name, git_ref, root_path, status, source_url)
+         VALUES ($1, $2, $3, 'building', $4) RETURNING ${VERSION_COLUMNS}`,
+        [captured.name, captured.gitRef, captured.rootPath, captured.sourceUrl],
       );
       const inserted = toRecord(result.rows[0]!);
       if (versionRemovalProblem(inserted)) throw new StackVersionRemovalHeldError(inserted.name, 'marker');
@@ -168,7 +170,15 @@ export class PostgresStackVersionRepository implements StackVersionRepository {
             SET ${STACK_PUBLICATION_ASSIGNMENTS}
           WHERE id = $1
           RETURNING ${VERSION_COLUMNS}`,
-        [id, outcome.buildId, outcome.commitSha, JSON.stringify(outcome.contract), outcome.rootPath ?? null],
+        [
+          id,
+          outcome.buildId,
+          outcome.commitSha,
+          JSON.stringify(outcome.contract),
+          outcome.rootPath ?? null,
+          outcome.source?.url ?? null,
+          outcome.source?.folder ?? null,
+        ],
       );
       await client.query('COMMIT');
       const row = result.rows[0];
@@ -384,6 +394,7 @@ function toRecord(row: StackVersionDbRow): StackVersionRecord {
     builtAt: row.built_at,
     lastError: row.last_error,
     createdAt: row.created_at,
+    source: { url: row.source_url, folder: row.source_folder },
   };
 }
 

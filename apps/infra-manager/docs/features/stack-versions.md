@@ -2,7 +2,7 @@
 
 A stack version identifies the streaming software and deployment contract used by a deployment. It is more than a branch name. The manager records the selected version, its published build and the build observed for each service.
 
-Status. Everything on this page is merged to `main`. It was first written at `6dc33d1` on `feat/ai-remediation`, the head of pull request #40, which landed, and `main` has moved a long way past it since. It carries the 22 remediation task heads, the bundled version fetched and built on the host from the commit the manager pins, a settings page for each version's own files, the build tree cloning that Apply uses, and the database migrations, which stood at 031 when this was first written and are at 042 at `04c4165`, 2026-09-26. Combined acceptance is not complete. The live host was first deployed on 2026-09-11, and what that pass and the later ones found is in [../handover/main-v2-remediation.md](../handover/main-v2-remediation.md). This document describes the design rather than the state of any particular host. Corrected 2026-09-17 against the code at `0c0354c`: the section on the tree a deployment runs in.
+Status. Everything on this page is merged to `main`. It was first written at `6dc33d1` on `feat/ai-remediation`, the head of pull request #40, which landed, and `main` has moved a long way past it since. It carries the 22 remediation task heads, the bundled version fetched and built on the host from the commit the manager pins, a settings page for each version's own files, the build tree cloning that Apply uses, and the database migrations, which stood at 031 when this was first written, were at 042 at `04c4165`, 2026-09-26, and reached 043 when the stack moved into the monorepo, 2026-09-27. Combined acceptance is not complete. The live host was first deployed on 2026-09-11, and what that pass and the later ones found is in [../handover/main-v2-remediation.md](../handover/main-v2-remediation.md). This document describes the design rather than the state of any particular host. Corrected 2026-09-17 against the code at `0c0354c`: the section on the tree a deployment runs in.
 
 ## Selecting a version
 
@@ -16,7 +16,7 @@ Updating a version does not automatically restart its existing deployments. The 
 
 ## Versions page
 
-The Versions page shows the bundled version and registered versions. Each card exposes the version name, ref, commit, build state, default and Tested state, with details that expand for the contract and build information. Actions remain accessible at narrow widths.
+The Versions page shows the bundled version and registered versions. Each card exposes the version name, ref, the repository and folder its stack came from, commit, build state, default and Tested state, with details that expand for the contract and build information. Actions remain accessible at narrow widths.
 
 - Add registers a ref and starts its build. The build log reports progress and failures.
 - Update fetches and builds the selected ref. On the bundled version it builds the commit the manager pins, and it moves that version's ref onto the pin, so a rebuild after a manager deploy follows the new pin rather than the old one. A failed update keeps a previously usable build available and records the failure. A version without a usable build remains failed.
@@ -28,6 +28,14 @@ The Versions page shows the bundled version and registered versions. Each card e
 Only one build runs at a time on a host. Add, Update and Apply each take the same mutex, and a second one is refused while the first is going, naming the version that holds it.
 
 Adding a version executes that repository's build and deployment code with the manager's capabilities. The operator must trust the selected source.
+
+## Where a version comes from
+
+Since 2026-09-27 the stack lives in the monorepo, in `apps/hls-stream`, beside the manager. A version added on the Versions page is fetched from the monorepo, and the build script decides for each commit where the stack is in it: `apps/hls-stream` for a commit made since the import, and the whole tree for a commit of the stack's own history, which the monorepo holds under the same ids up to `fe655bc4`, the head the import took in. Any other commit holds no stack and is refused before anything of it runs. So a branch of the monorepo and an old release of the stack, by its commit or by a tag the monorepo carries, can both be added.
+
+Each row records the repository it is fetched from and the folder its current build took the stack from. The folder changes only when a build publishes, as the commit does. A version built from `swarm-hls-stream` before the move says so, and its Update keeps building from there. A row naming a repository this manager does not build from is refused on Update, before anything runs. The repositories are constants of the manager, never supplied by an operator.
+
+An exported folder carries the same bytes and the same file times as an export of the whole tree would, because the script archives the commit narrowed to the folder rather than the folder's own tree.
 
 ## Tested and default are separate
 
@@ -120,7 +128,7 @@ The values come back in the clear, secrets included. That is decision D13: the r
 
 The bundled version is the stack commit the manager pins. It is fetched and built on the host, through the same path an added version takes, which is decision D12 of 2026-09-09: the host checks out the version and builds it there.
 
-A manager deploy no longer carries the stack. It writes `manager/.stack-commit` from the repository itself, `git rev-parse HEAD:manager/swarm-hls-stream`, so the pin is what the submodule records and not what a laptop has checked out. That file is the only thing about the stack a deploy ships.
+A manager deploy does not carry the stack. It writes `manager/.stack-commit` with the monorepo commit being deployed, which holds the manager and the stack it bundles in `apps/hls-stream`, so the two always come from one commit. The deploy refuses a commit that no remote branch holds, because the host fetches it from GitHub. That file is the only thing about the stack a deploy ships, and the bundled row moves onto the monorepo as its source when the first build of such a pin publishes.
 
 The API reads that pin at boot. When the bundled row is not already on a complete build of it, boot builds that commit through the same build script, the same one-build-at-a-time mutex and the same log on the Versions page that an added version uses. **Update** on the bundled card means build that pin again. A manager that pins no commit, which is a developer machine rather than a broken deploy, keeps the row on the tree in its checkout and refuses the rebuild in plain words.
 
@@ -140,7 +148,7 @@ D01 limits capacity to the lower of the version's declared maximum and 100 store
 
 Versions that still build shared image tags require the durable admission rules in T05a. An unresolved attempt can block a conflicting deployment until the attempt is resolved. The interface names that attempt. A refusal is not a queued deployment or an automatic retry.
 
-D09 assigned the stack image-name changes and the bundled submodule update to the owner, and both are done. As of 2026-09-25, the manager pins the stack's release `v3.4` at `dc0c55e10651367d939b2b0c2c4ff6302fc65899` and tracks upstream `main`. That release builds on `v3.1`, pinned from 2026-09-19, so it includes PR #241 and the integration work previously carried on `feat/manager-line`. The stack's older `main-v2` remains a compatibility fixture for version selection. The manager does not manufacture per-version image names through the old proposed Compose override hook. Updating that stack contract does not trigger an automatic restart.
+D09 assigned the stack image-name changes and the bundled submodule update to the owner, and both are done. Until the monorepo the manager pinned the stack's release `v3.4` at `dc0c55e10651367d939b2b0c2c4ff6302fc65899`, as of 2026-09-25, which built on `v3.1`, pinned from 2026-09-19, and so included PR #241 and the integration work previously carried on `feat/manager-line`. Since 2026-09-27 the bundled stack is `apps/hls-stream` of the commit the manager is deployed from. The stack's older `main-v2` remains a compatibility fixture for version selection. The manager does not manufacture per-version image names through the old proposed Compose override hook. Updating that stack contract does not trigger an automatic restart.
 
 ## What is actually running
 
