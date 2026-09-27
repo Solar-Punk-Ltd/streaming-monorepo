@@ -4,4 +4,5 @@ export * from './LoginLimiter.js';
 export * from './passwordHash.js';
 export * from './rules.js';
 export * from './secretInput.js';
+export * from './sessionLifetime.js';
 export * from './sessionToken.js';
