@@ -46,7 +46,9 @@ function ProtocolSection({
   const headingId = useId();
   return (
     <Stack component="section" aria-labelledby={headingId} spacing={2}>
-      <Typography id={headingId} variant="subtitle2" color="text.secondary">
+      <Typography id={headingId} variant="subtitle2" sx={{
+        color: "text.secondary"
+      }}>
         {title}
       </Typography>
       {children}
@@ -151,7 +153,9 @@ export function IngestPanel({
   return (
     <Paper variant="outlined" sx={{ p: 3 }}>
       <Stack spacing={2}>
-        <Stack direction="row" alignItems="center" spacing={2}>
+        <Stack direction="row" spacing={2} sx={{
+          alignItems: "center"
+        }}>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             OBS connection details
           </Typography>
@@ -178,7 +182,9 @@ export function IngestPanel({
         <SrtSettings srt={details.srt} />
         <RtmpSettings rtmp={details.rtmp} />
 
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           Ingest stream id {details.streamId}
           {details.publishKeyRotatedAt
             ? ` · key rotated ${formatDateTime(details.publishKeyRotatedAt)}`
