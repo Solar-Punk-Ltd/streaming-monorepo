@@ -17,5 +17,5 @@ import { fileURLToPath } from 'node:url';
  * @returns {string} the absolute directory that suite's Vite may build in.
  */
 export function viteCacheFor(suite) {
-  return fileURLToPath(new URL(`../../node_modules/.vite-t09/${suite}`, import.meta.url));
+  return fileURLToPath(new URL(`../../node_modules/.vite-suites/${suite}`, import.meta.url));
 }
