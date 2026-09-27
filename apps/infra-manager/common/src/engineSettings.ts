@@ -533,7 +533,7 @@ export interface EngineSettingsEnvOptions {
  * copy of the stack's base `.env` on every deploy, so an absent key keeps
  * whatever the host was configured with, exactly as an unset SRT passphrase
  * does. Writing the defaults instead would silently override a value somebody
- * set on the box by hand. A key that no longer applies is left out for the
+ * set on the host by hand. A key that no longer applies is left out for the
  * reason `applicableEngineSettings` gives.
  *
  * The one exception is a default the manager owns, written wherever the host

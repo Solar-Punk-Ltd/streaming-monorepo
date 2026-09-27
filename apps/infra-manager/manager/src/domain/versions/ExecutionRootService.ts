@@ -134,7 +134,7 @@ export interface ExecutionRoots {
  * mutable tree. Each deploy now copies the build into a directory of its own,
  * registered against the job reference it already holds, and runs there.
  *
- * Retention is the owner's decision D11: a deployment keeps the copy it runs from
+ * Retention: a deployment keeps the copy it runs from
  * and the one before it, so a deploy that fails leaves the tree that last
  * worked in place, and a deploy that succeeds takes it.
  */

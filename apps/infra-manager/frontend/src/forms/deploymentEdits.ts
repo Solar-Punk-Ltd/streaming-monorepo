@@ -62,7 +62,7 @@ export function fieldsFor(profile: Profile): ShownFields {
     // an EMPTY --blockchain-rpc-endpoint (pkg/node/node.go:1605
     // isChainEnabled), so there is nowhere for an endpoint to go and the field
     // would offer a setting that changes nothing. Which a viewer's gateway is
-    // depends on how it was created, since T27.
+    // depends on how it was created, since the node mode is chosen at creation.
     rpcEndpoint: ownsAnyBeeNode(profile) && effectiveNodeMode(profile) === LIGHT_NODE_MODE,
     poolString: shape === 'abr-uploader',
     feedOwner: hasService(profile, CLIENT_SERVICE),
