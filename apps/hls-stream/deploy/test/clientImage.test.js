@@ -20,6 +20,7 @@ const compose = readFileSync(resolve(ROOT, 'deploy/docker-compose.yml'), 'utf8')
 const STAMP_ARGS = [
   'CLIENT_BUILD_CLIENT_TREE',
   'CLIENT_BUILD_SHARED_TREE',
+  'CLIENT_BUILD_CONTRACTS_TREE',
   'CLIENT_BUILD_HEAD',
   'CLIENT_BUILD_DIRTY',
   'CLIENT_BUILD_AT',
@@ -175,6 +176,22 @@ describe('client image stamping the sources it was built from', () => {
     assert.match(dockerfile, /"exposePlayer":"%s"/);
     assert.match(dockerfile, /\$VITE_BROWSER_FETCH_BACKEND/);
     assert.match(dockerfile, /\$VITE_EXPOSE_PLAYER/);
+  });
+
+  /**
+   * The three source trees the gate compares, each under the key the e2e preflight reads. The
+   * contracts package reaches the bundle through the shared package, so without its own key a change
+   * there alone would leave the stamp describing a client it no longer is.
+   */
+  it('writes every source tree into the stamp under the key the gate reads', () => {
+    for (const [key, arg] of [
+      ['clientTree', 'CLIENT_BUILD_CLIENT_TREE'],
+      ['sharedTree', 'CLIENT_BUILD_SHARED_TREE'],
+      ['contractsTree', 'CLIENT_BUILD_CONTRACTS_TREE'],
+    ]) {
+      assert.match(dockerfile, new RegExp(`"${key}":"%s"`), `the stamp has no ${key}`);
+      assert.match(dockerfile, new RegExp(`"\\$${arg}"`), `the stamp is never fed ${arg}`);
+    }
   });
 
   it('passes every build-stamp arg from the compose service into the build', () => {
