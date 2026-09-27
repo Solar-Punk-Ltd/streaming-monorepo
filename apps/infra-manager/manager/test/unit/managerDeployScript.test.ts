@@ -6,8 +6,9 @@
  * host, a network and a signing key. `pnpm test` in manager/.
  */
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -69,10 +70,8 @@ describe('deploy/deploy.sh', () => {
     assert.equal(script.includes('bundled.incoming'), false);
   });
 
-  it('pins the stack commit from the repository itself, not from a checkout of the submodule', () => {
-    // `./` reads the path from the folder the script runs in rather than from the repository root,
-    // so the pin is found when the repository holds the manager in a subfolder too.
-    assert.match(script, new RegExp(`git rev-parse HEAD:\\./manager/swarm-hls-stream > manager/${STACK_COMMIT_FILE.replace('.', '\\.')}`));
+  it('reads no submodule pin, because the stack it bundles is in the same commit', () => {
+    assert.equal(script.includes('HEAD:./manager/swarm-hls-stream'), false);
   });
 
   it('records a digest of the manager tree alone, even from a repository that holds more than the manager', () => {
@@ -264,5 +263,78 @@ describe('deploy/deploy.sh', () => {
 
   it('names the versions root on the host, which is where the bundled build lands', () => {
     assert.ok(script.includes('streaming-infra-manager-versions'), 'the remote block exports it');
+  });
+});
+
+/**
+ * The part of the deploy that runs on this machine, run for real against a
+ * repository on this disk, with an rsync and an ssh that only record that they
+ * were called. What the script leaves in manager/.stack-commit is what a host
+ * builds as the bundled version, so it is read back rather than matched in the
+ * script's text.
+ */
+describe('deploy/deploy.sh, run against a repository on this disk', () => {
+  const git = (cwd: string, ...args: string[]): string =>
+    execFileSync(
+      'git',
+      ['-c', 'user.name=deploy test', '-c', 'user.email=deploy@example.invalid', '-c', 'commit.gpgsign=false', ...args],
+      { cwd, encoding: 'utf8' },
+    ).trim();
+
+  interface Deployed {
+    status: number | null;
+    stderr: string;
+    /** Whether the rsync to the host was reached. */
+    shipped: boolean;
+    pin: string | null;
+  }
+
+  /** A manager checkout pushed to an origin on this disk, and stand-ins for the two commands that reach a host. */
+  function checkout(root: string): { work: string; environment: NodeJS.ProcessEnv } {
+    const origin = join(root, 'origin.git');
+    git(root, 'init', '-q', '--bare', origin);
+    const work = join(root, 'work');
+    mkdirSync(join(work, 'deploy'), { recursive: true });
+    mkdirSync(join(work, 'manager'));
+    copyFileSync(DEPLOY_SCRIPT, join(work, 'deploy', 'deploy.sh'));
+    writeFileSync(join(work, 'manager', '.env'), 'POSTGRES_PASSWORD=synthetic-not-a-secret\n');
+    writeFileSync(join(work, '.gitignore'), `manager/.env\nmanager/${STACK_COMMIT_FILE}\n`);
+    git(work, 'init', '-q', '-b', 'main');
+    git(work, 'add', '.');
+    git(work, 'commit', '-qm', 'a manager');
+    git(work, 'remote', 'add', 'origin', origin);
+    git(work, 'push', '-q', 'origin', 'main');
+
+    const bin = join(root, 'bin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, 'rsync'), `#!/bin/sh\ntouch '${join(root, 'rsync-ran')}'\n`, { mode: 0o755 });
+    writeFileSync(join(bin, 'ssh'), '#!/bin/sh\ncat > /dev/null\n', { mode: 0o755 });
+    return { work, environment: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` } };
+  }
+
+  function deploy(root: string, work: string, environment: NodeJS.ProcessEnv): Deployed {
+    const run = spawnSync('bash', [join(work, 'deploy', 'deploy.sh'), 'fixture-host'], { env: environment, encoding: 'utf8' });
+    const pin = join(work, 'manager', STACK_COMMIT_FILE);
+    return {
+      status: run.status,
+      stderr: run.stderr,
+      shipped: existsSync(join(root, 'rsync-ran')),
+      pin: existsSync(pin) ? readFileSync(pin, 'utf8').trim() : null,
+    };
+  }
+
+  it('pins the commit being deployed, which holds the manager and the stack it bundles', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-pin-'));
+    try {
+      const { work, environment } = checkout(root);
+
+      const deployed = deploy(root, work, environment);
+
+      assert.equal(deployed.status, 0, deployed.stderr);
+      assert.equal(deployed.pin, git(work, 'rev-parse', 'HEAD'));
+      assert.equal(deployed.shipped, true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
