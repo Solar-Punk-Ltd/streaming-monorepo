@@ -57,10 +57,15 @@ function oneWorkspaceCheckout(extra = {}) {
 }
 
 /**
- * The fake host as the rsync would have left it: the rsync stub records and copies nothing to the
- * host, and the host's script reaches for the profile's env file first.
+ * The fake host as an earlier admin deploy left it. deploy.sh refuses to rsync --delete into a
+ * folder that is neither empty nor such a deploy, the rsync stub copies nothing to the host, and the
+ * host's script reaches for the profile's env file first.
  */
-const HOST_WITH_PROFILE = { 'backend/.env.qa': fakeAdminEnv('host') };
+const HOST_WITH_PROFILE = {
+  'deploy/deploy.sh': '# an earlier deploy\n',
+  'backend/Dockerfile': 'FROM scratch\n',
+  'backend/.env.qa': fakeAdminEnv('host'),
+};
 
 const folders = [];
 after(() => {
