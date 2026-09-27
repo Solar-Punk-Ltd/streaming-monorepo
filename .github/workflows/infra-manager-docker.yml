@@ -101,7 +101,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'docker-checks'
     # The stack version builder on the commit under test, for real: the cut of
     # the stack's lockfile, the install with the pnpm the stack names and the
-    # build, all in its node:22-alpine container, then a check of what it left
+    # build, all in its node:24-alpine container, then a check of what it left
     # for the manager. The unit suite runs the same script with Docker stubbed.
     runs-on: ubuntu-latest
     timeout-minutes: 30
