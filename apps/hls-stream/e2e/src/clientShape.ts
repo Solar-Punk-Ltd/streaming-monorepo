@@ -17,10 +17,11 @@
  * because a composed message's fixed halves survive bundling as literals. A client bundle is minified
  * and tree-shaken, so the same trick answers about the wrong thing: a symbol the harness reads off
  * `globalThis` may be renamed, inlined or eliminated by the build. So the image records what it was
- * built FROM instead, as `git rev-parse HEAD:<path>` over the two packages vite compiles into the
- * bundle, and this compares that against what the run was launched from. Content hashes, so they
- * answer "the same sources" rather than "the same commit", and a rebuild from an unchanged tree
- * still matches.
+ * built FROM instead, as `git rev-parse HEAD:<path>` over the three packages vite compiles into the
+ * bundle, the client, the stack's shared package and the contracts package at the workspace root
+ * that shared re-exports, and this compares that against what the run was launched from. Content
+ * hashes, so they answer "the same sources" rather than "the same commit", and a rebuild from an
+ * unchanged tree still matches.
  *
  * ⚠️ It proves the served client CAME FROM these sources, not that any particular symbol survived
  * the build. That is the right question: a harness reading a client built from its own sources is
@@ -28,13 +29,27 @@
  * itself to what it must keep.
  */
 
+import { execFileSync } from 'node:child_process';
+
 /** What `bench-on-host.sh` carries in, computed on the operator's machine where `.git` exists. */
 export const EXPECT_CLIENT_TREE = 'E2E_EXPECT_CLIENT_TREE';
 export const EXPECT_SHARED_TREE = 'E2E_EXPECT_SHARED_TREE';
+export const EXPECT_CONTRACTS_TREE = 'E2E_EXPECT_CONTRACTS_TREE';
 export const EXPECT_CLIENT_DIRTY = 'E2E_EXPECT_CLIENT_DIRTY';
 
 /** Where the client image serves its stamp, on the viewer's own origin. */
 export const BUILD_STAMP_PATH = '/build-stamp.json';
+
+/** The stack's own sources a build depends on, from the stack's folder. */
+const STACK_SOURCE_PATHS = [
+  'packages/client',
+  'packages/shared',
+  'deploy/Dockerfile.client',
+  'deploy/client-nginx.conf.template',
+] as const;
+
+/** The contracts package, from the repository root, where the one workspace keeps it. */
+const CONTRACTS_SOURCE_PATH = 'packages/contracts';
 
 /** How much of a hash a summary line prints, enough to tell two builds apart at a glance. */
 const SHORT_HASH_LENGTH = 12;
@@ -48,6 +63,7 @@ const SHORT_HASH_LENGTH = 12;
 interface ClientBuildStamp {
   readonly clientTree: string;
   readonly sharedTree: string;
+  readonly contractsTree: string;
   readonly head: string;
   readonly dirty: boolean;
   readonly builtAt: string;
@@ -55,10 +71,11 @@ interface ClientBuildStamp {
   readonly exposePlayer: string;
 }
 
-/** The two tree hashes and the dirty flag, from whichever side could answer. */
+/** The three tree hashes and the dirty flag, from whichever side could answer. */
 export interface ClientTrees {
   readonly clientTree: string;
   readonly sharedTree: string;
+  readonly contractsTree: string;
   readonly dirty: boolean;
 }
 
@@ -104,6 +121,7 @@ export function parseClientBuildStamp(body: string): ClientBuildStamp | null {
   return {
     clientTree: stamp.clientTree,
     sharedTree: isNonEmptyString(stamp.sharedTree) ? stamp.sharedTree : '',
+    contractsTree: isNonEmptyString(stamp.contractsTree) ? stamp.contractsTree : '',
     head: isNonEmptyString(stamp.head) ? stamp.head : '',
     dirty: stamp.dirty === true,
     builtAt: isNonEmptyString(stamp.builtAt) ? stamp.builtAt : '',
@@ -128,6 +146,7 @@ export function readClientShapeExpectation(
     return {
       clientTree: fromScript,
       sharedTree: env[EXPECT_SHARED_TREE] ?? '',
+      contractsTree: env[EXPECT_CONTRACTS_TREE] ?? '',
       dirty: env[EXPECT_CLIENT_DIRTY] === '1',
       source: 'the run script',
     };
@@ -137,10 +156,77 @@ export function readClientShapeExpectation(
   return fromGit === null ? null : { ...fromGit, source: 'this checkout' };
 }
 
+/**
+ * Whether git counts `dir` as inside a checkout.
+ *
+ * Asked of git rather than read off a `.git` entry in `dir`, because this repository can sit in a
+ * subfolder of a larger one, whose `.git` is at that repository's root. No git, or no history above
+ * `dir`, answers no without printing git's complaint, since that is the ordinary answer on the
+ * deployment host.
+ */
+function isInsideGitCheckout(dir: string, env: NodeJS.ProcessEnv): boolean {
+  try {
+    const answer = execFileSync('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree'], {
+      encoding: 'utf8',
+      env,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return answer.trim() === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The trees the checkout at `stackDir` holds, or null when it has no history to ask.
+ *
+ * ⛔ Null is the ordinary answer on the deployment host, not an error: `bench-on-host.sh` excludes
+ * `.git` from its rsync, so a harness there cannot answer this for itself and the run script passes
+ * the answer in instead.
+ *
+ * The stack's tree paths start with `./` so git reads them from `stackDir` rather than from the
+ * repository root. The two are the same folder only when the stack is checked out on its own. The
+ * contracts package is the other way round: the one workspace keeps it at the repository root, so it
+ * is read from there, and a commit without it has an empty tree, as `deploy.sh` stamps one.
+ */
+export function readGitClientTrees(stackDir: string, env: NodeJS.ProcessEnv = process.env): ClientTrees | null {
+  if (!isInsideGitCheckout(stackDir, env)) {
+    return null;
+  }
+
+  const git = (args: readonly string[]) =>
+    execFileSync('git', ['-C', stackDir, ...args], {
+      encoding: 'utf8',
+      env,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  const treeOrEmpty = (revision: string) => {
+    try {
+      return git(['rev-parse', revision]);
+    } catch {
+      return '';
+    }
+  };
+
+  try {
+    return {
+      clientTree: git(['rev-parse', 'HEAD:./packages/client']),
+      sharedTree: git(['rev-parse', 'HEAD:./packages/shared']),
+      contractsTree: treeOrEmpty(`HEAD:${CONTRACTS_SOURCE_PATH}`),
+      dirty:
+        git(['status', '--porcelain', '--', ...STACK_SOURCE_PATHS]).length > 0 ||
+        git(['status', '--porcelain', '--', `:/${CONTRACTS_SOURCE_PATH}`]).length > 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
 const NO_EXPECTATION =
   'This run cannot say which client sources it expects, so it refuses rather than passing: an ' +
   'unknown expectation is not a match. A run launched through `deploy/scripts/bench-on-host.sh` ' +
-  `carries ${EXPECT_CLIENT_TREE}, ${EXPECT_SHARED_TREE} and ${EXPECT_CLIENT_DIRTY} into the ` +
+  `carries ${EXPECT_CLIENT_TREE}, ${EXPECT_SHARED_TREE}, ${EXPECT_CONTRACTS_TREE} and ` +
+  `${EXPECT_CLIENT_DIRTY} into the ` +
   'container, and a run from a checkout reads them out of git. This one had neither, so either ' +
   'launch it through that script or run it from a checkout with its history.';
 
@@ -164,8 +250,8 @@ function dirtyRefusal(expectation: ClientShapeExpectation, stamp: ClientBuildSta
     `${side}, so the tree hashes on both sides describe something other than what is running. ` +
     'They can match exactly and still mean nothing, which is why this refuses on a match. ' +
     'Please commit or stash the changes to `packages/client`, `packages/shared`, ' +
-    '`deploy/Dockerfile.client` or `deploy/client-nginx.conf.template`, then redeploy the client ' +
-    'and resync the harness.'
+    '`deploy/Dockerfile.client` or `deploy/client-nginx.conf.template` in the stack, or to ' +
+    '`packages/contracts` at the repository root, then redeploy the client and resync the harness.'
   );
 }
 
@@ -173,6 +259,7 @@ function staleRefusal(expectation: ClientShapeExpectation, stamp: ClientBuildSta
   const rows = [
     `  - client sources: serving ${stamp.clientTree}, ${expectation.source} has ${expectation.clientTree}`,
     `  - shared sources: serving ${stamp.sharedTree}, ${expectation.source} has ${expectation.sharedTree}`,
+    `  - contracts sources: serving ${stamp.contractsTree}, ${expectation.source} has ${expectation.contractsTree}`,
     `  - the serving client was built at commit ${stamp.head} on ${stamp.builtAt}`,
   ].join('\n');
 
@@ -198,7 +285,11 @@ export function clientShapeRefusal(expectation: ClientShapeExpectation | null, s
   if (stamp.dirty || expectation.dirty) {
     return dirtyRefusal(expectation, stamp);
   }
-  if (stamp.clientTree !== expectation.clientTree || stamp.sharedTree !== expectation.sharedTree) {
+  if (
+    stamp.clientTree !== expectation.clientTree ||
+    stamp.sharedTree !== expectation.sharedTree ||
+    stamp.contractsTree !== expectation.contractsTree
+  ) {
     return staleRefusal(expectation, stamp);
   }
 
@@ -211,6 +302,7 @@ export function clientShapeSummary(expectation: ClientShapeExpectation, stamp: C
 
   return (
     `served client built from client ${short(stamp?.clientTree ?? expectation.clientTree)} and ` +
-    `shared ${short(stamp?.sharedTree ?? expectation.sharedTree)} at ${stamp?.builtAt || 'an unrecorded time'}`
+    `shared ${short(stamp?.sharedTree ?? expectation.sharedTree)} and ` +
+    `contracts ${short(stamp?.contractsTree ?? expectation.contractsTree)} at ${stamp?.builtAt || 'an unrecorded time'}`
   );
 }
