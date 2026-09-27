@@ -1,6 +1,7 @@
 {
   "name": "@swarm-hls-stream/client",
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "predev": "node scripts/copy-weeb3-runtime.mjs",
