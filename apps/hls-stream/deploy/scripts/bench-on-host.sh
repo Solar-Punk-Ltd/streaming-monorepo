@@ -14,7 +14,7 @@
 # the run happens inside the image built from `e2e/Dockerfile.bench`.
 #
 # Usage:
-#   deploy/scripts/bench-on-host.sh [--profile latbench] [--portSlot 7] [--target manager-host]
+#   deploy/scripts/bench-on-host.sh [--profile latbench] [--portSlot 7] [--target <host>]
 #                                   [--script bench:latency]
 #
 # `--setup-only` syncs, builds and installs, then stops without running anything. That is the state a

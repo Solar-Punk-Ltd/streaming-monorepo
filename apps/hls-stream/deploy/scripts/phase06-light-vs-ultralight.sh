@@ -22,8 +22,8 @@
 # watching and wrong for a sitting that has to outlive the laptop closing. This is the same shape as
 # `sweep-interleaved.sh`: started detached on the host, it holds no session open and reports to disk.
 #
-#   scp phase06-light-vs-ultralight.sh manager-host:/home/solarpunk/phase06/
-#   ssh manager-host 'setsid nohup bash /home/solarpunk/phase06/phase06-light-vs-ultralight.sh >/dev/null 2>&1 &'
+#   scp phase06-light-vs-ultralight.sh <host>:~/phase06/
+#   ssh <host> 'setsid nohup bash ~/phase06/phase06-light-vs-ultralight.sh >/dev/null 2>&1 &'
 #
 # ## Why it proves itself before it spends the sitting
 #
@@ -424,7 +424,7 @@ wait_for_idle() {
 }
 
 # `--host=localhost` is what makes the repo's own publisher usable from the host it publishes to.
-# `config.json` names every service `manager-host`, which this machine cannot resolve for itself, and
+# `config.json` names every service `<host>`, which this machine cannot resolve for itself, and
 # the override makes `run_remote` shell out instead of dialling ssh. Going through `publish-clock.sh`
 # rather than composing ffmpeg here keeps the publish key derivation, the SRT spelling and the
 # detached container in the one place that already gets them right.

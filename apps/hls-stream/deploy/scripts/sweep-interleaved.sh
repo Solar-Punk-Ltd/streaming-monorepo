@@ -53,8 +53,8 @@
 # in `.spend-ledger.env`, and it is asked at the same two moments, with no way to skip it.
 #
 # Usage, from the repo root on the laptop:
-#   rsync -a deploy/scripts/ manager-host:~/swarm-hls-bench/deploy/scripts/   # the DIRECTORY, it sources burn-rates.sh
-#   ssh manager-host 'setsid nohup bash ~/swarm-hls-bench/sweep-interleaved.sh >/dev/null 2>&1 &'
+#   rsync -a deploy/scripts/ <host>:~/swarm-hls-bench/deploy/scripts/   # the DIRECTORY, it sources burn-rates.sh
+#   ssh <host> 'setsid nohup bash ~/swarm-hls-bench/sweep-interleaved.sh >/dev/null 2>&1 &'
 set -u
 
 REPO_DIR="${REPO_DIR:-/home/solarpunk/swarm-hls-bench}"
