@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -36,12 +36,25 @@ function manifestHasTestScript(dir: string): boolean {
   return typeof manifest.scripts?.test === 'string';
 }
 
+/** The nearest folder at or above `start` that holds a pnpm-workspace.yaml, which is how pnpm finds its workspace. */
+function workspaceRootOf(start: string): string {
+  for (let folder = start; ; folder = dirname(folder)) {
+    if (existsSync(join(folder, 'pnpm-workspace.yaml'))) {
+      return folder;
+    }
+    assert.notEqual(dirname(folder), folder, `no pnpm-workspace.yaml at or above ${start}`);
+  }
+}
+
 /**
- * The `packages` list of `pnpm-workspace.yaml`, read line by line because the package has no YAML
- * dependency. It stops at the first line that is not a list item, which is where the list ends.
+ * The stack's entries of the `packages` list in the workspace it sits in, named from the stack's folder. That was
+ * the stack's own pnpm-workspace.yaml, and is the repository's root one since the repository became one workspace,
+ * where the stack's own folder is listed too and is left out here, as it never was a listed member of its own.
+ * Read line by line because the package has no YAML dependency, stopping at the first line that is not a list item.
  */
 function workspaceEntries(): string[] {
-  const lines = readFileSync(join(REPO_ROOT, 'pnpm-workspace.yaml'), 'utf8').split('\n');
+  const root = workspaceRootOf(REPO_ROOT);
+  const lines = readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8').split('\n');
   const start = lines.indexOf('packages:');
   assert.notEqual(start, -1, 'pnpm-workspace.yaml has no packages list');
   const entries: string[] = [];
@@ -52,7 +65,11 @@ function workspaceEntries(): string[] {
     }
     entries.push(item[1]);
   }
-  return entries;
+  const stackPath = relative(root, REPO_ROOT).split(sep).join('/');
+  if (stackPath === '') {
+    return entries;
+  }
+  return entries.filter((entry) => entry.startsWith(`${stackPath}/`)).map((entry) => entry.slice(stackPath.length + 1));
 }
 
 const FLOOR_SCRIPT = join(REPO_ROOT, 'packages/stream-uploader/scripts/assert-test-floor.mjs');
