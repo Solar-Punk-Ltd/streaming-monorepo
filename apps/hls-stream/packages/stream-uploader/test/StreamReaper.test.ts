@@ -80,7 +80,7 @@ async function startAndFeed(harness: Harness, index: number): Promise<void> {
   await waitFor(() => saved.length > before, SETTLE_CEILING_MS);
 }
 
-describe('a live stream whose engine dies without saying so (#86)', () => {
+describe('a live stream whose engine dies without saying so', () => {
   it('finalizes the broadcast as a VOD once the engine has been silent for the reap window', async () => {
     const harness = makeHarness();
     const { orch, clock, published } = harness;
