@@ -400,6 +400,8 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     adminOnly: string;
     /** The head of main, after the import and one change to the stack. */
     moved: string;
+    /** The same stack naming its pnpm while it keeps its own lockfile, as main-v3's has done since it moved to pnpm 11.11.0. */
+    ownLockfileNamed: string;
     /** A commit made once the repository became one workspace: the lockfile at the root, and none in the stack. */
     oneWorkspace: string;
     /** The same with no tools/app-workspace to cut the stack's lockfile out of the root one. */
@@ -451,6 +453,12 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     git(origin, 'commit', '-qam', 'the stack moves on');
     const moved = git(origin, 'rev-parse', 'HEAD');
 
+    git(origin, 'switch', '-q', '-c', 'own-lockfile-named');
+    writeFileSync(join(origin, FOLDER, 'package.json'), `${JSON.stringify({ name: 'stack-naming-its-pnpm', packageManager: ONE_PNPM })}\n`);
+    git(origin, 'commit', '-qam', 'the stack names its pnpm and keeps its own lockfile');
+    const ownLockfileNamed = git(origin, 'rev-parse', 'HEAD');
+    git(origin, 'switch', '-q', 'main');
+
     git(origin, 'switch', '-q', '-c', 'one-workspace');
     writeFileSync(join(origin, 'package.json'), `${JSON.stringify({ name: 'monorepo', packageManager: ONE_PNPM })}\n`);
     writeFileSync(join(origin, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\n");
@@ -497,6 +505,7 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
       stackHead,
       adminOnly,
       moved,
+      ownLockfileNamed,
       oneWorkspace,
       noCutTool,
       yarnNamed,
@@ -699,6 +708,28 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
       assert.equal(readFileSync(record.command, 'utf8'), `${TODAYS_BUILD}\n`);
       assert.equal(existsSync(record.sideFolder), false, 'a stack with its own lockfile gets no side folder');
       assert.equal(readFileSync(join(built.staging, STACK_TOOLCHAIN_FILE), 'utf8'), `${BUILD_IMAGE} ${PINNED_PNPM}\n`);
+    });
+  });
+
+  /**
+   * The stack as main-v3 holds it today: its own lockfile, and a pnpm named in
+   * its package.json. Nothing is cut. corepack already ran the named pnpm, so
+   * the build is the same, and only the pin it activates and the pnpm it
+   * records now match the named one, where they said the pinned one before.
+   */
+  it('builds a stack that keeps its own lockfile and names its pnpm with that pnpm, and cuts nothing', () => {
+    withMonorepo('stack-build-mono-own-named-', (root, repo) => {
+      const record = recordingDocker(root);
+
+      const built = build(root, repo.ownLockfileNamed, repo.stackHead, repo.environment);
+
+      assert.equal(built.status, 0, built.stderr);
+      assert.equal(
+        readFileSync(record.command, 'utf8'),
+        `corepack enable && corepack prepare ${ONE_PNPM} --activate && pnpm install --frozen-lockfile && pnpm -r build\n`,
+      );
+      assert.equal(existsSync(record.sideFolder), false, 'a stack with its own lockfile gets no side folder');
+      assert.equal(readFileSync(join(built.staging, STACK_TOOLCHAIN_FILE), 'utf8'), `${BUILD_IMAGE} pnpm@11.11.0\n`);
     });
   });
 
