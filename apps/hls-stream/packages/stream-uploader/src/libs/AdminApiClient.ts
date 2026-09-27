@@ -1,4 +1,4 @@
-import { MEDIA_TYPE_AUDIO, MEDIA_TYPE_VIDEO, MediaType, Rendition } from '../types.js';
+import { MediaType, mediaTypeSchema, Rendition } from '../types.js';
 import { getErrorMessage } from '../utils/common.js';
 
 import { Logger } from './Logger.js';
@@ -214,7 +214,7 @@ function asDraft(body: unknown): AdminStreamDraft | null {
       return null;
     }
   }
-  if (candidate.mediaType !== MEDIA_TYPE_VIDEO && candidate.mediaType !== MEDIA_TYPE_AUDIO) {
+  if (!mediaTypeSchema.safeParse(candidate.mediaType).success) {
     return null;
   }
   return candidate as unknown as AdminStreamDraft;
