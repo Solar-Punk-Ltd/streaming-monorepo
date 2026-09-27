@@ -16,7 +16,7 @@
 # deploy/README.md.
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     restart: unless-stopped
     # Only the three variables it needs. The rest of the env file is the API's
     # business and includes the feed signing key, which a database has no use
