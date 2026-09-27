@@ -33,14 +33,14 @@
     },
     {
       "name": "hls-stream-uploader",
-      "note": "swarm-hls-stream at fe655bc4 against #15, which added it as apps/hls-stream with its commit ids kept. #21 and #22 changed the folder later. The image copies packages/stream-uploader/dist/, which is built and never committed, so each side first installs from its lockfile and builds the uploader, as deploy/scripts/deploy.sh does before it builds this image. corepack runs the pnpm the stack pins.",
+      "note": "swarm-hls-stream at fe655bc4 against #15, which added it as apps/hls-stream with its commit ids kept. #21 and #22 changed the folder later. The image copies packages/stream-uploader/dist/, which is built and never committed, so each side first installs from its lockfile and builds the uploader, as deploy/scripts/deploy.sh does before it builds this image. corepack runs the pnpm the stack pins, and the build is the uploader's own script run through it rather than the stack's build:uploader, which calls a second pnpm that a machine with corepack alone does not have.",
       "before": {
         "commit": "fe655bc4b57cce0146dcb6df68b3528f79dcba65", "context": ".", "dockerfile": "deploy/Dockerfile.uploader",
-        "prepare": [["corepack", "pnpm", "install", "--frozen-lockfile"], ["corepack", "pnpm", "build:uploader"]]
+        "prepare": [["corepack", "pnpm", "install", "--frozen-lockfile"], ["corepack", "pnpm", "--filter", "@swarm-hls-stream/stream-uploader", "build"]]
       },
       "after": {
         "commit": "e15733b123d211534385f6168785cfdd7c541ff6", "context": "apps/hls-stream", "dockerfile": "apps/hls-stream/deploy/Dockerfile.uploader",
-        "prepare": [["corepack", "pnpm", "install", "--frozen-lockfile"], ["corepack", "pnpm", "build:uploader"]]
+        "prepare": [["corepack", "pnpm", "install", "--frozen-lockfile"], ["corepack", "pnpm", "--filter", "@swarm-hls-stream/stream-uploader", "build"]]
       },
       "allow": ["/app/node_modules/.modules.yaml"]
     },
