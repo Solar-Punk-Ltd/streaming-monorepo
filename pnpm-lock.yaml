@@ -408,6 +408,9 @@ importers:
       '@streaming-monorepo/contracts':
         specifier: workspace:*
         version: link:../../../packages/contracts
+      '@streaming-monorepo/web-auth':
+        specifier: workspace:*
+        version: link:../../../packages/web-auth
       viem:
         specifier: 2.56.5
         version: 2.56.5(typescript@7.0.2)(zod@4.6.4)
@@ -479,6 +482,9 @@ importers:
       '@streaming-monorepo/contracts':
         specifier: workspace:*
         version: link:../../../packages/contracts
+      '@streaming-monorepo/web-auth':
+        specifier: workspace:*
+        version: link:../../../packages/web-auth
       dockerode:
         specifier: 5.0.1
         version: 5.0.1(supports-color@7.2.0)
@@ -530,6 +536,9 @@ importers:
       '@streaming-monorepo/contracts':
         specifier: workspace:*
         version: link:../../../packages/contracts
+      '@streaming-monorepo/web-auth':
+        specifier: workspace:*
+        version: link:../../../packages/web-auth
       '@streaming-monorepo/web2-admin-common':
         specifier: workspace:*
         version: link:../common
@@ -567,6 +576,9 @@ importers:
       '@streaming-monorepo/contracts':
         specifier: workspace:*
         version: link:../../../packages/contracts
+      '@streaming-monorepo/web-auth':
+        specifier: workspace:*
+        version: link:../../../packages/web-auth
     devDependencies:
       '@types/node':
         specifier: 24.13.4
@@ -648,6 +660,21 @@ importers:
         specifier: 4.6.4
         version: 4.6.4
     devDependencies:
+      '@types/node':
+        specifier: 24.13.4
+        version: 24.13.4
+      tsx:
+        specifier: 4.23.13
+        version: 4.23.13
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  packages/web-auth:
+    devDependencies:
+      '@types/express':
+        specifier: 5.0.6
+        version: 5.0.6
       '@types/node':
         specifier: 24.13.4
         version: 24.13.4

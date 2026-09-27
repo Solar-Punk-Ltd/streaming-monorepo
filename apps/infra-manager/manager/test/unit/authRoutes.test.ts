@@ -12,9 +12,8 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
 import { SESSION_IDLE_TIMEOUT_MS } from '@streaming-infra-manager/common';
+import { hashSessionToken, LoginLimiter } from '@streaming-monorepo/web-auth';
 
-import { LoginLimiter } from '../../src/domain/auth/LoginLimiter.js';
-import { hashSessionToken } from '../../src/domain/auth/sessionToken.js';
 import {
   AuthTestApp,
   call,

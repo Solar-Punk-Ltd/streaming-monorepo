@@ -1,6 +1,6 @@
+import { USER_REMOVAL_LOCK_KEY } from '@streaming-monorepo/web-auth';
 import { Pool } from 'pg';
 
-import { USER_REMOVAL_LOCK_KEY } from './authSql.js';
 import type { UserDeletion, UserRepository, UserRow } from './UserRepository.js';
 
 const USER_COLUMNS = 'id, username, password_hash, created_at, last_login_at, is_admin';

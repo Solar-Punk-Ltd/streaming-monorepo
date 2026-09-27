@@ -16,12 +16,14 @@ COPY frontend/package.json ./frontend/
 COPY manager/package.json ./manager/
 # The repository's shared packages the manager links, where the cut carries them. See tools/app-workspace.
 COPY workspace-packages/contracts/package.json ./workspace-packages/contracts/
+COPY workspace-packages/web-auth/package.json ./workspace-packages/web-auth/
 
 RUN pnpm install --frozen-lockfile \
       --filter @streaming-infra-manager/frontend-prototype... \
       --filter @streaming-infra-manager/common...
 
 COPY workspace-packages/contracts ./workspace-packages/contracts
+COPY workspace-packages/web-auth ./workspace-packages/web-auth
 COPY common ./common
 COPY frontend ./frontend
 

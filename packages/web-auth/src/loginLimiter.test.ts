@@ -7,8 +7,7 @@
  * failures to the first lockout, one minute for it, doubling after that, an
  * hour's cap, and a right password wiping the count. The last cases are not
  * about the schedule at all: attempts still waiting on scrypt have to count, or
- * a burst sent together gets one free guess each — which is exactly the hole
- * the LoginRateLimiter this replaced had.
+ * a burst sent together gets one free guess each.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -20,10 +19,11 @@ import {
   passwordChangeKey,
   usernameKey,
   type AttemptKeys,
-} from '../../src/domain/auth/LoginLimiter.js';
+} from './LoginLimiter.js';
+import { LOGIN_FORGET_MS } from './rules.js';
 
 const MINUTE = 60 * 1000;
-const KEY = usernameKey('levi');
+const KEY = usernameKey('operator');
 
 /** A limiter whose clock the test moves by hand. */
 function limiterAt(start = 1_700_000_000_000) {
@@ -178,8 +178,8 @@ describe('LoginLimiter', () => {
   });
 
   it('reads a username the same however it was capitalised', () => {
-    assert.equal(usernameKey('Levi'), usernameKey('levi'));
-    assert.notEqual(usernameKey('levi'), clientIpKey('levi'));
+    assert.equal(usernameKey('Operator'), usernameKey('operator'));
+    assert.notEqual(usernameKey('operator'), clientIpKey('operator'));
   });
 
   it('keeps a password change on a key of its own', () => {
@@ -193,5 +193,26 @@ describe('LoginLimiter', () => {
     // Guessing the current password locks the change, never the sign-in.
     assert.equal(limiter.retryAfterSeconds(passwordChangeKey(id)), 60);
     assert.equal(limiter.retryAfterSeconds(KEY), 0);
+  });
+
+  it('keys a password change on the user id, whichever kind the backend stores', () => {
+    assert.equal(passwordChangeKey(7), 'password-change:7');
+    assert.equal(
+      passwordChangeKey('00000000-0000-4000-8000-000000000001'),
+      'password-change:00000000-0000-4000-8000-000000000001',
+    );
+    assert.notEqual(passwordChangeKey(7), usernameKey('7'));
+  });
+
+  it('forgets a key no sooner than the rules say', () => {
+    const { limiter, advance } = limiterAt();
+
+    for (let attempt = 1; attempt <= 5; attempt += 1) wrongPassword(limiter);
+    advance(LOGIN_FORGET_MS - 1);
+
+    // One quiet millisecond short of forgetting, the count still stands: one
+    // more failure is the sixth and locks for two minutes.
+    wrongPassword(limiter);
+    assert.equal(limiter.retryAfterSeconds(KEY), 120);
   });
 });
