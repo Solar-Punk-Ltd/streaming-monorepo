@@ -187,12 +187,12 @@ A fresh database has no users. The API boots, logs a warning, answers
 401 `no_users` until:
 
 ```bash
-pnpm user:add levi                 # prompts twice, echoes nothing
+pnpm user:add alice                 # prompts twice, echoes nothing
 # or, in the image:
-docker compose exec -it api node dist/cli.js user:add levi
+docker compose exec -it api node dist/cli.js user:add alice
 # or from a vault, with the password never in a file or an argv:
 op read "op://<vault>/<item>/password" \
-  | docker compose exec -T api node dist/cli.js user:add levi --password-stdin
+  | docker compose exec -T api node dist/cli.js user:add alice --password-stdin
 ```
 
 The first user is an admin whatever the flags said. Later ones are plain unless
