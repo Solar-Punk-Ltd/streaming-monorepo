@@ -18,13 +18,13 @@ to end for four features, improved later. The four features:
    a stream key.
 
 Research behind every decision here is in [docs/research/](../research/)
-(msrs-client, streaming-infra-manager, swarm-hls-stream ingest and feed). The
+(streaming-infra-manager, swarm-hls-stream ingest and feed). The
 short version of what they found:
 
 - msrs-client (deprecated) creates a stream by uploading the thumbnail, then
   writing one GSOC chunk carrying an encrypted token; an off-client aggregator
-  rewrites the list feed. Private keys and shared server secrets live in the
-  browser. Failure loses the stream, success is inferred by polling.
+  rewrites the list feed.
+  Failure loses the stream, success is inferred by polling.
 - swarm-hls-stream (the stack the test infra runs) has no draft concept. OBS
   pushes to SRS, the uploader mints a random topic on `on_publish`, and the
   catalog feed entry it writes has only a date for a title. Its `main` is
