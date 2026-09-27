@@ -15,7 +15,7 @@
  */
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { describe, it } from 'node:test';
@@ -446,6 +446,39 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
         assert.equal(built.status, 2, `${JSON.stringify(folder)}: ${built.stderr}`);
         assert.match(built.stderr, /<stack-folder>/);
       }
+    });
+  });
+
+  /**
+   * The build runs the ref's own install and build scripts over the staging
+   * tree, so what the script says it exported has to be written after them, as
+   * a fresh file: a file they rewrote would give the manager a false commit,
+   * and a link they left in its place would carry the write outside the tree.
+   */
+  it('writes what it exported after the build, so the build cannot change it or write through it', () => {
+    withMonorepo('stack-build-mono-hostile-', (root, repo) => {
+      const kept = join(root, 'kept.txt');
+      writeFileSync(kept, 'not the build\'s to write\n');
+      writeFileSync(
+        join(root, 'bin', 'docker'),
+        [
+          '#!/bin/sh',
+          'while [ "$#" -gt 0 ]; do if [ "$1" = -w ]; then dir="$2"; fi; shift; done',
+          'rm -f "$dir/.stack-commit" "$dir/.stack-folder"',
+          `ln -s '${kept}' "$dir/.stack-commit"`,
+          "printf '.\\n' > \"$dir/.stack-folder\"",
+          '',
+        ].join('\n'),
+        { mode: 0o755 },
+      );
+
+      const built = build(root, repo.moved, repo.stackHead, repo.environment);
+
+      assert.equal(built.status, 0, built.stderr);
+      assert.equal(readFileSync(kept, 'utf8'), 'not the build\'s to write\n', 'the write went through a link the build left');
+      assert.equal(lstatSync(join(built.staging, STACK_COMMIT_FILE)).isSymbolicLink(), false);
+      assert.equal(readFileSync(join(built.staging, STACK_COMMIT_FILE), 'utf8').trim(), repo.moved);
+      assert.equal(readFileSync(join(built.staging, STACK_FOLDER_FILE), 'utf8'), `${FOLDER}\n`);
     });
   });
 
