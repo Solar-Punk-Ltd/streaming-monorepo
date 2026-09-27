@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { existsSync, readFileSync, realpathSync, symlinkSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { describe, it } from 'node:test';
+import { setTimeout as sleep } from 'node:timers/promises';
 
-import { commitAll, makeTempDir, runScript, writeFiles } from './support/fixtures.mjs';
+import { TEST_ENV, TOOL_DIR, commitAll, makeTempDir, runScript, writeFiles } from './support/fixtures.mjs';
 import { expectedCut, manifest, manifestOf, realAppFiles } from './support/workspace.mjs';
 
 const IN_COPY = 'in-copy.mjs';
@@ -107,6 +110,26 @@ describe('in-copy.mjs', () => {
 
     assert.equal(result.status, 3);
     assert.equal(existsSync(seen.cwd), false);
+  });
+
+  it('removes the copy when it is stopped while the command runs, and exits as the stopped command did', async (t) => {
+    const root = makeCheckout(t);
+    const listing = join(makeTempDir(t), 'listing.json');
+    const listThenWait = `${LIST_FILES.replace(/process\.exit\(.*\);\n$/, '')}setTimeout(() => {}, 60000);\n`;
+    const child = spawn(
+      process.execPath,
+      [join(TOOL_DIR, IN_COPY), '--root', root, '--app', 'apps/web2-admin', '--', process.execPath, '-e', listThenWait, listing],
+      { env: TEST_ENV, stdio: 'ignore' },
+    );
+    const exited = once(child, 'exit');
+    for (let waited = 0; !existsSync(listing) && waited < 20000; waited += 50) await sleep(50);
+
+    child.kill('SIGTERM');
+    const [status] = await exited;
+
+    const { cwd } = JSON.parse(readFileSync(listing, 'utf8'));
+    assert.equal(existsSync(cwd), false);
+    assert.equal(status, 143);
   });
 
   it('runs the command in a plain copy when the root holds no lockfile, since there the apps keep their own', (t) => {
