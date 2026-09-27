@@ -3,12 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
+    "lint": "pnpm -r --filter './**' --filter '!.' lint",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "build": "pnpm -r --filter './**' --filter '!.' build",
     "dev": "pnpm --filter @streaming-infra-manager/api dev & pnpm --filter @streaming-infra-manager/frontend-prototype dev",
     "test": "pnpm -r --filter './**' --filter '!.' test",
     "typecheck": "pnpm -r --filter './**' --filter '!.' typecheck"
   },
-  "packageManager": "pnpm@11.11.0+sha512.4463f65fd80ed80d69bc1d4bf163ee94f605c7380fc318bb5b2ebe15f8cd12d49c51a4d59e951b401e764d3b6ca751cbf51bc50ed7001a6bcb4935e684c34882",
+  "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
   "nx": {
     "tags": ["scope:manager", "type:app"],
     "includedScripts": []

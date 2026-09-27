@@ -32,6 +32,12 @@
     "test": {
       "dependsOn": ["^build"],
       "cache": false
+    },
+    "lint": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": ["default", "^default", "{workspaceRoot}/.oxlintrc.json"],
+      "outputs": []
     }
   }
 }

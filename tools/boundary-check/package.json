@@ -9,6 +9,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "lint": "oxlint .",
     "test": "node --test"
   },
   "nx": {

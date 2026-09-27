@@ -6,6 +6,7 @@
   "description": "web2-admin console: React 18 + MUI + Vite, modelled on msrs-client.",
   "license": "MIT",
   "scripts": {
+    "lint": "oxlint --type-aware .",
     "dev": "vite",
     "mock-api": "node scripts/mock-api.mjs",
     "build": "pnpm --filter @streaming-monorepo/web2-admin-common build && tsc --noEmit && vite build",
@@ -34,7 +35,7 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",
     "jsdom": "30.0.1",
-    "typescript": "5.6.3",
+    "typescript": "7.0.2",
     "vite": "8.3.0",
     "vitest": "5.0.0"
   },
