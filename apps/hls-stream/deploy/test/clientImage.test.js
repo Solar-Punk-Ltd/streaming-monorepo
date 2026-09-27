@@ -72,14 +72,18 @@ describe('client image serving the weeb-3 shared worker runtime', () => {
   });
 
   /**
-   * Why there is no `types {}` block: read out of this image on 2026-09-02, `/etc/nginx/mime.types`
-   * already maps `application/wasm wasm;` and `application/javascript js;`. The glue calls
+   * Why there is no `types {}` block: read out of this image, 1.27 on 2026-09-02 and 1.30.4 at the digest
+   * below on 2026-09-27, `/etc/nginx/mime.types` already maps `application/wasm wasm;` and
+   * `application/javascript js;`. The glue calls
    * `WebAssembly.instantiateStreaming`, which refuses anything but `application/wasm` and falls back
    * to a slower path with a console warning, so a base image that stopped mapping it would cost
    * performance silently. This pin is what says the reading still applies.
    */
   it('pins the nginx image whose mime.types was read for application/wasm', () => {
-    assert.match(dockerfile, /^FROM nginx:1\.27-alpine$/m);
+    assert.match(
+      dockerfile,
+      /^FROM nginx:1\.30\.4-alpine@sha256:dc5069ad14f19660b141b21236140b91656bf89bbc3e2417c70ae650cd66104c$/m,
+    );
   });
 
   /**
