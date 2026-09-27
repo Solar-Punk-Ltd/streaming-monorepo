@@ -2,10 +2,9 @@
 
 The admin API behind the brand console: server-side login, stream drafts in
 PostgreSQL, publishing a draft to the stream list feed on Swarm, and the OBS
-connection details for a stream. msrs-client did all of this in the browser,
-with the Swarm key and the shared server secrets in localStorage and no draft
-to recover when a write failed; here a stream is a row first and a feed entry
-second.
+connection details for a stream. It replaces the deprecated msrs-client, which
+kept no draft to recover when a write failed. Here a stream is a row first and
+a feed entry second.
 
 ## Stack
 
