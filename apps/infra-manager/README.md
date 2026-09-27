@@ -123,4 +123,5 @@ merged like any other.
 Until the monorepo, this repository pinned the stack as a git submodule. The
 last pin was the stack's release `v3.4`, commit `dc0c55e1`, as of 2026-09-25.
 Its commits are in the monorepo's history under the same ids, so a version of
-that release can still be added on the Versions page, from its commit.
+that release can still be added on the Versions page, by its tag `stack/v3.4`
+or by its commit, and it is built as the whole tree it was then.
