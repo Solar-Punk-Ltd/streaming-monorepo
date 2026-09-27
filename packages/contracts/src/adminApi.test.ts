@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ingestLookupParamsSchema, renditionReportSchema, streamStateReportSchema, UUID_PATTERN } from './adminApi.js';
+import {
+  ingestLookupParamsSchema,
+  ingestLookupPath,
+  renditionReportSchema,
+  streamStateReportSchema,
+  UUID_PATTERN,
+} from './adminApi.js';
 
 const TOPIC = '1867808f-7b1c-4e46-b437-f7423b466b39';
 const RUNG = { name: '720p', width: 1280, height: 720, topic: TOPIC, bandwidth: 2_800_000, avgBandwidth: 2_500_000 };
@@ -20,6 +26,18 @@ describe('a UUID, as the admin names streams and topics', () => {
 });
 
 describe('the ingest lookup address', () => {
+  it('is the internal route with the ingest id after it, each segment percent-encoded', () => {
+    assert.equal(
+      ingestLookupPath('video/00000000-0000-0000-0000-000000000000'),
+      '/api/internal/streams/by-ingest/video/00000000-0000-0000-0000-000000000000',
+    );
+    assert.equal(ingestLookupPath('video/demo'), '/api/internal/streams/by-ingest/video/demo');
+    assert.equal(ingestLookupPath('a b/c?d#e'), '/api/internal/streams/by-ingest/a%20b/c%3Fd%23e');
+    assert.equal(ingestLookupPath('video/../x'), '/api/internal/streams/by-ingest/video/../x');
+    assert.equal(ingestLookupPath('/video//x/'), '/api/internal/streams/by-ingest//video//x/');
+    assert.equal(ingestLookupPath(''), '/api/internal/streams/by-ingest/');
+  });
+
   it('takes a media type and a UUID', () => {
     assert.deepEqual(ingestLookupParamsSchema.parse({ app: 'audio', stream: TOPIC }), { app: 'audio', stream: TOPIC });
   });
