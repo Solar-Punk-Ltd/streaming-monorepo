@@ -67,7 +67,11 @@ export function NewDeploymentSettingsEditor({
   if (!catalog) {
     if (!load?.failure) {
       return (
-        <Stack alignItems="center" sx={{ py: 2 }}>
+        <Stack
+          sx={{
+            alignItems: "center",
+            py: 2
+          }}>
           <CircularProgress size={24} aria-label="Reading the settings" />
         </Stack>
       );
@@ -77,7 +81,9 @@ export function NewDeploymentSettingsEditor({
         severity={load.failure.severity}
         sx={{ '& .MuiAlert-message': { minWidth: 0, overflowWrap: 'anywhere' } }}
         action={
-          <Stack spacing={0.5} alignItems="flex-end">
+          <Stack spacing={0.5} sx={{
+            alignItems: "flex-end"
+          }}>
             <Button color="inherit" size="small" onClick={() => void load.reload()}>
               Try again
             </Button>
@@ -101,7 +107,9 @@ export function NewDeploymentSettingsEditor({
 
   return (
     <Stack spacing={2} sx={{ minWidth: 0 }}>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" sx={{
+        color: "text.secondary"
+      }}>
         {NEW_DEPLOYMENT_SETTINGS_LEAD}
       </Typography>
 
@@ -123,7 +131,14 @@ export function NewDeploymentSettingsEditor({
         onUndo={(key) => onChange(withoutNewValue(values, key))}
       />
 
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        sx={{
+          flexWrap: "wrap",
+          alignItems: "center"
+        }}>
         <Button size="small" disabled={!typed} onClick={() => onChange({})}>
           {USE_VERSION_VALUES}
         </Button>

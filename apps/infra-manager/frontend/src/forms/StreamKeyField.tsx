@@ -76,7 +76,9 @@ export function StreamKeyField({
             </Button>
           )}
         </Stack>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {address ? `Address ${shortHex(address)}` : 'No address yet'}
         </Typography>
       </Stack>

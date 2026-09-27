@@ -28,7 +28,14 @@ export function ContainerRow({
     <TableRow>
       <TableCell sx={{ pl: 6 }}>{c.service ?? c.name}</TableCell>
       <TableCell>
-        <Stack direction="row" alignItems="center" spacing={0.75} sx={{ flexWrap: 'wrap' }} useFlexGap>
+        <Stack
+          direction="row"
+          spacing={0.75}
+          useFlexGap
+          sx={{
+            alignItems: "center",
+            flexWrap: 'wrap'
+          }}>
           <Chip
             size="small"
             label={c.state}
@@ -49,13 +56,17 @@ export function ContainerRow({
         </Stack>
       </TableCell>
       <TableCell sx={{ minWidth: 160 }}>
-        <Stack direction="row" alignItems="center" spacing={1}>
+        <Stack direction="row" spacing={1} sx={{
+          alignItems: "center"
+        }}>
           <Typography variant="body2" sx={{ minWidth: 52 }}>
             {formatSharePercent(c.cpuPercent, ncpu * 100)}
           </Typography>
           {history && <Sparkline values={history} />}
         </Stack>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {formatCores(c.cpuPercent)} cores
         </Typography>
         <UsageBar
@@ -67,7 +78,9 @@ export function ContainerRow({
         <Typography variant="body2">
           {formatSharePercent(c.memUsageBytes, memTotalBytes)}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {formatBytes(c.memUsageBytes)} / {formatBytes(c.memLimitBytes)}
         </Typography>
         <UsageBar
@@ -79,7 +92,9 @@ export function ContainerRow({
         <Typography variant="body2">
           ↓ {formatBytes(c.netRxBytes)} ↑ {formatBytes(c.netTxBytes)}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           now ↓ {formatRate(c.netRxRate)} ↑ {formatRate(c.netTxRate)}
         </Typography>
       </TableCell>
@@ -87,7 +102,9 @@ export function ContainerRow({
         <Typography variant="body2">
           R {formatBytes(c.blkReadBytes)} W {formatBytes(c.blkWriteBytes)}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           now R {formatRate(c.blkReadRate)} W {formatRate(c.blkWriteRate)}
         </Typography>
       </TableCell>

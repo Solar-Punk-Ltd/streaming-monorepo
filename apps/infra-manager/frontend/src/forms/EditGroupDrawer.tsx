@@ -135,7 +135,13 @@ export function EditGroupDrawer({
           error={addressProblem(edits.feedOwner)}
           hint={
             streams.length > 0 ? (
-              <Stack direction="row" spacing={0.5} flexWrap="wrap" alignItems="center">
+              <Stack
+                direction="row"
+                spacing={0.5}
+                sx={{
+                  flexWrap: "wrap",
+                  alignItems: "center"
+                }}>
                 <span>On this manager:</span>
                 {streams.map((stream) => (
                   <Button

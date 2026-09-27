@@ -159,7 +159,9 @@ function BooleanInput({ entry, value, disabled, problem, onChange }: FieldProps)
         }
       />
       {problem && (
-        <Typography variant="caption" color="error.main">
+        <Typography variant="caption" sx={{
+          color: "error.main"
+        }}>
           {problem}
         </Typography>
       )}

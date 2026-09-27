@@ -129,7 +129,11 @@ export function DeploymentSettingsEditor({
   if (!catalog) {
     if (!load.failure) {
       return (
-        <Stack alignItems="center" sx={{ py: 3 }}>
+        <Stack
+          sx={{
+            alignItems: "center",
+            py: 3
+          }}>
           <CircularProgress size={24} aria-label="Reading the settings" />
         </Stack>
       );
@@ -211,7 +215,9 @@ export function DeploymentSettingsEditor({
 
   return (
     <Stack spacing={2} sx={{ minWidth: 0 }}>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" sx={{
+        color: "text.secondary"
+      }}>
         {WHAT_SAVING_DOES}
       </Typography>
 
@@ -228,7 +234,9 @@ export function DeploymentSettingsEditor({
       )}
 
       {unrecorded && (
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {UNRECORDED_NOTE}
         </Typography>
       )}
@@ -258,7 +266,14 @@ export function DeploymentSettingsEditor({
         </Alert>
       )}
 
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        sx={{
+          flexWrap: "wrap",
+          alignItems: "center"
+        }}>
         <Button
           variant="contained"
           size="small"

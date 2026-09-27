@@ -21,14 +21,18 @@ export function PoolPrerequisites({ poolId, context }: { poolId: number; context
   const group = context.groups.find(group => group.id === poolId);
   const pool = group ? matchingPool({ group, profiles: members }, group.name) : null;
   if (!pool) return <Alert severity="warning">The selected pool is not available with all compatible members. Check the deployment list or choose another pool.</Alert>;
-  return <Stack spacing={1}>
-    <Typography variant="subtitle2">Storage pool checks</Typography>
-    <Typography variant="body2" color="text.secondary">These checks report each node’s current observations, and the manager probes each rung’s publishing address itself. Funding and postage checks do not prevent saving a valid uploader configuration.</Typography>
-    <Button onClick={() => setRefresh(value => value + 1)}>Refresh pool checks</Button>
-    {probeFailure && <Alert severity="warning">{probeFailure}</Alert>}
-    {pool.profiles.map(profile => <PoolMemberChecks key={`${poolId}:${profile.name}:${profile.created_at}`} profile={profile}
-      rungState={publishers.result?.rungs.find(entry => entry.name === profile.name) ?? null} asking={publishers.loading} refresh={refresh} />)}
-  </Stack>;
+  return (
+    <Stack spacing={1}>
+      <Typography variant="subtitle2">Storage pool checks</Typography>
+      <Typography variant="body2" sx={{
+        color: "text.secondary"
+      }}>These checks report each node’s current observations, and the manager probes each rung’s publishing address itself. Funding and postage checks do not prevent saving a valid uploader configuration.</Typography>
+      <Button onClick={() => setRefresh(value => value + 1)}>Refresh pool checks</Button>
+      {probeFailure && <Alert severity="warning">{probeFailure}</Alert>}
+      {pool.profiles.map(profile => <PoolMemberChecks key={`${poolId}:${profile.name}:${profile.created_at}`} profile={profile}
+        rungState={publishers.result?.rungs.find(entry => entry.name === profile.name) ?? null} asking={publishers.loading} refresh={refresh} />)}
+    </Stack>
+  );
 }
 
 function PoolMemberChecks({ profile, rungState, asking, refresh }: { profile: Profile; rungState: LadderRungState | null; asking: boolean; refresh: number }) {
@@ -44,21 +48,29 @@ function PoolMemberChecks({ profile, rungState, asking, refresh }: { profile: Pr
     currentStamp: (current && stampId && bee.stamps?.find(stamp => sameBatchId(stamp.batchID, stampId))) || null,
     publishUrl: null, clientUrl: null, streamers: [] });
   const first = firstBlocker(steps);
-  return <Accordion disableGutters>
-    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-      <Stack spacing={0.5}>
-        <Typography variant="subtitle2">{profile.name}</Typography>
-        <Typography variant="body2">{first?.problem ?? first?.title ?? rungPublishingSummary(rungState, asking)}</Typography>
-        <Typography variant="caption" color="text.secondary">{[...steps.slice(1).map(step => step.state === 'ok' ? step.title : step.problem ?? step.title), probedRungNote(rungState)].filter(Boolean).join(' · ')}</Typography>
-      </Stack>
-    </AccordionSummary>
-    <AccordionDetails>
-      <Stack spacing={1}>
-        {steps.map(step => <Stack key={step.title}>
-          <Typography variant="body2" fontWeight={600}>{step.title}: {step.problem && step.state !== 'ok' ? step.problem : step.state === 'ok' ? 'Checked' : 'Not checked'}</Typography>
-          <Typography variant="body2" color="text.secondary">{step.problem === 'Needs a stamp' ? 'A stamp is prepaid Swarm storage. Fund the node, then buy its stamp from the node’s deployment page, where it is set once usable.' : step.detail}</Typography>
-        </Stack>)}
-      </Stack>
-    </AccordionDetails>
-  </Accordion>;
+  return (
+    <Accordion disableGutters>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <Stack spacing={0.5}>
+          <Typography variant="subtitle2">{profile.name}</Typography>
+          <Typography variant="body2">{first?.problem ?? first?.title ?? rungPublishingSummary(rungState, asking)}</Typography>
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>{[...steps.slice(1).map(step => step.state === 'ok' ? step.title : step.problem ?? step.title), probedRungNote(rungState)].filter(Boolean).join(' · ')}</Typography>
+        </Stack>
+      </AccordionSummary>
+      <AccordionDetails>
+        <Stack spacing={1}>
+          {steps.map(step => <Stack key={step.title}>
+            <Typography variant="body2" sx={{
+              fontWeight: 600
+            }}>{step.title}: {step.problem && step.state !== 'ok' ? step.problem : step.state === 'ok' ? 'Checked' : 'Not checked'}</Typography>
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>{step.problem === 'Needs a stamp' ? 'A stamp is prepaid Swarm storage. Fund the node, then buy its stamp from the node’s deployment page, where it is set once usable.' : step.detail}</Typography>
+          </Stack>)}
+        </Stack>
+      </AccordionDetails>
+    </Accordion>
+  );
 }

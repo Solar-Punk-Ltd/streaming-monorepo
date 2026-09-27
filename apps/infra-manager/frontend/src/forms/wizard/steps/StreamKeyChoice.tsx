@@ -32,7 +32,13 @@ export function StreamKeyChoice({ state, update }: WizardStepProps) {
             title: 'Generate a new key',
             detail: 'Done in your browser. The public address is derived from it.',
             extra: (
-              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                  alignItems: "center",
+                  flexWrap: "wrap"
+                }}>
                 <Typography variant="caption" sx={{ fontFamily: MONO_STACK, flex: 1 }}>
                   address {generatedAddress ? shortHex(generatedAddress) : 'not derived'}
                 </Typography>

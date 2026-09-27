@@ -53,7 +53,9 @@ export function StampTable({
 } & BatchHandlers) {
   return (
     <Box>
-      <Typography variant="overline" color="text.secondary">
+      <Typography variant="overline" sx={{
+        color: "text.secondary"
+      }}>
         Postage stamps
       </Typography>
       <Paper variant="outlined" sx={{ mt: 1, overflowX: 'auto' }}>
@@ -131,7 +133,9 @@ function BatchRows({
     <>
       <TableRow sx={{ '& > td': { borderBottom: 0 } }}>
         <TableCell sx={{ fontFamily: 'monospace' }}>
-          <Stack direction="row" alignItems="center" spacing={0.5}>
+          <Stack direction="row" spacing={0.5} sx={{
+            alignItems: "center"
+          }}>
             <span>{shortHex(stamp.batchID)}</span>
             <CopyButton value={stamp.batchID} label="batch id" />
           </Stack>
@@ -167,7 +171,9 @@ function BatchRows({
             {fill.percent}
           </Typography>
           {fill.chunks && (
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>
               {fill.chunks}
             </Typography>
           )}
@@ -176,7 +182,14 @@ function BatchRows({
       </TableRow>
       <TableRow>
         <TableCell colSpan={COLUMN_COUNT} sx={{ pt: 0 }}>
-          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center">
+          <Stack
+            direction="row"
+            spacing={1}
+            useFlexGap
+            sx={{
+              flexWrap: "wrap",
+              alignItems: "center"
+            }}>
             {isCurrent ? (
               <Chip
                 size="small"
@@ -193,7 +206,9 @@ function BatchRows({
                   Use
                 </Button>
                 {actions.use.note && (
-                  <Typography variant="caption" color="error.main">
+                  <Typography variant="caption" sx={{
+                    color: "error.main"
+                  }}>
                     {actions.use.note}
                   </Typography>
                 )}
@@ -214,7 +229,9 @@ function BatchRows({
               Dilute
             </Button>
             {actions.dilute.note && (
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>
                 {actions.dilute.note}
               </Typography>
             )}
@@ -244,7 +261,9 @@ function EmptyState({
 }) {
   if (stamps === null) {
     return (
-      <Typography variant="body2" color="text.disabled">
+      <Typography variant="body2" sx={{
+        color: "text.disabled"
+      }}>
         {loading
           ? 'Loading…'
           : 'Could not read this node’s batches, so nothing here is known either way. Press Refresh once the node is reachable.'}
@@ -256,17 +275,19 @@ function EmptyState({
   // the orphan case: the batch expired and was dropped.
   if (currentStampId) {
     return (
-      <Typography variant="body2" color="error.main">
-        This node holds no batches, yet {shortHex(currentStampId)} is still
-        recorded on the profile. Buy a new one below, and it is set here once
-        it is usable.
-      </Typography>
+      <Typography variant="body2" sx={{
+        color: "error.main"
+      }}>This node holds no batches, yet {shortHex(currentStampId)}is still
+                recorded on the profile. Buy a new one below, and it is set here once
+                it is usable.
+              </Typography>
     );
   }
 
   return (
-    <Typography variant="body2" color="text.disabled">
-      No stamps on this node yet.
-    </Typography>
+    <Typography variant="body2" sx={{
+      color: "text.disabled"
+    }}>No stamps on this node yet.
+          </Typography>
   );
 }

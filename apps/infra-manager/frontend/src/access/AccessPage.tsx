@@ -23,7 +23,9 @@ export function AccessPage() {
 
   return (
     <Stack spacing={2}>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" sx={{
+        color: "text.secondary"
+      }}>
         {canManage
           ? 'You can add and remove users here.'
           : 'Only a user who can manage users adds or removes one.'}{' '}

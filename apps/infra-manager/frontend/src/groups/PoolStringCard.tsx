@@ -61,7 +61,9 @@ export function PoolStringCard({
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
               spacing={1.5}
-              alignItems={{ sm: 'center' }}
+              sx={{
+                alignItems: { sm: 'center' }
+              }}
             >
               <Button
                 variant="contained"
@@ -76,7 +78,9 @@ export function PoolStringCard({
               >
                 Create an ABR uploader using this pool
               </Button>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>
                 For an uploader on another manager, paste the copied string into
                 its form. The addresses in it are local to this host, the Docker
                 bridge address a container here reaches, so an uploader on

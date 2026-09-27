@@ -184,15 +184,22 @@ function AlertRow({
     <Stack
       direction="row"
       spacing={1.5}
-      alignItems="center"
-      sx={{ px: 2.25, py: 1.5, borderTop: 1, borderColor: 'divider', '&:first-of-type': { borderTop: 0 } }}
-    >
+      sx={{
+        alignItems: "center",
+        px: 2.25,
+        py: 1.5,
+        borderTop: 1,
+        borderColor: 'divider',
+        '&:first-of-type': { borderTop: 0 }
+      }}>
       <StatusDot tone={tone} />
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
         <Typography sx={{ fontFamily: MONO_STACK, fontWeight: 600, fontSize: 13 }}>
           {name}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {text}
         </Typography>
       </Box>

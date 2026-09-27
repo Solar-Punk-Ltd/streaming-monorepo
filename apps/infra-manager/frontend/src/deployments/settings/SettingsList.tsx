@@ -163,7 +163,9 @@ export function SettingsList({
         }} />
 
       {sections.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           {query.trim() === '' ? 'This version declares no settings.' : noMatchText(query)}
         </Typography>
       ) : (

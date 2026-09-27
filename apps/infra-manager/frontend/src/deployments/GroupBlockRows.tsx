@@ -102,7 +102,9 @@ export function GroupBlockRows({
           <Typography sx={{ fontFamily: MONO_STACK, fontWeight: 600, fontSize: 13 }}>
             {group.name}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             {groupSubLabel(group, members, memberNoun)}
           </Typography>
         </TableCell>
@@ -110,12 +112,16 @@ export function GroupBlockRows({
           <ReadinessPill label={readiness.label} tone={readiness.tone} />
         </TableCell>
         <TableCell>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             {running}/{members.length} running
           </Typography>
         </TableCell>
         <TableCell align="right" onClick={(event) => event.stopPropagation()}>
-          <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+          <Stack direction="row" spacing={0.5} sx={{
+            justifyContent: "flex-end"
+          }}>
             {running > 0 && (
               <Button size="small" onClick={() => actions.stopGroup(group, members)}>
                 Stop all

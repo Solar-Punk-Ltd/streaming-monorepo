@@ -83,16 +83,26 @@ export function PoolRungRow({
         />
       </TableCell>
       <TableCell>
-        <Stack direction="row" spacing={0.75} alignItems="baseline" flexWrap="wrap">
+        <Stack
+          direction="row"
+          spacing={0.75}
+          sx={{
+            alignItems: "baseline",
+            flexWrap: "wrap"
+          }}>
           <Typography sx={{ fontFamily: MONO_STACK, fontWeight: 600, fontSize: 13 }}>
             {rung}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             {spec ? `${spec.width}×${spec.height} · ${spec.kbps} kbps` : ''}
             {rung === COORDINATOR_RUNG ? ' · coordinator' : ''}
           </Typography>
         </Stack>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {profile.name} · slot {profile.port_slot}
         </Typography>
       </TableCell>
@@ -125,7 +135,13 @@ export function PoolRungRow({
         <Typography variant="caption">{stampText(profile, rungState)}</Typography>
       </TableCell>
       <TableCell align="right" onClick={(event) => event.stopPropagation()}>
-        <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
+        <Stack
+          direction="row"
+          spacing={0.5}
+          sx={{
+            justifyContent: "flex-end",
+            alignItems: "center"
+          }}>
           {needsStamp ? (
             <Button
               size="small"

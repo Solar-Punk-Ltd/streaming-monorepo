@@ -67,11 +67,19 @@ export function DeploymentHeader({
     <Stack
       direction={{ xs: 'column', sm: 'row' }}
       spacing={2}
-      alignItems={{ sm: 'flex-start' }}
-      sx={{ pt: 1.5, pb: 2.25 }}
-    >
+      sx={{
+        alignItems: { sm: 'flex-start' },
+        pt: 1.5,
+        pb: 2.25
+      }}>
       <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-        <Typography variant="caption" color="text.secondary" component="div" sx={{ mb: 1 }}>
+        <Typography
+          variant="caption"
+          component="div"
+          sx={{
+            color: "text.secondary",
+            mb: 1
+          }}>
           <Link href={routes.deployments}>Deployments</Link>
           {group && (
             <>
@@ -80,7 +88,14 @@ export function DeploymentHeader({
             </>
           )}
         </Typography>
-        <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Stack
+          direction="row"
+          spacing={1.25}
+          useFlexGap
+          sx={{
+            alignItems: "center",
+            flexWrap: "wrap"
+          }}>
           <Typography variant="h1" sx={{ fontFamily: MONO_STACK }}>
             {profile.name}
           </Typography>
@@ -92,12 +107,15 @@ export function DeploymentHeader({
         <Stack
           direction="row"
           spacing={0.75}
-          alignItems="center"
-          flexWrap="wrap"
           useFlexGap
-          sx={{ mt: 0.75 }}
-        >
-          <Typography variant="caption" color="text.secondary">
+          sx={{
+            alignItems: "center",
+            flexWrap: "wrap",
+            mt: 0.75
+          }}>
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             {hostFor(profile, serverHost)} · slot {profile.port_slot} · created{' '}
             {formatDate(profile.created_at)}
           </Typography>
@@ -107,7 +125,13 @@ export function DeploymentHeader({
         </Stack>
       </Box>
 
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ flex: 'none' }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{
+          alignItems: "center",
+          flex: 'none'
+        }}>
         <PrimaryAction profile={profile} size="medium" />
         <Button onClick={() => openEditDeployment(profile.name)}>Edit</Button>
         <RowMenu items={menuItems} ariaLabel={`more actions for ${profile.name}`} />

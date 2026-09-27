@@ -52,12 +52,20 @@ export function FormField({
   const message = error || hint || null;
   return (
     <Box>
-      <Stack direction="row" spacing={0.75} alignItems="baseline" sx={{ mb: 0.75 }}>
+      <Stack
+        direction="row"
+        spacing={0.75}
+        sx={{
+          alignItems: "baseline",
+          mb: 0.75
+        }}>
         <Typography variant="subtitle2" component="label" htmlFor={htmlFor} id={labelId}>
           {label}
         </Typography>
         {aside && (
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             {aside}
           </Typography>
         )}
