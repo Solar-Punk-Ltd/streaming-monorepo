@@ -161,5 +161,77 @@
     "typescript/restrict-template-expressions": "off",
     "typescript/unbound-method": "off"
   },
+  "overrides": [
+    {
+      // MUI 9 ignores a style prop such as color="error.main" on these components without a word,
+      // which is how fifteen warning and error colours went missing in the manager console. The
+      // style belongs in sx. This replaced a test that matched the source with a regular expression
+      // and could not see past an arrow function in an earlier attribute.
+      // The react plugin is on here for that one rule. Its own rules in the three categories are off
+      // by name, since an override cannot set categories and nothing has chosen them.
+      "files": ["apps/infra-manager/frontend/src/**", "apps/web2-admin/frontend/src/**"],
+      "plugins": ["react"],
+      "rules": {
+        "react/forbid-component-props": [
+          "error",
+          {
+            "forbid": [
+              {
+                "propNamePattern": "{color,bgcolor,fontWeight,fontFamily,fontSize,textAlign,display,whiteSpace,lineHeight,letterSpacing,width,height,minWidth,maxWidth,gap,alignItems,justifyContent,flexWrap,flex,m,mt,mb,ml,mr,mx,my,p,pt,pb,pl,pr,px,py}",
+                "disallowedFor": ["Box", "Stack", "Typography", "Link", "DialogContentText"],
+                "message": "MUI 9 takes no style props on this component. Put the style in sx."
+              }
+            ]
+          }
+        ],
+        "react/capitalized-calls": "off",
+        "react/error-boundaries": "off",
+        "react/exhaustive-deps": "off",
+        "react/exhaustive-effect-dependencies": "off",
+        "react/forward-ref-uses-ref": "off",
+        "react/globals": "off",
+        "react/hooks": "off",
+        "react/iframe-missing-sandbox": "off",
+        "react/immutability": "off",
+        "react/incompatible-library": "off",
+        "react/jsx-key": "off",
+        "react/jsx-no-comment-textnodes": "off",
+        "react/jsx-no-constructed-context-values": "off",
+        "react/jsx-no-duplicate-props": "off",
+        "react/jsx-no-script-url": "off",
+        "react/jsx-no-undef": "off",
+        "react/jsx-props-no-spread-multi": "off",
+        "react/memo-dependencies": "off",
+        "react/no-array-index-key": "off",
+        "react/no-children-prop": "off",
+        "react/no-danger-with-children": "off",
+        "react/no-deriving-state-in-effects": "off",
+        "react/no-did-mount-set-state": "off",
+        "react/no-did-update-set-state": "off",
+        "react/no-direct-mutation-state": "off",
+        "react/no-find-dom-node": "off",
+        "react/no-is-mounted": "off",
+        "react/no-namespace": "off",
+        "react/no-object-type-as-default-prop": "off",
+        "react/no-render-return-value": "off",
+        "react/no-string-refs": "off",
+        "react/no-this-in-sfc": "off",
+        "react/no-unsafe": "off",
+        "react/no-unstable-nested-components": "off",
+        "react/no-will-update-set-state": "off",
+        "react/preserve-manual-memoization": "off",
+        "react/purity": "off",
+        "react/react-in-jsx-scope": "off",
+        "react/refs": "off",
+        "react/set-state-in-effect": "off",
+        "react/set-state-in-render": "off",
+        "react/static-components": "off",
+        "react/style-prop-object": "off",
+        "react/use-memo": "off",
+        "react/void-dom-elements-no-children": "off",
+        "react/void-use-memo": "off"
+      }
+    }
+  ],
   "ignorePatterns": ["**/dist/**", "**/coverage/**", "**/reports/**", "**/.stryker-tmp/**", "infra/**"]
 }
