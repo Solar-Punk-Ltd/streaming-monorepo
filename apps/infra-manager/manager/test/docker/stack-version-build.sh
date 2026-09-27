@@ -13,7 +13,8 @@
 #
 # What it does not prove: that the images build from that tree, or that a
 # deployment runs on it. The integration job starts a manager on a bundled
-# build. No workflow builds the stack's images, a deploy does.
+# build. The images job of hls-stream.yml builds the stack's images the way a
+# deploy does, from the checkout rather than from this tree.
 #
 # Usage, from apps/infra-manager, on a checkout of the commit it builds:
 #   bash manager/test/docker/stack-version-build.sh <commit> <repo-url>
