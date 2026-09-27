@@ -163,7 +163,7 @@ describe('waitFor', () => {
    * thing it had been holding on to for four minutes.
    */
   it('says what a thrown string was, rather than reading a message off something that has none', async () => {
-    const refused = 'ssh: connect to host control-1 port 22: Connection refused';
+    const refused = 'ssh: connect to host bench.example.org port 22: Connection refused';
 
     await assert.rejects(
       waitFor(async () => {
@@ -341,7 +341,7 @@ describe('waitFor, once a read has stopped working altogether', () => {
   /** The same as the timeout above: a refusal that could not name what was thrown names nothing. */
   it('says what was thrown even where it was never an Error', async () => {
     const clock = fakeClock();
-    const refused = 'ssh: connect to host control-1 port 22: Connection refused';
+    const refused = 'ssh: connect to host bench.example.org port 22: Connection refused';
 
     await assert.rejects(
       waitFor(

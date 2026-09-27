@@ -19,7 +19,7 @@
 # ## Why it runs on the host
 #
 # `publish-clock.sh --host=localhost` is what makes the repo's own publisher usable from the machine
-# it publishes to: `config.json` names every service `control-1`, which this box cannot resolve for
+# it publishes to: `config.json` names every service `<host>`, which this box cannot resolve for
 # itself. Going through that script rather than composing ffmpeg here keeps the publish key
 # derivation, the SRT spelling and the detached container in the one place that gets them right.
 #

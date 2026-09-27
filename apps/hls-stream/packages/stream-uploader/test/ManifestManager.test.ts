@@ -152,8 +152,8 @@ describe('ManifestManager media sequence', () => {
   /**
    * The whole of the sequence-zero decision. SRS's counter runs on across broadcasts for as long as
    * its process lives, so a warm engine opens a broadcast at whatever number the previous one ended
-   * on: six recordings of this stage opened at 210, 317, 416, 580, 707 and 850. the tester's player wants
-   * a history starting at 0, and only the uploader knows where a broadcast began.
+   * on: six recordings of this stage opened at 210, 317, 416, 580, 707 and 850. An outside tester's
+   * player wants a history starting at 0, and only the uploader knows where a broadcast began.
    */
   it('starts at zero however high the engine’s own counter has climbed', () => {
     const manager = new ManifestManager(TEST_ANCHOR);

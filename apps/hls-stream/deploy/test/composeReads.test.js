@@ -13,7 +13,7 @@ import { makeSandbox, removeSandboxes, runScript } from './helpers/sandbox.js';
  * difference comes out at or near zero, and zero reads as the finding "funding makes no difference to
  * a viewer" rather than as a harness with its control disconnected.
  *
- * Since T27 on 2026-09-17 the gateway's mode is two keys rather than one. An endpoint is what puts the
+ * Since 2026-09-17 the gateway's mode is two keys rather than one. An endpoint is what puts the
  * node on a chain and an empty one is the whole of what makes it ultra-light, and swap is what lets a
  * node on a chain pay its peers. A stack that reads one key and not the other cannot produce the light
  * arm, and bee refuses to start at all with swap asked for and no chain, so a probe that wrote swap

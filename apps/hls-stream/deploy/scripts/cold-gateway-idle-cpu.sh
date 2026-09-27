@@ -84,7 +84,7 @@ SWAP_KEY=BEE_GATEWAY_SWAP_ENABLE
 env_file_value() { sed -n "s/^$1=//p" "${ENV_FILE}" 2>/dev/null | tail -n 1; }
 
 # This probe sets the arm both its windows run on by writing the env file, so the compose file has to
-# read the keys that arm is made of. Since T27 on 2026-09-17 the gateway's mode is two of them: an
+# read the keys that arm is made of. Since 2026-09-17 the gateway's mode is two of them: an
 # endpoint is what puts the node on a chain, an empty one is the whole of what makes it ultra-light,
 # and swap is what lets a node on a chain pay its peers. A stack that reads one and not the other
 # runs the node on whatever compose resolves instead, and nothing else here reads the node's mode, so

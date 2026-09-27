@@ -50,10 +50,18 @@ export function registerShutdownSignals(lifecycle: ShutdownTarget, events: Proce
 /**
  * Reports a crash line by line rather than as one object, because a `Promise` and an `Error` both
  * serialize to `{}` through `JSON.stringify`. See `crashReport.ts`, where that is the whole point.
+ *
+ * An uncaught exception then ends the process with a failure, as a crash does, because the process is
+ * unsound after one: a timer or queue the throw left behind may never run again while the service
+ * still answers. The container's restart policy starts it again, and the new process resumes the
+ * broadcast from its recovery entry. It exits directly rather than through the graceful shutdown on
+ * purpose: that shutdown finalizes the broadcast and removes the entry the restart needs. An unhandled
+ * rejection is logged alone, since most are one failed request rather than a broken process.
  */
 export function registerCrashHandlers(
   logger: CrashLogger = Logger.getInstance(),
   events: ProcessEvents = process,
+  exit: (code: number) => void = (code) => process.exit(code),
 ): void {
   const report = (lines: CrashLine[]): void => {
     for (const { label, value } of lines) {
@@ -61,6 +69,9 @@ export function registerCrashHandlers(
     }
   };
 
-  events.on('uncaughtException', (error) => report(uncaughtExceptionLines(error)));
+  events.on('uncaughtException', (error) => {
+    report(uncaughtExceptionLines(error));
+    exit(1);
+  });
   events.on('unhandledRejection', (reason) => report(unhandledRejectionLines(reason)));
 }

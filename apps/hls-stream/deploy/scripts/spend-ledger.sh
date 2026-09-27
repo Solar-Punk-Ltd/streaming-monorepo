@@ -89,7 +89,7 @@ TARGET="$(get_target "$SVC_UPLOADER")"
 LEDGER="${SPEND_LEDGER:-${SCRIPT_DIR}/../../.spend-ledger.env}"
 
 # ⛔⛔⛔ A FAILED TRANSPORT AND AN UNANSWERED SERVICE ARE NOT THE SAME REFUSAL, and they arrive as the
-# same empty string. On 2026-08-31 a wedged 1Password SSH agent made this script report that the
+# same empty string. On 2026-08-31 a wedged ssh agent made this script report that the
 # uploader was not deployed, which was false: the uploader was healthy and the ssh could not sign. A
 # whole measurement arm has already been lost to that confusion, six reds that all read as product
 # faults. ssh exits 255 for connection and authentication failures and passes the remote command's
@@ -110,8 +110,9 @@ SSH_TRANSPORT_FAILED=255
 refuse_unreachable() {
   echo "spend-ledger: REFUSING, could not reach ${TARGET} over ssh."
   echo "  That is the transport and not the deployment, so nothing here says anything about the stack."
-  echo "  On this machine it is usually the 1Password SSH agent listing keys and refusing to sign,"
-  echo "  which needs 1Password fully quit and reopened rather than merely unlocked. Check with:"
+  echo "  On this machine it is usually the password manager's ssh agent listing keys and refusing to"
+  echo "  sign, which needs the password manager fully quit and reopened rather than merely unlocked."
+  echo "  Check with:"
   echo "    ssh-add -l && ssh ${TARGET} true"
   echo "  Nothing was read and nothing was written."
   exit 1

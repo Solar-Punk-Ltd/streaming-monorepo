@@ -334,7 +334,7 @@ Both subcommands also keep the uploader's container log before they redeploy, at
 ### bench-on-host.sh
 
 ```bash
-bench-on-host.sh [--profile latbench] [--portSlot 7] [--target control-1] [--script bench:latency]
+bench-on-host.sh [--profile latbench] [--portSlot 7] [--target <host>] [--script bench:latency]
 bench-on-host.sh --setup-only    # sync, build and install, then stop without running anything
 bench-on-host.sh --no-setup      # reuse what is already on the host, which is what a sweep repeats
 ```
