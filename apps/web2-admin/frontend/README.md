@@ -85,10 +85,12 @@ testing but not in a production build.
 
 `Dockerfile` builds the SPA and serves it from nginx, with `nginx.conf`
 mirroring the dev proxy (`/api` → `api:9877`). Build it from
-`apps/web2-admin`:
+`apps/web2-admin`, in a copy of that folder made outside the checkout by
+`tools/app-workspace/in-copy.mjs`, which carries the admin's own lockfile, cut
+out of the repository's root one when the root keeps it:
 
 ```bash
-docker build -f frontend/Dockerfile -t web2-admin-frontend .
+node ../../tools/app-workspace/in-copy.mjs --app apps/web2-admin -- docker build -f frontend/Dockerfile -t web2-admin-frontend .
 ```
 
 ## Layout

@@ -19,10 +19,19 @@ on the same host can never collide on a port.
 ```bash
 cp manager/.env.sample manager/.env
 cd manager
-docker compose up --build -d
+node ../../../tools/app-workspace/in-copy.mjs --app apps/infra-manager -- docker build --file manager/Dockerfile --tag manager-api .
+node ../../../tools/app-workspace/in-copy.mjs --app apps/infra-manager -- docker build --file frontend/Dockerfile --tag manager-web .
+docker compose up -d
 curl localhost:8080/health                      # {"status":"ok"}
 docker compose exec -it api node dist/cli.js user:add <username>
 ```
+
+The two images build from a copy of `apps/infra-manager` made outside the
+checkout, which `tools/app-workspace/in-copy.mjs` removes afterwards. When the
+repository keeps its one lockfile at its root, the copy carries the manager's
+own, cut out of it, as a deploy gives the host's folder. The copy leaves every
+`.env` and `node_modules` behind. The two tags are the names compose gives the
+`api` and `web` services, so `up` runs them without building again.
 
 That is the web container's port, `WEB_PORT`, 8080 by default, because the api
 container publishes no port of its own and the web container's nginx forwards
