@@ -46,10 +46,6 @@ const PlaylistLoader = Hls.DefaultConfig.loader as unknown as {
 };
 
 export class CustomManifestLoader extends PlaylistLoader {
-  constructor(config: HlsConfig) {
-    super(config);
-  }
-
   load(context: PlaylistLoaderContext, config: LoaderConfiguration, callbacks: LoaderCallbacks<PlaylistLoaderContext>) {
     if (!['manifest', 'level'].includes(context.type)) {
       super.load(context, config, callbacks);
@@ -127,10 +123,6 @@ export class CustomFragmentLoader extends FragmentLoader {
    * elapsed is that work rather than zero.
    */
   private retrievalOutstanding = false;
-
-  constructor(config: HlsConfig) {
-    super(config);
-  }
 
   load(context: FragmentLoaderContext, config: LoaderConfiguration, callbacks: LoaderCallbacks<LoaderContext>) {
     // ⛔ One attempt to one settle line, enforced here rather than rested on hls.js. A second `load` on
