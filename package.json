@@ -11,7 +11,7 @@
     "boundaries": "nx show projects > /dev/null && nx graph --file=.nx/boundary-graph.json && node tools/boundary-check/boundaries.mjs --graph .nx/boundary-graph.json --exceptions tools/boundary-check/exceptions.json"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "devDependencies": {
     "nx": "23.2.1",
