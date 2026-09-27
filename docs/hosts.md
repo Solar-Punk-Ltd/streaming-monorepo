@@ -164,11 +164,7 @@ under `/home/solarpunk`, and both scripts default to folders there. The examples
    console's loopback port, 9090 unless a port slot or `WEB2_ADMIN_WEB_PORT` says otherwise. It
    also prints the command that makes the admin's first user. Run it once.
 
-10. **Link the uploader to the admin.** In the manager, give the ABR Uploader deployment the
-    admin's address and its `INTERNAL_API_TOKEN`, as `ADMIN_API_URL` and `ADMIN_API_TOKEN`.
-    `apps/infra-manager/docs/features/web2-admin-link.md` has the details.
-
-11. **The edge.** Point an A record for each name at the host first. A name that does not
+10. **The edge.** Point an A record for each name at the host first. A name that does not
     resolve turns every certificate attempt into a failure, and Let's Encrypt limits those. Then,
     from the repository root on your machine, make the edge's env file and set `MANAGER_DOMAIN`
     and `ADMIN_DOMAIN`, and the two ports if they are not 8080 and 9090:
@@ -186,13 +182,23 @@ under `/home/solarpunk`, and both scripts default to folders there. The examples
     the two sign-in pages. A certificate still coming does not fail the run: Caddy keeps asking,
     usually for under a minute.
 
+11. **Link the uploader to the admin.** The admin publishes nothing but its console on the
+    host's loopback, and its API sits behind that console at `/api/`, so an uploader on a stage
+    host reaches it only through the edge, at the admin's name. In the ABR Uploader deployment's
+    settings in the manager, set `ADMIN_API_URL` to `https://admin.example.org` and
+    `ADMIN_API_TOKEN` to the admin's `INTERNAL_API_TOKEN`, then press **Test connection**.
+    `apps/infra-manager/docs/features/web2-admin-link.md` has the details.
+
+    It worked when the test says "Linked: the web2 admin took the token and signs its catalog with
+    this deployment's stream address."
+
 The manager's own steps for going public, binding the node APIs and generating the host firewall,
 are in "Opening the manager to the internet" in `apps/infra-manager/deploy/README.md`, and apply
 to this host too when it also carries stack deployments.
 
 ### A control host that runs the manager alone
 
-Steps 1 to 8 and 11 of the control host above, with `ADMIN_DOMAIN` left empty in the edge's env
+Steps 1 to 8 and 10 of the control host above, with `ADMIN_DOMAIN` left empty in the edge's env
 file. The edge makes its own folder on the host, `deploy/edge/` under
 `/home/solarpunk/streaming-monorepo`, where the admin's checkout would be.
 
