@@ -32,24 +32,36 @@ function journallingPath() {
   return { path: `${dir}${delimiter}${process.env.PATH}`, journal };
 }
 
+/** An ssh name and an address from the documentation range, which the stubs never contact. */
+const SSH_NAME = 'deployment-host';
+const HOST_ADDRESS = '203.0.113.10';
+
+function runWithout(variable) {
+  const stubs = journallingPath();
+  const env = { ...process.env, PATH: stubs.path, PROBE_HOST: SSH_NAME, PROBE_HOST_ADDR: HOST_ADDRESS };
+  delete env[variable];
+  const run = spawnSync('bash', [SCRIPT, '0.5', '1', 'bench', '5'], {
+    env,
+    encoding: 'utf8',
+    timeout: RUN_TIMEOUT_MS,
+  });
+  return { run, journal: stubs.journal };
+}
+
 describe('srs-segment-duration-on-host.sh', () => {
   it('refuses to start without the host address, before it reaches for the host', () => {
-    const stubs = journallingPath();
-    const env = { ...process.env, PATH: stubs.path };
-    delete env.PROBE_HOST_ADDR;
-
-    const run = spawnSync('bash', [SCRIPT, '0.5', '1', 'bench', '5'], {
-      env,
-      encoding: 'utf8',
-      timeout: RUN_TIMEOUT_MS,
-    });
+    const { run, journal } = runWithout('PROBE_HOST_ADDR');
 
     assert.notEqual(run.status, 0);
     assert.match(run.stderr, /PROBE_HOST_ADDR/);
-    assert.equal(
-      existsSync(stubs.journal),
-      false,
-      'the script called ssh, docker or ffmpeg before it knew the host address',
-    );
+    assert.equal(existsSync(journal), false, 'the script called ssh, docker or ffmpeg before it knew the host address');
+  });
+
+  it('refuses to start without the ssh name, so the engine and the publisher cannot land on two machines', () => {
+    const { run, journal } = runWithout('PROBE_HOST');
+
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /PROBE_HOST[^_]/);
+    assert.equal(existsSync(journal), false, 'the script called ssh, docker or ffmpeg before it knew the ssh name');
   });
 });
