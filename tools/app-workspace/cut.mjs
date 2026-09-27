@@ -1,10 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { APP_SETTINGS } from './apps.mjs';
 import { UsageError, countOf, parseOptions, requireOption, runWhenStarted } from './lib/cli.mjs';
-import { cutLockfile } from './lib/lockfile.mjs';
+import { copyFiles, envFileAmong, filesUnder, gitFilesUnder, isCheckoutRoot } from './lib/files.mjs';
+import { CARRIED_FOLDER, cutLockfile } from './lib/lockfile.mjs';
 import { Refusal } from './lib/refusal.mjs';
 import { cutWorkspace } from './lib/workspace.mjs';
 
@@ -19,13 +20,19 @@ The lockfile keeps the app's importers, named from its folder, and exactly the s
 each as the root has it. The workspace file is the root's with the app's own globs, the injection setting apps.mjs
 gives the app, and build permissions for the app's own packages alone.
 
+A shared package the app links, one folder under the root's packages, is carried: its files go to
+--out/workspace-packages/<name>, as git sees them in a checkout and all but node_modules otherwise, and both files
+name it there.
+
 It writes nothing and says why when:
   --out is inside the workspace
   --out already holds a pnpm-lock.yaml or a pnpm-workspace.yaml
   the root or the app names no packageManager, or the two name different ones
   apps.mjs has no entry for the app
+  the app holds a workspace-packages of its own
   the root has no pnpm-lock.yaml, or its lockfile is not format '9.0'
-  a workspace link, a folder dependency or a glob reaches outside the app
+  a workspace link, a folder dependency or a glob reaches outside the app, other than to a shared package
+  a shared package links anything but another shared package, or holds an env file, .env or .env.<anything>
 
 Exit codes: 0 written, 1 refused, 2 bad arguments.`;
 
@@ -103,8 +110,44 @@ function assertSamePackageManager(root, app) {
   }
 }
 
+function assertNoCarriedFolder(root, app) {
+  if (lstatSync(join(root, app, CARRIED_FOLDER), { throwIfNoEntry: false }) !== undefined) {
+    throw new Refusal(
+      `${app}/${CARRIED_FOLDER} is the app's own, and a cut writes each shared package the app links into ${CARRIED_FOLDER} in the app's folder, so it would write over it. Rename the app's.`,
+    );
+  }
+}
+
 /**
- * Cuts one app's lockfile and workspace file out of the root's into `out`, after every check has passed.
+ * The files of one shared package, as paths from the root: git's view of its folder in a checkout, and everything but
+ * node_modules in an export, such as the one git archive writes. Refuses a folder that holds an env file anywhere
+ * outside node_modules, whether git ignores it or not.
+ */
+function sharedPackageFiles(root, folder, fromCheckout) {
+  if (!existsSync(join(root, folder))) {
+    throw new Refusal(`The root lockfile has a shared package at ${folder}, and the root holds no such folder.`);
+  }
+  const onDisk = filesUnder(root, folder);
+  const envFile = envFileAmong(onDisk);
+  if (envFile !== undefined) {
+    throw new Refusal(
+      `The shared package at ${folder} holds ${envFile}, an env file. A cut must never carry a local env file into an image, so it carries no package that holds one.`,
+    );
+  }
+  if (!fromCheckout) return onDisk;
+  const seen = gitFilesUnder(root, folder);
+  const recordedFolder = seen.find((path) => lstatSync(join(root, path), { throwIfNoEntry: false })?.isDirectory());
+  if (recordedFolder !== undefined) {
+    throw new Refusal(
+      `${recordedFolder} is a folder git records as one entry, such as a submodule, which tools/app-workspace does not copy.`,
+    );
+  }
+  return seen;
+}
+
+/**
+ * Cuts one app's lockfile and workspace file out of the root's into `out`, after every check has passed, with the
+ * files of every shared package the lockfile carries.
  * @returns {string} the sentence that says what it wrote
  */
 export function cutApp({ root, app, out }) {
@@ -115,6 +158,7 @@ export function cutApp({ root, app, out }) {
     );
   }
   assertOutFolder({ root, out });
+  assertNoCarriedFolder(root, app);
   for (const name of [LOCKFILE, WORKSPACE_FILE]) {
     if (!existsSync(join(root, name))) {
       throw new Refusal(
@@ -130,11 +174,18 @@ export function cutApp({ root, app, out }) {
     ...settings,
     packageNames: lockfile.packageNames,
     projects: lockfile.projects,
+    sharedPackages: lockfile.sharedPackages,
   });
+  const fromCheckout = lockfile.sharedPackages.length > 0 && isCheckoutRoot(root);
+  const carried = lockfile.sharedPackages.map((shared) => ({
+    ...shared,
+    paths: sharedPackageFiles(root, shared.from, fromCheckout),
+  }));
 
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, LOCKFILE), lockfile.text);
   writeFileSync(join(out, WORKSPACE_FILE), workspace);
+  for (const { from, to, paths } of carried) copyFiles(root, from, paths, join(out, to));
   return `${app}: ${countOf(lockfile.projects.length, 'project')} besides its own, ${lockfile.packageCount} of the root's ${lockfile.rootPackageCount} packages, injectWorkspacePackages ${settings.injectWorkspacePackages}. Wrote ${LOCKFILE} and ${WORKSPACE_FILE} to ${out}.`;
 }
 

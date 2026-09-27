@@ -7,7 +7,15 @@ import { describe, it } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { TEST_ENV, TOOL_DIR, commitAll, makeTempDir, runScript, writeFiles } from './support/fixtures.mjs';
-import { expectedCut, manifest, manifestOf, realAppFiles } from './support/workspace.mjs';
+import {
+  SHARED_ROOT_LOCKFILE,
+  SHARED_ROOT_WORKSPACE,
+  expectedCut,
+  manifest,
+  manifestOf,
+  realAppFiles,
+  sharedAppFiles,
+} from './support/workspace.mjs';
 
 const IN_COPY = 'in-copy.mjs';
 
@@ -57,13 +65,13 @@ function makeCheckout(t, files = {}) {
   return root;
 }
 
-function listIn(t, root, { status = 0, options = [] } = {}) {
+function listIn(t, root, { status = 0, options = [], app = 'apps/web2-admin' } = {}) {
   const listing = join(makeTempDir(t), 'listing.json');
   const result = runScript(IN_COPY, [
     '--root',
     root,
     '--app',
-    'apps/web2-admin',
+    app,
     ...options,
     '--',
     process.execPath,
@@ -235,6 +243,29 @@ describe('in-copy.mjs', () => {
     assert.equal(result.status, 125);
     assert.match(result.stderr, /git/);
     assert.equal(seen, null);
+  });
+
+  it('runs the command in a copy that holds each shared package the app links, under workspace-packages', (t) => {
+    const root = makeTempDir(t);
+    writeFiles(root, { ...sharedAppFiles(), '.gitignore': 'node_modules/\ndist/\n' });
+    commitAll(root);
+    writeFiles(root, { 'packages/contracts/dist/index.js': 'built\n' });
+
+    const { result, seen } = listIn(t, root, { app: 'apps/infra-manager' });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(
+      Object.keys(seen.files)
+        .filter((path) => path.startsWith('workspace-packages/'))
+        .sort(),
+      ['workspace-packages/contracts/package.json', 'workspace-packages/contracts/src/index.ts'],
+    );
+    const expected = expectedCut('apps/infra-manager', true, {
+      root: SHARED_ROOT_LOCKFILE,
+      rootWorkspace: SHARED_ROOT_WORKSPACE,
+    });
+    assert.equal(seen.files['pnpm-lock.yaml'], expected.lockfile);
+    assert.equal(seen.files['pnpm-workspace.yaml'], expected.workspace);
   });
 
   it('exits 125 with its usage when no command follows --', (t) => {
