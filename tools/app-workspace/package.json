@@ -1,0 +1,14 @@
+{
+  "name": "app-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cuts one app's own pnpm-lock.yaml and pnpm-workspace.yaml out of the repository's root ones, so each app still builds from its own folder.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}
