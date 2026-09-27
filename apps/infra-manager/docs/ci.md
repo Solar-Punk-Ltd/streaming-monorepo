@@ -360,7 +360,7 @@ Started in one of two ways. **Run workflow** on the Actions tab starts it on a
 branch, and GitHub offers that button only once the file is on the default
 branch, `main`. Until then, and on any pull request, adding the label
 `docker-checks` starts the same run on the pull request's head. Nothing else
-starts it. Four jobs, so one failure never hides another and each shows by name
+starts it. Five jobs, so one failure never hides another and each shows by name
 in the run.
 
 **Its first five runs failed.** Checked on GitHub on 2026-09-16, the workflow
@@ -465,6 +465,29 @@ carries Engine 28.0.4 and Compose 2.38.2, and this laptop carries 29.7.2 and
 5.5.1. Neither is that pair. The harness prints the versions it ran on and a
 step in the job puts them in the log before any build, so a run always says
 what it was on. Printing versions is not the gate.
+
+### version-build
+
+`manager/test/docker/stack-version-build.sh`, which runs
+`manager/scripts/stack-version-build.sh` on the commit the run checked out,
+fetched again from this repository on GitHub, and checks the staging tree it
+leaves for the manager.
+
+What it proves: on the one workspace the builder cuts the stack's own lockfile
+and workspace file out of the root ones inside its `node:22-alpine` container,
+installs from them with the pnpm the stack names, and builds every package.
+The tree records the commit, the folder and that pnpm, holds no side folder,
+carries the cut byte for byte as `tools/app-workspace` writes it from the
+checkout, and has the uploader's `dist`, which the uploader image copies in.
+
+What it does not prove: that the images build from that tree, or that a
+deployment runs on it. The integration job below starts a manager on a bundled
+build, and a `compare-images` run builds the images.
+
+Locally, from `apps/infra-manager` on a checkout of a pushed commit:
+`bash manager/test/docker/stack-version-build.sh <commit> <repo-url>`. Exit 0
+on a pass, 1 on a wrong answer, 2 on a harness problem. It builds the stack,
+so it belongs on a runner rather than on a laptop.
 
 ### integration, T10 and T01
 
