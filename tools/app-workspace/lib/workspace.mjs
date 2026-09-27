@@ -75,12 +75,26 @@ function packagesBlock(lines, block, { app, projects }) {
   return ['packages:', ...globs.map((glob) => `  - ${spell(glob.value, glob.quote)}`)];
 }
 
-/** The `allowBuilds:` block with the entries of the app's own packages alone, their comments kept. */
+const BUILD_PERMISSIONS = new Set(['true', 'false']);
+
+/**
+ * The `allowBuilds:` block with the entries of the app's own packages alone, their comments kept. Each must say true
+ * or false: pnpm writes `set this to true or false` in place of an answer when it refuses a build nobody approved.
+ */
 function allowBuildsBlock(lines, block, packageNames) {
-  const entries = lines.slice(block.start + 1, block.end).filter((line) => {
-    const key = readKey(line.trim());
-    return key !== null && packageNames.has(packageNameOf(key.value));
-  });
+  const entries = [];
+  for (const line of lines.slice(block.start + 1, block.end)) {
+    const body = line.trim();
+    const key = readKey(body);
+    if (key === null || !packageNames.has(packageNameOf(key.value))) continue;
+    const permission = readScalar(body.slice(key.length + 1)).value;
+    if (!BUILD_PERMISSIONS.has(permission)) {
+      throw new Refusal(
+        `The root's allowBuilds gives ${key.value} "${permission}", which is neither true nor false. pnpm writes that when it refuses a build nobody approved. Decide it in the root pnpm-workspace.yaml.`,
+      );
+    }
+    entries.push(line);
+  }
   return entries.length === 0 ? ['allowBuilds: {}'] : [lines[block.start], ...entries];
 }
 
