@@ -121,11 +121,18 @@ jobs:
       # workspace `pnpm audit` reads the root lockfile, so the gate also meets
       # the admin's and the manager's advisories, which its allowlist was never
       # written for, and it would fail every pull request of the stack. The
-      # whole report stays in this step's log, and the step still shows when
-      # the gate fails, but the job passes.
+      # step still shows when the gate fails, but the job passes.
       - name: Dependency advisories
         continue-on-error: true
         run: pnpm audit:check
+
+      # The whole report as pnpm prints it, report only for the same reason.
+      # The gate above can stop before printing any of it: an advisory with
+      # findings at two versions, as the other apps' trees hold, breaks the
+      # count check it makes before it reads the report.
+      - name: Dependency advisories, the whole report
+        continue-on-error: true
+        run: pnpm audit
 
   shell:
     name: shell
