@@ -26,6 +26,7 @@ import {
 } from '../../src/domain/versions/portTable.js';
 import { makeProfile } from '../support/profileFixtures.js';
 import type { OrchestratorHarness } from '../support/orchestratorHarness.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const root = join(mkdtempSync(join(tmpdir(), 'port-table-')), 'main-v3');
 mkdirSync(root);
@@ -63,6 +64,7 @@ async function v3On(harness: { versions: OrchestratorHarness['versions'] }): Pro
     name: 'main-v3',
     gitRef: 'main-v3',
     rootPath: root,
+    sourceUrl: SWARM_HLS_STREAM_SOURCE.url,
   });
   await harness.versions.markBuilt(row.id, {
     commitSha: 'abc1234',
@@ -149,6 +151,7 @@ describe('the slot ceiling on creation', () => {
       name: 'small',
       gitRef: 'small',
       rootPath: '/versions/small',
+      sourceUrl: SWARM_HLS_STREAM_SOURCE.url,
     });
     await harness.versions.markBuilt(capped.id, {
       commitSha: 'abc1234',

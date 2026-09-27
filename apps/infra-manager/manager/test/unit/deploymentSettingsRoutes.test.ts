@@ -22,6 +22,7 @@ import type { SessionInfo } from '../../src/domain/auth/AuthService.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
 import { makeProfile } from '../support/profileFixtures.js';
 import { throwawayRoot } from '../support/throwawayRoot.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const root = throwawayRoot('deployment-settings-routes-');
 process.env.SHLS_ROOT = root;
@@ -345,7 +346,7 @@ describe('GET /versions/:id/settings-catalog', () => {
 
   it('refuses a version with no build to read the settings from', async () => {
     const { app, harness } = await appFor();
-    const candidate = await harness.versions.insert({ name: 'candidate', gitRef: 'main', rootPath: join(root, 'candidate') });
+    const candidate = await harness.versions.insert({ name: 'candidate', gitRef: 'main', rootPath: join(root, 'candidate'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
     // Published under the builds layout, and its build has not landed.
     Object.assign(candidate, { layout: 'builds', status: 'ready', buildId: null });
     try {

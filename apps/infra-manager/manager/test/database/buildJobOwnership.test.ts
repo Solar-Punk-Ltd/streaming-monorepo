@@ -15,6 +15,7 @@ import { buildDirFor } from '../../src/domain/versions/stackPaths.js';
 import type { StackVersionRecord } from '../../src/domain/versions/StackVersionRepository.js';
 import type { Profile } from '../../src/types/index.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const port = Number(process.env.T04B_TEST_PG_PORT);
 const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't04b_test', connectionTimeoutMillis: 10000 };
@@ -52,7 +53,7 @@ describe('canonical build job ownership in isolated PostgreSQL', { skip: !Number
     profiles = new ProfileRepository(pool);
     versions = new PostgresStackVersionRepository(pool);
     ledger = new PostgresBuildLedger(pool, { mountedRootOf: async () => { throw new Error('No physical observation in ownership tests'); } }, root);
-    const version = await versions.insert({ name: 'owned-stack', gitRef: 'synthetic', rootPath: join(root, 'owned-stack') });
+    const version = await versions.insert({ name: 'owned-stack', gitRef: 'synthetic', rootPath: join(root, 'owned-stack'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
     for (const buildId of [A, B]) {
       const artifact = buildDirFor(root, version.name, buildId);
       await mkdir(artifact, { recursive: true });

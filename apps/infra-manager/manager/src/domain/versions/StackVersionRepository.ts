@@ -1,5 +1,6 @@
 import type {
   StackContract,
+  StackVersionSource,
   StackVersionStatus,
 } from '@streaming-infra-manager/common';
 
@@ -32,6 +33,8 @@ export interface StackVersionRecord {
   builtAt: Date | null;
   lastError: string | null;
   createdAt: Date;
+  /** The repository the version is fetched from, and the folder its current build took the stack from. */
+  source: StackVersionSource;
 }
 
 /** Artifact-selection facts that remain meaningful after a newer build is published. */
@@ -56,6 +59,8 @@ export interface NewStackVersion {
   gitRef: string;
   /** Null only for the bundled row, which the migration inserts. */
   rootPath: string;
+  /** The repository its builds are fetched from. The folder comes with the first build that publishes. */
+  sourceUrl: string;
 }
 
 export interface BuildOutcome {
@@ -74,6 +79,17 @@ export interface PublishOutcome {
    * published, and deploys from its builds from then on.
    */
   rootPath?: string;
+  /**
+   * Where this build took the stack from. Left out by a publication that
+   * makes another build of the same commit, which keeps the row's.
+   */
+  source?: PublishedSource;
+}
+
+/** The source a published build was taken from, whose folder is always known. */
+export interface PublishedSource {
+  url: string;
+  folder: string;
 }
 
 /**

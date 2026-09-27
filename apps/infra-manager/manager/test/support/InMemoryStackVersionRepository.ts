@@ -4,6 +4,7 @@ import { StackVersionInUseError } from '../../src/domain/errors/StackVersionInUs
 import { StackVersionRemovalHeldError } from '../../src/domain/errors/StackVersionRemovalHeldError.js';
 import { assertVersionRemovable } from '../../src/domain/versions/versionRemovalGuard.js';
 import { versionRemovalProblem } from '../../src/domain/versions/versionRemovalMarker.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 import type {
   BuildOutcome,
@@ -49,6 +50,8 @@ export class InMemoryStackVersionRepository implements StackVersionRepository {
       builtAt: null,
       lastError: null,
       createdAt: new Date(0),
+      // As migration 043 records every row that existed before it.
+      source: { url: SWARM_HLS_STREAM_SOURCE.url, folder: SWARM_HLS_STREAM_SOURCE.folder },
     };
     this.rows = [...this.rows, bundled];
     return bundled;
@@ -105,6 +108,7 @@ export class InMemoryStackVersionRepository implements StackVersionRepository {
       builtAt: null,
       lastError: null,
       createdAt: new Date(),
+      source: { url: version.sourceUrl, folder: null },
     };
     if (versionRemovalProblem(row)) throw new StackVersionRemovalHeldError(row.name, 'marker');
     this.rows = [...this.rows, row];
@@ -166,6 +170,7 @@ export class InMemoryStackVersionRepository implements StackVersionRepository {
         ? before.testedInvalidatedAt ?? new Date() : before.testedInvalidatedAt,
       builtAt: new Date(),
       lastError: null,
+      source: outcome.source ?? before.source,
     });
   }
 

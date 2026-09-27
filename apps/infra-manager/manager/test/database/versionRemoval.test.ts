@@ -19,6 +19,7 @@ import { deployRootProblem, stackRootOf } from '../../src/domain/versions/stackP
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
 import { FakeScriptSpawner } from '../support/FakeScriptSpawner.js';
 import type { Profile } from '../../src/types/index.js';
+import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const port = Number(process.env.T04A_TEST_PG_PORT);
 const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't04a_test', connectionTimeoutMillis: 5000 };
@@ -49,7 +50,7 @@ describe('version removal before files disappear in isolated PostgreSQL', {
     const migrations = new URL('../../src/migrations/', import.meta.url);
     for (const file of (await readdir(migrations)).filter(file => file.endsWith('.sql')).sort()) await pool.query(await readFile(new URL(file, migrations), 'utf8'));
     versions = new PostgresStackVersionRepository(pool);
-    const inserted = await versions.insert({ name: 'review-stack', gitRef: 'review', rootPath: join(root, 'review-stack') });
+    const inserted = await versions.insert({ name: 'review-stack', gitRef: 'review', rootPath: join(root, 'review-stack'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
     selected = (await versions.publish(inserted.id, { buildId: BUILD, commitSha: BUILD, contract: ALLOCATION_CONTRACT }))!;
     sentinels = [];
     for (const directory of ['review-stack', 'review-stack.repo', 'review-stack.builds']) {
@@ -137,7 +138,7 @@ describe('version removal before files disappear in isolated PostgreSQL', {
   });
   it('removes a failed first build whose versions directory was never created', async () => {
     const missing = join(root, 'new-parent', 'versions');
-    const failed = await versions.insert({ name: 'first-stack', gitRef: 'synthetic-ref', rootPath: join(missing, 'first-stack') });
+    const failed = await versions.insert({ name: 'first-stack', gitRef: 'synthetic-ref', rootPath: join(missing, 'first-stack'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
     await versions.markFailed(failed.id, 'synthetic runner never started');
     const removing = new StackVersionService(versions, runner, new EventBus(), missing, ledger);
     await removing.remove(failed.id);
@@ -148,7 +149,7 @@ describe('version removal before files disappear in isolated PostgreSQL', {
 
   it('does not create a missing removal parent through an ancestor symlink', async () => {
     const missing = join(root, 'new-parent', 'versions');
-    const failed = await versions.insert({ name: 'first-stack', gitRef: 'synthetic-ref', rootPath: join(missing, 'first-stack') });
+    const failed = await versions.insert({ name: 'first-stack', gitRef: 'synthetic-ref', rootPath: join(missing, 'first-stack'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
     await versions.markFailed(failed.id, 'synthetic runner never started');
     const elsewhere = join(root, 'unrelated-parent');
     await mkdir(elsewhere);
@@ -250,7 +251,7 @@ describe('version removal before files disappear in isolated PostgreSQL', {
     await service.remove(selected.id);
     const marker = JSON.parse(await readFile(`${selected.rootPath}.removal.json`, 'utf8'));
     assert.equal(marker.versionId, selected.id);
-    const replacement = await versions.insert({ name: selected.name, gitRef: 'new', rootPath: selected.rootPath! });
+    const replacement = await versions.insert({ name: selected.name, gitRef: 'new', rootPath: selected.rootPath!, sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
     assert.notEqual(replacement.id, selected.id);
     assert.equal(deployRootProblem(replacement), null);
     assert.notEqual(await versions.markBuilding(replacement.id), null);
