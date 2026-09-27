@@ -3,15 +3,6 @@
 Checkpoints are the unit of work. Each one ends with something verifiable and a
 short note here on what was decided.
 
-## Already running (before this repo)
-
-- ABR Bee nodes on Vps (publishers and gateways).
-- ABR uploader on the GCP stage host.
-- Test infrastructure: streaming-infra-manager (master) deployed with the
-  swarm-hls-stream player. A test stream plays on that host's client port
-  (port slot 6). Host addresses stay out of this repo: any brand's viewer can
-  live anywhere.
-
 ## Checkpoint 1: repo skeleton (done 2026-09-11)
 
 - MIT license, copyright Solar Punk Ltd.
@@ -191,7 +182,7 @@ upstreams from the host, and saw valid certificates from outside within the
 probe window; the certificate obtained in the first run survived the second in
 the volume, as designed. What it took in Terraform: one firewall rule (tcp 80
 and 443 from the internet to the host's tag), the manager's address and deploy
-key in both roots' tfvars in place of the Vps host's, and a re-run of the
+key in both roots' tfvars in place of the previous manager host's, and a re-run of the
 Bee host's provisioning so the new key landed there.
 
 Since then the edge's sources live in `infra/edge/`, and the manager's own
