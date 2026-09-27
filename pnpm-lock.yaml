@@ -476,6 +476,9 @@ importers:
       '@streaming-infra-manager/common':
         specifier: workspace:*
         version: link:../common
+      '@streaming-monorepo/contracts':
+        specifier: workspace:*
+        version: link:../../../packages/contracts
       dockerode:
         specifier: 5.0.1
         version: 5.0.1(supports-color@7.2.0)

@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@streaming-infra-manager/common": "workspace:*",
+    "@streaming-monorepo/contracts": "workspace:*",
     "dockerode": "5.0.1",
     "dotenv": "17.4.2",
     "express": "5.2.1",

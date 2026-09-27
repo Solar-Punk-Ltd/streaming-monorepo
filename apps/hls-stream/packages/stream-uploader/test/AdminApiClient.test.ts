@@ -37,7 +37,7 @@ const TOKEN = 'admin-api-token-0123456789abcdef';
 const STREAM_ID = 'video/demo';
 const ADMIN_STREAM_ID = 'str_01HZY';
 
-/** A draft shaped the way the admin contract states it, so `asDraft` accepts it. */
+/** A draft shaped the way the admin contract states it, so `ingestLookupAnswerSchema` accepts it. */
 const DRAFT: AdminStreamDraft = {
   id: ADMIN_STREAM_ID,
   topic: 'declared-topic-0001',
@@ -330,7 +330,7 @@ describe('the admin API client, reporting one rung of a ladder', () => {
     avgBandwidth: 2_400_000,
   };
 
-  /** The merged ladder as the contract states it, so `asRenditionReport` accepts it. */
+  /** The merged ladder as the contract states it, so `renditionReportAnswerSchema` accepts it. */
   const MERGED = {
     stream: { id: ADMIN_STREAM_ID },
     renditions: [RUNG],
