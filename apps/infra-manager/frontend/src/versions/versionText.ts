@@ -36,6 +36,22 @@ export function describeVersion(version: StackVersion): string {
 }
 
 /**
+ * Where the version's stack comes from: `streaming-monorepo, apps/hls-stream`
+ * for a build taken from a folder, and the repository alone when its whole tree
+ * is the stack or no build has said yet.
+ */
+export function describeSource(version: StackVersion): string {
+  const repository = repositoryName(version.source.url);
+  const { folder } = version.source;
+  return folder && folder !== '.' ? `${repository}, ${folder}` : repository;
+}
+
+/** `streaming-monorepo` out of its clone address. */
+function repositoryName(url: string): string {
+  return url.replace(/\.git$/, '').split('/').at(-1) ?? url;
+}
+
+/**
  * What pressing Update on this card does, for the one version where the button
  * needs saying. Empty for a version an operator added, whose branch or tag is
  * already on the card and whose Update follows it.
