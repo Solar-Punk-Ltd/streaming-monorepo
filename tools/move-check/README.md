@@ -212,7 +212,10 @@ run the same way over the same files as the images built before the move.
 
 **It does not prove** anything about a later commit, or that a build is reproducible beyond
 the two builds it made. A base image or a package mirror that changes between the two builds
-shows up as a difference, so run it again before believing one.
+shows up as a difference, so run it again before believing one. It builds with each
+Dockerfile's default build arguments, not the ones a deploy passes, so it cannot see a defect
+in those. And when both sides of a pair build from identical files, a match says only that the
+image builds the same twice. Whether the files moved intact is then a question for `tree.mjs`.
 
 A side may carry `prepare`, commands to run in its context before it is built, each written
 as a list of its words and run without a shell. It is for an image whose Dockerfile copies
@@ -230,8 +233,16 @@ when one could not be checked.
 
 [phase-1-images.json](phase-1-images.json) names the eight images of the admin, the stack and
 the manager, each built from its project's last commit before the move and from the merge
-that brought the project in. The `compare-images` workflow at the root runs it, started by
-hand from the Actions tab, and puts the report on the run's page.
+that brought the project in. Six of them, the stack's four and the manager's two, build from
+folders identical to the trees they were imported from, so their matches show only that
+those images build the same twice. The admin's two build from files the move edited. What
+they differ in is allowed by name, with the reason in the manifest, and the folder pnpm
+renamed for the moved common package is compared entry by entry through `map`. The one
+defect of the move known to have reached an image, the client's build stamp, which the
+stack's scripts looked up from the repository root rather than their own folder until #21,
+would have matched here, because the stamp is a build argument the deploy passes. The
+`compare-images` workflow at the root runs it, started by hand from the Actions tab, and puts
+the report on the run's page.
 
 ```bash
 node tools/move-check/images.mjs --manifest tools/move-check/phase-1-images.json --plan
