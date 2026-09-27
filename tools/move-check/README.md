@@ -1,6 +1,6 @@
 # move-check
 
-Five small checks that prove a change moved things and changed nothing else. Each one
+Six small checks that prove a change moved things and changed nothing else. Each one
 compares a before and an after, and passes only when the two match apart from the
 differences you name on the command line.
 
@@ -15,10 +15,12 @@ commits, though.
 | `lockfile.mjs` | two `pnpm-lock.yaml` files |
 | `compose.mjs` | a compose file as docker compose renders it |
 | `image.mjs` | two docker images, config and files |
+| `images.mjs` | every image of a manifest, built from two commits |
 | `counts.mjs` | the test counts in two test-run logs |
 
 They are plain Node scripts with no dependencies and nothing to install. They need Node 22
-or later and git, and `compose.mjs` and `image.mjs` need the docker CLI. Run them from the
+or later and git, `compose.mjs` and `image.mjs` need the docker CLI, and `images.mjs` needs
+a Docker daemon to build with. Run them from the
 repository root.
 
 ## What the exit code means
@@ -188,6 +190,40 @@ image: match, 9 config fields equal, <n> identical filesystem entries, 1 allowed
 
 A difference is listed under `changed`, `missing` or `added`, a changed file with each field
 that moved, for example `/backend/Dockerfile  size 1827 -> 1882, sha256 d4ee1d73be62 -> 3c9c2e62348e`.
+
+## images.mjs: every image builds the same from its new folder
+
+It reads a manifest of images, each with a before and an after commit, context and
+Dockerfile, and checks all of it first: every commit, context and Dockerfile must be in this
+repository, and no path may leave it. Then it exports each commit once with `git archive`,
+builds both sides from their own export with `--no-cache`, and compares each pair with
+`image.mjs`, handing it the manifest's `allow` list.
+
+**It proves** that the files a move left in place build, from clean builds, into images that
+run the same way over the same files as the images built before the move.
+
+**It does not prove** anything about a later commit, or that a build is reproducible beyond
+the two builds it made. A base image or a package mirror that changes between the two builds
+shows up as a difference, so run it again before believing one.
+
+`--plan` prints the builds and runs none. `--only` picks images by name. `--keep` leaves the
+exports on disk, and `--remove-images` removes each pair and the build cache once the pair is
+compared, which is what a CI runner needs. A failed build is reported with its output, and the
+other images are still checked. It exits 0 when every image matches, 1 when one differs and 2
+when one could not be checked.
+
+[phase-1-images.json](phase-1-images.json) names the eight images of the admin, the stack and
+the manager, each built from its project's last commit before the move and from the merge
+that brought the project in. The `compare-images` workflow at the root runs it, started by
+hand from the Actions tab, and puts the report on the run's page.
+
+```bash
+node tools/move-check/images.mjs --manifest tools/move-check/phase-1-images.json --plan
+```
+
+```text
+images: plan, 8 images, 16 builds, every commit, context and Dockerfile found
+```
 
 ## counts.mjs: the same number of tests ran and passed
 

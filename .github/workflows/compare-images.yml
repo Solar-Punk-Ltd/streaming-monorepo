@@ -1,0 +1,59 @@
+# Builds every image of the admin, the stack and the manager twice, from each
+# project's last commit before the move and from the merge that brought it in,
+# and compares each pair file by file with tools/move-check/images.mjs. Phase 1
+# of the monorepo closes when every pair matches apart from what the manifest,
+# tools/move-check/phase-1-images.json, allows. Started by hand from the Actions
+# tab, because it proves something about fixed commits rather than about a pull
+# request, and its sixteen builds run without a cache.
+name: compare-images
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'One image of the manifest to check, by name. Empty checks all eight.'
+        required: false
+        default: ''
+  # GitHub starts a by-hand workflow only when its file is on the default
+  # branch, which is still main. Until this file reaches main, adding the
+  # label compare-images to any pull request starts the same run.
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'compare-images'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      # Pinned by commit, the tag in the comment, as the repository's other workflows pin them.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The before commits are old, and git archive exports them from this clone.
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Plan, which stops before any build when a commit, context or Dockerfile is missing
+        run: node tools/move-check/images.mjs --manifest tools/move-check/phase-1-images.json --plan
+
+      - name: Build and compare
+        # The input reaches the command through the environment, never pasted into the script.
+        env:
+          ONLY: ${{ inputs.only }}
+        run: |
+          set -o pipefail
+          args=(--manifest tools/move-check/phase-1-images.json --remove-images)
+          if [ -n "$ONLY" ]; then args+=(--only "$ONLY"); fi
+          node tools/move-check/images.mjs "${args[@]}" | tee images-report.txt
+
+      - name: Put the report on the run's page
+        if: always()
+        run: |
+          if [ -f images-report.txt ]; then
+            { echo '```text'; cat images-report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi

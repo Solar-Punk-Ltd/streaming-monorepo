@@ -1,0 +1,61 @@
+{
+  "note": "Phase 1 of the monorepo moved three projects in without changing them. Each image here is built from its project's last commit before the move and from the merge that brought the project in, and the two must match apart from pnpm's record of when it installed. The after side is the importing merge rather than main-v3, because later pull requests changed each folder on purpose. The build contexts are the ones each project's compose file or script uses.",
+  "images": [
+    {
+      "name": "web2-admin-backend",
+      "note": "The admin at main-v2, its last commit at the root of this repository, against #19, which moved it into apps/web2-admin with its own workspace.",
+      "before": { "commit": "f969a4230c0f4e5b259c861fe035193625d9f850", "context": ".", "dockerfile": "web2-admin/backend/Dockerfile" },
+      "after": { "commit": "2ed9b8d553faca35be3ebe09d5da75a6b2378914", "context": "apps/web2-admin", "dockerfile": "apps/web2-admin/backend/Dockerfile" },
+      "allow": ["/app/node_modules/.modules.yaml"]
+    },
+    {
+      "name": "web2-admin-frontend",
+      "note": "As web2-admin-backend. The image is nginx serving the built bundle, so nothing is allowed.",
+      "before": { "commit": "f969a4230c0f4e5b259c861fe035193625d9f850", "context": ".", "dockerfile": "web2-admin/frontend/Dockerfile" },
+      "after": { "commit": "2ed9b8d553faca35be3ebe09d5da75a6b2378914", "context": "apps/web2-admin", "dockerfile": "apps/web2-admin/frontend/Dockerfile" },
+      "allow": []
+    },
+    {
+      "name": "hls-stream-uploader",
+      "note": "swarm-hls-stream at fe655bc4 against #15, which added it as apps/hls-stream with its commit ids kept. #21 and #22 changed the folder later.",
+      "before": { "commit": "fe655bc4b57cce0146dcb6df68b3528f79dcba65", "context": ".", "dockerfile": "deploy/Dockerfile.uploader" },
+      "after": { "commit": "e15733b123d211534385f6168785cfdd7c541ff6", "context": "apps/hls-stream", "dockerfile": "apps/hls-stream/deploy/Dockerfile.uploader" },
+      "allow": ["/app/node_modules/.modules.yaml"]
+    },
+    {
+      "name": "hls-stream-client",
+      "note": "As hls-stream-uploader. Built with the compose file's default build arguments, so both sides carry the same empty build stamp.",
+      "before": { "commit": "fe655bc4b57cce0146dcb6df68b3528f79dcba65", "context": ".", "dockerfile": "deploy/Dockerfile.client" },
+      "after": { "commit": "e15733b123d211534385f6168785cfdd7c541ff6", "context": "apps/hls-stream", "dockerfile": "apps/hls-stream/deploy/Dockerfile.client" },
+      "allow": []
+    },
+    {
+      "name": "hls-stream-bench",
+      "note": "As hls-stream-uploader. bench-on-host.sh builds it with e2e/ as its context.",
+      "before": { "commit": "fe655bc4b57cce0146dcb6df68b3528f79dcba65", "context": "e2e", "dockerfile": "e2e/Dockerfile.bench" },
+      "after": { "commit": "e15733b123d211534385f6168785cfdd7c541ff6", "context": "apps/hls-stream/e2e", "dockerfile": "apps/hls-stream/e2e/Dockerfile.bench" },
+      "allow": []
+    },
+    {
+      "name": "hls-stream-browser",
+      "note": "As hls-stream-bench. browser-on-host.sh builds it through bench-on-host.sh, with the same context.",
+      "before": { "commit": "fe655bc4b57cce0146dcb6df68b3528f79dcba65", "context": "e2e", "dockerfile": "e2e/Dockerfile.browser" },
+      "after": { "commit": "e15733b123d211534385f6168785cfdd7c541ff6", "context": "apps/hls-stream/e2e", "dockerfile": "apps/hls-stream/e2e/Dockerfile.browser" },
+      "allow": []
+    },
+    {
+      "name": "infra-manager-api",
+      "note": "streaming-infra-manager at 016c78b5, its last commit, against #20, which pulled it into apps/infra-manager. #24 and #28 changed the folder later.",
+      "before": { "commit": "016c78b5a3940d6bf3fa8c38a026c8c7d2351561", "context": ".", "dockerfile": "manager/Dockerfile" },
+      "after": { "commit": "f9ac9c671d0ce0bdb9ea4cc335f94722adf62066", "context": "apps/infra-manager", "dockerfile": "apps/infra-manager/manager/Dockerfile" },
+      "allow": ["/app/node_modules/.modules.yaml"]
+    },
+    {
+      "name": "infra-manager-frontend",
+      "note": "As infra-manager-api. The image is nginx serving the built console, so nothing is allowed.",
+      "before": { "commit": "016c78b5a3940d6bf3fa8c38a026c8c7d2351561", "context": ".", "dockerfile": "frontend/Dockerfile" },
+      "after": { "commit": "f9ac9c671d0ce0bdb9ea4cc335f94722adf62066", "context": "apps/infra-manager", "dockerfile": "apps/infra-manager/frontend/Dockerfile" },
+      "allow": []
+    }
+  ]
+}
