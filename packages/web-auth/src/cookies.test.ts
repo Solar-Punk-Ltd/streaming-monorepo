@@ -165,7 +165,7 @@ describe('the session cookie', () => {
     assert.equal(secureOf(requestWith()), false);
     assert.equal(secureOf(requestWith(undefined, { 'x-forwarded-proto': 'http' })), false);
     assert.equal(secureOf(requestWith(undefined, { 'x-forwarded-proto': 'https' })), true);
-    // Only the first hop is the browser's; anything after it is another proxy.
+    // Only the first hop is the browser's. Anything after it is another proxy.
     assert.equal(secureOf(requestWith(undefined, { 'x-forwarded-proto': 'https, http' })), true);
     assert.equal(secureOf(requestWith(undefined, { 'x-forwarded-proto': 'http, https' })), false);
     assert.equal(secureOf(requestWith(undefined, {}, true)), true);
