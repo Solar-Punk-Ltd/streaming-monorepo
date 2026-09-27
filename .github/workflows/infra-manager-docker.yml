@@ -2,11 +2,11 @@
 # integration suite, real containers built and started here and nowhere else.
 # By hand, since it takes minutes and builds images. Not a required check.
 #
-# Four jobs, so one failure never hides another and each shows by name in the
+# Five jobs, so one failure never hides another and each shows by name in the
 # run: the SRS parser on eight files at once, the OvenMediaEngine admission
-# gate, the shared image race, and the deployment integration suite that
-# carries T01's startup failure. The first three need Docker and this
-# repository, no manager and no secret.
+# gate, the shared image race, the stack version builder run for real, and the
+# deployment integration suite that carries T01's startup failure. The first
+# four need Docker and this repository, no manager and no secret.
 #
 # What each proves and what it does not: docs/ci.md.
 name: infra-manager docker-backed checks
@@ -96,6 +96,32 @@ jobs:
 
       - name: Shared image race
         run: bash manager/test/docker/shared-image-race.sh
+
+  version-build:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'docker-checks'
+    # The stack version builder on the commit under test, for real: the cut of
+    # the stack's lockfile, the install with the pnpm the stack names and the
+    # build, all in its node:22-alpine container, then a check of what it left
+    # for the manager. The unit suite runs the same script with Docker stubbed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Node's standard library alone, for the builder's read of the stack's
+      # packageManager and for the cut the harness compares with.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: The daemon this ran on
+        run: docker version --format 'server {{.Server.Version}}'
+
+      - name: The version builder on this commit
+        # The commit this run checked out, which the builder fetches again from
+        # the repository on GitHub, as a manager fetches a version.
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: bash manager/test/docker/stack-version-build.sh "$GITHUB_SHA" "https://github.com/$REPOSITORY.git"
 
   integration:
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'docker-checks'

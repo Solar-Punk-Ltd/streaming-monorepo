@@ -1,22 +1,29 @@
 {
-  "note": "The eight images of the admin, the stack and the manager. The compare-images workflow builds each twice, from a pull request's base and from the pull request merged into it, and a pull request that changes no image should see all eight match. Each side is built as its own commit's copy of this file says, so a pull request that changes how an image builds changes its entry here, and its base still builds as before. What may differ is the head's copy's to say. Each allow below is build noise that differs between any two builds, with the reason in the image's note. pnpm's own files are never allowed, because image.mjs names them whenever they differ. The contexts are the ones each project's compose file or script builds with, and every image is built with its Dockerfile's default build arguments, not the ones a deploy passes.",
+  "note": "The eight images of the admin, the stack and the manager. The compare-images workflow builds each twice, from a pull request's base and from the pull request merged into it, and a pull request that changes no image should see all eight match. Each side is built as its own commit's copy of this file says, so a pull request that changes how an image builds changes its entry here, and its base still builds as before. What may differ is the head's copy's to say. Each allow below is build noise that differs between any two builds, with the reason in the image's note. pnpm's own files are never allowed, because image.mjs names them whenever they differ. The contexts are the ones each project's compose file or script builds with, and every image is built with its Dockerfile's default build arguments, not the ones a deploy passes. The repository keeps one lockfile at its root, so each image built from an app's folder first cuts that app's own pnpm-lock.yaml and pnpm-workspace.yaml out of the root's into its context with tools/app-workspace/cut.mjs, which is what a deploy sends the host beside the folder. --in-export lets the cut write inside the tree, because an export has no .git and is thrown away after its build.",
   "images": [
     {
       "name": "web2-admin-backend",
       "context": "apps/web2-admin",
-      "dockerfile": "apps/web2-admin/backend/Dockerfile"
+      "dockerfile": "apps/web2-admin/backend/Dockerfile",
+      "prepare": [
+        ["node", "../../tools/app-workspace/cut.mjs", "--root", "../..", "--app", "apps/web2-admin", "--out", ".", "--in-export"]
+      ]
     },
     {
       "name": "web2-admin-frontend",
       "context": "apps/web2-admin",
-      "dockerfile": "apps/web2-admin/frontend/Dockerfile"
+      "dockerfile": "apps/web2-admin/frontend/Dockerfile",
+      "prepare": [
+        ["node", "../../tools/app-workspace/cut.mjs", "--root", "../..", "--app", "apps/web2-admin", "--out", ".", "--in-export"]
+      ]
     },
     {
       "name": "hls-stream-uploader",
-      "note": "The image copies packages/stream-uploader/dist/, which is built and never committed, so each side first installs from the lockfile and builds the uploader, as deploy/scripts/deploy.sh does before it builds this image. corepack runs the pnpm the stack pins, and the build is the uploader's own script run through it rather than the stack's build:uploader, which calls a second pnpm that a machine with corepack alone does not have.",
+      "note": "The image copies packages/stream-uploader/dist/, which is built and never committed, so each side first cuts the stack's pair, installs from it and builds the uploader, as deploy/scripts/deploy.sh does before it builds this image. corepack runs the pnpm the stack pins, and the build is the uploader's own script run through it rather than the stack's build:uploader, which calls a second pnpm that a machine with corepack alone does not have.",
       "context": "apps/hls-stream",
       "dockerfile": "apps/hls-stream/deploy/Dockerfile.uploader",
       "prepare": [
+        ["node", "../../tools/app-workspace/cut.mjs", "--root", "../..", "--app", "apps/hls-stream", "--out", ".", "--in-export"],
         ["corepack", "pnpm", "install", "--frozen-lockfile"],
         ["corepack", "pnpm", "--filter", "@swarm-hls-stream/stream-uploader", "build"]
       ]
@@ -25,7 +32,10 @@
       "name": "hls-stream-client",
       "note": "Built with the compose file's default build arguments, so both sides carry the same empty build stamp.",
       "context": "apps/hls-stream",
-      "dockerfile": "apps/hls-stream/deploy/Dockerfile.client"
+      "dockerfile": "apps/hls-stream/deploy/Dockerfile.client",
+      "prepare": [
+        ["node", "../../tools/app-workspace/cut.mjs", "--root", "../..", "--app", "apps/hls-stream", "--out", ".", "--in-export"]
+      ]
     },
     {
       "name": "hls-stream-bench",
@@ -70,12 +80,18 @@
       "note": "Alpine's /var/log/apk.log records when apk add ran, and two builds on 2026-09-27 differed in that line alone, with every package version the same.",
       "context": "apps/infra-manager",
       "dockerfile": "apps/infra-manager/manager/Dockerfile",
-      "allow": ["/var/log/apk.log"]
+      "allow": ["/var/log/apk.log"],
+      "prepare": [
+        ["node", "../../tools/app-workspace/cut.mjs", "--root", "../..", "--app", "apps/infra-manager", "--out", ".", "--in-export"]
+      ]
     },
     {
       "name": "infra-manager-frontend",
       "context": "apps/infra-manager",
-      "dockerfile": "apps/infra-manager/frontend/Dockerfile"
+      "dockerfile": "apps/infra-manager/frontend/Dockerfile",
+      "prepare": [
+        ["node", "../../tools/app-workspace/cut.mjs", "--root", "../..", "--app", "apps/infra-manager", "--out", ".", "--in-export"]
+      ]
     }
   ]
 }

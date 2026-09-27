@@ -7,9 +7,9 @@
  */
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -386,6 +386,59 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     ].join('\n'), { mode: 0o755 });
   }
 
+  /** This machine's own rsync, found before a test puts a stand-in first on PATH. */
+  const REAL_RSYNC = execFileSync('sh', ['-c', 'command -v rsync'], { encoding: 'utf8' }).trim();
+
+  /** Where deploy.sh sends the manager's folder on the host, read from the script itself. */
+  const HOST_PATH = /^REMOTE_PATH="(\/[^"]+)"$/m.exec(script)?.[1] ?? '';
+
+  /**
+   * An rsync that runs the real one, a host:/path destination landing at the same path under
+   * `hostRoot`. It keeps its arguments as given, NUL separated, and a copy of the destination as the
+   * real rsync left it. openrsync, macOS's rsync, starts its receiving side as `rsync --server` from
+   * PATH, which goes straight on to the real one.
+   */
+  function realRsync(root: string, hostRoot: string): void {
+    writeFileSync(join(root, 'bin', 'rsync'), [
+      '#!/bin/bash',
+      `if [ "\${1:-}" = --server ]; then exec '${REAL_RSYNC}' "$@"; fi`,
+      `touch '${join(root, 'rsync-ran')}'`,
+      `printf '%s\\0' "$@" > '${join(root, 'rsync-argv')}'`,
+      'args=()',
+      'for arg in "$@"; do',
+      `  if [[ "$arg" =~ ^[A-Za-z0-9._@-]+:(/.*)$ ]]; then args+=('${hostRoot}'"\${BASH_REMATCH[1]}"); else args+=("$arg"); fi`,
+      'done',
+      `'${REAL_RSYNC}' "\${args[@]}"`,
+      'status=$?',
+      `if [ "$status" -eq 0 ]; then cp -R "\${args[\${#args[@]}-1]}" '${join(root, 'rsync-after')}'; fi`,
+      'exit "$status"',
+      '',
+    ].join('\n'), { mode: 0o755 });
+  }
+
+  function writeInto(dir: string, files: Record<string, string>): void {
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, path)), { recursive: true });
+      writeFileSync(join(dir, path), text);
+    }
+  }
+
+  /** Every file and link under `dir`, by its path from there: a file's text, or `-> ` and a link's target. */
+  function treeOf(dir: string): Record<string, string> {
+    const tree: Record<string, string> = {};
+    const walk = (folder: string): void => {
+      for (const name of readdirSync(folder)) {
+        const path = join(folder, name);
+        const entry = lstatSync(path);
+        if (entry.isSymbolicLink()) tree[relative(dir, path)] = `-> ${readlinkSync(path)}`;
+        else if (entry.isDirectory()) walk(path);
+        else tree[relative(dir, path)] = readFileSync(path, 'utf8');
+      }
+    };
+    walk(dir);
+    return tree;
+  }
+
   /** The folders the rsync was given to send, in order: every word that is no option, no option's value and no destination. */
   function rsyncSources(root: string): string[] {
     const args = readFileSync(join(root, 'rsync-args'), 'utf8').trim().split('\n');
@@ -476,6 +529,59 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
       }
       assert.deepEqual(readdirSync(tmp), [], 'the cut folder is gone');
       assert.equal(existsSync(join(manager, 'pnpm-lock.yaml')), false, 'nothing was written into the checkout');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * The same deploy through the machine's own rsync, into a host seeded as an earlier deploy left it:
+   * the manager's own lockfile, a file the checkout no longer has, and the bundled tree the engines
+   * mount, which the rsync leaves alone. The same rsync run again without the cut folder, into an
+   * identical host, is what --delete does from the manager's folder alone. The two hosts may differ
+   * by the pair and nothing else.
+   */
+  it("leaves the host as rsync --delete leaves it from the manager's folder alone, and the manager's pair besides", () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-real-rsync-'));
+    try {
+      const { work, manager, environment } = checkout(root, { oneWorkspace: true });
+      assert.match(HOST_PATH, /^\/.+/, 'deploy.sh names the path it sends the manager to');
+      const earlier = {
+        'pnpm-lock.yaml': "lockfileVersion: '9.0'\n# the manager's own, from before the one workspace\n",
+        'stale.txt': 'a file the checkout no longer has\n',
+        'manager/swarm-hls-stream/README.md': 'the bundled tree the engines mount, which no deploy touches\n',
+      };
+      const hostRoot = join(root, 'host');
+      writeInto(join(hostRoot, HOST_PATH), earlier);
+      realRsync(root, hostRoot);
+      const tmp = join(root, 'tmp');
+      mkdirSync(tmp);
+
+      const deployed = deploy(root, manager, { ...environment, TMPDIR: tmp });
+
+      assert.equal(deployed.status, 0, deployed.stderr);
+      const argv = readFileSync(join(root, 'rsync-argv'), 'utf8').split('\0').slice(0, -1);
+      const cutSources = argv.filter((arg) => arg.startsWith(tmp));
+      assert.equal(cutSources.length, 1, `one source under TMPDIR, the cut: ${argv.join(' ')}`);
+      const alone = join(root, 'alone');
+      writeInto(alone, earlier);
+      const aloneRun = spawnSync(REAL_RSYNC, [...argv.filter((arg) => arg !== cutSources[0]).slice(0, -1), `${alone}/`], {
+        cwd: manager,
+        encoding: 'utf8',
+      });
+      assert.equal(aloneRun.status, 0, aloneRun.stderr);
+
+      const expected = join(root, 'expected');
+      execFileSync(process.execPath, [join(CUT_TOOL, 'cut.mjs'), '--root', work, '--app', 'apps/infra-manager', '--out', expected]);
+      const withoutPair = treeOf(alone);
+      assert.deepEqual(treeOf(join(root, 'rsync-after')), {
+        ...withoutPair,
+        'pnpm-lock.yaml': readFileSync(join(expected, 'pnpm-lock.yaml'), 'utf8'),
+        'pnpm-workspace.yaml': readFileSync(join(expected, 'pnpm-workspace.yaml'), 'utf8'),
+      });
+      assert.equal(withoutPair['stale.txt'], undefined, '--delete removed what the checkout no longer has');
+      assert.equal(withoutPair['pnpm-lock.yaml'], undefined, "alone, --delete would have removed the host's lockfile");
+      assert.equal(withoutPair['manager/swarm-hls-stream/README.md'], earlier['manager/swarm-hls-stream/README.md']);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
