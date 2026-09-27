@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  type BigIntStats,
   closeSync,
   constants,
   fstatSync,
@@ -103,13 +104,22 @@ function atomicRecord(path: string, record: unknown): void {
     }
     renameSync(temporary, path);
     syncDirectory(dirname(path));
-  } finally {
-    try {
-      const current = lstatSync(temporary, { bigint: true });
-      if (current.dev === owned.dev && current.ino === owned.ino && current.isFile()) unlinkSync(temporary);
-    } catch (error) {
-      if (!missing(error)) throw error;
-    }
+  } catch (error) {
+    removeOwnedTemporary(temporary, owned);
+    throw error;
+  }
+}
+
+/**
+ * Best effort: the failed write is what the caller hears, never a cleanup failure after it. A temporary
+ * file left behind carries a random name and blocks nothing.
+ */
+function removeOwnedTemporary(temporary: string, owned: BigIntStats): void {
+  try {
+    const current = lstatSync(temporary, { bigint: true });
+    if (current.dev === owned.dev && current.ino === owned.ino && current.isFile()) unlinkSync(temporary);
+  } catch {
+    // Already gone, or unreadable: either way the write's own error is the one to report.
   }
 }
 
