@@ -633,8 +633,6 @@ importers:
 
   tools/boundary-check: {}
 
-  tools/move-check: {}
-
 packages:
 
   '@adobe/css-tools@4.5.0':
