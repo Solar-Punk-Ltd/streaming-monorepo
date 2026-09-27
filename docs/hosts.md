@@ -1,11 +1,11 @@
-# Hosts: roles, the edge, and the names that never change
+# Hosts: roles, the edge, recipes, and the names that never change
 
 A host is a Linux machine with Docker on it. The platform uses three kinds, and one machine can
 carry all three at once, or each role can have machines of its own. This page says what runs on
-each kind, who puts it there, which folder of this repository owns it, what the edge is, and which
-names on the hosts must never change however the repository is rearranged. No real host, address
-or domain appears here: those belong to one deployment and live in its env files, which are not
-committed.
+each kind, who puts it there, which folder of this repository owns it, what the edge is, how to
+set up each kind from nothing, and which names on the hosts must never change however the
+repository is rearranged. No real host, address or domain appears here: those belong to one
+deployment and live in its env files, which are not committed.
 
 ## The three roles
 
@@ -30,14 +30,200 @@ ingest ports do not pass through it.
 
 Only one program per host can hold ports 80 and 443. That is why the edge is a compose project of
 its own rather than a service inside each console's project, and why `edge.sh` refuses to start
-when something else already holds them. The manager's compose file carries an edge of its own
-too, switched on by `MANAGER_DOMAIN` in the manager's env file. On a host that runs this
-repository's edge, the manager's stays off and the manager's domain goes into the edge's env file
-instead.
+when something else already holds them. It is the one edge on every control host, whichever
+consoles the host runs: the manager has no edge of its own, and its domain goes into the edge's
+env file beside the admin's.
 
 `infra/edge/edge.sh` renders a Caddyfile from `infra/edge/.env`, copies it and the compose file to
 the host, and starts or recreates the container. The certificates live in two named volumes, so a
 recreate does not ask for new ones.
+
+## Setting up a fresh host
+
+These recipes start from a machine with nothing on it, made by hand or built by the Terraform in
+`infra/terraform`. They describe new hosts only: nothing here moves a host that already runs
+something onto this layout.
+
+A stage host and a Bee host are prepared for the manager, and the manager then puts everything
+else on them. Both need a running control host first, because the manager there holds the deploy
+key it logs in with. The examples use the documentation addresses `203.0.113.7` for a stage host
+and `203.0.113.8` for a Bee host, and `deploy` as the account the manager logs in as. Put your
+own in their place.
+
+### A stage host, made by hand
+
+A stage host carries stack deployments: the ingest engine, the uploader, the viewer and their Bee
+nodes, one deployment per profile and port slot. The manager sends each one over ssh and builds
+its images on the host itself, so the host needs room for Docker builds as well as for running
+them.
+
+1. **Docker, Compose v2 and rsync.** On a Debian or Ubuntu host, as a user with sudo. Ubuntu's own
+   archive names the Compose plugin `docker-compose-v2` and Docker's apt repository names it
+   `docker-compose-plugin`, so install whichever your sources offer.
+
+   ```sh
+   sudo apt-get update
+   ```
+
+   ```sh
+   sudo apt-get install -y docker.io docker-compose-v2 rsync
+   ```
+
+   It worked when `docker compose version` prints a version.
+
+2. **The account the manager logs in as**, in the `docker` group. It needs no sudo.
+
+   ```sh
+   sudo useradd --create-home --shell /bin/bash deploy
+   ```
+
+   ```sh
+   sudo usermod -aG docker deploy
+   ```
+
+   It worked when `id deploy` lists `docker` among the groups.
+
+3. **The manager's deploy key.** Copy the one line of `~/manager-ssh/deploy_key.pub` from the
+   control host, then on this host:
+
+   ```sh
+   sudo install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+   ```
+
+   ```sh
+   echo '<the line from deploy_key.pub>' | sudo tee -a /home/deploy/.ssh/authorized_keys
+   ```
+
+   ```sh
+   sudo chown deploy:deploy /home/deploy/.ssh/authorized_keys && sudo chmod 600 /home/deploy/.ssh/authorized_keys
+   ```
+
+   It worked when `sudo cat /home/deploy/.ssh/authorized_keys` shows that line.
+
+4. **Let only the control host in on ssh.** In the provider's firewall, or the host's own, admit
+   tcp 22 from the control host's address and from your own while you set up, and nothing else
+   yet. The public ports come in step 8, once the manager knows what it put here.
+
+5. **Tell the control host about this host.** On the control host, add a block for it to
+   `~/manager-ssh/ssh_config`. `IdentityFile` is the path inside the manager's container, where
+   that folder is mounted at `/root/.ssh`. The alias must have no dot in it.
+
+   ```
+   Host stage-1
+     HostName 203.0.113.7
+     User deploy
+     IdentityFile /root/.ssh/deploy_key
+   ```
+
+   Then record the host key, because the manager refuses a host it does not already know:
+
+   ```sh
+   ssh-keyscan -H 203.0.113.7 >> ~/manager-ssh/known_hosts
+   ```
+
+   It worked when the next step does. The manager's deploy README explains the folder, "Deploying
+   Bee nodes to other hosts" in `apps/infra-manager/deploy/README.md`.
+
+6. **Verify it in the manager.** Sign in, open **Host**, and under **Deploy targets** enter
+   `stage-1` and press **Verify target**. The manager runs `docker info` over ssh and records the
+   Docker daemon it finds.
+
+   It worked when the target shows `Verified` with a date and a Docker daemon id. An error there
+   names what failed: the alias, the key or the host key.
+
+7. **Deploy onto it.** In the manager, **New deployment**, with `stage-1` as the host. Use the
+   alias or `deploy@203.0.113.7`, the same spelling you verified. The deployment's port slot
+   decides its ports, `10000 + 10 × slot` upwards (the stack's deploy README has the table,
+   "--portSlot" in `apps/hls-stream/deploy/README.md`).
+
+   It worked when the deployment reports running and its component links open.
+
+8. **Open the public ports.** For each port slot on the host, the public ports are:
+
+   | Port             | Protocol | What it is                            |
+   | ---------------- | -------- | ------------------------------------- |
+   | `10001 + 10 × s` | udp      | SRT ingest, what an encoder sends to  |
+   | `10004 + 10 × s` | tcp      | the viewer page                       |
+   | `10006 + 10 × s` | tcp      | the uploader's Bee node, to its peers |
+   | `10008 + 10 × s` | tcp      | the gateway's Bee node, to its peers  |
+
+   Every other port from 10000 to 19999 stays closed. The Bee node APIs above all, because they
+   ask for no password and can spend the node's postage. The manager writes a firewall for exactly
+   this: steps 2 and 3 of "Opening the manager to the internet" in
+   `apps/infra-manager/deploy/README.md` bind the node and engine APIs off the public interface and
+   generate an nftables table from the manager's own record of the host, with `stage-1` as the
+   alias.
+
+   It worked when an encoder reaches the SRT port and a browser opens the viewer page, and a port
+   ending in 5 or 7 does not answer from outside.
+
+### A stage host built by the Terraform
+
+The GCP root in `infra/terraform` builds stage hosts with steps 1 and 2 done by their first-boot
+script, as the account `solarpunk`, and with steps 3 and 4 done by its variables:
+`additional_ssh_public_keys` carries the control host's `deploy_key.pub`, and `ssh_source_ranges`
+carries the control host's address. Its firewall admits one SRT port per stage,
+`stages.<key>.srt_port`, which you set to `10001 + 10 × s` once the manager has handed the
+deployment its slot, and apply again. Then do steps 5 to 7 above with the host's external address
+and `solarpunk` as the user. The Terraform README has the rest, "M2, stage 1" in
+`infra/terraform/README.md`.
+
+### A Bee host, made by hand
+
+A Bee host carries the Bee nodes of ABR node pools, one node per quality rung, which the
+uploaders on stage hosts publish through. It is prepared exactly like a stage host, with one
+difference in the ports, and the manager puts the nodes on it as a pool rather than as a single
+deployment.
+
+1. **Steps 1 to 6 of the stage host above**, with this host's address and an alias such as
+   `bee-1`.
+
+2. **Create the pool on it.** In the manager, **New deployment**, **Deployment type**, **ABR Node
+   Pool**, with `bee-1` as the host. The manager creates one deployment per rung and deploys them
+   all. Each rung's data, its wallet and keys included, lands in `deploy/data/` under
+   `~/swarm-hls-stream-<rung>` of the `deploy` account, and nothing else holds a copy, so back
+   that folder up before the host is ever rebuilt.
+
+   Then set `BEE_UPLOADER_NAT_ADDR` in each rung's settings to this host's public address, so each
+   node announces an address its peers can dial rather than relying on detection, and deploy the
+   rungs again.
+
+   It worked when the pool's rungs report running on the pool card.
+
+3. **Open the ports.** For each rung's port slot `s`:
+
+   | Port             | Protocol | Who may reach it                                                               |
+   | ---------------- | -------- | ------------------------------------------------------------------------------ |
+   | `10006 + 10 × s` | tcp      | anyone: the rung's Bee node, to its peers                                      |
+   | `10005 + 10 × s` | tcp      | the stage hosts that publish through it, and the control host, and nobody else |
+
+   The second is the rung's Bee API. It asks for no password and can spend the node's postage, so
+   it is opened to named addresses only. It has to be open to them, because the pool string the
+   manager hands an uploader names each rung at this host's own address and that port, and the
+   manager buys and reads the postage there. The manager's firewall generator closes this port as
+   it does on a stage host, so on a Bee host that serves uploaders elsewhere, open it to those
+   addresses in the provider's firewall instead, as the Terraform's Vultr root does.
+
+   It worked when each rung's card shows its node answering.
+
+4. **Fund each rung and buy its batch**, from the pool card, as "Using it" in
+   `apps/infra-manager/docs/features/abr-ladder.md` describes. The manager shows each node's
+   address and holds no wallet of its own: the xDAI and xBZZ are sent to that address by hand.
+
+   It worked when every rung reports a live batch and the card offers the pool string.
+
+5. **Hand the pool to an uploader.** Copy the pool string from the pool card into an **ABR
+   Uploader** deployment on a stage host.
+
+### A Bee host built by the Terraform
+
+The Vultr root in `infra/terraform/vultr` builds Bee hosts with steps 1 to 4 of the stage host
+done by its provisioning script and variables, as the account `solarpunk`, and the ports of step 3
+opened in Vultr's firewall: the peer ports to everyone, and the Bee API band to the GCP stage
+hosts and to the addresses in `bee_api_source_ranges`, which carries the control host's. Then do
+steps 5 and 6 of the stage host and steps 2, 4 and 5 above, and set `BEE_UPLOADER_NAT_ADDR` to the
+host's public address on every rung. The Vultr README has the rest, "Rollout" in
+`infra/terraform/vultr/README.md`.
 
 ## The names that never change
 
@@ -49,15 +235,15 @@ the files are called in the repository. Moving a folder in this tree never chang
 host. On the host each volume carries its project's name in front, `web2-admin-brand-a_pg-data`,
 `edge_caddy-data`, which is exactly why the project name is the thing to protect.
 
-| Piece                        | Host folder                                                                                                                                                                              | Compose project                                                           | Volumes                                                          | Env file                                                                                                                                              |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Admin console                | `/home/solarpunk/streaming-monorepo`                                                                                                                                                     | `web2-admin-<profile>`, and `web2-admin-default` when no profile is named | `pg-data`                                                        | `apps/web2-admin/backend/.env.<profile>` in the checkout it deploys from (`backend/.env` for the default profile), copied to the host on every deploy |
-| Edge                         | `deploy/edge/` under `/home/solarpunk/streaming-monorepo`, where it was before its sources moved to `infra/edge/`                                                                        | `edge`                                                                    | `caddy-data`, `caddy-config`                                     | `infra/edge/.env` on the machine that runs `edge.sh`. Only the rendered Caddyfile goes to the host                                                    |
-| Manager                      | `/home/solarpunk/streaming-infra-manager`, its compose run from the `manager/` folder inside it                                                                                          | `manager`, taken from that folder's name                                  | `manager-pg`, and `edge-data` and `edge-config` for its own edge | `manager/.env`, copied to the host on every deploy                                                                                                    |
-| The stacks the manager keeps | `/home/solarpunk/streaming-infra-manager-versions` for the stack versions it builds, `/home/solarpunk/streaming-infra-manager-data/<deployment>` for each deployment's Bee data and keys |                                                                           |                                                                  |                                                                                                                                                       |
-| A stack deployment           | the folder the stack's `deploy.sh` keeps for the profile, `~/swarm-hls-stream-<profile>` on a host it reaches over ssh                                                                   | the deployment's profile name, as it was chosen in the manager            | `srs-media`, `uploader-state`                                    | `.env.<profile>` at that folder's root and `engines/<engine>/.env.<profile>`, written by the manager                                                  |
-| Monitoring stack             | `/home/solarpunk/monitoring` on the monitoring host, its data on the host's TSDB disk                                                                                                    | `devcon-monitoring`                                                       | bind mounts, in its compose file                                 | rendered by Terraform and pushed by `push.sh`                                                                                                         |
-| Log shipper                  | `/opt/devcon-alloy` on every host Terraform builds                                                                                                                                       | `devcon-alloy`                                                            |                                                                  | written by Terraform's first-boot script                                                                                                              |
+| Piece                        | Host folder                                                                                                                                                                              | Compose project                                                           | Volumes                          | Env file                                                                                                                                              |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Admin console                | `/home/solarpunk/streaming-monorepo`                                                                                                                                                     | `web2-admin-<profile>`, and `web2-admin-default` when no profile is named | `pg-data`                        | `apps/web2-admin/backend/.env.<profile>` in the checkout it deploys from (`backend/.env` for the default profile), copied to the host on every deploy |
+| Edge                         | `deploy/edge/` under `/home/solarpunk/streaming-monorepo`, where it was before its sources moved to `infra/edge/`                                                                        | `edge`                                                                    | `caddy-data`, `caddy-config`     | `infra/edge/.env` on the machine that runs `edge.sh`. Only the rendered Caddyfile goes to the host                                                    |
+| Manager                      | `/home/solarpunk/streaming-infra-manager`, its compose run from the `manager/` folder inside it                                                                                          | `manager`, taken from that folder's name                                  | `manager-pg`                     | `manager/.env`, copied to the host on every deploy                                                                                                    |
+| The stacks the manager keeps | `/home/solarpunk/streaming-infra-manager-versions` for the stack versions it builds, `/home/solarpunk/streaming-infra-manager-data/<deployment>` for each deployment's Bee data and keys |                                                                           |                                  |                                                                                                                                                       |
+| A stack deployment           | the folder the stack's `deploy.sh` keeps for the profile, `~/swarm-hls-stream-<profile>` on a host it reaches over ssh                                                                   | the deployment's profile name, as it was chosen in the manager            | `srs-media`, `uploader-state`    | `.env.<profile>` at that folder's root and `engines/<engine>/.env.<profile>`, written by the manager                                                  |
+| Monitoring stack             | `/home/solarpunk/monitoring` on the monitoring host, its data on the host's TSDB disk                                                                                                    | `devcon-monitoring`                                                       | bind mounts, in its compose file | rendered by Terraform and pushed by `push.sh`                                                                                                         |
+| Log shipper                  | `/opt/devcon-alloy` on every host Terraform builds                                                                                                                                       | `devcon-alloy`                                                            |                                  | written by Terraform's first-boot script                                                                                                              |
 
 For the hosts it builds, Terraform fixes the manager's host folder and the Bee data root at the
 paths above, so the manager's deploy script and its data land where every other host has them.
