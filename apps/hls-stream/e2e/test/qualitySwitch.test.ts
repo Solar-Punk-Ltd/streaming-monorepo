@@ -207,12 +207,7 @@ describe('when a step down counts', () => {
 
   it('counts a step down that lands while the cap is on', () => {
     const timeline = judgeQualitySwitch(
-      watched([
-        ...onRung(10, RUNG_BEFORE),
-        ...onRung(5, RUNG_BEFORE),
-        ...onRung(5, 360),
-        ...onRung(10, 360),
-      ]),
+      watched([...onRung(10, RUNG_BEFORE), ...onRung(5, RUNG_BEFORE), ...onRung(5, 360), ...onRung(10, 360)]),
       WINDOW,
     );
 
@@ -238,12 +233,7 @@ describe('when a step down counts', () => {
   /** The control. Recovery has the whole rest of the run, and no later event to be confused with. */
   it('still counts a climb back at any point after the cap comes off', () => {
     const timeline = judgeQualitySwitch(
-      watched([
-        ...onRung(10, RUNG_BEFORE),
-        ...onRung(10, 360),
-        ...onRung(8, 360),
-        ...onRung(2, RUNG_BEFORE),
-      ]),
+      watched([...onRung(10, RUNG_BEFORE), ...onRung(10, 360), ...onRung(8, 360), ...onRung(2, RUNG_BEFORE)]),
       WINDOW,
     );
 
