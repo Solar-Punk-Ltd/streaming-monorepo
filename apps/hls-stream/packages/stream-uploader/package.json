@@ -1,6 +1,7 @@
 {
   "name": "@swarm-hls-stream/stream-uploader",
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "rimraf dist && tsc && node scripts/vendor-shared.mjs",
