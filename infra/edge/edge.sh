@@ -42,6 +42,10 @@ set -euo pipefail
 readonly DEFAULT_REMOTE_PATH="/opt/streaming/streaming-monorepo"
 readonly EDGE_DIR="infra/edge"
 readonly ENV_FILE="$EDGE_DIR/.env"
+# Where the env file was before the edge moved to infra/edge, from the
+# repository root. Git leaves an ignored file where it is, so a checkout that
+# ran the edge before the move can still hold it there.
+readonly OLD_ENV_FILE="deploy/edge/.env"
 readonly CADDYFILE="$EDGE_DIR/Caddyfile"
 readonly COMPOSE_FILE="$EDGE_DIR/docker-compose.yml"
 # Where the edge lives on the host, under <remote-path>: the directory of the
@@ -192,6 +196,14 @@ fi
 # --- The env file -------------------------------------------------------------
 
 if [ ! -f "$ENV_FILE" ]; then
+    # Only whether the old file is there is asked, never what it holds, and
+    # moving it is left to the operator.
+    if [ -f "$OLD_ENV_FILE" ]; then
+        echo "[edge] ERROR: $ENV_FILE not found, but $OLD_ENV_FILE is there. It is the edge's env file from before the edge moved to $EDGE_DIR, and git left it at its old path. Move it, from the repository root:" >&2
+        echo "[edge]   mv $OLD_ENV_FILE $ENV_FILE" >&2
+        echo "[edge] Do not make a new one from the sample instead. It holds the names this edge serves, which the sample does not know. Nothing was sent." >&2
+        exit 1
+    fi
     die "$ENV_FILE not found. Copy $EDGE_DIR/.env.sample to $ENV_FILE and set at least one of ADMIN_DOMAIN and MANAGER_DOMAIN."
 fi
 
