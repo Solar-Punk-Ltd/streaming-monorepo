@@ -2,9 +2,19 @@
 # project's last commit before the move and from the merge that brought it in,
 # and compares each pair file by file with tools/move-check/images.mjs. Phase 1
 # of the monorepo closes when every pair matches apart from what the manifest,
-# tools/move-check/phase-1-images.json, allows. Started by hand from the Actions
-# tab, because it proves something about fixed commits rather than about a pull
-# request, and its sixteen builds run without a cache.
+# tools/move-check/phase-1-images.json, allows.
+#
+# A match shows less than "the move changed nothing". The stack's four pairs and
+# the manager's two build from folders identical to the trees they were
+# imported from, so a match there says only that each image still builds, and
+# builds the same twice. Whether those folders moved intact is a question for
+# tools/move-check/tree.mjs. Only the admin's two pairs build from files the
+# move edited. And every image is built with its Dockerfile's default build
+# arguments, not the ones a deploy passes, so a defect in those does not show.
+#
+# Started by hand from the Actions tab, because it proves something about fixed
+# commits rather than about a pull request, and its sixteen builds run without a
+# cache.
 name: compare-images
 
 on:

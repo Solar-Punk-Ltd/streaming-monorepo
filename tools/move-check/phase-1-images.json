@@ -1,5 +1,5 @@
 {
-  "note": "Phase 1 of the monorepo moved three projects in without changing them. Each image here is built from its project's last commit before the move and from the merge that brought the project in, and the two must match apart from what each image allows, with the reason in its note. The after side is the importing merge rather than main-v3, because later pull requests changed each folder on purpose. The build contexts are the ones each project's compose file or script uses.",
+  "note": "Phase 1 of the monorepo moved three projects in. Each image here is built from its project's last commit before the move and from the merge that brought the project in, and the two must match apart from what each image allows, with the reason in its note. The stack and the manager came in unchanged, so their six pairs build from identical files, and a match there shows only that each image builds the same twice. The admin moved with path edits, and its two pairs are the only ones built from files the move changed. The after side is the importing merge rather than main-v3, because later pull requests changed each folder on purpose. The build contexts are the ones each project's compose file or script uses, and every image is built with its Dockerfile's default build arguments, not the ones a deploy passes.",
   "images": [
     {
       "name": "web2-admin-backend",
