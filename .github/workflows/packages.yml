@@ -60,6 +60,8 @@ jobs:
     env:
       # db-migrate's database suite reaches 127.0.0.1 at this port, in the t04b_test database, and skips without it.
       T04B_TEST_PG_PORT: 5432
+      # So a missing port fails the suite rather than passing it as all skipped.
+      DATABASE_TESTS_REQUIRED: '1'
     steps:
       - name: Create the database the package database suites open, through the service container's own client
         run: docker exec ${{ job.services.postgres.id }} createdb -U postgres t04b_test
