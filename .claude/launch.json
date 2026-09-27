@@ -4,7 +4,7 @@
     {
       "name": "web2-admin-frontend",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd apps/web2-admin && exec pnpm --filter @streaming-monorepo/web2-admin-frontend dev"],
+      "runtimeArgs": ["-c", "exec pnpm --filter @streaming-monorepo/web2-admin-frontend dev"],
       "port": 5081
     }
   ]

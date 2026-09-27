@@ -41,7 +41,7 @@ See [deploy/README.md](deploy/README.md) for setup, configuration, and deploymen
 ## Development
 
 ```bash
-pnpm install
+pnpm install                       # the whole workspace, from the root lockfile
 pnpm build                         # build all packages
 pnpm client:start                  # start client dev server (localhost:5173)
 pnpm uploader:start                # start stream-uploader locally
