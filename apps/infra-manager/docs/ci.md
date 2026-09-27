@@ -474,7 +474,7 @@ fetched again from this repository on GitHub, and checks the staging tree it
 leaves for the manager.
 
 What it proves: on the one workspace the builder cuts the stack's own lockfile
-and workspace file out of the root ones inside its `node:22-alpine` container,
+and workspace file out of the root ones inside its `node:24-alpine` container,
 installs from them with the pnpm the stack names, and builds every package.
 The tree records the commit, the folder and that pnpm, holds no side folder,
 carries the cut byte for byte as `tools/app-workspace` writes it from the

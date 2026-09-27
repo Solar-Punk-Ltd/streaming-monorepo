@@ -99,7 +99,7 @@ const LOG_TAIL_BYTES = 4096;
  * The image the build script builds with, and the pnpm it falls back to for a
  * stack that names none in packageManager. The script's test keeps both in step.
  */
-export const BUILD_IMAGE = 'node:22-alpine';
+export const BUILD_IMAGE = 'node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1';
 export const PINNED_PNPM = 'pnpm@9.12.0';
 
 /** What the build script leaves in the staging directory: the commit it exported. */
