@@ -553,6 +553,17 @@ sync_to_remote() {
       "$workspace_files/pnpm-lock.yaml" \
       "$workspace_files/pnpm-workspace.yaml" \
       "$target:$REMOTE_BASE/"
+
+    # The packages every app shares that the lockfile links, carried beside the pair by the cut or
+    # kept there by a tree that holds its own. Both images install through those links, and the
+    # client compiles their sources too, so a build context without them fails the same way a
+    # missing lockfile does.
+    if [ -d "$workspace_files/workspace-packages" ]; then
+      rsync -az --delete \
+        --exclude 'node_modules' --exclude 'dist' \
+        "$workspace_files/workspace-packages/" \
+        "$target:$REMOTE_BASE/workspace-packages/"
+    fi
   fi
 
   # Sync node init script

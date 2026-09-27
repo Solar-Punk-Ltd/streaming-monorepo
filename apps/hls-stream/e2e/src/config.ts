@@ -11,6 +11,7 @@
  * engine's. That is `load_env` before `load_engine_envs`, and the shell's "already set wins".
  */
 
+import { DEFAULT_QUALITY_LADDER, qualityLadderSpec } from '@swarm-hls-stream/shared';
 import { assertUsablePublishKeySecret } from '@swarm-hls-stream/shared/publishKey';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,11 +62,10 @@ const DEFAULT_STREAM_PATH: Record<EngineName, string> = {
  * The ladder the uploader and the SRS entrypoint both fall back to when `ABR_LADDER` is empty, so the
  * suite reads the same four rungs a documented install actually runs. `.env.sample` ships `ABR_LADDER=`
  * blank on purpose, precisely because both sides carry this default, so a suite reading it as no rungs
- * disagrees with a live ladder. Mirrors `DEFAULT_LADDER_SPEC` in
- * `packages/stream-uploader/src/libs/AbrLadder.ts` and the `${ABR_LADDER:-…}` in
- * `engines/srs/entrypoint.sh`; keep the three in step.
+ * disagrees with a live ladder. The contracts package holds it, and the uploader's tests hold the
+ * `${ABR_LADDER:-…}` in `engines/srs/entrypoint.sh` to it.
  */
-const DEFAULT_LADDER_SPEC = '1080p:1920:1080:5000 720p:1280:720:2800 480p:854:480:1200 360p:640:360:700';
+const DEFAULT_LADDER_SPEC = qualityLadderSpec(DEFAULT_QUALITY_LADDER);
 
 /**
  * The slot-aware host ports the suite talks to, under names that read at a call site. The mapping

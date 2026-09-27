@@ -4,6 +4,7 @@
 export {
   MEDIA_TYPE_AUDIO,
   MEDIA_TYPE_VIDEO,
+  mediaTypeSchema,
   type MediaType,
   type Rendition,
   STREAM_STATUS_LIVE,

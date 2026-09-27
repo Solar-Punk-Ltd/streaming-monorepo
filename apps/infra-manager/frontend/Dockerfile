@@ -14,11 +14,14 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY common/package.json ./common/
 COPY frontend/package.json ./frontend/
 COPY manager/package.json ./manager/
+# The repository's shared packages the manager links, where the cut carries them. See tools/app-workspace.
+COPY workspace-packages/contracts/package.json ./workspace-packages/contracts/
 
 RUN pnpm install --frozen-lockfile \
       --filter @streaming-infra-manager/frontend-prototype... \
       --filter @streaming-infra-manager/common...
 
+COPY workspace-packages/contracts ./workspace-packages/contracts
 COPY common ./common
 COPY frontend ./frontend
 

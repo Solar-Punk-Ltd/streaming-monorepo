@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { APP_SETTINGS } from '../apps.mjs';
@@ -51,8 +51,52 @@ function sectionEntries(lockfile, section) {
 /** An entry's text without its key line, which is what a renamed importer keeps. */
 const bodyOf = (entry) => entry.split('\n').slice(1).join('\n');
 
-/** The root lockfile's importer that a cut names `key`, which the cut names from the app's folder. */
-const rootImporterOf = (app, key) => (key === '.' ? app : `${app}/${key}`);
+const SHARED_FOLDER = 'packages';
+const CARRIED_FOLDER = 'workspace-packages';
+
+/**
+ * The root lockfile's importer that a cut names `key`: the cut names the app's from its folder, and carries a shared
+ * package as workspace-packages/<name>.
+ */
+function rootImporterOf(app, key) {
+  if (key === '.') return app;
+  if (key.startsWith(`${CARRIED_FOLDER}/`)) return `${SHARED_FOLDER}/${key.slice(CARRIED_FOLDER.length + 1)}`;
+  return `${app}/${key}`;
+}
+
+/** Every `link:` in an importer's body, by line, as the path from the workspace root it leads to. */
+function linkTargetsOf(importer, body) {
+  return body
+    .split('\n')
+    .map((line) => /version: (link:.+)$/.exec(line)?.[1])
+    .filter((link) => link !== undefined)
+    .map((link) => posix.normalize(posix.join(importer, link.slice('link:'.length))));
+}
+
+/** An importer's body with its link lines left out, which is all a cut may rewrite. */
+const withoutLinks = (body) =>
+  body
+    .split('\n')
+    .filter((line) => !/version: link:/.test(line))
+    .join('\n');
+
+/**
+ * The shared packages an app's importers reach through links in the root lockfile, one folder under packages, read
+ * here without the cut's own code.
+ */
+function sharedPackagesReachedBy(app, rootImporters) {
+  const reached = new Set();
+  const visiting = [...rootImporters.keys()].filter((key) => key === app || key.startsWith(`${app}/`));
+  for (const importer of visiting) {
+    for (const target of linkTargetsOf(importer, bodyOf(rootImporters.get(importer)))) {
+      if (posix.dirname(target) === SHARED_FOLDER && !reached.has(target)) {
+        reached.add(target);
+        visiting.push(target);
+      }
+    }
+  }
+  return [...reached];
+}
 
 /** Cuts `app` out of the repository's own root files into a folder outside it, and reads the two files back. */
 function cutOfRepository(t, app) {
@@ -66,17 +110,25 @@ function cutOfRepository(t, app) {
 
 describe("the cut of each app out of the repository's own root files", () => {
   for (const [app, settings] of Object.entries(APP_SETTINGS)) {
-    it(`keeps every importer of ${app} and no other, each as the root lockfile has it`, (t) => {
+    it(`keeps every importer of ${app} and each shared package it links, and no other, each as the root lockfile has it`, (t) => {
       const root = rootFile(LOCKFILE);
       const cut = cutOfRepository(t, app);
 
       const rootImporters = sectionEntries(root, 'importers');
       const cutImporters = sectionEntries(cut.lockfile, 'importers');
-      const expected = [...rootImporters.keys()].filter((key) => key === app || key.startsWith(`${app}/`));
-      assert.ok(expected.length > 0, `the root lockfile has no importer under ${app}`);
+      const own = [...rootImporters.keys()].filter((key) => key === app || key.startsWith(`${app}/`));
+      assert.ok(own.length > 0, `the root lockfile has no importer under ${app}`);
+      const expected = [...own, ...sharedPackagesReachedBy(app, rootImporters)];
       assert.deepEqual([...cutImporters.keys()].map((key) => rootImporterOf(app, key)).sort(), expected.sort());
       for (const [key, entry] of cutImporters) {
-        assert.equal(bodyOf(entry), bodyOf(rootImporters.get(rootImporterOf(app, key))), `importer ${key} of ${app}`);
+        const rootKey = rootImporterOf(app, key);
+        const rootBody = bodyOf(rootImporters.get(rootKey));
+        assert.equal(withoutLinks(bodyOf(entry)), withoutLinks(rootBody), `importer ${key} of ${app}`);
+        assert.deepEqual(
+          linkTargetsOf(key, bodyOf(entry)).map((target) => rootImporterOf(app, target)),
+          linkTargetsOf(rootKey, rootBody),
+          `the links of importer ${key} of ${app} lead where the root's do`,
+        );
       }
     });
 

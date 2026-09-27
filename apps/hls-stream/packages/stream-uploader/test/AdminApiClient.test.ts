@@ -176,6 +176,12 @@ describe('the admin API client, looking a draft up by ingest id', () => {
     });
   });
 
+  it('takes an audio stream as it takes a video one', async () => {
+    await withAdmin(always(200, { ...DRAFT, mediaType: 'audio' }), async ({ client }) => {
+      assert.equal((await client.lookupByIngestId(STREAM_ID))?.mediaType, 'audio');
+    });
+  });
+
   it('throws on a media type the contract does not name', async () => {
     await withAdmin(always(200, { ...DRAFT, mediaType: 'hologram' }), async ({ client }) => {
       await assert.rejects(() => client.lookupByIngestId(STREAM_ID), /not a stream/);
@@ -485,6 +491,10 @@ describe('the admin API token', () => {
       () => new AdminApiClient({ baseUrl: 'http://admin.test', token: 'a'.repeat(MIN_ADMIN_API_TOKEN_LENGTH - 1) }),
       /ADMIN_API_TOKEN/,
     );
+  });
+
+  it('puts the floor at 32 characters, as the admin and the manager do', () => {
+    assert.equal(MIN_ADMIN_API_TOKEN_LENGTH, 32);
   });
 
   it('accepts one exactly at the floor', () => {
