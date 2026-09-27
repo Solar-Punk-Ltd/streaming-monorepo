@@ -114,6 +114,7 @@ export function makeSandbox({
   envFiles = DEFAULT_ENV_FILES,
   pnpm = true,
   root: givenRoot,
+  realRsync = false,
 } = {}) {
   // `root` places the stack somewhere a test built around it, such as apps/hls-stream of a checkout
   // of the one workspace, whose root holds the lockfile the stack's own folder no longer does.
@@ -172,7 +173,14 @@ export function makeSandbox({
   }
   writeNodeStub(join(binDir, 'docker'), dockerStub(localJournal, project));
   writeStub(join(binDir, 'ssh'), sshStub(remoteHome, remoteJournal, sshJournal));
-  writeNodeStub(join(binDir, 'rsync'), rsyncStub(remoteHome));
+  // Outside the stack, which bench-on-host.sh mirrors whole.
+  const rsyncRecord = realRsync ? mkdtempSync(join(tmpdir(), 'rsync-record-')) : null;
+  if (realRsync) {
+    sandboxes.push(rsyncRecord);
+    writeStub(join(binDir, 'rsync'), realRsyncStub(remoteHome, rsyncRecord));
+  } else {
+    writeNodeStub(join(binDir, 'rsync'), rsyncStub(remoteHome));
+  }
   // The ssh stub runs the command string it is handed, which `clean.sh --all` uses to reach
   // `sudo rm -rf`. Before that change the string was discarded and no privileged command could
   // escape; now one can, and this docstring's promise that nothing here may reach a live stack is
@@ -202,6 +210,10 @@ export function makeSandbox({
     envFiles: () => readFileSync(envFileJournal(localJournal), 'utf8'),
     /** The same, for the compose call the script ran through `ssh` on the far side. */
     remoteEnvFiles: () => readFileSync(envFileJournal(remoteJournal), 'utf8'),
+    /** The arguments the rsync of a `realRsync` sandbox was given, as it was given them. */
+    rsyncArgv: () => readFileSync(join(rsyncRecord, 'argv'), 'utf8').split('\0').slice(0, -1),
+    /** The destination as the real rsync of a `realRsync` sandbox left it. */
+    rsyncAfter: rsyncRecord && join(rsyncRecord, 'after'),
     /** Whether a path exists on the stand-in remote host, relative to its home directory. */
     remoteHas: (relative) => existsSync(join(remoteHome, relative)),
     /**
@@ -393,6 +405,55 @@ const REAL_GIT = (process.env.PATH ?? '')
   .split(delimiter)
   .map((dir) => join(dir, 'git'))
   .find((path) => existsSync(path));
+
+/** The machine's own rsync, found the same way, for a sandbox made with `realRsync`. */
+export const REAL_RSYNC = (process.env.PATH ?? '')
+  .split(delimiter)
+  .map((dir) => join(dir, 'rsync'))
+  .find((path) => existsSync(path));
+
+/**
+ * An rsync that runs the real one, for a test of what --delete and a second source do to a real
+ * destination. A `host:~/` path lands under the stand-in home, and any other remote path is refused
+ * rather than sent to the same path on this machine. It keeps its arguments as given, NUL separated,
+ * in `record/argv`, and a copy of the destination as the real rsync left it in `record/after`.
+ *
+ * With RSYNC_ALONE_DEST set it first runs the same rsync into that folder, without the source that
+ * starts with RSYNC_ALONE_SKIP, which is what --delete does without the cut. It runs that one right
+ * before the real one because a stack placed at a given root holds this sandbox's own journals,
+ * which bench-on-host.sh mirrors and which change as the script goes on: back to back, both see the
+ * same tree. openrsync, macOS's rsync, starts its receiving side as `rsync --server` from PATH, which
+ * goes straight on to the real one.
+ */
+function realRsyncStub(remoteHome, record) {
+  const real = JSON.stringify(REAL_RSYNC);
+  return `#!/bin/bash
+if [ "\${1:-}" = --server ]; then exec ${real} "$@"; fi
+printf '%s\\0' "$@" > ${JSON.stringify(join(record, 'argv'))}
+args=()
+for arg in "$@"; do
+  if [[ "$arg" =~ ^[A-Za-z0-9._@-]+:~/(.*)$ ]]; then
+    args+=(${JSON.stringify(remoteHome)}/"\${BASH_REMATCH[1]}")
+  elif [[ "$arg" =~ ^[A-Za-z0-9._@-]+: ]]; then
+    echo "rsync stub: only a host:~/ path reaches the stand-in host, not $arg" >&2
+    exit 97
+  else
+    args+=("$arg")
+  fi
+done
+if [ -n "\${RSYNC_ALONE_DEST:-}" ]; then
+  alone=()
+  for arg in "\${args[@]:0:\${#args[@]}-1}"; do
+    case "$arg" in "$RSYNC_ALONE_SKIP"*) ;; *) alone+=("$arg") ;; esac
+  done
+  ${real} "\${alone[@]}" "$RSYNC_ALONE_DEST/" || exit 98
+fi
+${real} "\${args[@]}"
+status=$?
+if [ "$status" -eq 0 ]; then cp -R "\${args[\${#args[@]}-1]}" ${JSON.stringify(join(record, 'after'))}; fi
+exit "$status"
+`;
+}
 
 /**
  * Records what a script asked pnpm to do, and does none of it.
