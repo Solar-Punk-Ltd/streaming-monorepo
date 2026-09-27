@@ -1292,7 +1292,7 @@ describe('StreamOrchestrator segment loss (OBS-11)', () => {
     orchestrator.startStream('live/one', MEDIA_TYPE_VIDEO);
     orchestrator.handleSegmentLoss('live/one', 0, 1);
     await orchestrator.stopStream('live/one');
-    clock.advance(5_000);
+    await clock.advance(5_000);
     orchestrator.startStream('live/one', MEDIA_TYPE_VIDEO);
 
     assert.equal(
@@ -1329,12 +1329,12 @@ describe('StreamOrchestrator segment loss (OBS-11)', () => {
     );
   });
 
-  it('does not count a loss as stream activity, so a stream losing everything still stalls', () => {
+  it('does not count a loss as stream activity, so a stream losing everything still stalls', async () => {
     const clock = new FakeClock();
     const orchestrator = makeTestOrchestrator({ clock, segmentStallMs: 1_000 });
 
     orchestrator.startStream('live/one', MEDIA_TYPE_VIDEO);
-    clock.advance(5_000);
+    await clock.advance(5_000);
     orchestrator.handleSegmentLoss('live/one', 0, 1);
 
     assert.equal(
@@ -1459,7 +1459,7 @@ describe('StreamOrchestrator inferring a loss from a skipped index', () => {
 
       orch.startStream(STREAM, MEDIA_TYPE_VIDEO);
       orch.handleSegment(STREAM, 0, 2, Buffer.from('seg0'));
-      clock.advance(5_000);
+      await clock.advance(5_000);
       orch.handleSegmentLoss(STREAM, 1, 4);
       orch.handleSegment(STREAM, 5, 2, Buffer.from('seg5'));
       await untilUploaded(lines, 5);
@@ -1900,7 +1900,7 @@ describe('StreamOrchestrator stall signal during a drain', () => {
     // Comfortably past the stall window and inside the orphan reap window, which is a different
     // question: a replacement quiet for longer than the reap window is finalized, and this test is
     // about whether the signal can see it at all rather than about how long it is allowed to stay.
-    clock.advance(45_000);
+    await clock.advance(45_000);
 
     assert.equal(
       orch.getMsSinceStreamActivity(),
@@ -2891,7 +2891,7 @@ describe('the dating a broadcast re-anchors to across an engine restart', () => 
       }),
     );
 
-    orch.recoverStreams();
+    await orch.recoverStreams();
     orch.handleSegment(STREAM_ID, 1, 2, Buffer.from('resumed'));
     await waitFor(() => stampsOf(newestLivePlaylist(published)).length === 3, SETTLE_CEILING_MS);
 
