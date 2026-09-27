@@ -137,7 +137,7 @@ ssh -F ../rendered/vultr/ssh_config bee1
 ```
 
 There is no manager console to tunnel to here: the manager runs on the control host and this
-one only receives Bee node containers. Aliases must stay dotless — `swarm-hls-stream` resolves deploy
+one only receives Bee node containers. Aliases must stay dotless: `swarm-hls-stream` resolves deploy
 targets through `ssh -G` only for names without a dot. Logs and metrics are on the GCP monitoring
 host's Grafana exactly as for a stage host; these hosts carry `role="bee"` and
 `stage="<host key>"`, so
