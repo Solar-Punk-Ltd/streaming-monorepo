@@ -38,7 +38,15 @@ Nx adds tags of its own, such as `npm:private`. The check reads only `scope:` an
 
 ## Running it
 
-From the repository root, with Nx installed:
+From the repository root, after the install:
+
+```sh
+pnpm boundaries
+```
+
+That runs the three lines below, with the repository's exceptions file. The `boundaries` workflow runs
+it on every pull request, then plants an import from the admin backend into the manager API and
+requires the check to refuse it by name. By hand:
 
 ```sh
 pnpm exec nx show projects > /dev/null
