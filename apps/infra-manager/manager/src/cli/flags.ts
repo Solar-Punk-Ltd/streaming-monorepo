@@ -68,6 +68,6 @@ export function withUsage<T>(usage: string, read: () => T): T {
   try {
     return read();
   } catch (error) {
-    throw new Error(`${error instanceof Error ? error.message : String(error)}\n\n${usage}`);
+    throw new Error(`${error instanceof Error ? error.message : String(error)}\n\n${usage}`, { cause: error });
   }
 }

@@ -201,7 +201,7 @@ export class BeeClient {
       });
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      throw new Error(`bee request ${method} ${path} failed: ${reason}`);
+      throw new Error(`bee request ${method} ${path} failed: ${reason}`, { cause: err });
     }
 
     const text = await res.text();

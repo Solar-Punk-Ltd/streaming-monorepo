@@ -142,6 +142,7 @@ export async function startInstance(): Promise<Instance> {
     throw new Error(
       `could not create the throwaway database at ${admin} (${String(err)}).\n` +
         'Start Postgres with: pnpm database:start',
+      { cause: err },
     );
   }
 
@@ -203,7 +204,7 @@ export async function startInstance(): Promise<Instance> {
     await waitForHealth(url, child);
   } catch (err) {
     await stop();
-    throw new Error(`${String(err)}\n${log}`);
+    throw new Error(`${String(err)}\n${log}`, { cause: err });
   }
 
   return { url, databaseUrl: target, addUser, stop };

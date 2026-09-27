@@ -41,7 +41,7 @@ function readMarker(rootPath: string): RemovalMarker | null {
     before = lstatSync(path, { bigint: true });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw new Error(UNVERIFIED);
+    throw new Error(UNVERIFIED, { cause: error });
   }
   if (!before.isFile() || before.isSymbolicLink() || before.size > BigInt(MAX_MARKER_BYTES))
     throw new Error(UNVERIFIED);

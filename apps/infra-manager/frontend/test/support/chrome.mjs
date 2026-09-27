@@ -155,7 +155,7 @@ export async function clickWhenEnabled(evaluate, finder, description, timeoutMs)
   } catch (error) {
     // Which of the two it was decides where to look, and a bare timeout says
     // neither. The runner's log is often the only evidence a failure leaves.
-    throw new Error(`${error.message}. The last read saw ${seen}.`);
+    throw new Error(`${error.message}. The last read saw ${seen}.`, { cause: error });
   }
 }
 
