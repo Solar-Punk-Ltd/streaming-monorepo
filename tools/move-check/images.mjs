@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   CheckError,
   EXIT,
+  MAX_COMMAND_OUTPUT_BYTES,
   UsageError,
   countOf,
   parseOptions,
@@ -219,7 +220,7 @@ function checkImage(image, exportOf) {
   const compared = spawnSync(
     process.execPath,
     [IMAGE_CHECK, '--before', tagOf(image.name, 'before'), '--after', tagOf(image.name, 'after'), ...allows],
-    { encoding: 'utf8' },
+    { encoding: 'utf8', maxBuffer: MAX_COMMAND_OUTPUT_BYTES },
   );
   const lines = compared.stdout.trimEnd().split('\n');
   if (compared.status === EXIT.MATCH) return { outcome: 'match', lines: [`${image.name}: ${lines.at(-1)}`] };

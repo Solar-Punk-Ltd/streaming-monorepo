@@ -9,6 +9,9 @@ import { tarArchive, tarEntry } from './support/tar-builder.mjs';
 
 const IMAGES = 'images.mjs';
 
+/** Enough added files that image.mjs's report runs past the 1 MiB a child process's output gets by default. */
+const LARGE_DIFFERENCE_FILES = 20_000;
+
 const CONFIG = {
   Entrypoint: null,
   Cmd: ['node', 'app.js'],
@@ -172,6 +175,21 @@ describe('images.mjs builds each image from both commits and compares them', () 
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^demo: image: match, .*1 allowed difference$/m);
+  });
+
+  it('reports a difference too long for a default output buffer as a difference, with its whole listing', (t) => {
+    const { repo, before, after } = movedProject(t);
+    const afterFiles = { ...FILES };
+    for (let index = 0; index < LARGE_DIFFERENCE_FILES; index += 1) {
+      afterFiles[`app/generated/a-file-with-a-long-enough-name-${String(index).padStart(5, '0')}.js`] = { content: 'x\n' };
+    }
+    const docker = dockerFor(t, [{ name: 'demo', afterFiles }]);
+
+    const result = runScript(IMAGES, ['--manifest', manifestFile(t, [demoImage(before, after)])], { cwd: repo, env: docker.env });
+
+    assert.equal(result.status, 1, `${result.stdout.slice(-2000)}\n${result.stderr.slice(-2000)}`);
+    assert.doesNotMatch(result.stdout, /could not be checked/);
+    assert.match(result.stdout, /a-file-with-a-long-enough-name-19999\.js/, 'the last difference is in the listing');
   });
 
   it('reports an image that differs with what image.mjs found, and exits 1', (t) => {
