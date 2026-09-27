@@ -177,7 +177,7 @@ export async function startConnectedChequebook(
     database: options.database ?? 'chequebook_test',
     connectionTimeoutMillis: 30000,
   };
-  const schema = `t09c_${randomBytes(8).toString('hex')}`;
+  const schema = `connected_chequebook_${randomBytes(8).toString('hex')}`;
   // Registered as each resource appears, so a start that fails partway removes exactly what it made.
   const teardown: (() => Promise<void>)[] = [];
   const unwind = async (): Promise<unknown[]> => {

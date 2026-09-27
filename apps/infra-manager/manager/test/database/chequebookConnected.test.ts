@@ -405,8 +405,11 @@ describe(
     it('unwinds a start that fails partway and leaves no schema behind', async (t) => {
       const admin = adminPool(t);
       const schemas = async () =>
-        (await admin.query("SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 't09c\\_%'"))
-          .rowCount;
+        (
+          await admin.query(
+            "SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'connected\\_chequebook\\_%'",
+          )
+        ).rowCount;
       const before = await schemas();
       t.mock.method(fs, 'mkdtemp', async () => {
         throw new Error('synthetic-directory-failure');
