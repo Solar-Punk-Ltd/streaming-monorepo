@@ -56,7 +56,9 @@ export function StreamKeyChoice({ state, update }: WizardStepProps) {
                 value={state.pastedKey}
                 onChange={(event) => update({ pastedKey: event.target.value })}
                 placeholder="0x plus 64 hex characters"
-                inputProps={{ style: { fontFamily: MONO_STACK } }}
+                slotProps={{
+                  htmlInput: { style: { fontFamily: MONO_STACK } }
+                }}
               />
             ),
           },

@@ -138,7 +138,9 @@ function LinkEditor({
         error={urlProblem !== null}
         helperText={urlProblem ?? MANAGER_LINK_URL_HINT}
         onChange={(event) => edit({ ...draft, url: event.target.value })}
-        inputProps={{ ...PLAIN_TEXT_INPUT, inputMode: 'url' }}
+        slotProps={{
+          htmlInput: { ...PLAIN_TEXT_INPUT, inputMode: 'url' }
+        }}
       />
 
       <Stack spacing={0.75}>
@@ -157,7 +159,9 @@ function LinkEditor({
           error={tokenProblem !== null}
           helperText={tokenProblem ?? managerTokenHint(link.tokenStored)}
           onChange={(event) => edit({ ...draft, token: event.target.value })}
-          inputProps={{ ...PLAIN_TEXT_INPUT, autoComplete: NEW_PASSWORD }}
+          slotProps={{
+            htmlInput: { ...PLAIN_TEXT_INPUT, autoComplete: NEW_PASSWORD }
+          }}
         />
         {link.tokenStored && (
           <Box>

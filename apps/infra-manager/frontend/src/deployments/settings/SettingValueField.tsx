@@ -81,12 +81,14 @@ function TextInput({ entry, value, disabled, problem, onChange, masked }: FieldP
       error={problem !== null}
       helperText={problem ?? hint ?? undefined}
       onChange={(event) => onChange(event.target.value)}
-      inputProps={{
-        ...PLAIN_TEXT_INPUT,
-        ...(masked ? { autoComplete: MASKED_AUTOCOMPLETE } : {}),
-        'aria-label': entry.key,
-        ...(numeric ? { inputMode: entry.field?.kind === 'integer' ? 'numeric' : 'decimal' } : {}),
-        ...(entry.field?.kind === 'url' ? { inputMode: 'url' } : {}),
+      slotProps={{
+        htmlInput: {
+          ...PLAIN_TEXT_INPUT,
+          ...(masked ? { autoComplete: MASKED_AUTOCOMPLETE } : {}),
+          'aria-label': entry.key,
+          ...(numeric ? { inputMode: entry.field?.kind === 'integer' ? 'numeric' : 'decimal' } : {}),
+          ...(entry.field?.kind === 'url' ? { inputMode: 'url' } : {}),
+        }
       }}
     />
   );
@@ -115,9 +117,10 @@ function ChoiceInput({ entry, value, disabled, problem, onChange, choices }: Fie
       error={problem !== null}
       helperText={problem ?? undefined}
       onChange={(event) => onChange(event.target.value)}
-      SelectProps={{ native: true }}
-      inputProps={{ 'aria-label': entry.key, style: { fontFamily: MONO_STACK, fontSize: 13 } }}
-    >
+      slotProps={{
+        htmlInput: { 'aria-label': entry.key, style: { fontFamily: MONO_STACK, fontSize: 13 } },
+        select: { native: true }
+      }}>
       {options.map((choice) => (
         <option key={choice} value={choice}>
           {choiceLabel(choice, choices)}

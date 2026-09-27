@@ -83,18 +83,20 @@ export function SettingsEntryField({
           error={problem !== null}
           helperText={problem === null ? undefined : `This value ${problem}`}
           onChange={(event) => onChange(event.target.value)}
-          inputProps={{
-            'aria-label': entry.key,
-            spellCheck: false,
-            // A masked field is a password field to a browser, and the manager
-            // is not the place these values belong: a password manager that
-            // offers to save one puts it somewhere nobody rotated it from.
-            // Browsers ignore `off` there and fill a saved sign-in into it, so a
-            // masked field asks for a new password, which is never filled.
-            autoComplete: entry.secret && !revealed ? 'new-password' : 'off',
-            autoCapitalize: 'off',
-            autoCorrect: 'off',
-            style: { fontFamily: MONO_STACK, fontSize: 13 },
+          slotProps={{
+            htmlInput: {
+              'aria-label': entry.key,
+              spellCheck: false,
+              // A masked field is a password field to a browser, and the manager
+              // is not the place these values belong: a password manager that
+              // offers to save one puts it somewhere nobody rotated it from.
+              // Browsers ignore `off` there and fill a saved sign-in into it, so a
+              // masked field asks for a new password, which is never filled.
+              autoComplete: entry.secret && !revealed ? 'new-password' : 'off',
+              autoCapitalize: 'off',
+              autoCorrect: 'off',
+              style: { fontFamily: MONO_STACK, fontSize: 13 },
+            }
           }}
         />
         {entry.secret && (

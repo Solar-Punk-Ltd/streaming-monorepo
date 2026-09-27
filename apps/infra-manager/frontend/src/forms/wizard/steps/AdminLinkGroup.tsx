@@ -108,7 +108,9 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
                 error={urlProblem !== null}
                 helperText={urlProblem ?? 'Where the uploader reaches the web2 admin.'}
                 onChange={(event) => set({ url: event.target.value })}
-                inputProps={{ ...PLAIN_TEXT_INPUT, inputMode: 'url', 'aria-label': 'Web2 admin address' }}
+                slotProps={{
+                  htmlInput: { ...PLAIN_TEXT_INPUT, inputMode: 'url', 'aria-label': 'Web2 admin address' }
+                }}
               />
               <ChoiceGroup
                 name="wizard-admin-token"
@@ -136,7 +138,9 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
                         helperText={tokenProblem ?? undefined}
                         onChange={(event) => set({ token: event.target.value })}
                         inputRef={tokenField}
-                        inputProps={{ ...PLAIN_TEXT_INPUT, autoComplete: NEW_PASSWORD, 'aria-label': 'Web2 admin token' }}
+                        slotProps={{
+                          htmlInput: { ...PLAIN_TEXT_INPUT, autoComplete: NEW_PASSWORD, 'aria-label': 'Web2 admin token' }
+                        }}
                       />
                     ),
                   },
