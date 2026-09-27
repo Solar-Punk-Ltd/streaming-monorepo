@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import test from 'node:test';
 import { createServer } from 'vite';
-import { launchChrome, PAGE_TEXT, waitFor } from './support/chrome.mjs';
+import { launchChrome, PAGE_TEXT, reloadDocument, waitFor } from './support/chrome.mjs';
 import { endViteServer } from './support/teardown.mjs';
 import { viteCacheFor } from './support/vite-cache.mjs';
 
@@ -80,6 +80,10 @@ test('a deployment page fits its viewport and bounds a failed deploy log', async
 
   const logBox = `[...document.querySelectorAll('pre')].find(node => node.textContent.includes('ports are not available'))`;
   const loaded = () => waitFor(() => evaluate(PAGE_TEXT), text => text.includes('Last deploy failed') && text.includes('Containers'), 'the deployment page');
+  const reloaded = async () => {
+    await reloadDocument({ call, evaluate });
+    await loaded();
+  };
   await call('Page.navigate', { url: `${origin}/#/deployments/layout-stage` });
   await loaded();
 
@@ -87,8 +91,7 @@ test('a deployment page fits its viewport and bounds a failed deploy log', async
     await t.test(`${width}px keeps the page inside its own width`, async () => {
       // Each width is a fresh load, which is how a reader arrives at the page.
       await call('Emulation.setDeviceMetricsOverride', { width, height: 960, deviceScaleFactor: 1, mobile: false });
-      await call('Page.reload');
-      await loaded();
+      await reloaded();
       await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
 
       const page = await evaluate('({ inner: innerWidth, scroll: document.documentElement.scrollWidth })');

@@ -33,7 +33,13 @@ export function PassphraseChoice({ state, context, update }: WizardStepProps) {
             title: 'Generate one for this deployment',
             detail: 'Recommended when several people publish to this host.',
             extra: (
-              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                  alignItems: "center",
+                  flexWrap: "wrap"
+                }}>
                 <Typography
                   variant="caption"
                   sx={{ fontFamily: MONO_STACK, wordBreak: 'break-all', flex: 1 }}
@@ -60,7 +66,9 @@ export function PassphraseChoice({ state, context, update }: WizardStepProps) {
                 value={state.ownPassphrase}
                 onChange={(event) => update({ ownPassphrase: event.target.value })}
                 placeholder="my-stage-passphrase-2026"
-                inputProps={{ style: { fontFamily: MONO_STACK } }}
+                slotProps={{
+                  htmlInput: { style: { fontFamily: MONO_STACK } }
+                }}
               />
             ),
           },

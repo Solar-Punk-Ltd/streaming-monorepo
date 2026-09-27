@@ -22,7 +22,7 @@ ARG VITE_APP_RAW_TOPIC=swarm-stream
 ARG VITE_EXPOSE_PLAYER=
 # ⛔ Empty by default, meaning segments come from the viewer's bee gateway. Set to `weeb3`, the bundle
 # fetches segment bytes from a Swarm node running in the viewer's own tab instead. Experimental: it
-# pulls in a few megabytes of WebAssembly (3.87 MB at the pinned @lat-murmeldjur/weeb_3 0.0.341001),
+# pulls in a few megabytes of WebAssembly (3.32 MB at the pinned @lat-murmeldjur/weeb_3 0.0.350001),
 # as a lazy chunk no gateway-backed viewer ever downloads. The feed and the manifests still travel
 # through the gateway either way.
 ARG VITE_BROWSER_FETCH_BACKEND=
@@ -32,7 +32,7 @@ ENV VITE_READER_BEE_URL=$VITE_READER_BEE_URL \
     VITE_EXPOSE_PLAYER=$VITE_EXPOSE_PLAYER \
     VITE_BROWSER_FETCH_BACKEND=$VITE_BROWSER_FETCH_BACKEND
 
-RUN corepack enable && corepack prepare pnpm@11.11.0+sha512.4463f65fd80ed80d69bc1d4bf163ee94f605c7380fc318bb5b2ebe15f8cd12d49c51a4d59e951b401e764d3b6ca751cbf51bc50ed7001a6bcb4935e684c34882 --activate
+RUN corepack enable && corepack prepare pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c --activate
 
 # Workspace lockfile + just the package manifests first, for layer caching. The trailing "..." in
 # the filter below means "and its workspace dependencies", so the shared manifest has to be here

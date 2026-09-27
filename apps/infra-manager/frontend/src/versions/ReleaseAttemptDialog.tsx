@@ -99,9 +99,12 @@ export function ReleaseAttemptDialog({
             {shown.reason && (
               <Typography
                 variant="body2"
-                color="text.secondary"
-                sx={{ fontFamily: MONO_STACK, fontSize: 12, whiteSpace: 'pre-wrap' }}
-              >
+                sx={{
+                  color: "text.secondary",
+                  fontFamily: MONO_STACK,
+                  fontSize: 12,
+                  whiteSpace: 'pre-wrap'
+                }}>
                 {shown.reason}
               </Typography>
             )}

@@ -13,7 +13,13 @@ export function SettingDescription({ settingKey, description }: { settingKey: st
   const preview = descriptionPreview(description);
   return (
     <Box sx={{ mb: 1 }}>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          display: 'block',
+          overflowWrap: 'anywhere'
+        }}>
         {expanded || !preview.cut ? description : preview.text}
       </Typography>
       {preview.cut && (

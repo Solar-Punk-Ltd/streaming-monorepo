@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import type { Stream } from '@streaming-monorepo/web2-admin-common';
 

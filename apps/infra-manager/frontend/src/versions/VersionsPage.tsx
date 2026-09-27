@@ -148,7 +148,9 @@ export function VersionsPage() {
   return (
     <BuildSlotProvider value={buildSlot}>
       <Stack spacing={2}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           Each version is its own checkout of the streaming stack, built once on
           this host. Deployments keep running the version they were deployed from
           until they are deployed again. Adding a version runs that branch's
@@ -191,7 +193,11 @@ export function VersionsPage() {
           )}
 
           {!versions && !versionsError && (
-            <Stack alignItems="center" sx={{ py: 5 }}>
+            <Stack
+              sx={{
+                alignItems: "center",
+                py: 5
+              }}>
               <CircularProgress size={24} />
             </Stack>
           )}

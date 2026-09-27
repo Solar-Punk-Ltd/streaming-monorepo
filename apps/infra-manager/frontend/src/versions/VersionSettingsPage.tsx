@@ -163,15 +163,29 @@ export function VersionSettingsPage({ id }: { id: number }) {
 
   return (
     <Stack spacing={2}>
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        sx={{
+          alignItems: "center",
+          flexWrap: "wrap"
+        }}>
         <Button size="small" onClick={() => navigate(routes.versions)}>
           Back to versions
         </Button>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           Settings for {version?.name ?? `version ${id}`}
         </Typography>
         {settings && (
-          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: MONO_STACK }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              fontFamily: MONO_STACK
+            }}>
             revision {settings.generation}
             {settings.buildId ? `, build ${settings.buildId.slice(0, 7)}` : ''}
           </Typography>
@@ -181,7 +195,9 @@ export function VersionSettingsPage({ id }: { id: number }) {
         )}
       </Stack>
 
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" sx={{
+        color: "text.secondary"
+      }}>
         {WHAT_APPLIES_WHEN}
       </Typography>
 
@@ -221,7 +237,11 @@ export function VersionSettingsPage({ id }: { id: number }) {
       )}
 
       {loading && (
-        <Stack alignItems="center" sx={{ py: 5 }}>
+        <Stack
+          sx={{
+            alignItems: "center",
+            py: 5
+          }}>
           <CircularProgress size={24} />
         </Stack>
       )}
@@ -240,7 +260,14 @@ export function VersionSettingsPage({ id }: { id: number }) {
 
       {settings && (
         <SectionCard>
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+          <Stack
+            direction="row"
+            spacing={1}
+            useFlexGap
+            sx={{
+              flexWrap: "wrap",
+              alignItems: "center"
+            }}>
             <Button
               variant="contained"
               size="small"
@@ -267,7 +294,7 @@ export function VersionSettingsPage({ id }: { id: number }) {
             <Box sx={{ flex: '1 1 auto' }} />
             <Typography
               variant="caption"
-              color={refusedKeys.length > 0 ? 'error.main' : 'text.secondary'}
+              sx={{ color: refusedKeys.length > 0 ? 'error.main' : 'text.secondary' }}
             >
               {footerNote(edits, refusedKeys)}
             </Typography>

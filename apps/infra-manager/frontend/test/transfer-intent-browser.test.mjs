@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { test } from 'node:test';
-import { clickWhenEnabled, createProtocolClient, launchChrome, protocolTimeoutFor, throttleCpu, waitFor } from './support/chrome.mjs';
+import { clickWhenEnabled, createProtocolClient, launchChrome, protocolTimeoutFor, reloadDocument, throttleCpu, waitFor } from './support/chrome.mjs';
 import { json, launchTransferFixture } from './support/transfer-fixture.mjs';
 
 /** This suite reads no manager data. Its owned API answers 404 so nothing depends on a listener it did not start. */
@@ -87,7 +87,7 @@ test('two real tabs cannot replace each other’s confirmed intent after reload 
   assert.equal(confirmed[0].intent.requestId, confirmed[1].intent.requestId);
   const originalId = confirmed[0].intent.requestId;
   await first.evaluate('store.close()');
-  await first.call('Page.reload');
+  await reloadDocument(first);
   await runButtonWired(first, 'the run button to be wired after the reload');
   await first.evaluate(setup);
   assert.equal((await first.evaluate('store.current(input.accountId, input.profileInstanceId)')).requestId, originalId);

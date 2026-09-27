@@ -64,7 +64,9 @@ export function ReviewStep({ state, context }: WizardStepProps) {
     {
       key: 'Components',
       value: (
-        <Stack direction="row" spacing={0.5} flexWrap="wrap">
+        <Stack direction="row" spacing={0.5} sx={{
+          flexWrap: "wrap"
+        }}>
           {chosenComponents(state).map((service) => (
             <ServiceChip key={service} service={service} />
           ))}
@@ -168,7 +170,9 @@ export function ReviewStep({ state, context }: WizardStepProps) {
         <Typography variant="h6" component="h3">
           Review
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           Check it, then deploy.
         </Typography>
       </Box>
@@ -221,7 +225,9 @@ function NameSummary({ state }: { state: WizardStepProps['state'] }) {
     <span>
       <Mono>{state.name}</Mono>
       {suffix && (
-        <Typography component="span" variant="caption" color="text.secondary">
+        <Typography component="span" variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {' '}
           ({suffix})
         </Typography>

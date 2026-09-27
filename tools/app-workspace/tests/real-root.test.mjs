@@ -23,8 +23,14 @@ function rootFile(name) {
   return readFileSync(path, 'utf8');
 }
 
-/** The entries of one top-level section of a lockfile, by key, each the entry's own text, key line included. */
-function sectionEntries(text, section) {
+/** The document pnpm 12 writes above the lockfile proper, both marker lines included, or '' when there is none. */
+function packageManagerDocumentOf(text) {
+  return text.startsWith('---\n') ? text.slice(0, text.indexOf('\n---\n', 3) + '\n---\n'.length) : '';
+}
+
+/** The entries of one top-level section of the lockfile proper, by key, each the entry's own text, key line included. */
+function sectionEntries(lockfile, section) {
+  const text = lockfile.slice(packageManagerDocumentOf(lockfile).length);
   const start = text.indexOf(`\n${section}:\n`);
   assert.notEqual(start, -1, `the lockfile has no ${section} section`);
   const body = text.slice(start + section.length + 3);
@@ -85,6 +91,14 @@ describe("the cut of each app out of the repository's own root files", () => {
           assert.equal(entry, rootEntries.get(key), `${section} entry ${key} of ${app}`);
         }
       }
+    });
+
+    it(`starts ${app}'s lockfile with pnpm's own document, as the root lockfile has it`, (t) => {
+      const root = rootFile(LOCKFILE);
+      const cut = cutOfRepository(t, app);
+
+      assert.notEqual(packageManagerDocumentOf(root), '', 'the root lockfile has no document recording pnpm');
+      assert.equal(packageManagerDocumentOf(cut.lockfile), packageManagerDocumentOf(root));
     });
 
     it(`gives ${app} its own injection setting, ${settings.injectWorkspacePackages}, in both files`, (t) => {
