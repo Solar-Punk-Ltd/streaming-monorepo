@@ -54,3 +54,5 @@ export {
   portExposureProblem,
 } from './portPolicy.js';
 export { addressOfStreamKey } from './streamKey.js';
+// The SRT line a broadcaster sends to, built as every app builds it.
+export { buildSrtPublishUrl } from '@streaming-monorepo/contracts';

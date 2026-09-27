@@ -1,4 +1,5 @@
 import { Bee, BeeResponseError, FeedIndex, Topic } from '@ethersphere/bee-js';
+import { viewerCatalogEntrySchema } from '@swarm-hls-stream/shared';
 
 import { BeePublisher, BeePublisherPool, shortBatchId, SINGLE_PUBLISHER } from '../../src/libs/BeePublisherPool.js';
 import { Clock, systemClock } from '../../src/libs/Clock.js';
@@ -189,11 +190,16 @@ export function makeFakeCatalog(overrides: Record<string, unknown> = {}): Stream
  * A catalog that appends every published entry, for asserting that a VOD actually landed.
  *
  * Answers `true` for the same reason the default above does: it keeps no previous state, so every
- * write it takes is a first one.
+ * write it takes is a first one. It refuses an entry the viewer would refuse, so an entry that
+ * landed here is one the viewer reads.
  */
 export function makeRecordingCatalog(published: unknown[]): StreamCatalog {
   return makeFakeCatalog({
     addStream: async (entry: unknown) => {
+      const read = viewerCatalogEntrySchema.safeParse(entry);
+      if (!read.success) {
+        throw new Error(`the viewer would refuse this entry: ${JSON.stringify(read.error.issues)}`);
+      }
       published.push(entry);
       return true;
     },

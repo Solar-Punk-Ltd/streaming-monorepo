@@ -15,8 +15,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { SRS_SERVICE } from '@streaming-infra-manager/common';
+
 import type { Profile } from './types';
-import { hostFor } from './urls';
+import { hostFor, srtPublishUrl } from './urls';
 
 const SERVER_HOST = 'manager.example';
 
@@ -65,5 +67,23 @@ describe('the host a deployment is dialled at', () => {
 
   it('has no host of its own to offer when the profile carries neither', () => {
     assert.equal(hostFor(profile({}), SERVER_HOST), SERVER_HOST);
+  });
+});
+
+describe('the SRT line a broadcaster points at an SRS deployment', () => {
+  const srs = profile({
+    host: 'stream.example',
+    containers: [{ service: SRS_SERVICE, ports: { SRS_SRT_PORT: 10011 } }] as unknown as Profile['containers'],
+  });
+
+  it('names the default application and stream, with no key', () => {
+    assert.equal(srtPublishUrl(srs, SERVER_HOST), 'srt://stream.example:10011?streamid=#!::r=live/stream,m=publish');
+  });
+
+  it('appends the passphrase as it is', () => {
+    assert.equal(
+      srtPublishUrl(srs, SERVER_HOST, ' secret '),
+      'srt://stream.example:10011?streamid=#!::r=live/stream,m=publish&passphrase=secret',
+    );
   });
 });
