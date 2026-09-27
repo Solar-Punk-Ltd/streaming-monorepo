@@ -4,7 +4,7 @@ import { join, sep } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { commitAll, makeTempDir, runScript, writeFiles } from './support/fixtures.mjs';
-import { expectedCut, manifestOf, realAppFiles } from './support/workspace.mjs';
+import { expectedCut, manifest, manifestOf, realAppFiles } from './support/workspace.mjs';
 
 const IN_COPY = 'in-copy.mjs';
 
@@ -107,6 +107,23 @@ describe('in-copy.mjs', () => {
 
     assert.equal(result.status, 3);
     assert.equal(existsSync(seen.cwd), false);
+  });
+
+  it('runs the command in a plain copy when the root holds no lockfile, since there the apps keep their own', (t) => {
+    const root = makeTempDir(t);
+    writeFiles(root, {
+      'package.json': manifest('fixture-root'),
+      'apps/web2-admin/package.json': manifest('beta'),
+      'apps/web2-admin/pnpm-lock.yaml': "lockfileVersion: '9.0'\n",
+      'apps/web2-admin/pnpm-workspace.yaml': 'packages:\n  - backend\n',
+    });
+    commitAll(root);
+
+    const { result, seen } = listIn(t, root);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(Object.keys(seen.files).sort(), ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml']);
+    assert.equal(seen.files['pnpm-lock.yaml'], "lockfileVersion: '9.0'\n");
   });
 
   it('runs nothing when the cut refuses, and exits 125', (t) => {
