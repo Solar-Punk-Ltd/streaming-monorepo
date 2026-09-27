@@ -162,12 +162,15 @@ back VOID on a timer drift of 4.15x, and the repeat a minute later read 1.00x an
 at a load of 4.6 on 48 cores: a cold Chrome after the image rebuild, not the gate and not the host.
 
 The client image now records what it was built from and serves it at `/build-stamp.json`:
-`git rev-parse HEAD:packages/client`, the same for `packages/shared`, the head commit, whether the
-build came from uncommitted sources, and the two Vite knobs that decide what the bundle does.
-`deploy.sh` mints those through the compose override file, and `bench-on-host.sh` carries the same
-two tree hashes into the container as `E2E_EXPECT_CLIENT_TREE` and `E2E_EXPECT_SHARED_TREE`, because
-its rsync excludes `.git` and a harness on the host has no history to ask. A run from a checkout
-falls back to reading git itself.
+`git rev-parse HEAD:packages/client`, the same for `packages/shared`, the same for the
+`packages/contracts` at the workspace root that shared re-exports, the head commit, whether the build
+came from uncommitted sources, and the two Vite knobs that decide what the bundle does. `deploy.sh`
+mints those through the compose override file, and `bench-on-host.sh` carries the same three tree
+hashes into the container as `E2E_EXPECT_CLIENT_TREE`, `E2E_EXPECT_SHARED_TREE` and
+`E2E_EXPECT_CONTRACTS_TREE`, because its rsync excludes `.git` and a harness on the host has no
+history to ask. A run from a checkout falls back to reading git itself. A stack that keeps its own
+lockfile has no workspace root, and a commit without the contracts package has no tree for it, so
+both sides leave that one hash empty.
 
 ⚠️ **It compares what the client was built from, not what survived the build.** A bundle is minified
 and tree-shaken, so grepping it for a symbol the way the uploader gate greps `dist` would answer
