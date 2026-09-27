@@ -2,7 +2,7 @@
  * The per-deployment stack settings columns of migration 037, against a real
  * PostgreSQL.
  *
- * `pnpm test:database` in manager/, or on its own with T11_TEST_PG_PORT set.
+ * `pnpm test:database` in manager/, or on its own with DEPLOYMENT_SETTINGS_TEST_PG_PORT set.
  *
  * Three things only the database can show: that the deploy reads the plain and
  * the secret column as one set, that neither column travels with a row, which
@@ -21,12 +21,12 @@ import { STANDARD_GROUP_KIND } from '@streaming-infra-manager/common';
 import { DeploymentGroupRepository, type SharedProfileParams } from '../../src/domain/DeploymentGroupRepository.js';
 import { type InitialStackSettings, NO_STACK_SETTINGS, ProfileRepository } from '../../src/domain/ProfileRepository.js';
 
-const port = Number(process.env.T11_TEST_PG_PORT);
+const port = Number(process.env.DEPLOYMENT_SETTINGS_TEST_PG_PORT);
 const connection = {
   host: '127.0.0.1',
   port,
   user: 'postgres',
-  database: 't11_test',
+  database: 'deployment_settings_test',
   connectionTimeoutMillis: 10000,
 };
 

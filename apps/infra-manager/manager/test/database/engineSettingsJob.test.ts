@@ -13,8 +13,14 @@ import { deployOwnerOf, type ClaimedDeploy } from '../../src/domain/versions/bui
 import type { EngineSettings } from '@streaming-infra-manager/common';
 import type { Profile } from '../../src/types/index.js';
 
-const port = Number(process.env.T11_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't11_test', connectionTimeoutMillis: 5000 };
+const port = Number(process.env.DEPLOYMENT_SETTINGS_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'deployment_settings_test',
+  connectionTimeoutMillis: 5000,
+};
 
 describe(
   'engine settings writes own the exact active job in isolated PostgreSQL',

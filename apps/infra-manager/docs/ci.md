@@ -85,9 +85,9 @@ runner: diagnose it, never retry it.
 ### database
 
 The 42 SQL suites in `manager/test/database/` (2026-09-26), each against the
-task database it owns, through `manager/test/database/run-all.mjs`.
+suite database it owns, through `manager/test/database/run-all.mjs`.
 
-Every one of those files gates itself on a task port variable and skips
+Every one of those files gates itself on a port variable and skips
 silently when the variable is unset. Nothing set them before this job existed,
 so a green check said nothing about the database ownership, admission and
 recovery rules they pin. The runner closes that. Before it starts anything it
@@ -106,11 +106,11 @@ zero. The rules that read those markers live in
 
 Disposable is checked rather than asked for: with the nine connections open,
 a database whose public schema already holds `_migrations` or `profiles` stops
-the run by name. A task database is created empty and every suite makes a
+the run by name. A suite database is created empty and every suite makes a
 schema of its own, so those tables mean the port leads to somebody's
 deployment.
 
-The nine databases and their variables live in one table, `TASK_DATABASES` in
+The nine databases and their variables live in one table, `SUITE_DATABASES` in
 that file. That table is the list. This page does not repeat it.
 
 A Postgres 16 service container sits beside the runner with trust
@@ -148,7 +148,7 @@ all of them, through `frontend/test/run-all.mjs`.
 That runner is the browser counterpart of the SQL one and judges a run by the
 same shared rules: a skipped test, a suite that skipped itself whole, a run of
 no tests, a missing summary, a signal or a non-zero exit each stop it in
-words. Checked by running it with `T09_TEST_PG_PORT` unset, which is exactly
+words. Checked by running it with `CHEQUEBOOK_TEST_PG_PORT` unset, which is exactly
 the hole it exists to close: on 2026-09-10, before the suites below were
 added, 163 passed, 3 skipped, refused, exit 1.
 
@@ -245,10 +245,10 @@ when nothing executable is there, and the runner does the same again from its
 own side, so a missing browser is a failed check and never a passed one. Every
 launch also prints the browser it got and where it found it.
 
-It carries the same Postgres service as the database job with `t09_test` alone,
+It carries the same Postgres service as the database job with `chequebook_test` alone,
 because `transfer-connected-browser.test.mjs` signs into a real manager over a
 real journal with the browser as the only client. That suite skips itself when
-`T09_TEST_PG_PORT` is unset, which is the one silent-skip hole left in this
+`CHEQUEBOOK_TEST_PG_PORT` is unset, which is the one silent-skip hole left in this
 workflow: it is closed by the job setting the variable and creating the
 database in a step that fails loudly, and by nothing else. Anyone removing
 either would turn three passing cases into three invisible ones.
@@ -618,23 +618,23 @@ The SQL suites, on a disposable PostgreSQL of their own:
 docker run --rm -d --name t20-pg -e POSTGRES_HOST_AUTH_METHOD=trust \
   -p 127.0.0.1:55432:5432 \
   postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
-for name in t01_test t04a_test t04b_test t06_test t08_test t09_test t10_test t11_test t12_test; do
+for name in engine_config_test build_references_test stack_versions_test port_reservations_test version_approval_test chequebook_test profile_removal_test deployment_settings_test deploy_phases_test; do
   docker exec t20-pg createdb -U postgres "$name"
 done
-export T01_TEST_PG_PORT=55432 T04A_TEST_PG_PORT=55432 T04B_TEST_PG_PORT=55432 \
-  T06_TEST_PG_PORT=55432 T08_TEST_PG_PORT=55432 T09_TEST_PG_PORT=55432 \
-  T10_TEST_PG_PORT=55432 T11_TEST_PG_PORT=55432 T12_TEST_PG_PORT=55432
+export ENGINE_CONFIG_TEST_PG_PORT=55432 BUILD_REFERENCES_TEST_PG_PORT=55432 STACK_VERSIONS_TEST_PG_PORT=55432 \
+  PORT_RESERVATIONS_TEST_PG_PORT=55432 VERSION_APPROVAL_TEST_PG_PORT=55432 CHEQUEBOOK_TEST_PG_PORT=55432 \
+  PROFILE_REMOVAL_TEST_PG_PORT=55432 DEPLOYMENT_SETTINGS_TEST_PG_PORT=55432 DEPLOY_PHASES_TEST_PG_PORT=55432
 pnpm --filter @streaming-infra-manager/api test:database
 docker rm -f t20-pg
 ```
 
 The browser suites, with the same container up so the connected one runs too.
-Without `T09_TEST_PG_PORT` the run ends in a refusal rather than in a pass,
+Without `CHEQUEBOOK_TEST_PG_PORT` the run ends in a refusal rather than in a pass,
 which is the point of it:
 
 ```sh
 export CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-export T09_TEST_PG_PORT=55432
+export CHEQUEBOOK_TEST_PG_PORT=55432
 pnpm --filter @streaming-infra-manager/frontend-prototype test:browser
 ```
 

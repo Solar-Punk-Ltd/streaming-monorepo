@@ -6,7 +6,7 @@
  * nothing between it and the database is a mock. What is synthetic is the Bee,
  * the chain and the database.
  *
- * It needs a disposable PostgreSQL on T09_TEST_PG_PORT. Without it every case
+ * It needs a disposable PostgreSQL on CHEQUEBOOK_TEST_PG_PORT. Without it every case
  * skips out loud rather than passing quietly.
  */
 import assert from 'node:assert/strict';
@@ -28,10 +28,10 @@ import {
 import { runEveryStep } from './support/teardown.mjs';
 import { launchViteFor } from './support/transfer-fixture.mjs';
 
-const pgPort = Number(process.env.T09_TEST_PG_PORT);
+const pgPort = Number(process.env.CHEQUEBOOK_TEST_PG_PORT);
 const HAS_DATABASE = Number.isInteger(pgPort) && pgPort > 0 && pgPort < 65536;
 const SKIP_REASON =
-  'T09_TEST_PG_PORT is not set, so no disposable PostgreSQL is available for the connected browser suite';
+  'CHEQUEBOOK_TEST_PG_PORT is not set, so no disposable PostgreSQL is available for the connected browser suite';
 const serverPath = fileURLToPath(new URL('../../manager/test/support/connectedChequebookServer.ts', import.meta.url));
 const managerDirectory = fileURLToPath(new URL('../../manager/', import.meta.url));
 const POLLED_SENTENCE = "The manager checks the chain for this transaction's receipt about every 20 seconds until";
@@ -41,7 +41,7 @@ async function connectedManager(t) {
     cwd: managerDirectory,
     silent: true,
     execArgv: ['--import', 'tsx', '--conditions=development'],
-    env: { ...process.env, T09_TEST_PG_PORT: String(pgPort) },
+    env: { ...process.env, CHEQUEBOOK_TEST_PG_PORT: String(pgPort) },
   });
   let output = '';
   for (const stream of [child.stdout, child.stderr])

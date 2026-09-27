@@ -12,8 +12,14 @@ import { StackVersionService } from '../../src/domain/versions/StackVersionServi
 import { FakeScriptSpawner } from '../support/FakeScriptSpawner.js';
 import { scratchVersionsRoot } from '../support/stackFixtures.js';
 
-const port = Number(process.env.T08_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't08_test', connectionTimeoutMillis: 5000 };
+const port = Number(process.env.VERSION_APPROVAL_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'version_approval_test',
+  connectionTimeoutMillis: 5000,
+};
 const COMMIT = 'a'.repeat(40);
 const BUILD = COMMIT;
 const REBUILD = `${COMMIT}-r1`;

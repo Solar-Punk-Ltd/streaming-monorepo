@@ -281,7 +281,7 @@ same-site gates into a real PostgreSQL journal, out over the owned Docker
 transport to a synthetic Bee, and reads the outcome back.
 `frontend/test/transfer-connected-browser.test.mjs` does the same with the
 browser as the only client, against that manager run as a forked process. Both
-need a disposable PostgreSQL on `T09_TEST_PG_PORT` and skip out loud without it,
+need a disposable PostgreSQL on `CHEQUEBOOK_TEST_PG_PORT` and skip out loud without it,
 and the browser runner treats a silent skip as a failure.
 
 **The rest of the suites.** Four database files cover this feature:

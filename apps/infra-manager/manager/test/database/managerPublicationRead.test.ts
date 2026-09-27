@@ -13,8 +13,14 @@ import pg, { type Pool } from 'pg';
 
 import { readManagerPublication } from '../../src/domain/versions/readManagerPublication.js';
 
-const port = Number(process.env.T04B_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't04b_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.STACK_VERSIONS_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'stack_versions_test',
+  connectionTimeoutMillis: 10000,
+};
 
 describe(
   'read-only manager publication admission before migrations',

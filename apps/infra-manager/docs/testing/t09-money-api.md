@@ -184,8 +184,8 @@ Run it with the disposable database:
 
 ```
 docker run --rm -d --name t09-pg -e POSTGRES_HOST_AUTH_METHOD=trust -p 127.0.0.1:55436:5432 postgres:16-alpine
-docker exec t09-pg psql -U postgres -c 'CREATE DATABASE t09_test'
-cd manager && T09_TEST_PG_PORT=55436 DATABASE_URL=postgres://postgres@127.0.0.1:55436/t09_test \
+docker exec t09-pg psql -U postgres -c 'CREATE DATABASE chequebook_test'
+cd manager && CHEQUEBOOK_TEST_PG_PORT=55436 DATABASE_URL=postgres://postgres@127.0.0.1:55436/chequebook_test \
   ./node_modules/.bin/tsx --conditions=development --test 'test/database/chequebook*.test.ts'
 docker stop t09-pg
 ```

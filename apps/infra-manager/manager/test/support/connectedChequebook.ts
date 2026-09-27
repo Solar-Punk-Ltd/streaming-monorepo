@@ -174,7 +174,7 @@ export async function startConnectedChequebook(
     host: '127.0.0.1',
     port: options.pgPort,
     user: 'postgres',
-    database: options.database ?? 't09_test',
+    database: options.database ?? 'chequebook_test',
     connectionTimeoutMillis: 30000,
   };
   const schema = `t09c_${randomBytes(8).toString('hex')}`;

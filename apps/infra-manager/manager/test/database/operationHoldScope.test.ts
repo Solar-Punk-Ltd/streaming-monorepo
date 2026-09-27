@@ -7,8 +7,14 @@ import { ProfileRepository } from '../../src/domain/ProfileRepository.js';
 import { PostgresPortReservationRepository } from '../../src/domain/ports/PostgresPortReservationRepository.js';
 import type { Profile } from '../../src/types/index.js';
 
-const port = Number(process.env.T01_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't01_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.ENGINE_CONFIG_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'engine_config_test',
+  connectionTimeoutMillis: 10000,
+};
 const table = [{ name: 'SRS_SRT_PORT', defaultPort: 10001, slotBase: 10001, protocol: 'udp' as const, service: 'srs' }];
 
 describe(

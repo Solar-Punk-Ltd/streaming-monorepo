@@ -11,8 +11,14 @@ import { PostgresChequebookTargetOwnership } from '../../src/domain/chequebook/P
 import { operationCandidate, profileInstanceId } from '../support/chequebookOperations.js';
 import { ChequebookSubmission } from '../../src/domain/chequebook/ChequebookSubmission.js';
 
-const port = Number(process.env.T09_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't09_test', connectionTimeoutMillis: 30000 };
+const port = Number(process.env.CHEQUEBOOK_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'chequebook_test',
+  connectionTimeoutMillis: 30000,
+};
 const proof: FrozenChequebookTarget = {
   version: 1,
   profile: {
@@ -91,7 +97,7 @@ describe(
     async function waitForLockWait() {
       for (let attempt = 0; attempt < 100; attempt++) {
         const blocked = await admin.query(
-          `SELECT 1 FROM pg_stat_activity WHERE datname='t09_test'
+          `SELECT 1 FROM pg_stat_activity WHERE datname='chequebook_test'
         AND wait_event_type='Lock' AND application_name=$1`,
           [schema],
         );

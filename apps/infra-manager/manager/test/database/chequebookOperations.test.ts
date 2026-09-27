@@ -31,9 +31,15 @@ import {
   SyntheticTargetChequebookRepository,
 } from '../support/syntheticChequebookTargets.js';
 
-const port = Number(process.env.T09_TEST_PG_PORT);
+const port = Number(process.env.CHEQUEBOOK_TEST_PG_PORT);
 // Only a loopback port is configurable. This suite cannot select a deployment database.
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't09_test', connectionTimeoutMillis: 30000 };
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'chequebook_test',
+  connectionTimeoutMillis: 30000,
+};
 
 describe(
   'chequebook operations in isolated PostgreSQL schemas',
