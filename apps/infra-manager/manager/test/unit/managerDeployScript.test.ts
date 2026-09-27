@@ -289,19 +289,36 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     pin: string | null;
   }
 
-  /** A manager checkout pushed to an origin on this disk, and stand-ins for the two commands that reach a host. */
-  function checkout(root: string): { work: string; environment: NodeJS.ProcessEnv } {
+  interface Checkout {
+    /** The repository root, as the monorepo's is. */
+    work: string;
+    /** apps/infra-manager, where the deploy runs from. */
+    manager: string;
+    /** The last commit that changed apps/hls-stream. */
+    stackCommit: string;
+    environment: NodeJS.ProcessEnv;
+  }
+
+  /**
+   * The monorepo in miniature, the manager and the stack side by side, pushed to
+   * an origin on this disk, with stand-ins for the two commands that reach a host.
+   */
+  function checkout(root: string): Checkout {
     const origin = join(root, 'origin.git');
     git(root, 'init', '-q', '--bare', origin);
     const work = join(root, 'work');
-    mkdirSync(join(work, 'deploy'), { recursive: true });
-    mkdirSync(join(work, 'manager'));
-    copyFileSync(DEPLOY_SCRIPT, join(work, 'deploy', 'deploy.sh'));
-    writeFileSync(join(work, 'manager', '.env'), 'POSTGRES_PASSWORD=synthetic-not-a-secret\n');
-    writeFileSync(join(work, '.gitignore'), `manager/.env\nmanager/${STACK_COMMIT_FILE}\n`);
+    const manager = join(work, 'apps', 'infra-manager');
+    mkdirSync(join(manager, 'deploy'), { recursive: true });
+    mkdirSync(join(manager, 'manager'));
+    mkdirSync(join(work, 'apps', 'hls-stream'));
+    copyFileSync(DEPLOY_SCRIPT, join(manager, 'deploy', 'deploy.sh'));
+    writeFileSync(join(manager, 'manager', '.env'), 'POSTGRES_PASSWORD=synthetic-not-a-secret\n');
+    writeFileSync(join(work, 'apps', 'hls-stream', 'README.md'), 'the stack\n');
+    writeFileSync(join(work, '.gitignore'), `apps/infra-manager/manager/.env\napps/infra-manager/manager/${STACK_COMMIT_FILE}\n`);
     git(work, 'init', '-q', '-b', 'main');
     git(work, 'add', '.');
-    git(work, 'commit', '-qm', 'a manager');
+    git(work, 'commit', '-qm', 'the manager and the stack');
+    const stackCommit = git(work, 'rev-parse', 'HEAD');
     git(work, 'remote', 'add', 'origin', origin);
     git(work, 'push', '-q', 'origin', 'main');
 
@@ -309,12 +326,21 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     mkdirSync(bin);
     writeFileSync(join(bin, 'rsync'), `#!/bin/sh\ntouch '${join(root, 'rsync-ran')}'\n`, { mode: 0o755 });
     writeFileSync(join(bin, 'ssh'), '#!/bin/sh\ncat > /dev/null\n', { mode: 0o755 });
-    return { work, environment: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` } };
+    return { work, manager, stackCommit, environment: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` } };
   }
 
-  function deploy(root: string, work: string, environment: NodeJS.ProcessEnv): Deployed {
-    const run = spawnSync('bash', [join(work, 'deploy', 'deploy.sh'), 'fixture-host'], { env: environment, encoding: 'utf8' });
-    const pin = join(work, 'manager', STACK_COMMIT_FILE);
+  /** Commits one file and pushes, and answers the commit. */
+  function change(work: string, path: string, text: string): string {
+    writeFileSync(join(work, path), text);
+    git(work, 'add', path);
+    git(work, 'commit', '-qm', `change ${path}`);
+    git(work, 'push', '-q', 'origin', 'main');
+    return git(work, 'rev-parse', 'HEAD');
+  }
+
+  function deploy(root: string, manager: string, environment: NodeJS.ProcessEnv): Deployed {
+    const run = spawnSync('bash', [join(manager, 'deploy', 'deploy.sh'), 'fixture-host'], { env: environment, encoding: 'utf8' });
+    const pin = join(manager, 'manager', STACK_COMMIT_FILE);
     return {
       status: run.status,
       stderr: run.stderr,
@@ -323,16 +349,27 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     };
   }
 
-  it('pins the commit being deployed, which holds the manager and the stack it bundles', () => {
+  /**
+   * The bundled stack is apps/hls-stream of the deployed commit, and the last
+   * commit that changed that folder holds the same tree. Pinned to that one, a
+   * deploy that changes only the manager finds the build the host already has,
+   * so it neither rebuilds the stack nor clears its Tested mark.
+   */
+  it('pins the last commit that changed apps/hls-stream, not a later one that changed only the manager', () => {
     const root = mkdtempSync(join(tmpdir(), 'manager-deploy-pin-'));
     try {
-      const { work, environment } = checkout(root);
+      const { work, manager, stackCommit, environment } = checkout(root);
+      const managerOnly = change(work, 'apps/infra-manager/NOTES.md', 'a manager change\n');
 
-      const deployed = deploy(root, work, environment);
+      const deployed = deploy(root, manager, environment);
 
       assert.equal(deployed.status, 0, deployed.stderr);
-      assert.equal(deployed.pin, git(work, 'rev-parse', 'HEAD'));
+      assert.notEqual(stackCommit, managerOnly);
+      assert.equal(deployed.pin, stackCommit, 'the stack did not change, so neither does its pin');
       assert.equal(deployed.shipped, true);
+
+      const stackChange = change(work, 'apps/hls-stream/README.md', 'the stack, changed\n');
+      assert.equal(deploy(root, manager, environment).pin, stackChange, 'a change to the stack moves the pin');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -346,13 +383,13 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
   it('refuses a commit no remote branch holds, before anything reaches the host, and deploys it once pushed', () => {
     const root = mkdtempSync(join(tmpdir(), 'manager-deploy-unpushed-'));
     try {
-      const { work, environment } = checkout(root);
+      const { work, manager, stackCommit, environment } = checkout(root);
       writeFileSync(join(work, 'CHANGES.md'), 'a change only this machine has\n');
       git(work, 'add', 'CHANGES.md');
       git(work, 'commit', '-qm', 'not pushed yet');
       const commit = git(work, 'rev-parse', 'HEAD');
 
-      const refused = deploy(root, work, environment);
+      const refused = deploy(root, manager, environment);
 
       assert.equal(refused.status, 1, refused.stderr);
       assert.match(refused.stderr, new RegExp(`no remote branch holds ${commit}`));
@@ -360,10 +397,10 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
       assert.equal(refused.shipped, false, 'nothing was copied to the host');
 
       git(work, 'push', '-q', 'origin', 'main');
-      const deployed = deploy(root, work, environment);
+      const deployed = deploy(root, manager, environment);
 
       assert.equal(deployed.status, 0, deployed.stderr);
-      assert.equal(deployed.pin, commit);
+      assert.equal(deployed.pin, stackCommit, 'the change was outside the stack, so the pin stays');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
