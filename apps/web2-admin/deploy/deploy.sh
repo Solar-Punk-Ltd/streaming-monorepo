@@ -61,8 +61,8 @@ usage() {
     cat <<'USAGE'
 Usage: deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path=<dir>] [service...]
 
-  deploy.sh --host=admin-host                          Deploy the default profile (backend/.env)
-  deploy.sh --host=admin-host --profile=brand-a        Deploy profile brand-a (backend/.env.brand-a)
+  deploy.sh --host=admin-host                          Deploy the default profile (apps/web2-admin/backend/.env)
+  deploy.sh --host=admin-host --profile=brand-a        Deploy profile brand-a (apps/web2-admin/backend/.env.brand-a)
   deploy.sh --host=admin-host --profile=brand-a --portSlot=3
                                                        Same, console on 127.0.0.1:11039 on the host
   deploy.sh --host=admin-host --profile=brand-a api    Rebuild and restart the API only
@@ -72,9 +72,9 @@ Flags (each also accepts a separate value, as in --host admin-host):
   --host=<target>       Required. An ssh alias from ~/.ssh/config, user@host, or
                         "localhost" for this machine. There is no default host.
   --profile=<name>      Profile name, ^[a-z0-9][a-z0-9-]{0,30}$. Default: "default".
-                        Selects backend/.env.<name> (plain .env for
-                        "default"), which must exist, and the compose project
-                        web2-admin-<name>.
+                        Selects apps/web2-admin/backend/.env.<name> (plain
+                        .env for "default"), which must exist, and the
+                        compose project web2-admin-<name>.
   --portSlot=<N> (1-99) Publishes the console on 11009 + N*10 on the host's
                         loopback. When set, the slot is authoritative:
                         WEB2_ADMIN_WEB_PORT in the env file is ignored.
@@ -253,11 +253,12 @@ else
     ENV_FILE="$ENV_DIR/.env.$PROFILE"
 fi
 ENV_FILE_FROM_ROOT="$APP_DIR_FROM_ROOT/$ENV_FILE"
+ENV_SAMPLE_FROM_ROOT="$APP_DIR_FROM_ROOT/$ENV_DIR/.env.sample"
 OLD_ENV_FILE="$OLD_ENV_DIR/${ENV_FILE##*/}"
 
 # --- The env file -------------------------------------------------------------
 
-log "profile $PROFILE, compose project $PROJECT, env file $ENV_FILE"
+log "profile $PROFILE, compose project $PROJECT, env file $ENV_FILE_FROM_ROOT"
 
 # A profile always means its own file. Falling back to .env would bring up a
 # second stack with the first one's signing key and database password.
@@ -270,7 +271,7 @@ if [ ! -f "$ENV_FILE" ]; then
         echo "[deploy] Do not make a new one from the sample instead. A new POSTGRES_PASSWORD locks the API out of the profile's existing database, and a new FEED_PRIVATE_KEY makes every publish fail. Nothing was deployed." >&2
         exit 1
     fi
-    die "$ENV_FILE not found. Copy $ENV_DIR/.env.sample to $ENV_FILE and fill in the required values."
+    die "$ENV_FILE_FROM_ROOT not found. Copy $ENV_SAMPLE_FROM_ROOT to $ENV_FILE_FROM_ROOT and fill in the required values."
 fi
 
 # The value compose will see for KEY: the last assignment wins, a carriage
@@ -300,7 +301,7 @@ lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 # Every problem is reported before stopping, so one run lists all of them.
 PROBLEMS=0
 problem() {
-    echo "[deploy] ERROR: $ENV_FILE: $*" >&2
+    echo "[deploy] ERROR: $ENV_FILE_FROM_ROOT: $*" >&2
     PROBLEMS=$((PROBLEMS + 1))
 }
 
@@ -390,18 +391,18 @@ if [ -n "$ENV_WEB_PORT" ]; then
 fi
 
 if [ "$PROBLEMS" -gt 0 ]; then
-    die "$PROBLEMS problem(s) in $ENV_FILE. Nothing was deployed. See $ENV_DIR/.env.sample for what each key means."
+    die "$PROBLEMS problem(s) in $ENV_FILE_FROM_ROOT. Nothing was deployed. See $ENV_SAMPLE_FROM_ROOT for what each key means."
 fi
 
 if [ -n "$WEB_PORT" ]; then
     if [ -n "$ENV_WEB_PORT" ] && [ "$ENV_WEB_PORT" != "$WEB_PORT" ]; then
-        log "WEB2_ADMIN_WEB_PORT=$ENV_WEB_PORT in $ENV_FILE is ignored: port slot $PORT_SLOT decides the port"
+        log "WEB2_ADMIN_WEB_PORT=$ENV_WEB_PORT in $ENV_FILE_FROM_ROOT is ignored: port slot $PORT_SLOT decides the port"
     fi
     log "console port $WEB_PORT (port slot $PORT_SLOT)"
 else
     if [ -n "$ENV_WEB_PORT" ]; then
         WEB_PORT="$ENV_WEB_PORT"
-        log "console port $WEB_PORT (WEB2_ADMIN_WEB_PORT in $ENV_FILE)"
+        log "console port $WEB_PORT (WEB2_ADMIN_WEB_PORT in $ENV_FILE_FROM_ROOT)"
     else
         WEB_PORT="$DEFAULT_WEB_PORT"
         log "console port $WEB_PORT (the default: no port slot and no WEB2_ADMIN_WEB_PORT)"
@@ -439,7 +440,7 @@ if git rev-parse --verify -q HEAD >/dev/null 2>&1; then
     fi
 fi
 printf '%s\n' "$COMMIT" >deploy/.deployed-commit
-log "commit $COMMIT (written to deploy/.deployed-commit)"
+log "commit $COMMIT (written to $APP_DIR_FROM_ROOT/deploy/.deployed-commit)"
 
 # --- What runs on the host ----------------------------------------------------
 
@@ -611,8 +612,8 @@ USER_ADD="WEB2_ADMIN_ENV_FILE=../$ENV_FILE docker compose -p $PROJECT -f $COMPOS
 log "done: $PROJECT at commit $COMMIT"
 if [ "$LOCAL" = true ]; then
     log "open: http://127.0.0.1:$WEB_PORT"
-    log "first user, once per profile (prompts for the password):"
-    log "  $USER_ADD"
+    log "first user, once per profile, from the repository root (prompts for the password):"
+    log "  cd $APP_DIR_FROM_ROOT && $USER_ADD"
 else
     log "tunnel: ssh -L $WEB_PORT:localhost:$WEB_PORT $HOST"
     log "then open: http://localhost:$WEB_PORT"
