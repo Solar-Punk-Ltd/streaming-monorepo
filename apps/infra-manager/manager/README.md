@@ -42,8 +42,8 @@ No Docker healthcheck reads `/health`, as of 2026-09-23 at `87673c99`: the
 `api` service in `docker-compose.yml` has none and neither Dockerfile declares
 one. Its readers are `manager:upgrade`, which `deploy/deploy.sh` runs and which
 waits for the new api to answer it, the integration suite, whose preflight asks
-it and whose CI job in `.github/workflows/docker-checks.yml` waits for it
-first, and the curl in the quick start above.
+it and whose CI job in the root workflow `.github/workflows/infra-manager-docker.yml`
+waits for it first, and the curl in the quick start above.
 
 ### The first user
 

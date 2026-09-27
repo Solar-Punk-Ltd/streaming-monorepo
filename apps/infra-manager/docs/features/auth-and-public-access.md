@@ -130,7 +130,8 @@ CREATE INDEX sessions_user_idx ON sessions (user_id);
   `POST /auth/login`. No Docker healthcheck reads `/health`: the `api` service in
   `manager/docker-compose.yml` has none and neither Dockerfile declares one. `manager:upgrade`
   waits for the new api to answer it during a deploy, the integration suite asks it in its
-  preflight and its CI job in `.github/workflows/docker-checks.yml` waits for it first, and the
+  preflight and its CI job in the root workflow `.github/workflows/infra-manager-docker.yml` waits
+  for it first, and the
   quick start in `manager/README.md` curls it. Everything else, including both Server-Sent
   Events streams, `/config`, `/metrics` and `/services`, requires a session. `EventSource` sends
   cookies on same-origin requests, so the live updates keep working unchanged.
