@@ -1,65 +1,6 @@
-import { mediaTypeSchema } from '@swarm-hls-stream/shared';
+import { viewerCatalogSchema } from '@swarm-hls-stream/shared';
 
-import { Rendition, Stream } from '@/types/stream';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-function isOptionalFiniteNumber(value: unknown): value is number | undefined {
-  return value === undefined || isFiniteNumber(value);
-}
-
-function isRendition(value: unknown): value is Rendition {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.name === 'string' &&
-    typeof value.topic === 'string' &&
-    isFiniteNumber(value.width) &&
-    isFiniteNumber(value.height) &&
-    isFiniteNumber(value.bandwidth) &&
-    isFiniteNumber(value.avgBandwidth) &&
-    isOptionalFiniteNumber(value.index) &&
-    isOptionalFiniteNumber(value.duration)
-  );
-}
-
-function isStream(value: unknown): value is Stream {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  const hasUsableRenditions =
-    value.renditions === undefined || (Array.isArray(value.renditions) && value.renditions.every(isRendition));
-  const hasUsableDuration =
-    value.duration === undefined || typeof value.duration === 'string' || isFiniteNumber(value.duration);
-  const hasUsableScheduledStart =
-    value.scheduledStartTime === undefined ||
-    value.scheduledStartTime === null ||
-    typeof value.scheduledStartTime === 'string' ||
-    isFiniteNumber(value.scheduledStartTime);
-
-  return (
-    typeof value.owner === 'string' &&
-    typeof value.topic === 'string' &&
-    typeof value.title === 'string' &&
-    isFiniteNumber(value.timestamp) &&
-    mediaTypeSchema.safeParse(value.mediatype).success &&
-    (value.state === undefined || typeof value.state === 'string') &&
-    hasUsableDuration &&
-    isOptionalFiniteNumber(value.index) &&
-    (value.thumbnail === undefined || typeof value.thumbnail === 'string') &&
-    hasUsableScheduledStart &&
-    hasUsableRenditions
-  );
-}
+import { Stream } from '@/types/stream';
 
 /**
  * One catalog poll, and what the page is holding when it lands.
@@ -127,8 +68,9 @@ interface CatalogPoll {
  * comparison alone would refuse it for ever.
  */
 export function nextStreamList({ held, heldSlot, fetched, fetchedSlot, isSameGateway }: CatalogPoll): Stream[] | null {
-  const isValidCatalog = Array.isArray(fetched) && fetched.every(isStream);
-  const streams = isValidCatalog ? fetched : [];
+  const isValidCatalog = viewerCatalogSchema.safeParse(fetched).success;
+  // The list as fetched rather than as parsed, which is the same entries with nothing dropped.
+  const streams = isValidCatalog ? (fetched as Stream[]) : [];
 
   if (!isSameGateway) {
     return streams;
