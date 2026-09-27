@@ -32,7 +32,7 @@ packages:
   - server
   - common
 
-# Off for the workspace. Each app's cut carries its own.
+# The app's own setting, from tools/app-workspace/apps.mjs.
 injectWorkspacePackages: true
 
 allowBuilds:
