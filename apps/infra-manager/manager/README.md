@@ -810,8 +810,9 @@ changes nothing until `update` is called.
 
 The **bundled** version is the stack commit the manager pins, and the host
 fetches and builds it there like any other version. The pin is
-`manager/.stack-commit`, which `deploy/deploy.sh` writes with the commit being
-deployed, so the manager and the stack it bundles come from one monorepo commit.
+`manager/.stack-commit`, which `deploy/deploy.sh` writes with the last commit
+that changed `apps/hls-stream`, so it holds the same stack as the deployed commit
+and a deploy that changes only the manager rebuilds nothing.
 The deploy refuses a commit that no remote branch holds, because the host
 fetches the pin from GitHub. The API reads it at boot and builds
 that commit when it has no complete build of it, and **Update** on the bundled

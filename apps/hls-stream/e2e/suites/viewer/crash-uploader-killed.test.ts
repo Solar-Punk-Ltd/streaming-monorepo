@@ -168,7 +168,7 @@ describe('V7 — a viewer watching when the uploader is killed', { skip }, () =>
     assert.equal(untrue, null, `the client told this viewer something untrue about their picture: ${untrue}`);
     console.log(
       `  observed, not asserted: the client ${
-        recovery.explainedTheFreeze ? 'explained the freeze' : 'said NOTHING while the picture was stopped (#100)'
+        recovery.explainedTheFreeze ? 'explained the freeze' : 'said NOTHING while the picture was stopped'
       }`,
     );
   });
