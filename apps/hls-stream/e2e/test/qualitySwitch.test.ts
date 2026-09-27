@@ -22,6 +22,11 @@ interface SamplePlan {
   bandwidthKbps?: number | null;
 }
 
+/** `count` samples on one rung, each its own object so no two share state. */
+function onRung(count: number, rung: number | null): SamplePlan[] {
+  return Array.from({ length: count }, () => ({ rung }));
+}
+
 /** A run of samples one second apart, described by what the player chose in each. */
 function watched(plans: readonly SamplePlan[]): ViewerSample[] {
   let currentTime = 0;
@@ -203,10 +208,10 @@ describe('when a step down counts', () => {
   it('counts a step down that lands while the cap is on', () => {
     const timeline = judgeQualitySwitch(
       watched([
-        ...Array<SamplePlan>(10).fill({ rung: RUNG_BEFORE }),
-        ...Array<SamplePlan>(5).fill({ rung: RUNG_BEFORE }),
-        ...Array<SamplePlan>(5).fill({ rung: 360 }),
-        ...Array<SamplePlan>(10).fill({ rung: 360 }),
+        ...onRung(10, RUNG_BEFORE),
+        ...onRung(5, RUNG_BEFORE),
+        ...onRung(5, 360),
+        ...onRung(10, 360),
       ]),
       WINDOW,
     );
@@ -217,11 +222,11 @@ describe('when a step down counts', () => {
   it('does not count a step down that lands after the cap has been lifted', () => {
     const timeline = judgeQualitySwitch(
       watched([
-        ...Array<SamplePlan>(10).fill({ rung: RUNG_BEFORE }),
+        ...onRung(10, RUNG_BEFORE),
         // Rode the top rung through the whole cap, which is the failure being asked about.
-        ...Array<SamplePlan>(10).fill({ rung: RUNG_BEFORE }),
+        ...onRung(10, RUNG_BEFORE),
         // And came down one sample after the link recovered, which helps nobody.
-        ...Array<SamplePlan>(10).fill({ rung: 360 }),
+        ...onRung(10, 360),
       ]),
       WINDOW,
     );
@@ -234,10 +239,10 @@ describe('when a step down counts', () => {
   it('still counts a climb back at any point after the cap comes off', () => {
     const timeline = judgeQualitySwitch(
       watched([
-        ...Array<SamplePlan>(10).fill({ rung: RUNG_BEFORE }),
-        ...Array<SamplePlan>(10).fill({ rung: 360 }),
-        ...Array<SamplePlan>(8).fill({ rung: 360 }),
-        ...Array<SamplePlan>(2).fill({ rung: RUNG_BEFORE }),
+        ...onRung(10, RUNG_BEFORE),
+        ...onRung(10, 360),
+        ...onRung(8, 360),
+        ...onRung(2, RUNG_BEFORE),
       ]),
       WINDOW,
     );
