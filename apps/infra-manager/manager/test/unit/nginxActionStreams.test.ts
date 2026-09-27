@@ -92,13 +92,26 @@ describe('the dev server proxy in front of the same routes', () => {
     options: string;
   }
 
-  /** The proxy map of vite.config.ts, in the order vite consults it. */
+  /**
+   * The proxy map of vite.config.ts, in the order vite consults it. An entry's options run to the end of its
+   * line, or to the matching brace when they are an object the formatter spread over several lines.
+   */
   function proxyEntries(): ProxyEntry[] {
     const config = readFileSync(VITE_CONFIG, 'utf8');
-    return [...config.matchAll(/^\s*'(\^?\/[^']*)':\s*(.+?),?\s*$/gm)].map((entry) => ({
+    return [...config.matchAll(/^\s*'(\^?\/[^']*)':\s*/gm)].map((entry) => ({
       key: entry[1]!,
-      options: entry[2]!,
+      options: optionsFrom(config, entry.index + entry[0].length),
     }));
+  }
+
+  function optionsFrom(config: string, start: number): string {
+    if (config[start] !== '{') return config.slice(start, config.indexOf('\n', start)).replace(/,\s*$/, '');
+    let depth = 0;
+    for (let at = start; at < config.length; at++) {
+      if (config[at] === '{') depth++;
+      if (config[at] === '}' && --depth === 0) return config.slice(start, at + 1);
+    }
+    return config.slice(start);
   }
 
   /**
