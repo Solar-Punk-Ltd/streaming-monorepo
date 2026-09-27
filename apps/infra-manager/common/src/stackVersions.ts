@@ -119,7 +119,6 @@ export interface StackContract {
   allocationProblem: string | null;
 }
 
-/** One row of the Versions page, as `GET /versions` answers it. */
 /**
  * Where a version's stack comes from: the repository it is fetched from, and
  * the folder of that repository its current build took the stack from.
@@ -131,6 +130,7 @@ export interface StackVersionSource {
   folder: string | null;
 }
 
+/** One row of the Versions page, as `GET /versions` answers it. */
 export interface StackVersion {
   id: number;
   name: string;
