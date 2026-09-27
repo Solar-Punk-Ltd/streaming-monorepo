@@ -13,7 +13,7 @@ This supersedes the older d30db41 and 0d0a825 checkpoints. Do not restart at sli
 
 - Branch: `fix/t06-port-reservations`.
 - Clean head: `b8071a1bb6b62a6a467ff72a7e932bffcc238b05`.
-- Worktree: `/private/tmp/claude-501/-Users-dev-Documents-git-SolarPunk-streaming-infra-manager/7246732f-5c45-474a-86a0-3098d5031e9c/scratchpad/wt-t06`.
+- Worktree: a temporary worktree of the manager checkout, kept outside the repository.
 - Base retains the existing T04a/T05a dependency merge. Do not rebase it.
 - Main checkout remains `fix/t05a-shared-image-guard` at `3220114`. Its tracked files are clean.
 - the owner authorized local implementation and reviewer agents in this conversation. Tests first, separate RED and GREEN commits, one logical fix per commit. Each task row has its own branch. PR bodies stay in `prs/`.
