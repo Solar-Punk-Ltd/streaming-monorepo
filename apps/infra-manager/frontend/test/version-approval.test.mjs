@@ -15,6 +15,8 @@ const makeVersion = (overrides = {}) => ({
   status: 'ready', isDefault: true, tested: false, testedInvalidatedAt: LOST_AT,
   builtAt: '2026-09-08T09:00:00.000Z', lastError: null, contract: null,
   deployments: 0, layout: 'builds', buildId: `${COMMIT}-r1`, previousBuildId: COMMIT,
+  // Every version the API answers with names where its stack came from, and the card reads it.
+  source: { url: 'https://github.com/Solar-Punk-Ltd/streaming-monorepo.git', folder: 'apps/hls-stream' },
   ...overrides,
 });
 
