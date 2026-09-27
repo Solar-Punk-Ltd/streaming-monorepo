@@ -95,15 +95,22 @@ export const BUILD_SCRIPT = resolve(
 /** How much of the build log is kept as a failed version's reason. */
 const LOG_TAIL_BYTES = 4096;
 
-/** The image and the package manager the build script builds with. The script's test keeps the two in step. */
+/**
+ * The image the build script builds with, and the pnpm it falls back to for a
+ * stack that names none in packageManager. The script's test keeps both in step.
+ */
 export const BUILD_IMAGE = 'node:22-alpine';
 export const PINNED_PNPM = 'pnpm@9.12.0';
-const BUILD_TOOLCHAIN = `${BUILD_IMAGE} ${PINNED_PNPM}`;
 
 /** What the build script leaves in the staging directory: the commit it exported. */
 export const STACK_COMMIT_FILE = '.stack-commit';
 /** And the folder of the repository it took the stack from, `.` for the whole tree. */
 export const STACK_FOLDER_FILE = '.stack-folder';
+/** And the image and the pnpm it built with, the stack's own packageManager or the pin. */
+export const STACK_TOOLCHAIN_FILE = '.stack-toolchain';
+
+/** What `.stack-toolchain` holds: the build image, a space, and a pnpm version. */
+const TOOLCHAIN_RE = new RegExp(`^${BUILD_IMAGE} pnpm@\\d+\\.\\d+\\.\\d+$`);
 
 /** The name the build script gives its container, so boot can tell a live builder from a dead one. */
 export const BUILD_CONTAINER_PREFIX = 'stack-build-';
@@ -737,6 +744,7 @@ export class StackVersionService {
       throw new Error(`${STACK_COMMIT_FILE} in ${staging} does not hold a commit`);
     }
     const builtFrom = { url: source.url, folder: await stagingFolder(staging, source) };
+    const toolchain = await stagingToolchain(staging);
     const contract = readStackContract(staging);
 
     // The bundled row carries no root until its first build publishes one, and
@@ -764,7 +772,7 @@ export class StackVersionService {
       commit,
       buildId,
       builtAt: new Date().toISOString(),
-      toolchain: BUILD_TOOLCHAIN,
+      toolchain,
       inputGeneration: inputs.generation,
       inputHashes: inputs.hashes,
     };
@@ -1050,6 +1058,25 @@ async function stagingFolder(staging: string, source: StackSource): Promise<stri
   throw new Error(
     `${STACK_FOLDER_FILE} in ${staging} ${named}, and a build from ${source.url} takes the stack from ${source.folder} or the whole tree`,
   );
+}
+
+/** A toolchain's words, short and plain enough to repeat back in a reason. */
+const TOOLCHAIN_WORDS_RE = /^[\w.:@+ -]{1,80}$/;
+
+/**
+ * The image and the pnpm the build script wrote down that it built with, which
+ * the manifest records. The script works the pnpm out before the build runs and
+ * writes it only after, so the build cannot change it.
+ */
+async function stagingToolchain(staging: string): Promise<string> {
+  const path = join(staging, STACK_TOOLCHAIN_FILE);
+  if (!existsSync(path)) {
+    throw new Error(`the build left no ${STACK_TOOLCHAIN_FILE} in ${staging}, so the pnpm it ran is unknown`);
+  }
+  const toolchain = (await readFile(path, 'utf8')).trim();
+  if (TOOLCHAIN_RE.test(toolchain)) return toolchain;
+  const named = TOOLCHAIN_WORDS_RE.test(toolchain) ? `names ${toolchain}` : 'names nothing readable';
+  throw new Error(`${STACK_TOOLCHAIN_FILE} in ${staging} ${named}, which is no ${BUILD_IMAGE} and pnpm this manager builds with`);
 }
 
 /** The keys the build's .env.sample assigns, which the base env must carry. */

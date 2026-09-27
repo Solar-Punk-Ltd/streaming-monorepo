@@ -87,6 +87,19 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# A checkout of the one workspace holds the stack's lockfile at its root, so the mirror is sent the
+# stack's own pair cut out of the root's, from a folder under $TMPDIR that on_exit removes. Both stay
+# empty for a stack that keeps its own lockfile. See _workspace.sh.
+# shellcheck source=_workspace.sh
+source "$(dirname "${BASH_SOURCE[0]}")/_workspace.sh"
+WORKSPACE_ROOT=""
+STACK_APP=""
+if [ ! -f "${REPO_ROOT}/pnpm-lock.yaml" ]; then
+  WORKSPACE_ROOT="$(one_workspace_root "${REPO_ROOT}")"
+  STACK_APP="${REPO_ROOT#"${WORKSPACE_ROOT}"/}"
+fi
+CUT_DIR=""
+
 PROFILE="latbench"
 PORT_SLOT="7"
 TARGET="manager-host"
@@ -260,6 +273,9 @@ stop_harness_container() {
 on_exit() {
   local rc=$?
   stop_harness_container
+  if [ -n "${CUT_DIR}" ]; then
+    rm -rf "${CUT_DIR}"
+  fi
   exit "${rc}"
 }
 
@@ -394,17 +410,26 @@ DOCKER_RUN="docker run --rm --name ${HARNESS_CONTAINER} ${NETWORK_ARGS} \
   -w /repo"
 
 if [ "${SETUP}" -eq 1 ]; then
+# The cut pair is a second source of the one rsync, so it lands where the stack's own lockfile went
+# and --delete keeps both.
+CUT_SOURCE=()
+if [ -n "${WORKSPACE_ROOT}" ]; then
+  CUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/stack-cut.XXXXXX")"
+  cut_stack_pair "${WORKSPACE_ROOT}" "${STACK_APP}" "${CUT_DIR}/stack"
+  CUT_SOURCE=("${CUT_DIR}/stack/")
+fi
 echo "bench-on-host: syncing source to ${TARGET}:${REMOTE_DIR}"
 # `node_modules` is excluded because the container installs into the bind mount and the two trees are
 # built for different platforms. `.git` is excluded because nothing here reads history. Agent worktrees
-# under `.claude/worktrees` are whole second copies of this tree, so they are excluded too.
+# under `.claude/worktrees` are whole second copies of this tree, so they are excluded too. The empty
+# cut source expands to nothing under `set -u` in bash 3.2 through the `+` form.
 rsync -az --delete \
   --exclude '.git' \
   --exclude '.claude/worktrees' \
   --exclude 'node_modules' \
   --exclude 'reports' \
   --exclude 'docs/bench' \
-  "${REPO_ROOT}/" "${TARGET}:${REMOTE_DIR}/"
+  "${REPO_ROOT}/" ${CUT_SOURCE[@]+"${CUT_SOURCE[@]}"} "${TARGET}:${REMOTE_DIR}/"
 
 echo "bench-on-host: building ${IMAGE} on ${TARGET}"
 ssh "${SSH_OPTS[@]}" "${TARGET}" "cd ${REMOTE_DIR} && docker build -q -f ${DOCKERFILE} -t ${IMAGE} e2e/"

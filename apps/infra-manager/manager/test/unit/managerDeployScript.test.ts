@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -19,6 +19,40 @@ import { MONOREPO_STACK_SOURCE } from '../../src/domain/versions/stackSources.js
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DEPLOY_SCRIPT = join(here, '..', '..', '..', 'deploy', 'deploy.sh');
+/** The repository's own cut tool, which a checkout of the one workspace carries at tools/app-workspace. */
+const CUT_TOOL = join(here, '..', '..', '..', '..', '..', 'tools', 'app-workspace');
+
+/** The pnpm a checkout of the one workspace names at its root and in each app alike. */
+const ONE_PNPM = 'pnpm@11.11.0+sha512.0123abcd';
+
+/** The root lockfile of a one-workspace checkout whose manager has one project and one package. */
+const ONE_WORKSPACE_LOCKFILE = `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  apps/infra-manager: {}
+
+  apps/infra-manager/manager:
+    dependencies:
+      qs:
+        specifier: 6.16.0
+        version: 6.16.0
+
+packages:
+
+  qs@6.16.0:
+    resolution: {integrity: sha512-qs}
+
+snapshots:
+
+  qs@6.16.0: {}
+`;
 
 const script = readFileSync(DEPLOY_SCRIPT, 'utf8');
 
@@ -324,7 +358,46 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     ].join('\n'), { mode: 0o755 });
   }
 
-  function checkout(root: string, { lsRemote = 0 }: { lsRemote?: number } = {}): Checkout {
+  /**
+   * What a checkout of the one workspace holds at its root: the lockfile, the workspace file, the
+   * pnpm the apps name, and the cut tool, which the manager's own pair is cut out of the root's with.
+   */
+  function seedOneWorkspace(work: string): void {
+    const manifest = (name: string): string => `${JSON.stringify({ name, private: true, packageManager: ONE_PNPM })}\n`;
+    writeFileSync(join(work, 'package.json'), manifest('monorepo'));
+    writeFileSync(join(work, 'pnpm-lock.yaml'), ONE_WORKSPACE_LOCKFILE);
+    writeFileSync(join(work, 'pnpm-workspace.yaml'), 'packages:\n  - apps/infra-manager\n  - apps/infra-manager/manager\n');
+    writeFileSync(join(work, 'apps', 'infra-manager', 'package.json'), manifest('streaming-infra-manager'));
+    writeFileSync(join(work, 'apps', 'infra-manager', 'manager', 'package.json'), manifest('@streaming-infra-manager/api'));
+    cpSync(CUT_TOOL, join(work, 'tools', 'app-workspace'), { recursive: true });
+  }
+
+  /** An rsync that writes down its arguments and keeps a copy of every source folder but the manager's own. */
+  function recordingRsync(root: string): void {
+    writeFileSync(join(root, 'bin', 'rsync'), [
+      '#!/bin/sh',
+      `touch '${join(root, 'rsync-ran')}'`,
+      `printf '%s\\n' "$@" > '${join(root, 'rsync-args')}'`,
+      'for arg in "$@"; do',
+      `  case "$arg" in */) [ "$arg" != ./ ] && [ -d "$arg" ] && cp -R "$arg" '${join(root, 'rsync-extra-source')}' ;; esac`,
+      'done',
+      'exit 0',
+      '',
+    ].join('\n'), { mode: 0o755 });
+  }
+
+  /** The folders the rsync was given to send, in order: every word that is no option, no option's value and no destination. */
+  function rsyncSources(root: string): string[] {
+    const args = readFileSync(join(root, 'rsync-args'), 'utf8').trim().split('\n');
+    const sources: string[] = [];
+    for (let index = 0; index < args.length - 1; index += 1) {
+      if (args[index] === '--exclude') index += 1;
+      else if (!args[index].startsWith('-')) sources.push(args[index]);
+    }
+    return sources;
+  }
+
+  function checkout(root: string, { lsRemote = 0, oneWorkspace = false }: { lsRemote?: number; oneWorkspace?: boolean } = {}): Checkout {
     const origin = join(root, 'origin.git');
     git(root, 'init', '-q', '--bare', origin);
     const work = join(root, 'work');
@@ -332,6 +405,7 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     mkdirSync(join(manager, 'deploy'), { recursive: true });
     mkdirSync(join(manager, 'manager'));
     mkdirSync(join(work, 'apps', 'hls-stream'));
+    if (oneWorkspace) seedOneWorkspace(work);
     copyFileSync(DEPLOY_SCRIPT, join(manager, 'deploy', 'deploy.sh'));
     writeFileSync(join(manager, 'manager', '.env'), 'POSTGRES_PASSWORD=synthetic-not-a-secret\n');
     writeFileSync(join(work, 'apps', 'hls-stream', 'README.md'), 'the stack\n');
@@ -370,6 +444,57 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
       pin: existsSync(pin) ? readFileSync(pin, 'utf8').trim() : null,
     };
   }
+
+  /**
+   * The manager's images build on the host from the folder this ships, and read the manager's
+   * lockfile and workspace file at its root. A checkout of the one workspace holds them only at
+   * the repository root, so the deploy cuts the manager's own pair out of the root's into a folder
+   * outside the checkout, gives it to the one rsync as a second source, and removes it afterwards.
+   */
+  it("ships the manager's pair cut out of the root's from a checkout of the one workspace, and leaves nothing behind", () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-cut-'));
+    try {
+      const { work, manager, environment } = checkout(root, { oneWorkspace: true });
+      recordingRsync(root);
+      const tmp = join(root, 'tmp');
+      mkdirSync(tmp);
+
+      const deployed = deploy(root, manager, { ...environment, TMPDIR: tmp });
+
+      assert.equal(deployed.status, 0, deployed.stderr);
+      const sources = rsyncSources(root);
+      assert.equal(sources.length, 2, `the manager's folder and the cut: ${sources.join(' ')}`);
+      assert.equal(sources[0], './');
+      const expected = join(root, 'expected');
+      execFileSync(process.execPath, [join(CUT_TOOL, 'cut.mjs'), '--root', work, '--app', 'apps/infra-manager', '--out', expected]);
+      for (const file of ['pnpm-lock.yaml', 'pnpm-workspace.yaml']) {
+        assert.equal(
+          readFileSync(join(root, 'rsync-extra-source', file), 'utf8'),
+          readFileSync(join(expected, file), 'utf8'),
+          `the rsync carried the cut ${file}`,
+        );
+      }
+      assert.deepEqual(readdirSync(tmp), [], 'the cut folder is gone');
+      assert.equal(existsSync(join(manager, 'pnpm-lock.yaml')), false, 'nothing was written into the checkout');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("ships a manager that keeps its own pair as before, from its folder alone", () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-own-pair-'));
+    try {
+      const { manager, environment } = checkout(root);
+      recordingRsync(root);
+
+      const deployed = deploy(root, manager, environment);
+
+      assert.equal(deployed.status, 0, deployed.stderr);
+      assert.deepEqual(rsyncSources(root), ['./']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 
   /**
    * The bundled stack is apps/hls-stream of the deployed commit, and the last
