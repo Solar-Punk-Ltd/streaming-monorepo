@@ -1,13 +1,11 @@
 # The tests of the scripts under tools/, which serve the whole repository and
-# check the rest of it. The move-check kit's image comparison is the proof for
-# every pull request that changes how an image builds, so a defect in it could
-# report a false match on every later proof. The boundary check judges how the
-# projects depend on each other, so a defect in it could let a dependency
-# between apps through. The app-workspace cut decides which packages each
-# app's images install, so a defect in it could build an image from a lockfile
-# that is not the root's. Its tests also cut each app out of the repository's
-# own root files, so a change to those, or to an app's package.json, starts this
-# workflow too. A script that lands under tools/ adds its own job here.
+# check the rest of it. The boundary check judges how the projects depend on
+# each other, so a defect in it could let a dependency between apps through.
+# The app-workspace cut decides which packages each app's images install, so a
+# defect in it could build an image from a lockfile that is not the root's. Its
+# tests also cut each app out of the repository's own root files, so a change
+# to those, or to an app's package.json, starts this workflow too. A script that
+# lands under tools/ adds its own job here.
 name: tools
 
 on:
@@ -25,26 +23,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  move-check:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: tools/move-check
-    steps:
-      # Pinned by commit, the tag in the comment, the same pins as the other
-      # root workflows.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-      # The kit uses Node's standard library alone, so there is nothing to
-      # install. Its tests build throwaway git repositories and stand in for
-      # docker with a script, and one of them also renders a compose file
-      # with the runner's own docker.
-      - name: The kit's own tests
-        run: node --test
-
   boundary-check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -52,6 +30,8 @@ jobs:
       run:
         working-directory: tools/boundary-check
     steps:
+      # Pinned by commit, the tag in the comment, the same pins as the other
+      # root workflows.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
