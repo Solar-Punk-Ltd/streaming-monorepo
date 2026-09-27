@@ -340,6 +340,13 @@ describe('the diff facts read by a real git, wherever the stack sits', () => {
 describe('the provenance facts read by a real git, wherever the stack sits', () => {
   const provenanceFrom = (fixture: Fixture) => collectFrom(fixture.stack, () => collectProvenance(BASE, HEAD));
 
+  /** The row every provenance group starts with, whose value is what a reader of the artifact compares. */
+  const introducedRow = async (fixture: Fixture) => {
+    const group = await provenanceFrom(fixture);
+    assert.ok(group, 'the change moved a lockfile, so there is a provenance group');
+    return rowNamed(group, 'versions introduced');
+  };
+
   it('reads the lockfile of a checkout of the stack on its own as before', async () => {
     assert.deepEqual(await provenanceFrom(commitFixture('')), {
       title: 'Provenance of introduced versions',
@@ -347,7 +354,7 @@ describe('the provenance facts read by a real git, wherever the stack sits', () 
         {
           key: 'versions introduced',
           value: '0, though the lockfile did change. Nothing new resolved, so there is nothing to check.',
-          command: `git diff ${BASE}...${HEAD} -- pnpm-lock.yaml`,
+          command: `git diff ${BASE}...${HEAD} -- :/pnpm-lock.yaml`,
         },
       ],
     });
@@ -355,24 +362,53 @@ describe('the provenance facts read by a real git, wherever the stack sits', () 
 
   it("reads the stack's own lockfile from the stack folder of a larger repository", async () => {
     const nested = commitFixture(STACK_SUBFOLDER);
-    assert.throws(
-      () => gitIn(nested.stack, 'show', `${BASE}:pnpm-lock.yaml`),
-      Error,
-      'the fixture has to be one where a bare path after the ref names nothing from the stack folder',
-    );
+    const standalone = await introducedRow(commitFixture(''));
 
-    assert.deepEqual(await provenanceFrom(nested), await provenanceFrom(commitFixture('')));
+    const row = await introducedRow(nested);
+
+    assert.equal(row.value, standalone.value);
+    assert.equal(row.command, `git diff ${BASE}...${HEAD} -- :/${STACK_SUBFOLDER}/pnpm-lock.yaml`);
   });
 
-  it("never reads a lockfile the larger repository keeps at its root in place of the stack's own", async () => {
+  it('reads every lockfile of the repository, and one the change left alone introduces nothing', async () => {
     const nested = commitFixture(STACK_SUBFOLDER, { 'pnpm-lock.yaml': lockfileOf(['react@19.0.0']) });
     assert.equal(
       gitIn(nested.repo, 'show', `${HEAD}:pnpm-lock.yaml`),
       gitIn(nested.repo, 'show', `${BASE}:pnpm-lock.yaml`),
       "the fixture's root lockfile has to be there and unchanged while the stack's moves",
     );
+    const standalone = await introducedRow(commitFixture(''));
 
-    assert.deepEqual(await provenanceFrom(nested), await provenanceFrom(commitFixture('')));
+    const row = await introducedRow(nested);
+
+    assert.equal(row.value, standalone.value);
+    assert.equal(row.command, `git diff ${BASE}...${HEAD} -- :/${STACK_SUBFOLDER}/pnpm-lock.yaml :/pnpm-lock.yaml`);
+  });
+
+  it("counts a version the change brings into another app's lockfile, which the dependency rule covers too", async () => {
+    const adminLockfile = 'apps/web2-admin/pnpm-lock.yaml';
+    const nested = commitFixture(STACK_SUBFOLDER, { [adminLockfile]: lockfileOf(['react@19.0.0']) }, [
+      ...CHANGE_COMMITS,
+      { stack: {}, outside: { [adminLockfile]: lockfileOf(['react@19.0.0', 'react-dom@19.0.0']) } },
+    ]);
+
+    assert.equal((await introducedRow(nested)).value, '1');
+  });
+
+  it('introduces nothing when the apps own lockfiles become one at the root holding the same versions', async () => {
+    const adminLockfile = 'apps/web2-admin/pnpm-lock.yaml';
+    const stackLockfile = `${STACK_SUBFOLDER}/pnpm-lock.yaml`;
+    const nested = commitFixture(STACK_SUBFOLDER, { [adminLockfile]: lockfileOf(['react@19.0.0']) }, []);
+    rmSync(join(nested.repo, adminLockfile));
+    rmSync(join(nested.repo, stackLockfile));
+    writeTree(nested.repo, { 'pnpm-lock.yaml': lockfileOf(['express@5.2.1', 'left-pad@1.3.0', 'react@19.0.0']) });
+    gitIn(nested.repo, 'add', '-A');
+    gitIn(nested.repo, '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'one workspace at the root');
+
+    const row = await introducedRow(nested);
+
+    assert.equal(row.value, '0, though the lockfile did change. Nothing new resolved, so there is nothing to check.');
+    assert.equal(row.command, `git diff ${BASE}...${HEAD} -- :/${stackLockfile} :/${adminLockfile} :/pnpm-lock.yaml`);
   });
 
   it('reports no version introduced when only the base bumped a package after the branch point', async () => {
@@ -448,7 +484,7 @@ describe('the whole tool run by a real git, where the base exists only as origin
 
     assert.equal(
       artifactRow(run, 'versions introduced'),
-      `| versions introduced | 0, though the lockfile did change. Nothing new resolved, so there is nothing to check. | \`git diff origin/${BASE}...${head} -- pnpm-lock.yaml\` |`,
+      `| versions introduced | 0, though the lockfile did change. Nothing new resolved, so there is nothing to check. | \`git diff origin/${BASE}...${head} -- :/${STACK_SUBFOLDER}/pnpm-lock.yaml\` |`,
     );
     assert.equal(artifactRow(run, 'commits'), `| commits | 2 | \`git rev-list --count origin/${BASE}..${head}\` |`);
   });
