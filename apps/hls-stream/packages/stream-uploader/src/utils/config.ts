@@ -102,8 +102,9 @@ const MAX_HLS_FRAGMENT_SECONDS = 3600;
  * How long the uploader waits for one HTTP request to a Bee node before it gives up on that request.
  *
  * ⛔⛔⛔ **There was no such bound, and a node that answered nothing held a queue for ever.** Every
- * pooled client was built as `new Bee(url)` with no options, and bee-js hands axios
- * `timeout: options?.timeout ?? 0`, which axios reads as no timeout at all. A node that accepted the
+ * pooled client was built as `new Bee(url)` with no options, and bee-js 9 handed axios
+ * `timeout: options?.timeout ?? 0`, which axios read as no timeout at all. bee-js 13 runs on `fetch` and
+ * never applies `timeout` by itself, which `BeePublisherPool.ts` covers. A node that accepted the
  * connection and then went silent therefore never failed: the upload queue runs at concurrency 1, so
  * one such call stopped that rung, and the same call on the coordinator stopped the catalog for every
  * stream on the stage.

@@ -94,10 +94,12 @@ function withinAnswerLimit(answer: string): string {
 /**
  * Bee's own words for a failure, rather than the HTTP client's, bounded by {@link BEE_ANSWER_LIMIT}.
  *
- * ⛔⛔⛔ **`error.message` on a bee failure is axios's sentence, not bee's.** bee-js builds its
- * `BeeResponseError` with the client's message and puts the response body in a separate field
+ * ⛔⛔⛔ **`error.message` on a bee failure was axios's sentence, not bee's.** bee-js 9 built its
+ * `BeeResponseError` with the client's message and put the response body in a separate field
  * nothing was reading, so a line meant to record what bee answered was recording "Request failed
- * with status code 402", which is a restatement of the status beside it. The whole point of carrying
+ * with status code 402", which is a restatement of the status beside it. bee-js 13 writes the status
+ * text and the body into the message, and the body stays on `responseBody`, which is what this reads.
+ * The whole point of carrying
  * the answer is that which family bee names a full postage batch with is not written down anywhere
  * in this repo, and a sitting that reports the client's words leaves that question exactly as open as
  * it found it.
