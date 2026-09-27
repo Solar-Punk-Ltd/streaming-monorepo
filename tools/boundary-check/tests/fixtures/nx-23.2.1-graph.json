@@ -1,0 +1,179 @@
+{
+  "graph": {
+    "nodes": {
+      "manager-app": {
+        "name": "manager-app",
+        "type": "app",
+        "data": {
+          "root": "apps/manager-app",
+          "name": "manager-app",
+          "includedScripts": [],
+          "tags": [
+            "npm:private",
+            "scope:manager",
+            "type:app"
+          ],
+          "metadata": {
+            "targetGroups": {},
+            "js": {
+              "packageName": "manager-app",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "check": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "node --test deploy/test"
+              },
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "admin-app": {
+        "name": "admin-app",
+        "type": "app",
+        "data": {
+          "root": "apps/admin-app",
+          "name": "admin-app",
+          "tags": [
+            "npm:private",
+            "scope:admin",
+            "type:app"
+          ],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": [
+                "build",
+                "test"
+              ]
+            },
+            "js": {
+              "packageName": "admin-app",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "metadata": {
+                "scriptContent": "node -e 1",
+                "runCommand": "pnpm run build"
+              },
+              "options": {
+                "script": "build"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "test": {
+              "executor": "nx:run-script",
+              "metadata": {
+                "scriptContent": "node -e 1",
+                "runCommand": "pnpm run test"
+              },
+              "options": {
+                "script": "test"
+              },
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "admin-lib": {
+        "name": "admin-lib",
+        "type": "lib",
+        "data": {
+          "root": "libs/admin-lib",
+          "name": "admin-lib",
+          "includedScripts": [
+            "lint"
+          ],
+          "tags": [
+            "npm:private",
+            "scope:admin",
+            "type:lib"
+          ],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": [
+                "lint"
+              ]
+            },
+            "js": {
+              "packageName": "admin-lib",
+              "packageMain": "src/index.mjs",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "lint": {
+              "executor": "nx:run-script",
+              "metadata": {
+                "scriptContent": "node -e 1",
+                "runCommand": "pnpm run lint"
+              },
+              "options": {
+                "script": "lint"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "test": {
+              "dependsOn": [
+                {
+                  "projects": [
+                    "manager-app"
+                  ],
+                  "target": "build"
+                }
+              ],
+              "configurations": {},
+              "options": {},
+              "parallelism": true,
+              "executor": "nx:noop"
+            }
+          },
+          "implicitDependencies": []
+        }
+      }
+    },
+    "dependencies": {
+      "manager-app": [
+        {
+          "source": "manager-app",
+          "target": "admin-lib",
+          "type": "static"
+        },
+        {
+          "source": "manager-app",
+          "target": "admin-app",
+          "type": "static"
+        }
+      ],
+      "admin-app": [
+        {
+          "source": "admin-app",
+          "target": "admin-lib",
+          "type": "static"
+        },
+        {
+          "source": "admin-app",
+          "target": "manager-app",
+          "type": "dynamic"
+        },
+        {
+          "source": "admin-app",
+          "target": "manager-app",
+          "type": "static"
+        }
+      ],
+      "admin-lib": []
+    }
+  }
+}
