@@ -25,7 +25,7 @@ export const nativeForwardPaths = Object.freeze({
       });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-      throw new Error('Forward path observation failed');
+      throw new Error('Forward path observation failed', { cause: error });
     }
   },
   unlink: (path: string) => unlink(path),

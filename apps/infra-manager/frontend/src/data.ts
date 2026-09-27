@@ -123,7 +123,7 @@ async function postAction(name: string, action: ProfileAction): Promise<void> {
     }
     await readScriptOutcome(res.body);
   } catch (caught) {
-    if (isTimeout(caught)) throw new Error(actionTimedOutMessage());
+    if (isTimeout(caught)) throw new Error(actionTimedOutMessage(), { cause: caught });
     // Nothing else on the page is fetching while a deploy runs, so a session
     // that ended under it surfaces here and nowhere else. Asked before the
     // message travels, so the operator lands on the sign-in page rather than

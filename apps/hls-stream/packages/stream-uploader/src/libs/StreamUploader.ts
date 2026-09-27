@@ -1172,6 +1172,7 @@ export class StreamUploader {
         `Cannot tell ${question.asked} for stream ${this.streamId}, because its ` +
           `manifest feed head did not read within ${FEED_HEAD_READ_WINDOW_MS}ms: ${getErrorMessage(error)}. ` +
           question.consequence,
+        { cause: error },
       );
     }
   }

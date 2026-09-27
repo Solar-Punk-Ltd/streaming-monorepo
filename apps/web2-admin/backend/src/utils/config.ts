@@ -100,7 +100,9 @@ function feedPrivateKey(): string {
     // private key" into a startup error that names the variable.
     new PrivateKey(value).publicKey().address();
   } catch (error) {
-    throw new Error(`Env var FEED_PRIVATE_KEY is not a usable secp256k1 private key: ${getErrorMessage(error)}`);
+    throw new Error(`Env var FEED_PRIVATE_KEY is not a usable secp256k1 private key: ${getErrorMessage(error)}`, {
+      cause: error,
+    });
   }
   return value;
 }

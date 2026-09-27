@@ -44,7 +44,7 @@ function readRecord(path: string): unknown | null {
     before = lstatSync(path, { bigint: true });
   } catch (error) {
     if (missing(error)) return null;
-    throw new Error(UNVERIFIED);
+    throw new Error(UNVERIFIED, { cause: error });
   }
   if (!before.isFile() || before.isSymbolicLink() || before.size > BigInt(MAX_RECORD_BYTES))
     throw new Error(UNVERIFIED);
@@ -139,7 +139,7 @@ export class ManagerUpgradeGuard {
     try {
       mkdirSync(this.root, { mode: 0o700 });
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new Error(UPGRADE_ALREADY_OWNED);
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new Error(UPGRADE_ALREADY_OWNED, { cause: error });
       throw error;
     }
     syncDirectory(dirname(this.root));
