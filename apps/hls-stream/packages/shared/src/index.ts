@@ -11,4 +11,5 @@ export * from './mpegTs.js';
 export * from './qualityLadder.js';
 export * from './segmentSpan.js';
 export * from './streamStatus.js';
+export * from './uploaderHealth.js';
 export * from './uploaderLog.js';
