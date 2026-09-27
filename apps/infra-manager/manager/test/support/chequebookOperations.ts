@@ -69,15 +69,18 @@ export function operationCandidate(overrides: Partial<NewChequebookOperation> = 
 export class InMemoryChequebookOperations implements ChequebookOperationRepository {
   readonly rows = new Map<string, ChequebookOperation>();
   private readonly pollBudgetMs: number;
+  /** The time receipt polling is judged by, so a test can say what "within the interval" means whatever the machine's speed. */
+  private readonly now: () => number;
 
-  constructor(options: { receiptPollBudgetMs?: number } = {}) {
+  constructor(options: { receiptPollBudgetMs?: number; now?: () => number } = {}) {
     this.pollBudgetMs = options.receiptPollBudgetMs ?? RECEIPT_POLL_BUDGET_MS;
+    this.now = options.now ?? Date.now;
   }
 
   /** Mirrors the SQL rule: opened on the first entry into submitted, never renewed. */
   private pollUntil(row: ChequebookOperation, nextState: ChequebookOperation['state']): string | null {
     if (nextState !== 'submitted') return row.receiptPollUntil;
-    return row.receiptPollUntil ?? new Date(Date.now() + this.pollBudgetMs).toISOString();
+    return row.receiptPollUntil ?? new Date(this.now() + this.pollBudgetMs).toISOString();
   }
 
   async listHistory(input: ChequebookHistoryQuery) {
@@ -194,7 +197,7 @@ export class InMemoryChequebookOperations implements ChequebookOperationReposito
       row.transactionHash !== expected.transactionHash
     )
       return structuredClone(row);
-    const now = new Date().toISOString();
+    const now = new Date(this.now()).toISOString();
     // Postgres stores and compares the observation as normalized jsonb, so the fake decides on that same value.
     const observed = normalizeReceiptObservation(observation);
     const unchanged = isDeepStrictEqual(row.receiptObservation, observed);
@@ -214,7 +217,7 @@ export class InMemoryChequebookOperations implements ChequebookOperationReposito
   }
 
   async listAwaitingReceipt(input: { intervalMs: number; limit: number }): Promise<readonly ChequebookOperation[]> {
-    const now = Date.now();
+    const now = this.now();
     return [...this.rows.values()]
       .filter(
         (row) =>

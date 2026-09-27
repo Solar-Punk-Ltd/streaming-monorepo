@@ -65,7 +65,8 @@ function injectedTicks() {
 function harness(
   options: { observation?: (id: string) => ChequebookReceiptObservation; failOn?: () => string | null } = {},
 ) {
-  const repository = new InMemoryChequebookOperations();
+  const startedAt = Date.now();
+  const repository = new InMemoryChequebookOperations({ now: () => startedAt });
   const lines: string[] = [];
   const warnings: string[] = [];
   const log = { info: (line: string) => lines.push(line), warn: (line: string) => warnings.push(line) };
@@ -109,7 +110,7 @@ function harness(
       receiptCheckedAt: new Date(Date.parse(row.receiptCheckedAt!) - milliseconds).toISOString(),
     });
   }
-  return { repository, receipts, ticks, lines, warnings, log, checked, inspected, submitted, poller, age };
+  return { startedAt, repository, receipts, ticks, lines, warnings, log, checked, inspected, submitted, poller, age };
 }
 
 describe('ChequebookReceiptPoller', () => {
@@ -153,7 +154,7 @@ describe('ChequebookReceiptPoller', () => {
     const spent = await h.submitted(1);
     h.repository.rows.set(spent.id, {
       ...h.repository.rows.get(spent.id)!,
-      receiptPollUntil: new Date(Date.now() - 1000).toISOString(),
+      receiptPollUntil: new Date(h.startedAt - 1000).toISOString(),
     });
     const conflicted = await h.submitted(2);
     h.repository.rows.set(conflicted.id, { ...h.repository.rows.get(conflicted.id)!, failureReason: 'hash_conflict' });
