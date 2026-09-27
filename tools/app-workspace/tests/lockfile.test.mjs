@@ -292,7 +292,7 @@ describe('cutLockfile', () => {
     it('refuses a shared package that links anything outside packages/, naming the importer, the link and the target', () => {
       const contracts = SHARED_IMPORTERS.contracts.replace(
         '    dependencies:\n',
-        "    dependencies:\n      beta:\n        specifier: workspace:*\n        version: link:../../apps/beta\n",
+        '    dependencies:\n      beta:\n        specifier: workspace:*\n        version: link:../../apps/beta\n',
       );
 
       assert.throws(
