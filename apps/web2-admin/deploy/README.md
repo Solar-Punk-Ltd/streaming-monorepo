@@ -409,8 +409,14 @@ the same checkout, default `/home/solarpunk/streaming-monorepo`. On a host that
 has no checkout yet, `edge.sh` creates just `deploy/edge/` there, and a later
 `deploy.sh` accepts that directory. `--host=localhost` runs it on the machine
 it is started on, which must be the server itself: Docker Desktop's host
-network is its VM's, not a laptop's. `PROBE_TIMEOUT` in the environment sets
-how long the certificate probe waits, default 90 seconds, 0 to skip it.
+network is its VM's, not a laptop's. Such a run serves from the `infra/edge/`
+of the checkout it was started from, and Caddy mounts the Caddyfile rendered
+there rather than one sent to `deploy/edge/`. The folder `deploy.sh` keeps on
+a host holds `apps/web2-admin` alone, with no `infra/edge/`, so a local run on
+the host needs its own clone of this repository, and the live edge then
+mounts that clone's files: remove the clone and the edge fails at its next
+restart. `PROBE_TIMEOUT` in the environment sets how long the certificate
+probe waits, default 90 seconds, 0 to skip it.
 
 A run:
 

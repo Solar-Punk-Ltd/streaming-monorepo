@@ -33,6 +33,11 @@
 # this checkout against the local Docker daemon, for running this on the
 # server itself. Not on a laptop: Docker Desktop's host network is its VM's,
 # not the laptop's, so the consoles on the laptop's loopback are out of reach.
+# The edge then runs from this checkout's infra/edge/, and Caddy mounts the
+# Caddyfile rendered there. The folder deploy.sh keeps on a host holds
+# apps/web2-admin alone, with no infra/edge/, so a run on the host needs a
+# clone of this repository of its own, and the edge depends on that clone
+# from then on: remove it and the edge fails at its next restart.
 #
 # Nothing here ever prompts. Standard input may be closed, and a question
 # nobody can answer is worse than a refusal that says why.
