@@ -21,6 +21,7 @@
   "dependencies": {
     "@streaming-infra-manager/common": "workspace:*",
     "@streaming-monorepo/contracts": "workspace:*",
+    "@streaming-monorepo/db-migrate": "workspace:*",
     "@streaming-monorepo/web-auth": "workspace:*",
     "dockerode": "5.0.1",
     "dotenv": "17.4.2",
