@@ -212,7 +212,7 @@ describe('images.mjs builds each image from both commits and compares them', () 
   it("runs each side's prepare commands in its context before building it, as a deploy script builds first", (t) => {
     const { repo, before, after } = movedProject(t);
     const docker = dockerFor(t, [{ name: 'demo' }]);
-    const prepare = [[process.execPath, '-e', "require('node:fs').writeFileSync('prepared.txt', 'built\\n')"]];
+    const prepare = [[process.execPath, '-e', "require('node:fs').writeFileSync('prepared.txt', 'built\\n'); console.log('prepared')"]];
     const image = demoImage(before, after, {
       before: { commit: before, context: '.', dockerfile: 'Dockerfile', prepare },
       after: { commit: after, context: 'apps/demo', dockerfile: 'apps/demo/Dockerfile', prepare },
@@ -224,6 +224,7 @@ describe('images.mjs builds each image from both commits and compares them', () 
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.equal(builds(docker).length, 2);
     for (const build of builds(docker)) assert.equal(existsSync(join(build.args.at(-1), 'prepared.txt')), true, build.args.at(-1));
+    assert.equal(result.stderr.match(/^prepared$/gm)?.length, 2, 'what each prepare command printed reached stderr');
   });
 
   it('stops with 2 when a prepare command fails, naming the side, and builds nothing of that pair', (t) => {
@@ -266,6 +267,23 @@ describe('images.mjs builds each image from both commits and compares them', () 
     assert.equal(result.signal, 'SIGTERM', 'the run was cut off during the second pair');
     assert.match(result.stdout, /^demo: .*match/m, 'the first pair was already reported');
     assert.ok(readdirSync(scratch).some((name) => name.startsWith('move-check-images-')), 'the cut-off run left its exports where the test removes them');
+  });
+
+  it("passes each build's output to stderr as it comes, so a build that stalls shows where it stopped", (t) => {
+    const { repo, before, after } = movedProject(t);
+    const docker = dockerFor(t, [{ name: 'demo' }], {
+      first: [{ argsInclude: ['build', 'move-check-images/demo:before'], progress: '#5 [2/5] RUN apt-get update\n', sleepMs: SLOW_BUILD_MS }],
+    });
+    const scratch = makeTempDir(t, 'move-check-stall-');
+
+    const result = runScript(IMAGES, ['--manifest', manifestFile(t, [demoImage(before, after)])], {
+      cwd: repo,
+      env: { ...docker.env, TMPDIR: scratch },
+      timeoutMs: CUT_OFF_MS,
+    });
+
+    assert.equal(result.signal, 'SIGTERM', 'the run was cut off while the build stalled');
+    assert.match(result.stderr, /^#5 \[2\/5\] RUN apt-get update$/m, 'the step the build stalled in was already on stderr');
   });
 
   it('reports an image that differs with what image.mjs found, and exits 1', (t) => {

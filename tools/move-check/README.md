@@ -227,9 +227,10 @@ either is built, and a failed prepare is reported with its output, like a failed
 
 `--plan` prints the builds and runs none. `--only` picks images by name. `--keep` leaves the
 exports on disk, and `--remove-images` removes each pair and the build cache once the pair is
-compared, which is what a CI runner needs. A failed build is reported with its output, and the
-other images are still checked. It exits 0 when every image matches, 1 when one differs and 2
-when one could not be checked.
+compared, which is what a CI runner needs. What each build and prepare command prints goes to
+stderr as it comes, so a build that stalls shows where it stopped rather than nothing at all.
+A failed build is reported with its output, and the other images are still checked. It exits
+0 when every image matches, 1 when one differs and 2 when one could not be checked.
 
 [phase-1-images.json](phase-1-images.json) names the eight images of the admin, the stack and
 the manager, each built from its project's last commit before the move and from the merge
