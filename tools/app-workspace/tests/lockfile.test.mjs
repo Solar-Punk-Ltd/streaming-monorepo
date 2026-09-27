@@ -3,7 +3,16 @@ import { describe, it } from 'node:test';
 
 import { cutLockfile } from '../lib/lockfile.mjs';
 import { Refusal } from '../lib/refusal.mjs';
-import { IMPORTERS, OVERRIDES, PACKAGES, ROOT_LOCKFILE, SETTINGS, SNAPSHOTS, lockfileText } from './support/workspace.mjs';
+import {
+  IMPORTERS,
+  OVERRIDES,
+  PACKAGE_MANAGER_DOCUMENT,
+  PACKAGES,
+  ROOT_LOCKFILE,
+  SETTINGS,
+  SNAPSHOTS,
+  lockfileText,
+} from './support/workspace.mjs';
 
 const ALPHA = { app: 'apps/alpha', injectWorkspacePackages: false };
 const BETA = { app: 'apps/beta', injectWorkspacePackages: false };
@@ -140,6 +149,28 @@ describe('cutLockfile', () => {
     assert.throws(
       () => cutLockfile(withBlocks({ version: `'6.0'` }), ALPHA),
       (error) => error instanceof Refusal && /'6\.0'/.test(error.message) && /9\.0/.test(error.message),
+    );
+  });
+
+  it("keeps pnpm's own document above the lockfile as the root has it, and cuts the one below it", () => {
+    const cut = cutLockfile(`${PACKAGE_MANAGER_DOCUMENT}${ROOT_LOCKFILE}`, ALPHA);
+
+    assert.equal(cut.text, `${PACKAGE_MANAGER_DOCUMENT}${cutLockfile(ROOT_LOCKFILE, ALPHA).text}`);
+    assert.equal(cut.rootPackageCount, cutLockfile(ROOT_LOCKFILE, ALPHA).rootPackageCount);
+  });
+
+  it('refuses a document opened above the lockfile and never closed', () => {
+    assert.throws(
+      () => cutLockfile(`---\n${ROOT_LOCKFILE}`, ALPHA),
+      (error) => error instanceof Refusal && /---/.test(error.message),
+    );
+  });
+
+  it("refuses a first document that is not pnpm's record of its own version", () => {
+    const other = PACKAGE_MANAGER_DOCUMENT.replace('    packageManagerDependencies:\n', '    dependencies:\n');
+    assert.throws(
+      () => cutLockfile(`${other}${ROOT_LOCKFILE}`, ALPHA),
+      (error) => error instanceof Refusal && /packageManagerDependencies/.test(error.message),
     );
   });
 
