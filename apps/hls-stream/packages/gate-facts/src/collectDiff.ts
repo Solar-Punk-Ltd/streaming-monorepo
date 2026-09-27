@@ -62,9 +62,12 @@ async function resolveBase(base: string): Promise<string> {
  */
 export async function collectDiff(base: string, head: string): Promise<FactGroup> {
   const range = `${await resolveBase(base)}..${head}`;
-  const namesArgs = ['diff', '--name-only', range];
+  // `--relative` names each changed path from the working folder, which is the stack's, and leaves out
+  // every path outside it. From the root of the stack's own repository it changes nothing.
+  const namesArgs = ['diff', '--name-only', '--relative', range];
   const paths = (await git(namesArgs)).split('\n').filter((p) => p.length > 0);
 
+  // git reads a pathspec from the working folder already, so this counts the stack's source alone.
   const srcArgs = ['diff', '--numstat', range, '--', '*/src/*'];
   const srcStat = await git(srcArgs);
 

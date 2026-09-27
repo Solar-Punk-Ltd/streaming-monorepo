@@ -156,6 +156,18 @@ const UNCOLLECTED_DEPENDENCY_CHECKS =
   '`npm audit signatures` (reads the installed tree, not the diff) and `gh api /advisories?type=malware`';
 
 /**
+ * The arguments that print the lockfile as it stood at `ref`.
+ *
+ * The `./` makes git read the path from the working folder, which is the stack's, where a bare path
+ * after `ref:` is read from the repository root. The two agree while the stack is its own repository
+ * and part ways once it sits in a subfolder of a larger one, where the bare form names a lockfile that
+ * is not the stack's, or none at all.
+ */
+function lockfileShowArgs(ref: string): string[] {
+  return ['show', `${ref}:./pnpm-lock.yaml`];
+}
+
+/**
  * Publish age, signature and SLSA provenance for every version this change introduces.
  *
  * Returns null when the lockfile did not move. A failed read is a thrown `CollectionError` rather
@@ -167,12 +179,10 @@ const UNCOLLECTED_DEPENDENCY_CHECKS =
  */
 export async function collectProvenance(base: string, head: string): Promise<FactGroup | null> {
   const lockAt = async (ref: string): Promise<string> => {
-    const result = await run('git', ['show', `${ref}:pnpm-lock.yaml`]);
+    const args = lockfileShowArgs(ref);
+    const result = await run('git', args);
     if (result.exitCode !== 0) {
-      throw new CollectionError(
-        describe('git', ['show', `${ref}:pnpm-lock.yaml`]),
-        result.stderr.trim() || `exit ${result.exitCode}`,
-      );
+      throw new CollectionError(describe('git', args), result.stderr.trim() || `exit ${result.exitCode}`);
     }
     return result.stdout;
   };
@@ -209,7 +219,7 @@ export async function collectProvenance(base: string, head: string): Promise<Fac
       {
         key: 'versions introduced',
         value: summary.introduced,
-        command: describe('git', ['show', `${head}:pnpm-lock.yaml`]),
+        command: describe('git', lockfileShowArgs(head)),
       },
       { key: 'unsigned', value: summary.unsigned, command, failed: summary.unsigned !== 'none' },
       { key: 'registry lookup failed', value: summary.unreadable, command, failed: summary.unreadable !== 'none' },
