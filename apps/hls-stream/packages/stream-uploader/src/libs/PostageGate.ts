@@ -116,7 +116,7 @@ export class PostageGate {
   private async refusalFor(publisher: StampedPublisher): Promise<GateFinding | null> {
     let body: PostageBatch;
     try {
-      body = await publisher.bee.getPostageBatch(publisher.stamp);
+      body = await publisher.bee.stamp.get(publisher.stamp);
     } catch (error) {
       return {
         message: this.unreadableRefusal(publisher, describeFailure(error)),
@@ -199,7 +199,7 @@ export interface StampedPublisher {
 }
 
 /**
- * The one call this gate makes, as `Bee.getPostageBatch` from bee-js provides it.
+ * The one call this gate makes, as `Bee.stamp.get` from bee-js provides it.
  *
  * ⛔⛔⛔ Typed as the library's own `PostageBatch` rather than as `unknown`, which is the fix for the
  * defect that stopped the four-node stage starting on 2026-08-31. bee answers `/stamps/<id>` with
@@ -213,7 +213,7 @@ export interface StampedPublisher {
  * says is impossible, and absence of a reading has to refuse rather than default.
  */
 interface PostageClient {
-  getPostageBatch(batchId: string): Promise<PostageBatch>;
+  readonly stamp: { get(batchId: string): Promise<PostageBatch> };
 }
 
 /** What the gate needs out of a batch, once the response has been narrowed. */

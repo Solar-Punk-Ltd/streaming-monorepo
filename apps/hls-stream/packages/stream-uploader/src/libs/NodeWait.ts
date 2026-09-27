@@ -140,7 +140,7 @@ export async function waitForNode<T>(init: () => Promise<T>, options: NodeWaitOp
 /** One node, as {@link assertNodeReachable} needs it. `BeePublisher` satisfies this. */
 interface ReachableNode {
   readonly url: string;
-  readonly bee: { isConnected(): Promise<boolean> };
+  readonly bee: { readonly connectivity: { isConnected(): Promise<boolean> } };
 }
 
 /**
@@ -160,7 +160,7 @@ export async function assertNodeReachable(node: ReachableNode): Promise<void> {
 
   let connected: boolean;
   try {
-    connected = await node.bee.isConnected();
+    connected = await node.bee.connectivity.isConnected();
   } catch (error) {
     throw new NodeUnreachableError(`${url} did not answer a liveness check: ${describeFailure(error)}`);
   }

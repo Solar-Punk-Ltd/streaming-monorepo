@@ -83,34 +83,38 @@ function countingControl(fail: () => Error | null): SegmentUploadControl & { att
 function makeBee(segmentControl: SegmentUploadControl, feedControl: SegmentUploadControl = {}): Bee {
   let refCounter = 0;
   const bee = {
-    uploadData: async () => {
-      const err = segmentControl.fail?.();
-      if (err) {
-        throw err;
-      }
-      const ref = `ref${refCounter++}`;
-      return { reference: { toHex: () => ref } };
-    },
-    makeFeedWriter: () => ({
-      uploadPayload: async (_stamp: string, _data: unknown, opts: { index: number }) => {
-        const err = feedControl.fail?.();
+    data: {
+      upload: async () => {
+        const err = segmentControl.fail?.();
         if (err) {
           throw err;
         }
-        return { reference: { toHex: () => `soc${opts.index}` } };
+        const ref = `ref${refCounter++}`;
+        return { reference: { toHex: () => ref } };
       },
-    }),
-    // A feed nothing has ever written, which is what every uploader in this file publishes onto.
-    // Needed since a rung's topic started outliving its session: a rung reads its own head before
-    // its first SOC write, and a bee with no reader at all fails that read rather than answering it,
-    // which refuses every publish. 404 is the answer for an empty feed, so the write starts at 0
-    // exactly as it did when nothing asked. See `StreamUploader.resumeFeedIndex`, and
-    // `AdminStreamSession.test.ts` for the cases where the head holds something.
-    makeFeedReader: () => ({
-      downloadPayload: async () => {
-        throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
-      },
-    }),
+    },
+    feed: {
+      makeWriter: () => ({
+        uploadPayload: async (_stamp: string, _data: unknown, opts: { index: number }) => {
+          const err = feedControl.fail?.();
+          if (err) {
+            throw err;
+          }
+          return { reference: { toHex: () => `soc${opts.index}` } };
+        },
+      }),
+      // A feed nothing has ever written, which is what every uploader in this file publishes onto.
+      // Needed since a rung's topic started outliving its session: a rung reads its own head before
+      // its first SOC write, and a bee with no reader at all fails that read rather than answering it,
+      // which refuses every publish. 404 is the answer for an empty feed, so the write starts at 0
+      // exactly as it did when nothing asked. See `StreamUploader.resumeFeedIndex`, and
+      // `AdminStreamSession.test.ts` for the cases where the head holds something.
+      makeReader: () => ({
+        downloadPayload: async () => {
+          throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
+        },
+      }),
+    },
   };
   return bee as unknown as Bee;
 }
@@ -460,16 +464,20 @@ describe('StreamUploader Swarm write options', () => {
     const payloadOptions: unknown[] = [];
     let refCounter = 0;
     const bee = {
-      uploadData: async (_stamp: string, _data: unknown, opts: unknown) => {
-        dataOptions.push(opts);
-        return { reference: { toHex: () => `ref${refCounter++}` } };
-      },
-      makeFeedWriter: () => ({
-        uploadPayload: async (_stamp: string, _data: unknown, opts: { index: number }) => {
-          payloadOptions.push(opts);
-          return { reference: { toHex: () => `soc${opts.index}` } };
+      data: {
+        upload: async (_stamp: string, _data: unknown, opts: unknown) => {
+          dataOptions.push(opts);
+          return { reference: { toHex: () => `ref${refCounter++}` } };
         },
-      }),
+      },
+      feed: {
+        makeWriter: () => ({
+          uploadPayload: async (_stamp: string, _data: unknown, opts: { index: number }) => {
+            payloadOptions.push(opts);
+            return { reference: { toHex: () => `soc${opts.index}` } };
+          },
+        }),
+      },
     } as unknown as Bee;
 
     const uploader = new StreamUploader({
@@ -848,13 +856,15 @@ describe('StreamUploader finalization (CON-25)', () => {
     const socWrites: number[] = [];
     const published: { state: string }[] = [];
     const bee = {
-      uploadData: async () => ({ reference: { toHex: () => 'ref0' } }),
-      makeFeedWriter: () => ({
-        uploadPayload: async (_stamp: string, _data: unknown, opts: { index: number }) => {
-          socWrites.push(opts.index);
-          return { reference: { toHex: () => `soc${opts.index}` } };
-        },
-      }),
+      data: { upload: async () => ({ reference: { toHex: () => 'ref0' } }) },
+      feed: {
+        makeWriter: () => ({
+          uploadPayload: async (_stamp: string, _data: unknown, opts: { index: number }) => {
+            socWrites.push(opts.index);
+            return { reference: { toHex: () => `soc${opts.index}` } };
+          },
+        }),
+      },
     } as unknown as Bee;
     const catalog = makeFakeCatalog({
       addStream: async (entry: { state: string }) => {
@@ -908,13 +918,15 @@ describe('StreamUploader finalization (CON-25)', () => {
   it('ends the live playlist before publishing the VOD that renumbers it', async () => {
     const written: string[] = [];
     const bee = {
-      uploadData: async () => ({ reference: { toHex: () => 'ref0' } }),
-      makeFeedWriter: () => ({
-        uploadPayload: async (_stamp: string, data: Uint8Array, opts: { index: number }) => {
-          written.push(Buffer.from(data).toString('utf-8'));
-          return { reference: { toHex: () => `soc${opts.index}` } };
-        },
-      }),
+      data: { upload: async () => ({ reference: { toHex: () => 'ref0' } }) },
+      feed: {
+        makeWriter: () => ({
+          uploadPayload: async (_stamp: string, data: Uint8Array, opts: { index: number }) => {
+            written.push(Buffer.from(data).toString('utf-8'));
+            return { reference: { toHex: () => `soc${opts.index}` } };
+          },
+        }),
+      },
     } as unknown as Bee;
 
     const uploader = new StreamUploader({
@@ -1220,17 +1232,19 @@ function liveWindowSize(count: number): number {
 function beeWithHeldFirstPublish(held: Promise<void>, entered: () => void, socWrites: number[] = []): Bee {
   let refCounter = 0;
   const bee = {
-    uploadData: async () => ({ reference: { toHex: () => wideRef(refCounter++) } }),
-    makeFeedWriter: () => ({
-      uploadPayload: async (_stamp: string, _data: unknown, opts: { index: number }) => {
-        socWrites.push(opts.index);
-        if (socWrites.length === 1) {
-          entered();
-          await held;
-        }
-        return { reference: { toHex: () => `soc${opts.index}` } };
-      },
-    }),
+    data: { upload: async () => ({ reference: { toHex: () => wideRef(refCounter++) } }) },
+    feed: {
+      makeWriter: () => ({
+        uploadPayload: async (_stamp: string, _data: unknown, opts: { index: number }) => {
+          socWrites.push(opts.index);
+          if (socWrites.length === 1) {
+            entered();
+            await held;
+          }
+          return { reference: { toHex: () => `soc${opts.index}` } };
+        },
+      }),
+    },
   };
   return bee as unknown as Bee;
 }
