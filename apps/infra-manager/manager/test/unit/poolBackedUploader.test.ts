@@ -33,7 +33,7 @@ import { Profile } from '../../src/types/index.js';
 
 const BATCH = (rung: string) => rung.replace(/\D/g, '').padEnd(64, '0');
 const PUBLISHERS = ['360p', '480p', '720p', '1080p']
-  .map((rung, i) => `${rung}@http://203.0.113.58:${10015 + i * 10}<${BATCH(rung)}>`)
+  .map((rung, i) => `${rung}@http://192.0.2.58:${10015 + i * 10}<${BATCH(rung)}>`)
   .join(' ');
 
 const STREAMER = ['srs', 'stream-uploader', 'bee-uploader'];
@@ -215,7 +215,7 @@ describe('pool-backed uploader — schema', () => {
     const prefixed = ['360p', '480p', '720p', '1080p']
       .map(
         (rung, i) =>
-          `${rung}@http://203.0.113.58:${10015 + i * 10}<0x${BATCH(rung).toUpperCase()}>`,
+          `${rung}@http://192.0.2.58:${10015 + i * 10}<0x${BATCH(rung).toUpperCase()}>`,
       )
       .join(' ');
     const out = await createProfileSchema.validate({
@@ -267,12 +267,12 @@ describe('pool-backed uploader — schema', () => {
   });
 
   it('rejects a rung whose address is an ssh target or loopback', async () => {
-    const ssh = PUBLISHERS.replace('360p@http://203.0.113.58', '360p@http://deploy@203.0.113.58');
+    const ssh = PUBLISHERS.replace('360p@http://192.0.2.58', '360p@http://deploy@192.0.2.58');
     await rejects(
       createProfileSchema.validate({ name: 'stage', kind: 'abr-uploader', bee_publishers: ssh }),
       /360p: the address carries ssh user info/,
     );
-    const local = PUBLISHERS.replace('480p@http://203.0.113.58', '480p@http://localhost');
+    const local = PUBLISHERS.replace('480p@http://192.0.2.58', '480p@http://localhost');
     await rejects(
       createProfileSchema.validate({ name: 'stage', kind: 'abr-uploader', bee_publishers: local }),
       /480p: the address points at localhost/,

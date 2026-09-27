@@ -11,9 +11,10 @@
 # ⛔ It creates its own container on its own ports and removes it afterwards. It must never be
 # pointed at the `latbench` stack: that one has an uploader behind it, and publishing to it spends.
 #
-# Usage: deploy/scripts/srs-segment-duration-on-host.sh <fragment> <gop> <recipe> [seconds]
+# Usage: PROBE_HOST_ADDR=<host address> deploy/scripts/srs-segment-duration-on-host.sh <fragment> <gop> <recipe> [seconds]
 #   recipe: `bench` for wallclock-stamped MPEG-TS over SRT, `bench-nostamp` for the same transport
 #   with an invented timeline.
+#   PROBE_HOST_ADDR: the address ffmpeg here publishes to. PROBE_HOST: the ssh name of the same host.
 set -euo pipefail
 
 FRAGMENT="${1:?usage: srs-segment-duration-on-host.sh <fragment> <gop> <recipe> [seconds]}"
@@ -22,7 +23,7 @@ RECIPE="${3:?missing recipe}"
 SECONDS_TO_PUBLISH="${4:-60}"
 
 HOST="${PROBE_HOST:-control-1}"
-HOST_ADDR="${PROBE_HOST_ADDR:-203.0.113.62}"
+HOST_ADDR="${PROBE_HOST_ADDR:?set PROBE_HOST_ADDR to the address ffmpeg publishes to on the deployment host}"
 CONTAINER="srs-fragment-probe-host"
 RTMP_PORT=11935
 SRT_PORT=11936

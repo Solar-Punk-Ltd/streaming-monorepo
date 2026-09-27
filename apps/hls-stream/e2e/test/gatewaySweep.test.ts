@@ -294,14 +294,14 @@ describe('an arm is judged on where its bytes came from', () => {
       requestsFrom({
         [`${UNFUNDED}/soc/a/b`]: 312,
         [`${UNFUNDED}/feeds/a/b`]: 5,
-        'http://203.0.113.62:10077/bytes/abc': 253,
+        'http://203.0.113.10:10077/bytes/abc': 253,
         [`${CLIENT}/`]: 7,
       }),
       UNFUNDED,
       CLIENT,
     );
 
-    assert.match(verdict ?? '', /253 from 49\.12\.149\.62:10077/);
+    assert.match(verdict ?? '', /253 from 203\.0\.113\.10:10077/);
     assert.match(verdict ?? '', /did not all come from the gateway it claims/);
   });
 

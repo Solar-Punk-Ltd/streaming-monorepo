@@ -422,7 +422,7 @@ describe('why a run is refused, or is not', () => {
   });
 
   /**
-   * ⛔⛔⛔ A rise refuses, and this is the estate's own learned position rather than a preference.
+   * ⛔⛔⛔ A rise refuses, and this is a position learned from past runs rather than a preference.
    * `availableBalance` has no way up other than a deposit, so a rise means the ledger's start
    * balances predate money arriving, and spend measured from them is not smaller, it is unknown.
    *

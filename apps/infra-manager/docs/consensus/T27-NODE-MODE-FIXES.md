@@ -2,7 +2,7 @@
 
 Status: active, 2026-09-17. Companion to `T27-NODE-MODE-BRIEF.md`. Three read-only reviews on `main-v2`: one
 for correctness and one for security of the manager half (`1c26203` to `1c8fc25`), and one of the frontend half
-(`08bc01e` to `335b6fb`). Priorities on the estate's scale. The manager fixes landed as `9b07e56`, `adcbb29`,
+(`08bc01e` to `335b6fb`). Priorities on the P1 to P3 scale that AGENTS.md defines. The manager fixes landed as `9b07e56`, `adcbb29`,
 `df04f84`, `ce9f362`, `9a9aad9`, `5ff3e48`, `b1f823f` and `b56ae6f`, the frontend fixes as `e1447dc`, `dd4ced2` and `0361a33`.
 
 ## P1, fixed. The endpoint URL reaches pages and stored output through Bee's own log
