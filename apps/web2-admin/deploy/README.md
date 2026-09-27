@@ -53,6 +53,10 @@ Make one from the sample and fill it in, from `apps/web2-admin`:
 cp backend/.env.sample backend/.env.brand-a
 ```
 
+A checkout that deployed before the admin moved into `apps/web2-admin` still
+keeps its env files in `web2-admin/backend/`. Move them rather than making new
+ones: see "Upgrading from before the move into apps/web2-admin" below.
+
 The script refuses to deploy, before anything leaves your machine, when a key
 the API cannot start without is missing or malformed: `POSTGRES_PASSWORD`,
 `FEED_PRIVATE_KEY`, `INTERNAL_API_TOKEN` (32 characters or more), `BEE_URL`,
@@ -234,6 +238,65 @@ cd /home/solarpunk/streaming-monorepo
 export WEB2_ADMIN_ENV_FILE=../backend/.env.brand-a
 docker compose -p web2-admin-brand-a -f deploy/docker-compose.yml --env-file backend/.env.brand-a logs -f api
 ```
+
+On a host deployed to before the move, a profile that has not been deployed
+since keeps its env file at the old path, and these commands name that path
+instead: see "A profile not yet redeployed" below.
+
+## Upgrading from before the move into apps/web2-admin
+
+Until the admin moved into `apps/web2-admin` it sat at the repository root: a
+profile's env file was `web2-admin/backend/.env.<profile>`, and the edge's was
+`deploy/edge/.env`. Git moves the files it tracks and leaves ignored ones where
+they are, so a checkout that deployed before the move still holds its env files
+at the old paths, and so does every host it deployed to.
+
+### On your machine
+
+Move each env file, from the repository root, rather than making a new one from
+the sample. A new `POSTGRES_PASSWORD` locks the API out of the profile's
+existing database, and a new `FEED_PRIVATE_KEY` makes every publish fail.
+
+```sh
+mv web2-admin/backend/.env.brand-a apps/web2-admin/backend/.env.brand-a   # each profile
+mv web2-admin/backend/.env apps/web2-admin/backend/.env                   # the default profile, if you use it
+mv deploy/edge/.env infra/edge/.env                                       # the edge, if you run it
+```
+
+`deploy.sh` and `edge.sh` refuse while a file is only at its old path, and
+print the `mv` for it.
+
+### On the host
+
+The host folder is the same, but a profile's env file now lands at
+`backend/.env.<profile>`, where it used to land at
+`web2-admin/backend/.env.<profile>`. The old copy stays, because every env file
+is excluded from rsync's `--delete`, and it keeps a second copy of the
+profile's signing key and token. Every deploy of a profile warns, once the
+profile is up, while its old copy is still there, and prints the command that
+removes it, such as:
+
+```sh
+ssh admin-host 'rm /home/solarpunk/streaming-monorepo/web2-admin/backend/.env.brand-a'
+```
+
+Nothing removes it for you. Whether and when to remove it is the host owner's
+call.
+
+### A profile not yet redeployed
+
+Its env file is still only at the old path on the host, so the commands in "The
+first user" and "Running compose by hand" do not find it. Until the profile's
+next deploy, name the old path in them:
+
+```sh
+cd /home/solarpunk/streaming-monorepo
+export WEB2_ADMIN_ENV_FILE=../web2-admin/backend/.env.brand-b
+docker compose -p web2-admin-brand-b -f deploy/docker-compose.yml --env-file web2-admin/backend/.env.brand-b logs -f api
+```
+
+Its containers keep running meanwhile. Compose read the env file when it
+created them, and nothing reads it again until the profile is deployed.
 
 ## When a loopback port connects but nothing answers
 
