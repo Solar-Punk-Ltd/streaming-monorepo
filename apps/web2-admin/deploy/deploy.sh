@@ -41,9 +41,11 @@ set -euo pipefail
 
 readonly DEFAULT_REMOTE_PATH="/opt/streaming/streaming-monorepo"
 readonly ENV_DIR="backend"
-# Where a profile's env file was before the admin moved into apps/web2-admin,
-# from the repository root. Git leaves an ignored file where it is, so a
-# checkout that deployed before the move can still hold it there.
+# Where a profile's env file was before the admin moved into apps/web2-admin:
+# from the repository root in a checkout, and from the remote path on a host,
+# since every deploy sent the repository root then. Git leaves an ignored file
+# where it is, so a checkout that deployed before the move can still hold it
+# there, and rsync leaves the host's copy, being excluded from --delete.
 readonly OLD_ENV_DIR="web2-admin/backend"
 readonly COMPOSE_FILE="deploy/docker-compose.yml"
 readonly KNOWN_SERVICES="postgres api web"
@@ -441,6 +443,22 @@ log "commit $COMMIT (written to deploy/.deployed-commit)"
 
 # --- What runs on the host ----------------------------------------------------
 
+# The host's last step: say when this profile's env file from before the move
+# is still there. It is no longer read, but it keeps a second copy of the
+# signing key and token. Removing a file from a host is the owner's call, so
+# the step prints the command rather than running it. --host=localhost has no
+# host checkout to look in. The path, profile and host it names were held to
+# patterns above, as everything host_script interpolates is.
+old_env_file_check() {
+    [ "$LOCAL" = false ] || return 0
+    cat <<OLD_ENV_FILE_CHECK
+if [ -f '$OLD_ENV_FILE' ]; then
+    echo "[deploy] WARNING: this host still has $REMOTE_PATH/$OLD_ENV_FILE, the env file of profile $PROFILE from a deploy made before the admin moved into apps/web2-admin. The profile now runs on $REMOTE_PATH/$ENV_FILE and the old file is no longer read, but it keeps a second copy of the profile's signing key and token. Remove it when you are ready:" >&2
+    echo "[deploy]   ssh $HOST 'rm $REMOTE_PATH/$OLD_ENV_FILE'" >&2
+fi
+OLD_ENV_FILE_CHECK
+}
+
 # Every value interpolated below has been held to a pattern above (the path,
 # profile, port, services and commit), so none of them can end the single
 # quotes it sits in. The script is written to ssh's standard input rather than
@@ -534,6 +552,7 @@ case " \$SCOPE " in
 esac
 
 echo "[deploy] $PROJECT is up, console on 127.0.0.1:$WEB_PORT of this host"
+$(old_env_file_check)
 }
 deploy_on_host </dev/null
 HOST_SCRIPT
