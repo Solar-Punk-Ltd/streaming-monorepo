@@ -22,6 +22,11 @@ packages:
 # Every dependency is added at its exact version.
 saveExact: true
 
+# No version younger than one week (in minutes) is installed, transitive ones included, and an install fails rather
+# than fall back to an older version when nothing in a range is old enough. Each app's cut carries both lines.
+minimumReleaseAge: 10080
+minimumReleaseAgeStrict: true
+
 # No workspace package is injected, so a package links to another as it stands. pnpm 11 deploys without --legacy
 # only when injection is on for the whole workspace, so an image that deploys that way gets it in the workspace
 # file its own build reads, never here.
@@ -43,23 +48,20 @@ allowBuilds:
 # pins a package with a published fix, and the advisory is on its line where the history names one. The rest came
 # with the stack's audit sweep of 2026-07-31 (30df5bfa), which pinned every transitive dependency that had a
 # published fix, 63 advisories at the time, and named none of them one by one. nanoid@3, body-parser and qs are
-# floors from the versions the apps pinned exactly, and fast-uri@3 and protobufjs stay exact.
+# floors from the versions the apps pinned exactly. fast-uri@3 and protobufjs are floors from their old exact pins:
+# the protobufjs selector keeps what that pin covered below 8, and no protobufjs 8 is in the tree.
 overrides:
   body-parser: ^2.3.0 # GHSA-v422-hmwv-36x6
-  brace-expansion@1: ^1.1.16 # GHSA-mh99-v99m-4gvg
-  brace-expansion@2: ^2.1.2 # GHSA-mh99-v99m-4gvg
   brace-expansion@5: ^5.0.8 # GHSA-mh99-v99m-4gvg
-  fast-uri@3: 3.1.6 # GHSA-5jgf-p345-68v8, GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf, GHSA-jqff-g426-hqxp
+  fast-uri@3: ^3.1.6 # GHSA-5jgf-p345-68v8, GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf, GHSA-jqff-g426-hqxp
   follow-redirects: ^1.16.0
   form-data: ^4.0.6
   immutable: ^5.1.8
-  js-yaml@4: ^4.3.2 # GHSA-2883-xcg3-v3hh
-  minimatch@9: ^9.0.7
   nanoid@3: ^3.3.18 # GHSA-2v37-7h3g-55p8
   postcss: ^8.5.18
-  protobufjs: 7.6.5 # GHSA-j3f2-48v5-ccww, GHSA-f38q-mgvj-vph7
+  'protobufjs@<8': ^7.6.5 # GHSA-j3f2-48v5-ccww, GHSA-f38q-mgvj-vph7
   qs: ^6.16.0 # GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g
-  # GHSA-7w5x-hrqm-74c2. Nx 23.2.1 pins 1.6.1. Exact, since a caret took a release days old. Ends when Nx's own
-  # smol-toml is 1.7.1 or later, which phase 4's Nx upgrade decides.
+  # GHSA-7w5x-hrqm-74c2. Nx 23.2.1 pins 1.6.1, and it is still Nx's latest stable on 2026-09-27. Exact, since a caret
+  # took a release days old. Ends when Nx's own smol-toml is 1.7.1 or later.
   'smol-toml@<=1.7.0': 1.7.1
   ws: ^8.21.0
