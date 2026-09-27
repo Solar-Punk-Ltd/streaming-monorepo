@@ -275,19 +275,17 @@ function EmptyState({
   // the orphan case: the batch expired and was dropped.
   if (currentStampId) {
     return (
-      <Typography variant="body2" sx={{
-        color: "error.main"
-      }}>This node holds no batches, yet {shortHex(currentStampId)}is still
-                recorded on the profile. Buy a new one below, and it is set here once
-                it is usable.
-              </Typography>
+      <Typography variant="body2" sx={{ color: 'error.main' }}>
+        This node holds no batches, yet {shortHex(currentStampId)} is still
+        recorded on the profile. Buy a new one below, and it is set here once
+        it is usable.
+      </Typography>
     );
   }
 
   return (
-    <Typography variant="body2" sx={{
-      color: "text.disabled"
-    }}>No stamps on this node yet.
-          </Typography>
+    <Typography variant="body2" sx={{ color: 'text.disabled' }}>
+      No stamps on this node yet.
+    </Typography>
   );
 }
