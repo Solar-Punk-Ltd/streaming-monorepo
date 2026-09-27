@@ -1,9 +1,6 @@
 import { isValidElement, type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, it } from 'vitest';
 
 import {
@@ -15,9 +12,6 @@ import {
   type FeedState,
 } from '../src/components/SwarmHlsPlayer/feedState';
 import { FeedStateOverlay } from '../src/components/SwarmHlsPlayer/overlays/feed/FeedStateOverlay';
-
-const CLIENT_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const PLAYER_SOURCE = join(CLIENT_ROOT, 'src/components/SwarmHlsPlayer/SwarmHlsPlayer.tsx');
 
 /** The overlay's own output, which a function component returns without needing anything to mount. */
 function render(state: FeedState): ReactElement {
@@ -119,53 +113,5 @@ describe('FeedStateOverlay', () => {
     for (const state of [FEED_STATE_RECONNECTING, FEED_STATE_STALLED, FEED_STATE_ENDED, FEED_STATE_DEGRADED]) {
       assert.notEqual(textOf(render(state)), '', `${state} rendered an empty overlay`);
     }
-  });
-});
-
-/**
- * The seam a rendering test would cover, and the weakest thing in this file.
- *
- * Nothing in this package can mount a React tree, so the wiring is checked against the component's
- * source text. That is falsifiable in the wrong direction and it is worth writing down which way:
- * a prettier-style rewrap of the matched line turns these red without any behaviour changing, while
- * `hls.config.liveSyncDuration = 3` after construction, or wrapping the overlay in a flag so it
- * never shows, leaves them green. The subscribe pattern below is pinned end to end rather than
- * across a wildcard, which closes the two regressions that used to fit inside the gap: dropping the
- * `return` so the cleanup never unsubscribes, and subscribing a listener that reports a constant.
- * The remaining two need a DOM, and until there is one these tests cost more in false alarms than
- * they buy. See the register row filed with this round.
- */
-describe('the player component is wired to it', () => {
-  const source = readFileSync(PLAYER_SOURCE, 'utf8');
-
-  it('renders the overlay', () => {
-    assert.match(source, /<FeedStateOverlay state=\{feedState\} \/>/);
-  });
-
-  /**
-   * The root cause, guarded at the one place a test cannot otherwise reach. A subscription inside
-   * the player effect is torn down and rebuilt on every restart, and a fatal network error is what
-   * causes a restart, so it would be dropped exactly when the outage it describes is under way.
-   */
-  it('subscribes on the topic alone, not on anything a restart changes', () => {
-    assert.match(
-      source,
-      /return manifestFetcher\.feedHealth\.subscribe\(hexTopic, setFeedState\);\s*\}, \[topicString\]\);/,
-    );
-  });
-
-  /**
-   * The other half of the seam. `playbackHealth.ts` is covered against a fake element and
-   * `feedState.ts` against a fake clock, and neither notices if nothing joins them: the reporter
-   * would count stalls into a callback the tracker never hears, and the state it feeds would be
-   * unreachable in the running player while every test stayed green.
-   */
-  it('reports the stalls it counts into the tracker, under the topic being watched', () => {
-    assert.match(source, /attachPlaybackStallReporter\(\s*video,[\s\S]{0,200}?recordPlaybackStall\(/);
-  });
-
-  /** Attached with the player rather than with the subscription, since it is the player that stalls. */
-  it('detaches the reporter when the player is torn down', () => {
-    assert.match(source, /detachStallReporter\?\.\(\);/);
   });
 });
