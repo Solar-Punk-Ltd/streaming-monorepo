@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { after, describe, it } from 'node:test';
 
-import { fakeAdminEnv, makeSandbox, removeSandboxes } from './helpers/sandbox.mjs';
+import { fakeAdminEnv, makeSandbox, printedCommand, removeSandboxes } from './helpers/sandbox.mjs';
 
 after(removeSandboxes);
 
@@ -19,16 +19,6 @@ const ENV_FILES = {
 };
 
 const MV_LINE = /^\[deploy\]\s+(mv \S+ \S+)$/m;
-
-/**
- * The command a script printed on a line of its own for the operator to run, as the one capture
- * group of `pattern`. Fails the test, showing the output, when there is none.
- */
-function printedCommand(output, pattern) {
-  const match = pattern.exec(output);
-  assert.ok(match, `no command matching ${pattern} in:\n${output}`);
-  return match[1];
-}
 
 describe('deploy.sh in a checkout that deployed before the admin moved into apps/web2-admin', () => {
   for (const [profile, file] of Object.entries(ENV_FILES)) {
