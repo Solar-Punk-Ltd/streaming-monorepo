@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { RULES, findProblems } from '../boundaries.mjs';
+import { RULES, findProblems } from '../lib/rules.mjs';
 
 /** A project as the check sees it: its name and its Nx tags. */
 function project(name, scope, type, ...otherTags) {
