@@ -218,7 +218,11 @@ describe('the SRS check', () => {
       scratchDir: scratch(),
     });
 
-    assert.ok(calls[0]?.args.includes('ossrs/srs:6'));
+    assert.ok(
+      calls[0]?.args.includes(
+        'ossrs/srs:v6.0-r1@sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3',
+      ),
+    );
   });
 
   it('gives two checks in flight a copy each, and refuses only the refused one', async () => {

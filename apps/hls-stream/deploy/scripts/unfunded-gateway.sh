@@ -45,7 +45,7 @@ API_PORT="${UNFUNDED_API_PORT:-10087}"
 P2P_PORT="${UNFUNDED_P2P_PORT:-10088}"
 
 # Matches the stack's bee, so the two arms differ in funding and in nothing else.
-IMAGE="${UNFUNDED_IMAGE:-ethersphere/bee:2.8.2}"
+IMAGE="${UNFUNDED_IMAGE:-ethersphere/bee:2.8.2@sha256:c0c951f0795e813be6b865213e2c277fd1449f862bb4b6357085391c4fb54810}"
 
 # ⛔⛔ EMPTY IS WHAT MAKES THIS NODE ULTRA-LIGHT, and it is the treatment rather than a second
 # difference between the arms. Bee decides the mode on this flag and on nothing else: `--full-node=false`
