@@ -1,15 +1,17 @@
 # Infrastructure state
 
-What is deployed and where, kept current by hand. Update when something moves.
+What is deployed and where, by role, kept current by hand. Update when something moves. Real host
+names, addresses and domains belong to each deployment's own env files and are not written here.
+[hosts.md](hosts.md) describes the roles.
 
 | Piece | Where | State |
 |---|---|---|
-| ABR Bee nodes (publishers, gateways) | Vultr | running |
-| ABR uploader | GCP stage host | running |
-| streaming-infra-manager | QA: the GCP control host, its own deploy (`./deploy/deploy.sh monitoring` from its checkout on `main`, which carries the login stack), console on loopback 8080 behind the same Caddy edge at https://streaminfra.beebridge.buzz (2026-09-25). It drives stage1 (GCP) and the Bee host (Vultr) over ssh with the identity in `~/manager-ssh`. The Hetzner test-host manager is retired from those targets. |
-| Stage host | GCP `stage1`, still carrying the old manager's `stage1` profile containers until cleaned; the QA manager redeploys the uploader here | running |
+| ABR Bee nodes (publishers, gateways) | the Bee host, on Vultr | running |
+| ABR uploader | the stage host, on GCP | running |
+| streaming-infra-manager | QA: the control host on GCP, deployed with its own `deploy/deploy.sh` from a checkout of its `main`, which carries the login stack. Console on loopback behind the host's Caddy edge, at the QA manager's domain (2026-09-25). It drives the stage host and the Bee host over ssh with the identity in `~/manager-ssh`. The earlier test-host manager on Hetzner no longer drives them. | running |
+| Stage host | the stage host on GCP, still carrying the old manager's profile containers until cleaned. The QA manager redeploys the uploader here | running |
 | Viewer, uploader's catalogue | manager test host, one port slot | plays |
 | Viewer, admin catalogue | manager test host, another port slot, built from the swarm-hls-stream branch off `main-v3` | plays |
-| Web2 admin layer | this repo, `web2-admin/` | QA: profile `qa` on the GCP control host (the monitoring VM, alias `monitoring`), console on loopback 9091 behind the host's Caddy edge at https://streamadmin.beebridge.buzz (deployed 2026-09-25, first user pending; Bee node, batch and ingest ports in `.env.qa` still placeholders until the manager has the pool and uploader). Deploy: `deploy/deploy.sh --host=monitoring --profile=qa`. |
+| Web2 admin layer | this repo, `web2-admin/` | QA: profile `qa` on the control host, console on loopback behind the host's Caddy edge at the QA admin's domain (deployed 2026-09-25). Deploy: `deploy/deploy.sh --host=<control host> --profile=qa`. |
 | Local loop | SRS in Docker, the uploader from source in admin mode, a Bee node | used for end-to-end tests |
-| Host edge (Caddy) | GCP control host, compose project `edge` from `deploy/edge/`, ports 80/443 open in the VPC firewall (`devcon-https-public`) | serving both names with Let's Encrypt certificates since 2026-09-25 |
+| Host edge (Caddy) | the control host, compose project `edge`, ports 80 and 443 open in the cloud firewall | serving both domains with Let's Encrypt certificates since 2026-09-25 |
