@@ -217,7 +217,7 @@ describe('the local transport', () => {
   /** Callers composing paths need to know which filesystem the command will see. */
   it("says whether commands run in this process's own namespace", () => {
     assert.equal(new Host(LOCAL_TARGET).isLocal, true);
-    assert.equal(new Host('manager-host').isLocal, false);
+    assert.equal(new Host('bench.example.org').isLocal, false);
   });
 
   it('runs the command through a shell instead of ssh', async () => {

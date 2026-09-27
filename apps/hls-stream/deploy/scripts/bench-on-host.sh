@@ -14,7 +14,7 @@
 # the run happens inside the image built from `e2e/Dockerfile.bench`.
 #
 # Usage:
-#   deploy/scripts/bench-on-host.sh [--profile latbench] [--portSlot 7] [--target manager-host]
+#   deploy/scripts/bench-on-host.sh [--profile latbench] [--portSlot 7] [--target <host>]
 #                                   [--script bench:latency]
 #
 # `--setup-only` syncs, builds and installs, then stops without running anything. That is the state a
@@ -139,7 +139,7 @@ SSH_OPTS=(-o ServerAliveInterval=30 -o ServerAliveCountMax=20)
 STOP_CONNECT_TIMEOUT_SECONDS=10
 
 # ⛔⛔ A connect timeout bounds the handshake and nothing after it. An ssh that connects and then sits
-# on a wedged 1Password agent waiting for a key is the failure that killed six readings on this
+# on a wedged ssh agent waiting for a key is the failure that killed six readings on this
 # project already, and the interrupt path is the worst place for it, because the operator has asked
 # for the terminal back and the handler is what holds it. Two things answer that: `BatchMode=yes`
 # below, which turns every prompt into an immediate refusal instead of a wait, and this wall-clock

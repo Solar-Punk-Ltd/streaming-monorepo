@@ -45,10 +45,10 @@ const CHAIN_BY_DEFAULT = /--blockchain-rpc-endpoint=\$\{[A-Z0-9_]+:-\S+\}/;
 const HOST_ALIAS = 'host.docker.internal:host-gateway';
 
 describe("a node reaching the chain through an endpoint of the operator's own", () => {
-  // The flag is not the test, and since T27 neither is the variable: bee-gateway reads a variable
-  // too. What separates the two is the default. These four default to an endpoint and are on the
-  // chain unless a deployment says otherwise, while the gateway defaults to nothing and reaches a
-  // chain only when it is given one.
+  // The flag is not the test, and since the ruling of 2026-09-17 neither is the variable: bee-gateway
+  // reads a variable too. What separates the two is the default. These four default to an endpoint
+  // and are on the chain unless a deployment says otherwise, while the gateway defaults to nothing and
+  // reaches a chain only when it is given one.
   const chainNodes = services(compose).filter((service) => CHAIN_BY_DEFAULT.test(blockOf(compose, service)));
 
   it('names every service that talks to the chain, so this file cannot go stale quietly', () => {
@@ -75,7 +75,7 @@ describe("a node reaching the chain through an endpoint of the operator's own", 
 });
 
 describe('the node a viewer reads through', () => {
-  // Levi, 2026-09-17 (T27): a node's mode is chosen when it is created, and the gateway's default
+  // The owner ruled on 2026-09-17: a node's mode is chosen when it is created, and the gateway's default
   // is ultra-light. Ultra-light is bee's name for a light node with no chain behind it, which owns
   // no chequebook and so can never spend. What holds that now is the defaults rather than three
   // literals, and the purpose of the ruling of 2026-09-15 is held with them: a deployment that sets

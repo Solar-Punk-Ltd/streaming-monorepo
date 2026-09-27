@@ -285,8 +285,9 @@ function mediaSecondsOf(timeline: readonly string[]): number {
  * m3u8 without resetting it. It goes back to 0 only when the whole `SrsLiveSource` is reaped and a
  * fresh muxer is built, which the idle timeout normally does a few seconds after a publisher leaves.
  * So a broadcast on a warm engine opens at whatever number the previous one ended on: six recordings
- * of this stage opened at 210, 317, 416, 580, 707 and 850. Abel's player wants a history starting at
- * 0, and it is the uploader's to give, because only the uploader knows where a broadcast began.
+ * of this stage opened at 210, 317, 416, 580, 707 and 850. An outside tester's player wants a history
+ * starting at 0, and it is the uploader's to give, because only the uploader knows where a broadcast
+ * began.
  *
  * What ties the rungs of a ladder together is that all four derive both numbers from **one anchor**:
  * every rung is transcoded from the same source with keyframes forced to the same media timestamps,

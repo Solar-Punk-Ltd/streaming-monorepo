@@ -742,7 +742,7 @@ shell_quote() {
 # **node is not on a deploy target**, which is where an operator issues keys from, and this used to
 # say the requirement was fair because `deploy.sh` did not ship `config.json` "so it cannot run there
 # anyway". OPS-29 removed that premise, and what was left underneath was `node: command not found`
-# on the one machine the script exists for. Measured on `manager-host`: no node, docker present.
+# on the one machine the script exists for. Measured on `<host>`: no node, docker present.
 #
 # So node if it is here, and node in a container if it is not. The derivation itself is written once
 # and handed to whichever runs it, because two copies of an HMAC is two chances to issue keys the

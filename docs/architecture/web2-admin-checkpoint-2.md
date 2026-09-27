@@ -6,8 +6,9 @@
 > [web2-admin-auth.md](web2-admin-auth.md). Read the package READMEs for what
 > is actually there.
 
-Goal, in Nandor's words: an MSRS-like admin frontend in this repo, working end
-to end for four features, improved later. The four features:
+Goal, as the colleague who asked for it put it: an MSRS-like admin frontend in
+this repo, working end to end for four features, improved later. The four
+features:
 
 1. Authentication. A sample user with a sample password exists after first
    start; the password can be changed in the UI.

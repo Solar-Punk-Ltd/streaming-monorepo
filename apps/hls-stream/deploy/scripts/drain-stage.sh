@@ -299,7 +299,7 @@ fi
 RECORD_FILE="$ROOT_DIR/.drain-stage.$PROFILE.env"
 
 # ⛔⛔⛔ A FAILED TRANSPORT AND AN UNANSWERED SERVICE ARE NOT THE SAME REFUSAL, and they arrive as the
-# same empty string. On 2026-08-31 a wedged 1Password SSH agent made `bee-publishers.sh` report that
+# same empty string. On 2026-08-31 a wedged ssh agent made `bee-publishers.sh` report that
 # the uploader was not deployed, which was false, and a whole measurement arm was lost to that
 # confusion. ssh exits 255 for connection and authentication failures and passes the remote command's
 # status through otherwise, so the two are separable and are separated here.
@@ -362,7 +362,7 @@ if isinstance(body, dict):
 require_node_answer() {
   local path="$1"
   if [ "$NODE_STATUS" = "$SSH_TRANSPORT_FAILED" ] && [ "$TARGET" != "$TARGET_LOCAL" ]; then
-    refuse "could not reach ${TARGET} over ssh, which is the transport and not the node, so this says nothing about what ${RUNG} holds, and on this machine it is usually the 1Password SSH agent listing keys and refusing to sign (check with: ssh-add -l && ssh ${TARGET} true)."
+    refuse "could not reach ${TARGET} over ssh, which is the transport and not the node, so this says nothing about what ${RUNG} holds, and on this machine it is usually the password manager's ssh agent listing keys and refusing to sign (check with: ssh-add -l && ssh ${TARGET} true)."
   fi
   # Before the empty-body guard, because a node that answers an error with no body at all is still a
   # node that answered. 000 is what curl reports when there was no HTTP response to read a status

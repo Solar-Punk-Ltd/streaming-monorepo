@@ -161,7 +161,7 @@ function rsyncCopiesNothing(sandbox) {
 function sshCannotReachTarget(sandbox) {
   writeExecutable(
     join(sandbox.binDir, 'ssh'),
-    '#!/bin/sh\necho "ssh: connect to host manager-host port 22: Operation timed out" >&2\nexit 255\n',
+    '#!/bin/sh\necho "ssh: connect to host bench.example.org port 22: Operation timed out" >&2\nexit 255\n',
   );
 }
 
