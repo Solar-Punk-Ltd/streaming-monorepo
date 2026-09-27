@@ -96,7 +96,7 @@
     // leading underscore marks a name unused on purpose, which the rule accepts by default and
     // forgets once any option is set.
     "eslint/no-unused-vars": [
-      "warn",
+      "error",
       {
         "ignoreRestSiblings": true,
         "argsIgnorePattern": "^_",
@@ -107,18 +107,32 @@
 
     // Type-aware, through oxlint-tsgolint and the TypeScript 7 compiler, run by `--type-aware`.
     // A promise nobody awaits or catches, and a promise handed where a plain value is expected,
-    // both leave a rejection unhandled. Off until the findings they report today are fixed, then
-    // errors. node:test's test(), describe(), it() and suite() return promises the runner itself
-    // awaits, so those calls alone are known to be safe.
+    // both leave a rejection unhandled. Errors: each finding was fixed, or called with void beside
+    // the line that says why it cannot reject unhandled. node:test's test(), describe(), it() and
+    // suite() return promises the runner itself awaits, so those calls alone are known to be safe.
     "typescript/no-floating-promises": [
-      "off",
+      "error",
       {
         "allowForKnownSafeCalls": [
           { "from": "package", "name": ["test", "describe", "it", "suite"], "package": "node:test" }
         ]
       }
     ],
-    "typescript/no-misused-promises": "off",
+    "typescript/no-misused-promises": "error",
+
+    // Kept by the rule-by-rule triage of decision 52 and raised to errors by decision 56 once their
+    // findings were fixed. Each names a real defect, so a new one fails the lint rather than joining
+    // a list of warnings. The rest of the three categories stay warnings.
+    "eslint/no-unsafe-finally": "error",
+    "eslint/no-unsafe-optional-chaining": "error",
+    "eslint/no-unused-expressions": "error",
+    "eslint/no-useless-constructor": "error",
+    "eslint/preserve-caught-error": "error",
+    "oxc/no-accumulating-spread": "error",
+    "typescript/no-confusing-non-null-assertion": "error",
+    "unicorn/no-array-fill-with-reference-type": "error",
+    "unicorn/no-invalid-fetch-options": "error",
+    "unicorn/prefer-string-starts-ends-with": "error",
 
     // The other type-aware rules in the three categories above, off by name, because
     // `--type-aware` would otherwise switch them all on as warnings. The two promise rules
