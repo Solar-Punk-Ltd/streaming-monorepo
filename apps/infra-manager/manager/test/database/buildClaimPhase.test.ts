@@ -16,8 +16,14 @@ import type { Profile, ProfileStatus } from '../../src/types/index.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
 import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
-const port = Number(process.env.T12_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't12_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.DEPLOY_PHASES_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'deploy_phases_test',
+  connectionTimeoutMillis: 10000,
+};
 const A = 'a'.repeat(40);
 
 describe(
@@ -35,8 +41,8 @@ describe(
     let initial: Profile;
 
     beforeEach(async () => {
-      schema = `t12_claim_${randomBytes(8).toString('hex')}`;
-      root = await mkdtemp(join(tmpdir(), 't12-build-claim-'));
+      schema = `claim_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'build-claim-'));
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 5, options: `-c search_path=${schema} -c statement_timeout=10000` });

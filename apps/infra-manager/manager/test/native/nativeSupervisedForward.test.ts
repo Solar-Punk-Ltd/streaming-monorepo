@@ -34,7 +34,7 @@ it(
   'actual native IPC delegates one binary Unix connection and observes exact cleanup without a manager second cleaner',
   { timeout: 12000 },
   async (t) => {
-    const directory = await mkdtemp(join(tmpdir(), 't09-managed-'));
+    const directory = await mkdtemp(join(tmpdir(), 'managed-'));
     const socketPath = `${directory}/docker.sock`;
     const identity = await nativeForwardPaths.lstat(directory);
     assert.ok(identity);

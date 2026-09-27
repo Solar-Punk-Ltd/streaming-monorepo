@@ -87,7 +87,7 @@ function sweepAfter(t, child, profile) {
 
 /** A profile and a two-process tree writing into it, started the way launchChrome starts Chrome. */
 async function syntheticChrome(t) {
-  const profile = await mkdtemp(join(tmpdir(), 't15-chrome-synthetic-'));
+  const profile = await mkdtemp(join(tmpdir(), 'chrome-synthetic-'));
   await mkdir(join(profile, 'Default'));
   const child = spawn(process.execPath, ['-e', MAIN, profile], { stdio: 'ignore', detached: true });
   sweepAfter(t, child, profile);
@@ -124,7 +124,7 @@ test('the teardown ends the helper the browser started, and not only the browser
 
 /** A profile of this test's own, with no process anywhere near it. */
 async function emptyProfile(t) {
-  const profile = await mkdtemp(join(tmpdir(), 't15-chrome-unremovable-'));
+  const profile = await mkdtemp(join(tmpdir(), 'chrome-unremovable-'));
   t.after(() => rm(profile, { recursive: true, force: true }));
   return profile;
 }

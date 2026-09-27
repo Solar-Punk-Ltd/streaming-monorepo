@@ -7,8 +7,14 @@ import { ProfileRepository } from '../../src/domain/ProfileRepository.js';
 import { PostgresPortReservationRepository } from '../../src/domain/ports/PostgresPortReservationRepository.js';
 import type { Profile } from '../../src/types/index.js';
 
-const port = Number(process.env.T01_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't01_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.ENGINE_CONFIG_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'engine_config_test',
+  connectionTimeoutMillis: 10000,
+};
 const table = [{ name: 'SRS_SRT_PORT', defaultPort: 10001, slotBase: 10001, protocol: 'udp' as const, service: 'srs' }];
 
 describe(
@@ -18,7 +24,7 @@ describe(
     let admin: Pool, pool: Pool, schema: string;
     let profiles: ProfileRepository, ports: PostgresPortReservationRepository, profile: Profile;
     beforeEach(async () => {
-      schema = `t01_hold_scope_${randomBytes(8).toString('hex')}`;
+      schema = `hold_scope_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, options: `-c search_path=${schema} -c statement_timeout=10000` });

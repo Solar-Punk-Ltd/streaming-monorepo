@@ -102,7 +102,7 @@ describe('what the Review step says about the passphrase', () => {
   });
 
   it('says the ingest is unencrypted when the host-wide one is chosen on a host without one', () => {
-    // The choice stays offered, as D03 decided, and the Review says what the
+    // The choice stays offered, as the SRT default rules decided, and the Review says what the
     // Publish card will say afterwards, not the name of a passphrase that is
     // not there.
     const context = hostWith(null);

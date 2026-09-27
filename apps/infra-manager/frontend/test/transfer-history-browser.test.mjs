@@ -18,9 +18,9 @@ import { json, launchTransferFixture } from './support/transfer-fixture.mjs';
 test('account-scoped browser history continues beyond500 foreign records without changing pointers', async (t) => {
   const fixture = await launchTransferFixture(t, (_req, res) => json(res, 404, {}));
   const browser = await launchChrome(t, fixture.origin);
-  await browser.call('Page.navigate', { url: `${fixture.origin}/dev/t09-intent-tests.html` });
+  await browser.call('Page.navigate', { url: `${fixture.origin}/dev/transfer-intent-tests.html` });
   const result = await browser.evaluate(
-    "(async () => { const { runHistoryStoreTests } = await import('/dev/t09-history-store-tests.ts'); return runHistoryStoreTests(); })()",
+    "(async () => { const { runHistoryStoreTests } = await import('/dev/transfer-history-store-tests.ts'); return runHistoryStoreTests(); })()",
   );
   assert.equal(result.passed, 1);
   assert.deepEqual(browser.errors, []);
@@ -118,7 +118,7 @@ test('global history survives failed deployment reads and separates pagination f
 test('a browser-only request stays discoverable after profile deletion and404 without any resubmission', async (t) => {
   const h = await launchHistoryFixture(t);
   const browser = await launchChrome(t, h.origin);
-  await browser.call('Page.navigate', { url: `${h.origin}/dev/t09-intent-tests.html` });
+  await browser.call('Page.navigate', { url: `${h.origin}/dev/transfer-intent-tests.html` });
   const ids =
     await browser.evaluate(`(async () => { const { IndexedDbTransferIntentStore } = await import('/src/transfers/transferIntentStore.ts');
     const store = new IndexedDbTransferIntentStore(indexedDB); const ids = [];
@@ -205,7 +205,7 @@ test('a detail response from the previous authenticated account cannot hide newe
 test('the browser list offers continuation after a page containing only another account', async (t) => {
   const h = await launchHistoryFixture(t);
   const browser = await launchChrome(t, h.origin);
-  await browser.call('Page.navigate', { url: `${h.origin}/dev/t09-intent-tests.html` });
+  await browser.call('Page.navigate', { url: `${h.origin}/dev/transfer-intent-tests.html` });
   const requestId =
     await browser.evaluate(`(async () => { const { IndexedDbTransferIntentStore } = await import('/src/transfers/transferIntentStore.ts');
     const store = new IndexedDbTransferIntentStore(indexedDB); let previous = null; let own;
@@ -245,7 +245,7 @@ test('an exact request read respects a previously proven local operation link on
   const h = await launchHistoryFixture(t, 1);
   const operation = h.journal.detail(h.records[0].id).operation;
   const browser = await launchChrome(t, h.origin);
-  await browser.call('Page.navigate', { url: `${h.origin}/dev/t09-intent-tests.html` });
+  await browser.call('Page.navigate', { url: `${h.origin}/dev/transfer-intent-tests.html` });
   await browser.evaluate(`(async () => { const { IndexedDbTransferIntentStore } = await import('/src/transfers/transferIntentStore.ts');
     const store = new IndexedDbTransferIntentStore(indexedDB); const operation = ${JSON.stringify(operation)};
     await store.confirm({ requestId: operation.requestId, accountId: 7, profileName: operation.profileName,

@@ -10,7 +10,7 @@
  * `pnpm test`, which only takes src, so until the browser job existed they
  * ran nowhere on a pull request. Two things can turn that job green while it
  * proves nothing: transfer-connected-browser.test.mjs skips its three cases
- * when T09_TEST_PG_PORT is unset, and a suite that skips itself whole
+ * when CHEQUEBOOK_TEST_PG_PORT is unset, and a suite that skips itself whole
  * registers no test at all, so the counts stay clean. The rules that catch
  * both are shared with the SQL runner, in manager/test/support/tapJudge.mjs,
  * so the two judge a run the same way and cannot drift apart.

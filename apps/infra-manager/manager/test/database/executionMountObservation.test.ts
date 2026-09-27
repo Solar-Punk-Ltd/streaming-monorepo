@@ -10,7 +10,7 @@
  * and the build could never be pruned. Two deploys of one deployment left two
  * copies and two open holds.
  *
- * SQL suite, against the task database it owns. `pnpm test:database` in manager/.
+ * SQL suite, against the suite database it owns. `pnpm test:database` in manager/.
  */
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
@@ -22,8 +22,14 @@ import { PostgresBuildLedger } from '../../src/domain/versions/PostgresBuildLedg
 import { executionsRootFor } from '../../src/domain/versions/stackPaths.js';
 import { EXECUTION_A } from '../support/executionMountFixtures.js';
 
-const port = Number(process.env.T04B_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't04b_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.STACK_VERSIONS_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'stack_versions_test',
+  connectionTimeoutMillis: 10000,
+};
 const VERSIONS_ROOT = '/synthetic/versions';
 const BUILD = 'a'.repeat(40);
 const COPY_ROOT = `${executionsRootFor(VERSIONS_ROOT)}/${EXECUTION_A}/tree`;
@@ -35,7 +41,7 @@ it(
     timeout: 60000,
   },
   async () => {
-    const schema = `t04b_execution_mount_${randomBytes(8).toString('hex')}`;
+    const schema = `execution_mount_${randomBytes(8).toString('hex')}`;
     const admin = new pg.Pool(connection);
     const pool = new pg.Pool({ ...connection, options: `-c search_path=${schema} -c statement_timeout=10000` });
     try {

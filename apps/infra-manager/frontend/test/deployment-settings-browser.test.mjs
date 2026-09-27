@@ -1,17 +1,17 @@
 /**
  * A deployment's own settings, edited from its page, in a real Chrome.
  *
- * the owner ruled on 2026-09-25 that every setting a deployment reads is editable
- * for that deployment, with the version's value as the default, and okayed a
- * warning when the running containers are behind on what was saved. This
+ * Since 2026-09-25 every setting a deployment reads is editable
+ * for that deployment, with the version's value as the default, and a
+ * warning shows when the running containers are behind on what was saved. This
  * drives the card through what an operator meets: sections folded until a
  * search or a click opens them, a field shaped by what the key takes, a secret
  * that is never shown, keys a control of the deployment decides, a key the
  * version dropped, a value the manager would refuse, a save that sends only
  * what changed with the revision the page read, a reset, a save that lost a
  * race, the banner and its Apply, a stopped deployment, and a version with no
- * build yet. The deployment's engine settings are in the same list since the owner
- * ruled the Engine card's drawer out on 2026-09-26, so it also drives those as
+ * build yet. The deployment's engine settings are in the same list since the
+ * Engine card's drawer went on 2026-09-26, so it also drives those as
  * the drawer showed them, a pair the engine would refuse, a saved segment
  * length that Apply recreates the engine and the uploader for, the Engine card
  * marking a saved value the engine does not run yet, and stored engine

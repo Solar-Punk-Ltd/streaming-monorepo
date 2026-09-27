@@ -1,6 +1,6 @@
 -- How much of a chain a deployment's Bee node runs with, and where that node's
--- chain endpoint comes from. the owner ruled on 2026-09-17 that both are chosen when
--- the node is created (T27).
+-- chain endpoint comes from. Since 2026-09-17 both are chosen when
+-- the node is created.
 --
 -- A light node has a chequebook, gas and postage, so it can publish. An
 -- ultra-light node has no chain at all and can only retrieve. Until now the

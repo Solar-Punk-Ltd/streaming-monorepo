@@ -15,7 +15,7 @@ import { hashSessionToken } from '@streaming-monorepo/web-auth';
 
 import { AuthTestApp, call, sessionCookieFrom, signIn, startAuthTestApp } from '../support/authTestApp.js';
 
-const USERNAME = 'owner';
+const USERNAME = 'operator';
 const PASSWORD = 'a-long-enough-password';
 
 const MINUTE_MS = 60 * 1000;

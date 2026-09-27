@@ -88,7 +88,7 @@ describe('the env file and the deploy claim', () => {
 });
 
 /**
- * What T27 changed for a deployment that chose nothing.
+ * What the node mode choice changed for a deployment that chose nothing.
  *
  * Every row the migration touched reads as mode null and source `stack`, which
  * is what the stack already did, so the file a deploy writes for such a row has
@@ -96,10 +96,10 @@ describe('the env file and the deploy claim', () => {
  * orchestrator's own call rather than through hand-built values, because the
  * call is what changed.
  */
-describe('the env file of a deployment made before T27', () => {
+describe('the env file of a deployment made before the node mode choice', () => {
   const baseEnv = 'ENGINE=srs\nRPC_ENDPOINT=https://rpc.gnosischain.com\n';
 
-  /** The same call with the fields T27 added left out, which is how it read before. */
+  /** The same call with the node mode fields left out, which is how it read before. */
   const asItWasBefore = (profile: ReturnType<typeof makeProfile>): string =>
     readFileSync(
       writeProfileEnv(root, 'reference', {

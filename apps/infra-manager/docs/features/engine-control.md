@@ -1,6 +1,6 @@
 # Engine control: SRS and OvenMediaEngine from the UI
 
-Status: decided 2026-09-05 (D7 backport wanted, D8 SRS first, both in
+Status: decided 2026-09-05 (SRS API port backport wanted, SRS before OME, both in
 [next-features-2026-09.md](next-features-2026-09.md)). PR 1 (settings, restart, logs, effective
 config) is merged and PR 2 (live status) is not built.
 
@@ -12,9 +12,9 @@ stack's `main` as PR #241. Its pin has moved several times since, which the upda
 `SRT_LATENCY` was left out with the rest of what a later stack reads, until it became a setting on
 2026-09-23, see the update of that date below. PR 2 is not started.
 
-Update 2026-09-09: the bundled stack is now `main-v3` (the owner's ruling: main-v3 is the default,
+Update 2026-09-09: the bundled stack is now `main-v3` (main-v3 is the default,
 main-v2 is obsolete and kept only to test version selection). `main-v3` already publishes
-`SRS_HTTP_API_PORT`, so the D7 backport to `main-v2` described below is no longer needed, and
+`SRS_HTTP_API_PORT`, so the SRS API port backport to `main-v2` described below is no longer needed, and
 PR 2 (live status) waits only on the manager reading that port. The manager still answers
 `live: null` for it, with the reason `This stack version publishes the SRS API port. Reading live
 status from it is not built into the manager yet.`
@@ -81,7 +81,7 @@ shown on a card of their own, because SRS's HTTP API does not expose them. That 
 status of PR 2, which is still not built. See [srt-ingest-health.md](srt-ingest-health.md).
 
 Update 2026-09-26, on `feat/deployment-settings-engine` up to `02f699d4`: the Engine card's
-settings drawer is gone. the owner ruled that day that a deployment has one list of settings, so its
+settings drawer is gone. Since that day a deployment has one list of settings, so its
 engine settings are edited in the deployment's **Stack settings** card, in an **Engine settings**
 section of their own at the top of its list, with the fields, defaults, help and rules the drawer
 had. A save there stores and recreates nothing, and Apply recreates the containers that read what
@@ -185,7 +185,7 @@ changed.` With live status available the dialog says whether a publisher is conn
 
 Group page for a standard group of streams: **Apply engine settings to all** is not in this
 round. Groups share settings through the existing shared settings drawer, and engine settings
-join it only if the owner asks. Creating a group is the other door and it does carry them: `POST
+join it only if that is asked for. Creating a group is the other door and it does carry them: `POST
 /groups` takes `engine_settings` and writes them to every member, and a member added later
 takes what its siblings run. So a group starts on one segment length even though it cannot yet
 be moved to another in a single write.
@@ -259,7 +259,7 @@ Routes, `manager/src/api/routes/engine.ts`:
 | GET    | `/profiles/:name/containers/:service/logs?tail=200` | `text/plain`                                                                                                                                  |
 | GET    | `/profiles/:name/engine/config`                     | `text/plain`, no-store                                                                                                                        |
 
-### Live status (PR 2, after decision D7)
+### Live status (PR 2, after the SRS API port backport)
 
 `manager/src/domain/SrsApiClient.ts`: `summaries()`, `streams()`, `clients()`, `versions()`
 against `http://<LOCAL_BEE_HOST>:<SRS_HTTP_API_PORT>`, the same host resolution
@@ -269,7 +269,7 @@ SRS_HTTP_API_PORT`) when present and is otherwise absent, which is how the route
 stream (name, video codec, width, height, fps, kbps), stream count, client count and uptime. The
 frontend polls it every five seconds while the card is visible.
 
-The upstream change this needs on `main-v2` (D7), in swarm-hls-stream: add `SRS_HTTP_API_PORT:
+The upstream change this needs on `main-v2`, in swarm-hls-stream: add `SRS_HTTP_API_PORT:
 10009` to `PORT_VARS` in `deploy/scripts/_lib.sh`, publish
 `${SRS_HTTP_API_PORT:-1985}:${SRS_HTTP_API_PORT:-1985}` in `deploy/docker-compose.yml`, pass it
 into the container environment, and make the template's `http_api { listen }` a placeholder the
@@ -284,7 +284,7 @@ covered by the firewall rules in [auth-and-public-access.md](auth-and-public-acc
 digit 9 is dropped there). Enabling the auth block with a manager generated password per
 deployment is a small follow-up and is listed as such, not in this round.
 
-OME (D8): live status would need a `<Managers>` block in the template, a port and an access token
+OME: live status would need a `<Managers>` block in the template, a port and an access token
 generated per deployment and stored like the passphrase. Not in this round. The card shows the
 settings, restart, logs and effective config for OME regardless.
 
@@ -310,7 +310,7 @@ settings, restart, logs and effective config for OME regardless.
 1. **Settings, restart, logs, effective config.** No upstream dependency, works on the stack as
    pinned then.
 2. **Live status.** After the `SRS_HTTP_API_PORT` backport lands upstream and the submodule pin
-   moves (or as part of the versions work if D7 picks (b)).
+   moves (or as part of the versions work if the SRS API port decision picks (b)).
 
 ## Tests
 

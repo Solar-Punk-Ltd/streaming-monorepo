@@ -1,5 +1,5 @@
 -- The web2 admin link every new uploader deployment starts with, set once for
--- the whole manager on its Manager settings page. the owner ruled on 2026-09-25 that
+-- the whole manager on its Manager settings page. Since 2026-09-25,
 -- linking an uploader to the web2 admin works out of the box on any host a
 -- clone of the repository deploys to.
 --

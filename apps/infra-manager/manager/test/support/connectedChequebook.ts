@@ -174,7 +174,7 @@ export async function startConnectedChequebook(
     host: '127.0.0.1',
     port: options.pgPort,
     user: 'postgres',
-    database: options.database ?? 't09_test',
+    database: options.database ?? 'chequebook_test',
     connectionTimeoutMillis: 30000,
   };
   const schema = `t09c_${randomBytes(8).toString('hex')}`;
@@ -214,7 +214,7 @@ export async function startConnectedChequebook(
       PUBLISHED_BEE_PORT,
     ]);
 
-    const directory = await mkdtemp(join(tmpdir(), 't09-connected-'));
+    const directory = await mkdtemp(join(tmpdir(), 'connected-'));
     teardown.push(() => rm(directory, { recursive: true, force: true }));
     const socketPath = join(directory, 'docker.sock');
     const fixtureCleanups: (() => void | Promise<void>)[] = [];

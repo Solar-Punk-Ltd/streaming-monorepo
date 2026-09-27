@@ -71,7 +71,8 @@ export function ownsAnyBeeNode(profile: Profile): boolean {
  * Where this deployment's node reaches the chain.
  *
  * A row that says nothing takes the column's own default, the stack's
- * endpoint, which is what every deployment made before T27 runs on.
+ * endpoint, which is what every deployment made before the endpoint source
+ * was chosen at creation runs on.
  */
 export function endpointSourceOf(profile: Profile): RpcEndpointSource {
   return profile.rpc_endpoint_source ?? DEFAULT_RPC_ENDPOINT_SOURCE;

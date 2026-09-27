@@ -14,7 +14,7 @@ describe('persistent removal markers at deployment admission', () => {
   let anchor: string;
   let path: string;
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), 't04a-removal-marker-'));
+    root = await mkdtemp(join(tmpdir(), 'removal-marker-'));
     anchor = join(root, 'test-stack');
     path = `${anchor}.removal.json`;
     const artifact = join(root, 'test-stack.builds', BUILD);
@@ -34,7 +34,7 @@ describe('persistent removal markers at deployment admission', () => {
     if (process.platform === 'darwin') {
       assert.equal(assertOwnedVersionParent('/tmp'), true);
       assert.equal(assertOwnedVersionParent('/var'), true);
-      const temporary = await mkdtemp('/tmp/t04a-system-alias-');
+      const temporary = await mkdtemp('/tmp/system-alias-');
       try {
         const selected = { id: 2, name: 'test-stack', rootPath: join(temporary, 'test-stack') };
         await persistVersionRemoval(selected);

@@ -6,7 +6,7 @@
  *
  * Every key the version declares is listed with the value the next deploy
  * writes and where that value comes from, and the page says how many of them
- * the running containers are behind on (the owner, 2026-09-25). A secret is never
+ * the running containers are behind on (since 2026-09-25). A secret is never
  * answered in clear, and a chain endpoint is answered by its host, the way the
  * deployment's own endpoint has always been shown.
  */

@@ -1,4 +1,4 @@
-# T09 browser intent contract
+# Chequebook browser intent contract
 
 **Status, 2026-09-16.** This work is merged to `main-v2`. It was written at `6dc33d1` on `feat/ai-remediation`, the head of pull request #40, which landed. The sections of this page are in the order they were built, and each one is the checkpoint it says it is. The last three, "Following the manager without a click", "Connected browser acceptance" and the money dialog wiring above them, are the current state. Every browser suite named here runs through `frontend/test/run-all.mjs`, which the checks workflow's browser job takes whole. Running one file with bare `node --test`, as the sections below do, works for these files but not for the set: `mock-engine-observations.test.mjs` needs `node --import tsx --conditions=development`, which is why the runner exists. See [../ci.md](../ci.md).
 
@@ -20,9 +20,9 @@ A new confirmation still checks the pointer atomically. Same-ID explicit retries
 
 ## Native verification
 
-The harness is `frontend/dev/t09-intent-tests.html`. It uses generated synthetic intents and temporary IndexedDB names. The node runner is `node --test frontend/test/transfer-intent-browser.test.mjs`. Each case starts its own synthetic API and its own Vite server on free loopback ports through `launchTransferFixture` and stops both, so nothing in the file depends on a listener somebody started by hand. The existing Chrome helper creates one temporary profile per run, permits only this test origin, bounds protocol requests, stops its exact child and removes its exact temporary profile.
+The harness is `frontend/dev/transfer-intent-tests.html`. It uses generated synthetic intents and temporary IndexedDB names. The node runner is `node --test frontend/test/transfer-intent-browser.test.mjs`. Each case starts its own synthetic API and its own Vite server on free loopback ports through `launchTransferFixture` and stops both, so nothing in the file depends on a listener somebody started by hand. The existing Chrome helper creates one temporary profile per run, permits only this test origin, bounds protocol requests, stops its exact child and removes its exact temporary profile.
 
-Chrome 152.0.7977.83 passed nine in-page cases and a separate two-tab case. Coverage includes concurrent confirmations, reload, current-pointer replacement, unrelated account or instance scopes, immutable UUID payloads, invalid input, abort after an individual write succeeds damaged pointer refusal and exact observation-link isolation. Two real tabs confirm concurrently, reload and prove that an old pointer cannot replace the newer intent. Workspace typechecks and `git diff --check` passed. Ten additional controller scenarios use native IndexedDB and an injected synthetic API. They cover durable completion before submit, exact restore, response loss and repeated 404, explicit same-ID retry, busy identity separation, current terminal evidence, logout/cancellation/profile changes during late persistence, target replacement, quota failure and evidence-first headlines. The three native browser tests passed with all workspace source typechecks. No real money request is made. Production API transport, the full money UI and the fixture-owned Vite lifecycle were open at this checkpoint, so it was not completion of T09. All three are in now, in the sections below.
+Chrome 152.0.7977.83 passed nine in-page cases and a separate two-tab case. Coverage includes concurrent confirmations, reload, current-pointer replacement, unrelated account or instance scopes, immutable UUID payloads, invalid input, abort after an individual write succeeds damaged pointer refusal and exact observation-link isolation. Two real tabs confirm concurrently, reload and prove that an old pointer cannot replace the newer intent. Workspace typechecks and `git diff --check` passed. Ten additional controller scenarios use native IndexedDB and an injected synthetic API. They cover durable completion before submit, exact restore, response loss and repeated 404, explicit same-ID retry, busy identity separation, current terminal evidence, logout/cancellation/profile changes during late persistence, target replacement, quota failure and evidence-first headlines. The three native browser tests passed with all workspace source typechecks. No real money request is made. Production API transport, the full money UI and the fixture-owned Vite lifecycle were open at this checkpoint, so it was not completion of the transaction work. All three are in now, in the sections below.
 
 ## HTTP adapter checkpoint
 
@@ -32,7 +32,7 @@ Exact by-request reads and fresh profile reads use `cache: 'no-store'` through t
 
 Run `node --test frontend/test/transfer-api-browser.test.mjs` from the worktree root. These adapter tests own their synthetic API, Vite and Chrome processes. API and Vite bind dynamic loopback ports, and Vite uses a separate cache. `RUNNER_TEMP` selects the evidence parent directory, otherwise the operating system temporary directory is used. Each run reports its evidence path. The intent-browser suite owns its listeners the same way.
 
-This checkpoint did not wire the money dialog or global history, and T06 current target ownership integration was still required. Both landed in the sections below. The historical 0.5 BZZ fill on the funded `review-20260907` deployment remains unverified. The 2026-09-11 pass found why no record exists, the operations table arrived with migration 020 that same day, and the 2026-09-13 pass funded the node and bought a batch. Both are in [../handover/main-v2-remediation.md](../handover/main-v2-remediation.md).
+This checkpoint did not wire the money dialog or global history, and current target ownership integration from the port and firewall work was still required. Both landed in the sections below. The historical 0.5 BZZ fill on the funded `review-20260907` deployment remains unverified. The 2026-09-11 pass found why no record exists, the operations table arrived with migration 020 that same day, and the 2026-09-13 pass funded the node and bought a batch. Both are in [../handover/main-v2-remediation.md](../handover/main-v2-remediation.md).
 
 ## Offline journal mock
 
@@ -50,7 +50,7 @@ The actual StorageCard opens the reviewed durable transfer controller with the c
 
 An initial transfer has separate amount review and confirmation. A later New transfer action captures the current request ID before amount review. Confirmation compares that captured pointer. The two-dialog regression holds A's reviewed replacement while B creates and settles another intent. A then restores B and sends no third request. Identical-request retry is a separate, explicit two-step action after exact lookup returns no record. Closing or navigating away does not discard the saved UUID.
 
-The dialog displays complete transaction response evidence and retains terminal outcomes on screen. It neither closes automatically nor infers completion from balances. The unused amount-only API functions and balance-settlement polling helpers were removed from this frontend flow. Refresh saved status and focus restoration only read existing journal evidence. Receipt checks, manual recovery, global history and T06 ownership integration were later slices when this was written, and all four are in.
+The dialog displays complete transaction response evidence and retains terminal outcomes on screen. It neither closes automatically nor infers completion from balances. The unused amount-only API functions and balance-settlement polling helpers were removed from this frontend flow. Refresh saved status and focus restoration only read existing journal evidence. Receipt checks, manual recovery, global history and ownership integration from the port and firewall work were later slices when this was written, and all four are in.
 
 The browser regression mounts actual StorageCard and MoveBzzDialog under React StrictMode. It uses the journal mock, native IndexedDB, isolated Chrome profiles and owned random loopback API/Vite listeners. It captures desktop and phone screenshots and checks horizontal overflow. These synthetic fixtures do not access any live Bee node or RPC endpoint.
 
@@ -113,9 +113,9 @@ settle without a click. A dropped Bee response leaves the operation unresolved,
 the fixture reports that no receipt was ever asked for, the detail page's search
 leaves it unresolved, and a second operator's move is refused with the blocking
 explanation. The history and detail pages then read the same journal. The three
-cases need `T09_TEST_PG_PORT`. Without it they skip with that reason printed
+cases need `CHEQUEBOOK_TEST_PG_PORT`. Without it they skip with that reason printed
 rather than passing quietly.
 
 ```
-T09_TEST_PG_PORT=55436 node --test frontend/test/transfer-connected-browser.test.mjs
+CHEQUEBOOK_TEST_PG_PORT=55436 node --test frontend/test/transfer-connected-browser.test.mjs
 ```

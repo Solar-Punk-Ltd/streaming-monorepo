@@ -23,8 +23,14 @@ import type { Profile } from '../../src/types/index.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
 import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
-const port = Number(process.env.T01_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't01_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.ENGINE_CONFIG_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'engine_config_test',
+  connectionTimeoutMillis: 10000,
+};
 const A = 'a'.repeat(40),
   B = 'b'.repeat(40),
   C = 'c'.repeat(40),
@@ -76,8 +82,8 @@ describe(
     let initial: Profile, selected: StackVersionRecord;
 
     beforeEach(async () => {
-      root = await mkdtemp(join(tmpdir(), 't01-explicit-restore-'));
-      schema = `t01_explicit_restore_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'explicit-restore-'));
+      schema = `explicit_restore_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 10, options: `-c search_path=${schema} -c statement_timeout=10000` });

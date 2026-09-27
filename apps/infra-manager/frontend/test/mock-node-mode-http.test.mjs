@@ -6,7 +6,7 @@
  *
  * The mock is what the pages are developed and reviewed against, so a rule the
  * manager enforces and the mock does not is a form that looks finished offline
- * and is refused on a host. These are the T27 rules: a mode and an endpoint
+ * and is refused on a host. These are the node mode rules: a mode and an endpoint
  * source are chosen when the node is created, the mode cannot be changed
  * afterwards, and the refusals are the shared ones word for word.
  */

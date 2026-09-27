@@ -9,7 +9,7 @@
  * the engine encodes and serves but not where it calls back, what it binds,
  * which applications exist or how their streams are named. The two settings
  * the engine settings fill may become literals, checked as the settings page
- * would check them, and T11 then reports them as controlled by the file.
+ * would check them, and the settings overview then reports them as controlled by the file.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -177,7 +177,7 @@ describe('a duplicate of a protected element', () => {
 });
 
 describe('the tunable part', () => {
-  it('accepts the segment duration as a literal in range, and T11 reports it as controlled by the file', () => {
+  it('accepts the segment duration as a literal in range, and the settings overview reports it as controlled by the file', () => {
     const literal = OME_TEMPLATE.split('SEGMENT_DURATION_PLACEHOLDER').join('4');
 
     assert.equal(omeContractProblem(OME_TEMPLATE, literal), null);

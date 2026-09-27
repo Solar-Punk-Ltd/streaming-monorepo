@@ -38,7 +38,7 @@ export function currentExecutionOf(
 /**
  * The copies this deployment no longer wants, oldest last.
  *
- * D11 in one number. `keep` is 2 while a deploy is in flight, the current copy
+ * The retention rule in one number. `keep` is 2 while a deploy is in flight, the current copy
  * and the one before it, so a deploy that fails leaves the tree that last
  * worked in place. It is 1 once a deploy has succeeded, which is when the
  * previous copy stops being worth keeping, and 0 once the deployment is gone.

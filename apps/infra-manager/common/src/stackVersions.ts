@@ -162,7 +162,7 @@ export interface StackVersion {
 export const DEFAULT_MAX_SLOT = 999;
 
 /**
- * The highest port slot the manager allocates on any version (D01).
+ * The highest port slot the manager allocates on any version.
  *
  * The stack's two port bands land on each other at slot 100, where the first
  * band's `10000 + 100 * 10` is the second band's slot 0 P2P port, and

@@ -18,7 +18,7 @@ const record = () => ({
   knownHostsPath: '/synthetic/Known Hosts',
   hostKeyAlias: 'saved-server-key',
 });
-const options = () => ({ localSocketPath: '/tmp/t09-ssh-synthetic/docker.sock', acquisitionTimeoutMs: 1201 });
+const options = () => ({ localSocketPath: '/tmp/ssh-synthetic/docker.sock', acquisitionTimeoutMs: 1201 });
 const build = (input: unknown = record(), bounds: unknown = options(), alias = 'saved-target') =>
   sshDockerForwardCommand(alias, input, bounds);
 const safeError = (error: unknown) =>
@@ -112,7 +112,7 @@ describe('pure trusted remote Docker forward command', () => {
       '-o',
       'ServerAliveCountMax=1',
       '-L',
-      '/tmp/t09-ssh-synthetic/docker.sock:/run/docker.sock',
+      '/tmp/ssh-synthetic/docker.sock:/run/docker.sock',
       '-p',
       '2222',
       '-l',
@@ -407,7 +407,7 @@ describe("the default remote Docker forward, through the manager's own ssh confi
       '-o',
       'ServerAliveCountMax=1',
       '-L',
-      '/tmp/t09-ssh-synthetic/docker.sock:/var/run/docker.sock',
+      '/tmp/ssh-synthetic/docker.sock:/var/run/docker.sock',
       '--',
       'bee-eu-1',
     ]);
@@ -443,7 +443,7 @@ describe("the default remote Docker forward, through the manager's own ssh confi
   it('forwards another remote socket when the override names one', () => {
     assert.equal(
       forward(configured('bee-eu-1', '/run/user/1000/docker.sock')).args.at(-3),
-      '/tmp/t09-ssh-synthetic/docker.sock:/run/user/1000/docker.sock',
+      '/tmp/ssh-synthetic/docker.sock:/run/user/1000/docker.sock',
     );
   });
 

@@ -6,7 +6,7 @@ import { throwawayRoot } from '../support/throwawayRoot.js';
 import type { DeployReservation } from '../../src/domain/DeploymentOrchestrator.js';
 import { ProfileConfigError } from '../../src/domain/errors/index.js';
 
-const root = throwawayRoot('t04a-missing-version-');
+const root = throwawayRoot('missing-version-');
 process.env.SHLS_ROOT = join(root, 'bundled');
 process.env.BEE_DATA_ROOT = join(root, 'data');
 mkdirSync(process.env.SHLS_ROOT, { recursive: true });

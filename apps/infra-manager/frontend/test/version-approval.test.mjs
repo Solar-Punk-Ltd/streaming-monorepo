@@ -201,10 +201,13 @@ test('approval payload and explicit wizard version choice stay tied to the visib
       (text) => text?.includes('Not tested since the update on'),
       'the not tested since warning',
     );
-    if (process.env.T08_EVIDENCE_DIR) {
-      await mkdir(process.env.T08_EVIDENCE_DIR, { recursive: true });
+    if (process.env.VERSION_APPROVAL_EVIDENCE_DIR) {
+      await mkdir(process.env.VERSION_APPROVAL_EVIDENCE_DIR, { recursive: true });
       const { data } = await call('Page.captureScreenshot', { fromSurface: true });
-      await writeFile(resolve(process.env.T08_EVIDENCE_DIR, 'default-warning-review.png'), Buffer.from(data, 'base64'));
+      await writeFile(
+        resolve(process.env.VERSION_APPROVAL_EVIDENCE_DIR, 'default-warning-review.png'),
+        Buffer.from(data, 'base64'),
+      );
     }
     await clickSelected('button[aria-label=close]', 'the wizard close button');
   });

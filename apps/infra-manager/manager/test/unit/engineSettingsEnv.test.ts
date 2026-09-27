@@ -6,13 +6,13 @@
  * The same two behaviours the SRT passphrase has, for the same reasons. An
  * unset key must leave the host's base .env standing, because `.env.<profile>`
  * is a fresh copy of it on every deploy and writing our own defaults over it
- * would silently change a value somebody set on the box. And a value that
+ * would silently change a value somebody set on the host. And a value that
  * would corrupt the `sed` in `engines/srs/entrypoint.sh` must be refused here,
  * because this is the last gate before it leaves the manager and the container
  * crash-loops under `restart: unless-stopped` if it gets through.
  *
  * Since 2026-09-23 the SRT latency is the one key written while unset, and only
- * where the box sets none of its own. The last block says why.
+ * where the host sets none of its own. The last block says why.
  */
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -165,7 +165,7 @@ describe('writeProfileEnv: engine settings', () => {
  * The owner set the SRT latency to 2000 ms on 2026-09-23, and v3.1's entrypoint
  * falls back to 200. Leaving the key out would hand SRS 200 for every
  * deployment that stores none while the settings page names 2000. A value
- * somebody set on the box still stands, which is the rule this file opens with.
+ * somebody set on the host still stands, which is the rule this file opens with.
  */
 describe("writeProfileEnv: the manager's own SRT latency", () => {
   it('writes 2000 when neither the deployment nor the host sets one', () => {

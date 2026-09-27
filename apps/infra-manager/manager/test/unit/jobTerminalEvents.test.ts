@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { after, it } from 'node:test';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 
-const root = throwawayRoot('t10-terminal-events-');
+const root = throwawayRoot('terminal-events-');
 process.env.SHLS_ROOT = root;
 process.env.BEE_DATA_ROOT = join(root, 'data');
 writeFileSync(join(root, '.env'), 'ENGINE=srs\n');

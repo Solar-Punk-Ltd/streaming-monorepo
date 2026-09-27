@@ -3,7 +3,7 @@
 --
 -- These values already existed. They lived in the submodule's
 -- engines/<engine>/.env, one set for every deployment on the host, editable
--- only by hand on the box. They belong next to the other per-deployment
+-- only by hand on the host. They belong next to the other per-deployment
 -- parameters instead, so a stream can be tuned without touching its neighbours.
 --
 -- One JSONB column rather than one column per setting, deliberately:

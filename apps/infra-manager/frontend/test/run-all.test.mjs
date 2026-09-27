@@ -92,7 +92,7 @@ describe('the rules it judges the run by, which are the SQL runner rules', () =>
 
   it('refuses the three connected cases skipping themselves', () => {
     const output = [
-      'ok 12 - a real deposit reaches settlement in the dialog without a click # SKIP T09_TEST_PG_PORT is not set',
+      'ok 12 - a real deposit reaches settlement in the dialog without a click # SKIP CHEQUEBOOK_TEST_PG_PORT is not set',
       summary([141, 141, 0, 0]),
     ].join('\n');
     const problem = runProblem({ code: 0, signal: null, output, glob: SUITE_GLOB });
@@ -204,7 +204,7 @@ describe('the gates it consults, and the order it consults them in', () => {
 
   it('keeps the judge verdict rather than discarding it, so a skipped suite is not a pass', async () => {
     const skipped = [
-      'ok 12 - a real deposit reaches settlement in the dialog without a click # SKIP T09_TEST_PG_PORT is not set',
+      'ok 12 - a real deposit reaches settlement in the dialog without a click # SKIP CHEQUEBOOK_TEST_PG_PORT is not set',
       '# tests 141\n# pass 141\n# fail 0\n# skipped 0',
     ].join('\n');
     const { start } = drive({ spawnSuite: async (file) => ({ file, ...GREEN, output: skipped }) });

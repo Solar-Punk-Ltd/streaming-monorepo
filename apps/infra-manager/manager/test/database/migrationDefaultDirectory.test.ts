@@ -10,8 +10,14 @@ import pg, { type Pool } from 'pg';
 
 import { Database } from '../../src/domain/Database.js';
 
-const port = Number(process.env.T04B_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't04b_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.STACK_VERSIONS_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'stack_versions_test',
+  connectionTimeoutMillis: 10000,
+};
 async function bounded<T>(promise: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   try {
@@ -34,7 +40,7 @@ describe(
     let schema: string;
     let instances: { database: Database; name: string }[];
     beforeEach(async () => {
-      schema = `t04b_migrate_${randomBytes(8).toString('hex')}`;
+      schema = `migrate_${randomBytes(8).toString('hex')}`;
       instances = [];
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
@@ -48,7 +54,7 @@ describe(
     });
     function database() {
       const name = `${schema}_${instances.length}`;
-      const url = new URL(`postgresql://postgres@127.0.0.1:${port}/t04b_test`);
+      const url = new URL(`postgresql://postgres@127.0.0.1:${port}/stack_versions_test`);
       url.searchParams.set('options', `-c search_path=${schema} -c statement_timeout=10000`);
       url.searchParams.set('application_name', name);
       const database = new Database(url.toString());
