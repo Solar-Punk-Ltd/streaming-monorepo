@@ -37,7 +37,7 @@ describe('beeDataDirsFor', () => {
   // The regression. An absolute manager-side path reaching deploy.sh for a
   // remote target is what put init_bee_dirs and compose on different dirs.
   it('says nothing for a remote deploy', () => {
-    assert.deepEqual(beeDataDirsFor('stage1-abr-360p', 'solarpunk@108.61.171.132'), {});
+    assert.deepEqual(beeDataDirsFor('stage1-abr-360p', 'solarpunk@198.51.100.132'), {});
     assert.deepEqual(beeDataDirsFor('stage1-abr-360p', 'vultr-eu-1'), {});
   });
 

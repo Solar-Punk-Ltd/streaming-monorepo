@@ -20,14 +20,14 @@ The focused manager regression failed because `PROFILE_COLUMNS` selected
 `synthetic-key` in create, group and event results.
 
 ```text
-bash /Users/kisslevente/Documents/git/estate/tools/lane.sh --name infra-rpc-privacy -- pnpm --dir manager exec tsx --conditions=development --test test/unit/profileSql.test.ts test/unit/rpcEndpointPrivacy.test.ts
+pnpm --dir manager exec tsx --conditions=development --test test/unit/profileSql.test.ts test/unit/rpcEndpointPrivacy.test.ts
 ```
 
 The focused frontend regression failed because an unchanged stored custom
 endpoint with an empty secret field was rejected as missing.
 
 ```text
-bash /Users/kisslevente/Documents/git/estate/tools/lane.sh --name infra-rpc-privacy -- pnpm --dir frontend exec tsx --conditions=development --test src/forms/deploymentEdits.test.ts
+pnpm --dir frontend exec tsx --conditions=development --test src/forms/deploymentEdits.test.ts
 ```
 
 ## Green evidence

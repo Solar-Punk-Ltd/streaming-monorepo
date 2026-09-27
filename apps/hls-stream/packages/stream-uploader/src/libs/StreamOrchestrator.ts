@@ -1399,7 +1399,7 @@ export class StreamOrchestrator {
         `[StreamOrchestrator] ${streamId} has produced no video in its first ${withheld}s, so segment ` +
           `${segmentIndex} is being published anyway. A viewer will get sound over a blank picture for ` +
           'the whole broadcast, and the recording it becomes will play the same way. The publisher is ' +
-          'sending no frames; see task #76 for what throttles one',
+          'sending no frames',
       );
       return false;
     }

@@ -146,7 +146,7 @@ describe('PostageGate', () => {
   /**
    * ⛔ Only an immutable batch refuses when it fills. A mutable one overwrites the oldest chunks of a
    * full bucket and keeps accepting uploads, so a boot refused on its fullness is a stage refused for
-   * a failure that cannot happen. Read on 157.90.34.105 on 2026-09-24: the tester's 720p rung paid
+   * a failure that cannot happen. Read on the test host on 2026-09-24: the tester's 720p rung paid
    * with mutable batch e15d9a62 at 88.3% used, one long broadcast away from an uploader that would
    * not restart.
    */

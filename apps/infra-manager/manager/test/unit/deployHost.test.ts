@@ -47,16 +47,16 @@ function withExec(
 
 describe('resolveNetworkHost', () => {
   it('resolves an ssh alias through the ssh config, as deploy.sh does', () => {
-    const { resolve, calls } = withExec(() => dump('108.61.171.132'));
-    assert.equal(resolve('vultr-eu-1'), '108.61.171.132');
+    const { resolve, calls } = withExec(() => dump('198.51.100.132'));
+    assert.equal(resolve('vultr-eu-1'), '198.51.100.132');
     assert.deepEqual(calls, ['vultr-eu-1']);
   });
 
   it('drops ssh user info and resolves what is left', () => {
     // The account half addresses a login, never the bee API, and a stray `@`
     // lands inside the BEE_PUBLISHERS entry format, which splits on `@`.
-    const { resolve, calls } = withExec(() => dump('108.61.171.132'));
-    assert.equal(resolve('deploy@vultr-eu-1'), '108.61.171.132');
+    const { resolve, calls } = withExec(() => dump('198.51.100.132'));
+    assert.equal(resolve('deploy@vultr-eu-1'), '198.51.100.132');
     assert.deepEqual(calls, ['vultr-eu-1']);
   });
 
@@ -81,11 +81,11 @@ describe('resolveNetworkHost', () => {
 
   it('takes literals and dotted names as given, without running ssh', () => {
     const { resolve, calls } = withExec(() => dump('should-not-be-used'));
-    assert.equal(resolve('108.61.171.132'), '108.61.171.132');
+    assert.equal(resolve('198.51.100.132'), '198.51.100.132');
     assert.equal(resolve('bee1.example.org'), 'bee1.example.org');
     assert.equal(resolve('::1'), '::1');
     assert.equal(resolve('fe80::1'), 'fe80::1');
-    assert.equal(resolve('deploy@108.61.171.132'), '108.61.171.132');
+    assert.equal(resolve('deploy@198.51.100.132'), '198.51.100.132');
     assert.deepEqual(calls, []);
   });
 
@@ -119,18 +119,18 @@ describe('resolveNetworkHost', () => {
     // the api, so the entry has to go stale on its own.
     const clock = { now: 1_000 };
     const { resolve, calls } = withExec(
-      () => dump('108.61.171.132'),
+      () => dump('198.51.100.132'),
       60_000,
       clock,
     );
 
-    assert.equal(resolve('vultr-eu-1'), '108.61.171.132');
+    assert.equal(resolve('vultr-eu-1'), '198.51.100.132');
     clock.now += 59_000;
-    assert.equal(resolve('vultr-eu-1'), '108.61.171.132');
+    assert.equal(resolve('vultr-eu-1'), '198.51.100.132');
     assert.deepEqual(calls, ['vultr-eu-1']);
 
     clock.now += 2_000;
-    assert.equal(resolve('vultr-eu-1'), '108.61.171.132');
+    assert.equal(resolve('vultr-eu-1'), '198.51.100.132');
     assert.deepEqual(calls, ['vultr-eu-1', 'vultr-eu-1']);
   });
 
@@ -145,19 +145,19 @@ describe('resolveNetworkHost', () => {
 
   it('caches per name, not across them', () => {
     const hosts: Record<string, string> = {
-      'vultr-eu-1': '108.61.171.132',
-      'vultr-eu-2': '108.61.171.133',
+      'vultr-eu-1': '198.51.100.132',
+      'vultr-eu-2': '198.51.100.133',
     };
     const { resolve } = withExec((name) => dump(hosts[name] ?? name));
-    assert.equal(resolve('vultr-eu-1'), '108.61.171.132');
-    assert.equal(resolve('vultr-eu-2'), '108.61.171.133');
-    assert.equal(resolve('vultr-eu-1'), '108.61.171.132');
+    assert.equal(resolve('vultr-eu-1'), '198.51.100.132');
+    assert.equal(resolve('vultr-eu-2'), '198.51.100.133');
+    assert.equal(resolve('vultr-eu-1'), '198.51.100.132');
   });
 
   it('answers on the shared resolver without consulting ssh for these', () => {
     // The default export runs real ssh, so only the cases that provably stay
     // off it are asserted here. The resolution itself is covered above.
-    assert.equal(resolveNetworkHost(' 108.61.171.132 '), '108.61.171.132');
+    assert.equal(resolveNetworkHost(' 198.51.100.132 '), '198.51.100.132');
     assert.equal(
       resolveNetworkHost('deploy@bee1.example.org'),
       'bee1.example.org',

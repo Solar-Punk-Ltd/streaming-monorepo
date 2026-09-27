@@ -14,7 +14,7 @@ form:
 Source: R01. Priority: P1. Depends on: T01a. Decision: none. Size: M.
 ```
 
-`Priority` is the estate's P1 to P3 scale. There is no separate `Status:` line on an issue file.
+`Priority` is a P1 to P3 scale: P1 is fixed before anything ships, P2 is fixed when it fits a batch and recorded otherwise, P3 is documented and left. There is no separate `Status:` line on an issue file.
 
 The five triage labels the review used, `needs-triage`, `needs-info`, `ready-for-agent`,
 `ready-for-human` and `wontfix`, are defined and applied in `docs/consensus/PRD.md`, which also
