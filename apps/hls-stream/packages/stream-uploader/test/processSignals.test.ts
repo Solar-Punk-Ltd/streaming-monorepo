@@ -100,7 +100,7 @@ describe('process signal handling', () => {
     const events = new RecordingProcess();
     const { lines, logger } = crashRecorder();
 
-    registerCrashHandlers(logger, events);
+    registerCrashHandlers(logger, events, () => {});
     events.emit('uncaughtException', new Error('boom'));
 
     assert.equal(lines.length, 2, 'an Error carries a message line and a stack line');
@@ -112,7 +112,7 @@ describe('process signal handling', () => {
     const events = new RecordingProcess();
     const { lines, logger } = crashRecorder();
 
-    registerCrashHandlers(logger, events);
+    registerCrashHandlers(logger, events, () => {});
     events.emit('unhandledRejection', new Error('nope'));
 
     assert.equal(lines.length, 2);
@@ -123,7 +123,7 @@ describe('process signal handling', () => {
   it('registers both crash events and nothing else', () => {
     const events = new RecordingProcess();
 
-    registerCrashHandlers(crashRecorder().logger, events);
+    registerCrashHandlers(crashRecorder().logger, events, () => {});
 
     assert.deepEqual(events.registered.sort(), ['uncaughtException', 'unhandledRejection']);
   });
