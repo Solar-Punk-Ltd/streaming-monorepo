@@ -76,10 +76,9 @@ Every original commit of the imported repositories is in this one under its own 
 ## Documents
 
 - [docs/monorepo.md](docs/monorepo.md): the layout, the rules between projects, and how the history came along.
-- [docs/hosts.md](docs/hosts.md): the three kinds of host, the edge, and the names on the hosts that never change.
+- [docs/hosts.md](docs/hosts.md): the three kinds of host, the edge, a recipe for each kind of fresh host, and the names on the hosts that never change.
 - [docs/ROADMAP.md](docs/ROADMAP.md): the roadmap and the checkpoint log.
 - [docs/architecture/](docs/architecture/): the design briefs, starting with the [admin layer](docs/architecture/web2-admin.md).
-- [docs/infra-state.md](docs/infra-state.md): what is deployed where.
 - [docs/research/](docs/research/README.md): condensed notes on the systems the admin talks to.
 - Deploying: [the admin](apps/web2-admin/deploy/README.md), [the stack](apps/hls-stream/deploy/README.md), [the manager](apps/infra-manager/deploy/README.md), and [the pilot's hosts](infra/terraform/README.md).
 
