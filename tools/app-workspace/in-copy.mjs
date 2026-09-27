@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import {
   chmodSync,
   copyFileSync,
@@ -78,9 +78,31 @@ function copyAppFiles(root, app, paths, copy) {
   }
 }
 
-function exitStatusOf(result) {
-  if (result.status !== null) return result.status;
-  return SIGNALLED + (osConstants.signals[result.signal] ?? 0);
+/** Signals that stop in-copy.mjs, from a terminal or a cancelled job. Each is passed on, and the copy goes after. */
+const STOP_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+
+/**
+ * Runs the command without a shell and settles with its exit status, a signal counted as 128 plus its number the
+ * way a shell counts it. While it runs, a stop signal reaches the command rather than ending in-copy.mjs, so the
+ * copy is removed once the command has exited.
+ */
+function runCommand(command, cwd) {
+  return new Promise((settle, fail) => {
+    const child = spawn(command[0], command.slice(1), { cwd, stdio: 'inherit' });
+    const passOn = (signal) => child.kill(signal);
+    for (const signal of STOP_SIGNALS) process.on(signal, passOn);
+    const stopListening = () => {
+      for (const signal of STOP_SIGNALS) process.off(signal, passOn);
+    };
+    child.on('error', (error) => {
+      stopListening();
+      fail(new Refusal(`${command[0]} could not start: ${error.message}`));
+    });
+    child.on('exit', (status, signal) => {
+      stopListening();
+      settle(status ?? SIGNALLED + (osConstants.signals[signal] ?? 0));
+    });
+  });
 }
 
 export async function main(argv) {
@@ -101,9 +123,7 @@ export async function main(argv) {
     copyAppFiles(root, app, paths, copy);
     if (existsSync(join(root, 'pnpm-lock.yaml'))) process.stderr.write(`${cutApp({ root, app, out: copy })}\n`);
     process.stderr.write(`in-copy.mjs: running ${command.join(' ')} in a copy of ${app} at ${copy}\n`);
-    const result = spawnSync(command[0], command.slice(1), { cwd: copy, stdio: 'inherit' });
-    if (result.error) throw new Refusal(`${command[0]} could not start: ${result.error.message}`);
-    return exitStatusOf(result);
+    return await runCommand(command, copy);
   } finally {
     rmSync(copy, { recursive: true, force: true });
   }
