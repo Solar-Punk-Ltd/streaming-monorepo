@@ -17,7 +17,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { ALL_REMOTE, makeSandbox, removeSandboxes, runScript, runScriptOk } from './helpers/sandbox.js';
+import { ALL_REMOTE, GIT_STUB, makeSandbox, removeSandboxes, runScript, runScriptOk } from './helpers/sandbox.js';
 import { classifySpawn, SPAWN_ABSENT, SPAWN_OK, SPAWN_TIMED_OUT } from './helpers/spawnOutcome.js';
 
 /** `docker compose config` parses files without the daemon, so this bound only guards a wedged CLI. */
@@ -264,6 +264,29 @@ describe('a remote deploy from a checkout of the one workspace', () => {
         'the lockfile sent points at the folder sent',
       );
     }
+  });
+
+  /**
+   * The contracts package sits at the root, outside the stack's folder, so its tree is asked of the
+   * workspace root. `clientBuildStamp.test.js` holds what a real git answers there.
+   */
+  it('stamps the client with the contracts tree read from the workspace root', async () => {
+    const { workspace, sandbox } = oneWorkspace({ config: ALL_REMOTE, sharedPackage: true });
+
+    await runScriptOk(sandbox, 'deploy.sh', ['client'], { TMPDIR: ownTmpdir() });
+
+    const asked = sandbox.gitCalls();
+    assert.ok(
+      asked.includes(`-C ${workspace} rev-parse HEAD:./packages/contracts`),
+      `the contracts tree was not asked of the workspace root: ${asked.join(' | ')}`,
+    );
+    assert.ok(
+      asked.some(
+        (call) => call.startsWith(`-C ${workspace} status --porcelain`) && call.includes('packages/contracts'),
+      ),
+      `the contracts package is not in a dirty check at the workspace root: ${asked.join(' | ')}`,
+    );
+    assert.match(sandbox.remoteEnvFiles(), new RegExp(`^CLIENT_BUILD_CONTRACTS_TREE=${GIT_STUB.contractsTree}$`, 'm'));
   });
 
   it('writes the cut outside the checkout and leaves nothing behind in the temporary folder', async () => {
