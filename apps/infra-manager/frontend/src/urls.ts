@@ -1,5 +1,6 @@
 import {
   BEE_UPLOADER_SERVICE,
+  buildSrtPublishUrl,
   CLIENT_SERVICE,
   defaultServicesFor,
   OME_SERVICE,
@@ -83,6 +84,6 @@ export function srtPublishUrl(profile: Profile, serverHost: string, passphrase?:
   }
   const port = srs?.ports.SRS_SRT_PORT ?? (profile.port_slot > 0 ? SRS_SRT_BASE_PORT + profile.port_slot * 10 : null);
   if (!port) return null;
-  const base = `srt://${host}:${port}?streamid=#!::r=${SRT_DEFAULT_APP_STREAM},m=publish`;
+  const base = buildSrtPublishUrl({ host, srtPort: port }, SRT_DEFAULT_APP_STREAM);
   return passphrase?.trim() ? `${base}&passphrase=${passphrase.trim()}` : base;
 }
