@@ -20,8 +20,9 @@ commits, though.
 
 They are plain Node scripts with no dependencies and nothing to install. They need Node 22
 or later and git, `compose.mjs` and `image.mjs` need the docker CLI, and `images.mjs` needs
-a Docker daemon to build with. Run them from the
-repository root.
+a Docker daemon to build with, plus whatever its manifest's prepare commands run. For
+[phase-1-images.json](phase-1-images.json) that is corepack, which Node 22 ships. Run them
+from the repository root.
 
 ## What the exit code means
 
@@ -205,6 +206,14 @@ run the same way over the same files as the images built before the move.
 **It does not prove** anything about a later commit, or that a build is reproducible beyond
 the two builds it made. A base image or a package mirror that changes between the two builds
 shows up as a difference, so run it again before believing one.
+
+A side may carry `prepare`, commands to run in its context before it is built, each written
+as a list of its words and run without a shell. It is for an image whose Dockerfile copies
+something a deploy script builds first. The uploader's image copies
+`packages/stream-uploader/dist/`, which is built and never committed, so both of its sides
+install from their lockfile and build the uploader first. A side that prepares builds from an
+export of its own, so what it writes reaches no other image. Both sides are prepared before
+either is built, and a failed prepare is reported with its output, like a failed build.
 
 `--plan` prints the builds and runs none. `--only` picks images by name. `--keep` leaves the
 exports on disk, and `--remove-images` removes each pair and the build cache once the pair is
