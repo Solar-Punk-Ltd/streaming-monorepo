@@ -6,19 +6,17 @@ import { receiptPollingSentence } from './receiptPolling';
 import { operationRefusalSentence } from './transferMessages';
 
 export function TransferValue({ label, value, copy = false }: { label: string; value: string; copy?: boolean }) {
-  return (
-    <Box>
-      <Typography variant="caption" sx={{
-        color: "text.secondary"
-      }}>{label}</Typography>
-      <Stack direction="row" spacing={0.5} sx={{
-        alignItems: "flex-start"
-      }}>
-        <Typography variant="body2" sx={{ overflowWrap: 'anywhere', minWidth: 0, flex: 1 }}>{value}</Typography>
-        {copy && <CopyButton value={value} label={label.toLowerCase()} />}
-      </Stack>
-    </Box>
-  );
+  return <Box>
+    <Typography variant="caption" sx={{
+      color: "text.secondary"
+    }}>{label}</Typography>
+    <Stack direction="row" spacing={0.5} sx={{
+      alignItems: "flex-start"
+    }}>
+      <Typography variant="body2" sx={{ overflowWrap: 'anywhere', minWidth: 0, flex: 1 }}>{value}</Typography>
+      {copy && <CopyButton value={value} label={label.toLowerCase()} />}
+    </Stack>
+  </Box>;
 }
 
 export type TransferEvidenceContext = 'saved' | 'busy' | 'previous_busy' | 'identity_conflict';

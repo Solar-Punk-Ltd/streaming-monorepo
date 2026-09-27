@@ -61,76 +61,74 @@ export function MoveBzzDialog({ open, direction, profileName, profileInstanceId,
   };
   const close = () => { controller.cancel(); onClose(); };
 
-  return (
-    <Dialog open={open} onClose={close} maxWidth="sm" fullWidth aria-labelledby="transfer-dialog-title">
-      <DialogTitle id="transfer-dialog-title">{title}</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2} sx={{ pt: 0.5 }}>
-          {!signedIn ? <Alert severity="warning">Sign in to continue. Any saved transfer stays in this browser.</Alert> : <>
-            {state.issue && <Alert severity={state.issue === 'link_unavailable' ? 'info' : 'warning'}>{transferIssueMessage(state.issue, state.refusal)}</Alert>}
-            {busy && <Stack direction="row" spacing={1} role="status" sx={{
-              alignItems: "center"
+  return <Dialog open={open} onClose={close} maxWidth="sm" fullWidth aria-labelledby="transfer-dialog-title">
+    <DialogTitle id="transfer-dialog-title">{title}</DialogTitle>
+    <DialogContent>
+      <Stack spacing={2} sx={{ pt: 0.5 }}>
+        {!signedIn ? <Alert severity="warning">Sign in to continue. Any saved transfer stays in this browser.</Alert> : <>
+          {state.issue && <Alert severity={state.issue === 'link_unavailable' ? 'info' : 'warning'}>{transferIssueMessage(state.issue, state.refusal)}</Alert>}
+          {busy && <Stack direction="row" spacing={1} role="status" sx={{
+            alignItems: "center"
+          }}>
+            <CircularProgress size={18} /><Typography variant="body2">{state.phase === 'sending' ? 'Sending the saved request' : 'Reading saved transfer status'}</Typography>
+          </Stack>}
+          {intent && !editingNew && <>
+            <TransferValue label="Saved amount" value={`${plurToBzzExact(BigInt(intent.amountPlur))} BZZ`} />
+            <TransferValue label="Saved direction" value={intent.direction === 'deposit' ? COPY.fill.route : COPY.withdraw.route} />
+            <TransferValue label="Saved deployment" value={intent.profileName} />
+            <TransferValue label="Request ID" value={intent.requestId} copy />
+            {state.detail ? <TransferEvidencePanel detail={state.detail} /> : <Typography variant="body2" sx={{
+              color: "text.secondary"
             }}>
-              <CircularProgress size={18} /><Typography variant="body2">{state.phase === 'sending' ? 'Sending the saved request' : 'Reading saved transfer status'}</Typography>
-            </Stack>}
-            {intent && !editingNew && <>
-              <TransferValue label="Saved amount" value={`${plurToBzzExact(BigInt(intent.amountPlur))} BZZ`} />
-              <TransferValue label="Saved direction" value={intent.direction === 'deposit' ? COPY.fill.route : COPY.withdraw.route} />
-              <TransferValue label="Saved deployment" value={intent.profileName} />
-              <TransferValue label="Request ID" value={intent.requestId} copy />
-              {state.detail ? <TransferEvidencePanel detail={state.detail} /> : <Typography variant="body2" sx={{
-                color: "text.secondary"
-              }}>
-                {state.issue === 'preparation_refused' ? 'The manager refused this request before recording it, so no transaction was made for it.'
-                  : 'The manager has not returned a verified record for this request. Its transaction outcome is unknown.'}
-              </Typography>}
-              {state.blocking && <TransferEvidencePanel detail={state.blocking} context={blockingContext} />}
-              {step === 'retry' && <Alert severity="warning">Send the same request again only to recover this exact saved intent. It keeps the same request ID and amount. The manager decides whether the request was already recorded.</Alert>}
-            </>}
-            {editingNew && step !== 'review' && <>
-              <TextField label="Amount (BZZ)" size="small" autoFocus value={amount} disabled={!canEdit}
-                onChange={event => setAmount(event.target.value)} error={amount.trim() !== '' && !amountValid} helperText={amountHelp}
-                slotProps={{ htmlInput: { inputMode: 'decimal' } }} />
-              <Stack
-                direction="row"
-                spacing={1}
-                sx={{
-                  alignItems: "center",
-                  justifyContent: "space-between"
-                }}>
-                <Typography variant="body2" sx={{
-                  color: "text.secondary"
-                }}>{copy.source}: {formatTokenBalance(sourcePlur?.toString() ?? null, BZZ_DECIMALS)} BZZ</Typography>
-                {sourcePlur !== null && sourcePlur > 0n && <Button size="small" disabled={!canEdit} onClick={() => setAmount(plurToBzzExact(sourcePlur))}>Use all</Button>}
-              </Stack>
-              <Typography variant="body2">{copy.route}. This creates an on-chain transaction and costs gas. Review the amount before confirming.</Typography>
-              {direction === 'fill' && <Typography variant="caption" sx={{
-                color: "text.secondary"
-              }}>Below {floorBzz} BZZ uploads may stall. This balance does not block an uploader start.</Typography>}
-            </>}
-            {editingNew && step === 'review' && amountPlur !== null && <>
-              <Typography variant="h6">{plurToBzzExact(amountPlur)} BZZ</Typography>
-              <TransferValue label="Direction" value={copy.route} />
-              <TransferValue label="Deployment" value={profileName} />
-              <Typography variant="body2">Confirming first saves a permanent request ID in this browser, then submits that exact request. Closing this dialog cannot cancel a transaction that has been sent.</Typography>
-            </>}
+              {state.issue === 'preparation_refused' ? 'The manager refused this request before recording it, so no transaction was made for it.'
+                : 'The manager has not returned a verified record for this request. Its transaction outcome is unknown.'}
+            </Typography>}
+            {state.blocking && <TransferEvidencePanel detail={state.blocking} context={blockingContext} />}
+            {step === 'retry' && <Alert severity="warning">Send the same request again only to recover this exact saved intent. It keeps the same request ID and amount. The manager decides whether the request was already recorded.</Alert>}
           </>}
-        </Stack>
-      </DialogContent>
-      <DialogActions sx={{ flexWrap: 'wrap', gap: 0.5, px: 3, pb: 2 }}>
-        <Button onClick={close}>Close</Button>
-        {signedIn && editingNew && step !== 'review' && <Button variant="contained" disabled={!canEdit || !amountValid} onClick={() => setStep('review')}>Review transfer</Button>}
-        {signedIn && editingNew && step === 'review' && <>
-          <Button disabled={busy} onClick={() => setStep('entry')}>Edit amount</Button>
-          <Button variant="contained" disabled={!canEdit || !amountValid} onClick={confirm}>Confirm transfer</Button>
+          {editingNew && step !== 'review' && <>
+            <TextField label="Amount (BZZ)" size="small" autoFocus value={amount} disabled={!canEdit}
+              onChange={event => setAmount(event.target.value)} error={amount.trim() !== '' && !amountValid} helperText={amountHelp}
+              slotProps={{ htmlInput: { inputMode: 'decimal' } }} />
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{
+                alignItems: "center",
+                justifyContent: "space-between"
+              }}>
+              <Typography variant="body2" sx={{
+                color: "text.secondary"
+              }}>{copy.source}: {formatTokenBalance(sourcePlur?.toString() ?? null, BZZ_DECIMALS)} BZZ</Typography>
+              {sourcePlur !== null && sourcePlur > 0n && <Button size="small" disabled={!canEdit} onClick={() => setAmount(plurToBzzExact(sourcePlur))}>Use all</Button>}
+            </Stack>
+            <Typography variant="body2">{copy.route}. This creates an on-chain transaction and costs gas. Review the amount before confirming.</Typography>
+            {direction === 'fill' && <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>Below {floorBzz} BZZ uploads may stall. This balance does not block an uploader start.</Typography>}
+          </>}
+          {editingNew && step === 'review' && amountPlur !== null && <>
+            <Typography variant="h6">{plurToBzzExact(amountPlur)} BZZ</Typography>
+            <TransferValue label="Direction" value={copy.route} />
+            <TransferValue label="Deployment" value={profileName} />
+            <Typography variant="body2">Confirming first saves a permanent request ID in this browser, then submits that exact request. Closing this dialog cannot cancel a transaction that has been sent.</Typography>
+          </>}
         </>}
-        {signedIn && intent && !editingNew && <>
-          <Button disabled={busy} onClick={() => void controller.restore()}>Refresh saved status</Button>
-          {canRetry && step !== 'retry' && <Button onClick={() => setStep('retry')}>Retry this saved request</Button>}
-          {canRetry && step === 'retry' && <Button variant="contained" onClick={() => { setStep('entry'); void controller.retryExact(); }}>Send the same request again</Button>}
-          {canNew && <Button variant="contained" onClick={() => { setNewFrom(intent.requestId); setAmount(''); setStep('entry'); }}>New transfer</Button>}
-        </>}
-      </DialogActions>
-    </Dialog>
-  );
+      </Stack>
+    </DialogContent>
+    <DialogActions sx={{ flexWrap: 'wrap', gap: 0.5, px: 3, pb: 2 }}>
+      <Button onClick={close}>Close</Button>
+      {signedIn && editingNew && step !== 'review' && <Button variant="contained" disabled={!canEdit || !amountValid} onClick={() => setStep('review')}>Review transfer</Button>}
+      {signedIn && editingNew && step === 'review' && <>
+        <Button disabled={busy} onClick={() => setStep('entry')}>Edit amount</Button>
+        <Button variant="contained" disabled={!canEdit || !amountValid} onClick={confirm}>Confirm transfer</Button>
+      </>}
+      {signedIn && intent && !editingNew && <>
+        <Button disabled={busy} onClick={() => void controller.restore()}>Refresh saved status</Button>
+        {canRetry && step !== 'retry' && <Button onClick={() => setStep('retry')}>Retry this saved request</Button>}
+        {canRetry && step === 'retry' && <Button variant="contained" onClick={() => { setStep('entry'); void controller.retryExact(); }}>Send the same request again</Button>}
+        {canNew && <Button variant="contained" onClick={() => { setNewFrom(intent.requestId); setAmount(''); setStep('entry'); }}>New transfer</Button>}
+      </>}
+    </DialogActions>
+  </Dialog>;
 }

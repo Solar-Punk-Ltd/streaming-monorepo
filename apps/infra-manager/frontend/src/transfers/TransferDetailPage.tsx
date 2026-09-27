@@ -56,40 +56,38 @@ function Detail({ accountId, detailKey }: { accountId: number; detailKey: Transf
   const followManagerPolling = useMemo(() => ({ intervalMs: RECEIPT_READ_INTERVAL_MS,
     whileReading: (value: { detail: ChequebookOperationDetail | null }) => value.detail !== null && isPollingReceipt(value.detail.operation) }), []);
   const { state, refresh } = useTransferRead(`${accountId}:${detailKey.kind}:${detailKey.id}`, load, followManagerPolling);
-  return (
-    <Stack spacing={2}>
-      <Link href={routes.transfers}>Back to transfer history</Link>
-      <Typography variant="h5">Saved transfer</Typography>
-      <Typography sx={{
-        color: "text.secondary"
-      }}>Recorded identity and transaction evidence. Reading this page does not send a transfer or check the chain.</Typography>
-      <TransferValue label={detailKey.kind === 'request' ? 'Request ID' : 'Operation ID'} value={detailKey.id} copy />
-      {notice && (state.status !== 'ready' || !state.value.detail) && <Alert severity={notice.severity}>{notice.message}</Alert>}
-      {state.status === 'loading' && <Typography role="status">Reading saved evidence…</Typography>}
-      {state.status === 'failed' && <Alert severity="warning">{state.error instanceof TransferHistoryError && state.error.reason === 'identity_conflict'
-        ? 'Returned details do not match this saved transfer. Its outcome remains unresolved.'
-        : 'Saved transfer evidence could not be verified. Keep the original request ID and refresh when the manager is available.'}</Alert>}
-      {state.status === 'ready' && <>
-        {state.value.browserUnavailable && <Alert severity="info">Browser request information could not be read. The manager record is shown independently.</Alert>}
-        {!state.value.detail && <Alert severity="warning">{detailKey.kind === 'request' ? 'No manager record was returned for this request.' : 'No manager record was returned for this operation.'} This does not prove that no transaction was sent.</Alert>}
-        {state.value.detail ? <>
-          <RecordedTransfer detail={state.value.detail} />
-          <TransferRecoveryActions key={state.value.detail.operation.revision} detail={state.value.detail} accountId={accountId} notice={notice}
-            finished={value => { setNotice(value); refresh(); }} />
-        </> : state.value.intent && <Paper variant="outlined" sx={{ p: 2 }}>
-          <Stack spacing={1}>
-            <Typography variant="h6">Saved browser request</Typography>
-            <TransferValue label="Transfer" value={transferAmount(state.value.intent)} />
-            <TransferValue label="Original deployment name" value={state.value.intent.profileName} />
-            <TransferValue label="Deployment instance" value={state.value.intent.profileInstanceId} copy />
-            <TransferValue label="Saved on this browser at" value={state.value.intent.createdAt} />
-            <Typography variant="body2">Submission outcome unknown. The original request remains saved on this browser.</Typography>
-          </Stack>
-        </Paper>}
-      </>}
-      <Button onClick={refresh} disabled={state.status === 'loading'} sx={{ alignSelf: 'flex-start' }}>Refresh saved evidence</Button>
-    </Stack>
-  );
+  return <Stack spacing={2}>
+    <Link href={routes.transfers}>Back to transfer history</Link>
+    <Typography variant="h5">Saved transfer</Typography>
+    <Typography sx={{
+      color: "text.secondary"
+    }}>Recorded identity and transaction evidence. Reading this page does not send a transfer or check the chain.</Typography>
+    <TransferValue label={detailKey.kind === 'request' ? 'Request ID' : 'Operation ID'} value={detailKey.id} copy />
+    {notice && (state.status !== 'ready' || !state.value.detail) && <Alert severity={notice.severity}>{notice.message}</Alert>}
+    {state.status === 'loading' && <Typography role="status">Reading saved evidence…</Typography>}
+    {state.status === 'failed' && <Alert severity="warning">{state.error instanceof TransferHistoryError && state.error.reason === 'identity_conflict'
+      ? 'Returned details do not match this saved transfer. Its outcome remains unresolved.'
+      : 'Saved transfer evidence could not be verified. Keep the original request ID and refresh when the manager is available.'}</Alert>}
+    {state.status === 'ready' && <>
+      {state.value.browserUnavailable && <Alert severity="info">Browser request information could not be read. The manager record is shown independently.</Alert>}
+      {!state.value.detail && <Alert severity="warning">{detailKey.kind === 'request' ? 'No manager record was returned for this request.' : 'No manager record was returned for this operation.'} This does not prove that no transaction was sent.</Alert>}
+      {state.value.detail ? <>
+        <RecordedTransfer detail={state.value.detail} />
+        <TransferRecoveryActions key={state.value.detail.operation.revision} detail={state.value.detail} accountId={accountId} notice={notice}
+          finished={value => { setNotice(value); refresh(); }} />
+      </> : state.value.intent && <Paper variant="outlined" sx={{ p: 2 }}>
+        <Stack spacing={1}>
+          <Typography variant="h6">Saved browser request</Typography>
+          <TransferValue label="Transfer" value={transferAmount(state.value.intent)} />
+          <TransferValue label="Original deployment name" value={state.value.intent.profileName} />
+          <TransferValue label="Deployment instance" value={state.value.intent.profileInstanceId} copy />
+          <TransferValue label="Saved on this browser at" value={state.value.intent.createdAt} />
+          <Typography variant="body2">Submission outcome unknown. The original request remains saved on this browser.</Typography>
+        </Stack>
+      </Paper>}
+    </>}
+    <Button onClick={refresh} disabled={state.status === 'loading'} sx={{ alignSelf: 'flex-start' }}>Refresh saved evidence</Button>
+  </Stack>;
 }
 
 function RecordedTransfer({ detail }: { detail: ChequebookOperationDetail }) {
