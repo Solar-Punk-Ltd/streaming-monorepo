@@ -554,6 +554,10 @@ importers:
         version: 7.0.2
 
   apps/web2-admin/common:
+    dependencies:
+      '@streaming-monorepo/contracts':
+        specifier: workspace:*
+        version: link:../../../packages/contracts
     devDependencies:
       '@types/node':
         specifier: 24.13.4
