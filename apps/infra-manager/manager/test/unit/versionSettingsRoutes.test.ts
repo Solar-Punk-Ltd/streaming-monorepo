@@ -27,7 +27,7 @@ import {
   CONFIG_LOCK_DIR,
   CONFIG_REVISION_FILE,
 } from '../../src/domain/versions/hostConfigCapture.js';
-import { scratchVersionsRoot, V3_FIXTURE } from '../support/stackFixtures.js';
+import { leaveBuildMarkers, scratchVersionsRoot, V3_FIXTURE } from '../support/stackFixtures.js';
 import {
   nextVersionChange,
   startVersionsTestApp,
@@ -70,7 +70,7 @@ afterEach(() => app.close());
 function builtInStaging(args: string[]): void {
   const staging = args[1] ?? '';
   cpSync(V3_FIXTURE, staging, { recursive: true });
-  writeFileSync(join(staging, '.stack-commit'), `${ROUTE_COMMIT}\n`);
+  leaveBuildMarkers(staging, ROUTE_COMMIT);
   writeFileSync(join(staging, 'deploy', 'config.sample.json'), CONFIG_SAMPLE);
 }
 
