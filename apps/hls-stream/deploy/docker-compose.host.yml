@@ -1,0 +1,48 @@
+# Override: run all services in host network mode.
+# Activated by setting COMPOSE_NETWORK=host in .env
+
+services:
+  bee-uploader:
+    network_mode: host
+
+  bee-gateway:
+    network_mode: host
+
+  # ⛔ The per-rung nodes need this for the same reason `bee-uploader` does, and leaving them off it
+  # is not a slow start, it is a restart loop. The blockchain RPC this deployment uses is on the
+  # HOST's loopback, so on the bridge `127.0.0.1:9000` is the container's own loopback and bee exits
+  # with `init chain: get client version: dial tcp 127.0.0.1:9000: connect: connection refused`
+  # before it finishes booting. It writes its keystore first, so the node has a wallet address and no
+  # node, which reads like a funding problem and is not one.
+  bee-uploader-480p:
+    network_mode: host
+
+  bee-uploader-720p:
+    network_mode: host
+
+  bee-uploader-1080p:
+    network_mode: host
+
+  stream-uploader:
+    network_mode: host
+
+  srs:
+    network_mode: host
+
+  ome:
+    network_mode: host
+
+  # The client deliberately stays on the bridge: it is an nginx serving static files and needs a
+  # published port, not the host's whole network stack. What that costs is the compose DNS name its
+  # proxy was pointed at: every service it could have resolved `bee-gateway` through has just moved
+  # off the bridge, so nginx refuses to start with `host not found in upstream "bee-gateway"` and the
+  # web client is down on every host-mode deployment.
+  #
+  # Reaching the gateway through the host is the whole point of it being on the host's network, so
+  # that is the default here. `CLIENT_BEE_GATEWAY_HOST` still wins when a deployment proxies
+  # somewhere else entirely, which is what it is for.
+  client:
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    environment:
+      BEE_GATEWAY_HOST: ${CLIENT_BEE_GATEWAY_HOST:-host.docker.internal}

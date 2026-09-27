@@ -1,0 +1,473 @@
+/**
+ * One latency run against a deployed stack: publish, watch the feed a viewer would watch, and time
+ * the first frame of each segment from capture to fetchable.
+ *
+ * Ordering matters and is the reason this reads the way it does. The publisher starts before anything
+ * is polled, the log is read once at the end rather than per sample, and the clock skew is taken
+ * before the publish so a run cannot spend minutes and then fail on a `date` that does not support
+ * milliseconds.
+ */
+
+import { Topic } from '@ethersphere/bee-js';
+import { parseManifest, segmentDuration } from '@swarm-hls-stream/shared';
+import { unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { containerName, type E2EConfig } from '../config.js';
+import type { FfmpegExit } from '../harness/ffmpegProcess.js';
+import { type Host, waitForIdle } from '../harness/host.js';
+import { announcedLiveStreams } from '../harness/logwatch.js';
+import { redactPublishKey } from '../harness/redactPublishKey.js';
+import { sleep, StopWaiting, waitFor } from '../harness/wait.js';
+
+import { measureClockSkew } from './clockSkew.js';
+import {
+  DEFAULT_FEED_READER,
+  FEED_BLACKOUT_LIMIT_MS,
+  FeedFollower,
+  type FeedReaderMode,
+  fetchSegment,
+  GatewayStatusError,
+  isFeedBlackout,
+  isFeedPendingFirstWrite,
+  NO_UNSERVED_RETRY,
+  SEGMENT_NOT_RETRIEVABLE_YET,
+  segmentRefFromUri,
+  type UnservedRetry,
+} from './gateway.js';
+import type { FeedPoll } from './longRun.js';
+import { probeSegment } from './probe.js';
+import { type BenchRun, type DiscardedSegment, latencyTrend, type SegmentSample } from './report.js';
+import { latencySplit, type SegmentInstants } from './split.js';
+import { firstManifestAtOrAfter, segmentByRef, uploadTimeline } from './timeline.js';
+import type { UnservedSegmentWatch } from './unservedWatch.js';
+import { captureInstantMs, latencyMsFromPts } from './wallclock.js';
+import { type PublishKnobs, startWallclockPublisher, type WallclockPublisher } from './wallclockPublisher.js';
+
+/** How long to wait for the uploader to announce the stream this run just started publishing. */
+const ANNOUNCE_TIMEOUT_MS = 90_000;
+/** How long to wait for one more unmeasured segment to appear in the feed. */
+const SEGMENT_TIMEOUT_MS = 120_000;
+
+interface RunOptions {
+  cfg: E2EConfig;
+  host: Host;
+  /** Where a viewer's gateway is, reachable from **this** machine. See `gateway.ts`. */
+  gatewayUrl: string;
+  knobs: PublishKnobs;
+  /** How many distinct segments to carry end to end. */
+  samples: number;
+  /**
+   * Stop collecting once the publish has been running this long, whichever comes first with `samples`.
+   *
+   * Defaults to `SEGMENT_TIMEOUT_MS` per requested sample, which is the deadline a short run needs to
+   * fail rather than hang. A long run sets both: a duration it wants, and a sample count high enough
+   * that the duration is what ends it.
+   */
+  collectForMs?: number;
+  /**
+   * How long to wait before asking again **when a poll found nothing new**.
+   *
+   * Deliberately not called a cadence and deliberately not a stand-in for the client's poll, which is
+   * what the name and comment here used to claim. The loop below does not sleep at all when a poll
+   * finds a new segment, so under steady arrival the observed rate is however fast this can read and
+   * fetch, and this value only bounds how late the bench can be in *noticing* a manifest that has
+   * already arrived.
+   *
+   * Getting that wrong made `feedPropagation` report this sleep instead of the network: measured
+   * 2026-08-05, the hop equalled the wait for the next poll to within 2 to 5ms across nine runs.
+   * A client's own cadence is a separate, modelled quantity. See `recommendBufferMs`.
+   */
+  idlePollIntervalMs: number;
+  /**
+   * How to follow the feed. Defaults to `walk`, which is what the player does.
+   *
+   * Configurable only so that `head`, the way this bench used to read on every poll, stays available
+   * for measuring how much of a reported freeze belongs to the instrument. See `FeedFollower`.
+   */
+  feedReader?: FeedReaderMode;
+  /**
+   * How far the publisher's timestamps run ahead of wall clock, from this run's own self-check.
+   *
+   * Required rather than defaulted to zero. A default would let a caller that forgot it produce a
+   * report that looks complete and reads 1.4 seconds fast, which is the failure this whole quantity
+   * exists to end. See `measureMediaTimelineLead`.
+   */
+  mediaTimelineLeadMs: number;
+  /**
+   * Whether to wait out a gateway that refuses a segment, rather than discarding the sample.
+   *
+   * Absent by default. A run that sets it is measuring how long segments stay unretrievable, and its
+   * latency figures are not comparable with a run that did not, because the wait happens inside the
+   * collection loop and the loop's pace is what keeps the reader at the live edge.
+   */
+  unservedRetry?: UnservedRetry;
+  /**
+   * Times refusals off the loop, so the budget can reach past the two seconds an in-loop wait allows.
+   *
+   * Absent by default. What it costs the gateway is `concurrency / recheckMs` requests a second and is
+   * known before the run starts, which is the reason it is bounded rather than fired per refusal.
+   */
+  unservedWatch?: UnservedSegmentWatch;
+}
+
+/** Everything one segment contributed, before the uploader's log is read to fill in the middle. */
+interface PendingSample {
+  ref: string;
+  segmentDurationS: number;
+  /** What the manifest declared, or null where the entry carried no readable `#EXTINF`. */
+  declaredDurationS: number | null;
+  videoPacketCount: number;
+  /**
+   * The segment's size on the wire.
+   *
+   * Free, since the probe already holds the bytes, and it is the reading that would have placed the
+   * publisher throttle of `docs/bench/publisher-backpressure.md` instead of leaving it inferred: a
+   * throttled run stretches media time to match its consumer, so its bytes per second of media falls
+   * while its bytes per segment does not.
+   */
+  segmentBytes: number;
+  /**
+   * How long the gateway refused these bytes before serving them, zero when the first ask worked.
+   *
+   * Always zero unless the run enabled `UnservedRetry`, since without it a refused segment is
+   * discarded rather than waited for.
+   */
+  unservedForMs: number;
+  /** Asks the segment took, so a refusal is distinguishable from a slow download rather than inferred. */
+  fetchAttempts: number;
+  capturedAtMs: number;
+  visibleAtMs: number;
+  fetchedAtMs: number;
+}
+
+export async function measureLatency(options: RunOptions): Promise<BenchRun> {
+  const { cfg, host, knobs } = options;
+  const uploader = containerName(cfg, 'stream-uploader');
+
+  await waitForIdle(host, cfg);
+  // Taken before the publish so every log read below is scoped to this run and cannot pick up a
+  // previous stream's segments out of the same `docker logs` tail.
+  const sinceIso = await host.nowIso();
+  const skew = await measureClockSkew(host);
+
+  const publisher = startWallclockPublisher(cfg, knobs);
+  let pending: PendingSample[] = [];
+  let discarded: DiscardedSegment[] = [];
+  let feedPolls: FeedPoll[] = [];
+  try {
+    const stream = await waitForAnnouncement(host, uploader, sinceIso, publisher);
+    const topicHex = Topic.fromString(stream.topic).toString();
+    ({
+      collected: pending,
+      discarded,
+      feedPolls,
+    } = await collectSamples(options, stream.owner, topicHex, publisher.startedAtMs));
+  } finally {
+    await publisher.stop();
+  }
+
+  const timeline = uploadTimeline(await host.logsSince(uploader, sinceIso));
+  const samples = pending.map((sample) => toSample(sample, timeline, skew));
+
+  return {
+    measuredAt: new Date().toISOString(),
+    engine: cfg.engine,
+    profile: cfg.profile,
+    knobs,
+    samples,
+    discarded,
+    feedPolls,
+    mediaTimelineLeadMs: options.mediaTimelineLeadMs,
+    trend: latencyTrend(
+      pending.map((sample) => sample.fetchedAtMs),
+      pending.map((sample) => sample.capturedAtMs),
+    ),
+  };
+}
+
+function toSample(
+  pending: PendingSample,
+  timeline: ReturnType<typeof uploadTimeline>,
+  skew: Parameters<typeof latencySplit>[1],
+): SegmentSample {
+  const uploaded = segmentByRef(timeline, pending.ref);
+  if (!uploaded) {
+    throw new Error(
+      `the uploader's log holds no "Segment N of <stream> uploaded: ${pending.ref}" line, though the ` +
+        'gateway served that segment. Either the deployment is not logging at a level that prints it, ' +
+        'or the log window read here does not reach back to when it was uploaded.',
+    );
+  }
+  const manifest = firstManifestAtOrAfter(timeline, uploaded.streamId, uploaded.atMs);
+  if (!manifest) {
+    throw new Error(
+      `segment ${uploaded.index} of ${uploaded.streamId} uploaded but no manifest publish follows it ` +
+        'in the log for that rung, so the feed write that made it visible cannot be timed.',
+    );
+  }
+
+  const instants: SegmentInstants = {
+    capturedAtMs: pending.capturedAtMs,
+    segmentDurationS: pending.segmentDurationS,
+    uploadedAtMs: uploaded.atMs,
+    manifestPublishedAtMs: manifest.atMs,
+    visibleAtMs: pending.visibleAtMs,
+    fetchedAtMs: pending.fetchedAtMs,
+  };
+
+  return {
+    // The rung's own playlist position, never a ladder-wide one: four rungs each count from zero, so
+    // this number only means anything beside another sample from the same rung. Every sample in a run
+    // is one, because `waitForAnnouncement` picks a single announced stream and `collectSamples` reads
+    // only that feed, and `mediaPacing` relies on it when it subtracts the first index from the last.
+    index: uploaded.index,
+    ref: pending.ref,
+    split: latencySplit(instants, skew),
+    declaredDurationS: pending.declaredDurationS,
+    videoPacketCount: pending.videoPacketCount,
+    segmentBytes: pending.segmentBytes,
+    unservedForMs: pending.unservedForMs,
+    fetchAttempts: pending.fetchAttempts,
+  };
+}
+
+/**
+ * Wait for the uploader to announce the stream this run just started publishing.
+ *
+ * Checks whether the publisher is still alive on every poll, rather than only at the deadline. A
+ * publisher that failed to spawn or died on its arguments is knowable in the first two seconds, and
+ * without this the run spends the full ninety waiting for something that can no longer happen, then
+ * reports a timeout when what it had was an encoder that never started.
+ */
+async function waitForAnnouncement(host: Host, uploader: string, sinceIso: string, publisher: WallclockPublisher) {
+  // Redacted because ffmpeg names the URL it could not reach in its own stderr, publish key and all,
+  // and this string reaches both a thrown error and a `waitFor` label. That is the second way the
+  // credential gets printed, and the one nobody writes on purpose.
+  const ffmpegSaid = () => redactPublishKey(publisher.stderr().trim().slice(0, 300)) || '(nothing)';
+  let announced: ReturnType<typeof announcedLiveStreams>[number] | undefined;
+  await waitFor(
+    async () => {
+      const exit = publisher.exit();
+      if (exit) {
+        // ⛔ StopWaiting, not a plain Error. waitFor treats an ordinary throw as a read that failed and
+        // polls on, which is what makes a dropped ssh survivable, and would spend the whole ceiling here.
+        throw new StopWaiting(
+          `the publisher exited (${describeExit(exit)}) before the uploader announced a live stream, so ` +
+            `nothing was ever ingested. ffmpeg said: ${ffmpegSaid()}`,
+        );
+      }
+      announced = announcedLiveStreams(await host.logsSince(uploader, sinceIso)).at(-1);
+      return announced !== undefined;
+    },
+    {
+      timeoutMs: ANNOUNCE_TIMEOUT_MS,
+      intervalMs: 2_000,
+      label: `the uploader announcing a live stream. ffmpeg said: ${ffmpegSaid()}`,
+    },
+  );
+  return announced!;
+}
+
+function describeExit(exit: FfmpegExit): string {
+  if (exit.signal !== null) {
+    return `on ${exit.signal}`;
+  }
+  return exit.code === null ? 'without ever starting' : `with status ${exit.code}`;
+}
+
+/**
+ * Poll the feed the way a player does, and carry each newly-appearing segment end to end.
+ *
+ * The newest entry is taken rather than the whole window, because the question is how far behind live
+ * a viewer is: an older entry in the same manifest has been fetchable for longer and would report a
+ * latency that is really its age.
+ */
+async function collectSamples(
+  options: RunOptions,
+  owner: string,
+  topicHex: string,
+  publishStartedAtMs: number,
+): Promise<{ collected: PendingSample[]; discarded: DiscardedSegment[]; feedPolls: FeedPoll[] }> {
+  const { gatewayUrl, samples: wanted, idlePollIntervalMs } = options;
+  const collected: PendingSample[] = [];
+  const discarded: DiscardedSegment[] = [];
+  const watch = options.unservedWatch;
+  // Every completed read, not only the ones that yielded a sample. A gap in the samples is either
+  // the feed not advancing or this loop not asking, and without the polls that never yielded
+  // anything the two are the same shape. See `feedProgress`.
+  const feedPolls: FeedPoll[] = [];
+  const seen = new Set<string>();
+  const deadline = Date.now() + (options.collectForMs ?? SEGMENT_TIMEOUT_MS * wanted);
+
+  // Separate from the collection deadline, and shorter than a long run's. A feed that never appears
+  // is knowable in two minutes, and waiting out a half-hour collection window to say so would report
+  // the uploader never writing as a run that measured nothing.
+  const firstWriteDeadline = Date.now() + SEGMENT_TIMEOUT_MS;
+  let feedSeen = false;
+  let lastFeedSuccessAtMs = Date.now();
+
+  // Follows the feed the way the player does rather than resolving the head on every poll. The two
+  // differ by more than the thing this bench measures: see `FeedFollower`.
+  const follower = new FeedFollower(gatewayUrl, owner, topicHex, options.feedReader ?? DEFAULT_FEED_READER);
+
+  while (collected.length < wanted && Date.now() <= deadline) {
+    let manifest;
+    try {
+      manifest = await follower.read();
+    } catch (error) {
+      if (!feedSeen) {
+        if (!isFeedPendingFirstWrite(error, feedSeen) || Date.now() > firstWriteDeadline) {
+          throw error;
+        }
+        await sleep(idlePollIntervalMs);
+        continue;
+      }
+
+      // A poll that failed is a poll that found nothing, and recording it is the whole point of
+      // `feedPolls`. Throwing here instead discarded every sample the run had already paid a real
+      // broadcast for, and it was triggered by the effect under study: a feed poll slow enough to
+      // exceed the timeout is the strongest sample of LAT-10 there is. See `isFeedBlackout`.
+      feedPolls.push({ atMs: Date.now(), newestRef: null, resolvedIndex: null });
+      if (isFeedBlackout(Date.now() - lastFeedSuccessAtMs)) {
+        throw new Error(
+          `no feed poll has succeeded at ${gatewayUrl} for ${FEED_BLACKOUT_LIMIT_MS}ms, so this is the ` +
+            `gateway being gone rather than the feed being slow. Last error: ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      await sleep(idlePollIntervalMs);
+      continue;
+    }
+    feedSeen = true;
+    lastFeedSuccessAtMs = manifest.atMs;
+
+    const newest = parseManifest(manifest.body).segments.at(-1);
+    const ref = newest ? segmentRefFromUri(newest.uri) : null;
+    feedPolls.push({ atMs: manifest.atMs, newestRef: ref, resolvedIndex: manifest.resolvedIndex });
+    if (!newest || !ref || seen.has(ref)) {
+      await sleep(idlePollIntervalMs);
+      continue;
+    }
+    seen.add(ref);
+
+    // One unreadable segment loses that segment and nothing else. Every sample here cost a real
+    // broadcast and real postage, so throwing would discard the ones that already worked, and it
+    // would also make `UnusableTimestampsError` unreachable: that error exists so a run can report a
+    // segment as unmeasurable instead of crashing, and a caller that never catches it cannot.
+    try {
+      collected.push(
+        await measureOne(
+          gatewayUrl,
+          newest,
+          ref,
+          manifest.atMs,
+          publishStartedAtMs,
+          options.mediaTimelineLeadMs,
+          options.unservedRetry ?? NO_UNSERVED_RETRY,
+        ),
+      );
+    } catch (error) {
+      discarded.push({ ref, reason: error instanceof Error ? error.message : String(error) });
+      // Off the loop on purpose. A refusal is timed by a watcher with its own bounded rate, because
+      // waiting here costs the loop its pace and the loop's pace is what keeps the reader at the edge.
+      if (watch && error instanceof GatewayStatusError && error.status === SEGMENT_NOT_RETRIEVABLE_YET) {
+        watch.observe(ref);
+      }
+    }
+  }
+
+  await watch?.settle();
+
+  // Waiting out the first 404 must not turn a feed that never appeared into an empty run, which the
+  // sweep report skips over in silence. A feed the uploader never wrote is a real failure and the
+  // only place left that can say so.
+  if (!feedSeen) {
+    throw new Error(
+      `the feed ${owner}/${topicHex} never appeared at ${gatewayUrl} in ${SEGMENT_TIMEOUT_MS}ms. ` +
+        'The publisher was accepted, so this is the uploader not writing an update rather than the ' +
+        'broadcast failing: check the uploader log for the manifest publish.',
+    );
+  }
+
+  return { collected, discarded, feedPolls };
+}
+
+/**
+ * One manifest entry carried end to end into a reading.
+ *
+ * Separate from the polling loop so that everything which can fail for a single segment sits inside
+ * one `try` at the call site, and so that adding a step here cannot accidentally escape it.
+ */
+async function measureOne(
+  gatewayUrl: string,
+  newest: { uri: string; extinf: string },
+  ref: string,
+  visibleAtMs: number,
+  publishStartedAtMs: number,
+  mediaTimelineLeadMs: number,
+  unserved: UnservedRetry,
+): Promise<PendingSample> {
+  const segment = await fetchSegment(gatewayUrl, ref, unserved);
+  const probed = await probeSegmentBytes(segment.body, ref);
+  const latencyMs = latencyMsFromPts(probed.firstFrame, {
+    publishStartedAtMs,
+    observedAtMs: segment.atMs,
+    mediaTimelineLeadMs,
+  });
+  requireSpanFitsTheBroadcast(probed.mediaSpanS, segment.atMs - publishStartedAtMs, ref);
+
+  return {
+    ref,
+    segmentDurationS: probed.mediaSpanS,
+    // No longer fatal. The split is measured from the bytes now, so an unreadable `#EXTINF` costs the
+    // comparison in the report and not the sample, and a segment that was paid for still yields one.
+    declaredDurationS: segmentDuration(newest.extinf),
+    videoPacketCount: probed.videoPacketCount,
+    segmentBytes: segment.body.length,
+    unservedForMs: segment.unservedForMs,
+    fetchAttempts: segment.attempts,
+    capturedAtMs: captureInstantMs(segment.atMs, latencyMs, mediaTimelineLeadMs),
+    visibleAtMs,
+    fetchedAtMs: segment.atMs,
+  };
+}
+
+/**
+ * A segment cannot hold more media than the publisher has produced.
+ *
+ * True by construction rather than tuned, though **one-sided**, unlike the bounds in `wallclock.ts`
+ * which reject in both directions. A span measured too short has no bound here and none is available
+ * from the packets: for constant-frame-rate output the span is exactly the packet count times the
+ * frame duration, so a truncated list is as self-consistent as a whole one. The external check is the
+ * declared duration the report prints beside it.
+ *
+ * What this one catches is a span measured across an MPEG-TS timestamp wrap, which lands near the
+ * 26.5-hour period. **The order of the two calls above matters and is the only thing making the
+ * anchor safe in that case**: on a wrap-crossing segment `Math.min` picks a post-wrap frame, so
+ * `latencyMsFromPts` returns a latency roughly one segment too small and does not throw. This runs
+ * after it and discards the segment before either figure is used.
+ */
+function requireSpanFitsTheBroadcast(mediaSpanS: number, elapsedMs: number, ref: string): void {
+  if (mediaSpanS * 1_000 > elapsedMs) {
+    throw new Error(
+      `it measures ${mediaSpanS.toFixed(1)}s of media, more than the ${(elapsedMs / 1_000).toFixed(1)}s the ` +
+        `publisher has been running. The likeliest cause is a timestamp wrap inside ${ref} rather than ` +
+        'anything the pipeline did to it, since MPEG-TS counts in 33 bits and rolls every 26.5 hours',
+    );
+  }
+}
+
+/** ffprobe reads a path, so the fetched bytes go to a temp file that is removed either way. */
+async function probeSegmentBytes(bytes: Buffer, ref: string) {
+  const path = join(tmpdir(), `swarm-hls-bench-${ref.slice(0, 16)}.ts`);
+  await writeFile(path, bytes);
+  try {
+    return await probeSegment(path, ref);
+  } finally {
+    await unlink(path).catch(() => {
+      // A leftover temp segment is not worth failing a run that otherwise measured cleanly.
+    });
+  }
+}

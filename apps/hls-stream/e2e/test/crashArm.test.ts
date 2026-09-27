@@ -1,0 +1,538 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import { FAULT_SCENARIOS, type FaultScenario, scenarioByName } from '../src/browser/faults.js';
+import {
+  FEED_STATE_DEGRADED,
+  FEED_STATE_ENDED,
+  FEED_STATE_RECONNECTING,
+  FEED_STATE_STALLED,
+} from '../src/browser/feedState.js';
+import { GATEWAY_BYTES, WEEB3_BYTES } from '../src/browser/fetchBackendSweep.js';
+import { type BrowserArmResult, type CrashRecoveryResult, parseBrowserArmState } from '../src/harness/browser.js';
+import { MAX_WEEB3_SEGMENT_REQUESTS } from '../src/harness/browserVerdict.js';
+import {
+  CRASH_RECOVER_SECONDS,
+  CRASH_SETTLE_SECONDS,
+  crashArmMinutes,
+  crashArmRefusal,
+  crashArmSummary,
+  faultLogWindow,
+  frozenOverlayRefusal,
+  resumeRefusal,
+  UPLOAD_RETRY_WINDOW_MS,
+} from '../src/harness/crashArm.js';
+
+import { armState, crashArmState, GATEWAY_OUTAGE_RECOVERY, INSTRUMENT_UNPROVEN } from './helpers/browserArmFixtures.js';
+
+/**
+ * How long a crash arm needs, and the questions a crash scenario asks of the one it got.
+ *
+ * The five suites under `suites/viewer/` that drive a fault cost a broadcast each and nothing under
+ * `suites/` runs in CI, so every rule they judge on is covered here instead: a rule written inline in
+ * a scenario is a rule nothing checks until a paid broadcast is already burning.
+ *
+ * The figures throughout are the ones `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md` recorded,
+ * so a predicate is exercised against runs that happened rather than against invented ones. ⭐ They
+ * are the INPUTS here and never the contract: owner ruling of 2026-08-29, an e2e suite checks that
+ * the feature works properly and stably, and every duration one of these arms produces is measured,
+ * printed and filed rather than held against a ceiling.
+ */
+
+const GATEWAY_OUTAGE = scenarioByName('viewer-gateway-outage');
+const ENGINE_RESTART = scenarioByName('engine-restart');
+
+const E2E_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
+
+/** The recovery verdict of the doc's arm 1, parsed, which is the shape the predicates take. */
+const RECOVERED = parseBrowserArmState(crashArmState()).recovery as CrashRecoveryResult;
+const wentThrough = (overrides: Partial<CrashRecoveryResult>): CrashRecoveryResult => ({ ...RECOVERED, ...overrides });
+
+const CLEAN_ARM = { scenario: GATEWAY_OUTAGE.name, maxSegmentRequests: MAX_WEEB3_SEGMENT_REQUESTS };
+
+describe('how much wall clock one crash arm gets', () => {
+  /**
+   * ⭐ Derived from the fault rather than chosen per suite. Five copies of this arithmetic would
+   * drift, and a suite that guessed short would kill a paid broadcast partway through the recovery
+   * it exists to measure.
+   */
+  it('gives every fault in the matrix an arm between three and six minutes', () => {
+    for (const scenario of FAULT_SCENARIOS) {
+      const minutes = crashArmMinutes(scenario);
+
+      assert.ok(minutes >= 3 && minutes <= 6, `${scenario.name} would run for ${minutes} minutes`);
+    }
+  });
+
+  it("outlasts the driver's own windows, for the longest fault in the matrix", () => {
+    const windows = 60 + CRASH_SETTLE_SECONDS + ENGINE_RESTART.downMs / 1000 + CRASH_RECOVER_SECONDS;
+
+    assert.ok(crashArmMinutes(ENGINE_RESTART) * 60 > windows, `${windows}s of driver timeline has to fit inside`);
+  });
+
+  /**
+   * ⛔ The ceiling is what an operator pays for: one broadcast per arm, and five arms in a sitting.
+   * There is no floor to check, because the shortest arm these windows can produce is already over
+   * the three minutes the crash matrix was sized against.
+   */
+  it('refuses a fault that would need more broadcast than an arm may buy', () => {
+    const marathon: FaultScenario = { ...GATEWAY_OUTAGE, name: 'ten-minute-outage', downMs: 600_000 };
+
+    assert.throws(() => crashArmMinutes(marathon), /ten-minute-outage/);
+  });
+
+  /**
+   * ⛔ Mirrored constants, so this is a grep rather than a promise. `browser/crash.ts` runs its own
+   * `main()` on import and cannot be read from a suite, so its two window defaults are restated in
+   * the harness. A default moved there and not here would silently size every arm against a timeline
+   * the driver no longer has.
+   */
+  it('mirrors the window defaults the crash driver actually declares', () => {
+    const driver = readFileSync(join(E2E_DIR, 'browser', 'crash.ts'), 'utf8');
+    const declared = (name: string): number => {
+      const match = new RegExp(`const ${name} = (\\d+);`).exec(driver);
+      assert.ok(match, `browser/crash.ts no longer declares ${name}`);
+      return Number(match[1]);
+    };
+
+    assert.equal(CRASH_SETTLE_SECONDS, declared('DEFAULT_SETTLE_SECONDS'));
+    assert.equal(CRASH_RECOVER_SECONDS, declared('DEFAULT_RECOVER_SECONDS'));
+  });
+});
+
+/**
+ * ⛔ The window a discontinuity may be charged to a fault.
+ *
+ * V8 read the uploader's counter across a six minute arm and reported the answer as a property of an
+ * eight second pause. `suites/scenarios/bee-outage-short.test.ts` drives the same pause against the
+ * same stage and reads zero, because its own window is about ninety seconds. The bounds are what
+ * separated the two answers, so they are checked here rather than left inline in a suite that only
+ * runs when a broadcast is already burning.
+ */
+describe('the stretch of uploader log a discontinuity belongs to a fault in', () => {
+  const FAULT = { injectedAtMs: 1_756_377_600_000, liftedAtMs: 1_756_377_608_000, servingAtMs: 1_756_377_612_000 };
+
+  it('opens where the fault landed, not where the arm started', () => {
+    assert.equal(faultLogWindow(FAULT).sinceIso, new Date(FAULT.injectedAtMs).toISOString());
+  });
+
+  /**
+   * ⭐ The bound that is not obvious. An upload begun a moment before the service came back keeps
+   * retrying for the uploader's whole window, so a discontinuity this fault caused is written to the
+   * log seconds after the fault is over. Closing at the lift would miss exactly what is being counted.
+   */
+  it("closes a retry window after the lift, because that is when the fault's last upload gives up", () => {
+    const { untilIso } = faultLogWindow(FAULT);
+
+    assert.equal(untilIso, new Date(FAULT.liftedAtMs + UPLOAD_RETRY_WINDOW_MS).toISOString());
+    assert.ok(Date.parse(untilIso) - FAULT.liftedAtMs >= UPLOAD_RETRY_WINDOW_MS);
+  });
+
+  /** RFC3339, because both ends are handed to `docker logs` rather than compared in this process. */
+  it('states both bounds as instants docker can take', () => {
+    const { sinceIso, untilIso } = faultLogWindow(FAULT);
+
+    for (const bound of [sinceIso, untilIso]) {
+      assert.match(bound, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    }
+  });
+
+  /**
+   * ⛔ An arm that threw before injecting leaves both stamps at 0, which would otherwise produce a
+   * window in 1970 that every log read comes back empty from. An empty log counts zero discontinuities
+   * and the case passes, so a run that never drove its fault would report the best possible outcome.
+   */
+  it('refuses stamps that say the fault was lifted before it was injected', () => {
+    assert.throws(
+      () => faultLogWindow({ injectedAtMs: 1_756_377_600_000, liftedAtMs: 0, servingAtMs: null }),
+      /cannot bound anything/,
+    );
+  });
+
+  /**
+   * ⛔ Mirrored constant, so this is a grep rather than a promise, like the driver windows above. The
+   * uploader owns how long it retries, and a change there that did not reach here would silently
+   * shorten the window on the side that decides whether a paid arm passes.
+   */
+  it('mirrors the retry window the uploader actually gives a segment', () => {
+    const uploader = readFileSync(
+      join(dirname(E2E_DIR), 'packages', 'stream-uploader', 'src', 'libs', 'StreamUploader.ts'),
+      'utf8',
+    );
+    const match = /const SEGMENT_UPLOAD_RETRY_WINDOW_MS = ([\d_]+);/.exec(uploader);
+
+    assert.ok(match, 'StreamUploader.ts no longer declares SEGMENT_UPLOAD_RETRY_WINDOW_MS');
+    assert.equal(UPLOAD_RETRY_WINDOW_MS, Number(match[1].split('_').join('')));
+  });
+});
+
+describe('whether a crash arm is a viewer who was watching when the fault landed', () => {
+  it('passes an in-tab arm that watched, broke and reported the fault it was asked for', () => {
+    assert.equal(crashArmRefusal(parseBrowserArmState(crashArmState()), CLEAN_ARM), null);
+  });
+
+  /**
+   * ⛔ First, and before any figure is read. A hidden or throttled page stops advancing playback on
+   * its own, which is indistinguishable from the freeze every one of these scenarios is measuring.
+   */
+  it('refuses a run whose browser was not a usable instrument, whatever its freeze says', () => {
+    const degraded = parseBrowserArmState(
+      crashArmState({ instrument: { sound: false, failures: ['timer drift 61x the interval'] } }),
+    );
+
+    assert.match(String(crashArmRefusal(degraded, CLEAN_ARM)), /timer drift 61x the interval/);
+  });
+
+  /**
+   * ⛔⛔⛔ The other half of the instrument check, which read nothing until 2026-09-16. Both sensors
+   * pass on the subject page by construction, so a proof the driver took and wrote into the artifact
+   * is the only thing that says the "sound" above could have come out the other way.
+   */
+  it('refuses a run whose instrument was never shown able to report a failure', () => {
+    const unproven = parseBrowserArmState(crashArmState({ instrumentProofs: INSTRUMENT_UNPROVEN }));
+
+    assert.match(String(crashArmRefusal(unproven, CLEAN_ARM)), /restatement of the launch flags rather than evidence/);
+  });
+
+  /**
+   * ⛔ A watch artifact reaching a crash suite. Every figure in it is a healthy broadcast's, so the
+   * scenario would report that its fault cost the viewer nothing.
+   */
+  it('refuses an artifact from a run that broke nothing at all', () => {
+    assert.match(String(crashArmRefusal(parseBrowserArmState(armState()), CLEAN_ARM)), /no fault/);
+  });
+
+  it('refuses an artifact from a different fault than the one this scenario asked for', () => {
+    const wrongFault = parseBrowserArmState(crashArmState({ scenario: 'uploader-crash' }));
+
+    assert.match(String(crashArmRefusal(wrongFault, CLEAN_ARM)), /uploader-crash/);
+  });
+
+  it('refuses a run that decoded nothing, whose silence looks exactly like an unaffected viewer', () => {
+    const blind = parseBrowserArmState(crashArmState({ resolutions: [] }));
+
+    assert.match(String(crashArmRefusal(blind, CLEAN_ARM)), /resolution/);
+  });
+
+  it('refuses an arm whose byte-source switch did not take, since both conditions would then be one', () => {
+    const landedElsewhere = parseBrowserArmState(
+      crashArmState({ byteSource: { requested: WEEB3_BYTES, reported: GATEWAY_BYTES, settledForMs: 60_000 } }),
+    );
+
+    assert.match(String(crashArmRefusal(landedElsewhere, CLEAN_ARM)), new RegExp(GATEWAY_BYTES));
+  });
+
+  /**
+   * ⭐ The matrix's in-tab arms each made 8 or 9 segment requests over HTTP for a whole run, against
+   * the control's 366. The readback above says what the client believes and this is what the network
+   * did, and on 2026-08-13 those disagreed while both arms fetched everything from one node.
+   */
+  it('refuses an in-tab arm that went on reading its segments from the gateway', () => {
+    const notInTab = parseBrowserArmState(crashArmState({ segmentRequests: 366 }));
+
+    assert.match(String(crashArmRefusal(notInTab, CLEAN_ARM)), /366/);
+  });
+
+  it('passes a gateway arm, which is the control and claims nothing about a node in the tab', () => {
+    const control = parseBrowserArmState(crashArmState({ backend: GATEWAY_BYTES, segmentRequests: 366 }));
+
+    assert.equal(crashArmRefusal(control, CLEAN_ARM), null);
+  });
+
+  /**
+   * ⛔ The correctness question the freeze ceilings used to stand in for. A viewer who decoded a
+   * first frame and then sat on it for the whole arm reports a resolution and no error, so every
+   * other check here passes, and the fault would be credited with a picture that never existed.
+   */
+  it('refuses an arm whose picture never moved forward at all', () => {
+    const frozenThroughout = parseBrowserArmState(crashArmState({ overallAdvanceRatio: 0 }));
+
+    assert.match(String(crashArmRefusal(frozenThroughout, CLEAN_ARM)), /never moved/);
+  });
+
+  /**
+   * ⭐ Owner ruling of 2026-08-29: an e2e suite checks feature correctness and stability, and how
+   * long a fault cost a viewer is a performance reading. Live on the four rung ladder that day, three
+   * faults froze the picture for 57 to 59 seconds against ceilings of 8 and 45 taken from a
+   * single-rendition 720p sitting, and all three suites went red for a configuration difference.
+   */
+  it('passes an arm that froze for a minute, since a duration is measured here and never judged', () => {
+    const slow = parseBrowserArmState(
+      crashArmState({ recovery: { ...GATEWAY_OUTAGE_RECOVERY, longestFreezeMs: 59_000 } }),
+    );
+
+    assert.equal(crashArmRefusal(slow, CLEAN_ARM), null);
+  });
+
+  /**
+   * ⭐ The other half of the same ruling, and the sharper half. V10 was refused live for freezing
+   * 16.3s against a FLOOR of 20s: it failed for costing the viewer less than the matrix recorded.
+   */
+  it('passes an arm the fault barely touched, which no longer reads as a fault that never landed', () => {
+    const barelyTouched = parseBrowserArmState(
+      crashArmState({
+        recovery: { ...GATEWAY_OUTAGE_RECOVERY, longestFreezeMs: 0, freezeStartedAfterFaultMs: null },
+      }),
+    );
+
+    assert.equal(crashArmRefusal(barelyTouched, CLEAN_ARM), null);
+  });
+});
+
+describe('whether the picture came back the way this fault lets it', () => {
+  const RESUMES = { expectRecovery: true };
+
+  it('passes a viewer whose picture was moving again by the end of the run', () => {
+    assert.equal(resumeRefusal(RECOVERED, RESUMES), null);
+  });
+
+  it('refuses a viewer left on a frozen frame by a fault the product recovers from', () => {
+    const stranded = wentThrough({ recovered: false, recoveredAfterLiftMs: null });
+
+    assert.match(String(resumeRefusal(stranded, RESUMES)), /never/);
+  });
+
+  /**
+   * ⭐ Owner ruling of 2026-08-29. The uploader-crash fix is still worth watching, at 2.3s against
+   * 46.7s before it landed, and this is where a regression is NOTICED rather than refused: the figure
+   * is printed by {@link crashArmSummary} on every arm and filed in the artifact. The contract is
+   * that the picture came back, and a slower return is still a viewer who got their broadcast.
+   */
+  it('passes a viewer who came back slowly, since a recovery time is measured here and never judged', () => {
+    assert.equal(resumeRefusal(wentThrough({ recoveredAfterLiftMs: 46_700 }), RESUMES), null);
+  });
+
+  /**
+   * Not an anomaly: a viewer whose buffer outlasted the outage was never waiting on the service, so
+   * the picture moved again before it answered.
+   */
+  it('passes a viewer whose buffer outlasted the outage, resuming before the service answered', () => {
+    assert.equal(resumeRefusal(wentThrough({ recoveredAfterLiftMs: -1_200 }), RESUMES), null);
+  });
+
+  /**
+   * ⛔ The writer-bee pause, whose written expectation is that a viewer notices nothing at all. Such a
+   * viewer records no resume because there was no freeze to come back from, and reading that absence
+   * as a missing recovery would fail the product for behaving better than the matrix measured.
+   */
+  it('passes a viewer the fault never stopped, who had nothing to resume from', () => {
+    const sailedThrough = wentThrough({
+      longestFreezeMs: 0,
+      freezeStartedAfterFaultMs: null,
+      recoveredAfterLiftMs: null,
+    });
+
+    assert.equal(resumeRefusal(sailedThrough, RESUMES), null);
+  });
+
+  /**
+   * ⭐ The picture is moving again, and only the stopwatch is missing. Nothing is timed here any
+   * more, so an unrecorded moment is a gap in the report rather than a viewer who was let down.
+   */
+  it('passes a picture that stopped and is moving again with no record of when it started', () => {
+    assert.equal(resumeRefusal(wentThrough({ recoveredAfterLiftMs: null }), RESUMES), null);
+  });
+
+  const ENDS = { expectRecovery: false };
+
+  it('passes the fault that ends the broadcast, whose viewer correctly never gets a picture back', () => {
+    const terminal = wentThrough({ recovered: false, recoveredAfterLiftMs: null, serviceStartupMs: null });
+
+    assert.equal(resumeRefusal(terminal, ENDS), null);
+  });
+
+  /**
+   * ⛔ A resume here is not good news. The engine restart takes the publisher's connection with it, so
+   * a picture that moves again is a viewer who was handed a different broadcast, or a fault that
+   * never landed.
+   */
+  it('refuses a viewer who resumed a broadcast that had ended', () => {
+    assert.match(String(resumeRefusal(RECOVERED, ENDS)), /ended/);
+  });
+});
+
+/**
+ * Judged on whether what the viewer was told is TRUE, rather than on which of the true things it was.
+ *
+ * ⭐ The three non-terminal states each name a different reason, and all three carry the same
+ * operative claim to a viewer looking at a stopped picture: we know, and we are still trying. None of
+ * them sends anybody away. `ended` is categorically different, because it is terminal: it says
+ * nothing more is coming. So the falsifiable proposition is whether the broadcast is over, and that
+ * is the only thing a fault's expectation states here.
+ *
+ * ⛔ V6 demanded exactly `reconnecting` and got `degraded` live on 2026-08-29. Both are true. Which
+ * one fires is a function of which internal counter crossed first, which depends on the rung count
+ * and the byte source: on a weeb-3 arm the segments arrive from the node in the tab, every arrival
+ * calls `recordGatewayReachable()` with no topic and forgives every held topic outright, so
+ * `gatewayFailures` returns to zero and the state falls through to `degraded`. That is the client
+ * preferring the more specific truth it has.
+ */
+describe('whether what the client told the viewer while the picture was stopped was true', () => {
+  /** A fault the broadcast survives: the three non-terminal states are all honest, `ended` is not. */
+  const STILL_LIVE = {
+    truthful: [FEED_STATE_RECONNECTING, FEED_STATE_STALLED, FEED_STATE_DEGRADED],
+    mustSpeak: true,
+  } as const;
+
+  it('passes an overlay that named the fault the way the matrix records it', () => {
+    assert.equal(frozenOverlayRefusal(RECOVERED, STILL_LIVE), null);
+  });
+
+  /**
+   * ⭐ The V6 red of 2026-08-29, and the case this rewrite exists for. The client said "The stream is
+   * struggling to keep up" where the matrix had recorded "Reconnecting to the stream". A viewer read
+   * a true sentence either way, and the suite failed them.
+   */
+  it('passes a different true state than the one a single old run happened to produce', () => {
+    const struggling = wentThrough({ saidWhileFrozen: ['The stream is struggling to keep up'] });
+
+    assert.equal(frozenOverlayRefusal(struggling, STILL_LIVE), null);
+  });
+
+  /**
+   * ⛔ The one state that lies during a recoverable fault. Terminal, so it tells a viewer whose
+   * picture is coming back to stop waiting for it, which is the one overlay outcome that loses them.
+   */
+  it('refuses a viewer told the broadcast ended when it had not', () => {
+    const wronglyTerminal = wentThrough({ saidWhileFrozen: ['This broadcast has ended'] });
+
+    assert.match(String(frozenOverlayRefusal(wronglyTerminal, STILL_LIVE)), new RegExp(FEED_STATE_ENDED));
+  });
+
+  it('refuses one lie mixed in among true states, rather than passing on the true ones', () => {
+    const mixed = wentThrough({ saidWhileFrozen: ['Reconnecting to the stream', 'This broadcast has ended'] });
+
+    assert.match(String(frozenOverlayRefusal(mixed, STILL_LIVE)), new RegExp(FEED_STATE_ENDED));
+  });
+
+  /**
+   * ⛔ Silence IS a claim. The client renders nothing for `live`, so a stopped picture under no
+   * overlay is a viewer being told everything is fine while they look at a frozen frame.
+   */
+  it('refuses a frozen frame that explained nothing, where the client is required to speak', () => {
+    const silent = wentThrough({ saidWhileFrozen: [], explainedTheFreeze: false });
+
+    assert.match(String(frozenOverlayRefusal(silent, STILL_LIVE)), /nothing/);
+  });
+
+  /**
+   * ⚠️ The silent overlay gap, and why the requirement is per fault. Where the gateway keeps
+   * answering and only the slot is empty, the counter that would catch it is
+   * `UNSERVED_SLOT_POLL_LIMIT`, whose poll rate collapses during exactly the stall it exists to
+   * detect, and one long freeze is a single playback stall rather than the burst `degraded` needs.
+   * The client may genuinely not know, so its silence is reported rather than refused, and the day
+   * a fix lands the case goes green rather than red.
+   */
+  it('passes the same silence where the client is not yet known to be able to speak', () => {
+    const silent = wentThrough({ saidWhileFrozen: [], explainedTheFreeze: false });
+
+    assert.equal(frozenOverlayRefusal(silent, { ...STILL_LIVE, mustSpeak: false }), null);
+  });
+
+  /**
+   * ⭐ The direction that matters after the 2026-08-29 ruling. These cases used to assert the
+   * silence EXACTLY, so a fix for the silent overlay gap turned them red for the product improving.
+   * It must turn them green.
+   */
+  it('passes a viewer the client did start explaining things to, where silence was tolerated', () => {
+    assert.equal(frozenOverlayRefusal(RECOVERED, { ...STILL_LIVE, mustSpeak: false }), null);
+  });
+
+  /**
+   * ⭐ Judged as states rather than as prose. The overlay's wording is a product decision, so a copy
+   * edit must not turn a green scenario red while a genuinely broken terminal state stays green for
+   * as long as the words survive.
+   */
+  it('refuses a message the client is no longer known to render, rather than reading it as silence', () => {
+    const reworded = wentThrough({ saidWhileFrozen: ['Hang tight, we are on it'] });
+
+    assert.throws(() => frozenOverlayRefusal(reworded, STILL_LIVE), /Hang tight/);
+  });
+
+  /** The engine restart, the one fault whose broadcast is genuinely over, so `ended` is the truth. */
+  const BROADCAST_OVER = {
+    truthful: [FEED_STATE_RECONNECTING, FEED_STATE_STALLED, FEED_STATE_DEGRADED, FEED_STATE_ENDED],
+    mustSpeak: true,
+  } as const;
+
+  it('passes the escalation into the terminal state, in whatever order the viewer met it', () => {
+    const ended = wentThrough({
+      saidWhileFrozen: ['Waiting for the broadcast to continue', 'This broadcast has ended'],
+    });
+
+    assert.equal(frozenOverlayRefusal(ended, BROADCAST_OVER), null);
+  });
+
+  /**
+   * ⭐ The route is not the contract. Which state a stranded viewer passes through on the way is the
+   * client's business, and V10 asserts reaching `ended` through `reachedEndedOverlay`, exactly as V5
+   * does. Demanding `stalled` as well would fail a client that went straight there.
+   */
+  it('passes a viewer who reached the ending by a different route than the recorded one', () => {
+    const viaDegraded = wentThrough({
+      saidWhileFrozen: ['The stream is struggling to keep up', 'This broadcast has ended'],
+    });
+
+    assert.equal(frozenOverlayRefusal(viaDegraded, BROADCAST_OVER), null);
+  });
+});
+
+/** Kept honest about what it is handed: these are the results the suites will pass in. */
+describe('the shapes the predicates take', () => {
+  it('reads a parsed arm result, so a suite never restates the artifact', () => {
+    const result: BrowserArmResult = parseBrowserArmState(crashArmState());
+
+    assert.equal(result.recovery?.scenario, GATEWAY_OUTAGE.name);
+    assert.deepEqual(result.recovery?.saidWhileFrozen, GATEWAY_OUTAGE_RECOVERY.saidWhileFrozen);
+  });
+});
+
+/**
+ * ⭐ One shape across all five arms. A scenario run prints nothing else for minutes, and arms whose
+ * summaries are worded differently cannot be read side by side, which is how the matrix is read.
+ */
+describe('the line an operator reads while an arm runs', () => {
+  /**
+   * ⭐ Every figure in it used to be a gate and none of them is one now, so the line has to say so.
+   * An operator who reads a printed duration beside a passing case and takes it for a threshold that
+   * held is the failure mode this word exists to prevent.
+   */
+  it('says outright that nothing in it is asserted', () => {
+    assert.match(crashArmSummary(parseBrowserArmState(crashArmState())), /observations, none of them asserted/);
+  });
+
+  it('carries the freeze, the buffer, the resume and the arm proof, in one line', () => {
+    const line = crashArmSummary(parseBrowserArmState(crashArmState()));
+
+    assert.match(line, /viewer-gateway-outage on weeb3/);
+    assert.match(line, /froze 28\.6s/);
+    assert.match(line, /6\.0s after the fault/);
+    assert.match(line, /10\.7s after the service answered/);
+    assert.match(line, /7\.2s of that/);
+    assert.match(line, /6 segment requests/);
+    assert.match(line, /"Reconnecting to the stream"/);
+  });
+
+  it('says a viewer never got their picture back, rather than printing a null at them', () => {
+    const stranded = parseBrowserArmState(
+      crashArmState({ recovery: { ...GATEWAY_OUTAGE_RECOVERY, recovered: false, recoveredAfterLiftMs: null } }),
+    );
+
+    assert.match(crashArmSummary(stranded), /never moved again/);
+  });
+
+  it('says NOTHING in as many letters, since an empty list of messages reads as no list at all', () => {
+    const silent = parseBrowserArmState(
+      crashArmState({ recovery: { ...GATEWAY_OUTAGE_RECOVERY, saidWhileFrozen: [], explainedTheFreeze: false } }),
+    );
+
+    assert.match(crashArmSummary(silent), /said NOTHING/);
+  });
+
+  it('has something to say about a watch that drove no fault, rather than throwing at the printer', () => {
+    assert.match(crashArmSummary(parseBrowserArmState(armState())), /no fault/);
+  });
+});

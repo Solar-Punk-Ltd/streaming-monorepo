@@ -1,0 +1,1028 @@
+import { Router } from 'express';
+import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
+import net, { AddressInfo } from 'node:net';
+import { after, describe, it } from 'node:test';
+import { setTimeout as sleep } from 'node:timers/promises';
+
+import { startApiServer } from '../src/api/server.js';
+import { createOmeEngine } from '../src/engines/ome.js';
+import { Fetcher } from '../src/engines/ome/interfaces.js';
+import { OmeHlsPuller, SEGMENT_RETRY_LIMIT } from '../src/engines/ome/OmeHlsPuller.js';
+import { EnginePlugin } from '../src/engines/types.js';
+import { RecoveryStore } from '../src/libs/RecoveryStore.js';
+import { StreamOrchestrator } from '../src/libs/StreamOrchestrator.js';
+import {
+  HEALTH_DEGRADED,
+  HEALTH_OK,
+  HEALTH_REASON_POSTAGE_REFUSED,
+  HEALTH_REASON_QUEUE_PRESSURE,
+  HEALTH_REASON_SEGMENT_LOSS,
+  HEALTH_REASON_SEGMENT_STALL,
+  HEALTH_REASON_SEGMENT_UPLOAD_FAILURE,
+  HEALTH_REASON_STALE_MANIFEST,
+  HEALTH_REASON_STATE_NOT_PERSISTED,
+  HEALTH_REASON_UNLISTED_STREAM,
+  MEDIA_TYPE_VIDEO,
+  REJECT_DRAINING,
+  REJECT_UNKNOWN_STREAM,
+} from '../src/types.js';
+import { MANIFEST_FAILURE_THRESHOLD } from '../src/utils/health.js';
+
+import { ApiTestServer, startTestApi, TEST_AUTH_TOKEN } from './helpers/apiTestServer.js';
+import { FakeClock } from './helpers/fakeClock.js';
+import {
+  FakeUploads,
+  makeFakeCatalog,
+  makeFakeRecoveryStore,
+  makeRecoveredState,
+  makeTestOrchestrator,
+  neverSettles,
+  rejectImmediately,
+  toRecoveryFileId,
+} from './helpers/fakes.js';
+import { LOOPBACK_HOST } from './helpers/loopbackServer.js';
+
+const STREAM_ID = 'live/one';
+
+/** One refused publisher as `/health` serves it, which is a routing entry plus what bee answered. */
+interface RefusedPublisherBody {
+  rung: string;
+  url: string;
+  batch: string;
+  statuses: number[];
+  firstRefusedAt: number;
+}
+
+interface HealthBody {
+  status?: string;
+  reasons?: string[];
+  activeStreams?: number;
+  maxConsecutiveManifestFailures?: number;
+  maxConsecutiveSegmentFailures?: number;
+}
+
+function hasActiveStreams(count: number): (body: unknown) => boolean {
+  return (body) => (body as HealthBody).activeStreams === count;
+}
+
+function hasManifestFailures(count: number): (body: unknown) => boolean {
+  return (body) => (body as HealthBody).maxConsecutiveManifestFailures === count;
+}
+
+function startStream(api: ApiTestServer, streamId = STREAM_ID): Promise<unknown> {
+  return api.request('/stream/start', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ streamId, mediatype: MEDIA_TYPE_VIDEO }),
+  });
+}
+
+function postSegment(api: ApiTestServer, index: number, streamId = STREAM_ID) {
+  return api.request('/stream/segment', {
+    method: 'POST',
+    headers: {
+      'content-type': 'video/mp2t',
+      'x-stream-id': streamId,
+      'x-segment-index': String(index),
+      'x-duration': '2',
+    },
+    body: Buffer.from(`segment-${index}`),
+  });
+}
+
+describe('api server over http (S0.7 test layer)', () => {
+  const servers: ApiTestServer[] = [];
+
+  async function start(...args: Parameters<typeof startTestApi>): Promise<ApiTestServer> {
+    const server = await startTestApi(...args);
+    servers.push(server);
+    return server;
+  }
+
+  after(async () => {
+    await Promise.all(servers.map((server) => server.close()));
+  });
+
+  it('serves GET /health with the documented body', async () => {
+    const api = await start(makeTestOrchestrator());
+
+    const { status, body } = await api.request('/health');
+
+    assert.equal(status, 200, 'an idle uploader is healthy');
+    assert.deepEqual(
+      Object.keys(body as object).sort(),
+      [
+        'activeStreams',
+        'engines',
+        'publishers',
+        'maxConsecutiveManifestFailures',
+        'maxConsecutiveSegmentFailures',
+        'msSinceCatalogAnnounceFailed',
+        'msSinceStatePersistFailed',
+        'msSinceAuthRejection',
+        // Every live stream whose encoder has gone and has not come back, which is a state that was
+        // invisible from outside before a disconnect stopped ending a broadcast. See
+        // `ReconnectWindow.test.ts`.
+        'disconnectedStreams',
+        'hasIngestedMedia',
+        'segmentsSkipped',
+        'openingSegmentsWithheld',
+        'segmentsNeverNamed',
+        'quarantinedRecoveryEntries',
+        'fragmentMismatchStreams',
+        'publisherGopStreams',
+        'postageRefusedPublishers',
+        'refusedPublishers',
+        // Latched from the startup gate pass, and on the body from boot on. See startGateHealth.test.ts.
+        'startGateWarnings',
+        'queueBacklogSeconds',
+        'msSinceSegmentLoss',
+        'msSinceStreamActivity',
+        'queuePressure',
+        'reasons',
+        'staleManifestStreams',
+        'status',
+      ].sort(),
+      // health.sh reads only the status code (curl -o /dev/null), so the body's consumers are
+      // `deploy/scripts/assert-started.sh`, which reads status, reasons and startGateWarnings, and
+      // the e2e suite in streaming-infra-manager, which asserts on status and activeStreams.
+      'the health body is a published contract',
+    );
+  });
+
+  /**
+   * ⛔ The reading that was missing for days. Which Bee node carries which rung is a deployment
+   * decision nothing outside the process could see, so a stage routing every rung through one node
+   * was indistinguishable from a stage with one node per rung, and eleven live arms were scored
+   * against the wrong cause. `/health` is where an operator and the e2e preflight both already look.
+   *
+   * Asserted as the pool's own answer rather than as a literal, because what a route is safe to say
+   * is `BeePublisherPool.routing`'s business and is pinned in its own tests. What this pins is that
+   * the endpoint asks, and hands over what it is told without dropping or reshaping it.
+   */
+  it('names the node behind every rung, so a stage that never split can be told from one that did', async () => {
+    const orchestrator = makeTestOrchestrator();
+    const api = await start(orchestrator);
+
+    const { body } = await api.request('/health');
+
+    assert.deepEqual((body as { publishers: unknown }).publishers, orchestrator.publisherRouting());
+    assert.ok(
+      (body as { publishers: unknown[] }).publishers.length > 0,
+      'an empty list would make every deployment look the same, which is the failure this closes',
+    );
+  });
+
+  /**
+   * ⛔ `postage_refused` says a batch somewhere on this stage has stopped paying, and on a four rung
+   * ladder that is four candidates. Which one decides everything an operator does next, because each
+   * rung's batch is bought and topped up separately, so the reason has to arrive with the rung, the
+   * node and the batch beside it rather than sending someone to read four nodes.
+   *
+   * Rendered off the pool's own routing, so what a reader is told here is character for character
+   * what the `publishers` block above already tells them: the url minus any credential, and a batch
+   * id truncated to enough to tell two apart. What is safe to say is `BeePublisherPool.routing`'s
+   * business and is pinned in its own tests.
+   */
+  it('names the rung, node and batch of the publisher whose postage was refused', async () => {
+    const orchestrator = makeTestOrchestrator({}, { uploadData: rejectImmediately });
+    const api = await start(orchestrator);
+    const askedAt = Date.now();
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+    await postSegment(api, 0);
+
+    const { status, body } = await api.requestUntil(
+      '/health',
+      (received) => (received as HealthBody).reasons?.includes(HEALTH_REASON_POSTAGE_REFUSED) === true,
+    );
+    const refused = (body as { refusedPublishers: RefusedPublisherBody[] }).refusedPublishers;
+
+    assert.equal(status, 503);
+    assert.equal(refused.length, 1, 'a reason with nobody named against it sends an operator to read every node');
+    const { firstRefusedAt, ...identity } = refused[0];
+    assert.deepEqual(identity, {
+      ...orchestrator.publisherRouting()[0],
+      // 400 is what the fake answers. The status is carried rather than interpreted, because which
+      // one bee gives for a batch that has filled is not settled and a guess would name the wrong fix.
+      statuses: [400],
+    });
+    assert.ok(
+      firstRefusedAt >= askedAt && firstRefusedAt <= Date.now(),
+      `the first refusal has to be datable against the log: ${firstRefusedAt}`,
+    );
+  });
+
+  it('answers an unknown path with the api error envelope', async () => {
+    const api = await start(makeTestOrchestrator());
+
+    const { status, body } = await api.request('/nope');
+
+    assert.equal(status, 404);
+    assert.deepEqual(body, { ok: false, error: 'Not found', statusCode: 404 });
+  });
+
+  it('rejects POST /stream/start without a mediatype through the error handler', async () => {
+    const api = await start(makeTestOrchestrator());
+
+    const { status, body, headers } = await api.request('/stream/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ streamId: 'live/one' }),
+    });
+
+    assert.equal(status, 400, 'json body parsing and ApiError both run in the real middleware chain');
+    assert.deepEqual(body, { ok: false, error: 'mediatype must be "audio" or "video"', statusCode: 400 });
+    // Only a refusal that knows when to come back carries it, and `res.set` stringifies whatever it
+    // is given: sending it unconditionally tells a caller to wait `undefined` seconds.
+    assert.equal(headers['retry-after'], undefined, 'a malformed request is not a request to retry');
+  });
+
+  it('accepts a segment for a started stream', async () => {
+    const api = await start(makeTestOrchestrator());
+
+    await startStream(api);
+    // startStream queues uploader construction, so the stream is not addressable on return.
+    await api.requestUntil('/health', hasActiveStreams(1));
+
+    const { status, body } = await postSegment(api, 0);
+
+    assert.equal(status, 200);
+    assert.deepEqual(body, { ok: true, queued: true });
+  });
+
+  it('answers a segment for an unknown stream with 404', async () => {
+    const api = await start(makeTestOrchestrator());
+
+    const { status, body } = await postSegment(api, 0, 'live/ghost');
+
+    assert.equal(status, 404);
+    assert.deepEqual(body, { ok: false, error: 'Unknown stream: live/ghost', statusCode: 404 });
+  });
+});
+
+/**
+ * What `createApiApp` wires up, as opposed to what the things it wires up then do.
+ *
+ * Every one of these is exercised constantly and asserted nowhere, because the suites that need a
+ * parsed body or a named engine build their own app around the piece they are testing. The wiring
+ * itself is what a deployment runs, and it could be unpicked a line at a time with the suite green.
+ */
+describe('the app the service actually mounts', () => {
+  const servers: ApiTestServer[] = [];
+  after(async () => {
+    await Promise.all(servers.map((server) => server.close()));
+  });
+
+  async function start(...args: Parameters<typeof startTestApi>): Promise<ApiTestServer> {
+    const server = await startTestApi(...args);
+    servers.push(server);
+    return server;
+  }
+
+  function engineNamed(name: string): EnginePlugin {
+    return { name, prefix: `/engines/${name}`, createRouter: () => Router() };
+  }
+
+  // `/health` names the engines so an operator can see which ingest paths this build carries. The
+  // contract test above asserts the key is present, which an array of the wrong thing satisfies.
+  it('names each mounted engine in the health body, in the order they were mounted', async () => {
+    const api = await start(makeTestOrchestrator(), [engineNamed('first'), engineNamed('second')]);
+
+    const { body } = await api.request('/health');
+
+    assert.deepEqual((body as { engines?: unknown }).engines, ['first', 'second']);
+  });
+
+  /**
+   * The raw body kept beside the parsed one, which is the only thing an HMAC over the request can be
+   * checked against: re-serializing `req.body` does not reproduce the bytes that were signed.
+   *
+   * Driven through the real app on purpose. `OmeAdmission.test.ts` and `EnginePublishKey.test.ts`
+   * mount an `express.json` of their own with this same `verify` hook, so every test that proves the
+   * signature check works supplies the thing the app is responsible for supplying.
+   */
+  it('keeps the raw control body, so a signed webhook can be verified against what was sent', async () => {
+    const secret = 'admission-secret';
+    const engine = createOmeEngine('http://ome:8081', 60_000, { admissionSecret: secret });
+    const api = await start(makeTestOrchestrator(), [engine]);
+    const body = JSON.stringify({ request: { direction: 'outgoing' } });
+
+    const { status } = await api.request(`${engine.prefix}/admission`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-ome-signature': createHmac('sha1', secret).update(body).digest('base64url'),
+      },
+      body,
+    });
+
+    assert.equal(status, 200, 'a correctly signed admission was refused, so the app kept no raw body');
+  });
+
+  // Mounted under `/stream`, which is where the spending is. `/health` is what `deploy/scripts/health.sh`
+  // polls on a timer, and a liveness probe that can be refused for being too frequent reports an
+  // outage that is not happening.
+  it('does not spend the ingest rate budget on the liveness probe', async () => {
+    const api = await start(makeTestOrchestrator(), [], { windowMs: 60_000, globalMax: 1, perStreamMax: 1 });
+
+    const probes = [await api.request('/health'), await api.request('/health'), await api.request('/health')];
+
+    assert.deepEqual(
+      probes.map((probe) => probe.status),
+      [200, 200, 200],
+    );
+  });
+});
+
+/**
+ * The listening half of the module, which nothing had ever started. `createApiApp` is covered by
+ * every suite that uses `startTestApi`, and `startApiServer` is what `src/index.ts` calls: the port
+ * it binds and the handle a shutdown waits on were both untested.
+ */
+describe('startApiServer', () => {
+  const POLL_INTERVAL_MS = 10;
+  const BIND_CEILING_MS = 4_000;
+  /** A close that has not settled by here is not slow, it is one that never resolves. */
+  const CLOSE_CEILING_MS = 4_000;
+
+  /** A port the OS just handed out and nothing holds, so the bind under test is the only one on it. */
+  async function freePort(): Promise<number> {
+    const probe = net.createServer();
+    await new Promise<void>((resolve) => probe.listen(0, LOOPBACK_HOST, resolve));
+    const { port } = probe.address() as AddressInfo;
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    return port;
+  }
+
+  /**
+   * Raced rather than awaited. A close that never settles is one of the failures under test, and
+   * awaiting it hangs the file with no tally instead of failing.
+   */
+  async function withinCeiling<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+    const ceiling = sleep(ms, undefined, { ref: false }).then(() => {
+      throw new Error(`${what} did not settle within ${ms}ms`);
+    });
+    return Promise.race([work, ceiling]);
+  }
+
+  async function untilItAnswers(url: string): Promise<number> {
+    const deadline = Date.now() + BIND_CEILING_MS;
+    for (;;) {
+      try {
+        return (await fetch(url)).status;
+      } catch {
+        assert.ok(Date.now() < deadline, `nothing answered ${url} within ${BIND_CEILING_MS}ms`);
+        await sleep(POLL_INTERVAL_MS);
+      }
+    }
+  }
+
+  async function untilItRefuses(url: string): Promise<void> {
+    const deadline = Date.now() + BIND_CEILING_MS;
+    for (;;) {
+      try {
+        await fetch(url);
+      } catch {
+        return;
+      }
+      assert.ok(Date.now() < deadline, `${url} still answered ${BIND_CEILING_MS}ms after close() resolved`);
+      await sleep(POLL_INTERVAL_MS);
+    }
+  }
+
+  it('serves on the port it was given, and stops serving once its handle is closed', async () => {
+    const port = await freePort();
+    const origin = `http://${LOOPBACK_HOST}:${port}`;
+    const handle = startApiServer(makeTestOrchestrator(), port, { authToken: TEST_AUTH_TOKEN });
+
+    // The handle is returned before the socket is bound, so the port has to be waited for.
+    assert.equal(await untilItAnswers(`${origin}/health`), 200);
+
+    await withinCeiling(handle.close(), CLOSE_CEILING_MS, 'close()');
+
+    await untilItRefuses(`${origin}/health`);
+  });
+
+  // A shutdown that reports success for a socket it did not release leaves the next start colliding
+  // with a port that is supposedly free, which is the failure this rejection exists to name.
+  it('reports a close it could not perform, rather than resolving as though it had', async () => {
+    const port = await freePort();
+    const handle = startApiServer(makeTestOrchestrator(), port, { authToken: TEST_AUTH_TOKEN });
+    await untilItAnswers(`http://${LOOPBACK_HOST}:${port}/health`);
+    await withinCeiling(handle.close(), CLOSE_CEILING_MS, 'close()');
+
+    await assert.rejects(
+      withinCeiling(handle.close(), CLOSE_CEILING_MS, 'the second close()'),
+      // Matched on what node said, so a close that hangs cannot pass as one that refused: the ceiling
+      // above rejects too, and its message is not this one.
+      /not running/i,
+    );
+  });
+});
+
+describe('POST /stream/segment duration validation (gate on PR 52)', () => {
+  const servers: ApiTestServer[] = [];
+  after(async () => {
+    await Promise.all(servers.map((server) => server.close()));
+  });
+
+  /**
+   * `parseFloat('Infinity')` is `Infinity` and `isNaN(Infinity)` is false, so the route's own guard
+   * waved it through. It then reached `#EXTINF` verbatim, buying an unplayable playlist with postage,
+   * and latched the backlog gauge to NaN for every stream in the process.
+   */
+  it('answers 400 for a duration no manifest and no running total can hold', async () => {
+    const api = await startTestApi(makeTestOrchestrator());
+    servers.push(api);
+
+    await api.request('/stream/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ streamId: STREAM_ID, mediatype: MEDIA_TYPE_VIDEO }),
+    });
+    await api.requestUntil('/health', hasActiveStreams(1));
+
+    for (const value of ['Infinity', '-Infinity', '1e999', '-1']) {
+      const { status } = await api.request('/stream/segment', {
+        method: 'POST',
+        headers: {
+          'content-type': 'video/mp2t',
+          'x-stream-id': STREAM_ID,
+          'x-segment-index': '0',
+          'x-duration': value,
+        },
+        body: Buffer.from('seg'),
+      });
+
+      assert.equal(status, 400, `x-duration: ${value} was accepted`);
+    }
+
+    const { body } = await api.request('/metrics');
+    assert.ok(
+      String(body).includes('swarm_hls_queue_backlog_seconds 0'),
+      `the backlog gauge was poisoned by a refused segment: ${String(body).match(/queue_backlog_seconds.*/)?.[0]}`,
+    );
+  });
+});
+
+describe('POST /stream/stop outcome (S2.5, OBS-3)', () => {
+  const servers: ApiTestServer[] = [];
+  after(async () => {
+    await Promise.all(servers.map((server) => server.close()));
+  });
+
+  async function start(...args: Parameters<typeof startTestApi>): Promise<ApiTestServer> {
+    const server = await startTestApi(...args);
+    servers.push(server);
+    return server;
+  }
+
+  function stop(api: ApiTestServer, streamId = STREAM_ID) {
+    return api.request('/stream/stop', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ streamId }),
+    });
+  }
+
+  function status(api: ApiTestServer, streamId = STREAM_ID) {
+    return api.request(`/stream/status?streamId=${encodeURIComponent(streamId)}`);
+  }
+
+  it('accepts the stop with 202 and names where the outcome will be', async () => {
+    const api = await start(makeTestOrchestrator());
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+
+    const { status: code, body } = await stop(api);
+
+    assert.equal(code, 202, 'a stop is accepted, not completed, because the drain outruns any webhook');
+    assert.equal((body as { statusUrl?: string }).statusUrl, '/stream/status');
+  });
+
+  /**
+   * The whole of OBS-3, read the way a caller would. The finalize cannot publish its VOD, and before
+   * this the caller was told `ok`: `drainUploader` caught its own failure and returned normally, so
+   * the rejection the route watches for never arrived either.
+   */
+  it('reports a finalize that never published, where it used to answer ok', async () => {
+    const api = await start(makeTestOrchestrator({}, { uploadPayload: rejectImmediately }));
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+    await postSegment(api, 0);
+    await stop(api);
+
+    const { status: code, body } = await api.requestUntil(
+      `/stream/status?streamId=${encodeURIComponent(STREAM_ID)}`,
+      (received) => (received as { state?: string }).state !== 'draining',
+    );
+
+    assert.equal(code, 200);
+    assert.equal((body as { state?: string }).state, 'failed');
+    assert.ok((body as { reason?: string }).reason, 'a failed stop with no reason is not actionable');
+  });
+
+  it('reports a stop that published as finalized', async () => {
+    const api = await start(makeTestOrchestrator());
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+    await postSegment(api, 0);
+    await stop(api);
+
+    const { body } = await api.requestUntil(
+      `/stream/status?streamId=${encodeURIComponent(STREAM_ID)}`,
+      (received) => (received as { state?: string }).state !== 'draining',
+    );
+
+    assert.equal((body as { state?: string }).state, 'finalized');
+  });
+
+  it('answers 404 for a stream it never saw, rather than a state', async () => {
+    const api = await start(makeTestOrchestrator());
+
+    const { status: code } = await status(api, 'live/never');
+
+    assert.equal(code, 404, 'a caller polling a typo must not be told its broadcast is fine');
+  });
+
+  it('rejects a status request with no streamId', async () => {
+    const api = await start(makeTestOrchestrator());
+
+    const { status: code } = await api.request('/stream/status');
+
+    assert.equal(code, 400);
+  });
+});
+
+describe('POST /stream/segment for a finalizing stream (CON-6)', () => {
+  const servers: ApiTestServer[] = [];
+  after(async () => {
+    await Promise.all(servers.map((server) => server.close()));
+  });
+
+  // The orchestrator's reason is pinned by its own tests, but the route branches on the constant's
+  // *value*, and nothing held that: renaming it to `unknown_stream` left the suite green while a
+  // finalizing stream started telling senders its stream does not exist.
+  it('answers 409, distinct from the 404 an unknown stream gets', async () => {
+    const orchestrator = {
+      startStream: () => true,
+      stopStream: async () => {},
+      handleSegment: (streamId: string) =>
+        streamId === 'live/draining'
+          ? { accepted: false, reason: REJECT_DRAINING }
+          : { accepted: false, reason: REJECT_UNKNOWN_STREAM },
+    } as unknown as StreamOrchestrator;
+
+    const server = await startTestApi(orchestrator);
+    servers.push(server);
+
+    const send = (streamId: string) =>
+      server.request('/stream/segment', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/octet-stream',
+          'x-stream-id': streamId,
+          'x-segment-index': '0',
+          'x-duration': '2',
+        },
+        body: Buffer.from('seg'),
+      });
+
+    assert.equal((await send('live/draining')).status, 409, 'a finalizing stream is a conflict, not a 404');
+    assert.equal((await send('live/nothing')).status, 404, 'and an unknown stream still answers 404');
+  });
+});
+
+describe('GET /health status (S2.1)', () => {
+  const servers: ApiTestServer[] = [];
+
+  const STALL_WINDOW_MS = 60;
+  const UNDER_THE_STALL_WINDOW_MS = 25;
+  const PAST_THE_STALL_WINDOW_MS = 120;
+  /** Long enough that no test here advances far enough to fire the recovery timer by accident. */
+  const RECOVERY_TIMEOUT_MS = 5_000;
+
+  /** A recovery store holding one crashed session of `STREAM_ID`, so recoverStreams restores it. */
+  const RECOVERING = makeFakeRecoveryStore({
+    listActive: () => [toRecoveryFileId(STREAM_ID)],
+    load: () => makeRecoveredState(STREAM_ID),
+  });
+
+  /**
+   * The stall signal is the distance between two readings of the orchestrator's clock, so every test
+   * below is really about that distance and not about elapsed time. Driving an injected clock is not
+   * merely faster than sleeping: a real sleep measures the machine, and on a loaded one the round trip
+   * of feeding a segment and then reading /health runs past a 60ms window all by itself. That is what
+   * failed `stays ok across the stall window` in 4 of 8 concurrent runs, with the code under test
+   * behaving correctly every time.
+   */
+  function makeStallingOrchestrator(
+    clock: FakeClock,
+    uploads: FakeUploads = {},
+    recoveryStore: RecoveryStore = makeFakeRecoveryStore(),
+  ): StreamOrchestrator {
+    return makeTestOrchestrator(
+      { segmentStallMs: STALL_WINDOW_MS, recoveryTimeout: RECOVERY_TIMEOUT_MS, clock },
+      uploads,
+      recoveryStore,
+    );
+  }
+
+  async function start(...args: Parameters<typeof startTestApi>): Promise<ApiTestServer> {
+    const server = await startTestApi(...args);
+    servers.push(server);
+    return server;
+  }
+
+  after(async () => {
+    await Promise.all(servers.map((server) => server.close()));
+  });
+
+  it('reports ok while a stream is uploading normally', async () => {
+    const api = await start(makeTestOrchestrator());
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+    await postSegment(api, 0);
+
+    const { status, body } = await api.request('/health');
+
+    assert.equal(status, 200);
+    assert.equal((body as HealthBody).status, HEALTH_OK);
+    assert.deepEqual((body as HealthBody).reasons, []);
+  });
+
+  it('reports degraded and 503 once the segment queue backs up', async () => {
+    // A Bee that accepts the connection and never answers: the first segment occupies the queue's
+    // single slot and the second one waits, which is a full queue at maxQueueSize 1.
+    const api = await start(makeTestOrchestrator({ maxQueueSize: 1 }, { uploadData: neverSettles }));
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+    await postSegment(api, 0);
+    await postSegment(api, 1);
+
+    const { status, body } = await api.request('/health');
+
+    assert.equal(status, 503, 'a non-200 is what health.sh reports as a warning');
+    assert.equal((body as HealthBody).status, HEALTH_DEGRADED);
+    assert.deepEqual((body as HealthBody).reasons, [HEALTH_REASON_QUEUE_PRESSURE]);
+  });
+
+  it('reports degraded and 503 after three consecutive live-manifest publish failures', async () => {
+    // Segment uploads succeed and only the manifest SOC write is refused, which is the state that
+    // used to report ok: segments land in Swarm while the live playlist stops advancing.
+    const api = await start(makeTestOrchestrator({}, { uploadPayload: rejectImmediately }));
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+
+    for (let failures = 1; failures <= MANIFEST_FAILURE_THRESHOLD; failures++) {
+      await postSegment(api, failures - 1);
+      // One segment at a time: a manifest publish already queued is not queued twice, so feeding
+      // segments in a batch would not produce one failure each.
+      const { status, body } = await api.requestUntil('/health', hasManifestFailures(failures));
+
+      if (failures < MANIFEST_FAILURE_THRESHOLD) {
+        assert.equal(status, 200, `${failures} failure(s) self-heal on the next segment, so health holds at ok`);
+        assert.equal((body as HealthBody).status, HEALTH_OK);
+      }
+    }
+
+    const { status, body } = await api.request('/health');
+
+    assert.equal(status, 503);
+    assert.equal((body as HealthBody).status, HEALTH_DEGRADED);
+    assert.deepEqual((body as HealthBody).reasons, [HEALTH_REASON_STALE_MANIFEST]);
+  });
+
+  /**
+   * The whole path, not the policy function: a real orchestrator, a real uploader and a catalog that
+   * refuses the write, read over HTTP. The media path is perfect here, every segment lands in Swarm
+   * and the live manifest publishes, and the broadcast is still unwatchable because nothing lists it.
+   * That combination used to answer `200 ok`.
+   */
+  it('reports degraded and 503 when a live stream never reaches the catalog (CON-3)', async () => {
+    const refusingCatalog = makeFakeCatalog({
+      addStream: async () => {
+        throw new Error('catalog feed write refused');
+      },
+    });
+    const api = await start(makeTestOrchestrator({}, {}, makeFakeRecoveryStore(), refusingCatalog));
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+    await postSegment(api, 0);
+
+    const { status, body } = await api.requestUntil(
+      '/health',
+      (received) => (received as HealthBody).reasons?.includes(HEALTH_REASON_UNLISTED_STREAM) === true,
+    );
+
+    assert.equal(status, 503);
+    assert.equal((body as HealthBody).status, HEALTH_DEGRADED);
+    assert.deepEqual(
+      (body as HealthBody).reasons,
+      [HEALTH_REASON_UNLISTED_STREAM],
+      'the media path is healthy, so being unlisted has to be its own reason rather than riding on another',
+    );
+  });
+
+  /**
+   * S2.6's acceptance criterion, read over HTTP rather than through `deriveHealthStatus`. Everything
+   * about the running process is fine and stays fine, which is exactly why this was invisible: the
+   * segment uploads, the manifest publishes, the catalog accepts it, and the only thing that has
+   * happened is that a crash would now resume from state older than reality.
+   */
+  it('reports degraded and 503 when a stream cannot persist its recovery state (OBS-4)', async () => {
+    const refusingStore = makeFakeRecoveryStore({
+      save: () => {
+        throw new Error('ENOSPC: no space left on device');
+      },
+    });
+    const api = await start(makeTestOrchestrator({}, {}, refusingStore));
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+    await postSegment(api, 0);
+
+    const { status, body } = await api.requestUntil(
+      '/health',
+      (received) => (received as HealthBody).reasons?.includes(HEALTH_REASON_STATE_NOT_PERSISTED) === true,
+    );
+
+    assert.equal(status, 503);
+    assert.equal((body as HealthBody).status, HEALTH_DEGRADED);
+    assert.deepEqual(
+      (body as HealthBody).reasons,
+      [HEALTH_REASON_STATE_NOT_PERSISTED],
+      'nothing else is wrong, so a swallowed persist has to raise this on its own or stay invisible',
+    );
+  });
+
+  it('reports degraded and 503 when accepted segments are not reaching swarm', async () => {
+    // The stamp-exhausted shape: the API accepts every segment and bee refuses every payload write.
+    // No segment reaches addSegment, so no manifest publish is attempted and the manifest counter
+    // never moves; the queue empties instantly because the failure is immediate. This reported ok.
+    const api = await start(makeTestOrchestrator({}, { uploadData: rejectImmediately }));
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+    const accepted = await postSegment(api, 0);
+
+    assert.equal(accepted.status, 200, 'the API accepts the segment, which is what makes the loss silent');
+
+    const { status, body } = await api.requestUntil(
+      '/health',
+      (received) => (received as HealthBody).status === HEALTH_DEGRADED,
+    );
+
+    assert.equal(status, 503);
+    assert.deepEqual(
+      (body as HealthBody).reasons,
+      [HEALTH_REASON_SEGMENT_UPLOAD_FAILURE, HEALTH_REASON_POSTAGE_REFUSED],
+      'the symptom and its diagnosis: bee refused this write with a status nothing retries, which is ' +
+        'the postage side rather than a node that went away',
+    );
+  });
+
+  it('reports a stalled stream even while a sibling stream is feeding', async () => {
+    const clock = new FakeClock();
+    const api = await start(makeStallingOrchestrator(clock));
+
+    await startStream(api, 'live/a');
+    await startStream(api, 'live/b');
+    await api.requestUntil('/health', hasActiveStreams(2));
+
+    // Let both age past the window, then feed only live/a. A process-wide clock would read live/a's
+    // fresh timestamp and call the whole service healthy while live/b is dead.
+    await clock.advance(PAST_THE_STALL_WINDOW_MS);
+    await postSegment(api, 0, 'live/a');
+
+    const { status, body } = await api.request('/health');
+
+    assert.equal(status, 503, 'the worst stream sets the signal, not the busiest one');
+    assert.deepEqual((body as HealthBody).reasons, [HEALTH_REASON_SEGMENT_STALL]);
+  });
+
+  it('does not treat a replayed segment index as progress', async () => {
+    const clock = new FakeClock();
+    const api = await start(makeStallingOrchestrator(clock));
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+    await postSegment(api, 0);
+    await clock.advance(PAST_THE_STALL_WINDOW_MS);
+
+    const replay = await postSegment(api, 0);
+    assert.equal(replay.status, 200, 'a duplicate is still accepted, it just is not progress');
+
+    const { status, body } = await api.request('/health');
+
+    assert.equal(status, 503, 'a sender stuck replaying one index does no upload work and advances no manifest');
+    assert.deepEqual((body as HealthBody).reasons, [HEALTH_REASON_SEGMENT_STALL]);
+  });
+
+  it('does not report a stall against a stream that is draining', async () => {
+    // notifyStop hangs on the VOD manifest write, so the stream stays registered for the whole drain.
+    // A drain accepts no segments by design, and DRAIN_TIMEOUT_MS is 5 minutes against this window.
+    const clock = new FakeClock();
+    const api = await start(makeStallingOrchestrator(clock, { uploadPayload: neverSettles }));
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+    await postSegment(api, 0);
+    // stopStream registers the drain before its first await, so it is registered by the time this
+    // response comes back, whatever the machine is doing. The route answers ahead of the drain.
+    await api.request('/stream/stop', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ streamId: STREAM_ID }),
+    });
+    await clock.advance(PAST_THE_STALL_WINDOW_MS);
+
+    const { status, body } = await api.request('/health');
+
+    assert.equal(status, 200, 'a healthy drain must not read as a stall');
+    assert.deepEqual((body as HealthBody).reasons, []);
+  });
+
+  it('stays ok across the stall window while segments keep arriving', async () => {
+    // The positive half of the stall signal. Without this, dropping the timestamp refresh on the
+    // accept path leaves every stall test still passing, because a never-refreshed clock degrades
+    // just as readily as a stalled one.
+    const clock = new FakeClock();
+    const api = await start(makeStallingOrchestrator(clock));
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+
+    // Six gaps under the window that sum to well over it, which is the case a single reading cannot
+    // distinguish from a stall: what must stay small is the distance between consecutive segments,
+    // not the age of the stream.
+    for (let index = 0; index < 6; index++) {
+      await postSegment(api, index);
+      await clock.advance(UNDER_THE_STALL_WINDOW_MS);
+      const { status, body } = await api.request('/health');
+      assert.equal(status, 200, `a feeding stream must stay healthy, failed after segment ${index}`);
+      assert.deepEqual((body as HealthBody).reasons, []);
+    }
+  });
+
+  it('does not report a stall for a recovered stream, before or right after the engine resumes', async () => {
+    const clock = new FakeClock();
+    const orchestrator = makeStallingOrchestrator(clock, {}, RECOVERING);
+    const api = await start(orchestrator);
+
+    await orchestrator.recoverStreams();
+    await clock.advance(PAST_THE_STALL_WINDOW_MS);
+
+    const waiting = await api.request('/health');
+    assert.equal(waiting.status, 200, 'a stream awaiting reconnect is not stalled, its recovery timer owns that');
+
+    // The engine resumes by replaying an index recovery already knows, which cancels the timer and
+    // makes the stream eligible for the stall signal again. It must rejoin with a fresh reading.
+    await postSegment(api, 0);
+    const resumed = await api.request('/health');
+
+    assert.equal(resumed.status, 200, 'a resumed stream must not inherit the age it accrued while waiting');
+    assert.deepEqual((resumed.body as HealthBody).reasons, []);
+  });
+
+  it('does not report a stall after a recovered stream is re-announced', async () => {
+    // The second route out of the recovery wait, and a different one from the test above: an engine
+    // that sends on_publish rather than segments takes the recovery branch of startStream. Both
+    // routes make the stream eligible for the stall signal again, so both need a fresh reading.
+    const clock = new FakeClock();
+    const orchestrator = makeStallingOrchestrator(clock, {}, RECOVERING);
+    const api = await start(orchestrator);
+
+    await orchestrator.recoverStreams();
+    await clock.advance(PAST_THE_STALL_WINDOW_MS);
+    await startStream(api);
+
+    const { status, body } = await api.request('/health');
+
+    assert.equal(status, 200, 'a re-announce is progress, so the stream must not inherit its waiting age');
+    assert.deepEqual((body as HealthBody).reasons, []);
+  });
+
+  it('reports degraded and 503 when the engine loses a segment it could never download', async () => {
+    // The OBS-11 shape: the segment never reaches the uploader at all, so no upload is attempted and
+    // no manifest publish fails. Every signal stayed clean and health answered 200 while the manifest
+    // grew a hole players are told is contiguous.
+    const orchestrator = makeTestOrchestrator();
+    const api = await start(orchestrator);
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+
+    orchestrator.handleSegmentLoss(STREAM_ID, 1, 1);
+
+    const { status, body } = await api.requestUntil(
+      '/health',
+      (received) => (received as HealthBody).status === HEALTH_DEGRADED,
+    );
+
+    assert.equal(status, 503);
+    assert.deepEqual((body as HealthBody).reasons, [HEALTH_REASON_SEGMENT_LOSS]);
+  });
+
+  // Driven through the real puller rather than by calling the seam, because calling the seam is what
+  // hid the defect this test exists for: the puller writes a segment off and downloads the next one
+  // in the same pass, and that success used to clear the counter before any poll could read it.
+  it('still reports 503 when a real puller loses one segment and keeps delivering the rest', async () => {
+    const orchestrator = makeTestOrchestrator();
+    const api = await start(orchestrator);
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+
+    const lines = ['#EXTM3U', '#EXT-X-MEDIA-SEQUENCE:0'];
+    for (let index = 0; index < 12; index++) {
+      lines.push('#EXTINF:2.0,', `segment_${index}.ts`);
+    }
+    const fetcher = ((input: RequestInfo | URL) =>
+      Promise.resolve(
+        String(input).endsWith('segment_3.ts')
+          ? ({ ok: false, status: 404 } as Response)
+          : ({ ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(4) } as unknown as Response),
+      )) as unknown as Fetcher;
+    const puller = new OmeHlsPuller(STREAM_ID, 'live', 'one', 'http://ome/hls', 1_000_000, orchestrator, {
+      fetcher,
+    }) as unknown as { processPlaylist(playlist: string, url: string): Promise<void> };
+
+    for (let pass = 0; pass <= SEGMENT_RETRY_LIMIT; pass++) {
+      await puller.processPlaylist(lines.join('\n'), 'http://ome/hls/live/one/media.m3u8');
+    }
+
+    const { status, body } = await api.request('/health');
+
+    assert.equal(status, 503, 'one lost segment among many delivered ones still has to be visible');
+    assert.deepEqual((body as HealthBody).reasons, [HEALTH_REASON_SEGMENT_LOSS]);
+  });
+
+  it('clears the segment failure count once a segment lands again, and keeps the refusal under it', async () => {
+    // The counter is documented as consecutive rather than latching. Without this the threshold of
+    // one would pin a stream at 503 for its whole life after a single transient drop.
+    //
+    // ⛔ The service nonetheless stays degraded here, and that is the fix rather than a regression.
+    // The fake answers with a status the upload policy will not retry, which is bee refusing the write
+    // rather than a node that went away, and a batch that has started refusing goes on refusing for the
+    // life of the process however many segments land in between: `BEE_PUBLISHERS` is read once at
+    // start. What clears this reading is a failure carrying no status at all, which is a spent retry
+    // window and really is transient.
+    let attempts = 0;
+    const failOnlyTheFirst = () => {
+      attempts += 1;
+      return attempts === 1 ? rejectImmediately() : Promise.resolve({ reference: { toHex: () => `ref${attempts}` } });
+    };
+    const api = await start(makeTestOrchestrator({}, { uploadData: failOnlyTheFirst }));
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+
+    await postSegment(api, 0);
+    const degraded = await api.requestUntil(
+      '/health',
+      (received) => (received as HealthBody).status === HEALTH_DEGRADED,
+    );
+    assert.deepEqual((degraded.body as HealthBody).reasons, [
+      HEALTH_REASON_SEGMENT_UPLOAD_FAILURE,
+      HEALTH_REASON_POSTAGE_REFUSED,
+    ]);
+
+    await postSegment(api, 1);
+    const recovered = await api.requestUntil(
+      '/health',
+      (received) => (received as HealthBody).maxConsecutiveSegmentFailures === 0,
+    );
+
+    assert.deepEqual(
+      (recovered.body as HealthBody).reasons,
+      [HEALTH_REASON_POSTAGE_REFUSED],
+      'a successful segment must clear the count, not leave it latched, and must not clear the refusal',
+    );
+  });
+
+  it('reports degraded and 503 when a registered stream sends no segments', async () => {
+    const api = await start(makeTestOrchestrator({ segmentStallMs: 50 }));
+
+    await startStream(api);
+    await api.requestUntil('/health', hasActiveStreams(1));
+
+    const { status, body } = await api.requestUntil(
+      '/health',
+      (received) => (received as HealthBody).status === HEALTH_DEGRADED,
+    );
+
+    assert.equal(status, 503, 'a stream that announces and then goes silent must not report healthy');
+    assert.deepEqual((body as HealthBody).reasons, [HEALTH_REASON_SEGMENT_STALL]);
+  });
+});
