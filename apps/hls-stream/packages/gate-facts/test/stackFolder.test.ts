@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { after, describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { collectChecks } from '../src/collectChecks.js';
 import { collectDiff } from '../src/collectDiff.js';
@@ -168,6 +169,15 @@ function commitFixture(stackPath: string, rootFiles: FileTree = {}): Fixture {
 }
 
 /**
+ * Leaves the base only as `origin/base`, which is how a single-branch clone, a CI checkout or a worktree
+ * holds it: no local branch of that name exists.
+ */
+function keepBaseOnlyAsRemote(fixture: Fixture): void {
+  gitIn(fixture.repo, 'update-ref', `refs/remotes/origin/${BASE}`, BASE);
+  gitIn(fixture.repo, 'branch', '-D', BASE);
+}
+
+/**
  * Runs a collector the way `pnpm gate:facts` runs it: from the stack's folder, which every command a
  * collector starts takes as its working directory. node:test runs a file's tests one at a time, so the
  * change of directory cannot reach another test.
@@ -196,6 +206,41 @@ function failedKeys(group: FactGroup): string[] {
 function rowNamed(group: FactGroup, key: string): Fact {
   const row = group.facts.find((fact) => fact.key === key);
   assert.ok(row, `the ${group.title} group has no ${key} row`);
+  return row;
+}
+
+/** The tool's own entry point, which `pnpm gate:facts` runs through tsx. */
+const ENTRY_POINT = fileURLToPath(new URL('../src/index.ts', import.meta.url));
+
+/** Found from this package, because a fixture folder has no node_modules to find tsx in. */
+const TSX_LOADER = import.meta.resolve('tsx');
+
+interface ToolRun {
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Runs the whole tool from `folder` as `pnpm gate:facts` runs it, with the stand-ins first on PATH. Of
+ * this machine's environment only PATH and HOME reach it, for the reason `gitIn` gives, and tsx's cache
+ * stays off as the suite's own test script has it.
+ */
+function runGateFacts(folder: string, args: readonly string[]): ToolRun {
+  const result = spawnSync(process.execPath, ['--import', TSX_LOADER, ENTRY_POINT, ...args], {
+    cwd: folder,
+    encoding: 'utf8',
+    env: { PATH: [STUB_BIN, MACHINE_PATH].join(delimiter), HOME: process.env.HOME, TSX_DISABLE_CACHE: '1' },
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  return { stdout: result.stdout, stderr: result.stderr };
+}
+
+/** The artifact's table row for `key`, as a reader of the printed artifact sees it. */
+function artifactRow(run: ToolRun, key: string): string {
+  const row = run.stdout.split('\n').find((line) => line.startsWith(`| ${key} |`));
+  assert.ok(row, `the artifact has no ${key} row, and the tool wrote this to stderr:\n${run.stderr}`);
   return row;
 }
 
@@ -313,5 +358,31 @@ describe('the working tree row read by a real git, wherever the stack sits', () 
     editOutside(nested);
 
     assert.deepEqual(await checksFrom(nested), await checksFrom(standalone));
+  });
+});
+
+/**
+ * The diff and the lockfile have to be read from one base. The diff falls back to `origin/<base>` when
+ * no local branch of that name exists, and the lockfile read took the name as given, so in exactly the
+ * checkouts that fallback exists for the run stopped at "invalid object name" and printed nothing.
+ */
+describe('the whole tool run by a real git, where the base exists only as origin/base', () => {
+  it('reads the lockfile from the same origin/base the diff is measured from', () => {
+    const fixture = commitFixture(STACK_SUBFOLDER);
+    keepBaseOnlyAsRemote(fixture);
+    assert.throws(
+      () => gitIn(fixture.stack, 'show', `${BASE}:./pnpm-lock.yaml`),
+      /invalid object name/,
+      'the fixture has to be one where the base name alone names no commit',
+    );
+    const head = gitIn(fixture.stack, 'rev-parse', '--short', HEAD);
+
+    const run = runGateFacts(fixture.stack, ['--base', BASE]);
+
+    assert.equal(
+      artifactRow(run, 'versions introduced'),
+      `| versions introduced | 0, though the lockfile did change. Nothing new resolved, so there is nothing to check. | \`git diff origin/${BASE}..${head} -- pnpm-lock.yaml\` |`,
+    );
+    assert.equal(artifactRow(run, 'commits'), `| commits | 2 | \`git rev-list --count origin/${BASE}..${head}\` |`);
   });
 });
