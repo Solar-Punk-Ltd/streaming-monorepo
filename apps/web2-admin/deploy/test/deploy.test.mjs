@@ -76,3 +76,66 @@ describe('deploy.sh in a checkout that deployed before the admin moved into apps
     assert.equal(deployed.status, 0, deployed.stderr);
   });
 });
+
+describe('deploy.sh to a host that was deployed to before the move', () => {
+  /** The host path each profile's env file had before the move, relative to the remote path. */
+  const OLD_HOST_COPY = { qa: 'web2-admin/backend/.env.qa', brandB: 'web2-admin/backend/.env.brand-b' };
+  const RM_LINE = /^\[deploy\]\s+(ssh admin-host 'rm [^']+')$/m;
+
+  /**
+   * The host just after this deploy's rsync, which the rsync stub leaves to the test: the profile's
+   * env file sent to backend/, beside whatever the deploys before the move left there.
+   */
+  const hostAfterTheRsync = (leftBeforeTheMove) => ({
+    'deploy/deploy.sh': '# the deploy script the rsync sent\n',
+    'backend/Dockerfile': '# the Dockerfile the rsync sent\n',
+    'backend/.env.qa': fakeAdminEnv('sent'),
+    ...leftBeforeTheMove,
+  });
+
+  const sandboxWithHost = (leftBeforeTheMove) =>
+    makeSandbox({ checkout: { [ENV_FILES.qa.now]: fakeAdminEnv('checkout') }, host: hostAfterTheRsync(leftBeforeTheMove) });
+
+  const deployQa = (sandbox) => sandbox.runScript(DEPLOY, ['--host=admin-host', '--profile=qa', `--remote-path=${sandbox.hostDir}`]);
+
+  it('warns once the deploy has succeeded that the old env file is still on the host, and prints the command that removes it', () => {
+    const sandbox = sandboxWithHost({ [OLD_HOST_COPY.qa]: fakeAdminEnv('old-host-copy') });
+
+    const deployed = deployQa(sandbox);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.match(deployed.stderr, /WARNING: this host still has \S*web2-admin\/backend\/\.env\.qa/);
+    assert.equal(printedCommand(deployed.stderr, RM_LINE), `ssh admin-host 'rm ${sandbox.onHost(OLD_HOST_COPY.qa)}'`);
+    assert.ok(existsSync(sandbox.onHost(OLD_HOST_COPY.qa)), 'the deploy removed the old copy itself');
+  });
+
+  it('removes the old copy and nothing else when the printed command is run', () => {
+    const sandbox = sandboxWithHost({ [OLD_HOST_COPY.qa]: fakeAdminEnv('old-host-copy') });
+    const rm = printedCommand(deployQa(sandbox).stderr, RM_LINE);
+
+    const removed = sandbox.runPrinted(rm);
+
+    assert.equal(removed.status, 0, removed.stderr);
+    assert.equal(existsSync(sandbox.onHost(OLD_HOST_COPY.qa)), false, 'the old copy is still there');
+    assert.ok(existsSync(sandbox.onHost('backend/.env.qa')), 'the command removed the env file the profile runs on');
+  });
+
+  it('says nothing about an old copy on a host that has none', () => {
+    const sandbox = sandboxWithHost({});
+
+    const deployed = deployQa(sandbox);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.doesNotMatch(deployed.stderr, /still has|'rm /);
+  });
+
+  it("leaves another profile's old env file out of it, since that profile's own commands still need it", () => {
+    const sandbox = sandboxWithHost({ [OLD_HOST_COPY.brandB]: fakeAdminEnv('brand-b') });
+
+    const deployed = deployQa(sandbox);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.doesNotMatch(deployed.stderr, /still has|'rm /);
+    assert.ok(existsSync(sandbox.onHost(OLD_HOST_COPY.brandB)));
+  });
+});
