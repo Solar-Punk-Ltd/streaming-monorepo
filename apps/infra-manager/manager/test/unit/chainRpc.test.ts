@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer, type ServerResponse } from 'node:http';
 import { afterEach, describe, it } from 'node:test';
 import { ChainRpc } from '../../src/domain/chequebook/ChainRpc.js';
+import { answeringRejections } from '../support/answeringRejections.js';
 
 const hash = `0x${'ab'.repeat(32)}`;
 const parentHash = `0x${'cd'.repeat(32)}`;
@@ -11,13 +12,15 @@ const cleanups: Array<() => Promise<void>> = [];
 
 async function rpcServer(handle: (body: RequestBody, response: ServerResponse) => void) {
   const calls: RequestBody[] = [];
-  const server = createServer(async (request, response) => {
-    const chunks: Buffer[] = [];
-    for await (const chunk of request) chunks.push(Buffer.from(chunk));
-    const body = JSON.parse(Buffer.concat(chunks).toString()) as RequestBody;
-    calls.push(body);
-    handle(body, response);
-  });
+  const server = createServer(
+    answeringRejections(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      const body = JSON.parse(Buffer.concat(chunks).toString()) as RequestBody;
+      calls.push(body);
+      handle(body, response);
+    }),
+  );
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   cleanups.push(async () => {
     server.closeAllConnections();

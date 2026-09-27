@@ -60,6 +60,7 @@ import {
   unrecordedCatalog,
 } from './fixtures/deploymentSettings.mjs';
 import { srsOverviewOf } from './fixtures/engineOverview.mjs';
+import { passingRejections } from './support/passing-rejections.mjs';
 
 const frontend = fileURLToPath(new URL('../', import.meta.url));
 
@@ -160,86 +161,88 @@ test('a deployment settings card lists, edits, saves and applies at a phone widt
       {
         name: 'offline-deployment-settings-fixture',
         configureServer(vite) {
-          vite.middlewares.use(async (req, res, next) => {
-            const path = req.url?.split('?')[0] ?? '';
-            const json = (body, status = 200) => {
-              res.writeHead(status, { 'content-type': 'application/json' });
-              res.end(JSON.stringify(body));
-            };
-            if (!/^\/(auth|profiles|groups|config|events|metrics|versions)(\/|$)/.test(path)) return next();
-            if (path === '/auth/session')
-              return json({ username: 'settings-review', isAdmin: true, expiresAt: '2099-01-01T00:00:00Z' });
-            if (path === '/profiles') return json({ profiles: PROFILES });
-            if (path === '/groups') return json({ groups: [] });
-            if (path === '/versions') return json([]);
-            if (path === '/versions/attempts') return json({ attempts: [] });
-            if (path === '/config')
-              return json({ host: 'offline.example', srtPassphrase: null, chequebookFloorBzz: '0.5' });
-            if (path === '/events' || path.startsWith('/metrics')) {
-              res.writeHead(200, { 'content-type': 'text/event-stream' });
-              res.write(': offline fixture\n\n');
-              return;
-            }
-
-            const settings = /^\/profiles\/([^/]+)\/settings(\/apply)?$/.exec(path);
-            if (settings) {
-              const [, name, apply] = settings;
-              if (name === NOT_READY) {
-                return json(
-                  {
-                    error: 'settings_not_ready',
-                    name: 'candidate',
-                    message: 'candidate has no settings yet. Its first build has not finished.',
-                  },
-                  409,
-                );
+          vite.middlewares.use(
+            passingRejections(async (req, res, next) => {
+              const path = req.url?.split('?')[0] ?? '';
+              const json = (body, status = 200) => {
+                res.writeHead(status, { 'content-type': 'application/json' });
+                res.end(JSON.stringify(body));
+              };
+              if (!/^\/(auth|profiles|groups|config|events|metrics|versions)(\/|$)/.test(path)) return next();
+              if (path === '/auth/session')
+                return json({ username: 'settings-review', isAdmin: true, expiresAt: '2099-01-01T00:00:00Z' });
+              if (path === '/profiles') return json({ profiles: PROFILES });
+              if (path === '/groups') return json({ groups: [] });
+              if (path === '/versions') return json([]);
+              if (path === '/versions/attempts') return json({ attempts: [] });
+              if (path === '/config')
+                return json({ host: 'offline.example', srtPassphrase: null, chequebookFloorBzz: '0.5' });
+              if (path === '/events' || path.startsWith('/metrics')) {
+                res.writeHead(200, { 'content-type': 'text/event-stream' });
+                res.write(': offline fixture\n\n');
+                return;
               }
-              const catalog = catalogs.get(name);
-              if (!catalog) return json({ error: 'profile_not_found', name }, 404);
-              if (req.method === 'GET' && !apply) return json(catalog);
 
-              const chunks = [];
-              for await (const chunk of req) chunks.push(chunk);
-              const body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
-              writes.push({ method: req.method, path, body });
+              const settings = /^\/profiles\/([^/]+)\/settings(\/apply)?$/.exec(path);
+              if (settings) {
+                const [, name, apply] = settings;
+                if (name === NOT_READY) {
+                  return json(
+                    {
+                      error: 'settings_not_ready',
+                      name: 'candidate',
+                      message: 'candidate has no settings yet. Its first build has not finished.',
+                    },
+                    409,
+                  );
+                }
+                const catalog = catalogs.get(name);
+                if (!catalog) return json({ error: 'profile_not_found', name }, 404);
+                if (req.method === 'GET' && !apply) return json(catalog);
 
-              if (apply) {
-                if (stage.applyBusy) return json({ error: 'profile_busy', name, status: 'DEPLOYING' }, 409);
-                // The manager's own refusal: its deploy would refuse the stored engine settings.
-                if (catalog.engineSettingsProblem)
-                  return json({ error: 'validation_error', errors: [catalog.engineSettingsProblem], name }, 400);
-                const applied = afterApply(catalog);
-                catalogs.set(name, applied.catalog);
-                return json({ recreated: applied.recreated }, 202);
+                const chunks = [];
+                for await (const chunk of req) chunks.push(chunk);
+                const body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+                writes.push({ method: req.method, path, body });
+
+                if (apply) {
+                  if (stage.applyBusy) return json({ error: 'profile_busy', name, status: 'DEPLOYING' }, 409);
+                  // The manager's own refusal: its deploy would refuse the stored engine settings.
+                  if (catalog.engineSettingsProblem)
+                    return json({ error: 'validation_error', errors: [catalog.engineSettingsProblem], name }, 400);
+                  const applied = afterApply(catalog);
+                  catalogs.set(name, applied.catalog);
+                  return json({ recreated: applied.recreated }, 202);
+                }
+                if (stage.refuseSave) return json({ error: 'validation_error', errors: [STAGED_REFUSAL], name }, 400);
+                // The manager's own check, not a staged one: a save naming a
+                // revision the settings have moved past is what it refuses.
+                if (body.expectedRevision !== catalog.revision || body.expectedInstanceId !== catalog.instanceId) {
+                  return json(
+                    {
+                      error: 'deployment_settings_changed',
+                      name,
+                      message:
+                        "This deployment's settings changed after the page read them. Reload them and make the change again.",
+                    },
+                    409,
+                  );
+                }
+                const saved = afterSave(catalog, body.entries);
+                catalogs.set(name, saved);
+                storeEngineSettings(name, body.entries);
+                return json({ revision: saved.revision });
               }
-              if (stage.refuseSave) return json({ error: 'validation_error', errors: [STAGED_REFUSAL], name }, 400);
-              // The manager's own check, not a staged one: a save naming a
-              // revision the settings have moved past is what it refuses.
-              if (body.expectedRevision !== catalog.revision || body.expectedInstanceId !== catalog.instanceId) {
-                return json(
-                  {
-                    error: 'deployment_settings_changed',
-                    name,
-                    message:
-                      "This deployment's settings changed after the page read them. Reload them and make the change again.",
-                  },
-                  409,
-                );
-              }
-              const saved = afterSave(catalog, body.entries);
-              catalogs.set(name, saved);
-              storeEngineSettings(name, body.entries);
-              return json({ revision: saved.revision });
-            }
-            const engine = /^\/profiles\/([^/]+)\/engine$/.exec(path);
-            const engineOf = PROFILES.find((row) => row.name === engine?.[1]);
-            if (engineOf) return json(srsOverviewOf(engineOf, { hostEnv: HOST_ENV }));
-            // Every other read of a deployment is a node that does not answer,
-            // which the rest of the page already knows how to show.
-            if (path.startsWith('/profiles/'))
-              return json({ error: 'Node unavailable', code: 'bee_node_unreachable' }, 503);
-            return next();
-          });
+              const engine = /^\/profiles\/([^/]+)\/engine$/.exec(path);
+              const engineOf = PROFILES.find((row) => row.name === engine?.[1]);
+              if (engineOf) return json(srsOverviewOf(engineOf, { hostEnv: HOST_ENV }));
+              // Every other read of a deployment is a node that does not answer,
+              // which the rest of the page already knows how to show.
+              if (path.startsWith('/profiles/'))
+                return json({ error: 'Node unavailable', code: 'bee_node_unreachable' }, 503);
+              return next();
+            }),
+          );
         },
       },
     ],

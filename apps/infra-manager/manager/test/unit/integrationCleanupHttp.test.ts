@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { afterEach, beforeEach, it } from 'node:test';
+import { answeringRejections } from '../support/answeringRejections.js';
 
 const helpers = new URL('../integration/helpers.ts', import.meta.url).href;
 let server: http.Server;
@@ -21,51 +22,53 @@ beforeEach(async () => {
   groupResponseCount = 2;
   calls = [];
   profiles = new Map();
-  server = http.createServer(async (req, res) => {
-    let raw = '';
-    for await (const chunk of req) raw += chunk;
-    const body = raw ? JSON.parse(raw) : {};
-    const path = req.url!;
-    calls.push({ method: req.method!, path, body, writeHeader: req.headers['x-requested-with'] });
-    const answer = (status: number, result?: unknown) => {
-      res.writeHead(status, { 'content-type': 'application/json' });
-      res.end(result === undefined ? '' : JSON.stringify(result));
-    };
-    const insert = (name: string) => {
-      const profile = { name, instance_id: randomUUID(), status: 'DEPLOYING' };
-      profiles.set(name, profile);
-      return profile;
-    };
-    if (req.method === 'POST' && path === '/profiles') return answer(202, invalidCreation ? {} : insert(body.name));
-    if (req.method === 'POST' && path === '/groups')
-      return answer(202, {
-        group: { id: 7, name: body.group_name },
-        profiles: [
-          insert(`${body.group_name}-profile-2`),
-          ...(groupResponseCount === 2 ? [insert(`${body.group_name}-profile-8`)] : []),
-        ],
-      });
-    if (req.method === 'POST' && path === '/groups/9/members')
-      return answer(202, {
-        group: { id: 9, name: 'itest-run-existing' },
-        profiles: [insert('itest-run-existing-profile-6')],
-      });
-    if (path.startsWith('/profiles/')) {
-      const name = decodeURIComponent(path.slice('/profiles/'.length));
-      const profile = profiles.get(name);
-      if (!profile) return answer(404, { error: 'profile_not_found', name });
-      if (req.method === 'DELETE') {
-        if (body.expectedInstanceId !== profile.instance_id)
-          return answer(409, { error: 'profile_instance_changed', name });
-        profiles.delete(name);
-        return answer(202, { ...profile, status: 'REMOVING' });
+  server = http.createServer(
+    answeringRejections(async (req, res) => {
+      let raw = '';
+      for await (const chunk of req) raw += chunk;
+      const body = raw ? JSON.parse(raw) : {};
+      const path = req.url!;
+      calls.push({ method: req.method!, path, body, writeHeader: req.headers['x-requested-with'] });
+      const answer = (status: number, result?: unknown) => {
+        res.writeHead(status, { 'content-type': 'application/json' });
+        res.end(result === undefined ? '' : JSON.stringify(result));
+      };
+      const insert = (name: string) => {
+        const profile = { name, instance_id: randomUUID(), status: 'DEPLOYING' };
+        profiles.set(name, profile);
+        return profile;
+      };
+      if (req.method === 'POST' && path === '/profiles') return answer(202, invalidCreation ? {} : insert(body.name));
+      if (req.method === 'POST' && path === '/groups')
+        return answer(202, {
+          group: { id: 7, name: body.group_name },
+          profiles: [
+            insert(`${body.group_name}-profile-2`),
+            ...(groupResponseCount === 2 ? [insert(`${body.group_name}-profile-8`)] : []),
+          ],
+        });
+      if (req.method === 'POST' && path === '/groups/9/members')
+        return answer(202, {
+          group: { id: 9, name: 'itest-run-existing' },
+          profiles: [insert('itest-run-existing-profile-6')],
+        });
+      if (path.startsWith('/profiles/')) {
+        const name = decodeURIComponent(path.slice('/profiles/'.length));
+        const profile = profiles.get(name);
+        if (!profile) return answer(404, { error: 'profile_not_found', name });
+        if (req.method === 'DELETE') {
+          if (body.expectedInstanceId !== profile.instance_id)
+            return answer(409, { error: 'profile_instance_changed', name });
+          profiles.delete(name);
+          return answer(202, { ...profile, status: 'REMOVING' });
+        }
+        return answer(200, profile);
       }
-      return answer(200, profile);
-    }
-    if (req.method === 'DELETE' && path === '/groups/7') return answer(204);
-    if (req.method === 'GET' && path === '/groups') return answer(200, { groups: [] });
-    return answer(404, { error: 'route_not_found' });
-  });
+      if (req.method === 'DELETE' && path === '/groups/7') return answer(204);
+      if (req.method === 'GET' && path === '/groups') return answer(200, { groups: [] });
+      return answer(404, { error: 'route_not_found' });
+    }),
+  );
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 });

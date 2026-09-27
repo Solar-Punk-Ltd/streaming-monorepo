@@ -8,6 +8,7 @@ import { launchChrome, pageShows, pointToClick, readWhenPresent, waitFor } from 
 import { endViteServer } from './support/teardown.mjs';
 import { LONG_ERROR, LONG_VERSION_NAME, seedVersions } from './fixtures/versions.mjs';
 import { viteCacheFor } from './support/vite-cache.mjs';
+import { passingRejections } from './support/passing-rejections.mjs';
 
 const frontend = fileURLToPath(new URL('../', import.meta.url));
 const evidence = process.env.T18_EVIDENCE_DIR;
@@ -25,55 +26,57 @@ test('version identity, states and actions fit verified narrow viewports', async
       {
         name: 'offline-version-fixture',
         configureServer(vite) {
-          vite.middlewares.use(async (req, res, next) => {
-            const path = req.url?.split('?')[0];
-            function json(body) {
-              res.setHeader('content-type', 'application/json');
-              res.end(JSON.stringify(body));
-            }
-            if (path === '/auth/session')
-              return json({ username: 'layout-review', isAdmin: true, expiresAt: '2099-01-01T00:00:00Z' });
-            if (path === '/profiles') return json({ profiles: [] });
-            if (path === '/groups') return json({ groups: [] });
-            if (path === '/config')
-              return json({ host: 'offline.example', srtPassphrase: null, chequebookFloorBzz: '0.5' });
-            if (path === '/events') {
-              res.writeHead(200, { 'content-type': 'text/event-stream' });
-              res.write(': offline fixture\n\n');
-              return;
-            }
-            if (path === '/versions' && req.method === 'GET') return json(versions);
-            if (path === '/versions/attempts' && req.method === 'GET') return json({ attempts: [] });
-            if (path?.startsWith('/versions/')) {
-              const chunks = [];
-              for await (const chunk of req) chunks.push(chunk);
-              const text = Buffer.concat(chunks).toString();
-              const body = text ? JSON.parse(text) : null;
-              writes.push({ method: req.method, path, body });
-              const version = versions.find((v) => v.id === Number(path.split('/')[2]));
-              if (req.method === 'PATCH') {
-                version.tested = body.tested;
-                return json(version);
+          vite.middlewares.use(
+            passingRejections(async (req, res, next) => {
+              const path = req.url?.split('?')[0];
+              function json(body) {
+                res.setHeader('content-type', 'application/json');
+                res.end(JSON.stringify(body));
               }
-              if (path.endsWith('/default')) {
-                versions.forEach((v) => {
-                  v.isDefault = v === version;
-                });
-                return json({});
-              }
-              if (req.method === 'DELETE') {
-                versions = versions.filter((v) => v !== version);
-                return json({});
-              }
-              if (path.endsWith('/update')) {
+              if (path === '/auth/session')
+                return json({ username: 'layout-review', isAdmin: true, expiresAt: '2099-01-01T00:00:00Z' });
+              if (path === '/profiles') return json({ profiles: [] });
+              if (path === '/groups') return json({ groups: [] });
+              if (path === '/config')
+                return json({ host: 'offline.example', srtPassphrase: null, chequebookFloorBzz: '0.5' });
+              if (path === '/events') {
                 res.writeHead(200, { 'content-type': 'text/event-stream' });
-                res.write('event: stdout\ndata: {"chunk":"Offline build log"}\n\n');
-                activeBuild = res;
+                res.write(': offline fixture\n\n');
                 return;
               }
-            }
-            next();
-          });
+              if (path === '/versions' && req.method === 'GET') return json(versions);
+              if (path === '/versions/attempts' && req.method === 'GET') return json({ attempts: [] });
+              if (path?.startsWith('/versions/')) {
+                const chunks = [];
+                for await (const chunk of req) chunks.push(chunk);
+                const text = Buffer.concat(chunks).toString();
+                const body = text ? JSON.parse(text) : null;
+                writes.push({ method: req.method, path, body });
+                const version = versions.find((v) => v.id === Number(path.split('/')[2]));
+                if (req.method === 'PATCH') {
+                  version.tested = body.tested;
+                  return json(version);
+                }
+                if (path.endsWith('/default')) {
+                  versions.forEach((v) => {
+                    v.isDefault = v === version;
+                  });
+                  return json({});
+                }
+                if (req.method === 'DELETE') {
+                  versions = versions.filter((v) => v !== version);
+                  return json({});
+                }
+                if (path.endsWith('/update')) {
+                  res.writeHead(200, { 'content-type': 'text/event-stream' });
+                  res.write('event: stdout\ndata: {"chunk":"Offline build log"}\n\n');
+                  activeBuild = res;
+                  return;
+                }
+              }
+              next();
+            }),
+          );
         },
       },
     ],
