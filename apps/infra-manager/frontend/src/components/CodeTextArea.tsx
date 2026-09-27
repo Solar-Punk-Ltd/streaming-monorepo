@@ -1,5 +1,5 @@
 import { useRef, type ChangeEvent, type UIEvent } from 'react';
-import { Box, useTheme } from '@mui/material';
+import { Box } from '@mui/material';
 
 import { MONO_STACK } from '../app/theme';
 
@@ -28,7 +28,6 @@ export function CodeTextArea({
   minHeight?: number;
   ariaLabel: string;
 }) {
-  const theme = useTheme();
   const gutter = useRef<HTMLPreElement>(null);
   const lineCount = Math.max(1, value.split('\n').length);
   const numbers = Array.from({ length: lineCount }, (_line, index) => index + 1).join('\n');
@@ -100,7 +99,7 @@ export function CodeTextArea({
           fontFamily: MONO_STACK,
           fontSize: FONT_SIZE,
           lineHeight: LINE_HEIGHT,
-          color: theme.palette.text.primary,
+          color: 'text.primary',
           bgcolor: 'transparent',
           whiteSpace: 'pre',
           overflow: 'auto',
