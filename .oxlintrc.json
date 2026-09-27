@@ -21,6 +21,12 @@
     // sequential publish is the back-pressure, and Promise.all over it fans out unbounded.
     "eslint/no-await-in-loop": "off",
 
+    // Off because it describes Express 4. Every Express here is 5, whose router hands a promise
+    // rejected by a handler or a middleware to next(err), so the error middleware receives it. The
+    // other async middlewares it reported are Vite dev-server fixtures in tests, which
+    // typescript/no-misused-promises reports as well.
+    "oxc/no-async-endpoint-handlers": "off",
+
     // Type-aware, through oxlint-tsgolint and the TypeScript 7 compiler, run by `--type-aware`.
     // A promise nobody awaits or catches, and a promise handed where a plain value is expected,
     // both leave a rejection unhandled. Off until the findings they report today are fixed, then
