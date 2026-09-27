@@ -23,7 +23,7 @@ a feed entry second.
 ```bash
 cp .env.sample .env       # then set FEED_PRIVATE_KEY and INGEST_HOST
 pnpm database:start       # postgres:16-alpine on 127.0.0.1:5433
-pnpm user:add owner        # the first user — prompts twice, echoes nothing
+pnpm user:add alice        # the first user — prompts twice, echoes nothing
 pnpm dev                  # API on :9877
 curl localhost:9877/api/health                   # {"status":"ok"}
 ```
@@ -34,10 +34,10 @@ users: the API boots, logs a warning, serves `/api/health`, `/api/config` and
 made with the CLI. In the image that is
 
 ```bash
-docker compose exec -it api node dist/cli.js user:add owner
+docker compose exec -it api node dist/cli.js user:add alice
 # or, with the password never landing in a file or an argv:
 op read "op://<vault>/<item>/password" \
-  | docker compose exec -T api node dist/cli.js user:add owner --password-stdin
+  | docker compose exec -T api node dist/cli.js user:add alice --password-stdin
 ```
 
 The first user ever added can manage users whatever the flags said; later ones
