@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 import { MANAGER_POSTGRES_VOLUME } from '../../src/domain/versions/managerProject.js';
 import { STACK_COMMIT_FILE } from '../../src/domain/versions/StackVersionService.js';
+import { MONOREPO_STACK_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DEPLOY_SCRIPT = join(here, '..', '..', '..', 'deploy', 'deploy.sh');
@@ -303,7 +304,27 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
    * The monorepo in miniature, the manager and the stack side by side, pushed to
    * an origin on this disk, with stand-ins for the two commands that reach a host.
    */
-  function checkout(root: string): Checkout {
+  /**
+   * A git that answers `ls-remote` with `lsRemote` as its exit status and records how it was asked,
+   * and hands every other command to the real git.
+   */
+  function gitAnswering(root: string, bin: string, lsRemote: number): void {
+    const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+    const calls = join(root, 'ls-remote-calls');
+    writeFileSync(join(bin, 'git'), [
+      '#!/bin/sh',
+      'for arg in "$@"; do',
+      '  if [ "$arg" = ls-remote ]; then',
+      `    printf '%s | GIT_CONFIG_GLOBAL=%s GIT_TERMINAL_PROMPT=%s\\n' "$*" "$GIT_CONFIG_GLOBAL" "$GIT_TERMINAL_PROMPT" >> '${calls}'`,
+      `    exit ${lsRemote}`,
+      '  fi',
+      'done',
+      `exec '${realGit}' "$@"`,
+      '',
+    ].join('\n'), { mode: 0o755 });
+  }
+
+  function checkout(root: string, { lsRemote = 0 }: { lsRemote?: number } = {}): Checkout {
     const origin = join(root, 'origin.git');
     git(root, 'init', '-q', '--bare', origin);
     const work = join(root, 'work');
@@ -326,6 +347,7 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     mkdirSync(bin);
     writeFileSync(join(bin, 'rsync'), `#!/bin/sh\ntouch '${join(root, 'rsync-ran')}'\n`, { mode: 0o755 });
     writeFileSync(join(bin, 'ssh'), '#!/bin/sh\ncat > /dev/null\n', { mode: 0o755 });
+    gitAnswering(root, bin, lsRemote);
     return { work, manager, stackCommit, environment: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` } };
   }
 
@@ -370,6 +392,44 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
 
       const stackChange = change(work, 'apps/hls-stream/README.md', 'the stack, changed\n');
       assert.equal(deploy(root, manager, environment).pin, stackChange, 'a change to the stack moves the pin');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * The host fetches the pin from the monorepo without a login. While the
+   * repository cannot be read that way, an upgrade would stop the old api and
+   * migrate the database before the bundled build failed, so the deploy asks
+   * the same way first, with nothing of this machine's git setup behind it.
+   */
+  it('refuses before anything reaches the host when the monorepo does not answer an anonymous ls-remote', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-private-'));
+    try {
+      const { manager, environment } = checkout(root, { lsRemote: 128 });
+
+      const refused = deploy(root, manager, environment);
+
+      assert.equal(refused.status, 1, refused.stderr);
+      assert.match(refused.stderr, /does not answer without a login/);
+      assert.equal(refused.shipped, false, 'nothing was copied to the host');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('asks the monorepo anonymously, with no credential helper, no prompt and none of this machine\'s git configuration', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-anonymous-'));
+    try {
+      const { manager, environment } = checkout(root);
+
+      const deployed = deploy(root, manager, environment);
+
+      assert.equal(deployed.status, 0, deployed.stderr);
+      const [asked] = readFileSync(join(root, 'ls-remote-calls'), 'utf8').trim().split('\n');
+      assert.match(asked, new RegExp(`ls-remote ${MONOREPO_STACK_SOURCE.url.replaceAll('.', '\\.')} HEAD`));
+      assert.match(asked, /-c credential\.helper= /);
+      assert.match(asked, /GIT_CONFIG_GLOBAL=\/dev\/null GIT_TERMINAL_PROMPT=0$/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
