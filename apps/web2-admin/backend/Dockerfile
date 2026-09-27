@@ -26,7 +26,7 @@ RUN pnpm --filter @streaming-monorepo/web2-admin-backend... build
 
 # Produces a self-contained tree at /out with prod node_modules + dist.
 #
-# --legacy because pnpm 10 and later refuse to deploy from a workspace that does not
+# --legacy because pnpm 10 refuses to deploy from a workspace that does not
 # inject its workspace packages, and this image had never been built since the
 # workspace moved to pnpm 10. The manager sets injectWorkspacePackages in its
 # pnpm-workspace.yaml instead; doing that here would rewrite the lockfile and
