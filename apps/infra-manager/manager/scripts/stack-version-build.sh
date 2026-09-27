@@ -215,9 +215,6 @@ else
     git -C "$REPO" archive "$ARCHIVE_REV" -- "$EXPORT_FOLDER" |
         tar -x --strip-components="${#FOLDER_NAMES[@]}" -C "$STAGING"
 fi
-printf '%s\n' "$COMMIT" > "$STAGING/.stack-commit"
-printf '%s\n' "$EXPORT_FOLDER" > "$STAGING/.stack-folder"
-
 # No -e and no --env-file: the container gets the staging tree, a cpu and memory
 # ceiling, a process ceiling, a name the manager can ask Docker about, and
 # nothing else of this host.
@@ -230,5 +227,13 @@ docker run --rm \
     -v "$STAGING:$STAGING" \
     -w "$STAGING" \
     "$BUILD_IMAGE" sh -c "$BUILD_COMMAND"
+
+# What this script exported, written only now that the ref's own scripts have
+# run over the tree, so none of them can change it. Whatever they left at these
+# two names goes first, because a link left there would carry the write out of
+# the tree, and the container has exited, so nothing can put one back.
+rm -rf "$STAGING/.stack-commit" "$STAGING/.stack-folder"
+printf '%s\n' "$COMMIT" > "$STAGING/.stack-commit"
+printf '%s\n' "$EXPORT_FOLDER" > "$STAGING/.stack-folder"
 
 echo "==> Built $COMMIT in $STAGING"
