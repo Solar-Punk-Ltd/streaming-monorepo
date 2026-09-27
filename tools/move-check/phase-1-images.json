@@ -67,10 +67,10 @@
     },
     {
       "name": "infra-manager-api",
-      "note": "streaming-infra-manager at 016c78b5, its last commit, against #20, which pulled it into apps/infra-manager. #24 and #28 changed the folder later.",
+      "note": "streaming-infra-manager at 016c78b5, its last commit, against #20, which pulled it into apps/infra-manager. #24 and #28 changed the folder later. Two more files record when the build ran, and a real build of both sides on 2026-09-27 showed each differing in that alone: pnpm 11's .pnpm-workspace-state-v1.json in its lastValidatedTimestamp, and Alpine's /var/log/apk.log in the time apk add ran, with every package version the same.",
       "before": { "commit": "016c78b5a3940d6bf3fa8c38a026c8c7d2351561", "context": ".", "dockerfile": "manager/Dockerfile" },
       "after": { "commit": "f9ac9c671d0ce0bdb9ea4cc335f94722adf62066", "context": "apps/infra-manager", "dockerfile": "apps/infra-manager/manager/Dockerfile" },
-      "allow": ["/app/node_modules/.modules.yaml"]
+      "allow": ["/app/node_modules/.modules.yaml", "/app/node_modules/.pnpm-workspace-state-v1.json", "/var/log/apk.log"]
     },
     {
       "name": "infra-manager-frontend",
