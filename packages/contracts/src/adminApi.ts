@@ -27,10 +27,18 @@ function readAsText(value: unknown): unknown {
   return text === undefined || text === '[object Object]' ? value : text;
 }
 
+/** What a request is told about a field it left out, or sent in a shape that is not `what`. */
+const fieldError =
+  (name: string, what: string) =>
+  (issue: { input?: unknown }): string =>
+    issue.input === undefined ? `${name} is a required field` : `${name} must be ${what}`;
+
 const bodyNumber = (name: string) =>
   z.preprocess(
     readAsNumber,
-    z.custom<number>((value) => typeof value === 'number' && !Number.isNaN(value), `${name} must be a number`),
+    z.custom<number>((value) => typeof value === 'number' && !Number.isNaN(value), {
+      error: fieldError(name, 'a number'),
+    }),
   );
 
 const wholeNumber = (name: string) => bodyNumber(name).refine(Number.isInteger, `${name} must be a whole number`);
@@ -40,7 +48,7 @@ const notNegative =
   <T extends z.ZodType<number>>(schema: T) =>
     schema.refine((value) => value >= 0, `${name} must not be negative`);
 
-const bodyText = (name: string) => z.preprocess(readAsText, z.string(`${name} must be text`));
+const bodyText = (name: string) => z.preprocess(readAsText, z.string({ error: fieldError(name, 'text') }));
 
 /**
  * `GET /api/internal/streams/by-ingest/:app/:stream`: the ingest stream id split in two, both checked as sent. A route

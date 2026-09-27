@@ -8,7 +8,7 @@ import {
 } from '@streaming-monorepo/contracts';
 import type { AnySchema } from 'yup';
 
-import { ingestLookupParamSchema, renditionReportSchema, streamStateSchema } from '../../src/schemas/internal.js';
+import { ingestLookupParamSchema, renditionReportSchema, streamStateSchema } from './support/yupInternalSchemas.js';
 
 /**
  * The contract's schemas read every request the internal routes' yup schemas read, and read it to the same values.
