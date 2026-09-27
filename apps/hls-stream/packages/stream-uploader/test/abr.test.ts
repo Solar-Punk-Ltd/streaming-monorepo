@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
+import { viewerCatalogEntrySchema } from '@swarm-hls-stream/shared';
+
 import { AbrLadder, DEFAULT_LADDER_SPEC } from '../src/libs/AbrLadder.js';
 import { Logger } from '../src/libs/Logger.js';
 import { buildLadderEntry, LadderIdentity, StreamEntry } from '../src/libs/StreamCatalog.js';
@@ -228,6 +230,25 @@ describe('buildLadderEntry', () => {
       entry.renditions?.map((r) => r.name),
       ['360p'],
     );
+  });
+
+  it('writes entries the viewer reads, while the ladder delivers and once it has finished', () => {
+    let previous: StreamEntry[] = [];
+    for (const [name, height] of [
+      ['720p', 720],
+      ['360p', 360],
+    ] as const) {
+      previous = [buildLadderEntry(identity, previous, rendition(name, height))];
+      assert.ok(viewerCatalogEntrySchema.safeParse(previous[0]).success, `delivering after ${name}`);
+    }
+    for (const [name, height] of [
+      ['720p', 720],
+      ['360p', 360],
+    ] as const) {
+      previous = [buildLadderEntry(identity, previous, rendition(name, height, { index: 4, duration: 61.5 }))];
+    }
+    assert.equal(previous[0].state, 'vod');
+    assert.ok(viewerCatalogEntrySchema.safeParse(previous[0]).success, 'finished');
   });
 });
 
