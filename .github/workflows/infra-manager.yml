@@ -9,10 +9,10 @@ name: infra-manager
 on:
   pull_request:
     branches: [main, main-v3]
-    paths: ['apps/infra-manager/**', 'apps/hls-stream/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.github/workflows/infra-manager.yml']
+    paths: ['apps/infra-manager/**', 'apps/hls-stream/**', 'tools/app-workspace/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.github/workflows/infra-manager.yml']
   push:
     branches: [main, main-v3]
-    paths: ['apps/infra-manager/**', 'apps/hls-stream/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.github/workflows/infra-manager.yml']
+    paths: ['apps/infra-manager/**', 'apps/hls-stream/**', 'tools/app-workspace/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.github/workflows/infra-manager.yml']
 
 permissions:
   contents: read
@@ -232,16 +232,28 @@ jobs:
     # until this job an image that could not build passed every check and
     # failed at the deploy, as the web image of v2.2 did on 2026-09-25. Built
     # and thrown away, never pushed.
+    #
+    # Each build runs through tools/app-workspace/in-copy.mjs, from a copy of
+    # the manager's folder made outside the checkout, the one command local
+    # builds use too. Once the repository keeps one lockfile at its root, the
+    # copy carries the manager's own pair cut out of the root's, which is what
+    # the host's folder gets from a deploy. Until then the manager keeps its own
+    # and the copy is a plain one.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Node's standard library alone, which in-copy.mjs needs at 22 or later.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
       - name: The daemon the images are built with
         run: docker version --format 'server {{.Server.Version}}'
 
       - name: The web image, frontend/Dockerfile
-        run: docker build --file frontend/Dockerfile --tag manager-web:checks .
+        run: node ../../tools/app-workspace/in-copy.mjs --app apps/infra-manager -- docker build --file frontend/Dockerfile --tag manager-web:checks .
 
       - name: The api image, manager/Dockerfile
-        run: docker build --file manager/Dockerfile --tag manager-api:checks .
+        run: node ../../tools/app-workspace/in-copy.mjs --app apps/infra-manager -- docker build --file manager/Dockerfile --tag manager-api:checks .
