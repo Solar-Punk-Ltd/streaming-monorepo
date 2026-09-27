@@ -1,0 +1,5 @@
+# Commits that only reformat, left out of git blame.
+# GitHub reads this file by itself. Locally: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# The whole repository formatted with oxfmt 0.67.0 (phase 4)
+fd1aff480fb1a2e8b56ec9f6d6a311ce33e09a31
