@@ -18,11 +18,13 @@ COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
 # The repository's shared packages the admin links, where the cut carries them. See tools/app-workspace.
 COPY workspace-packages/contracts/package.json ./workspace-packages/contracts/
+COPY workspace-packages/db-migrate/package.json ./workspace-packages/db-migrate/
 COPY workspace-packages/web-auth/package.json ./workspace-packages/web-auth/
 
 RUN pnpm install --frozen-lockfile --filter @streaming-monorepo/web2-admin-backend...
 
 COPY workspace-packages/contracts ./workspace-packages/contracts
+COPY workspace-packages/db-migrate ./workspace-packages/db-migrate
 COPY workspace-packages/web-auth ./workspace-packages/web-auth
 COPY common ./common
 COPY backend ./backend
