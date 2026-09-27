@@ -1306,9 +1306,8 @@ export class StreamUploader {
    * the age and re-attempts on its own cadence, and `finalize` lets it propagate so the drain records
    * a failure and the recovery entry stays on disk for the next boot.
    *
-   * `already-settled` is not a failure. The admin answers 409 for a transition it cannot make from
-   * the state it holds, and the ordinary way to reach that is a report this stream already delivered
-   * before a crash. Retrying that forever would strand the broadcast.
+   * A report this stream already delivered before a crash is accepted again by the admin. A refusal,
+   * a stream unpublished on the admin, is a failure like any other, and says so in the log.
    *
    * ⚠️ Skipped entirely once a newer session holds this stream id, and this is sharper than the same
    * guard on `announceRendition`. Outside admin mode a retired session still owns its own feed topic,
