@@ -99,7 +99,7 @@ docker run --rm -d --name ${CONTAINER} \
   -p ${RTMP_PORT}:${RTMP_PORT} -p ${SRT_PORT}:${SRT_PORT}/udp \
   -v ${REMOTE_DIR}/probe.conf:/usr/local/srs/conf/probe.conf:ro \
   -v ${REMOTE_DIR}/hls:/hls \
-  ossrs/srs:6 ./objs/srs -c conf/probe.conf >/dev/null
+  ossrs/srs:v6.0-r1@sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3 ./objs/srs -c conf/probe.conf >/dev/null
 REMOTE
 
 # ⭐ Checked rather than assumed. An arm that reports no segments has three known causes here, and

@@ -1,6 +1,6 @@
 services:
   bee-uploader:
-    image: ethersphere/bee:2.8.2
+    image: ethersphere/bee:2.8.2@sha256:c0c951f0795e813be6b865213e2c277fd1449f862bb4b6357085391c4fb54810
     container_name: bee-uploader
     env_file: ../.env
     restart: unless-stopped
@@ -22,7 +22,7 @@ services:
       - --password=${BEE_UPLOADER_PASSWORD:-}
 
   bee-gateway:
-    image: ethersphere/bee:2.8.2
+    image: ethersphere/bee:2.8.2@sha256:c0c951f0795e813be6b865213e2c277fd1449f862bb4b6357085391c4fb54810
     container_name: bee-gateway
     env_file: ../.env
     restart: unless-stopped

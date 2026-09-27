@@ -15,7 +15,7 @@
  * at again.
  */
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -136,6 +136,30 @@ describe('readStackContract on main-v3', () => {
       'API_AUTH_TOKEN',
       'SRS_WEBHOOK_TOKEN',
     ]);
+  });
+
+  /**
+   * The stack pins its engines by digest since 2026-09-27, and the engine
+   * config check runs `docker run` on the name this returns, so the digest has
+   * to survive the read whole: a name cut at the `@` runs whatever the tag
+   * points at that day.
+   */
+  it('names an engine image pinned by digest whole, digest included', () => {
+    const srs =
+      'ossrs/srs:v6.0-r1@sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3';
+    const ome =
+      'airensoft/ovenmediaengine:v0.21.0@sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6';
+    const root = mkdtempSync(join(tmpdir(), 'stack-contract-'));
+    cpSync(fixture('v3'), root, { recursive: true });
+    const compose = join(root, 'deploy', 'docker-compose.yml');
+    writeFileSync(
+      compose,
+      readFileSync(compose, 'utf8')
+        .replace('    image: ossrs/srs:6\n', `    image: ${srs}\n`)
+        .replace('    image: airensoft/ovenmediaengine:latest\n', `    image: ${ome}\n`),
+    );
+
+    assert.deepEqual(readStackContract(root).engineImages, { srs, ome });
   });
 
   it('leaves out the optional secret, which is off when empty', () => {
