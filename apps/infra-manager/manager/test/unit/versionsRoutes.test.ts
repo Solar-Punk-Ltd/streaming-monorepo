@@ -16,7 +16,7 @@ import { cpSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
-import { scratchVersionsRoot, V3_FIXTURE } from '../support/stackFixtures.js';
+import { leaveBuildMarkers, scratchVersionsRoot, V3_FIXTURE } from '../support/stackFixtures.js';
 import {
   nextVersionChange,
   readSseFrames,
@@ -36,7 +36,7 @@ function pinStackCommit(commit: string): void {
 function builtInStaging(args: string[]): void {
   const staging = args[1] ?? '';
   cpSync(V3_FIXTURE, staging, { recursive: true });
-  writeFileSync(join(staging, '.stack-commit'), `${ROUTE_COMMIT}\n`);
+  leaveBuildMarkers(staging, ROUTE_COMMIT);
 }
 
 let app: VersionsTestApp;
