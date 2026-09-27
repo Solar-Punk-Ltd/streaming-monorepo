@@ -12,7 +12,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm --filter @streaming-monorepo/web2-admin-backend dev & pnpm --filter @streaming-monorepo/web2-admin-frontend dev",
-    "test": "pnpm -r test",
+    "test": "pnpm -r test && node --test 'deploy/test/*.test.mjs'",
     "typecheck": "pnpm -r typecheck"
   }
 }
