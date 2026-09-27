@@ -213,6 +213,7 @@ export function StreamFormPage() {
     if (loaded?.hasThumbnail) setRemoveStored(true);
   };
 
+  // Catches every failure into the form's error line, so the form calls it without awaiting.
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const invalid = firstMissing(form);
@@ -274,7 +275,7 @@ export function StreamFormPage() {
       </Typography>
 
       <Paper variant="outlined" sx={{ p: 3 }}>
-        <Box component="form" onSubmit={submit} noValidate>
+        <Box component="form" onSubmit={(e) => void submit(e)} noValidate>
           <Stack spacing={3}>
             {error ? <Alert severity="error">{error}</Alert> : null}
 

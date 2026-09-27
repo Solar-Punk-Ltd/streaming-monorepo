@@ -194,8 +194,9 @@ function stop() {
   setTimeout(() => process.exit(1), 1000).unref();
 }
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+// gracefulShutdown catches every failure and exits with its status, so the signal need not await it.
+process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
 
 process.on('uncaughtException', (error) => {
   logger.error('Uncaught Exception:', error);

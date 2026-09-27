@@ -304,7 +304,8 @@
     };
   }
 
-  (async () => {
+  // Its catch records any failure in the page state that the operator reads.
+  void (async () => {
     try {
       P.gateReason = await waitForPeers();
       P.peersAtStart = readPeers();

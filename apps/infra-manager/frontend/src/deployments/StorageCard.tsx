@@ -71,6 +71,7 @@ export function StorageCard({
   /** What bee answered the last change with, until the operator closes it. */
   const [sentNotice, setSentNotice] = useState<string | null>(null);
 
+  // Every action goes through here and lands its failure in actionError, so a caller need not await it.
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
     setActionError(null);
@@ -209,7 +210,7 @@ export function StorageCard({
           loading={bee.loading}
           currentStampId={profile.stamp_id}
           busy={busy}
-          onUse={handleUse}
+          onUse={(batchID) => void handleUse(batchID)}
           onTopUp={(stamp) => openChange('top-up', stamp)}
           onDilute={(stamp) => openChange('dilute', stamp)}
         />

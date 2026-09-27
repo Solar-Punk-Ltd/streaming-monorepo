@@ -42,6 +42,7 @@ export function LoginPage() {
 
   const notice = NOTICES[reason];
 
+  // Signing in answers every failure as a message rather than rejecting, so the form calls it without awaiting.
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
@@ -70,7 +71,7 @@ export function LoginPage() {
           <Typography variant="h5" component="h1" gutterBottom>
             {APP_NAME}
           </Typography>
-          <Box component="form" onSubmit={submit} noValidate>
+          <Box component="form" onSubmit={(e) => void submit(e)} noValidate>
             <Stack spacing={2} sx={{ mt: 1 }}>
               {error ? <Alert severity="error">{error}</Alert> : null}
               {notice && !error ? (

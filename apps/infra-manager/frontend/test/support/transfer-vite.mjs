@@ -22,5 +22,6 @@ async function close() {
   await server.close();
   process.disconnect();
 }
-process.on('SIGTERM', close);
-process.on('disconnect', close);
+// A close that fails ends this child on the rejection, which its parent reads as a failed stop.
+process.on('SIGTERM', () => void close());
+process.on('disconnect', () => void close());

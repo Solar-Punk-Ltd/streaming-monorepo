@@ -233,7 +233,8 @@
     return [...meta, header, ...body].join('\n');
   };
 
-  (async () => {
+  // Its catch records any failure in the page state that the operator reads.
+  void (async () => {
     try {
       P.scheduling = await schedulingProbe();
       if (P.scheduling.p50Ms > SCHEDULING_CEILING_MS) {
