@@ -32,7 +32,7 @@ streaming-monorepo/
 │   ├── edge/                the front door of a host
 │   └── terraform/           the pilot's GCP and Vps hosts, and the monitoring stack
 ├── packages/                code shared by two or more apps, none yet
-├── tools/                   scripts that serve the whole repository, starting with the move-check kit
+├── tools/                   scripts that serve the whole repository: the boundary check and the app cut
 ├── docs/                    how the pieces fit
 ├── .github/                 CODEOWNERS
 ├── package.json             the one workspace: the pnpm it runs, Nx, and the commands over every app
@@ -93,8 +93,7 @@ cannot quietly rename a database or a certificate store there.
 Renames come first, each in its own commit, then the smallest path edits the renames need, each in
 its own commit. No logic change and no dependency upgrade rides along with a move. A diff that
 moves and changes at once cannot be read, and a move that changed nothing can be proved while a
-mixed one cannot. The move-check kit under `tools/move-check/` is that proof: it compares the tree
-before and after, file for file.
+mixed one cannot.
 
 ### A bug gets its own pull request, with a test
 

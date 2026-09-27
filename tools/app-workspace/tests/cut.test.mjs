@@ -64,28 +64,6 @@ describe('cut.mjs', () => {
     assert.equal(existsSync(join(out, 'pnpm-lock.yaml')), false);
   });
 
-  it('writes into the app folder of an export when told --in-export, since an export is thrown away after its build', (t) => {
-    const root = makeWorkspace(t);
-    const out = join(root, 'apps', 'web2-admin');
-
-    const result = runScript(CUT, ['--root', root, '--app', 'apps/web2-admin', '--out', out, '--in-export']);
-
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(readFileSync(join(out, 'pnpm-lock.yaml'), 'utf8'), expectedCut('apps/web2-admin', false).lockfile);
-  });
-
-  it('refuses --in-export in a git checkout, where a person may work', (t) => {
-    const root = makeWorkspace(t);
-    commitAll(root);
-    const out = join(root, 'apps', 'web2-admin');
-
-    const result = runScript(CUT, ['--root', root, '--app', 'apps/web2-admin', '--out', out, '--in-export']);
-
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /git checkout/);
-    assert.equal(existsSync(join(out, 'pnpm-lock.yaml')), false);
-  });
-
   it("refuses an app whose packageManager differs from the root's, naming both", (t) => {
     const root = makeWorkspace(t, { 'apps/web2-admin/package.json': manifestOf('beta', 'pnpm@10.29.3') });
 

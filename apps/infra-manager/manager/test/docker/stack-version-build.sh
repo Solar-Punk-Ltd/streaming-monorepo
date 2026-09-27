@@ -13,7 +13,7 @@
 #
 # What it does not prove: that the images build from that tree, or that a
 # deployment runs on it. The integration job starts a manager on a bundled
-# build, and a compare-images run builds the images.
+# build. No workflow builds the stack's images, a deploy does.
 #
 # Usage, from apps/infra-manager, on a checkout of the commit it builds:
 #   bash manager/test/docker/stack-version-build.sh <commit> <repo-url>
