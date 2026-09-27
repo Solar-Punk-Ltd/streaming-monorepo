@@ -76,7 +76,7 @@ export function commitAll(repo, message) {
 }
 
 /** Runs one of the kit's scripts the way a colleague would and captures both streams and the exit code. */
-export function runScript(script, args, { cwd, env = TEST_ENV } = {}) {
-  const result = spawnSync(process.execPath, [join(KIT_DIR, script), ...args], { cwd, env, encoding: 'utf8', maxBuffer: 1024 ** 3 });
-  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+export function runScript(script, args, { cwd, env = TEST_ENV, timeoutMs } = {}) {
+  const result = spawnSync(process.execPath, [join(KIT_DIR, script), ...args], { cwd, env, encoding: 'utf8', maxBuffer: 1024 ** 3, timeout: timeoutMs });
+  return { status: result.status, signal: result.signal, stdout: result.stdout, stderr: result.stderr };
 }
