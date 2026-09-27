@@ -1,5 +1,6 @@
 import { Autocomplete, Chip, Stack, TextField, Typography } from '@mui/material';
 import { DesktopDatePicker } from '@mui/x-date-pickers/DesktopDatePicker';
+import { pickersInputBaseClasses } from '@mui/x-date-pickers/PickersTextField';
 import dayjs, { type Dayjs } from 'dayjs';
 
 import { DATE_FORMAT } from '../../dateUtil';
@@ -89,8 +90,7 @@ export function ScheduleField({
         direction="row"
         spacing={2}
         useFlexGap
-        flexWrap="wrap"
-        alignItems="flex-start"
+        sx={{ flexWrap: 'wrap', alignItems: 'flex-start' }}
       >
         <DesktopDatePicker
           label="Scheduled Date *"
@@ -100,7 +100,14 @@ export function ScheduleField({
           disablePast={floored}
           minDate={floor}
           format={DATE_FORMAT}
-          sx={{ flex: '1 1 14rem' }}
+          sx={{
+            flex: '1 1 14rem',
+            // The pickers' section field dims a locked date to the faint
+            // action.disabled grey, while the time field beside it keeps
+            // text.disabled. Keep the two locked fields reading alike.
+            [`& .${pickersInputBaseClasses.root}.${pickersInputBaseClasses.disabled}`]:
+              { color: 'text.disabled' },
+          }}
           slotProps={{
             textField: {
               id: 'scheduled-date',
@@ -157,7 +164,7 @@ export function ScheduleField({
         />
       </Stack>
       {disabled ? null : (
-        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+        <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
           {picks.map((pick) => (
             <Chip
               key={pick.key}
@@ -171,7 +178,7 @@ export function ScheduleField({
         </Stack>
       )}
       {caption ? (
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
           {caption}
         </Typography>
       ) : null}
