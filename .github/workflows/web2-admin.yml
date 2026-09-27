@@ -76,6 +76,9 @@ jobs:
       - name: Lint, every package, with oxlint and the root .oxlintrc.json
         run: pnpm lint
 
+      - name: Formatting, with oxfmt and the root .oxfmtrc.json
+        run: pnpm format:check
+
       - name: Unit tests, every package
         run: pnpm run test
 
