@@ -58,8 +58,18 @@ for the whole design.
 | `pnpm typecheck` | `tsc -p tsconfig.typecheck.json`, which includes `test/` |
 | `pnpm database:start` / `database:stop` | the Postgres container |
 
-`docker compose -p web2-admin --profile full up -d --build` runs the API in
-Docker too (two-stage `pnpm deploy` image, `Dockerfile`).
+The API runs in Docker too (two-stage `pnpm deploy` image, `Dockerfile`). Its
+image builds from a copy of `apps/web2-admin` made outside the checkout by
+`tools/app-workspace/in-copy.mjs`, which carries the admin's own lockfile, cut
+out of the repository's root one when the root keeps it, and leaves every `.env`
+behind. The tag is the name compose gives the `api` service, so `up` runs it
+without building again:
+
+```bash
+node ../../../tools/app-workspace/in-copy.mjs --app apps/web2-admin -- docker build --file backend/Dockerfile --tag web2-admin-api .
+docker compose -p web2-admin --profile full up -d
+```
+
 Deploying to a server is a different compose file and a script:
 [deploy/README.md](../deploy/README.md).
 

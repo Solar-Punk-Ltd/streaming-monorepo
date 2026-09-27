@@ -246,6 +246,16 @@ REPO_ROOT="$(cd "$APP_DIR/../.." && pwd)"
 APP_DIR_FROM_ROOT="${APP_DIR#"$REPO_ROOT"/}"
 cd "$APP_DIR"
 
+# The images read the admin's pnpm-lock.yaml and pnpm-workspace.yaml at the root
+# of apps/web2-admin. A checkout of the one workspace holds them only at the
+# repository root: a remote deploy then sends the admin's own pair cut out of the
+# root's, and a local one builds from a copy with that pair in it, as the two
+# places below say. A checkout whose admin keeps its own pair deploys as it did.
+ONE_WORKSPACE=false
+if [ ! -f pnpm-lock.yaml ] && [ -f "$REPO_ROOT/pnpm-lock.yaml" ]; then
+    ONE_WORKSPACE=true
+fi
+
 PROJECT="web2-admin-$PROFILE"
 if [ "$PROFILE" = "default" ]; then
     ENV_FILE="$ENV_DIR/.env"
@@ -474,6 +484,17 @@ host_script() {
     if [ "$LOCAL" = false ]; then
         cd_line="cd '$REMOTE_PATH'"
     fi
+    # A local deploy from a checkout of the one workspace builds the images from
+    # a copy of apps/web2-admin that tools/app-workspace/in-copy.mjs makes
+    # outside the checkout with the admin's own pair cut into it, and names to
+    # deploy/docker-compose.copy.yml in APP_WORKSPACE_COPY. Compose still runs
+    # from here, so the project, the env file and the data stay put, and the copy
+    # goes when compose returns. The checkout's own paths in it are this
+    # machine's, and only a local deploy reaches this line.
+    local up_command="compose up -d --build $SERVICES_ARGS"
+    if [ "$LOCAL" = true ] && [ "$ONE_WORKSPACE" = true ]; then
+        up_command="node '$REPO_ROOT/tools/app-workspace/in-copy.mjs' --root '$REPO_ROOT' --app '$APP_DIR_FROM_ROOT' -- docker compose --project-directory '$APP_DIR/deploy' -p '$PROJECT' -f '$APP_DIR/$COMPOSE_FILE' -f '$APP_DIR/deploy/docker-compose.copy.yml' --env-file '$APP_DIR/$ENV_FILE' up -d --build $SERVICES_ARGS"
+    fi
     cat <<HOST_SCRIPT
 deploy_on_host() {
 set -euo pipefail
@@ -501,7 +522,7 @@ compose() {
 }
 
 echo "[deploy] building and starting $PROJECT (${SERVICES_ARGS:-all services})"
-compose up -d --build $SERVICES_ARGS
+$up_command
 
 # What a service's container reports: its health when it has a healthcheck,
 # otherwise its state, and "missing" when compose has no container for it.
@@ -586,6 +607,20 @@ else
     # has no deploy/edge/ of its own, so --delete would remove the one the
     # host's edge runs on. Excluded, the whole directory is neither sent nor
     # deleted, so a web2-admin deploy never touches the edge.
+    #
+    # From a checkout of the one workspace, the admin's own pair is cut out of
+    # the root's by tools/app-workspace into a folder under TMPDIR, removed when
+    # this script exits however it exits, and given to the one rsync as a second
+    # source: the pair lands where the admin's own went, and --delete keeps it.
+    # The empty second source expands to nothing under set -u in bash 3.2
+    # through the + form.
+    CUT_SOURCE=()
+    if [ "$ONE_WORKSPACE" = true ]; then
+        CUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/web2-admin-cut.XXXXXX")"
+        trap 'rm -rf "$CUT_DIR"' EXIT
+        node "$REPO_ROOT/tools/app-workspace/cut.mjs" --root "$REPO_ROOT" --app "$APP_DIR_FROM_ROOT" --out "$CUT_DIR/web2-admin"
+        CUT_SOURCE=("$CUT_DIR/web2-admin/")
+    fi
     rsync -az --delete \
         -e "ssh ${SSH_OPTS[*]}" \
         --exclude '/deploy/edge/' \
@@ -600,7 +635,7 @@ else
         --include '.env.sample' \
         --exclude '.env' \
         --exclude '.env.*' \
-        ./ "$HOST:$REMOTE_PATH/"
+        ./ ${CUT_SOURCE[@]+"${CUT_SOURCE[@]}"} "$HOST:$REMOTE_PATH/"
 
     log "building and starting on $HOST"
     host_script | ssh "${SSH_OPTS[@]}" "$HOST" bash -s
