@@ -3,9 +3,9 @@ name: hls-stream
 on:
   push:
     branches: [main, main-v3]
-    paths: ['apps/hls-stream/**', '.github/workflows/hls-stream.yml']
+    paths: ['apps/hls-stream/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.github/workflows/hls-stream.yml']
   pull_request:
-    paths: ['apps/hls-stream/**', '.github/workflows/hls-stream.yml']
+    paths: ['apps/hls-stream/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.github/workflows/hls-stream.yml']
   # An advisory gets published against a tree nobody has touched, so the audit
   # job needs a trigger that is not a diff. Two limits to know before relying on
   # it. GitHub only runs scheduled workflows on the default branch, so this
@@ -52,15 +52,16 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          package_json_file: apps/hls-stream/package.json
+          package_json_file: package.json
 
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
-          cache-dependency-path: apps/hls-stream/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
+        working-directory: .
 
       - name: Typecheck
         run: pnpm typecheck
@@ -101,15 +102,16 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          package_json_file: apps/hls-stream/package.json
+          package_json_file: package.json
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: apps/hls-stream/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
+        working-directory: .
 
       # Kept out of `pnpm verify` on purpose. This is the one check that needs
       # the registry, and the local loop stays runnable on a train. The gate
@@ -157,15 +159,16 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          package_json_file: apps/hls-stream/package.json
+          package_json_file: package.json
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: apps/hls-stream/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
+        working-directory: .
 
       # Whole tree. The 28 files that predated any formatting gate are clean as
       # of the sweep, so there is no backlog left to work around and no reason
