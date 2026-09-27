@@ -109,6 +109,16 @@ echo "==> Recording the stack commit this manager pins"
 # it has no complete build of it, which is why the file sits next to the tree
 # the host keeps and is never committed.
 MANAGER_COMMIT="$(git rev-parse HEAD)"
+# The host fetches this commit from GitHub by its name, so one only this
+# machine has would replace the manager and then fail its bundled build. A
+# remote branch that holds it is the answer that needs no network. A commit
+# pushed from elsewhere that this checkout has not fetched is refused too, and
+# a git fetch settles that.
+PUSHED_IN="$(git branch -r --contains "$MANAGER_COMMIT")"
+if [ -z "$PUSHED_IN" ]; then
+    echo "ERROR: no remote branch holds $MANAGER_COMMIT, the commit being deployed. The host fetches it from GitHub to build the stack it bundles, so push it first, or git fetch if it is pushed already." >&2
+    exit 1
+fi
 printf '%s\n' "$MANAGER_COMMIT" > manager/.stack-commit
 echo "[deploy] pinned stack commit: $(cat manager/.stack-commit)"
 
