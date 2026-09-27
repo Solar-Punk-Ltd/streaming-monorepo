@@ -55,7 +55,9 @@ export function StreamKeyField({
             disabled={masked}
             onChange={(event) => onChange(event.target.value)}
             placeholder="0x plus 64 hex characters"
-            inputProps={{ style: { fontFamily: MONO_STACK } }}
+            slotProps={{
+              htmlInput: { style: { fontFamily: MONO_STACK } }
+            }}
           />
           <Button
             size="small"
@@ -74,7 +76,9 @@ export function StreamKeyField({
             </Button>
           )}
         </Stack>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {address ? `Address ${shortHex(address)}` : 'No address yet'}
         </Typography>
       </Stack>

@@ -41,7 +41,13 @@ export function AdvancedSettings({ state, context, update }: WizardStepProps) {
             <Box component="span" sx={{ fontWeight: 600 }}>
               Advanced settings
             </Box>
-            <Typography component="span" variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+            <Typography
+              component="span"
+              variant="caption"
+              sx={{
+                color: "text.secondary",
+                overflowWrap: 'anywhere'
+              }}>
               {advancedSettingsFoldLine(state, context)}
             </Typography>
           </Stack>

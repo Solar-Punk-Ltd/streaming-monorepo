@@ -38,7 +38,9 @@ export function LastErrorCard({
         <Typography sx={{ fontWeight: 600, color: 'error.main' }}>
           Last deploy failed
         </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {formatDateTime(at)}
         </Typography>
         <Box

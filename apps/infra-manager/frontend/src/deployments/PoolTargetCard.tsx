@@ -21,7 +21,9 @@ export function PoolTargetCard({ profile }: { profile: Profile }) {
       {rungs ? (
         <Stack spacing={1.25}>
           <PublisherRungList rungs={rungs} showBatchIds />
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             Those nodes hold the postage. Funding and stamps are managed on the
             pool's own page, on whichever manager owns it. Nothing to fund here.
           </Typography>

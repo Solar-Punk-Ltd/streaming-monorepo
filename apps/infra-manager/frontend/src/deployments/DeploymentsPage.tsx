@@ -70,7 +70,11 @@ export function DeploymentsPage({ search }: { search: string }) {
 
   if (!profiles) {
     return (
-      <Stack alignItems="center" sx={{ py: 8 }}>
+      <Stack
+        sx={{
+          alignItems: "center",
+          py: 8
+        }}>
         <CircularProgress />
       </Stack>
     );
@@ -215,7 +219,13 @@ export function DeploymentsPage({ search }: { search: string }) {
         </Table>
       </Paper>
 
-      <Typography variant="caption" color="text.secondary" sx={{ mt: 1.25, display: 'block' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          mt: 1.25,
+          display: 'block'
+        }}>
         Click a row to open it. Every action is on the row itself, nothing needs
         to be selected first.
       </Typography>

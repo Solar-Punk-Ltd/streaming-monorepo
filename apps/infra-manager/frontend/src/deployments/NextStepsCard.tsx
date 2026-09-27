@@ -21,7 +21,9 @@ export function NextStepsCard({ streamName }: { streamName: string }) {
         >
           Create a viewer for this stream
         </Button>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           Sets the viewer to follow this stream's address, so nothing has to be
           copied by hand.
         </Typography>
