@@ -50,6 +50,9 @@ and how the pieces fit under `docs/`. Read it before moving anything.
   then work inside the app (`cd apps/<app>`), whose commands cover that app alone. pnpm is pinned in
   the root `package.json`, which each app repeats, and Node in an app's `.nvmrc` where it has one.
   Overrides and workspace settings live in the root `pnpm-workspace.yaml` alone.
+- The root's `pnpm build`, `typecheck`, `test` and `lint` run every package's own script through
+  Nx. `pnpm boundaries` fails when one app depends on another. A new package gets its scope and
+  type tags in its `package.json`'s `nx` field, or that check fails.
 - When you change behaviour, change the page that describes it in the same pull request.
 
 ## Working model

@@ -10,5 +10,8 @@
   },
   "scripts": {
     "test": "node --test"
+  },
+  "nx": {
+    "tags": ["scope:tools", "type:app"]
   }
 }

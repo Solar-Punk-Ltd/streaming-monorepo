@@ -14,5 +14,17 @@
     "dev": "pnpm --filter @streaming-monorepo/web2-admin-backend dev & pnpm --filter @streaming-monorepo/web2-admin-frontend dev",
     "test": "pnpm -r --filter './**' --filter '!.' test && node --test 'deploy/test/*.test.mjs'",
     "typecheck": "pnpm -r --filter './**' --filter '!.' typecheck"
+  },
+  "nx": {
+    "tags": ["scope:admin", "type:app"],
+    "includedScripts": [],
+    "targets": {
+      "test": {
+        "command": "node --test 'deploy/test/*.test.mjs'",
+        "options": {
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
   }
 }

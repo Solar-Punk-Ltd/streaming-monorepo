@@ -10,6 +10,8 @@ coverage/
 # The committed templates the real env files are copied from.
 !.env.sample
 .pnpm-store/
+# Nx's task cache and the files it writes, kept in the checkout by nx.json's cacheDirectory.
+.nx/
 
 # Written by apps/web2-admin/deploy/deploy.sh on every deploy.
 apps/web2-admin/deploy/.deployed-commit
