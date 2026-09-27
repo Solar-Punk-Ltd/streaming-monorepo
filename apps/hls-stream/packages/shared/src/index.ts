@@ -1,5 +1,6 @@
 export * from './abrTuning.js';
 export * from './adminLink.js';
+export * from './catalog.js';
 export * from './clientLog.js';
 export * from './feedFollow.js';
 export * from './hlsTags.js';
