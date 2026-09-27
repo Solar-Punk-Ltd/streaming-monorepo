@@ -145,6 +145,7 @@ describe('images.mjs builds each image from both commits and compares them', () 
     const kept = runScript(IMAGES, ['--manifest', manifest], { cwd: repo, env: docker.env });
     assert.equal(kept.status, 0, kept.stderr);
     assert.equal(docker.calls().some((call) => call.args[0] === 'image' && call.args[1] === 'rm'), false, 'the images stay for a person to inspect');
+    const firstRunCalls = docker.calls().length;
 
     const removed = runScript(IMAGES, ['--manifest', manifest, '--remove-images'], { cwd: repo, env: docker.env });
     assert.equal(removed.status, 0, removed.stderr);
@@ -155,7 +156,7 @@ describe('images.mjs builds each image from both commits and compares them', () 
       ['image', 'rm', '--force', 'move-check-images/other:before', 'move-check-images/other:after'],
       ['builder', 'prune', '--force'],
     ]);
-    const calls = docker.calls().map((call) => call.args.join(' '));
+    const calls = docker.calls().slice(firstRunCalls).map((call) => call.args.join(' '));
     assert.ok(
       calls.indexOf('image rm --force move-check-images/demo:before move-check-images/demo:after') < calls.indexOf(calls.find((call) => call.includes('move-check-images/other:before') && call.startsWith('build'))),
       'a pair is removed before the next pair is built',

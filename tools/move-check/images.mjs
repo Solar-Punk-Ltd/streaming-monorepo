@@ -17,7 +17,7 @@ import {
   showHelp,
 } from './lib/shared.mjs';
 
-const USAGE = `Usage: node tools/move-check/images.mjs --manifest <file> [--only <name>]... [--plan] [--keep]
+const USAGE = `Usage: node tools/move-check/images.mjs --manifest <file> [--only <name>]... [--plan] [--keep] [--remove-images]
 
 Builds every image a manifest names twice, once from its before commit and once
 from its after commit, and compares the two with image.mjs. Each side is built
@@ -39,6 +39,10 @@ image.mjs as --allow. A note is for whoever reads the manifest.
   --plan   finds every commit, context and Dockerfile, prints the builds and builds nothing
   --only   checks one image of the manifest by name, and can be given more than once
   --keep   leaves the exports on disk and says where
+  --remove-images
+           removes both images of a pair, and the build cache, once the pair is
+           compared, so a long run does not fill the disk. Without it the images
+           stay, for a person to inspect
 
 Exit codes: 0 every image matches, 1 an image differs, 2 an image could not be
 checked or the manifest is wrong.`;
@@ -48,6 +52,7 @@ const OPTION_SPECS = {
   only: { type: 'string', multiple: true },
   plan: { type: 'boolean' },
   keep: { type: 'boolean' },
+  'remove-images': { type: 'boolean' },
 };
 
 const IMAGE_CHECK = fileURLToPath(new URL('./image.mjs', import.meta.url));
@@ -237,12 +242,31 @@ function summarize(outcomes) {
   return differing > 0 ? EXIT.DIFFERENCE : EXIT.MATCH;
 }
 
-function checkImages(images, { keep }) {
+/** Removes a compared pair and what building it left behind. A failure here says so and checks nothing less. */
+function removeImages(image) {
+  const commands = [
+    ['image', 'rm', '--force', tagOf(image.name, 'before'), tagOf(image.name, 'after')],
+    ['builder', 'prune', '--force'],
+  ];
+  for (const args of commands) {
+    try {
+      runCommand('docker', args);
+    } catch (error) {
+      if (!(error instanceof CheckError)) throw error;
+      process.stderr.write(`${image.name}: could not clean up after the comparison. ${error.message}\n`);
+    }
+  }
+}
+
+function checkImages(images, { keep, removeImagesAfter }) {
   const root = mkdtempSync(join(tmpdir(), 'move-check-images-'));
   const exportOf = commitExporter(root);
   const outcomes = [];
   try {
-    for (const image of images) outcomes.push(checkImage(image, exportOf));
+    for (const image of images) {
+      outcomes.push(checkImage(image, exportOf));
+      if (removeImagesAfter) removeImages(image);
+    }
   } finally {
     if (keep) console.log(`kept the exports in ${root}`);
     else rmSync(root, { recursive: true, force: true });
@@ -261,7 +285,7 @@ export async function main(argv) {
     after: resolveSide(`${image.name} after`, image.after),
   }));
   if (options.plan) return printPlan(resolved);
-  return checkImages(resolved, { keep: options.keep === true });
+  return checkImages(resolved, { keep: options.keep === true, removeImagesAfter: options['remove-images'] === true });
 }
 
 await runWhenStarted(import.meta.url, USAGE, main);
