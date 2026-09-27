@@ -10,6 +10,9 @@
     "pnpm": ">=11.11.0"
   },
   "scripts": {
+    "lint": "pnpm -r --filter './**' --filter '!.' lint",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "build": "pnpm -r --filter './**' --filter '!.' build",
     "dev": "pnpm --filter @streaming-monorepo/web2-admin-backend dev & pnpm --filter @streaming-monorepo/web2-admin-frontend dev",
     "test": "pnpm -r --filter './**' --filter '!.' test && node --test 'deploy/test/*.test.mjs'",

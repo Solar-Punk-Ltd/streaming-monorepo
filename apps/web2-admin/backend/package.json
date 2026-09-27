@@ -6,6 +6,7 @@
   "description": "web2-admin API: auth, stream drafts in Postgres, publishing to the Swarm stream list feed, OBS ingest details.",
   "license": "MIT",
   "scripts": {
+    "lint": "oxlint --type-aware .",
     "build": "pnpm --filter @streaming-monorepo/web2-admin-common build && tsc && rm -rf dist/migrations && cp -r src/migrations dist/migrations",
     "start": "node dist/index.js",
     "user:add": "tsx --conditions=development src/cli.ts user:add",

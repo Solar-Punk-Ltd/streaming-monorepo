@@ -4,6 +4,7 @@
   "version": "0.0.0-prototype",
   "type": "module",
   "scripts": {
+    "lint": "oxlint --type-aware .",
     "dev": "vite",
     "dev:mock": "pnpm --filter @streaming-infra-manager/common build && node --import tsx --conditions=development dev/mock-manager.mjs",
     "build": "pnpm --filter @streaming-infra-manager/common build && tsc -b && vite build",
