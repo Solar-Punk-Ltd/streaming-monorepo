@@ -24,7 +24,7 @@ const UUID_V5_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9
  * What the admin validates every topic it is handed against, copied here rather than imported: the
  * two repositories ship separately, and this is the contract between them.
  *
- * @see web2-admin/backend/src/schemas/stream.ts
+ * @see apps/web2-admin/backend/src/schemas/stream.ts
  */
 const ADMIN_UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
