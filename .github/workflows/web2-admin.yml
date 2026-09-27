@@ -2,7 +2,8 @@
 # and frontend, and the backend's integration suite against a real Postgres.
 # The admin's test script also runs the deploy scripts' tests, the edge's
 # among them, so a change under infra/edge starts this workflow too. Those
-# tests run tools/app-workspace as well, so a change there starts it too.
+# tests run tools/app-workspace as well, so a change there starts it too, and
+# so does a change under packages/, the shared packages the admin imports.
 name: web2-admin
 
 on:
@@ -13,6 +14,7 @@ on:
         'apps/web2-admin/**',
         'infra/edge/**',
         'tools/app-workspace/**',
+        'packages/**',
         'package.json',
         'pnpm-lock.yaml',
         'pnpm-workspace.yaml',
@@ -26,6 +28,7 @@ on:
         'apps/web2-admin/**',
         'infra/edge/**',
         'tools/app-workspace/**',
+        'packages/**',
         'package.json',
         'pnpm-lock.yaml',
         'pnpm-workspace.yaml',
