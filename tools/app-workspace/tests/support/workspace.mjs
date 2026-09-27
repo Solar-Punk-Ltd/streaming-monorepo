@@ -280,14 +280,22 @@ export function realAppFiles() {
   );
 }
 
-/** What the tool writes for one of the real-named apps, computed by the library its scripts run. */
-export function expectedCut(app, injectWorkspacePackages) {
-  const lockfile = cutLockfile(asRealApps(ROOT_LOCKFILE), { app, injectWorkspacePackages });
-  const workspace = cutWorkspace(asRealApps(ROOT_WORKSPACE), {
+/**
+ * What the tool writes for one of the real-named apps, computed by the library its scripts run, out of the two-app
+ * workspace or the root files given.
+ */
+export function expectedCut(
+  app,
+  injectWorkspacePackages,
+  { root = ROOT_LOCKFILE, rootWorkspace = ROOT_WORKSPACE } = {},
+) {
+  const lockfile = cutLockfile(asRealApps(root), { app, injectWorkspacePackages });
+  const workspace = cutWorkspace(asRealApps(rootWorkspace), {
     app,
     injectWorkspacePackages,
     packageNames: lockfile.packageNames,
     projects: lockfile.projects,
+    sharedPackages: lockfile.sharedPackages,
   });
   return { lockfile: lockfile.text, workspace };
 }
@@ -408,9 +416,9 @@ export const SHARED_ROOT_WORKSPACE = ROOT_WORKSPACE.replace('  - tools/*\n', '  
 export function sharedAppFiles() {
   return {
     ...Object.fromEntries(
-      Object.entries(
-        workspaceFiles({ lockfile: SHARED_ROOT_LOCKFILE, workspace: SHARED_ROOT_WORKSPACE }),
-      ).map(([path, text]) => [asRealApps(path), asRealApps(text)]),
+      Object.entries(workspaceFiles({ lockfile: SHARED_ROOT_LOCKFILE, workspace: SHARED_ROOT_WORKSPACE })).map(
+        ([path, text]) => [asRealApps(path), asRealApps(text)],
+      ),
     ),
     'packages/contracts/package.json': manifest('@example/contracts'),
     'packages/contracts/src/index.ts': 'export const contract = 1;\n',
