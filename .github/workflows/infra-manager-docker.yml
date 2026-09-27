@@ -6,7 +6,7 @@
 # run: the SRS parser on eight files at once, the OvenMediaEngine admission
 # gate, the shared image race, and the deployment integration suite that
 # carries T01's startup failure. The first three need Docker and this
-# repository with its submodule, no manager and no secret.
+# repository, no manager and no secret.
 #
 # What each proves and what it does not: docs/ci.md.
 name: infra-manager docker-backed checks
@@ -36,8 +36,6 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          submodules: true
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           package_json_file: apps/infra-manager/package.json
@@ -63,8 +61,6 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          submodules: true
 
       - name: The daemon this ran on
         run: docker version --format 'server {{.Server.Version}}'
@@ -117,7 +113,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgres://manager@localhost:5432/manager
-      SHLS_ROOT: ${{ github.workspace }}/apps/infra-manager/manager/swarm-hls-stream
+      SHLS_ROOT: ${{ github.workspace }}/apps/hls-stream
       MANAGER_URL: http://localhost:9876
     steps:
       - name: Refuse to start without the sign-in secret
@@ -134,8 +130,6 @@ jobs:
           fi
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          submodules: true
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           package_json_file: apps/infra-manager/package.json
@@ -161,9 +155,9 @@ jobs:
         working-directory: apps/infra-manager/manager
         run: |
           mkdir -p "$BEE_DATA_ROOT" "$STACK_VERSIONS_ROOT"
-          # A path after HEAD: that starts with ./ is read from this step's
-          # directory. A bare one would be read from the repository root.
-          git rev-parse HEAD:./swarm-hls-stream > .stack-commit
+          # The bundled stack is apps/hls-stream at the commit under test, and
+          # the manager reads its pin from the file beside that folder.
+          git rev-parse HEAD > "$SHLS_ROOT/../.stack-commit"
           # Production's API runs as root and can remove Bee-owned directories.
           # Keep the test client unprivileged and elevate only that API process.
           NODE_BIN="$(command -v node)"
@@ -184,7 +178,7 @@ jobs:
           import { readFileSync } from 'node:fs';
           import { join } from 'node:path';
           import pg from 'pg';
-          const expectedCommit = readFileSync('.stack-commit', 'utf8').trim();
+          const expectedCommit = readFileSync(join(process.env.SHLS_ROOT, '..', '.stack-commit'), 'utf8').trim();
           const expectedRoot = join(process.env.STACK_VERSIONS_ROOT, 'bundled');
           const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
           const deadline = Date.now() + 10 * 60_000;

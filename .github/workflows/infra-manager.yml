@@ -9,10 +9,10 @@ name: infra-manager
 on:
   pull_request:
     branches: [main, main-v3]
-    paths: ['apps/infra-manager/**', '.gitmodules', '.github/workflows/infra-manager.yml']
+    paths: ['apps/infra-manager/**', 'apps/hls-stream/**', '.github/workflows/infra-manager.yml']
   push:
     branches: [main, main-v3]
-    paths: ['apps/infra-manager/**', '.gitmodules', '.github/workflows/infra-manager.yml']
+    paths: ['apps/infra-manager/**', 'apps/hls-stream/**', '.github/workflows/infra-manager.yml']
 
 permissions:
   contents: read
@@ -37,8 +37,6 @@ jobs:
       # Pinned by commit, the tag in the comment. Each was released more than
       # two weeks before it was pinned here. pnpm comes from packageManager.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          submodules: true
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           package_json_file: apps/infra-manager/package.json
@@ -226,9 +224,8 @@ jobs:
 
   images:
     # The web and api images, built the way a deploy builds them on the host:
-    # from the repository root, with the Dockerfiles manager/docker-compose.yml
-    # names, and without the stack submodule, which the deploy's rsync leaves
-    # out too. The other jobs run the code from pnpm install on the runner, so
+    # from the manager's folder, with the Dockerfiles manager/docker-compose.yml
+    # names. The other jobs run the code from pnpm install on the runner, so
     # until this job an image that could not build passed every check and
     # failed at the deploy, as the web image of v2.2 did on 2026-09-25. Built
     # and thrown away, never pushed.
