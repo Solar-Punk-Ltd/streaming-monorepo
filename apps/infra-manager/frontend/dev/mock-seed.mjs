@@ -1,0 +1,483 @@
+/**
+ * The world the mock manager serves: the profiles, groups and Bee nodes it
+ * starts with, and the shapes they are built from.
+ *
+ * Kept apart from the routes so the dataset can be read and changed on its own,
+ * and so no file here outgrows what is comfortable to read. Every key, address
+ * and batch id is generated at startup: nothing 64-hex is committed here.
+ */
+import { randomBytes, randomInt, randomUUID } from 'node:crypto';
+
+import {
+  DEFAULT_RPC_ENDPOINT_SOURCE,
+  PLUR_PER_BZZ,
+  stampBucketCapacity,
+} from '@streaming-infra-manager/common';
+
+import { commitOfVersion } from './mock-versions.mjs';
+
+/** The hostname this fake manager publishes its deployments on. */
+export const PUBLIC_HOST = 'lab-host-1';
+
+export const DAY = 86_400;
+export const GB = 1024 ** 3;
+
+/** The rung seeded below the floor, so the low state is visible at startup. */
+export const LOW_CHEQUEBOOK_RUNG = '480p';
+
+/**
+ * The rung seeded with a full immutable batch that still has days left, in
+ * the shape of the tester's 1080p rung on 2026-09-24, so the full state, its
+ * alert and the Dilute remedy are visible at startup.
+ */
+export const FULL_BATCH_RUNG = '720p';
+const FULL_BATCH_TTL = 2 * DAY + 3 * 3_600;
+
+export const RUNGS = [
+  { name: '360p', kbps: 700, depth: 17 },
+  { name: '480p', kbps: 1200, depth: 18 },
+  { name: '720p', kbps: 2800, depth: 19 },
+  { name: '1080p', kbps: 5000, depth: 20 },
+];
+
+/** A BZZ amount as the PLUR string bee would answer with. */
+export const bzz = (whole, hundredths = 0) =>
+  String((PLUR_PER_BZZ * BigInt(whole * 100 + hundredths)) / 100n);
+
+export const hex = (bytes) => randomBytes(bytes).toString('hex');
+/** A readable fake SRT passphrase, distinct per run like every other secret here. */
+export const passphrase = (label) => `${label}-${hex(6)}`;
+// MOCK_HOST_PASSPHRASE='' runs the mock as a host without a shared passphrase,
+// which is the host the wizard's passphrase default is about.
+export const HOST_PASSPHRASE =
+  process.env.MOCK_HOST_PASSPHRASE === '' ? null : passphrase('lab-host');
+const key = () => `0x${hex(32)}`;
+const address = () => `0x${hex(20)}`;
+const batchId = () => hex(32);
+
+export const PORT_BASES = {
+  API_PORT: 10000,
+  SRS_SRT_PORT: 10001,
+  OME_SRT_PORT: 10001,
+  OME_HLS_PORT: 10003,
+  CLIENT_PORT: 10004,
+  BEE_UPLOADER_API_PORT: 10005,
+  BEE_UPLOADER_P2P_PORT: 10006,
+  BEE_GATEWAY_API_PORT: 10007,
+  BEE_GATEWAY_P2P_PORT: 10008,
+};
+
+const SERVICE_PORTS = {
+  srs: ['SRS_SRT_PORT'],
+  ome: ['OME_SRT_PORT', 'OME_HLS_PORT'],
+  'stream-uploader': ['API_PORT'],
+  'bee-uploader': ['BEE_UPLOADER_API_PORT', 'BEE_UPLOADER_P2P_PORT'],
+  'bee-gateway': ['BEE_GATEWAY_API_PORT', 'BEE_GATEWAY_P2P_PORT'],
+  client: ['CLIENT_PORT'],
+};
+
+const KIND_SERVICES = {
+  streamer: ['srs', 'stream-uploader', 'bee-uploader'],
+  'abr-uploader': ['srs', 'stream-uploader'],
+  viewer: ['client', 'bee-gateway'],
+  custom: [],
+};
+
+export const MEM_BY_SERVICE = {
+  srs: 190,
+  ome: 220,
+  'stream-uploader': 150,
+  'bee-uploader': 840,
+  client: 28,
+  'bee-gateway': 320,
+};
+
+export const CPU_BY_SERVICE = {
+  srs: 14,
+  ome: 16,
+  'stream-uploader': 9,
+  'bee-uploader': 22,
+  client: 1.2,
+  'bee-gateway': 6,
+};
+
+
+// Slots and group ids are handed out here, because the seed takes the first of
+// them and every later create has to continue the same sequence.
+let nextSlot = 1;
+let nextGroupId = 1;
+
+export function takeGroupId() {
+  return nextGroupId++;
+}
+
+export const state = {
+  profiles: [],
+  groups: [],
+  /** The stack versions this manager holds. Filled by mock-versions.mjs. */
+  versions: [],
+  /** Per profile: what its Bee node would answer. */
+  nodes: new Map(),
+  /**
+   * Per profile: its own SRT passphrase, kept apart from the rows the way the
+   * manager keeps it off the shared SELECT list. Only the reveal route reads
+   * it.
+   */
+  srtPassphrases: new Map(),
+};
+
+/** What GET /profiles/:name/srt-passphrase answers. Null is the host-wide one. */
+export function srtPassphraseOf(name) {
+  return state.srtPassphrases.get(name) ?? null;
+}
+
+/**
+ * Stores or clears one deployment's passphrase. Undefined keeps what is
+ * stored, which is what the manager does for a body that never names the
+ * field, and null is the operator choosing the host-wide passphrase.
+ */
+export function setSrtPassphrase(profile, passphrase) {
+  if (passphrase === undefined) return;
+  if (passphrase === null) state.srtPassphrases.delete(profile.name);
+  else state.srtPassphrases.set(profile.name, passphrase);
+  profile.has_srt_passphrase = state.srtPassphrases.has(profile.name);
+}
+
+export function servicesOf(profile) {
+  return profile.components?.length
+    ? profile.components
+    : (KIND_SERVICES[profile.kind] ?? []);
+}
+
+function portsFor(service, slot) {
+  const ports = {};
+  for (const name of SERVICE_PORTS[service] ?? []) {
+    ports[name] = PORT_BASES[name] + slot * 10;
+  }
+  return ports;
+}
+
+export function containersFor(profile, { withUploader = true } = {}) {
+  // What the containers were seen to run: this mock's deploys always land on
+  // the version's commit, so every container agrees with it.
+  const commit = commitOfVersion(profile.stack_version_id);
+  return servicesOf(profile)
+    .filter((service) => withUploader || service !== 'stream-uploader')
+    .map((service) => ({
+      service,
+      ports: portsFor(service, profile.port_slot),
+      buildId: commit,
+      buildCommit: commit,
+    }));
+}
+
+export function makeProfile(input) {
+  const now = new Date().toISOString();
+  if (input.srt_passphrase) state.srtPassphrases.set(input.name, input.srt_passphrase);
+  return {
+    name: input.name,
+    port_slot: input.port_slot ?? nextSlot++,
+    kind: input.kind ?? 'custom',
+    notes: input.notes ?? null,
+    notes_revision: 0,
+    host: input.host ?? 'localhost',
+    // Derived by the real API from host. Nothing here is an ssh alias, so it is
+    // the same value. Present so mock rows have the shape the UI reads.
+    network_host: input.host ?? 'localhost',
+    components: input.components ?? null,
+    feed_owner: input.feed_owner ?? null,
+    feed_topic: null,
+    // Whether a key is stored, never the key: the manager answers this and
+    // keeps the value, so a page that reads the mock reads the same row.
+    has_private_key: Boolean(input.private_key),
+    public_key: input.public_key ?? null,
+    stamp_id: input.stamp_id ?? null,
+    bee_publishers: input.bee_publishers ?? null,
+    bee_url: input.bee_url ?? null,
+    // The two the manager stores about this deployment's Bee node. Null mode
+    // means the mode the stack starts that node in, which is what every
+    // deployment made before T27 carries, and the source and the address
+    // travel together the way the manager's own columns make them.
+    node_mode: input.node_mode ?? null,
+    rpc_endpoint_source: input.rpc_endpoint_source ?? DEFAULT_RPC_ENDPOINT_SOURCE,
+    rpc_endpoint: input.rpc_endpoint ?? null,
+    // Whether one is stored, never the value: the manager answers this and
+    // hands the passphrase over only to the page building a publish URL.
+    has_srt_passphrase: Boolean(input.srt_passphrase),
+    engine_settings: input.engine_settings ?? {},
+    has_engine_config: false,
+    engine_config_error: null,
+    engine_config_state: null,
+    instance_id: randomUUID(),
+    engine_config_revision: 0,
+    intent_revision: 0,
+    status: input.status ?? 'RUNNING',
+    last_error: input.last_error ?? null,
+    last_error_at: input.last_error_at ?? null,
+    last_full_deploy_commit: null,
+    created_at: input.created_at ?? now,
+    updated_at: now,
+    containers: [],
+    group_id: input.group_id ?? null,
+    pendingStamp: false,
+    // Null means the default version, which is what every deployment ran
+    // before a version could be chosen per deployment.
+    stack_version_id: input.stack_version_id ?? null,
+  };
+}
+
+export function needsStamp(profile) {
+  return servicesOf(profile).includes('stream-uploader');
+}
+
+export function refreshDerived(profile) {
+  profile.pendingStamp =
+    needsStamp(profile) && !profile.stamp_id && !profile.bee_publishers;
+  profile.updated_at = new Date().toISOString();
+}
+
+export function node(name) {
+  let entry = state.nodes.get(name);
+  if (!entry) {
+    entry = {
+      ethereum: address(),
+      bzz: '0',
+      xdai: '0',
+      stamps: [],
+      chequebook: makeChequebook(),
+    };
+    state.nodes.set(name, entry);
+  }
+  return entry;
+}
+
+/** Only a node this mock actually holds can answer about its chequebook. */
+export function nodeIfKnown(name) {
+  return state.nodes.get(name) ?? null;
+}
+
+export function makeChequebook({
+  total = '0',
+  available = total,
+  totalSent = '0',
+  totalReceived = '0',
+} = {}) {
+  return { address: address(), total, available, totalSent, totalReceived };
+}
+
+/** The bucket bits bee gives every batch. */
+const BUCKET_DEPTH = 16;
+
+/** @param full whether the fullest bucket holds all a bucket can, which an immutable batch then refuses past. */
+export function makeStamp({
+  depth,
+  ttl,
+  usable = true,
+  amount = '48000000',
+  immutable = false,
+  full = false,
+}) {
+  const bucketCapacity = stampBucketCapacity({ depth, bucketDepth: BUCKET_DEPTH });
+  return {
+    batchID: batchId(),
+    // The chunks in the fullest bucket, which never holds more than a bucket does.
+    utilization: full ? bucketCapacity : randomInt(0, bucketCapacity),
+    usable,
+    depth,
+    amount,
+    bucketDepth: BUCKET_DEPTH,
+    blockNumber: 39_000_000 + randomInt(0, 100_000),
+    immutableFlag: immutable,
+    exists: true,
+    batchTTL: ttl,
+  };
+}
+
+export function seed() {
+  const mainKey = key();
+  const mainAddress = address();
+
+  const mainStage = makeProfile({
+    name: 'main-stage',
+    kind: 'streamer',
+    notes: 'Primary stage. OBS at the venue publishes here.',
+    private_key: mainKey,
+    public_key: mainAddress,
+    srt_passphrase: passphrase('main-stage'),
+    created_at: '2026-08-30T09:00:00Z',
+  });
+  const mainNode = node(mainStage.name);
+  mainNode.xdai = '421300000000000000';
+  mainNode.bzz = '125000000000000000';
+  mainNode.chequebook = makeChequebook({
+    total: bzz(1, 31),
+    available: bzz(1, 24),
+    totalSent: bzz(0, 7),
+  });
+  const mainStamp = makeStamp({ depth: 20, ttl: 41 * DAY });
+  mainNode.stamps = [mainStamp, makeStamp({ depth: 17, ttl: 12 * DAY, amount: '12000000' })];
+  mainStage.stamp_id = mainStamp.batchID;
+
+  const backupStage = makeProfile({
+    name: 'backup-stage',
+    kind: 'streamer',
+    notes: 'Hot spare for the main stage.',
+    private_key: key(),
+    public_key: address(),
+    created_at: '2026-09-04T12:40:00Z',
+  });
+  const backupNode = node(backupStage.name);
+  backupNode.xdai = '200000000000000000';
+  backupNode.bzz = '24000000000000000';
+  // Seeded empty on purpose: a node that looks entirely healthy and cannot pay
+  // a single peer is the state this whole feature exists to make visible.
+  backupNode.chequebook = makeChequebook();
+
+  // Stamped, funded, uploader running, and unable to pay a single peer. The
+  // one failure this whole feature exists to surface, so it is in the dataset.
+  const fieldUnit = makeProfile({
+    name: 'field-unit',
+    kind: 'streamer',
+    notes: 'Second camera position at the venue.',
+    private_key: key(),
+    public_key: address(),
+    created_at: '2026-09-03T11:20:00Z',
+  });
+  const fieldNode = node(fieldUnit.name);
+  fieldNode.xdai = '180000000000000000';
+  fieldNode.bzz = bzz(3, 40);
+  fieldNode.chequebook = makeChequebook({ totalSent: bzz(2, 10) });
+  const fieldStamp = makeStamp({ depth: 19, ttl: 22 * DAY });
+  fieldNode.stamps = [fieldStamp];
+  fieldUnit.stamp_id = fieldStamp.batchID;
+
+  const viewerEu = makeProfile({
+    name: 'viewer-eu',
+    kind: 'viewer',
+    notes: 'Public player, EU audience.',
+    feed_owner: mainAddress,
+    created_at: '2026-08-30T09:30:00Z',
+  });
+
+  const abrGcp = makeProfile({
+    name: 'abr-gcp',
+    kind: 'abr-uploader',
+    notes: 'Encodes the ladder and publishes to the bare-metal pool.',
+    private_key: key(),
+    public_key: address(),
+    bee_publishers: RUNGS.map(
+      (rung, index) => `${rung.name}@http://10.0.0.7:${10015 + index * 10}<${batchId()}>`,
+    ).join(' '),
+    // One deployment starts with the engine tuned away from the stack defaults,
+    // so the Engine card has something other than "default" to render.
+    engine_settings: { ABR_PRESET: 'faster', HLS_FRAGMENT: '2' },
+    created_at: '2026-09-01T17:05:00Z',
+  });
+
+  const edgeTest = makeProfile({
+    name: 'edge-test',
+    kind: 'custom',
+    components: ['srs', 'client', 'bee-gateway'],
+    notes: 'Experiment: player served from the same box as ingest.',
+    feed_owner: mainAddress,
+    status: 'ERROR',
+    last_error:
+      'deploy.sh exited 1: bind for 0.0.0.0:10052 failed, port is already allocated',
+    last_error_at: '2026-09-05T07:58:00Z',
+    created_at: '2026-09-05T07:55:00Z',
+  });
+
+  const oldDemo = makeProfile({
+    name: 'old-demo',
+    kind: 'streamer',
+    status: 'STOPPED',
+    private_key: key(),
+    public_key: address(),
+    created_at: '2026-07-12T10:00:00Z',
+  });
+  const oldNode = node(oldDemo.name);
+  oldNode.xdai = '10000000000000000';
+  oldNode.bzz = '3100000000000000';
+  oldNode.chequebook = makeChequebook();
+  const deadStamp = makeStamp({ depth: 17, ttl: 0, amount: '1000000' });
+  oldNode.stamps = [deadStamp];
+  oldDemo.stamp_id = deadStamp.batchID;
+
+  state.profiles.push(
+    mainStage,
+    backupStage,
+    fieldUnit,
+    viewerEu,
+    abrGcp,
+    edgeTest,
+    oldDemo,
+  );
+
+  const loadtest = {
+    id: nextGroupId++,
+    name: 'loadtest',
+    size: 3,
+    kind: 'standard',
+    created_at: '2026-09-04T08:00:00Z',
+  };
+  state.groups.push(loadtest);
+  for (let index = 1; index <= 3; index += 1) {
+    state.profiles.push(
+      makeProfile({
+        name: `${loadtest.name}-profile-${index}`,
+        kind: 'viewer',
+        group_id: loadtest.id,
+        feed_owner: mainAddress,
+        created_at: loadtest.created_at,
+      }),
+    );
+  }
+
+  const pool = {
+    id: nextGroupId++,
+    name: 'abr-pool-1',
+    size: RUNGS.length,
+    kind: 'abr-node-pool',
+    created_at: '2026-09-02T15:30:00Z',
+  };
+  state.groups.push(pool);
+  RUNGS.forEach((rung, index) => {
+    const member = makeProfile({
+      name: `${pool.name}-${rung.name}`,
+      kind: 'custom',
+      components: ['bee-uploader'],
+      group_id: pool.id,
+      created_at: pool.created_at,
+    });
+    const memberNode = node(member.name);
+    memberNode.xdai = '150000000000000000';
+    // One rung under the floor, so the amber column and the pool warning have
+    // something to show without editing this file.
+    memberNode.chequebook = makeChequebook(
+      rung.name === LOW_CHEQUEBOOK_RUNG
+        ? { total: bzz(0, 12), available: bzz(0, 12) }
+        : { total: bzz(1, 60), available: bzz(1, 40), totalSent: bzz(0, 20) },
+    );
+    if (rung.name === '1080p') {
+      memberNode.bzz = '0';
+    } else {
+      memberNode.bzz = String(BigInt(42 - index * 9) * 10n ** 15n);
+      const stamp =
+        rung.name === FULL_BATCH_RUNG
+          ? makeStamp({ depth: rung.depth, ttl: FULL_BATCH_TTL, immutable: true, full: true })
+          : makeStamp({ depth: rung.depth, ttl: (60 - index * 15) * DAY });
+      memberNode.stamps = [stamp];
+      member.stamp_id = stamp.batchID;
+    }
+    state.profiles.push(member);
+  });
+
+  for (const profile of state.profiles) {
+    if (profile.status === 'RUNNING') {
+      profile.containers = containersFor(profile, {
+        withUploader: !needsStamp(profile) || Boolean(profile.stamp_id) || Boolean(profile.bee_publishers),
+      });
+    }
+    refreshDerived(profile);
+  }
+}

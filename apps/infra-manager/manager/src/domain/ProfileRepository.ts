@@ -1,0 +1,873 @@
+import {
+  type EngineSettings,
+  type NodeMode,
+  nullify,
+  type RpcEndpointSource,
+  type StackPortVar,
+} from '@streaming-infra-manager/common';
+import { Pool } from 'pg';
+
+import { Profile, ProfileKind, ProfileStatus } from '../types/index.js';
+import { copyManagerAdminToken } from './adminLink/adminTokenCopy.js';
+import { reserveSlotFor } from './ports/reservationSql.js';
+import { DEPLOYMENT_PHASE_FROM_PRIOR_STATUS_SQL, OPERATION_HOLD_FOR_OWNER_SQL, PROFILE_COLUMNS, PROFILE_SLOT_LOCK_KEY } from './profileSql.js';
+import { ProfileConfigError } from './errors/index.js';
+import type { StackSecrets } from './versions/stackSecrets.js';
+import type { ExpectedDeployOwner } from './versions/buildLedger.js';
+
+export interface RpcEndpointSnapshot {
+  rpcEndpoint: string | null;
+}
+
+export interface ProfileWriteData {
+  notes?: string | null;
+  components?: string[] | null;
+  host?: string | null;
+  feed_owner?: string | null;
+  feed_topic?: string | null;
+  /** Absent or null keeps the key already stored. See `updateEditable`. */
+  private_key?: string | null;
+  public_key?: string | null;
+  stamp_id?: string | null;
+  bee_publishers?: string | null;
+  bee_url?: string | null;
+  rpc_endpoint?: string | null;
+  /** Absent takes the column's own default, which is the stack's endpoint. */
+  rpc_endpoint_source?: RpcEndpointSource | null;
+  /**
+   * Absent keeps the mode already stored, because a node's mode is chosen when
+   * it is created. On an insert, absent means the mode the stack ships.
+   */
+  node_mode?: NodeMode | null;
+  /**
+   * Absent keeps the passphrase already stored, null clears it and a value
+   * replaces it. See `updateEditable`. On an insert, absent means none.
+   */
+  srt_passphrase?: string | null;
+  group_id?: number | null;
+}
+
+export interface EngineOverviewSnapshot {
+  profile: Profile;
+  engineConfig: string | null;
+}
+
+export interface EngineSettingsWriteOwner extends ExpectedDeployOwner {
+  jobReferenceId: number;
+  /**
+   * The settings revision read before the settings the write replaces, which
+   * a save from the deployment's settings page moves. A page save that landed
+   * since is refused over rather than written over.
+   */
+  settingsRevision: number;
+}
+
+/**
+ * A deployment's own settings as its page may know them, read in one
+ * statement: no secret value, only which secrets are stored, and the engine
+ * settings beside the stack settings under the one revision both move.
+ */
+export interface StoredStackSettings {
+  plain: Record<string, string>;
+  secretKeys: string[];
+  engine: EngineSettings;
+  revision: number;
+  /** The origin its stored `ADMIN_API_TOKEN` was stored for, empty for none, and null where nothing is recorded. */
+  adminTokenOrigin: string | null;
+}
+
+/**
+ * One save's change to a deployment's own settings, already split by where
+ * each key is kept: a secret apart from the rest, and an engine setting in the
+ * engine settings, never in either stack column.
+ */
+export interface StackSettingsChange {
+  plain: Record<string, string>;
+  secret: Record<string, string>;
+  /** Keys that go back to what the version sets, taken out of whichever column holds them. */
+  remove: string[];
+  engine: EngineSettingsChange;
+  /** The origin a token the save stores is for, null for a save that takes the token out, and left out for one that leaves it. */
+  adminTokenOrigin?: string | null;
+}
+
+/** One save's change to the engine settings: values to store, and keys that go back to their default. */
+export interface EngineSettingsChange {
+  set: EngineSettings;
+  remove: string[];
+}
+
+/**
+ * The stack settings a deployment is created with, split by whether each key
+ * is a secret the way the two columns hold them, so its first deploy writes
+ * them as a save would have.
+ */
+export interface InitialStackSettings {
+  plain: Readonly<Record<string, string>>;
+  secret: Readonly<Record<string, string>>;
+  /**
+   * Asks the insert to copy the manager's stored web2 admin token into the
+   * secret settings as `ADMIN_API_TOKEN`, which refuses the whole insert when
+   * none is stored or when it was saved for another origin. Left out, nothing
+   * is copied.
+   */
+  copyManagerAdminToken?: ManagerAdminTokenCopy;
+  /** The origin the stored `ADMIN_API_TOKEN` is for, empty for a token stored with no address. Left out where none is stored. */
+  adminTokenOrigin?: string;
+}
+
+/** A copy of the manager's stored token into a new deployment. */
+export interface ManagerAdminTokenCopy {
+  /** The address the new deployment gives its uploader, whose origin has to be the stored link's. */
+  url: string;
+}
+
+/** What a create that names no stack settings stores, so its version's values stand. */
+export const NO_STACK_SETTINGS: InitialStackSettings = { plain: {}, secret: {} };
+
+/** Where a new deployment goes: which stack version it runs, and how high its port slot may be. */
+export interface NewProfilePlacement {
+  stackVersionId: number;
+  /** The highest slot a deployment of the version may get: its own maximum, never above the manager's. */
+  slotCap: number;
+  /** The daemon the deployment's ports belong to, from `docker info`. */
+  daemonId: string;
+  /** The version's port table, every port of which the slot reserves. */
+  table: readonly StackPortVar[];
+}
+
+export type ProfileRemovalClaim = Pick<Profile, 'name' | 'instance_id' | 'intent_revision'>;
+
+export class ProfileRepository {
+  constructor(private readonly pool: Pool) {}
+
+  async claimRemoval(name: string, expectedInstanceId: string): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles SET status = 'REMOVING', intent_revision = intent_revision + 1,
+         last_error = NULL, last_error_at = NULL, updated_at = NOW()
+       WHERE name = $1 AND instance_id = $2 AND status IN ('RUNNING', 'STOPPED', 'ERROR')
+       RETURNING ${PROFILE_COLUMNS}`, [name, expectedInstanceId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async failRemoval(claim: ProfileRemovalClaim, message: string): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles SET status = 'ERROR', last_error = $4, last_error_at = NOW(), updated_at = NOW()
+       WHERE name = $1 AND instance_id = $2 AND intent_revision = $3 AND status = 'REMOVING'
+       RETURNING ${PROFILE_COLUMNS}`, [claim.name, claim.instance_id, claim.intent_revision, message],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async completeRemoval(claim: ProfileRemovalClaim, cleanFiles: () => Promise<void>): Promise<{ port_slot: number } | null> {
+    return this.deleteProfile(claim.name, claim, cleanFiles);
+  }
+
+  /** One statement keeps revision identity, settings and the config in the same database snapshot. */
+  async engineOverviewSnapshot(name: string): Promise<EngineOverviewSnapshot | null> {
+    const result = await this.pool.query<Profile & { engine_config: string | null }>(
+      `SELECT ${PROFILE_COLUMNS}, engine_config FROM profiles WHERE name = $1`, [name],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    const { engine_config, ...profile } = row;
+    return { profile, engineConfig: engine_config };
+  }
+
+  async findByName(name: string): Promise<Profile | null> {
+    const r = await this.pool.query<Profile>(
+      `SELECT ${PROFILE_COLUMNS} FROM profiles WHERE name = $1`,
+      [name],
+    );
+    return r.rowCount && r.rowCount > 0 ? r.rows[0]! : null;
+  }
+
+  async list(): Promise<Profile[]> {
+    const result = await this.pool.query<Profile>(
+      `SELECT ${PROFILE_COLUMNS} FROM profiles ORDER BY port_slot ASC`,
+    );
+    return result.rows;
+  }
+
+  /**
+   * `engineSettings` is a parameter of its own rather than a `ProfileWriteData`
+   * field, for the reason `updateEngineSettings` gives: that shape is written
+   * from a full-replace PUT body, and a body that has never heard of engine
+   * settings would clear them. An empty object is what an API create with no
+   * opinion sends, and it leaves the column at the default the migration set.
+   * `stackSettings` is one of its own for the same reason, and its two empty
+   * halves are what the migration's defaults hold.
+   */
+  async insertWithFreeSlot(
+    name: string,
+    kind: ProfileKind,
+    status: ProfileStatus,
+    data: ProfileWriteData,
+    placement: NewProfilePlacement,
+    engineSettings: EngineSettings = {},
+    stackSettings: InitialStackSettings = NO_STACK_SETTINGS,
+  ): Promise<Profile | null> {
+    const dataWithNullFields = nullify(data);
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock($1)', [
+        PROFILE_SLOT_LOCK_KEY,
+      ]);
+      // The slot and its reservations, in this transaction, so a deployment
+      // record and the ports it will bind appear together or not at all.
+      const slot = await reserveSlotFor(client, name, placement);
+      if (slot === null) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+      const result = await client.query<Profile>(
+        `INSERT INTO profiles (
+           name, port_slot, kind, notes, status,
+           components, host, feed_owner, feed_topic, private_key, public_key, stamp_id,
+           srt_passphrase, group_id, bee_publishers, bee_url, rpc_endpoint, rpc_endpoint_source,
+           node_mode, stack_version_id, engine_settings, stack_settings, stack_settings_secret,
+           admin_token_origin, deployment_phase
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+                 COALESCE($18::text, 'stack'), $19, $20, $21::jsonb, $22::jsonb, $23::jsonb, $24,
+                 CASE WHEN $5 = 'DEPLOYING' THEN 'starting' ELSE NULL END)
+         RETURNING ${PROFILE_COLUMNS}`,
+        [
+          name,
+          slot,
+          kind,
+          dataWithNullFields.notes,
+          status,
+          dataWithNullFields.components,
+          dataWithNullFields.host,
+          dataWithNullFields.feed_owner,
+          dataWithNullFields.feed_topic,
+          dataWithNullFields.private_key,
+          dataWithNullFields.public_key,
+          dataWithNullFields.stamp_id,
+          dataWithNullFields.srt_passphrase,
+          dataWithNullFields.group_id,
+          dataWithNullFields.bee_publishers,
+          dataWithNullFields.bee_url,
+          dataWithNullFields.rpc_endpoint,
+          dataWithNullFields.rpc_endpoint_source,
+          dataWithNullFields.node_mode,
+          placement.stackVersionId,
+          JSON.stringify(engineSettings),
+          JSON.stringify(stackSettings.plain),
+          JSON.stringify(stackSettings.secret),
+          stackSettings.adminTokenOrigin ?? null,
+        ],
+      );
+      if (stackSettings.copyManagerAdminToken) await copyManagerAdminToken(client, name, stackSettings.copyManagerAdminToken);
+      await client.query('COMMIT');
+      return result.rowCount && result.rowCount > 0 ? result.rows[0]! : null;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * @param keptEngineSettingKeys the engine settings the deployment still reads
+   *   after this edit. Given, every other key leaves the column in the same
+   *   statement, for a caller whose edit changes which settings the deployment
+   *   reads. Only keys leave: a value the settings page saved after the caller
+   *   read the row stays. Left out, the column keeps what it holds, which is
+   *   what every ordinary PUT body wants.
+   * @param expectedNotesRevision the notes revision the caller's page loaded.
+   *   Given, the write happens only while that is still the current one, and
+   *   null comes back when it moved, the same as for a row that is gone.
+   *
+   * Every field here is replaced, so one the body leaves out becomes null.
+   * The three secrets are the exception, for the reason `engine_settings` is:
+   * none is answered to a page, so no page can send one back, and a PUT that
+   * says nothing about them would otherwise clear the feed's identity, the
+   * ingest passphrase, or the custom chain endpoint on the next save.
+   *
+   * They differ in what an operator may still ask for. A key is replaced and
+   * never cleared, which COALESCE says exactly. A passphrase can also be given
+   * up, when the operator puts the deployment back on the host-wide one, so an
+   * absent field and an explicit null have to mean different things and the
+   * column is written only while the caller named it.
+   *
+   * `node_mode` is a third case: a node's mode is chosen when it is created, so
+   * a body that says nothing keeps the stored one rather than clearing it.
+   *
+   * `rpc_endpoint` behaves like the passphrase. An absent field keeps the
+   * stored URL and an explicit null clears it. `rpc_endpoint_source` is a
+   * fourth case, and this statement has no opinion about it: a caller that
+   * names none keeps what is stored. What an update means by
+   * an address arriving or going is `keptRpcEndpointSource`, which needs to
+   * know whether this manager has an endpoint of its own, a thing no statement
+   * can see. ProfileService answers it there and writes the answer here. A
+   * caller that resolves neither leaves the row saying `custom` with no address
+   * and is refused by the column's own CHECK, which is the backstop rather than
+   * a second opinion.
+   */
+  async updateEditable(
+    name: string,
+    kind: ProfileKind,
+    dataWithOptionalValues: ProfileWriteData = {},
+    keptEngineSettingKeys?: readonly string[],
+    expectedNotesRevision?: number,
+  ): Promise<Profile | null> {
+    const {
+      srt_passphrase: passphrase,
+      rpc_endpoint: rpcEndpoint,
+      ...named
+    } = dataWithOptionalValues;
+    const data = nullify(named);
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles
+         SET kind = $2,
+             notes = $3,
+             notes_revision = notes_revision
+               + CASE WHEN notes IS DISTINCT FROM $3::text THEN 1 ELSE 0 END,
+             components = $4,
+             feed_owner = $5,
+             feed_topic = $6,
+             private_key = COALESCE($7::text, private_key),
+             public_key = $8,
+             stamp_id = $9,
+             bee_publishers = $10,
+             bee_url = $11,
+             rpc_endpoint = CASE WHEN $12::boolean THEN $13::text ELSE rpc_endpoint END,
+             rpc_endpoint_source = COALESCE($18::text, rpc_endpoint_source),
+             node_mode = COALESCE($19::text, node_mode),
+             srt_passphrase = CASE WHEN $14::boolean THEN $15::text ELSE srt_passphrase END,
+             engine_settings = CASE WHEN $16::text[] IS NULL THEN engine_settings ELSE
+               (SELECT COALESCE(jsonb_object_agg(kept.key, kept.value), '{}'::jsonb)
+                  FROM jsonb_each(engine_settings) AS kept
+                 WHERE kept.key = ANY($16::text[])) END,
+             updated_at = NOW()
+       WHERE name = $1
+         AND ($17::int IS NULL OR notes_revision = $17::int)
+       RETURNING ${PROFILE_COLUMNS}`,
+      [
+        name,
+        kind,
+        data.notes,
+        data.components,
+        data.feed_owner,
+        data.feed_topic,
+        data.private_key,
+        data.public_key,
+        data.stamp_id,
+        data.bee_publishers,
+        data.bee_url,
+        rpcEndpoint !== undefined,
+        rpcEndpoint ?? null,
+        passphrase !== undefined,
+        passphrase ?? null,
+        keptEngineSettingKeys ?? null,
+        expectedNotesRevision ?? null,
+        data.rpc_endpoint_source,
+        data.node_mode,
+      ],
+    );
+    return result.rowCount && result.rowCount > 0 ? result.rows[0]! : null;
+  }
+
+  /**
+   * Writes the notes alone, while the revision the caller loaded is still the
+   * current one. Null when the row is gone or the revision moved, which the
+   * caller tells apart with a read.
+   */
+  async updateNotes(
+    name: string,
+    notes: string | null,
+    expectedRevision: number,
+  ): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles
+         SET notes = $2,
+             notes_revision = notes_revision + 1,
+             updated_at = NOW()
+       WHERE name = $1 AND notes_revision = $3
+       RETURNING ${PROFILE_COLUMNS}`,
+      [name, notes, expectedRevision],
+    );
+    return result.rowCount && result.rowCount > 0 ? result.rows[0]! : null;
+  }
+
+  /**
+   * Replaces the whole engine settings object, for the engine settings route
+   * scripts save and recreate through.
+   *
+   * Deliberately not part of `ProfileWriteData`, which `updateEditable` writes
+   * from a full-replace PUT body: a body that has never heard of engine
+   * settings would clear them, and every existing caller of that path is such
+   * a body. The settings have their own route and their own write, the way the
+   * stamp id does.
+   *
+   * It moves the settings revision a deployment's settings page saves under,
+   * and writes nothing once that revision has moved past the one the caller
+   * read, so neither save can replace the other unseen.
+   */
+  async updateEngineSettings(
+    name: string,
+    settings: EngineSettings,
+    owner: EngineSettingsWriteOwner,
+  ): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles
+         SET engine_settings = $2::jsonb,
+             settings_revision = settings_revision + 1,
+             updated_at = NOW()
+       WHERE name = $1 AND instance_id = $3 AND intent_revision = $4
+         AND engine_config_revision = $5 AND stack_version_id = $6
+         AND status = 'DEPLOYING' AND deploy_job_reference_id = $7
+         AND settings_revision = $8
+       RETURNING ${PROFILE_COLUMNS}`,
+      [name, JSON.stringify(settings), owner.instanceId, owner.intentRevision,
+        owner.configRevision, owner.stackVersionId, owner.jobReferenceId, owner.settingsRevision],
+    );
+    return result.rowCount && result.rowCount > 0 ? result.rows[0]! : null;
+  }
+
+  /** The engine's config file as stored, whole, or null when the template runs. */
+  async engineConfigOf(name: string): Promise<string | null> {
+    const result = await this.pool.query<{ engine_config: string | null }>(
+      'SELECT engine_config FROM profiles WHERE name = $1',
+      [name],
+    );
+    return result.rows[0]?.engine_config ?? null;
+  }
+
+  /**
+   * Stores the file and the outcome of the last apply in one statement, so a
+   * revert that puts the previous file back cannot leave the error of the
+   * attempt behind on a row that no longer runs it, or the other way round.
+   */
+  async setEngineConfig(
+    name: string,
+    config: string | null,
+    error: string | null,
+  ): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles
+         SET engine_config = $2,
+             engine_config_error = $3,
+             updated_at = NOW()
+       WHERE name = $1
+       RETURNING ${PROFILE_COLUMNS}`,
+      [name, config, error],
+    );
+    return result.rowCount && result.rowCount > 0 ? result.rows[0]! : null;
+  }
+
+  /**
+   * The key this deployment signs its feed with, read on its own for the same
+   * reason `stackSecretsOf` is, and answered to nobody: the one caller writes
+   * it straight into the deployment's env file.
+   */
+  async privateKeyOf(name: string): Promise<string | null> {
+    const result = await this.pool.query<{ private_key: string | null }>(
+      'SELECT private_key FROM profiles WHERE name = $1',
+      [name],
+    );
+    return result.rows[0]?.private_key ?? null;
+  }
+
+  /**
+   * The custom chain endpoint, read separately from the row that reaches pages
+   * and events. The optional owner binds an edit's read to the profile version
+   * that will be claimed before any write can land.
+   */
+  async rpcEndpointOf(
+    name: string,
+    owner?: ExpectedDeployOwner,
+  ): Promise<RpcEndpointSnapshot | null> {
+    const result = await this.pool.query<{ rpc_endpoint: string | null }>(
+      `SELECT rpc_endpoint FROM profiles
+       WHERE name = $1
+         AND ($2::uuid IS NULL OR instance_id = $2::uuid)
+         AND ($3::bigint IS NULL OR intent_revision = $3::bigint)
+         AND ($4::bigint IS NULL OR engine_config_revision = $4::bigint)
+         AND ($5::bigint IS NULL OR stack_version_id = $5::bigint)`,
+      [
+        name,
+        owner?.instanceId ?? null,
+        owner?.intentRevision ?? null,
+        owner?.configRevision ?? null,
+        owner?.stackVersionId ?? null,
+      ],
+    );
+    const row = result.rows[0];
+    return row ? { rpcEndpoint: row.rpc_endpoint } : null;
+  }
+
+  /**
+   * The endpoint owned by one claimed deploy. The job reference and all four
+   * profile revisions make this the same snapshot that may write the env file.
+   */
+  async rpcEndpointForDeploy(
+    name: string,
+    owner: ExpectedDeployOwner,
+    jobReferenceId: number | null,
+  ): Promise<RpcEndpointSnapshot | null> {
+    const result = await this.pool.query<{ rpc_endpoint: string | null }>(
+      `SELECT rpc_endpoint FROM profiles
+       WHERE name = $1 AND instance_id = $2 AND intent_revision = $3
+         AND engine_config_revision = $4 AND stack_version_id = $5
+         AND status = 'DEPLOYING'
+         AND deploy_job_reference_id IS NOT DISTINCT FROM $6::integer`,
+      [
+        name,
+        owner.instanceId,
+        owner.intentRevision,
+        owner.configRevision,
+        owner.stackVersionId,
+        jobReferenceId,
+      ],
+    );
+    const row = result.rows[0];
+    return row ? { rpcEndpoint: row.rpc_endpoint } : null;
+  }
+
+  /**
+   * The passphrase this deployment's SRT ingest is encrypted with, read on its
+   * own for the same reason the key is, and answered one deployment at a time.
+   * Two callers ask: the deploy, where it becomes a line in the deployment's
+   * own env file, and the reveal route, where an operator about to publish is
+   * shown the URL that carries it.
+   */
+  async srtPassphraseOf(name: string): Promise<string | null> {
+    const result = await this.pool.query<{ srt_passphrase: string | null }>(
+      'SELECT srt_passphrase FROM profiles WHERE name = $1',
+      [name],
+    );
+    return result.rows[0]?.srt_passphrase ?? null;
+  }
+
+  /**
+   * The deployment's generated secrets. Read on their own rather than as a
+   * column of every row, because a row travels: it is answered to the browser
+   * and published on the event stream, and these values must not.
+   */
+  async stackSecretsOf(name: string): Promise<StackSecrets> {
+    const result = await this.pool.query<{ stack_secrets: StackSecrets }>(
+      'SELECT stack_secrets FROM profiles WHERE name = $1',
+      [name],
+    );
+    return result.rows[0]?.stack_secrets ?? {};
+  }
+
+  /**
+   * Every value the operator stored for this deployment, secret and plain
+   * alike, for the deploy to write into its env file. Read on its own for the
+   * reason `stackSecretsOf` is.
+   */
+  async stackSettingsForDeploy(name: string): Promise<Record<string, string>> {
+    const result = await this.pool.query<{ settings: Record<string, string> }>(
+      'SELECT stack_settings || stack_settings_secret AS settings FROM profiles WHERE name = $1',
+      [name],
+    );
+    return result.rows[0]?.settings ?? {};
+  }
+
+  /**
+   * What the deployment stores, as its settings page may know it: the plain
+   * values, the names of the secret ones and never their values, its engine
+   * settings, and the revision a save names. Null for a deployment that does
+   * not exist.
+   */
+  async stackSettingsOf(name: string): Promise<StoredStackSettings | null> {
+    const result = await this.pool.query<{
+      plain: Record<string, string>;
+      secret_keys: string[];
+      engine: EngineSettings;
+      revision: number;
+      admin_token_origin: string | null;
+    }>(
+      `SELECT stack_settings AS plain,
+              ARRAY(SELECT jsonb_object_keys(stack_settings_secret) ORDER BY 1) AS secret_keys,
+              engine_settings AS engine,
+              settings_revision AS revision,
+              admin_token_origin
+         FROM profiles WHERE name = $1`,
+      [name],
+    );
+    const row = result.rows[0];
+    return row
+      ? { plain: row.plain, secretKeys: row.secret_keys, engine: row.engine, revision: row.revision, adminTokenOrigin: row.admin_token_origin }
+      : null;
+  }
+
+  /** Records the origin a stored web2 admin token is for, where nothing is recorded yet. */
+  async bindAdminTokenOrigin(name: string, origin: string): Promise<void> {
+    await this.pool.query('UPDATE profiles SET admin_token_origin = $2 WHERE name = $1 AND admin_token_origin IS NULL', [name, origin]);
+  }
+
+  /**
+   * One save of the deployment's settings: sets and removes keys in both stack
+   * columns and in the engine settings, and moves the revision, in one
+   * statement and only while the row is the instance the page read and still
+   * at the revision it read. So a save lands whole or not at all. Answers the
+   * new revision, or null when either had moved and nothing was stored.
+   */
+  async updateStackSettings(
+    name: string,
+    change: StackSettingsChange,
+    guard: { instanceId: string; expectedRevision: number },
+  ): Promise<number | null> {
+    const result = await this.pool.query<{ settings_revision: number }>(
+      `UPDATE profiles
+          SET stack_settings = (stack_settings - $4::text[]) || $5::jsonb,
+              stack_settings_secret = (stack_settings_secret - $4::text[]) || $6::jsonb,
+              engine_settings = (engine_settings - $7::text[]) || $8::jsonb,
+              admin_token_origin = CASE WHEN $9::boolean THEN $10::text ELSE admin_token_origin END,
+              settings_revision = settings_revision + 1,
+              updated_at = NOW()
+        WHERE name = $1 AND instance_id = $2 AND settings_revision = $3
+        RETURNING settings_revision`,
+      [
+        name, guard.instanceId, guard.expectedRevision, change.remove, JSON.stringify(change.plain),
+        JSON.stringify(change.secret), change.engine.remove, JSON.stringify(change.engine.set),
+        change.adminTokenOrigin !== undefined, change.adminTokenOrigin ?? null,
+      ],
+    );
+    return result.rows[0]?.settings_revision ?? null;
+  }
+
+  /** Adds to what is stored. A key already held keeps its value. */
+  async storeStackSecrets(name: string, secrets: StackSecrets): Promise<void> {
+    await this.pool.query(
+      `UPDATE profiles
+         SET stack_secrets = $2::jsonb || stack_secrets,
+             updated_at = NOW()
+       WHERE name = $1`,
+      [name, JSON.stringify(secrets)],
+    );
+  }
+
+  async updateStampId(
+    name: string,
+    stampId: string,
+  ): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles
+         SET stamp_id = $2,
+             updated_at = NOW()
+       WHERE name = $1
+       RETURNING ${PROFILE_COLUMNS}`,
+      [name, stampId],
+    );
+    return result.rowCount && result.rowCount > 0 ? result.rows[0]! : null;
+  }
+
+  private async deleteProfile(
+    name: string,
+    claim: ProfileRemovalClaim,
+    cleanFiles: () => Promise<void>,
+  ): Promise<{ port_slot: number } | null> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock($1)', [PROFILE_SLOT_LOCK_KEY]);
+      const selected = await client.query<Pick<Profile, 'status' | 'instance_id' | 'intent_revision'>>(
+        'SELECT status, instance_id, intent_revision FROM profiles WHERE name = $1 FOR UPDATE', [name],
+      );
+      const row = selected.rows[0];
+      if (!row || row.instance_id !== claim.instance_id || row.intent_revision !== claim.intent_revision || row.status !== 'REMOVING') {
+        await client.query('COMMIT');
+        return null;
+      }
+      if (row.status !== 'REMOVING') throw new ProfileConfigError(name, 'The deployment has not completed removal.');
+      const held = await client.query<{ blocked: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM deploy_attempts WHERE project = $1 AND state <> 'released')
+          OR EXISTS (SELECT 1 FROM build_references WHERE ${OPERATION_HOLD_FOR_OWNER_SQL}) AS blocked
+          FROM profiles owner WHERE owner.name = $1`, [name],
+      );
+      if (held.rows[0]?.blocked) throw new ProfileConfigError(name, 'An unresolved deploy attempt or rollback operation still holds this deployment.');
+      // Keep the row locked and its name occupied until all name-owned files are gone.
+      await cleanFiles();
+      await client.query('DELETE FROM port_reservations WHERE profile_name = $1', [name]);
+      await client.query(
+        `UPDATE build_references SET resolved_at = NOW() WHERE resolved_at IS NULL
+         AND ((holder_kind = 'job' AND holder_id = $1) OR (holder_kind = 'snapshot' AND split_part(holder_id, '/', 1) = $1))`, [name],
+      );
+      const result = await client.query<{ port_slot: number }>('DELETE FROM profiles WHERE name = $1 RETURNING port_slot', [name]);
+      await client.query('COMMIT');
+      return result.rows[0] ?? null;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally { client.release(); }
+  }
+
+  /** The commit of a deploy that touched every service and found them all on it. */
+  async setLastFullDeployCommit(name: string, commit: string): Promise<void> {
+    await this.pool.query(
+      'UPDATE profiles SET last_full_deploy_commit = $2, updated_at = NOW() WHERE name = $1',
+      [name, commit],
+    );
+  }
+
+  /**
+   * An operator acted on the deployment: stop, start, edit, remove. Every
+   * conditional write of a config rollout names the intent it started under,
+   * so this ends an older rollout durably, a manager restart included.
+   */
+  async bumpIntent(name: string, expectedInstanceId?: string): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles
+         SET intent_revision = intent_revision + 1, updated_at = NOW()
+       WHERE name = $1 AND ($2::uuid IS NULL OR instance_id = $2)
+       RETURNING ${PROFILE_COLUMNS}`,
+      [name, expectedInstanceId ?? null],
+    );
+    return result.rowCount && result.rowCount > 0 ? result.rows[0]! : null;
+  }
+
+  async transitionStatus(
+    name: string,
+    next: ProfileStatus,
+    allowedFrom: readonly ProfileStatus[],
+    expectedInstanceId?: string,
+  ): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles
+         SET status = $2,
+             deployment_phase = CASE
+               WHEN $2 = 'DEPLOYING' THEN ${DEPLOYMENT_PHASE_FROM_PRIOR_STATUS_SQL}
+               ELSE NULL END,
+             last_error = NULL,
+             last_error_at = NULL,
+             updated_at = NOW()
+       WHERE name = $1 AND status = ANY($3::text[]) AND ($4::uuid IS NULL OR instance_id = $4)
+       RETURNING ${PROFILE_COLUMNS}`,
+      [name, next, allowedFrom, expectedInstanceId ?? null],
+    );
+    return result.rowCount && result.rowCount > 0 ? result.rows[0]! : null;
+  }
+
+  async markError(name: string, message: string): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles
+         SET status = 'ERROR',
+             deployment_phase = NULL,
+             last_error = $2,
+             last_error_at = NOW(),
+             updated_at = NOW()
+       WHERE name = $1
+       RETURNING ${PROFILE_COLUMNS}`,
+      [name, message],
+    );
+    return result.rowCount && result.rowCount > 0 ? result.rows[0]! : null;
+  }
+
+  async markDeployError(
+    name: string,
+    owner: ExpectedDeployOwner,
+    jobReferenceId: number | null,
+    message: string,
+  ): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles
+          SET status = 'ERROR', deployment_phase = NULL,
+              last_error = $7, last_error_at = NOW(), updated_at = NOW()
+        WHERE name = $1 AND status = 'DEPLOYING'
+          AND instance_id = $2 AND intent_revision = $3
+          AND engine_config_revision = $4 AND stack_version_id = $5
+          AND deploy_job_reference_id IS NOT DISTINCT FROM $6::integer
+        RETURNING ${PROFILE_COLUMNS}`,
+      [name, owner.instanceId, owner.intentRevision, owner.configRevision,
+        owner.stackVersionId, jobReferenceId, message],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /**
+   * A failed deploy's last resort, guarded by the status and the claim's own
+   * instance.
+   *
+   * `markDeployError` writes only while the claim it captured still owns every
+   * column of the row. A config file rollout or an intent change under the
+   * running script moves a revision column, the write matches nothing, and no
+   * other write is coming for that job, so the row would sit in DEPLOYING and
+   * refuse every later action as busy. This ends it. The instance and the job
+   * reference stay in the guard because together they are the ownership: a row
+   * whose instance moved belongs to an admitted replacement, and a row holding
+   * a job reference the failing request never had belongs to the admitted job a
+   * refused duplicate lost to. Either claim's own outcome ends it, and a stale
+   * failure written there would retarget a deployment it does not own.
+   */
+  async markDeployingError(
+    name: string,
+    instanceId: string,
+    jobReferenceId: number | null,
+    message: string,
+  ): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles
+          SET status = 'ERROR', deployment_phase = NULL,
+              last_error = $4, last_error_at = NOW(), updated_at = NOW()
+        WHERE name = $1 AND status = 'DEPLOYING' AND instance_id = $2
+          AND deploy_job_reference_id IS NOT DISTINCT FROM $3::integer
+        RETURNING ${PROFILE_COLUMNS}`,
+      [name, instanceId, jobReferenceId, message],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async markTerminal(
+    name: string,
+    status: ProfileStatus,
+    expectedInstanceId?: string,
+  ): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles
+         SET status = $2,
+             deployment_phase = NULL,
+             last_error = NULL,
+             last_error_at = NULL,
+             updated_at = NOW()
+       WHERE name = $1 AND ($3::uuid IS NULL OR instance_id = $3)
+       RETURNING ${PROFILE_COLUMNS}`,
+      [name, status, expectedInstanceId ?? null],
+    );
+    return result.rowCount && result.rowCount > 0 ? result.rows[0]! : null;
+  }
+
+  /**
+   * Every row a gone manager left mid-transition, read rather than written.
+   *
+   * Boot judges each of these against the containers its services have now,
+   * because a deploy takes minutes and a restart inside one says nothing
+   * about how far the deploy got. See `reconcileOrphanedTransitions`.
+   */
+  async orphanedTransitions(): Promise<Profile[]> {
+    const result = await this.pool.query<Profile>(
+      `SELECT ${PROFILE_COLUMNS} FROM profiles
+        WHERE status IN ('DEPLOYING', 'STOPPING', 'REMOVING')
+        ORDER BY port_slot ASC`,
+    );
+    return result.rows;
+  }
+
+  /** What boot judged one of those rows to be. Null when it has moved on since. */
+  async settleOrphanedTransition(
+    name: string,
+    status: ProfileStatus,
+    message: string | null,
+  ): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles
+         SET status = $2,
+             deployment_phase = NULL,
+             last_error = $3,
+             last_error_at = CASE WHEN $3::text IS NULL THEN NULL ELSE NOW() END,
+             updated_at = NOW()
+       WHERE name = $1 AND status IN ('DEPLOYING', 'STOPPING', 'REMOVING')
+       RETURNING ${PROFILE_COLUMNS}`,
+      [name, status, message],
+    );
+    return result.rows[0] ?? null;
+  }
+}
