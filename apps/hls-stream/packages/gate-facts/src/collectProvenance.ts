@@ -155,31 +155,62 @@ export function summarise(entries: readonly VersionProvenance[]): ProvenanceSumm
 const UNCOLLECTED_DEPENDENCY_CHECKS =
   '`npm audit signatures` (reads the installed tree, not the diff) and `gh api /advisories?type=malware`';
 
+const LOCKFILE_NAME = 'pnpm-lock.yaml';
+
+/** Each lockfile the repository tracks at one commit, by its path from the repository root. */
+type Lockfiles = ReadonlyMap<string, string>;
+
 /**
- * The arguments that print the lockfile as it stood at `ref`.
- *
- * The `./` makes git read the path from the working folder, which is the stack's, where a bare path
- * after `ref:` is read from the repository root. The two agree while the stack is its own repository
- * and part ways once it sits in a subfolder of a larger one, where the bare form names a lockfile that
- * is not the stack's, or none at all.
+ * The arguments that list every file of the repository at `ref`. `--full-tree` because the tool runs from the
+ * stack's folder, where a plain `ls-tree` lists that folder alone.
  */
-function lockfileShowArgs(ref: string): string[] {
-  return ['show', `${ref}:./pnpm-lock.yaml`];
+function listingArgs(ref: string): string[] {
+  return ['ls-tree', '-r', '--name-only', '--full-tree', ref];
+}
+
+function isLockfile(path: string): boolean {
+  return path === LOCKFILE_NAME || path.endsWith(`/${LOCKFILE_NAME}`);
+}
+
+/** One lockfile's text at `ref`. A bare path after `ref:` is read from the repository root, which is how it is listed. */
+function lockfileShowArgs(ref: string, path: string): string[] {
+  return ['show', `${ref}:${path}`];
+}
+
+/** Paths from the repository root, as pathspecs a command run from the stack's folder reads that way too. */
+function fromRepositoryRoot(paths: Iterable<string>): string[] {
+  return [...paths].map((path) => `:/${path}`);
+}
+
+function sameLockfiles(left: Lockfiles, right: Lockfiles): boolean {
+  return left.size === right.size && [...left].every(([path, text]) => right.get(path) === text);
+}
+
+/** Every version any of the lockfiles pins, as one text `introducedVersions` reads the way it reads one lockfile. */
+function allVersions(lockfiles: Lockfiles): string {
+  return [...lockfiles.values()].join('\n');
 }
 
 /**
- * Publish age, signature and SLSA provenance for every version this change introduces.
+ * Publish age, signature and SLSA provenance for every version this change introduces, into any lockfile of the
+ * repository.
  *
- * The lockfile is compared from the merge base, the commit the change branched from, where the diff
- * rows start as well. Compared from the base's tip, a package the base bumped after the change branched
- * off it would read as a version this change introduced.
+ * Every lockfile the repository tracks is read, not only the stack's: the root one since the repository became one
+ * workspace, each app's own before. The owner's dependency rule covers every version a change introduces, and in
+ * one workspace a stack change can bring versions that only another app reaches, through a root override or a
+ * changed dedupe. Comparing the union of versions also reads a change across that move correctly: the apps' three
+ * lockfiles becoming one at the root introduces nothing that was already pinned.
  *
- * Returns null when the change did not move the lockfile. A failed read is a thrown `CollectionError`
- * rather than a null, because "no dependency changed" and "I could not tell" must not render the same.
+ * The lockfiles are compared from the merge base, the commit the change branched from, where the diff rows start as
+ * well. Compared from the base's tip, a package the base bumped after the change branched off it would read as a
+ * version this change introduced.
  *
- * This covers two of the owner's four dependency checks. The other two are named in the artifact
- * rather than left out silently, because a section that lists some checks reads as listing all of
- * them, and the auditor is told not to re-derive what the block already emits.
+ * Returns null when the change moved no lockfile. A failed read is a thrown `CollectionError` rather than a null,
+ * because "no dependency changed" and "I could not tell" must not render the same.
+ *
+ * This covers two of the owner's four dependency checks. The other two are named in the artifact rather than left
+ * out silently, because a section that lists some checks reads as listing all of them, and the auditor is told not
+ * to re-derive what the block already emits.
  */
 export async function collectProvenance(base: string, head: string): Promise<FactGroup | null> {
   const git = async (args: string[]): Promise<string> => {
@@ -189,20 +220,26 @@ export async function collectProvenance(base: string, head: string): Promise<Fac
     }
     return result.stdout;
   };
-  const lockAt = (ref: string): Promise<string> => git(lockfileShowArgs(ref));
+  const lockfilesAt = async (ref: string): Promise<Lockfiles> => {
+    const paths = (await git(listingArgs(ref))).split('\n').filter(isLockfile).sort();
+    return new Map(
+      await Promise.all(paths.map(async (path) => [path, await git(lockfileShowArgs(ref, path))] as const)),
+    );
+  };
 
   const branchPoint = (await git(['merge-base', base, head])).trim();
-  const branchPointLock = await lockAt(branchPoint);
-  const headLock = await lockAt(head);
-  if (branchPointLock === headLock) {
-    // The group is absent only when the change left the lockfile untouched. A lockfile that moved and
+  const branchPointLockfiles = await lockfilesAt(branchPoint);
+  const headLockfiles = await lockfilesAt(head);
+  if (sameLockfiles(branchPointLockfiles, headLockfiles)) {
+    // The group is absent only when the change left every lockfile untouched. A lockfile that moved and
     // introduced nothing is a different fact and gets a row saying so, because an absent group and a
     // clean one would otherwise read the same.
     return null;
   }
 
-  const introduced = introducedVersions(branchPointLock, headLock);
+  const introduced = introducedVersions(allVersions(branchPointLockfiles), allVersions(headLockfiles));
   if (introduced.length === 0) {
+    const everyLockfile = new Set([...branchPointLockfiles.keys(), ...headLockfiles.keys()]);
     return {
       title: 'Provenance of introduced versions',
       facts: [
@@ -210,7 +247,12 @@ export async function collectProvenance(base: string, head: string): Promise<Fac
           key: 'versions introduced',
           value: '0, though the lockfile did change. Nothing new resolved, so there is nothing to check.',
           // Three dots, so the diff a reader runs starts from the merge base the lockfiles were compared from.
-          command: describe('git', ['diff', `${base}...${head}`, '--', 'pnpm-lock.yaml']),
+          command: describe('git', [
+            'diff',
+            `${base}...${head}`,
+            '--',
+            ...fromRepositoryRoot([...everyLockfile].sort()),
+          ]),
         },
       ],
     };
@@ -225,7 +267,7 @@ export async function collectProvenance(base: string, head: string): Promise<Fac
       {
         key: 'versions introduced',
         value: summary.introduced,
-        command: describe('git', lockfileShowArgs(head)),
+        command: describe('git', ['show', ...[...headLockfiles.keys()].map((path) => `${head}:${path}`)]),
       },
       { key: 'unsigned', value: summary.unsigned, command, failed: summary.unsigned !== 'none' },
       { key: 'registry lookup failed', value: summary.unreadable, command, failed: summary.unreadable !== 'none' },

@@ -16,7 +16,7 @@ async function main(): Promise<void> {
   }
   const head = resolved.stdout.trim();
 
-  // Resolved once and handed to both collectors that read it, so the diff and the lockfile come from the
+  // Resolved once and handed to both collectors that read it, so the diff and the lockfiles come from the
   // same base, also where it exists only as `origin/<base>`. The base and then the diff run first and
   // alone, so a base that does not resolve or a diff that cannot be collected stops the run before the
   // slow collectors start. Nothing reads the diff to decide whether they are owed: both always run, side
