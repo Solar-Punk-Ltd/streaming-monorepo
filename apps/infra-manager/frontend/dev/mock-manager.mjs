@@ -26,7 +26,6 @@ import {
   configuredBeeRpcEndpoint,
   CUSTOM_RPC_ENDPOINT_SOURCE,
   DEFAULT_CHEQUEBOOK_FLOOR_BZZ,
-  DEFAULT_RPC_ENDPOINT_SOURCE,
   defaultServicesFor,
   effectiveNodeMode,
   impliedRpcEndpointSource,

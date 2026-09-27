@@ -128,16 +128,16 @@ export function fakeForwardHarness() {
       if (paths.has(socketPath)) throw new Error('nonempty');
       paths.delete(path);
     },
-    spawn(command) {
+    spawn() {
       events.push('spawn');
       paths.set(socketPath, { ...socketIdentity });
       return child;
     },
-    connect(path) {
+    connect() {
       events.push('connect');
       return { stream: raw, connected: Promise.resolve() };
     },
-    async acquire(stream, target, options, qualify, signal, cap) {
+    async acquire(_stream, target) {
       events.push('handshake');
       return {
         stream: decoded,

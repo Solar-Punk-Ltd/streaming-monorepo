@@ -185,7 +185,7 @@ it('a refused preparation records failure only on the instance which claimed rem
   const h = setup();
   const originalVersionLookup = h.versions.findById.bind(h.versions);
   let replacement = h.original;
-  h.versions.findById = async (id) => {
+  h.versions.findById = async () => {
     replacement = { ...h.original, instance_id: randomUUID() };
     h.profiles.rows.set('owned', replacement);
     throw new Error('synthetic path lookup failure');

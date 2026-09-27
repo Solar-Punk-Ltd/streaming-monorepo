@@ -63,7 +63,6 @@ const AOF_RATIO = 10;
 const SRT_LATENCY_MS = 200;
 
 const RECIPE_STAMPED = 'bench';
-const RECIPE_SRT_UNSTAMPED = 'bench-nostamp';
 
 const [, , armsPath, outPath] = process.argv;
 if (!armsPath || !outPath) {
