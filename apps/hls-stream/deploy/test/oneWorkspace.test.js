@@ -85,7 +85,44 @@ snapshots:
 
 const ROOT_WORKSPACE = 'packages:\n  - apps/hls-stream\n  - apps/hls-stream/packages/*\n  - apps/web2-admin\n';
 
+/**
+ * The same root with a package every app shares, `packages/contracts`, which the stack's shared
+ * package links. A cut carries it into `workspace-packages/contracts`.
+ */
+const SHARED_ROOT_LOCKFILE = ROOT_LOCKFILE.replace(
+  `  apps/hls-stream/packages/shared:
+    dependencies:
+`,
+  `  apps/hls-stream/packages/shared:
+    dependencies:
+      '@example/contracts':
+        specifier: workspace:*
+        version: link:../../../../packages/contracts
+`,
+).replace(
+  `packages:
+
+  react@18.3.1:`,
+  `  packages/contracts:
+    dependencies:
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+
+packages:
+
+  react@18.3.1:`,
+);
+
+const SHARED_ROOT_WORKSPACE = `${ROOT_WORKSPACE}  - packages/*\n`;
+
 const manifest = (name) => `${JSON.stringify({ name, private: true, packageManager: PACKAGE_MANAGER })}\n`;
+
+/** The shared package's files, as a checkout of that root holds them. */
+const SHARED_PACKAGE_FILES = {
+  'packages/contracts/package.json': manifest('@example/contracts'),
+  'packages/contracts/src/index.ts': 'export {};\n',
+};
 
 /** The stack's files an image build reads, seeded as a checkout would hold them, the uploader's dist built. */
 const STACK_FILES = {
@@ -117,14 +154,15 @@ function write(dir, files) {
  * holds no lockfile of its own unless `ownPair` gives it one, the way a checkout from before the root
  * lockfile does. A git repository, because in-copy.mjs copies the files git sees.
  */
-function oneWorkspace({ config, ownPair = false, realRsync = false } = {}) {
+function oneWorkspace({ config, ownPair = false, realRsync = false, sharedPackage = false } = {}) {
   const workspace = mkdtempSync(join(tmpdir(), 'one-workspace-'));
   workspaces.push(workspace);
   write(workspace, {
     'package.json': manifest('monorepo'),
-    'pnpm-lock.yaml': ROOT_LOCKFILE,
-    'pnpm-workspace.yaml': ROOT_WORKSPACE,
+    'pnpm-lock.yaml': sharedPackage ? SHARED_ROOT_LOCKFILE : ROOT_LOCKFILE,
+    'pnpm-workspace.yaml': sharedPackage ? SHARED_ROOT_WORKSPACE : ROOT_WORKSPACE,
     '.gitignore': 'node_modules/\ndist/\n.env\n.env.*\n',
+    ...(sharedPackage ? SHARED_PACKAGE_FILES : {}),
   });
   cpSync(TOOL, join(workspace, 'tools', 'app-workspace'), { recursive: true });
   const sandbox = makeSandbox({ config, root: join(workspace, 'apps', 'hls-stream'), realRsync });
@@ -200,6 +238,32 @@ describe('a remote deploy from a checkout of the one workspace', () => {
     assert.equal(readFileSync(join(sandbox.remoteHome, REMOTE_BASE, 'pnpm-lock.yaml'), 'utf8'), cut.lockfile);
     assert.equal(readFileSync(join(sandbox.remoteHome, REMOTE_BASE, 'pnpm-workspace.yaml'), 'utf8'), cut.workspace);
     assert.ok(sandbox.remoteHas(join(REMOTE_BASE, 'package.json')), "the stack's own package.json still goes");
+  });
+
+  /**
+   * The cut carries each package the stack links from the root's `packages/` into its own
+   * `workspace-packages/`, and its lockfile points there, so an image built on the far side reads the
+   * package's manifest, and the client its sources, from that folder.
+   */
+  it('sends the shared packages the cut carries, for either image', async () => {
+    for (const services of [['stream-uploader'], ['client']]) {
+      const { sandbox } = oneWorkspace({ config: ALL_REMOTE, sharedPackage: true });
+
+      await runScriptOk(sandbox, 'deploy.sh', services, { TMPDIR: ownTmpdir() });
+
+      const carried = join(sandbox.remoteHome, REMOTE_BASE, 'workspace-packages', 'contracts');
+      assert.equal(
+        readFileSync(join(carried, 'package.json'), 'utf8'),
+        SHARED_PACKAGE_FILES['packages/contracts/package.json'],
+        `a deploy of ${services.join(' and ')} left the shared package's manifest behind`,
+      );
+      assert.equal(readFileSync(join(carried, 'src', 'index.ts'), 'utf8'), 'export {};\n');
+      assert.match(
+        readFileSync(join(sandbox.remoteHome, REMOTE_BASE, 'pnpm-lock.yaml'), 'utf8'),
+        /link:\.\.\/\.\.\/workspace-packages\/contracts/,
+        'the lockfile sent points at the folder sent',
+      );
+    }
   });
 
   it('writes the cut outside the checkout and leaves nothing behind in the temporary folder', async () => {
@@ -417,6 +481,18 @@ describe('a stack that keeps its own lockfile', () => {
     assert.equal(
       readFileSync(join(sandbox.remoteHome, REMOTE_BASE, 'pnpm-lock.yaml'), 'utf8'),
       "lockfileVersion: '9.0'\n# the stack's own\n",
+    );
+  });
+
+  it('sends the shared packages it keeps in its workspace-packages', async () => {
+    const { sandbox } = oneWorkspace({ config: ALL_REMOTE, ownPair: true });
+    write(sandbox.root, { 'workspace-packages/contracts/package.json': manifest('@example/contracts') });
+
+    await runScriptOk(sandbox, 'deploy.sh', ['stream-uploader'], { TMPDIR: ownTmpdir() });
+
+    assert.equal(
+      readFileSync(join(sandbox.remoteHome, REMOTE_BASE, 'workspace-packages', 'contracts', 'package.json'), 'utf8'),
+      manifest('@example/contracts'),
     );
   });
 
