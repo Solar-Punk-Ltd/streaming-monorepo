@@ -20,6 +20,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -159,6 +160,41 @@ describe('adding a version', () => {
     assert.equal(manifest.manifest?.buildId, COMMIT_A);
     assert.equal(existsSync(stagingDirFor(versionsRoot, 'v3', attemptOf())), false, 'the staging directory is gone');
     assert.equal(stackRootOf(row), build);
+  });
+
+  it('records the image and the pnpm the build wrote down, rather than one constant for every build', async () => {
+    await service.add('v3', 'main-v3');
+    const staging = stagingDirFor(versionsRoot, 'v3', attemptOf());
+    cpSync(V3_FIXTURE, staging, { recursive: true });
+    leaveBuildMarkers(staging, COMMIT_A, MONOREPO_STACK_FOLDER, 'node:22-alpine pnpm@11.11.0');
+    await finished('v3');
+
+    assert.equal(readBuildManifest(buildDirFor(versionsRoot, 'v3', COMMIT_A)).manifest?.toolchain, 'node:22-alpine pnpm@11.11.0');
+  });
+
+  it('treats a build that left no word of its pnpm as failed, naming what is missing', async () => {
+    await service.add('v3', 'main-v3');
+    const staging = stagingDirFor(versionsRoot, 'v3', attemptOf());
+    cpSync(V3_FIXTURE, staging, { recursive: true });
+    leaveBuildMarkers(staging, COMMIT_A);
+    rmSync(join(staging, '.stack-toolchain'));
+    await finished('v3');
+
+    const row = await rowNamed('v3');
+    assert.equal(row.status, 'failed');
+    assert.match(row.lastError ?? '', /\.stack-toolchain/);
+  });
+
+  it('treats a build whose toolchain is no image and pnpm this manager builds with as failed', async () => {
+    await service.add('v3', 'main-v3');
+    const staging = stagingDirFor(versionsRoot, 'v3', attemptOf());
+    cpSync(V3_FIXTURE, staging, { recursive: true });
+    leaveBuildMarkers(staging, COMMIT_A, MONOREPO_STACK_FOLDER, 'node:20 yarn@4.1.0');
+    await finished('v3');
+
+    const row = await rowNamed('v3');
+    assert.equal(row.status, 'failed');
+    assert.match(row.lastError ?? '', /node:20 yarn@4\.1\.0/);
   });
 
   it('copies the settings into the build owner only, whatever the umask is', async () => {

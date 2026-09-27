@@ -23,10 +23,18 @@
 #               so a manager that comes back can tell a live builder from a
 #               dead one before it removes the staging tree.
 #
-# Writes the exported commit into <staging-dir>/.stack-commit and the folder the
-# stack was taken from into <staging-dir>/.stack-folder, which is what the
+# Writes the exported commit into <staging-dir>/.stack-commit, the folder the
+# stack was taken from into <staging-dir>/.stack-folder, and the image and the
+# pnpm it built with into <staging-dir>/.stack-toolchain, which is what the
 # manager reads: a real build prints far more than the manager keeps of this
 # stream, and the clone may have moved on by the time it looks.
+#
+# A commit made once the repository became one workspace keeps its lockfile at
+# the root and none in <stack-folder>. The build container is then also shown
+# the root's lockfile, workspace file and package.json, the stack's package.json
+# under them, and the commit's own tools/app-workspace, in a side folder of the
+# staging tree, and cuts the stack's own lockfile out of the root one before it
+# installs anything. A stack that keeps its own lockfile builds as it always has.
 #
 # The packages are built in a throwaway node container rather than in the api
 # image, so the api image keeps carrying no toolchain of its own. That container
@@ -42,10 +50,12 @@ readonly BUILD_IMAGE="node:22-alpine"
 # one stopped reading the `pnpm.overrides` block in package.json. A checkout
 # that keeps its overrides there (as swarm-hls-stream does) then fails the
 # frozen install with ERR_PNPM_LOCKFILE_CONFIG_MISMATCH. Pin the pnpm that
-# matches the lockfile format instead. A branch that names its own in a
-# `packageManager` field still wins, because corepack honours that over this.
+# matches the lockfile format instead. A stack that names its own in a
+# `packageManager` field builds with that one, because corepack honours it over
+# this, and so does what this script records.
 readonly PINNED_PNPM='pnpm@9.12.0'
-readonly BUILD_COMMAND="corepack enable && corepack prepare ${PINNED_PNPM} --activate && pnpm install --frozen-lockfile && pnpm -r build"
+# Where a commit with its lockfile at the root has its side folder.
+readonly WORKSPACE_ROOT_DIR=".workspace-root"
 
 if [ "$#" -ne 7 ]; then
     echo "usage: stack-version-build.sh <repo-root> <staging-dir> <ref> <repo-url> <stack-folder> <history-head> <attempt-id>" >&2
@@ -217,6 +227,46 @@ else
     git -C "$REPO" archive "$ARCHIVE_REV" -- "$EXPORT_FOLDER" |
         tar -x --strip-components="${#FOLDER_NAMES[@]}" -C "$STAGING"
 fi
+
+# A stack with no lockfile of its own, in a commit with one at the root, is cut
+# out of the root one inside the container, by the commit's own tool, before the
+# install. Its inputs go into a side folder of the staging tree, the one tree
+# the container is shown. The tool refuses to write into the folder it reads
+# from, so the cut lands in the stack's own place, as the lockfile used to.
+CUT_COMMAND=""
+if [ "$EXPORT_FOLDER" != . ] && [ ! -e "$STAGING/pnpm-lock.yaml" ] &&
+    git -C "$REPO" cat-file -e "$COMMIT:pnpm-lock.yaml" 2>/dev/null; then
+    if ! git -C "$REPO" cat-file -e "$COMMIT:tools/app-workspace/cut.mjs" 2>/dev/null; then
+        echo "ERROR: $COMMIT keeps its lockfile at the root and holds no tools/app-workspace to cut the stack's own out of it" >&2
+        exit 2
+    fi
+    if [ -e "$STAGING/$WORKSPACE_ROOT_DIR" ]; then
+        echo "ERROR: $COMMIT's $EXPORT_FOLDER holds a $WORKSPACE_ROOT_DIR of its own, where the build puts the root's files" >&2
+        exit 2
+    fi
+    echo "==> Exporting the root's lockfile, workspace file, package.json and tools/app-workspace into $STAGING/$WORKSPACE_ROOT_DIR"
+    mkdir "$STAGING/$WORKSPACE_ROOT_DIR"
+    git -C "$REPO" archive "$ARCHIVE_REV" -- package.json pnpm-lock.yaml pnpm-workspace.yaml tools/app-workspace "$EXPORT_FOLDER/package.json" |
+        tar -x -C "$STAGING/$WORKSPACE_ROOT_DIR"
+    CUT_COMMAND="node $WORKSPACE_ROOT_DIR/tools/app-workspace/cut.mjs --root $WORKSPACE_ROOT_DIR --app $EXPORT_FOLDER --out . && "
+fi
+
+# The pnpm the build runs, worked out as corepack works it out and before
+# anything of the commit runs: the stack's own packageManager when it names
+# one, the pin otherwise. That pnpm, with the image, is what the build records.
+PACKAGE_MANAGER="$(node -e 'const manager = require(process.argv[1]).packageManager; if (typeof manager === "string") process.stdout.write(manager)' "$STAGING/package.json")"
+if [ -z "$PACKAGE_MANAGER" ]; then
+    BUILD_PNPM="$PINNED_PNPM"
+elif [[ "$PACKAGE_MANAGER" =~ ^pnpm@[0-9]+\.[0-9]+\.[0-9]+(\+sha[0-9]+\.[0-9a-f]+)?$ ]]; then
+    BUILD_PNPM="$PACKAGE_MANAGER"
+else
+    echo "ERROR: $COMMIT's stack names $PACKAGE_MANAGER in its package.json's packageManager, which is no pnpm this script builds with" >&2
+    exit 2
+fi
+readonly BUILD_TOOLCHAIN="$BUILD_IMAGE ${BUILD_PNPM%%+*}"
+readonly BUILD_COMMAND="${CUT_COMMAND}corepack enable && corepack prepare ${BUILD_PNPM} --activate && pnpm install --frozen-lockfile && pnpm -r build"
+echo "STACK_TOOLCHAIN=$BUILD_TOOLCHAIN"
+
 # No -e and no --env-file: the container gets the staging tree, a cpu and memory
 # ceiling, a process ceiling, a name the manager can ask Docker about, and
 # nothing else of this host.
@@ -230,12 +280,19 @@ docker run --rm \
     -w "$STAGING" \
     "$BUILD_IMAGE" sh -c "$BUILD_COMMAND"
 
-# What this script exported, written only now that the ref's own scripts have
-# run over the tree, so none of them can change it. Whatever they left at these
-# two names goes first, because a link left there would carry the write out of
-# the tree, and the container has exited, so nothing can put one back.
-rm -rf "$STAGING/.stack-commit" "$STAGING/.stack-folder"
+# The side folder goes before the manager sees the tree, whatever the build did
+# to it. rm -rf on a link the build left removes the link, never what it points at.
+if [ -n "$CUT_COMMAND" ]; then
+    rm -rf "$STAGING/$WORKSPACE_ROOT_DIR"
+fi
+
+# What this script exported and built with, written only now that the ref's own
+# scripts have run over the tree, so none of them can change it. Whatever they
+# left at these names goes first, because a link left there would carry the
+# write out of the tree, and the container has exited, so nothing can put one back.
+rm -rf "$STAGING/.stack-commit" "$STAGING/.stack-folder" "$STAGING/.stack-toolchain"
 printf '%s\n' "$COMMIT" > "$STAGING/.stack-commit"
 printf '%s\n' "$EXPORT_FOLDER" > "$STAGING/.stack-folder"
+printf '%s\n' "$BUILD_TOOLCHAIN" > "$STAGING/.stack-toolchain"
 
 echo "==> Built $COMMIT in $STAGING"
