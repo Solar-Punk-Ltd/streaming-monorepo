@@ -9,7 +9,7 @@ import { describe, it } from 'node:test';
 
 import type { StackContract, StackVersion } from '@streaming-infra-manager/common';
 
-import { describeBuild, describeVersion, updateHint, versionPlacementProblem } from './versionText';
+import { describeBuild, describeSource, describeVersion, updateHint, versionPlacementProblem } from './versionText';
 
 const COMMIT = 'ee99c368bd45c12defcb10ca726f0db0777defb0';
 
@@ -34,6 +34,27 @@ function version(over: Partial<StackVersion> = {}): StackVersion {
     ...over,
   };
 }
+
+describe('where a card says the version comes from', () => {
+  const MONOREPO = 'https://github.com/Solar-Punk-Ltd/streaming-monorepo.git';
+  const SWARM_HLS_STREAM = 'https://github.com/Solar-Punk-Ltd/swarm-hls-stream.git';
+
+  it('names the repository and the folder a monorepo build took the stack from', () => {
+    assert.equal(
+      describeSource(version({ source: { url: MONOREPO, folder: 'apps/hls-stream' } })),
+      'streaming-monorepo, apps/hls-stream',
+    );
+  });
+
+  it('names the repository alone when the whole tree is the stack', () => {
+    assert.equal(describeSource(version({ source: { url: SWARM_HLS_STREAM, folder: '.' } })), 'swarm-hls-stream');
+    assert.equal(describeSource(version({ source: { url: MONOREPO, folder: '.' } })), 'streaming-monorepo');
+  });
+
+  it('names the repository alone before a first build says where in it the stack is', () => {
+    assert.equal(describeSource(version({ source: { url: MONOREPO, folder: null } })), 'streaming-monorepo');
+  });
+});
 
 describe('what Update does on a card', () => {
   it('says the bundled version is rebuilt from the commit the manager ships with', () => {
