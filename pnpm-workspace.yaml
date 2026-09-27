@@ -55,10 +55,8 @@ packageExtensions:
 # pins a package with a published fix, and the advisory is on its line where the history names one. The rest came
 # with the stack's audit sweep of 2026-07-31 (30df5bfa), which pinned every transitive dependency that had a
 # published fix, 63 advisories at the time, and named none of them one by one. nanoid@3, body-parser and qs are
-# floors from the versions the apps pinned exactly, and fast-uri@3 and protobufjs stay exact. axios carries its
-# major, so the pin holds the 0.x line and never forces an axios 1 down.
+# floors from the versions the apps pinned exactly, and fast-uri@3 and protobufjs stay exact.
 overrides:
-  axios@0: ^0.33.0
   body-parser: ^2.3.0 # GHSA-v422-hmwv-36x6
   brace-expansion@1: ^1.1.16 # GHSA-mh99-v99m-4gvg
   brace-expansion@2: ^2.1.2 # GHSA-mh99-v99m-4gvg

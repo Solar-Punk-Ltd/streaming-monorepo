@@ -12,16 +12,16 @@
   },
   "dependencies": {
     "@ethersphere/bee-js": "13.1.0",
-    "cafe-utility": "31.1.1",
-    "dotenv": "^16.4.7",
+    "cafe-utility": "36.3.0",
+    "dotenv": "17.4.2",
     "express": "^5.2.1",
-    "p-queue": "^8.1.0",
-    "zod": "4.4.3"
+    "p-queue": "9.3.3",
+    "zod": "4.6.4"
   },
   "devDependencies": {
     "@swarm-hls-stream/shared": "workspace:*",
     "@types/express": "^5.0.6",
-    "@types/node": "^22.8.1",
+    "@types/node": "24.13.4",
     "@typescript-eslint/eslint-plugin": "^6.14.0",
     "@typescript-eslint/parser": "^6.14.0",
     "eslint": "^8.55.0",
@@ -29,7 +29,7 @@
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-simple-import-sort": "^10.0.0",
     "rimraf": "^6.0.1",
-    "tsx": "^4.23.1",
+    "tsx": "4.23.13",
     "typescript": "^6.0.2"
   },
   "nx": {
