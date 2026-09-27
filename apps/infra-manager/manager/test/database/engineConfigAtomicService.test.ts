@@ -14,14 +14,12 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import pg, { type Pool } from 'pg';
 import { EventBus } from '../../src/domain/EventBus.js';
 import { ProfileRepository } from '../../src/domain/ProfileRepository.js';
 import { PostgresDeployAttemptRepository } from '../../src/domain/PostgresDeployAttemptRepository.js';
 import { PostgresEngineConfigOperationRepository } from '../../src/domain/engineConfig/PostgresEngineConfigOperationRepository.js';
-import { captureRolloutRecovery } from '../../src/domain/engineConfig/rolloutRecoveryDescriptor.js';
 import { ownershipOf } from '../../src/domain/engineConfig/operations.js';
 import { PostgresBuildLedger } from '../../src/domain/versions/PostgresBuildLedger.js';
 import { PostgresStackVersionRepository } from '../../src/domain/versions/PostgresStackVersionRepository.js';
@@ -47,11 +45,6 @@ const contract = {
 const observer = {
   mountedRootOf: async (): Promise<string | null> => {
     throw new Error('no Docker observation');
-  },
-};
-const runner = {
-  run: (): never => {
-    throw new Error('no build');
   },
 };
 type Applied = NonNullable<Awaited<ReturnType<PostgresEngineConfigOperationRepository['beginDeploy']>>>;
@@ -185,21 +178,6 @@ describe(
         },
       });
     }
-    async function request(applied: Applied) {
-      const profile = (await profiles.findByName(initial.name))!;
-      return {
-        profile,
-        engine: 'srs' as const,
-        ownership: ownershipOf(applied.operation),
-        message: 'synthetic failed watch',
-        admission: await operations.captureDeployAdmission(profile),
-        snapshot: { daemonId: 'synthetic-daemon', containerIds: ['synthetic-current'] },
-      };
-    }
-    async function legacyRequest(applied: Applied) {
-      // Simulates an older internal caller. This value must never authorize the recovery artifact.
-      return { ...(await request(applied)), version: (await versions.findById(selected.id))! };
-    }
     async function mutationSnapshot() {
       return {
         profiles: (
@@ -217,73 +195,6 @@ describe(
         attempts: (await pool.query('SELECT * FROM deploy_attempts ORDER BY id')).rows,
       };
     }
-    async function assertInterrupted(applied: Applied) {
-      assert.equal(
-        (await pool.query('SELECT state FROM engine_config_operations WHERE id = $1', [applied.operation.id])).rows[0]
-          .state,
-        'interrupted',
-      );
-      assert.equal((await profiles.findByName(initial.name))!.engine_config_state, 'interrupted');
-    }
-    async function refused(pending: ReturnType<PostgresEngineConfigOperationRepository['beginRevertDeploy']>) {
-      let result: Awaited<typeof pending> | undefined;
-      try {
-        result = await pending;
-      } catch {
-        return;
-      }
-      assert.equal(result, null, 'refused recovery must not return a new deploy claim');
-    }
-    function captureGate() {
-      const entered = signal(),
-        release = signal();
-      const repository = new PostgresEngineConfigOperationRepository(pool, root, async (...args) => {
-        const evidence = await captureRolloutRecovery(...args);
-        entered.resolve();
-        await release.promise;
-        return evidence;
-      });
-      return { entered, release, repository };
-    }
-    async function reachedCapture(
-      gate: ReturnType<typeof captureGate>,
-      pending: ReturnType<typeof operations.beginRevertDeploy>,
-    ) {
-      await bounded(
-        Promise.race([
-          gate.entered.promise,
-          pending.then(() => {
-            throw new Error('recovery skipped saved-artifact verification');
-          }),
-        ]),
-      );
-    }
-    function instrumentPool(hook: (text: string, pid: number, run: () => Promise<unknown>) => Promise<unknown>): Pool {
-      return {
-        query: pool.query.bind(pool),
-        connect: async () => {
-          const client = await pool.connect();
-          const pid = (await client.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid;
-          return {
-            release: () => client.release(),
-            query: (text: string, values?: unknown[]) => hook(text, pid, () => client.query(text, values)),
-          };
-        },
-      } as unknown as Pool;
-    }
-    async function assertBlocked(pid: number) {
-      const deadline = Date.now() + 5000;
-      while (Date.now() < deadline) {
-        if (
-          (await pool.query<{ blocked: boolean }>('SELECT cardinality(pg_blocking_pids($1)) > 0 AS blocked', [pid]))
-            .rows[0]!.blocked
-        )
-          return;
-        await delay(10);
-      }
-      throw new Error('the competing operation did not wait on the version lock');
-    }
-
     function serviceHarness() {
       const containers = new ContainerRepository(pool),
         events = new EventBus();

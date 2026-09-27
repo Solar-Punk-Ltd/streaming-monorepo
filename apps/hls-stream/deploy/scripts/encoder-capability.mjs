@@ -54,7 +54,6 @@ const KILL_GRACE_MS = 3000;
 const ROUNDS = 2;
 
 const RECIPE_WALLCLOCK = 'bench';
-const RECIPE_GENERATED = 'probe';
 
 const [, , armsPath, outPath] = process.argv;
 if (!armsPath || !outPath) {

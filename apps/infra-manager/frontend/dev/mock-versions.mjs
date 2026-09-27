@@ -259,7 +259,7 @@ function withCounts() {
  * manager process, not in the request, so leaving the page mid-build still
  * lands the row ready or failed.
  */
-function openBuildStream(res, script, args) {
+function openBuildStream(res) {
   res.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-cache, no-transform',
@@ -287,7 +287,7 @@ function openBuildStream(res, script, args) {
  * state and its message can be seen without breaking anything.
  */
 function playBuild(res, version, publish) {
-  const { frame, end } = openBuildStream(res, 'stack-version-build.sh', [version.name, version.gitRef]);
+  const { frame, end } = openBuildStream(res);
   const willFail = version.gitRef.includes('fail');
   // A ref that says `same` lands on the commit the version already has, so
   // the rebuild gets a distinct identity beside it, as the manager gives a

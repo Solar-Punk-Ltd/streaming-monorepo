@@ -50,7 +50,7 @@ async function cleanupGroup(groupId: number) {
 describe('group resize (Feature B): grow, size-sync, shrink, auto-delete', () => {
   it('adds a member that inherits config, deploys the grown group, then shrinks', async () => {
     // Start with a 2-viewer group (creation deploys both members).
-    const { group, profiles } = await createGroup({
+    const { group } = await createGroup({
       group_name: uniqueName('grp'),
       size: 2,
       kind: 'viewer',

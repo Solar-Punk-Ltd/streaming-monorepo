@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { RECEIPT_READ_INTERVAL_MS } from '@streaming-infra-manager/common';
 import { createMockChequebookJournal } from '../dev/mock-chequebook.mjs';
-import { launchHistoryFixture, historyInstanceId } from './support/history-fixture.mjs';
+import { launchHistoryFixture } from './support/history-fixture.mjs';
 import {
   buttonWithText,
   clickWhenEnabled,
