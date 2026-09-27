@@ -6,15 +6,16 @@
  * string, a copy of the sessions table is a set of working session cookies.
  */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
 
-import { createSessionToken, hashSessionToken } from '../../src/domain/auth/sessionToken.js';
+import { createSessionToken, hashSessionToken } from './sessionToken.js';
 
 describe('session token', () => {
   it('is 32 random bytes in base64url', () => {
     const token = createSessionToken();
 
-    assert.match(token, /^[A-Za-z0-9_-]+$/);
+    assert.match(token, /^[A-Za-z0-9_-]{43}$/);
     assert.equal(Buffer.from(token, 'base64url').length, 32);
   });
 
@@ -32,6 +33,11 @@ describe('session token', () => {
       assert.equal(stored.includes(token), false);
       assert.match(stored, /^[0-9a-f]{64}$/);
     }
+  });
+
+  it('stores the sha256 of the token', () => {
+    const token = createSessionToken();
+    assert.equal(hashSessionToken(token), createHash('sha256').update(token).digest('hex'));
   });
 
   it('hashes the same token to the same value, so a lookup can find it', () => {

@@ -1,19 +1,19 @@
 /**
- * How a password is stored. Unit test — no database, no network.
+ * How a password is stored.
  *
- * The properties worth pinning are the ones that stop being obvious the moment
- * someone edits the parameters: that a hash still verifies, that a wrong
- * password never does, that the cost parameters are read back from the stored
- * string rather than from today's constants — which is what lets them be raised
- * without invalidating everyone's password, and is exactly what this port did
- * to a live database — and that hashing the same password twice never gives the
- * same string, because the salt is fresh each time.
+ * Unit test, no database, no network. The properties worth pinning are the ones
+ * that stop being obvious the moment someone edits the parameters: that a hash
+ * still verifies, that a wrong password never does, that the cost parameters are
+ * read back from the stored string rather than from today's constants (which is
+ * what lets them be raised without invalidating everyone's password), and that
+ * hashing the same password twice never gives the same string, because the salt
+ * is fresh each time.
  */
 import assert from 'node:assert/strict';
 import { scrypt } from 'node:crypto';
 import { describe, it } from 'node:test';
 
-import { CURRENT_PARAMS, hashPassword, paramsOf, verifyPassword } from '../../src/domain/auth/passwordHash.js';
+import { CURRENT_PARAMS, hashPassword, paramsOf, verifyPassword } from './passwordHash.js';
 
 const PASSWORD = 'a-long-enough-password';
 
@@ -43,9 +43,9 @@ describe('password hashing', () => {
   });
 
   it('still verifies a hash written with the old parameters', async () => {
-    // This backend's first release wrote N=16384, r=8, p=1 with a 16 byte salt
-    // and a 32 byte key. Those rows are in the running database; raising the
-    // cost must not lock anybody out of the account they already have.
+    // An earlier release wrote N=16384, r=8, p=1 with a 16 byte salt and a 32
+    // byte key. Rows like that are still stored, and raising the cost must not
+    // lock anybody out of the account they already have.
     const old = await legacyHash(PASSWORD);
 
     assert.match(old, /^scrypt\$16384\$8\$1\$/);
@@ -98,7 +98,7 @@ describe('password hashing', () => {
   });
 });
 
-/** A row exactly as the pre-port hashPassword would have written it. */
+/** A row exactly as that earlier hashPassword would have written it. */
 function legacyHash(password: string): Promise<string> {
   const salt = Buffer.alloc(16, 7);
   return new Promise((resolve, reject) => {

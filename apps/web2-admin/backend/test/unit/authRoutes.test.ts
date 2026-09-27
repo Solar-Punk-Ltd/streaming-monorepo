@@ -13,8 +13,8 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
 import type { MeResponse, UserListResponse, UserSummary } from '@streaming-monorepo/web2-admin-common';
+import { LoginLimiter } from '@streaming-monorepo/web-auth';
 
-import { LoginLimiter } from '../../src/domain/auth/LoginLimiter.js';
 import {
   AuthTestApp,
   call,

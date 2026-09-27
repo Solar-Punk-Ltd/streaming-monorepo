@@ -1,6 +1,21 @@
 import { randomBytes } from 'node:crypto';
 
 import { passwordProblem, usernameProblem, type UserSummary } from '@streaming-monorepo/web2-admin-common';
+import {
+  absoluteExpiryFrom,
+  clientIpKey,
+  createSessionToken,
+  endsAt,
+  hashPassword,
+  hashSessionToken,
+  hasExpired,
+  idleSince,
+  LoginLimiter,
+  needsTouch,
+  passwordChangeKey,
+  usernameKey,
+  verifyPassword,
+} from '@streaming-monorepo/web-auth';
 
 import type { UserRow } from '../../types/index.js';
 import {
@@ -17,11 +32,7 @@ import {
 import { Logger } from '../Logger.js';
 
 import type { CredentialRepository } from './CredentialRepository.js';
-import { clientIpKey, LoginLimiter, passwordChangeKey, usernameKey } from './LoginLimiter.js';
-import { hashPassword, verifyPassword } from './passwordHash.js';
 import type { SessionRepository } from './SessionRepository.js';
-import { absoluteExpiryFrom, endsAt, hasExpired, idleSince, needsTouch } from './sessionLifetime.js';
-import { createSessionToken, hashSessionToken } from './sessionToken.js';
 import type { UserRepository } from './UserRepository.js';
 
 const logger = Logger.getInstance();

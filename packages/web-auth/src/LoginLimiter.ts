@@ -1,4 +1,4 @@
-import { LOGIN_FORGET_MS, lockoutMsFor } from '@streaming-monorepo/web2-admin-common';
+import { LOGIN_FORGET_MS, lockoutMsFor } from './rules.js';
 
 /**
  * Ceiling on tracked keys. Every failed attempt makes an entry under whatever
@@ -30,12 +30,15 @@ export function clientIpKey(ip: string): string {
   return `ip:${ip}`;
 }
 
+/** A user's id as each backend stores it, a serial number or a uuid. */
+export type UserId = number | string;
+
 /**
  * Changing a password checks the current one, which is a password check like
  * any other. Its own key, so guessing it neither locks the account out of
  * signing in nor borrows the sign-in count.
  */
-export function passwordChangeKey(userId: string): string {
+export function passwordChangeKey(userId: UserId): string {
   return `password-change:${userId}`;
 }
 

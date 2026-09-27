@@ -1,5 +1,5 @@
 /**
- * The session's two clocks. Unit test — no database, no server.
+ * The session's two clocks. Unit test, no database, no server.
  *
  * A session ends at the earlier of an absolute deadline written once at sign-in
  * and a sliding idle limit measured from `last_seen_at`. Neither is visible by
@@ -9,32 +9,22 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  LAST_SEEN_REFRESH_MS,
-  SESSION_ABSOLUTE_TIMEOUT_MS,
-  SESSION_IDLE_TIMEOUT_MS,
-} from '@streaming-monorepo/web2-admin-common';
-
+import { LAST_SEEN_REFRESH_MS, SESSION_ABSOLUTE_TIMEOUT_MS, SESSION_IDLE_TIMEOUT_MS } from './rules.js';
 import {
   absoluteExpiryFrom,
   endsAt,
   hasExpired,
   idleSince,
   needsTouch,
-} from '../../src/domain/auth/sessionLifetime.js';
-import type { StoredSession } from '../../src/domain/auth/SessionRepository.js';
-
-import { userRow } from './support/authFixtures.js';
+  type SessionClocks,
+} from './sessionLifetime.js';
 
 const NOW = new Date('2026-09-18T12:00:00.000Z');
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
-function session(over: Partial<StoredSession> = {}): StoredSession {
+function session(over: Partial<SessionClocks> = {}): SessionClocks {
   return {
-    tokenHash: 'x'.repeat(64),
-    user: userRow(),
-    createdAt: NOW,
     lastSeenAt: NOW,
     expiresAt: new Date(NOW.getTime() + SESSION_ABSOLUTE_TIMEOUT_MS),
     ...over,

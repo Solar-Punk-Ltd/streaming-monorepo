@@ -1,6 +1,7 @@
 import http from 'node:http';
 
 import { REQUESTED_WITH_HEADER, REQUESTED_WITH_VALUE, SESSION_COOKIE_NAME } from '@streaming-infra-manager/common';
+import type { LoginLimiter } from '@streaming-monorepo/web-auth';
 import express from 'express';
 
 import { errorHandler } from '../../src/api/middleware/errorHandler.js';
@@ -10,7 +11,6 @@ import { createRequireSession, signedInUser } from '../../src/api/middleware/req
 import { createAuthRouter } from '../../src/api/routes/auth.js';
 import { createEventsRouter } from '../../src/api/routes/events.js';
 import { AuthService } from '../../src/domain/auth/AuthService.js';
-import type { LoginLimiter } from '../../src/domain/auth/LoginLimiter.js';
 import { OpenStreams } from '../../src/domain/auth/OpenStreams.js';
 import { EventBus } from '../../src/domain/EventBus.js';
 

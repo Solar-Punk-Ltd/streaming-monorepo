@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { PassThrough, Writable } from 'node:stream';
 import { describe, it } from 'node:test';
 
-import { promptSecret, readSecretFromStdin } from '../../src/utils/secretInput.js';
+import { promptSecret, readSecretFromStdin } from './secretInput.js';
 
 const SECRET = 'a-long-enough-password';
 

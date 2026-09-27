@@ -1,125 +1,56 @@
 /**
- * The cross-site check, one row per combination of the three headers it reads.
+ * The manager's cross-site gate on the wire: the header it reads and the one
+ * value it lets through.
  *
- * Unit test, no server. This is the layer that stops a page on another site
- * making the operator's browser deploy, stop or remove something with the
- * operator's own cookie. `SameSite=Lax` is the first layer and this is the
- * second, so it has to hold on its own: every case below is written as if the
- * cookie had been sent.
+ * Unit test, no server. Every combination of the three headers the gate reads
+ * is pinned in the shared web-auth package. This pins what is the manager's
+ * own, because the console sends exactly this header and value on every write,
+ * and a gate that expected anything else would refuse all of them.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { REQUESTED_WITH_VALUE } from '@streaming-infra-manager/common';
+import type { NextFunction, Request, Response } from 'express';
 
-import { crossSiteReason, type RequestOrigin } from '../../src/api/middleware/requireSameSite.js';
+import { crossSiteReason, requireSameSite } from '../../src/api/middleware/requireSameSite.js';
+import { CrossSiteRequestError } from '../../src/domain/errors/index.js';
 
 const HOST = 'manager.example';
 
-function request(overrides: Partial<RequestOrigin> = {}): RequestOrigin {
-  return {
-    method: 'POST',
-    host: HOST,
-    origin: `https://${HOST}`,
-    secFetchSite: 'same-origin',
-    requestedWith: REQUESTED_WITH_VALUE,
-    ...overrides,
-  };
+function passedOn(headers: Record<string, string>): unknown {
+  const req = { method: 'POST', headers: { host: HOST, origin: `https://${HOST}`, ...headers } } as unknown as Request;
+  let passed: unknown = 'next was never called';
+  requireSameSite(
+    req,
+    {} as Response,
+    ((error?: unknown) => {
+      passed = error;
+    }) as NextFunction,
+  );
+  return passed;
 }
 
-describe('crossSiteReason', () => {
-  it('lets a write from our own page through', () => {
-    assert.equal(crossSiteReason(request()), null);
+describe('the manager cross-site gate', () => {
+  it('lets a write carrying x-requested-with: streaming-infra-manager through', () => {
+    assert.equal(passedOn({ 'x-requested-with': 'streaming-infra-manager' }), undefined);
   });
 
-  it('lets reads through whatever they look like', () => {
-    for (const method of ['GET', 'get', 'HEAD']) {
-      assert.equal(
-        crossSiteReason(
-          request({
-            method,
-            origin: 'https://evil.example',
-            secFetchSite: 'cross-site',
-            requestedWith: undefined,
-          }),
-        ),
-        null,
-        `${method} must not be refused: EventSource opens the live streams with no headers`,
-      );
+  it('refuses any other value, the admin console one included', () => {
+    for (const value of ['web2-admin', 'XMLHttpRequest', 'Streaming-Infra-Manager']) {
+      assert.ok(passedOn({ 'x-requested-with': value }) instanceof CrossSiteRequestError, value);
     }
   });
 
-  it('refuses a write the browser calls cross-site', () => {
-    assert.match(crossSiteReason(request({ secFetchSite: 'cross-site' })) ?? '', /Sec-Fetch-Site/);
-  });
-
-  it('accepts the other Sec-Fetch-Site values', () => {
-    for (const secFetchSite of ['same-origin', 'same-site', 'none', undefined]) {
-      assert.equal(
-        crossSiteReason(request({ secFetchSite })),
-        null,
-        `Sec-Fetch-Site: ${secFetchSite} is not cross-site`,
-      );
-    }
-  });
-
-  it('refuses a write whose Origin names another site', () => {
-    for (const origin of [
-      'https://evil.example',
-      'https://manager.example.evil.example',
-      'https://manager.example:8443',
-      'null',
-      '',
-    ]) {
-      assert.match(crossSiteReason(request({ origin })) ?? '', /Origin/, `should refuse Origin: ${origin}`);
-    }
-  });
-
-  it('accepts our own host over either scheme, because the edge terminates TLS', () => {
-    for (const origin of [`https://${HOST}`, `http://${HOST}`]) {
-      assert.equal(crossSiteReason(request({ origin })), null, origin);
-    }
-  });
-
-  it('matches Origin against the host including its port', () => {
-    assert.equal(crossSiteReason(request({ host: 'localhost:5080', origin: 'http://localhost:5080' })), null);
-    assert.match(crossSiteReason(request({ host: 'localhost:5080', origin: 'http://localhost:9876' })) ?? '', /Origin/);
-  });
-
-  it('refuses a write with no Origin and no header, which is where old browsers land', () => {
-    assert.match(
-      crossSiteReason(
-        request({
-          origin: undefined,
-          secFetchSite: undefined,
-          requestedWith: undefined,
-        }),
-      ) ?? '',
-      /x-requested-with/,
+  it('names the header a refused write is missing', () => {
+    assert.equal(
+      crossSiteReason({
+        method: 'POST',
+        host: HOST,
+        origin: undefined,
+        secFetchSite: undefined,
+        requestedWith: undefined,
+      }),
+      'a write needs the x-requested-with header',
     );
-  });
-
-  it('refuses the header set to anything but our value', () => {
-    for (const requestedWith of ['XMLHttpRequest', '', 'Streaming-Infra-Manager']) {
-      assert.match(
-        crossSiteReason(request({ requestedWith })) ?? '',
-        /x-requested-with/,
-        `should refuse ${JSON.stringify(requestedWith)}`,
-      );
-    }
-  });
-
-  it('refuses a write with no Host to compare against', () => {
-    assert.match(crossSiteReason(request({ host: undefined })) ?? '', /Origin/);
-  });
-
-  it('refuses every other method that changes something', () => {
-    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) {
-      assert.match(
-        crossSiteReason(request({ method, requestedWith: undefined })) ?? '',
-        /x-requested-with/,
-        `${method} must be checked`,
-      );
-    }
   });
 });

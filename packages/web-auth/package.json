@@ -1,20 +1,26 @@
 {
-  "name": "@streaming-monorepo/web2-admin-common",
+  "name": "@streaming-monorepo/web-auth",
   "version": "0.1.0",
   "private": true,
-  "description": "Types shared by the web2-admin backend and frontend: the API contract.",
+  "description": "The sign-in and session code the backends share: the rules, the tokens, the password hash, the lockout and the cross-site gate.",
   "license": "MIT",
   "files": [
     "dist"
   ],
   "type": "module",
-  "main": "./dist/index.js",
+  "sideEffects": false,
+  "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
     ".": {
       "types": "./src/index.ts",
-      "development": "./src/index.ts",
-      "default": "./dist/index.js"
+      "compiled": "./dist/index.js",
+      "default": "./src/index.ts"
+    },
+    "./rules": {
+      "types": "./src/rules.ts",
+      "compiled": "./dist/rules.js",
+      "default": "./src/rules.ts"
     }
   },
   "scripts": {
@@ -23,18 +29,15 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test 'src/**/*.test.ts'"
   },
-  "dependencies": {
-    "@streaming-monorepo/contracts": "workspace:*",
-    "@streaming-monorepo/web-auth": "workspace:*"
-  },
   "devDependencies": {
+    "@types/express": "5.0.6",
     "@types/node": "24.13.4",
     "tsx": "4.23.13",
     "typescript": "7.0.2"
   },
   "nx": {
     "tags": [
-      "scope:admin",
+      "scope:shared",
       "type:lib"
     ]
   }
