@@ -75,7 +75,7 @@ describe("a node reaching the chain through an endpoint of the operator's own", 
 });
 
 describe('the node a viewer reads through', () => {
-  // Levi, 2026-09-17 (T27): a node's mode is chosen when it is created, and the gateway's default
+  // The owner, 2026-09-17 (T27): a node's mode is chosen when it is created, and the gateway's default
   // is ultra-light. Ultra-light is bee's name for a light node with no chain behind it, which owns
   // no chequebook and so can never spend. What holds that now is the defaults rather than three
   // literals, and the purpose of the ruling of 2026-09-15 is held with them: a deployment that sets

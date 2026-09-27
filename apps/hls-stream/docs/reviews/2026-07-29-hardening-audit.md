@@ -1010,5 +1010,5 @@ had a chequebook, never its mode. Every "ultra-light" verification in this repos
 `/chequebook/balance` answering `405 chain disabled`, which a light node with swap off answers
 identically, so the label could not be caught. The measurements stand as funded against unfunded
 LIGHT node. A true ultra-light gateway has not been measured. Fixed on 2026-09-15: the gateway's chain
-endpoint is hard-coded empty, under Levi's ruling that a viewer node is always ultra-light, and
+endpoint is hard-coded empty, under the owner's ruling that a viewer node is always ultra-light, and
 `unfunded-gateway.sh` reads `/status` `beeMode`.

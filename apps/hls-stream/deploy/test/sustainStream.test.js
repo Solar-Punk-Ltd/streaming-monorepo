@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 
 const SOURCE = readFileSync(fileURLToPath(new URL('../scripts/in-browser-sustain.js', import.meta.url)), 'utf-8');
 
-const STREAM_NAMES = ['latbench', 'abel-1', 'abel-2'];
+const STREAM_NAMES = ['latbench', 'tester-1', 'tester-2'];
 
 const BYTES_PER_KB = 1024;
 const BITS_PER_BYTE = 8;
@@ -52,7 +52,7 @@ describe('in-browser sustain probe, choosing a stream', () => {
   });
 
   it('names every stream it knows in the refusal, so the fix is in the error', () => {
-    assert.throws(() => arm({}), /latbench.*abel-1.*abel-2/);
+    assert.throws(() => arm({}), /latbench.*tester-1.*tester-2/);
   });
 
   it('refuses an unknown stream rather than falling back to a default', () => {
@@ -60,26 +60,26 @@ describe('in-browser sustain probe, choosing a stream', () => {
   });
 
   it('still refuses a hidden document once a stream is chosen', () => {
-    assert.throws(() => arm({ __sustainStream: 'abel-1' }, { visible: false }), /document is not visible/);
+    assert.throws(() => arm({ __sustainStream: 'tester-1' }, { visible: false }), /document is not visible/);
   });
 
   it('reports which stream it armed on, so a pasted result carries its scope', () => {
-    const { value } = arm({ __sustainStream: 'abel-1' });
+    const { value } = arm({ __sustainStream: 'tester-1' });
 
-    assert.match(value, /armed on 'abel-1'/);
+    assert.match(value, /armed on 'tester-1'/);
     assert.match(value, /8\.34 Mbps/);
   });
 
   it('records the stream on the object the raw samples are saved from', () => {
-    const { sustain } = arm({ __sustainStream: 'abel-2' });
+    const { sustain } = arm({ __sustainStream: 'tester-2' });
 
-    assert.equal(sustain.stream.name, 'abel-2');
+    assert.equal(sustain.stream.name, 'tester-2');
     assert.equal(sustain.stream.owner, '47535bf0835ff9cb1c7c7cb4f44fa514f58e703d');
     assert.equal(sustain.stream.segmentSeconds, 4.166667);
   });
 
   it('marks the replicate whose segment shape was assumed rather than read', () => {
-    const { sustain } = arm({ __sustainStream: 'abel-2' });
+    const { sustain } = arm({ __sustainStream: 'tester-2' });
 
     assert.match(sustain.stream.what, /ASSUMED/);
   });
@@ -96,7 +96,7 @@ describe('in-browser sustain probe, choosing a stream', () => {
 const at = (t, ct, extra = {}) => ({ t, ct, rs: 4, paused: false, buffEnd: ct + 10, ...extra });
 
 /** Drives the summary over a prepared set of samples, as a finished run would. */
-function summarise(samples, { firstAdvanceAt = 0, stream = 'abel-1' } = {}) {
+function summarise(samples, { firstAdvanceAt = 0, stream = 'tester-1' } = {}) {
   const { sustain } = arm({ __sustainStream: stream });
   sustain.samples = samples;
   sustain.firstAdvanceAt = firstAdvanceAt;
@@ -128,7 +128,7 @@ describe('in-browser sustain probe, scoring a run', () => {
   it('reports the stream and its demand beside the ratio', () => {
     const summary = summarise([at(0, 0), at(100000, 100)], { firstAdvanceAt: 0 });
 
-    assert.equal(summary.stream, 'abel-1');
+    assert.equal(summary.stream, 'tester-1');
     assert.equal(summary.demandedKBps, 1018);
     assert.equal(summary.derivedDeliveredKBps, 1018);
   });
