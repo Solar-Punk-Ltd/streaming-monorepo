@@ -3,15 +3,17 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { after, describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 const SCRIPT = join(dirname(dirname(fileURLToPath(import.meta.url))), 'scripts', 'srs-segment-duration-on-host.sh');
 const RUN_TIMEOUT_MS = 30_000;
 const stubDirs = [];
 
 after(() => {
-  for (const dir of stubDirs) rmSync(dir, { recursive: true, force: true });
+  for (const dir of stubDirs) {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 /**
@@ -36,10 +38,18 @@ describe('srs-segment-duration-on-host.sh', () => {
     const env = { ...process.env, PATH: stubs.path };
     delete env.PROBE_HOST_ADDR;
 
-    const run = spawnSync('bash', [SCRIPT, '0.5', '1', 'bench', '5'], { env, encoding: 'utf8', timeout: RUN_TIMEOUT_MS });
+    const run = spawnSync('bash', [SCRIPT, '0.5', '1', 'bench', '5'], {
+      env,
+      encoding: 'utf8',
+      timeout: RUN_TIMEOUT_MS,
+    });
 
     assert.notEqual(run.status, 0);
     assert.match(run.stderr, /PROBE_HOST_ADDR/);
-    assert.equal(existsSync(stubs.journal), false, 'the script called ssh, docker or ffmpeg before it knew the host address');
+    assert.equal(
+      existsSync(stubs.journal),
+      false,
+      'the script called ssh, docker or ffmpeg before it knew the host address',
+    );
   });
 });
