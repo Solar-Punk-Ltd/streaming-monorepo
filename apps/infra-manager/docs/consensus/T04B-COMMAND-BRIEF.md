@@ -81,7 +81,7 @@ Each RED commit holds the failing tests and is verified failing for the intended
 
 ## Rules that bind this work
 
-- Never push. Never open or write anything on GitHub. Never touch the host 157.90.34.105, no ssh, no docker there. The only Docker use is the disposable Postgres above on this laptop, and stop it when done.
+- Never push. Never open or write anything on GitHub. Never touch the test host, no ssh, no docker there. The only Docker use is the disposable Postgres above on this laptop, and stop it when done.
 - Never read or print a secret value. `.env` files in tests carry synthetic values only. Never log environment contents.
 - Never `pkill` by pattern. Never `docker compose config` without `--quiet`.
 - Do not modify `.scratch/`, `docs/handover/`, migrations that exist, or any file outside this slice's purpose. Add no migration.

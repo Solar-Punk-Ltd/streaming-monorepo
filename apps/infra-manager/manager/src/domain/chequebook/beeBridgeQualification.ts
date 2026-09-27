@@ -70,7 +70,7 @@ export function storedPassRecord(pass: { readonly id: string; readonly tuple: Be
  */
 export const PRODUCTION_BEE_BRIDGE_QUALIFICATIONS: readonly BeeBridgeQualificationRecord[] = Object.freeze([
   Object.freeze({
-    // ethersphere/bee:2.8.2 as it runs on 157.90.34.105, qualified 2026-09-14.
+    // ethersphere/bee:2.8.2 as it runs on the test host, qualified 2026-09-14.
     id: 'bee-2.8.2-docker-29.1.3',
     imageId: 'sha256:b97defc2c32cdc72bfefccd73fc5b4615d0f78d56f3f701dcd2a17029edccab4',
     engineVersion: '29.1.3',
