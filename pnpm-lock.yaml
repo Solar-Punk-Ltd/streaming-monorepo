@@ -344,6 +344,9 @@ importers:
       '@ethersphere/bee-js':
         specifier: 13.1.0
         version: 13.1.0(supports-color@7.2.0)
+      '@streaming-monorepo/contracts':
+        specifier: workspace:*
+        version: link:../../../../packages/contracts
       cafe-utility:
         specifier: 36.3.0
         version: 36.3.0
