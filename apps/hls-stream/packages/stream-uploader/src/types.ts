@@ -12,7 +12,7 @@ export {
   type StreamStatus,
 } from '@swarm-hls-stream/shared';
 
-import type { MediaType } from '@swarm-hls-stream/shared';
+import type { MediaType, UploaderHealthReason, UploaderHealthStatus } from '@swarm-hls-stream/shared';
 
 /**
  * A previous session's recording, carried verbatim so this session's own recording opens with the
@@ -334,49 +334,29 @@ export const PRESSURE_HIGH = 'high' as const;
 
 export type QueuePressure = typeof PRESSURE_LOW | typeof PRESSURE_MEDIUM | typeof PRESSURE_HIGH;
 
-export const HEALTH_OK = 'ok' as const;
-export const HEALTH_DEGRADED = 'degraded' as const;
-/**
- * The boot has not finished, because the half of it that needs a Bee node is still waiting for one.
- *
- * Distinct from `degraded` on purpose, and the distinction is what an operator acts on: degraded is a
- * reading about a service that is running, while this one says nothing has run yet. See
- * `libs/NodeWait.ts` for what the service is doing while it answers this.
- */
-export const HEALTH_WAITING_FOR_NODE = 'waiting_for_node' as const;
-
-export type HealthStatus = typeof HEALTH_OK | typeof HEALTH_DEGRADED | typeof HEALTH_WAITING_FOR_NODE;
-
-export const HEALTH_REASON_STALE_MANIFEST = 'stale_manifest' as const;
-export const HEALTH_REASON_SEGMENT_UPLOAD_FAILURE = 'segment_upload_failure' as const;
-export const HEALTH_REASON_QUEUE_PRESSURE = 'queue_pressure' as const;
-export const HEALTH_REASON_SEGMENT_STALL = 'segment_stall' as const;
-export const HEALTH_REASON_SEGMENT_LOSS = 'segment_loss' as const;
-export const HEALTH_REASON_UNLISTED_STREAM = 'unlisted_stream' as const;
-export const HEALTH_REASON_STATE_NOT_PERSISTED = 'state_not_persisted' as const;
-export const HEALTH_REASON_INGEST_REFUSED = 'ingest_refused' as const;
-export const HEALTH_REASON_UNRECOVERABLE_STREAM = 'unrecoverable_stream' as const;
-export const HEALTH_REASON_FRAGMENT_MISMATCH = 'fragment_mismatch' as const;
-export const HEALTH_REASON_FRAGMENT_PUBLISHER_GOP = 'fragment_publisher_gop' as const;
-export const HEALTH_REASON_POSTAGE_REFUSED = 'postage_refused' as const;
-export const HEALTH_REASON_NODE_UNAVAILABLE = 'node_unavailable' as const;
-export const HEALTH_REASON_START_GATE_WARNED = 'start_gate_warned' as const;
-
-export type HealthReason =
-  | typeof HEALTH_REASON_STALE_MANIFEST
-  | typeof HEALTH_REASON_SEGMENT_UPLOAD_FAILURE
-  | typeof HEALTH_REASON_QUEUE_PRESSURE
-  | typeof HEALTH_REASON_SEGMENT_STALL
-  | typeof HEALTH_REASON_SEGMENT_LOSS
-  | typeof HEALTH_REASON_UNLISTED_STREAM
-  | typeof HEALTH_REASON_STATE_NOT_PERSISTED
-  | typeof HEALTH_REASON_INGEST_REFUSED
-  | typeof HEALTH_REASON_UNRECOVERABLE_STREAM
-  | typeof HEALTH_REASON_FRAGMENT_MISMATCH
-  | typeof HEALTH_REASON_FRAGMENT_PUBLISHER_GOP
-  | typeof HEALTH_REASON_POSTAGE_REFUSED
-  | typeof HEALTH_REASON_NODE_UNAVAILABLE
-  | typeof HEALTH_REASON_START_GATE_WARNED;
+// The health page's words are the contract's, because the manager reads them. These names are the ones this
+// package has always used for them.
+export {
+  UPLOADER_STATUS_DEGRADED as HEALTH_DEGRADED,
+  UPLOADER_STATUS_OK as HEALTH_OK,
+  UPLOADER_STATUS_WAITING_FOR_NODE as HEALTH_WAITING_FOR_NODE,
+  UPLOADER_REASON_FRAGMENT_MISMATCH as HEALTH_REASON_FRAGMENT_MISMATCH,
+  UPLOADER_REASON_FRAGMENT_PUBLISHER_GOP as HEALTH_REASON_FRAGMENT_PUBLISHER_GOP,
+  UPLOADER_REASON_INGEST_REFUSED as HEALTH_REASON_INGEST_REFUSED,
+  UPLOADER_REASON_NODE_UNAVAILABLE as HEALTH_REASON_NODE_UNAVAILABLE,
+  UPLOADER_REASON_POSTAGE_REFUSED as HEALTH_REASON_POSTAGE_REFUSED,
+  UPLOADER_REASON_QUEUE_PRESSURE as HEALTH_REASON_QUEUE_PRESSURE,
+  UPLOADER_REASON_SEGMENT_LOSS as HEALTH_REASON_SEGMENT_LOSS,
+  UPLOADER_REASON_SEGMENT_STALL as HEALTH_REASON_SEGMENT_STALL,
+  UPLOADER_REASON_SEGMENT_UPLOAD_FAILURE as HEALTH_REASON_SEGMENT_UPLOAD_FAILURE,
+  UPLOADER_REASON_STALE_MANIFEST as HEALTH_REASON_STALE_MANIFEST,
+  UPLOADER_REASON_START_GATE_WARNED as HEALTH_REASON_START_GATE_WARNED,
+  UPLOADER_REASON_STATE_NOT_PERSISTED as HEALTH_REASON_STATE_NOT_PERSISTED,
+  UPLOADER_REASON_UNLISTED_STREAM as HEALTH_REASON_UNLISTED_STREAM,
+  UPLOADER_REASON_UNRECOVERABLE_STREAM as HEALTH_REASON_UNRECOVERABLE_STREAM,
+  type UploaderHealthReason as HealthReason,
+  type UploaderHealthStatus as HealthStatus,
+} from '@swarm-hls-stream/shared';
 
 /**
  * A startup gate that warned instead of refusing, as `/health` reports it.
@@ -643,8 +623,8 @@ export interface HealthSignals {
 }
 
 export interface HealthReport {
-  status: HealthStatus;
-  reasons: HealthReason[];
+  status: UploaderHealthStatus;
+  reasons: UploaderHealthReason[];
 }
 
 export const STREAM_LIFECYCLE_LIVE = 'live' as const;
