@@ -4,7 +4,7 @@
 # live on one host, each with its own network, volume and port.
 #
 # The development stack is a different file on purpose
-# (web2-admin/backend/docker-compose.yml, project `web2-admin`): it publishes
+# (backend/docker-compose.yml, project `web2-admin`): it publishes
 # postgres and the API for `pnpm dev` and the tests, and nothing here does.
 #
 # Two variables are set by deploy.sh rather than read from the env file:
@@ -38,10 +38,10 @@ services:
 
   api:
     build:
-      # The repository root: the image installs the workspace from the
+      # apps/web2-admin: the image installs the workspace from the
       # lockfile, so it needs the root manifests as well as the package.
       context: ..
-      dockerfile: web2-admin/backend/Dockerfile
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:
@@ -76,7 +76,7 @@ services:
   web:
     build:
       context: ..
-      dockerfile: web2-admin/frontend/Dockerfile
+      dockerfile: frontend/Dockerfile
     restart: unless-stopped
     # Started, not healthy, as in the manager: waiting for the API is
     # deploy.sh's job, with a timeout, where a crash-looping API cannot hold a
@@ -86,10 +86,10 @@ services:
       - api
     labels:
       web2-admin.commit: ${WEB2_ADMIN_COMMIT:-unknown}
-    # Loopback only, as in the manager. The host's edge (deploy/edge/, its own
-    # compose project on the host's network) reaches it here, and the SSH
-    # tunnel stays the way in when the edge, its certificate or DNS is broken,
-    # or when the host has no edge.
+    # Loopback only, as in the manager. The host's edge (infra/edge/ in this
+    # repository, its own compose project on the host's network) reaches it
+    # here, and the SSH tunnel stays the way in when the edge, its certificate
+    # or DNS is broken, or when the host has no edge.
     ports:
       - "127.0.0.1:${WEB2_ADMIN_WEB_PORT:-9090}:80"
     healthcheck:

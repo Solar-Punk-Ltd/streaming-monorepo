@@ -3,8 +3,8 @@
 One host, one checkout, one `docker compose` project per profile: postgres,
 the admin API, and the nginx-served console in front of it. Nothing is
 published but the console, on the host's loopback. The host's edge, one Caddy
-per host set up with `deploy/edge.sh`, serves it over HTTPS under its own name,
-and an SSH tunnel is the way in without it.
+per host set up with `infra/edge/edge.sh`, serves it over HTTPS under its own
+name, and an SSH tunnel is the way in without it.
 
 `deploy.sh` is written so streaming-infra-manager can run it the way it runs
 swarm-hls-stream's: same flags, standard input closed, output streamed. That
@@ -38,19 +38,19 @@ Docker Hub. Nothing is pushed to a registry.
 
 ## The env file
 
-Each profile has one env file in `web2-admin/backend/`, and it travels with
-every deploy: your checkout is the source of truth, and an edit made on the
-host is undone by the next deploy of that profile.
+Each profile has one env file in `apps/web2-admin/backend/`, and it travels
+with every deploy: your checkout is the source of truth, and an edit made on
+the host is undone by the next deploy of that profile.
 
 | Profile | Env file | Compose project |
 |---|---|---|
-| none (`default`) | `web2-admin/backend/.env` | `web2-admin-default` |
-| `--profile=brand-a` | `web2-admin/backend/.env.brand-a` | `web2-admin-brand-a` |
+| none (`default`) | `backend/.env` | `web2-admin-default` |
+| `--profile=brand-a` | `backend/.env.brand-a` | `web2-admin-brand-a` |
 
-Make one from the sample and fill it in:
+Make one from the sample and fill it in, from `apps/web2-admin`:
 
 ```sh
-cp web2-admin/backend/.env.sample web2-admin/backend/.env.brand-a
+cp backend/.env.sample backend/.env.brand-a
 ```
 
 The script refuses to deploy, before anything leaves your machine, when a key
@@ -73,10 +73,12 @@ Things that differ from running the API on your laptop:
   node on the same host is `http://host.docker.internal:1633`.
 - `WEB2_ADMIN_WEB_PORT` sets the console's port when there is no port slot.
 
-The dev compose file (`web2-admin/backend/docker-compose.yml`, project
-`web2-admin`) is a different stack and neither file touches the other.
+The dev compose file (`backend/docker-compose.yml`, project `web2-admin`) is
+a different stack and neither file touches the other.
 
 ## Deploying
+
+From `apps/web2-admin`:
 
 ```sh
 ./deploy/deploy.sh --host=admin-host                              # default profile
@@ -116,7 +118,7 @@ A deploy:
    when the working tree has changes;
 3. refuses a `--remote-path` that is a non-empty directory but not a checkout
    of this repository, since `--delete` would empty it;
-4. rsyncs the checkout to the host with `--delete`, leaving out `.git`,
+4. rsyncs `apps/web2-admin` to the host with `--delete`, leaving out `.git`,
    `node_modules`, `dist`, build caches, `.scratch/`, `.claude/`,
    `deploy/edge/` (the host's edge, which `edge.sh` looks after), and every env
    file except this profile's and the sample;
@@ -150,14 +152,12 @@ therefore a manual step.
 
 That is rsync's rule: a path an `--exclude` matches is protected from
 `--delete` as well, unless `--delete-excluded` is given, which this script
-never does. `deploy/edge/` is excluded for the same reason. It holds the
-Caddyfile `edge.sh` rendered for this host, which is gitignored and matches no
-env-file rule, so without its own exclude a deploy from a laptop that has no
-rendered Caddyfile would delete the host's, and one from a laptop that has one
-for another host would replace it. `deploy/edge/.env` would have been safe
-anyway, as an env file, but it never reaches the host in the first place.
-Excluded, the whole directory is neither sent nor deleted, and a web2-admin
-deploy never touches the edge.
+never does. `deploy/edge/` is excluded for the same reason. On the host it
+holds the edge's compose file and the Caddyfile `infra/edge/edge.sh` rendered
+for this host, and `apps/web2-admin` has no `deploy/edge/` of its own, so
+without its own exclude every deploy would delete them. Excluded, the whole
+directory is neither sent nor deleted, and a web2-admin deploy never touches
+the edge.
 
 Two deploys to the same host at the same time are not guarded against. They
 write into the same tree.
@@ -213,7 +213,7 @@ A new database has no users, and every sign-in is refused until one is made.
 The script prints this command, once per deploy, filled in for the profile:
 
 ```sh
-ssh -t admin-host 'cd /opt/streaming/streaming-monorepo && WEB2_ADMIN_ENV_FILE=../web2-admin/backend/.env.brand-a docker compose -p web2-admin-brand-a -f deploy/docker-compose.yml --env-file web2-admin/backend/.env.brand-a exec api node dist/cli.js user:add <username>'
+ssh -t admin-host 'cd /opt/streaming/streaming-monorepo && WEB2_ADMIN_ENV_FILE=../backend/.env.brand-a docker compose -p web2-admin-brand-a -f deploy/docker-compose.yml --env-file backend/.env.brand-a exec api node dist/cli.js user:add <username>'
 ```
 
 It prompts for the password twice. The first user can manage users. The
@@ -231,8 +231,8 @@ through `deploy.sh`; `ps`, `logs` and `exec` are safe by hand:
 
 ```sh
 cd /opt/streaming/streaming-monorepo
-export WEB2_ADMIN_ENV_FILE=../web2-admin/backend/.env.brand-a
-docker compose -p web2-admin-brand-a -f deploy/docker-compose.yml --env-file web2-admin/backend/.env.brand-a logs -f api
+export WEB2_ADMIN_ENV_FILE=../backend/.env.brand-a
+docker compose -p web2-admin-brand-a -f deploy/docker-compose.yml --env-file backend/.env.brand-a logs -f api
 ```
 
 ## When a loopback port connects but nothing answers
@@ -262,7 +262,7 @@ for the manager's bridge.
 One Caddy per host serves the consoles that host publishes on its loopback,
 each under its own name with its own Let's Encrypt certificate: this repo's
 console, and streaming-infra-manager's when the host runs that too. It is a
-compose project of its own, `edge`, in `deploy/edge/`, on the host's network:
+compose project of its own, `edge`, in `infra/edge/`, on the host's network:
 Caddy binds ports 80 and 443 itself and reaches `127.0.0.1:9090` and
 `127.0.0.1:8080` as the host does, so the consoles stay published on loopback
 only and neither console's compose file changes. For two names on one host it
@@ -302,10 +302,12 @@ week).
 
 ### Running it
 
+From the repository root:
+
 ```sh
-cp deploy/edge/.env.sample deploy/edge/.env
+cp infra/edge/.env.sample infra/edge/.env
 # set ADMIN_DOMAIN and/or MANAGER_DOMAIN, and the ports if they are not the defaults
-./deploy/edge.sh --host=admin-host
+./infra/edge/edge.sh --host=admin-host
 ```
 
 Then open `https://<ADMIN_DOMAIN>`. The first certificate takes a moment,
@@ -317,8 +319,8 @@ background. Watch it on the host:
 ssh -t admin-host 'cd /opt/streaming/streaming-monorepo && docker compose -p edge -f deploy/edge/docker-compose.yml logs -f'
 ```
 
-`deploy/edge/.env` is gitignored, because the names belong to one deployment;
-the sample carries example.org names only.
+`infra/edge/.env` is gitignored, because the names belong to one deployment.
+The sample carries example.org names only.
 
 | Key | What | Default |
 |---|---|---|
@@ -349,12 +351,12 @@ how long the certificate probe waits, default 90 seconds, 0 to skip it.
 
 A run:
 
-1. checks the arguments and `deploy/edge/.env` (names, ports, email), and
+1. checks the arguments and `infra/edge/.env` (names, ports, email), and
    refuses before anything leaves your machine;
-2. renders `deploy/edge/Caddyfile` from it, one site per name with
+2. renders `infra/edge/Caddyfile` from it, one site per name with
    compression, HSTS and `reverse_proxy 127.0.0.1:<port>`, and validates it
    with the pinned Caddy image when Docker runs on your machine;
-3. sends the Caddyfile and `deploy/edge/docker-compose.yml` to `deploy/edge/`
+3. sends the Caddyfile and `infra/edge/docker-compose.yml` to `deploy/edge/`
    in the host's checkout;
 4. on the host, refuses when something else holds 80 or 443, recreates the
    edge so Caddy reads the new Caddyfile (the names do not answer for a second
@@ -449,7 +451,7 @@ takes exactly that and:
   a stack's slot ceiling from.
 
 Not decided yet, for that step: where the manager's checkout of this repo
-lives and how it writes `web2-admin/backend/.env.<profile>` (it writes a
+lives and how it writes `apps/web2-admin/backend/.env.<profile>` (it writes a
 stack's env file at that checkout's root today); whether it passes the
 hls-only flags `--feed-owner`, `--feed-topic` and `--stamp-id`, which this
 script refuses; and the `stop.sh`, `health.sh` and `clean.sh` it expects

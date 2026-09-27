@@ -2,7 +2,7 @@
  * The internal API against the RUNNING backend: what the swarm-hls-stream
  * uploader does when an encoder connects, and what it reports afterwards.
  *
- * Prerequisites (from web2-admin/backend/), on a port of your own so this
+ * Prerequisites (from apps/web2-admin/backend/), on a port of your own so this
  * never reports state through an instance pointed at a real Bee node:
  *
  *   pnpm database:start
