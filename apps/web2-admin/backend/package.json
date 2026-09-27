@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "lint": "oxlint --type-aware .",
-    "build": "pnpm --filter @streaming-monorepo/contracts build && pnpm --filter @streaming-monorepo/web2-admin-common build && tsc && rm -rf dist/migrations && cp -r src/migrations dist/migrations",
+    "build": "pnpm --filter @streaming-monorepo/contracts build && pnpm --filter @streaming-monorepo/web-auth build && pnpm --filter @streaming-monorepo/web2-admin-common build && tsc && rm -rf dist/migrations && cp -r src/migrations dist/migrations",
     "start": "node --conditions=compiled dist/index.js",
     "user:add": "tsx --conditions=development src/cli.ts user:add",
     "dev": "tsx watch --conditions=development src/index.ts",

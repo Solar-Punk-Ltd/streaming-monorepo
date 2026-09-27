@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "lint": "oxlint --type-aware .",
-    "build": "pnpm --filter @streaming-monorepo/contracts build && pnpm --filter @streaming-infra-manager/common build && tsc && rm -rf dist/migrations && cp -r src/migrations dist/migrations",
+    "build": "pnpm --filter @streaming-monorepo/contracts build && pnpm --filter @streaming-monorepo/web-auth build && pnpm --filter @streaming-infra-manager/common build && tsc && rm -rf dist/migrations && cp -r src/migrations dist/migrations",
     "start": "node --conditions=compiled dist/index.js",
     "database:start": "docker compose -p streaming-infra-manager -f ./docker-compose.yml up -d postgres",
     "database:stop": "docker compose -p streaming-infra-manager -f ./docker-compose.yml stop postgres",
