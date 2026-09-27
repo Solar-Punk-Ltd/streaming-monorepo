@@ -35,7 +35,8 @@ streaming-monorepo/
 ├── tools/                   scripts that serve the whole repository, starting with the move-check kit
 ├── docs/                    how the pieces fit
 ├── .github/                 CODEOWNERS
-├── package.json             the one workspace: the pnpm it runs, and nothing it depends on
+├── package.json             the one workspace: the pnpm it runs, Nx, and the commands over every app
+├── nx.json                  how Nx runs the apps' own scripts: order, cache, no cloud
 ├── pnpm-workspace.yaml      every app's projects, the security overrides, the workspace settings
 ├── pnpm-lock.yaml           the one lockfile of every app
 └── AGENTS.md, CLAUDE.md     rules for the whole repository, and each app keeps its own pair
@@ -67,6 +68,16 @@ Projects meet in two places only:
   the manager's Test connection reads, and the uploader's health page, which the manager reads),
   the Swarm catalog feed the uploader and the admin write and the viewer reads, and the arguments
   of the stack's `deploy.sh`, which the manager runs.
+
+The `boundaries` check holds this on every pull request. Every project carries two tags in the
+`nx` field of its `package.json`: a scope, `admin`, `manager`, `stack`, `shared` or `tools`, and a
+type, `app` for something that runs or `lib` for code others import. The check reads the project
+graph Nx builds from declared dependencies and from imports in the source, and fails when an app
+depends on another app, a project depends on another scope, or a shared package depends on an
+app. A project without its two tags fails too. `pnpm boundaries` at the root runs it. One
+exception stands, named with its reason in `tools/boundary-check/exceptions.json`: the manager
+console's mock server and test runner reuse code from the manager API, until that code moves into
+the manager's `common`. How the check works: [its README](../tools/boundary-check/README.md).
 
 A shape that crosses between two projects is a contract, and a contract is checked on both sides.
 
