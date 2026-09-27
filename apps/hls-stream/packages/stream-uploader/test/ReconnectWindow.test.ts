@@ -3,7 +3,7 @@
  *
  * ## What the owner asked for, and what used to happen
  *
- * Cases 1 and 2 of `~/Documents/test-cases.md`: OBS stopped and restarted ten seconds later, and a
+ * Cases 1 and 2 of the owner's reconnect test cases: OBS stopped and restarted ten seconds later, and a
  * network outage of fifty seconds, are both "the same recording continues, with a discontinuity at
  * the seam and no `#EXT-X-ENDLIST` in between". What happened instead, measured live on 2026-09-22
  * against SRS 6.0.184, is that SRS ends the publish within seconds of ANY interruption — immediately

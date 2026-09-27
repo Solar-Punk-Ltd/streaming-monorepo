@@ -14,7 +14,7 @@ Repository: ../../ (this repository, two levels up from this file)
 
 Reviewed manager baseline: main-v2 at d046ebf237f0e93dd5a41d72d6d1df9c0cd8af64
 
-Live site: https://example-test.swarmens.limo/#/
+Live site: the manager's public test deployment.
 
 Live streaming-stack versions observed: bundled at ee99c36 and main-v3 at ec3063f. The manager's deployed build SHA was not independently exposed by the UI.
 
@@ -68,7 +68,7 @@ Live test state at handoff:
 
 Host facts recorded on 2026-09-07 (**Live**, run by the owner from his own terminal over ssh, read-only, after Fable round 4, recorded by Fable):
 
-- Docker Engine on 203.0.113.105: `29.1.3`, from `docker version --format '{{.Server.Version}}'`.
+- Docker Engine on the test host: `29.1.3`, from `docker version --format '{{.Server.Version}}'`.
 - Compose inside the manager's api container, which is what every deploy script runs: `v5.1.4`, from `docker compose -f /opt/streaming/streaming-infra-manager/manager/docker-compose.yml exec -T api docker compose version`, confirmed by `docker exec manager-api-1 docker compose version`.
 - Fable's R04 reproduction ran on Engine 29.7.2 and Compose v5.5.1, the same major lines. T05a's harness runs against v5.1.4, and the api image's pin starts from that value. Neither reading is a claim about any other host.
 

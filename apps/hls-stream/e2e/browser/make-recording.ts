@@ -199,7 +199,7 @@ async function main(): Promise<void> {
     if (events.videolessSegments.length > 0) {
       throw new Error(
         `segment ${events.videolessSegments[0]} holds no video packets, so this recording cannot answer ` +
-          'anything about playback. The publisher delivered no frames; see task #76 for what throttles it.',
+          'anything about playback. The publisher delivered no frames.',
       );
     }
 

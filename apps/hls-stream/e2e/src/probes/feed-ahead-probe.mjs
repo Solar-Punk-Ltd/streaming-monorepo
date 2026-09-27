@@ -194,7 +194,7 @@ if (holes.length === 0) {
   console.log(
     '\nEvery refusal had nothing behind it either, so the reader was at the head of the feed and\n' +
       'waiting was correct. On this run a probe past the refusal would have found nothing, and\n' +
-      'task #71 has no reachable trigger here.',
+      'a fix that probes past a refusal has no reachable trigger here.',
   );
 } else {
   const byRun = holes.filter((hole) => hole.unservedRun > 1).length;
@@ -204,7 +204,7 @@ if (holes.length === 0) {
   console.log(`  first at t+${holes[0].atS}s on slot ${holes[0].slot}, last at t+${holes.at(-1).atS}s`);
   console.log(
     `\nA reader that stops at its first 404 was blind to these. A probe at +${Math.max(...nearest)}\n` +
-      'would have found every one of them, which is what task #71 needs to size its fix.',
+      'would have found every one of them, which is the distance a fix that probes past a refusal needs.',
   );
 }
 
