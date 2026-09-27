@@ -10,6 +10,7 @@ export { InvalidUsernameError } from './InvalidUsernameError.js';
 export { MediaTypeLockedError } from './MediaTypeLockedError.js';
 export { NoUsersError } from './NoUsersError.js';
 export { PublishFailedError } from './PublishFailedError.js';
+export { RequestShapeError } from './RequestShapeError.js';
 export { StreamBusyError } from './StreamBusyError.js';
 export { StreamLiveError } from './StreamLiveError.js';
 export { StreamLockedError } from './StreamLockedError.js';
