@@ -22,6 +22,8 @@ overrides:
   qs: ^6.16.0
   ws: ^8.21.0
 
+packageExtensionsChecksum: sha256-/YfwHsFiPIyrsa7w+LrMbcvcAF2Tq98gf6TNdIQqOm0=
+
 importers:
 
   .: {}
@@ -593,7 +595,7 @@ importers:
     devDependencies:
       '@testing-library/jest-dom':
         specifier: 6.6.3
-        version: 6.6.3
+        version: 6.6.3(vitest@2.1.9(@types/node@22.9.0)(jsdom@25.0.1)(lightningcss@1.33.0)(sass@1.99.0))
       '@testing-library/react':
         specifier: 15.0.7
         version: 15.0.7(@types/react@18.3.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -2317,6 +2319,11 @@ packages:
   '@testing-library/jest-dom@6.6.3':
     resolution: {integrity: sha512-IteBhl4XqYNkM54f4ejhLRJiZNqcSCoXUOG2CPK7qbD322KjQozM4kHQOfkG2oln9b9HTYqs+Sae8vBATubxxA==}
     engines: {node: '>=14', npm: '>=6', yarn: '>=1'}
+    peerDependencies:
+      vitest: '*'
+    peerDependenciesMeta:
+      vitest:
+        optional: true
 
   '@testing-library/react@15.0.7':
     resolution: {integrity: sha512-cg0RvEdD1TIhhkm1IeYMQxrzy0MtUNfa3minv4MjbgcYzJAZ7yD0i0lwoPOTPr+INtiXFezt2o8xMSnyHhEn2Q==}
@@ -7274,7 +7281,7 @@ snapshots:
       picocolors: 1.1.1
       pretty-format: 27.5.1
 
-  '@testing-library/jest-dom@6.6.3':
+  '@testing-library/jest-dom@6.6.3(vitest@2.1.9(@types/node@22.9.0)(jsdom@25.0.1)(lightningcss@1.33.0)(sass@1.99.0))':
     dependencies:
       '@adobe/css-tools': 4.5.0
       aria-query: 5.3.2
@@ -7283,6 +7290,8 @@ snapshots:
       dom-accessibility-api: 0.6.3
       lodash: 4.18.1
       redent: 3.0.0
+    optionalDependencies:
+      vitest: 2.1.9(@types/node@22.9.0)(jsdom@25.0.1)(lightningcss@1.33.0)(sass@1.99.0)
 
   '@testing-library/react@15.0.7(@types/react@18.3.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
