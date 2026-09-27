@@ -36,9 +36,9 @@ short version of what they found:
 
 | Package | Name | Role |
 |---|---|---|
-| `web2-admin/common` | `@streaming-monorepo/web2-admin-common` | The API contract: types and the ingest URL builders. Written by the orchestrator; agents extend it only when the contract changes and say so. |
-| `web2-admin/backend` | `@streaming-monorepo/web2-admin-backend` | Express 5 + pg API. |
-| `web2-admin/frontend` | `@streaming-monorepo/web2-admin-frontend` | React 18 + MUI + Vite console. |
+| `apps/web2-admin/common` | `@streaming-monorepo/web2-admin-common` | The API contract: types and the ingest URL builders. Written by the orchestrator; agents extend it only when the contract changes and say so. |
+| `apps/web2-admin/backend` | `@streaming-monorepo/web2-admin-backend` | Express 5 + pg API. |
+| `apps/web2-admin/frontend` | `@streaming-monorepo/web2-admin-frontend` | React 18 + MUI + Vite console. |
 
 Conventions are streaming-infra-manager's, listed in the manager research
 report: ESM with `.js` import suffixes, exact-pinned versions (typescript

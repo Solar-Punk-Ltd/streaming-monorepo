@@ -39,7 +39,7 @@ function formatUuid(bytes: Buffer): string {
  * head, so the catalog entry names a recording of the whole broadcast with its seams marked.
  *
  * An RFC 4122 version-5 UUID, because the admin validates every topic it is handed against a UUID
- * shape (`UUID_RE`, `web2-admin/backend/src/schemas/stream.ts`) and because a name-based UUID is the
+ * shape (`UUID_RE`, `apps/web2-admin/backend/src/schemas/stream.ts`) and because a name-based UUID is the
  * one standard way to spell "derived and stable" in that shape. Written out here rather than taken
  * from a dependency: node exports `randomUUID` and no v5, and a hash plus six bit operations is not
  * worth a package on the publish path.
