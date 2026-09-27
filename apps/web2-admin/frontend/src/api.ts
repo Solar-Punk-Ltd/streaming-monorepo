@@ -105,7 +105,13 @@ export async function signIn(username: string, password: string): Promise<SignIn
     return { ok: false, message: SIGN_IN_MESSAGES.unreachable };
   }
 
-  if (res.ok) return { ok: true, user: ((await res.json()) as MeResponse).user };
+  if (res.ok) {
+    try {
+      return { ok: true, user: ((await res.json()) as MeResponse).user };
+    } catch {
+      return { ok: false, message: SIGN_IN_MESSAGES.unreachable };
+    }
+  }
   if (res.status === 429) {
     return { ok: false, message: tooManyAttempts(await retryAfterOf(res)) };
   }
