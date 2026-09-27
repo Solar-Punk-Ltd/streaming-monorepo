@@ -7,7 +7,7 @@
  * Field names on the wire are camelCase. Timestamps are ISO 8601 strings.
  */
 
-import type { MediaType } from '@streaming-monorepo/contracts';
+import type { CatalogState, MediaType } from '@streaming-monorepo/contracts';
 
 export { MEDIA_TYPES, type MediaType } from '@streaming-monorepo/contracts';
 
@@ -181,7 +181,7 @@ export interface FeedStreamEntry {
   title: string;
   description: string;
   tags: string[];
-  state: 'scheduled' | 'live' | 'vod';
+  state: CatalogState;
   mediatype: MediaType;
   /** Swarm reference hex of the thumbnail, or '' when there is none. */
   thumbnail: string;
