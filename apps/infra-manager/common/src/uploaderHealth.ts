@@ -7,6 +7,13 @@
  * side rendering a state the other stopped sending.
  */
 
+// The words the uploader's own page uses, which the manager reads to tell these states apart.
+export {
+  UPLOADER_REASON_NODE_UNAVAILABLE,
+  UPLOADER_REASON_START_GATE_WARNED,
+  UPLOADER_STATUS_WAITING_FOR_NODE,
+} from '@streaming-monorepo/contracts';
+
 /** Nothing is wrong that the uploader can see. */
 export const UPLOADER_HEALTH_OK = 'ok' as const;
 /** The uploader is up and its boot has not finished, because its Bee node has not answered. */
