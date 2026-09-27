@@ -3,7 +3,7 @@
 The second root in this repo. `../` builds the GCP footing — stage hosts, monitoring, SRT
 ingest; this one builds the machines the **Bee publishers** run on, at Vultr. One host carries
 **three ABR ladders = 12 Bee publisher nodes**, put there over ssh by the **one
-`streaming-infra-manager` per brand**, which runs on a host of its own outside both clouds and
+manager per brand**, which runs on the control host, the GCP root's monitoring host, and
 deploys to the Bee hosts and the GCP stage hosts alike. A Bee host carries docker,
 `node_exporter` and Alloy from this root's provisioning script, Bee node containers from the
 manager, and nothing else — no manager, no Postgres, no web UI.
@@ -32,7 +32,7 @@ list of /32s copied the other way, by hand, in step 2 below.
   `stage_external_ips` and `monitoring_external_ip` in its state — those addresses are the entire
   ingress control for an unauthenticated Bee API and the endpoint its log shipper pushes to.
 - Terraform ≥ 1.9. `ssh`, `rsync`, `curl` locally. The media deploy is not run from here at all:
-  it runs on the manager host, from inside the manager's own api container.
+  it runs on the control host, from inside the manager's own api container.
 - Nothing to install on the host: the Vultr startup script provisions docker, compose v2,
   `node_exporter` and the Grafana Alloy log shipper itself on first boot.
 
@@ -57,7 +57,7 @@ Same bucket as the GCP root, prefix `vultr` — one place to guard, two states. 
 
 `allow-me.sh` does the apply itself. To apply without opening ssh:
 `terraform apply -var-file=envs/poc.tfvars`. The resting state is the committed
-`ssh_source_ranges` and nothing else — the manager host, which needs port 22 to deploy and
+`ssh_source_ranges` and nothing else, the control host, which needs port 22 to deploy and
 redeploy the Bee pools. `allow-me.sh` adds a laptop's /32 on top for the length of a window and
 `off` takes it away again; nothing else on the host cares, because neither publishing nor
 scraping nor log shipping arrives over port 22.
@@ -84,16 +84,16 @@ Nothing to edit: this root writes `../rendered/monitoring/prometheus/targets/vul
 into the GCP root's rendered tree on purpose, `push.sh` rsyncs that directory wholesale, and
 `prometheus.yml` globs `targets/*.json`.
 
-**4. Hand the manager host its ssh config.** The manager's deploys run inside its api container
+**4. Hand the control host its ssh config.** The manager's deploys run inside its api container
 (`node:22-alpine`, root, with `openssh-client` and `rsync`), and `swarm-hls-stream`'s `deploy.sh`
 calls bare `ssh <target>` — so the container needs an ssh identity, and the container has none of
-its own. The manager host carries the directory the compose file mounts at `/root/.ssh`,
+its own. The control host carries the directory the compose file mounts at `/root/.ssh`,
 `/home/solarpunk/manager-ssh/`, holding the dedicated `manager_deploy` ed25519 key, a
 `known_hosts`, and this root's rendered config:
 
 ```sh
 scp -p ../rendered/vultr/manager_ssh_config \
-  solarpunk@65.108.40.56:/home/solarpunk/manager-ssh/ssh_config
+  solarpunk@<control host address>:/home/solarpunk/manager-ssh/ssh_config
 ```
 
 The manager's compose mounts that file at `/etc/ssh/ssh_config`, read-only — the system-wide
@@ -136,8 +136,8 @@ ssh -F ../rendered/vultr/ssh_config bee1
 ./scripts/allow-me.sh off                                          # close the ssh window
 ```
 
-There is no manager web UI to tunnel to here: the manager runs on its own host and this one only
-receives Bee node containers. Aliases must stay dotless — `swarm-hls-stream` resolves deploy
+There is no manager console to tunnel to here: the manager runs on the control host and this
+one only receives Bee node containers. Aliases must stay dotless: `swarm-hls-stream` resolves deploy
 targets through `ssh -G` only for names without a dot. Logs and metrics are on the GCP monitoring
 host's Grafana exactly as for a stage host; these hosts carry `role="bee"` and
 `stage="<host key>"`, so
@@ -183,7 +183,7 @@ That is why `provision.sh` is rendered at all, and why the script is idempotent 
 - **The Bee API has no authentication**, and `swarm-hls-stream` binds it on `0.0.0.0` so an
   off-host uploader can reach it. Anyone who reaches one of those ports can spend the node's
   postage batches. The **only** control is one firewall rule per admitted address: the GCP stages'
-  external /32s, read from the other root's state, plus the manager host's /32 in
+  external /32s, read from the other root's state, plus the control host's /32 in
   `bee_api_source_ranges` — it buys and inspects the batches, so it needs the same band the
   uploaders do. Do not widen either "temporarily".
 - **Bee P2P is public by design** — a publisher that cannot be dialled cannot push chunks — one
@@ -196,7 +196,7 @@ That is why `provision.sh` is rendered at all, and why the script is idempotent 
   remove all three from the public internet; public IPs plus allowlists is the deliberate first
   step, not the end state.
 - **sshd is on a public address**, and it is a deploy surface rather than a human one: the manager
-  host reaches it from the committed `65.108.40.56/32` in `ssh_source_ranges` to push Bee node
+  on the control host reaches it from the committed /32 in `ssh_source_ranges` to push Bee node
   containers, and a laptop adds one more /32 for the length of a window through
   `scripts/allow-me.sh`. The provisioning script turns off ufw, which Vultr's image ships active
   and which would otherwise block the node_exporter scrape while docker's published ports bypass
@@ -211,8 +211,8 @@ That is why `provision.sh` is rendered at all, and why the script is idempotent 
   setting.
 - **The state bucket is the only secret boundary.** There is no Secret Manager equivalent here:
   the Postgres password this root generates per host lives in its state and in the 0600 rendered
-  `manager.env` — a file nothing pushes to a Bee host, the manager and its Postgres being
-  elsewhere — and nowhere else. Whoever can read `gs://<bucket>/vultr/` can read it. The note
+  `manager.env`, a file nothing pushes to a Bee host, the manager and its Postgres being on
+  the control host, and nowhere else. Whoever can read `gs://<bucket>/vultr/` can read it. The note
   in [../README.md](../README.md#operational-notes) about choosing a state-bucket project whose
   IAM the team controls applies to this root unchanged.
 
