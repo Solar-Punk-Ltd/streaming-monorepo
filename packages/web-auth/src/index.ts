@@ -3,6 +3,7 @@ export * from './clientIp.js';
 export * from './errors/index.js';
 export * from './LoginLimiter.js';
 export * from './passwordHash.js';
+export * from './requireSameSite.js';
 export * from './rules.js';
 export * from './secretInput.js';
 export * from './sessionLifetime.js';
