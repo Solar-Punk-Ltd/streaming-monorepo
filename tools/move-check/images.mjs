@@ -19,6 +19,7 @@ import {
   runWhenStarted,
   showHelp,
 } from './lib/shared.mjs';
+import { MATCH_APART_FROM_PNPM } from './lib/pnpm-files.mjs';
 
 const USAGE = `Usage: node tools/move-check/images.mjs --manifest <file> [--only <name>]... [--plan] [--keep] [--remove-images]
 
@@ -314,18 +315,22 @@ async function checkImage(image, exportOf) {
     { encoding: 'utf8', maxBuffer: MAX_COMMAND_OUTPUT_BYTES },
   );
   const lines = compared.stdout.trimEnd().split('\n');
-  if (compared.status === EXIT.MATCH) return { outcome: 'match', lines: [`${image.name}: ${lines.at(-1)}`] };
-  if (compared.status === EXIT.DIFFERENCE) {
-    return { outcome: 'differs', lines: [`${image.name}: ${lines.at(-1)}`, ...indented(lines.slice(0, -1).join('\n'))] };
+  const verdict = lines.at(-1);
+  const reported = [`${image.name}: ${verdict}`, ...indented(lines.slice(0, -1).join('\n'))];
+  if (compared.status === EXIT.MATCH) {
+    return { outcome: verdict.startsWith(`image: ${MATCH_APART_FROM_PNPM}`) ? 'match-apart-from-pnpm' : 'match', lines: reported };
   }
+  if (compared.status === EXIT.DIFFERENCE) return { outcome: 'differs', lines: reported };
   return unchecked(image, 'image.mjs could not compare the two images.', `${compared.stderr}\n${compared.stdout}`);
 }
 
 function summarize(outcomes) {
   const count = (outcome) => outcomes.filter((result) => result.outcome === outcome).length;
+  const apartFromPnpm = count('match-apart-from-pnpm');
   const differing = count('differs');
   const notChecked = count('unchecked');
   const parts = [`images: ${outcomes.length} compared`, `${count('match')} match`];
+  if (apartFromPnpm > 0) parts.push(`${apartFromPnpm} ${MATCH_APART_FROM_PNPM}`);
   if (differing > 0) parts.push(`${differing} ${differing === 1 ? 'differs' : 'differ'}`);
   if (notChecked > 0) parts.push(`${notChecked} could not be checked`);
   console.log(parts.join(', '));

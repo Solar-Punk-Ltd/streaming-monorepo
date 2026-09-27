@@ -55,7 +55,7 @@ function demoImage(before, after, overrides = {}) {
     name: 'demo',
     before: { commit: before, context: '.', dockerfile: 'Dockerfile' },
     after: { commit: after, context: 'apps/demo', dockerfile: 'apps/demo/Dockerfile' },
-    allow: ['/app/node_modules/.modules.yaml'],
+    allow: ['/app/build-stamp.txt'],
     ...overrides,
   };
 }
@@ -172,13 +172,28 @@ describe('images.mjs builds each image from both commits and compares them', () 
 
   it('lets a difference the manifest allows through', (t) => {
     const { repo, before, after } = movedProject(t);
-    const afterFiles = { ...FILES, 'app/node_modules/.modules.yaml': { content: 'prunedAt: Fri, 02 Jan 2026 00:00:00 GMT\n' } };
+    const afterFiles = { ...FILES, 'app/build-stamp.txt': { content: 'built at 2\n' } };
     const docker = dockerFor(t, [{ name: 'demo', afterFiles }]);
 
     const result = runScript(IMAGES, ['--manifest', manifestFile(t, [demoImage(before, after)])], { cwd: repo, env: docker.env });
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^demo: image: match, .*1 allowed difference$/m);
+  });
+
+  it("shows pnpm's own files under their image, and counts an image that matches apart from them on its own", (t) => {
+    const { repo, before, after } = movedProject(t);
+    const afterFiles = { ...FILES, 'app/node_modules/.modules.yaml': { content: '{\n  "packageManager": "pnpm@11.10.0"\n}\n' } };
+    const docker = dockerFor(t, [{ name: 'demo', afterFiles }, { name: 'other' }]);
+    const manifest = manifestFile(t, [demoImage(before, after), demoImage(before, after, { name: 'other' })]);
+
+    const result = runScript(IMAGES, ['--manifest', manifest], { cwd: repo, env: docker.env });
+
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /^demo: image: match apart from pnpm's own files, .*1 of pnpm's own files differs$/m);
+    assert.match(result.stdout, /^ {4}\/app\/node_modules\/\.modules\.yaml {2}written by no named pnpm -> pnpm@11\.10\.0, as YAML -> JSON$/m);
+    assert.match(result.stdout, /^other: image: match, [^\n]*\nimages:/m, 'an image that matches outright takes one line');
+    assert.match(result.stdout, /^images: 2 compared, 1 match, 1 match apart from pnpm's own files$/m);
   });
 
   it("hands the manifest's map to image.mjs, which compares a folder kept under another name entry by entry", (t) => {

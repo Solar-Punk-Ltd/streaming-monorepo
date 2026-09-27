@@ -52,6 +52,7 @@ export class TarFormatError extends Error {}
  * @property {number} size bytes of content, 0 for anything but a regular file
  * @property {string} [linkTarget] for a symlink its target, for a hard link the path it names
  * @property {string} [sha256] for a regular file, the hex digest of its content
+ * @property {Buffer} [content] for a regular file the reader was asked to keep, its bytes
  */
 
 /** Hands out exact byte counts from a stream of chunks of any size. */
@@ -187,10 +188,15 @@ async function readMetadata(input, size, label) {
   return Buffer.concat(parts);
 }
 
-async function hashData(input, size, label) {
+/** Hashes an entry's data, and keeps its bytes as well when asked. */
+async function hashData(input, size, label, keep) {
   const hash = createHash('sha256');
-  await consumeData(input, size, label, (slice) => hash.update(slice));
-  return hash.digest('hex');
+  const kept = [];
+  await consumeData(input, size, label, (slice) => {
+    hash.update(slice);
+    if (keep) kept.push(slice);
+  });
+  return { sha256: hash.digest('hex'), ...(keep && { content: Buffer.concat(kept) }) };
 }
 
 function parseDecimal(text, key) {
@@ -241,7 +247,7 @@ function entryType(typeflag, rawName) {
   return type === 'file' && rawName.endsWith('/') ? 'directory' : type;
 }
 
-async function summarizeEntry(input, header, overrides) {
+async function summarizeEntry(input, header, overrides, keepContent) {
   const rawName = overrides.path ?? header.name;
   const type = entryType(header.typeflag, rawName);
   const size = overrides.size ?? header.size;
@@ -253,7 +259,7 @@ async function summarizeEntry(input, header, overrides) {
     gid: overrides.gid ?? header.gid,
     size: type === 'file' ? size : 0,
   };
-  if (type === 'file') return { ...summary, sha256: await hashData(input, size, rawName) };
+  if (type === 'file') return { ...summary, ...(await hashData(input, size, rawName, keepContent(summary.path))) };
   await consumeData(input, size, rawName, () => {});
   const target = overrides.linkpath ?? header.linkname;
   if (type === 'symlink') return { ...summary, linkTarget: target };
@@ -266,9 +272,11 @@ async function summarizeEntry(input, header, overrides) {
  * and a regular file's sha256. Modification times are ignored. Handles the ustar prefix field, pax headers
  * and GNU long names, and reads the stream to its end.
  * @param {AsyncIterable<Uint8Array> | Iterable<Uint8Array>} chunks the stream, in chunks of any size
+ * @param {{ keepContent?: (path: string) => boolean }} [options] keepContent picks the regular files whose summaries
+ *   carry their bytes, by path in the summaries' form
  * @returns {Promise<TarEntrySummary[]>}
  */
-export async function readTarSummaries(chunks) {
+export async function readTarSummaries(chunks, { keepContent = () => false } = {}) {
   const input = new ChunkReader(chunks);
   const summaries = [];
   let overrides = {};
@@ -295,7 +303,7 @@ export async function readTarSummaries(chunks) {
         overrides = { ...overrides, linkpath: readText(await readMetadata(input, header.size, 'GNU long link')) };
         break;
       default:
-        summaries.push(await summarizeEntry(input, header, overrides));
+        summaries.push(await summarizeEntry(input, header, overrides, keepContent));
         overrides = {};
     }
   }
