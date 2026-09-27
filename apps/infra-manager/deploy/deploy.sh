@@ -10,12 +10,12 @@
 #     LocalForward 8080 localhost:8080
 #
 # What it does:
-#   1. Writes the stack commit this repository pins into manager/.stack-commit,
-#      read from the repository itself rather than from a checkout, so a laptop
-#      that never initialised the submodule still ships the right pin. That file
-#      is the only thing about the streaming stack a deploy carries. The host
-#      fetches that commit from GitHub and builds it there, through the same
-#      path a version added in the UI takes.
+#   1. Writes the commit being deployed into manager/.stack-commit: the
+#      monorepo commit that holds this manager and the stack it bundles, in
+#      apps/hls-stream, so the two always come from one commit. That file is
+#      the only thing about the streaming stack a deploy carries. The host
+#      fetches that commit from GitHub and builds its apps/hls-stream there,
+#      through the same path a version added in the UI takes.
 #   2. rsyncs the repo to /home/solarpunk/streaming-infra-manager, without
 #      manager/swarm-hls-stream: the tree the engines of existing deployments
 #      mount is never written over again, so a container restart keeps the
@@ -103,22 +103,17 @@ else
 fi
 
 echo "==> Recording the stack commit this manager pins"
-# The submodule pin, taken from the repository rather than from the working
-# tree, so it is right whether or not the submodule is checked out here. The
-# host reads this file at boot and builds that commit if it has no complete
-# build of it. Written next to the checkout rather than inside it, because the
-# submodule's own .gitignore does not cover it and a file in there would show
-# up as an untracked change. The ./ reads the path from this folder rather than
-# from the repository root, so it resolves when another repository holds the
-# manager in a subfolder too.
-git rev-parse HEAD:./manager/swarm-hls-stream > manager/.stack-commit
+# The commit being deployed, which the upgrade also records as the manager it
+# installed. It holds the stack this manager bundles, in apps/hls-stream, so the
+# pin is that commit itself. The host reads this file at boot and builds it if
+# it has no complete build of it, which is why the file sits next to the tree
+# the host keeps and is never committed.
+MANAGER_COMMIT="$(git rev-parse HEAD)"
+printf '%s\n' "$MANAGER_COMMIT" > manager/.stack-commit
 echo "[deploy] pinned stack commit: $(cat manager/.stack-commit)"
 
-# What the upgrade records as the manager it installed: the commit of this
-# checkout and a digest of the manager's tree at that commit. Listed from this
-# folder, so a repository that holds more than the manager digests the manager
-# alone, and a checkout of this repository on its own digests what it did before.
-MANAGER_COMMIT="$(git rev-parse HEAD)"
+# A digest of the manager's tree at that commit, listed from this folder, so it
+# covers the manager alone and none of the rest of the repository.
 MANAGER_DIGEST="$(git ls-tree -r HEAD | shasum -a 256 | cut -c1-64)"
 
 echo "==> rsync → ${SSH_TARGET}:${REMOTE_PATH} (manager/swarm-hls-stream left as it is)"
