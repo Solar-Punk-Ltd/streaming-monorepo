@@ -14,12 +14,18 @@ on:
         description: 'One image of the manifest to check, by name. Empty checks all eight.'
         required: false
         default: ''
+  # GitHub starts a by-hand workflow only when its file is on the default
+  # branch, which is still main. Until this file reaches main, adding the
+  # label compare-images to any pull request starts the same run.
+  pull_request:
+    types: [labeled]
 
 permissions:
   contents: read
 
 jobs:
   compare:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'compare-images'
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
