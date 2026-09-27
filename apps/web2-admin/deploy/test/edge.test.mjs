@@ -81,7 +81,7 @@ describe('edge.sh on a host that runs the manager alone', () => {
     // No `host`: the folder does not exist yet, as on a host nothing of the admin's was deployed to.
     const sandbox = makeSandbox({ checkout: { [ENV_FILE.now]: MANAGER_ONLY_ENV } });
 
-    const run = sandbox.runScript(EDGE, ['--host=manager-host', `--remote-path=${sandbox.hostDir}`]);
+    const run = sandbox.runScript(EDGE, ['--host=manager-only-host', `--remote-path=${sandbox.hostDir}`]);
 
     assert.doesNotMatch(run.stderr, /could not be created/, run.stderr);
     assert.match(run.stdout, /https:\/\/manager-only\.fixture\.invalid -> 127\.0\.0\.1:8080/, run.stderr);
