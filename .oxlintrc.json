@@ -120,7 +120,7 @@
     ],
     "typescript/no-misused-promises": "error",
 
-    // Kept by the rule-by-rule triage of decision 52 and raised to errors by decision 56 once their
+    // Kept by a rule-by-rule triage of every warning, and raised to errors once their
     // findings were fixed. Each names a real defect, so a new one fails the lint rather than joining
     // a list of warnings. The rest of the three categories stay warnings.
     "eslint/no-unsafe-finally": "error",
