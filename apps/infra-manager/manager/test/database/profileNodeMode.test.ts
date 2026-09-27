@@ -1,5 +1,5 @@
 /**
- * The two columns T27 adds, against a real PostgreSQL.
+ * The two node mode columns, against a real PostgreSQL.
  *
  * `pnpm test:database` in manager/, or on its own with STACK_VERSIONS_TEST_PG_PORT set.
  *
@@ -132,7 +132,7 @@ describe(
     }
 
     beforeEach(async () => {
-      schema = `t04b_node_mode_${randomBytes(8).toString('hex')}`;
+      schema = `node_mode_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 4, options: `-c search_path=${schema}` });

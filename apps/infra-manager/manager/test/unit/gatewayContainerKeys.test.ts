@@ -7,7 +7,7 @@
  * listed here is a claim that the container reads it. The gateway's has carried
  * RPC_ENDPOINT since it was written, and the stack's compose gives that service
  * an empty endpoint literal and never interpolates the variable, so the claim
- * was wrong before T27 and is wrong in a new way after it: a gateway on the
+ * was wrong before the node mode choice and is wrong in a new way after it: a gateway on the
  * chain reads its endpoint from a key of its own.
  */
 import assert from 'node:assert/strict';

@@ -196,7 +196,7 @@ describe('the source a body means when it names none', () => {
 
   it('puts a node whose address went back on the manager’s endpoint', () => {
     // Emptying the box in the drawer is not a request for the public RPC.
-    // Levi's words: our RPC endpoint, never the public one silently.
+    // The rule: our RPC endpoint, never the public one silently.
     assert.equal(kept({ stored: 'custom' }), 'manager');
     assert.equal(kept({ url: '   ', stored: 'custom' }), 'manager');
   });

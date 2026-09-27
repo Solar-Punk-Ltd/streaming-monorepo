@@ -21,7 +21,7 @@ const sharedCache = viteCacheFor('transfer');
 
 /** A parent of this test's own, so a fixture started by another session cannot answer for it. */
 async function ownedEvidenceParent(t) {
-  const parent = await mkdtemp(join(tmpdir(), 't09-fixture-evidence-'));
+  const parent = await mkdtemp(join(tmpdir(), 'fixture-evidence-'));
   t.after(() => rm(parent, { recursive: true, force: true }));
   return parent;
 }

@@ -4,7 +4,7 @@
  * Unit test, no Docker and no dns: the environment, the in-container check and
  * the lookup are injected, so every shape runs on a laptop.
  *
- * Why the shapes are what they are. T06 binds every local bee API to the docker
+ * Why the shapes are what they are. The manager binds every local bee API to the docker
  * bridge address and to nothing else, so the manager's public address answers on
  * those ports from nowhere at all, and an uploader is a container on this same
  * host. Inside the api container the bridge is what host.docker.internal resolves

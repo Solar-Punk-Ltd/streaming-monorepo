@@ -66,7 +66,7 @@ export class FakeForwardChild implements ForwardChild {
     for (const listener of [...this.listeners]) listener(value);
   }
 }
-export const directoryPath = '/synthetic/t09-owned';
+export const directoryPath = '/synthetic/owned';
 export const socketPath = `${directoryPath}/docker.sock`;
 export const dirIdentity: ForwardPathIdentity = { kind: 'directory', dev: '1', ino: '2', uid: 123, mode: 0o700 };
 export const socketIdentity: ForwardPathIdentity = { kind: 'socket', dev: '1', ino: '3', uid: 123, mode: 0o600 };

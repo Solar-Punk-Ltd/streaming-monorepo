@@ -19,7 +19,7 @@ describe(
     let schema: string;
     let repository: ProfileRepository;
     beforeEach(async () => {
-      schema = `t12_${randomBytes(8).toString('hex')}`;
+      schema = `deployment_phase_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, options: `-c search_path=${schema}` });

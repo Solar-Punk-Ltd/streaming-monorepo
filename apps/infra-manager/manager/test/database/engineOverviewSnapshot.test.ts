@@ -25,7 +25,7 @@ describe(
     let profiles: ProfileRepository;
 
     beforeEach(async () => {
-      schema = `t11_${randomBytes(8).toString('hex')}`;
+      schema = `engine_overview_snapshot_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, options: `-c search_path=${schema} -c statement_timeout=5000` });

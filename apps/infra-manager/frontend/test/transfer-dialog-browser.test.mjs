@@ -145,7 +145,7 @@ async function fixture(t, { unknown = false, xdai = '1000000000000000' } = {}) {
 async function open(t, fixture, script) {
   const browser = await launchChrome(t, fixture.origin);
   if (script) await browser.call('Page.addScriptToEvaluateOnNewDocument', { source: script });
-  await browser.call('Page.navigate', { url: `${fixture.origin}/dev/t09-dialog-tests.html` });
+  await browser.call('Page.navigate', { url: `${fixture.origin}/dev/transfer-dialog-tests.html` });
   await waitFor(() => browser.evaluate(pageShows('Storage and funding')), Boolean, 'the dialog fixture page to render');
   return browser;
 }
@@ -189,7 +189,7 @@ async function anotherDialog(t, first, origin) {
     },
   };
   t.after(() => assert.deepEqual(blocked, []));
-  await call('Page.navigate', { url: `${origin}/dev/t09-dialog-tests.html` });
+  await call('Page.navigate', { url: `${origin}/dev/transfer-dialog-tests.html` });
   await visible(browser, 'Storage and funding');
   return browser;
 }
@@ -593,7 +593,7 @@ test('controller keeps the busy and identity-conflict retry boundaries distinct'
   const h = await fixture(t);
   const browser = await open(t, h);
   const result = await browser.evaluate(
-    "(async () => { const { runControllerTests } = await import('/dev/t09-controller-tests.ts'); return runControllerTests(); })()",
+    "(async () => { const { runControllerTests } = await import('/dev/transfer-controller-tests.ts'); return runControllerTests(); })()",
   );
   assert.equal(result.passed, 11);
   assert.deepEqual(browser.errors, []);

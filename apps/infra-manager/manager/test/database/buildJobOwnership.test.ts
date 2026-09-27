@@ -52,8 +52,8 @@ describe(
     let initial: Profile;
 
     beforeEach(async () => {
-      root = await mkdtemp(join(tmpdir(), 't04b-owned-job-'));
-      schema = `t04b_owned_job_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'owned-job-'));
+      schema = `owned_job_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 8, options: `-c search_path=${schema} -c statement_timeout=10000` });

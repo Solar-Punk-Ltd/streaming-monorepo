@@ -9,7 +9,7 @@ import { evidenceDirectory as makeEvidenceDirectory } from './evidence.mjs';
 import { runEveryStep } from './teardown.mjs';
 import { viteCacheFor } from './vite-cache.mjs';
 
-const evidenceDirectory = (parent) => makeEvidenceDirectory('t09-http-', parent);
+const evidenceDirectory = (parent) => makeEvidenceDirectory('http-', parent);
 /** One cache for every transfer fixture. A fresh one per fixture cost 9 MB and a cold start each time. */
 const VITE_CACHE = viteCacheFor('transfer');
 

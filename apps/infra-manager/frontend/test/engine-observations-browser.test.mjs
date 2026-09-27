@@ -82,7 +82,7 @@ async function freePort() {
  * The Engine card's values and where each came from, read fresh for the
  * deployment's current revision and never kept from an older one, in a real
  * Chrome. The card edits nothing: its settings are edited in the Stack
- * settings card since the drawer went (Levi, 2026-09-26), so nothing here
+ * settings card since the drawer went (2026-09-26), so nothing here
  * writes to the manager.
  */
 test('engine values and their read freshness in the actual browser', { timeout: 150000 }, async (t) => {
@@ -104,7 +104,7 @@ test('engine values and their read freshness in the actual browser', { timeout: 
     plugins: [
       react(),
       {
-        name: 't11-engine-observation-fixture',
+        name: 'engine-observation-fixture',
         configureServer(vite) {
           vite.middlewares.use((req, res, next) => {
             const path = req.url?.split('?')[0];
@@ -167,7 +167,7 @@ test('engine values and their read freshness in the actual browser', { timeout: 
   const port = server.httpServer.address().port;
   const origin = `http://127.0.0.1:${port}`;
   const browser = await launchChrome(t, origin);
-  const evidence = await evidenceDirectory('t11-browser-evidence-');
+  const evidence = await evidenceDirectory('browser-evidence-');
   const { call, evaluate } = browser;
   const body = () => evaluate(PAGE_TEXT);
   const ENGINE_CARD = `[...document.querySelectorAll('h3')].find(h => h.textContent === 'OvenMediaEngine')?.closest('.MuiPaper-root')`;

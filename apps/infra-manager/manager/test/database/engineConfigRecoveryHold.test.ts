@@ -67,8 +67,8 @@ describe(
     let selected: StackVersionRecord;
 
     beforeEach(async () => {
-      root = await mkdtemp(join(tmpdir(), 't01-recovery-hold-'));
-      schema = `t01_recovery_hold_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'recovery-hold-'));
+      schema = `recovery_hold_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 8, options: `-c search_path=${schema} -c statement_timeout=10000` });
@@ -305,7 +305,7 @@ describe(
       assert.equal(await profiles.engineConfigOf(initial.name), 'synthetic new config');
     });
 
-    // Levi ruled on 2026-09-11: a rollout that has ended lets go of its hold,
+    // Since 2026-09-11 a rollout that has ended lets go of its hold,
     // because nothing can revert from it any more. These three have not ended.
     // `interrupted` is the one that matters: its recovery still deploys from the
     // build the hold protects.

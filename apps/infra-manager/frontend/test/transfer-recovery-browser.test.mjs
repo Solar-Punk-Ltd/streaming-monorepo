@@ -171,7 +171,7 @@ test('manual hash recovery works after profile deletion and a pending receipt ne
   noMoneyPosts(fixture);
 });
 
-test('D10 requires the exact sentence and a second confirmation and remains an operator assertion', async (t) => {
+test('closing a transfer by assertion requires the exact sentence and a second confirmation and remains an operator assertion', async (t) => {
   const fixture = await launchHistoryFixture(t, 1, { seedState: 'unknown', recoveryFor: completeNoMatch });
   const browser = await app(t, fixture);
   await click(browser, 'Search transaction history');
@@ -327,7 +327,7 @@ test('the actual action rereads fresh evidence despite an older held request and
   noMoneyPosts(fixture);
 });
 
-test('malformed no-match evidence cannot offer D10 and a changed frozen identity cannot dispatch', async (t) => {
+test('malformed no-match evidence cannot offer a close by assertion and a changed frozen identity cannot dispatch', async (t) => {
   const fixture = await launchHistoryFixture(t, 1, { seedState: 'unknown', recoveryFor: completeNoMatch });
   const browser = await app(t, fixture);
   await click(browser, 'Search transaction history');

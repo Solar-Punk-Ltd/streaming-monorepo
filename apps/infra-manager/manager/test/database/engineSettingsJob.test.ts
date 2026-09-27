@@ -38,8 +38,8 @@ describe(
     let claim: ClaimedDeploy;
 
     beforeEach(async () => {
-      schema = `t11_job_${randomBytes(8).toString('hex')}`;
-      root = await mkdtemp(join(tmpdir(), 't11-settings-job-'));
+      schema = `job_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'settings-job-'));
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({

@@ -41,7 +41,7 @@ it(
     timeout: 60000,
   },
   async () => {
-    const schema = `t04b_execution_mount_${randomBytes(8).toString('hex')}`;
+    const schema = `execution_mount_${randomBytes(8).toString('hex')}`;
     const admin = new pg.Pool(connection);
     const pool = new pg.Pool({ ...connection, options: `-c search_path=${schema} -c statement_timeout=10000` });
     try {

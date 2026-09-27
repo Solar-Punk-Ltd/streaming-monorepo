@@ -3,8 +3,8 @@
  *
  * Unit test, no database and no node. `pnpm test` in manager/.
  *
- * D02 refused the start outright when the node said nothing, so an uploader
- * whose node was down could not be started at all. Decision D16 of 2026-09-17
+ * The start was once refused outright when the node said nothing, so an uploader
+ * whose node was down could not be started at all. A change on 2026-09-17
  * turned that half into a warning: the start proceeds, the uploader waits for
  * its node and says so on its own health route. A batch the node answered
  * about and called unknown, expired or not usable yet is still a refusal,

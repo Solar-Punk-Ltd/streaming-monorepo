@@ -4,7 +4,7 @@
  * node's reporter puts the assertion's own `actual`, `expected` and `operator`
  * into the failing test's block, and `assert.equal` appends the whole diff to
  * the error itself. So a test that compares a raw value publishes that value
- * on failure, however carefully its message was written. T01's integration
+ * on failure, however carefully its message was written. The engine startup integration
  * file compares two of them: the rollout reason embeds the engine's last lines,
  * and the stored engine config carries the deployment's SRT passphrase and its
  * webhook token. Its failures are read in an Actions log, and that file cannot

@@ -187,7 +187,7 @@ export function makeProfile(input) {
     bee_url: input.bee_url ?? null,
     // The two the manager stores about this deployment's Bee node. Null mode
     // means the mode the stack starts that node in, which is what every
-    // deployment made before T27 carries, and the source and the address
+    // deployment made before 2026-09-17 carries, and the source and the address
     // travel together the way the manager's own columns make them.
     node_mode: input.node_mode ?? null,
     rpc_endpoint_source: input.rpc_endpoint_source ?? DEFAULT_RPC_ENDPOINT_SOURCE,

@@ -100,8 +100,8 @@ describe('attemptOutcome', () => {
   });
 
   /**
-   * Levi ruled on 2026-09-11, after a walkthrough where every Retry ended
-   * blocked: a deploy that finished cleanly and left a container where it was
+   * Since 2026-09-11, after a walkthrough where every Retry ended
+   * blocked, a deploy that finished cleanly and left a container where it was
    * is Compose reporting nothing to do, which it can only report once its
    * build is over. The container it left cannot have come from another
    * project's half-finished image, because nothing rebuilt it.

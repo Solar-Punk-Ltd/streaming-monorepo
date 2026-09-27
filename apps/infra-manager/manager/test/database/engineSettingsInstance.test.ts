@@ -31,7 +31,7 @@ describe(
     let instanceId: string;
 
     beforeEach(async () => {
-      schema = `t11_${randomBytes(8).toString('hex')}`;
+      schema = `engine_settings_instance_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({

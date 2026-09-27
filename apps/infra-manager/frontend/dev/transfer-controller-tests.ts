@@ -76,7 +76,7 @@ function detail(
 export async function runControllerTests(): Promise<{ passed: number; tests: string[] }> {
   const tests: string[] = [];
   async function fixture() {
-    const name = `t09-controller-${crypto.randomUUID()}`;
+    const name = `controller-${crypto.randomUUID()}`;
     const store = new IndexedDbTransferIntentStore(indexedDB, name);
     const observed = new IndexedDbTransferIntentStore(indexedDB, name);
     const requests: string[] = [];

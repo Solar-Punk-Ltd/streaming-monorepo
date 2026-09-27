@@ -54,7 +54,7 @@ describe('instance-owned removal in isolated PostgreSQL', { skip: !Number.isInte
   const clients: PoolClient[] = [];
 
   beforeEach(async () => {
-    schema = `t10_${randomBytes(8).toString('hex')}`;
+    schema = `profile_removal_${randomBytes(8).toString('hex')}`;
     admin = new pg.Pool(connection);
     await admin.query(`CREATE SCHEMA ${schema}`);
     pool = new pg.Pool({ ...connection, max: 12, options: `-c search_path=${schema} -c statement_timeout=10000` });

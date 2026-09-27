@@ -10,7 +10,7 @@ import { deployOwnerOf } from '../../src/domain/versions/buildLedger.js';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
 
-const root = throwawayRoot('t06-descriptor-admission-');
+const root = throwawayRoot('descriptor-admission-');
 process.env.SHLS_ROOT = root;
 process.env.BEE_DATA_ROOT = join(root, 'data');
 writeFileSync(join(root, '.env'), 'ENGINE=srs\n');

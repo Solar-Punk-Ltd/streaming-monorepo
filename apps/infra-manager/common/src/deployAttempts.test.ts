@@ -79,7 +79,7 @@ describe('describeAttemptHold', () => {
   });
 
   it('says a released attempt holds nothing', () => {
-    const text = describeAttemptHold({ ...BLOCKED, state: 'released', releasedBy: 'levi' });
+    const text = describeAttemptHold({ ...BLOCKED, state: 'released', releasedBy: 'operator' });
     assert.match(text, /^Released/);
     assert.doesNotMatch(text, /holds/);
   });

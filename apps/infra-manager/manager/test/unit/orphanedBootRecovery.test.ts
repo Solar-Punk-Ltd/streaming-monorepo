@@ -86,7 +86,7 @@ describe('a deployment the manager restarted under', () => {
 
   /**
    * A removal that never got started leaves everything running, and that is
-   * what the deployment then is. Levi accepted this on 2026-09-16: the row is
+   * what the deployment then is. This was accepted on 2026-09-16: the row is
    * back where an operator can act on it, and pressing Remove again is one
    * click. The alternative, keeping REMOVING, is the transitional state that
    * refuses every later action as busy.

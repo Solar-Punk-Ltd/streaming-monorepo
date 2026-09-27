@@ -19,7 +19,7 @@ function input(overrides: Partial<ConfirmedTransferInput> = {}): ConfirmedTransf
 
 export async function runIntentTests(): Promise<{ passed: number; tests: string[] }> {
   const tests: string[] = [];
-  const name = `t09-test-${crypto.randomUUID()}`;
+  const name = `test-${crypto.randomUUID()}`;
   const first = new IndexedDbTransferIntentStore(indexedDB, name);
   const second = new IndexedDbTransferIntentStore(indexedDB, name);
   try {

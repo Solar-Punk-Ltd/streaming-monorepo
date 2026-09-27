@@ -24,7 +24,7 @@ describe(
     let admin: Pool, pool: Pool, schema: string;
     let profiles: ProfileRepository, ports: PostgresPortReservationRepository, profile: Profile;
     beforeEach(async () => {
-      schema = `t01_hold_scope_${randomBytes(8).toString('hex')}`;
+      schema = `hold_scope_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, options: `-c search_path=${schema} -c statement_timeout=10000` });

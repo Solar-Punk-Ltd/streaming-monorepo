@@ -33,7 +33,7 @@ describe(
     let pool: Pool;
     let schema: string;
     beforeEach(async () => {
-      schema = `t04b_publication_read_${randomBytes(8).toString('hex')}`;
+      schema = `publication_read_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, options: `-c search_path=${schema} -c statement_timeout=10000` });

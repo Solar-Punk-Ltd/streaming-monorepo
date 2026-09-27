@@ -40,7 +40,7 @@ async function refusalOf(body: unknown): Promise<{ status: number; text: string 
 describe('a value of the wrong type', () => {
   it('is refused with 400 without repeating a list or an object where text belongs', async () => {
     for (const password of [[SYNTHETIC], { value: SYNTHETIC }]) {
-      const refused = await refusalOf({ username: 'levi', password });
+      const refused = await refusalOf({ username: 'operator', password });
 
       assert.equal(refused.status, 400);
       assert.equal(refused.text.includes('SYNTHETIC'), false, 'the refusal repeats the value');
@@ -49,14 +49,14 @@ describe('a value of the wrong type', () => {
   });
 
   it('is refused with 400 without repeating a list sent as the whole body', async () => {
-    const refused = await refusalOf(['levi', SYNTHETIC]);
+    const refused = await refusalOf(['operator', SYNTHETIC]);
 
     assert.equal(refused.status, 400);
     assert.equal(refused.text.includes('SYNTHETIC'), false, 'the refusal repeats the value');
   });
 
   it('keeps a message a schema wrote itself', async () => {
-    const refused = await refusalOf({ username: 'levi' });
+    const refused = await refusalOf({ username: 'operator' });
 
     assert.equal(refused.status, 400);
     assert.match(refused.text, /password is a required field/);

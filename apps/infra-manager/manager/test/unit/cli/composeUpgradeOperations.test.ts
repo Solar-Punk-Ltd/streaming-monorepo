@@ -144,7 +144,7 @@ describe('the manager upgrade against one Compose project', () => {
   let steps: string[];
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), 't04b-compose-'));
+    root = await mkdtemp(join(tmpdir(), 'compose-'));
     versionsRoot = join(root, 'versions');
     await mkdir(versionsRoot);
     // The tree the manager ships with, whose parent holds the commit the deploy pinned.

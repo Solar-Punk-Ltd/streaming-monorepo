@@ -8,7 +8,7 @@ import { throwawayRoot } from '../support/throwawayRoot.js';
 import { V3_FIXTURE } from '../support/stackFixtures.js';
 import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
-const root = throwawayRoot('t04a-initial-preparation-');
+const root = throwawayRoot('initial-preparation-');
 process.env.SHLS_ROOT = join(root, 'bundled');
 process.env.BEE_DATA_ROOT = join(root, 'data');
 mkdirSync(process.env.SHLS_ROOT, { recursive: true });

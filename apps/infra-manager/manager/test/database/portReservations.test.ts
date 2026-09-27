@@ -41,7 +41,7 @@ describe('port reservations in isolated PostgreSQL schemas', { skip: !Number.isI
   let profiles: ProfileRepository;
 
   beforeEach(async () => {
-    schema = `t06_${randomBytes(8).toString('hex')}`;
+    schema = `port_reservations_${randomBytes(8).toString('hex')}`;
     admin = new pg.Pool(connection);
     await admin.query(`CREATE SCHEMA ${schema}`);
     pool = new pg.Pool({ ...connection, max: 20, options: `-c search_path=${schema}` });

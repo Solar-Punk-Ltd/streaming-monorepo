@@ -16,7 +16,7 @@ let root: string;
 let source: string;
 let executions: string;
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 't04b-execution-files-'));
+  root = await mkdtemp(join(tmpdir(), 'execution-files-'));
   source = join(root, 'bundled.builds', commit);
   executions = join(root, '.executions');
   await mkdir(join(source, 'deploy', 'scripts'), { recursive: true });

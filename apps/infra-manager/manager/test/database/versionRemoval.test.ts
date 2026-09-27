@@ -68,8 +68,8 @@ describe(
     };
 
     beforeEach(async () => {
-      schema = `t04a_removal_${randomBytes(8).toString('hex')}`;
-      root = await mkdtemp(join(tmpdir(), 't04a-version-removal-'));
+      schema = `removal_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'version-removal-'));
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({

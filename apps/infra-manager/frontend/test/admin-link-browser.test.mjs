@@ -2,7 +2,7 @@
  * The web2 admin link, set up from the pages, in a real Chrome at a phone's
  * width.
  *
- * Levi ruled on 2026-09-25 that linking a deployment's stream uploader to the
+ * Since 2026-09-25, linking a deployment's stream uploader to the
  * web2 admin works out of the box. This drives it through the three places it
  * is set. The Manager settings page's card: an address and a token set once
  * for every new uploader deployment, a token that is never shown and only said

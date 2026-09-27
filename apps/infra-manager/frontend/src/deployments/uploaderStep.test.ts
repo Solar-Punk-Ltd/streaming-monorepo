@@ -2,7 +2,7 @@
  * What the readiness list says about an uploader, once the uploader itself has
  * been asked.
  *
- * Decision D16 of 2026-09-17 lets an uploader start on a Bee node that is not
+ * Since 2026-09-17 an uploader may start on a Bee node that is not
  * answering, so "the container is running" stopped being the whole answer. The
  * deployment page reads the uploader's own health route and hands the reading
  * here. Every other view passes none, and those must read exactly as they did.

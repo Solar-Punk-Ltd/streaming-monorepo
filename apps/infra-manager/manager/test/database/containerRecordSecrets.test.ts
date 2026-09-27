@@ -76,7 +76,7 @@ describe(
     }
 
     beforeEach(async () => {
-      schema = `t04b_container_secrets_${randomBytes(8).toString('hex')}`;
+      schema = `container_secrets_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 4, options: `-c search_path=${schema}` });

@@ -28,7 +28,7 @@ describe(
     let versions: PostgresStackVersionRepository;
     let id: number;
     beforeEach(async () => {
-      schema = `t04b_revision_${randomBytes(8).toString('hex')}`;
+      schema = `revision_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 4, options: `-c search_path=${schema} -c statement_timeout=10000` });
