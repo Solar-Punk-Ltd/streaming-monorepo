@@ -455,8 +455,9 @@ if [ "${OWN_NETWORK}" -eq 1 ]; then
   HOST_ADDRESS="${HOST_GATEWAY_ALIAS}"
 fi
 
-# The four sources whose content decides what a viewer is served. `deploy.sh` stamps the client image
-# with the same four, and `deploy/test/clientBuildStamp.test.js` holds the two lists together.
+# The four sources in the stack's folder whose content decides what a viewer is served. `deploy.sh`
+# stamps the client image with the same four, and `deploy/test/clientBuildStamp.test.js` holds the two
+# lists together.
 CLIENT_SOURCE_PATHS=(
   "packages/client"
   "packages/shared"
@@ -464,34 +465,54 @@ CLIENT_SOURCE_PATHS=(
   "deploy/client-nginx.conf.template"
 )
 
+# The package the stack's shared package re-exports, which vite compiles into the bundle as well. It
+# sits at the root of the one workspace, so it is read from WORKSPACE_ROOT, as `deploy.sh` reads it.
+CONTRACTS_SOURCE_PATH="packages/contracts"
+
 # ⛔ `.git` is excluded from the rsync above, so the harness cannot answer this for itself once it is
 # on the host. Computed here, on the operator's machine, and carried in as the expectation the
 # `client-shape` preflight measures the served client's own build stamp against.
 #
 # Only a resolved object name is passed on. Anything else would be interpolated into a docker command
 # carried over ssh, and an unset expectation is refused by the gate rather than guessed at.
+#
+# git_tree_or_empty <path> [<folder the path is read from, the stack's by default>]
 git_tree_or_empty() {
   local resolved
   # `HEAD:./<path>` is read from the folder `-C` names, where a bare `HEAD:<path>` is read from the
   # repository root. The stack can sit in a subfolder of a larger repository, and there the bare form
   # names nothing.
-  resolved="$(git -C "${REPO_ROOT}" rev-parse "HEAD:./$1" 2>/dev/null || true)"
+  resolved="$(git -C "${2:-${REPO_ROOT}}" rev-parse "HEAD:./$1" 2>/dev/null || true)"
   case "${resolved}" in
     '' | *[!0-9a-f]*) printf '' ;;
     *) printf '%s' "${resolved}" ;;
   esac
 }
 
+# The tree of a path at the root of the one workspace, or nothing for a stack that keeps its own
+# lockfile, which has no such root.
+workspace_tree_or_empty() {
+  if [ -n "${WORKSPACE_ROOT}" ]; then
+    git_tree_or_empty "$1" "${WORKSPACE_ROOT}"
+  fi
+}
+
 EXPECT_CLIENT_TREE="$(git_tree_or_empty packages/client)"
 EXPECT_SHARED_TREE="$(git_tree_or_empty packages/shared)"
+EXPECT_CONTRACTS_TREE="$(workspace_tree_or_empty "${CONTRACTS_SOURCE_PATH}")"
 EXPECT_CLIENT_DIRTY=0
 if [ -n "$(git -C "${REPO_ROOT}" status --porcelain -- "${CLIENT_SOURCE_PATHS[@]}" 2>/dev/null || true)" ]; then
+  EXPECT_CLIENT_DIRTY=1
+fi
+if [ -n "${WORKSPACE_ROOT}" ] &&
+  [ -n "$(git -C "${WORKSPACE_ROOT}" status --porcelain -- "${CONTRACTS_SOURCE_PATH}" 2>/dev/null || true)" ]; then
   EXPECT_CLIENT_DIRTY=1
 fi
 
 RUN_ENV="-e E2E_SSH_TARGET=local -e E2E_PUBLIC_HOST=${HOST_ADDRESS} -e E2E_PROFILE=${PROFILE} -e E2E_PORT_SLOT=${PORT_SLOT}"
 RUN_ENV="${RUN_ENV} -e E2E_EXPECT_CLIENT_TREE=${EXPECT_CLIENT_TREE}"
 RUN_ENV="${RUN_ENV} -e E2E_EXPECT_SHARED_TREE=${EXPECT_SHARED_TREE}"
+RUN_ENV="${RUN_ENV} -e E2E_EXPECT_CONTRACTS_TREE=${EXPECT_CONTRACTS_TREE}"
 RUN_ENV="${RUN_ENV} -e E2E_EXPECT_CLIENT_DIRTY=${EXPECT_CLIENT_DIRTY}"
 if [ "${OWN_NETWORK}" -eq 1 ]; then
   RUN_ENV="${RUN_ENV} -e E2E_LOCAL_HOST_ADDRESS=${HOST_ADDRESS}"
