@@ -188,6 +188,15 @@ match. When more differs, as after a pnpm version change, the verdict is
 `match apart from pnpm's own files`, which still exits 0. So a pnpm version change is
 reported as one rather than hidden in an allow list.
 
+The rest of what pnpm itself puts in an image is named the same way. pnpm writes a shell script
+for each command a package offers into a `node_modules/.bin` folder, and a new pnpm writes
+them differently: from 9.12.0 to 11.11.0 each shim of the uploader grew. A `node_modules`
+folder that holds nothing but such shims is pnpm's too, as pnpm 9 made one inside a package
+folder for the package's own commands and pnpm 11 does not. pnpm installed as a global npm
+package, as in the bench and browser images, is told as one entry with the version each side
+holds and how many of its files differ, and a link into it, such as `/usr/local/bin/pnpm`, is
+named with its target.
+
 ```bash
 docker build -f ../base/apps/infra-manager/manager/Dockerfile -t infra-manager-api:base ../base/apps/infra-manager
 docker build -f ../head/apps/infra-manager/manager/Dockerfile -t infra-manager-api:head ../head/apps/infra-manager

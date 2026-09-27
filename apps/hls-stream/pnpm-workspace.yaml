@@ -7,3 +7,25 @@ allowBuilds:
   '@swc/core': false
   esbuild: true
   unrs-resolver: false
+
+# Security pins, moved unchanged from package.json's pnpm field, which pnpm 11 no longer reads: it
+# drops an override written there without a word. Each one pins a package with a published fix, and
+# the advisory is on its line where the history names one. The rest came with the audit sweep of
+# 2026-07-31 (30df5bfa), which pinned every transitive dependency that had a published fix, 63
+# advisories at the time, and named none of them one by one.
+overrides:
+  axios: ^0.33.0
+  body-parser: ^2.3.0
+  brace-expansion@1: ^1.1.16 # GHSA-mh99-v99m-4gvg
+  brace-expansion@2: ^2.1.2 # GHSA-mh99-v99m-4gvg
+  brace-expansion@5: ^5.0.8 # GHSA-mh99-v99m-4gvg
+  fast-uri@3: 3.1.6 # GHSA-5jgf-p345-68v8, GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf, GHSA-jqff-g426-hqxp
+  follow-redirects: ^1.16.0
+  form-data: ^4.0.6
+  immutable: ^5.1.8
+  js-yaml@4: ^4.3.2 # GHSA-2883-xcg3-v3hh
+  minimatch@9: ^9.0.7
+  nanoid@3: 3.3.18 # GHSA-2v37-7h3g-55p8
+  postcss: ^8.5.18
+  qs: ^6.16.0 # GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g
+  ws: ^8.21.0

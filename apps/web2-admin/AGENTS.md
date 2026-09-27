@@ -21,7 +21,7 @@ of the repository holds the rules that apply everywhere. This file adds the admi
 
 ## Conventions
 
-- TypeScript, ESM, exact-pinned dependencies (`save-exact=true` in `.npmrc`).
+- TypeScript, ESM, exact-pinned dependencies (`saveExact: true` in `pnpm-workspace.yaml`).
 - Mirror the manager (`../infra-manager`) where a choice is arbitrary, so the two read as one
   team's work.
 - The admin never touches a wallet or a host directly. Anything that does goes through the
