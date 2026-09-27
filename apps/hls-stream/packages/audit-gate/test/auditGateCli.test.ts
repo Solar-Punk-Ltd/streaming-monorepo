@@ -91,7 +91,9 @@ function writeNpmStub(dir: string, answer: { stdout: string; exitCode: number })
   writeFileSync(outPath, answer.stdout);
   writeFileSync(
     join(dir, 'npm'),
-    `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(argvPath)}\ncat ${JSON.stringify(outPath)}\nexit ${answer.exitCode}\n`,
+    `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(argvPath)}\ncat ${JSON.stringify(outPath)}\nexit ${
+      answer.exitCode
+    }\n`,
   );
   chmodSync(join(dir, 'npm'), 0o755);
   return argvPath;

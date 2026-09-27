@@ -70,14 +70,22 @@ describe('findAvailableFixes', () => {
   });
 
   it('lets through a fixing release the exception already knew of when it was written', async () => {
-    const knownFix = { ...ELLIPTIC_ENTRY, reviewedFixReleases: ['7.0.0'], reason: 'The fix is a major the chain cannot take.' };
+    const knownFix = {
+      ...ELLIPTIC_ENTRY,
+      reviewedFixReleases: ['7.0.0'],
+      reason: 'The fix is a major the chain cannot take.',
+    };
     const { lookUp } = registry({ 'elliptic@>=6.6.2': ['7.0.0'] });
 
     assert.deepEqual(await findAvailableFixes([ELLIPTIC], [knownFix], lookUp), []);
   });
 
   it('fails on a fixing release that appeared since the exception was written, and names only that one', async () => {
-    const knownFix = { ...ELLIPTIC_ENTRY, reviewedFixReleases: ['7.0.0'], reason: 'The fix is a major the chain cannot take.' };
+    const knownFix = {
+      ...ELLIPTIC_ENTRY,
+      reviewedFixReleases: ['7.0.0'],
+      reason: 'The fix is a major the chain cannot take.',
+    };
     const { lookUp } = registry({ 'elliptic@>=6.6.2': ['6.6.3', '7.0.0'] });
 
     const [failure, ...rest] = await findAvailableFixes([ELLIPTIC], [knownFix], lookUp);
@@ -91,7 +99,10 @@ describe('findAvailableFixes', () => {
     const underPnpm9 = { ...ELLIPTIC, patchedVersions: '<0.0.0' };
     const { asked, lookUp } = registry({ 'elliptic@<0.0.0': [] });
 
-    assert.deepEqual(await findAvailableFixes([underPnpm9], [{ ...ELLIPTIC_ENTRY, reviewedPatchedVersions: '<0.0.0' }], lookUp), []);
+    assert.deepEqual(
+      await findAvailableFixes([underPnpm9], [{ ...ELLIPTIC_ENTRY, reviewedPatchedVersions: '<0.0.0' }], lookUp),
+      [],
+    );
     assert.deepEqual(asked, ['elliptic@<0.0.0']);
   });
 
@@ -126,7 +137,8 @@ const NO_MATCH = JSON.stringify(
     error: {
       code: 'E404',
       summary: 'No match found for version >=6.6.2',
-      detail: "'elliptic@>=6.6.2' is not in this registry.\n\nNote that you can also install from a\ntarball, folder, http url, or git url.",
+      detail:
+        "'elliptic@>=6.6.2' is not in this registry.\n\nNote that you can also install from a\ntarball, folder, http url, or git url.",
     },
   },
   null,
@@ -158,7 +170,10 @@ describe('parseNpmViewVersions', () => {
   });
 
   it('refuses a package the registry does not know, which is not the same as no fix', () => {
-    assert.throws(() => parseNpmViewVersions(1, NO_SUCH_PACKAGE, 'no-such-package-q7x9z@>=1.0.0'), /no-such-package-q7x9z@>=1\.0\.0/);
+    assert.throws(
+      () => parseNpmViewVersions(1, NO_SUCH_PACKAGE, 'no-such-package-q7x9z@>=1.0.0'),
+      /no-such-package-q7x9z@>=1\.0\.0/,
+    );
   });
 
   it('refuses a failure that printed no JSON', () => {
