@@ -1,0 +1,7 @@
+[
+  {
+    "source": "@streaming-infra-manager/frontend-prototype",
+    "target": "@streaming-infra-manager/api",
+    "reason": "The console's mock server in frontend/dev reuses the API's schemas, errors and settings rules so it answers as the API does, and frontend/test/run-all.mjs reuses the API's TAP judge. Development and test tooling only, nothing in the built console. Ends when those move into @streaming-infra-manager/common."
+  }
+]

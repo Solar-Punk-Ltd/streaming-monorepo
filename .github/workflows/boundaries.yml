@@ -1,0 +1,70 @@
+# The project boundaries: fails when a project of the repository depends on
+# another across the lines their tags draw, the rules of docs/monorepo.md made
+# a check. On every pull request whatever it touches, since a package.json or
+# an import anywhere can cross a line. What the check proves and what it does
+# not: tools/boundary-check/README.md. The check's own tests run in the tools
+# workflow.
+name: boundaries
+
+on:
+  pull_request:
+  push:
+    branches: [main-v3]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: boundaries-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Nx Cloud stays off whatever else is set, the same switch as
+  # neverConnectToCloud in nx.json.
+  NX_NO_CLOUD: 'true'
+
+jobs:
+  boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Pinned by commit, the tag in the comment, the same pins as the other
+      # root workflows. pnpm comes from packageManager.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          package_json_file: package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Every dependency keeps to the boundaries
+        # The script runs nx show projects first, because nx graph --file
+        # writes whatever part of the graph it could build and exits 0 when the
+        # graph has errors, while nx show projects exits 1 on them.
+        run: pnpm run boundaries
+
+      - name: The check still sees an import from one app into another
+        # A canary, written here and never committed. Nx records imports only
+        # with source analysis on and typescript installed, and says nothing
+        # when it cannot, so a check that stopped seeing imports would pass
+        # everything. This fails unless the planted import is refused by name.
+        run: |
+          canary=apps/web2-admin/backend/src/boundary-canary.ts
+          printf "import '../../../infra-manager/manager/src/index.js';\n" > "$canary"
+          pnpm exec nx graph --file="$RUNNER_TEMP/canary.json"
+          rm "$canary"
+          set +e
+          node tools/boundary-check/boundaries.mjs --graph "$RUNNER_TEMP/canary.json" \
+            --exceptions tools/boundary-check/exceptions.json > "$RUNNER_TEMP/canary.txt"
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/canary.txt"
+          if [ "$status" -ne 1 ] || ! grep -qF '@streaming-monorepo/web2-admin-backend -> @streaming-infra-manager/api ' "$RUNNER_TEMP/canary.txt"; then
+            echo "The planted import from the admin backend into the manager API was not refused (exit $status)." >&2
+            exit 1
+          fi
