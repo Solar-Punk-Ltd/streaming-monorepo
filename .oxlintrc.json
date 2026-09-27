@@ -27,6 +27,79 @@
     // typescript/no-misused-promises reports as well.
     "oxc/no-async-endpoint-handlers": "off",
 
+    // Off because reusing a name in an inner scope is how this code names things: a callback's
+    // parameter after the collection it walks (`candidates.find(candidate => ...)`), a function's
+    // parameter after the value callers pass it. The type checker already refuses the mix-ups
+    // shadowing can hide, and not one of its 134 findings was a bug.
+    "eslint/no-shadow": "off",
+
+    // Off because every dangling underscore here is a name something else chose: the `__name`
+    // helper the bundler calls in code a browser runs, and the `window.__*` hooks the browser
+    // measurement scripts leave for the harness that reads them.
+    "eslint/no-underscore-dangle": "off",
+
+    // Off because the arrays it flags hold a handful of fixed strings, where a Set buys nothing
+    // measurable and reads less plainly than the list it replaces.
+    "unicorn/prefer-set-has": "off",
+
+    // Off because a helper written inside the one function that uses it sits where its reader is.
+    // Hoisting it out moves it away from that reader for no gain anybody has measured.
+    "unicorn/consistent-function-scoping": "off",
+
+    // Off because most of what it flags is a copy made on purpose: listeners copied before they are
+    // called, so a listener that unsubscribes while the loop runs does not skip its neighbour.
+    "unicorn/no-useless-spread": "off",
+
+    // Off because the loops it flags wait for a variable that a callback, a timer or an event
+    // handler changes while the loop sleeps, which it cannot see.
+    "eslint/no-unmodified-loop-condition": "off",
+
+    // Off because `...(value ?? {})` says in the code that the value may be missing, and spreading
+    // undefined behaves the same, so the rewrite changes nothing but the reading.
+    "unicorn/no-useless-fallback-in-spread": "off",
+
+    // Off because an `onerror` or `onsuccess` property is how IndexedDB requests and WebSockets are
+    // commonly handled here, one handler that replaces the last, which addEventListener would stack.
+    "unicorn/prefer-add-event-listener": "off",
+
+    // Off because each pattern it flags matches control characters on purpose: settings, paths and
+    // log lines are checked or cleaned for exactly those characters.
+    "eslint/no-control-regex": "off",
+
+    // Off because the code it flags takes the last match (`filter(...).at(-1)`), which find, taking
+    // the first, would change.
+    "unicorn/prefer-array-find": "off",
+
+    // Off because each literal it flags is one long message split over two lines on purpose.
+    "eslint/no-useless-concat": "off",
+
+    // Off because the empty classes it flags are stand-ins in tests, where an empty class is the
+    // point.
+    "typescript/no-extraneous-class": "off",
+
+    // Off because the `then` it flags is the schema library's own `when({ is, then })` option.
+    "unicorn/no-thenable": "off",
+
+    // Off because a test constructing an object only for what its constructor does is what the
+    // test is about.
+    "eslint/no-new": "off",
+
+    // Off because `new Array(length)` is sized on purpose, for results written back by index in
+    // the order their inputs came.
+    "unicorn/no-new-array": "off",
+
+    // Off because `export {}` is what makes a declaration file that augments a global type a
+    // module, and without it the augmentation stops applying.
+    "unicorn/require-module-specifiers": "off",
+
+    // A property left out of an object by naming it next to `...rest` is used, by being left out. A
+    // leading underscore marks a name unused on purpose, which the rule accepts by default and
+    // forgets once any option is set.
+    "eslint/no-unused-vars": [
+      "warn",
+      { "ignoreRestSiblings": true, "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "caughtErrorsIgnorePattern": "^_" }
+    ],
+
     // Type-aware, through oxlint-tsgolint and the TypeScript 7 compiler, run by `--type-aware`.
     // A promise nobody awaits or catches, and a promise handed where a plain value is expected,
     // both leave a rejection unhandled. Off until the findings they report today are fixed, then
@@ -69,15 +142,5 @@
     "typescript/restrict-template-expressions": "off",
     "typescript/unbound-method": "off"
   },
-  "overrides": [
-    {
-      // In a test a helper is written where it is read, and hoisting it out of the describe
-      // block moves it away from the case it belongs to.
-      "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.test.js", "**/*.test.mjs"],
-      "rules": {
-        "unicorn/consistent-function-scoping": "off"
-      }
-    }
-  ],
   "ignorePatterns": ["**/dist/**", "**/coverage/**", "**/reports/**", "**/.stryker-tmp/**", "infra/**"]
 }
