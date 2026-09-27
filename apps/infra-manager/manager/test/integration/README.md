@@ -108,9 +108,11 @@ is never a disposable target.
 | ABR pool and uploader (`abr-node-pool.test.ts`, `abr-uploader.test.ts`) | the pool's publisher assembly and the uploader's Bee target rules, see each file's header |
 | engine config startup failure (`engine-startup-failure.test.ts`) | a stored SRS file the manager's own check accepts and the engine exits on ends the rollout in `reverted`, the deployment comes back `RUNNING` on the previous file, and the card's notice offers nothing to press |
 
-This whole suite also has a job of its own, `integration`, in the manual
-workflow `.github/workflows/docker-checks.yml`. That workflow is
-`workflow_dispatch` only. Two jobs ran on GitHub-hosted runners on 2026-09-19.
+This whole suite also has a job of its own, `integration`, in the monorepo's root
+workflow `.github/workflows/infra-manager-docker.yml`. It starts by hand, with Run
+workflow once the file is on the default branch, or when a pull request gets the
+label `docker-checks`. Two jobs ran on GitHub-hosted runners on 2026-09-19, from
+the manager's own repository.
 The clean rerun reached `engine-startup-failure.test.ts`, where its first create
 lost the response at the former 30-second client limit. See
 [../../../docs/ci.md](../../../docs/ci.md).
