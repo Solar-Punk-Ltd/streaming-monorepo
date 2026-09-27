@@ -205,9 +205,11 @@ starts them. `manager/test/docker/srs-check-isolation.sh` puts eight files
 through the manager's own checker at once and asserts that each refusal names
 the directive of its own file and no directive of any of the other seven.
 `manager/test/docker/ome-admission-gate.sh` drives the isolated
-publish-to-admission-to-playlist path. Both have a job in the manual workflow,
-`docker-checks.yml`, which no one has dispatched, so no job of it has ever run
-on a runner. Both pass on this laptop, most recently on 2026-09-10.
+publish-to-admission-to-playlist path. Both have a job in the docker-backed
+workflow, now the root `.github/workflows/infra-manager-docker.yml`, which starts by
+hand or when a pull request gets the label `docker-checks`. Both passed on a runner
+in its first dispatch, run 35444459944 of the manager's own repository on
+2026-09-19, and on this laptop on 2026-09-10.
 
 The gap between a parse and a start now has a test of its own, and it has never
 executed. `manager/test/integration/engine-startup-failure.test.ts` is the only

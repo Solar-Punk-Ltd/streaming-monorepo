@@ -1,16 +1,21 @@
 # Checks
 
-Two workflows under `.github/workflows`. Neither reaches a host, a Bee node or
-funds. **A green check says nothing about a host, a Bee node or funds.**
+Two workflows at the root of the monorepo, `.github/workflows/infra-manager.yml` and
+`.github/workflows/infra-manager-docker.yml`, since GitHub runs workflows from the
+root `.github` only. The copies that sat under this folder's own `.github` never
+ran here and are gone. Neither workflow reaches a host, a Bee node or funds.
+**A green check says nothing about a host, a Bee node or funds.**
 
-## checks, on every pull request and push to main
+## infra-manager.yml, on pull requests and pushes into main and main-v3
 
 Four jobs, all on `ubuntu-latest`, the fourth, `images`, since 2026-09-25. Decision D06 of 2026-09-07: turning the
 requirement on is a repository setting Levi makes after the workflow has run
 once, and he keeps a bypass. Main-branch pushes still require Levi's explicit instruction.
 
-The workflow triggers name both `main` and `main-v2`, a branch name kept there
-from the 2026-09-19 release transition.
+The workflow runs on a pull request into `main` or `main-v3`, the monorepo's
+integration branch, and on a push to either, whenever `apps/infra-manager`,
+`apps/hls-stream` or the workflow file changed. The stack counts because the
+manager's tests read it. Its steps run in `apps/infra-manager`.
 
 **Where this stands.** This page was first written at `6dc33d1` on
 `feat/ai-remediation`, the head of pull request #40, which was merged.
@@ -25,14 +30,12 @@ suites are `find frontend/test -name '*.test.mjs'`.
 
 ### checks
 
-Check out the repository with the stack submodule, install from the frozen
-lockfile, build common, type checks in every package with the test files
-included, the unit suites of common, manager and frontend, the native transport
-suites, the frontend build. The submodule is there because manager unit
-tests compare the stack's guides, samples and contract fixtures against the branch the pin
-names, and a checkout without it fails them for a reason unrelated to the code
-(run 35069103361, 2026-09-16). The submodule URL is HTTPS and the stack
-repository is public, so the default token fetches it.
+Check out the repository, install from the frozen lockfile, build common, type
+checks in every package with the test files included, the unit suites of
+common, manager and frontend, the native transport suites, the frontend build.
+Manager unit tests compare the stack's guides, samples and contract fixtures
+against `apps/hls-stream` of the same commit, which every checkout of the
+monorepo holds, so nothing else is fetched.
 
 What it proves: the code compiles, the unit-level guarantees hold, the
 transport code that owns Unix sockets and forks children works, the frontend
@@ -52,8 +55,8 @@ The manager's unit run goes through `manager/test/unit/run.mjs`, which makes
 one throwaway directory and hands it to the whole suite as `SHLS_ROOT`. A
 deployment writes its env file into the root of the checkout it deploys, and
 `envUtils` reads that root once when it is first imported, so a test that set
-the variable after an import which reaches it deployed into
-`manager/swarm-hls-stream` and left a `.env.<profile>` there, merged from the
+the variable after an import which reaches it deployed into the stack's own
+folder and left a `.env.<profile>` there, merged from the
 developer's own `.env`. One did. `unitStackRoot.test.ts` fails in words when a
 run goes around the runner, and to run a single file by hand give it both of the
 variables the runner pins:
@@ -285,10 +288,10 @@ provenance checks recorded here first.
 
 ### images
 
-Build `frontend/Dockerfile` and `manager/Dockerfile` from the repository root,
-which is how `manager/docker-compose.yml` builds them on the host, and throw
-both images away. The checkout leaves the stack submodule out, as the deploy's
-rsync does, so the build context matches the host's. Nothing is pushed.
+Build `frontend/Dockerfile` and `manager/Dockerfile` from `apps/infra-manager`,
+the manager's own folder, which is how `manager/docker-compose.yml` builds them
+on the host, and throw both images away. The deploy ships that folder alone, so
+the build context matches the host's. Nothing is pushed.
 
 It proves that both images build from the committed tree: the pnpm the image
 installs with, the frozen lockfile against the workspace's settings, and each
@@ -347,10 +350,14 @@ three jobs required, half the laptop-derived estimate above, because the
 browser suites spend most of their time waiting on a page rather than on a
 core. The estimate stays for the reasoning, the measurement is the number.
 
-## docker-backed checks, by hand
+## infra-manager-docker.yml, by hand or by label
 
-`workflow_dispatch` only, four jobs, so one failure never hides another and
-each shows by name in the run.
+Started in one of two ways. **Run workflow** on the Actions tab starts it on a
+branch, and GitHub offers that button only once the file is on the default
+branch, `main`. Until then, and on any pull request, adding the label
+`docker-checks` starts the same run on the pull request's head. Nothing else
+starts it. Four jobs, so one failure never hides another and each shows by name
+in the run.
 
 **Its first five runs failed.** Checked on GitHub on 2026-09-16, the workflow
 had five runs, all of them triggered by push events between 2026-09-10 and
@@ -374,10 +381,10 @@ gh run list --limit 5
 A run whose workflow column reads `.github/workflows/<file>` rather than the
 workflow's own name is a rejected file, whatever its title says.
 
-Three of the four jobs check out the stack submodule with the default token.
-That works because `Solar-Punk-Ltd/swarm-hls-stream` is public, recorded under
-D12. If it is ever made private, give the job a deploy key for that repository
-and never a personal access token, which would carry every repository the
+The integration job's manager builds its bundled stack by fetching the commit
+under test from this repository on GitHub, without a login, which works because
+the repository is public. If it is ever made private, give the job a deploy key
+for it and never a personal access token, which would carry every repository the
 person can reach into every one of these runs.
 
 ### srs-parser, T02
@@ -473,7 +480,8 @@ passed. Integration exposed a stale test topology: without `.stack-commit`
 the manager used a mutable checkout, which recovery correctly refused, and
 its unprivileged process could not remove Bee-owned directories.
 
-The integration job now writes the exact gitlink to `.stack-commit`, starts
+The integration job now writes the commit under test, `git rev-parse HEAD`, to
+the `.stack-commit` beside `SHLS_ROOT`, which is `apps/hls-stream`, starts
 only the manager as root to match the production API container, and waits for
 the pinned bundled version to publish an immutable build. `/health` alone does
 not prove that asynchronous build has finished. The gate checks its status,
@@ -533,11 +541,10 @@ the end of this page name too.
 
 ## What nothing here guards
 
-`.github/CODEOWNERS` covers `/.github/`, so a change to either workflow file
-needs an owner's review. It was added on 2026-09-11 and is broader than the
-`.github/workflows/` this section first recommended, which is the right way
-round: a change to any file under `.github` can alter what a green pull request
-means.
+The root `.github/CODEOWNERS` covers `/.github/`, so a change to either workflow
+file needs an owner's review. That is broader than the `.github/workflows/` this
+section first recommended, which is the right way round: a change to any file
+under `.github` can alter what a green pull request means.
 
 There is still no workflow lint and no secret scanner, so beyond that review the
 person reading a diff is the whole control. A pull request could empty the
