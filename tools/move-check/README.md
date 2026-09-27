@@ -173,20 +173,34 @@ same files.
 
 **It does not prove** that a build is reproducible. It compares the two images you built, so
 build each from its own checkout first. Nothing is pulled. Modification times are ignored on
-purpose, but a build can still write different bytes each time, such as pnpm's
-`node_modules/.modules.yaml`, which records when the install ran. Allow such a file by its
-path, exactly or by a prefix ending in `/`.
+purpose, but a build can still write different bytes each time, such as Alpine's
+`/var/log/apk.log`, which records when `apk add` ran. Allow such a file by its path, exactly
+or by a prefix ending in `/`.
+
+pnpm writes four files about an install rather than for any package, in the install's own
+`node_modules` folder: `.modules.yaml`, `.pnpm/lock.yaml`, `.pnpm-workspace-state-v1.json`
+from pnpm 10, and `.package-map.json` from pnpm 11. They are never allowed away and never
+fail the check. One that differs is listed by name under `pnpm's own files`, with the pnpm
+that wrote each side, the change of format where pnpm 9's YAML became JSON, and otherwise
+the top-level keys that differ. `.modules.yaml` and the workspace state record when the
+install ran, so every rebuild changes them, and when that is all that differs the images
+match. When more differs, as after a pnpm version change, the verdict is
+`match apart from pnpm's own files`, which still exits 0. So a pnpm version change is
+reported as one rather than hidden in an allow list.
 
 ```bash
-docker build -f ../before/web2-admin/backend/Dockerfile -t web2-admin-backend:before ../before
-docker build -f ../after/apps/web2-admin/backend/Dockerfile -t web2-admin-backend:after ../after
+docker build -f ../base/apps/infra-manager/manager/Dockerfile -t infra-manager-api:base ../base/apps/infra-manager
+docker build -f ../head/apps/infra-manager/manager/Dockerfile -t infra-manager-api:head ../head/apps/infra-manager
 node tools/move-check/image.mjs \
-  --before web2-admin-backend:before --after web2-admin-backend:after \
-  --allow /app/node_modules/.modules.yaml
+  --before infra-manager-api:base --after infra-manager-api:head \
+  --allow /var/log/apk.log
 ```
 
 ```text
-image: match, 9 config fields equal, <n> identical filesystem entries, 1 allowed difference
+pnpm's own files (2):
+  /app/node_modules/.modules.yaml  its install time only: prunedAt
+  /app/node_modules/.pnpm-workspace-state-v1.json  its install time only: lastValidatedTimestamp
+image: match, 9 config fields equal, <n> identical filesystem entries, 1 allowed difference, 2 of pnpm's own files differ in their install time only
 ```
 
 A difference is listed under `changed`, `missing` or `added`, a changed file with each field
