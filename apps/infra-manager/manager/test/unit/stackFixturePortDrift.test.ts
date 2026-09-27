@@ -49,7 +49,7 @@ function portLines(compose: string): PortLine[] {
 function branchCompose(): string {
   assert.ok(
     existsSync(BRANCH_COMPOSE),
-    `The stack submodule is missing at ${BRANCH_COMPOSE}, so the fixture would be compared against nothing. Run git submodule update --init.`,
+    `There is no stack compose file at ${BRANCH_COMPOSE}, the monorepo's apps/hls-stream, so the fixture would be compared against nothing.`,
   );
   return readFileSync(BRANCH_COMPOSE, 'utf8');
 }
