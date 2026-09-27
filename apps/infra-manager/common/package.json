@@ -22,6 +22,7 @@
     "test": "tsx --test 'src/**/*.test.ts'"
   },
   "dependencies": {
+    "@streaming-monorepo/contracts": "workspace:*",
     "viem": "2.56.5"
   },
   "devDependencies": {

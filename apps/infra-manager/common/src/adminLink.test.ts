@@ -20,7 +20,7 @@ import {
   storedTokenMoveProblem,
 } from './adminLink.js';
 import { ADMIN_LINK_TEST_OUTCOMES, adminLinkTestProblems } from './adminLinkTest.js';
-import { managerAdminLinkProblems } from './managerAdminLink.js';
+import { adminTokenProblem, managerAdminLinkProblems } from './managerAdminLink.js';
 
 const ADMIN_URL = 'https://admin.example.com';
 
@@ -284,5 +284,12 @@ describe('a request to test a web2 admin link typed on a page', () => {
       'token-refused',
       'unreachable',
     ]);
+  });
+});
+
+describe('the token floor', () => {
+  it('refuses a token of 31 characters and takes one of 32, as the uploader does', () => {
+    assert.notEqual(adminTokenProblem('a'.repeat(31)), null);
+    assert.equal(adminTokenProblem('a'.repeat(32)), null);
   });
 });
