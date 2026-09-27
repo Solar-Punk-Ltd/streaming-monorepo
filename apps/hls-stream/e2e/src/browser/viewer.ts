@@ -37,7 +37,7 @@
  *
  * **Playwright v1.57 replaced the bundled Chromium with Chrome for Testing, which has shipped the
  * proprietary codecs since 119.** Measured 2026-08-11 on **linux64**, the platform
- * `Dockerfile.browser` actually builds, using the pinned playwright-core 1.61.1 and its own browser
+ * `Dockerfile.browser` actually builds, using playwright-core 1.61.1, pinned then, and its own browser
  * revision 1228 / 149.0.7827.55: `isTypeSupported` and `canPlayType` both answer for
  * `avc1.42E01E` and `mp4a.40.2`, and a bogus codec answers false, so the probe discriminates.
  *

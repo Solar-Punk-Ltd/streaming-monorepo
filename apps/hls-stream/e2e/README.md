@@ -492,7 +492,7 @@ the same `WebSocketTraffic` every existing reader already sums, and applies the 
 attached session **including ones that attach after a squeeze started**, which is what a respawned
 worker produces. A raw client rather than Playwright's own because a flattened child session is
 addressed by putting its `sessionId` on every message and `CDPSession.send(method, params)` exposes
-no such argument, verified against the pinned playwright-core 1.61.1. Chrome is launched with
+no such argument, verified against the pinned playwright-core 1.63.0. Chrome is launched with
 `--remote-debugging-port` on a port the harness picks, through `launchViewerWatchingWorkers`, and
 `BROWSER_CHROME_PATH` still chooses the binary.
 
