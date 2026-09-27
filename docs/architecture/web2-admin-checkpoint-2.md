@@ -206,8 +206,7 @@ manager's 5432, healthcheck, named volume. Scripts `database:start`,
 
 ## Frontend
 
-Modelled on the msrs-client screens observed live at example-stream.eth.limo and
-on the manager's MUI conventions. Dark MUI theme, `CssBaseline`, `HashRouter`
+Modelled on the msrs-client screens and on the manager's MUI conventions. Dark MUI theme, `CssBaseline`, `HashRouter`
 from react-router-dom (pinned exact, latest 6.x line), fetch wrappers in
 `src/http.ts` (`getJson`, `sendJson`, `extractApiError`) with
 `credentials: 'same-origin'`, one function per endpoint in `src/api.ts`, types
