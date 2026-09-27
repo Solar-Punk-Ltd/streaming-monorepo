@@ -209,7 +209,7 @@ entries so a wait that reads it fails on a laptop rather than only on a
 runner. The same run printed `Re-optimizing dependencies because vite config
 has changed` at the start of five suites, because the suites that start a Vite
 with a plugin set of their own all shared one cache directory, so each
-one now builds in `frontend/node_modules/.vite-t09/<suite>` and that line
+one now builds in `frontend/node_modules/.vite-suites/<suite>` and that line
 appears in neither of two full runs measured here.
 
 **What the third runner run showed, and what changed.** Run 34498885341 on
