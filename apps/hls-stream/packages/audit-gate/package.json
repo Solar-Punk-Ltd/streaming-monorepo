@@ -9,8 +9,8 @@
     "test": "TSX_DISABLE_CACHE=1 tsx --test test/*.test.ts"
   },
   "devDependencies": {
-    "@types/node": "^22.8.1",
-    "tsx": "^4.23.1",
+    "@types/node": "24.13.4",
+    "tsx": "4.23.13",
     "typescript": "7.0.2"
   },
   "nx": {

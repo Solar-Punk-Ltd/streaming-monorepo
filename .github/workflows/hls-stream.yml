@@ -40,15 +40,7 @@ defaults:
 
 jobs:
   verify:
-    name: verify (node ${{ matrix.node }})
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # 22 is engines.node, the node:22-alpine production image, and what the
-        # team runs locally. One entry because those three now agree. Add a
-        # version here only when something is actually supposed to run on it.
-        node: [22]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -58,7 +50,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: ${{ matrix.node }}
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -108,7 +100,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -168,6 +160,58 @@ jobs:
             --severity=style --format=gcc \
             deploy/scripts/*.sh nodes/*.sh engines/*/*.sh e2e/*.sh
 
+  images:
+    # The stack's four images, built the way a deploy builds them, so a
+    # Dockerfile that no longer builds goes red here rather than at a deploy.
+    # The other jobs run the code from pnpm install on the runner and never
+    # build an image. Built and thrown away, never pushed.
+    #
+    # The uploader and the client build from a copy of the stack's folder that
+    # tools/app-workspace/in-copy.mjs makes, with the stack's own lockfile pair
+    # cut out of the root's, which is what deploy/scripts/deploy.sh hands
+    # compose. The uploader's image copies its built dist, which git ignores,
+    # so the stack is built first, as deploy.sh does, and the copy is told to
+    # carry dist. The bench and browser images build with e2e/ as their
+    # context, as bench-on-host.sh builds them, and use npm and no pnpm
+    # lockfile. They go through the copy all the same, because the copy holds
+    # only what git tracks, as the host's folder does, where the checkout's
+    # e2e/ also holds the node_modules this job's install put there.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: package.json
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Build the packages the uploader image copies
+        run: pnpm build
+
+      - name: The daemon the images are built with
+        run: docker version --format 'server {{.Server.Version}}'
+
+      - name: The uploader image, deploy/Dockerfile.uploader
+        run: node ../../tools/app-workspace/in-copy.mjs --app apps/hls-stream --also packages/stream-uploader/dist -- docker build --file deploy/Dockerfile.uploader --tag hls-stream-uploader:checks .
+
+      - name: The client image, deploy/Dockerfile.client
+        run: node ../../tools/app-workspace/in-copy.mjs --app apps/hls-stream -- docker build --file deploy/Dockerfile.client --tag hls-stream-client:checks .
+
+      - name: The bench image, e2e/Dockerfile.bench
+        run: node ../../tools/app-workspace/in-copy.mjs --app apps/hls-stream -- docker build --file e2e/Dockerfile.bench --tag hls-stream-bench:checks e2e
+
+      - name: The browser image, e2e/Dockerfile.browser
+        run: node ../../tools/app-workspace/in-copy.mjs --app apps/hls-stream -- docker build --file e2e/Dockerfile.browser --tag hls-stream-browser:checks e2e
+
   format:
     name: format
     runs-on: ubuntu-latest
@@ -180,7 +224,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 

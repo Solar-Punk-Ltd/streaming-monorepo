@@ -87,9 +87,11 @@ export function RpcEndpointField({
                 value={edits.rpcEndpoint}
                 onChange={(event) => onChange({ rpcEndpoint: event.target.value })}
                 placeholder="https://rpc.example.org"
-                inputProps={{
-                  style: { fontFamily: MONO_STACK },
-                  'aria-label': 'Custom RPC endpoint',
+                slotProps={{
+                  htmlInput: {
+                    style: { fontFamily: MONO_STACK },
+                    'aria-label': 'Custom RPC endpoint',
+                  }
                 }}
               />
             ),

@@ -101,7 +101,7 @@ version added from `v3.4` keeps running it.
 version is not already on a complete build of that commit, it fetches the commit
 from the monorepo on GitHub into `~/streaming-infra-manager-versions/bundled.repo`
 and builds its `apps/hls-stream`
-in a throwaway `node:22-alpine` container, exactly as it does for a version you
+in a throwaway `node:24-alpine` container, exactly as it does for a version you
 add in the UI. The build log is on the Versions page. A build that fails leaves
 a failed version row with the reason, and Update on the bundled card runs it
 again. The API starts either way: a stack that could not be fetched never stops

@@ -4,7 +4,7 @@
 #
 # What it proves: manager/scripts/stack-version-build.sh fetches the commit
 # from the repository on GitHub, cuts the stack's own lockfile and workspace
-# file out of the root ones inside its node:22-alpine container, installs from
+# file out of the root ones inside its node:24-alpine container, installs from
 # them with the pnpm the stack names, builds every package of the stack, and
 # leaves a staging tree the manager can publish. The commit, the folder and the
 # toolchain it records are the right ones, the side folder is gone, the cut is
@@ -13,7 +13,8 @@
 #
 # What it does not prove: that the images build from that tree, or that a
 # deployment runs on it. The integration job starts a manager on a bundled
-# build. No workflow builds the stack's images, a deploy does.
+# build. The images job of hls-stream.yml builds the stack's images the way a
+# deploy does, from the checkout rather than from this tree.
 #
 # Usage, from apps/infra-manager, on a checkout of the commit it builds:
 #   bash manager/test/docker/stack-version-build.sh <commit> <repo-url>
@@ -26,7 +27,7 @@
 set -u
 
 readonly STACK_FOLDER="apps/hls-stream"
-readonly BUILD_IMAGE="node:22-alpine"
+readonly BUILD_IMAGE="node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1"
 
 if [ "$#" -ne 2 ] || ! [[ "$1" =~ ^[0-9a-f]{40}$ ]]; then
   echo "usage: stack-version-build.sh <forty character commit> <repo-url>" >&2

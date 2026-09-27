@@ -8,8 +8,8 @@ import { GateReading } from './StartGates.js';
  * Both start gates wrap what their client threw in a sentence of their own, so by the time a refusal
  * reaches an operator the cause is prose. This runs before that, on the thrown error itself, and asks
  * the one question a policy of `answered` turns on: did a node answer this request. bee-js throws
- * `BeeResponseError` with the response's `status` on it, and an axios error arriving unwrapped
- * carries the same number one level down on `response`, so both are read.
+ * `BeeResponseError` with the response's `status` on it and, under bee-js 13, the same number again
+ * one level down on `response`, where an unwrapped axios error carried it under bee-js 9. Both are read.
  *
  * ⛔ A 4xx is the node answering and refusing this request, which for `/stamps/<id>` is bee's
  * 404 "issuer does not exist" for a batch it does not hold, verified live 2026-08-31. Everything

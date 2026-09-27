@@ -62,7 +62,7 @@ describe('stream-uploader healthcheck (OBS-17)', () => {
   });
 
   /**
-   * The reason this is a test and not a review comment: the image is `node:22-alpine`, which ships
+   * The reason this is a test and not a review comment: the image is `node:24-alpine`, which ships
    * neither curl nor wget's https support, so the obvious probe would have failed only on a real
    * deployment and only as a container that never reports healthy.
    */

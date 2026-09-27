@@ -89,7 +89,7 @@ const PAYLOAD = new TextEncoder().encode('#EXTM3U\n'.padEnd(220, 'x'));
 
 const writeBee = new Bee(WRITE_URL);
 const writers = Object.fromEntries(
-  Object.entries(TOPICS).map(([name, topic]) => [name, writeBee.makeFeedWriter(topic, signer)]),
+  Object.entries(TOPICS).map(([name, topic]) => [name, writeBee.feed.makeWriter(topic, signer)]),
 );
 
 /** The highest index written to every topic. -1 until the first write lands. */
@@ -169,7 +169,7 @@ async function headLoop(deadline) {
 async function chunkGet(topic, index) {
   const at = Date.now();
   try {
-    const reader = readBee.makeFeedReader(topic, owner);
+    const reader = readBee.feed.makeReader(topic, owner);
     await reader.downloadPayload({ index: FeedIndex.fromBigInt(BigInt(index)) });
     return { at, ms: Date.now() - at, status: 200, index: null };
   } catch {

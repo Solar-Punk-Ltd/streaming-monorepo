@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { BUILD_IMAGE, PINNED_PNPM } from '../../src/domain/versions/StackVersionService.js';
+
 const here = dirname(fileURLToPath(import.meta.url));
 
 /** The cut-down checkouts the contract tests read: `v2`, `v3` and `unparsable`. */
@@ -24,7 +26,7 @@ export const STACK_HISTORY_HEAD = 'fe655bc4b57cce0146dcb6df68b3528f79dcba65';
 export const SWARM_HLS_STREAM_URL = 'https://github.com/Solar-Punk-Ltd/swarm-hls-stream.git';
 
 /** The image and the pnpm the build script records for a stack that names no pnpm of its own. */
-export const PINNED_TOOLCHAIN = 'node:22-alpine pnpm@9.12.0';
+export const PINNED_TOOLCHAIN = `${BUILD_IMAGE} ${PINNED_PNPM}`;
 
 /**
  * What the build script leaves beside the built tree in a staging directory:

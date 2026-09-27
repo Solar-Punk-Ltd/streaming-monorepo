@@ -8,7 +8,7 @@ services:
   # --- Bee Nodes ---
 
   bee-uploader:
-    image: ethersphere/bee:2.8.2
+    image: ethersphere/bee:2.8.2@sha256:c0c951f0795e813be6b865213e2c277fd1449f862bb4b6357085391c4fb54810
     profiles: ['bee-uploader']
     restart: unless-stopped
     logging: *default-logging
@@ -56,7 +56,7 @@ services:
   # batch. Four nodes is four things to fund and four batches to watch, which is the cost of the
   # measurement being honest rather than an accident of one node's ceiling.
   bee-uploader-480p:
-    image: ethersphere/bee:2.8.2
+    image: ethersphere/bee:2.8.2@sha256:c0c951f0795e813be6b865213e2c277fd1449f862bb4b6357085391c4fb54810
     profiles: ['bee-uploader-480p']
     restart: unless-stopped
     logging: *default-logging
@@ -81,7 +81,7 @@ services:
       - --password-file=/home/bee/.bee/password
 
   bee-uploader-720p:
-    image: ethersphere/bee:2.8.2
+    image: ethersphere/bee:2.8.2@sha256:c0c951f0795e813be6b865213e2c277fd1449f862bb4b6357085391c4fb54810
     profiles: ['bee-uploader-720p']
     restart: unless-stopped
     logging: *default-logging
@@ -106,7 +106,7 @@ services:
       - --password-file=/home/bee/.bee/password
 
   bee-uploader-1080p:
-    image: ethersphere/bee:2.8.2
+    image: ethersphere/bee:2.8.2@sha256:c0c951f0795e813be6b865213e2c277fd1449f862bb4b6357085391c4fb54810
     profiles: ['bee-uploader-1080p']
     restart: unless-stopped
     logging: *default-logging
@@ -131,7 +131,7 @@ services:
       - --password-file=/home/bee/.bee/password
 
   bee-gateway:
-    image: ethersphere/bee:2.8.2
+    image: ethersphere/bee:2.8.2@sha256:c0c951f0795e813be6b865213e2c277fd1449f862bb4b6357085391c4fb54810
     profiles: ['bee-gateway']
     restart: unless-stopped
     logging: *default-logging
@@ -343,7 +343,7 @@ services:
     # yet. Reporting without acting is what that state needs: the process is up and retrying, and
     # restarting it would only start the same wait again.
     #
-    # node rather than curl or wget, because the image is node:22-alpine and has neither. `r.ok` is
+    # node rather than curl or wget, because the image is node:24-alpine and has neither. `r.ok` is
     # false for the 503 a degraded service answers, which is the point.
     #
     # Concatenation rather than a template literal because compose interpolates `$` in this file
@@ -410,7 +410,7 @@ services:
   # --- SRS Media Server ---
 
   srs:
-    image: ossrs/srs:6
+    image: ossrs/srs:v6.0-r1@sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3
     profiles: ['srs']
     restart: unless-stopped
     logging: *default-logging
@@ -502,7 +502,7 @@ services:
   # --- OvenMediaEngine ---
 
   ome:
-    image: airensoft/ovenmediaengine:latest
+    image: airensoft/ovenmediaengine:v0.21.0@sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6
     profiles: ['ome']
     restart: unless-stopped
     logging: *default-logging

@@ -26,20 +26,22 @@ interface WriterOptions {
 
 function makeWriter(writes: bigint[], opts: WriterOptions = {}): MasterFeedWriter {
   const bee = {
-    makeFeedReader: () => ({
-      downloadPayload: async () => {
-        if (opts.headMissing) {
-          throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
-        }
-        return { feedIndex: FeedIndex.fromBigInt(opts.headIndex ?? 0n) };
-      },
-    }),
-    makeFeedWriter: () => ({
-      uploadPayload: async (_stamp: string, _payload: unknown, writeOpts: { index: FeedIndex }) => {
-        writes.push(writeOpts.index.toBigInt());
-        return { reference: { toHex: () => 'ref' } };
-      },
-    }),
+    feed: {
+      makeReader: () => ({
+        downloadPayload: async () => {
+          if (opts.headMissing) {
+            throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
+          }
+          return { feedIndex: FeedIndex.fromBigInt(opts.headIndex ?? 0n) };
+        },
+      }),
+      makeWriter: () => ({
+        uploadPayload: async (_stamp: string, _payload: unknown, writeOpts: { index: FeedIndex }) => {
+          writes.push(writeOpts.index.toBigInt());
+          return { reference: { toHex: () => 'ref' } };
+        },
+      }),
+    },
   };
   const publisher = { rung: 'coordinator', url: '', stamp: 'stamp', bee };
   const publishers = { coordinator: () => publisher } as unknown as BeePublisherPool;

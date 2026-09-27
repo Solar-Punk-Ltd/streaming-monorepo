@@ -68,7 +68,9 @@ export function CustomSettings(props: WizardStepProps) {
                   <Typography variant="body2" sx={{ fontFamily: MONO_STACK }}>
                     {service}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{
+                    color: "text.secondary"
+                  }}>
                     {SERVICE_DESCRIPTIONS[service]}
                   </Typography>
                 </Box>
@@ -104,7 +106,9 @@ export function CustomSettings(props: WizardStepProps) {
             value={state.beeUrl}
             onChange={(event) => update({ beeUrl: event.target.value })}
             placeholder="http://10.0.0.7:1633"
-            inputProps={{ style: { fontFamily: MONO_STACK } }}
+            slotProps={{
+              htmlInput: { style: { fontFamily: MONO_STACK } }
+            }}
           />
         </FormField>
       )}

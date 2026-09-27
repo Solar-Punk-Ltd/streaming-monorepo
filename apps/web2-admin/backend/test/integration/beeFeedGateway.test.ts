@@ -83,7 +83,7 @@ describe('BeeFeedGateway', { skip: configured ? false : 'BEE_URL / POSTAGE_BATCH
     );
     assert.match(reference, /^[0-9a-f]{64}$/);
 
-    const downloaded = await new Bee(beeUrl!).downloadFile(reference);
+    const downloaded = await new Bee(beeUrl!).file.download(reference);
     assert.deepEqual(
       Buffer.from(downloaded.data.toUint8Array()),
       Buffer.from(bytes),

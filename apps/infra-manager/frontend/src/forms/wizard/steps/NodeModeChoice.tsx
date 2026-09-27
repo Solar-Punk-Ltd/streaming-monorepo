@@ -42,7 +42,9 @@ export function NodeModeChoice({ state, update }: WizardStepProps) {
         <Box
           sx={{ border: 1, borderColor: 'divider', borderRadius: 2, px: 1.5, py: 1.25 }}
         >
-          <Typography variant="body2" fontWeight={600}>
+          <Typography variant="body2" sx={{
+            fontWeight: 600
+          }}>
             {REQUIRED_FOR_PUBLISHING}
           </Typography>
         </Box>

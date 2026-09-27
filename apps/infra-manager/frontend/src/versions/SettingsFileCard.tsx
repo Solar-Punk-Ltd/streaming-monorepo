@@ -68,7 +68,9 @@ export function SettingsFileCard({
   return (
     <SectionCard title={file.path} sub={subFor(file.path)}>
       {file.entries.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           This file assigns nothing yet.
         </Typography>
       ) : (

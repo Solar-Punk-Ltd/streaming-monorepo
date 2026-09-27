@@ -41,8 +41,7 @@ jobs:
           package_json_file: package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          # 22 is what the admin's images run. Its .nvmrc says 24, a known mismatch.
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -65,12 +64,12 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        # The postgres:16-alpine the admin runs, at the digest the
+        # The postgres:16.15-alpine the admin runs, at the digest the
         # infra-manager workflow pins. The role is the image's superuser, as
         # in backend/docker-compose.yml, because the suite creates databases.
         # Trust authentication because the server starts empty, holds
         # synthetic rows for one job, and is reachable only from it.
-        image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+        image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: web2admin
           POSTGRES_DB: web2admin
@@ -89,7 +88,7 @@ jobs:
           package_json_file: package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -102,3 +101,30 @@ jobs:
         env:
           DATABASE_URL: postgres://web2admin@127.0.0.1:5432/web2admin
         run: pnpm -C backend run test:integration
+
+  web2-admin-images:
+    # The api and web images, built the way deploy/deploy.sh builds them: from
+    # a copy of the admin's folder that tools/app-workspace/in-copy.mjs makes,
+    # with the admin's own lockfile pair cut out of the root's, and the
+    # Dockerfiles deploy/docker-compose.yml names. The other jobs run the code
+    # from pnpm install on the runner and never build an image, so a Dockerfile
+    # that no longer builds goes red here rather than at a deploy. Built and
+    # thrown away, never pushed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Node's standard library alone, which in-copy.mjs needs.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: The daemon the images are built with
+        run: docker version --format 'server {{.Server.Version}}'
+
+      - name: The api image, backend/Dockerfile
+        run: node ../../tools/app-workspace/in-copy.mjs --app apps/web2-admin -- docker build --file backend/Dockerfile --tag web2-admin-api:checks .
+
+      - name: The web image, frontend/Dockerfile
+        run: node ../../tools/app-workspace/in-copy.mjs --app apps/web2-admin -- docker build --file frontend/Dockerfile --tag web2-admin-web:checks .

@@ -46,9 +46,11 @@ function node(url: string, rung: string, book: FakeChequebook): ChequebookNode {
     url,
     rung,
     bee: {
-      getChequebookBalance: async () => {
-        book.reads += 1;
-        return balanceBody(book.availablePlur);
+      chequebook: {
+        getBalance: async () => {
+          book.reads += 1;
+          return balanceBody(book.availablePlur);
+        },
       },
     },
   };
@@ -207,14 +209,16 @@ describe('the chequebook is read again while its warning stands', () => {
       url: 'http://bee-360:1633',
       rung: '360p',
       bee: {
-        getChequebookBalance: () => {
-          reads += 1;
-          if (reads > 1) {
-            return Promise.resolve(balanceBody(bzzToPlur(0.1)));
-          }
-          return new Promise((resolve) => {
-            answerFirstRead = () => resolve(balanceBody(bzzToPlur(0.1)));
-          });
+        chequebook: {
+          getBalance: () => {
+            reads += 1;
+            if (reads > 1) {
+              return Promise.resolve(balanceBody(bzzToPlur(0.1)));
+            }
+            return new Promise((resolve) => {
+              answerFirstRead = () => resolve(balanceBody(bzzToPlur(0.1)));
+            });
+          },
         },
       },
     };

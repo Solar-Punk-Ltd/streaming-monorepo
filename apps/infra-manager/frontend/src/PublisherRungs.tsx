@@ -53,11 +53,12 @@ export function PublisherRungList({
         <li key={entry.rung}>
           <Stack
             direction="row"
-            alignItems="center"
             spacing={1}
             useFlexGap
-            sx={{ flexWrap: 'wrap' }}
-          >
+            sx={{
+              alignItems: "center",
+              flexWrap: 'wrap'
+            }}>
             <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
               {entry.rung} → {entry.url}
             </Typography>
@@ -65,9 +66,10 @@ export function PublisherRungList({
               <>
                 <Typography
                   variant="caption"
-                  color="text.secondary"
-                  sx={{ fontFamily: 'monospace' }}
-                >
+                  sx={{
+                    color: "text.secondary",
+                    fontFamily: 'monospace'
+                  }}>
                   {shortHex(entry.batchId)}
                 </Typography>
                 <CopyButton

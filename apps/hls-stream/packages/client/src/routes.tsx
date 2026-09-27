@@ -1,5 +1,5 @@
 import { ReactElement } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router';
 
 import { MainLayout } from './layouts/Main/MainLayout';
 import { StreamBrowser } from './pages/StreamBrowser/StreamBrowser';

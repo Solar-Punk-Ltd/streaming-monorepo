@@ -7,7 +7,7 @@ export async function stampCheck(urlOverride?: string): Promise<void> {
   loadEnv();
 
   await forEachNode(resolvePublisherTargets(), urlOverride, async (bee, node) => {
-    const batches = await bee.getPostageBatches();
+    const batches = await bee.stamp.getAll();
 
     if (batches.length === 0) {
       warn('No stamps found');
