@@ -79,7 +79,11 @@ describe('uploader image install (ARCH-1)', () => {
   it('activates the pnpm version the root manifest names', () => {
     const pinned = rootManifest.packageManager;
 
-    assert.match(pinned, /^pnpm@\d+\.\d+\.\d+\+sha512\.[0-9a-f]{128}$/, `the root manifest no longer pins pnpm by version and checksum: ${pinned}`);
+    assert.match(
+      pinned,
+      /^pnpm@\d+\.\d+\.\d+\+sha512\.[0-9a-f]{128}$/,
+      `the root manifest no longer pins pnpm by version and checksum: ${pinned}`,
+    );
     assert.ok(
       dockerfile.includes(`corepack prepare ${pinned} --activate`),
       `the image must activate ${pinned}, the version the root manifest names`,

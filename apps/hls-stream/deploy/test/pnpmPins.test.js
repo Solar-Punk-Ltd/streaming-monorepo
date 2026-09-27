@@ -32,7 +32,11 @@ describe('the pnpm each image of the stack runs', () => {
       const pin = /^ARG PNPM_VERSION=(\S+)$/m.exec(read(dockerfile));
 
       assert.ok(pin, `${dockerfile} no longer pins pnpm with ARG PNPM_VERSION, so this test checks the wrong thing`);
-      assert.equal(pin[1], pinnedVersion, `${dockerfile} installs pnpm ${pin[1]}, the root manifest names ${pinnedVersion}`);
+      assert.equal(
+        pin[1],
+        pinnedVersion,
+        `${dockerfile} installs pnpm ${pin[1]}, the root manifest names ${pinnedVersion}`,
+      );
     });
   }
 });
