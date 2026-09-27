@@ -53,17 +53,39 @@
     },
     {
       "name": "hls-stream-bench",
-      "note": "As hls-stream-uploader. bench-on-host.sh builds it with e2e/ as its context.",
+      "note": "As hls-stream-uploader. bench-on-host.sh builds it with e2e/ as its context. Its build installs Debian packages and runs npm, which record when they ran, and a real build of both sides on GitHub's runner on 2026-09-27 differed in that noise alone, every file of the programs it installs the same: Node's compile cache under /tmp/node-compile-cache, written the first time npm and pnpm run, npm's cache index, whose entries carry a time, and its debug log, named for the time it started, the caches of fontconfig and ldconfig, and the logs of apt, dpkg and update-alternatives. Each cache or log folder whose file names vary is allowed as a folder, and each single file by its path. npm's cached packages themselves, under _cacache/content-v2, are still compared.",
       "before": { "commit": "fe655bc4b57cce0146dcb6df68b3528f79dcba65", "context": "e2e", "dockerfile": "e2e/Dockerfile.bench" },
       "after": { "commit": "e15733b123d211534385f6168785cfdd7c541ff6", "context": "apps/hls-stream/e2e", "dockerfile": "apps/hls-stream/e2e/Dockerfile.bench" },
-      "allow": []
+      "allow": [
+        "/tmp/node-compile-cache/",
+        "/root/.npm/_cacache/index-v5/",
+        "/root/.npm/_logs/",
+        "/var/cache/fontconfig/",
+        "/var/cache/ldconfig/aux-cache",
+        "/var/log/alternatives.log",
+        "/var/log/apt/history.log",
+        "/var/log/apt/term.log",
+        "/var/log/dpkg.log"
+      ]
     },
     {
       "name": "hls-stream-browser",
-      "note": "As hls-stream-bench. browser-on-host.sh builds it through bench-on-host.sh, with the same context.",
+      "note": "As hls-stream-bench, whose build noise it shares. browser-on-host.sh builds it through bench-on-host.sh, with the same context. Its apt install of Chrome and Xvfb also sets up dbus, which writes a random machine id, the same one into /etc/machine-id and /var/lib/dbus/machine-id, so both differ between any two builds.",
       "before": { "commit": "fe655bc4b57cce0146dcb6df68b3528f79dcba65", "context": "e2e", "dockerfile": "e2e/Dockerfile.browser" },
       "after": { "commit": "e15733b123d211534385f6168785cfdd7c541ff6", "context": "apps/hls-stream/e2e", "dockerfile": "apps/hls-stream/e2e/Dockerfile.browser" },
-      "allow": []
+      "allow": [
+        "/tmp/node-compile-cache/",
+        "/root/.npm/_cacache/index-v5/",
+        "/root/.npm/_logs/",
+        "/var/cache/fontconfig/",
+        "/var/cache/ldconfig/aux-cache",
+        "/var/log/alternatives.log",
+        "/var/log/apt/history.log",
+        "/var/log/apt/term.log",
+        "/var/log/dpkg.log",
+        "/etc/machine-id",
+        "/var/lib/dbus/machine-id"
+      ]
     },
     {
       "name": "infra-manager-api",
