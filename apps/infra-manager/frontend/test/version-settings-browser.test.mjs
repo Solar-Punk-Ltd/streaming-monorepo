@@ -17,6 +17,7 @@ import { endViteServer } from './support/teardown.mjs';
 import { seedVersions } from './fixtures/versions.mjs';
 import { seedSettings } from './fixtures/versionSettings.mjs';
 import { viteCacheFor } from './support/vite-cache.mjs';
+import { passingRejections } from './support/passing-rejections.mjs';
 
 /**
  * The settings page of one version, in headless Chrome against an offline
@@ -54,83 +55,85 @@ test('a version settings page reads, masks and saves at a narrow viewport', asyn
       {
         name: 'offline-version-settings-fixture',
         configureServer(vite) {
-          vite.middlewares.use(async (req, res, next) => {
-            const path = req.url?.split('?')[0];
-            function json(body, status = 200) {
-              res.statusCode = status;
-              res.setHeader('content-type', 'application/json');
-              res.end(JSON.stringify(body));
-            }
-            if (path === '/auth/session')
-              return json({ username: 'settings-review', isAdmin: true, expiresAt: '2099-01-01T00:00:00Z' });
-            if (path === '/profiles') return json({ profiles: [] });
-            if (path === '/groups') return json({ groups: [] });
-            if (path === '/config')
-              return json({ host: 'offline.example', srtPassphrase: null, chequebookFloorBzz: '0.5' });
-            if (path === '/events') {
-              res.writeHead(200, { 'content-type': 'text/event-stream' });
-              res.write(': offline fixture\n\n');
-              return;
-            }
-            if (path === '/versions' && req.method === 'GET') return json(versions);
-            if (path === '/versions/attempts' && req.method === 'GET') return json({ attempts: [] });
-
-            if (path === '/versions/3/settings' && req.method === 'GET') return json(settings);
-            if (path === '/versions/5/settings' && req.method === 'GET') {
-              return json(
-                {
-                  error: 'settings_not_ready',
-                  name: 'building-first-version',
-                  message:
-                    'building-first-version has no settings yet. They are seeded from the stack samples by the first build of a version, and this one has none.',
-                },
-                409,
-              );
-            }
-
-            if (path === '/versions/3/settings' || path === '/versions/3/settings/apply') {
-              const chunks = [];
-              for await (const chunk of req) chunks.push(chunk);
-              const text = Buffer.concat(chunks).toString();
-              writes.push({ method: req.method, path, body: text ? JSON.parse(text) : null });
-              if (path.endsWith('/apply')) {
-                if (applyBusy)
-                  return json(
-                    {
-                      error: 'stack_build_busy',
-                      name: 'other-version',
-                      message: 'other-version is building. Wait for it to finish, then try again.',
-                    },
-                    409,
-                  );
-                settings = { ...settings, buildGeneration: settings.generation };
-                return json({
-                  buildId: applyReused
-                    ? '3333333333333333333333333333333333333333-r2'
-                    : '3333333333333333333333333333333333333333-r3',
-                  reused: applyReused,
-                });
+          vite.middlewares.use(
+            passingRejections(async (req, res, next) => {
+              const path = req.url?.split('?')[0];
+              function json(body, status = 200) {
+                res.statusCode = status;
+                res.setHeader('content-type', 'application/json');
+                res.end(JSON.stringify(body));
               }
-              // The real check, not only the staged one: a save naming a revision
-              // the files have moved past is what the manager refuses, and a page
-              // that lost track of its own save sends exactly that.
-              const stale = JSON.parse(text).expectedGeneration !== settings.generation;
-              if (saveConflict || stale) {
+              if (path === '/auth/session')
+                return json({ username: 'settings-review', isAdmin: true, expiresAt: '2099-01-01T00:00:00Z' });
+              if (path === '/profiles') return json({ profiles: [] });
+              if (path === '/groups') return json({ groups: [] });
+              if (path === '/config')
+                return json({ host: 'offline.example', srtPassphrase: null, chequebookFloorBzz: '0.5' });
+              if (path === '/events') {
+                res.writeHead(200, { 'content-type': 'text/event-stream' });
+                res.write(': offline fixture\n\n');
+                return;
+              }
+              if (path === '/versions' && req.method === 'GET') return json(versions);
+              if (path === '/versions/attempts' && req.method === 'GET') return json({ attempts: [] });
+
+              if (path === '/versions/3/settings' && req.method === 'GET') return json(settings);
+              if (path === '/versions/5/settings' && req.method === 'GET') {
                 return json(
                   {
-                    error: 'settings_changed',
-                    name: 'candidate',
-                    generation: settings.generation,
-                    message: 'candidate settings changed since this page loaded.',
+                    error: 'settings_not_ready',
+                    name: 'building-first-version',
+                    message:
+                      'building-first-version has no settings yet. They are seeded from the stack samples by the first build of a version, and this one has none.',
                   },
                   409,
                 );
               }
-              settings = { ...settings, generation: settings.generation + 1 };
-              return json({ generation: settings.generation });
-            }
-            next();
-          });
+
+              if (path === '/versions/3/settings' || path === '/versions/3/settings/apply') {
+                const chunks = [];
+                for await (const chunk of req) chunks.push(chunk);
+                const text = Buffer.concat(chunks).toString();
+                writes.push({ method: req.method, path, body: text ? JSON.parse(text) : null });
+                if (path.endsWith('/apply')) {
+                  if (applyBusy)
+                    return json(
+                      {
+                        error: 'stack_build_busy',
+                        name: 'other-version',
+                        message: 'other-version is building. Wait for it to finish, then try again.',
+                      },
+                      409,
+                    );
+                  settings = { ...settings, buildGeneration: settings.generation };
+                  return json({
+                    buildId: applyReused
+                      ? '3333333333333333333333333333333333333333-r2'
+                      : '3333333333333333333333333333333333333333-r3',
+                    reused: applyReused,
+                  });
+                }
+                // The real check, not only the staged one: a save naming a revision
+                // the files have moved past is what the manager refuses, and a page
+                // that lost track of its own save sends exactly that.
+                const stale = JSON.parse(text).expectedGeneration !== settings.generation;
+                if (saveConflict || stale) {
+                  return json(
+                    {
+                      error: 'settings_changed',
+                      name: 'candidate',
+                      generation: settings.generation,
+                      message: 'candidate settings changed since this page loaded.',
+                    },
+                    409,
+                  );
+                }
+                settings = { ...settings, generation: settings.generation + 1 };
+                return json({ generation: settings.generation });
+              }
+              next();
+            }),
+          );
         },
       },
     ],

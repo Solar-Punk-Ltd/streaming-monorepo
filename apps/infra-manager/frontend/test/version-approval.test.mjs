@@ -6,6 +6,7 @@ import test from 'node:test';
 import { createServer } from 'vite';
 import { buttonWithText, launchChrome, pointToClick, readWhenPresent, waitFor } from './support/chrome.mjs';
 import { viteCacheFor } from './support/vite-cache.mjs';
+import { passingRejections } from './support/passing-rejections.mjs';
 
 const frontend = fileURLToPath(new URL('../', import.meta.url));
 const COMMIT = 'a'.repeat(40);
@@ -47,50 +48,52 @@ test('approval payload and explicit wizard version choice stay tied to the visib
       {
         name: 'offline-t08',
         configureServer(vite) {
-          vite.middlewares.use(async (req, res, next) => {
-            const path = req.url?.split('?')[0];
-            const json = (value) => {
-              res.setHeader('content-type', 'application/json');
-              res.end(JSON.stringify(value));
-            };
-            if (path === '/auth/session')
-              return json({ username: 'offline-review', isAdmin: true, expiresAt: '2099-01-01T00:00:00Z' });
-            if (path === '/config')
-              return json({ host: 'offline.example', srtPassphrase: null, chequebookFloorBzz: '0.5' });
-            if (path === '/profiles' && req.method === 'GET') return json({ profiles: [] });
-            if (path === '/groups' && req.method === 'GET') return json({ groups: [] });
-            if (path === '/versions/attempts' && req.method === 'GET') return json({ attempts: [] });
-            if (path === '/events') {
-              res.writeHead(200, { 'content-type': 'text/event-stream' });
-              if (holdEvents) {
-                heldEvents = res;
-                res.write('retry: 86400000\n\n');
-              } else res.end('retry: 86400000\n\n');
-              return;
-            }
-            if (path === '/versions' && req.method === 'GET') {
-              versionsRequests++;
-              await versionsGate;
-              return json(versions);
-            }
-            if (['POST', 'PATCH', 'DELETE'].includes(req.method) && /^(\/versions|\/profiles|\/groups)/.test(path)) {
-              const chunks = [];
-              for await (const chunk of req) chunks.push(chunk);
-              const body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
-              writes.push({ path, method: req.method, body });
-              if (req.method === 'PATCH' && path === '/versions/1') {
-                versions[0] = { ...versions[0], tested: body.tested, testedInvalidatedAt: null };
-                return json(versions[0]);
+          vite.middlewares.use(
+            passingRejections(async (req, res, next) => {
+              const path = req.url?.split('?')[0];
+              const json = (value) => {
+                res.setHeader('content-type', 'application/json');
+                res.end(JSON.stringify(value));
+              };
+              if (path === '/auth/session')
+                return json({ username: 'offline-review', isAdmin: true, expiresAt: '2099-01-01T00:00:00Z' });
+              if (path === '/config')
+                return json({ host: 'offline.example', srtPassphrase: null, chequebookFloorBzz: '0.5' });
+              if (path === '/profiles' && req.method === 'GET') return json({ profiles: [] });
+              if (path === '/groups' && req.method === 'GET') return json({ groups: [] });
+              if (path === '/versions/attempts' && req.method === 'GET') return json({ attempts: [] });
+              if (path === '/events') {
+                res.writeHead(200, { 'content-type': 'text/event-stream' });
+                if (holdEvents) {
+                  heldEvents = res;
+                  res.write('retry: 86400000\n\n');
+                } else res.end('retry: 86400000\n\n');
+                return;
               }
-              res.statusCode = 400;
-              return json({ errors: ['Unexpected fixture mutation'] });
-            }
-            if (/^\/(auth|profiles|groups|config|events|versions|metrics|health)(\/|$)/.test(path)) {
-              res.statusCode = 404;
-              return json({ errors: ['Unsupported offline route'] });
-            }
-            next();
-          });
+              if (path === '/versions' && req.method === 'GET') {
+                versionsRequests++;
+                await versionsGate;
+                return json(versions);
+              }
+              if (['POST', 'PATCH', 'DELETE'].includes(req.method) && /^(\/versions|\/profiles|\/groups)/.test(path)) {
+                const chunks = [];
+                for await (const chunk of req) chunks.push(chunk);
+                const body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+                writes.push({ path, method: req.method, body });
+                if (req.method === 'PATCH' && path === '/versions/1') {
+                  versions[0] = { ...versions[0], tested: body.tested, testedInvalidatedAt: null };
+                  return json(versions[0]);
+                }
+                res.statusCode = 400;
+                return json({ errors: ['Unexpected fixture mutation'] });
+              }
+              if (/^\/(auth|profiles|groups|config|events|versions|metrics|health)(\/|$)/.test(path)) {
+                res.statusCode = 404;
+                return json({ errors: ['Unsupported offline route'] });
+              }
+              next();
+            }),
+          );
         },
       },
     ],

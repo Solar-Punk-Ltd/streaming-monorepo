@@ -57,7 +57,7 @@ describe('GET /config', () => {
 
       assert.deepEqual((res.body as { beeRpcEndpoint: unknown }).beeRpcEndpoint, { configured: false, host: null });
     } finally {
-      bare.close();
+      await bare.close();
     }
   });
 });
