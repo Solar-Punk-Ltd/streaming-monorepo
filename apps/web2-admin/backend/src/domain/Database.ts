@@ -23,7 +23,10 @@ pg.types.setTypeParser(pg.types.builtins.INT8, (value) => Number(value));
 export class Database {
   public readonly pool: Pool;
 
-  constructor(connectionString: string) {
+  constructor(
+    connectionString: string,
+    private readonly migrationsDir = MIGRATIONS_DIR,
+  ) {
     this.pool = new Pool({ connectionString, max: 10 });
   }
 
@@ -35,7 +38,7 @@ export class Database {
       )
     `);
 
-    const files = readdirSync(MIGRATIONS_DIR)
+    const files = readdirSync(this.migrationsDir)
       .filter((f) => f.endsWith('.sql'))
       .sort();
 
@@ -43,7 +46,7 @@ export class Database {
       const seen = await this.pool.query('SELECT 1 FROM _migrations WHERE name = $1', [file]);
       if (seen.rowCount && seen.rowCount > 0) continue;
 
-      const sql = readFileSync(join(MIGRATIONS_DIR, file), 'utf8');
+      const sql = readFileSync(join(this.migrationsDir, file), 'utf8');
       const client = await this.pool.connect();
       try {
         await client.query('BEGIN');
