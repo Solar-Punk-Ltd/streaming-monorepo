@@ -84,7 +84,7 @@ RUN printf '{"clientTree":"%s","sharedTree":"%s","head":"%s","dirty":%s,"builtAt
       > /app/packages/client/dist/build-stamp.json
 
 # --- Runtime stage ------------------------------------------------------
-FROM nginx:1.27-alpine
+FROM nginx:1.30.4-alpine@sha256:dc5069ad14f19660b141b21236140b91656bf89bbc3e2417c70ae650cd66104c
 
 COPY --from=build /app/packages/client/dist /usr/share/nginx/html
 COPY deploy/client-nginx.conf.template /etc/nginx/templates/default.conf.template
