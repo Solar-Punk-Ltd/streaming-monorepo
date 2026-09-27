@@ -21,10 +21,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import {
-  PROFILE_COLUMNS,
-  PROFILE_SLOT_LOCK_KEY,
-} from '../../src/domain/profileSql.js';
+import { PROFILE_COLUMNS, PROFILE_SLOT_LOCK_KEY } from '../../src/domain/profileSql.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const INTERFACES = join(here, '..', '..', 'src', 'types', 'interfaces.ts');
@@ -67,11 +64,7 @@ const selected = (): string[] =>
 function profileFields(): string[] {
   const src = readFileSync(INTERFACES, 'utf8');
   const start = src.indexOf('export interface Profile {');
-  assert.notEqual(
-    start,
-    -1,
-    'could not find `export interface Profile` — did it move?',
-  );
+  assert.notEqual(start, -1, 'could not find `export interface Profile` — did it move?');
   const body = src.slice(start, src.indexOf('\n}', start));
 
   const fields: string[] = [];
@@ -82,10 +75,7 @@ function profileFields(): string[] {
     const match = /^([a-z_][a-z0-9_]*)\??\s*:/i.exec(line);
     if (match) fields.push(match[1]!);
   }
-  assert.ok(
-    fields.length > 10,
-    `parsed only ${fields.length} fields — parser is wrong`,
-  );
+  assert.ok(fields.length > 10, `parsed only ${fields.length} fields — parser is wrong`);
   return fields;
 }
 
@@ -127,20 +117,13 @@ describe('PROFILE_COLUMNS — the shared profiles SELECT list', () => {
   it('selects nothing the row type does not declare', () => {
     const fields = profileFields();
     const extra = selected().filter((c) => !fields.includes(c));
-    assert.deepEqual(
-      extra,
-      [],
-      `PROFILE_COLUMNS selects unknown column(s): ${extra.join(', ')}`,
-    );
+    assert.deepEqual(extra, [], `PROFILE_COLUMNS selects unknown column(s): ${extra.join(', ')}`);
   });
 
   it('names the two columns whose omission caused the bug this guards', () => {
     // Explicit, so the regression that motivated the constant is named and not
     // merely implied by the generic check above.
-    assert.ok(
-      selected().includes('bee_publishers'),
-      'bee_publishers must be selected',
-    );
+    assert.ok(selected().includes('bee_publishers'), 'bee_publishers must be selected');
     assert.ok(selected().includes('bee_url'), 'bee_url must be selected');
   });
 
@@ -158,8 +141,7 @@ describe('PROFILE_COLUMNS — the shared profiles SELECT list', () => {
   it('says whether the deployment holds a signing key, without the key', () => {
     assert.ok(
       selected().includes('has_private_key'),
-      'the row has to say whether a key is stored, so the edit drawer can mask ' +
-        'the field it must not be sent',
+      'the row has to say whether a key is stored, so the edit drawer can mask ' + 'the field it must not be sent',
     );
   });
 

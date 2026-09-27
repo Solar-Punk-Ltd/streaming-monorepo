@@ -23,17 +23,21 @@ import { execFileSync } from 'node:child_process';
 const BUILT = new URL('../dist/domain/chequebook/', import.meta.url);
 
 async function built(name) {
-  try { return await import(new URL(name, BUILT).href); }
-  catch { throw new Error('the built manager is missing: run pnpm --filter @streaming-infra-manager/api build first'); }
+  try {
+    return await import(new URL(name, BUILT).href);
+  } catch {
+    throw new Error('the built manager is missing: run pnpm --filter @streaming-infra-manager/api build first');
+  }
 }
 
-const { BEE_BRIDGE_CHECK_REVISION, beeBridgeCheckCommand, beeBridgeCheckEvidence, beeBridgeCheckVerdict } = await built('beeBridgeCheck.js');
+const { BEE_BRIDGE_CHECK_REVISION, beeBridgeCheckCommand, beeBridgeCheckEvidence, beeBridgeCheckVerdict } =
+  await built('beeBridgeCheck.js');
 const { DOCKER_BEE_BRIDGE_REVISION } = await built('dockerBeeBridge.js');
 
 function options(argv) {
   const value = (flag) => {
     const at = argv.indexOf(flag);
-    return at === -1 ? null : argv[at + 1] ?? null;
+    return at === -1 ? null : (argv[at + 1] ?? null);
   };
   const container = value('--container');
   if (!container) throw new Error('give --container <name>, a container already running the image');
@@ -41,7 +45,9 @@ function options(argv) {
 }
 
 function docker(on, args) {
-  const command = on.ssh ? ['ssh', ['-o', 'BatchMode=yes', on.ssh, ['docker', ...args].map(quote).join(' ')]] : ['docker', args];
+  const command = on.ssh
+    ? ['ssh', ['-o', 'BatchMode=yes', on.ssh, ['docker', ...args].map(quote).join(' ')]]
+    : ['docker', args];
   return execFileSync(command[0], command[1], { encoding: 'utf8' }).trim();
 }
 
@@ -51,19 +57,31 @@ function quote(word) {
 
 /** The check's own answer, or nothing when the exec could not run, which the verdict names as an unreadable answer. */
 function checkAnswer(on) {
-  try { return docker(on, ['exec', on.container, ...beeBridgeCheckCommand()]); }
-  catch { return ''; }
+  try {
+    return docker(on, ['exec', on.container, ...beeBridgeCheckCommand()]);
+  } catch {
+    return '';
+  }
 }
 
 function main() {
   const on = options(process.argv.slice(2));
   const engineVersion = docker(on, ['version', '--format', '{{.Server.Version}}']);
   const imageId = docker(on, ['inspect', '--format', '{{.Image}}', on.container]);
-  const [os, architecture, variant] = docker(on, ['image', 'inspect', imageId, '--format', '{{.Os}} {{.Architecture}} {{.Variant}}']).split(' ');
+  const [os, architecture, variant] = docker(on, [
+    'image',
+    'inspect',
+    imageId,
+    '--format',
+    '{{.Os}} {{.Architecture}} {{.Variant}}',
+  ]).split(' ');
   const imageRef = docker(on, ['inspect', '--format', '{{.Config.Image}}', on.container]);
   const platform = { os, architecture, variant: variant ?? '' };
   const verdict = beeBridgeCheckVerdict(checkAnswer(on));
-  const { evidence, digest } = beeBridgeCheckEvidence({ imageId, engineVersion, platform, bridgeRevision: DOCKER_BEE_BRIDGE_REVISION }, verdict);
+  const { evidence, digest } = beeBridgeCheckEvidence(
+    { imageId, engineVersion, platform, bridgeRevision: DOCKER_BEE_BRIDGE_REVISION },
+    verdict,
+  );
 
   console.log('# evidence');
   console.log(JSON.stringify({ imageRef, ...evidence }, null, 2));

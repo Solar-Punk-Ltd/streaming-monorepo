@@ -1,16 +1,7 @@
 import { useId, useState, type ReactNode } from 'react';
-import {
-  Alert,
-  Button,
-  Paper,
-  Stack,
-  Typography,
-} from '@mui/material';
+import { Alert, Button, Paper, Stack, Typography } from '@mui/material';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
-import {
-  buildObsSrtServer,
-  type IngestDetails,
-} from '@streaming-monorepo/web2-admin-common';
+import { buildObsSrtServer, type IngestDetails } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
 import { errorMessage } from '../errors';
@@ -36,21 +27,11 @@ function maskIngestSecrets(value: string): string {
 }
 
 /** One protocol's settings, named for screen readers by its heading. */
-function ProtocolSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+function ProtocolSection({ title, children }: { title: string; children: ReactNode }) {
   const headingId = useId();
   return (
     <Stack component="section" aria-labelledby={headingId} spacing={2}>
-      <Typography
-        id={headingId}
-        variant="subtitle2"
-        sx={{ color: 'text.secondary' }}
-      >
+      <Typography id={headingId} variant="subtitle2" sx={{ color: 'text.secondary' }}>
         {title}
       </Typography>
       {children}
@@ -64,10 +45,7 @@ function ProtocolSection({
  * passphrase cannot ride on that line.
  */
 function SrtSettings({ srt }: { srt: IngestDetails['srt'] }) {
-  const { server, passphraseRoute } = buildObsSrtServer(
-    srt.url,
-    srt.passphrase,
-  );
+  const { server, passphraseRoute } = buildObsSrtServer(srt.url, srt.passphrase);
   return (
     <ProtocolSection title="SRT">
       <ValueField
@@ -82,8 +60,7 @@ function SrtSettings({ srt }: { srt: IngestDetails['srt'] }) {
         }
       />
       <Typography variant="body2">
-        <strong>Stream Key</strong>: leave it empty. The Server line already
-        names the stream.
+        <strong>Stream Key</strong>: leave it empty. The Server line already names the stream.
       </Typography>
       {passphraseRoute === 'authentication' && srt.passphrase ? (
         <ValueField
@@ -94,9 +71,7 @@ function SrtSettings({ srt }: { srt: IngestDetails['srt'] }) {
         />
       ) : null}
       {passphraseRoute === 'none' ? (
-        <Alert severity="info">
-          No SRT passphrase is configured on this ingest server.
-        </Alert>
+        <Alert severity="info">No SRT passphrase is configured on this ingest server.</Alert>
       ) : null}
     </ProtocolSection>
   );
@@ -109,11 +84,7 @@ function SrtSettings({ srt }: { srt: IngestDetails['srt'] }) {
 function RtmpSettings({ rtmp }: { rtmp: IngestDetails['rtmp'] }) {
   return (
     <ProtocolSection title="RTMP">
-      <ValueField
-        label="RTMP Server"
-        value={rtmp.server}
-        helperText="Paste into the Server box."
-      />
+      <ValueField label="RTMP Server" value={rtmp.server} helperText="Paste into the Server box." />
       <ValueField
         label="RTMP Stream Key"
         value={rtmp.streamKey}
@@ -159,24 +130,16 @@ export function IngestPanel({
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             OBS connection details
           </Typography>
-          <Button
-            size="small"
-            color="warning"
-            startIcon={<AutorenewIcon />}
-            onClick={() => setConfirmOpen(true)}
-          >
+          <Button size="small" color="warning" startIcon={<AutorenewIcon />} onClick={() => setConfirmOpen(true)}>
             Rotate key
           </Button>
         </Stack>
 
-        {!details.keyVerified ? (
-          <Alert severity="warning">{KEY_UNVERIFIED_NOTE}</Alert>
-        ) : null}
+        {!details.keyVerified ? <Alert severity="warning">{KEY_UNVERIFIED_NOTE}</Alert> : null}
 
         <Typography variant="body2">
-          In OBS, open Settings, then Stream, and set Service to Custom. Then
-          pick one of the two protocols below and copy its values into OBS.
-          Each field says which box it goes in.
+          In OBS, open Settings, then Stream, and set Service to Custom. Then pick one of the two protocols below and
+          copy its values into OBS. Each field says which box it goes in.
         </Typography>
 
         <SrtSettings srt={details.srt} />
@@ -184,9 +147,7 @@ export function IngestPanel({
 
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
           Ingest stream id {details.streamId}
-          {details.publishKeyRotatedAt
-            ? ` · key rotated ${formatDateTime(details.publishKeyRotatedAt)}`
-            : ''}
+          {details.publishKeyRotatedAt ? ` · key rotated ${formatDateTime(details.publishKeyRotatedAt)}` : ''}
         </Typography>
       </Stack>
 

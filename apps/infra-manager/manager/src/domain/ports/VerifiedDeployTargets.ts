@@ -3,7 +3,8 @@ import type { DeployTargets } from './DeployTargets.js';
 import { targetAlias } from './DeployTargets.js';
 import type { DeployTargetRecord, DeployTargetRepository } from './DeployTargetRepository.js';
 
-const PROBE_FAILED = 'The manager could not read a Docker daemon identity on this target. Check its connection and verify it again.';
+const PROBE_FAILED =
+  'The manager could not read a Docker daemon identity on this target. Check its connection and verify it again.';
 
 export interface TargetIdentityProbe {
   daemonId(alias: string): Promise<string>;

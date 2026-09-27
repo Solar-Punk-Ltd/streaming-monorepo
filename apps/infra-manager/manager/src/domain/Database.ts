@@ -18,16 +18,24 @@ const logger = Logger.getInstance();
 async function boundedCleanup<T>(work: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   try {
-    return await Promise.race([work, new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error('Migration connection cleanup timed out.')), CLEANUP_TIMEOUT_MS);
-    })]);
-  } finally { clearTimeout(timer!); }
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Migration connection cleanup timed out.')), CLEANUP_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer!);
+  }
 }
 
 export class Database {
   public readonly pool: Pool;
 
-  constructor(connectionString: string, private readonly migrationsDir = MIGRATIONS_DIR) {
+  constructor(
+    connectionString: string,
+    private readonly migrationsDir = MIGRATIONS_DIR,
+  ) {
     this.pool = new Pool({ connectionString, max: 10 });
     // node-postgres reports an idle connection's failure as an 'error' event on
     // the pool, and an emitter with no listener for it throws what it was given
@@ -74,14 +82,13 @@ export class Database {
         try {
           await client.query('BEGIN');
           await client.query(sql);
-          await client.query('INSERT INTO _migrations (name) VALUES ($1)', [
-            file,
-          ]);
+          await client.query('INSERT INTO _migrations (name) VALUES ($1)', [file]);
           await client.query('COMMIT');
           logger.info(`[Database] Applied migration: ${file}`);
         } catch (err) {
-          try { await boundedCleanup(client.query('ROLLBACK')); }
-          catch {
+          try {
+            await boundedCleanup(client.query('ROLLBACK'));
+          } catch {
             discardClient = true;
             logger.error('[Database] Migration rollback could not be confirmed. Discarding the connection.');
           }
@@ -95,9 +102,9 @@ export class Database {
       let unlockFailed = false;
       if (locked && !discardClient) {
         try {
-          const result = await boundedCleanup(client.query<{ unlocked: boolean }>(
-            'SELECT pg_advisory_unlock($1) AS unlocked', [MIGRATION_LOCK_KEY],
-          ));
+          const result = await boundedCleanup(
+            client.query<{ unlocked: boolean }>('SELECT pg_advisory_unlock($1) AS unlocked', [MIGRATION_LOCK_KEY]),
+          );
           if (result.rows[0]?.unlocked !== true) throw new Error('Migration lock ownership was lost.');
         } catch {
           discardClient = true;
@@ -108,7 +115,8 @@ export class Database {
       client.release(discardClient);
       client.removeListener('error', onConnectionError);
       if (connectionFailure && !primaryFailed) throw connectionFailure;
-      if (unlockFailed && !primaryFailed) throw new Error('Migration lock release could not be confirmed. Connection discarded.');
+      if (unlockFailed && !primaryFailed)
+        throw new Error('Migration lock release could not be confirmed. Connection discarded.');
     }
   }
 

@@ -35,34 +35,20 @@ describe('password policy', () => {
     ];
 
     for (const password of fine) {
-      assert.equal(
-        passwordProblem(password, USERNAME),
-        null,
-        `should accept ${JSON.stringify(password)}`,
-      );
+      assert.equal(passwordProblem(password, USERNAME), null, `should accept ${JSON.stringify(password)}`);
     }
   });
 
   it('refuses one character short of the minimum', () => {
-    assert.match(
-      passwordProblem('a'.repeat(PASSWORD_MIN_LENGTH - 1), USERNAME) ?? '',
-      /at least 12 characters/,
-    );
+    assert.match(passwordProblem('a'.repeat(PASSWORD_MIN_LENGTH - 1), USERNAME) ?? '', /at least 12 characters/);
   });
 
   it('refuses one character past the maximum', () => {
-    assert.match(
-      passwordProblem('a'.repeat(PASSWORD_MAX_LENGTH + 1), USERNAME) ?? '',
-      /at most 128 characters/,
-    );
+    assert.match(passwordProblem('a'.repeat(PASSWORD_MAX_LENGTH + 1), USERNAME) ?? '', /at most 128 characters/);
   });
 
   it('refuses a password carrying the username, in any case', () => {
-    for (const password of [
-      'owner-is-my-name',
-      'my-name-is-OWNER-ok',
-      'xxxxLevixxxxx',
-    ]) {
+    for (const password of ['owner-is-my-name', 'my-name-is-OWNER-ok', 'xxxxLevixxxxx']) {
       assert.equal(
         passwordProblem(password, USERNAME),
         'password must not contain the username',
@@ -80,13 +66,7 @@ describe('password policy', () => {
 
 describe('username rules', () => {
   it('accepts what the database CHECK accepts', () => {
-    for (const username of [
-      'ab',
-      'owner',
-      'a.b_c-d',
-      '0start',
-      'x'.repeat(USERNAME_MAX_LENGTH),
-    ]) {
+    for (const username of ['ab', 'owner', 'a.b_c-d', '0start', 'x'.repeat(USERNAME_MAX_LENGTH)]) {
       assert.equal(usernameProblem(username), null, `should accept ${username}`);
     }
   });

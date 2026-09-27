@@ -11,10 +11,14 @@ export function ManagerSettingsPage() {
   const load = useManagerAdminLink();
   return (
     <Stack spacing={2}>
-      <Typography variant="body2" sx={{
-        color: "text.secondary"
-      }}>
-        What this manager gives the deployments it creates. A deployment that exists keeps its own settings, on its own page.
+      <Typography
+        variant="body2"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
+        What this manager gives the deployments it creates. A deployment that exists keeps its own settings, on its own
+        page.
       </Typography>
       <ManagerAdminLinkCard load={load} />
     </Stack>

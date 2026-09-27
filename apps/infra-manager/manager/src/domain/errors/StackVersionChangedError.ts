@@ -8,7 +8,9 @@ export class StackVersionChangedError extends Error {
   ) {
     const now =
       status === 'ready' && commitSha
-        ? buildId ? `on build ${buildId}` : `at legacy commit ${commitSha.slice(0, 7)}`
+        ? buildId
+          ? `on build ${buildId}`
+          : `at legacy commit ${commitSha.slice(0, 7)}`
         : status;
     super(
       `${versionName} changed since this page loaded: it is now ${now}. Reload, and mark the build you actually tested.`,

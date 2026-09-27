@@ -25,10 +25,8 @@ const root = throwawayRoot('shls-');
 // they cannot leak into the next one — a failing assertion used to skip the
 // inline restore that followed it, so one real failure reported as three, two
 // of them pointing at code that was fine.
-const BASE_ENV =
-  'ENGINE=srs\nBEE_URL=http://bee-uploader:1633\nSTREAM_LIST_TOPIC=swarm-stream\n';
-const writeBaseEnv = (contents = BASE_ENV) =>
-  writeFileSync(join(root, '.env'), contents);
+const BASE_ENV = 'ENGINE=srs\nBEE_URL=http://bee-uploader:1633\nSTREAM_LIST_TOPIC=swarm-stream\n';
+const writeBaseEnv = (contents = BASE_ENV) => writeFileSync(join(root, '.env'), contents);
 
 // The stack's own .env.sample, which every checkout's base .env is copied from.
 // Read rather than quoted, because what this file has to prove is what the
@@ -39,9 +37,7 @@ const sampleBaseEnv = () => readFileSync(STACK_SAMPLE, 'utf8');
 
 writeBaseEnv();
 
-const { bootstrapStackDefaults, writeProfileEnv } = await import(
-  '../../src/utils/envUtils.js',
-);
+const { bootstrapStackDefaults, writeProfileEnv } = await import('../../src/utils/envUtils.js');
 
 const BATCH = (rung: string) => rung.replace(/\D/g, '').padEnd(64, '0');
 const PUBLISHERS = ['360p', '480p', '720p', '1080p']
@@ -50,8 +46,7 @@ const PUBLISHERS = ['360p', '480p', '720p', '1080p']
 
 const modeOf = (path: string): string => (statSync(path).mode & 0o777).toString(8);
 const lines = (path: string) => readFileSync(path, 'utf8').split('\n');
-const lineFor = (path: string, key: string) =>
-  lines(path).find((line) => line.startsWith(`${key}=`));
+const lineFor = (path: string, key: string) => lines(path).find((line) => line.startsWith(`${key}=`));
 
 beforeEach(() => writeBaseEnv());
 
@@ -115,10 +110,7 @@ describe('writeProfileEnv — BEE_PUBLISHERS', () => {
   });
 
   it('refuses the OME engine — the ladder is SRS-only', () => {
-    assert.throws(
-      () => writeProfileEnv(root, 'stage-e', { engine: 'ome', beePublishers: PUBLISHERS }),
-      /srs engine/,
-    );
+    assert.throws(() => writeProfileEnv(root, 'stage-e', { engine: 'ome', beePublishers: PUBLISHERS }), /srs engine/);
   });
 });
 
@@ -231,11 +223,7 @@ describe('writeProfileEnv — STREAM_KEY', () => {
     const path = writeProfileEnv(root, 'keyed', { engine: 'srs', streamKey: KEY });
 
     assert.equal(lineFor(path, 'STREAM_KEY'), `STREAM_KEY=${KEY}`);
-    assert.equal(
-      lines(path).filter((line) => line.startsWith('STREAM_KEY=')).length,
-      1,
-      'upsert, not append',
-    );
+    assert.equal(lines(path).filter((line) => line.startsWith('STREAM_KEY=')).length, 1, 'upsert, not append');
   });
 
   it('leaves the base env value standing when the profile has no key', () => {
@@ -455,11 +443,7 @@ describe('bootstrapStackDefaults, the mode of the base env it makes', () => {
     writeFileSync(join(dir, '.env'), sampleBaseEnv());
     chmodSync(join(dir, '.env'), 0o644);
 
-    assert.deepEqual(
-      await bootstrapStackDefaults(dir),
-      [],
-      'a file that is already there is not copied over',
-    );
+    assert.deepEqual(await bootstrapStackDefaults(dir), [], 'a file that is already there is not copied over');
     assert.equal(modeOf(join(dir, '.env')), '600');
   });
 });
@@ -589,9 +573,7 @@ describe('the keys a Bee gateway put on the chain reads', () => {
     // host-wide value an operator put there would decide these for every
     // gateway that says nothing, and turn an ultra-light one light on its next
     // deploy. The same trap LOCAL_BEE_UPLOADER's own comment names.
-    writeBaseEnv(
-      'ENGINE=srs\nBEE_GATEWAY_SWAP_ENABLE=true\nBEE_GATEWAY_RPC_ENDPOINT=https://rpc.gnosischain.com\n',
-    );
+    writeBaseEnv('ENGINE=srs\nBEE_GATEWAY_SWAP_ENABLE=true\nBEE_GATEWAY_RPC_ENDPOINT=https://rpc.gnosischain.com\n');
 
     const path = writeProfileEnv(root, 'ultra-light-gateway', {
       engine: 'srs',
@@ -636,4 +618,3 @@ describe('the keys a Bee gateway put on the chain reads', () => {
     );
   });
 });
-

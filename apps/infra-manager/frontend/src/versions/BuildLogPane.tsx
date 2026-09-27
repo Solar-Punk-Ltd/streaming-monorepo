@@ -17,13 +17,7 @@ const STDERR_PREFIX = 'stderr ';
  * few lines, so the pane follows the end of the log rather than staying where
  * the reader last scrolled.
  */
-export function BuildLogPane({
-  lines,
-  running,
-}: {
-  lines: BuildLine[];
-  running: boolean;
-}) {
+export function BuildLogPane({ lines, running }: { lines: BuildLine[]; running: boolean }) {
   const end = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -43,9 +37,12 @@ export function BuildLogPane({
       }}
     >
       {lines.length === 0 && (
-        <Typography variant="caption" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {running
             ? 'Waiting for the first line of the build.'
             : 'The build log appears here once a version is added or updated.'}

@@ -1,8 +1,4 @@
-import type {
-  StackContract,
-  StackVersionSource,
-  StackVersionStatus,
-} from '@streaming-infra-manager/common';
+import type { StackContract, StackVersionSource, StackVersionStatus } from '@streaming-infra-manager/common';
 
 /** One row of `stack_versions`, as the domain reads it. */
 /**
@@ -38,7 +34,10 @@ export interface StackVersionRecord {
 }
 
 /** Artifact-selection facts that remain meaningful after a newer build is published. */
-export type DeployVersionSnapshot = Pick<StackVersionRecord, 'id' | 'name' | 'rootPath' | 'layout' | 'buildId' | 'commitSha' | 'contract'>;
+export type DeployVersionSnapshot = Pick<
+  StackVersionRecord,
+  'id' | 'name' | 'rootPath' | 'layout' | 'buildId' | 'commitSha' | 'contract'
+>;
 
 /** A version and how many deployments run it. */
 export interface StackVersionUsage extends StackVersionRecord {
@@ -159,7 +158,10 @@ export interface StackVersionRepository {
     forBuild?: string | null,
   ): Promise<StackVersionRecord | null>;
   /** All ownership guards and file cleanup share the version row lock. Cleanup failure retains the row. */
-  removeGuarded(expected: StackVersionRecord, removeOwnedFiles: (locked: StackVersionRecord) => Promise<void>): Promise<boolean>;
+  removeGuarded(
+    expected: StackVersionRecord,
+    removeOwnedFiles: (locked: StackVersionRecord) => Promise<void>,
+  ): Promise<boolean>;
   /** The deployments running this version, by name, for a refusal that says so. */
   deploymentNames(id: number): Promise<string[]>;
 }

@@ -1,10 +1,13 @@
 {
   "name": "@streaming-monorepo/web2-admin-common",
-  "private": true,
   "version": "0.1.0",
-  "type": "module",
+  "private": true,
   "description": "Types shared by the web2-admin backend and frontend: the API contract.",
   "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "exports": {
@@ -14,7 +17,6 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
   "scripts": {
     "lint": "oxlint --type-aware .",
     "build": "tsc -p tsconfig.build.json",
@@ -27,6 +29,9 @@
     "typescript": "7.0.2"
   },
   "nx": {
-    "tags": ["scope:admin", "type:lib"]
+    "tags": [
+      "scope:admin",
+      "type:lib"
+    ]
   }
 }

@@ -2,8 +2,8 @@
   "name": "@swarm-hls-stream/e2e",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "description": "End-to-end fault-injection suite that drives a deployed stack, and the unit tests that prove the harness reading it is not lying.",
+  "type": "module",
   "scripts": {
     "lint": "oxlint --type-aware .",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",

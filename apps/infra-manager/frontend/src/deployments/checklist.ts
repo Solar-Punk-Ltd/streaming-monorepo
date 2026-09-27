@@ -24,14 +24,7 @@ import {
 } from '@streaming-infra-manager/common';
 
 import { canDeployUploader } from '../data';
-import {
-  BZZ_DECIMALS,
-  formatDateTime,
-  formatTokenBalance,
-  formatTtl,
-  shortHex,
-  XDAI_DECIMALS,
-} from '../format';
+import { BZZ_DECIMALS, formatDateTime, formatTokenBalance, formatTtl, shortHex, XDAI_DECIMALS } from '../format';
 import type { Profile } from '../types';
 import type { BeeReadinessView } from '../uploaders/beeReadiness';
 import type { BeeStamp, BeeWallet } from '../uploaders/stampApi';
@@ -142,10 +135,20 @@ export function firstBlocker(steps: readonly ChecklistStep[]): ChecklistStep | n
 }
 
 function nodeStep(observed: BeeReadinessView): ChecklistStep {
-  return { title: 'Bee API observation', problem: observed.label,
-    state: observed.state === 'ready' ? 'ok' : observed.state === 'unhealthy' ? 'err' : observed.state === 'initializing' ? 'busy' : 'warn',
+  return {
+    title: 'Bee API observation',
+    problem: observed.label,
+    state:
+      observed.state === 'ready'
+        ? 'ok'
+        : observed.state === 'unhealthy'
+          ? 'err'
+          : observed.state === 'initializing'
+            ? 'busy'
+            : 'warn',
     detail: observed.detail,
-    action: observed.state === 'ready' ? undefined : RETRY_NODE_CHECKS };
+    action: observed.state === 'ready' ? undefined : RETRY_NODE_CHECKS,
+  };
 }
 
 function containersStep(profile: Profile): ChecklistStep {
@@ -167,7 +170,16 @@ function containersStep(profile: Profile): ChecklistStep {
   const canAct = !isRunning(profile) && !isTransitional(profile);
   return {
     title: 'Containers running',
-    problem: profile.status === 'ERROR' ? 'Last deployment failed' : profile.status === 'DEPLOYING' ? statusLabelOf(profile).label : profile.status === 'STOPPING' ? 'Stopping' : profile.status === 'REMOVING' ? 'Removing' : 'Stopped',
+    problem:
+      profile.status === 'ERROR'
+        ? 'Last deployment failed'
+        : profile.status === 'DEPLOYING'
+          ? statusLabelOf(profile).label
+          : profile.status === 'STOPPING'
+            ? 'Stopping'
+            : profile.status === 'REMOVING'
+              ? 'Removing'
+              : 'Stopped',
     state,
     detail,
     action: canAct
@@ -236,12 +248,7 @@ function readFailureDetail(what: string, failure: ReadFailure): string {
  * wallet BZZ, so "fill the chequebook" is not a thing an unfunded node can
  * act on.
  */
-function fundingStep({
-  profile,
-  wallet,
-  chequebook,
-  nodeAddress,
-}: ChecklistInput): ChecklistStep {
+function fundingStep({ profile, wallet, chequebook, nodeAddress }: ChecklistInput): ChecklistStep {
   const action: StepAction | undefined = nodeAddress
     ? { label: 'Copy node address', kind: 'copy-address', value: nodeAddress }
     : undefined;
@@ -291,8 +298,7 @@ function fundingStep({
       title: FUNDING_TITLE,
       problem: 'Funding not checked',
       state: 'warn',
-      detail:
-        'The node has not confirmed its chequebook balance. Retry the node checks before starting an uploader.',
+      detail: 'The node has not confirmed its chequebook balance. Retry the node checks before starting an uploader.',
       action: RETRY_NODE_CHECKS,
     };
   }
@@ -300,11 +306,7 @@ function fundingStep({
   return {
     title: FUNDING_TITLE,
     state: 'ok',
-    detail: [
-      `xDAI ${xdaiText} for gas`,
-      `BZZ ${bzzText} for storage`,
-      chequebookNote(chequebook),
-    ]
+    detail: [`xDAI ${xdaiText} for gas`, `BZZ ${bzzText} for storage`, chequebookNote(chequebook)]
       .filter((part) => part !== null)
       .join(' · '),
     action,
@@ -334,10 +336,7 @@ function fundingFromChequebookAlone(
 
   // The unsettled state is asked about here rather than inferred from a missing
   // balance, so this rule does not turn on an invariant kept in another package.
-  const note =
-    chequebook && chequebook.state !== 'unknown'
-      ? chequebookNote(chequebook)
-      : null;
+  const note = chequebook && chequebook.state !== 'unknown' ? chequebookNote(chequebook) : null;
   if (!note) {
     return {
       title: FUNDING_TITLE,
@@ -351,9 +350,7 @@ function fundingFromChequebookAlone(
 }
 
 /** What the node itself reported short, whoever took the reading. */
-function chequebookShortfallStep(
-  chequebook: ChequebookHealth | null,
-): ChecklistStep | null {
+function chequebookShortfallStep(chequebook: ChequebookHealth | null): ChecklistStep | null {
   const shortfall = chequebook ? chequebookStateReason(chequebook) : null;
   if (!chequebook || !shortfall) return null;
   return {
@@ -381,12 +378,7 @@ function chequebookNote(chequebook: ChequebookHealth | null): string | null {
   return `chequebook ${plurToBzz(chequebook.availablePlur)} BZZ available`;
 }
 
-function stampStep({
-  profile,
-  wallet,
-  stampHealth,
-  currentStamp,
-}: ChecklistInput): ChecklistStep {
+function stampStep({ profile, wallet, stampHealth, currentStamp }: ChecklistInput): ChecklistStep {
   const title = 'Postage stamp set';
   const affordable = stampAffordable(wallet);
   const buy = (label: string, primary = false): StepAction => ({
@@ -407,8 +399,7 @@ function stampStep({
         title,
         problem: 'Needs a stamp',
         state: affordable && isRunning(profile) ? 'warn' : 'off',
-        detail:
-          'A stamp is prepaid Swarm storage. Buy one below once the node has BZZ.',
+        detail: 'A stamp is prepaid Swarm storage. Buy one below once the node has BZZ.',
         action: buy('Buy stamp', affordable && isRunning(profile)),
       };
     case 'expired':
@@ -428,8 +419,7 @@ function stampStep({
         title,
         problem: 'Stamp settling',
         state: 'busy',
-        detail:
-          'Bought and set here, waiting for the network to confirm it before it pays.',
+        detail: 'Bought and set here, waiting for the network to confirm it before it pays.',
       };
     case 'unknown': {
       const failure = stampHealth.failure;
@@ -444,9 +434,7 @@ function stampStep({
       }
       return {
         title,
-        problem: failure
-          ? READ_FAILURE_PROBLEM[failure.reason]
-          : 'Stamp not checked',
+        problem: failure ? READ_FAILURE_PROBLEM[failure.reason] : 'Stamp not checked',
         action: RETRY_NODE_CHECKS,
         state: isRunning(profile) ? 'warn' : 'off',
         detail: failure
@@ -545,11 +533,7 @@ function stampAffordable(wallet: BeeWallet | null | undefined): boolean {
   return wallet !== null && toBigInt(wallet.bzzBalance) > 0n;
 }
 
-function activeStampDetail(
-  profile: Profile,
-  health: StampHealth,
-  stamp: BeeStamp | null,
-): string {
+function activeStampDetail(profile: Profile, health: StampHealth, stamp: BeeStamp | null): string {
   const parts = [`${formatTtl(health.ttl)} left`, ...fillParts(health)];
   if (profile.stamp_id) parts.push(`batch ${shortHex(profile.stamp_id)}`);
   if (stamp) parts.push(`depth ${stamp.depth}`);
@@ -575,9 +559,7 @@ const GATE_WORDS: Record<string, string> = {
 function uploaderStep(input: ChecklistInput): ChecklistStep {
   const { profile, stampHealth, uploaderHealth } = input;
   const title = UPLOADER_TITLE;
-  const deployed = profile.containers.some(
-    (c) => c.service === STREAM_UPLOADER_SERVICE,
-  );
+  const deployed = profile.containers.some((c) => c.service === STREAM_UPLOADER_SERVICE);
   if (deployed && uploaderHealth?.state !== 'not_deployed') {
     return runningUploaderStep(uploaderHealth, profile);
   }
@@ -590,10 +572,7 @@ function uploaderStep(input: ChecklistInput): ChecklistStep {
   const prerequisiteReady = poolBacked
     ? !beePublishersProblem(profile.bee_publishers)
     : stampHealth.state === 'active' || stampHealth.state === 'unknown';
-  const ready =
-    isRunning(profile) &&
-    canDeployUploader(profile) &&
-    prerequisiteReady;
+  const ready = isRunning(profile) && canDeployUploader(profile) && prerequisiteReady;
   return {
     title,
     problem: 'Uploader not started',
@@ -602,12 +581,10 @@ function uploaderStep(input: ChecklistInput): ChecklistStep {
       ? poolBacked
         ? 'The node pool is configured. Start the uploader to complete the stack.'
         : stampHealth.state === 'active'
-        ? 'Stamp is set. Start the uploader to complete the stack.'
-        : 'A stamp is recorded. Start rechecks it. A node that does not answer may leave the uploader waiting, while a stamp the node reports unusable is refused.'
+          ? 'Stamp is set. Start the uploader to complete the stack.'
+          : 'A stamp is recorded. Start rechecks it. A node that does not answer may leave the uploader waiting, while a stamp the node reports unusable is refused.'
       : 'Start is held until the earlier readiness checks pass. Existing containers are left running.',
-    action: ready
-      ? { label: 'Start uploader', kind: 'deploy-uploader', primary: true }
-      : undefined,
+    action: ready ? { label: 'Start uploader', kind: 'deploy-uploader', primary: true } : undefined,
   };
 }
 
@@ -643,10 +620,7 @@ const RUNNING_UPLOADER_STEPS: Record<UploaderHealthState, { state: StepState; pr
  * Both are states nothing on the container says, which is why they are read
  * from the uploader rather than inferred here.
  */
-function runningUploaderStep(
-  health: UploaderHealthReading | undefined,
-  profile: Profile,
-): ChecklistStep {
+function runningUploaderStep(health: UploaderHealthReading | undefined, profile: Profile): ChecklistStep {
   const title = UPLOADER_TITLE;
   if (!health) return { title, state: 'ok', detail: UPLOADER_UNVERIFIED };
 
@@ -663,10 +637,7 @@ function runningUploaderStep(
  * What an uploader's own reading says, in the words its readiness step uses, so
  * a list that names the reading says the same thing as the deployment's page.
  */
-export function uploaderHealthDetail(
-  health: UploaderHealthReading,
-  profile: Profile,
-): string {
+export function uploaderHealthDetail(health: UploaderHealthReading, profile: Profile): string {
   switch (health.state) {
     case 'waiting_for_node':
       return waitingDetail(health);
@@ -685,15 +656,11 @@ export function uploaderHealthDetail(
 function waitingDetail(health: UploaderHealthReading): string {
   const node = health.node;
   const where = node ? ` at ${node.url}` : '';
-  const since = health.waitingSince
-    ? ` since ${formatDateTime(health.waitingSince)}`
-    : '';
+  const since = health.waitingSince ? ` since ${formatDateTime(health.waitingSince)}` : '';
   // Absent until an attempt has failed, which a wait reports before it has made
   // one, so this says why the node is being waited for rather than only that it is.
   const why = node?.lastError ? `, last error: ${node.lastError}` : '';
-  const tries = node
-    ? ` ${node.attempts === 1 ? '1 attempt' : `${node.attempts} attempts`} so far${why}.`
-    : '';
+  const tries = node ? ` ${node.attempts === 1 ? '1 attempt' : `${node.attempts} attempts`} so far${why}.` : '';
   return `Waiting for its Bee node${where}${since}.${tries} It keeps trying and finishes starting when the node answers.`;
 }
 
@@ -787,25 +754,16 @@ function followingStep({ profile, streamers }: ChecklistInput): ChecklistStep {
   return {
     title,
     state: 'ok',
-    detail: streamer
-      ? `${streamer.name} on this manager (${shortHex(owner)})`
-      : `External streamer ${shortHex(owner)}`,
-    action: streamer
-      ? { label: 'Open stream', kind: 'open-stream', value: streamer.name }
-      : undefined,
+    detail: streamer ? `${streamer.name} on this manager (${shortHex(owner)})` : `External streamer ${shortHex(owner)}`,
+    action: streamer ? { label: 'Open stream', kind: 'open-stream', value: streamer.name } : undefined,
   };
 }
 
 /** The profile on this manager that signs the feed at `address`, if any. */
-export function streamerFor(
-  address: string | null | undefined,
-  streamers: Profile[],
-): Profile | null {
+export function streamerFor(address: string | null | undefined, streamers: Profile[]): Profile | null {
   if (!address) return null;
   const wanted = address.toLowerCase();
-  return (
-    streamers.find((p) => p.public_key?.toLowerCase() === wanted) ?? null
-  );
+  return streamers.find((p) => p.public_key?.toLowerCase() === wanted) ?? null;
 }
 
 function toBigInt(raw: string | null | undefined): bigint {

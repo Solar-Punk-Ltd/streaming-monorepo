@@ -49,10 +49,7 @@ import {
  */
 export const STANDARD_GROUP_KIND = 'standard';
 export const ABR_NODE_POOL_GROUP_KIND = 'abr-node-pool';
-export const GROUP_KINDS = [
-  STANDARD_GROUP_KIND,
-  ABR_NODE_POOL_GROUP_KIND,
-] as const;
+export const GROUP_KINDS = [STANDARD_GROUP_KIND, ABR_NODE_POOL_GROUP_KIND] as const;
 export type GroupKind = (typeof GROUP_KINDS)[number];
 
 export function isLadderKind(kind: string | null | undefined): boolean {
@@ -85,9 +82,7 @@ export const DEFAULT_ABR_LADDER: readonly AbrRung[] = [
   { name: '1080p', width: 1920, height: 1080, kbps: 5000 },
 ];
 
-export const DEFAULT_ABR_RUNGS: readonly string[] = DEFAULT_ABR_LADDER.map(
-  (rung) => rung.name,
-);
+export const DEFAULT_ABR_RUNGS: readonly string[] = DEFAULT_ABR_LADDER.map((rung) => rung.name);
 
 export const ABR_LADDER_SIZE = DEFAULT_ABR_LADDER.length;
 
@@ -113,10 +108,7 @@ export const PUBLISHABLE_RUNG_STATUS = 'RUNNING';
 // has less room than an ordinary one. Enforced at the edge rather than discovered
 // as a check-constraint violation halfway through creating the group.
 const PROFILE_NAME_MAX = 31;
-const LONGEST_RUNG = DEFAULT_ABR_RUNGS.reduce(
-  (longest, rung) => Math.max(longest, rung.length),
-  0,
-);
+const LONGEST_RUNG = DEFAULT_ABR_RUNGS.reduce((longest, rung) => Math.max(longest, rung.length), 0);
 export const LADDER_GROUP_NAME_MAX = PROFILE_NAME_MAX - LONGEST_RUNG - 1;
 
 /**
@@ -143,10 +135,7 @@ export function ladderMemberNames(groupName: string): string[] {
  * Always stripped against the *known* group name, so `abr` / `abr-1080p` and
  * `abr-1` / `abr-1-360p` cannot be confused for one another.
  */
-export function rungFromMemberName(
-  groupName: string,
-  memberName: string,
-): string | null {
+export function rungFromMemberName(groupName: string, memberName: string): string | null {
   const prefix = `${groupName}-`;
   if (!memberName.startsWith(prefix)) return null;
   const rung = memberName.slice(prefix.length);
@@ -175,10 +164,7 @@ export function rungOrder(rungName: string): number {
  * Each doubling of bitrate wants one more depth, hence log2 of the ratio to the
  * lowest rung: on a base of 17 the shipped ladder suggests 17 / 18 / 19 / 20.
  */
-export function suggestedRungDepth(
-  rungName: string,
-  baseDepth: number = MIN_STAMP_DEPTH,
-): number {
+export function suggestedRungDepth(rungName: string, baseDepth: number = MIN_STAMP_DEPTH): number {
   const lowest = DEFAULT_ABR_LADDER[0]!;
   const rung = DEFAULT_ABR_LADDER.find((entry) => entry.name === rungName);
   if (!rung || lowest.kbps <= 0) return baseDepth;
@@ -193,11 +179,7 @@ export function suggestedRungDepth(
  * comment in a `.env` file: an unquoted value would be truncated at the first one
  * and the batch ids silently lost.
  */
-export function beePublisherEntry(
-  rungName: string,
-  url: string,
-  batchId: string,
-): string {
+export function beePublisherEntry(rungName: string, url: string, batchId: string): string {
   return `${rungName}@${url}<${batchId.replace(/^0x/, '')}>`;
 }
 
@@ -275,12 +257,8 @@ export interface BeePublishersResult {
  * built from expired batches is worse still, since it looks complete and fails
  * on every upload.
  */
-export function assembleBeePublishers(
-  supplied: readonly LadderRungState[],
-): BeePublishersResult {
-  const rungs = [...supplied].sort(
-    (a, b) => rungOrder(a.rung) - rungOrder(b.rung),
-  );
+export function assembleBeePublishers(supplied: readonly LadderRungState[]): BeePublishersResult {
+  const rungs = [...supplied].sort((a, b) => rungOrder(a.rung) - rungOrder(b.rung));
 
   const missing: RungNote[] = [];
   const warnings: RungNote[] = [];
@@ -374,12 +352,8 @@ function formatShortTtl(seconds: number): string {
 }
 
 /** Space-separated BEE_PUBLISHERS value, in the order given. */
-export function beePublishersValue(
-  entries: readonly { rungName: string; url: string; batchId: string }[],
-): string {
-  return entries
-    .map((entry) => beePublisherEntry(entry.rungName, entry.url, entry.batchId))
-    .join(' ');
+export function beePublishersValue(entries: readonly { rungName: string; url: string; batchId: string }[]): string {
+  return entries.map((entry) => beePublisherEntry(entry.rungName, entry.url, entry.batchId)).join(' ');
 }
 
 /** One parsed `rung@url<batch>` entry. */
@@ -402,9 +376,7 @@ const PUBLISHER_ENTRY_RE = /^([^\s@<>]+)@([^\s<>]+)<(?:0x)?([0-9a-fA-F]{64})>$/;
  * cannot survive the `.env` file this is written into. Shape only, whether the
  * rungs make a ladder is `beePublishersProblem`'s question.
  */
-export function parseBeePublishers(
-  value: string,
-): BeePublisherEntry[] | null {
+export function parseBeePublishers(value: string): BeePublisherEntry[] | null {
   const tokens = value.trim().split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return null;
 
@@ -443,9 +415,7 @@ export function parseBeePublishers(
  * form and the stored form are now the same string. Left alone when it does not
  * parse, `beePublishersProblem` reports the shape error against what was typed.
  */
-export function normalizeBeePublishers<T extends string | null | undefined>(
-  value: T,
-): T | string {
+export function normalizeBeePublishers<T extends string | null | undefined>(value: T): T | string {
   if (value === null || value === undefined) return value;
   if (!value.trim()) return value;
   const entries = parseBeePublishers(value);
@@ -469,9 +439,7 @@ export function normalizeBeePublishers<T extends string | null | undefined>(
  * address it can reach. The ladder is the shipped one because that is what the
  * manager writes to ABR_LADDER beside it.
  */
-export function beePublishersProblem(
-  value: string | null | undefined,
-): string | null {
+export function beePublishersProblem(value: string | null | undefined): string | null {
   if (!value || !value.trim()) return null;
 
   const entries = parseBeePublishers(value);

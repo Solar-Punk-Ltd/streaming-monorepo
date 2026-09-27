@@ -18,18 +18,8 @@ import {
 } from '@streaming-infra-manager/common';
 
 import type { Profile } from '../../types';
-import {
-  footerError,
-  nameError,
-  poolStringError,
-  rpcEndpointError,
-  wizardError,
-} from './wizardError';
-import {
-  initialWizardState,
-  type WizardContext,
-  type WizardState,
-} from './wizardState';
+import { footerError, nameError, poolStringError, rpcEndpointError, wizardError } from './wizardError';
+import { initialWizardState, type WizardContext, type WizardState } from './wizardState';
 
 /** A deployment that exists already. The name is all the taken-name check reads. */
 function existing(name: string): Profile {
@@ -130,10 +120,7 @@ describe('what is wrong with the segment length', () => {
   });
 
   it('stops the operator moving on, in the words the field shows', () => {
-    assert.match(
-      wizardError(settings('two'), context) ?? '',
-      /Segment length must be a positive number/,
-    );
+    assert.match(wizardError(settings('two'), context) ?? '', /Segment length must be a positive number/);
   });
 
   it('lets the default through, and lets a cleared field through as well', () => {
@@ -149,10 +136,7 @@ describe('what is wrong with the segment length', () => {
       segmentSeconds: 'two',
     };
 
-    assert.match(
-      wizardError(uploader, context) ?? '',
-      /Segment length must be a positive number/,
-    );
+    assert.match(wizardError(uploader, context) ?? '', /Segment length must be a positive number/);
   });
 });
 
@@ -260,9 +244,23 @@ describe('what is wrong with the web2 admin link', () => {
       versionId: 7,
       buildId: 'build-1',
       entries: ['ADMIN_API_URL', 'ADMIN_API_TOKEN'].map((key) => ({
-        key, section: 'Admin mode', description: '', declared: true, secret: key.endsWith('TOKEN'), sampleValue: null,
-        versionSet: true, versionValue: null, stored: false, storedValue: null, value: null, source: 'version' as const,
-        owner: null, field: null, services: ['stream-uploader'], running: 'not-running' as const, engineSetting: null,
+        key,
+        section: 'Admin mode',
+        description: '',
+        declared: true,
+        secret: key.endsWith('TOKEN'),
+        sampleValue: null,
+        versionSet: true,
+        versionValue: null,
+        stored: false,
+        storedValue: null,
+        value: null,
+        source: 'version' as const,
+        owner: null,
+        field: null,
+        services: ['stream-uploader'],
+        running: 'not-running' as const,
+        engineSetting: null,
       })),
     },
     failure: null,
@@ -283,10 +281,16 @@ describe('what is wrong with the web2 admin link', () => {
 
   it('stops the settings step, and the review, on a link switched on without an address', () => {
     assert.equal(wizardError(onWithoutAddress, linkedContext), 'Web2 admin: type the address, or switch the link off');
-    assert.equal(wizardError({ ...onWithoutAddress, step: 4 }, linkedContext), 'Web2 admin: type the address, or switch the link off');
+    assert.equal(
+      wizardError({ ...onWithoutAddress, step: 4 }, linkedContext),
+      'Web2 admin: type the address, or switch the link off',
+    );
   });
 
   it('says nothing of a link switched off', () => {
-    assert.equal(wizardError({ ...onWithoutAddress, adminLink: { ...onWithoutAddress.adminLink!, on: false } }, linkedContext), null);
+    assert.equal(
+      wizardError({ ...onWithoutAddress, adminLink: { ...onWithoutAddress.adminLink!, on: false } }, linkedContext),
+      null,
+    );
   });
 });

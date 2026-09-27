@@ -318,15 +318,15 @@ again on 2026-09-11 with the twenty-five support cases the throttle work
 added. Test and build time only, without install. Each number is the longest run of that step measured
 here, so the estimate below is built on the slow end rather than the lucky one:
 
-| Step | Wall time |
-| --- | --- |
-| common build | 1 s |
-| type checks, every package | 6 s |
-| unit suites, common 354, manager 2474, frontend 153 when timed (2026-09-16), 551, 3183 and 629 on 2026-09-26 | 25 s |
-| native transport suites, 7 | 3 s |
-| frontend build | 6 s |
-| SQL suites, one file at a time. 526 cases across 34 files, measured 2026-09-16 against a disposable Postgres | 235 s |
-| browser suites, one child per file. Case count last measured 208 on 2026-09-10 across 27 files, and there are 43 now (2026-09-26) | 360 s |
+| Step                                                                                                                              | Wall time |
+| --------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| common build                                                                                                                      | 1 s       |
+| type checks, every package                                                                                                        | 6 s       |
+| unit suites, common 354, manager 2474, frontend 153 when timed (2026-09-16), 551, 3183 and 629 on 2026-09-26                      | 25 s      |
+| native transport suites, 7                                                                                                        | 3 s       |
+| frontend build                                                                                                                    | 6 s       |
+| SQL suites, one file at a time. 526 cases across 34 files, measured 2026-09-16 against a disposable Postgres                      | 235 s     |
+| browser suites, one child per file. Case count last measured 208 on 2026-09-10 across 27 files, and there are 43 now (2026-09-26) | 360 s     |
 
 The jobs run in parallel in wall-clock time but GitHub bills each one
 separately, so a push costs the sum. A standard GitHub-hosted Linux runner on
@@ -549,14 +549,14 @@ Read from the `actions/runner-images` Ubuntu 24.04 README
 (`images/ubuntu/Ubuntu2404-Readme.md` on `main`) on **2026-09-10**, image
 version 20260831.293.1:
 
-| Fact | What the README says |
-| --- | --- |
-| Google Chrome | 152.0.7977.64, with ChromeDriver 152.0.7977.64 |
-| Chromium | 152.0.7977.0 |
-| Docker | Client 28.0.4, Server 28.0.4 |
-| Docker Compose | 2.38.2 |
-| PostgreSQL | 16.15, service disabled by default |
-| Node.js | 22.23.2 |
+| Fact           | What the README says                           |
+| -------------- | ---------------------------------------------- |
+| Google Chrome  | 152.0.7977.64, with ChromeDriver 152.0.7977.64 |
+| Chromium       | 152.0.7977.0                                   |
+| Docker         | Client 28.0.4, Server 28.0.4                   |
+| Docker Compose | 2.38.2                                         |
+| PostgreSQL     | 16.15, service disabled by default             |
+| Node.js        | 22.23.2                                        |
 
 The README names `CHROMEWEBDRIVER` and not the browser's own path, so
 `CHROME_BIN` is set to `/usr/bin/google-chrome`, where the stable package puts
@@ -588,11 +588,11 @@ request.
 Actions are pinned by commit with the tag in a comment. Both workflows use
 the same three pins:
 
-| Action | Pin |
-| --- | --- |
-| `actions/checkout` | `3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1) |
-| `pnpm/action-setup` | `0977fd99725f1db4007ccb2928dbb4e90d06cc86` (v6.0.10) |
-| `actions/setup-node` | `820762786026740c76f36085b0efc47a31fe5020` (v7.0.0) |
+| Action               | Pin                                                  |
+| -------------------- | ---------------------------------------------------- |
+| `actions/checkout`   | `3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1)  |
+| `pnpm/action-setup`  | `0977fd99725f1db4007ccb2928dbb4e90d06cc86` (v6.0.10) |
+| `actions/setup-node` | `820762786026740c76f36085b0efc47a31fe5020` (v7.0.0)  |
 
 pnpm itself comes from the `packageManager` field. When a pin moves, the new
 tag's age and its commit are checked the way a dependency bump is: publish age,
@@ -602,11 +602,11 @@ is a flag and the newest release is the riskiest choice.
 
 Container images are pinned by digest, each with the date it was resolved:
 
-| Image | Digest | Resolved | Used by |
-| --- | --- | --- | --- |
-| `postgres:16-alpine` | `sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685` | 2026-09-10 | database, browser, integration |
-| `ossrs/srs:6` | `sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3` | 2026-09-10 | srs-parser, and the T01 observations |
-| `airensoft/ovenmediaengine` | `sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6` | 2026-09-08 | ome-gate |
+| Image                       | Digest                                                                    | Resolved   | Used by                              |
+| --------------------------- | ------------------------------------------------------------------------- | ---------- | ------------------------------------ |
+| `postgres:16-alpine`        | `sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685` | 2026-09-10 | database, browser, integration       |
+| `ossrs/srs:6`               | `sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3` | 2026-09-10 | srs-parser, and the T01 observations |
+| `airensoft/ovenmediaengine` | `sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6` | 2026-09-08 | ome-gate                             |
 
 ## Running any of it here
 

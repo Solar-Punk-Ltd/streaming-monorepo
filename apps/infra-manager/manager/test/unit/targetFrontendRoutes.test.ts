@@ -6,8 +6,8 @@ const { default: vite } = await import(new URL('../../../frontend/vite.config.ts
 /** Every location block that hands the request to the manager. */
 function apiLocations(nginx: string): string[] {
   return [...nginx.matchAll(/location\s+([^\n{]+)\{([^}]+)\}/g)]
-    .filter(match => match[2]!.includes('proxy_pass http://$manager_api;'))
-    .map(match => match[1]!.trim());
+    .filter((match) => match[2]!.includes('proxy_pass http://$manager_api;'))
+    .map((match) => match[1]!.trim());
 }
 
 /**
@@ -53,8 +53,9 @@ it('routes every path the dev server proxies to the API in production too', () =
   const config = vite as { server: { proxy: Record<string, unknown> } };
   const nginx = readFileSync(new URL('../../../frontend/nginx.conf', import.meta.url), 'utf8');
   const locations = apiLocations(nginx);
-  const missing = Object.keys(config.server.proxy)
-    .filter(key => !locations.some(location => takes(location, probeFor(key))));
+  const missing = Object.keys(config.server.proxy).filter(
+    (key) => !locations.some((location) => takes(location, probeFor(key))),
+  );
   assert.deepEqual(missing, [], 'nginx sends these to the SPA instead of to the manager');
 });
 
@@ -62,9 +63,13 @@ it('routes Host target requests to the API in development and production', () =>
   const config = vite as { server: { proxy: Record<string, { target: string }> } };
   assert.ok(config.server.proxy['/targets']?.target, 'Vite must proxy targets instead of returning the SPA');
   const nginx = readFileSync(new URL('../../../frontend/nginx.conf', import.meta.url), 'utf8');
-  const apiBlocks = [...nginx.matchAll(/location\s+([^\n{]+)\{([^}]+)\}/g)]
-    .filter(match => match[2]!.includes('proxy_pass http://$manager_api;'));
-  assert.ok(apiBlocks.some(match => match[1]!.includes('targets')), 'nginx must send targets to the manager');
+  const apiBlocks = [...nginx.matchAll(/location\s+([^\n{]+)\{([^}]+)\}/g)].filter((match) =>
+    match[2]!.includes('proxy_pass http://$manager_api;'),
+  );
+  assert.ok(
+    apiBlocks.some((match) => match[1]!.includes('targets')),
+    'nginx must send targets to the manager',
+  );
 });
 
 /**
@@ -80,9 +85,9 @@ it('routes Host target requests to the API in development and production', () =>
 it('states a read timeout on every location that reaches the manager', () => {
   const nginx = readFileSync(new URL('../../../frontend/nginx.conf', import.meta.url), 'utf8');
   const inheriting = [...nginx.matchAll(/location\s+([^\n{]+)\{([^}]+)\}/g)]
-    .filter(match => match[2]!.includes('proxy_pass http://$manager_api;'))
-    .filter(match => !/proxy_read_timeout\s+\S+;/.test(match[2]!))
-    .map(match => match[1]!.trim());
+    .filter((match) => match[2]!.includes('proxy_pass http://$manager_api;'))
+    .filter((match) => !/proxy_read_timeout\s+\S+;/.test(match[2]!))
+    .map((match) => match[1]!.trim());
 
   assert.deepEqual(inheriting, [], `these take nginx's sixty second default: ${inheriting.join(', ')}`);
 });
@@ -101,10 +106,14 @@ it('states a read timeout on every location that reaches the manager', () => {
 it('reaches the manager by a name it resolves again, so a recreated api is found', () => {
   const nginx = readFileSync(new URL('../../../frontend/nginx.conf', import.meta.url), 'utf8');
   assert.match(nginx, /^\s*resolver\s+\S+/m, 'without a resolver nginx cannot look the api up at all');
-  assert.match(nginx, /^\s*set\s+\$manager_api\s/m, 'the api host belongs in a variable, so nginx resolves it per request');
+  assert.match(
+    nginx,
+    /^\s*set\s+\$manager_api\s/m,
+    'the api host belongs in a variable, so nginx resolves it per request',
+  );
   const fixed = [...nginx.matchAll(/location\s+([^\n{]+)\{([^}]+)\}/g)]
-    .filter(match => /proxy_pass\s+http:\/\/(?!\$)/.test(match[2]!))
-    .map(match => match[1]!.trim());
+    .filter((match) => /proxy_pass\s+http:\/\/(?!\$)/.test(match[2]!))
+    .map((match) => match[1]!.trim());
   assert.deepEqual(fixed, [], `these hold one address for the life of nginx: ${fixed.join(', ')}`);
 });
 
@@ -119,7 +128,13 @@ it('routes the Manager settings requests to the API in development and productio
   const nginx = readFileSync(new URL('../../../frontend/nginx.conf', import.meta.url), 'utf8');
   const locations = apiLocations(nginx);
   for (const path of ['/manager-settings/admin-link', '/manager-settings/admin-link/test']) {
-    assert.ok(Object.keys(config.server.proxy).some(key => !key.startsWith('^') && path.startsWith(key)), `Vite proxies nothing for ${path}`);
-    assert.ok(locations.some(location => takes(location, path)), `nginx sends ${path} to the SPA instead of to the manager`);
+    assert.ok(
+      Object.keys(config.server.proxy).some((key) => !key.startsWith('^') && path.startsWith(key)),
+      `Vite proxies nothing for ${path}`,
+    );
+    assert.ok(
+      locations.some((location) => takes(location, path)),
+      `nginx sends ${path} to the SPA instead of to the manager`,
+    );
   }
 });

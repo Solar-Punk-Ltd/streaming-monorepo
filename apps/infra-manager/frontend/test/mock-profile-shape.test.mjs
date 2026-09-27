@@ -29,42 +29,28 @@ seed();
 
 describe('the profile rows the dev mock serves', () => {
   it('never carries the signing key', () => {
-    const carrying = state.profiles
-      .filter((profile) => 'private_key' in profile)
-      .map((profile) => profile.name);
+    const carrying = state.profiles.filter((profile) => 'private_key' in profile).map((profile) => profile.name);
 
     assert.deepEqual(carrying, [], 'the manager answers no key, so neither does the mock');
   });
 
   it('says of every deployment whether it holds one', () => {
     for (const profile of state.profiles) {
-      assert.equal(
-        typeof profile.has_private_key,
-        'boolean',
-        `${profile.name} must say whether it holds a key`,
-      );
+      assert.equal(typeof profile.has_private_key, 'boolean', `${profile.name} must say whether it holds a key`);
     }
   });
 
   it('says yes for a stream that signs its own feed, and no for a viewer', () => {
-    const holding = state.profiles
-      .filter((profile) => profile.has_private_key)
-      .map((profile) => profile.name);
+    const holding = state.profiles.filter((profile) => profile.has_private_key).map((profile) => profile.name);
 
     assert.ok(holding.includes('main-stage'), 'the main stage signs its own feed');
     assert.ok(!holding.includes('viewer-eu'), 'a viewer signs nothing');
   });
 
   it('never carries the SRT passphrase', () => {
-    const carrying = state.profiles
-      .filter((profile) => 'srt_passphrase' in profile)
-      .map((profile) => profile.name);
+    const carrying = state.profiles.filter((profile) => 'srt_passphrase' in profile).map((profile) => profile.name);
 
-    assert.deepEqual(
-      carrying,
-      [],
-      'the manager answers no passphrase on the row, so neither does the mock',
-    );
+    assert.deepEqual(carrying, [], 'the manager answers no passphrase on the row, so neither does the mock');
   });
 
   it('says of every deployment whether it holds one', () => {
@@ -78,14 +64,9 @@ describe('the profile rows the dev mock serves', () => {
   });
 
   it('keeps the seeded passphrase where the reveal route can read it', () => {
-    const holding = state.profiles
-      .filter((profile) => profile.has_srt_passphrase)
-      .map((profile) => profile.name);
+    const holding = state.profiles.filter((profile) => profile.has_srt_passphrase).map((profile) => profile.name);
 
-    assert.ok(
-      holding.includes('main-stage'),
-      'the main stage publishes under a passphrase of its own',
-    );
+    assert.ok(holding.includes('main-stage'), 'the main stage publishes under a passphrase of its own');
     for (const name of holding) {
       assert.equal(
         typeof srtPassphraseOf(name),
@@ -96,16 +77,14 @@ describe('the profile rows the dev mock serves', () => {
   });
 
   it('answers nothing for a deployment on the host-wide passphrase', () => {
-    const onTheHost = state.profiles.find(
-      (profile) => !profile.has_srt_passphrase,
-    );
+    const onTheHost = state.profiles.find((profile) => !profile.has_srt_passphrase);
 
     assert.ok(onTheHost, 'the seed has to hold one of each for this to say anything');
     assert.equal(srtPassphraseOf(onTheHost.name), null);
   });
 });
 
-describe('what the dev mock says about each deployment\'s Bee node', () => {
+describe("what the dev mock says about each deployment's Bee node", () => {
   it('says of every deployment where its node reaches the chain', () => {
     for (const profile of state.profiles) {
       assert.ok(

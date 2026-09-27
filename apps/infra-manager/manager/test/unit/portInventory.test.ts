@@ -8,9 +8,7 @@ import { profileServiceHarness } from '../support/profileServiceHarness.js';
 import { makeProfile } from '../support/profileFixtures.js';
 
 function setup() {
-  const h = profileServiceHarness([
-    makeProfile({ name: 'old', port_slot: 4, status: 'STOPPED' }),
-  ]);
+  const h = profileServiceHarness([makeProfile({ name: 'old', port_slot: 4, status: 'STOPPED' })]);
   h.profiles.reservations.seededAt = null;
   const snapshot: PublishedPortsSnapshot = {
     daemonId: 'daemon-1',
@@ -23,8 +21,9 @@ function setup() {
 describe('seeding the reservation inventory', () => {
   it('keeps allocation gated when a host-network container has unknown bindings', async () => {
     const { h, targets } = setup();
-    const inventory = new PortInventory(h.profiles.asRepository(), h.versions, h.profiles.reservations, targets,
-      { publishedPorts: async () => ({ daemonId: 'daemon-1', bindings: [], unverifiedProjects: ['outside'] }) });
+    const inventory = new PortInventory(h.profiles.asRepository(), h.versions, h.profiles.reservations, targets, {
+      publishedPorts: async () => ({ daemonId: 'daemon-1', bindings: [], unverifiedProjects: ['outside'] }),
+    });
     await assert.rejects(inventory.seed(), /host-network|unknown bindings/);
     assert.equal(await h.profiles.reservations.inventorySeededAt(), null);
     assert.equal(await h.profiles.reservations.inventorySeededAt('daemon-1'), null);
@@ -34,18 +33,35 @@ describe('seeding the reservation inventory', () => {
     const h = profileServiceHarness();
     h.profiles.reservations.seededAt = null;
     const calls: string[] = [];
-    const inventory = new PortInventory(h.profiles.asRepository(), h.versions, h.profiles.reservations,
-      { daemonIdFor: async host => host === 'localhost' ? 'local' : 'remote' }, {
-        publishedPorts: async target => {
+    const inventory = new PortInventory(
+      h.profiles.asRepository(),
+      h.versions,
+      h.profiles.reservations,
+      { daemonIdFor: async (host) => (host === 'localhost' ? 'local' : 'remote') },
+      {
+        publishedPorts: async (target) => {
           calls.push(target);
-          return { daemonId: target === 'localhost' ? 'local' : 'remote', bindings: target === 'localhost' ? [] : [
-            { project: 'outside', service: 'web', protocol: 'tcp', port: 10012 },
-          ] };
+          return {
+            daemonId: target === 'localhost' ? 'local' : 'remote',
+            bindings:
+              target === 'localhost' ? [] : [{ project: 'outside', service: 'web', protocol: 'tcp', port: 10012 }],
+          };
         },
-      });
+      },
+    );
     await inventory.seed();
-    const service = new ProfileService(h.profiles.asRepository(), h.containers.asRepository(), h.orchestrator.asOrchestrator(),
-      h.events, h.groups.asRepository(), h.versions, inventory, undefined, undefined, h.profiles.reservations);
+    const service = new ProfileService(
+      h.profiles.asRepository(),
+      h.containers.asRepository(),
+      h.orchestrator.asOrchestrator(),
+      h.events,
+      h.groups.asRepository(),
+      h.versions,
+      inventory,
+      undefined,
+      undefined,
+      h.profiles.reservations,
+    );
     const created = await service.create({ name: 'remote-profile', kind: 'viewer', host: 'edge' });
     assert.equal(created.port_slot, 2);
     assert.deepEqual(calls, ['localhost', 'edge']);
@@ -56,11 +72,18 @@ describe('seeding the reservation inventory', () => {
   it('keeps a failed new daemon scan gated and retries it on the next request', async () => {
     const h = profileServiceHarness();
     let fails = true;
-    const inventory = new PortInventory(h.profiles.asRepository(), h.versions, h.profiles.reservations,
-      { daemonIdFor: async () => 'remote' }, { publishedPorts: async () => {
-        if (fails) throw new Error('unreachable');
-        return { daemonId: 'remote', bindings: [] };
-      } });
+    const inventory = new PortInventory(
+      h.profiles.asRepository(),
+      h.versions,
+      h.profiles.reservations,
+      { daemonIdFor: async () => 'remote' },
+      {
+        publishedPorts: async () => {
+          if (fails) throw new Error('unreachable');
+          return { daemonId: 'remote', bindings: [] };
+        },
+      },
+    );
     await assert.rejects(inventory.daemonIdFor('edge'), /unreachable/);
     fails = false;
     assert.equal(await inventory.daemonIdFor('edge'), 'remote');
@@ -69,8 +92,9 @@ describe('seeding the reservation inventory', () => {
 
   it('keeps existing slots and stopped records, reserving both the contract and observed old bindings', async () => {
     const { h, snapshot, targets } = setup();
-    const inventory = new PortInventory(h.profiles.asRepository(), h.versions, h.profiles.reservations, targets,
-      { publishedPorts: async () => snapshot });
+    const inventory = new PortInventory(h.profiles.asRepository(), h.versions, h.profiles.reservations, targets, {
+      publishedPorts: async () => snapshot,
+    });
     await inventory.seed();
     const held = await h.profiles.reservations.listByProfile('old');
     assert.equal(h.profiles.rows.get('old')!.port_slot, 4);
@@ -84,9 +108,12 @@ describe('seeding the reservation inventory', () => {
   it('keeps new allocation gated until the complete observation has been reserved', async () => {
     const { h, snapshot, targets } = setup();
     let finish!: (snapshot: PublishedPortsSnapshot) => void;
-    const observed = new Promise<PublishedPortsSnapshot>((resolve) => { finish = resolve; });
-    const inventory = new PortInventory(h.profiles.asRepository(), h.versions, h.profiles.reservations, targets,
-      { publishedPorts: () => observed });
+    const observed = new Promise<PublishedPortsSnapshot>((resolve) => {
+      finish = resolve;
+    });
+    const inventory = new PortInventory(h.profiles.asRepository(), h.versions, h.profiles.reservations, targets, {
+      publishedPorts: () => observed,
+    });
     const seeding = inventory.seed();
     await assert.rejects(h.service.create({ name: 'new', kind: 'viewer' }), /inventory is still being built/);
     finish(snapshot);
@@ -113,7 +140,10 @@ describe('seeding the reservation inventory', () => {
     const { h, snapshot, targets } = setup();
     let fails = true;
     const inventory = new PortInventory(h.profiles.asRepository(), h.versions, h.profiles.reservations, targets, {
-      publishedPorts: async () => { if (fails) throw new Error('unreachable'); return snapshot; },
+      publishedPorts: async () => {
+        if (fails) throw new Error('unreachable');
+        return snapshot;
+      },
     });
     await assert.rejects(inventory.seed());
     fails = false;
@@ -139,8 +169,9 @@ describe('seeding the reservation inventory', () => {
   it('refuses a seed when existing deployments claim the same physical port', async () => {
     const { h, snapshot, targets } = setup();
     h.profiles.rows.set('duplicate', makeProfile({ name: 'duplicate', port_slot: 4 }));
-    const inventory = new PortInventory(h.profiles.asRepository(), h.versions, h.profiles.reservations, targets,
-      { publishedPorts: async () => snapshot });
+    const inventory = new PortInventory(h.profiles.asRepository(), h.versions, h.profiles.reservations, targets, {
+      publishedPorts: async () => snapshot,
+    });
     await assert.rejects(inventory.seed(), /old|duplicate/);
     assert.equal(await h.profiles.reservations.inventorySeededAt(), null);
   });

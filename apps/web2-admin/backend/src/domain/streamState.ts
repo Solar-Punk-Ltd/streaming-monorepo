@@ -40,10 +40,7 @@ export function allowedFromFor(state: ReportedState): readonly StreamStatus[] {
   return ALLOWED_FROM[state];
 }
 
-export function isStateTransitionAllowed(
-  from: StreamStatus,
-  to: ReportedState,
-): boolean {
+export function isStateTransitionAllowed(from: StreamStatus, to: ReportedState): boolean {
   return ALLOWED_FROM[to].includes(from);
 }
 
@@ -88,10 +85,7 @@ export function publishedStatusFor(stream: StreamRow): PublishedStatus {
  * console will not submit an empty one; giving it a time for the first time
  * is filling a gap, not rewriting a promise, so it is allowed.
  */
-export function isScheduleLocked(
-  stream: StreamRow,
-  scheduledStartTime: string | null,
-): boolean {
+export function isScheduleLocked(stream: StreamRow, scheduledStartTime: string | null): boolean {
   if (!hasGoneLive(stream.status)) return false;
   if (stream.scheduled_start_time === null) return false;
   return !sameInstant(stream.scheduled_start_time, scheduledStartTime);

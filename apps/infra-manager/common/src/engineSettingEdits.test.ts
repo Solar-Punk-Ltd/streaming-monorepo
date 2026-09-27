@@ -31,7 +31,13 @@ describe('engineSettingsAfterEdits', () => {
   it('leaves the engine settings alone for a key that is no engine setting', () => {
     const stored = { HLS_WINDOW: '20' };
 
-    assert.deepEqual(engineSettingsAfterEdits(stored, [{ key: 'LOG_LEVEL', value: 'warn' }, { key: 'STAMP', value: null }]), stored);
+    assert.deepEqual(
+      engineSettingsAfterEdits(stored, [
+        { key: 'LOG_LEVEL', value: 'warn' },
+        { key: 'STAMP', value: null },
+      ]),
+      stored,
+    );
   });
 
   it('changes nothing it was given', () => {
@@ -44,7 +50,13 @@ describe('engineSettingsAfterEdits', () => {
 
 describe('editsEngineSettings', () => {
   it('says whether a save names any engine setting', () => {
-    assert.equal(editsEngineSettings([{ key: 'LOG_LEVEL', value: 'warn' }, { key: 'HLS_FRAGMENT', value: null }]), true);
+    assert.equal(
+      editsEngineSettings([
+        { key: 'LOG_LEVEL', value: 'warn' },
+        { key: 'HLS_FRAGMENT', value: null },
+      ]),
+      true,
+    );
     assert.equal(editsEngineSettings([{ key: 'LOG_LEVEL', value: 'warn' }]), false);
   });
 });
@@ -61,7 +73,8 @@ describe('engineSettingsSaveProblem', () => {
 
   it('applies the keyframe rule to a deployment that encodes the ABR ladder', () => {
     assert.match(
-      engineSettingsSaveProblem(SRS_SERVICE, { ABR_FPS: '25', HLS_FRAGMENT: '1.5' }, { abr: true, defaults: HOST }) ?? '',
+      engineSettingsSaveProblem(SRS_SERVICE, { ABR_FPS: '25', HLS_FRAGMENT: '1.5' }, { abr: true, defaults: HOST }) ??
+        '',
       /Frame rate 25 times segment length 1\.5 is 37\.5 frames/,
     );
   });

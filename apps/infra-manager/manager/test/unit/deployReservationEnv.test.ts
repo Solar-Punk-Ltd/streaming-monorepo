@@ -23,9 +23,7 @@ import { makeProfile } from '../support/profileFixtures.js';
 const root = throwawayRoot('deploy-reservation-');
 process.env.SHLS_ROOT = root;
 
-const { orchestratorHarness } = await import(
-  '../support/orchestratorHarness.js'
-);
+const { orchestratorHarness } = await import('../support/orchestratorHarness.js');
 const { writeProfileEnv } = await import('../../src/utils/envUtils.js');
 
 const STAGE = 'stage';
@@ -60,20 +58,11 @@ describe('the env file and the deploy claim', () => {
     // still holds, and it carries settings that must not reach the running
     // deploy.
     const stale = makeProfile({ name: STAGE, stamp_id: 'b'.repeat(64) });
-    const { orchestrator, profiles, runner } = orchestratorHarness([
-      { ...stale, status: 'DEPLOYING' },
-    ]);
+    const { orchestrator, profiles, runner } = orchestratorHarness([{ ...stale, status: 'DEPLOYING' }]);
 
-    await assert.rejects(
-      orchestrator.startDeploy(stale, undefined),
-      ProfileBusyError,
-    );
+    await assert.rejects(orchestrator.startDeploy(stale, undefined), ProfileBusyError);
 
-    assert.equal(
-      readFileSync(envPath, 'utf8'),
-      running,
-      'a refused caller must not rewrite the running deploy config',
-    );
+    assert.equal(readFileSync(envPath, 'utf8'), running, 'a refused caller must not rewrite the running deploy config');
     assert.equal(runner.runs.length, 0);
     assert.deepEqual(profiles.markErrorCalls, []);
   });
@@ -138,11 +127,7 @@ describe('the env file of a deployment made before T27', () => {
     const written = await deployed(stored);
 
     assert.equal(written, asItWasBefore(stored));
-    assert.equal(
-      written.includes('BEE_GATEWAY_'),
-      false,
-      'a deployment with no gateway gets none of the gateway keys',
-    );
+    assert.equal(written.includes('BEE_GATEWAY_'), false, 'a deployment with no gateway gets none of the gateway keys');
   });
 
   it('is what it was for a row that named an endpoint of its own', async () => {

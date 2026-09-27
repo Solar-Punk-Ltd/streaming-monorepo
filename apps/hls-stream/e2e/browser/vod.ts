@@ -351,7 +351,7 @@ async function readLevelsFromThePlayer(page: Page): Promise<LevelReading[] | nul
 /** The reference a segment url carries, whichever form the url took. */
 function refFromSegmentUrl(url: string | null): string | null {
   const found = url === null ? null : url.toLowerCase().match(HEX_64_IN_URL);
-  return found === null ? null : found[found.length - 1] ?? null;
+  return found === null ? null : (found[found.length - 1] ?? null);
 }
 
 /** What one rung's playlist holds, read off the rung's own feed the way the client reads it. */
@@ -443,7 +443,7 @@ function refFromTheRequestLog(requests: readonly RequestRecord[]): string | null
     const ref = request.url.split(SEGMENT_ROUTE)[1]?.split(/[?#/]/, 1)[0];
     return ref !== undefined && HEX_64.test(ref) && request.bytes > 0;
   });
-  return served === undefined ? null : served.url.split(SEGMENT_ROUTE)[1].split(/[?#/]/, 1)[0] ?? null;
+  return served === undefined ? null : (served.url.split(SEGMENT_ROUTE)[1].split(/[?#/]/, 1)[0] ?? null);
 }
 
 /** What one timed retrieval came back with, in the two fields the cap proof is judged on. */
@@ -856,21 +856,21 @@ async function main(): Promise<void> {
         const segmentBase = segmentBaseOf(requests);
         const proofRef = throughTheNode
           ? await refFromTheRecording(host, cfg, fragmentLog)
-          : refFromTheRequestLog(requests) ?? (await refFromTheRecording(host, cfg, fragmentLog));
+          : (refFromTheRequestLog(requests) ?? (await refFromTheRecording(host, cfg, fragmentLog)));
         const proofFromMs = Date.now();
         const timed: TimedRetrieval =
           proofRef === null
             ? { byteLength: null, elapsedMs: null }
             : throughTheNode
-            ? await Promise.race([
-                retrieveThroughInTabNode(page, proofRef),
-                new Promise<TimedRetrieval>((resolve) =>
-                  setTimeout(() => resolve({ byteLength: null, elapsedMs: null }), CAP_PROOF_BUDGET_MS),
-                ),
-              ])
-            : segmentBase === null
-            ? { byteLength: null, elapsedMs: null }
-            : await fetchSegmentThroughThePage(page, `${segmentBase}${proofRef}`);
+              ? await Promise.race([
+                  retrieveThroughInTabNode(page, proofRef),
+                  new Promise<TimedRetrieval>((resolve) =>
+                    setTimeout(() => resolve({ byteLength: null, elapsedMs: null }), CAP_PROOF_BUDGET_MS),
+                  ),
+                ])
+              : segmentBase === null
+                ? { byteLength: null, elapsedMs: null }
+                : await fetchSegmentThroughThePage(page, `${segmentBase}${proofRef}`);
         await page.waitForTimeout(CAP_PROOF_TAIL_MS);
         capProof = judgeCapProof(timed.byteLength, timed.elapsedMs, kbpsAsBytesPerSecond(squeeze.kbps));
         proofInboundBytes = bytesBetween(traffic.frames, proofFromMs, Date.now(), 'in');

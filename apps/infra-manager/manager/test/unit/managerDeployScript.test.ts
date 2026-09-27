@@ -7,7 +7,19 @@
  */
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { describe, it } from 'node:test';
@@ -58,7 +70,10 @@ const script = readFileSync(DEPLOY_SCRIPT, 'utf8');
 
 /** Every `rsync ...` invocation, each up to its destination line. */
 function rsyncs(): string[] {
-  return script.split(/\n(?=rsync )/).filter((block) => block.startsWith('rsync ')).map((block) => block.split('\n\n')[0] ?? block);
+  return script
+    .split(/\n(?=rsync )/)
+    .filter((block) => block.startsWith('rsync '))
+    .map((block) => block.split('\n\n')[0] ?? block);
 }
 
 describe('deploy/deploy.sh', () => {
@@ -112,18 +127,28 @@ describe('deploy/deploy.sh', () => {
   it('records a digest of the manager tree alone, even from a repository that holds more than the manager', () => {
     assert.match(script, /MANAGER_DIGEST="\$\(git ls-tree -r HEAD \| shasum -a 256 \| cut -c1-64\)"/);
     assert.equal(script.includes('--full-tree'), false, 'the listing stays inside the folder the script runs in');
-    assert.ok(script.indexOf('cd "$REPO_ROOT"') < script.indexOf('MANAGER_DIGEST='), 'which is the manager folder by then');
+    assert.ok(
+      script.indexOf('cd "$REPO_ROOT"') < script.indexOf('MANAGER_DIGEST='),
+      'which is the manager folder by then',
+    );
   });
 
   it('names the compose project manager in the file itself, the name the volume probe and the upgrade use', () => {
     const compose = readFileSync(join(here, '..', '..', 'docker-compose.yml'), 'utf8');
     assert.match(compose, /^name: manager$/m, 'the project name does not come from the folder the file sits in');
-    assert.ok(script.includes(`POSTGRES_VOLUME="manager_${MANAGER_POSTGRES_VOLUME}"`), 'the data volume the deploy looks for carries it');
+    assert.ok(
+      script.includes(`POSTGRES_VOLUME="manager_${MANAGER_POSTGRES_VOLUME}"`),
+      'the data volume the deploy looks for carries it',
+    );
     assert.ok(script.includes('--project manager'), 'and so does the upgrade');
   });
 
   it('builds nothing of the streaming stack here, because the host fetches and builds it', () => {
-    assert.equal(script.includes('pnpm -C manager/swarm-hls-stream'), false, 'the stack is not installed or built on this machine');
+    assert.equal(
+      script.includes('pnpm -C manager/swarm-hls-stream'),
+      false,
+      'the stack is not installed or built on this machine',
+    );
     assert.equal(script.includes('bundled:seal'), false, 'nothing is sealed into a package any more');
     assert.equal(script.includes('bundled.packages'), false, 'and no package root is written to');
     assert.equal(script.includes('uuidgen'), false, 'a shipment has no id because there is no shipment');
@@ -152,7 +177,10 @@ describe('deploy/deploy.sh', () => {
     const run = script.indexOf('docker compose run --rm --no-deps -T api');
     assert.notEqual(run, -1, 'the upgrade runs in a one-off container');
     const before = script.slice(0, run);
-    assert.ok(before.includes('docker volume ls -q --filter name=^\\${POSTGRES_VOLUME}\\$'), 'the data volume is looked for by name');
+    assert.ok(
+      before.includes('docker volume ls -q --filter name=^\\${POSTGRES_VOLUME}\\$'),
+      'the data volume is looked for by name',
+    );
     assert.ok(before.includes('service_containers api'), 'so are the api containers of the project');
     assert.ok(before.includes('service_containers postgres'), 'and the postgres ones');
     assert.match(before, /label=com\.docker\.compose\.oneoff=False/, 'neither count a one-off container');
@@ -163,7 +191,11 @@ describe('deploy/deploy.sh', () => {
     // failed, so a daemon that is down would read as a host with nothing on it and take the
     // first use branch.
     const before = script.slice(0, script.indexOf('docker compose run --rm --no-deps -T api')).split('\n');
-    for (const probe of ['docker volume ls -q --filter name=', 'service_containers api', 'service_containers postgres']) {
+    for (const probe of [
+      'docker volume ls -q --filter name=',
+      'service_containers api',
+      'service_containers postgres',
+    ]) {
       const asked = before.filter((line) => line.includes(probe));
       assert.equal(asked.length, 1, `${probe} is asked in one place`);
       assert.match(asked[0]!.trim(), /^[A-Z_]+="\\\$\(/, `${probe} is read into a variable of its own`);
@@ -173,7 +205,10 @@ describe('deploy/deploy.sh', () => {
   it('stops before the upgrade when the data volume went missing under an installed manager', () => {
     const abort = script.indexOf('so its database was removed under a manager that is still installed');
     assert.notEqual(abort, -1, 'the deploy says what it found');
-    assert.ok(abort < script.indexOf('docker compose run --rm --no-deps -T api'), 'and says it before anything is published');
+    assert.ok(
+      abort < script.indexOf('docker compose run --rm --no-deps -T api'),
+      'and says it before anything is published',
+    );
     assert.match(script.slice(abort, abort + 300), /exit 1/, 'the deploy stops there');
   });
 
@@ -185,8 +220,15 @@ describe('deploy/deploy.sh', () => {
 
   it('gives the upgrade the identity of the manager, of the image and how long to wait for the bundled build', () => {
     const upgrade = script.slice(script.indexOf('manager:upgrade'));
-    for (const flag of ['--manager-commit', '--manager-digest', '--image-id', '--project manager',
-      '--compose-file', '--mutable-root', '--bundled-timeout']) {
+    for (const flag of [
+      '--manager-commit',
+      '--manager-digest',
+      '--image-id',
+      '--project manager',
+      '--compose-file',
+      '--mutable-root',
+      '--bundled-timeout',
+    ]) {
       assert.ok(upgrade.includes(flag), `the upgrade is given ${flag}`);
     }
     assert.match(script, /IMAGE_ID="\\\$\(docker image inspect --format '\{\{\.Id\}\}' manager-api\)"/);
@@ -240,9 +282,16 @@ describe('deploy/deploy.sh', () => {
     const run = script.slice(script.indexOf('docker compose run --rm --no-deps -T api'));
     const closed = run.indexOf(')"');
     assert.notEqual(closed, -1, 'the substitution that captures the receipt ends somewhere');
-    assert.match(run.slice(0, closed + 2), /\$\{PUBLIC_EDGE_FLAG\} < \/dev\/null\)"$/,
-      'the upgrade takes the edge decision and no standard input');
-    assert.match(script, /docker compose exec -T api [^\n]* < \/dev\/null/, 'and neither does the check that follows it');
+    assert.match(
+      run.slice(0, closed + 2),
+      /\$\{PUBLIC_EDGE_FLAG\} < \/dev\/null\)"$/,
+      'the upgrade takes the edge decision and no standard input',
+    );
+    assert.match(
+      script,
+      /docker compose exec -T api [^\n]* < \/dev\/null/,
+      'and neither does the check that follows it',
+    );
   });
 
   it('asks for the public edge only where the domain says so', () => {
@@ -250,13 +299,18 @@ describe('deploy/deploy.sh', () => {
     assert.equal(script.split('--public-edge').length - 1, 1, 'the flag is decided in one place');
     const decision = script.indexOf('PUBLIC_EDGE_FLAG="--public-edge"');
     assert.notEqual(decision, -1, 'the public branch sets it');
-    assert.ok(decision > script.indexOf('elif [[ "$MANAGER_DOMAIN" =~ $HOSTNAME_PATTERN ]]'), 'inside the branch that saw a host name');
+    assert.ok(
+      decision > script.indexOf('elif [[ "$MANAGER_DOMAIN" =~ $HOSTNAME_PATTERN ]]'),
+      'inside the branch that saw a host name',
+    );
     assert.ok(decision < script.indexOf('\nelse\n', script.indexOf('elif [[ "$MANAGER_DOMAIN"')), 'and not below it');
     assert.equal(branch, -1, 'the old compose profile flag is gone');
   });
 
   it('prints the receipt the upgrade returned, after the command that returned it', () => {
-    const captured = script.indexOf('RECEIPT="\\$(docker compose run --rm --no-deps -T api node dist/cli.js manager:upgrade');
+    const captured = script.indexOf(
+      'RECEIPT="\\$(docker compose run --rm --no-deps -T api node dist/cli.js manager:upgrade',
+    );
     assert.notEqual(captured, -1, 'the receipt is the one line the upgrade printed');
     const printed = script.indexOf('echo "[deploy] upgrade receipt: \\${RECEIPT}"');
     assert.notEqual(printed, -1, 'and the deploy prints it as it stands');
@@ -264,7 +318,9 @@ describe('deploy/deploy.sh', () => {
   });
 
   it('prints the receipt of an upgrade that failed, and only then fails the deploy', () => {
-    const captured = script.indexOf('RECEIPT="\\$(docker compose run --rm --no-deps -T api node dist/cli.js manager:upgrade');
+    const captured = script.indexOf(
+      'RECEIPT="\\$(docker compose run --rm --no-deps -T api node dist/cli.js manager:upgrade',
+    );
     const kept = script.indexOf('|| UPGRADE_STATUS=\\$?');
     assert.notEqual(kept, -1, 'the capture runs under set -e, where a failing substitution would end the block');
     const printed = script.indexOf('echo "[deploy] upgrade receipt: \\${RECEIPT}"');
@@ -280,14 +336,19 @@ describe('deploy/deploy.sh', () => {
     const line = script.split('\n').find((one) => one.startsWith('PUBLIC_HOST="'));
     assert.ok(line, 'the remote block reads the address of the host');
     assert.match(line, /\|\| true\)"$/);
-    assert.ok(script.indexOf('WARNING: PUBLIC_HOST is empty') > script.indexOf('PUBLIC_HOST="'), 'and says so below it');
+    assert.ok(
+      script.indexOf('WARNING: PUBLIC_HOST is empty') > script.indexOf('PUBLIC_HOST="'),
+      'and says so below it',
+    );
   });
 
   it('looks for the same data volume the upgrade names, so a rename on one side fails here', () => {
     // The script cannot import TypeScript, so its one literal is read back against the
     // constant the command uses and the two are changed together.
-    assert.ok(script.includes(`POSTGRES_VOLUME="manager_${MANAGER_POSTGRES_VOLUME}"`),
-      `the deploy names the manager_${MANAGER_POSTGRES_VOLUME} volume of the manager project`);
+    assert.ok(
+      script.includes(`POSTGRES_VOLUME="manager_${MANAGER_POSTGRES_VOLUME}"`),
+      `the deploy names the manager_${MANAGER_POSTGRES_VOLUME} volume of the manager project`,
+    );
   });
 
   it('never asks compose to print a rendered configuration', () => {
@@ -345,17 +406,21 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
   function gitAnswering(root: string, bin: string, lsRemote: number): void {
     const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
     const calls = join(root, 'ls-remote-calls');
-    writeFileSync(join(bin, 'git'), [
-      '#!/bin/sh',
-      'for arg in "$@"; do',
-      '  if [ "$arg" = ls-remote ]; then',
-      `    printf '%s | GIT_CONFIG_GLOBAL=%s GIT_TERMINAL_PROMPT=%s\\n' "$*" "$GIT_CONFIG_GLOBAL" "$GIT_TERMINAL_PROMPT" >> '${calls}'`,
-      `    exit ${lsRemote}`,
-      '  fi',
-      'done',
-      `exec '${realGit}' "$@"`,
-      '',
-    ].join('\n'), { mode: 0o755 });
+    writeFileSync(
+      join(bin, 'git'),
+      [
+        '#!/bin/sh',
+        'for arg in "$@"; do',
+        '  if [ "$arg" = ls-remote ]; then',
+        `    printf '%s | GIT_CONFIG_GLOBAL=%s GIT_TERMINAL_PROMPT=%s\\n' "$*" "$GIT_CONFIG_GLOBAL" "$GIT_TERMINAL_PROMPT" >> '${calls}'`,
+        `    exit ${lsRemote}`,
+        '  fi',
+        'done',
+        `exec '${realGit}' "$@"`,
+        '',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
   }
 
   /**
@@ -366,24 +431,34 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     const manifest = (name: string): string => `${JSON.stringify({ name, private: true, packageManager: ONE_PNPM })}\n`;
     writeFileSync(join(work, 'package.json'), manifest('monorepo'));
     writeFileSync(join(work, 'pnpm-lock.yaml'), ONE_WORKSPACE_LOCKFILE);
-    writeFileSync(join(work, 'pnpm-workspace.yaml'), 'packages:\n  - apps/infra-manager\n  - apps/infra-manager/manager\n');
+    writeFileSync(
+      join(work, 'pnpm-workspace.yaml'),
+      'packages:\n  - apps/infra-manager\n  - apps/infra-manager/manager\n',
+    );
     writeFileSync(join(work, 'apps', 'infra-manager', 'package.json'), manifest('streaming-infra-manager'));
-    writeFileSync(join(work, 'apps', 'infra-manager', 'manager', 'package.json'), manifest('@streaming-infra-manager/api'));
+    writeFileSync(
+      join(work, 'apps', 'infra-manager', 'manager', 'package.json'),
+      manifest('@streaming-infra-manager/api'),
+    );
     cpSync(CUT_TOOL, join(work, 'tools', 'app-workspace'), { recursive: true });
   }
 
   /** An rsync that writes down its arguments and keeps a copy of every source folder but the manager's own. */
   function recordingRsync(root: string): void {
-    writeFileSync(join(root, 'bin', 'rsync'), [
-      '#!/bin/sh',
-      `touch '${join(root, 'rsync-ran')}'`,
-      `printf '%s\\n' "$@" > '${join(root, 'rsync-args')}'`,
-      'for arg in "$@"; do',
-      `  case "$arg" in */) [ "$arg" != ./ ] && [ -d "$arg" ] && cp -R "$arg" '${join(root, 'rsync-extra-source')}' ;; esac`,
-      'done',
-      'exit 0',
-      '',
-    ].join('\n'), { mode: 0o755 });
+    writeFileSync(
+      join(root, 'bin', 'rsync'),
+      [
+        '#!/bin/sh',
+        `touch '${join(root, 'rsync-ran')}'`,
+        `printf '%s\\n' "$@" > '${join(root, 'rsync-args')}'`,
+        'for arg in "$@"; do',
+        `  case "$arg" in */) [ "$arg" != ./ ] && [ -d "$arg" ] && cp -R "$arg" '${join(root, 'rsync-extra-source')}' ;; esac`,
+        'done',
+        'exit 0',
+        '',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
   }
 
   /** This machine's own rsync, found before a test puts a stand-in first on PATH. */
@@ -399,21 +474,25 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
    * PATH, which goes straight on to the real one.
    */
   function realRsync(root: string, hostRoot: string): void {
-    writeFileSync(join(root, 'bin', 'rsync'), [
-      '#!/bin/bash',
-      `if [ "\${1:-}" = --server ]; then exec '${REAL_RSYNC}' "$@"; fi`,
-      `touch '${join(root, 'rsync-ran')}'`,
-      `printf '%s\\0' "$@" > '${join(root, 'rsync-argv')}'`,
-      'args=()',
-      'for arg in "$@"; do',
-      `  if [[ "$arg" =~ ^[A-Za-z0-9._@-]+:(/.*)$ ]]; then args+=('${hostRoot}'"\${BASH_REMATCH[1]}"); else args+=("$arg"); fi`,
-      'done',
-      `'${REAL_RSYNC}' "\${args[@]}"`,
-      'status=$?',
-      `if [ "$status" -eq 0 ]; then cp -R "\${args[\${#args[@]}-1]}" '${join(root, 'rsync-after')}'; fi`,
-      'exit "$status"',
-      '',
-    ].join('\n'), { mode: 0o755 });
+    writeFileSync(
+      join(root, 'bin', 'rsync'),
+      [
+        '#!/bin/bash',
+        `if [ "\${1:-}" = --server ]; then exec '${REAL_RSYNC}' "$@"; fi`,
+        `touch '${join(root, 'rsync-ran')}'`,
+        `printf '%s\\0' "$@" > '${join(root, 'rsync-argv')}'`,
+        'args=()',
+        'for arg in "$@"; do',
+        `  if [[ "$arg" =~ ^[A-Za-z0-9._@-]+:(/.*)$ ]]; then args+=('${hostRoot}'"\${BASH_REMATCH[1]}"); else args+=("$arg"); fi`,
+        'done',
+        `'${REAL_RSYNC}' "\${args[@]}"`,
+        'status=$?',
+        `if [ "$status" -eq 0 ]; then cp -R "\${args[\${#args[@]}-1]}" '${join(root, 'rsync-after')}'; fi`,
+        'exit "$status"',
+        '',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
   }
 
   function writeInto(dir: string, files: Record<string, string>): void {
@@ -450,7 +529,10 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     return sources;
   }
 
-  function checkout(root: string, { lsRemote = 0, oneWorkspace = false }: { lsRemote?: number; oneWorkspace?: boolean } = {}): Checkout {
+  function checkout(
+    root: string,
+    { lsRemote = 0, oneWorkspace = false }: { lsRemote?: number; oneWorkspace?: boolean } = {},
+  ): Checkout {
     const origin = join(root, 'origin.git');
     git(root, 'init', '-q', '--bare', origin);
     const work = join(root, 'work');
@@ -462,7 +544,10 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     copyFileSync(DEPLOY_SCRIPT, join(manager, 'deploy', 'deploy.sh'));
     writeFileSync(join(manager, 'manager', '.env'), 'POSTGRES_PASSWORD=synthetic-not-a-secret\n');
     writeFileSync(join(work, 'apps', 'hls-stream', 'README.md'), 'the stack\n');
-    writeFileSync(join(work, '.gitignore'), `apps/infra-manager/manager/.env\napps/infra-manager/manager/${STACK_COMMIT_FILE}\n`);
+    writeFileSync(
+      join(work, '.gitignore'),
+      `apps/infra-manager/manager/.env\napps/infra-manager/manager/${STACK_COMMIT_FILE}\n`,
+    );
     git(work, 'init', '-q', '-b', 'main');
     git(work, 'add', '.');
     git(work, 'commit', '-qm', 'the manager and the stack');
@@ -488,7 +573,10 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
   }
 
   function deploy(root: string, manager: string, environment: NodeJS.ProcessEnv): Deployed {
-    const run = spawnSync('bash', [join(manager, 'deploy', 'deploy.sh'), 'fixture-host'], { env: environment, encoding: 'utf8' });
+    const run = spawnSync('bash', [join(manager, 'deploy', 'deploy.sh'), 'fixture-host'], {
+      env: environment,
+      encoding: 'utf8',
+    });
     const pin = join(manager, 'manager', STACK_COMMIT_FILE);
     return {
       status: run.status,
@@ -519,7 +607,15 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
       assert.equal(sources.length, 2, `the manager's folder and the cut: ${sources.join(' ')}`);
       assert.equal(sources[0], './');
       const expected = join(root, 'expected');
-      execFileSync(process.execPath, [join(CUT_TOOL, 'cut.mjs'), '--root', work, '--app', 'apps/infra-manager', '--out', expected]);
+      execFileSync(process.execPath, [
+        join(CUT_TOOL, 'cut.mjs'),
+        '--root',
+        work,
+        '--app',
+        'apps/infra-manager',
+        '--out',
+        expected,
+      ]);
       for (const file of ['pnpm-lock.yaml', 'pnpm-workspace.yaml']) {
         assert.equal(
           readFileSync(join(root, 'rsync-extra-source', file), 'utf8'),
@@ -565,14 +661,26 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
       assert.equal(cutSources.length, 1, `one source under TMPDIR, the cut: ${argv.join(' ')}`);
       const alone = join(root, 'alone');
       writeInto(alone, earlier);
-      const aloneRun = spawnSync(REAL_RSYNC, [...argv.filter((arg) => arg !== cutSources[0]).slice(0, -1), `${alone}/`], {
-        cwd: manager,
-        encoding: 'utf8',
-      });
+      const aloneRun = spawnSync(
+        REAL_RSYNC,
+        [...argv.filter((arg) => arg !== cutSources[0]).slice(0, -1), `${alone}/`],
+        {
+          cwd: manager,
+          encoding: 'utf8',
+        },
+      );
       assert.equal(aloneRun.status, 0, aloneRun.stderr);
 
       const expected = join(root, 'expected');
-      execFileSync(process.execPath, [join(CUT_TOOL, 'cut.mjs'), '--root', work, '--app', 'apps/infra-manager', '--out', expected]);
+      execFileSync(process.execPath, [
+        join(CUT_TOOL, 'cut.mjs'),
+        '--root',
+        work,
+        '--app',
+        'apps/infra-manager',
+        '--out',
+        expected,
+      ]);
       const withoutPair = treeOf(alone);
       assert.deepEqual(treeOf(join(root, 'rsync-after')), {
         ...withoutPair,
@@ -587,7 +695,7 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     }
   });
 
-  it("ships a manager that keeps its own pair as before, from its folder alone", () => {
+  it('ships a manager that keeps its own pair as before, from its folder alone', () => {
     const root = mkdtempSync(join(tmpdir(), 'manager-deploy-own-pair-'));
     try {
       const { manager, environment } = checkout(root);
@@ -649,7 +757,7 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     }
   });
 
-  it('asks the monorepo anonymously, with no credential helper, no prompt and none of this machine\'s git configuration', () => {
+  it("asks the monorepo anonymously, with no credential helper, no prompt and none of this machine's git configuration", () => {
     const root = mkdtempSync(join(tmpdir(), 'manager-deploy-anonymous-'));
     try {
       const { manager, environment } = checkout(root);

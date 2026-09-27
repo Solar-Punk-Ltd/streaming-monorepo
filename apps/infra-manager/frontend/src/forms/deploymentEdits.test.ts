@@ -164,10 +164,7 @@ describe('the RPC endpoint a deployment names for itself', () => {
     const profile = customEndpoint();
     const initial = initialEdits(profile);
 
-    assert.equal(
-      editProblem(initial, fieldsFor(profile), { profile, managerHasEndpoint: true }),
-      null,
-    );
+    assert.equal(editProblem(initial, fieldsFor(profile), { profile, managerHasEndpoint: true }), null);
 
     const body = bodyFor(
       profile,
@@ -239,41 +236,23 @@ describe('the stream key in the Edit drawer', () => {
   });
 
   it('shows dots while a key is stored and the operator has typed nothing', () => {
-    assert.equal(
-      streamKeyMasked({ hasStoredKey: true, typed: '', replacing: false }),
-      true,
-    );
+    assert.equal(streamKeyMasked({ hasStoredKey: true, typed: '', replacing: false }), true);
   });
 
   it('opens the field when the operator asks to paste another, or types one', () => {
-    assert.equal(
-      streamKeyMasked({ hasStoredKey: true, typed: '', replacing: true }),
-      false,
-    );
-    assert.equal(
-      streamKeyMasked({ hasStoredKey: true, typed: TYPED_KEY, replacing: false }),
-      false,
-    );
+    assert.equal(streamKeyMasked({ hasStoredKey: true, typed: '', replacing: true }), false);
+    assert.equal(streamKeyMasked({ hasStoredKey: true, typed: TYPED_KEY, replacing: false }), false);
   });
 
   it('leaves the field open when the deployment holds no key at all', () => {
-    assert.equal(
-      streamKeyMasked({ hasStoredKey: false, typed: '', replacing: false }),
-      false,
-    );
+    assert.equal(streamKeyMasked({ hasStoredKey: false, typed: '', replacing: false }), false);
   });
 
   it('sends the key the operator typed, with the address it derives', () => {
     const profile = uploader({ has_private_key: true });
     const initial = initialEdits(profile);
 
-    const body = bodyFor(
-      profile,
-      initial,
-      { ...initial, key: TYPED_KEY },
-      fieldsFor(profile),
-      profile.notes_revision,
-    );
+    const body = bodyFor(profile, initial, { ...initial, key: TYPED_KEY }, fieldsFor(profile), profile.notes_revision);
 
     assert.equal(body.private_key, TYPED_KEY);
     assert.equal(body.public_key, addressOfStreamKey(TYPED_KEY));
@@ -318,17 +297,11 @@ describe('the SRT passphrase in the Edit drawer', () => {
   });
 
   it('shows dots while one is stored and the operator has typed nothing', () => {
-    assert.equal(
-      srtPassphraseMasked({ hasStoredPassphrase: true, typed: '', replacing: false }),
-      true,
-    );
+    assert.equal(srtPassphraseMasked({ hasStoredPassphrase: true, typed: '', replacing: false }), true);
   });
 
   it('opens the box when the operator asks to replace it, or types one', () => {
-    assert.equal(
-      srtPassphraseMasked({ hasStoredPassphrase: true, typed: '', replacing: true }),
-      false,
-    );
+    assert.equal(srtPassphraseMasked({ hasStoredPassphrase: true, typed: '', replacing: true }), false);
     assert.equal(
       srtPassphraseMasked({
         hasStoredPassphrase: true,
@@ -340,10 +313,7 @@ describe('the SRT passphrase in the Edit drawer', () => {
   });
 
   it('leaves the box open when the deployment holds none at all', () => {
-    assert.equal(
-      srtPassphraseMasked({ hasStoredPassphrase: false, typed: '', replacing: false }),
-      false,
-    );
+    assert.equal(srtPassphraseMasked({ hasStoredPassphrase: false, typed: '', replacing: false }), false);
   });
 
   /** The manager keeps the stored passphrase when a save says nothing about it. */
@@ -360,10 +330,7 @@ describe('the SRT passphrase in the Edit drawer', () => {
     );
 
     assert.equal(body.srt_passphrase, undefined);
-    assert.ok(
-      !('srt_passphrase' in body),
-      'an absent field is what tells the manager to keep the stored one',
-    );
+    assert.ok(!('srt_passphrase' in body), 'an absent field is what tells the manager to keep the stored one');
   });
 
   it('does not call dots an invalid passphrase', () => {
@@ -430,8 +397,7 @@ describe('the three sources the Edit drawer offers for an RPC endpoint', () => {
   it('starts from the source the deployment was created with', () => {
     assert.equal(initialEdits(uploader()).rpcEndpointSource, STACK_RPC_ENDPOINT_SOURCE);
     assert.equal(
-      initialEdits(uploader({ rpc_endpoint_source: MANAGER_RPC_ENDPOINT_SOURCE }))
-        .rpcEndpointSource,
+      initialEdits(uploader({ rpc_endpoint_source: MANAGER_RPC_ENDPOINT_SOURCE })).rpcEndpointSource,
       MANAGER_RPC_ENDPOINT_SOURCE,
     );
     const custom = initialEdits(
@@ -456,10 +422,7 @@ describe('the three sources the Edit drawer offers for an RPC endpoint', () => {
       editProblem(edits, fieldsFor(profile), { profile, managerHasEndpoint: false }) ?? '',
       /the manager has no RPC endpoint configured/,
     );
-    assert.equal(
-      editProblem(edits, fieldsFor(profile), { profile, managerHasEndpoint: true }),
-      null,
-    );
+    assert.equal(editProblem(edits, fieldsFor(profile), { profile, managerHasEndpoint: true }), null);
   });
 
   it('refuses the stack default for a gateway on the chain', () => {
@@ -524,13 +487,7 @@ describe('the three sources the Edit drawer offers for an RPC endpoint', () => {
     const profile = uploader({ node_mode: LIGHT_NODE_MODE });
     const initial = initialEdits(profile);
 
-    const body = bodyFor(
-      profile,
-      initial,
-      { ...initial, notes: 'edited' },
-      fieldsFor(profile),
-      profile.notes_revision,
-    );
+    const body = bodyFor(profile, initial, { ...initial, notes: 'edited' }, fieldsFor(profile), profile.notes_revision);
 
     assert.equal(body.node_mode, LIGHT_NODE_MODE);
   });
@@ -544,13 +501,7 @@ describe('the three sources the Edit drawer offers for an RPC endpoint', () => {
     const profile = uploader();
     const initial = initialEdits(profile);
 
-    const body = bodyFor(
-      profile,
-      initial,
-      { ...initial, notes: 'edited' },
-      fieldsFor(profile),
-      profile.notes_revision,
-    );
+    const body = bodyFor(profile, initial, { ...initial, notes: 'edited' }, fieldsFor(profile), profile.notes_revision);
 
     assert.equal('node_mode' in body, false);
   });

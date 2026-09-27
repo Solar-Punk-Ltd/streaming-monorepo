@@ -15,7 +15,10 @@ const NX_23_GRAPH = readFileSync(new URL('fixtures/nx-23.2.1-graph.json', import
 /** The shape `nx graph --file` writes, for the projects and dependencies given. */
 function graphText(nodes, dependencies = {}) {
   const namedNodes = Object.fromEntries(
-    Object.entries(nodes).map(([name, tags]) => [name, { name, type: 'lib', data: { root: `libs/${name}`, name, tags } }]),
+    Object.entries(nodes).map(([name, tags]) => [
+      name,
+      { name, type: 'lib', data: { root: `libs/${name}`, name, tags } },
+    ]),
   );
   return JSON.stringify({ graph: { nodes: namedNodes, dependencies } });
 }
@@ -50,16 +53,30 @@ describe('readGraph', () => {
   });
 
   it('reads a project without a tags list as a project without tags, which the rules then name', () => {
-    const text = JSON.stringify({ graph: { nodes: { a: { name: 'a', type: 'lib', data: { root: 'a' } } }, dependencies: { a: [] } } });
+    const text = JSON.stringify({
+      graph: { nodes: { a: { name: 'a', type: 'lib', data: { root: 'a' } } }, dependencies: { a: [] } },
+    });
     assert.deepEqual(readGraph(text, 'graph.json').projects, [{ name: 'a', tags: [] }]);
   });
 
   const REFUSALS = [
     ['text that is not JSON', '{"graph":', /graph\.json is not JSON/],
-    ['a document without graph.nodes', JSON.stringify({ graph: { dependencies: {} } }), /graph\.json has no graph\.nodes object/],
-    ['a document without graph.dependencies', JSON.stringify({ graph: { nodes: {} } }), /graph\.json has no graph\.dependencies object/],
+    [
+      'a document without graph.nodes',
+      JSON.stringify({ graph: { dependencies: {} } }),
+      /graph\.json has no graph\.nodes object/,
+    ],
+    [
+      'a document without graph.dependencies',
+      JSON.stringify({ graph: { nodes: {} } }),
+      /graph\.json has no graph\.dependencies object/,
+    ],
     ['a graph that names no projects', graphText({}), /graph\.json names no projects/],
-    ['tags that are not a list of strings', graphText({ a: 'scope:admin' }), /project a has tags that are not a list of strings/],
+    [
+      'tags that are not a list of strings',
+      graphText({ a: 'scope:admin' }),
+      /project a has tags that are not a list of strings/,
+    ],
     [
       'dependencies listed under a name that is no project',
       graphText({ a: [] }, { ghost: [] }),
@@ -85,13 +102,20 @@ describe('readGraph', () => {
 
   for (const [what, text, message] of REFUSALS) {
     it(`refuses ${what}`, () => {
-      assert.throws(() => readGraph(text, 'graph.json'), (error) => error instanceof CheckError && message.test(error.message));
+      assert.throws(
+        () => readGraph(text, 'graph.json'),
+        (error) => error instanceof CheckError && message.test(error.message),
+      );
     });
   }
 });
 
 describe('readExceptions', () => {
-  const EXCEPTION = { source: 'manager-frontend', target: 'manager-api', reason: 'the dev mocks reuse the API schemas' };
+  const EXCEPTION = {
+    source: 'manager-frontend',
+    target: 'manager-api',
+    reason: 'the dev mocks reuse the API schemas',
+  };
 
   it('reads a list of dependencies, each with its reason', () => {
     assert.deepEqual(readExceptions(JSON.stringify([EXCEPTION]), 'exceptions.json'), [EXCEPTION]);
@@ -104,15 +128,34 @@ describe('readExceptions', () => {
   const REFUSALS = [
     ['text that is not JSON', '[', /exceptions\.json is not JSON/],
     ['a document that is not a list', JSON.stringify({ exceptions: [] }), /exceptions\.json is not a list/],
-    ['an entry without a reason', JSON.stringify([{ source: 'a', target: 'b' }]), /entry 1 of exceptions\.json needs a source, a target and a reason/],
-    ['an empty reason', JSON.stringify([{ ...EXCEPTION, reason: ' ' }]), /entry 1 of exceptions\.json needs a source, a target and a reason/],
-    ['an entry with a key the check does not read', JSON.stringify([{ ...EXCEPTION, expires: 'never' }]), /entry 1 of exceptions\.json has a key the check does not read: expires/],
-    ['the same dependency twice', JSON.stringify([EXCEPTION, EXCEPTION]), /exceptions\.json names manager-frontend -> manager-api twice/],
+    [
+      'an entry without a reason',
+      JSON.stringify([{ source: 'a', target: 'b' }]),
+      /entry 1 of exceptions\.json needs a source, a target and a reason/,
+    ],
+    [
+      'an empty reason',
+      JSON.stringify([{ ...EXCEPTION, reason: ' ' }]),
+      /entry 1 of exceptions\.json needs a source, a target and a reason/,
+    ],
+    [
+      'an entry with a key the check does not read',
+      JSON.stringify([{ ...EXCEPTION, expires: 'never' }]),
+      /entry 1 of exceptions\.json has a key the check does not read: expires/,
+    ],
+    [
+      'the same dependency twice',
+      JSON.stringify([EXCEPTION, EXCEPTION]),
+      /exceptions\.json names manager-frontend -> manager-api twice/,
+    ],
   ];
 
   for (const [what, text, message] of REFUSALS) {
     it(`refuses ${what}`, () => {
-      assert.throws(() => readExceptions(text, 'exceptions.json'), (error) => error instanceof CheckError && message.test(error.message));
+      assert.throws(
+        () => readExceptions(text, 'exceptions.json'),
+        (error) => error instanceof CheckError && message.test(error.message),
+      );
     });
   }
 });

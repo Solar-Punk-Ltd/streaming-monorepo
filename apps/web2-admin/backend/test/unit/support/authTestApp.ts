@@ -18,21 +18,14 @@ import express from 'express';
 
 import { errorHandler } from '../../../src/api/middleware/errorHandler.js';
 import { notFound } from '../../../src/api/middleware/notFound.js';
-import {
-  createRequireAuth,
-  requireUser,
-} from '../../../src/api/middleware/requireAuth.js';
+import { createRequireAuth, requireUser } from '../../../src/api/middleware/requireAuth.js';
 import { createRequireInternalToken } from '../../../src/api/middleware/requireInternalToken.js';
 import { requireSameSite } from '../../../src/api/middleware/requireSameSite.js';
 import { createAuthRouter } from '../../../src/api/routes/auth.js';
 import { AuthService } from '../../../src/domain/auth/AuthService.js';
 import type { LoginLimiter } from '../../../src/domain/auth/LoginLimiter.js';
 
-import {
-  InMemoryCredentialRepository,
-  InMemorySessionRepository,
-  InMemoryUserRepository,
-} from './authFixtures.js';
+import { InMemoryCredentialRepository, InMemorySessionRepository, InMemoryUserRepository } from './authFixtures.js';
 
 /** The token the harness's stand-in uploader route accepts. */
 export const INTERNAL_TOKEN = 'test-internal-token-0000000000000000';
@@ -45,17 +38,10 @@ export interface AuthTestApp {
   close(): Promise<void>;
 }
 
-export async function startAuthTestApp(
-  limiter?: LoginLimiter,
-): Promise<AuthTestApp> {
+export async function startAuthTestApp(limiter?: LoginLimiter): Promise<AuthTestApp> {
   const users = new InMemoryUserRepository();
   const sessions = new InMemorySessionRepository(users);
-  const authService = new AuthService(
-    users,
-    sessions,
-    new InMemoryCredentialRepository(users, sessions),
-    limiter,
-  );
+  const authService = new AuthService(users, sessions, new InMemoryCredentialRepository(users, sessions), limiter);
   const requireAuth = createRequireAuth(authService);
 
   const app = express();
@@ -63,14 +49,9 @@ export async function startAuthTestApp(
 
   // The uploader's surface, mounted the way server.ts mounts it: ahead of the
   // cross-site check, with a bearer token and a body parser of its own.
-  app.post(
-    '/api/internal/ping',
-    json,
-    createRequireInternalToken(INTERNAL_TOKEN),
-    (req, res) => {
-      res.json({ ok: true, body: req.body as unknown });
-    },
-  );
+  app.post('/api/internal/ping', json, createRequireInternalToken(INTERNAL_TOKEN), (req, res) => {
+    res.json({ ok: true, body: req.body as unknown });
+  });
 
   app.use(requireSameSite);
   app.use(json);
@@ -145,9 +126,7 @@ export async function call(
   const res = await fetch(`${app.url}${path}`, {
     method,
     headers: { ...headers, ...options.headers },
-    body:
-      options.rawBody ??
-      (options.body === undefined ? undefined : JSON.stringify(options.body)),
+    body: options.rawBody ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
   });
 
   const text = await res.text();
@@ -168,9 +147,7 @@ export async function call(
 
 /** The `web2_admin_session=<token>` pair from a Set-Cookie list, or null. */
 export function sessionCookieFrom(setCookie: string[]): string | null {
-  const header = setCookie.find((value) =>
-    value.startsWith(`${SESSION_COOKIE_NAME}=`),
-  );
+  const header = setCookie.find((value) => value.startsWith(`${SESSION_COOKIE_NAME}=`));
   const pair = header?.split(';')[0];
   return pair && !pair.endsWith('=') ? pair : null;
 }
@@ -185,18 +162,12 @@ export interface SignedIn {
 }
 
 /** Signs in over HTTP and hands back the cookie the browser would keep. */
-export async function signIn(
-  app: AuthTestApp,
-  username: string,
-  password: string,
-): Promise<SignedIn> {
+export async function signIn(app: AuthTestApp, username: string, password: string): Promise<SignedIn> {
   const res = await call(app, 'POST', '/api/auth/login', {
     body: { username, password },
   });
   if (res.status !== 200) {
-    throw new Error(
-      `sign-in failed with ${res.status}: ${JSON.stringify(res.body)}`,
-    );
+    throw new Error(`sign-in failed with ${res.status}: ${JSON.stringify(res.body)}`);
   }
 
   const cookie = sessionCookieFrom(res.setCookie);

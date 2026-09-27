@@ -1,18 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  REQUESTED_WITH_HEADER,
-  REQUESTED_WITH_VALUE,
-} from '@streaming-monorepo/web2-admin-common';
+import { REQUESTED_WITH_HEADER, REQUESTED_WITH_VALUE } from '@streaming-monorepo/web2-admin-common';
 
 import { UNSUPPORTED_IMAGE_TYPE } from '../errors';
-import {
-  SessionEndedError,
-  extractApiError,
-  getJson,
-  send,
-  sendJson,
-  setUnauthorizedHandler,
-} from '../http';
+import { SessionEndedError, extractApiError, getJson, send, sendJson, setUnauthorizedHandler } from '../http';
 import { jsonError, jsonOk, mockFetch } from './helpers';
 
 describe('extractApiError', () => {
@@ -22,9 +12,7 @@ describe('extractApiError', () => {
       errors: ['title is a required field', 'tags must be at most 10 items'],
     });
 
-    expect(await extractApiError(res, 'fallback')).toBe(
-      'title is a required field; tags must be at most 10 items',
-    );
+    expect(await extractApiError(res, 'fallback')).toBe('title is a required field; tags must be at most 10 items');
   });
 
   it('prefers the console sentence over the backend message for a mapped code', async () => {
@@ -34,9 +22,7 @@ describe('extractApiError', () => {
       message: 'content-type image/svg+xml is not allowed',
     });
 
-    expect(await extractApiError(res, 'fallback')).toBe(
-      UNSUPPORTED_IMAGE_TYPE,
-    );
+    expect(await extractApiError(res, 'fallback')).toBe(UNSUPPORTED_IMAGE_TYPE);
   });
 
   it('keeps the backend message for a code it has no sentence for', async () => {
@@ -45,9 +31,7 @@ describe('extractApiError', () => {
       message: 'bee feed write failed: 504',
     });
 
-    expect(await extractApiError(res, 'fallback')).toBe(
-      'bee feed write failed: 504',
-    );
+    expect(await extractApiError(res, 'fallback')).toBe('bee feed write failed: 504');
   });
 
   it('shows an unmapped code verbatim rather than swallowing it', async () => {
@@ -87,16 +71,11 @@ describe('the cross-site header', () => {
   });
 
   it('is left off a read, which cannot change anything', async () => {
-    const fetchMock = mockFetch([
-      { path: '/api/streams', respond: () => jsonOk({ streams: [] }) },
-    ]);
+    const fetchMock = mockFetch([{ path: '/api/streams', respond: () => jsonOk({ streams: [] }) }]);
 
     await getJson('/api/streams');
 
-    const headers = fetchMock.mock.calls[0][1]?.headers as Record<
-      string,
-      string
-    >;
+    const headers = fetchMock.mock.calls[0][1]?.headers as Record<string, string>;
     expect(headers[REQUESTED_WITH_HEADER]).toBeUndefined();
   });
 });
@@ -114,9 +93,7 @@ describe('a 401', () => {
       },
     ]);
 
-    await expect(getJson('/api/streams')).rejects.toBeInstanceOf(
-      SessionEndedError,
-    );
+    await expect(getJson('/api/streams')).rejects.toBeInstanceOf(SessionEndedError);
     expect(onEnded).toHaveBeenCalledTimes(1);
   });
 
@@ -129,9 +106,7 @@ describe('a 401', () => {
       },
     ]);
 
-    await expect(getJson('/api/streams')).rejects.toThrow(
-      'Your session ended. Log in again.',
-    );
+    await expect(getJson('/api/streams')).rejects.toThrow('Your session ended. Log in again.');
   });
 
   it('is left alone where it is an answer rather than an eviction', async () => {

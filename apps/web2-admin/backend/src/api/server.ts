@@ -47,11 +47,7 @@ export interface ApiServerHandle {
   close(): Promise<void>;
 }
 
-export function startApiServer(
-  deps: ApiDeps,
-  port: number,
-  host: string,
-): ApiServerHandle {
+export function startApiServer(deps: ApiDeps, port: number, host: string): ApiServerHandle {
   const app = express();
 
   app.use(requestLogger);
@@ -120,9 +116,7 @@ export function startApiServer(
     async close() {
       return new Promise<void>((resolve, reject) => {
         const forceTimer = setTimeout(() => {
-          logger.warn(
-            `[ApiServer] Shutdown timed out after ${SHUTDOWN_TIMEOUT_MS}ms, forcing close`,
-          );
+          logger.warn(`[ApiServer] Shutdown timed out after ${SHUTDOWN_TIMEOUT_MS}ms, forcing close`);
           server.closeAllConnections?.();
         }, SHUTDOWN_TIMEOUT_MS);
 

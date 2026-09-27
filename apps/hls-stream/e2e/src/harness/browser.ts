@@ -529,7 +529,7 @@ function asBoolean(value: unknown, at: string): boolean {
 }
 
 function shownValue(value: unknown): string {
-  return value === undefined ? 'nothing' : JSON.stringify(value)?.slice(0, 80) ?? String(value);
+  return value === undefined ? 'nothing' : (JSON.stringify(value)?.slice(0, 80) ?? String(value));
 }
 
 /**

@@ -1,8 +1,5 @@
 import { BUNDLED_VERSION_NAME } from '@streaming-infra-manager/common';
-import type {
-  StackVersionRecord,
-  StackVersionRepository,
-} from '../../src/domain/versions/StackVersionRepository.js';
+import type { StackVersionRecord, StackVersionRepository } from '../../src/domain/versions/StackVersionRepository.js';
 import {
   type BuildDescriptor,
   type BuildLedger,
@@ -53,15 +50,29 @@ export class InMemoryBuildLedger implements BuildLedger, BuildReferenceReader {
   ) {}
 
   async cancelUnstarted(profileName: string, referenceId: number): Promise<void> {
-    const reference = this.references.find(row => row.id === referenceId && row.holderKind === 'job' && row.holderId === profileName);
+    const reference = this.references.find(
+      (row) => row.id === referenceId && row.holderKind === 'job' && row.holderId === profileName,
+    );
     if (reference && reference.resolvedAt === null) reference.resolvedAt = new Date(++this.clock);
   }
 
-  async cancelClaim(owner: Pick<Profile, 'name' | 'instance_id' | 'intent_revision'>, referenceId: number, previousStatus: ProfileStatus): Promise<Profile | null> {
+  async cancelClaim(
+    owner: Pick<Profile, 'name' | 'instance_id' | 'intent_revision'>,
+    referenceId: number,
+    previousStatus: ProfileStatus,
+  ): Promise<Profile | null> {
     const profile = this.profiles.rows.get(owner.name);
-    const job = this.references.find(row => row.id === referenceId);
-    if (!profile || profile.instance_id !== owner.instance_id || profile.intent_revision !== owner.intent_revision ||
-        profile.status !== 'DEPLOYING' || this.profiles.activeDeployJobs.get(owner.name) !== referenceId || !job || job.resolvedAt !== null) return null;
+    const job = this.references.find((row) => row.id === referenceId);
+    if (
+      !profile ||
+      profile.instance_id !== owner.instance_id ||
+      profile.intent_revision !== owner.intent_revision ||
+      profile.status !== 'DEPLOYING' ||
+      this.profiles.activeDeployJobs.get(owner.name) !== referenceId ||
+      !job ||
+      job.resolvedAt !== null
+    )
+      return null;
     await this.cancelUnstarted(owner.name, referenceId);
     this.profiles.activeDeployJobs.delete(owner.name);
     return this.profiles.markTerminal(owner.name, previousStatus);
@@ -81,7 +92,10 @@ export class InMemoryBuildLedger implements BuildLedger, BuildReferenceReader {
     if (!profile) return null;
     if (ownership.intent === 'advance') {
       profile = (await this.profiles.bumpIntent(profileName))!;
-      await this.operations.supersedeOpen(profile.instance_id, ownership.supersedeReason ?? 'Superseded by a new deployment action.');
+      await this.operations.supersedeOpen(
+        profile.instance_id,
+        ownership.supersedeReason ?? 'Superseded by a new deployment action.',
+      );
       profile = this.profiles.rows.get(profileName)!;
     }
     const descriptor = await this.seedJob(profileName, version, services);
@@ -89,9 +103,19 @@ export class InMemoryBuildLedger implements BuildLedger, BuildReferenceReader {
     return { profile, descriptor, previousStatus };
   }
 
-  async describe(profileName: string, version: StackVersionRecord | null, services: readonly string[], ownership: ExpectedDeployOwner): Promise<BuildDescriptor> {
+  async describe(
+    profileName: string,
+    version: StackVersionRecord | null,
+    services: readonly string[],
+    ownership: ExpectedDeployOwner,
+  ): Promise<BuildDescriptor> {
     const profile = this.profiles.rows.get(profileName);
-    if (!profile || profile.status !== 'DEPLOYING' || !this.owns(profile, ownership) || this.profiles.activeDeployJobs.has(profileName)) {
+    if (
+      !profile ||
+      profile.status !== 'DEPLOYING' ||
+      !this.owns(profile, ownership) ||
+      this.profiles.activeDeployJobs.has(profileName)
+    ) {
       throw new Error('The deployment no longer owns this initial build job.');
     }
     const descriptor = await this.seedJob(profileName, version, services);
@@ -100,21 +124,35 @@ export class InMemoryBuildLedger implements BuildLedger, BuildReferenceReader {
   }
 
   /** Fixture history, without granting the inserted reference active ownership. */
-  async seedJob(profileName: string, version: StackVersionRecord | null, services: readonly string[]): Promise<BuildDescriptor> {
+  async seedJob(
+    profileName: string,
+    version: StackVersionRecord | null,
+    services: readonly string[],
+  ): Promise<BuildDescriptor> {
     const root = stackRootOf(version ?? { rootPath: null });
     const buildId = version === null ? BUNDLED_BUILD_ID : buildIdOfRoot(this.versionsRoot, root);
     if (version === null) return { version, buildId, root, referenceId: null };
     const reference: BuildReference = {
-      id: this.nextId++, versionId: version.id, buildId, holderKind: 'job', holderId: profileName,
-      services: [...services], createdAt: new Date(++this.clock), resolvedAt: null,
+      id: this.nextId++,
+      versionId: version.id,
+      buildId,
+      holderKind: 'job',
+      holderId: profileName,
+      services: [...services],
+      createdAt: new Date(++this.clock),
+      resolvedAt: null,
     };
     this.references.push(reference);
     return { version, buildId, root, referenceId: reference.id };
   }
 
   private owns(profile: Profile, expected: ExpectedDeployOwner): boolean {
-    return profile.instance_id === expected.instanceId && profile.intent_revision === expected.intentRevision &&
-      profile.engine_config_revision === expected.configRevision && profile.stack_version_id === expected.stackVersionId;
+    return (
+      profile.instance_id === expected.instanceId &&
+      profile.intent_revision === expected.intentRevision &&
+      profile.engine_config_revision === expected.configRevision &&
+      profile.stack_version_id === expected.stackVersionId
+    );
   }
 
   async observe(profileName: string, services: readonly string[]): Promise<Observation[]> {
@@ -128,7 +166,11 @@ export class InMemoryBuildLedger implements BuildLedger, BuildReferenceReader {
       const versionId = await this.versionOfRoot(root);
       if (versionId === null) continue;
       for (const older of this.references) {
-        if (older.holderKind === 'snapshot' && older.holderId === `${profileName}/${service}` && older.resolvedAt === null) {
+        if (
+          older.holderKind === 'snapshot' &&
+          older.holderId === `${profileName}/${service}` &&
+          older.resolvedAt === null
+        ) {
           older.resolvedAt = new Date(++this.clock);
         }
       }
@@ -143,7 +185,9 @@ export class InMemoryBuildLedger implements BuildLedger, BuildReferenceReader {
         resolvedAt: null,
       });
     }
-    const covered = new Set(coveredJobReferences(this.references.filter((r) => r.holderKind !== 'job' || r.holderId === profileName)));
+    const covered = new Set(
+      coveredJobReferences(this.references.filter((r) => r.holderKind !== 'job' || r.holderId === profileName)),
+    );
     for (const reference of this.references) {
       if (covered.has(reference.id)) reference.resolvedAt = new Date(++this.clock);
     }
@@ -152,7 +196,13 @@ export class InMemoryBuildLedger implements BuildLedger, BuildReferenceReader {
 
   async observeAll(): Promise<void> {
     for (const profile of await this.profiles.list()) {
-      const services = [...new Set(this.references.filter((r) => r.holderId === profile.name && r.holderKind === 'job').flatMap((r) => [...r.services]))];
+      const services = [
+        ...new Set(
+          this.references
+            .filter((r) => r.holderId === profile.name && r.holderKind === 'job')
+            .flatMap((r) => [...r.services]),
+        ),
+      ];
       await this.observe(profile.name, services);
     }
   }
@@ -174,7 +224,8 @@ export class InMemoryBuildLedger implements BuildLedger, BuildReferenceReader {
    * `<name>.repo` all belong to `<name>`, and a root elsewhere to no version.
    */
   private async versionOfRoot(root: string): Promise<number | null> {
-    if (root === stackRootOf({ rootPath: null })) return (await this.versions.findByName(BUNDLED_VERSION_NAME))?.id ?? null;
+    if (root === stackRootOf({ rootPath: null }))
+      return (await this.versions.findByName(BUNDLED_VERSION_NAME))?.id ?? null;
     if (!root.startsWith(`${this.versionsRoot}/`)) return null;
     const first = root.slice(this.versionsRoot.length + 1).split('/')[0] ?? '';
     const name = first.replace(/\.(builds|repo)$/, '');

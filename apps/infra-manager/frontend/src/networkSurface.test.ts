@@ -36,9 +36,7 @@ describe('where the browser may open a connection', () => {
       .filter((file) => !OWNERS.has(file))
       .flatMap((file) => {
         const source = readFileSync(path.join(SOURCE_ROOT, file), 'utf8');
-        return CALL_SITES.filter((site) => source.includes(site)).map(
-          (site) => `${file} writes ${site}`,
-        );
+        return CALL_SITES.filter((site) => source.includes(site)).map((site) => `${file} writes ${site}`);
       });
 
     assert.deepEqual(elsewhere, []);
@@ -49,7 +47,10 @@ describe('where the browser may open a connection', () => {
 
     assert.ok(files.length > 100, `only ${files.length} source files found under ${SOURCE_ROOT}`);
     for (const owner of OWNERS) assert.ok(files.includes(owner), `${owner} was not scanned`);
-    assert.deepEqual(files.filter((file) => /\.test\.tsx?$/.test(file)), []);
+    assert.deepEqual(
+      files.filter((file) => /\.test\.tsx?$/.test(file)),
+      [],
+    );
     assert.ok(
       readFileSync(path.join(SOURCE_ROOT, 'http.ts'), 'utf8').includes('fetch('),
       'the owner of every request no longer writes one, so the scan is looking for the wrong thing',

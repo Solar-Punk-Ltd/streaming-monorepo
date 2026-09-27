@@ -14,10 +14,7 @@ import { describe, it } from 'node:test';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
 
 import { InvalidStackVersionError } from '../../src/domain/errors/index.js';
-import {
-  profileServiceHarness,
-  type ProfileServiceHarness,
-} from '../support/profileServiceHarness.js';
+import { profileServiceHarness, type ProfileServiceHarness } from '../support/profileServiceHarness.js';
 import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
 async function addVersion(
@@ -51,9 +48,10 @@ describe('the version a new deployment runs', () => {
     const profile = await harness.service.create({ name: 'stage', kind: 'viewer' });
 
     assert.equal(profile.stack_version_id, bundled?.id);
-    assert.deepEqual(harness.orchestrator.deploys.map((d) => d.profileName), [
-      'stage',
-    ]);
+    assert.deepEqual(
+      harness.orchestrator.deploys.map((d) => d.profileName),
+      ['stage'],
+    );
   });
 
   it('is the version asked for', async () => {
@@ -80,9 +78,7 @@ describe('the version a new deployment runs', () => {
         kind: 'viewer',
         stack_version_id: building,
       }),
-      (err: unknown) =>
-        err instanceof InvalidStackVersionError &&
-        /next is building/.test(err.reason),
+      (err: unknown) => err instanceof InvalidStackVersionError && /next is building/.test(err.reason),
     );
 
     assert.equal(harness.profiles.rows.size, 0);
@@ -112,9 +108,7 @@ describe('the version a new deployment runs', () => {
         kind: 'viewer',
         stack_version_id: 404,
       }),
-      (err: unknown) =>
-        err instanceof InvalidStackVersionError &&
-        /Stack version 404 does not exist/.test(err.reason),
+      (err: unknown) => err instanceof InvalidStackVersionError && /Stack version 404 does not exist/.test(err.reason),
     );
   });
 

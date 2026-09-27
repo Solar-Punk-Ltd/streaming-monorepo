@@ -28,11 +28,7 @@ import { DeploymentGroupRepository } from '../../src/domain/DeploymentGroupRepos
 import { ContainerRepository } from '../../src/domain/ContainerRepository.js';
 import { DeploymentOrchestrator } from '../../src/domain/DeploymentOrchestrator.js';
 import { EventBus } from '../../src/domain/EventBus.js';
-import {
-  ProfileService,
-  type PublishUrlProbe,
-  type StampHealthProbe,
-} from '../../src/domain/ProfileService.js';
+import { ProfileService, type PublishUrlProbe, type StampHealthProbe } from '../../src/domain/ProfileService.js';
 import { ProfileRepository } from '../../src/domain/ProfileRepository.js';
 import type { StackVersionRepository } from '../../src/domain/versions/StackVersionRepository.js';
 import { DeploymentGroup, Profile } from '../../src/types/index.js';
@@ -47,7 +43,6 @@ const LOCAL_PUBLISHER_HOST = '10.200.0.1';
 function localTargets(): DeployTargets {
   return { daemonIdFor: async () => 'daemon-1' };
 }
-
 
 const GROUP: DeploymentGroup = {
   id: 7,
@@ -196,19 +191,14 @@ function serviceFor(scripted: Scripted = {}): ScriptedService {
   return { service, askedStamps, askedUrls, localHostReads: () => localHostReads };
 }
 
-const forEveryRung = <T,>(value: T): Record<string, T> =>
-  Object.fromEntries(
-    DEFAULT_ABR_RUNGS.map((rung) => [`${GROUP.name}-${rung}`, value]),
-  );
+const forEveryRung = <T>(value: T): Record<string, T> =>
+  Object.fromEntries(DEFAULT_ABR_RUNGS.map((rung) => [`${GROUP.name}-${rung}`, value]));
 
 describe('beePublishersForGroup — live batch state', () => {
   it('asks every rung’s own node about its batch', async () => {
     const { service, askedStamps } = serviceFor();
     await service.beePublishersForGroup(GROUP.id);
-    assert.deepEqual(
-      askedStamps.sort(),
-      DEFAULT_ABR_RUNGS.map((r) => `${GROUP.name}-${r}`).sort(),
-    );
+    assert.deepEqual(askedStamps.sort(), DEFAULT_ABR_RUNGS.map((r) => `${GROUP.name}-${r}`).sort());
   });
 
   // The address the uploader is handed, not the one the manager verifies batches
@@ -216,10 +206,7 @@ describe('beePublishersForGroup — live batch state', () => {
   it('probes the exact address that goes into the string', async () => {
     const { service, askedUrls } = serviceFor();
     const result = await service.beePublishersForGroup(GROUP.id);
-    assert.deepEqual(
-      askedUrls.sort(),
-      result.rungs.map((r) => r.url).sort(),
-    );
+    assert.deepEqual(askedUrls.sort(), result.rungs.map((r) => r.url).sort());
   });
 
   it('emits the value when every batch is alive', async () => {
@@ -260,14 +247,8 @@ describe('beePublishersForGroup — live batch state', () => {
   it('reports each rung’s state so the UI can name the broken one', async () => {
     const { service } = serviceFor({ stamps: { [`${GROUP.name}-720p`]: 'expired' } });
     const result = await service.beePublishersForGroup(GROUP.id);
-    assert.equal(
-      result.rungs.find((r) => r.rung === '720p')?.stampState,
-      'expired',
-    );
-    assert.equal(
-      result.rungs.find((r) => r.rung === '480p')?.stampState,
-      'active',
-    );
+    assert.equal(result.rungs.find((r) => r.rung === '720p')?.stampState, 'expired');
+    assert.equal(result.rungs.find((r) => r.rung === '480p')?.stampState, 'active');
   });
 
   // An unreachable node is not evidence that its batch is dead: the operator
@@ -304,9 +285,7 @@ describe('beePublishersForGroup — live batch state', () => {
   });
 
   it('still names a rung with no batch recorded at all', async () => {
-    const members = DEFAULT_ABR_RUNGS.map(member).map((p) =>
-      p.name.endsWith('-480p') ? { ...p, stamp_id: null } : p,
-    );
+    const members = DEFAULT_ABR_RUNGS.map(member).map((p) => (p.name.endsWith('-480p') ? { ...p, stamp_id: null } : p));
     const { service } = serviceFor({ members });
     const result = await service.beePublishersForGroup(GROUP.id);
     assert.equal(result.ready, false);
@@ -322,11 +301,7 @@ describe('beePublishersForGroup — live batch state', () => {
     const result = await service.beePublishersForGroup(GROUP.id);
     assert.equal(result.ready, false);
     assert.equal(result.missing.length, DEFAULT_ABR_RUNGS.length);
-    assert.ok(
-      result.missing
-        .find((m) => m.rung === '1080p')
-        ?.reason.includes('no member'),
-    );
+    assert.ok(result.missing.find((m) => m.rung === '1080p')?.reason.includes('no member'));
   });
 });
 
@@ -340,7 +315,10 @@ describe('beePublishersForGroup, how full each batch is', () => {
 
     assert.equal(result.ready, false);
     assert.equal(result.value, null);
-    assert.deepEqual(result.missing.map((m) => m.rung), ['1080p']);
+    assert.deepEqual(
+      result.missing.map((m) => m.rung),
+      ['1080p'],
+    );
     assert.equal(result.rungs.find((r) => r.rung === '1080p')?.stampState, 'full');
   });
 
@@ -370,7 +348,10 @@ describe('beePublishersForGroup, how full each batch is', () => {
 
     assert.equal(result.ready, true);
     assert.ok(result.value);
-    assert.deepEqual(result.warnings.map((w) => w.rung), ['1080p']);
+    assert.deepEqual(
+      result.warnings.map((w) => w.rung),
+      ['1080p'],
+    );
     assert.match(result.warnings[0]!.reason, /95% full/);
   });
 });
@@ -500,9 +481,6 @@ describe('beePublishersForGroup — rung address and status', () => {
       ttls: { [`${GROUP.name}-360p`]: 12 * 3_600 },
     });
     const result = await service.beePublishersForGroup(GROUP.id);
-    assert.equal(
-      result.rungs.find((r) => r.rung === '360p')?.stampTtl,
-      12 * 3_600,
-    );
+    assert.equal(result.rungs.find((r) => r.rung === '360p')?.stampTtl, 12 * 3_600);
   });
 });

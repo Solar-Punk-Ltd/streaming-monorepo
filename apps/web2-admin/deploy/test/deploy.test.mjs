@@ -44,7 +44,11 @@ describe('deploy.sh in a checkout that deployed before the admin moved into apps
     assert.equal(refused.status, 1, refused.stderr);
     assert.ok(existsSync(sandbox.inCheckout(ENV_FILES.qa.before)), 'the script moved the old file itself');
     assert.equal(existsSync(sandbox.inCheckout(ENV_FILES.qa.now)), false, 'the script made an env file');
-    assert.doesNotMatch(refused.stdout + refused.stderr, /old-path-fixture-password/, 'the output holds what the env file holds');
+    assert.doesNotMatch(
+      refused.stdout + refused.stderr,
+      /old-path-fixture-password/,
+      'the output holds what the env file holds',
+    );
     assert.deepEqual(refused.calls, [], 'a tool ran before the refusal');
   });
 
@@ -65,7 +69,10 @@ describe('deploy.sh in a checkout that deployed before the admin moved into apps
     const refused = sandbox.runScript(DEPLOY, LOCAL_QA);
 
     assert.equal(refused.status, 1, refused.stderr);
-    assert.match(refused.stderr, /Copy \S*backend\/\.env\.sample to \S*backend\/\.env\.qa and fill in the required values/);
+    assert.match(
+      refused.stderr,
+      /Copy \S*backend\/\.env\.sample to \S*backend\/\.env\.qa and fill in the required values/,
+    );
     assert.doesNotMatch(refused.stderr, /\bmv\b/);
   });
 
@@ -97,9 +104,13 @@ describe('deploy.sh to a host that was deployed to before the move', () => {
   });
 
   const sandboxWithHost = (leftBeforeTheMove) =>
-    makeSandbox({ checkout: { [ENV_FILES.qa.now]: fakeAdminEnv('checkout') }, host: hostAfterTheRsync(leftBeforeTheMove) });
+    makeSandbox({
+      checkout: { [ENV_FILES.qa.now]: fakeAdminEnv('checkout') },
+      host: hostAfterTheRsync(leftBeforeTheMove),
+    });
 
-  const deployQa = (sandbox) => sandbox.runScript(DEPLOY, ['--host=admin-host', '--profile=qa', `--remote-path=${sandbox.hostDir}`]);
+  const deployQa = (sandbox) =>
+    sandbox.runScript(DEPLOY, ['--host=admin-host', '--profile=qa', `--remote-path=${sandbox.hostDir}`]);
 
   it('warns once the deploy has succeeded that the old env file is still on the host, and prints the command that removes it', () => {
     const sandbox = sandboxWithHost({ [OLD_HOST_COPY.qa]: fakeAdminEnv('old-host-copy') });
@@ -189,11 +200,15 @@ describe('deploy.sh names files by paths that work from the repository root', ()
 
     assert.equal(deployed.status, 0, deployed.stderr);
     const userAdd = printedCommand(deployed.stdout, /^\[deploy\]\s+(\S.*user:add <username>)$/m);
-    const parts = /^(?:cd (\S+) && )?WEB2_ADMIN_ENV_FILE=(\S+) docker compose -p \S+ -f (\S+) --env-file (\S+) exec /.exec(userAdd);
+    const parts =
+      /^(?:cd (\S+) && )?WEB2_ADMIN_ENV_FILE=(\S+) docker compose -p \S+ -f (\S+) --env-file (\S+) exec /.exec(userAdd);
     assert.ok(parts, userAdd);
     const [, folder = '.', envFromComposeDir, composeFile, envFile] = parts;
     const runDir = sandbox.inCheckout(folder);
-    assert.ok(existsSync(join(runDir, composeFile)), `from the repository root, ${composeFile} is not there: ${userAdd}`);
+    assert.ok(
+      existsSync(join(runDir, composeFile)),
+      `from the repository root, ${composeFile} is not there: ${userAdd}`,
+    );
     assert.ok(existsSync(join(runDir, envFile)), `from the repository root, ${envFile} is not there: ${userAdd}`);
     assert.ok(
       existsSync(join(dirname(join(runDir, composeFile)), envFromComposeDir)),

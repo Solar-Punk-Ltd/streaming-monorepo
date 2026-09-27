@@ -36,11 +36,15 @@ function readTags(name, data, fileName) {
 function readDependency(entry, name, projectNames, fileName) {
   const shaped = isPlainObject(entry) && [entry.source, entry.target, entry.type].every(isNonEmptyString);
   if (!shaped) {
-    throw new CheckError(`${fileName}: a dependency listed under ${name} is not { source, target, type }: ${JSON.stringify(entry)}`);
+    throw new CheckError(
+      `${fileName}: a dependency listed under ${name} is not { source, target, type }: ${JSON.stringify(entry)}`,
+    );
   }
-  if (entry.source !== name) throw new CheckError(`${fileName}: a dependency listed under ${name} starts from ${entry.source}.`);
+  if (entry.source !== name)
+    throw new CheckError(`${fileName}: a dependency listed under ${name} starts from ${entry.source}.`);
   if (entry.target.startsWith(EXTERNAL_PACKAGE_PREFIX)) return undefined;
-  if (!projectNames.has(entry.target)) throw new CheckError(`${fileName}: ${name} depends on ${entry.target}, which is not a project.`);
+  if (!projectNames.has(entry.target))
+    throw new CheckError(`${fileName}: ${name} depends on ${entry.target}, which is not a project.`);
   return { source: entry.source, target: entry.target, type: entry.type };
 }
 
@@ -54,18 +58,24 @@ function readDependency(entry, name, projectNames, fileName) {
 export function readGraph(text, fileName) {
   const document = parseJson(text, fileName);
   const graph = document?.graph;
-  if (!isPlainObject(graph?.nodes)) throw new CheckError(`${fileName} has no graph.nodes object, so it is not a file nx graph --file wrote.`);
+  if (!isPlainObject(graph?.nodes))
+    throw new CheckError(`${fileName} has no graph.nodes object, so it is not a file nx graph --file wrote.`);
   if (!isPlainObject(graph.dependencies)) {
     throw new CheckError(`${fileName} has no graph.dependencies object, so it is not a file nx graph --file wrote.`);
   }
 
-  const projects = Object.entries(graph.nodes).map(([name, node]) => ({ name, tags: readTags(name, node?.data, fileName) }));
-  if (projects.length === 0) throw new CheckError(`${fileName} names no projects. Was nx graph run at the repository root?`);
+  const projects = Object.entries(graph.nodes).map(([name, node]) => ({
+    name,
+    tags: readTags(name, node?.data, fileName),
+  }));
+  if (projects.length === 0)
+    throw new CheckError(`${fileName} names no projects. Was nx graph run at the repository root?`);
   const projectNames = new Set(projects.map((project) => project.name));
 
   const dependencies = [];
   for (const [name, entries] of Object.entries(graph.dependencies)) {
-    if (!projectNames.has(name)) throw new CheckError(`${fileName} lists dependencies of ${name}, which is not a project.`);
+    if (!projectNames.has(name))
+      throw new CheckError(`${fileName} lists dependencies of ${name}, which is not a project.`);
     if (!Array.isArray(entries)) throw new CheckError(`${fileName}: the dependencies of ${name} are not a list.`);
     for (const entry of entries) {
       const dependency = readDependency(entry, name, projectNames, fileName);

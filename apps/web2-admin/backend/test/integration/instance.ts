@@ -26,18 +26,14 @@ const PACKAGE_ROOT = join(here, '..', '..');
 const TSX = join(PACKAGE_ROOT, 'node_modules', '.bin', 'tsx');
 
 /** Where to reach Postgres. The throwaway database is created beside it. */
-const ADMIN_DATABASE_URL =
-  process.env.DATABASE_URL ??
-  'postgres://web2admin:web2admin@127.0.0.1:5433/web2admin';
+const ADMIN_DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://web2admin:web2admin@127.0.0.1:5433/web2admin';
 
 export const ITEST_USERNAME = 'itest-admin';
 export const ITEST_PASSWORD = 'integration-suite-password';
-export const ITEST_INTERNAL_TOKEN =
-  'web2-admin-integration-internal-token-000000';
+export const ITEST_INTERNAL_TOKEN = 'web2-admin-integration-internal-token-000000';
 
 /** Hardhat's first test account: public, and it signs nothing that matters. */
-const FEED_PRIVATE_KEY =
-  '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+const FEED_PRIVATE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
 
 const BOOT_TIMEOUT_MS = 60_000;
 
@@ -51,9 +47,7 @@ export interface Instance {
 
 function databaseNameFor(url: string): { admin: string; name: string; target: string } {
   const parsed = new URL(url);
-  const name = `web2admin_itest_${Date.now().toString(36)}${Math.floor(
-    Math.random() * 1e6,
-  ).toString(36)}`;
+  const name = `web2admin_itest_${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
   const target = new URL(url);
   target.pathname = `/${name}`;
   const admin = new URL(url);
@@ -72,10 +66,7 @@ async function freePort(): Promise<number> {
   return address.port;
 }
 
-function childEnvironment(
-  databaseUrl: string,
-  port: number,
-): NodeJS.ProcessEnv {
+function childEnvironment(databaseUrl: string, port: number): NodeJS.ProcessEnv {
   return {
     ...process.env,
     DATABASE_URL: databaseUrl,
@@ -86,8 +77,7 @@ function childEnvironment(
     FEED_PRIVATE_KEY,
     FEED_TOPIC: 'web2-admin-integration',
     BEE_URL: 'http://127.0.0.1:1633',
-    POSTAGE_BATCH_ID:
-      '0000000000000000000000000000000000000000000000000000000000000000',
+    POSTAGE_BATCH_ID: '0000000000000000000000000000000000000000000000000000000000000000',
     VIEWER_BASE_URL: '',
     INTERNAL_API_TOKEN: ITEST_INTERNAL_TOKEN,
     INGEST_HOST: 'ingest.itest.invalid',
@@ -159,11 +149,7 @@ export async function startInstance(): Promise<Instance> {
   const url = `http://127.0.0.1:${port}`;
   const environment = childEnvironment(target, port);
 
-  const addUser = async (
-    username: string,
-    password: string,
-    isAdmin = true,
-  ): Promise<void> => {
+  const addUser = async (username: string, password: string, isAdmin = true): Promise<void> => {
     await runToCompletion(
       TSX,
       [

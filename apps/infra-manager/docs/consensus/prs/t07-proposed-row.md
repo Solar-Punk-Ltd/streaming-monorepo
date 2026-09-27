@@ -23,16 +23,16 @@ Branch `fix/t07-proposed-row`, five commits on top of main-v2 at d046ebf. Not pu
 
 ## Test evidence
 
-| # | Guarantee | Where | Before | After |
-| --- | --- | --- | --- | --- |
-| 1 | A dead stamp is replaced by a live one through Edit, the gate seeing the live one | `proposedRow.test.ts` | fail | pass |
-| 2 | A dead stamp in place of a live one is refused before any claim, and the row, its status and its notes stay | same | fail | pass |
-| 3 | The gate, the claim and the deploy get one and the same state, a left-out field already null | same | fail | pass |
-| 4 | A group edit shows the gate the proposed stamp for every member | same | fail | pass |
-| 5 | A refused member writes and deploys nothing and gives the earlier claims back | same | fail | pass |
-| 6 | A chequebook check the node does not answer is refused with the retry in words, and no notice is published | `chequebookService.test.ts` | fail | pass |
-| 7 | A balance that cannot be read is refused | same | fail | pass |
-| 8 | A stamp check the node does not answer is refused with the retry in words, a known batch still passes, an unknown one is still not usable | `stampStartCheck.test.ts` | one fails | pass |
+| #   | Guarantee                                                                                                                                 | Where                       | Before    | After |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | --------- | ----- |
+| 1   | A dead stamp is replaced by a live one through Edit, the gate seeing the live one                                                         | `proposedRow.test.ts`       | fail      | pass  |
+| 2   | A dead stamp in place of a live one is refused before any claim, and the row, its status and its notes stay                               | same                        | fail      | pass  |
+| 3   | The gate, the claim and the deploy get one and the same state, a left-out field already null                                              | same                        | fail      | pass  |
+| 4   | A group edit shows the gate the proposed stamp for every member                                                                           | same                        | fail      | pass  |
+| 5   | A refused member writes and deploys nothing and gives the earlier claims back                                                             | same                        | fail      | pass  |
+| 6   | A chequebook check the node does not answer is refused with the retry in words, and no notice is published                                | `chequebookService.test.ts` | fail      | pass  |
+| 7   | A balance that cannot be read is refused                                                                                                  | same                        | fail      | pass  |
+| 8   | A stamp check the node does not answer is refused with the retry in words, a known batch still passes, an unknown one is still not usable | `stampStartCheck.test.ts`   | one fails | pass  |
 
 `cd manager && pnpm test` 499 pass, `pnpm typecheck` clean, `cd common && pnpm test` 261 pass.
 

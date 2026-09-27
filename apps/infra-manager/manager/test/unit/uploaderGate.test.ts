@@ -30,16 +30,11 @@ const root = throwawayRoot('uploader-gate-');
 process.env.SHLS_ROOT = root;
 writeFileSync(join(root, '.env'), 'ENGINE=srs\n', 'utf8');
 
-const { orchestratorHarness } = await import(
-  '../support/orchestratorHarness.js'
-);
+const { orchestratorHarness } = await import('../support/orchestratorHarness.js');
 
 const BATCH = 'a'.repeat(64);
 const PUBLISHERS = ['360p', '480p', '720p', '1080p']
-  .map(
-    (rung, index) =>
-      `${rung}@http://10.0.0.7:${10015 + index * 10}<${BATCH}>`,
-  )
+  .map((rung, index) => `${rung}@http://10.0.0.7:${10015 + index * 10}<${BATCH}>`)
   .join(' ');
 
 /** Stands in for a bee node that has been asked about the batch. */
@@ -51,29 +46,19 @@ class RecordingGate {
   async assertCanStart(profile: Profile): Promise<void> {
     this.asked.push(profile.name);
     if (this.refuse) {
-      throw new StampNotUsableError(
-        profile.name,
-        'the configured stamp is unknown to this bee node',
-      );
+      throw new StampNotUsableError(profile.name, 'the configured stamp is unknown to this bee node');
     }
   }
 }
 
-const streamer = (over: Partial<Profile> = {}): Profile =>
-  makeProfile({ name: 'stage', stamp_id: BATCH, ...over });
+const streamer = (over: Partial<Profile> = {}): Profile => makeProfile({ name: 'stage', stamp_id: BATCH, ...over });
 
 describe('starting an uploader that the node refuses', () => {
   it('refuses a plain deploy of a running deployment, before it claims it', async () => {
     const gate = new RecordingGate(true);
-    const { orchestrator, profiles, runner } = orchestratorHarness(
-      [streamer()],
-      gate,
-    );
+    const { orchestrator, profiles, runner } = orchestratorHarness([streamer()], gate);
 
-    await assert.rejects(
-      orchestrator.startDeploy(profiles.rows.get('stage')!, undefined),
-      StampNotUsableError,
-    );
+    await assert.rejects(orchestrator.startDeploy(profiles.rows.get('stage')!, undefined), StampNotUsableError);
 
     assert.deepEqual(gate.asked, ['stage']);
     assert.equal(profiles.statusOf('stage'), 'RUNNING', 'not claimed');
@@ -85,10 +70,7 @@ describe('starting an uploader that the node refuses', () => {
     const gate = new RecordingGate(true);
     const { orchestrator, profiles } = orchestratorHarness([streamer()], gate);
 
-    await assert.rejects(
-      orchestrator.startDeployUploader(profiles.rows.get('stage')!),
-      StampNotUsableError,
-    );
+    await assert.rejects(orchestrator.startDeployUploader(profiles.rows.get('stage')!), StampNotUsableError);
 
     assert.deepEqual(gate.asked, ['stage']);
     assert.equal(profiles.statusOf('stage'), 'RUNNING');
@@ -96,15 +78,9 @@ describe('starting an uploader that the node refuses', () => {
 
   it('refuses a retry of a deployment that is already in ERROR', async () => {
     const gate = new RecordingGate(true);
-    const { orchestrator, profiles } = orchestratorHarness(
-      [streamer({ status: 'ERROR' })],
-      gate,
-    );
+    const { orchestrator, profiles } = orchestratorHarness([streamer({ status: 'ERROR' })], gate);
 
-    await assert.rejects(
-      orchestrator.startDeploy(profiles.rows.get('stage')!, undefined),
-      StampNotUsableError,
-    );
+    await assert.rejects(orchestrator.startDeploy(profiles.rows.get('stage')!, undefined), StampNotUsableError);
 
     assert.equal(profiles.statusOf('stage'), 'ERROR');
   });
@@ -113,10 +89,7 @@ describe('starting an uploader that the node refuses', () => {
 describe('when there is nothing to ask', () => {
   it('does not probe a stopped deployment, whose node is down anyway', async () => {
     const gate = new RecordingGate(true);
-    const { orchestrator, profiles, runner } = orchestratorHarness(
-      [streamer({ status: 'STOPPED' })],
-      gate,
-    );
+    const { orchestrator, profiles, runner } = orchestratorHarness([streamer({ status: 'STOPPED' })], gate);
 
     await orchestrator.startDeploy(profiles.rows.get('stage')!, undefined);
 
@@ -126,15 +99,9 @@ describe('when there is nothing to ask', () => {
 
   it('does not probe an initial deploy, which has no node yet', async () => {
     const gate = new RecordingGate(true);
-    const { orchestrator, profiles } = orchestratorHarness(
-      [streamer({ status: 'DEPLOYING' })],
-      gate,
-    );
+    const { orchestrator, profiles } = orchestratorHarness([streamer({ status: 'DEPLOYING' })], gate);
 
-    await orchestrator.startInitialDeploy(
-      profiles.rows.get('stage')!,
-      undefined,
-    );
+    await orchestrator.startInitialDeploy(profiles.rows.get('stage')!, undefined);
 
     assert.deepEqual(gate.asked, []);
   });
@@ -146,10 +113,7 @@ describe('when there is nothing to ask', () => {
       bee_publishers: PUBLISHERS,
       stamp_id: null,
     });
-    const { orchestrator, profiles, runner } = orchestratorHarness(
-      [pooled],
-      gate,
-    );
+    const { orchestrator, profiles, runner } = orchestratorHarness([pooled], gate);
 
     await orchestrator.startDeploy(profiles.rows.get('stage')!, undefined);
 
@@ -169,18 +133,13 @@ describe('when there is nothing to ask', () => {
 });
 
 describe('UploaderStartGate', () => {
-  const stamps = (
-    refuse: boolean,
-  ): { service: StampService; checked: string[] } => {
+  const stamps = (refuse: boolean): { service: StampService; checked: string[] } => {
     const checked: string[] = [];
     const service = {
       async assertStampUsable(name: string, stampId: string): Promise<void> {
         checked.push(`${name}:${stampId}`);
         if (refuse) {
-          throw new StampNotUsableError(
-            name,
-            'the configured stamp has expired',
-          );
+          throw new StampNotUsableError(name, 'the configured stamp has expired');
         }
       },
     } as unknown as StampService;
@@ -208,9 +167,7 @@ describe('UploaderStartGate', () => {
     const funds = chequebook();
 
     await assert.rejects(
-      new UploaderStartGate(batch.service, funds.service).assertCanStart(
-        streamer(),
-      ),
+      new UploaderStartGate(batch.service, funds.service).assertCanStart(streamer()),
       StampNotUsableError,
     );
 
@@ -221,9 +178,7 @@ describe('UploaderStartGate', () => {
     const batch = stamps(true);
     const funds = chequebook();
 
-    await new UploaderStartGate(batch.service, funds.service).assertCanStart(
-      streamer({ stamp_id: null }),
-    );
+    await new UploaderStartGate(batch.service, funds.service).assertCanStart(streamer({ stamp_id: null }));
 
     assert.deepEqual(batch.checked, []);
     assert.deepEqual(funds.asked, ['stage'], 'the chequebook is still asked');
@@ -233,9 +188,7 @@ describe('UploaderStartGate', () => {
     const batch = stamps(false);
     const funds = chequebook();
 
-    await new UploaderStartGate(batch.service, funds.service).assertCanStart(
-      streamer(),
-    );
+    await new UploaderStartGate(batch.service, funds.service).assertCanStart(streamer());
 
     assert.deepEqual(batch.checked, [`stage:${BATCH}`]);
     assert.deepEqual(funds.asked, ['stage'], 'read, and written to the log, either way');
@@ -246,9 +199,7 @@ describe('UploaderStartGate', () => {
     const funds = chequebook();
 
     await assert.rejects(
-      new UploaderStartGate(batch.service, funds.service).assertCanStart(
-        streamer(),
-      ),
+      new UploaderStartGate(batch.service, funds.service).assertCanStart(streamer()),
       StampNotUsableError,
     );
 

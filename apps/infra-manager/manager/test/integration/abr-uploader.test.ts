@@ -37,8 +37,7 @@ const DEPLOY_TIMEOUT = 240_000;
 
 /** Structurally valid and unreachable — enough for every validation case. */
 const SYNTHETIC = RUNGS.map(
-  (rung, i) =>
-    `${rung}@http://10.0.0.9:${10015 + i * 10}<${rung.replace(/\D/g, '').padEnd(64, '0')}>`,
+  (rung, i) => `${rung}@http://10.0.0.9:${10015 + i * 10}<${rung.replace(/\D/g, '').padEnd(64, '0')}>`,
 ).join(' ');
 
 const LIVE = process.env.ABR_BEE_PUBLISHERS?.trim();
@@ -46,7 +45,6 @@ const LIVE = process.env.ABR_BEE_PUBLISHERS?.trim();
 // A throwaway key for the local stack: the uploader requires STREAM_KEY and
 // derives its catalog feed's owner from it. Deliberately not a real one.
 const TEST_KEY = `0x${'11'.repeat(32)}`;
-
 
 before(requireStack);
 after(async () => {
@@ -80,24 +78,15 @@ describe('ABR uploader — validation', () => {
   });
 
   it('names the rung a paste is missing', async () => {
-    await rejects(
-      { bee_publishers: SYNTHETIC.split(' ').slice(1).join(' ') },
-      /missing 360p/,
-    );
+    await rejects({ bee_publishers: SYNTHETIC.split(' ').slice(1).join(' ') }, /missing 360p/);
   });
 
   it('rejects a duplicated rung', async () => {
-    await rejects(
-      { bee_publishers: `${SYNTHETIC} ${SYNTHETIC.split(' ')[0]}` },
-      /360p appears twice/,
-    );
+    await rejects({ bee_publishers: `${SYNTHETIC} ${SYNTHETIC.split(' ')[0]}` }, /360p appears twice/);
   });
 
   it('rejects addresses an uploader elsewhere could not use', async () => {
-    await rejects(
-      { bee_publishers: SYNTHETIC.replace('360p@http://', '360p@http://deploy@') },
-      /ssh user info/,
-    );
+    await rejects({ bee_publishers: SYNTHETIC.replace('360p@http://', '360p@http://deploy@') }, /ssh user info/);
     await rejects(
       { bee_publishers: SYNTHETIC.replace('720p@http://10.0.0.9', '720p@http://localhost') },
       /points at localhost/,
@@ -191,11 +180,7 @@ describe('the update path enforces the same rules as create', () => {
     const { status, body } = await apiRaw('PUT', `/profiles/${name}`, {
       bee_url: 'http://10.0.0.7:1633',
     });
-    assert.equal(
-      status,
-      400,
-      `PUT accepted a bee_url it must refuse: ${JSON.stringify(body)}`,
-    );
+    assert.equal(status, 400, `PUT accepted a bee_url it must refuse: ${JSON.stringify(body)}`);
     assert.match(JSON.stringify(body), /runs no bee-uploader/);
 
     // And it really was not written.
@@ -224,11 +209,7 @@ describe('the update path enforces the same rules as create', () => {
     const { status, body } = await apiRaw('PUT', `/profiles/${name}`, {
       notes: 'just editing the notes',
     });
-    assert.equal(
-      status,
-      400,
-      `a PUT omitting bee_publishers silently cleared it: ${JSON.stringify(body)}`,
-    );
+    assert.equal(status, 400, `a PUT omitting bee_publishers silently cleared it: ${JSON.stringify(body)}`);
     assert.match(JSON.stringify(body), /bee_publishers is required/);
 
     // The pool link survived the rejected write.
@@ -250,11 +231,7 @@ describe('the update path enforces the same rules as create', () => {
     assert.equal(status, 202, JSON.stringify(body));
     const created = body as { instance_id: string; bee_publishers: string };
     const settled = await waitForSettled(name);
-    assert.equal(
-      settled.instance_id,
-      created.instance_id,
-      'the created instance must be the one that settled',
-    );
+    assert.equal(settled.instance_id, created.instance_id, 'the created instance must be the one that settled');
     assert.equal(created.bee_publishers, SYNTHETIC);
   });
 });
@@ -280,9 +257,7 @@ describe('bee_url reaches the container', () => {
   it(
     'deploys srs + stream-uploader against an external Bee node and comes up healthy',
     {
-      skip: LIVE
-        ? false
-        : 'set ABR_BEE_PUBLISHERS — its 360p rung is reused here as an external node',
+      skip: LIVE ? false : 'set ABR_BEE_PUBLISHERS — its 360p rung is reused here as an external node',
     },
     async () => {
       const name = uniqueName('beeurl');
@@ -341,10 +316,7 @@ describe('ABR uploader — deploy against real rungs', () => {
       // Bee node — it publishes to the pool's rungs.
       assert.equal(running.pendingStamp, false);
       assert.equal(running.stamp_id, null);
-      assert.ok(
-        !serviceNames(running).includes(BEE_UPLOADER),
-        'an ABR uploader must not run a bee-uploader',
-      );
+      assert.ok(!serviceNames(running).includes(BEE_UPLOADER), 'an ABR uploader must not run a bee-uploader');
 
       // The assertion that actually proves the deployment works. RUNNING alone
       // does not: it is also what a crash-looping uploader reports. If

@@ -6,12 +6,7 @@ import { createEngineRouter } from '../../src/api/routes/engine.js';
 import type { ContainerControl } from '../../src/domain/ContainerControl.js';
 import type { ProfileService } from '../../src/domain/ProfileService.js';
 
-import {
-  call,
-  startRouterTestApp,
-  type RouterCall,
-  type RouterTestApp,
-} from './routerTestApp.js';
+import { call, startRouterTestApp, type RouterCall, type RouterTestApp } from './routerTestApp.js';
 
 export type EngineTestApp = RouterTestApp;
 export type EngineCall = RouterCall;
@@ -22,9 +17,7 @@ export function startEngineTestApp(
   /** BEE_RPC_ENDPOINT, which a container log is redacted against. */
   managerRpcEndpoint: string | null = null,
 ): Promise<EngineTestApp> {
-  return startRouterTestApp(
-    createEngineRouter(profileService, containers, managerRpcEndpoint),
-  );
+  return startRouterTestApp(createEngineRouter(profileService, containers, managerRpcEndpoint));
 }
 
 export const callEngine = call;

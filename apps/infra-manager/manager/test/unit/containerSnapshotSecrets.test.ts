@@ -13,16 +13,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  isSecretSettingKey,
-  SRS_SERVICE,
-  STREAM_UPLOADER_SERVICE,
-} from '@streaming-infra-manager/common';
+import { isSecretSettingKey, SRS_SERVICE, STREAM_UPLOADER_SERVICE } from '@streaming-infra-manager/common';
 
-import {
-  buildContainerSnapshot,
-  SERVICE_ENV_KEYS,
-} from '../../src/domain/containerKeysSpec.js';
+import { buildContainerSnapshot, SERVICE_ENV_KEYS } from '../../src/domain/containerKeysSpec.js';
 
 const STREAM_KEY = `0x${'ab'.repeat(32)}`;
 const PASSPHRASE = 'synthetic-passphrase-0123';

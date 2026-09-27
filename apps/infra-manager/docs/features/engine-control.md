@@ -147,13 +147,13 @@ and Stack settings:
 - Header: `SRS 6 · media server` or `OvenMediaEngine`, a status pill, and four buttons:
   **Settings**, **Config file**, **Restart**, **Logs**.
 - **Live** (when the API is reachable, PR 2): `Publishing now: live/stream, 1080p60, 5.9 Mbps
-  video, 128 kbps audio, since 14:02` or `No publisher connected`. For the ABR ladder: `5 streams,
-  1 source and 4 rungs`, red when the count keeps climbing, because that is the transcode loop
+video, 128 kbps audio, since 14:02` or `No publisher connected`. For the ABR ladder: `5 streams,
+1 source and 4 rungs`, red when the count keeps climbing, because that is the transcode loop
   the stack's README warns about. Then `SRS uptime 3d 4h · 2 HTTP clients`. Refreshed every five
   seconds while the page is open. Until then the block says why. On a version that does not
   publish the API port it says `Live status needs the SRS API port, which this stack version does
-  not publish.`, and on one that does it says `This stack version publishes the SRS API port.
-  Reading live status from it is not built into the manager yet.`
+not publish.`, and on one that does it says `This stack version publishes the SRS API port.
+Reading live status from it is not built into the manager yet.`
 - **Settings** brings the deployment's **Stack settings** card into view with its **Engine
   settings** section open and the first setting focused (since 2026-09-26, a drawer of its own
   before). That section has only the fields the engine has. For SRS: **Segment length**
@@ -175,8 +175,8 @@ and Stack settings:
   segment length, and the uploader alone for the poll interval. Until 2026-09-26 the drawer's
   Save, **Apply and recreate engine**, stored and recreated in one step.
 - **Restart** asks first: `Restart SRS for stream1?`, then `The publisher, if there is one, is
-  disconnected for a few seconds and reconnects on its own if OBS is set to retry. Settings are not
-  changed.` With live status available the dialog says whether a publisher is connected right now.
+disconnected for a few seconds and reconnects on its own if OBS is set to retry. Settings are not
+changed.` With live status available the dialog says whether a publisher is connected right now.
 - **Logs** opens a dialog with the last 200 lines of the engine container, a Refresh button and a
   switch between the deployment's containers, so the same dialog serves the whole stack.
 - **Effective config** (inside the Logs dialog as a second tab): the generated `srs.conf` as the
@@ -203,7 +203,7 @@ stack version, and validation lives in code:
   help text and, for a field the engine's config template carries, the placeholder its value
   fills. Which keys a version reads comes from that version's contract, not from the field.
   `engineSettingsProblem
-  (engine, settings)` returns the first human readable problem or null, including the GOP rule.
+(engine, settings)` returns the first human readable problem or null, including the GOP rule.
   `engineSettingsEnv(engine, settings)` returns the `KEY=value` pairs to write. Shared, so the
   settings page, its save and the deploy validate identically. Since 2026-09-23 it takes the host's defaults as
   well and adds a default the manager owns, `managerOwnsDefault` on the field, for a key the
@@ -251,13 +251,13 @@ uses:
 
 Routes, `manager/src/api/routes/engine.ts`:
 
-| Method | Path | Answer |
-|---|---|---|
-| GET | `/profiles/:name/engine` | `{ engine, abr, settings, defaults, fields, live, liveUnavailableReason }`, where `live` is null in PR 1 and `liveUnavailableReason` says why |
-| PUT | `/profiles/:name/engine-settings` | 202, the profile. For scripts since 2026-09-26. 400 `validation_error` naming a key neither engine reads |
-| POST | `/profiles/:name/containers/:service/restart` | 202 |
-| GET | `/profiles/:name/containers/:service/logs?tail=200` | `text/plain` |
-| GET | `/profiles/:name/engine/config` | `text/plain`, no-store |
+| Method | Path                                                | Answer                                                                                                                                        |
+| ------ | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/profiles/:name/engine`                            | `{ engine, abr, settings, defaults, fields, live, liveUnavailableReason }`, where `live` is null in PR 1 and `liveUnavailableReason` says why |
+| PUT    | `/profiles/:name/engine-settings`                   | 202, the profile. For scripts since 2026-09-26. 400 `validation_error` naming a key neither engine reads                                      |
+| POST   | `/profiles/:name/containers/:service/restart`       | 202                                                                                                                                           |
+| GET    | `/profiles/:name/containers/:service/logs?tail=200` | `text/plain`                                                                                                                                  |
+| GET    | `/profiles/:name/engine/config`                     | `text/plain`, no-store                                                                                                                        |
 
 ### Live status (PR 2, after decision D7)
 

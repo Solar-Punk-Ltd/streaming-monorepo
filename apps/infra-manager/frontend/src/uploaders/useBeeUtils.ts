@@ -79,9 +79,7 @@ export interface BeeUtils {
   waitForStamp: (batchID: string) => void;
 }
 
-function isRejected(
-  result: PromiseSettledResult<unknown>,
-): result is PromiseRejectedResult {
+function isRejected(result: PromiseSettledResult<unknown>): result is PromiseRejectedResult {
   return result.status === 'rejected';
 }
 
@@ -114,10 +112,7 @@ export interface BeeUtilsOptions {
  * The batch wait ends when the batch becomes usable, the profile gets a stamp
  * set, or the attempts run out.
  */
-export function useBeeUtils(
-  profile: Profile,
-  { withChequebook = true }: BeeUtilsOptions = {},
-): BeeUtils {
+export function useBeeUtils(profile: Profile, { withChequebook = true }: BeeUtilsOptions = {}): BeeUtils {
   const profileName = profile.name;
   const profileRevision = `${profile.instance_id}:${profile.status}:${profile.updated_at}`;
   const [nodeObservation, setNodeObservation] = useState<BeeNodeObservation | null>(null);
@@ -143,71 +138,63 @@ export function useBeeUtils(
   // operator pressing Refresh. The slower one must not land last.
   const [rounds] = useState(() => new BeeCheckRounds());
 
-  const runChecks = useCallback(async (announce: boolean) => {
-    const round = rounds.begin();
-    if (announce) {
-      setLoading(true);
-      setLoadError(null);
-    }
+  const runChecks = useCallback(
+    async (announce: boolean) => {
+      const round = rounds.begin();
+      if (announce) {
+        setLoading(true);
+        setLoadError(null);
+      }
 
-    const askedAt = performance.now();
-    const [
-      observationResult,
-      addressResult,
-      walletResult,
-      stampsResult,
-      chainStateResult,
-      chequebookResult,
-    ] = await Promise.allSettled([
-      fetchBeeNodeObservation(profileName, round.signal).then(value => ({ value, receivedAt: performance.now() })),
-      fetchStampAddress(profileName, round.signal),
-      fetchStampWallet(profileName, round.signal),
-      fetchStamps(profileName, round.signal),
-      fetchChainState(profileName, round.signal),
-      withChequebook ? fetchChequebook(profileName, round.signal) : Promise.resolve(null),
-    ]);
+      const askedAt = performance.now();
+      const [observationResult, addressResult, walletResult, stampsResult, chainStateResult, chequebookResult] =
+        await Promise.allSettled([
+          fetchBeeNodeObservation(profileName, round.signal).then((value) => ({
+            value,
+            receivedAt: performance.now(),
+          })),
+          fetchStampAddress(profileName, round.signal),
+          fetchStampWallet(profileName, round.signal),
+          fetchStamps(profileName, round.signal),
+          fetchChainState(profileName, round.signal),
+          withChequebook ? fetchChequebook(profileName, round.signal) : Promise.resolve(null),
+        ]);
 
-    rounds.end(round.id);
-    if (!rounds.isNewest(round.id)) return;
+      rounds.end(round.id);
+      if (!rounds.isNewest(round.id)) return;
 
-    // Every live reading is written from this round's own result, a failure
-    // included, rather than blanked before the round starts. Blanking first
-    // put all of them back to "not checked" for the length of a round trip,
-    // which on a cadence is a warning on screen every few seconds about a node
-    // that is answering in under a millisecond. The invariant that blanking
-    // protected is kept: a reading nobody could confirm this round is null,
-    // never a stale value still being shown as current.
-    setNodeObservation(observationResult.status === 'fulfilled' ? observationResult.value.value : null);
-    setObservationReceivedAt(observationResult.status === 'fulfilled' ? observationResult.value.receivedAt : null);
-    setObservationNow(performance.now());
-    // The address is the node's identity rather than a reading of it, so a
-    // round that could not ask keeps the one already known.
-    if (addressResult.status === 'fulfilled') setAddress(addressResult.value);
-    setWallet(walletResult.status === 'fulfilled' ? walletResult.value : null);
-    setStamps(
-      stampsResult.status === 'fulfilled' ? stampsResult.value : null,
-    );
-    setStampsFailure(
-      stampsResult.status === 'fulfilled'
-        ? undefined
-        : readFailureFrom(stampsResult.reason, performance.now() - askedAt),
-    );
-    setChainState(
-      chainStateResult.status === 'fulfilled' ? chainStateResult.value : null,
-    );
-    if (withChequebook) {
-      setChequebook(
-        chequebookResult.status === 'fulfilled' ? chequebookResult.value : null,
+      // Every live reading is written from this round's own result, a failure
+      // included, rather than blanked before the round starts. Blanking first
+      // put all of them back to "not checked" for the length of a round trip,
+      // which on a cadence is a warning on screen every few seconds about a node
+      // that is answering in under a millisecond. The invariant that blanking
+      // protected is kept: a reading nobody could confirm this round is null,
+      // never a stale value still being shown as current.
+      setNodeObservation(observationResult.status === 'fulfilled' ? observationResult.value.value : null);
+      setObservationReceivedAt(observationResult.status === 'fulfilled' ? observationResult.value.receivedAt : null);
+      setObservationNow(performance.now());
+      // The address is the node's identity rather than a reading of it, so a
+      // round that could not ask keeps the one already known.
+      if (addressResult.status === 'fulfilled') setAddress(addressResult.value);
+      setWallet(walletResult.status === 'fulfilled' ? walletResult.value : null);
+      setStamps(stampsResult.status === 'fulfilled' ? stampsResult.value : null);
+      setStampsFailure(
+        stampsResult.status === 'fulfilled'
+          ? undefined
+          : readFailureFrom(stampsResult.reason, performance.now() - askedAt),
       );
-    }
+      setChainState(chainStateResult.status === 'fulfilled' ? chainStateResult.value : null);
+      if (withChequebook) {
+        setChequebook(chequebookResult.status === 'fulfilled' ? chequebookResult.value : null);
+      }
 
-    const failure = [addressResult, walletResult, stampsResult].find(
-      isRejected,
-    );
-    setLoadError(failure ? beeLoadError(failure.reason) : null);
+      const failure = [addressResult, walletResult, stampsResult].find(isRejected);
+      setLoadError(failure ? beeLoadError(failure.reason) : null);
 
-    setLoading(false);
-  }, [profileName, profileRevision, rounds, withChequebook]);
+      setLoading(false);
+    },
+    [profileName, profileRevision, rounds, withChequebook],
+  );
 
   /** What the Retry action and the first paint call: it says it is checking. */
   const reload = useCallback(() => runChecks(true), [runChecks]);

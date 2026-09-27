@@ -9,15 +9,22 @@ import { ProfileRepository } from '../../src/domain/ProfileRepository.js';
 
 const port = Number(process.env.T10_TEST_PG_PORT);
 const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't10_test', connectionTimeoutMillis: 10000 };
-const placement = { stackVersionId: 1, slotCap: 100, daemonId: 'test-daemon', table: [
-  { name: 'API_PORT', defaultPort: 10000, slotBase: 10000, protocol: 'tcp' as const, service: 'stream-uploader' },
-] };
+const placement = {
+  stackVersionId: 1,
+  slotCap: 100,
+  daemonId: 'test-daemon',
+  table: [
+    { name: 'API_PORT', defaultPort: 10000, slotBase: 10000, protocol: 'tcp' as const, service: 'stream-uploader' },
+  ],
+};
 
 async function waitForBlock(admin: Pool, blocker: number): Promise<void> {
   for (let tick = 0; tick < 200; tick++) {
-    const result = await admin.query('SELECT 1 FROM pg_stat_activity WHERE $1::integer = ANY(pg_blocking_pids(pid))', [blocker]);
+    const result = await admin.query('SELECT 1 FROM pg_stat_activity WHERE $1::integer = ANY(pg_blocking_pids(pid))', [
+      blocker,
+    ]);
     if (result.rowCount) return;
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error('The expected concurrent operation did not wait');
 }
@@ -34,18 +41,29 @@ describe('empty group removal in isolated PostgreSQL', { skip: !Number.isInteger
     await admin.query(`CREATE SCHEMA ${schema}`);
     pool = new pg.Pool({ ...connection, max: 10, options: `-c search_path=${schema} -c statement_timeout=10000` });
     const migrations = new URL('../../src/migrations/', import.meta.url);
-    for (const file of (await readdir(migrations)).filter(file => file.endsWith('.sql')).sort()) {
+    for (const file of (await readdir(migrations)).filter((file) => file.endsWith('.sql')).sort()) {
       await pool.query(await readFile(new URL(file, migrations), 'utf8'));
     }
     groups = new DeploymentGroupRepository(pool);
   });
   afterEach(async () => {
-    for (const client of clients.splice(0)) { await client.query('ROLLBACK').catch(() => undefined); client.release(); }
+    for (const client of clients.splice(0)) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      client.release();
+    }
     await pool?.end();
-    if (admin) { await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`); await admin.end(); }
+    if (admin) {
+      await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+      await admin.end();
+    }
   });
   async function group(name = 'owned'): Promise<number> {
-    return (await pool.query<{ id: number }>("INSERT INTO deployment_groups (name, size, kind) VALUES ($1, 2, 'standard') RETURNING id", [name])).rows[0]!.id;
+    return (
+      await pool.query<{ id: number }>(
+        "INSERT INTO deployment_groups (name, size, kind) VALUES ($1, 2, 'standard') RETURNING id",
+        [name],
+      )
+    ).rows[0]!.id;
   }
   async function client() {
     const value = await pool.connect();
@@ -53,7 +71,10 @@ describe('empty group removal in isolated PostgreSQL', { skip: !Number.isInteger
     return value;
   }
   async function member(client: PoolClient, groupId: number): Promise<void> {
-    await client.query("INSERT INTO profiles (name, kind, status, port_slot, stack_version_id, group_id) VALUES ('foreign', 'viewer', 'STOPPED', 1, 1, $1)", [groupId]);
+    await client.query(
+      "INSERT INTO profiles (name, kind, status, port_slot, stack_version_id, group_id) VALUES ('foreign', 'viewer', 'STOPPED', 1, 1, $1)",
+      [groupId],
+    );
   }
 
   it('removes only the unchanged empty group and treats the same removed ID as absent', async () => {
@@ -88,9 +109,13 @@ describe('empty group removal in isolated PostgreSQL', { skip: !Number.isInteger
       const pid = (await inserting.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid;
       await inserting.query('BEGIN');
       await member(inserting, id);
-      const removing = mode === 'explicit' ? groups.removeEmptyGroup(id, 'owned') : groups.syncMembershipAfterRemoval(id);
-      try { await waitForBlock(admin, pid); }
-      finally { await inserting.query('COMMIT'); }
+      const removing =
+        mode === 'explicit' ? groups.removeEmptyGroup(id, 'owned') : groups.syncMembershipAfterRemoval(id);
+      try {
+        await waitForBlock(admin, pid);
+      } finally {
+        await inserting.query('COMMIT');
+      }
       assert.equal(await removing, mode === 'explicit' ? 'not_empty' : 'resized');
       assert.ok(await groups.findById(id));
       assert.equal((await pool.query("SELECT group_id FROM profiles WHERE name = 'foreign'")).rows[0].group_id, id);
@@ -105,8 +130,17 @@ describe('empty group removal in isolated PostgreSQL', { skip: !Number.isInteger
     await blocker.query('SELECT id FROM deployment_groups WHERE id = $1 FOR UPDATE', [id]);
     const deleting = groups.removeEmptyGroup(id, 'owned');
     await waitForBlock(admin, pid);
-    const adding = new ProfileRepository(pool).insertWithFreeSlot('late', 'viewer', 'STOPPED', { group_id: id }, placement);
-    const outcome = adding.then(() => 'inserted', () => 'refused');
+    const adding = new ProfileRepository(pool).insertWithFreeSlot(
+      'late',
+      'viewer',
+      'STOPPED',
+      { group_id: id },
+      placement,
+    );
+    const outcome = adding.then(
+      () => 'inserted',
+      () => 'refused',
+    );
     await blocker.query('COMMIT');
     assert.equal(await deleting, 'deleted');
     assert.equal(await outcome, 'refused');

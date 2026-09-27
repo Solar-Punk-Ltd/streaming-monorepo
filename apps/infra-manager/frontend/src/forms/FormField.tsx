@@ -56,16 +56,20 @@ export function FormField({
         direction="row"
         spacing={0.75}
         sx={{
-          alignItems: "baseline",
-          mb: 0.75
-        }}>
+          alignItems: 'baseline',
+          mb: 0.75,
+        }}
+      >
         <Typography variant="subtitle2" component="label" htmlFor={htmlFor} id={labelId}>
           {label}
         </Typography>
         {aside && (
-          <Typography variant="caption" sx={{
-            color: "text.secondary"
-          }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
             {aside}
           </Typography>
         )}

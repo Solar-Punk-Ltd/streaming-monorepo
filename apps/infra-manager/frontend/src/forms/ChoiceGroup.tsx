@@ -50,9 +50,13 @@ export function ChoiceGroup<T extends string>({
               bgcolor: selected ? 'action.hover' : 'transparent',
             }}
           >
-            <Stack direction="row" spacing={1} sx={{
-              alignItems: "flex-start"
-            }}>
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{
+                alignItems: 'flex-start',
+              }}
+            >
               <Radio
                 size="small"
                 name={name}
@@ -62,7 +66,7 @@ export function ChoiceGroup<T extends string>({
                 onChange={() => onChange(choice.value)}
                 sx={{ p: 0.25, mt: 0.125 }}
                 slotProps={{
-                  input: { 'aria-label': choice.title }
+                  input: { 'aria-label': choice.title },
                 }}
               />
               <Box
@@ -71,15 +75,22 @@ export function ChoiceGroup<T extends string>({
                 }}
                 sx={{ flex: 1, cursor: choice.disabled ? 'default' : 'pointer' }}
               >
-                <Typography variant="body2" sx={{
-                  fontWeight: 600
-                }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontWeight: 600,
+                  }}
+                >
                   {choice.title}
                 </Typography>
                 {choice.detail && (
-                  <Typography variant="caption" component="div" sx={{
-                    color: "text.secondary"
-                  }}>
+                  <Typography
+                    variant="caption"
+                    component="div"
+                    sx={{
+                      color: 'text.secondary',
+                    }}
+                  >
                     {choice.detail}
                   </Typography>
                 )}

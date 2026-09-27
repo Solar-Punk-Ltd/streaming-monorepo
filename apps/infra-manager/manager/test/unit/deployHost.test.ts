@@ -15,24 +15,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  createNetworkHostResolver,
-  resolveNetworkHost,
-} from '../../src/utils/deployHost.js';
+import { createNetworkHostResolver, resolveNetworkHost } from '../../src/utils/deployHost.js';
 
 /** An `ssh -G` dump, trimmed to the shape the parser cares about. */
 function dump(hostname: string, name = 'alias'): string {
-  return ['user deploy', `hostname ${hostname}`, 'port 22', `host ${name}`, ''].join(
-    '\n',
-  );
+  return ['user deploy', `hostname ${hostname}`, 'port 22', `host ${name}`, ''].join('\n');
 }
 
 /** A resolver plus the list of names its exec was actually asked about. */
-function withExec(
-  exec: (name: string) => string,
-  ttlMs = 60_000,
-  clock = { now: 0 },
-) {
+function withExec(exec: (name: string) => string, ttlMs = 60_000, clock = { now: 0 }) {
   const calls: string[] = [];
   const resolve = createNetworkHostResolver({
     exec: (name) => {
@@ -103,12 +94,7 @@ describe('resolveNetworkHost', () => {
     // The column is schema-validated, but this is an exec boundary: ssh has no
     // `--`, so a leading dash would arrive as an option rather than a host.
     const { resolve, calls } = withExec(() => dump('should-not-be-used'));
-    for (const hostile of [
-      '-oProxyCommand=whoami',
-      'alias;whoami',
-      'alias name',
-      'alias$(whoami)',
-    ]) {
+    for (const hostile of ['-oProxyCommand=whoami', 'alias;whoami', 'alias name', 'alias$(whoami)']) {
       assert.equal(resolve(hostile), hostile);
     }
     assert.deepEqual(calls, []);
@@ -118,11 +104,7 @@ describe('resolveNetworkHost', () => {
     // The ssh config is a bind mount an operator can edit without restarting
     // the api, so the entry has to go stale on its own.
     const clock = { now: 1_000 };
-    const { resolve, calls } = withExec(
-      () => dump('198.51.100.132'),
-      60_000,
-      clock,
-    );
+    const { resolve, calls } = withExec(() => dump('198.51.100.132'), 60_000, clock);
 
     assert.equal(resolve('bee-1'), '198.51.100.132');
     clock.now += 59_000;
@@ -158,10 +140,7 @@ describe('resolveNetworkHost', () => {
     // The default export runs real ssh, so only the cases that provably stay
     // off it are asserted here. The resolution itself is covered above.
     assert.equal(resolveNetworkHost(' 198.51.100.132 '), '198.51.100.132');
-    assert.equal(
-      resolveNetworkHost('deploy@bee1.example.org'),
-      'bee1.example.org',
-    );
+    assert.equal(resolveNetworkHost('deploy@bee1.example.org'), 'bee1.example.org');
     assert.equal(resolveNetworkHost(''), '');
   });
 });

@@ -13,13 +13,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  counted,
-  judgeFiles,
-  runProblem,
-  skippedSuitesIn,
-  summaryOf,
-} from '../support/tapJudge.mjs';
+import { counted, judgeFiles, runProblem, skippedSuitesIn, summaryOf } from '../support/tapJudge.mjs';
 
 const GLOB = 'test/database/**/*.test.ts';
 
@@ -144,8 +138,13 @@ describe('deciding whether the run was green', () => {
 });
 
 describe('judging a run made of one child per suite file', () => {
-  const ran = (file: string, over: Record<string, unknown> = {}) =>
-    ({ file, code: 0, signal: null, output: tap({ tests: 3, pass: 3 }), ...over });
+  const ran = (file: string, over: Record<string, unknown> = {}) => ({
+    file,
+    code: 0,
+    signal: null,
+    output: tap({ tests: 3, pass: 3 }),
+    ...over,
+  });
 
   it('adds the counts of every file together', () => {
     const { problems, summary } = judgeFiles({ results: [ran('a.test.mjs'), ran('b.test.mjs')], glob: GLOB });

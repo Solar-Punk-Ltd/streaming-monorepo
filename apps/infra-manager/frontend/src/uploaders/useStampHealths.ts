@@ -50,9 +50,7 @@ export function askableStamps(profiles: Profile[] | null): StampAsk[] {
  * that has just bought one has to be asked again about that one.
  */
 export function stampAskKey(asks: readonly StampAsk[]): string {
-  return asks
-    .map((ask) => `${ask.name}${BATCH_SEPARATOR}${ask.stampId}`)
-    .join(ASK_SEPARATOR);
+  return asks.map((ask) => `${ask.name}${BATCH_SEPARATOR}${ask.stampId}`).join(ASK_SEPARATOR);
 }
 
 export function asksFromKey(key: string): StampAsk[] {
@@ -64,14 +62,8 @@ export function asksFromKey(key: string): StampAsk[] {
 }
 
 /** What a round of answers is worth, with the nodes that gave none left out. */
-export function stampHealthsFrom(
-  answers: readonly (readonly [string, StampHealth | null])[],
-): StampHealths {
-  return new Map(
-    answers.filter(
-      (answer): answer is readonly [string, StampHealth] => answer[1] !== null,
-    ),
-  );
+export function stampHealthsFrom(answers: readonly (readonly [string, StampHealth | null])[]): StampHealths {
+  return new Map(answers.filter((answer): answer is readonly [string, StampHealth] => answer[1] !== null));
 }
 
 /**

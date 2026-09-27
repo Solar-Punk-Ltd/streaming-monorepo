@@ -66,7 +66,10 @@ export function newDeploymentSettingsOf(
  * or left them to the operator. Kept rather than dropped, so choosing that
  * again brings them back.
  */
-export function valuesNotTaken(entries: readonly DeploymentSettingEntry[], values: NewDeploymentSettingValues): string[] {
+export function valuesNotTaken(
+  entries: readonly DeploymentSettingEntry[],
+  values: NewDeploymentSettingValues,
+): string[] {
   return Object.keys(values).filter((key) => !isTaken(entries, key));
 }
 

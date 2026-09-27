@@ -35,15 +35,11 @@ describe('nextFullHour', () => {
   });
 
   it('moves to the next day at the end of one', () => {
-    expect(nextFullHourValue(new Date(2026, 8, 14, 23, 5))).toBe(
-      '2026-09-15T00:00',
-    );
+    expect(nextFullHourValue(new Date(2026, 8, 14, 23, 5))).toBe('2026-09-15T00:00');
   });
 
   it('crosses a year boundary', () => {
-    expect(nextFullHourValue(new Date(2026, 11, 31, 23, 59))).toBe(
-      '2027-01-01T00:00',
-    );
+    expect(nextFullHourValue(new Date(2026, 11, 31, 23, 59))).toBe('2027-01-01T00:00');
   });
 
   it('lands on a real instant for every hour of a clock-change day', () => {
@@ -65,9 +61,7 @@ describe('nextFullHour', () => {
         expect(next.getTime()).toBeGreaterThan(now.getTime());
         expect(next.getMinutes()).toBe(0);
         expect(next.getSeconds()).toBe(0);
-        expect(parseDateTimeLocalValue(nextFullHourValue(now))?.getTime()).toBe(
-          next.getTime(),
-        );
+        expect(parseDateTimeLocalValue(nextFullHourValue(now))?.getTime()).toBe(next.getTime());
       }
     }
   });
@@ -101,9 +95,7 @@ describe('quickPicks', () => {
     // Saturday 19 September 2026 at 09:00: the offer is the 26th, not today.
     const picks = quickPicks(new Date(2026, 8, 19, 9, 0));
 
-    expect(picks.find((p) => p.key === 'saturday')?.value).toBe(
-      '2026-09-26T18:00',
-    );
+    expect(picks.find((p) => p.key === 'saturday')?.value).toBe('2026-09-26T18:00');
   });
 
   it('keeps the wall-clock hour when tomorrow crosses a clock change', () => {
@@ -118,35 +110,23 @@ describe('quickPicks', () => {
 describe('relativeLabel and describeSchedule', () => {
   it('reads in minutes, hours and days', () => {
     expect(relativeLabel(new Date(2026, 8, 14, 14, 24), MONDAY)).toBe('now');
-    expect(relativeLabel(new Date(2026, 8, 14, 15, 0), MONDAY)).toBe(
-      'in 36 minutes',
-    );
-    expect(relativeLabel(new Date(2026, 8, 14, 18, 23), MONDAY)).toBe(
-      'in 4 hours',
-    );
-    expect(relativeLabel(new Date(2026, 8, 20, 18, 0), MONDAY)).toBe(
-      'in 6 days',
-    );
+    expect(relativeLabel(new Date(2026, 8, 14, 15, 0), MONDAY)).toBe('in 36 minutes');
+    expect(relativeLabel(new Date(2026, 8, 14, 18, 23), MONDAY)).toBe('in 4 hours');
+    expect(relativeLabel(new Date(2026, 8, 20, 18, 0), MONDAY)).toBe('in 6 days');
   });
 
   it('says so when the time has gone', () => {
-    expect(relativeLabel(new Date(2026, 8, 13, 14, 23), MONDAY)).toBe(
-      '1 day ago',
-    );
+    expect(relativeLabel(new Date(2026, 8, 13, 14, 23), MONDAY)).toBe('1 day ago');
   });
 
   it('counts whole days across a clock change', () => {
     // 28 March to 3 April is six calendar days and 143 or 145 hours,
     // depending on the zone; it reads as six either way.
-    expect(relativeLabel(new Date(2026, 3, 3, 14, 0), new Date(2026, 2, 28, 14, 0))).toBe(
-      'in 6 days',
-    );
+    expect(relativeLabel(new Date(2026, 3, 3, 14, 0), new Date(2026, 2, 28, 14, 0))).toBe('in 6 days');
   });
 
   it('spells the whole value out for the caption', () => {
-    expect(describeSchedule('2026-09-20T18:00', MONDAY)).toBe(
-      '20/09/2026 18:00 · in 6 days',
-    );
+    expect(describeSchedule('2026-09-20T18:00', MONDAY)).toBe('20/09/2026 18:00 · in 6 days');
   });
 
   it('has nothing to say about an empty field', () => {

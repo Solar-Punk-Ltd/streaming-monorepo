@@ -69,9 +69,10 @@ export function NewDeploymentSettingsEditor({
       return (
         <Stack
           sx={{
-            alignItems: "center",
-            py: 2
-          }}>
+            alignItems: 'center',
+            py: 2,
+          }}
+        >
           <CircularProgress size={24} aria-label="Reading the settings" />
         </Stack>
       );
@@ -81,9 +82,12 @@ export function NewDeploymentSettingsEditor({
         severity={load.failure.severity}
         sx={{ '& .MuiAlert-message': { minWidth: 0, overflowWrap: 'anywhere' } }}
         action={
-          <Stack spacing={0.5} sx={{
-            alignItems: "flex-end"
-          }}>
+          <Stack
+            spacing={0.5}
+            sx={{
+              alignItems: 'flex-end',
+            }}
+          >
             <Button color="inherit" size="small" onClick={() => void load.reload()}>
               Try again
             </Button>
@@ -107,9 +111,12 @@ export function NewDeploymentSettingsEditor({
 
   return (
     <Stack spacing={2} sx={{ minWidth: 0 }}>
-      <Typography variant="body2" sx={{
-        color: "text.secondary"
-      }}>
+      <Typography
+        variant="body2"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
         {NEW_DEPLOYMENT_SETTINGS_LEAD}
       </Typography>
 
@@ -136,9 +143,10 @@ export function NewDeploymentSettingsEditor({
         spacing={1}
         useFlexGap
         sx={{
-          flexWrap: "wrap",
-          alignItems: "center"
-        }}>
+          flexWrap: 'wrap',
+          alignItems: 'center',
+        }}
+      >
         <Button size="small" disabled={!typed} onClick={() => onChange({})}>
           {USE_VERSION_VALUES}
         </Button>

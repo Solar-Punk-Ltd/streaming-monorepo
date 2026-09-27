@@ -14,21 +14,13 @@ import { describe, it } from 'node:test';
 
 import type { Request, Response } from 'express';
 
-import {
-  clearSessionCookie,
-  readSessionToken,
-  setSessionCookie,
-} from '../../src/api/cookies.js';
+import { clearSessionCookie, readSessionToken, setSessionCookie } from '../../src/api/cookies.js';
 import { parseCookies } from '../../src/utils/cookies.js';
 
 const NAME = 'web2_admin_session';
 const TOKEN = 'a'.repeat(43);
 
-function requestWith(
-  cookie?: string,
-  headers: Record<string, string> = {},
-  secure = false,
-): Request {
+function requestWith(cookie?: string, headers: Record<string, string> = {}, secure = false): Request {
   return {
     headers: { ...(cookie === undefined ? {} : { cookie }), ...headers },
     secure,
@@ -83,11 +75,7 @@ describe('parseCookies', () => {
 
   it('is empty for nothing, and skips pairs that are not pairs', () => {
     for (const header of [undefined, '', '   ', ';;', 'novalue', '=orphan']) {
-      assert.equal(
-        parseCookies(header).size,
-        0,
-        `should read nothing from ${JSON.stringify(header)}`,
-      );
+      assert.equal(parseCookies(header).size, 0, `should read nothing from ${JSON.stringify(header)}`);
     }
   });
 
@@ -115,10 +103,7 @@ describe('parseCookies', () => {
 
 describe('readSessionToken', () => {
   it('finds the session cookie among others', () => {
-    assert.equal(
-      readSessionToken(requestWith(`theme=dark; ${NAME}=${TOKEN}; tz=UTC`)),
-      TOKEN,
-    );
+    assert.equal(readSessionToken(requestWith(`theme=dark; ${NAME}=${TOKEN}; tz=UTC`)), TOKEN);
   });
 
   it('is null when there is no cookie header, and when ours is absent', () => {
@@ -170,23 +155,11 @@ describe('the session cookie', () => {
     // Marking it Secure on a plain-HTTP origin makes the browser drop the
     // cookie it was just given, and the sign-in loops back to the form.
     assert.equal(secureOf(requestWith()), false);
-    assert.equal(
-      secureOf(requestWith(undefined, { 'x-forwarded-proto': 'http' })),
-      false,
-    );
-    assert.equal(
-      secureOf(requestWith(undefined, { 'x-forwarded-proto': 'https' })),
-      true,
-    );
+    assert.equal(secureOf(requestWith(undefined, { 'x-forwarded-proto': 'http' })), false);
+    assert.equal(secureOf(requestWith(undefined, { 'x-forwarded-proto': 'https' })), true);
     // Only the first hop is the browser's; anything after it is another proxy.
-    assert.equal(
-      secureOf(requestWith(undefined, { 'x-forwarded-proto': 'https, http' })),
-      true,
-    );
-    assert.equal(
-      secureOf(requestWith(undefined, { 'x-forwarded-proto': 'http, https' })),
-      false,
-    );
+    assert.equal(secureOf(requestWith(undefined, { 'x-forwarded-proto': 'https, http' })), true);
+    assert.equal(secureOf(requestWith(undefined, { 'x-forwarded-proto': 'http, https' })), false);
     assert.equal(secureOf(requestWith(undefined, {}, true)), true);
   });
 

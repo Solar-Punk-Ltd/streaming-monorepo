@@ -21,11 +21,7 @@ import { parseBaseEnv, parseEngineEnv } from '../../utils/envUtils.js';
  * sample declares blank and the operator set only in the engine env would
  * otherwise leave the empty root line winning with nothing generated.
  */
-export function versionSuppliedSecrets(
-  root: string,
-  engine: EngineName,
-  keys: readonly string[],
-): Set<string> {
+export function versionSuppliedSecrets(root: string, engine: EngineName, keys: readonly string[]): Set<string> {
   const base = parseBaseEnv(root);
   const engineEnv = parseEngineEnv(root, engine);
   const answers = (key: string): boolean => {

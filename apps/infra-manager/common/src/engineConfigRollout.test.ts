@@ -25,10 +25,7 @@ describe('rolloutNotice', () => {
   });
 
   it('names the engine and what it is being recreated on while applying', () => {
-    assert.equal(
-      rolloutNotice('applying', ON_FILE, null)?.title,
-      'Recreating SRS 6 on the new config file.',
-    );
+    assert.equal(rolloutNotice('applying', ON_FILE, null)?.title, 'Recreating SRS 6 on the new config file.');
     assert.equal(
       rolloutNotice('applying', { engine: 'SRS 6', hasConfig: false }, null)?.title,
       'Recreating SRS 6 on the template.',

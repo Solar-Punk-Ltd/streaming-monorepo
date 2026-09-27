@@ -156,10 +156,7 @@ function refusesWhenFull(immutable: boolean | null | undefined): boolean {
  * immutable, or of a kind nobody said, and full. The failure `isStampNearlyFull`
  * warns about before it happens.
  */
-export function isStampFull(
-  fillRatio: number | null | undefined,
-  immutable: boolean | null | undefined,
-): boolean {
+export function isStampFull(fillRatio: number | null | undefined, immutable: boolean | null | undefined): boolean {
   return isFullestBucketFull(fillRatio) && refusesWhenFull(immutable);
 }
 
@@ -185,10 +182,7 @@ export function isStampNearlyFull(
  * What a batch past the start ceiling leads to, by its kind, for the warnings
  * that name it. Shared so the checklist, the pool and the Storage card agree.
  */
-export function nearlyFullConsequence(
-  immutable: boolean | null | undefined,
-  fillRatio?: number | null,
-): string {
+export function nearlyFullConsequence(immutable: boolean | null | undefined, fillRatio?: number | null): string {
   if (refusesWhenFull(immutable)) {
     return 'Past 90% an uploader restarted on it refuses to start, and once it fills its node refuses uploads.';
   }
@@ -226,9 +220,7 @@ export function isStampExpiringSoon(
  * A batch in this state is beyond saving: waiting will not revive it and there is
  * no top-up to apply, so the only way out is buying another one.
  */
-export function isDeadStampState(
-  state: StampState | null | undefined,
-): boolean {
+export function isDeadStampState(state: StampState | null | undefined): boolean {
   return state != null && DEAD_STATES.includes(state);
 }
 
@@ -287,11 +279,7 @@ interface NodeReading {
   immutable: boolean | null;
 }
 
-function health(
-  state: StampState,
-  reading?: NodeReading,
-  failure?: ReadFailure,
-): StampHealth {
+function health(state: StampState, reading?: NodeReading, failure?: ReadFailure): StampHealth {
   return {
     state,
     ok: state === 'active',

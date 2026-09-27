@@ -65,11 +65,7 @@ describe('group resize (Feature B): grow, size-sync, shrink, auto-delete', () =>
     const added = grown.profiles[0]!;
     assert.equal(added.status, 'DEPLOYING', 'a new member is deployed');
     assert.equal(added.kind, 'viewer');
-    assert.equal(
-      added.feed_owner,
-      FEED_OWNER_A,
-      'new member inherits the group feed_owner',
-    );
+    assert.equal(added.feed_owner, FEED_OWNER_A, 'new member inherits the group feed_owner');
     assert.equal(added.group_id, group.id);
     assert.equal((await listGroupMembers(group.id)).length, 3);
 
@@ -109,17 +105,9 @@ describe('group resize (Feature B): grow, size-sync, shrink, auto-delete', () =>
     const p1 = `${group.name}-profile-1`;
     const p2 = `${group.name}-profile-2`;
     const p3 = `${group.name}-profile-3`;
-    assert.deepEqual(
-      profiles.map((p) => p.name).sort(),
-      [p1, p2, p3].sort(),
-      'members should be named profile-1..3',
-    );
+    assert.deepEqual(profiles.map((p) => p.name).sort(), [p1, p2, p3].sort(), 'members should be named profile-1..3');
 
-    await Promise.all(
-      [p1, p2, p3].map((n) =>
-        waitForStatus(n, 'RUNNING', { timeoutMs: DEPLOY_TIMEOUT }),
-      ),
-    );
+    await Promise.all([p1, p2, p3].map((n) => waitForStatus(n, 'RUNNING', { timeoutMs: DEPLOY_TIMEOUT })));
 
     // Remove the SECOND member — only profile-1 and profile-3 should remain.
     await removeProfile(p2);
@@ -138,16 +126,8 @@ describe('group resize (Feature B): grow, size-sync, shrink, auto-delete', () =>
     const running = await waitForRunningServices(readded.name, [BEE_GATEWAY, CLIENT], {
       timeoutMs: DEPLOY_TIMEOUT,
     });
-    assert.equal(
-      running.instance_id,
-      readded.instance_id,
-      'the re-added instance must be the one that became ready',
-    );
-    assert.equal(
-      readded.name,
-      p2,
-      'the freed index (profile-2) should be reused, not profile-4',
-    );
+    assert.equal(running.instance_id, readded.instance_id, 'the re-added instance must be the one that became ready');
+    assert.equal(readded.name, p2, 'the freed index (profile-2) should be reused, not profile-4');
     assert.equal(grown.group.size, 3);
     assert.deepEqual(
       (await listGroupMembers(group.id)).map((m) => m.name).sort(),

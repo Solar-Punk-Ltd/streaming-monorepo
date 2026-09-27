@@ -22,17 +22,11 @@ const root = throwawayRoot('engine-version-defaults-');
 process.env.SHLS_ROOT = root;
 writeFileSync(join(root, '.env'), 'ENGINE=srs\nAPI_PORT=10000\n', 'utf8');
 
-const { ContainerControl } = await import(
-  '../../src/domain/ContainerControl.js'
-);
+const { ContainerControl } = await import('../../src/domain/ContainerControl.js');
 const { EventBus } = await import('../../src/domain/EventBus.js');
-const { callEngine, startEngineTestApp } = await import(
-  '../support/engineTestApp.js'
-);
+const { callEngine, startEngineTestApp } = await import('../support/engineTestApp.js');
 const { fakeDocker } = await import('../support/fakeDocker.js');
-const { harnessFor, profileRow, profileServiceHarness } = await import(
-  '../support/profileServiceHarness.js'
-);
+const { harnessFor, profileRow, profileServiceHarness } = await import('../support/profileServiceHarness.js');
 
 type EngineTestApp = Awaited<ReturnType<typeof startEngineTestApp>>;
 
@@ -57,10 +51,7 @@ describe('GET /profiles/:name/engine on a version with its own defaults', () => 
     // The bundled row stands in for a main-v3 checkout: the contract is what
     // the route reads, and the row's name is not.
     await versions.setContract(1, V3_CONTRACT);
-    app = await startEngineTestApp(
-      service,
-      new ContainerControl(new EventBus(), fakeDocker([])),
-    );
+    app = await startEngineTestApp(service, new ContainerControl(new EventBus(), fakeDocker([])));
   });
   after(() => app.close());
 
@@ -108,20 +99,15 @@ describe('GET /profiles/:name/engine on a version with its own defaults', () => 
     // the two saves the way the real success hook does.
     const own = harnessFor(profileRow());
     await own.versions.setContract(1, V3_CONTRACT);
-    const ownApp = await startEngineTestApp(
-      own.service,
-      new ContainerControl(new EventBus(), fakeDocker([])),
-    );
+    const ownApp = await startEngineTestApp(own.service, new ContainerControl(new EventBus(), fakeDocker([])));
     try {
       await own.service.updateEngineSettings('stream1', { HLS_WINDOW: '20' });
       own.stored().status = 'RUNNING';
-      const overridden = (await callEngine(ownApp, 'GET', '/profiles/stream1/engine'))
-        .body as EngineOverview;
+      const overridden = (await callEngine(ownApp, 'GET', '/profiles/stream1/engine')).body as EngineOverview;
 
       await own.service.updateEngineSettings('stream1', {});
       own.stored().status = 'RUNNING';
-      const cleared = (await callEngine(ownApp, 'GET', '/profiles/stream1/engine'))
-        .body as EngineOverview;
+      const cleared = (await callEngine(ownApp, 'GET', '/profiles/stream1/engine')).body as EngineOverview;
 
       assert.equal(overridden.effective.HLS_WINDOW, '20');
       assert.equal(overridden.effective.HLS_FRAGMENT, '0.5', 'the other key keeps the version default');
@@ -138,24 +124,13 @@ describe('GET /profiles/:name/engine on a deployment with a config file of its o
       profileRow({ has_engine_config: true, engine_settings: { HLS_WINDOW: '20' } }),
     ]);
     await harness.versions.setContract(1, V3_CONTRACT);
-    harness.profiles.engineConfigs.set(
-      'stream1',
-      'listen 1935;\nhls_fragment HLS_FRAGMENT_PLACEHOLDER;\n',
-    );
-    const app = await startEngineTestApp(
-      harness.service,
-      new ContainerControl(new EventBus(), fakeDocker([])),
-    );
+    harness.profiles.engineConfigs.set('stream1', 'listen 1935;\nhls_fragment HLS_FRAGMENT_PLACEHOLDER;\n');
+    const app = await startEngineTestApp(harness.service, new ContainerControl(new EventBus(), fakeDocker([])));
     try {
-      const overview = (await callEngine(app, 'GET', '/profiles/stream1/engine'))
-        .body as EngineOverview;
+      const overview = (await callEngine(app, 'GET', '/profiles/stream1/engine')).body as EngineOverview;
 
       assert.equal(overview.effective.HLS_FRAGMENT, undefined);
-      assert.equal(
-        overview.effective.HLS_WINDOW,
-        undefined,
-        'stored as 20, but nothing in the file reads it',
-      );
+      assert.equal(overview.effective.HLS_WINDOW, undefined, 'stored as 20, but nothing in the file reads it');
       assert.equal(overview.observations.HLS_FRAGMENT.source, 'unverified');
       assert.equal(overview.observations.HLS_WINDOW.source, 'unverified');
       assert.deepEqual(overview.notInConfig, []);

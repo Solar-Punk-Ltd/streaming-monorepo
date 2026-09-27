@@ -12,17 +12,11 @@ import { MONO_STACK } from '../../../app/theme';
 import { ChoiceGroup, type Choice } from '../../ChoiceGroup';
 import { FormField } from '../../FormField';
 import { rpcEndpointError } from '../wizardError';
-import {
-  chosenNodeMode,
-  nodeServices,
-  offersRpcEndpoint,
-  type WizardStepProps,
-} from '../wizardState';
+import { chosenNodeMode, nodeServices, offersRpcEndpoint, type WizardStepProps } from '../wizardState';
 
 const LABEL = 'RPC endpoint';
 
-const STACK_DETAIL =
-  'The public Gnosis endpoint the stack ships with. It is shared by everyone and it rate-limits.';
+const STACK_DETAIL = 'The public Gnosis endpoint the stack ships with. It is shared by everyone and it rate-limits.';
 
 const CUSTOM_DETAIL =
   'An endpoint of your own. One running on the server itself is reached at http://host.docker.internal:PORT.';
@@ -83,7 +77,7 @@ export function RpcEndpointChoice(props: WizardStepProps) {
             htmlInput: {
               style: { fontFamily: MONO_STACK },
               'aria-label': 'Custom RPC endpoint',
-            }
+            },
           }}
         />
       ),

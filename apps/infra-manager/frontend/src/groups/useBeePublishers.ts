@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import {
-  type BeePublishersResult,
-  getErrorMessage,
-  isLadderKind,
-} from '@streaming-infra-manager/common';
+import { type BeePublishersResult, getErrorMessage, isLadderKind } from '@streaming-infra-manager/common';
 
 import { fetchBeePublishers } from '../data';
 import type { DeploymentGroup, Profile } from '../types';
@@ -24,10 +20,7 @@ export interface BeePublishersState {
  * number keeps the older answer from landing last and pinning the card to a
  * readiness that is already wrong.
  */
-export function useBeePublishers(
-  groupId: number | null,
-  stampFingerprint: string,
-): BeePublishersState {
+export function useBeePublishers(groupId: number | null, stampFingerprint: string): BeePublishersState {
   const [result, setResult] = useState<BeePublishersResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,15 +62,10 @@ export type PoolResults = ReadonlyMap<number, BeePublishersResult | null>;
  * One effect rather than a hook per pool: the number of pools changes as groups
  * come and go, and hooks cannot be called in a loop that varies.
  */
-export function usePoolResults(
-  groups: DeploymentGroup[],
-  profiles: Profile[] | null,
-): PoolResults {
+export function usePoolResults(groups: DeploymentGroup[], profiles: Profile[] | null): PoolResults {
   const [results, setResults] = useState<PoolResults>(new Map());
 
-  const poolIds = groups
-    .filter((group) => isLadderKind(group.kind))
-    .map((group) => group.id);
+  const poolIds = groups.filter((group) => isLadderKind(group.kind)).map((group) => group.id);
   const poolKey = poolIds.join(',');
 
   const memberFingerprint = (profiles ?? [])

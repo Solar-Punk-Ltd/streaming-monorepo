@@ -50,15 +50,30 @@ function entry(overrides: Partial<DeploymentSettingEntry> & { key: string }): De
 }
 
 const ENTRIES = [
-  entry({ key: 'LOG_LEVEL', versionValue: 'info', value: 'info', field: { kind: 'choice', choices: ['debug', 'info', 'warn'] } }),
+  entry({
+    key: 'LOG_LEVEL',
+    versionValue: 'info',
+    value: 'info',
+    field: { kind: 'choice', choices: ['debug', 'info', 'warn'] },
+  }),
   entry({ key: 'MAX_QUEUE_SIZE', versionValue: '100', value: '100', field: { kind: 'integer', min: 1 } }),
   entry({ key: 'ADMIN_API_TOKEN', secret: true, versionSet: false, source: 'unset' }),
   entry({ key: 'STAMP', owner: 'stamp', source: 'manager' }),
-  entry({ key: 'HLS_FRAGMENT', section: 'SRS Media Server', owner: 'engine-settings', source: 'manager', services: ['srs'] }),
+  entry({
+    key: 'HLS_FRAGMENT',
+    section: 'SRS Media Server',
+    owner: 'engine-settings',
+    source: 'manager',
+    services: ['srs'],
+  }),
 ];
 
 function loaded(): NewDeploymentSettingsLoad {
-  return { catalog: { versionId: 7, buildId: 'build-1', entries: ENTRIES }, failure: null, reload: async () => undefined };
+  return {
+    catalog: { versionId: 7, buildId: 'build-1', entries: ENTRIES },
+    failure: null,
+    reload: async () => undefined,
+  };
 }
 
 function contextWith(newDeploymentSettings?: NewDeploymentSettingsLoad): WizardContext {
@@ -107,14 +122,18 @@ describe('the settings list the wizard asks for', () => {
   });
 
   it('follows the engine a stream picks, so the engine sample is the one it will run', () => {
-    assert.equal(queryOf(newDeploymentSettingsPathOf(stateFor('stream', { engine: 'ome' }))).components, 'ome,stream-uploader,bee-uploader');
+    assert.equal(
+      queryOf(newDeploymentSettingsPathOf(stateFor('stream', { engine: 'ome' }))).components,
+      'ome,stream-uploader,bee-uploader',
+    );
   });
 
   it('asks for a viewer and an ABR uploader by their kind, which decides their services', () => {
     assert.deepEqual(
-      [queryOf(newDeploymentSettingsPathOf(stateFor('viewer'))), queryOf(newDeploymentSettingsPathOf(stateFor('abr-uploader')))].map(
-        ({ kind, components }) => ({ kind, components }),
-      ),
+      [
+        queryOf(newDeploymentSettingsPathOf(stateFor('viewer'))),
+        queryOf(newDeploymentSettingsPathOf(stateFor('abr-uploader'))),
+      ].map(({ kind, components }) => ({ kind, components })),
       [
         { kind: 'viewer', components: null },
         { kind: 'abr-uploader', components: null },
@@ -129,7 +148,11 @@ describe('the settings list the wizard asks for', () => {
   });
 
   it('asks for a custom deployment with the services ticked, on the host typed', () => {
-    const state = stateFor('custom', { components: ['srs', 'stream-uploader'], host: 'custom', hostCustom: ' deploy@edge-1 ' });
+    const state = stateFor('custom', {
+      components: ['srs', 'stream-uploader'],
+      host: 'custom',
+      hostCustom: ' deploy@edge-1 ',
+    });
 
     assert.deepEqual(queryOf(newDeploymentSettingsPathOf(state)), {
       path: '/versions/7/settings-catalog',
@@ -142,8 +165,12 @@ describe('the settings list the wizard asks for', () => {
 
 describe('the segment length on the key it decides', () => {
   it('shows the segment length on HLS_FRAGMENT where the step offers one', () => {
-    assert.deepEqual(controlValuesOf(stateFor('stream', { segmentSeconds: ' 2 ' }), contextWith()), { HLS_FRAGMENT: '2' });
-    assert.deepEqual(controlValuesOf(stateFor('abr-uploader', { segmentSeconds: '1.5' }), contextWith()), { HLS_FRAGMENT: '1.5' });
+    assert.deepEqual(controlValuesOf(stateFor('stream', { segmentSeconds: ' 2 ' }), contextWith()), {
+      HLS_FRAGMENT: '2',
+    });
+    assert.deepEqual(controlValuesOf(stateFor('abr-uploader', { segmentSeconds: '1.5' }), contextWith()), {
+      HLS_FRAGMENT: '1.5',
+    });
   });
 
   it('shows nothing where the field is empty or not offered', () => {
@@ -163,7 +190,13 @@ describe('the web2 admin address on the key the Web2 admin group decides', () =>
   });
 
   it('shows nothing while the link is off', () => {
-    assert.deepEqual(controlValuesOf(stateFor('stream', { segmentSeconds: '', adminLink: { ...adminLink, on: false } }), contextWith()), {});
+    assert.deepEqual(
+      controlValuesOf(
+        stateFor('stream', { segmentSeconds: '', adminLink: { ...adminLink, on: false } }),
+        contextWith(),
+      ),
+      {},
+    );
   });
 });
 
@@ -178,13 +211,19 @@ describe('what stops the settings step and the deploy', () => {
     const reading: NewDeploymentSettingsLoad = { catalog: null, failure: null, reload: async () => undefined };
 
     assert.equal(advancedSettingsError(typed, contextWith()), "Advanced settings: reading this version's settings");
-    assert.equal(advancedSettingsError(typed, contextWith(reading)), "Advanced settings: reading this version's settings");
+    assert.equal(
+      advancedSettingsError(typed, contextWith(reading)),
+      "Advanced settings: reading this version's settings",
+    );
   });
 
   it('says why the list could not be read', () => {
     const failed: NewDeploymentSettingsLoad = {
       catalog: null,
-      failure: { message: 'Could not read the settings. The manager did not answer in time. Try again.', severity: 'warning' },
+      failure: {
+        message: 'Could not read the settings. The manager did not answer in time. Try again.',
+        severity: 'warning',
+      },
       reload: async () => undefined,
     };
 
@@ -197,18 +236,27 @@ describe('what stops the settings step and the deploy', () => {
   it('names a value the manager would refuse by its key alone', () => {
     const state = stateFor('stream', { stackSettings: { MAX_QUEUE_SIZE: '0', LOG_LEVEL: 'debug' } });
 
-    assert.equal(advancedSettingsError(state, contextWith(loaded())), 'Advanced settings: One value cannot be used as written: MAX_QUEUE_SIZE');
+    assert.equal(
+      advancedSettingsError(state, contextWith(loaded())),
+      'Advanced settings: One value cannot be used as written: MAX_QUEUE_SIZE',
+    );
   });
 
   it('never repeats a refused secret', () => {
     const mangled = 'synthetic/token&with|sed-syntax';
-    const refused = advancedSettingsError(stateFor('stream', { stackSettings: { ADMIN_API_TOKEN: mangled } }), contextWith(loaded()));
+    const refused = advancedSettingsError(
+      stateFor('stream', { stackSettings: { ADMIN_API_TOKEN: mangled } }),
+      contextWith(loaded()),
+    );
 
     assert.equal(refused, 'Advanced settings: One value cannot be used as written: ADMIN_API_TOKEN');
   });
 
   it('lets through a typed key this list does not take, because the create leaves it out', () => {
-    assert.equal(advancedSettingsError(stateFor('stream', { stackSettings: { SRS_LOG_TANK: 'file' } }), contextWith(loaded())), null);
+    assert.equal(
+      advancedSettingsError(stateFor('stream', { stackSettings: { SRS_LOG_TANK: 'file' } }), contextWith(loaded())),
+      null,
+    );
   });
 
   it('is what the footer says on the settings step and on the review', () => {
@@ -226,7 +274,9 @@ describe('what the review says about the advanced settings', () => {
   });
 
   it('names the keys the create sets and never a value', () => {
-    const state = stateFor('stream', { stackSettings: { ADMIN_API_TOKEN: 'synthetic-token-value', LOG_LEVEL: 'debug' } });
+    const state = stateFor('stream', {
+      stackSettings: { ADMIN_API_TOKEN: 'synthetic-token-value', LOG_LEVEL: 'debug' },
+    });
 
     assert.equal(
       advancedSettingsSummary(state, contextWith(loaded())),
@@ -248,7 +298,10 @@ describe('what the review says about the advanced settings', () => {
   });
 
   it('says the list is still being read rather than guessing', () => {
-    assert.equal(advancedSettingsSummary(stateFor('stream', { stackSettings: { LOG_LEVEL: 'debug' } }), contextWith()), "Reading this version's settings.");
+    assert.equal(
+      advancedSettingsSummary(stateFor('stream', { stackSettings: { LOG_LEVEL: 'debug' } }), contextWith()),
+      "Reading this version's settings.",
+    );
   });
 });
 
@@ -261,11 +314,17 @@ describe('the line on the folded Advanced settings', () => {
   });
 
   it('counts what the create sends, and names a value it cannot send first', () => {
-    assert.equal(advancedSettingsFoldLine(stateFor('stream', { stackSettings: { LOG_LEVEL: 'debug' } }), contextWith(loaded())), '1 setting changed');
+    assert.equal(
+      advancedSettingsFoldLine(stateFor('stream', { stackSettings: { LOG_LEVEL: 'debug' } }), contextWith(loaded())),
+      '1 setting changed',
+    );
     assert.equal(
       advancedSettingsFoldLine(stateFor('stream', { stackSettings: { MAX_QUEUE_SIZE: '0' } }), contextWith(loaded())),
       'One value cannot be used as written: MAX_QUEUE_SIZE',
     );
-    assert.equal(advancedSettingsFoldLine(stateFor('stream', { stackSettings: { LOG_LEVEL: 'debug' } }), contextWith()), "Reading this version's settings.");
+    assert.equal(
+      advancedSettingsFoldLine(stateFor('stream', { stackSettings: { LOG_LEVEL: 'debug' } }), contextWith()),
+      "Reading this version's settings.",
+    );
   });
 });

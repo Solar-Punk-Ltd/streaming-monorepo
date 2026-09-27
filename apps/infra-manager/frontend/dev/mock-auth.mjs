@@ -175,9 +175,7 @@ export function refuseRequest(req, res, path) {
     }
   }
 
-  const isOpen = OPEN_ROUTES.some(
-    ([method, pattern]) => method === req.method && pattern.test(path),
-  );
+  const isOpen = OPEN_ROUTES.some(([method, pattern]) => method === req.method && pattern.test(path));
   if (isOpen || userFor(req)) return false;
 
   // A cookie that no longer opens anything is cleared, as the manager does.
@@ -211,12 +209,7 @@ export function authRoutes(readBody) {
         const keys = [`username:${username.toLowerCase()}`, 'ip:mock'];
         const wait = Math.max(...keys.map(retryAfterSeconds));
         if (wait > 0) {
-          return send(
-            res,
-            429,
-            { error: 'locked_out', retryAfterSeconds: wait },
-            { 'retry-after': String(wait) },
-          );
+          return send(res, 429, { error: 'locked_out', retryAfterSeconds: wait }, { 'retry-after': String(wait) });
         }
 
         const user = state.users.find((entry) => entry.username === username);
@@ -288,11 +281,7 @@ export function authRoutes(readBody) {
         sendEmpty(res, 204);
       },
     ],
-    [
-      'GET',
-      /^\/auth\/users$/,
-      (_req, res) => send(res, 200, state.users.map(summarise)),
-    ],
+    ['GET', /^\/auth\/users$/, (_req, res) => send(res, 200, state.users.map(summarise))],
     [
       'POST',
       /^\/auth\/users$/,
@@ -313,11 +302,7 @@ export function authRoutes(readBody) {
           return send(res, 400, { error: 'validation_error', errors: [problem] });
         }
 
-        send(
-          res,
-          201,
-          summarise(addUser(username, body.password, body.admin === true)),
-        );
+        send(res, 201, summarise(addUser(username, body.password, body.admin === true)));
       },
     ],
     [

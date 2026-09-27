@@ -10,24 +10,14 @@ import {
 } from '@streaming-infra-manager/common';
 
 import type { ConfirmRequest } from '../components/ConfirmDialog';
-import {
-  addGroupMembers,
-  deleteProfile,
-  deployProfile,
-  deployUploader,
-  stopProfile,
-} from '../data';
+import { addGroupMembers, deleteProfile, deployProfile, deployUploader, stopProfile } from '../data';
 import {
   restartContainer as postRestart,
   restorePreviousEngineConfig as postRestorePrevious,
   verifyEngineConfig as postVerify,
 } from '../deployments/engineApi';
 import { ENGINE_LABEL, LIVE_PUBLISHER_DISCONNECTED } from '../deployments/engineText';
-import {
-  isRunning,
-  isTransitional,
-  SERVICE_LABEL,
-} from '../deployments/shape';
+import { isRunning, isTransitional, SERVICE_LABEL } from '../deployments/shape';
 import type { DeploymentGroup, Profile } from '../types';
 import { hostFor } from '../urls';
 import { useToast } from './ToastProvider';
@@ -66,8 +56,7 @@ const RESTART_EFFECT: Record<string, string> = {
     'The node reconnects to its peers, which takes a minute or two. Uploads wait for it. Nothing else about the deployment changes.',
 };
 
-const RESTART_EFFECT_DEFAULT =
-  'The container stops and starts again. Nothing else about the deployment changes.';
+const RESTART_EFFECT_DEFAULT = 'The container stops and starts again. Nothing else about the deployment changes.';
 
 const ActionsContext = createContext<DeploymentActions | null>(null);
 
@@ -94,17 +83,14 @@ export function useDeploymentActions(): DeploymentActions {
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
 
-  const withBusy = useCallback(
-    async (names: string[], run: () => Promise<void>) => {
-      setBusy((prev) => new Set([...prev, ...names]));
-      try {
-        await run();
-      } finally {
-        setBusy((prev) => new Set([...prev].filter((n) => !names.includes(n))));
-      }
-    },
-    [],
-  );
+  const withBusy = useCallback(async (names: string[], run: () => Promise<void>) => {
+    setBusy((prev) => new Set([...prev, ...names]));
+    try {
+      await run();
+    } finally {
+      setBusy((prev) => new Set([...prev].filter((n) => !names.includes(n))));
+    }
+  }, []);
 
   const runOne = useCallback(
     (name: string, verb: string, call: (name: string) => Promise<void>) => {
@@ -125,35 +111,21 @@ export function useDeploymentActions(): DeploymentActions {
       if (names.length === 0) return;
       void withBusy(names, async () => {
         const results = await Promise.allSettled(names.map(call));
-        const failed = names.filter(
-          (_name, index) => results[index].status === 'rejected',
-        );
+        const failed = names.filter((_name, index) => results[index].status === 'rejected');
         if (failed.length === 0) {
           toast(`${verb} ${names.length} deployments`, 'success');
           return;
         }
-        const first = results.find(
-          (result): result is PromiseRejectedResult =>
-            result.status === 'rejected',
-        );
-        toast(
-          `${verb} failed for ${failed.join(', ')}. ${getErrorMessage(first?.reason)}`,
-          'error',
-        );
+        const first = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+        toast(`${verb} failed for ${failed.join(', ')}. ${getErrorMessage(first?.reason)}`, 'error');
       });
     },
     [toast, withBusy],
   );
 
-  const start = useCallback(
-    (name: string) => runOne(name, 'Starting', deployProfile),
-    [runOne],
-  );
+  const start = useCallback((name: string) => runOne(name, 'Starting', deployProfile), [runOne]);
 
-  const stop = useCallback(
-    (name: string) => runOne(name, 'Stopping', stopProfile),
-    [runOne],
-  );
+  const stop = useCallback((name: string) => runOne(name, 'Stopping', stopProfile), [runOne]);
 
   const startUploader = useCallback(
     (name: string) => runOne(name, 'Starting the uploader for', deployUploader),
@@ -167,10 +139,7 @@ export function useDeploymentActions(): DeploymentActions {
         title: `Restart ${label} for ${name}?`,
         body: RESTART_EFFECT[service] ?? RESTART_EFFECT_DEFAULT,
         confirmLabel: 'Restart',
-        onConfirm: () =>
-          runOne(name, `Restarting ${label} for`, (profileName) =>
-            postRestart(profileName, service),
-          ),
+        onConfirm: () => runOne(name, `Restarting ${label} for`, (profileName) => postRestart(profileName, service)),
       });
     },
     [runOne],
@@ -226,9 +195,7 @@ export function useDeploymentActions(): DeploymentActions {
 
   const startGroup = useCallback(
     (group: DeploymentGroup, members: Profile[]) => {
-      const names = members
-        .filter((m) => !isRunning(m) && !isTransitional(m))
-        .map((m) => m.name);
+      const names = members.filter((m) => !isRunning(m) && !isTransitional(m)).map((m) => m.name);
       runMany(names, `Starting ${group.name}:`, deployProfile);
     },
     [runMany],
@@ -264,10 +231,7 @@ export function useDeploymentActions(): DeploymentActions {
     async (group: DeploymentGroup, count: number) => {
       try {
         const result = await addGroupMembers(group.id, count);
-        toast(
-          `Added ${result.profiles.length} to ${group.name}, deploying now`,
-          'success',
-        );
+        toast(`Added ${result.profiles.length} to ${group.name}, deploying now`, 'success');
         reload();
       } catch (error) {
         toast(`Could not add members. ${getErrorMessage(error)}`, 'error');

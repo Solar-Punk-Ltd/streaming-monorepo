@@ -3,7 +3,10 @@ import { ChequebookConfigurationError } from '../errors/ChequebookConfigurationE
 import { ChainRpc } from './ChainRpc.js';
 import { tokenAddressForChain } from './transactionIdentity.js';
 
-export type ChequebookChainReader = Pick<ChainRpc, 'chainId' | 'transactionCount' | 'transaction' | 'receipt' | 'blockHeader' | 'blockTransactions'>;
+export type ChequebookChainReader = Pick<
+  ChainRpc,
+  'chainId' | 'transactionCount' | 'transaction' | 'receipt' | 'blockHeader' | 'blockTransactions'
+>;
 export type ChequebookEndpointMode = 'direct' | 'disabled';
 /** Reads, again, the endpoint a saved transfer's node was started with. Null when it names none. */
 export type ReadNodeChainEndpoint = (signal?: AbortSignal) => Promise<string | null>;
@@ -20,7 +23,9 @@ function usableChainEndpoint(value: unknown): value is string {
   try {
     const url = new URL(value);
     return ['http:', 'https:'].includes(url.protocol) && !!url.hostname && !url.username && !url.password && !url.hash;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -42,19 +47,30 @@ export class ChequebookChainRegistry {
   #nodeEndpoints = new Map<string, string>();
   #createReader: (endpoint: string) => ChequebookChainReader;
 
-  constructor(configuration: string | undefined, createReader: (endpoint: string) => ChequebookChainReader = endpoint => new ChainRpc(endpoint)) {
+  constructor(
+    configuration: string | undefined,
+    createReader: (endpoint: string) => ChequebookChainReader = (endpoint) => new ChainRpc(endpoint),
+  ) {
     this.#createReader = createReader;
     try {
       const configured: unknown = configuration ? JSON.parse(configuration) : {};
-      if (!configured || typeof configured !== 'object' || Array.isArray(configured)) throw new ChequebookConfigurationError();
+      if (!configured || typeof configured !== 'object' || Array.isArray(configured))
+        throw new ChequebookConfigurationError();
       for (const [key, value] of Object.entries(configured)) {
         const chainId = Number(key);
-        if (!/^[1-9][0-9]*$/.test(key) || !Number.isSafeInteger(chainId) || !tokenAddressForChain(chainId) || !usableChainEndpoint(value)) {
+        if (
+          !/^[1-9][0-9]*$/.test(key) ||
+          !Number.isSafeInteger(chainId) ||
+          !tokenAddressForChain(chainId) ||
+          !usableChainEndpoint(value)
+        ) {
           throw new ChequebookConfigurationError();
         }
         this.#endpoints.set(chainId, value);
       }
-    } catch { throw new ChequebookConfigurationError('chain_setting_invalid'); }
+    } catch {
+      throw new ChequebookConfigurationError('chain_setting_invalid');
+    }
   }
 
   /** The configured endpoint for a chain, and nothing else. */
@@ -64,18 +80,27 @@ export class ChequebookChainRegistry {
       const endpoint = this.#endpoints.get(chainId);
       if (!endpoint) throw new ChainReadError('chain_endpoint_missing');
       return await this.verified(endpoint, chainId, signal);
-    } catch (error) { throw ChainReadError.keeping(error); }
+    } catch (error) {
+      throw ChainReadError.keeping(error);
+    }
   }
 
   /** A transfer being prepared: the configured endpoint, or else the one its node's container runs with now. */
-  async forPreparedNode(chainId: number, nodeAddress: string, nodeEndpoint: string | null, signal?: AbortSignal): Promise<ChequebookChainReader> {
+  async forPreparedNode(
+    chainId: number,
+    nodeAddress: string,
+    nodeEndpoint: string | null,
+    signal?: AbortSignal,
+  ): Promise<ChequebookChainReader> {
     if (this.#endpoints.has(chainId) || !tokenAddressForChain(chainId)) return this.forChain(chainId, signal);
     try {
       if (!usableChainEndpoint(nodeEndpoint)) throw new ChainReadError('chain_endpoint_missing');
       const reader = await this.verified(nodeEndpoint, chainId, signal);
       this.#nodeEndpoints.set(nodeKey(chainId, nodeAddress), nodeEndpoint);
       return reader;
-    } catch (error) { throw ChainReadError.keeping(error); }
+    } catch (error) {
+      throw ChainReadError.keeping(error);
+    }
   }
 
   /**
@@ -86,26 +111,40 @@ export class ChequebookChainRegistry {
    * what is reported when the node cannot be read, names nothing usable, or
    * names the same endpoint again, which is not tried a second time.
    */
-  async forSavedNode(chainId: number, nodeAddress: string, readNodeEndpoint: ReadNodeChainEndpoint, signal?: AbortSignal): Promise<ChequebookChainReader> {
+  async forSavedNode(
+    chainId: number,
+    nodeAddress: string,
+    readNodeEndpoint: ReadNodeChainEndpoint,
+    signal?: AbortSignal,
+  ): Promise<ChequebookChainReader> {
     if (this.#endpoints.has(chainId) || !tokenAddressForChain(chainId)) return this.forChain(chainId, signal);
     const key = nodeKey(chainId, nodeAddress);
     try {
       const remembered = this.#nodeEndpoints.get(key);
       let rememberedFailure: unknown = null;
       if (remembered) {
-        try { return await this.verified(remembered, chainId, signal); }
-        catch (error) { rememberedFailure = error; }
+        try {
+          return await this.verified(remembered, chainId, signal);
+        } catch (error) {
+          rememberedFailure = error;
+        }
       }
-      const unusable = (fallback: ChainReadError) => rememberedFailure ? ChainReadError.keeping(rememberedFailure) : fallback;
+      const unusable = (fallback: ChainReadError) =>
+        rememberedFailure ? ChainReadError.keeping(rememberedFailure) : fallback;
       let endpoint: string | null;
-      try { endpoint = await readNodeEndpoint(signal); }
-      catch (error) { throw unusable(ChainReadError.keeping(error, 'chain_endpoint_missing')); }
+      try {
+        endpoint = await readNodeEndpoint(signal);
+      } catch (error) {
+        throw unusable(ChainReadError.keeping(error, 'chain_endpoint_missing'));
+      }
       if (!usableChainEndpoint(endpoint)) throw unusable(new ChainReadError('chain_endpoint_missing'));
       if (rememberedFailure && endpoint === remembered) throw ChainReadError.keeping(rememberedFailure);
       const reader = await this.verified(endpoint, chainId, signal);
       this.#nodeEndpoints.set(key, endpoint);
       return reader;
-    } catch (error) { throw ChainReadError.keeping(error); }
+    } catch (error) {
+      throw ChainReadError.keeping(error);
+    }
   }
 
   /** A reader for the endpoint, once it answered the chain it is meant to read. */
@@ -113,8 +152,11 @@ export class ChequebookChainRegistry {
     signal?.throwIfAborted();
     const reader = this.#createReader(endpoint);
     let answered: number;
-    try { answered = await reader.chainId(signal); }
-    catch { throw new ChainReadError('chain_unreachable'); }
+    try {
+      answered = await reader.chainId(signal);
+    } catch {
+      throw new ChainReadError('chain_unreachable');
+    }
     if (answered !== chainId) throw new ChainReadError('wrong_chain');
     signal?.throwIfAborted();
     return reader;

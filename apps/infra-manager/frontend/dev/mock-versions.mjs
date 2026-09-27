@@ -7,10 +7,7 @@
  * manager streams them, then the row lands ready. Removing is refused for a
  * version any deployment runs, so that refusal can be seen without a database.
  */
-import {
-  stackRefProblem,
-  stackVersionNameProblem,
-} from '@streaming-infra-manager/common';
+import { stackRefProblem, stackVersionNameProblem } from '@streaming-infra-manager/common';
 
 import { send, sendEmpty } from './mock-http.mjs';
 import { containersFor, state } from './mock-seed.mjs';
@@ -227,8 +224,7 @@ export function seedVersions() {
   // port and a config file of the deployment's own, can be seen offline.
   const v3 = state.versions.find((version) => version.name === 'main-v3');
   for (const profile of state.profiles) {
-    profile.stack_version_id =
-      profile.name === 'backup-stage' && v3 ? v3.id : defaultVersionId();
+    profile.stack_version_id = profile.name === 'backup-stage' && v3 ? v3.id : defaultVersionId();
     // The containers were built before the version was known: what they
     // are seen to run is the version's commit, as this mock's deploys land.
     if (profile.containers.length > 0) {
@@ -245,9 +241,7 @@ function findVersion(id) {
 
 /** Which deployments run a version, by name, the way the manager counts them. */
 function deploymentsOn(versionId) {
-  return state.profiles
-    .filter((profile) => profile.stack_version_id === versionId)
-    .map((profile) => profile.name);
+  return state.profiles.filter((profile) => profile.stack_version_id === versionId).map((profile) => profile.name);
 }
 
 function withCounts() {
@@ -293,10 +287,7 @@ function openBuildStream(res, script, args) {
  * state and its message can be seen without breaking anything.
  */
 function playBuild(res, version, publish) {
-  const { frame, end } = openBuildStream(res, 'stack-version-build.sh', [
-    version.name,
-    version.gitRef,
-  ]);
+  const { frame, end } = openBuildStream(res, 'stack-version-build.sh', [version.name, version.gitRef]);
   const willFail = version.gitRef.includes('fail');
   // A ref that says `same` lands on the commit the version already has, so
   // the rebuild gets a distinct identity beside it, as the manager gives a
@@ -331,7 +322,9 @@ function playBuild(res, version, publish) {
       // The approval belongs to the build that was tested, as in the manager,
       // and the build the new one replaces is kept as the previous one. The
       // same commit published again gets <commit>-r<n>.
-      const rebuilds = (version.buildId ?? '').startsWith(commit) ? (Number(/-r(\d+)$/.exec(version.buildId)?.[1] ?? 0) + 1) : 0;
+      const rebuilds = (version.buildId ?? '').startsWith(commit)
+        ? Number(/-r(\d+)$/.exec(version.buildId)?.[1] ?? 0) + 1
+        : 0;
       const buildId = rebuilds > 0 ? `${commit}-r${rebuilds}` : commit;
       version.tested = version.tested && version.buildId === buildId;
       if (version.buildId && version.buildId !== buildId) version.previousBuildId = version.buildId;
@@ -422,9 +415,7 @@ export function versionRoutes(readBody, publish) {
         if (version.status !== 'ready') {
           return send(res, 400, {
             error: 'validation_error',
-            errors: [
-              `${version.name} is ${version.status}. Only a version that finished building can be the default.`,
-            ],
+            errors: [`${version.name} is ${version.status}. Only a version that finished building can be the default.`],
           });
         }
 
@@ -484,9 +475,7 @@ export function versionRoutes(readBody, publish) {
           });
         }
 
-        state.versions = state.versions.filter(
-          (entry) => entry.id !== version.id,
-        );
+        state.versions = state.versions.filter((entry) => entry.id !== version.id);
         publish({ type: 'version.changed' });
         sendEmpty(res, 204);
       },

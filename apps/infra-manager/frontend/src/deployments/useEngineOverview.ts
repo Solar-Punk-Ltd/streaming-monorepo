@@ -13,7 +13,9 @@ export interface EngineOverviewLoad {
 }
 
 const READ_TIMEOUT_MS = 15_000;
-interface IdentifiedLoad extends EngineOverviewLoad { requestedKey: string }
+interface IdentifiedLoad extends EngineOverviewLoad {
+  requestedKey: string;
+}
 
 /** Old evidence is hidden during render, before a changed input's effect starts. */
 export function useEngineOverview(profile: Profile | null): EngineOverviewLoad {
@@ -26,7 +28,10 @@ export function useEngineOverview(profile: Profile | null): EngineOverviewLoad {
     let current = true;
     let timedOut = false;
     const controller = new AbortController();
-    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, READ_TIMEOUT_MS);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, READ_TIMEOUT_MS);
     fetchEngine(name, controller.signal)
       .then((loaded) => {
         if (!current) return;
@@ -36,9 +41,14 @@ export function useEngineOverview(profile: Profile | null): EngineOverviewLoad {
         setLoad({ requestedKey, overview: loaded, loadError: null });
       })
       .catch((caught) => {
-        if (current) setLoad({ requestedKey, overview: null, loadError: timedOut
-          ? 'Reading engine settings timed out. Reload to try again.'
-          : getErrorMessage(caught, 'The manager did not say why.') });
+        if (current)
+          setLoad({
+            requestedKey,
+            overview: null,
+            loadError: timedOut
+              ? 'Reading engine settings timed out. Reload to try again.'
+              : getErrorMessage(caught, 'The manager did not say why.'),
+          });
       })
       .finally(() => clearTimeout(timer));
     return () => {
@@ -50,6 +60,11 @@ export function useEngineOverview(profile: Profile | null): EngineOverviewLoad {
 
   return requestedKey !== null && load?.requestedKey === requestedKey
     ? { overview: load.overview, loadError: load.loadError }
-    : { overview: null, loadError: profile && requestedKey === null
-      ? 'The deployment metadata cannot identify current engine observations. Reload to read it again.' : null };
+    : {
+        overview: null,
+        loadError:
+          profile && requestedKey === null
+            ? 'The deployment metadata cannot identify current engine observations. Reload to read it again.'
+            : null,
+      };
 }

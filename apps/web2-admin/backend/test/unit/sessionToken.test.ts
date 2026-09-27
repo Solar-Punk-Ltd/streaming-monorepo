@@ -9,10 +9,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
 
-import {
-  createSessionToken,
-  hashSessionToken,
-} from '../../src/domain/auth/sessionToken.js';
+import { createSessionToken, hashSessionToken } from '../../src/domain/auth/sessionToken.js';
 
 describe('session tokens', () => {
   it('mints 32 random bytes as base64url', () => {

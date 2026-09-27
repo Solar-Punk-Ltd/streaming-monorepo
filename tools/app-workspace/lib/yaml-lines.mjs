@@ -48,7 +48,11 @@ function readPlainKey(text) {
  * @returns {Key | null}
  */
 export function readKey(text) {
-  const key = text.startsWith("'") ? readSingleQuoted(text) : text.startsWith('"') ? readDoubleQuoted(text) : readPlainKey(text);
+  const key = text.startsWith("'")
+    ? readSingleQuoted(text)
+    : text.startsWith('"')
+      ? readDoubleQuoted(text)
+      : readPlainKey(text);
   return key !== null && text[key.length] === ':' ? key : null;
 }
 

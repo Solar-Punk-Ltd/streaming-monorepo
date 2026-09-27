@@ -26,19 +26,19 @@ Notes could only be saved through the PUT that replaces every editable field. Th
 
 `manager/test/unit/notesRoute.test.ts`, the profiles router on a random port over the in-memory repository and the recording orchestrator:
 
-| # | Guarantee | On the test commit | After |
-| --- | --- | --- | --- |
-| 1 | The PATCH saves the note, bumps the revision, takes no claim, starts no deploy, leaves the status | fail | pass |
-| 2 | null clears the note | fail | pass |
-| 3 | It saves while a deploy is running | fail | pass |
-| 4 | A stale revision is refused with notes_conflict and nothing changes | fail | pass |
-| 5 | Of two saves from the same loaded revision exactly one lands | fail | pass |
-| 6 | An unknown deployment answers 404 | pass | pass |
-| 7 | A note over 500 characters and a body without the revision answer 400 | fail | pass |
-| 8 | The PUT takes the loaded revision and moves it with the note | fail | pass |
-| 9 | A stale drawer is refused before any claim, nothing deployed | fail | pass |
-| 10 | A PUT without a revision still works | pass | pass |
-| 11 | A PUT with an unchanged note leaves the revision alone | pass | pass |
+| #   | Guarantee                                                                                         | On the test commit | After |
+| --- | ------------------------------------------------------------------------------------------------- | ------------------ | ----- |
+| 1   | The PATCH saves the note, bumps the revision, takes no claim, starts no deploy, leaves the status | fail               | pass  |
+| 2   | null clears the note                                                                              | fail               | pass  |
+| 3   | It saves while a deploy is running                                                                | fail               | pass  |
+| 4   | A stale revision is refused with notes_conflict and nothing changes                               | fail               | pass  |
+| 5   | Of two saves from the same loaded revision exactly one lands                                      | fail               | pass  |
+| 6   | An unknown deployment answers 404                                                                 | pass               | pass  |
+| 7   | A note over 500 characters and a body without the revision answer 400                             | fail               | pass  |
+| 8   | The PUT takes the loaded revision and moves it with the note                                      | fail               | pass  |
+| 9   | A stale drawer is refused before any claim, nothing deployed                                      | fail               | pass  |
+| 10  | A PUT without a revision still works                                                              | pass               | pass  |
+| 11  | A PUT with an unchanged note leaves the revision alone                                            | pass               | pass  |
 
 `frontend/src/forms/deploymentEdits.test.ts`: an edited note carries the loaded revision, an untouched note takes the live value and no revision.
 

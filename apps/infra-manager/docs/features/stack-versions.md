@@ -51,14 +51,14 @@ Repeating publication of the identical approved artifact does not arbitrarily re
 
 Under `STACK_VERSIONS_ROOT`, a registered version uses sibling paths:
 
-| Path | Purpose |
-| --- | --- |
-| `<name>.repo/` | The source clone used to prepare builds |
-| `<name>.builds/<build-id>/` | A published application tree |
-| `<name>.builds/tmp-<attempt>/` | One attempt's unpublished staging tree |
-| `<name>.builds/<build-id>.inventory.json` | What that build was read to be, hashed once, so a deployment's copy proves it by a stat walk |
-| `<name>/` | Host-owned configuration and the retained legacy root |
-| `.executions/<execution-id>/tree/` | One deployment's private copy of the build it is running, with `owner.json` and `ready.json` beside it |
+| Path                                      | Purpose                                                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `<name>.repo/`                            | The source clone used to prepare builds                                                                |
+| `<name>.builds/<build-id>/`               | A published application tree                                                                           |
+| `<name>.builds/tmp-<attempt>/`            | One attempt's unpublished staging tree                                                                 |
+| `<name>.builds/<build-id>.inventory.json` | What that build was read to be, hashed once, so a deployment's copy proves it by a stat walk           |
+| `<name>/`                                 | Host-owned configuration and the retained legacy root                                                  |
+| `.executions/<execution-id>/tree/`        | One deployment's private copy of the build it is running, with `owner.json` and `ready.json` beside it |
 
 A published build carries `.stack-manifest.json` and a `.complete` marker written last. Its identity includes the commit and build id. A build of the same commit and captured inputs can reuse the existing complete artifact. A distinct rebuild receives an identity such as `<commit>-r1`. Published application payloads are not replaced in place.
 

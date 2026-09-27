@@ -49,10 +49,15 @@ export function createVersionsRouter(versions: StackVersionService, openStreams:
       try {
         const body = req.body as CreateVersionBody;
         const build = await versions.add(body.name, body.ref);
-        pipeRunHandleToSSE(res, build.handle, {
-          script: BUILD_SCRIPT_NAME,
-          args: [build.version.name, build.version.gitRef],
-        }, { authenticated });
+        pipeRunHandleToSSE(
+          res,
+          build.handle,
+          {
+            script: BUILD_SCRIPT_NAME,
+            args: [build.version.name, build.version.gitRef],
+          },
+          { authenticated },
+        );
       } catch (err) {
         authenticated.release();
         throw err;
@@ -67,10 +72,15 @@ export function createVersionsRouter(versions: StackVersionService, openStreams:
       const authenticated = registerAuthenticatedRunStream(req, res, openStreams);
       try {
         const build = await versions.update(versionIdOf(req));
-        pipeRunHandleToSSE(res, build.handle, {
-          script: BUILD_SCRIPT_NAME,
-          args: [build.version.name, build.version.gitRef],
-        }, { authenticated });
+        pipeRunHandleToSSE(
+          res,
+          build.handle,
+          {
+            script: BUILD_SCRIPT_NAME,
+            args: [build.version.name, build.version.gitRef],
+          },
+          { authenticated },
+        );
       } catch (err) {
         authenticated.release();
         throw err;
@@ -126,9 +136,7 @@ export function createVersionsRouter(versions: StackVersionService, openStreams:
     validateBody(patchVersionSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as PatchVersionBody;
-      res.json(
-        await versions.setTested(versionIdOf(req), body.tested, body.commitSha ?? null, body.buildId ?? null),
-      );
+      res.json(await versions.setTested(versionIdOf(req), body.tested, body.commitSha ?? null, body.buildId ?? null));
     }),
   );
 

@@ -13,12 +13,7 @@ import { describe, it } from 'node:test';
 
 import type { Rendition } from '@streaming-monorepo/web2-admin-common';
 
-import {
-  mergeRendition,
-  isLadderFinished,
-  ladderDuration,
-  toRendition,
-} from '../../src/domain/renditions.js';
+import { mergeRendition, isLadderFinished, ladderDuration, toRendition } from '../../src/domain/renditions.js';
 import type { StreamRenditionRow } from '../../src/types/index.js';
 
 const TOPIC_720 = 'bbbbbbbb-0000-4000-8000-000000000720';
@@ -36,9 +31,7 @@ function rendition(over: Partial<Rendition> = {}): Rendition {
   };
 }
 
-function renditionRow(
-  over: Partial<StreamRenditionRow> = {},
-): StreamRenditionRow {
+function renditionRow(over: Partial<StreamRenditionRow> = {}): StreamRenditionRow {
   return {
     stream_id: '00000000-0000-4000-8000-000000000001',
     name: '720p',
@@ -71,9 +64,7 @@ describe('toRendition', () => {
   });
 
   it('carries index 0, which is a feed index like any other', () => {
-    const value = toRendition(
-      renditionRow({ manifest_index: 0, duration_seconds: 0 }),
-    );
+    const value = toRendition(renditionRow({ manifest_index: 0, duration_seconds: 0 }));
     assert.equal(value.index, 0);
     assert.equal(value.duration, 0);
   });
@@ -157,21 +148,12 @@ describe('isLadderFinished', () => {
   });
 
   it('is false while any rung is still delivering', () => {
-    assert.equal(
-      isLadderFinished([
-        rendition({ name: '360p', index: 3, duration: 60 }),
-        rendition(),
-      ]),
-      false,
-    );
+    assert.equal(isLadderFinished([rendition({ name: '360p', index: 3, duration: 60 }), rendition()]), false);
   });
 
   it('is true once every rung has an index', () => {
     assert.equal(
-      isLadderFinished([
-        rendition({ name: '360p', index: 3, duration: 60 }),
-        rendition({ index: 0, duration: 61 }),
-      ]),
+      isLadderFinished([rendition({ name: '360p', index: 3, duration: 60 }), rendition({ index: 0, duration: 61 })]),
       true,
     );
   });
@@ -187,10 +169,7 @@ describe('ladderDuration', () => {
     // The rungs are cut from one broadcast and differ by fractions of a
     // segment; a seek bar built on the shortest stops before the end.
     assert.equal(
-      ladderDuration([
-        rendition({ name: '360p', index: 3, duration: 61.2 }),
-        rendition({ index: 4, duration: 60.8 }),
-      ]),
+      ladderDuration([rendition({ name: '360p', index: 3, duration: 61.2 }), rendition({ index: 4, duration: 60.8 })]),
       61.2,
     );
   });

@@ -10,21 +10,26 @@ const contract = readStackContract(fileURLToPath(new URL('../fixtures/stack/v3/'
 
 describe('effective OME port ownership', () => {
   it('reads the two actual Compose aliases and preserves them through stored-contract parsing', () => {
-    assert.deepEqual(contract.portAliases?.map(port => [port.name, port.service, port.protocol]).sort(), [
-      ['OME_HLS_PORT', 'ome', 'tcp'], ['OME_SRT_PORT', 'ome', 'udp'],
+    assert.deepEqual(contract.portAliases?.map((port) => [port.name, port.service, port.protocol]).sort(), [
+      ['OME_HLS_PORT', 'ome', 'tcp'],
+      ['OME_SRT_PORT', 'ome', 'udp'],
     ]);
     assert.deepEqual(parseStackContract(contract)?.portAliases, contract.portAliases);
   });
 
   it('projects only SRT and HLS while preserving the remaining whole-table reservations', () => {
     const ome = portTableForEngine(contract, 'ome');
-    const owned = portPlanFor(ome, 1).filter(port => port.service === 'ome');
-    assert.deepEqual(owned.map(port => [port.portVar, port.protocol, port.port]), [
-      ['OME_SRT_PORT', 'udp', 10011], ['OME_HLS_PORT', 'tcp', 10013],
-    ]);
-    assert.ok(ome.some(port => port.name === 'SRS_RTMP_PORT' && port.service === 'srs'));
-    assert.ok(ome.some(port => port.name === 'API_PORT' && port.service === 'stream-uploader'));
-    assert.ok(owned.every(port => portExposureProblem(port) === null));
+    const owned = portPlanFor(ome, 1).filter((port) => port.service === 'ome');
+    assert.deepEqual(
+      owned.map((port) => [port.portVar, port.protocol, port.port]),
+      [
+        ['OME_SRT_PORT', 'udp', 10011],
+        ['OME_HLS_PORT', 'tcp', 10013],
+      ],
+    );
+    assert.ok(ome.some((port) => port.name === 'SRS_RTMP_PORT' && port.service === 'srs'));
+    assert.ok(ome.some((port) => port.name === 'API_PORT' && port.service === 'stream-uploader'));
+    assert.ok(owned.every((port) => portExposureProblem(port) === null));
     assert.deepEqual(portTableForEngine(contract, 'srs'), contract.ports);
   });
 
@@ -33,8 +38,10 @@ describe('effective OME port ownership', () => {
       const value = structuredClone(contract);
       if (broken === 'missing') value.portAliases = [];
       if (broken === 'service') value.portAliases![0]!.service = 'other';
-      if (broken === 'source-owner') value.ports.find(port => port.name === 'SRS_HTTP_PORT')!.service = 'stream-uploader';
-      if (broken === 'protocol') value.portAliases![0]!.protocol = value.portAliases![0]!.protocol === 'tcp' ? 'udp' : 'tcp';
+      if (broken === 'source-owner')
+        value.ports.find((port) => port.name === 'SRS_HTTP_PORT')!.service = 'stream-uploader';
+      if (broken === 'protocol')
+        value.portAliases![0]!.protocol = value.portAliases![0]!.protocol === 'tcp' ? 'udp' : 'tcp';
       assert.throws(() => portTableForEngine(value, 'ome'), /OME|alias/);
     });
   }

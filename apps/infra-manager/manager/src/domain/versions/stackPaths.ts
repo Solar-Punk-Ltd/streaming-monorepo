@@ -1,10 +1,6 @@
 import { basename, dirname, join } from 'node:path';
 
-import {
-  BUNDLED_STACK_ROOT,
-  bootstrapPairsFor,
-  type BootstrapPair,
-} from '../../utils/envUtils.js';
+import { BUNDLED_STACK_ROOT, bootstrapPairsFor, type BootstrapPair } from '../../utils/envUtils.js';
 
 import { buildIdProblem, readBuildManifest } from './buildManifest.js';
 import type { StackVersionLayout } from './StackVersionRepository.js';
@@ -38,7 +34,8 @@ export interface StackPaths {
   bootstrapPairs: readonly BootstrapPair[];
 }
 
-const MISSING_BUILD_ROOT = 'This version uses immutable builds but has no artifact root. Restore its build before deploying.';
+const MISSING_BUILD_ROOT =
+  'This version uses immutable builds but has no artifact root. Restore its build before deploying.';
 const MISSING_BUILD_ID = 'This version has no build to deploy from yet.';
 
 /**
@@ -92,8 +89,12 @@ export interface DeployableVersion extends StackVersionRoot {
  * calls ready is never one the next boot rebuilds.
  */
 export function deploysBuildOf(version: DeployableVersion, commit: string): boolean {
-  return version.layout === 'builds' && version.status === 'ready' &&
-    version.commitSha === commit && deployRootProblem(version) === null;
+  return (
+    version.layout === 'builds' &&
+    version.status === 'ready' &&
+    version.commitSha === commit &&
+    deployRootProblem(version) === null
+  );
 }
 
 export function stackPaths(version: StackVersionRoot): StackPaths {

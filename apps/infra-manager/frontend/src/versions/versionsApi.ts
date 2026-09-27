@@ -1,13 +1,6 @@
 import type { StackVersion } from '@streaming-infra-manager/common';
 
-import {
-  apiFetch,
-  checkSessionAfterStreamClosed,
-  failWith,
-  getJson,
-  send,
-  sendJson,
-} from '../http';
+import { apiFetch, checkSessionAfterStreamClosed, failWith, getJson, send, sendJson } from '../http';
 import { readScriptStream } from '../scriptStream';
 
 export function fetchVersions(): Promise<StackVersion[]> {
@@ -74,11 +67,7 @@ export function addVersion(
   return streamBuild('/versions', { name, ref }, handlers, signal);
 }
 
-export function updateVersion(
-  id: number,
-  handlers: BuildHandlers,
-  signal: AbortSignal,
-): Promise<BuildResult> {
+export function updateVersion(id: number, handlers: BuildHandlers, signal: AbortSignal): Promise<BuildResult> {
   return streamBuild(`/versions/${id}/update`, {}, handlers, signal);
 }
 

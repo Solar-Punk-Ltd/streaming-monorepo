@@ -98,7 +98,9 @@ test('a launch under BROWSER_CPU_THROTTLE runs the page at the rate it names', a
   await browser.call('Emulation.setCPUThrottlingRate', { rate: 1 });
   const full = await quickestRun(browser.evaluate);
 
-  t.diagnostic(`${throttled.toFixed(1)} ms at ${MEASURED_RATE}x against ${full.toFixed(1)} ms at this machine's own speed`);
+  t.diagnostic(
+    `${throttled.toFixed(1)} ms at ${MEASURED_RATE}x against ${full.toFixed(1)} ms at this machine's own speed`,
+  );
   assert.ok(
     throttled > full * LEAST_SLOWDOWN,
     `A page throttled ${MEASURED_RATE}x took ${throttled.toFixed(1)} ms against ${full.toFixed(1)} ms at full speed`,

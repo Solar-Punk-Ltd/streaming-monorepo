@@ -67,7 +67,7 @@ re-maps, so a batch sized for 360p ends up paying for 1080p, and nothing about
 the symptom points at the cause. A name is stable, unique, already validated by
 the profile-name constraint, and legible in the deployments table.
 
-Parsing always strips the *known* group name, so `abr` / `abr-1080p` and
+Parsing always strips the _known_ group name, so `abr` / `abr-1080p` and
 `abr-1` / `abr-1-360p` cannot be confused for one another.
 
 The one cost: profile names cap at 31 characters and a ladder appends `-1080p`,
@@ -82,13 +82,13 @@ two addresses a viewer needs to open a stage.
 
 ## What is stored
 
-| what | where it lives |
-|---|---|
-| that this group is a ladder | `deployment_groups.kind = 'abr-node-pool'`, one new column |
+| what                                  | where it lives                                              |
+| ------------------------------------- | ----------------------------------------------------------- |
+| that this group is a ladder           | `deployment_groups.kind = 'abr-node-pool'`, one new column  |
 | that these four profiles are one unit | `deployment_groups` + `profiles.group_id` (already existed) |
-| which rung a member publishes | its name |
-| the batch it pays with | `profiles.stamp_id` (already existed, already managed) |
-| its bee API port | derived from `port_slot`, as it always was |
+| which rung a member publishes         | its name                                                    |
+| the batch it pays with                | `profiles.stamp_id` (already existed, already managed)      |
+| its bee API port                      | derived from `port_slot`, as it always was                  |
 
 One migration, adding one column. No new table, and no second port-slot family,
 one port map, the original one.
@@ -97,7 +97,7 @@ one port map, the original one.
 
 Ladder-ness was briefly inferred by parsing member names for a rung suffix. That
 works while the ladder is intact and fails precisely when it is not: remove one
-rung and the group stops *looking* like a ladder, so the Uploaders tab stops
+rung and the group stops _looking_ like a ladder, so the Uploaders tab stops
 offering the ladder view, at the moment the operator most needs it to say
 "1080p is missing".
 
@@ -123,7 +123,7 @@ removes.
    ladder), because a rung's batch fills in proportion to its bitrate and a flat
    depth would put the four expiries hours apart.
 4. **Copy `BEE_PUBLISHERS`** from the pool card once all four rungs report a
-   *live* batch. The card only offers the value when each rung's own node
+   _live_ batch. The card only offers the value when each rung's own node
    confirms its batch. See [Rung validity](#rung-validity).
 5. **Paste it into an ABR Uploader.** New deployment → Deployment type → **ABR
    Uploader**. See [The ABR Uploader](#the-abr-uploader).
@@ -146,12 +146,12 @@ admits it, as The address explains.
 its own self-contained form, for the same reason the pool has one: it shares
 almost nothing with a single-node deployment.
 
-| | single-node uploader | ABR Uploader |
-| --- | --- | --- |
-| services | `srs` + `stream-uploader` + `bee-uploader` | `srs` + `stream-uploader` |
-| where uploads go | its own Bee node, or `BEE_URL` | the pool's four rungs |
-| postage | its own `stamp_id` | the pool's, one batch per rung |
-| Uploaders tab | fund it, buy batches | no actions, just shows publish URL with pool targets |
+|                  | single-node uploader                       | ABR Uploader                                         |
+| ---------------- | ------------------------------------------ | ---------------------------------------------------- |
+| services         | `srs` + `stream-uploader` + `bee-uploader` | `srs` + `stream-uploader`                            |
+| where uploads go | its own Bee node, or `BEE_URL`             | the pool's four rungs                                |
+| postage          | its own `stamp_id`                         | the pool's, one batch per rung                       |
+| Uploaders tab    | fund it, buy batches                       | no actions, just shows publish URL with pool targets |
 
 It runs **no Bee node**: the pool's rungs are the publish targets, so there is no
 wallet to fund, no batch to buy and no stamp to wait for. `managesOwnStamp` is
@@ -177,7 +177,7 @@ drift. SRS only, and the ladder is not implemented for OME.
 The string goes stale two ways, and since nothing links the two managers,
 nothing invalidates a copy that has gone wrong:
 
-- **A rung buys a *new* batch** (topping up and diluting keep the id, so
+- **A rung buys a _new_ batch** (topping up and diluting keep the id, so
   neither needs a re-paste, and since 2026-09-25 both are on the rung's own
   Storage card). Re-paste after a re-buy, until a stamp manager keeps batches
   from expiring. Since 2026-09-25 a
@@ -187,7 +187,7 @@ nothing invalidates a copy that has gone wrong:
   instead. The pool string then names the new batch, and the uploader goes on
   paying with the old one until the new string is pasted into its **Node pool
   string** under Edit, which redeploys it.
-- **A rung is removed and re-created**, which changes its *address*, not just
+- **A rung is removed and re-created**, which changes its _address_, not just
   its batch. Ports come from the profile's port slot, and a freed slot is
   reused by the next profile created on that machine, so `720p@…:10035` can
   come to mean an unrelated Bee node. The uploader keeps publishing that rung
@@ -254,7 +254,7 @@ the submodule's history, so the requirement is stated by behaviour instead.)
 `resolve_bee_url` previously decided "is there a local Bee node" from
 `config.json` rather than from the services the invocation was asked to deploy
 , and `config.json` is written once at bootstrap, never per profile, so it
-overrode `BEE_URL` for *every* profile running a stream-uploader. An external
+overrode `BEE_URL` for _every_ profile running a stream-uploader. An external
 node named here was replaced by `http://bee-uploader:<port>`, a compose service
 that is not running, and the container crash-looped on `ENOTFOUND` while the
 manager reported `RUNNING`. Two changes there are what make a pool-backed uploader deployable
@@ -269,57 +269,57 @@ stdin-less runner.
 
 ### `common`
 
-| File | Change |
-|---|---|
-| `src/abrLadder.ts` (new) | The whole ladder domain: `DEFAULT_ABR_LADDER` (rungs, geometry, kbps), `ladderMemberName` / `rungFromMemberName` / `ladderMemberNames`, `rungOrder`, `suggestedRungDepth`, `assembleBeePublishers`, `beePublishersValue`, `parseBeePublishers` / `beePublishersProblem`, `abrLadderEnvValue`, `LADDER_GROUP_NAME_MAX`. |
-| `src/abrLadder.test.ts` (new) | Tests over naming, round-tripping, group recognition, depth scaling and assembly, including that the name cap is exactly where member names stop fitting, and that a ladder of expired batches yields no value. |
-| `src/stampHealth.ts` (new) | `stampHealthFrom` / `isStampExpired` / `isStampExpiringSoon` / `isDeadStampState` / `stampStateReason` / `sameBatchId`, the one place that decides what a recorded batch is worth. Since 2026-09-25 also `fullestBucketFillRatio` / `stampBucketCapacity` / `isFullestBucketFull` / `isStampNearlyFull` / `formatFillPercent`, how full a batch is. See [Rung validity](#rung-validity). |
-| `src/publishUrl.ts` (new) | `classifyPublishUrl` / `isInvalidUrlState` / `publishUrlReason` / `publishUrlWarning`, what a rung's published address is worth, structurally, before anything is probed. |
-| `src/publishUrl.test.ts` (new) | Tests for loopback in every spelling, ssh user info, non-http schemes, and that a bare internal hostname is *not* refused. |
-| `src/stampHealth.test.ts` (new) | Tests over the classification and the expiry window, including that an unreachable node classifies as `unknown` and never as `expired`, and that a negative `batchTTL` is not expiry. |
-| `src/stampGating.ts` | `isBeeNodeOnly` and `managesOwnStamp`. A rung has no `stream-uploader`, so the old gate said it needed no stamp, which would have left it invisible on the Uploaders tab with no way to fund it. |
+| File                            | Change                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/abrLadder.ts` (new)        | The whole ladder domain: `DEFAULT_ABR_LADDER` (rungs, geometry, kbps), `ladderMemberName` / `rungFromMemberName` / `ladderMemberNames`, `rungOrder`, `suggestedRungDepth`, `assembleBeePublishers`, `beePublishersValue`, `parseBeePublishers` / `beePublishersProblem`, `abrLadderEnvValue`, `LADDER_GROUP_NAME_MAX`.                                                                   |
+| `src/abrLadder.test.ts` (new)   | Tests over naming, round-tripping, group recognition, depth scaling and assembly, including that the name cap is exactly where member names stop fitting, and that a ladder of expired batches yields no value.                                                                                                                                                                          |
+| `src/stampHealth.ts` (new)      | `stampHealthFrom` / `isStampExpired` / `isStampExpiringSoon` / `isDeadStampState` / `stampStateReason` / `sameBatchId`, the one place that decides what a recorded batch is worth. Since 2026-09-25 also `fullestBucketFillRatio` / `stampBucketCapacity` / `isFullestBucketFull` / `isStampNearlyFull` / `formatFillPercent`, how full a batch is. See [Rung validity](#rung-validity). |
+| `src/publishUrl.ts` (new)       | `classifyPublishUrl` / `isInvalidUrlState` / `publishUrlReason` / `publishUrlWarning`, what a rung's published address is worth, structurally, before anything is probed.                                                                                                                                                                                                                |
+| `src/publishUrl.test.ts` (new)  | Tests for loopback in every spelling, ssh user info, non-http schemes, and that a bare internal hostname is _not_ refused.                                                                                                                                                                                                                                                               |
+| `src/stampHealth.test.ts` (new) | Tests over the classification and the expiry window, including that an unreachable node classifies as `unknown` and never as `expired`, and that a negative `batchTTL` is not expiry.                                                                                                                                                                                                    |
+| `src/stampGating.ts`            | `isBeeNodeOnly` and `managesOwnStamp`. A rung has no `stream-uploader`, so the old gate said it needed no stamp, which would have left it invisible on the Uploaders tab with no way to fund it.                                                                                                                                                                                         |
 
 ### Manager
 
-| File | Change |
-|---|---|
-| `src/schemas/profile.ts` | `abr_ladder` flag, and the group-name length rule that applies only to ladders. |
-| `src/domain/ProfileService.ts` | Ladder member seeding (names fixed, components fixed to `bee-uploader`), `ladderMembersOf`, `beePublishersForGroup`, and guards on `updateGroupConfig` and `addGroupMembers`. |
-| `src/domain/StampService.ts` | `stampHealthFor`, what a rung's own node says about its recorded batch (state *and* TTL, so expiry can be warned about early), on a short timeout, never throwing. A 404 is an answer (`gone`), anything else is `unknown`. `publishUrlStateFor` asks whether anything answers at the *published* address. `networkHostOf` turns a deploy target into an address, through `resolveNetworkHost`. Plus `beePublisherUrlFor`, the URL a pool string carries, which for a local member is the address a container on this host reaches it on (2026-09-17), as opposed to `beeApiUrlFor`, which is the manager’s own read of that node. |
-| `src/utils/deployHost.ts` (new) | `resolveNetworkHost`: ssh user info dropped, a dotless alias resolved through `ssh -G` against the config the api container mounts, results cached for 60s. The same semantics as `host_from_target` in swarm-hls-stream's `deploy/scripts/_lib.sh`, so both halves of a deploy agree on what an alias means. |
-| `src/domain/ContainerRepository.ts` | `withContainers` derives `network_host` onto every profile the API returns, so the UI composes links from an address rather than from a deploy target. |
-| `src/domain/errors/LadderGroupError.ts` (new) | 409 `ladder_group_invalid_operation`. |
-| `src/api/routes/groups.ts` | `GET /groups/:id/bee-publishers`. |
-| `test/unit/ladderSchema.test.ts` (new) | Pins the cross-field name rule, which uses yup's `this.parent` and would fail silently if the schema shape changed. |
-| `test/unit/beePublishersReadiness.test.ts` (new) | Tests that the endpoint asks every rung, probes the exact address it publishes, refuses the value on a dead batch / stopped node / unusable address, and stays ready, with the value, for anything it merely could not confirm. |
-| `test/unit/stampHealthFor.test.ts` (new) | Tests over the bee-answer mapping, above all that a timeout is `unknown` and not `expired`, and that the TTL survives. |
-| `test/unit/beeApiUrl.test.ts` (new) | Tests on URL composition: the port band, ssh user info stripped from both URLs, no stray `@` left for the entry format, and an unresolvable alias still composing to the address it names. |
-| `test/unit/deployHost.test.ts` (new) | Tests on target resolution with `ssh -G` injected: an alias resolved, an unknown name echoed back and kept, ssh failing without throwing, literals and dotted names never reaching the exec, a non-name refused at the exec boundary, and the TTL cache. |
+| File                                             | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/schemas/profile.ts`                         | `abr_ladder` flag, and the group-name length rule that applies only to ladders.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `src/domain/ProfileService.ts`                   | Ladder member seeding (names fixed, components fixed to `bee-uploader`), `ladderMembersOf`, `beePublishersForGroup`, and guards on `updateGroupConfig` and `addGroupMembers`.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `src/domain/StampService.ts`                     | `stampHealthFor`, what a rung's own node says about its recorded batch (state _and_ TTL, so expiry can be warned about early), on a short timeout, never throwing. A 404 is an answer (`gone`), anything else is `unknown`. `publishUrlStateFor` asks whether anything answers at the _published_ address. `networkHostOf` turns a deploy target into an address, through `resolveNetworkHost`. Plus `beePublisherUrlFor`, the URL a pool string carries, which for a local member is the address a container on this host reaches it on (2026-09-17), as opposed to `beeApiUrlFor`, which is the manager’s own read of that node. |
+| `src/utils/deployHost.ts` (new)                  | `resolveNetworkHost`: ssh user info dropped, a dotless alias resolved through `ssh -G` against the config the api container mounts, results cached for 60s. The same semantics as `host_from_target` in swarm-hls-stream's `deploy/scripts/_lib.sh`, so both halves of a deploy agree on what an alias means.                                                                                                                                                                                                                                                                                                                      |
+| `src/domain/ContainerRepository.ts`              | `withContainers` derives `network_host` onto every profile the API returns, so the UI composes links from an address rather than from a deploy target.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `src/domain/errors/LadderGroupError.ts` (new)    | 409 `ladder_group_invalid_operation`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `src/api/routes/groups.ts`                       | `GET /groups/:id/bee-publishers`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `test/unit/ladderSchema.test.ts` (new)           | Pins the cross-field name rule, which uses yup's `this.parent` and would fail silently if the schema shape changed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `test/unit/beePublishersReadiness.test.ts` (new) | Tests that the endpoint asks every rung, probes the exact address it publishes, refuses the value on a dead batch / stopped node / unusable address, and stays ready, with the value, for anything it merely could not confirm.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `test/unit/stampHealthFor.test.ts` (new)         | Tests over the bee-answer mapping, above all that a timeout is `unknown` and not `expired`, and that the TTL survives.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `test/unit/beeApiUrl.test.ts` (new)              | Tests on URL composition: the port band, ssh user info stripped from both URLs, no stray `@` left for the entry format, and an unresolvable alias still composing to the address it names.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `test/unit/deployHost.test.ts` (new)             | Tests on target resolution with `ssh -G` injected: an alias resolved, an unknown name echoed back and kept, ssh failing without throwing, literals and dotted names never reaching the exec, a non-name refused at the exec boundary, and the TTL cache.                                                                                                                                                                                                                                                                                                                                                                           |
 
 `beePublishersForGroup` asks each rung's node whether its recorded batch is still
 alive, all four in parallel on a 3s timeout. It first did not. Every field came
 from the profile rows, on the reasoning that live batch state already had a home
 in the per-rung cards, and that is what produced the bug in
 [Rung validity](#rung-validity). A node that cannot answer leaves its rung
-*unverified* rather than unready, so an unreachable node still cannot fail the
+_unverified_ rather than unready, so an unreachable node still cannot fail the
 request or block the value.
 
 ### Frontend
 
-| File | Change |
-|---|---|
-| `src/groups/PoolStringCard.tsx` | What a pool exists to produce: the assembled `BEE_PUBLISHERS` with a copy button, or exactly which rung is in the way. The server's `warnings` render under the value. |
-| `src/groups/PoolRungRow.tsx` | One rung's row, driven by the node's own answer about its batch. A status chip appears when the node is not running, and a dead or nearly spent batch raises an alert rather than a silent row. |
-| `src/groups/GroupPage.tsx`, `GroupMembersCard.tsx` | The pool's own page: the string card above, then its rungs, each expandable to the funding and batch controls. A damaged ladder still appears, selected by `group.kind`. |
-| `src/groups/groupReadiness.ts`, `useBeePublishers.ts` | What the page asks the manager and how it counts the header chip, from the *verified* state the manager reports rather than from the profile rows. |
-| `src/uploaders/BuyStampForm.tsx` | Optional `defaultDepth`, so a rung's form starts at *its* suggested depth rather than a flat 17. Since 2026-09-25 its caption says what a newly set batch reaches, from `src/deployments/newBatchReach.ts`: on a rung, the pool string and not the uploader until it is pasted again. |
-| `src/uploaders/NodeFunding.tsx`, `StampTable.tsx` | A rung's wallet, address and batch list. The Usable column has an `expired` state, which previously read `pending`, that is, as something that would come good on its own, and an empty table names the orphaned id instead of saying "No stamps on this node yet." Since 2026-09-25 a Used column says how full each batch's fullest bucket is, and under each batch are Use, Top up and Dilute, with Use unavailable on a full immutable batch. |
-| `src/forms/wizard/` | **Deployment type** is a step of the wizard, and `PoolPrerequisites.tsx` and `PoolSettings.tsx` are the pool's own screens. `poolDraft.ts`, `poolIdentity.ts` and `poolMembership.ts` hold its draft, so a pool created mid-wizard is not lost by a step back. |
-| `src/PublisherRungs.tsx` | Renders the rungs a pasted `BEE_PUBLISHERS` resolves to, because a line of four URLs and four 64-character batch ids is not something anyone proof-reads. |
-| `src/deployments/PoolTargetCard.tsx` | On an ABR uploader's own page, where its four rungs land. |
-| `src/data.ts` | `fetchBeePublishers`, returning `null` for a group that is not a ladder so callers can probe cheaply. The response types are re-exported from `common` rather than redeclared. The local copy had already gone stale, with the per-rung verification fields arriving in the JSON and invisible to the compiler. |
-| `src/uploaders/useBeeUtils.ts` | `stamps` is nullable, null meaning "not asked, or no answer", like `address`, `wallet` and `chainState` beside it, and any failed fetch clears it. Without that distinction a slow or briefly unreachable node reads as a node with a dead batch. |
-| `src/urls.ts` | `hostFor` prefers the profile's `network_host`, the deploy target already resolved server-side, over the raw `host`, so component links and the SRT publish URL point at an address rather than at an ssh alias. |
+| File                                                  | Change                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/groups/PoolStringCard.tsx`                       | What a pool exists to produce: the assembled `BEE_PUBLISHERS` with a copy button, or exactly which rung is in the way. The server's `warnings` render under the value.                                                                                                                                                                                                                                                                            |
+| `src/groups/PoolRungRow.tsx`                          | One rung's row, driven by the node's own answer about its batch. A status chip appears when the node is not running, and a dead or nearly spent batch raises an alert rather than a silent row.                                                                                                                                                                                                                                                   |
+| `src/groups/GroupPage.tsx`, `GroupMembersCard.tsx`    | The pool's own page: the string card above, then its rungs, each expandable to the funding and batch controls. A damaged ladder still appears, selected by `group.kind`.                                                                                                                                                                                                                                                                          |
+| `src/groups/groupReadiness.ts`, `useBeePublishers.ts` | What the page asks the manager and how it counts the header chip, from the _verified_ state the manager reports rather than from the profile rows.                                                                                                                                                                                                                                                                                                |
+| `src/uploaders/BuyStampForm.tsx`                      | Optional `defaultDepth`, so a rung's form starts at _its_ suggested depth rather than a flat 17. Since 2026-09-25 its caption says what a newly set batch reaches, from `src/deployments/newBatchReach.ts`: on a rung, the pool string and not the uploader until it is pasted again.                                                                                                                                                             |
+| `src/uploaders/NodeFunding.tsx`, `StampTable.tsx`     | A rung's wallet, address and batch list. The Usable column has an `expired` state, which previously read `pending`, that is, as something that would come good on its own, and an empty table names the orphaned id instead of saying "No stamps on this node yet." Since 2026-09-25 a Used column says how full each batch's fullest bucket is, and under each batch are Use, Top up and Dilute, with Use unavailable on a full immutable batch. |
+| `src/forms/wizard/`                                   | **Deployment type** is a step of the wizard, and `PoolPrerequisites.tsx` and `PoolSettings.tsx` are the pool's own screens. `poolDraft.ts`, `poolIdentity.ts` and `poolMembership.ts` hold its draft, so a pool created mid-wizard is not lost by a step back.                                                                                                                                                                                    |
+| `src/PublisherRungs.tsx`                              | Renders the rungs a pasted `BEE_PUBLISHERS` resolves to, because a line of four URLs and four 64-character batch ids is not something anyone proof-reads.                                                                                                                                                                                                                                                                                         |
+| `src/deployments/PoolTargetCard.tsx`                  | On an ABR uploader's own page, where its four rungs land.                                                                                                                                                                                                                                                                                                                                                                                         |
+| `src/data.ts`                                         | `fetchBeePublishers`, returning `null` for a group that is not a ladder so callers can probe cheaply. The response types are re-exported from `common` rather than redeclared. The local copy had already gone stale, with the per-rung verification fields arriving in the JSON and invisible to the compiler.                                                                                                                                   |
+| `src/uploaders/useBeeUtils.ts`                        | `stamps` is nullable, null meaning "not asked, or no answer", like `address`, `wallet` and `chainState` beside it, and any failed fetch clears it. Without that distinction a slow or briefly unreachable node reads as a node with a dead batch.                                                                                                                                                                                                 |
+| `src/urls.ts`                                         | `hostFor` prefers the profile's `network_host`, the deploy target already resolved server-side, over the raw `host`, so component links and the SRT publish URL point at an address rather than at an ssh alias.                                                                                                                                                                                                                                  |
 
 The components this table named when it was written, `LadderCard`, `UploaderCard`,
 `UploadersView`, `AbrPoolForm` and `NewDeploymentDrawer`, were replaced by the UX
@@ -371,15 +371,15 @@ rung's stamp table sat empty and every upload failed.
 So anything that claims a rung is ready asks its node. `stampHealthFrom`
 (`common/src/stampHealth.ts`) classifies the answer into one state:
 
-| State | Meaning | Blocks readiness |
-|---|---|---|
-| `none` | No batch recorded on the profile. | yes |
-| `active` | On the node, usable, time left, and either room left, mutable, or a fill the node did not report. | no |
-| `pending` | On the node, bought too recently to be usable. | yes |
-| `full` | On the node, usable by bee's own flag, time left, immutable, and its fullest bucket is full. | yes |
-| `expired` | On the node, `batchTTL` is 0. | yes |
-| `gone` | Recorded, but the node does not have it, expired and dropped, or never bought there. | yes |
-| `unknown` | The node was not asked, or could not answer. | **no** |
+| State     | Meaning                                                                                           | Blocks readiness |
+| --------- | ------------------------------------------------------------------------------------------------- | ---------------- |
+| `none`    | No batch recorded on the profile.                                                                 | yes              |
+| `active`  | On the node, usable, time left, and either room left, mutable, or a fill the node did not report. | no               |
+| `pending` | On the node, bought too recently to be usable.                                                    | yes              |
+| `full`    | On the node, usable by bee's own flag, time left, immutable, and its fullest bucket is full.      | yes              |
+| `expired` | On the node, `batchTTL` is 0.                                                                     | yes              |
+| `gone`    | Recorded, but the node does not have it, expired and dropped, or never bought there.              | yes              |
+| `unknown` | The node was not asked, or could not answer.                                                      | **no**           |
 
 **How full a batch is, since 2026-09-25.** A batch stops paying when it runs out
 of time or when it fills, and the classification read only the first. On
@@ -431,8 +431,8 @@ a restart until it is deployed again on `v3.4`. The wording of both warnings is
 
 `unknown` is the state that keeps the fix honest in both directions. A node being
 unreachable is not evidence that its batch is dead, so it must not raise an alarm
-It is not evidence the batch is *alive* either, so it must not read as
-"set". It renders as an explicit *unverified*, on the rung and on the assembled
+It is not evidence the batch is _alive_ either, so it must not read as
+"set". It renders as an explicit _unverified_, on the rung and on the assembled
 value.
 
 `batchTTL` needs care: bee returns `0` for a spent batch but a **negative** value
@@ -488,7 +488,7 @@ running off this host needs an address this manager does not compose, and giving
 it one is `BEE_LOCAL_HOST` plus a bind that admits it.
 
 The URL is still arithmetic, that host plus `10005 + slot*10`, so it always
-*looks* like an address whether or not anything is there. Two ways it goes wrong
+_looks_ like an address whether or not anything is there. Two ways it goes wrong
 are provable without touching the network, which matters because both are
 otherwise silent:
 
@@ -496,15 +496,15 @@ otherwise silent:
   assembles perfectly and works nowhere but the manager's own machine. The
   structural check still refuses it, and since f60b93c its message names
   `BEE_LOCAL_HOST` and the bridge address, which is where such a value comes from.
-- **An ssh target used as a network address.** `profiles.host` holds a *deploy*
+- **An ssh target used as a network address.** `profiles.host` holds a _deploy_
   target: the schema validates it against `[a-zA-Z0-9._@-]` and documents it as
   "localhost, an ssh alias, or user@host". `user@host` composed to
   `http://deploy@1.2.3.4:10055`, not a bee base URL, and a stray `@` inside an
   entry format that already separates the rung from the URL on `@`.
 
-The second is now *fixed* rather than merely detected: `resolveNetworkHost`
+The second is now _fixed_ rather than merely detected: `resolveNetworkHost`
 composes both URLs out of the target's address half. The userinfo is dropped,
-because the ssh account provably is not part of the address. A *dotless* name is
+because the ssh account provably is not part of the address. A _dotless_ name is
 resolved as an ssh alias: `ssh -G <name>` against the config the api container
 mounts, reading back the `hostname` it would dial, which is exactly what
 deploy.sh's `host_from_target` does with the same value, so a rung is dialled at
@@ -541,16 +541,16 @@ string" field under Edit replaces the old.
 the Uploaders tab, being about batches, showed no status at all, so a stopped
 rung looked exactly like a running one. Only `RUNNING`
 (`PUBLISHABLE_RUNG_STATUS`) is publishable, and anything else blocks with the state it
-is actually in, and the card grows a status chip *when it is not running*, since a
+is actually in, and the card grows a status chip _when it is not running_, since a
 chip on every healthy row would bury the one row that needs attention.
 
 ### Blocking versus warning
 
-| | Blocks the value | Warns, value still served |
-|---|---|---|
-| Node | not `RUNNING` | none |
-| Address | `loopback`, `ssh-target`, `malformed` | `unreachable` |
-| Batch | `none`, `pending`, `full`, `expired`, `gone` | `unknown`, expiring within 48h, a batch past 90% full that still takes uploads |
+|         | Blocks the value                             | Warns, value still served                                                      |
+| ------- | -------------------------------------------- | ------------------------------------------------------------------------------ |
+| Node    | not `RUNNING`                                | none                                                                           |
+| Address | `loopback`, `ssh-target`, `malformed`        | `unreachable`                                                                  |
+| Batch   | `none`, `pending`, `full`, `expired`, `gone` | `unknown`, expiring within 48h, a batch past 90% full that still takes uploads |
 
 The right-hand column is the honest half. Every entry there is something we could
 not confirm rather than something we found wrong, and treating "could not check"
@@ -590,14 +590,14 @@ names would have dropped both guards at exactly the wrong moment, letting
 ## Future work
 
 - An automatic stamp-manager layer: top up or re-buy a rung's batch before it
-  expires, instead of the manual per-rung repair. Expiry is now *visible* rather
+  expires, instead of the manual per-rung repair. Expiry is now _visible_ rather
   than silent, and since 2026-09-25 a rung can be topped up or diluted from its
   page, but the repair is still one manual change per rung.
 - Liveness on the Deployments tab: the tab reads every node's batch and
   chequebook, and since 2026-09-25 every running uploader's health, the same
   readings as the overview. `pendingStamp` is read on the deployment page alone,
   for the Deploy uploader button.
-- Reachability *from the uploader* rather than from the manager. The probe can
+- Reachability _from the uploader_ rather than from the manager. The probe can
   only tell you what the manager can reach, which is why an unreachable published
   address warns instead of blocking. A check run from where the uploader actually
   lives would be conclusive.

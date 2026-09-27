@@ -52,9 +52,7 @@ export function bzzToPlur(text: string): bigint | null {
   const [whole, fraction = ''] = trimmed.split('.');
   if (fraction.length > BZZ_FRACTION_DIGITS) return null;
 
-  const plur =
-    BigInt(whole || '0') * PLUR_PER_BZZ +
-    BigInt(fraction.padEnd(BZZ_FRACTION_DIGITS, '0'));
+  const plur = BigInt(whole || '0') * PLUR_PER_BZZ + BigInt(fraction.padEnd(BZZ_FRACTION_DIGITS, '0'));
   return plur > 0n ? plur : null;
 }
 
@@ -88,10 +86,7 @@ export function plurToBzzExact(plur: bigint): string {
   const negative = plur < 0n;
   const magnitude = negative ? -plur : plur;
   const whole = magnitude / PLUR_PER_BZZ;
-  const fraction = (magnitude % PLUR_PER_BZZ)
-    .toString()
-    .padStart(BZZ_FRACTION_DIGITS, '0')
-    .replace(/0+$/, '');
+  const fraction = (magnitude % PLUR_PER_BZZ).toString().padStart(BZZ_FRACTION_DIGITS, '0').replace(/0+$/, '');
 
   const sign = negative ? '-' : '';
   return fraction ? `${sign}${whole}.${fraction}` : `${sign}${whole}`;
@@ -215,13 +210,9 @@ export type ChequebookHealthsByName = ReadonlyMap<string, ChequebookHealth>;
  * pays, so it is a warning and never a reason to call the pool unready. A node
  * that did not answer said nothing either way and is left out.
  */
-export function drainedChequebooks(
-  healths: ChequebookHealthsByName,
-  names: readonly string[],
-): string[] {
+export function drainedChequebooks(healths: ChequebookHealthsByName, names: readonly string[]): string[] {
   return names.filter((name) => healths.get(name)?.state === 'empty');
 }
-
 
 /**
  * Why a deposit is more than the node's wallet can cover.
@@ -231,10 +222,7 @@ export function drainedChequebooks(
  * manager or reviewing the frontend against it proves nothing about the real
  * thing. So they are written once, here, next to the numbers they quote.
  */
-export function depositOverWalletReason(
-  walletPlur: bigint,
-  amountPlur: bigint,
-): string {
+export function depositOverWalletReason(walletPlur: bigint, amountPlur: bigint): string {
   return `This node's wallet holds ${plurToBzz(walletPlur)} BZZ and the deposit asks for ${plurToBzz(amountPlur)} BZZ. Send more BZZ to the node's funding address, or fill with less.`;
 }
 
@@ -243,10 +231,7 @@ export const NO_XDAI_FOR_GAS_REASON =
   "This node's wallet has no xDAI, so it cannot pay the gas an on-chain deposit costs. Send a little xDAI to the node's funding address, then try again.";
 
 /** Why a withdrawal is more than the chequebook has left to give back. */
-export function withdrawalOverChequebookReason(
-  availablePlur: bigint,
-  amountPlur: bigint,
-): string {
+export function withdrawalOverChequebookReason(availablePlur: bigint, amountPlur: bigint): string {
   return `This node's chequebook has ${plurToBzz(availablePlur)} BZZ available and the withdrawal asks for ${plurToBzz(amountPlur)} BZZ. Withdraw less, or wait for the cheques already handed out to be cashed.`;
 }
 
@@ -258,9 +243,7 @@ export interface ChequebookHealthPayload {
   failure?: ReadFailure;
 }
 
-export function chequebookHealthPayload(
-  health: ChequebookHealth,
-): ChequebookHealthPayload {
+export function chequebookHealthPayload(health: ChequebookHealth): ChequebookHealthPayload {
   return {
     state: health.state,
     availablePlur: health.availablePlur?.toString() ?? null,
@@ -269,9 +252,7 @@ export function chequebookHealthPayload(
   };
 }
 
-export function chequebookHealthFromPayload(
-  payload: ChequebookHealthPayload,
-): ChequebookHealth {
+export function chequebookHealthFromPayload(payload: ChequebookHealthPayload): ChequebookHealth {
   return {
     state: payload.state,
     availablePlur: parsePlur(payload.availablePlur),

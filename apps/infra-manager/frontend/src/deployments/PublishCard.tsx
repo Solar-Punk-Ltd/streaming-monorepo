@@ -15,10 +15,7 @@ import { deploymentProgressText } from './deploymentPhase';
  * SRT_PASSPHRASE publishes in the clear, and saying "encrypted" there would be
  * the one sentence on this page that is not true.
  */
-function passphraseNote(
-  profile: Profile,
-  hostPassphrase: string | null,
-): string {
+function passphraseNote(profile: Profile, hostPassphrase: string | null): string {
   if (engineOf(profile) === OME_SERVICE) {
     return 'OvenMediaEngine ingest. Its SRT listener takes no passphrase.';
   }
@@ -48,24 +45,26 @@ export function PublishCard({
   return (
     <SectionCard title="Publish" sub="OBS, FFmpeg or any SRT sender">
       <Stack spacing={1.25}>
-        <Alert severity={ready ? 'info' : 'warning'}>
-          {deploymentProgressText(profile)}
-        </Alert>
+        <Alert severity={ready ? 'info' : 'warning'}>{deploymentProgressText(profile)}</Alert>
         <CopyBox value={url} disabled={passphrasePending} />
         {passphrasePending && (
-          <Typography variant="caption" sx={{
-            color: "text.secondary"
-          }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
             Reading this deployment&apos;s passphrase. Copy is available when the complete URL is ready.
           </Typography>
         )}
-        <Typography variant="caption" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {!passphrasePending && <>{passphraseNote(profile, hostPassphrase)} </>}
-          Change{' '}
-          <code>live/stream</code> to your own app and stream name if you use
-          one.
+          Change <code>live/stream</code> to your own app and stream name if you use one.
         </Typography>
       </Stack>
     </SectionCard>

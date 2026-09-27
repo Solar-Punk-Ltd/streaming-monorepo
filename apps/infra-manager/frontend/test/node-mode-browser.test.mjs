@@ -69,11 +69,15 @@ async function startMockManager(t) {
   const child = spawn(
     process.execPath,
     [
-      '--import', 'tsx', '--conditions=development', '--input-type=module',
+      '--import',
+      'tsx',
+      '--conditions=development',
+      '--input-type=module',
       // The seed leaves a blocked deploy attempt behind, which holds every deploy
       // of a version with shared image tags. Released, as an operator would
       // release it from the Versions page before creating anything.
-      '-e', "import { state } from './dev/mock-seed.mjs'; await import('./dev/mock-manager.mjs'); state.attempts = []; process.send({ ready: true });",
+      '-e',
+      "import { state } from './dev/mock-seed.mjs'; await import('./dev/mock-manager.mjs'); state.attempts = []; process.send({ ready: true });",
     ],
     { cwd: frontend, env: { ...process.env, PORT: String(port) }, stdio: ['ignore', 'ignore', 'inherit', 'ipc'] },
   );
@@ -82,11 +86,17 @@ async function startMockManager(t) {
     const exited = once(child, 'exit');
     const bound = setTimeout(() => child.kill('SIGKILL'), 2_000);
     child.kill('SIGTERM');
-    try { await exited; } finally { clearTimeout(bound); }
+    try {
+      await exited;
+    } finally {
+      clearTimeout(bound);
+    }
   });
   await new Promise((done, fail) => {
     const bound = setTimeout(() => finish(new Error('the mock manager did not start')), 20_000);
-    const onMessage = (message) => { if (message?.ready) finish(); };
+    const onMessage = (message) => {
+      if (message?.ready) finish();
+    };
     const onExit = () => finish(new Error('the mock manager exited before it was ready'));
     const finish = (error) => {
       clearTimeout(bound);
@@ -130,8 +140,7 @@ test('a node is created in the mode and on the endpoint the wizard offered', asy
     await clickWhenEnabled(evaluate, found(selector), description);
     await settled();
   };
-  const fill = (selector, value) =>
-    fillWhenPresent(evaluate, found(selector), value, `the ${selector} field`);
+  const fill = (selector, value) => fillWhenPresent(evaluate, found(selector), value, `the ${selector} field`);
   /** One radio card of a ChoiceGroup, which carries its title as its label. */
   const choose = (label) =>
     clickSelected(`input[type=radio][aria-label=${JSON.stringify(label)}]`, `the ${label} choice`);
@@ -149,7 +158,10 @@ test('a node is created in the mode and on the endpoint the wizard offered', asy
   /** Whether that choice is selected, or null where the page offers it at all. */
   const chosen = (label) => evaluate(`${radio(label)}?.checked ?? null`);
   const disabled = (label) => evaluate(`${radio(label)}?.disabled ?? null`);
-  const next = async () => { await click('Continue'); await settled(); };
+  const next = async () => {
+    await click('Continue');
+    await settled();
+  };
   /**
    * The version picker is offered whenever the choice is not already made for
    * the operator, and whether this run gets that is a race with the versions

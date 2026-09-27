@@ -19,49 +19,67 @@ export function createTargetsRouter(
   firewall?: Pick<FirewallInventoryExporter, 'export'>,
 ): Router {
   const router = Router();
-  router.get('/firewall', asyncHandler(async (req, res) => {
-    const alias = req.query.alias;
-    if (typeof alias !== 'string' || !alias.trim()) {
-      res.status(400).json({ error: 'validation_error', errors: ['Name the verified deploy target to export.'] });
-      return;
-    }
-    if (!firewall) {
-      res.status(503).json({ error: 'inventory_unavailable', message: 'Firewall inventory export is not configured.' });
-      return;
-    }
-    const evidence = await firewall.export(alias);
-    res.setHeader('Content-Disposition', 'attachment; filename="firewall-inventory.json"');
-    res.json(evidence);
-  }));
-  router.get('/', asyncHandler(async (_req, res) => {
-    const [rows, seededAt] = await Promise.all([targets.list(), ports.inventorySeededAt()]);
-    const views = await Promise.all(rows.map(async row => ({
-      ...toView(row),
-      inventorySeededAt: row.daemonId ? (await ports.inventorySeededAt(row.daemonId))?.toISOString() ?? null : null,
-    })));
-    res.json({ targets: views, inventorySeededAt: seededAt?.toISOString() ?? null });
-  }));
-  router.post('/inventory', asyncHandler(async (_req, res) => {
-    if (!inventory) {
-      res.status(503).json({ error: 'inventory_unavailable', message: 'Inventory recovery is not configured.' });
-      return;
-    }
-    await inventory.seed();
-    res.json({ inventorySeededAt: (await ports.inventorySeededAt())?.toISOString() ?? null });
-  }));
-  router.post('/verify', asyncHandler(async (req, res) => {
-    const alias: unknown = req.body?.alias;
-    if (typeof alias !== 'string' || !alias.trim()) {
-      res.status(400).json({ error: 'validation_error', errors: ['Enter the deploy target to verify.'] });
-      return;
-    }
-    await targets.verify(alias);
-    if (inventory) {
-      await inventory.daemonIdFor(alias);
+  router.get(
+    '/firewall',
+    asyncHandler(async (req, res) => {
+      const alias = req.query.alias;
+      if (typeof alias !== 'string' || !alias.trim()) {
+        res.status(400).json({ error: 'validation_error', errors: ['Name the verified deploy target to export.'] });
+        return;
+      }
+      if (!firewall) {
+        res
+          .status(503)
+          .json({ error: 'inventory_unavailable', message: 'Firewall inventory export is not configured.' });
+        return;
+      }
+      const evidence = await firewall.export(alias);
+      res.setHeader('Content-Disposition', 'attachment; filename="firewall-inventory.json"');
+      res.json(evidence);
+    }),
+  );
+  router.get(
+    '/',
+    asyncHandler(async (_req, res) => {
+      const [rows, seededAt] = await Promise.all([targets.list(), ports.inventorySeededAt()]);
+      const views = await Promise.all(
+        rows.map(async (row) => ({
+          ...toView(row),
+          inventorySeededAt: row.daemonId
+            ? ((await ports.inventorySeededAt(row.daemonId))?.toISOString() ?? null)
+            : null,
+        })),
+      );
+      res.json({ targets: views, inventorySeededAt: seededAt?.toISOString() ?? null });
+    }),
+  );
+  router.post(
+    '/inventory',
+    asyncHandler(async (_req, res) => {
+      if (!inventory) {
+        res.status(503).json({ error: 'inventory_unavailable', message: 'Inventory recovery is not configured.' });
+        return;
+      }
       await inventory.seed();
-    }
-    const target = (await targets.list()).find((entry) => entry.alias === alias);
-    res.json({ target: toView(target!) });
-  }));
+      res.json({ inventorySeededAt: (await ports.inventorySeededAt())?.toISOString() ?? null });
+    }),
+  );
+  router.post(
+    '/verify',
+    asyncHandler(async (req, res) => {
+      const alias: unknown = req.body?.alias;
+      if (typeof alias !== 'string' || !alias.trim()) {
+        res.status(400).json({ error: 'validation_error', errors: ['Enter the deploy target to verify.'] });
+        return;
+      }
+      await targets.verify(alias);
+      if (inventory) {
+        await inventory.daemonIdFor(alias);
+        await inventory.seed();
+      }
+      const target = (await targets.list()).find((entry) => entry.alias === alias);
+      res.json({ target: toView(target!) });
+    }),
+  );
   return router;
 }

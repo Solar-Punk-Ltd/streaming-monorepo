@@ -42,7 +42,12 @@ const { call, startRouterTestApp } = await import('../support/routerTestApp.js')
 const INSTANCE_ID = '6f1c2b1e-3a4d-4c5e-9f60-7a8b9c0d1e2f';
 
 /** A page save of a stack value and an engine value, as the settings page makes one. */
-const PAGE_SAVE = { plain: { LOG_LEVEL: 'warn' }, secret: {}, remove: [], engine: { set: { HLS_WINDOW: '25' }, remove: [] } };
+const PAGE_SAVE = {
+  plain: { LOG_LEVEL: 'warn' },
+  secret: {},
+  remove: [],
+  engine: { set: { HLS_WINDOW: '25' }, remove: [] },
+};
 
 describe('the engine settings route and the settings revision', () => {
   it('moves the revision a settings page names', async () => {
@@ -62,7 +67,10 @@ describe('the engine settings route and the settings revision', () => {
       await profiles.updateStackSettings('stream1', PAGE_SAVE, { instanceId, expectedRevision: 0 });
     };
 
-    await assert.rejects(harness.service.updateEngineSettings('stream1', { HLS_WINDOW: '30' }), EngineSettingsChangedError);
+    await assert.rejects(
+      harness.service.updateEngineSettings('stream1', { HLS_WINDOW: '30' }),
+      EngineSettingsChangedError,
+    );
 
     assert.deepEqual(profiles.rows.get('stream1')!.engine_settings, { HLS_WINDOW: '25' });
     assert.deepEqual(profiles.stackSettings.get('stream1'), { LOG_LEVEL: 'warn' });
@@ -74,16 +82,32 @@ describe('the engine settings route and the settings revision', () => {
 });
 
 function sessionFor(username: string): SessionInfo {
-  return { user: { id: 1, username, isAdmin: false }, tokenHash: 'not-a-token', expiresAt: new Date(Date.now() + 60_000) };
+  return {
+    user: { id: 1, username, isAdmin: false },
+    tokenHash: 'not-a-token',
+    expiresAt: new Date(Date.now() + 60_000),
+  };
 }
 
 /** Both routers on one app over the same rows, as `api/server.ts` mounts them behind a session. */
 async function bothRoutes() {
-  const harness = orchestratorHarness([makeProfile({ name: 'stage', stamp_id: 'a'.repeat(64), instance_id: INSTANCE_ID })]);
-  const profiles = new ProfileService(harness.profiles.asRepository(), harness.containers.asRepository(),
-    harness.orchestrator, harness.events, {} as DeploymentGroupRepository, harness.versions);
-  const settings = new DeploymentSettingsService(harness.profiles.asRepository(), harness.containers.asRepository(),
-    harness.orchestrator, harness.versions);
+  const harness = orchestratorHarness([
+    makeProfile({ name: 'stage', stamp_id: 'a'.repeat(64), instance_id: INSTANCE_ID }),
+  ]);
+  const profiles = new ProfileService(
+    harness.profiles.asRepository(),
+    harness.containers.asRepository(),
+    harness.orchestrator,
+    harness.events,
+    {} as DeploymentGroupRepository,
+    harness.versions,
+  );
+  const settings = new DeploymentSettingsService(
+    harness.profiles.asRepository(),
+    harness.containers.asRepository(),
+    harness.orchestrator,
+    harness.versions,
+  );
   const outer = Router();
   const session = sessionFor('operator');
   outer.use((req, _res, next) => {
@@ -102,7 +126,10 @@ describe('a page that read before a scripted save', () => {
     try {
       const read = await call(app, 'GET', '/profiles/stage/settings');
       assert.equal(read.status, 200, JSON.stringify(read.body));
-      const scripted = await call(app, 'PUT', '/profiles/stage/engine-settings', { HLS_WINDOW: '20', expectedInstanceId: INSTANCE_ID });
+      const scripted = await call(app, 'PUT', '/profiles/stage/engine-settings', {
+        HLS_WINDOW: '20',
+        expectedInstanceId: INSTANCE_ID,
+      });
       assert.equal(scripted.status, 202, JSON.stringify(scripted.body));
 
       const late = await call(app, 'PUT', '/profiles/stage/settings', {

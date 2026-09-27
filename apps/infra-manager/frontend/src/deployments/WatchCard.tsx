@@ -19,9 +19,12 @@ export function WatchCard({
     <SectionCard title="Watch" sub="the player this deployment serves">
       <Stack spacing={1.25}>
         <CopyBox value={url} href={url} />
-        <Typography variant="caption" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           Follows{' '}
           {streamerName ? (
             <Typography component="span" variant="caption" sx={{ fontFamily: MONO_STACK, fontWeight: 600 }}>

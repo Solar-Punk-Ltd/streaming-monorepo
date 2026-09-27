@@ -72,35 +72,17 @@ export function ValueField({
       />
       <Stack direction="row" sx={{ pt: 0.5 }}>
         {secret ? (
-          <Tooltip
-            title={
-              revealed
-                ? `Hide ${label.toLowerCase()}`
-                : `Show ${label.toLowerCase()}`
-            }
-          >
+          <Tooltip title={revealed ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}>
             <IconButton
               size="small"
-              aria-label={
-                revealed
-                  ? `hide ${label.toLowerCase()}`
-                  : `show ${label.toLowerCase()}`
-              }
+              aria-label={revealed ? `hide ${label.toLowerCase()}` : `show ${label.toLowerCase()}`}
               onClick={() => setRevealed((v) => !v)}
             >
-              {revealed ? (
-                <VisibilityOffIcon fontSize="inherit" />
-              ) : (
-                <VisibilityIcon fontSize="inherit" />
-              )}
+              {revealed ? <VisibilityOffIcon fontSize="inherit" /> : <VisibilityIcon fontSize="inherit" />}
             </IconButton>
           </Tooltip>
         ) : null}
-        <CopyButton
-          value={value}
-          label={label}
-          onCopyUnavailable={selectForManualCopy}
-        />
+        <CopyButton value={value} label={label} onCopyUnavailable={selectForManualCopy} />
       </Stack>
     </Stack>
   );

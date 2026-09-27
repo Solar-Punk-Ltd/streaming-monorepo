@@ -1,15 +1,23 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ChequebookRecoveryObservation } from '@streaming-infra-manager/common';
-import { attributionConflictObservation, normalizeRecoveryObservation, recoveryHashes } from '../../src/domain/chequebook/recoveryObservation.js';
+import {
+  attributionConflictObservation,
+  normalizeRecoveryObservation,
+  recoveryHashes,
+} from '../../src/domain/chequebook/recoveryObservation.js';
 import { InMemoryChequebookOperations, operationCandidate } from '../support/chequebookOperations.js';
 
-const hashes = (count: number) => Array.from({ length: count }, (_, i) => `0x${(i + 1).toString(16).padStart(64, '0')}`);
+const hashes = (count: number) =>
+  Array.from({ length: count }, (_, i) => `0x${(i + 1).toString(16).padStart(64, '0')}`);
 
 describe('recovery evidence limits', () => {
   it('applies the cap to validated unique hashes, including case-insensitive duplicates', () => {
     const candidates = hashes(256);
-    assert.deepEqual(recoveryHashes([...candidates, ...candidates.map(hash => `0x${hash.slice(2).toUpperCase()}`)]), candidates);
+    assert.deepEqual(
+      recoveryHashes([...candidates, ...candidates.map((hash) => `0x${hash.slice(2).toUpperCase()}`)]),
+      candidates,
+    );
     assert.throws(() => recoveryHashes([...candidates, 'not-a-hash']), /invalid/i);
     assert.throws(() => recoveryHashes(hashes(257)), /invalid/i);
   });
@@ -18,11 +26,23 @@ describe('recovery evidence limits', () => {
     const repository = new InMemoryChequebookOperations();
     const admitted = await repository.admit(operationCandidate());
     const candidateHashes = hashes(129);
-    const firstObservation: ChequebookRecoveryObservation = { kind: 'searching', candidateHashes,
-      scan: { headBlockNumber: '505', headBlockHash: hashes(505)[504]!, nextBlockNumber: '503', nextBlockHash: hashes(503)[502]!, complete: false, candidateHashes } };
+    const firstObservation: ChequebookRecoveryObservation = {
+      kind: 'searching',
+      candidateHashes,
+      scan: {
+        headBlockNumber: '505',
+        headBlockHash: hashes(505)[504]!,
+        nextBlockNumber: '503',
+        nextBlockHash: hashes(503)[502]!,
+        complete: false,
+        candidateHashes,
+      },
+    };
     const first = await repository.recordRecovery(admitted.operation, firstObservation, []);
-    const nextObservation: ChequebookRecoveryObservation = { ...firstObservation,
-      scan: { ...firstObservation.scan, nextBlockNumber: '501', nextBlockHash: hashes(501)[500]! } };
+    const nextObservation: ChequebookRecoveryObservation = {
+      ...firstObservation,
+      scan: { ...firstObservation.scan, nextBlockNumber: '501', nextBlockHash: hashes(501)[500]! },
+    };
     const next = await repository.recordRecovery(first, nextObservation, []);
     assert.equal(next.revision, String(BigInt(first.revision) + 1n));
     assert.equal(next.recoveryObservation?.scan?.nextBlockNumber, '501');
@@ -52,7 +72,15 @@ describe('recovery evidence limits', () => {
     const conflict = attributionConflictObservation({ ...operation, transactionHash: owned! }, response!);
     assert.deepEqual(conflict.candidateHashes, [owned, response]);
     assert.equal(conflict.additionalEvidenceInResponseJournal, undefined);
-    assert.throws(() => normalizeRecoveryObservation({ kind: 'could_not_check', reason: 'rpc_unavailable', candidateHashes: [], additionalEvidenceInResponseJournal: true } as unknown as ChequebookRecoveryObservation), /invalid/i);
+    assert.throws(
+      () =>
+        normalizeRecoveryObservation({
+          kind: 'could_not_check',
+          reason: 'rpc_unavailable',
+          candidateHashes: [],
+          additionalEvidenceInResponseJournal: true,
+        } as unknown as ChequebookRecoveryObservation),
+      /invalid/i,
+    );
   });
-
 });

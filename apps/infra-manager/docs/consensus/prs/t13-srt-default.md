@@ -25,15 +25,15 @@ The wizard started every new stream and ABR uploader on "Use the host-wide passp
 
 `frontend/src/forms/wizard/wizardState.test.ts`, run with `cd frontend && pnpm test`:
 
-| # | Guarantee | Before the fix | After |
-| --- | --- | --- | --- |
-| 1 | With a host-wide passphrase the default is host, and null is submitted (the host-wide one) | pass | pass |
-| 2 | Without one the default is generate, and the generated passphrase is what is submitted | fail, passMode host | pass |
-| 3 | The same for an ABR uploader | fail | pass |
-| 4 | A change of goal keeps the safe default | fail | pass |
-| 5 | Review names the host-wide passphrase when the host has one | load failure | pass |
-| 6 | Review says unencrypted when host-wide is chosen on a host without one | load failure | pass |
-| 7 | Review says generated, and your own | load failure | pass |
+| #   | Guarantee                                                                                  | Before the fix      | After |
+| --- | ------------------------------------------------------------------------------------------ | ------------------- | ----- |
+| 1   | With a host-wide passphrase the default is host, and null is submitted (the host-wide one) | pass                | pass  |
+| 2   | Without one the default is generate, and the generated passphrase is what is submitted     | fail, passMode host | pass  |
+| 3   | The same for an ABR uploader                                                               | fail                | pass  |
+| 4   | A change of goal keeps the safe default                                                    | fail                | pass  |
+| 5   | Review names the host-wide passphrase when the host has one                                | load failure        | pass  |
+| 6   | Review says unencrypted when host-wide is chosen on a host without one                     | load failure        | pass  |
+| 7   | Review says generated, and your own                                                        | load failure        | pass  |
 
 7 tests pass. `pnpm typecheck` in `frontend/` clean at every commit.
 

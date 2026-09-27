@@ -39,10 +39,7 @@ export const SRT_LINK_DEGRADED = 'degraded' as const;
 /** Dropped packets reached the bad line. */
 export const SRT_LINK_BAD = 'bad' as const;
 
-export type SrtLinkVerdict =
-  | typeof SRT_LINK_HEALTHY
-  | typeof SRT_LINK_DEGRADED
-  | typeof SRT_LINK_BAD;
+export type SrtLinkVerdict = typeof SRT_LINK_HEALTHY | typeof SRT_LINK_DEGRADED | typeof SRT_LINK_BAD;
 
 /** The share of dropped packets, against those received, at and above which a link is bad. */
 export const SRT_BAD_DROP_PERCENT = 1;
@@ -114,9 +111,7 @@ export interface SrtIngestMeasurement {
 }
 
 /** A measured reading, with the shares and the verdict worked out from its counts. */
-export function measuredSrtIngest(
-  measurement: SrtIngestMeasurement,
-): SrtIngestMeasured {
+export function measuredSrtIngest(measurement: SrtIngestMeasurement): SrtIngestMeasured {
   return {
     state: SRT_INGEST_MEASURED,
     ...measurement,

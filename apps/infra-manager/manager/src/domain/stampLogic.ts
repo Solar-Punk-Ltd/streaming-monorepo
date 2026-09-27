@@ -26,21 +26,12 @@ export interface DeploySplit {
 // own and is released here. deploy.sh's check_stamp accepts BEE_PUBLISHERS in
 // place of STAMP, so this is the same either-or one step earlier rather than a
 // rule only the manager applies.
-export function splitDeployableServices(
-  profile: Profile,
-  services: readonly string[],
-): DeploySplit {
-  if (
-    hasStampId(profile) ||
-    hasBeePublishers(profile) ||
-    !servicesNeedStamp(services)
-  ) {
+export function splitDeployableServices(profile: Profile, services: readonly string[]): DeploySplit {
+  if (hasStampId(profile) || hasBeePublishers(profile) || !servicesNeedStamp(services)) {
     return { deployNow: [...services], heldBackForStamp: [] };
   }
   return {
-    deployNow: services.filter(
-      (service) => service !== STREAM_UPLOADER_SERVICE,
-    ),
+    deployNow: services.filter((service) => service !== STREAM_UPLOADER_SERVICE),
     heldBackForStamp: [STREAM_UPLOADER_SERVICE],
   };
 }

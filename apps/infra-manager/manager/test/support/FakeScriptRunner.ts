@@ -1,10 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-import {
-  RunHandle,
-  RunOptions,
-  ScriptRunner,
-} from '../../src/domain/ScriptRunner.js';
+import { RunHandle, RunOptions, ScriptRunner } from '../../src/domain/ScriptRunner.js';
 
 export interface RecordedScriptRun {
   script: string;
@@ -23,11 +19,7 @@ export class FakeScriptRunner extends ScriptRunner {
 
   private readonly emitters: EventEmitter[] = [];
 
-  override run(
-    script: string,
-    args: string[],
-    options: RunOptions = {},
-  ): RunHandle {
+  override run(script: string, args: string[], options: RunOptions = {}): RunHandle {
     const emitter = new EventEmitter();
     const run = { script, args, options };
     this.runs.push(run);

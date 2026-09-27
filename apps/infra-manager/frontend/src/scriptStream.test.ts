@@ -1,12 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  parseScriptFrame,
-  readScriptOutcome,
-  readScriptStream,
-  type ScriptProgress,
-} from './scriptStream';
+import { parseScriptFrame, readScriptOutcome, readScriptStream, type ScriptProgress } from './scriptStream';
 
 function frame(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -26,7 +21,11 @@ describe('what a deployment action actually did', () => {
   it('resolves when the script exited 0', async () => {
     await assert.doesNotReject(
       readScriptOutcome(
-        streamOf(frame('start', { script: 'deploy.sh', args: [] }), frame('stdout', { chunk: 'up\n' }), frame('done', { code: 0 })),
+        streamOf(
+          frame('start', { script: 'deploy.sh', args: [] }),
+          frame('stdout', { chunk: 'up\n' }),
+          frame('done', { code: 0 }),
+        ),
       ),
     );
   });
@@ -40,7 +39,9 @@ describe('what a deployment action actually did', () => {
 
   it('refuses with the words of the error frame when there was one', async () => {
     await assert.rejects(
-      readScriptOutcome(streamOf(frame('error', { message: 'compose refused the deploy' }), frame('done', { code: 0 }))),
+      readScriptOutcome(
+        streamOf(frame('error', { message: 'compose refused the deploy' }), frame('done', { code: 0 })),
+      ),
       /compose refused the deploy/,
     );
   });
@@ -68,6 +69,10 @@ describe('the frames a script route answers with', () => {
     assert.equal(parseScriptFrame('event: keepalive'), null);
     assert.equal(parseScriptFrame(': a comment'), null);
     assert.deepEqual(parseScriptFrame('event: done\ndata: not json'), { kind: 'done', code: -1 });
-    assert.deepEqual(parseScriptFrame('event: stderr\ndata: {"chunk":"bad"}'), { kind: 'output', chunk: 'bad', isError: true });
+    assert.deepEqual(parseScriptFrame('event: stderr\ndata: {"chunk":"bad"}'), {
+      kind: 'output',
+      chunk: 'bad',
+      isError: true,
+    });
   });
 });

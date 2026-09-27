@@ -53,9 +53,12 @@ export function StampTable({
 } & BatchHandlers) {
   return (
     <Box>
-      <Typography variant="overline" sx={{
-        color: "text.secondary"
-      }}>
+      <Typography
+        variant="overline"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
         Postage stamps
       </Typography>
       <Paper variant="outlined" sx={{ mt: 1, overflowX: 'auto' }}>
@@ -75,11 +78,7 @@ export function StampTable({
             {stamps === null || stamps.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={COLUMN_COUNT}>
-                  <EmptyState
-                    stamps={stamps}
-                    loading={loading}
-                    currentStampId={currentStampId}
-                  />
+                  <EmptyState stamps={stamps} loading={loading} currentStampId={currentStampId} />
                 </TableCell>
               </TableRow>
             ) : (
@@ -87,9 +86,7 @@ export function StampTable({
                 <BatchRows
                   key={stamp.batchID}
                   stamp={stamp}
-                  isCurrent={
-                    currentStampId != null && sameBatchId(currentStampId, stamp.batchID)
-                  }
+                  isCurrent={currentStampId != null && sameBatchId(currentStampId, stamp.batchID)}
                   busy={busy}
                   {...handlers}
                 />
@@ -104,10 +101,7 @@ export function StampTable({
 
 /** One batch: its readings, and under them what can be done with it. */
 /** The Usable column's chip: spent, paying, or bought and not yet confirmed. */
-function usabilityChip(
-  stamp: BeeStamp,
-  expired: boolean,
-): { color: 'error' | 'success' | 'warning'; label: string } {
+function usabilityChip(stamp: BeeStamp, expired: boolean): { color: 'error' | 'success' | 'warning'; label: string } {
   if (expired) return { color: 'error', label: 'expired' };
   return stamp.usable ? { color: 'success', label: 'usable' } : { color: 'warning', label: 'pending' };
 }
@@ -133,9 +127,13 @@ function BatchRows({
     <>
       <TableRow sx={{ '& > td': { borderBottom: 0 } }}>
         <TableCell sx={{ fontFamily: 'monospace' }}>
-          <Stack direction="row" spacing={0.5} sx={{
-            alignItems: "center"
-          }}>
+          <Stack
+            direction="row"
+            spacing={0.5}
+            sx={{
+              alignItems: 'center',
+            }}
+          >
             <span>{shortHex(stamp.batchID)}</span>
             <CopyButton value={stamp.batchID} label="batch id" />
           </Stack>
@@ -145,12 +143,7 @@ function BatchRows({
           {stamp.amount}
         </TableCell>
         <TableCell>
-          <Chip
-            size="small"
-            variant="outlined"
-            color={usability.color}
-            label={usability.label}
-          />
+          <Chip size="small" variant="outlined" color={usability.color} label={usability.label} />
         </TableCell>
         <TableCell>
           <Chip
@@ -164,16 +157,16 @@ function BatchRows({
           title={fill.chunks ? `${fill.chunks} chunks in its fullest bucket` : undefined}
           sx={{ whiteSpace: 'nowrap' }}
         >
-          <Typography
-            variant="body2"
-            sx={{ color: fill.warning ? FILL_COLOUR[fill.warning] : undefined }}
-          >
+          <Typography variant="body2" sx={{ color: fill.warning ? FILL_COLOUR[fill.warning] : undefined }}>
             {fill.percent}
           </Typography>
           {fill.chunks && (
-            <Typography variant="caption" sx={{
-              color: "text.secondary"
-            }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'text.secondary',
+              }}
+            >
               {fill.chunks}
             </Typography>
           )}
@@ -187,51 +180,42 @@ function BatchRows({
             spacing={1}
             useFlexGap
             sx={{
-              flexWrap: "wrap",
-              alignItems: "center"
-            }}>
+              flexWrap: 'wrap',
+              alignItems: 'center',
+            }}
+          >
             {isCurrent ? (
-              <Chip
-                size="small"
-                label={expired ? 'in use, expired' : 'in use'}
-                color={expired ? 'error' : 'default'}
-              />
+              <Chip size="small" label={expired ? 'in use, expired' : 'in use'} color={expired ? 'error' : 'default'} />
             ) : (
               <>
-                <Button
-                  size="small"
-                  disabled={!actions.use.enabled}
-                  onClick={() => onUse(stamp.batchID)}
-                >
+                <Button size="small" disabled={!actions.use.enabled} onClick={() => onUse(stamp.batchID)}>
                   Use
                 </Button>
                 {actions.use.note && (
-                  <Typography variant="caption" sx={{
-                    color: "error.main"
-                  }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'error.main',
+                    }}
+                  >
                     {actions.use.note}
                   </Typography>
                 )}
               </>
             )}
-            <Button
-              size="small"
-              disabled={!actions.topUp.enabled}
-              onClick={() => onTopUp(stamp)}
-            >
+            <Button size="small" disabled={!actions.topUp.enabled} onClick={() => onTopUp(stamp)}>
               Top up
             </Button>
-            <Button
-              size="small"
-              disabled={!actions.dilute.enabled}
-              onClick={() => onDilute(stamp)}
-            >
+            <Button size="small" disabled={!actions.dilute.enabled} onClick={() => onDilute(stamp)}>
               Dilute
             </Button>
             {actions.dilute.note && (
-              <Typography variant="caption" sx={{
-                color: "text.secondary"
-              }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                }}
+              >
                 {actions.dilute.note}
               </Typography>
             )}
@@ -261,9 +245,12 @@ function EmptyState({
 }) {
   if (stamps === null) {
     return (
-      <Typography variant="body2" sx={{
-        color: "text.disabled"
-      }}>
+      <Typography
+        variant="body2"
+        sx={{
+          color: 'text.disabled',
+        }}
+      >
         {loading
           ? 'Loading…'
           : 'Could not read this node’s batches, so nothing here is known either way. Press Refresh once the node is reachable.'}
@@ -276,9 +263,8 @@ function EmptyState({
   if (currentStampId) {
     return (
       <Typography variant="body2" sx={{ color: 'error.main' }}>
-        This node holds no batches, yet {shortHex(currentStampId)} is still
-        recorded on the profile. Buy a new one below, and it is set here once
-        it is usable.
+        This node holds no batches, yet {shortHex(currentStampId)} is still recorded on the profile. Buy a new one
+        below, and it is set here once it is usable.
       </Typography>
     );
   }

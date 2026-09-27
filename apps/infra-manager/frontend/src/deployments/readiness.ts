@@ -42,7 +42,10 @@ const STEP_TONES: Record<StepState, Tone> = { ok: 'ok', warn: 'warn', err: 'err'
 export function readinessFor(input: ChecklistInput): Readiness {
   const blocker = firstBlocker(buildChecklist(input));
   if (blocker) return { label: blocker.problem ?? blocker.title, tone: STEP_TONES[blocker.state] };
-  return { label: shapeOf(input.profile) === 'bee-node' ? 'Node prerequisites checked' : 'Containers running', tone: 'ok' };
+  return {
+    label: shapeOf(input.profile) === 'bee-node' ? 'Node prerequisites checked' : 'Containers running',
+    tone: 'ok',
+  };
 }
 
 /**
@@ -61,9 +64,15 @@ export function readinessOf(
   { wallet, uploaderHealth }: OtherReadings = {},
 ): Readiness {
   return readinessFor({
-    profile, stampHealth: health ?? stampHealthFrom(profile.stamp_id, null),
-    chequebook: chequebook ?? null, wallet, nodeAddress: null,
-    currentStamp: null, publishUrl: null, clientUrl: null, streamers: [],
+    profile,
+    stampHealth: health ?? stampHealthFrom(profile.stamp_id, null),
+    chequebook: chequebook ?? null,
+    wallet,
+    nodeAddress: null,
+    currentStamp: null,
+    publishUrl: null,
+    clientUrl: null,
+    streamers: [],
     ...(uploaderHealth ? { uploaderHealth } : {}),
   });
 }

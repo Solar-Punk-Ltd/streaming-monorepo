@@ -8,7 +8,17 @@ import { ROOT_WORKSPACE } from './support/workspace.mjs';
 const ALPHA = {
   app: 'apps/alpha',
   injectWorkspacePackages: true,
-  packageNames: new Set(['abitype', 'body-parser', 'express', 'fsevents', 'qs', 'string-width', 'typescript', 'viem', 'zod']),
+  packageNames: new Set([
+    'abitype',
+    'body-parser',
+    'express',
+    'fsevents',
+    'qs',
+    'string-width',
+    'typescript',
+    'viem',
+    'zod',
+  ]),
   projects: ['common', 'server'],
 };
 
@@ -19,7 +29,9 @@ const BETA = {
   projects: [],
 };
 
-const header = (app) => `# The workspace of ${app} alone, cut from the repository's root pnpm-workspace.yaml by tools/app-workspace.
+const header = (
+  app,
+) => `# The workspace of ${app} alone, cut from the repository's root pnpm-workspace.yaml by tools/app-workspace.
 # Its projects, its injection setting and its build permissions are the app's own. Edit the root file, never this one.
 `;
 
@@ -70,7 +82,10 @@ saveExact: true
   });
 
   it('adds injectWorkspacePackages after the packages for an app that injects when the root names no setting', () => {
-    const root = ROOT_WORKSPACE.replace("# Off for the workspace. Each app's cut carries its own.\ninjectWorkspacePackages: false\n\n", '');
+    const root = ROOT_WORKSPACE.replace(
+      "# Off for the workspace. Each app's cut carries its own.\ninjectWorkspacePackages: false\n\n",
+      '',
+    );
 
     const cut = cutWorkspace(root, ALPHA);
 
@@ -85,7 +100,10 @@ saveExact: true
   });
 
   it('keeps a negated glob under the app, and drops one elsewhere', () => {
-    const root = ROOT_WORKSPACE.replace('  - tools/*\n', '  - tools/*\n  - "!apps/alpha/server/fixtures"\n  - "!tools/old"\n');
+    const root = ROOT_WORKSPACE.replace(
+      '  - tools/*\n',
+      '  - tools/*\n  - "!apps/alpha/server/fixtures"\n  - "!tools/old"\n',
+    );
 
     const cut = cutWorkspace(root, ALPHA);
 
@@ -97,9 +115,13 @@ saveExact: true
 
     assert.throws(
       () => cutWorkspace(root, ALPHA),
-      (error) => error instanceof Refusal && /fsevents/.test(error.message) && /set this to true or false/.test(error.message),
+      (error) =>
+        error instanceof Refusal && /fsevents/.test(error.message) && /set this to true or false/.test(error.message),
     );
-    assert.doesNotThrow(() => cutWorkspace(root, BETA), 'beta has no fsevents, so the placeholder is not its to refuse');
+    assert.doesNotThrow(
+      () => cutWorkspace(root, BETA),
+      'beta has no fsevents, so the placeholder is not its to refuse',
+    );
   });
 
   it('refuses a glob that reaches into the app from outside its folder', () => {
@@ -107,7 +129,8 @@ saveExact: true
 
     assert.throws(
       () => cutWorkspace(root, ALPHA),
-      (error) => error instanceof Refusal && /apps\/\*\/server/.test(error.message) && /apps\/alpha/.test(error.message),
+      (error) =>
+        error instanceof Refusal && /apps\/\*\/server/.test(error.message) && /apps\/alpha/.test(error.message),
     );
   });
 

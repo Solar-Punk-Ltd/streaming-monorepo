@@ -127,8 +127,7 @@ derives it in memory with `addressOfStreamKey` in `common/src/streamKey.ts`,
 and the key itself goes nowhere: not to the admin, an answer, an error or a
 log line. Only a deployment for which neither sets a key compares no owner. The
 wizard's test compares the address of the stream key chosen in the step, which
-the browser derives with the same function. This holds from 2026-09-26, commit
-1256076.
+the browser derives with the same function. This holds from 2026-09-26, commit 1256076.
 
 ## What it reaches
 

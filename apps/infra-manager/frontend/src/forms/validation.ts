@@ -1,8 +1,4 @@
-import {
-  addressOfStreamKey,
-  SRT_PASSPHRASE_MESSAGE,
-  SRT_PASSPHRASE_RE,
-} from '@streaming-infra-manager/common';
+import { addressOfStreamKey, SRT_PASSPHRASE_MESSAGE, SRT_PASSPHRASE_RE } from '@streaming-infra-manager/common';
 
 /**
  * The field rules the wizard and the drawers check before anything is sent.
@@ -23,8 +19,7 @@ export const STAMP_ID_RE = /^(0x)?[0-9a-fA-F]{64}$/;
 
 export const NOTES_MAX = 500;
 
-const NAME_RULE =
-  'lowercase letters, digits and dashes, max 31 characters';
+const NAME_RULE = 'lowercase letters, digits and dashes, max 31 characters';
 const HOST_RULE = 'an ssh alias or user@host, like deploy@10.0.0.7';
 const ADDRESS_RULE = '0x plus 40 hex characters';
 const PRIVATE_KEY_RULE = '0x plus 64 hex characters';
@@ -53,9 +48,7 @@ export function privateKeyProblem(value: string): Problem {
   if (!PRIVATE_KEY_RE.test(value)) return `Stream key: ${PRIVATE_KEY_RULE}`;
   // The right shape is not enough: all zeros, or a value past the curve order,
   // derives no address, and saving it would wipe the stream's public key.
-  return addressOfStreamKey(value) === null
-    ? 'Stream key: not a usable key, no address can be derived from it'
-    : null;
+  return addressOfStreamKey(value) === null ? 'Stream key: not a usable key, no address can be derived from it' : null;
 }
 
 export function stampIdProblem(value: string): Problem {
@@ -65,20 +58,14 @@ export function stampIdProblem(value: string): Problem {
 
 export function passphraseProblem(value: string): Problem {
   if (!value.trim()) return 'Enter a passphrase';
-  return SRT_PASSPHRASE_RE.test(value)
-    ? null
-    : `Passphrase ${SRT_PASSPHRASE_MESSAGE}`;
+  return SRT_PASSPHRASE_RE.test(value) ? null : `Passphrase ${SRT_PASSPHRASE_MESSAGE}`;
 }
 
 export function notesProblem(value: string): Problem {
-  return value.length > NOTES_MAX
-    ? `Notes: shorten to ${NOTES_MAX} characters, this is ${value.length}`
-    : null;
+  return value.length > NOTES_MAX ? `Notes: shorten to ${NOTES_MAX} characters, this is ${value.length}` : null;
 }
 
 export function groupSizeProblem(value: string): Problem {
   const count = Number(value);
-  return Number.isInteger(count) && count >= 1
-    ? null
-    : 'How many: a whole number, 1 or more';
+  return Number.isInteger(count) && count >= 1 ? null : 'How many: a whole number, 1 or more';
 }

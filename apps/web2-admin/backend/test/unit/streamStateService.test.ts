@@ -12,10 +12,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type {
-  FeedStreamEntry,
-  Rendition,
-} from '@streaming-monorepo/web2-admin-common';
+import type { FeedStreamEntry, Rendition } from '@streaming-monorepo/web2-admin-common';
 
 import { InvalidStateTransitionError } from '../../src/domain/errors/index.js';
 import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
@@ -36,8 +33,7 @@ import {
 const feed: FeedIdentity = {
   owner: TEST_OWNER,
   topic: 'swarm-stream',
-  topicHex:
-    'cfbbc155d709547b198638d0fb11d733359561538d8bd606a9ab257354d13bcc',
+  topicHex: 'cfbbc155d709547b198638d0fb11d733359561538d8bd606a9ab257354d13bcc',
 };
 
 /**
@@ -45,11 +41,7 @@ const feed: FeedIdentity = {
  * declared topic and the rung name, so it is the same across sessions — what
  * makes the merge keep a finished record rather than drop it.
  */
-function rung(
-  name: string,
-  height: number,
-  final?: { index: number; duration: number },
-): Rendition {
+function rung(name: string, height: number, final?: { index: number; duration: number }): Rendition {
   return {
     name,
     width: (height * 16) / 9,
@@ -70,13 +62,7 @@ async function setup() {
   const renditions = new FakeRenditionStore();
   const store = new FakeStreamStore(renditions);
   const gateway = new FakeFeedGateway();
-  const publishService = new PublishService(
-    store,
-    renditions,
-    new FakeFeedWriteLog(),
-    gateway,
-    feed,
-  );
+  const publishService = new PublishService(store, renditions, new FakeFeedWriteLog(), gateway, feed);
   const state = new StreamStateService(store, publishService);
   const ladder = new LadderService(store, renditions, publishService);
   const stream = store.add(streamRow());
@@ -85,16 +71,10 @@ async function setup() {
 }
 
 /** The stream's entry as the write at `index` left it on the feed. */
-function entryAt(
-  gateway: FakeFeedGateway,
-  index: number,
-  topic: string,
-): FeedStreamEntry {
+function entryAt(gateway: FakeFeedGateway, index: number, topic: string): FeedStreamEntry {
   const write = gateway.writes.find((w) => w.index === index);
   assert.ok(write, `a write at index ${index}`);
-  const entry = (write.entries as FeedStreamEntry[]).find(
-    (e) => e.topic === topic,
-  );
+  const entry = (write.entries as FeedStreamEntry[]).find((e) => e.topic === topic);
   assert.ok(entry, `an entry for ${topic} at index ${index}`);
   return entry;
 }
@@ -121,8 +101,7 @@ describe('StreamStateService.report', () => {
 
     await assert.rejects(
       () => state.report(draft.id, { state: 'live' }),
-      (err: unknown) =>
-        err instanceof InvalidStateTransitionError && err.from === 'draft',
+      (err: unknown) => err instanceof InvalidStateTransitionError && err.from === 'draft',
     );
   });
 

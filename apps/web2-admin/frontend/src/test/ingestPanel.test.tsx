@@ -1,22 +1,15 @@
 import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  IngestPanel,
-  KEY_UNVERIFIED_NOTE,
-} from '../components/IngestPanel';
+import { IngestPanel, KEY_UNVERIFIED_NOTE } from '../components/IngestPanel';
 import { makeIngest, mockFetch, renderWithProviders } from './helpers';
 
 const renderPanel = (details = makeIngest()) =>
-  renderWithProviders(
-    <IngestPanel streamId="stream-1" details={details} onRotated={vi.fn()} />,
-  );
+  renderWithProviders(<IngestPanel streamId="stream-1" details={details} onRotated={vi.fn()} />);
 
-const section = (name: 'SRT' | 'RTMP') =>
-  within(screen.getByRole('region', { name }));
+const section = (name: 'SRT' | 'RTMP') => within(screen.getByRole('region', { name }));
 
-const shownValue = (label: string) =>
-  (screen.getByLabelText(label) as HTMLInputElement).value;
+const shownValue = (label: string) => (screen.getByLabelText(label) as HTMLInputElement).value;
 
 afterEach(() => {
   // `restoreMocks` does not undo defineProperty on navigator.
@@ -28,13 +21,7 @@ describe('IngestPanel', () => {
     mockFetch([]);
     const details = makeIngest({ keyVerified: false });
 
-    renderWithProviders(
-      <IngestPanel
-        streamId="stream-1"
-        details={details}
-        onRotated={vi.fn()}
-      />,
-    );
+    renderWithProviders(<IngestPanel streamId="stream-1" details={details} onRotated={vi.fn()} />);
 
     expect(screen.getByText(KEY_UNVERIFIED_NOTE)).toBeInTheDocument();
     // The note is the spec's copy, verbatim.
@@ -47,11 +34,7 @@ describe('IngestPanel', () => {
     mockFetch([]);
 
     renderWithProviders(
-      <IngestPanel
-        streamId="stream-1"
-        details={makeIngest({ keyVerified: true })}
-        onRotated={vi.fn()}
-      />,
+      <IngestPanel streamId="stream-1" details={makeIngest({ keyVerified: true })} onRotated={vi.fn()} />,
     );
 
     expect(screen.queryByText(KEY_UNVERIFIED_NOTE)).not.toBeInTheDocument();
@@ -100,9 +83,7 @@ describe('IngestPanel', () => {
     expect(key).toContain('key=••••••••');
     expect(key).not.toContain(details.publishKey);
     fireEvent.click(rtmp.getByLabelText('show rtmp stream key'));
-    expect(rtmp.getByLabelText('RTMP Stream Key')).toHaveValue(
-      details.rtmp.streamKey,
-    );
+    expect(rtmp.getByLabelText('RTMP Stream Key')).toHaveValue(details.rtmp.streamKey);
 
     expect(rtmp.getByLabelText('copy rtmp server')).toBeInTheDocument();
     expect(rtmp.getByLabelText('copy rtmp stream key')).toBeInTheDocument();
@@ -121,12 +102,8 @@ describe('IngestPanel', () => {
     renderPanel(details);
     fireEvent.click(screen.getByLabelText('copy srt server'));
 
-    expect(
-      await screen.findByText('SRT Server copied to your clipboard.'),
-    ).toBeInTheDocument();
-    expect(writeText).toHaveBeenCalledWith(
-      `${details.srt.url}&passphrase=${details.srt.passphrase}`,
-    );
+    expect(await screen.findByText('SRT Server copied to your clipboard.')).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledWith(`${details.srt.url}&passphrase=${details.srt.passphrase}`);
   });
 
   it('sends a passphrase the Server line cannot carry to Use authentication', () => {
@@ -155,9 +132,7 @@ describe('IngestPanel', () => {
     renderPanel(makeIngest({ srt: { url, passphrase: null } }));
     const srt = section('SRT');
 
-    expect(
-      srt.getByText('No SRT passphrase is configured on this ingest server.'),
-    ).toBeInTheDocument();
+    expect(srt.getByText('No SRT passphrase is configured on this ingest server.')).toBeInTheDocument();
     fireEvent.click(srt.getByLabelText('show srt server'));
     expect(srt.getByLabelText('SRT Server')).toHaveValue(url);
     expect(srt.queryByLabelText('SRT Password')).not.toBeInTheDocument();
@@ -172,19 +147,12 @@ describe('IngestPanel', () => {
       {
         method: 'POST',
         path: '/api/streams/stream-1/ingest/rotate-key',
-        respond: () =>
-          ({ ok: true, status: 200, json: async () => rotated }) as Response,
+        respond: () => ({ ok: true, status: 200, json: async () => rotated }) as Response,
       },
     ]);
     const onRotated = vi.fn();
 
-    renderWithProviders(
-      <IngestPanel
-        streamId="stream-1"
-        details={makeIngest()}
-        onRotated={onRotated}
-      />,
-    );
+    renderWithProviders(<IngestPanel streamId="stream-1" details={makeIngest()} onRotated={onRotated} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Rotate key/ }));
     expect(await screen.findByText(/current key stops working/)).toBeInTheDocument();

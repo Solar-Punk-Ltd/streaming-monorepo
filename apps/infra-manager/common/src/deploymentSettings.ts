@@ -264,7 +264,7 @@ export const SETTING_OWNER_LABELS: Readonly<Record<SettingOwner, string>> = {
   'engine-settings': 'the engine settings',
   'admin-link': 'the Web2 admin group of this step',
   'port-slot': "the deployment's port slot",
-  'data-dir': 'the manager, which keeps this deployment\'s data on its own host',
+  'data-dir': "the manager, which keeps this deployment's data on its own host",
   'abr-only': 'only a deployment that encodes the ABR ladder reads it',
   'srs-only': 'only a deployment that runs SRS reads it',
   'ome-only': 'only a deployment that runs OvenMediaEngine reads it',

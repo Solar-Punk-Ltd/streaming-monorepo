@@ -94,10 +94,10 @@ the exact-execution slice described at the end of this page.
 
 ## What validation establishes
 
-| Engine | Before recreation | After recreation | What a pass does not establish |
-| --- | --- | --- | --- |
-| SRS | The selected image's `srs -t -c` parses a temporary copy with dummy placeholder values. Each check owns its temporary directory and mounts its file read-only with `--mount`. Cleanup cannot delete another check's file. | The manager watches the recreated container for 20 seconds, checking its identity, running state and restart count. | Successful ingestion, uploader admission, Swarm delivery or playback. |
-| OvenMediaEngine | Strict XML parsing and a comparison against protected paths and values from the selected version's own template. This is manager-side validation, not OME's own parser. | The same startup watch, followed by a TCP reachability check of the mapped HLS port from the manager, with a 10-second budget. | A working admission callback, usable stream or playlist, or end-to-end publishing. |
+| Engine          | Before recreation                                                                                                                                                                                                         | After recreation                                                                                                               | What a pass does not establish                                                     |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| SRS             | The selected image's `srs -t -c` parses a temporary copy with dummy placeholder values. Each check owns its temporary directory and mounts its file read-only with `--mount`. Cleanup cannot delete another check's file. | The manager watches the recreated container for 20 seconds, checking its identity, running state and restart count.            | Successful ingestion, uploader admission, Swarm delivery or playback.              |
+| OvenMediaEngine | Strict XML parsing and a comparison against protected paths and values from the selected version's own template. This is manager-side validation, not OME's own parser.                                                   | The same startup watch, followed by a TCP reachability check of the mapped HLS port from the manager, with a 10-second budget. | A working admission callback, usable stream or playlist, or end-to-end publishing. |
 
 OME's protected set includes placeholder-bearing elements, bind ports,
 admission providers, application names, provider and publisher element names,
@@ -147,16 +147,16 @@ the manager's watch ends `reverted` when the same recovery succeeds. These two
 states distinguish where the candidate failed, while both preserve the actual
 recovery outcome.
 
-| State | Meaning and next action |
-| --- | --- |
-| `applying` | The operation is storing or recreating on the selected file or template. Wait for its outcome. |
-| `watching` | Recreation completed and startup verification is in progress. |
-| `applied` | The configured checks completed. A reset to the template completes after recreation without a custom-file watch. Inspect any OME reachability diagnostic separately. |
-| `reverting` | An owned recovery attempt is restoring the recorded previous file and recreating the engine. |
-| `reverted` | The new file failed startup verification and recreation on the previous file completed. |
-| `failed` | Applying the file failed. Read the recorded reason, which also reports a failed recovery attempt when applicable. Verify now starts another explicit attempt. |
-| `interrupted` | The manager could not finish verification or recovery. Verify now recreates on the stored file. Back to the previous file uses the file saved by the interrupted operation. |
-| `superseded` | A newer action or container replaced the operation's authority. The older operation does no further recovery work, and the card says the last file was not verified. Verify now starts an attempt on what is stored. |
+| State         | Meaning and next action                                                                                                                                                                                              |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `applying`    | The operation is storing or recreating on the selected file or template. Wait for its outcome.                                                                                                                       |
+| `watching`    | Recreation completed and startup verification is in progress.                                                                                                                                                        |
+| `applied`     | The configured checks completed. A reset to the template completes after recreation without a custom-file watch. Inspect any OME reachability diagnostic separately.                                                 |
+| `reverting`   | An owned recovery attempt is restoring the recorded previous file and recreating the engine.                                                                                                                         |
+| `reverted`    | The new file failed startup verification and recreation on the previous file completed.                                                                                                                              |
+| `failed`      | Applying the file failed. Read the recorded reason, which also reports a failed recovery attempt when applicable. Verify now starts another explicit attempt.                                                        |
+| `interrupted` | The manager could not finish verification or recovery. Verify now recreates on the stored file. Back to the previous file uses the file saved by the interrupted operation.                                          |
+| `superseded`  | A newer action or container replaced the operation's authority. The older operation does no further recovery work, and the card says the last file was not verified. Verify now starts an attempt on what is stored. |
 
 The engine card and open editor follow the current stored state. Recovery
 actions explain when they are unavailable. They are not offered for a stopped

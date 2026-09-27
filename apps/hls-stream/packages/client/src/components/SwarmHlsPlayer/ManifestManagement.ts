@@ -443,7 +443,10 @@ export const RUNG_READY_DEADLINE_POLLS = 20;
  * status was read. Nothing arrived at all.
  */
 export class RungNotReadyError extends Error {
-  constructor(readonly hexTopic: string, readonly deadlineMs: number) {
+  constructor(
+    readonly hexTopic: string,
+    readonly deadlineMs: number,
+  ) {
     super(`Rung ${hexTopic} had no playlist within ${deadlineMs}ms`);
     this.name = 'RungNotReadyError';
   }

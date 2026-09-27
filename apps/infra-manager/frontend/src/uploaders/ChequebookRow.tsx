@@ -1,10 +1,6 @@
 import { Box, Button, Stack, Typography } from '@mui/material';
 
-import {
-  type ChequebookHealth,
-  type ChequebookSummary,
-  chequebookStateReason,
-} from '@streaming-infra-manager/common';
+import { type ChequebookHealth, type ChequebookSummary, chequebookStateReason } from '@streaming-infra-manager/common';
 
 import { CopyButton } from '../CopyButton';
 import { toneMainColor } from '../components/tone';
@@ -45,16 +41,22 @@ export function ChequebookRow({
 
   return (
     <Box>
-      <Typography variant="overline" sx={{
-        color: "text.secondary"
-      }}>
+      <Typography
+        variant="overline"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
         Chequebook
       </Typography>
 
       {chequebook === null ? (
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {loading
             ? 'Loading…'
             : 'This node did not report a chequebook. Refresh once it is running, or check that it can be reached.'}
@@ -66,21 +68,24 @@ export function ChequebookRow({
             {formatTokenBalance(chequebook.totalBalance, BZZ_DECIMALS)} BZZ
           </Typography>
 
-          <Stack direction="row" spacing={1} sx={{
-            alignItems: "center"
-          }}>
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{
+              alignItems: 'center',
+            }}
+          >
             <Typography
               variant="body2"
               sx={{
-                color: "text.secondary",
+                color: 'text.secondary',
                 fontFamily: 'monospace',
-                wordBreak: 'break-all'
-              }}>
+                wordBreak: 'break-all',
+              }}
+            >
               {chequebook.address ?? NO_VALUE}
             </Typography>
-            {chequebook.address && (
-              <CopyButton value={chequebook.address} label="chequebook address" />
-            )}
+            {chequebook.address && <CopyButton value={chequebook.address} label="chequebook address" />}
           </Stack>
 
           {shortfall && (
@@ -89,10 +94,7 @@ export function ChequebookRow({
               component="div"
               sx={(theme) => ({
                 mt: 0.5,
-                color: toneMainColor(
-                  theme,
-                  health?.state === 'empty' ? 'err' : 'warn',
-                ),
+                color: toneMainColor(theme, health?.state === 'empty' ? 'err' : 'warn'),
               })}
             >
               {shortfall}
@@ -102,20 +104,10 @@ export function ChequebookRow({
       )}
 
       <Stack direction="row" spacing={1} sx={{ mt: 1.25 }}>
-        <Button
-          size="small"
-          variant="contained"
-          disabled={busy}
-          onClick={onFill}
-        >
+        <Button size="small" variant="contained" disabled={busy} onClick={onFill}>
           Fill chequebook
         </Button>
-        <Button
-          size="small"
-          variant="outlined"
-          disabled={busy || !canWithdraw}
-          onClick={onWithdraw}
-        >
+        <Button size="small" variant="outlined" disabled={busy || !canWithdraw} onClick={onWithdraw}>
           Withdraw
         </Button>
       </Stack>
@@ -123,12 +115,12 @@ export function ChequebookRow({
       <Typography
         variant="caption"
         sx={{
-          color: "text.secondary",
+          color: 'text.secondary',
           mt: 0.75,
-          display: 'block'
-        }}>
-        Paid out to peers so far{' '}
-        {formatTokenBalance(chequebook?.totalSent, BZZ_DECIMALS)} BZZ · received{' '}
+          display: 'block',
+        }}
+      >
+        Paid out to peers so far {formatTokenBalance(chequebook?.totalSent, BZZ_DECIMALS)} BZZ · received{' '}
         {formatTokenBalance(chequebook?.totalReceived, BZZ_DECIMALS)} BZZ
       </Typography>
     </Box>

@@ -37,10 +37,7 @@ describe('the layout of a version', () => {
   });
 
   it('gives every build attempt a staging directory of its own', () => {
-    assert.equal(
-      stagingDirFor(VERSIONS_ROOT, 'main-v3', 'a7'),
-      '/srv/stack-versions/main-v3.builds/tmp-a7',
-    );
+    assert.equal(stagingDirFor(VERSIONS_ROOT, 'main-v3', 'a7'), '/srv/stack-versions/main-v3.builds/tmp-a7');
   });
 
   it('keeps the host-owned inputs in the flat root a version always had', () => {

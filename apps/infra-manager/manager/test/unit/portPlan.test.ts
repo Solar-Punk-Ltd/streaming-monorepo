@@ -31,7 +31,10 @@ describe('portPlanFor', () => {
   });
 
   it('is the default ports for slot 0, where the env file decides', () => {
-    assert.deepEqual(portPlanFor(TABLE, 0).map((entry) => entry.port), [3000, 10080, 11002]);
+    assert.deepEqual(
+      portPlanFor(TABLE, 0).map((entry) => entry.port),
+      [3000, 10080, 11002],
+    );
   });
 
   it('names an entry by transport and port, the pair a daemon owns once', () => {

@@ -23,15 +23,15 @@ services:
     volumes:
       - web2admin-pg:/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:5433:5432"
+      - '127.0.0.1:5433:5432'
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U web2admin -d web2admin"]
+      test: ['CMD-SHELL', 'pg_isready -U web2admin -d web2admin']
       interval: 5s
       timeout: 3s
       retries: 10
 
   api:
-    profiles: ["full"]
+    profiles: ['full']
     build:
       # apps/web2-admin: the image needs pnpm-lock.yaml and the workspace
       # manifests to install the backend with its workspace dependency. When
@@ -47,9 +47,9 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgres://web2admin:${POSTGRES_PASSWORD:-web2admin}@postgres:5432/web2admin
-      WEB2_ADMIN_PORT: "9877"
+      WEB2_ADMIN_PORT: '9877'
     ports:
-      - "127.0.0.1:9877:9877"
+      - '127.0.0.1:9877:9877'
 
 volumes:
   web2admin-pg:

@@ -32,10 +32,11 @@ export function SettingsDriftBanner({
           spacing={1}
           useFlexGap
           sx={{
-            alignItems: "center",
-            flexWrap: "wrap",
-            mt: 1
-          }}>
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            mt: 1,
+          }}
+        >
           <Button variant="contained" color="warning" size="small" disabled={busy} onClick={onApply}>
             Apply
           </Button>

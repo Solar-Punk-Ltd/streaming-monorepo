@@ -80,7 +80,13 @@ describe('the dilute dialog, before the operator confirms', () => {
 
   it('writes no dash or semicolon', () => {
     for (const shown of [view('24'), view('25'), view('41')]) {
-      for (const text of [shown.depthHint, shown.shortLife ?? '', shown.confirmLabel, shown.fullAfter, shown.holdsAfter]) {
+      for (const text of [
+        shown.depthHint,
+        shown.shortLife ?? '',
+        shown.confirmLabel,
+        shown.fullAfter,
+        shown.holdsAfter,
+      ]) {
         assert.doesNotMatch(text, /[—;]/);
       }
     }

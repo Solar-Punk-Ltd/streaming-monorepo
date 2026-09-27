@@ -89,18 +89,11 @@ describe('what a page is told about a deployment that holds an SRT passphrase', 
         ['the profile.changed events', published],
       ];
       for (const [door, body] of answers) {
-        assert.ok(
-          !JSON.stringify(body).includes(PASS),
-          `${door} carried the SRT passphrase`,
-        );
+        assert.ok(!JSON.stringify(body).includes(PASS), `${door} carried the SRT passphrase`);
       }
 
       const profile = one.body as { has_srt_passphrase: boolean };
-      assert.equal(
-        profile.has_srt_passphrase,
-        true,
-        'the page is told a passphrase is stored',
-      );
+      assert.equal(profile.has_srt_passphrase, true, 'the page is told a passphrase is stored');
     } finally {
       await app.close();
     }
@@ -271,19 +264,13 @@ describe('GET /profiles/:name/srt-passphrase', () => {
       await signedIn.close();
     }
 
-    const open = await startRouterTestApp(
-      mounted([createSrtPassphraseRouter(harness.service)], null),
-      '/profiles',
-    );
+    const open = await startRouterTestApp(mounted([createSrtPassphraseRouter(harness.service)], null), '/profiles');
 
     try {
       const refused = await call(open, 'GET', '/profiles/stage/srt-passphrase');
 
       assert.equal(refused.status, 401, JSON.stringify(refused.body));
-      assert.ok(
-        !JSON.stringify(refused.body).includes(PASS),
-        'a refusal must not carry the value it refused',
-      );
+      assert.ok(!JSON.stringify(refused.body).includes(PASS), 'a refusal must not carry the value it refused');
     } finally {
       await open.close();
     }

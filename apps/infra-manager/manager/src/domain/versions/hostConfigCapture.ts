@@ -59,9 +59,7 @@ export interface CapturedHostConfig {
   hashes: Record<string, string>;
 }
 
-export type HostConfigCapture =
-  | { captured: CapturedHostConfig; problem: null }
-  | { captured: null; problem: string };
+export type HostConfigCapture = { captured: CapturedHostConfig; problem: null } | { captured: null; problem: string };
 
 export interface CommitOptions {
   lockWaitMs?: number;
@@ -113,22 +111,23 @@ function hostConfigPathsIn(root: string): { relative: string; isFile: boolean }[
 
 /** The host-owned files a root has, relative, posix: the base env, the deploy config and every engine env. */
 export function hostConfigFilesOf(root: string): string[] {
-  return hostConfigPathsIn(root).filter((path) => path.isFile).map((path) => path.relative);
+  return hostConfigPathsIn(root)
+    .filter((path) => path.isFile)
+    .map((path) => path.relative);
 }
 
 /** The paths of the set a root holds that are not regular files, so nothing reads them. */
 export function hostConfigNonFilesOf(root: string): string[] {
-  return hostConfigPathsIn(root).filter((path) => !path.isFile).map((path) => path.relative);
+  return hostConfigPathsIn(root)
+    .filter((path) => !path.isFile)
+    .map((path) => path.relative);
 }
 
 /**
  * Takes the edit lock, waiting up to `waitMs` for an edit under way, and
  * answers what releases it. Throws when the wait runs out, naming the lock.
  */
-export async function holdHostConfigLock(
-  root: string,
-  waitMs = DEFAULT_LOCK_WAIT_MS,
-): Promise<() => Promise<void>> {
+export async function holdHostConfigLock(root: string, waitMs = DEFAULT_LOCK_WAIT_MS): Promise<() => Promise<void>> {
   const lock = join(root, CONFIG_LOCK_DIR);
   const deadline = Date.now() + waitMs;
   for (;;) {
@@ -210,7 +209,9 @@ async function readRevision(root: string): Promise<ConfigRevision | null> {
   if (!existsSync(path)) return null;
   const bytes = await readFile(path);
   let raw: unknown;
-  try { raw = JSON.parse(bytes.toString('utf8')); } catch {
+  try {
+    raw = JSON.parse(bytes.toString('utf8'));
+  } catch {
     throw new Error(`${CONFIG_REVISION_FILE} does not parse as a revision.`);
   }
   if (typeof raw !== 'object' || raw === null) throw new Error(`${CONFIG_REVISION_FILE} does not parse as a revision.`);
@@ -262,10 +263,7 @@ async function writeRevision(root: string, revision: ConfigRevision): Promise<vo
 }
 
 /** The committed revision of a root, or why there is none to capture. */
-export async function captureHostConfig(
-  root: string,
-  options: CaptureOptions = {},
-): Promise<HostConfigCapture> {
+export async function captureHostConfig(root: string, options: CaptureOptions = {}): Promise<HostConfigCapture> {
   // The lock being held travels as itself rather than as a problem string: a
   // build records the message either way, and a settings request answers it as
   // the refusal it is instead of an unhandled error.
@@ -386,10 +384,7 @@ async function revisionOfPresentFiles(root: string, generation: number): Promise
  * decided something about the root under that lock would otherwise decide it
  * again against a root an editor changed in between.
  */
-export async function adoptHostConfig(
-  root: string,
-  commit: CommitUnderLock,
-): Promise<ConfigRevision | null> {
+export async function adoptHostConfig(root: string, commit: CommitUnderLock): Promise<ConfigRevision | null> {
   if (await readRevision(root)) return null;
   return commit({});
 }

@@ -116,7 +116,8 @@ function input(over: Partial<CatalogInput> = {}): CatalogInput {
     buildId: 'build-7',
     rootSampleText: ROOT_SAMPLE,
     engineSampleText: ENGINE_SAMPLE,
-    baseEnvText: 'UPLOADER_START_GATES=chequebook-warn\nADMIN_API_URL=\nADMIN_API_TOKEN=\nRPC_ENDPOINT=https://rpc.example.org/v3/synthetic-provider-key\nLOG_LEVEL=debug\n',
+    baseEnvText:
+      'UPLOADER_START_GATES=chequebook-warn\nADMIN_API_URL=\nADMIN_API_TOKEN=\nRPC_ENDPOINT=https://rpc.example.org/v3/synthetic-provider-key\nLOG_LEVEL=debug\n',
     engineEnvText: 'LOG_LEVEL=info\n',
     stored: { plain: { ADMIN_API_URL: 'http://admin.internal' }, secretKeys: ['ADMIN_API_TOKEN'] },
     engineSettings: srsSettings(),
@@ -240,7 +241,9 @@ describe('what the running containers are behind on', () => {
   });
 
   it('finds a changed secret without holding it', () => {
-    const catalog = deploymentSettingsCatalogOf(input({ nextEnv: { ...RUNNING_ENV, ADMIN_API_TOKEN: 'another-token' } }));
+    const catalog = deploymentSettingsCatalogOf(
+      input({ nextEnv: { ...RUNNING_ENV, ADMIN_API_TOKEN: 'another-token' } }),
+    );
 
     assert.deepEqual(catalog.drift.keys, ['ADMIN_API_TOKEN']);
   });
@@ -256,22 +259,30 @@ describe('what the running containers are behind on', () => {
 
     assert.equal(entryOf(catalog, 'COMPOSE_NETWORK').services, null);
     assert.equal(entryOf(catalog, 'COMPOSE_NETWORK').running, 'differs');
-    assert.deepEqual(catalog.drift, { keys: ['COMPOSE_NETWORK'], services: ['bee-uploader', 'stream-uploader'], fullRedeploy: true });
+    assert.deepEqual(catalog.drift, {
+      keys: ['COMPOSE_NETWORK'],
+      services: ['bee-uploader', 'stream-uploader'],
+      fullRedeploy: true,
+    });
   });
 
   it('says a key is not known when no container that reads it has a record that can tell', () => {
     const legacy = { ...record('stream-uploader', RUNNING_ENV), env_salt: null, env_digests: {} };
-    const catalog = deploymentSettingsCatalogOf(input({ records: [legacy], nextEnv: { ...RUNNING_ENV, LOG_LEVEL: 'info' } }));
+    const catalog = deploymentSettingsCatalogOf(
+      input({ records: [legacy], nextEnv: { ...RUNNING_ENV, LOG_LEVEL: 'info' } }),
+    );
 
     assert.equal(entryOf(catalog, 'LOG_LEVEL').running, 'unknown');
     assert.deepEqual(catalog.drift.keys, []);
   });
 
   it('says nothing runs on a stopped deployment, and still counts what its Start will change', () => {
-    const catalog = deploymentSettingsCatalogOf(input({
-      profile: makeProfile({ name: 'stage', status: 'STOPPED' }),
-      nextEnv: { ...RUNNING_ENV, LOG_LEVEL: 'info' },
-    }));
+    const catalog = deploymentSettingsCatalogOf(
+      input({
+        profile: makeProfile({ name: 'stage', status: 'STOPPED' }),
+        nextEnv: { ...RUNNING_ENV, LOG_LEVEL: 'info' },
+      }),
+    );
 
     assert.equal(catalog.running, false);
     assert.equal(entryOf(catalog, 'LOG_LEVEL').running, 'not-running');
@@ -293,13 +304,20 @@ describe("the deployment's own engine settings", () => {
 
     for (const key of ['HLS_FRAGMENT', 'HLS_SEGMENT_MAX', 'HLS_WINDOW', 'SRT_LATENCY']) {
       const entry = entryOf(catalog, key);
-      assert.deepEqual({ owner: entry.owner, declared: entry.declared, secret: entry.secret }, { owner: null, declared: true, secret: false }, key);
+      assert.deepEqual(
+        { owner: entry.owner, declared: entry.declared, secret: entry.secret },
+        { owner: null, declared: true, secret: false },
+        key,
+      );
       assert.equal(entry.field, null, `${key} takes its field from common, not from the answer`);
     }
   });
 
   it('takes the value stored for one from the engine settings', () => {
-    const entry = entryOf(deploymentSettingsCatalogOf(input({ engineSettings: srsSettings({ stored: { HLS_WINDOW: '20' } }) })), 'HLS_WINDOW');
+    const entry = entryOf(
+      deploymentSettingsCatalogOf(input({ engineSettings: srsSettings({ stored: { HLS_WINDOW: '20' } }) })),
+      'HLS_WINDOW',
+    );
 
     assert.deepEqual(
       { stored: entry.stored, storedValue: entry.storedValue, source: entry.source },
@@ -314,8 +332,18 @@ describe("the deployment's own engine settings", () => {
     const window = entryOf(catalog, 'HLS_WINDOW');
 
     assert.deepEqual(
-      { versionSet: fragment.versionSet, versionValue: fragment.versionValue, source: fragment.source, facts: fragment.engineSetting },
-      { versionSet: true, versionValue: '1.5', source: 'version', facts: { defaultSource: 'host', notInConfig: false } },
+      {
+        versionSet: fragment.versionSet,
+        versionValue: fragment.versionValue,
+        source: fragment.source,
+        facts: fragment.engineSetting,
+      },
+      {
+        versionSet: true,
+        versionValue: '1.5',
+        source: 'version',
+        facts: { defaultSource: 'host', notInConfig: false },
+      },
     );
     assert.deepEqual(
       { versionValue: window.versionValue, source: window.source, facts: window.engineSetting },
@@ -325,7 +353,10 @@ describe("the deployment's own engine settings", () => {
 
   it("names the manager's own SRT latency default as the manager's, stored or not", () => {
     const unset = entryOf(deploymentSettingsCatalogOf(input()), 'SRT_LATENCY');
-    const stored = entryOf(deploymentSettingsCatalogOf(input({ engineSettings: srsSettings({ stored: { SRT_LATENCY: '3000' } }) })), 'SRT_LATENCY');
+    const stored = entryOf(
+      deploymentSettingsCatalogOf(input({ engineSettings: srsSettings({ stored: { SRT_LATENCY: '3000' } }) })),
+      'SRT_LATENCY',
+    );
 
     assert.deepEqual(
       { source: unset.source, versionValue: unset.versionValue, defaultSource: unset.engineSetting?.defaultSource },
@@ -338,7 +369,9 @@ describe("the deployment's own engine settings", () => {
   });
 
   it('says of one that the config the engine runs no longer reads it', () => {
-    const catalog = deploymentSettingsCatalogOf(input({ engineSettings: srsSettings({ notInConfig: ['HLS_WINDOW'] }) }));
+    const catalog = deploymentSettingsCatalogOf(
+      input({ engineSettings: srsSettings({ notInConfig: ['HLS_WINDOW'] }) }),
+    );
 
     assert.equal(entryOf(catalog, 'HLS_WINDOW').engineSetting?.notInConfig, true);
     assert.equal(entryOf(catalog, 'HLS_FRAGMENT').engineSetting?.notInConfig, false);
@@ -355,14 +388,25 @@ describe('the engine settings a deployment does not read', () => {
 
   it('keeps a rung setting out of reach of a deployment that does not encode the ladder, and says who reads it', () => {
     const plain = entryOf(deploymentSettingsCatalogOf(input({ engineSampleText: LADDER_SAMPLE })), 'ABR_FPS');
-    const ladder = entryOf(deploymentSettingsCatalogOf(input({ engineSampleText: LADDER_SAMPLE, engineSettings: srsSettings({ abr: true }) })), 'ABR_FPS');
+    const ladder = entryOf(
+      deploymentSettingsCatalogOf(
+        input({ engineSampleText: LADDER_SAMPLE, engineSettings: srsSettings({ abr: true }) }),
+      ),
+      'ABR_FPS',
+    );
 
-    assert.deepEqual({ owner: plain.owner, engineSetting: plain.engineSetting }, { owner: 'abr-only', engineSetting: null });
+    assert.deepEqual(
+      { owner: plain.owner, engineSetting: plain.engineSetting },
+      { owner: 'abr-only', engineSetting: null },
+    );
     assert.equal(ladder.owner, null);
   });
 
-  it("keeps a setting of the engine it does not run out of reach, and says which engine reads it", () => {
-    const entry = entryOf(deploymentSettingsCatalogOf(input({ rootSampleText: OTHER_ENGINE_SAMPLE })), 'HLS_SEGMENT_DURATION');
+  it('keeps a setting of the engine it does not run out of reach, and says which engine reads it', () => {
+    const entry = entryOf(
+      deploymentSettingsCatalogOf(input({ rootSampleText: OTHER_ENGINE_SAMPLE })),
+      'HLS_SEGMENT_DURATION',
+    );
 
     assert.deepEqual({ owner: entry.owner, source: entry.source }, { owner: 'ome-only', source: 'unset' });
   });
@@ -372,7 +416,11 @@ describe('the engine settings a deployment does not read', () => {
 
     assert.deepEqual({ engine: catalog.engine, abr: catalog.abr }, { engine: null, abr: false });
     assert.equal(entryOf(catalog, 'SRT_LATENCY').owner, 'srs-only');
-    assert.equal(catalog.entries.some((entry) => entry.key === 'HLS_WINDOW'), false, 'no engine setting is added for it');
+    assert.equal(
+      catalog.entries.some((entry) => entry.key === 'HLS_WINDOW'),
+      false,
+      'no engine setting is added for it',
+    );
   });
 
   it('lists a rung setting stored before the ladder was turned off, so it can be reset', () => {

@@ -27,12 +27,7 @@ import { attemptHolding } from '../versions/attemptHold';
 import { ReleaseAttemptDialog } from '../versions/ReleaseAttemptDialog';
 import { useAttemptRelease } from '../versions/useAttemptRelease';
 import { AtAGlanceCard } from './AtAGlanceCard';
-import {
-  buildChecklist,
-  streamerFor,
-  type ChecklistInput,
-  type StepAction,
-} from './checklist';
+import { buildChecklist, streamerFor, type ChecklistInput, type StepAction } from './checklist';
 import { readySummary } from './readySummary';
 import { ConfigurationCard } from './ConfigurationCard';
 import { ContainersCard } from './ContainersCard';
@@ -62,13 +57,7 @@ import { WatchCard } from './WatchCard';
 
 const STORAGE_ANCHOR = 'storage';
 
-export function DeploymentPage({
-  name,
-  focus,
-}: {
-  name: string;
-  focus: DeploymentFocus;
-}) {
+export function DeploymentPage({ name, focus }: { name: string; focus: DeploymentFocus }) {
   const { profiles } = useDeployments();
   const profile = profiles?.find((entry) => entry.name === name) ?? null;
 
@@ -76,9 +65,10 @@ export function DeploymentPage({
     return (
       <Stack
         sx={{
-          alignItems: "center",
-          py: 8
-        }}>
+          alignItems: 'center',
+          py: 8,
+        }}
+      >
         <CircularProgress />
       </Stack>
     );
@@ -112,28 +102,13 @@ export function DeploymentPage({
   );
 }
 
-function WithBeeNode({
-  profile,
-  focus,
-}: {
-  profile: Profile;
-  focus: DeploymentFocus;
-}) {
+function WithBeeNode({ profile, focus }: { profile: Profile; focus: DeploymentFocus }) {
   const bee = useBeeUtils(profile);
   return <DeploymentBody profile={profile} focus={focus} bee={bee} />;
 }
 
-function DeploymentBody({
-  profile,
-  focus,
-  bee,
-}: {
-  profile: Profile;
-  focus: DeploymentFocus;
-  bee: BeeUtils | null;
-}) {
-  const { profiles, groups, serverHost, hostPassphrase, beeRpcEndpoint, reload, versions, attempts } =
-    useDeployments();
+function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: DeploymentFocus; bee: BeeUtils | null }) {
+  const { profiles, groups, serverHost, hostPassphrase, beeRpcEndpoint, reload, versions, attempts } = useDeployments();
   const actions = useActions();
   const release = useAttemptRelease();
   const { openEditDeployment } = useEditors();
@@ -169,29 +144,19 @@ function DeploymentBody({
   // Only where there is an uploader to ask. Since D16 one can be running and
   // still waiting for a Bee node that never answered, which nothing on the
   // container says.
-  const uploaderDeployed = profile.containers.some(
-    (container) => container.service === STREAM_UPLOADER_SERVICE,
-  );
+  const uploaderDeployed = profile.containers.some((container) => container.service === STREAM_UPLOADER_SERVICE);
   const uploaderHealth = useUploaderHealth(uploaderDeployed ? profile : null);
   const srtIngestShown = readsSrtIngest(profile);
   const srtIngest = useSrtIngestHealth(srtIngestShown ? profile : null);
   const group = groups.find((entry) => entry.id === profile.group_id) ?? null;
-  const version =
-    versions?.find((entry) => entry.id === profile.stack_version_id) ?? null;
+  const version = versions?.find((entry) => entry.id === profile.stack_version_id) ?? null;
   const rung = group ? rungFromMemberName(group.name, profile.name) : null;
-  const stampHealth = stampHealthFrom(
-    profile.stamp_id,
-    bee?.stamps ?? null,
-    bee?.stampsFailure,
-  );
+  const stampHealth = stampHealthFrom(profile.stamp_id, bee?.stamps ?? null, bee?.stampsFailure);
   const chequebookHealth: ChequebookHealth | null = bee?.chequebook
     ? chequebookHealthFromPayload(bee.chequebook.health)
     : null;
   const stampId = profile.stamp_id;
-  const currentStamp =
-    (stampId &&
-      bee?.stamps?.find((stamp) => sameBatchId(stamp.batchID, stampId))) ||
-    null;
+  const currentStamp = (stampId && bee?.stamps?.find((stamp) => sameBatchId(stamp.batchID, stampId))) || null;
 
   const heldBy = attemptHolding(profile.name, attempts, profiles);
   const publishUrl = publish.url;
@@ -201,7 +166,14 @@ function DeploymentBody({
 
   const checklistInput: ChecklistInput = {
     profile,
-    nodeReadiness: bee ? beeReadinessView(bee.nodeObservation, bee.observationNow, bee.loading || profile.status !== 'RUNNING', bee.observationReceivedAt) : undefined,
+    nodeReadiness: bee
+      ? beeReadinessView(
+          bee.nodeObservation,
+          bee.observationNow,
+          bee.loading || profile.status !== 'RUNNING',
+          bee.observationReceivedAt,
+        )
+      : undefined,
     wallet: bee?.wallet ?? null,
     chequebook: chequebookHealth,
     nodeAddress: bee?.address?.ethereum ?? null,
@@ -235,9 +207,7 @@ function DeploymentBody({
       case 'dilute-stamp':
       case 'top-up-stamp':
       case 'fill-chequebook':
-        document
-          .getElementById(STORAGE_ANCHOR)
-          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.getElementById(STORAGE_ANCHOR)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
       case 'deploy-uploader':
         actions.startUploader(profile.name);
@@ -271,16 +241,9 @@ function DeploymentBody({
         }}
       >
         <Stack spacing={2}>
-          {heldBy && (
-            <HeldAttemptCard attempt={heldBy} onRelease={() => release.open(heldBy)} />
-          )}
+          {heldBy && <HeldAttemptCard attempt={heldBy} onRelease={() => release.open(heldBy)} />}
 
-          {profile.last_error && (
-            <LastErrorCard
-              message={profile.last_error}
-              at={profile.last_error_at}
-            />
-          )}
+          {profile.last_error && <LastErrorCard message={profile.last_error} at={profile.last_error_at} />}
 
           <ReadinessCard steps={steps} summary={summary} onAction={runStepAction} />
 
@@ -316,11 +279,7 @@ function DeploymentBody({
           <DeploymentSettingsCard profile={profile} load={settings} onSaved={reload} reveal={settingsReveal} />
 
           {watchUrl && (
-            <WatchCard
-              url={watchUrl}
-              feedOwner={profile.feed_owner}
-              streamerName={streamer?.name ?? null}
-            />
+            <WatchCard url={watchUrl} feedOwner={profile.feed_owner} streamerName={streamer?.name ?? null} />
           )}
 
           {bee && (
@@ -339,12 +298,7 @@ function DeploymentBody({
 
           {stale && <StaleReadings seconds={staleSeconds} />}
 
-          <ContainersCard
-            profile={profile}
-            host={serverHost}
-            snapshot={snapshot}
-            uploaderPending={uploaderPending}
-          />
+          <ContainersCard profile={profile} host={serverHost} snapshot={snapshot} uploaderPending={uploaderPending} />
 
           <ConfigurationCard
             profile={profile}
@@ -370,14 +324,8 @@ function DeploymentBody({
             engineLoadError={engineLoad.loadError}
             savedNotApplied={savedNotApplied}
           />
-          {shape === 'stream' && isRunning(profile) && (
-            <NextStepsCard streamName={profile.name} />
-          )}
-          <NotesCard
-            name={profile.name}
-            notes={profile.notes}
-            notesRevision={profile.notes_revision}
-          />
+          {shape === 'stream' && isRunning(profile) && <NextStepsCard streamName={profile.name} />}
+          <NotesCard name={profile.name} notes={profile.notes} notesRevision={profile.notes_revision} />
         </Stack>
       </Box>
 

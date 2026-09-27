@@ -12,10 +12,7 @@ import { describe, it } from 'node:test';
 
 import { REQUESTED_WITH_VALUE } from '@streaming-monorepo/web2-admin-common';
 
-import {
-  crossSiteReason,
-  type RequestOrigin,
-} from '../../src/api/middleware/requireSameSite.js';
+import { crossSiteReason, type RequestOrigin } from '../../src/api/middleware/requireSameSite.js';
 
 const HOST = 'console.example';
 
@@ -53,10 +50,7 @@ describe('crossSiteReason', () => {
   });
 
   it('refuses a write the browser calls cross-site', () => {
-    assert.match(
-      crossSiteReason(request({ secFetchSite: 'cross-site' })) ?? '',
-      /Sec-Fetch-Site/,
-    );
+    assert.match(crossSiteReason(request({ secFetchSite: 'cross-site' })) ?? '', /Sec-Fetch-Site/);
   });
 
   it('accepts the other Sec-Fetch-Site values', () => {
@@ -77,11 +71,7 @@ describe('crossSiteReason', () => {
       'null',
       '',
     ]) {
-      assert.match(
-        crossSiteReason(request({ origin })) ?? '',
-        /Origin/,
-        `should refuse Origin: ${origin}`,
-      );
+      assert.match(crossSiteReason(request({ origin })) ?? '', /Origin/, `should refuse Origin: ${origin}`);
     }
   });
 
@@ -92,18 +82,8 @@ describe('crossSiteReason', () => {
   });
 
   it('matches Origin against the host including its port', () => {
-    assert.equal(
-      crossSiteReason(
-        request({ host: 'localhost:5173', origin: 'http://localhost:5173' }),
-      ),
-      null,
-    );
-    assert.match(
-      crossSiteReason(
-        request({ host: 'localhost:5173', origin: 'http://localhost:9877' }),
-      ) ?? '',
-      /Origin/,
-    );
+    assert.equal(crossSiteReason(request({ host: 'localhost:5173', origin: 'http://localhost:5173' })), null);
+    assert.match(crossSiteReason(request({ host: 'localhost:5173', origin: 'http://localhost:9877' })) ?? '', /Origin/);
   });
 
   it('refuses a write with no Origin and no header, which is where old browsers land', () => {

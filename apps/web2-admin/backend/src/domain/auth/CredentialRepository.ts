@@ -11,9 +11,5 @@ export interface CredentialRepository {
    * Sets the password hash and deletes every session of the user except the
    * one making the change, atomically.
    */
-  changePassword(
-    userId: string,
-    passwordHash: string,
-    keepSessionTokenHash: string,
-  ): Promise<void>;
+  changePassword(userId: string, passwordHash: string, keepSessionTokenHash: string): Promise<void>;
 }

@@ -24,11 +24,23 @@ const frontend = fileURLToPath(new URL('../', import.meta.url));
 const SCHEMES = ['light', 'dark'];
 
 const profile = {
-  name: 'scheme-stage', kind: 'streamer', status: 'RUNNING', port_slot: 1, host: 'localhost',
-  notes: null, last_error: null, last_error_at: null,
-  created_at: '2026-09-27T06:51:00Z', updated_at: '2026-09-27T06:58:00Z',
-  engine_settings: {}, has_engine_config: false, engine_config_error: null, engine_config_state: null,
-  stamp_id: null, public_key: '1'.repeat(40), pendingStamp: false,
+  name: 'scheme-stage',
+  kind: 'streamer',
+  status: 'RUNNING',
+  port_slot: 1,
+  host: 'localhost',
+  notes: null,
+  last_error: null,
+  last_error_at: null,
+  created_at: '2026-09-27T06:51:00Z',
+  updated_at: '2026-09-27T06:58:00Z',
+  engine_settings: {},
+  has_engine_config: false,
+  engine_config_error: null,
+  engine_config_state: null,
+  stamp_id: null,
+  public_key: '1'.repeat(40),
+  pendingStamp: false,
   containers: [{ service: 'srs', ports: {} }],
 };
 
@@ -38,33 +50,49 @@ test('the config file editor writes its text in the chosen scheme', async (t) =>
     configFile: resolve(frontend, 'vite.config.ts'),
     cacheDir: viteCacheFor('code-text-area-scheme'),
     server: { host: '127.0.0.1', port: 0, strictPort: true },
-    plugins: [{
-      name: 'offline-engine-config-fixture',
-      configureServer(vite) {
-        vite.middlewares.use((req, res, next) => {
-          const path = req.url?.split('?')[0];
-          const json = (body, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
-          if (path === '/auth/session') return json({ username: 'scheme-review', isAdmin: true, expiresAt: '2099-01-01T00:00:00Z' });
-          if (path === '/profiles') return json({ profiles: [profile] });
-          if (path === '/groups') return json({ groups: [] });
-          if (path === '/versions') return json([]);
-          if (path === '/versions/attempts') return json({ attempts: [] });
-          if (path === '/config') return json({ host: 'offline.example', srtPassphrase: null, chequebookFloorBzz: '0.5' });
-          if (path === '/events' || path?.startsWith('/metrics')) {
-            res.writeHead(200, { 'content-type': 'text/event-stream' });
-            res.write(': offline fixture\n\n');
-            return;
-          }
-          if (path === '/profiles/scheme-stage/engine-config') {
-            return json({ engine: 'srs', supported: true, unsupportedReason: null, config: null,
-              template: 'listen        RTMP_PORT_PLACEHOLDER;', placeholders: ['RTMP_PORT_PLACEHOLDER'],
-              state: null, error: null, references: [] });
-          }
-          if (path?.startsWith('/profiles/')) return json({ error: 'Node unavailable', code: 'bee_node_unreachable' }, 503);
-          return next();
-        });
+    plugins: [
+      {
+        name: 'offline-engine-config-fixture',
+        configureServer(vite) {
+          vite.middlewares.use((req, res, next) => {
+            const path = req.url?.split('?')[0];
+            const json = (body, status = 200) => {
+              res.writeHead(status, { 'content-type': 'application/json' });
+              res.end(JSON.stringify(body));
+            };
+            if (path === '/auth/session')
+              return json({ username: 'scheme-review', isAdmin: true, expiresAt: '2099-01-01T00:00:00Z' });
+            if (path === '/profiles') return json({ profiles: [profile] });
+            if (path === '/groups') return json({ groups: [] });
+            if (path === '/versions') return json([]);
+            if (path === '/versions/attempts') return json({ attempts: [] });
+            if (path === '/config')
+              return json({ host: 'offline.example', srtPassphrase: null, chequebookFloorBzz: '0.5' });
+            if (path === '/events' || path?.startsWith('/metrics')) {
+              res.writeHead(200, { 'content-type': 'text/event-stream' });
+              res.write(': offline fixture\n\n');
+              return;
+            }
+            if (path === '/profiles/scheme-stage/engine-config') {
+              return json({
+                engine: 'srs',
+                supported: true,
+                unsupportedReason: null,
+                config: null,
+                template: 'listen        RTMP_PORT_PLACEHOLDER;',
+                placeholders: ['RTMP_PORT_PLACEHOLDER'],
+                state: null,
+                error: null,
+                references: [],
+              });
+            }
+            if (path?.startsWith('/profiles/'))
+              return json({ error: 'Node unavailable', code: 'bee_node_unreachable' }, 503);
+            return next();
+          });
+        },
       },
-    }],
+    ],
   });
   await server.listen();
   t.after(() => endViteServer(t, server));
@@ -76,19 +104,43 @@ test('the config file editor writes its text in the chosen scheme', async (t) =>
   const seen = {};
   for (const scheme of SCHEMES) {
     await call('Page.navigate', { url: `${origin}/#/deployments/scheme-stage` });
-    await waitFor(() => evaluate(PAGE_TEXT), text => text.includes('Config file'), 'the deployment page');
+    await waitFor(
+      () => evaluate(PAGE_TEXT),
+      (text) => text.includes('Config file'),
+      'the deployment page',
+    );
     await evaluate(`localStorage.setItem('mui-mode', ${JSON.stringify(scheme)})`);
     await reloadDocument(browser);
-    await waitFor(() => evaluate(PAGE_TEXT), text => text.includes('Config file'), `the deployment page in the ${scheme} scheme`);
-    const point = await pointToClick(evaluate, `[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Config file')`, 'an enabled Config file button');
+    await waitFor(
+      () => evaluate(PAGE_TEXT),
+      (text) => text.includes('Config file'),
+      `the deployment page in the ${scheme} scheme`,
+    );
+    const point = await pointToClick(
+      evaluate,
+      `[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Config file')`,
+      'an enabled Config file button',
+    );
     await call('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
     await call('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
-    await waitFor(() => evaluate(`!!${dialog}?.querySelector('textarea')`), Boolean, `the config file editor in the ${scheme} scheme`);
+    await waitFor(
+      () => evaluate(`!!${dialog}?.querySelector('textarea')`),
+      Boolean,
+      `the config file editor in the ${scheme} scheme`,
+    );
     seen[scheme] = await evaluate(`({
       editor: getComputedStyle(${dialog}.querySelector('textarea')).color,
       body: getComputedStyle(document.body).color,
     })`);
-    assert.equal(seen[scheme].editor, seen[scheme].body, `the editor's text in the ${scheme} scheme is ${seen[scheme].editor}, the page's is ${seen[scheme].body}`);
+    assert.equal(
+      seen[scheme].editor,
+      seen[scheme].body,
+      `the editor's text in the ${scheme} scheme is ${seen[scheme].editor}, the page's is ${seen[scheme].body}`,
+    );
   }
-  assert.notEqual(seen.light.body, seen.dark.body, 'the two schemes gave the page the same text colour, so the scheme never changed');
+  assert.notEqual(
+    seen.light.body,
+    seen.dark.body,
+    'the two schemes gave the page the same text colour, so the scheme never changed',
+  );
 });

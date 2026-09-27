@@ -16,8 +16,14 @@ export type CreationAttempt =
   | { readonly kind: 'members'; readonly expectedMembers: number | null; readonly groupId: number };
 
 export type UnresolvedCreationReason =
-  | 'response-unavailable' | 'invalid-profile' | 'invalid-group' | 'missing-members'
-  | 'invalid-member' | 'member-count-mismatch' | 'identity-conflict' | 'request-coverage-unknown';
+  | 'response-unavailable'
+  | 'invalid-profile'
+  | 'invalid-group'
+  | 'missing-members'
+  | 'invalid-member'
+  | 'member-count-mismatch'
+  | 'identity-conflict'
+  | 'request-coverage-unknown';
 
 export interface UnresolvedCreation {
   readonly kind: CreationAttempt['kind'];
@@ -39,7 +45,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown> : null;
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function positiveInteger(value: unknown): value is number {
@@ -113,7 +120,12 @@ export class CreatedResourceInventory {
 
   private captureProfile(value: unknown, attempt: CreationAttempt, invalid: UnresolvedCreationReason): string | null {
     const profile = record(value);
-    if (!profile || !this.ownName(profile.name) || typeof profile.instance_id !== 'string' || !UUID.test(profile.instance_id)) {
+    if (
+      !profile ||
+      !this.ownName(profile.name) ||
+      typeof profile.instance_id !== 'string' ||
+      !UUID.test(profile.instance_id)
+    ) {
       this.note(attempt, invalid);
       return null;
     }
@@ -129,8 +141,7 @@ export class CreatedResourceInventory {
 
   private parseGroup(value: unknown): CreatedGroupIdentity | null {
     const group = record(value);
-    return group && positiveInteger(group.id) && this.ownName(group.name)
-      ? { id: group.id, name: group.name } : null;
+    return group && positiveInteger(group.id) && this.ownName(group.name) ? { id: group.id, name: group.name } : null;
   }
 
   private ownName(value: unknown): value is string {

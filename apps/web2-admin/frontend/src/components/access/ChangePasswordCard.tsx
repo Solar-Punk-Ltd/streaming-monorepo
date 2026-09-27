@@ -1,12 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import {
-  Alert,
-  Button,
-  Paper,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Alert, Button, Paper, Stack, TextField, Typography } from '@mui/material';
 import { passwordProblem } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../../api';
@@ -30,17 +23,13 @@ export function ChangePasswordCard() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const set = (field: keyof typeof EMPTY, value: string) =>
-    setForm((prev) => ({ ...prev, [field]: value }));
+  const set = (field: keyof typeof EMPTY, value: string) => setForm((prev) => ({ ...prev, [field]: value }));
 
   const username = user?.username ?? '';
-  const nextError =
-    form.next === '' ? null : passwordProblem(form.next, username);
-  const againError =
-    form.again === '' || form.again === form.next ? null : PASSWORD_MISMATCH;
+  const nextError = form.next === '' ? null : passwordProblem(form.next, username);
+  const againError = form.again === '' || form.again === form.next ? null : PASSWORD_MISMATCH;
 
-  const complete =
-    form.current !== '' && form.next !== '' && form.again !== '';
+  const complete = form.current !== '' && form.next !== '' && form.again !== '';
   const valid = complete && nextError === null && againError === null;
 
   const submit = async (e: FormEvent) => {
@@ -56,9 +45,7 @@ export function ChangePasswordCard() {
       });
       if (updated) setUser(updated);
       setForm(EMPTY);
-      snackbar.success(
-        'Password changed. Your other browsers were signed out.',
-      );
+      snackbar.success('Password changed. Your other browsers were signed out.');
     } catch (caught) {
       setError(errorMessage(caught, 'Failed to change the password'));
     } finally {
@@ -119,12 +106,7 @@ export function ChangePasswordCard() {
             disabled={saving}
             fullWidth
           />
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={saving || !valid}
-            sx={{ alignSelf: 'flex-start' }}
-          >
+          <Button type="submit" variant="contained" disabled={saving || !valid} sx={{ alignSelf: 'flex-start' }}>
             {saving ? 'Saving…' : 'Change password'}
           </Button>
         </Stack>

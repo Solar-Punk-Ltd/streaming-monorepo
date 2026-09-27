@@ -13,25 +13,16 @@ import { ValidationError } from 'yup';
 
 import { PASSWORD_MAX_LENGTH } from '@streaming-monorepo/web2-admin-common';
 
-import {
-  changePasswordSchema,
-  createUserSchema,
-  loginSchema,
-} from '../../src/schemas/auth.js';
-import {
-  ingestLookupParamSchema,
-  renditionReportSchema,
-  streamStateSchema,
-} from '../../src/schemas/internal.js';
-import {
-  streamIdParamSchema,
-  streamInputSchema,
-} from '../../src/schemas/stream.js';
+import { changePasswordSchema, createUserSchema, loginSchema } from '../../src/schemas/auth.js';
+import { ingestLookupParamSchema, renditionReportSchema, streamStateSchema } from '../../src/schemas/internal.js';
+import { streamIdParamSchema, streamInputSchema } from '../../src/schemas/stream.js';
 
-const validate = <T>(schema: {
-  validate: (value: unknown, options: object) => Promise<T>;
-}, value: unknown): Promise<T> =>
-  schema.validate(value, { abortEarly: false, stripUnknown: true });
+const validate = <T>(
+  schema: {
+    validate: (value: unknown, options: object) => Promise<T>;
+  },
+  value: unknown,
+): Promise<T> => schema.validate(value, { abortEarly: false, stripUnknown: true });
 
 async function errorsFor(schema: Parameters<typeof validate>[0], value: unknown) {
   try {
@@ -92,8 +83,14 @@ describe('streamInputSchema', () => {
       mediaType: 'video',
       scheduledStartTime: '2026-10-01T09:00:00.000Z',
     });
-    assert.ok(errors.some((e) => e.includes('title')), errors.join('; '));
-    assert.ok(errors.some((e) => e.includes('description')), errors.join('; '));
+    assert.ok(
+      errors.some((e) => e.includes('title')),
+      errors.join('; '),
+    );
+    assert.ok(
+      errors.some((e) => e.includes('description')),
+      errors.join('; '),
+    );
   });
 
   it('rejects a blank title', async () => {
@@ -101,7 +98,10 @@ describe('streamInputSchema', () => {
       ...goodStream,
       title: '   ',
     });
-    assert.ok(errors.some((e) => e.includes('title')), errors.join('; '));
+    assert.ok(
+      errors.some((e) => e.includes('title')),
+      errors.join('; '),
+    );
   });
 
   it('enforces the msrs-client limits: 100, 500, 10 tags, 20 chars each', async () => {
@@ -331,10 +331,9 @@ describe('streamStateSchema', () => {
   it('refuses them with live, rather than dropping them quietly', async () => {
     // A live report carrying an index is the uploader sending the wrong
     // thing; swallowing it would put a stale index on the next entry written.
-    assert.deepEqual(
-      await errorsFor(streamStateSchema, { state: 'live', index: 4 }),
-      ['index is only sent with state vod'],
-    );
+    assert.deepEqual(await errorsFor(streamStateSchema, { state: 'live', index: 4 }), [
+      'index is only sent with state vod',
+    ]);
   });
 
   it('refuses a negative or fractional index and a negative duration', async () => {
@@ -352,10 +351,7 @@ describe('streamStateSchema', () => {
 
   it('refuses a state this backend owns', async () => {
     // `published` and `draft` are the console's, not the uploader's.
-    assert.deepEqual(
-      await errorsFor(streamStateSchema, { state: 'published' }),
-      ['state must be one of live, vod'],
-    );
+    assert.deepEqual(await errorsFor(streamStateSchema, { state: 'published' }), ['state must be one of live, vod']);
   });
 });
 
@@ -387,14 +383,8 @@ describe('renditionReportSchema', () => {
     // A ladder is finished when every rung has an index, and an index with no
     // duration would finish it with nothing to put on the entry's seek bar.
     const message = 'index and duration are sent together, or neither is';
-    assert.deepEqual(
-      await errorsFor(renditionReportSchema, { ...goodRung, index: 42 }),
-      [message],
-    );
-    assert.deepEqual(
-      await errorsFor(renditionReportSchema, { ...goodRung, duration: 61.5 }),
-      [message],
-    );
+    assert.deepEqual(await errorsFor(renditionReportSchema, { ...goodRung, index: 42 }), [message]);
+    assert.deepEqual(await errorsFor(renditionReportSchema, { ...goodRung, duration: 61.5 }), [message]);
   });
 
   it('accepts index 0 with duration 0, which is not "absent"', async () => {
@@ -416,7 +406,10 @@ describe('renditionReportSchema', () => {
         ...goodRung,
         name,
       });
-      assert.ok(errors.some((e) => e.includes('name')), `accepted ${name}`);
+      assert.ok(
+        errors.some((e) => e.includes('name')),
+        `accepted ${name}`,
+      );
     }
   });
 

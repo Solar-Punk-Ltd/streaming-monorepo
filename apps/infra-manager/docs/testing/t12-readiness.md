@@ -40,16 +40,16 @@ T04a and T06 add a separate direct claim in PostgresBuildLedger. That rule is ap
 
 The source is the agreed T12 issue, `../consensus/issues/t12-readiness-and-diagnostics.md`, and the review it came from in `../consensus/PRD.md`. (This pointed at `.scratch/main-v2-review-consensus/`, which is gitignored and therefore resolves to nothing on any other checkout.) The journeys are finding the next prerequisite, diagnosing Bee initialization, opening the correct container logs, and identifying current versus previous observations during deployment changes.
 
-| Behavior | RED commit | GREEN commit | Evidence |
-|---|---|---|---|
-| Headline, ordered checklist and primary action agree | cdcc064 | fbab0de | Four initial frontend regression cases |
-| Starting and restarting survive a reload and an atomic claim | 6fbe698 | f8872ee | Three PostgreSQL cases and three frontend cases |
-| Stopping and removing are not called stopped | d369bc9 | f5c3727 | Readiness summary regression |
-| Logs select the requested container | 8521f21 | 3135308 | Selection test plus later browser interaction |
-| Bee readiness needs bounded, recognized probe evidence | 86c8f41 | aaf5c8b | Five loopback HTTP cases |
-| Old observations expire and no estimate is invented | 3eb50ea | db29876 | Clock-injected frontend cases and checklist coupling |
-| Unsynchronized server clocks do not reject a new response | 6b802d1 | 3ce7104 | Ahead and behind clocks plus browser slow-sibling case |
-| Engine cards do not reuse a green Running claim during deployment | 08a313e | b6cf856 | Browser assertion failed on the old Running pill and passed on State not checked |
+| Behavior                                                          | RED commit | GREEN commit | Evidence                                                                         |
+| ----------------------------------------------------------------- | ---------- | ------------ | -------------------------------------------------------------------------------- |
+| Headline, ordered checklist and primary action agree              | cdcc064    | fbab0de      | Four initial frontend regression cases                                           |
+| Starting and restarting survive a reload and an atomic claim      | 6fbe698    | f8872ee      | Three PostgreSQL cases and three frontend cases                                  |
+| Stopping and removing are not called stopped                      | d369bc9    | f5c3727      | Readiness summary regression                                                     |
+| Logs select the requested container                               | 8521f21    | 3135308      | Selection test plus later browser interaction                                    |
+| Bee readiness needs bounded, recognized probe evidence            | 86c8f41    | aaf5c8b      | Five loopback HTTP cases                                                         |
+| Old observations expire and no estimate is invented               | 3eb50ea    | db29876      | Clock-injected frontend cases and checklist coupling                             |
+| Unsynchronized server clocks do not reject a new response         | 6b802d1    | 3ce7104      | Ahead and behind clocks plus browser slow-sibling case                           |
+| Engine cards do not reuse a green Running claim during deployment | 08a313e    | b6cf856      | Browser assertion failed on the old Running pill and passed on State not checked |
 
 The missing-module or missing-export failures in the first, logs and initial freshness tests were intentional missing-interface RED evidence. The PostgreSQL and later browser failures executed the old behavior. The first attempted Node SSR Logs test could not load the existing MUI dependency shape and was replaced with real-browser coverage.
 

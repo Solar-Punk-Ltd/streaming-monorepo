@@ -18,10 +18,7 @@ export interface SessionSweep {
  * Signing in prunes them too, so this is what keeps the table from holding
  * dead rows on a manager nobody has signed in to for a while.
  */
-export function startSessionSweep(
-  authService: AuthService,
-  intervalMs: number = DAY_MS,
-): SessionSweep {
+export function startSessionSweep(authService: AuthService, intervalMs: number = DAY_MS): SessionSweep {
   const sweep = async (): Promise<void> => {
     try {
       const removed = await authService.deleteExpiredSessions();

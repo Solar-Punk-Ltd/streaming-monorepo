@@ -8,10 +8,7 @@ import type { WizardStepProps } from '../wizardState';
 /** Where the postage batch that pays for uploads comes from. */
 export function StampChoice({ state, update }: WizardStepProps) {
   return (
-    <FormField
-      label="Postage stamp"
-      aside="prepaid Swarm storage the uploader pays with"
-    >
+    <FormField label="Postage stamp" aside="prepaid Swarm storage the uploader pays with">
       <ChoiceGroup
         name="wizard-stamp"
         value={state.stampMode}
@@ -35,7 +32,7 @@ export function StampChoice({ state, update }: WizardStepProps) {
                 onChange={(event) => update({ stampId: event.target.value })}
                 placeholder="64 hex characters"
                 slotProps={{
-                  htmlInput: { style: { fontFamily: MONO_STACK } }
+                  htmlInput: { style: { fontFamily: MONO_STACK } },
                 }}
               />
             ),

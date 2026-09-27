@@ -4,11 +4,7 @@ import { describe, it } from 'node:test';
 
 import type { LadderRungState } from '@streaming-infra-manager/common';
 
-import {
-  poolProbeFailureNote,
-  probedRungNote,
-  rungPublishingSummary,
-} from './rungPublishing';
+import { poolProbeFailureNote, probedRungNote, rungPublishingSummary } from './rungPublishing';
 
 const rung = (urlState?: LadderRungState['urlState']): LadderRungState => ({
   rung: '360p',
@@ -21,22 +17,13 @@ const rung = (urlState?: LadderRungState['urlState']): LadderRungState => ({
 
 describe('what a pool member says about the address it publishes on', () => {
   it('says the address answered where the manager reached it', () => {
-    assert.equal(
-      rungPublishingSummary(rung('ok')),
-      'Node checks passed. Publishing address answers.',
-    );
+    assert.equal(rungPublishingSummary(rung('ok')), 'Node checks passed. Publishing address answers.');
     assert.equal(probedRungNote(rung('ok')), 'Publishing address http://node.test:10055 answers');
   });
 
   it('says the address did not answer where nothing was listening', () => {
-    assert.equal(
-      rungPublishingSummary(rung('unreachable')),
-      'Node checks passed. Publishing address did not answer.',
-    );
-    assert.equal(
-      probedRungNote(rung('unreachable')),
-      'Publishing address http://node.test:10055 did not answer',
-    );
+    assert.equal(rungPublishingSummary(rung('unreachable')), 'Node checks passed. Publishing address did not answer.');
+    assert.equal(probedRungNote(rung('unreachable')), 'Publishing address http://node.test:10055 did not answer');
   });
 
   it('claims nothing about an address no probe answered for', () => {
@@ -51,10 +38,7 @@ describe('what a pool member says about the address it publishes on', () => {
   });
 
   it('claims nothing while the pool result has not arrived', () => {
-    assert.equal(
-      rungPublishingSummary(null),
-      'Node checks passed. Publishing is not verified.',
-    );
+    assert.equal(rungPublishingSummary(null), 'Node checks passed. Publishing is not verified.');
     assert.equal(probedRungNote(null), null);
   });
 
@@ -66,10 +50,7 @@ describe('what a pool member says about the address it publishes on', () => {
   });
 
   it('keeps an answer it already has while a refresh is in flight', () => {
-    assert.equal(
-      rungPublishingSummary(rung('ok'), true),
-      'Node checks passed. Publishing address answers.',
-    );
+    assert.equal(rungPublishingSummary(rung('ok'), true), 'Node checks passed. Publishing address answers.');
   });
 });
 
@@ -89,10 +70,7 @@ describe('what the step says when the pool result could not be read', () => {
 
 describe('the step that shows these sentences', () => {
   it('renders every one of them, because a sentence nobody renders says nothing', () => {
-    const source = readFileSync(
-      new URL('./steps/PoolPrerequisites.tsx', import.meta.url),
-      'utf8',
-    );
+    const source = readFileSync(new URL('./steps/PoolPrerequisites.tsx', import.meta.url), 'utf8');
 
     for (const shown of ['poolProbeFailureNote', 'rungPublishingSummary', 'probedRungNote']) {
       assert.match(source, new RegExp(`${shown}\\(`), `${shown} reaches no one`);

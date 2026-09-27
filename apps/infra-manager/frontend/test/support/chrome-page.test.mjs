@@ -29,7 +29,10 @@ const PAGE_GLOBALS = ['HTMLInputElement', 'HTMLTextAreaElement', 'innerHeight'];
 
 /** Runs one of these expressions over a stand-in page, which is all they touch. */
 const inPage = (expression, document, globals = {}) =>
-  new Function('document', ...PAGE_GLOBALS, `return ${expression};`)(document, ...PAGE_GLOBALS.map((name) => globals[name]));
+  new Function('document', ...PAGE_GLOBALS, `return ${expression};`)(
+    document,
+    ...PAGE_GLOBALS.map((name) => globals[name]),
+  );
 
 const NO_BODY_YET = { body: null };
 const showing = (text) => ({ body: { innerText: text } });
@@ -47,7 +50,16 @@ function pageOf(document, globals) {
 }
 
 function elementNamed(name, extra = {}) {
-  return { name, clicks: 0, click() { this.clicks++; }, scrollIntoView() {}, getBoundingClientRect: () => ({ x: 10, y: 20, width: 40, height: 8 }), ...extra };
+  return {
+    name,
+    clicks: 0,
+    click() {
+      this.clicks++;
+    },
+    scrollIntoView() {},
+    getBoundingClientRect: () => ({ x: 10, y: 20, width: 40, height: 8 }),
+    ...extra,
+  };
 }
 
 describe('what the page shows', () => {
@@ -63,10 +75,7 @@ describe('what the page shows', () => {
 
 describe('the button an expression names', () => {
   const document = {
-    querySelectorAll: () => [
-      { textContent: ' Record assertion ' },
-      { textContent: 'Record operator assertion' },
-    ],
+    querySelectorAll: () => [{ textContent: ' Record assertion ' }, { textContent: 'Record operator assertion' }],
   };
 
   it('takes the one whose own text matches once trimmed', () => {
@@ -82,30 +91,68 @@ describe('an element the page paints where it is laid out', () => {
   const title = { name: 'the row title' };
   const row = {
     getBoundingClientRect: () => ({ left: 0, width: 200, top: 100, bottom: 300 }),
-    contains(node) { return node === this || node === title; },
+    contains(node) {
+      return node === this || node === title;
+    },
   };
   const paintingAt = (paint) => ({ row, missing: null, elementFromPoint: (_x, y) => paint(y) });
   const TALL = { innerHeight: 900 };
 
   it('answers true when the page paints the element at its top edge and at its bottom edge', () => {
-    assert.equal(inPage(paintedInView('document.row'), paintingAt(() => title), TALL), true);
+    assert.equal(
+      inPage(
+        paintedInView('document.row'),
+        paintingAt(() => title),
+        TALL,
+      ),
+      true,
+    );
   });
 
   it('answers false while something else is painted over its top, as a fold that is still opening leaves it', () => {
     const heading = { name: 'the section heading' };
-    assert.equal(inPage(paintedInView('document.row'), paintingAt((y) => (y < 200 ? heading : title)), TALL), false);
+    assert.equal(
+      inPage(
+        paintedInView('document.row'),
+        paintingAt((y) => (y < 200 ? heading : title)),
+        TALL,
+      ),
+      false,
+    );
   });
 
   it('answers false when the element reaches past the viewport, and when there is none', () => {
-    assert.equal(inPage(paintedInView('document.row'), paintingAt(() => title), { innerHeight: 250 }), false);
-    assert.equal(inPage(paintedInView('document.missing'), paintingAt(() => title), TALL), false);
+    assert.equal(
+      inPage(
+        paintedInView('document.row'),
+        paintingAt(() => title),
+        { innerHeight: 250 },
+      ),
+      false,
+    );
+    assert.equal(
+      inPage(
+        paintedInView('document.missing'),
+        paintingAt(() => title),
+        TALL,
+      ),
+      false,
+    );
   });
 });
 
 describe('an element with nothing inside it animating', () => {
   const fold = { name: 'a fold opening' };
-  const card = { contains(node) { return node === this || node === fold; } };
-  const animating = (...targets) => ({ card, missing: null, getAnimations: () => targets.map((target) => ({ effect: target && { target } })) });
+  const card = {
+    contains(node) {
+      return node === this || node === fold;
+    },
+  };
+  const animating = (...targets) => ({
+    card,
+    missing: null,
+    getAnimations: () => targets.map((target) => ({ effect: target && { target } })),
+  });
 
   it('answers true when nothing animates, or only something outside it, or an animation with no effect', () => {
     assert.equal(inPage(stillWithin('document.card'), animating()), true);
@@ -125,7 +172,11 @@ describe('a click that waits for what it clicks', () => {
   it('clicks the element once, and only once it is there', async () => {
     const button = elementNamed('Continue');
     let renders = 0;
-    const page = pageOf({ get button() { return ++renders < 3 ? null : button; } });
+    const page = pageOf({
+      get button() {
+        return ++renders < 3 ? null : button;
+      },
+    });
 
     await clickWhenEnabled(page.evaluate, 'document.button', 'the Continue button');
 
@@ -156,9 +207,18 @@ describe('a click that waits for what it clicks', () => {
 describe('a point to click, for the suites that drive a real mouse', () => {
   it('answers the middle of the element, after scrolling it into view', async () => {
     let scrolled = 0;
-    const page = pageOf({ button: elementNamed('Set as default', { scrollIntoView() { scrolled++; } }) });
+    const page = pageOf({
+      button: elementNamed('Set as default', {
+        scrollIntoView() {
+          scrolled++;
+        },
+      }),
+    });
 
-    assert.deepEqual(await pointToClick(page.evaluate, 'document.button', 'the Set as default button'), { x: 30, y: 24 });
+    assert.deepEqual(await pointToClick(page.evaluate, 'document.button', 'the Set as default button'), {
+      x: 30,
+      y: 24,
+    });
     assert.equal(scrolled, 1);
   });
 
@@ -175,9 +235,16 @@ describe('a point to click, for the suites that drive a real mouse', () => {
 describe('a property read that waits for its element', () => {
   it('answers the property once the element is there', async () => {
     let renders = 0;
-    const page = pageOf({ get field() { return ++renders < 2 ? null : { value: 'retained-uploader' }; } });
+    const page = pageOf({
+      get field() {
+        return ++renders < 2 ? null : { value: 'retained-uploader' };
+      },
+    });
 
-    assert.equal(await readWhenPresent(page.evaluate, 'document.field', 'value', 'the deployment name'), 'retained-uploader');
+    assert.equal(
+      await readWhenPresent(page.evaluate, 'document.field', 'value', 'the deployment name'),
+      'retained-uploader',
+    );
   });
 
   it('takes a property that is false, which is a reading and not an absence', async () => {
@@ -200,11 +267,32 @@ describe('a fill that waits for its field', () => {
   it('sets the value through the native setter and tells React with one input event', async () => {
     const events = [];
     const typed = {};
-    const field = { tagName: 'INPUT', focus() { events.push('focus'); }, dispatchEvent: (event) => events.push(event.type) };
-    const page = pageOf({ field }, {
-      HTMLInputElement: { prototype: { set value(next) { typed.value = next; } } },
-      HTMLTextAreaElement: { prototype: { set value(next) { typed.textarea = next; } } },
-    });
+    const field = {
+      tagName: 'INPUT',
+      focus() {
+        events.push('focus');
+      },
+      dispatchEvent: (event) => events.push(event.type),
+    };
+    const page = pageOf(
+      { field },
+      {
+        HTMLInputElement: {
+          prototype: {
+            set value(next) {
+              typed.value = next;
+            },
+          },
+        },
+        HTMLTextAreaElement: {
+          prototype: {
+            set value(next) {
+              typed.textarea = next;
+            },
+          },
+        },
+      },
+    );
 
     await fillWhenPresent(page.evaluate, 'document.field', 'operator-8', 'the username field');
 
@@ -214,10 +302,25 @@ describe('a fill that waits for its field', () => {
 
   it('sets a textarea through the setter a textarea has, which is not the input one', async () => {
     const typed = {};
-    const page = pageOf({ field: { tagName: 'TEXTAREA', focus() {}, dispatchEvent: () => true } }, {
-      HTMLInputElement: { prototype: { set value(next) { typed.value = next; } } },
-      HTMLTextAreaElement: { prototype: { set value(next) { typed.textarea = next; } } },
-    });
+    const page = pageOf(
+      { field: { tagName: 'TEXTAREA', focus() {}, dispatchEvent: () => true } },
+      {
+        HTMLInputElement: {
+          prototype: {
+            set value(next) {
+              typed.value = next;
+            },
+          },
+        },
+        HTMLTextAreaElement: {
+          prototype: {
+            set value(next) {
+              typed.textarea = next;
+            },
+          },
+        },
+      },
+    );
 
     await fillWhenPresent(page.evaluate, 'document.field', 'retained note', 'the notes field');
 

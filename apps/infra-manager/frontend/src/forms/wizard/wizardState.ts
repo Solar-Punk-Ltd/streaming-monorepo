@@ -104,12 +104,7 @@ export interface WizardState {
   versionId: number | null;
 }
 
-export const WIZARD_STEPS = [
-  'What to set up',
-  'Basics',
-  'Settings',
-  'Review',
-] as const;
+export const WIZARD_STEPS = ['What to set up', 'Basics', 'Settings', 'Review'] as const;
 
 export const LAST_STEP = WIZARD_STEPS.length;
 
@@ -166,22 +161,14 @@ export function versionChoiceShown(context: WizardContext): boolean {
   return versions.length !== 1 || !versions[0]?.isDefault || !versions[0]?.tested;
 }
 
-export function chosenVersion(
-  state: WizardState,
-  context: WizardContext,
-): StackVersion | null {
-  return (
-    choosableVersions(context).find((version) => version.id === state.versionId) ??
-    null
-  );
+export function chosenVersion(state: WizardState, context: WizardContext): StackVersion | null {
+  return choosableVersions(context).find((version) => version.id === state.versionId) ?? null;
 }
 
 /** What Set as default on the Versions page decides: the preselected version. */
 function defaultVersionIn(context: WizardContext): number | null {
   const choosable = choosableVersions(context);
-  return (
-    choosable.find((version) => version.isDefault)?.id ?? null
-  );
+  return choosable.find((version) => version.isDefault)?.id ?? null;
 }
 
 export function streamsIn(context: WizardContext): Profile[] {
@@ -193,34 +180,30 @@ export function poolsIn(context: WizardContext): DeploymentGroup[] {
 }
 
 /** The pool string a pool on this manager is currently offering, if any. */
-export function poolValueIn(
-  context: WizardContext,
-  poolId: number | null,
-): string | null {
+export function poolValueIn(context: WizardContext, poolId: number | null): string | null {
   if (poolId == null) return null;
-  const group = context.groups.find(group => group.id === poolId);
-  if (!group || !matchingPool({ group, profiles: context.profiles.filter(profile => profile.group_id === poolId) }, group.name)) return null;
+  const group = context.groups.find((group) => group.id === poolId);
+  if (
+    !group ||
+    !matchingPool({ group, profiles: context.profiles.filter((profile) => profile.group_id === poolId) }, group.name)
+  )
+    return null;
   return context.poolResults.get(poolId)?.value ?? null;
 }
 
 export function isNameTaken(context: WizardContext, name: string): boolean {
   return (
-    context.profiles.some((profile) => profile.name === name) ||
-    context.groups.some((group) => group.name === name)
+    context.profiles.some((profile) => profile.name === name) || context.groups.some((group) => group.name === name)
   );
 }
 
-export function initialWizardState(
-  prefill: WizardPrefill | undefined,
-  context: WizardContext,
-): WizardState {
+export function initialWizardState(prefill: WizardPrefill | undefined, context: WizardContext): WizardState {
   const streams = streamsIn(context);
   const pools = poolsIn(context);
   // A ready pool is the better default, but readiness arrives from its own
   // request, so the first pool stands in until it does. Picking an unready one
   // is caught on this step with a sentence saying so.
-  const preferredPool =
-    pools.find((pool) => poolValueIn(context, pool.id) !== null) ?? pools[0];
+  const preferredPool = pools.find((pool) => poolValueIn(context, pool.id) !== null) ?? pools[0];
   const prefilledPool = prefill?.poolId ?? preferredPool?.id ?? null;
   const prefilledStream = prefill?.feedStreamer ?? streams[0]?.name ?? '';
 
@@ -268,11 +251,7 @@ export function initialWizardState(
  * the abandoned goal (an external Bee URL, a pasted stamp) must not resurface
  * under a field of the new goal that happens to share its name.
  */
-export function withGoal(
-  state: WizardState,
-  goal: WizardGoal,
-  context: WizardContext,
-): WizardState {
+export function withGoal(state: WizardState, goal: WizardGoal, context: WizardContext): WizardState {
   if (state.goal === goal) return state;
   return {
     ...initialWizardState({ goal }, context),
@@ -299,9 +278,7 @@ export function defaultPassphraseChoice(context: WizardContext): PassphraseChoic
 /** The passphrase this deployment would get, or null for the host-wide one. */
 export function chosenPassphrase(state: WizardState): string | null {
   if (state.passMode === 'host') return null;
-  return state.passMode === 'generate'
-    ? state.generatedPassphrase
-    : state.ownPassphrase.trim();
+  return state.passMode === 'generate' ? state.generatedPassphrase : state.ownPassphrase.trim();
 }
 
 /**
@@ -311,15 +288,11 @@ export function chosenPassphrase(state: WizardState): string | null {
 export function passphraseSummary(state: WizardState, context: WizardContext): string {
   if (state.passMode === 'generate') return 'generated for this deployment';
   if (state.passMode === 'custom') return 'a passphrase of your own';
-  return context.hostPassphrase
-    ? 'the host-wide passphrase'
-    : 'none on this host, so the ingest is unencrypted';
+  return context.hostPassphrase ? 'the host-wide passphrase' : 'none on this host, so the ingest is unencrypted';
 }
 
 export function chosenKey(state: WizardState): string {
-  return state.keyMode === 'generate'
-    ? state.generatedKey
-    : state.pastedKey.trim();
+  return state.keyMode === 'generate' ? state.generatedKey : state.pastedKey.trim();
 }
 
 export function chosenHost(state: WizardState): string {
@@ -420,9 +393,7 @@ export function offersRpcEndpoint(state: WizardState): boolean {
  * public default only when there is not.
  */
 export function initialRpcEndpointSource(context: WizardContext): RpcEndpointSource {
-  return context.beeRpcEndpoint.configured
-    ? MANAGER_RPC_ENDPOINT_SOURCE
-    : DEFAULT_RPC_ENDPOINT_SOURCE;
+  return context.beeRpcEndpoint.configured ? MANAGER_RPC_ENDPOINT_SOURCE : DEFAULT_RPC_ENDPOINT_SOURCE;
 }
 
 /**
@@ -459,19 +430,13 @@ export function needsPassphrase(state: WizardState): boolean {
 
 export function needsStreamKey(state: WizardState): boolean {
   if (state.goal === 'stream' || state.goal === 'abr-uploader') return true;
-  return (
-    state.goal === 'custom' &&
-    state.components.includes(STREAM_UPLOADER_SERVICE)
-  );
+  return state.goal === 'custom' && state.components.includes(STREAM_UPLOADER_SERVICE);
 }
 
 /** A stream-uploader pays with postage, so it is asked where that comes from. */
 export function needsStamp(state: WizardState): boolean {
   if (state.goal === 'stream') return true;
-  return (
-    state.goal === 'custom' &&
-    state.components.includes(STREAM_UPLOADER_SERVICE)
-  );
+  return state.goal === 'custom' && state.components.includes(STREAM_UPLOADER_SERVICE);
 }
 
 export function needsFeedOwner(state: WizardState): boolean {

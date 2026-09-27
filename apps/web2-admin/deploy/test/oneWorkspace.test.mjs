@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { after, describe, it } from 'node:test';
@@ -125,9 +135,13 @@ describe('deploy.sh from a checkout of the one workspace', () => {
     const tmp = ownFolder('admin-tmp-');
     const snapshot = join(ownFolder('admin-snapshot-'), 'sent');
 
-    const deployed = sandbox.runScript(DEPLOY, ['--host=fixture-host', '--profile=qa', `--remote-path=${sandbox.hostDir}`], {
-      env: { TMPDIR: tmp, RSYNC_SNAPSHOT_DIR: snapshot },
-    });
+    const deployed = sandbox.runScript(
+      DEPLOY,
+      ['--host=fixture-host', '--profile=qa', `--remote-path=${sandbox.hostDir}`],
+      {
+        env: { TMPDIR: tmp, RSYNC_SNAPSHOT_DIR: snapshot },
+      },
+    );
 
     assert.equal(deployed.status, 0, deployed.stderr);
     const expected = expectedCut(sandbox);
@@ -136,7 +150,11 @@ describe('deploy.sh from a checkout of the one workspace', () => {
     }
     assert.ok(rsyncWords(deployed).includes('./'), "the admin's own folder is sent as before");
     assert.deepEqual(readdirSync(tmp), [], 'the cut folder is gone');
-    assert.equal(existsSync(sandbox.inCheckout('apps/web2-admin/pnpm-lock.yaml')), false, 'nothing was written into the checkout');
+    assert.equal(
+      existsSync(sandbox.inCheckout('apps/web2-admin/pnpm-lock.yaml')),
+      false,
+      'nothing was written into the checkout',
+    );
   });
 
   it('builds locally from a copy with the cut in it, while compose runs from the checkout', () => {
@@ -171,12 +189,21 @@ describe('deploy.sh with the real rsync', () => {
   };
 
   it("leaves the host as rsync --delete leaves it from the admin's folder alone, and the admin's pair besides", () => {
-    const sandbox = makeSandbox({ checkout: oneWorkspaceCheckout(), cutTool: true, host: EARLIER_HOST, realRsync: true });
+    const sandbox = makeSandbox({
+      checkout: oneWorkspaceCheckout(),
+      cutTool: true,
+      host: EARLIER_HOST,
+      realRsync: true,
+    });
     const tmp = ownFolder('admin-tmp-');
 
-    const deployed = sandbox.runScript(DEPLOY, ['--host=fixture-host', '--profile=qa', `--remote-path=${sandbox.hostDir}`], {
-      env: { TMPDIR: tmp },
-    });
+    const deployed = sandbox.runScript(
+      DEPLOY,
+      ['--host=fixture-host', '--profile=qa', `--remote-path=${sandbox.hostDir}`],
+      {
+        env: { TMPDIR: tmp },
+      },
+    );
 
     assert.equal(deployed.status, 0, deployed.stderr);
     const argv = sandbox.rsyncArgv();
@@ -209,12 +236,16 @@ describe('docker-compose.copy.yml', () => {
     const env = { ...process.env, WEB2_ADMIN_ENV_FILE: '../backend/.env.sample', POSTGRES_PASSWORD: 'placeholder' };
     if (copy === undefined) delete env.APP_WORKSPACE_COPY;
     else env.APP_WORKSPACE_COPY = copy;
-    return spawnSync('docker', ['compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.copy.yml', 'config', '--format', 'json'], {
-      cwd: DEPLOY_DIR,
-      encoding: 'utf8',
-      env,
-      timeout: 30_000,
-    });
+    return spawnSync(
+      'docker',
+      ['compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.copy.yml', 'config', '--format', 'json'],
+      {
+        cwd: DEPLOY_DIR,
+        encoding: 'utf8',
+        env,
+        timeout: 30_000,
+      },
+    );
   }
 
   it("moves the two images' build context to the copy, each keeping its own Dockerfile", (t) => {
@@ -245,16 +276,23 @@ describe('docker-compose.copy.yml', () => {
 });
 
 describe('deploy.sh for an admin that keeps its own pair', () => {
-  const ownPair = { 'apps/web2-admin/pnpm-lock.yaml': "lockfileVersion: '9.0'\n", 'apps/web2-admin/pnpm-workspace.yaml': 'packages:\n  - backend\n' };
+  const ownPair = {
+    'apps/web2-admin/pnpm-lock.yaml': "lockfileVersion: '9.0'\n",
+    'apps/web2-admin/pnpm-workspace.yaml': 'packages:\n  - backend\n',
+  };
 
   it('sends its folder alone, as before', () => {
     const sandbox = makeSandbox({ checkout: oneWorkspaceCheckout(ownPair), cutTool: true, host: HOST_WITH_PROFILE });
     const snapshot = join(ownFolder('admin-snapshot-'), 'sent');
     mkdirSync(snapshot, { recursive: true });
 
-    const deployed = sandbox.runScript(DEPLOY, ['--host=fixture-host', '--profile=qa', `--remote-path=${sandbox.hostDir}`], {
-      env: { TMPDIR: ownFolder('admin-tmp-'), RSYNC_SNAPSHOT_DIR: snapshot },
-    });
+    const deployed = sandbox.runScript(
+      DEPLOY,
+      ['--host=fixture-host', '--profile=qa', `--remote-path=${sandbox.hostDir}`],
+      {
+        env: { TMPDIR: ownFolder('admin-tmp-'), RSYNC_SNAPSHOT_DIR: snapshot },
+      },
+    );
 
     assert.equal(deployed.status, 0, deployed.stderr);
     assert.deepEqual(readdirSync(snapshot), [], 'no second source was sent');
@@ -263,7 +301,9 @@ describe('deploy.sh for an admin that keeps its own pair', () => {
   it('builds locally from its own folder, as before', () => {
     const sandbox = makeSandbox({ checkout: oneWorkspaceCheckout(ownPair), cutTool: true });
 
-    const deployed = sandbox.runScript(DEPLOY, ['--host=localhost', '--profile=qa'], { env: { TMPDIR: ownFolder('admin-tmp-') } });
+    const deployed = sandbox.runScript(DEPLOY, ['--host=localhost', '--profile=qa'], {
+      env: { TMPDIR: ownFolder('admin-tmp-') },
+    });
 
     assert.equal(deployed.status, 0, deployed.stderr);
     const up = deployed.calls.find((call) => call.startsWith('docker compose ') && call.includes(' up '));

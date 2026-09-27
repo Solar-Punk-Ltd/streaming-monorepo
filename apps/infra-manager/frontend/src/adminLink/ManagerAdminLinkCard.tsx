@@ -65,9 +65,10 @@ export function ManagerAdminLinkCard({ load }: { load: ManagerAdminLinkLoad }) {
       ) : (
         <Stack
           sx={{
-            alignItems: "center",
-            py: 2
-          }}>
+            alignItems: 'center',
+            py: 2,
+          }}
+        >
           <CircularProgress size={24} aria-label="Reading the web2 admin link" />
         </Stack>
       )}
@@ -127,9 +128,12 @@ function LinkEditor({
 
   return (
     <Stack spacing={2} sx={{ minWidth: 0 }}>
-      <Typography variant="body2" sx={{
-        color: "text.secondary"
-      }}>
+      <Typography
+        variant="body2"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
         {MANAGER_LINK_LEAD}
       </Typography>
 
@@ -145,7 +149,7 @@ function LinkEditor({
         helperText={urlProblem ?? MANAGER_LINK_URL_HINT}
         onChange={(event) => edit({ ...draft, url: event.target.value })}
         slotProps={{
-          htmlInput: { ...PLAIN_TEXT_INPUT, inputMode: 'url' }
+          htmlInput: { ...PLAIN_TEXT_INPUT, inputMode: 'url' },
         }}
       />
 
@@ -154,9 +158,10 @@ function LinkEditor({
           variant="caption"
           data-token-status
           sx={{
-            color: "text.secondary",
-            overflowWrap: 'anywhere'
-          }}>
+            color: 'text.secondary',
+            overflowWrap: 'anywhere',
+          }}
+        >
           {managerTokenStatus(link.tokenStored, draft.clearToken)}
         </Typography>
         <TextField
@@ -172,12 +177,16 @@ function LinkEditor({
           helperText={tokenProblem ?? managerTokenHint(link.tokenStored)}
           onChange={(event) => edit({ ...draft, token: event.target.value })}
           slotProps={{
-            htmlInput: { ...PLAIN_TEXT_INPUT, autoComplete: NEW_PASSWORD }
+            htmlInput: { ...PLAIN_TEXT_INPUT, autoComplete: NEW_PASSWORD },
           }}
         />
         {link.tokenStored && (
           <Box>
-            <Button size="small" disabled={saving} onClick={() => edit({ ...draft, token: '', clearToken: !draft.clearToken })}>
+            <Button
+              size="small"
+              disabled={saving}
+              onClick={() => edit({ ...draft, token: '', clearToken: !draft.clearToken })}
+            >
               {draft.clearToken ? 'Keep the stored token' : 'Clear the stored token'}
             </Button>
           </Box>
@@ -189,10 +198,16 @@ function LinkEditor({
         spacing={1}
         useFlexGap
         sx={{
-          flexWrap: "wrap",
-          alignItems: "center"
-        }}>
-        <Button variant="contained" size="small" disabled={!changed || problems.length > 0 || saving} onClick={() => void save()}>
+          flexWrap: 'wrap',
+          alignItems: 'center',
+        }}
+      >
+        <Button
+          variant="contained"
+          size="small"
+          disabled={!changed || problems.length > 0 || saving}
+          onClick={() => void save()}
+        >
           {saving ? 'Saving' : 'Save'}
         </Button>
         <Button size="small" disabled={!changed || saving} onClick={() => edit(draftOf(link))}>
@@ -208,7 +223,11 @@ function LinkEditor({
 
       <AdminLinkTest
         run={testRequest ? () => testAdminLink(testRequest) : null}
-        blockedReason={managerLinkTestBlocked({ problems: problems.length > 0, url: draft.url !== '', tokenStored: link.tokenStored && !draft.clearToken })}
+        blockedReason={managerLinkTestBlocked({
+          problems: problems.length > 0,
+          url: draft.url !== '',
+          tokenStored: link.tokenStored && !draft.clearToken,
+        })}
         resetKey={`${link.revision}:${edits}`}
       />
     </Stack>

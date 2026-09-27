@@ -1,13 +1,4 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { User } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from './api';
@@ -89,17 +80,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, []);
 
-  const logIn = useCallback(
-    async (username: string, password: string): Promise<SignInResult> => {
-      const result = await api.signIn(username, password);
-      if (result.ok) {
-        setUser(result.user);
-        setReason('notSignedIn');
-      }
-      return result;
-    },
-    [],
-  );
+  const logIn = useCallback(async (username: string, password: string): Promise<SignInResult> => {
+    const result = await api.signIn(username, password);
+    if (result.ok) {
+      setUser(result.user);
+      setReason('notSignedIn');
+    }
+    return result;
+  }, []);
 
   const logOut = useCallback(async () => {
     try {

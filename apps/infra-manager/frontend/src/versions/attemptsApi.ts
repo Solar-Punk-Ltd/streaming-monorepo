@@ -9,14 +9,7 @@ export async function fetchAttempts(): Promise<DeployAttemptView[]> {
 }
 
 /** Ends an attempt by hand. The manager refuses a job id that is not this attempt's. */
-export async function releaseAttempt(
-  id: number,
-  jobId: string,
-): Promise<DeployAttemptView> {
-  const body = await sendJson<{ attempt: DeployAttemptView }>(
-    'POST',
-    `/versions/attempts/${id}/release`,
-    { jobId },
-  );
+export async function releaseAttempt(id: number, jobId: string): Promise<DeployAttemptView> {
+  const body = await sendJson<{ attempt: DeployAttemptView }>('POST', `/versions/attempts/${id}/release`, { jobId });
   return body.attempt;
 }

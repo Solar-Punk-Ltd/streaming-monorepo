@@ -1,18 +1,6 @@
-import {
-  Box,
-  Checkbox,
-  FormControlLabel,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Box, Checkbox, FormControlLabel, Stack, TextField, Typography } from '@mui/material';
 
-import {
-  CLIENT_SERVICE,
-  OME_SERVICE,
-  SRS_SERVICE,
-  STREAM_UPLOADER_SERVICE,
-} from '@streaming-infra-manager/common';
+import { CLIENT_SERVICE, OME_SERVICE, SRS_SERVICE, STREAM_UPLOADER_SERVICE } from '@streaming-infra-manager/common';
 
 import { MONO_STACK } from '../../../app/theme';
 import { SERVICE_DESCRIPTIONS } from '../../../deployments/shape';
@@ -40,12 +28,7 @@ export function CustomSettings(props: WizardStepProps) {
       ? state.components.filter((entry) => entry !== service)
       : // Picking one engine drops the other, which is the rule the manager
         // enforces and the only pair that cannot both be on.
-        [
-          ...state.components.filter(
-            (entry) => !(ENGINES.includes(service) && ENGINES.includes(entry)),
-          ),
-          service,
-        ];
+        [...state.components.filter((entry) => !(ENGINES.includes(service) && ENGINES.includes(entry))), service];
     update({ components: kept });
   };
 
@@ -57,20 +40,19 @@ export function CustomSettings(props: WizardStepProps) {
             <FormControlLabel
               key={service}
               control={
-                <Checkbox
-                  size="small"
-                  checked={state.components.includes(service)}
-                  onChange={() => toggle(service)}
-                />
+                <Checkbox size="small" checked={state.components.includes(service)} onChange={() => toggle(service)} />
               }
               label={
                 <Box>
                   <Typography variant="body2" sx={{ fontFamily: MONO_STACK }}>
                     {service}
                   </Typography>
-                  <Typography variant="caption" sx={{
-                    color: "text.secondary"
-                  }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'text.secondary',
+                    }}
+                  >
                     {SERVICE_DESCRIPTIONS[service]}
                   </Typography>
                 </Box>
@@ -107,7 +89,7 @@ export function CustomSettings(props: WizardStepProps) {
             onChange={(event) => update({ beeUrl: event.target.value })}
             placeholder="http://10.0.0.7:1633"
             slotProps={{
-              htmlInput: { style: { fontFamily: MONO_STACK } }
+              htmlInput: { style: { fontFamily: MONO_STACK } },
             }}
           />
         </FormField>

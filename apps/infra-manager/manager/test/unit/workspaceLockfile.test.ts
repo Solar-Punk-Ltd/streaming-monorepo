@@ -36,7 +36,9 @@ function foldersUpToRepositoryTop(start: string): string[] {
 }
 
 /** The folders holding a pnpm-workspace.yaml at or above the manager's, nearest first, as pnpm looks for one. */
-const workspaceRoots = foldersUpToRepositoryTop(app).filter((folder) => existsSync(join(folder, 'pnpm-workspace.yaml')));
+const workspaceRoots = foldersUpToRepositoryTop(app).filter((folder) =>
+  existsSync(join(folder, 'pnpm-workspace.yaml')),
+);
 const [root] = workspaceRoots;
 
 /** A path from the workspace root with forward slashes, as the workspace file and the lockfile write it. */
@@ -72,7 +74,11 @@ describe('the workspace lockfile', () => {
     for (const path of packages) {
       assert.ok(existsSync(join(root, path, 'package.json')), `${path} is a package`);
       // An importer with no dependencies of its own, such as the app's root package, is written `path: {}`.
-      assert.match(lockfile, new RegExp(`^ {2}${path}:( \\{\\})?$`, 'm'), `${path} is an importer of the workspace lockfile`);
+      assert.match(
+        lockfile,
+        new RegExp(`^ {2}${path}:( \\{\\})?$`, 'm'),
+        `${path} is an importer of the workspace lockfile`,
+      );
     }
   });
 

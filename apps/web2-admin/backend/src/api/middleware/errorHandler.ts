@@ -42,12 +42,7 @@ function bodyParserType(err: unknown): string | null {
  * Centralised error → HTTP mapping. Domain errors get specific status codes;
  * everything else becomes a 500 with the message logged but not echoed back.
  */
-export function errorHandler(
-  err: unknown,
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): void {
+export function errorHandler(err: unknown, req: Request, res: Response, next: NextFunction): void {
   if (res.headersSent) {
     // Something already started writing — a streamed thumbnail, say. Nothing
     // useful can be said in the body now; hand it back so Express closes the
@@ -167,9 +162,7 @@ export function errorHandler(
     return;
   }
   if (err instanceof FeedOwnerMismatchError) {
-    res
-      .status(409)
-      .json({ error: 'feed_owner_mismatch', message: err.message });
+    res.status(409).json({ error: 'feed_owner_mismatch', message: err.message });
     return;
   }
   if (err instanceof MediaTypeLockedError) {
@@ -177,15 +170,11 @@ export function errorHandler(
     return;
   }
   if (err instanceof UnsupportedMediaTypeError) {
-    res
-      .status(415)
-      .json({ error: 'unsupported_media_type', message: err.message });
+    res.status(415).json({ error: 'unsupported_media_type', message: err.message });
     return;
   }
   if (err instanceof PublishFailedError) {
-    res
-      .status(502)
-      .json({ error: 'publish_failed', id: err.streamId, message: err.reason });
+    res.status(502).json({ error: 'publish_failed', id: err.streamId, message: err.reason });
     return;
   }
 
@@ -195,16 +184,11 @@ export function errorHandler(
     return;
   }
   if (parserType === 'entity.parse.failed') {
-    res
-      .status(400)
-      .json({ error: 'validation_error', errors: ['body is not valid JSON'] });
+    res.status(400).json({ error: 'validation_error', errors: ['body is not valid JSON'] });
     return;
   }
 
-  logger.error(
-    `[HTTP] ${req.method} ${req.originalUrl} unhandled:`,
-    getErrorMessage(err),
-  );
+  logger.error(`[HTTP] ${req.method} ${req.originalUrl} unhandled:`, getErrorMessage(err));
   const stack = getErrorStack(err);
   if (stack) logger.error(stack);
   res.status(500).json({ error: 'internal_error' });

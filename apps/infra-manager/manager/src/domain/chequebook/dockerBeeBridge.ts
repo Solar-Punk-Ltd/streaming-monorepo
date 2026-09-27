@@ -18,11 +18,30 @@ trap 'exit 1' HUP INT TERM
 wait -n "$input" "$output"
 `;
 
-export function dockerBeeBridgeCommand(internalPort: number, lifetimeMs: number, cleanupGraceMs: number): readonly string[] {
-  return ['/usr/bin/env', '-i', 'PATH=/usr/bin:/bin', '/usr/bin/timeout', '--signal=TERM',
-    `--kill-after=${cleanupGraceMs / 1000}s`, `${Math.ceil(lifetimeMs / 1000)}s`, '/bin/bash', '--noprofile', '--norc', '-c',
-    BRIDGE_SCRIPT, 'bee-byte-bridge', String(internalPort)];
+export function dockerBeeBridgeCommand(
+  internalPort: number,
+  lifetimeMs: number,
+  cleanupGraceMs: number,
+): readonly string[] {
+  return [
+    '/usr/bin/env',
+    '-i',
+    'PATH=/usr/bin:/bin',
+    '/usr/bin/timeout',
+    '--signal=TERM',
+    `--kill-after=${cleanupGraceMs / 1000}s`,
+    `${Math.ceil(lifetimeMs / 1000)}s`,
+    '/bin/bash',
+    '--noprofile',
+    '--norc',
+    '-c',
+    BRIDGE_SCRIPT,
+    'bee-byte-bridge',
+    String(internalPort),
+  ];
 }
 
 /** A change to any binary, fixed argument or script byte invalidates prior qualification records. */
-export const DOCKER_BEE_BRIDGE_REVISION = `sha256:${createHash('sha256').update(JSON.stringify(dockerBeeBridgeCommand(1, 1000, 1000))).digest('hex')}`;
+export const DOCKER_BEE_BRIDGE_REVISION = `sha256:${createHash('sha256')
+  .update(JSON.stringify(dockerBeeBridgeCommand(1, 1000, 1000)))
+  .digest('hex')}`;

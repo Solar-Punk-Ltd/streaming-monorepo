@@ -14,15 +14,33 @@ import { adminLinkTestAnchor, unsavedAdminLinkNote } from './adminLinkRow';
 
 function entry(key: string, over: Partial<DeploymentSettingEntry> = {}): DeploymentSettingEntry {
   return {
-    key, section: 'Admin mode', description: '', declared: true, secret: false, sampleValue: null, versionSet: true,
-    versionValue: '', stored: false, storedValue: null, value: '', source: 'version', owner: null, field: null,
-    services: ['stream-uploader'], running: 'same', engineSetting: null, ...over,
+    key,
+    section: 'Admin mode',
+    description: '',
+    declared: true,
+    secret: false,
+    sampleValue: null,
+    versionSet: true,
+    versionValue: '',
+    stored: false,
+    storedValue: null,
+    value: '',
+    source: 'version',
+    owner: null,
+    field: null,
+    services: ['stream-uploader'],
+    running: 'same',
+    engineSetting: null,
+    ...over,
   };
 }
 
 describe('where the card offers Test connection', () => {
   it('after the later of the two keys, in the order the list gives them', () => {
-    assert.equal(adminLinkTestAnchor([entry('LOG_LEVEL'), entry('ADMIN_API_URL'), entry('ADMIN_API_TOKEN'), entry('STAMP')]), 'ADMIN_API_TOKEN');
+    assert.equal(
+      adminLinkTestAnchor([entry('LOG_LEVEL'), entry('ADMIN_API_URL'), entry('ADMIN_API_TOKEN'), entry('STAMP')]),
+      'ADMIN_API_TOKEN',
+    );
     assert.equal(adminLinkTestAnchor([entry('ADMIN_API_TOKEN'), entry('ADMIN_API_URL')]), 'ADMIN_API_URL');
   });
 

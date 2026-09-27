@@ -1,21 +1,9 @@
-import {
-  getErrorMessage,
-  METRICS_SAMPLE_INTERVAL_MS,
-} from '@streaming-infra-manager/common';
+import { getErrorMessage, METRICS_SAMPLE_INTERVAL_MS } from '@streaming-infra-manager/common';
 import Docker from 'dockerode';
 
-import {
-  ContainerMetrics,
-  HostMetrics,
-  InfraTotals,
-  MetricsSnapshot,
-  OutsideTotals,
-} from '../types/index.js';
+import { ContainerMetrics, HostMetrics, InfraTotals, MetricsSnapshot, OutsideTotals } from '../types/index.js';
 
-import {
-  COMPOSE_PROJECT_LABEL,
-  COMPOSE_SERVICE_LABEL,
-} from './composeLabels.js';
+import { COMPOSE_PROJECT_LABEL, COMPOSE_SERVICE_LABEL } from './composeLabels.js';
 import { answeredInTime, DOCKER_TIMEOUT_MS } from './dockerTimeout.js';
 import { HostCollector } from './HostCollector.js';
 import { Logger } from './Logger.js';
@@ -39,9 +27,7 @@ export interface StatsHandle {
  * Named so a test can hand over a double without standing up a Docker daemon.
  */
 export interface MetricsDockerEngine {
-  listContainers(
-    options: Docker.ContainerListOptions,
-  ): Promise<Docker.ContainerInfo[]>;
+  listContainers(options: Docker.ContainerListOptions): Promise<Docker.ContainerInfo[]>;
   getContainer(id: string): StatsHandle;
 }
 
@@ -49,7 +35,6 @@ export interface MetricsDockerEngine {
 export interface HostSampler {
   sample(): Promise<HostMetrics>;
 }
-
 
 /**
  * How often a container's restart count is read again.
@@ -70,11 +55,7 @@ const RESTART_REFRESH_MS = 30_000;
 const STATS_AT_A_TIME = 4;
 
 /** Runs over the items in order, never more than `limit` of them at a time. */
-async function mapAtMost<T, R>(
-  items: readonly T[],
-  limit: number,
-  run: (item: T) => Promise<R>,
-): Promise<R[]> {
+async function mapAtMost<T, R>(items: readonly T[], limit: number, run: (item: T) => Promise<R>): Promise<R[]> {
   const results = new Array<R>(items.length);
   let next = 0;
   const worker = async (): Promise<void> => {
@@ -185,9 +166,7 @@ export class MetricsCollector {
         try {
           listener(snapshot);
         } catch (err) {
-          logger.warn(
-            `[MetricsCollector] listener threw: ${getErrorMessage(err)}`,
-          );
+          logger.warn(`[MetricsCollector] listener threw: ${getErrorMessage(err)}`);
         }
       }
     } catch (err) {
@@ -202,8 +181,11 @@ export class MetricsCollector {
       // The same deadline the Docker calls carry. Nothing else ends a host
       // reading, and one sample that never settles is now one that never
       // samples again.
-      answeredInTime(this.host.sample(), this.dockerTimeoutMs, () =>
-        new Error(`the host readings did not answer within ${this.dockerTimeoutMs}ms`)),
+      answeredInTime(
+        this.host.sample(),
+        this.dockerTimeoutMs,
+        () => new Error(`the host readings did not answer within ${this.dockerTimeoutMs}ms`),
+      ),
       this.collectContainers(),
     ]);
 
@@ -218,10 +200,7 @@ export class MetricsCollector {
   }
 
   private async collectContainers(): Promise<ContainerMetrics[]> {
-    const list = await answeredInTime(
-      this.docker.listContainers({ all: false }),
-      this.dockerTimeoutMs,
-    );
+    const list = await answeredInTime(this.docker.listContainers({ all: false }), this.dockerTimeoutMs);
 
     const managed = await this.resolveManagedProjects();
     const scoped = managed
@@ -239,9 +218,7 @@ export class MetricsCollector {
       if (!liveIds.has(id)) this.restarts.delete(id);
     }
 
-    const results = await mapAtMost(scoped, STATS_AT_A_TIME, (info) =>
-      this.statContainer(info),
-    );
+    const results = await mapAtMost(scoped, STATS_AT_A_TIME, (info) => this.statContainer(info));
     return results.filter((c): c is ContainerMetrics => c !== null);
   }
 
@@ -251,14 +228,15 @@ export class MetricsCollector {
       // Bounded like every other call a sample makes, so a database that
       // stops answering cannot hold the sample open indefinitely. The last
       // answer stands meanwhile, which is what the catch below is for.
-      const set = await answeredInTime(this.managedProjects(), this.dockerTimeoutMs, () =>
-        new Error(`the deployments did not answer within ${this.dockerTimeoutMs}ms`));
+      const set = await answeredInTime(
+        this.managedProjects(),
+        this.dockerTimeoutMs,
+        () => new Error(`the deployments did not answer within ${this.dockerTimeoutMs}ms`),
+      );
       this.lastManagedProjects = set;
       return set;
     } catch (err) {
-      logger.warn(
-        `[MetricsCollector] could not resolve managed projects: ${getErrorMessage(err)}`,
-      );
+      logger.warn(`[MetricsCollector] could not resolve managed projects: ${getErrorMessage(err)}`);
       return this.lastManagedProjects;
     }
   }
@@ -282,9 +260,7 @@ export class MetricsCollector {
     }
   }
 
-  private async statContainer(
-    info: Docker.ContainerInfo,
-  ): Promise<ContainerMetrics | null> {
+  private async statContainer(info: Docker.ContainerInfo): Promise<ContainerMetrics | null> {
     try {
       const stats = await answeredInTime(
         this.docker.getContainer(info.Id).stats({ stream: false }),
@@ -292,18 +268,12 @@ export class MetricsCollector {
       );
       return this.toMetrics(info, stats, await this.restartCountOf(info.Id));
     } catch (err) {
-      logger.debug(
-        `[MetricsCollector] stats failed for ${info.Id.slice(0, 12)}: ${getErrorMessage(err)}`,
-      );
+      logger.debug(`[MetricsCollector] stats failed for ${info.Id.slice(0, 12)}: ${getErrorMessage(err)}`);
       return null;
     }
   }
 
-  private toMetrics(
-    info: Docker.ContainerInfo,
-    stats: Docker.ContainerStats,
-    restartCount: number,
-  ): ContainerMetrics {
+  private toMetrics(info: Docker.ContainerInfo, stats: Docker.ContainerStats, restartCount: number): ContainerMetrics {
     const cpuPercent = computeCpuPercent(stats);
     const { memUsageBytes, memLimitBytes, memPercent } = computeMemory(stats);
     const { netRxBytes, netTxBytes } = sumNetwork(stats);
@@ -359,8 +329,7 @@ export class MetricsCollector {
       return { netRxRate: 0, netTxRate: 0, blkReadRate: 0, blkWriteRate: 0 };
     }
 
-    const rate = (now: number, before: number): number =>
-      Math.max(0, (now - before) / elapsedSec);
+    const rate = (now: number, before: number): number => Math.max(0, (now - before) / elapsedSec);
 
     return {
       netRxRate: rate(cur.netRxBytes, prev.netRxBytes),
@@ -375,16 +344,9 @@ function computeCpuPercent(stats: Docker.ContainerStats): number {
   // docker CLI formula. The first read has no precpu baseline, so report 0.
   if (!stats.precpu_stats.system_cpu_usage) return 0;
 
-  const cpuDelta =
-    stats.cpu_stats.cpu_usage.total_usage -
-    (stats.precpu_stats.cpu_usage?.total_usage ?? 0);
-  const systemDelta =
-    stats.cpu_stats.system_cpu_usage -
-    (stats.precpu_stats.system_cpu_usage ?? 0);
-  const onlineCpus =
-    stats.cpu_stats.online_cpus ||
-    stats.cpu_stats.cpu_usage.percpu_usage?.length ||
-    1;
+  const cpuDelta = stats.cpu_stats.cpu_usage.total_usage - (stats.precpu_stats.cpu_usage?.total_usage ?? 0);
+  const systemDelta = stats.cpu_stats.system_cpu_usage - (stats.precpu_stats.system_cpu_usage ?? 0);
+  const onlineCpus = stats.cpu_stats.online_cpus || stats.cpu_stats.cpu_usage.percpu_usage?.length || 1;
 
   if (systemDelta <= 0 || cpuDelta <= 0) return 0;
   return (cpuDelta / systemDelta) * onlineCpus * 100;
@@ -398,12 +360,10 @@ function computeMemory(stats: Docker.ContainerStats): {
   const rawUsage = stats.memory_stats.usage ?? 0;
   // Subtract page cache (cgroup v2 inactive_file / v1 cache) to match docker stats.
   const sub = stats.memory_stats.stats as Record<string, number> | undefined;
-  const cache =
-    sub?.inactive_file ?? sub?.total_inactive_file ?? sub?.cache ?? 0;
+  const cache = sub?.inactive_file ?? sub?.total_inactive_file ?? sub?.cache ?? 0;
   const memUsageBytes = Math.max(0, rawUsage - cache);
   const memLimitBytes = stats.memory_stats.limit ?? 0;
-  const memPercent =
-    memLimitBytes > 0 ? (memUsageBytes / memLimitBytes) * 100 : 0;
+  const memPercent = memLimitBytes > 0 ? (memUsageBytes / memLimitBytes) * 100 : 0;
   return { memUsageBytes, memLimitBytes, memPercent };
 }
 
@@ -437,14 +397,8 @@ function sumBlockIo(stats: Docker.ContainerStats): {
 // host.cpuPercent is 0–100 for the whole box, and ×ncpu puts it on infra's core×100 scale.
 function computeOutside(host: HostMetrics, infra: InfraTotals): OutsideTotals {
   return {
-    cpuPercent:
-      host.cpuPercent != null
-        ? Math.max(0, host.cpuPercent * host.ncpu - infra.cpuPercent)
-        : null,
-    memUsageBytes:
-      host.memUsedBytes != null
-        ? Math.max(0, host.memUsedBytes - infra.memUsageBytes)
-        : null,
+    cpuPercent: host.cpuPercent != null ? Math.max(0, host.cpuPercent * host.ncpu - infra.cpuPercent) : null,
+    memUsageBytes: host.memUsedBytes != null ? Math.max(0, host.memUsedBytes - infra.memUsageBytes) : null,
   };
 }
 

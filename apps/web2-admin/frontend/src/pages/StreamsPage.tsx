@@ -106,11 +106,7 @@ export function StreamsPage() {
             <RefreshIcon />
           </IconButton>
         </Tooltip>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => navigate('/create')}
-        >
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/create')}>
           Create New Stream
         </Button>
       </Stack>
@@ -140,8 +136,7 @@ export function StreamsPage() {
             No streams yet.
           </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Create your first stream to get its OBS connection details, then
-            publish it to the stream list.
+            Create your first stream to get its OBS connection details, then publish it to the stream list.
           </Typography>
         </Paper>
       ) : null}
@@ -167,10 +162,7 @@ export function StreamsPage() {
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2">{stream.title}</Typography>
-                    <Typography
-                      variant="caption"
-                      sx={{ color: 'text.secondary' }}
-                    >
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                       {stream.description}
                     </Typography>
                   </TableCell>
@@ -178,23 +170,12 @@ export function StreamsPage() {
                     <MediaTypeChip mediaType={stream.mediaType} />
                   </TableCell>
                   <TableCell>
-                    <StatusChip
-                      status={stream.status}
-                      publishError={stream.publishError}
-                    />
+                    <StatusChip status={stream.status} publishError={stream.publishError} />
                   </TableCell>
                   <TableCell>{formatDateTime(stream.scheduledStartTime)}</TableCell>
                   <TableCell align="right">
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      sx={{ justifyContent: 'flex-end' }}
-                    >
-                      <Button
-                        size="small"
-                        startIcon={<EditIcon />}
-                        onClick={() => navigate(`/edit/${stream.id}`)}
-                      >
+                    <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                      <Button size="small" startIcon={<EditIcon />} onClick={() => navigate(`/edit/${stream.id}`)}>
                         Edit
                       </Button>
                       <Button
@@ -204,12 +185,7 @@ export function StreamsPage() {
                       >
                         Details
                       </Button>
-                      <Button
-                        size="small"
-                        color="error"
-                        startIcon={<DeleteIcon />}
-                        onClick={() => setToDelete(stream)}
-                      >
+                      <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setToDelete(stream)}>
                         Delete
                       </Button>
                     </Stack>

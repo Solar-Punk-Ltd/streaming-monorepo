@@ -21,10 +21,7 @@ export interface StreamRevalidation {
  * it a session that simply ran out keeps its streams, and their events, until
  * the browser or the manager goes away.
  */
-export function startStreamRevalidation(
-  authService: AuthService,
-  intervalMs: number = MINUTE_MS,
-): StreamRevalidation {
+export function startStreamRevalidation(authService: AuthService, intervalMs: number = MINUTE_MS): StreamRevalidation {
   const revalidate = async (): Promise<void> => {
     try {
       const closed = await authService.closeStreamsOfEndedSessions();
@@ -32,10 +29,7 @@ export function startStreamRevalidation(
         logger.info(`[Auth] closed ${closed} stream(s) of ended session(s)`);
       }
     } catch (err) {
-      logger.error(
-        '[Auth] stream revalidation failed:',
-        getErrorMessage(err),
-      );
+      logger.error('[Auth] stream revalidation failed:', getErrorMessage(err));
     }
   };
 

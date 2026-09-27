@@ -12,8 +12,7 @@ const execFileAsync = promisify(execFile);
 
 const DU_TIMEOUT_MS = 15_000;
 
-const BEE_DATA_ROOT =
-  process.env.BEE_DATA_ROOT ?? '/opt/streaming/streaming-infra-manager-data';
+const BEE_DATA_ROOT = process.env.BEE_DATA_ROOT ?? '/opt/streaming/streaming-infra-manager-data';
 
 /** Reject names that could escape BEE_DATA_ROOT via traversal. */
 function isSafeProject(name: string): boolean {
@@ -26,9 +25,7 @@ function isSafeProject(name: string): boolean {
  * not exist (e.g. the manager's own stack) or the lookup fails, disk size is
  * a best-effort detail, never a hard error.
  */
-export async function getProfileDiskUsage(
-  project: string,
-): Promise<number | null> {
+export async function getProfileDiskUsage(project: string): Promise<number | null> {
   if (!isSafeProject(project)) {
     logger.warn(`[DiskUsage] refusing suspicious project name "${project}"`);
     return null;
@@ -47,9 +44,7 @@ export async function getProfileDiskUsage(
     const bytes = Number(stdout.trim().split(/\s+/)[0]);
     return Number.isFinite(bytes) ? bytes : null;
   } catch (err) {
-    logger.debug(
-      `[DiskUsage] du failed for ${project}: ${getErrorMessage(err)}`,
-    );
+    logger.debug(`[DiskUsage] du failed for ${project}: ${getErrorMessage(err)}`);
     return null;
   }
 }

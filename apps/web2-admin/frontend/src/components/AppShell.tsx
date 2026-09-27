@@ -1,15 +1,6 @@
 import { useState, type MouseEvent } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router';
-import {
-  AppBar,
-  Box,
-  Button,
-  Container,
-  Menu,
-  MenuItem,
-  Toolbar,
-  Typography,
-} from '@mui/material';
+import { AppBar, Box, Button, Container, Menu, MenuItem, Toolbar, Typography } from '@mui/material';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import type { ReactNode } from 'react';
 
@@ -56,12 +47,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Typography>
           {user ? (
             <>
-              <Button
-                color="inherit"
-                startIcon={<AccountCircleIcon />}
-                onClick={open}
-                aria-haspopup="menu"
-              >
+              <Button color="inherit" startIcon={<AccountCircleIcon />} onClick={open} aria-haspopup="menu">
                 {user.username}
               </Button>
               <Menu anchorEl={anchor} open={anchor !== null} onClose={close}>

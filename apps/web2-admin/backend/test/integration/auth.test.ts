@@ -14,11 +14,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
-import type {
-  MeResponse,
-  UserListResponse,
-  UserSummary,
-} from '@streaming-monorepo/web2-admin-common';
+import type { MeResponse, UserListResponse, UserSummary } from '@streaming-monorepo/web2-admin-common';
 
 import {
   ADMIN_PASSWORD,
@@ -102,10 +98,7 @@ describe('cross-site writes', () => {
     });
 
     assert.equal(response.status, 403);
-    assert.equal(
-      (response.body as { error: string }).error,
-      'cross_site_request',
-    );
+    assert.equal((response.body as { error: string }).error, 'cross_site_request');
   });
 
   it('refuses a write whose Origin names another site', async () => {
@@ -127,22 +120,17 @@ describe('cross-site writes', () => {
     // No cookie, no Origin, no x-requested-with: exactly what swarm-hls-stream
     // sends, and exactly what the cross-site check would refuse. /api/internal
     // is mounted ahead of it for that reason, and this is the test that says so.
-    const response = await raw(
-      'GET',
-      '/api/internal/streams/by-ingest/video/not-a-uuid',
-      internalCall(),
-    );
+    const response = await raw('GET', '/api/internal/streams/by-ingest/video/not-a-uuid', internalCall());
 
     assert.notEqual(response.status, 403);
     assert.equal(response.status, 400, response.text);
   });
 
   it('still refuses an internal call with no token', async () => {
-    const response = await raw(
-      'GET',
-      '/api/internal/streams/by-ingest/video/not-a-uuid',
-      { anonymous: true, crossSiteHeader: false },
-    );
+    const response = await raw('GET', '/api/internal/streams/by-ingest/video/not-a-uuid', {
+      anonymous: true,
+      crossSiteHeader: false,
+    });
 
     assert.equal(response.status, 401);
     assert.deepEqual(response.body, { error: 'unauthenticated' });
@@ -224,17 +212,11 @@ describe('managing users over HTTP', () => {
 
     const self = await raw('DELETE', `/api/auth/users/${adminId}`);
     assert.equal(self.status, 409);
-    assert.equal(
-      (self.body as { error: string }).error,
-      'cannot_remove_user',
-    );
+    assert.equal((self.body as { error: string }).error, 'cannot_remove_user');
   });
 
   it('answers 404 for an id that is not a user, 400 for one that is not a UUID', async () => {
-    const missing = await raw(
-      'DELETE',
-      '/api/auth/users/00000000-0000-4000-8000-999999999999',
-    );
+    const missing = await raw('DELETE', '/api/auth/users/00000000-0000-4000-8000-999999999999');
     const malformed = await raw('DELETE', '/api/auth/users/17');
 
     assert.equal(missing.status, 404);
@@ -287,10 +269,7 @@ describe('changing your own password', () => {
       body: { currentPassword: 'not-it-at-all', newPassword: ADMIN_PASSWORD },
     });
     assert.equal(wrong.status, 401);
-    assert.equal(
-      (wrong.body as { error: string }).error,
-      'invalid_credentials',
-    );
+    assert.equal((wrong.body as { error: string }).error, 'invalid_credentials');
 
     const weak = await raw('POST', '/api/auth/password', {
       body: { currentPassword: NEXT_PASSWORD, newPassword: 'short' },

@@ -55,7 +55,10 @@ export type StoredManagerAdminLink = Pick<ManagerAdminLink, 'url' | 'tokenStored
  * cleared one, because the stored token goes only to the address it was saved
  * with.
  */
-export function managerAdminLinkProblems({ url, token }: ManagerAdminLinkSave, stored?: StoredManagerAdminLink): string[] {
+export function managerAdminLinkProblems(
+  { url, token }: ManagerAdminLinkSave,
+  stored?: StoredManagerAdminLink,
+): string[] {
   const problems: string[] = [];
   const urlProblem = url === '' ? null : adminUrlProblem(url);
   if (urlProblem) problems.push(urlProblem);

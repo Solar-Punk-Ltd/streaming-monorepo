@@ -41,11 +41,7 @@ export function demultiplexDockerStream(raw: Buffer): string {
 
 function looksFramed(raw: Buffer): boolean {
   return (
-    raw.length >= HEADER_BYTES &&
-    (raw[0] ?? -1) <= MAX_STREAM_TYPE &&
-    raw[1] === 0 &&
-    raw[2] === 0 &&
-    raw[3] === 0
+    raw.length >= HEADER_BYTES && (raw[0] ?? -1) <= MAX_STREAM_TYPE && raw[1] === 0 && raw[2] === 0 && raw[3] === 0
   );
 }
 
@@ -71,10 +67,7 @@ export interface StreamBounds {
  * Every caller here is answering an HTTP request, so none of them may wait on a
  * container that never stops writing or a daemon that stops answering halfway.
  */
-export function readBounded(
-  stream: NodeJS.ReadableStream,
-  bounds: StreamBounds,
-): Promise<Buffer> {
+export function readBounded(stream: NodeJS.ReadableStream, bounds: StreamBounds): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;

@@ -24,10 +24,7 @@ import type { CommandResult } from '../../src/domain/engineConfig/engineConfigCh
 import type { EngineWatcher } from '../../src/domain/engineConfig/EngineConfigService.js';
 import type { ProfileServiceHarness } from '../support/profileServiceHarness.js';
 import { fakeDocker, frame, RUNNING_AFTER_TWO_RESTARTS } from '../support/fakeDocker.js';
-import {
-  COMPOSE_PROJECT_LABEL,
-  COMPOSE_SERVICE_LABEL,
-} from '../../src/domain/composeLabels.js';
+import { COMPOSE_PROJECT_LABEL, COMPOSE_SERVICE_LABEL } from '../../src/domain/composeLabels.js';
 
 // The scratch checkout stands in for both the bundled root and the main-v3
 // root: what differs between the two here is the contract, not the files.
@@ -47,23 +44,13 @@ writeFileSync(
   'sed -i "s/HLS_FRAGMENT_PLACEHOLDER/1/" $CONF\nsed -i "/TRANSCODE_PLACEHOLDER/d" $CONF\n',
 );
 
-const { EngineConfigChecker } = await import(
-  '../../src/domain/engineConfig/engineConfigCheck.js'
-);
-const { EngineConfigService } = await import(
-  '../../src/domain/engineConfig/EngineConfigService.js'
-);
+const { EngineConfigChecker } = await import('../../src/domain/engineConfig/engineConfigCheck.js');
+const { EngineConfigService } = await import('../../src/domain/engineConfig/EngineConfigService.js');
 const { ContainerControl } = await import('../../src/domain/ContainerControl.js');
 const { EventBus } = await import('../../src/domain/EventBus.js');
-const { ProfileBusyError, ProfileConfigError } = await import(
-  '../../src/domain/errors/index.js'
-);
-const { profileRow, profileServiceHarness } = await import(
-  '../support/profileServiceHarness.js'
-);
-const { InMemoryEngineConfigOperations } = await import(
-  '../support/InMemoryEngineConfigOperations.js'
-);
+const { ProfileBusyError, ProfileConfigError } = await import('../../src/domain/errors/index.js');
+const { profileRow, profileServiceHarness } = await import('../support/profileServiceHarness.js');
+const { InMemoryEngineConfigOperations } = await import('../support/InMemoryEngineConfigOperations.js');
 const { configureEngineConfigAdmission } = await import('../support/engineConfigAdmissionFixture.js');
 
 const V3_CONTRACT: StackContract = {
@@ -124,13 +111,15 @@ interface Setup<W extends EngineWatcher> {
   checkerCalls: number;
 }
 
-async function setup<W extends EngineWatcher = ScriptedWatcher>(options: {
-  supported?: boolean;
-  check?: CommandResult;
-  states?: (ContainerState | null)[];
-  /** In place of the scripted one: the real adapter over a fake daemon. */
-  watcher?: W;
-} = {}): Promise<Setup<W>> {
+async function setup<W extends EngineWatcher = ScriptedWatcher>(
+  options: {
+    supported?: boolean;
+    check?: CommandResult;
+    states?: (ContainerState | null)[];
+    /** In place of the scripted one: the real adapter over a fake daemon. */
+    watcher?: W;
+  } = {},
+): Promise<Setup<W>> {
   const harness = profileServiceHarness([profileRow()]);
   if (options.supported ?? true) {
     await harness.versions.setContract(1, V3_CONTRACT);
@@ -210,8 +199,7 @@ describe('applying a file', () => {
 
     await assert.rejects(
       service.apply('stream1', 'hls_fragmnt 1.5;\n'),
-      (err: unknown) =>
-        err instanceof ProfileConfigError && /illegal vhost\.hls\.hls_fragmnt/.test(err.message),
+      (err: unknown) => err instanceof ProfileConfigError && /illegal vhost\.hls\.hls_fragmnt/.test(err.message),
     );
 
     assert.equal(harness.profiles.engineConfigs.has('stream1'), false);
@@ -221,10 +209,7 @@ describe('applying a file', () => {
   it('refuses a placeholder the version does not fill without asking the engine', async () => {
     const setupState = await setup();
 
-    await assert.rejects(
-      setupState.service.apply('stream1', 'x NOPE_PLACEHOLDER;\n'),
-      ProfileConfigError,
-    );
+    await assert.rejects(setupState.service.apply('stream1', 'x NOPE_PLACEHOLDER;\n'), ProfileConfigError);
 
     assert.equal(setupState.checkerCalls, 0);
   });
@@ -247,9 +232,7 @@ describe('applying a file', () => {
     assert.equal(profile.has_engine_config, true);
     assert.equal(profile.engine_config_error, null);
     assert.deepEqual(harness.orchestrator.reserved, ['stream1']);
-    assert.deepEqual(harness.orchestrator.deploys, [
-      { profileName: 'stream1', services: ['srs'] },
-    ]);
+    assert.deepEqual(harness.orchestrator.deploys, [{ profileName: 'stream1', services: ['srs'] }]);
     assert.equal(
       harness.profiles.engineConfigs.get('stream1'),
       'listen 1935;\nhls_fragment HLS_FRAGMENT_PLACEHOLDER;\n',
@@ -271,7 +254,10 @@ describe('an engine that will not stay up on the new file', () => {
 
     const row = harness.profiles.rows.get('stream1');
     assert.equal(harness.profiles.engineConfigs.get('stream1'), 'listen 1935; # the old one\n');
-    assert.match(row?.engine_config_error ?? '', /^SRS keeps restarting on the new config file, so the previous one is back\./);
+    assert.match(
+      row?.engine_config_error ?? '',
+      /^SRS keeps restarting on the new config file, so the previous one is back\./,
+    );
     assert.match(row?.engine_config_error ?? '', /invalid config, exiting/);
     assert.match(row?.engine_config_error ?? '', /acquire_pid_file/);
     assert.equal(/Authors/.test(row?.engine_config_error ?? ''), false, 'the banner is not a reason');
@@ -333,7 +319,7 @@ describe('what the engine said, on its way to an operator', () => {
       await settle();
 
       const reason = harness.profiles.rows.get('stream1')?.engine_config_error ?? '';
-      assert.match(reason, /passphrase|token/, 'the engine\'s own words still reach the operator');
+      assert.match(reason, /passphrase|token/, "the engine's own words still reach the operator");
       assert.equal(reason.includes('s3cretpassphrase16'), false, reason);
       assert.equal(reason.includes('a1b2c3d4e5'), false, reason);
     });
@@ -387,9 +373,7 @@ describe('back to the template', () => {
 
     assert.equal(profile.has_engine_config, false);
     assert.equal(profile.engine_config_error, null);
-    assert.deepEqual(harness.orchestrator.deploys, [
-      { profileName: 'stream1', services: ['srs'] },
-    ]);
+    assert.deepEqual(harness.orchestrator.deploys, [{ profileName: 'stream1', services: ['srs'] }]);
   });
 
   it('does nothing when the template already runs', async () => {

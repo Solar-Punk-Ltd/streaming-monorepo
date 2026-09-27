@@ -23,12 +23,7 @@ import {
   ULTRA_LIGHT_NODE_MODE,
 } from '@streaming-infra-manager/common';
 
-import {
-  initialWizardState,
-  type WizardContext,
-  type WizardGoal,
-  type WizardState,
-} from './wizardState';
+import { initialWizardState, type WizardContext, type WizardGoal, type WizardState } from './wizardState';
 import { submitWizard } from './wizardSubmit';
 
 const OUR_ENDPOINT = 'rpc.internal:8545';
@@ -40,9 +35,7 @@ const context: WizardContext = {
   hostPassphrase: null,
   beeRpcEndpoint: { configured: true, host: OUR_ENDPOINT },
   poolResults: new Map(),
-  versions: [
-    { id: 7, status: 'ready', isDefault: true, tested: true } as StackVersion,
-  ],
+  versions: [{ id: 7, status: 'ready', isDefault: true, tested: true } as StackVersion],
 };
 
 interface SentRequest {
@@ -83,10 +76,7 @@ describe('the node mode on the wizard create body', () => {
   });
 
   it('is light for a viewer gateway put on the chain', async (t) => {
-    const { body } = await sentRequest(
-      t,
-      stateFor('viewer', { nodeMode: LIGHT_NODE_MODE }),
-    );
+    const { body } = await sentRequest(t, stateFor('viewer', { nodeMode: LIGHT_NODE_MODE }));
 
     assert.equal(body.node_mode, LIGHT_NODE_MODE);
   });
@@ -128,10 +118,7 @@ describe('the RPC endpoint on the wizard create body', () => {
         rpcEndpoint: ' http://host.docker.internal:9000 ',
       }),
     );
-    const stack = await sentRequest(
-      t,
-      stateFor('stream', { rpcEndpointSource: STACK_RPC_ENDPOINT_SOURCE }),
-    );
+    const stack = await sentRequest(t, stateFor('stream', { rpcEndpointSource: STACK_RPC_ENDPOINT_SOURCE }));
 
     assert.equal(typed.body.rpc_endpoint_source, CUSTOM_RPC_ENDPOINT_SOURCE);
     assert.equal(typed.body.rpc_endpoint, 'http://host.docker.internal:9000');
@@ -158,10 +145,7 @@ describe('the RPC endpoint on the wizard create body', () => {
       t,
       stateFor('stream', { beeChoice: 'external', beeUrl: 'http://10.0.0.7:1633' }),
     );
-    const player = await sentRequest(
-      t,
-      stateFor('custom', { components: [CLIENT_SERVICE] }),
-    );
+    const player = await sentRequest(t, stateFor('custom', { components: [CLIENT_SERVICE] }));
 
     for (const { body } of [uploader, external, player]) {
       assert.equal('rpc_endpoint_source' in body, false);
@@ -200,10 +184,7 @@ describe('the RPC endpoint on the wizard create body', () => {
         feedOwner: `0x${'1'.repeat(40)}`,
       }),
     );
-    const uploader = await sentRequest(
-      t,
-      stateFor('custom', { components: [BEE_UPLOADER_SERVICE] }),
-    );
+    const uploader = await sentRequest(t, stateFor('custom', { components: [BEE_UPLOADER_SERVICE] }));
 
     assert.equal(gateway.body.node_mode, LIGHT_NODE_MODE);
     assert.equal(gateway.body.rpc_endpoint_source, MANAGER_RPC_ENDPOINT_SOURCE);

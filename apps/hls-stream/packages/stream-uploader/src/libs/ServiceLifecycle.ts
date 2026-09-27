@@ -34,7 +34,10 @@ export class ServiceLifecycle {
   private orchestrator: StreamCleanup | undefined;
   private apiServer: ApiServerHandle | undefined;
 
-  constructor(private readonly exit: ExitProcess, private readonly logger = Logger.getInstance()) {}
+  constructor(
+    private readonly exit: ExitProcess,
+    private readonly logger = Logger.getInstance(),
+  ) {}
 
   /** Handed over as `start` builds them, rather than at construction, since the signal handlers are
    *  registered before either exists and a signal may arrive in between. */

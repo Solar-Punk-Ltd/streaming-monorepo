@@ -92,12 +92,21 @@ after(async () => {
   const exited = once(child, 'exit');
   const timeout = setTimeout(() => child.kill('SIGKILL'), 2_000);
   child.kill('SIGTERM');
-  try { await exited; } finally { clearTimeout(timeout); }
+  try {
+    await exited;
+  } finally {
+    clearTimeout(timeout);
+  }
 });
 
 async function runningDeployment(engine) {
   const name = `mock-ingest-${nextProfile++}`;
-  await request('/profiles', 'POST', { name, kind: 'custom', components: [engine, 'stream-uploader'], stack_version_id: 2 });
+  await request('/profiles', 'POST', {
+    name,
+    kind: 'custom',
+    components: [engine, 'stream-uploader'],
+    stack_version_id: 2,
+  });
   await until(`/profiles/${name}`, (profile) => profile.status === 'RUNNING');
   return name;
 }

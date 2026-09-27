@@ -17,9 +17,7 @@ const batchIdField = (field: string) =>
 
 /** PLUR per chunk, a whole number kept as a string so no digit is lost. */
 const amountField = () =>
-  string()
-    .required('amount is required')
-    .matches(POSITIVE_INTEGER_RE, 'amount must be a positive integer');
+  string().required('amount is required').matches(POSITIVE_INTEGER_RE, 'amount must be a positive integer');
 
 /** A batch depth this manager buys or dilutes to. */
 const depthField = () =>

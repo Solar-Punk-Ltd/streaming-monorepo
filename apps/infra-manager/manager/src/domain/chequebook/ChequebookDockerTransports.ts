@@ -2,8 +2,17 @@ import { posix } from 'node:path';
 import { ChequebookConfigurationError } from '../errors/ChequebookConfigurationError.js';
 import { isLocalTarget, targetAlias } from '../ports/DeployTargets.js';
 import type { LocalDockerLocator } from './acquireLocalDockerBeeStream.js';
-import { createBeeBridgeQualifier, PRODUCTION_BEE_BRIDGE_QUALIFICATIONS, type BeeBridgeQualificationRecord, type QualifiedBeeBridgeExecution } from './beeBridgeQualification.js';
-import { DEFAULT_REMOTE_DOCKER_SOCKET, sshDockerForwardCommand, type SshDockerLocator } from './sshDockerForwardCommand.js';
+import {
+  createBeeBridgeQualifier,
+  PRODUCTION_BEE_BRIDGE_QUALIFICATIONS,
+  type BeeBridgeQualificationRecord,
+  type QualifiedBeeBridgeExecution,
+} from './beeBridgeQualification.js';
+import {
+  DEFAULT_REMOTE_DOCKER_SOCKET,
+  sshDockerForwardCommand,
+  type SshDockerLocator,
+} from './sshDockerForwardCommand.js';
 
 /**
  * How the bridge's image is qualified on a route. Pinned ids keep the rule this
@@ -49,12 +58,22 @@ function object(value: unknown): Record<string, unknown> {
 function locator(alias: string, input: unknown): SelectedChequebookTransport['locator'] {
   const value = object(input);
   if (value.kind === 'ssh-unix' || value.kind === 'ssh-config') {
-    return sshDockerForwardCommand(alias, value, { localSocketPath: '/pending/docker.sock', acquisitionTimeoutMs: 1 }).target;
+    return sshDockerForwardCommand(alias, value, { localSocketPath: '/pending/docker.sock', acquisitionTimeoutMs: 1 })
+      .target;
   }
-  if (Object.keys(value).sort().join(',') !== 'alias,kind,socketPath' || value.kind !== 'unix' || value.alias !== alias ||
-      typeof value.socketPath !== 'string' || value.socketPath === '/' || value.socketPath.endsWith('/') ||
-      !posix.isAbsolute(value.socketPath) || posix.normalize(value.socketPath) !== value.socketPath ||
-      /[\u0000-\u001f\u007f]/.test(value.socketPath) || Buffer.byteLength(value.socketPath) > 100) throw new ChequebookConfigurationError();
+  if (
+    Object.keys(value).sort().join(',') !== 'alias,kind,socketPath' ||
+    value.kind !== 'unix' ||
+    value.alias !== alias ||
+    typeof value.socketPath !== 'string' ||
+    value.socketPath === '/' ||
+    value.socketPath.endsWith('/') ||
+    !posix.isAbsolute(value.socketPath) ||
+    posix.normalize(value.socketPath) !== value.socketPath ||
+    /[\u0000-\u001f\u007f]/.test(value.socketPath) ||
+    Buffer.byteLength(value.socketPath) > 100
+  )
+    throw new ChequebookConfigurationError();
   return Object.freeze({ kind: 'unix', alias, socketPath: value.socketPath });
 }
 
@@ -69,10 +88,16 @@ function locator(alias: string, input: unknown): SelectedChequebookTransport['lo
 export class ChequebookDockerTransports {
   readonly #catalog: readonly BeeBridgeQualificationRecord[];
 
-  constructor(private readonly configuration: string | undefined, catalog: readonly BeeBridgeQualificationRecord[] = PRODUCTION_BEE_BRIDGE_QUALIFICATIONS,
-    private readonly defaults: DefaultDockerRoutes = { localSocketPath: DEFAULT_LOCAL_DOCKER_SOCKET }) {
-    try { this.#catalog = structuredClone(catalog); }
-    catch { throw new ChequebookConfigurationError(); }
+  constructor(
+    private readonly configuration: string | undefined,
+    catalog: readonly BeeBridgeQualificationRecord[] = PRODUCTION_BEE_BRIDGE_QUALIFICATIONS,
+    private readonly defaults: DefaultDockerRoutes = { localSocketPath: DEFAULT_LOCAL_DOCKER_SOCKET },
+  ) {
+    try {
+      this.#catalog = structuredClone(catalog);
+    } catch {
+      throw new ChequebookConfigurationError();
+    }
   }
 
   select(alias: string): SelectedChequebookTransport {
@@ -86,23 +111,43 @@ export class ChequebookDockerTransports {
       const entry = object(input);
       const fields = Object.keys(entry).sort().join(',');
       if (fields !== 'locator' && fields !== 'locator,qualificationIds') throw new ChequebookConfigurationError();
-      if (!Object.hasOwn(entry, 'qualificationIds')) return Object.freeze({ locator: locator(alias, entry.locator), qualification: this.automatic() });
+      if (!Object.hasOwn(entry, 'qualificationIds'))
+        return Object.freeze({ locator: locator(alias, entry.locator), qualification: this.automatic() });
       const ids = entry.qualificationIds;
-      if (!Array.isArray(ids) || !ids.length || ids.length > 256 || new Set(ids).size !== ids.length ||
-          ids.some(id => typeof id !== 'string' || !this.#catalog.some(record => record.id === id))) throw new ChequebookConfigurationError();
-      const qualification = Object.freeze({ kind: 'pinned' as const, qualify: createBeeBridgeQualifier(this.#catalog, ids) });
+      if (
+        !Array.isArray(ids) ||
+        !ids.length ||
+        ids.length > 256 ||
+        new Set(ids).size !== ids.length ||
+        ids.some((id) => typeof id !== 'string' || !this.#catalog.some((record) => record.id === id))
+      )
+        throw new ChequebookConfigurationError();
+      const qualification = Object.freeze({
+        kind: 'pinned' as const,
+        qualify: createBeeBridgeQualifier(this.#catalog, ids),
+      });
       return Object.freeze({ locator: locator(alias, entry.locator), qualification });
-    } catch { throw new ChequebookConfigurationError('docker_setting_invalid'); }
+    } catch {
+      throw new ChequebookConfigurationError('docker_setting_invalid');
+    }
   }
 
   private defaultRoute(alias: string): SelectedChequebookTransport {
     try {
       if (isLocalTarget(alias)) {
         if (!this.defaults.localSocketPath) throw new ChequebookConfigurationError();
-        return Object.freeze({ locator: locator(alias, { kind: 'unix', alias, socketPath: this.defaults.localSocketPath }), qualification: this.automatic() });
+        return Object.freeze({
+          locator: locator(alias, { kind: 'unix', alias, socketPath: this.defaults.localSocketPath }),
+          qualification: this.automatic(),
+        });
       }
-      return Object.freeze({ locator: locator(alias, { kind: 'ssh-config', alias, remoteSocketPath: DEFAULT_REMOTE_DOCKER_SOCKET }), qualification: this.automatic() });
-    } catch { throw new ChequebookConfigurationError('docker_route_missing'); }
+      return Object.freeze({
+        locator: locator(alias, { kind: 'ssh-config', alias, remoteSocketPath: DEFAULT_REMOTE_DOCKER_SOCKET }),
+        qualification: this.automatic(),
+      });
+    } catch {
+      throw new ChequebookConfigurationError('docker_route_missing');
+    }
   }
 
   private automatic(): SelectedBridgeQualification {
@@ -115,6 +160,8 @@ export class ChequebookDockerTransports {
       const entries = object(JSON.parse(configuration));
       if (Object.keys(entries).length > 256) throw new ChequebookConfigurationError();
       return entries;
-    } catch { throw new ChequebookConfigurationError('docker_setting_invalid'); }
+    } catch {
+      throw new ChequebookConfigurationError('docker_setting_invalid');
+    }
   }
 }
