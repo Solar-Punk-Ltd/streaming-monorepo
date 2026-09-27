@@ -18,7 +18,7 @@ export function envFileAt(path) {
   return null;
 }
 
-/** Every file git sees under `folder`, tracked or new and not ignored, as paths from the root. Throws when git cannot. */
+/** Every file git sees under `folder`, tracked or new and not ignored, as paths from the root. */
 export function gitFilesUnder(root, folder) {
   const output = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', folder], {
     cwd: root,
