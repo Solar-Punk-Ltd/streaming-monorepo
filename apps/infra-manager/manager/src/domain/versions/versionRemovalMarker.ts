@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from 'node:fs';
+import { type BigIntStats, closeSync, constants, fstatSync, lstatSync, openSync, readSync } from 'node:fs';
 import { lstat, open, rename, unlink } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -154,16 +154,22 @@ export async function persistVersionRemoval(version: {
     } finally {
       await directory.close();
     }
-  } finally {
+  } catch (error) {
     await handle.close();
-    if (!renamed) {
-      try {
-        const current = await lstat(temporary, { bigint: true });
-        if (owned && current.isFile() && current.dev === owned.dev && current.ino === owned.ino)
-          await unlink(temporary);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      }
-    }
+    if (!renamed) await removeOwnedTemporary(temporary, owned);
+    throw error;
+  }
+}
+
+/**
+ * Best effort: the failed write is what the caller hears, never a cleanup failure after it. A temporary
+ * file left behind carries a random name and blocks nothing.
+ */
+async function removeOwnedTemporary(temporary: string, owned: BigIntStats | undefined): Promise<void> {
+  try {
+    const current = await lstat(temporary, { bigint: true });
+    if (owned && current.isFile() && current.dev === owned.dev && current.ino === owned.ino) await unlink(temporary);
+  } catch {
+    // Already gone, or unreadable: either way the write's own error is the one to report.
   }
 }

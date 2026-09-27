@@ -105,6 +105,7 @@ export class Database {
           const result = await boundedCleanup(
             client.query<{ unlocked: boolean }>('SELECT pg_advisory_unlock($1) AS unlocked', [MIGRATION_LOCK_KEY]),
           );
+          // oxlint-disable-next-line eslint/no-unsafe-finally -- the catch just below takes it, it never leaves the finally
           if (result.rows[0]?.unlocked !== true) throw new Error('Migration lock ownership was lost.');
         } catch {
           discardClient = true;
@@ -114,9 +115,12 @@ export class Database {
       }
       client.release(discardClient);
       client.removeListener('error', onConnectionError);
+      // oxlint-disable-next-line eslint/no-unsafe-finally -- only when the migration itself succeeded, so it hides no error
       if (connectionFailure && !primaryFailed) throw connectionFailure;
-      if (unlockFailed && !primaryFailed)
+      if (unlockFailed && !primaryFailed) {
+        // oxlint-disable-next-line eslint/no-unsafe-finally -- only when the migration itself succeeded, so it hides no error
         throw new Error('Migration lock release could not be confirmed. Connection discarded.');
+      }
     }
   }
 
