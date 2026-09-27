@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { describeContentChange, pnpmOwnFileName } from '../lib/pnpm-files.mjs';
+import { describeContentChange, isCommandShimPath, linksIntoPnpmProgram, pnpmOwnFileName, pnpmProgramRoot } from '../lib/pnpm-files.mjs';
 
 /** A .modules.yaml as pnpm 9 writes it, in YAML. */
 function modulesYaml({ packageManager = 'pnpm@9.12.0', prunedAt = 'Thu, 01 Jan 2026 00:00:00 GMT', hoisted = 'debug' } = {}) {
@@ -97,5 +97,46 @@ describe('describeContentChange', () => {
     const compact = `${JSON.stringify({ layoutVersion: 5 })}\n`;
     const indented = `${JSON.stringify({ layoutVersion: 5 }, null, 2)}\n`;
     assert.deepEqual(describeContentChange('.package-map.json', compact, indented), { parts: ['in its formatting alone'], installTimeOnly: false });
+  });
+});
+
+describe('isCommandShimPath', () => {
+  it('takes a node_modules/.bin folder and everything in it, at any depth', () => {
+    for (const path of [
+      'app/node_modules/.bin',
+      'app/node_modules/.bin/semver',
+      'app/node_modules/.pnpm/node_modules/.bin/semver',
+      'app/node_modules/.pnpm/semver@7.7.4/node_modules/semver/node_modules/.bin/semver',
+    ]) {
+      assert.equal(isCommandShimPath(path), true, path);
+    }
+  });
+
+  it('takes nothing else', () => {
+    for (const path of ['app/node_modules/semver/bin/semver.js', 'app/.bin/tool', 'app/node_modules/.binary/x', 'app/node_modules']) {
+      assert.equal(isCommandShimPath(path), false, path);
+    }
+  });
+});
+
+describe('pnpmProgramRoot', () => {
+  it('names the folder of pnpm installed as a global npm package, for the folder and everything in it', () => {
+    assert.equal(pnpmProgramRoot('usr/local/lib/node_modules/pnpm'), 'usr/local/lib/node_modules/pnpm');
+    assert.equal(pnpmProgramRoot('usr/local/lib/node_modules/pnpm/dist/pnpm.mjs'), 'usr/local/lib/node_modules/pnpm');
+  });
+
+  it('names nothing for another package, or for pnpm as an app dependency', () => {
+    for (const path of ['usr/local/lib/node_modules/pnpm-workspace/x', 'usr/local/lib/node_modules/npm/bin/npm', 'app/node_modules/pnpm/package.json']) {
+      assert.equal(pnpmProgramRoot(path), null, path);
+    }
+  });
+});
+
+describe('linksIntoPnpmProgram', () => {
+  it('takes a link target inside pnpm itself, as npm links its commands, and nothing else', () => {
+    assert.equal(linksIntoPnpmProgram('../lib/node_modules/pnpm/bin/pnpm.mjs'), true);
+    assert.equal(linksIntoPnpmProgram('/usr/local/lib/node_modules/pnpm/bin/pnpx.cjs'), true);
+    assert.equal(linksIntoPnpmProgram('../lib/node_modules/npm/bin/npm-cli.js'), false);
+    assert.equal(linksIntoPnpmProgram(undefined), false);
   });
 });
