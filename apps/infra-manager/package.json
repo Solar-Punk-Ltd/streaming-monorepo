@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
+    "lint": "pnpm -r --filter './**' --filter '!.' lint",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "build": "pnpm -r --filter './**' --filter '!.' build",
     "dev": "pnpm --filter @streaming-infra-manager/api dev & pnpm --filter @streaming-infra-manager/frontend-prototype dev",
     "test": "pnpm -r --filter './**' --filter '!.' test",

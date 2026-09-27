@@ -8,6 +8,8 @@
     "typecheck": "nx run-many -t typecheck",
     "test": "nx run-many -t test",
     "lint": "nx run-many -t lint",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "boundaries": "nx show projects > /dev/null && nx graph --file=.nx/boundary-graph.json && node tools/boundary-check/boundaries.mjs --graph .nx/boundary-graph.json --exceptions tools/boundary-check/exceptions.json"
   },
   "engines": {
@@ -15,6 +17,9 @@
   },
   "devDependencies": {
     "nx": "23.2.1",
+    "oxfmt": "0.67.0",
+    "oxlint": "1.82.0",
+    "oxlint-tsgolint": "7.0.2001",
     "typescript": "6.0.2"
   }
 }
