@@ -1129,5 +1129,5 @@ curl -G http://localhost:3000/stream/status \
 | ---------------- | --------------------------- |
 | `pnpm build`     | Compile TypeScript          |
 | `pnpm start`     | Start the server            |
-| `pnpm lint`      | Run ESLint                  |
+| `pnpm lint`      | Run oxlint                  |
 | `pnpm typecheck` | Type check without emitting |

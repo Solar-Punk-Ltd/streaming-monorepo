@@ -47,7 +47,7 @@ RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${
 # and the container runs as the invoking user with `HOME=/tmp`, so a version activated at build time
 # under root is invisible and corepack silently downloads the latest instead. A global binary does
 # not care who runs it.
-ARG PNPM_VERSION=11.11.0
+ARG PNPM_VERSION=12.4.1
 RUN npm install -g "pnpm@${PNPM_VERSION}" && pnpm --version
 
 WORKDIR /repo

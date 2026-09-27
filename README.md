@@ -46,9 +46,13 @@ so read the numbers from those files.
 
 At the root, `pnpm build`, `pnpm typecheck`, `pnpm test` and `pnpm lint` run that script in every
 package of every app that has it, through Nx, which runs a package after the packages it depends
-on. Nx replays a type check whose files and dependencies have not changed from its cache in
-`.nx/`, and runs everything else each time. It never contacts Nx Cloud. `pnpm boundaries` checks
+on. Nx replays a type check or a lint whose files and dependencies have not changed from its cache
+in `.nx/`, and runs everything else each time. It never contacts Nx Cloud. `pnpm boundaries` checks
 that no app depends on another ([the rules](docs/monorepo.md#projects-never-import-each-others-code)).
+
+`pnpm lint` is oxlint, and `pnpm format` and `pnpm format:check` are oxfmt, over the whole
+repository but `infra/`. Each reads its one settings file at the root, `.oxlintrc.json` and
+`.oxfmtrc.json`, and an app's own `lint`, `format` and `format:check` read the same files.
 
 Each app's README says what its commands are and what a development setup needs:
 [the admin's](apps/web2-admin/README.md), [the stack's](apps/hls-stream/README.md) and

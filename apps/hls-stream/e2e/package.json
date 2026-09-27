@@ -5,7 +5,7 @@
   "type": "module",
   "description": "End-to-end fault-injection suite that drives a deployed stack, and the unit tests that prove the harness reading it is not lying.",
   "scripts": {
-    "lint": "eslint .",
+    "lint": "oxlint --type-aware .",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "TSX_DISABLE_CACHE=1 tsx --test test/*.test.ts",
     "//test:e2e": "THE && IS LOAD-BEARING, IT IS WHAT MAKES A REFUSAL STOP THE SPEND. node --test runs every file it was given even after one fails, so as a single invocation a preflight refusal printed and the scenarios then published and spent anyway, which is a checker reporting after the money is gone rather than a gate. Split in two, a preflight refusal exits non-zero before any broadcast starts. Preflight is deliberately absent from the second list so nothing runs twice. Both halves keep --test-concurrency=1 and TSX_DISABLE_CACHE=1. Note that a run now prints TWO TAP documents, so totals are summed across them and never read off one.",
@@ -62,15 +62,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.8.1",
-    "@typescript-eslint/eslint-plugin": "^6.14.0",
-    "@typescript-eslint/parser": "^6.14.0",
-    "eslint": "^8.55.0",
-    "eslint-import-resolver-typescript": "^4.3.4",
-    "eslint-plugin-import": "^2.29.1",
-    "eslint-plugin-simple-import-sort": "^10.0.0",
     "playwright-core": "1.61.1",
     "tsx": "^4.23.1",
-    "typescript": "^6.0.2"
+    "typescript": "7.0.2"
   },
   "nx": {
     "tags": [
