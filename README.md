@@ -22,8 +22,8 @@ How the folders relate and the rules that keep them apart are in
 | [`infra/terraform`](infra/terraform/README.md) | The pilot's cloud hosts: the GCP stage and monitoring hosts, the Vps Bee hosts, and the monitoring stack. |
 | [`docs`](docs/) | How the pieces fit: the layout and its rules, the host roles, the roadmap, the design briefs, what is deployed where, and notes on the neighbouring systems. |
 
-Scripts that serve the whole repository go under `tools/`, starting with the move-check kit, which
-proves that a move changed no file.
+Scripts that serve the whole repository go under `tools/`: the boundary check, which keeps the apps
+from depending on each other, and the cut of each app's own lockfile out of the root one.
 
 ## Working in an app
 
