@@ -7,9 +7,9 @@ name: web2-admin
 on:
   push:
     branches: [main, main-v3]
-    paths: ['apps/web2-admin/**', 'infra/edge/**', '.github/workflows/web2-admin.yml']
+    paths: ['apps/web2-admin/**', 'infra/edge/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.github/workflows/web2-admin.yml']
   pull_request:
-    paths: ['apps/web2-admin/**', 'infra/edge/**', '.github/workflows/web2-admin.yml']
+    paths: ['apps/web2-admin/**', 'infra/edge/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.github/workflows/web2-admin.yml']
 
 permissions:
   contents: read
@@ -37,15 +37,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
-          package_json_file: apps/web2-admin/package.json
+          package_json_file: package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           # 22 is what the admin's images run. Its .nvmrc says 24, a known mismatch.
           node-version: 22
           cache: pnpm
-          cache-dependency-path: apps/web2-admin/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
+        working-directory: .
 
       - name: Type checks, every package, tests included
         run: pnpm run typecheck
@@ -81,14 +82,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
-          package_json_file: apps/web2-admin/package.json
+          package_json_file: package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: apps/web2-admin/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
+        working-directory: .
 
       - name: Integration suite, against a backend and a database of its own
         # BEE_URL and POSTAGE_BATCH_ID stay unset, so the one suite that needs
