@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +10,7 @@ import {
   MAX_COMMAND_OUTPUT_BYTES,
   UsageError,
   countOf,
+  describeCommandFailure,
   parseOptions,
   parsePrefixMaps,
   requireOption,
@@ -24,7 +25,8 @@ const USAGE = `Usage: node tools/move-check/images.mjs --manifest <file> [--only
 Builds every image a manifest names twice, once from its before commit and once
 from its after commit, and compares the two with image.mjs. Each side is built
 from a fresh export of its own commit, never from the working tree, and without
-the build cache, so both are real builds.
+the build cache, so both are real builds. What each build prints goes to stderr
+as it comes, so a build that stalls shows where it stopped.
 
 The manifest is JSON:
 
@@ -240,23 +242,46 @@ function exportFor(image, sideName, exportOf) {
   return exportOf(side.commit, side.prepare.length > 0 ? `${image.name}-${sideName}` : null);
 }
 
+/**
+ * Runs a program without a shell and passes what it prints to stderr as it comes, so a build that stalls shows where
+ * it stopped. What it printed is kept as well, for the verdict when it fails.
+ */
+function runStreamed(command, args, { cwd } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const printed = { stdout: [], stderr: [] };
+    for (const name of Object.keys(printed)) {
+      child[name].on('data', (chunk) => {
+        printed[name].push(chunk);
+        process.stderr.write(chunk);
+      });
+    }
+    child.once('error', (error) => reject(new CheckError(describeCommandFailure(command, args, error))));
+    child.once('close', (status, signal) => {
+      if (status === 0) return resolve();
+      const textOf = (name) => Buffer.concat(printed[name]).toString('utf8');
+      return reject(new CheckError(describeCommandFailure(command, args, { status, signal, stdout: textOf('stdout'), stderr: textOf('stderr') })));
+    });
+  });
+}
+
 /** Runs a side's prepare commands in its context, in order, and stops at the first that fails. */
-function prepare(image, sideName, exportOf) {
+async function prepare(image, sideName, exportOf) {
   const side = image[sideName];
   const dir = exportFor(image, sideName, exportOf);
   const context = side.context === '' ? dir : join(dir, side.context);
   for (const [command, ...args] of side.prepare) {
     process.stderr.write(`${image.name}: preparing ${sideName}: ${[command, ...args].join(' ')}\n`);
-    runCommand(command, args, { cwd: context });
+    await runStreamed(command, args, { cwd: context });
   }
 }
 
-function build(image, sideName, exportOf) {
+async function build(image, sideName, exportOf) {
   const side = image[sideName];
   const dir = exportFor(image, sideName, exportOf);
   process.stderr.write(`${image.name}: building ${sideName} from ${side.commit.slice(0, SHORT_COMMIT_LENGTH)}\n`);
   const context = side.context === '' ? dir : join(dir, side.context);
-  runCommand('docker', ['build', '--no-cache', '--file', join(dir, side.dockerfile), '--tag', tagOf(image.name, sideName), context]);
+  await runStreamed('docker', ['build', '--no-cache', '--file', join(dir, side.dockerfile), '--tag', tagOf(image.name, sideName), context]);
 }
 
 function unchecked(image, reason, detail) {
@@ -264,10 +289,10 @@ function unchecked(image, reason, detail) {
 }
 
 /** Builds both sides of one image, compares them with image.mjs, and says how that went. */
-function checkImage(image, exportOf) {
+async function checkImage(image, exportOf) {
   for (const sideName of SIDES) {
     try {
-      prepare(image, sideName, exportOf);
+      await prepare(image, sideName, exportOf);
     } catch (error) {
       if (!(error instanceof CheckError)) throw error;
       return unchecked(image, `the ${sideName} prepare failed.`, error.message);
@@ -275,7 +300,7 @@ function checkImage(image, exportOf) {
   }
   for (const sideName of SIDES) {
     try {
-      build(image, sideName, exportOf);
+      await build(image, sideName, exportOf);
     } catch (error) {
       if (!(error instanceof CheckError)) throw error;
       return unchecked(image, `the ${sideName} build failed.`, error.message);
@@ -324,16 +349,16 @@ function removeImages(image) {
   }
 }
 
-function checkImages(images, { keep, removeImagesAfter }) {
+async function checkImages(images, { keep, removeImagesAfter }) {
   const root = mkdtempSync(join(tmpdir(), 'move-check-images-'));
   const exportOf = commitExporter(root);
   const outcomes = [];
   try {
     for (const image of images) {
-      const outcome = checkImage(image, exportOf);
+      const outcome = await checkImage(image, exportOf);
       outcomes.push(outcome);
       // Written at once and synchronously: on some platforms a pipe write from console.log waits for the event
-      // loop, which the next pair's synchronous build holds, so a run cut off there would lose this verdict.
+      // loop, which the clean-up and the export of the next pair hold, so a run cut off there would lose this verdict.
       writeSync(STDOUT_FD, `${outcome.lines.join('\n')}\n`);
       if (removeImagesAfter) removeImages(image);
     }
