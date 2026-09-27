@@ -71,10 +71,9 @@ Every original commit of the imported repositories is in this one under its own 
 - [docs/research/](docs/research/README.md): condensed notes on the systems the admin talks to.
 - Deploying: [the admin](apps/web2-admin/deploy/README.md), [the stack](apps/hls-stream/deploy/README.md), [the manager](apps/infra-manager/deploy/README.md), and [the pilot's hosts](infra/terraform/README.md).
 
-## Licences
+## Licence
 
-The root [LICENSE](LICENSE) is MIT, and it applies to everything here that carries no licence of
-its own. Each package keeps its own where it declares one: the admin's packages are MIT, and the
-stack's uploader and viewer carry Apache-2.0, in
-[packages/stream-uploader/LICENSE](apps/hls-stream/packages/stream-uploader/LICENSE) and
-[packages/client/LICENSE](apps/hls-stream/packages/client/LICENSE).
+The whole repository is under the MIT licence in the root [LICENSE](LICENSE): every app, package
+and folder. The two packages that keep a licence file of their own, the stack's
+[uploader](apps/hls-stream/packages/stream-uploader/LICENSE) and
+[viewer](apps/hls-stream/packages/client/LICENSE), hold the same text.
