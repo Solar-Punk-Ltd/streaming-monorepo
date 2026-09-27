@@ -93,19 +93,17 @@ A document names a host by its role, control host, stage host or Bee host, and a
 placeholder. Real names, addresses and domains belong to one deployment and live in that
 deployment's env files, which are not committed.
 
-## The imported projects, until the switch
+## The imported projects
 
 `apps/hls-stream`, `apps/infra-manager` and `infra/terraform` were imported whole from their own
-repositories and are still developed there. Their folders here stay identical to those
-repositories, file for file, until the switch that moves all work here. Until then:
+repositories. Since 2026-09-27 all work on them happens here, like the rest of the repository. The
+repositories they came from are left as they are and get nothing new, and nothing more is pulled
+from them.
 
-- a change to the stack, the manager or the Terraform is made in its own repository, and
-  `git subtree pull` brings the new commits into its folder here,
-- the admin, the edge and the root documents are developed here,
-- the manager builds the stack from a pinned commit of the stack's own repository, recorded as the
-  git submodule at `apps/infra-manager/manager/swarm-hls-stream`, which is what the root
-  `.gitmodules` names. A plain clone leaves that folder empty, and only work on the manager needs
-  it filled.
+The manager still builds the stack from a pinned commit of the stack's own repository, recorded as
+the git submodule at `apps/infra-manager/manager/swarm-hls-stream`, which is what the root
+`.gitmodules` names. A plain clone leaves that folder empty, and only work on the manager needs it
+filled.
 
 The workflows under `apps/hls-stream/.github` and `apps/infra-manager/.github` are those
 repositories' own. GitHub runs workflows from the root `.github` only, so they do not run here.
@@ -130,9 +128,9 @@ repository. What that means when reading history:
   id, with the path as the source repository had it, walks the file's whole history, for example
   `git log <source commit> -- packages/stream-uploader/src/index.ts` for a file of the stack. The
   Terraform's source commit is a split of the `terraform/` folder alone, so its paths start at
-  that folder's root, as they do under `infra/terraform/`. The source repositories answer the same
-  question until the switch.
+  that folder's root, as they do under `infra/terraform/`. The source repositories, left as they
+  were on 2026-09-27, answer the same question.
 - **`git subtree split` rebuilds a folder's own history** as a separate line of commits, when a
   whole history rather than one file's is wanted.
-- **New commits keep coming in with `git subtree pull`** until the switch. Each pull is a merge
-  like the first import, so the same reading applies to them.
+- **The manager's last changes came in with one `git subtree pull`** before the switch. It is a
+  merge like the first import, so the same reading applies to it.

@@ -46,18 +46,12 @@ Each app's README says what its commands are and what a development setup needs:
 [the admin's](apps/web2-admin/README.md), [the stack's](apps/hls-stream/README.md) and
 [the manager's](apps/infra-manager/README.md).
 
-## Where the work happens for now
+## Where the work happens
 
-The stack and the manager came in whole from their own repositories,
-[swarm-hls-stream](https://github.com/Solar-Punk-Ltd/swarm-hls-stream) and
-[streaming-infra-manager](https://github.com/Solar-Punk-Ltd/streaming-monorepo), and are
-still developed there. Their folders here stay identical to those repositories: a change to the
-stack or the manager is made in its own repository, and `git subtree pull` brings the new commits
-into `apps/hls-stream` or `apps/infra-manager`. The same holds for `infra/terraform`, which came
-from the `terraform/` folder of
-[pilot-streaming-partnership](https://github.com/Solar-Punk-Ltd/pilot-streaming-partnership).
-The admin, the edge and the root documents are developed here. Once the switch is made, all work
-moves here and the old repositories are left as they are.
+All work on the platform happens here, since 2026-09-27. The stack and the manager came in whole
+from their own repositories, swarm-hls-stream and streaming-infra-manager, and `infra/terraform`
+from the `terraform/` folder of pilot-streaming-partnership. Those repositories are left as they
+are: they get nothing new, and nothing more is pulled from them.
 
 The manager builds the stack from a pinned commit of the stack's own repository, recorded as the
 git submodule at `apps/infra-manager/manager/swarm-hls-stream`, which is what the root

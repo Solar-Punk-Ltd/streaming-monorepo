@@ -36,9 +36,9 @@ and how the pieces fit under `docs/`. Read it before moving anything.
 - A pull request that moves files only moves them. Renames first, each in its own commit, then
   the smallest path edits they need. No logic change and no upgrade rides along.
 - A bug gets its own pull request, with a test that fails before the fix, never inside a move.
-- `apps/hls-stream`, `apps/infra-manager` and `infra/terraform` stay identical to their source
-  repositories until the switch. A change to them is made in the source repository and brought
-  in with `git subtree pull`, never edited here.
+- `apps/hls-stream`, `apps/infra-manager` and `infra/terraform` are developed here like
+  everything else, since 2026-09-27. The repositories they came from get nothing new, and
+  nothing more is pulled from them.
 - Nothing is deployed to a host without the owner's word. Every check that can be made without
   a host is made first.
 - Real host names, addresses and domains stay out of the repository. Name a host by its role and
