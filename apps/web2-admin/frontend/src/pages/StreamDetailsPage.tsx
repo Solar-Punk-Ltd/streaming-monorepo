@@ -325,7 +325,12 @@ export function StreamDetailsPage() {
 
       <Paper variant="outlined" sx={{ p: 3 }}>
         <Grid container spacing={3}>
-          <Grid item xs={12} sm={4} md={3}>
+          <Grid
+            size={{
+              xs: 12,
+              sm: 4,
+              md: 3
+            }}>
             {stream.hasThumbnail ? (
               <Box
                 component="img"
@@ -356,7 +361,12 @@ export function StreamDetailsPage() {
               </Box>
             )}
           </Grid>
-          <Grid item xs={12} sm={8} md={9}>
+          <Grid
+            size={{
+              xs: 12,
+              sm: 8,
+              md: 9
+            }}>
             <Stack spacing={2}>
               <Field label="Description">
                 <Typography variant="body2">{stream.description}</Typography>
@@ -375,45 +385,73 @@ export function StreamDetailsPage() {
                 )}
               </Field>
               <Grid container spacing={2}>
-                <Grid item xs={6} sm={4}>
+                <Grid
+                  size={{
+                    xs: 6,
+                    sm: 4
+                  }}>
                   <Field label="Media type">
                     <Typography variant="body2">
                       {MEDIA_TYPE_LABEL[stream.mediaType]}
                     </Typography>
                   </Field>
                 </Grid>
-                <Grid item xs={6} sm={4}>
+                <Grid
+                  size={{
+                    xs: 6,
+                    sm: 4
+                  }}>
                   <Field label="Scheduled start">
                     <Typography variant="body2">
                       {formatDateTime(stream.scheduledStartTime)}
                     </Typography>
                   </Field>
                 </Grid>
-                <Grid item xs={6} sm={4}>
+                <Grid
+                  size={{
+                    xs: 6,
+                    sm: 4
+                  }}>
                   <Field label="Published">
                     <Typography variant="body2">
                       {formatDateTime(stream.publishedAt)}
                     </Typography>
                   </Field>
                 </Grid>
-                <Grid item xs={6} sm={4}>
+                <Grid
+                  size={{
+                    xs: 6,
+                    sm: 4
+                  }}>
                   <Field label="Feed owner">
                     <Mono value={stream.owner} label="Feed owner" />
                   </Field>
                 </Grid>
-                <Grid item xs={6} sm={4}>
+                <Grid
+                  size={{
+                    xs: 6,
+                    sm: 4
+                  }}>
                   <Field label="Topic">
                     <Mono value={stream.topic} label="Topic" />
                   </Field>
                 </Grid>
-                <Grid item xs={6} sm={4}>
+                <Grid
+                  size={{
+                    xs: 6,
+                    sm: 4
+                  }}>
                   <Field label="Feed index">
                     <Typography variant="body2">
                       {stream.publishedFeedIndex ?? '—'}
                     </Typography>
                   </Field>
                 </Grid>
-                <Grid item xs={6} sm={4}>
+                <Grid
+                  size={{
+                    xs: 6,
+                    sm: 4
+                  }}>
                   <Field label="Thumbnail reference">
                     {stream.thumbnailRef ? (
                       <Mono
@@ -428,7 +466,11 @@ export function StreamDetailsPage() {
                   </Field>
                 </Grid>
                 {stream.liveSince ? (
-                  <Grid item xs={6} sm={4}>
+                  <Grid
+                    size={{
+                      xs: 6,
+                      sm: 4
+                    }}>
                     <Field label="Live since">
                       <Typography variant="body2">
                         {formatDateTime(stream.liveSince)}
@@ -437,7 +479,11 @@ export function StreamDetailsPage() {
                   </Grid>
                 ) : null}
                 {stream.endedAt ? (
-                  <Grid item xs={6} sm={4}>
+                  <Grid
+                    size={{
+                      xs: 6,
+                      sm: 4
+                    }}>
                     <Field label="Ended">
                       <Typography variant="body2">
                         {formatDateTime(stream.endedAt)}
@@ -446,7 +492,11 @@ export function StreamDetailsPage() {
                   </Grid>
                 ) : null}
                 {stream.durationSeconds != null ? (
-                  <Grid item xs={6} sm={4}>
+                  <Grid
+                    size={{
+                      xs: 6,
+                      sm: 4
+                    }}>
                     <Field label="Duration">
                       <Typography variant="body2">
                         {formatDuration(stream.durationSeconds)}
@@ -455,7 +505,11 @@ export function StreamDetailsPage() {
                   </Grid>
                 ) : null}
                 {stream.manifestIndex != null ? (
-                  <Grid item xs={6} sm={4}>
+                  <Grid
+                    size={{
+                      xs: 6,
+                      sm: 4
+                    }}>
                     <Field label="Manifest index">
                       <Typography variant="body2">
                         {stream.manifestIndex}
@@ -463,14 +517,22 @@ export function StreamDetailsPage() {
                     </Field>
                   </Grid>
                 ) : null}
-                <Grid item xs={6} sm={4}>
+                <Grid
+                  size={{
+                    xs: 6,
+                    sm: 4
+                  }}>
                   <Field label="Created">
                     <Typography variant="body2">
                       {formatDateTime(stream.createdAt)}
                     </Typography>
                   </Field>
                 </Grid>
-                <Grid item xs={6} sm={4}>
+                <Grid
+                  size={{
+                    xs: 6,
+                    sm: 4
+                  }}>
                   <Field label="Updated">
                     <Typography variant="body2">
                       {formatDateTime(stream.updatedAt)}
