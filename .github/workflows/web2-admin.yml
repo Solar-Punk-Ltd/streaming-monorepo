@@ -1,0 +1,98 @@
+# The web2 admin's checks: type checks and the unit suites of common, backend
+# and frontend, and the backend's integration suite against a real Postgres.
+# The admin's test script also runs the deploy scripts' tests, the edge's
+# among them, so a change under infra/edge starts this workflow too.
+name: web2-admin
+
+on:
+  push:
+    branches: [main, main-v3]
+    paths: ['apps/web2-admin/**', 'infra/edge/**', '.github/workflows/web2-admin.yml']
+  pull_request:
+    paths: ['apps/web2-admin/**', 'infra/edge/**', '.github/workflows/web2-admin.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web2-admin-${{ github.ref }}
+  cancel-in-progress: true
+
+# Run steps only. An action reads the files it is handed from the repository
+# root, so each one names its file under apps/web2-admin/ itself.
+defaults:
+  run:
+    working-directory: apps/web2-admin
+
+# The jobs carry the app's name because a required check is matched by its
+# name, and the other root workflows already have jobs named checks and
+# integration.
+jobs:
+  web2-admin-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Pinned by commit, the tag in the comment, the same pins as the
+      # infra-manager workflow. pnpm comes from packageManager.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          package_json_file: apps/web2-admin/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # 22 is what the admin's images run. Its .nvmrc says 24, a known mismatch.
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/web2-admin/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Type checks, every package, tests included
+        run: pnpm run typecheck
+
+      - name: Unit tests, every package
+        run: pnpm run test
+
+  web2-admin-integration:
+    # The suite starts a backend of its own under tsx with FEED_GATEWAY=fake,
+    # and creates and drops a database of its own beside DATABASE_URL.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        # The postgres:16-alpine the admin runs, at the digest the
+        # infra-manager workflow pins. The role is the image's superuser, as
+        # in backend/docker-compose.yml, because the suite creates databases.
+        # Trust authentication because the server starts empty, holds
+        # synthetic rows for one job, and is reachable only from it.
+        image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+        env:
+          POSTGRES_USER: web2admin
+          POSTGRES_DB: web2admin
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U web2admin -d web2admin"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          package_json_file: apps/web2-admin/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/web2-admin/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Integration suite, against a backend and a database of its own
+        # BEE_URL and POSTAGE_BATCH_ID stay unset, so the one suite that needs
+        # a real Bee node and a usable postage batch reports itself skipped.
+        env:
+          DATABASE_URL: postgres://web2admin@127.0.0.1:5432/web2admin
+        run: pnpm -C backend run test:integration
