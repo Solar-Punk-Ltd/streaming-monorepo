@@ -337,4 +337,35 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  /**
+   * The host fetches the pinned commit from GitHub by its name. A commit only
+   * this machine has would get as far as replacing the manager, and only then
+   * fail the bundled build, so it is refused before anything leaves.
+   */
+  it('refuses a commit no remote branch holds, before anything reaches the host, and deploys it once pushed', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-unpushed-'));
+    try {
+      const { work, environment } = checkout(root);
+      writeFileSync(join(work, 'CHANGES.md'), 'a change only this machine has\n');
+      git(work, 'add', 'CHANGES.md');
+      git(work, 'commit', '-qm', 'not pushed yet');
+      const commit = git(work, 'rev-parse', 'HEAD');
+
+      const refused = deploy(root, work, environment);
+
+      assert.equal(refused.status, 1, refused.stderr);
+      assert.match(refused.stderr, new RegExp(`no remote branch holds ${commit}`));
+      assert.match(refused.stderr, /push it first, or git fetch if it is pushed already/);
+      assert.equal(refused.shipped, false, 'nothing was copied to the host');
+
+      git(work, 'push', '-q', 'origin', 'main');
+      const deployed = deploy(root, work, environment);
+
+      assert.equal(deployed.status, 0, deployed.stderr);
+      assert.equal(deployed.pin, commit);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
