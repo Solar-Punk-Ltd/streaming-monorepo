@@ -12,6 +12,10 @@ const IMAGES = 'images.mjs';
 /** Enough added files that image.mjs's report runs past the 1 MiB a child process's output gets by default. */
 const LARGE_DIFFERENCE_FILES = 20_000;
 
+/** A build that outlasts the cut-off, and a cut-off long enough for the first pair to be compared under load. */
+const SLOW_BUILD_MS = 60_000;
+const CUT_OFF_MS = 15_000;
+
 const CONFIG = {
   Entrypoint: null,
   Cmd: ['node', 'app.js'],
@@ -190,6 +194,19 @@ describe('images.mjs builds each image from both commits and compares them', () 
     assert.equal(result.status, 1, `${result.stdout.slice(-2000)}\n${result.stderr.slice(-2000)}`);
     assert.doesNotMatch(result.stdout, /could not be checked/);
     assert.match(result.stdout, /a-file-with-a-long-enough-name-19999\.js/, 'the last difference is in the listing');
+  });
+
+  it('prints each pair as it is compared, so a run cut off later keeps the verdicts it reached', (t) => {
+    const { repo, before, after } = movedProject(t);
+    const docker = dockerFor(t, [{ name: 'demo' }, { name: 'other' }], {
+      first: [{ argsInclude: ['build', 'move-check-images/other:before'], stdout: '', sleepMs: SLOW_BUILD_MS }],
+    });
+    const manifest = manifestFile(t, [demoImage(before, after), demoImage(before, after, { name: 'other' })]);
+
+    const result = runScript(IMAGES, ['--manifest', manifest], { cwd: repo, env: docker.env, timeoutMs: CUT_OFF_MS });
+
+    assert.equal(result.signal, 'SIGTERM', 'the run was cut off during the second pair');
+    assert.match(result.stdout, /^demo: .*match/m, 'the first pair was already reported');
   });
 
   it('reports an image that differs with what image.mjs found, and exits 1', (t) => {

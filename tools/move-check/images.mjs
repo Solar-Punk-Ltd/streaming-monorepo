@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -64,6 +64,7 @@ const COMMIT_ID = /^[0-9a-f]{7,40}$/;
 /** One name of a path: no leading dot or dash, so `..` and anything read as an option are out. */
 const PLAIN_NAME = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 const SHORT_COMMIT_LENGTH = 12;
+const STDOUT_FD = 1;
 
 /**
  * A path from the repository root, as a manifest writes it. The context may be `.`, the root, which is
@@ -237,7 +238,6 @@ function summarize(outcomes) {
   const parts = [`images: ${outcomes.length} compared`, `${count('match')} match`];
   if (differing > 0) parts.push(`${differing} ${differing === 1 ? 'differs' : 'differ'}`);
   if (notChecked > 0) parts.push(`${notChecked} could not be checked`);
-  for (const result of outcomes) console.log(result.lines.join('\n'));
   console.log(parts.join(', '));
   if (notChecked > 0) return EXIT.CANNOT_CHECK;
   return differing > 0 ? EXIT.DIFFERENCE : EXIT.MATCH;
@@ -265,7 +265,11 @@ function checkImages(images, { keep, removeImagesAfter }) {
   const outcomes = [];
   try {
     for (const image of images) {
-      outcomes.push(checkImage(image, exportOf));
+      const outcome = checkImage(image, exportOf);
+      outcomes.push(outcome);
+      // Written at once and synchronously: on some platforms a pipe write from console.log waits for the event
+      // loop, which the next pair's synchronous build holds, so a run cut off there would lose this verdict.
+      writeSync(STDOUT_FD, `${outcome.lines.join('\n')}\n`);
       if (removeImagesAfter) removeImages(image);
     }
   } finally {
