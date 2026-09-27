@@ -40,9 +40,9 @@ Each app keeps its own `package.json`, with its scripts and its dependencies, an
 package import only what it declares, so the apps stay apart. The pnpm release is the
 `packageManager` field of the root `package.json`, which each app's `package.json` repeats, and
 with corepack enabled `pnpm` is that release. The security overrides, the builds allowed and the
-other workspace settings are in the root `pnpm-workspace.yaml`. The Node release is an app's
-`.nvmrc` where it has one, and otherwise the base image of its Dockerfiles. The apps differ there,
-so read the numbers from those files.
+other workspace settings are in the root `pnpm-workspace.yaml`. The Node release is the root
+`.nvmrc`, one for every app: the workflows read it, and the Node base image of every Dockerfile
+matches it.
 
 At the root, `pnpm build`, `pnpm typecheck`, `pnpm test` and `pnpm lint` run that script in every
 package of every app that has it, through Nx, which runs a package after the packages it depends

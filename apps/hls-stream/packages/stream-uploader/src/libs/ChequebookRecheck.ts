@@ -1,4 +1,5 @@
 import { StartGateWarning } from '../types.js';
+import { describeFailure } from '../utils/transportFailure.js';
 
 import { Clock, systemClock, Timer } from './Clock.js';
 import { latchedWarning, StartGate } from './StartGates.js';
@@ -179,8 +180,4 @@ function describeRungs(warnings: readonly StartGateWarning[]): string {
 
 function seconds(ms: number): string {
   return `${ms / MS_PER_SECOND} s`;
-}
-
-function describeFailure(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

@@ -42,7 +42,7 @@ function recordingLogger() {
 function fundedNode(url: string, availablePlur: bigint): ChequebookNode {
   return {
     url,
-    bee: { getChequebookBalance: async () => ({ availableBalance: { toPLURBigInt: () => availablePlur } }) },
+    bee: { chequebook: { getBalance: async () => ({ availableBalance: { toPLURBigInt: () => availablePlur } }) } },
   };
 }
 
@@ -51,7 +51,9 @@ function silentNode(url: string): ChequebookNode {
   return {
     url,
     bee: {
-      getChequebookBalance: () => Promise.reject(new Error(TIMED_OUT)),
+      chequebook: {
+        getBalance: () => Promise.reject(new Error(TIMED_OUT)),
+      },
     },
   };
 }
@@ -62,7 +64,7 @@ function silentPublisher(rung: string, url: string): StampedPublisher {
     rung,
     url,
     stamp: 'a'.repeat(64),
-    bee: { getPostageBatch: () => Promise.reject(new Error(TIMED_OUT)) },
+    bee: { stamp: { get: () => Promise.reject(new Error(TIMED_OUT)) } },
   };
 }
 

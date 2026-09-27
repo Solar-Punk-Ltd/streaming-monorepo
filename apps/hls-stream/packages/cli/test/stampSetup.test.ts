@@ -71,13 +71,21 @@ interface WalletBeeOptions {
  */
 function walletBee({ bzzPlur, xdaiWei = 1n, batches = [] }: WalletBeeOptions = {}): Bee {
   return {
-    getNodeAddresses: async () => ({ ethereum: { toHex: () => '0xnode' } }),
-    getWalletBalance: async () => ({
-      bzzBalance: BZZ.fromPLUR(bzzPlur ?? TEST_BATCH_COST_PLUR * 2n),
-      nativeTokenBalance: DAI.fromWei(xdaiWei),
-    }),
-    getChainState: async () => ({ chainTip: 1, block: 1, totalAmount: '0', currentPrice: TEST_CHAIN_PRICE }),
-    getPostageBatches: async () => batches,
+    connectivity: {
+      getNodeAddresses: async () => ({ ethereum: { toHex: () => '0xnode' } }),
+    },
+    wallet: {
+      getBalance: async () => ({
+        bzzBalance: BZZ.fromPLUR(bzzPlur ?? TEST_BATCH_COST_PLUR * 2n),
+        nativeTokenBalance: DAI.fromWei(xdaiWei),
+      }),
+    },
+    status: {
+      getChainState: async () => ({ chainTip: 1, block: 1, totalAmount: '0', currentPrice: TEST_CHAIN_PRICE }),
+    },
+    stamp: {
+      getAll: async () => batches,
+    },
   } as unknown as Bee;
 }
 
@@ -462,11 +470,17 @@ describe('stampSetup, OPS-1: no path loses the batch id after a spend', () => {
       envPath,
       createBee: () =>
         ({
-          getNodeAddresses: async () => ({ ethereum: { toHex: () => '0xnode' } }),
-          getWalletBalance: async () => {
-            throw new Error('connect ECONNREFUSED 127.0.0.1:1633');
+          connectivity: {
+            getNodeAddresses: async () => ({ ethereum: { toHex: () => '0xnode' } }),
           },
-          getPostageBatches: async () => [],
+          wallet: {
+            getBalance: async () => {
+              throw new Error('connect ECONNREFUSED 127.0.0.1:1633');
+            },
+          },
+          stamp: {
+            getAll: async () => [],
+          },
         } as unknown as Bee),
     });
 
@@ -485,13 +499,19 @@ describe('stampSetup, OPS-1: no path loses the batch id after a spend', () => {
       envPath,
       createBee: () =>
         ({
-          getNodeAddresses: async () => ({ ethereum: { toHex: () => '0xnode' } }),
-          getWalletBalance: async () => {
-            throw new Error('Request failed with status code 500');
+          connectivity: {
+            getNodeAddresses: async () => ({ ethereum: { toHex: () => '0xnode' } }),
           },
-          getPostageBatches: async () => [
-            { usable: true, batchID: { toHex: () => existing }, depth: 20, amount: '1', immutableFlag: false },
-          ],
+          wallet: {
+            getBalance: async () => {
+              throw new Error('Request failed with status code 500');
+            },
+          },
+          stamp: {
+            getAll: async () => [
+              { usable: true, batchID: { toHex: () => existing }, depth: 20, amount: '1', immutableFlag: false },
+            ],
+          },
         } as unknown as Bee),
     });
 
@@ -508,8 +528,10 @@ describe('stampSetup, OPS-1: no path loses the batch id after a spend', () => {
       createBee: () =>
         ({
           ...walletBee(),
-          getPostageBatches: async () => {
-            throw new Error('Request failed with status code 500');
+          stamp: {
+            getAll: async () => {
+              throw new Error('Request failed with status code 500');
+            },
           },
         } as unknown as Bee),
     });

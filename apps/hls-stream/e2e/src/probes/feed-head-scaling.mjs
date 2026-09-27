@@ -101,7 +101,7 @@ function stats(values) {
 }
 
 async function writeFeed(topic, slots) {
-  const writer = writeBee.makeFeedWriter(topic, signer);
+  const writer = writeBee.feed.makeWriter(topic, signer);
   for (let index = 0; index < slots; index++) {
     await writer.uploadPayload(STAMP, PAYLOAD, { index: FeedIndex.fromBigInt(BigInt(index)), deferred: false });
   }

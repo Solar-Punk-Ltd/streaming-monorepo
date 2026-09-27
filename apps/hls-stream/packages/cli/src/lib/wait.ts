@@ -20,7 +20,7 @@ export async function waitForNode(bee: Bee, timeoutMs = DEFAULT_TIMEOUT_MS, poll
 
   while (Date.now() < deadline) {
     try {
-      await bee.getHealth();
+      await bee.status.getHealth();
       s.stop('Bee node is healthy');
       return;
     } catch {
@@ -48,7 +48,7 @@ export async function waitForStamp(
 
   while (Date.now() < deadline) {
     try {
-      const batch = await bee.getPostageBatch(batchId);
+      const batch = await bee.stamp.get(batchId);
       if (batch.usable) {
         s.stop('Stamp is usable');
         return batch;

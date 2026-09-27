@@ -6,7 +6,7 @@ export async function nodeAddresses(urlOverride?: string): Promise<void> {
   loadEnv();
 
   await forEachNode(resolveNodeTargets(), urlOverride, async (bee) => {
-    const addresses = await bee.getNodeAddresses();
+    const addresses = await bee.connectivity.getNodeAddresses();
     table('Ethereum', addresses.ethereum.toHex());
     table('Overlay', addresses.overlay.toHex());
     table('Public key', addresses.publicKey.toHex());

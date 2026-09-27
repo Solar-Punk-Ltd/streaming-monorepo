@@ -1,3 +1,5 @@
+import { describeFailure } from '../utils/transportFailure.js';
+
 import { safeUrl } from './BeePublisherPool.js';
 import { gateReadingOfError } from './gateReadingOfError.js';
 import { GateRefusalError } from './GateRefusalError.js';
@@ -108,7 +110,7 @@ export class ChequebookGate {
   private async refusalFor(node: ChequebookNode): Promise<GateFinding | null> {
     let body: unknown;
     try {
-      body = await node.bee.getChequebookBalance();
+      body = await node.bee.chequebook.getBalance();
     } catch (error) {
       return {
         message: this.unreadableRefusal(node.url, describeFailure(error)),
@@ -172,14 +174,14 @@ export interface ChequebookNode {
 }
 
 /**
- * The one call this gate makes, as `Bee.getChequebookBalance` from bee-js provides it.
+ * The one call this gate makes, as `Bee.chequebook.getBalance` from bee-js provides it.
  *
  * Typed as `unknown` rather than as the library's `ChequebookBalanceResponse` on purpose. A node with
  * SWAP disabled has no chequebook, and what it returns is not that shape, so the gate has to narrow
  * the body itself rather than trust a type that describes only the healthy answer.
  */
 export interface ChequebookClient {
-  getChequebookBalance(): Promise<unknown>;
+  readonly chequebook: { getBalance(): Promise<unknown> };
 }
 
 /** Where a funding reading is written. Matches `Logger`, narrowed to the one method used here. */
@@ -220,10 +222,6 @@ function parseAvailablePlur(body: unknown): bigint | null {
   } catch {
     return null;
   }
-}
-
-function describeFailure(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function distinctByUrl(nodes: readonly ChequebookNode[]): ChequebookNode[] {
