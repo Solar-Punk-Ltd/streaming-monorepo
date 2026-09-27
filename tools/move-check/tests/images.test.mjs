@@ -181,6 +181,19 @@ describe('images.mjs builds each image from both commits and compares them', () 
     assert.match(result.stdout, /^demo: image: match, .*1 allowed difference$/m);
   });
 
+  it("hands the manifest's map to image.mjs, which compares a folder kept under another name entry by entry", (t) => {
+    const { repo, before, after } = movedProject(t);
+    const beforeFiles = { ...FILES, 'app/old/x.js': { content: 'x\n' } };
+    const afterFiles = { ...FILES, 'app/new/x.js': { content: 'x\n' } };
+    const docker = dockerFor(t, [{ name: 'demo', beforeFiles, afterFiles }]);
+    const image = demoImage(before, after, { map: ['/app/old=/app/new'] });
+
+    const result = runScript(IMAGES, ['--manifest', manifestFile(t, [image])], { cwd: repo, env: docker.env });
+
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /^demo: image: match, 9 config fields equal, 4 identical filesystem entries, 1 entry renamed by --map$/m);
+  });
+
   it('reports a difference too long for a default output buffer as a difference, with its whole listing', (t) => {
     const { repo, before, after } = movedProject(t);
     const afterFiles = { ...FILES };
@@ -322,6 +335,23 @@ describe('images.mjs reads its manifest strictly', () => {
       const result = runScript(IMAGES, ['--manifest', manifestFile(t, [entry])], { cwd: repo, env: docker.env });
       assert.equal(result.status, 2, JSON.stringify(entry));
       assert.notEqual(result.stderr, '', JSON.stringify(entry));
+    }
+    assert.equal(builds(docker).length, 0);
+  });
+
+  it('refuses a map that is not a list of <old>=<new> renames, naming the image, before building', (t) => {
+    const { repo, before, after } = movedProject(t);
+    const docker = dockerFor(t, []);
+    const broken = [
+      demoImage(before, after, { map: '/app/old=/app/new' }),
+      demoImage(before, after, { map: ['/app/old'] }),
+      demoImage(before, after, { map: ['/app/old=/app/new', '/app/old=/app/other'] }),
+    ];
+
+    for (const entry of broken) {
+      const result = runScript(IMAGES, ['--manifest', manifestFile(t, [entry])], { cwd: repo, env: docker.env });
+      assert.equal(result.status, 2, JSON.stringify(entry));
+      assert.match(result.stderr, /^demo: map /m, JSON.stringify(entry));
     }
     assert.equal(builds(docker).length, 0);
   });

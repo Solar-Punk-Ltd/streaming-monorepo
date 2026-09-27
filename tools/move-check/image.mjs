@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import {
   CheckError,
   EXIT,
+  applyPrefixMaps,
   countOf,
   describeCommandFailure,
   diffJson,
@@ -10,6 +11,7 @@ import {
   formatJsonValue,
   isAllowedPath,
   parseOptions,
+  parsePrefixMaps,
   requireOption,
   runCommand,
   runWhenStarted,
@@ -17,7 +19,7 @@ import {
 } from './lib/shared.mjs';
 import { TarFormatError, readTarSummaries } from './lib/tar.mjs';
 
-const USAGE = `Usage: node tools/move-check/image.mjs --before <image> --after <image> [--allow <path>]...
+const USAGE = `Usage: node tools/move-check/image.mjs --before <image> --after <image> [--map <old>=<new>]... [--allow <path>]...
 
 Compares two local docker images. Nothing is pulled, so both must be local.
 
@@ -29,6 +31,10 @@ permission bits, owner, size, link target and, for a regular file, the sha256
 of its content. Modification times are ignored. The containers are removed
 afterwards, even when the check fails.
 
+  --map     renames a path of the before image, or a folder and everything
+            under it, before the two are compared, for a folder the after image
+            keeps under another name. What is under it is still compared entry
+            by entry, under the new name
   --allow   lets one file system difference through: an exact path such as
             /app/node_modules/.modules.yaml, or a prefix ending in /
 
@@ -37,6 +43,7 @@ Exit codes: 0 match, 1 difference, 2 the check could not run.`;
 const OPTION_SPECS = {
   before: { type: 'string' },
   after: { type: 'string' },
+  map: { type: 'string', multiple: true },
   allow: { type: 'string', multiple: true },
 };
 
@@ -65,6 +72,44 @@ const SHORT_DIGEST_LENGTH = 12;
 export function pickInspectedConfig(inspect) {
   const config = inspect?.Config ?? {};
   return Object.fromEntries(INSPECTED_CONFIG_FIELDS.map((name) => [name, config[name] ?? null]));
+}
+
+/** A path of the image in the tar reader's form, which has no leading slash. */
+function withoutLeadingSlash(path) {
+  return path.replace(/^\/+/, '');
+}
+
+/** The --map rules in the tar reader's form, longest old prefix first. */
+function parseImageMaps(values) {
+  return parsePrefixMaps(values)
+    .map(({ from, to }) => ({ from: withoutLeadingSlash(from), to: withoutLeadingSlash(to) }))
+    .toSorted((left, right) => right.from.length - left.from.length);
+}
+
+/**
+ * Renames the before image's entries with the --map rules and counts the renamed ones. Two entries sent to one path
+ * are refused, so a rename can never hide an entry. Without a rule nothing is renamed and nothing is refused.
+ * @param {import('./lib/tar.mjs').TarEntrySummary[]} entries
+ */
+export function renameEntries(entries, rules) {
+  const byPath = new Map();
+  for (const entry of entries) {
+    const path = applyPrefixMaps(entry.path, rules);
+    const earlier = byPath.get(path);
+    if (earlier && (earlier.originalPath !== path || entry.path !== path)) {
+      throw new CheckError(`--map sends both /${earlier.originalPath} and /${entry.path} to /${path}.`);
+    }
+    byPath.set(path, { ...entry, path, originalPath: entry.path });
+  }
+  const renamed = [...byPath.values()];
+  return {
+    entries: renamed.map(({ originalPath, ...entry }) => entry),
+    renamedCount: renamed.filter((entry) => entry.path !== entry.originalPath).length,
+  };
+}
+
+function renamedPart(renamedCount) {
+  return countOf(renamedCount, 'entry renamed by --map', 'entries renamed by --map');
 }
 
 function entryFieldValue(entry, name) {
@@ -184,7 +229,7 @@ function describeFileSystemDifference(kind, difference) {
   return `${path}  ${fields.join(', ')}`;
 }
 
-function formatFailure({ configDifferences, fileSystem, allows, notAllowedCount, allowedCount }) {
+function formatFailure({ configDifferences, fileSystem, allows, notAllowedCount, allowedCount, renamedCount }) {
   const configLines = configDifferences.map(
     (difference) => `${formatJsonPath(difference.path)}: before ${formatJsonValue(difference.before)}, after ${formatJsonValue(difference.after)}`,
   );
@@ -196,20 +241,21 @@ function formatFailure({ configDifferences, fileSystem, allows, notAllowedCount,
     }),
   ]);
   const allowedNote = allowedCount > 0 ? `, ${allowedCount} allowed` : '';
+  const renamedNote = renamedCount > 0 ? `, ${renamedPart(renamedCount)}` : '';
   return [
     ...configLines,
     ...fileSystemLines,
     `identical: ${fileSystem.identical}`,
-    `image: differs, ${countOf(configDifferences.length, 'config difference')} and ${countOf(notAllowedCount, 'filesystem difference')} not allowed${allowedNote}`,
+    `image: differs, ${countOf(configDifferences.length, 'config difference')} and ${countOf(notAllowedCount, 'filesystem difference')} not allowed${allowedNote}${renamedNote}`,
   ].join('\n');
 }
 
-function report(configDifferences, fileSystem, allows) {
+function report(configDifferences, fileSystem, allows, renamedCount) {
   const fileSystemDifferences = DIFFERENCE_KINDS.flatMap((kind) => fileSystem[kind]);
   const allowedCount = fileSystemDifferences.filter((difference) => isAllowedPath(difference.path, allows)).length;
   const notAllowedCount = fileSystemDifferences.length - allowedCount;
   if (configDifferences.length > 0 || notAllowedCount > 0) {
-    console.log(formatFailure({ configDifferences, fileSystem, allows, notAllowedCount, allowedCount }));
+    console.log(formatFailure({ configDifferences, fileSystem, allows, notAllowedCount, allowedCount, renamedCount }));
     return EXIT.DIFFERENCE;
   }
   const parts = [
@@ -218,6 +264,7 @@ function report(configDifferences, fileSystem, allows) {
     countOf(fileSystem.identical, 'identical filesystem entry', 'identical filesystem entries'),
   ];
   if (allowedCount > 0) parts.push(countOf(allowedCount, 'allowed difference'));
+  if (renamedCount > 0) parts.push(renamedPart(renamedCount));
   console.log(parts.join(', '));
   return EXIT.MATCH;
 }
@@ -228,7 +275,8 @@ export async function main(argv) {
   if (options.help) return showHelp(USAGE);
   const beforeImage = requireOption(options, 'before');
   const afterImage = requireOption(options, 'after');
-  const allows = (options.allow ?? []).map((allow) => allow.replace(/^\/+/, ''));
+  const allows = (options.allow ?? []).map(withoutLeadingSlash);
+  const renames = parseImageMaps(options.map);
 
   const beforeInspect = inspectImage(beforeImage, '--before');
   const afterInspect = inspectImage(afterImage, '--after');
@@ -238,7 +286,8 @@ export async function main(argv) {
   try {
     const beforeEntries = await exportFileSystem(containers.create(beforeInspect.Id), `--before ${beforeImage}`);
     const afterEntries = await exportFileSystem(containers.create(afterInspect.Id), `--after ${afterImage}`);
-    return report(configDifferences, compareFileSystems(beforeEntries, afterEntries), allows);
+    const renamed = renameEntries(beforeEntries, renames);
+    return report(configDifferences, compareFileSystems(renamed.entries, afterEntries), allows, renamed.renamedCount);
   } finally {
     containers.removeAll();
   }

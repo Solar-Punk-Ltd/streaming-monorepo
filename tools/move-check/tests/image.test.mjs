@@ -183,6 +183,46 @@ describe('image.mjs', () => {
     assert.equal(marked.status, 1);
   });
 
+  describe('when the after image keeps a folder under another name', () => {
+    const OLD_FOLDER = 'app/node_modules/.pnpm/common@file+web2-admin+common';
+    const NEW_FOLDER = 'app/node_modules/.pnpm/common@file+common';
+    const RENAME = ['--map', `/${OLD_FOLDER}=/${NEW_FOLDER}`];
+    const withFolder = (folder, content) => ({ ...BASE_FILES, [`${folder}/`]: { type: '5', mode: 0o755 }, [`${folder}/index.js`]: { content } });
+
+    it('compares the folder entry by entry under its new name when --map names the rename, and counts what it renamed', (t) => {
+      const docker = dockerWithImages(t, { beforeFiles: withFolder(OLD_FOLDER, 'common\n'), afterFiles: withFolder(NEW_FOLDER, 'common\n') });
+
+      const unmapped = runScript(IMAGE, COMPARE, { env: docker.env });
+      assert.equal(unmapped.status, 1);
+      assert.match(unmapped.stdout, /^missing \(2\):$/m);
+
+      const mapped = runScript(IMAGE, [...COMPARE, ...RENAME], { env: docker.env });
+      assert.equal(mapped.status, 0, mapped.stdout);
+      assert.equal(mapped.stdout, 'image: match, 9 config fields equal, 5 identical filesystem entries, 2 entries renamed by --map\n');
+    });
+
+    it('still lists a file that changed inside the renamed folder, under its new path', (t) => {
+      const docker = dockerWithImages(t, { beforeFiles: withFolder(OLD_FOLDER, 'common\n'), afterFiles: withFolder(NEW_FOLDER, 'changed\n') });
+
+      const result = runScript(IMAGE, [...COMPARE, ...RENAME], { env: docker.env });
+
+      assert.equal(result.status, 1);
+      assert.match(result.stdout, /^ {2}\/app\/node_modules\/\.pnpm\/common@file\+common\/index\.js {2}size 7 -> 8, sha256 [0-9a-f]{12} -> [0-9a-f]{12}$/m);
+      assert.match(result.stdout, /^image: differs, 0 config differences and 1 filesystem difference not allowed, 2 entries renamed by --map$/m);
+    });
+
+    it('exits 2 and removes both containers when --map sends two paths of the before image to one', (t) => {
+      const beforeFiles = { ...BASE_FILES, 'app/old/x.js': { content: 'x\n' }, 'app/new/x.js': { content: 'x\n' } };
+      const docker = dockerWithImages(t, { beforeFiles });
+
+      const result = runScript(IMAGE, [...COMPARE, '--map', '/app/old=/app/new'], { env: docker.env });
+
+      assert.equal(result.status, 2);
+      assert.match(result.stderr, /--map sends both \/app\/(new|old)\/x\.js and \/app\/(new|old)\/x\.js to \/app\/new\/x\.js/);
+      assert.deepEqual(removedContainers(docker).sort(), [AFTER.container, BEFORE.container]);
+    });
+  });
+
   describe('when something fails', () => {
     it('exits 2 and removes both containers when an export fails', (t) => {
       const docker = dockerWithImages(t, {
