@@ -29,8 +29,18 @@ const BASE_CONFIG = {
 const BASE_FILES = {
   'app/': { type: '5', mode: 0o755 },
   'app/dist/index.js': { content: 'console.log(1)\n' },
-  'app/node_modules/.modules.yaml': { content: 'prunedAt: Thu, 01 Jan 2026 00:00:00 GMT\n' },
+  'app/node_modules/demo/index.js': { content: 'module.exports = 1\n' },
 };
+
+/** The .modules.yaml pnpm 9 writes, in YAML, and the one pnpm 11 writes, in JSON despite its name. */
+function modulesYaml(prunedAt = 'Thu, 01 Jan 2026 00:00:00 GMT') {
+  return `layoutVersion: 5\npackageManager: pnpm@9.12.0\nprunedAt: ${prunedAt}\n`;
+}
+function modulesJson(prunedAt = 'Thu, 01 Jan 2026 00:00:00 GMT') {
+  return `${JSON.stringify({ layoutVersion: 5, packageManager: 'pnpm@11.10.0', prunedAt }, null, 2)}\n`;
+}
+const LATER = 'Fri, 02 Jan 2026 00:00:00 GMT';
+const MODULES = 'app/node_modules/.modules.yaml';
 
 function archiveOf(files) {
   return tarArchive(...Object.entries(files).map(([name, { content = '', ...fields }]) => tarEntry({ name, ...fields }, content)));
@@ -168,19 +178,121 @@ describe('image.mjs', () => {
     assert.equal(result.status, 1);
     assert.match(result.stdout, /^ {2}\/app {2}mode 0755 -> 0700, owner 0:0 -> 1000:0$/m);
     assert.match(result.stdout, /^ {2}\/app\/dist\/index\.js {2}type file -> symlink, size 15 -> 0, sha256 [0-9a-f]{12} -> \(none\), target \(none\) -> main\.js$/m);
-    assert.match(result.stdout, /^missing \(1\):\n {2}\/app\/node_modules\/\.modules\.yaml$/m);
+    assert.match(result.stdout, /^missing \(1\):\n {2}\/app\/node_modules\/demo\/index\.js$/m);
     assert.match(result.stdout, /^added \(1\):\n {2}\/app\/new\.js$/m);
   });
 
   it('lets a file system difference through when --allow names its path or a prefix of it', (t) => {
-    const afterFiles = { ...BASE_FILES, 'app/node_modules/.modules.yaml': { content: 'prunedAt: Fri, 02 Jan 2026 00:00:00 GMT\n' } };
+    const afterFiles = { ...BASE_FILES, 'app/node_modules/demo/index.js': { content: 'module.exports = 2\n' } };
     const docker = dockerWithImages(t, { afterFiles });
-    const exact = runScript(IMAGE, [...COMPARE, '--allow', '/app/node_modules/.modules.yaml'], { env: docker.env });
+    const exact = runScript(IMAGE, [...COMPARE, '--allow', '/app/node_modules/demo/index.js'], { env: docker.env });
     assert.equal(exact.status, 0, exact.stdout);
     assert.equal(exact.stdout, 'image: match, 9 config fields equal, 2 identical filesystem entries, 1 allowed difference\n');
     assert.equal(runScript(IMAGE, [...COMPARE, '--allow', '/app/node_modules/'], { env: docker.env }).status, 0);
     const marked = runScript(IMAGE, [...COMPARE, '--allow', '/app/node_modules'], { env: docker.env });
     assert.equal(marked.status, 1);
+  });
+
+  describe("names pnpm's own files and what differs in them, and never fails or allows on them", () => {
+    it('matches when a pnpm file differs in its install time only, and names it', (t) => {
+      const docker = dockerWithImages(t, {
+        beforeFiles: { ...BASE_FILES, [MODULES]: { content: modulesYaml() } },
+        afterFiles: { ...BASE_FILES, [MODULES]: { content: modulesYaml(LATER) } },
+      });
+
+      const result = runScript(IMAGE, COMPARE, { env: docker.env });
+
+      assert.equal(result.status, 0, result.stdout);
+      assert.equal(
+        result.stdout,
+        [
+          "pnpm's own files (1):",
+          '  /app/node_modules/.modules.yaml  its install time only: prunedAt',
+          "image: match, 9 config fields equal, 3 identical filesystem entries, 1 of pnpm's own files differs in its install time only",
+          '',
+        ].join('\n'),
+      );
+    });
+
+    it('says a pnpm version change is one, and matches apart from pnpm\'s own files', (t) => {
+      const docker = dockerWithImages(t, {
+        beforeFiles: { ...BASE_FILES, [MODULES]: { content: modulesYaml() } },
+        afterFiles: {
+          ...BASE_FILES,
+          [MODULES]: { content: modulesJson(LATER) },
+          'app/node_modules/.pnpm-workspace-state-v1.json': { content: '{"lastValidatedTimestamp":1}\n' },
+        },
+      });
+
+      const result = runScript(IMAGE, COMPARE, { env: docker.env });
+
+      assert.equal(result.status, 0, result.stdout);
+      assert.equal(
+        result.stdout,
+        [
+          "pnpm's own files (2):",
+          '  /app/node_modules/.modules.yaml  written by pnpm@9.12.0 -> pnpm@11.10.0, as YAML -> JSON',
+          '  /app/node_modules/.pnpm-workspace-state-v1.json  added',
+          "image: match apart from pnpm's own files, 9 config fields equal, 3 identical filesystem entries, 2 of pnpm's own files differ",
+          '',
+        ].join('\n'),
+      );
+    });
+
+    it('never lets --allow take a pnpm file away from that list', (t) => {
+      const docker = dockerWithImages(t, {
+        beforeFiles: { ...BASE_FILES, [MODULES]: { content: modulesJson() } },
+        afterFiles: { ...BASE_FILES, [MODULES]: { content: modulesJson(LATER) } },
+      });
+
+      const result = runScript(IMAGE, [...COMPARE, '--allow', '/app/node_modules/'], { env: docker.env });
+
+      assert.equal(result.status, 0, result.stdout);
+      assert.match(result.stdout, /^ {2}\/app\/node_modules\/\.modules\.yaml {2}its install time only: prunedAt$/m);
+      assert.doesNotMatch(result.stdout, /allowed/);
+    });
+
+    it('lists them apart when the image differs for another reason, and counts them apart', (t) => {
+      const docker = dockerWithImages(t, {
+        beforeFiles: { ...BASE_FILES, [MODULES]: { content: modulesYaml() } },
+        afterFiles: { ...BASE_FILES, 'app/dist/index.js': { content: 'console.log(2)\n' }, [MODULES]: { content: modulesYaml(LATER) } },
+      });
+
+      const result = runScript(IMAGE, COMPARE, { env: docker.env });
+
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(result.stdout, /^changed \(1\):\n {2}\/app\/dist\/index\.js {2}sha256/m);
+      assert.match(result.stdout, /^pnpm's own files \(1\):\n {2}\/app\/node_modules\/\.modules\.yaml {2}its install time only: prunedAt$/m);
+      assert.match(
+        result.stdout,
+        /^image: differs, 0 config differences and 1 filesystem difference not allowed, 1 of pnpm's own files differs in its install time only$/m,
+      );
+    });
+
+    it('reads a before file that --map renames into one of them as one of them', (t) => {
+      const docker = dockerWithImages(t, {
+        beforeFiles: { ...BASE_FILES, 'app/lib/.modules.yaml': { content: modulesYaml() } },
+        afterFiles: { ...BASE_FILES, [MODULES]: { content: modulesYaml(LATER) } },
+      });
+
+      const result = runScript(IMAGE, [...COMPARE, '--map', '/app/lib=/app/node_modules'], { env: docker.env });
+
+      assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+      assert.match(result.stdout, /^ {2}\/app\/node_modules\/\.modules\.yaml {2}its install time only: prunedAt$/m);
+    });
+
+    it('treats a file of such a name outside an install\'s own node_modules folder as any other file', (t) => {
+      const docker = dockerWithImages(t, {
+        beforeFiles: { ...BASE_FILES, 'app/.modules.yaml': { content: modulesYaml() } },
+        afterFiles: { ...BASE_FILES, 'app/.modules.yaml': { content: modulesYaml(LATER) } },
+      });
+
+      const result = runScript(IMAGE, COMPARE, { env: docker.env });
+
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(result.stdout, /^changed \(1\):\n {2}\/app\/\.modules\.yaml {2}sha256/m);
+      assert.doesNotMatch(result.stdout, /pnpm's own files/);
+    });
   });
 
   describe('when the after image keeps a folder under another name', () => {
