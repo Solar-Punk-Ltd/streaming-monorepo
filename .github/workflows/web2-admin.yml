@@ -61,7 +61,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        # The postgres:16-alpine the admin runs, at the digest the
+        # The postgres:16.15-alpine the admin runs, at the digest the
         # infra-manager workflow pins. The role is the image's superuser, as
         # in backend/docker-compose.yml, because the suite creates databases.
         # Trust authentication because the server starts empty, holds
