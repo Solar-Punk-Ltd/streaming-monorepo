@@ -7,24 +7,14 @@
  * changing the fixture, and those are the files the manager deploys.
  */
 import assert from 'node:assert/strict';
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-} from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 
 import { engineSettingsFieldsFor, OME_SERVICE, SRS_SERVICE } from '@streaming-infra-manager/common';
 
-import {
-  type CommandRunner,
-  EngineConfigChecker,
-} from '../../src/domain/engineConfig/engineConfigCheck.js';
+import { type CommandRunner, EngineConfigChecker } from '../../src/domain/engineConfig/engineConfigCheck.js';
 import { engineTemplateIn } from '../../src/domain/engineConfig/engineConfigTemplates.js';
 import { srsTemplateReadings } from '../../src/domain/engineConfig/srsSettingReadings.js';
 import { readStackContract } from '../../src/domain/versions/stackContract.js';
@@ -69,11 +59,7 @@ describe('the bundled stack contract', () => {
     assert.equal(contract.ports.length, 16);
     assert.equal(contract.allocationProblem, null);
     assert.deepEqual(contract.warnings, []);
-    assert.deepEqual(contract.requiredSecrets, [
-      'API_AUTH_TOKEN',
-      'SRS_WEBHOOK_TOKEN',
-      'OME_ADMISSION_SECRET',
-    ]);
+    assert.deepEqual(contract.requiredSecrets, ['API_AUTH_TOKEN', 'SRS_WEBHOOK_TOKEN', 'OME_ADMISSION_SECRET']);
     assert.deepEqual(contract.engineConfig, { srs: true, ome: true });
     assert.equal(contract.features.sharedImageTags, false);
     assert.equal(contract.engineDefaults.HLS_FRAGMENT, '0.5');
@@ -105,9 +91,7 @@ describe('the bundled stack contract', () => {
     mkdirSync(root);
     cpSync(join(STACK, '.env.sample'), join(root, '.env'));
     const contract = readStackContract(STACK);
-    const stackSecrets = Object.fromEntries(
-      contract.requiredSecrets.map((key) => [key, 'a'.repeat(64)]),
-    );
+    const stackSecrets = Object.fromEntries(contract.requiredSecrets.map((key) => [key, 'a'.repeat(64)]));
 
     const path = writeProfileEnv(root, 'bundled', {
       engine: SRS_SERVICE,
@@ -202,10 +186,6 @@ describe('the bundled stack contract', () => {
         null,
       );
     }
-    assert.equal(
-      srsChecks,
-      1,
-      'OME is checked as XML without starting a container',
-    );
+    assert.equal(srsChecks, 1, 'OME is checked as XML without starting a container');
   });
 });

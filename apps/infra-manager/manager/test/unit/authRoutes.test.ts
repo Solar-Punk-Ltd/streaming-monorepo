@@ -258,10 +258,7 @@ describe('a burst of sign-ins sent at once', () => {
     );
 
     const checked = app.users.usernameLookups() - before;
-    assert.ok(
-      checked <= 5,
-      `${checked} of ${sent} guesses reached the password check`,
-    );
+    assert.ok(checked <= 5, `${checked} of ${sent} guesses reached the password check`);
     assert.equal(answers.filter((res) => res.status === 401).length, checked);
     assert.equal(answers.filter((res) => res.status === 429).length, sent - checked);
   });
@@ -389,10 +386,7 @@ describe('two users removing each other at once', () => {
       'exactly one of the two removals may go through',
     );
     const refused = outcomes.find((outcome) => outcome.status === 'rejected');
-    assert.match(
-      String((refused as PromiseRejectedResult).reason),
-      /last user/,
-    );
+    assert.match(String((refused as PromiseRejectedResult).reason), /last user/);
     assert.equal(await app.users.count(), 1);
 
     await app.close();
@@ -452,10 +446,7 @@ describe('managing users', () => {
       });
 
       assert.equal(res.status, 400, `${username} should be refused`);
-      assert.equal(
-        (res.body as { error: string }).error,
-        'validation_error',
-      );
+      assert.equal((res.body as { error: string }).error, 'validation_error');
     }
   });
 
@@ -474,10 +465,7 @@ describe('managing users', () => {
     const res = await call(app, 'DELETE', `/auth/users/${ownId}`, { cookie });
 
     assert.equal(res.status, 409);
-    assert.equal(
-      (res.body as { error: string }).error,
-      'cannot_remove_user',
-    );
+    assert.equal((res.body as { error: string }).error, 'cannot_remove_user');
   });
 
   it('signs out every session of another user on request', async () => {
@@ -485,23 +473,12 @@ describe('managing users', () => {
     assert.ok(mate);
 
     const theirs = await signIn(app, 'mate', OTHER_PASSWORD);
-    assert.equal(
-      (await call(app, 'GET', '/profiles', { cookie: theirs.cookie })).status,
-      200,
-    );
+    assert.equal((await call(app, 'GET', '/profiles', { cookie: theirs.cookie })).status, 200);
 
-    const revoked = await call(
-      app,
-      'POST',
-      `/auth/users/${mate.id}/revoke-sessions`,
-      { cookie },
-    );
+    const revoked = await call(app, 'POST', `/auth/users/${mate.id}/revoke-sessions`, { cookie });
 
     assert.equal(revoked.status, 204);
-    assert.equal(
-      (await call(app, 'GET', '/profiles', { cookie: theirs.cookie })).status,
-      401,
-    );
+    assert.equal((await call(app, 'GET', '/profiles', { cookie: theirs.cookie })).status, 401);
     // Ours is untouched.
     assert.equal((await call(app, 'GET', '/profiles', { cookie })).status, 200);
   });
@@ -514,10 +491,7 @@ describe('managing users', () => {
     const res = await call(app, 'DELETE', `/auth/users/${mate.id}`, { cookie });
 
     assert.equal(res.status, 204);
-    assert.equal(
-      (await call(app, 'GET', '/profiles', { cookie: theirs.cookie })).status,
-      401,
-    );
+    assert.equal((await call(app, 'GET', '/profiles', { cookie: theirs.cookie })).status, 401);
     assert.equal((await listUsers()).length, 1);
   });
 
@@ -616,25 +590,12 @@ describe('who may manage users', () => {
   });
 
   it('lets a plain user sign themselves out everywhere, but nobody else', async () => {
-    const other = await call(
-      app,
-      'POST',
-      `/auth/users/${adminId}/revoke-sessions`,
-      { cookie: plainCookie },
-    );
+    const other = await call(app, 'POST', `/auth/users/${adminId}/revoke-sessions`, { cookie: plainCookie });
     assert.equal(other.status, 403);
 
-    const self = await call(
-      app,
-      'POST',
-      `/auth/users/${plainId}/revoke-sessions`,
-      { cookie: plainCookie },
-    );
+    const self = await call(app, 'POST', `/auth/users/${plainId}/revoke-sessions`, { cookie: plainCookie });
     assert.equal(self.status, 204);
-    assert.equal(
-      (await call(app, 'GET', '/profiles', { cookie: plainCookie })).status,
-      401,
-    );
+    assert.equal((await call(app, 'GET', '/profiles', { cookie: plainCookie })).status, 401);
   });
 
   it('lets an admin add another admin, and refuses to remove the only one', async () => {
@@ -648,10 +609,7 @@ describe('who may manage users', () => {
     // With two admins the first can go. Then the second is the only one.
     const secondId = (added.body as UserRow).id;
     await app.authService.removeUser(adminId, secondId);
-    await assert.rejects(
-      () => app.authService.removeUser(secondId, plainId),
-      /only user who can manage users/,
-    );
+    await assert.rejects(() => app.authService.removeUser(secondId, plainId), /only user who can manage users/);
   });
 });
 
@@ -689,12 +647,7 @@ describe('an event stream whose session ends', () => {
     const theirs = await signIn(app, 'revoked', OTHER_PASSWORD);
     const stream = await openEventStream(app, theirs.cookie);
 
-    const revoked = await call(
-      app,
-      'POST',
-      `/auth/users/${mate.id}/revoke-sessions`,
-      { cookie },
-    );
+    const revoked = await call(app, 'POST', `/auth/users/${mate.id}/revoke-sessions`, { cookie });
 
     assert.equal(revoked.status, 204);
     await stream.waitForEnd();
@@ -727,15 +680,8 @@ describe('an event stream whose session ends', () => {
 
     assert.equal(changed.status, 204);
     await dropped.waitForEnd();
-    assert.equal(
-      (await call(app, 'GET', '/profiles', { cookie: here.cookie })).status,
-      200,
-    );
-    assert.equal(
-      kept.hasEnded(),
-      false,
-      'the browser that changed it keeps its stream',
-    );
+    assert.equal((await call(app, 'GET', '/profiles', { cookie: here.cookie })).status, 200);
+    assert.equal(kept.hasEnded(), false, 'the browser that changed it keeps its stream');
     kept.close();
   });
 });
@@ -765,10 +711,7 @@ describe('an event stream whose session runs out', () => {
 
     assert.equal(await app.authService.closeStreamsOfEndedSessions(), 0);
 
-    assert.equal(
-      (await call(app, 'GET', '/profiles', { cookie: live.cookie })).status,
-      200,
-    );
+    assert.equal((await call(app, 'GET', '/profiles', { cookie: live.cookie })).status, 200);
     assert.equal(live.stream.hasEnded(), false);
     live.stream.close();
   });

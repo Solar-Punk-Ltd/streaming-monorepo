@@ -47,16 +47,16 @@ for the whole design.
 
 ## Scripts
 
-| Script | What |
-| --- | --- |
-| `pnpm dev` | `tsx watch` against `src/index.ts` |
-| `pnpm build` | builds common, then `tsc` + copies `src/migrations` into `dist` |
-| `pnpm start` | `node dist/index.js` |
-| `pnpm user:add <name> [--admin]` | add a user; `--password-stdin` reads it from a pipe. The only way to make the first one |
-| `pnpm test` | unit tests (`test/unit`), no database or network |
-| `pnpm test:integration` | starts a backend of its own and drives it over HTTP — see [test/integration](test/integration/README.md) |
-| `pnpm typecheck` | `tsc -p tsconfig.typecheck.json`, which includes `test/` |
-| `pnpm database:start` / `database:stop` | the Postgres container |
+| Script                                  | What                                                                                                     |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `pnpm dev`                              | `tsx watch` against `src/index.ts`                                                                       |
+| `pnpm build`                            | builds common, then `tsc` + copies `src/migrations` into `dist`                                          |
+| `pnpm start`                            | `node dist/index.js`                                                                                     |
+| `pnpm user:add <name> [--admin]`        | add a user; `--password-stdin` reads it from a pipe. The only way to make the first one                  |
+| `pnpm test`                             | unit tests (`test/unit`), no database or network                                                         |
+| `pnpm test:integration`                 | starts a backend of its own and drives it over HTTP — see [test/integration](test/integration/README.md) |
+| `pnpm typecheck`                        | `tsc -p tsconfig.typecheck.json`, which includes `test/`                                                 |
+| `pnpm database:start` / `database:stop` | the Postgres container                                                                                   |
 
 The API runs in Docker too (two-stage `pnpm deploy` image, `Dockerfile`). Its
 image builds from a copy of `apps/web2-admin` made outside the checkout by
@@ -78,20 +78,20 @@ Deploying to a server is a different compose file and a script:
 Every variable is documented in [.env.sample](.env.sample), which is the
 reference; the summary:
 
-| Var | Default | Meaning |
-| --- | --- | --- |
-| `WEB2_ADMIN_PORT` / `WEB2_ADMIN_HOST` | `9877` / `0.0.0.0` | where to listen (the manager API uses 9876) |
-| `DATABASE_URL` | required | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin` |
-| `FEED_GATEWAY` | `bee` | `fake` swaps in an in-memory gateway (see below) |
-| `BEE_URL` / `POSTAGE_BATCH_ID` | required | node and batch used for feed writes and thumbnails |
-| `FEED_PRIVATE_KEY` | required | 0x + 64 hex. Signs the stream list feed; its address is `owner` on every stream |
-| `FEED_TOPIC` | `swarm-stream` | raw topic of that feed |
-| `VIEWER_BASE_URL` | empty | branded viewer built for this feed, for "open player catalogue" links |
-| `INTERNAL_API_TOKEN` | required | 32+ chars. Bearer token for `/api/internal`, the routes the uploader calls |
-| `INGEST_HOST` | required | host the encoder connects to |
-| `INGEST_SRT_PORT` / `INGEST_RTMP_PORT` | `10061` / `10062` | SRS ports (`10001`/`10002` + slot×10; the test host is slot 6) |
-| `INGEST_SRT_PASSPHRASE` | empty | the server-wide SRT passphrase, shown to the operator |
-| `INGEST_KEY_VERIFIED` | `false` | `true` once the deployed uploader verifies `key=` |
+| Var                                    | Default            | Meaning                                                                         |
+| -------------------------------------- | ------------------ | ------------------------------------------------------------------------------- |
+| `WEB2_ADMIN_PORT` / `WEB2_ADMIN_HOST`  | `9877` / `0.0.0.0` | where to listen (the manager API uses 9876)                                     |
+| `DATABASE_URL`                         | required           | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin`                       |
+| `FEED_GATEWAY`                         | `bee`              | `fake` swaps in an in-memory gateway (see below)                                |
+| `BEE_URL` / `POSTAGE_BATCH_ID`         | required           | node and batch used for feed writes and thumbnails                              |
+| `FEED_PRIVATE_KEY`                     | required           | 0x + 64 hex. Signs the stream list feed; its address is `owner` on every stream |
+| `FEED_TOPIC`                           | `swarm-stream`     | raw topic of that feed                                                          |
+| `VIEWER_BASE_URL`                      | empty              | branded viewer built for this feed, for "open player catalogue" links           |
+| `INTERNAL_API_TOKEN`                   | required           | 32+ chars. Bearer token for `/api/internal`, the routes the uploader calls      |
+| `INGEST_HOST`                          | required           | host the encoder connects to                                                    |
+| `INGEST_SRT_PORT` / `INGEST_RTMP_PORT` | `10061` / `10062`  | SRS ports (`10001`/`10002` + slot×10; the test host is slot 6)                  |
+| `INGEST_SRT_PASSPHRASE`                | empty              | the server-wide SRT passphrase, shown to the operator                           |
+| `INGEST_KEY_VERIFIED`                  | `false`            | `true` once the deployed uploader verifies `key=`                               |
 
 Startup logs the resolved configuration with the feed key, the batch id, the
 SRT passphrase and the internal API token redacted.
@@ -130,7 +130,7 @@ normal and not a divergence.
   **`/api/internal` is exempt** — it is a machine caller with a bearer token,
   and it is mounted ahead of the check for that reason.
 - `GET /api/auth/users`, `POST /api/auth/users` (admin), `DELETE
-  /api/auth/users/:id` (admin, never yourself, never the last user or the last
+/api/auth/users/:id` (admin, never yourself, never the last user or the last
   admin) and `POST /api/auth/users/:id/revoke` (admin, or anyone for
   themselves) are the Access page.
 
@@ -159,7 +159,7 @@ the test node the head lagged this backend's own write by up to ~30 s. Writes
 3-4 s apart through the mutex therefore computed the same index, and since a
 feed update's chunk address is `f(owner, topic, index)`, the later chunk simply
 replaced the earlier one — silently, three times in 55 writes. The stale head
-came with a stale *payload*, which made it worse: a publish rebuilt the list
+came with a stale _payload_, which made it worse: a publish rebuilt the list
 from a snapshot taken before the previous unpublish, so a stream that had been
 unpublished and then deleted came back onto the catalogue with no row left to
 remove it; and an unpublish that read a snapshot from before its own publish
@@ -180,7 +180,7 @@ things only:
   write. Behind is normal (the node lagging itself) and is an info line. Ahead
   is a WARN — another writer under this key, or the wrong database — and the
   network head and its payload are adopted as the base by recording them, so
-  the next write goes *after* what is out there rather than over it. Bee being
+  the next write goes _after_ what is out there rather than over it. Bee being
   unreachable here is a warning, not a failed boot.
 
 Boot also dry-runs the reconcile diff and WARNs with the topics of any
@@ -232,11 +232,11 @@ a session cookie — and it is mounted before the console's routes on a path of
 its own, so the two authentications cover disjoint surfaces. A wrong or missing
 token is `401 unauthenticated`, the same answer the console's routes give.
 
-| Method | Path | Answer |
-| --- | --- | --- |
-| GET | `/streams/by-ingest/:app/:stream` | `IngestLookupResponse` — id, topic, owner, mediaType, title, status and the `publishKey` the encoder must present |
-| POST | `/streams/:id/state` | `StreamStateReport` in, `PublishResult` out (200) |
-| POST | `/streams/:id/renditions` | `RenditionReport` in, `RenditionReportResponse` out (200) — one rung of an ABR ladder |
+| Method | Path                              | Answer                                                                                                            |
+| ------ | --------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| GET    | `/streams/by-ingest/:app/:stream` | `IngestLookupResponse` — id, topic, owner, mediaType, title, status and the `publishKey` the encoder must present |
+| POST   | `/streams/:id/state`              | `StreamStateReport` in, `PublishResult` out (200)                                                                 |
+| POST   | `/streams/:id/renditions`         | `RenditionReport` in, `RenditionReportResponse` out (200) — one rung of an ABR ladder                             |
 
 **The lookup** resolves the ingest stream id `<mediaType>/<topic>` to a stream.
 Both halves must match, and only `published`, `live` and `vod` resolve: a
@@ -271,7 +271,7 @@ retry has only the write left to do.
 
 **The rendition report** is how an ABR ladder reaches the catalogue. With
 `ABR_ENABLED` the uploader publishes a master playlist plus one feed per rung,
-and in admin mode the master's topic *is* the stream's declared topic — so the
+and in admin mode the master's topic _is_ the stream's declared topic — so the
 ladder's merge state, which swarm-hls-stream keeps inside the catalogue feed it
 writes for itself, has to live here instead. Each rung POSTs its own
 `Rendition` (`name`, `width`, `height`, `topic`, `bandwidth`, `avgBandwidth`,
@@ -298,7 +298,7 @@ naming some other feed is taken as it arrived. Un-finishing a ladder is the
 the entry, adding `renditions` and `group` (= the stream's topic) whenever the
 stream has at least one rung — an entry for a single-rendition stream is
 exactly what it was before ABR existed. `live` and `vod` still come from the
-state route, and `vod.index` for a ladder is the *master's* feed index, not a
+state route, and `vod.index` for a ladder is the _master's_ feed index, not a
 rung's; the rung indexes ride inside `renditions`. `flippedToFinished` is what
 tells the uploader to send that one `vod`. The ladder, `finished` and
 `flippedToFinished` in the answer are all read from the catalogue write itself,
@@ -321,8 +321,8 @@ the stream takes them with it through the foreign key.
   that dropped can reconnect. The media type stays refused with
   `409 media_type_locked`, and the schedule joins it with `409 stream_locked`:
   it is a promise viewers have already read off the entry.
-- `POST /streams/:id/publish` on a live or recorded stream republishes it *as
-  it is* — the entry keeps its state and its index and duration — rather than
+- `POST /streams/:id/publish` on a live or recorded stream republishes it _as
+  it is_ — the entry keeps its state and its index and duration — rather than
   claiming the row into `publishing` and returning it as `published`, which
   would quietly tell every viewer the broadcast had stopped.
 - Every stream the API returns carries `hasUnpublishedEdits`, which drives the

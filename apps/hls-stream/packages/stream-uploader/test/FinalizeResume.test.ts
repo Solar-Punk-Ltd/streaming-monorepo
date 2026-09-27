@@ -461,20 +461,24 @@ interface CatalogWrite {
 function catalogFeedBee(writes: CatalogWrite[], onWrite: () => void = () => {}): Bee {
   const latest = () => (writes.length === 0 ? [] : JSON.parse(writes[writes.length - 1].payload));
   return {
-    makeFeedReader: () => ({
-      downloadPayload: async (opts?: { index?: FeedIndex }) =>
-        opts?.index
-          ? { payload: { toJSON: latest } }
-          : { feedIndex: FeedIndex.fromBigInt(BigInt(writes.length)), payload: { toJSON: latest } },
-    }),
-    isConnected: async () => true,
-    makeFeedWriter: () => ({
-      uploadPayload: async (_stamp: string, payload: unknown, opts: { index: FeedIndex }) => {
-        writes.push({ index: opts.index, payload: String(payload) });
-        onWrite();
-        return { reference: { toHex: () => 'ref' } };
-      },
-    }),
+    feed: {
+      makeReader: () => ({
+        downloadPayload: async (opts?: { index?: FeedIndex }) =>
+          opts?.index
+            ? { payload: { toJSON: latest } }
+            : { feedIndex: FeedIndex.fromBigInt(BigInt(writes.length)), payload: { toJSON: latest } },
+      }),
+      makeWriter: () => ({
+        uploadPayload: async (_stamp: string, payload: unknown, opts: { index: FeedIndex }) => {
+          writes.push({ index: opts.index, payload: String(payload) });
+          onWrite();
+          return { reference: { toHex: () => 'ref' } };
+        },
+      }),
+    },
+    connectivity: {
+      isConnected: async () => true,
+    },
   } as unknown as Bee;
 }
 

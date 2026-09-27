@@ -1,20 +1,19 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, join, posix } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { APP_SETTINGS } from '../apps.mjs';
 import { DEFAULT_ROOT, cutApp } from '../cut.mjs';
-import { TEST_ENV, TOOL_DIR, makeTempDir } from './support/fixtures.mjs';
+import { makeTempDir } from './support/fixtures.mjs';
 
-/** The repository these tests run in. They read its own root files and its image manifest, never fixtures. */
+/** The repository these tests run in. They read its own root files, never fixtures. */
 const REPOSITORY_ROOT = DEFAULT_ROOT;
-const IMAGE_MANIFEST = 'tools/move-check/images.json';
 const LOCKFILE = 'pnpm-lock.yaml';
 const WORKSPACE_FILE = 'pnpm-workspace.yaml';
-const ROOT_FILES = ['package.json', LOCKFILE, WORKSPACE_FILE];
 const INJECT_SETTING = 'injectWorkspacePackages';
+/** The release-age gate: one week, in minutes, strict, for every install in the repository. */
+const RELEASE_AGE_SETTINGS = ['minimumReleaseAge: 10080', 'minimumReleaseAgeStrict: true'];
 
 /** One of the repository's root files, failing in words when the repository keeps none. */
 function rootFile(name) {
@@ -26,8 +25,14 @@ function rootFile(name) {
   return readFileSync(path, 'utf8');
 }
 
-/** The entries of one top-level section of a lockfile, by key, each the entry's own text, key line included. */
-function sectionEntries(text, section) {
+/** The document pnpm 12 writes above the lockfile proper, both marker lines included, or '' when there is none. */
+function packageManagerDocumentOf(text) {
+  return text.startsWith('---\n') ? text.slice(0, text.indexOf('\n---\n', 3) + '\n---\n'.length) : '';
+}
+
+/** The entries of one top-level section of the lockfile proper, by key, each the entry's own text, key line included. */
+function sectionEntries(lockfile, section) {
+  const text = lockfile.slice(packageManagerDocumentOf(lockfile).length);
   const start = text.indexOf(`\n${section}:\n`);
   assert.notEqual(start, -1, `the lockfile has no ${section} section`);
   const body = text.slice(start + section.length + 3);
@@ -57,36 +62,6 @@ function cutOfRepository(t, app) {
     lockfile: readFileSync(join(out, LOCKFILE), 'utf8'),
     workspace: readFileSync(join(out, WORKSPACE_FILE), 'utf8'),
   };
-}
-
-/** The image manifest the compare-images workflow builds from, as this commit holds it. */
-function imageManifest() {
-  return JSON.parse(readFileSync(join(REPOSITORY_ROOT, IMAGE_MANIFEST), 'utf8'));
-}
-
-/** The command that cuts an app's pair into the folder it runs in, inside an export, as a manifest writes it. */
-function cutCommandFor(context) {
-  const up = posix.relative(context, '.');
-  return ['node', `${up}/tools/app-workspace/cut.mjs`, '--root', up, '--app', context, '--out', '.', '--in-export'];
-}
-
-/**
- * What a cut reads of an export of this commit, laid out as the export lays it out and with no .git: the root
- * files, the tool itself and each app's package.json.
- */
-function exportOfRepository(t) {
-  const dir = makeTempDir(t);
-  for (const name of ROOT_FILES) cpSync(join(REPOSITORY_ROOT, name), join(dir, name));
-  cpSync(TOOL_DIR, join(dir, 'tools', 'app-workspace'), {
-    recursive: true,
-    filter: (source) => !source.split(/[\\/]/).includes('node_modules'),
-  });
-  for (const app of Object.keys(APP_SETTINGS)) {
-    const manifest = join(dir, app, 'package.json');
-    mkdirSync(dirname(manifest), { recursive: true });
-    cpSync(join(REPOSITORY_ROOT, app, 'package.json'), manifest);
-  }
-  return dir;
 }
 
 describe("the cut of each app out of the repository's own root files", () => {
@@ -120,6 +95,25 @@ describe("the cut of each app out of the repository's own root files", () => {
       }
     });
 
+    it(`starts ${app}'s lockfile with pnpm's own document, as the root lockfile has it`, (t) => {
+      const root = rootFile(LOCKFILE);
+      const cut = cutOfRepository(t, app);
+
+      assert.notEqual(packageManagerDocumentOf(root), '', 'the root lockfile has no document recording pnpm');
+      assert.equal(packageManagerDocumentOf(cut.lockfile), packageManagerDocumentOf(root));
+    });
+
+    it(`carries the root's release-age gate into ${app}'s workspace file`, (t) => {
+      const root = rootFile(WORKSPACE_FILE);
+      const cut = cutOfRepository(t, app);
+
+      for (const setting of RELEASE_AGE_SETTINGS) {
+        const line = new RegExp(`^${setting}$`, 'm');
+        assert.ok(line.test(root), `the root ${WORKSPACE_FILE} sets no ${setting}`);
+        assert.ok(line.test(cut.workspace), `the cut of ${app} lost ${setting}`);
+      }
+    });
+
     it(`gives ${app} its own injection setting, ${settings.injectWorkspacePackages}, in both files`, (t) => {
       rootFile(WORKSPACE_FILE);
       const cut = cutOfRepository(t, app);
@@ -129,40 +123,4 @@ describe("the cut of each app out of the repository's own root files", () => {
       assert.equal(lockfileSetting.test(cut.lockfile), settings.injectWorkspacePackages);
     });
   }
-});
-
-describe("the image comparison's manifest", () => {
-  it("cuts the app's pair first for every image built from an app's folder, and for no other", () => {
-    const { images } = imageManifest();
-
-    for (const image of images) {
-      const prepare = image.prepare ?? [];
-      if (Object.hasOwn(APP_SETTINGS, image.context)) {
-        assert.deepEqual(prepare[0], cutCommandFor(image.context), `${image.name} builds from ${image.context}`);
-      } else {
-        const cuts = prepare.filter((command) => command.some((word) => word.endsWith('app-workspace/cut.mjs')));
-        assert.deepEqual(cuts, [], `${image.name} builds from ${image.context}, which is no app's folder`);
-      }
-    }
-  });
-
-  it("writes each app's pair, as the root files cut it, when that first command runs in an export of this commit", (t) => {
-    const { images } = imageManifest();
-    const cutting = images.filter((image) => Object.hasOwn(APP_SETTINGS, image.context));
-    assert.ok(cutting.length > 0, `${IMAGE_MANIFEST} builds no image from an app's folder`);
-
-    for (const image of cutting) {
-      // Each side that prepares builds from an export of its own, so each image gets a fresh one here too.
-      const context = join(exportOfRepository(t), image.context);
-      const [command, ...args] = image.prepare?.[0] ?? [];
-      assert.equal(command, 'node', `${image.name}'s first prepare command`);
-
-      const result = spawnSync(process.execPath, args, { cwd: context, env: TEST_ENV, encoding: 'utf8' });
-
-      assert.equal(result.status, 0, `${image.name}: ${result.stderr}`);
-      const expected = cutOfRepository(t, image.context);
-      assert.equal(readFileSync(join(context, LOCKFILE), 'utf8'), expected.lockfile, `${image.name}'s ${LOCKFILE}`);
-      assert.equal(readFileSync(join(context, WORKSPACE_FILE), 'utf8'), expected.workspace, `${image.name}'s ${WORKSPACE_FILE}`);
-    }
-  });
 });

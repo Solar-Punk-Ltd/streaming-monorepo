@@ -15,7 +15,7 @@
  * at again.
  */
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -26,14 +26,12 @@ import { describeStackContract } from '@streaming-infra-manager/common';
 import { readStackContract } from '../../src/domain/versions/stackContract.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const fixture = (branch: string) =>
-  join(here, '..', 'fixtures', 'stack', branch);
+const fixture = (branch: string) => join(here, '..', 'fixtures', 'stack', branch);
 
 const v2 = readStackContract(fixture('v2'));
 const v3 = readStackContract(fixture('v3'));
 
-const portNames = (contract: typeof v2) =>
-  contract.ports.map((port) => port.name);
+const portNames = (contract: typeof v2) => contract.ports.map((port) => port.name);
 
 describe('readStackContract on main-v2', () => {
   it('reads the nine ports, default and slot base being the same field', () => {
@@ -74,10 +72,7 @@ describe('readStackContract on main-v2', () => {
   });
 
   it('reads in plain words as the Versions page shows it', () => {
-    assert.equal(
-      describeStackContract(v2),
-      '9 ports, slots 1 to 999, no generated secrets',
-    );
+    assert.equal(describeStackContract(v2), '9 ports, slots 1 to 999, no generated secrets');
   });
 
   it('runs neither engine on a config file of its own', () => {
@@ -120,11 +115,7 @@ describe('readStackContract on main-v3', () => {
   });
 
   it('finds the three secrets the containers refuse to start without', () => {
-    assert.deepEqual(v3.requiredSecrets, [
-      'API_AUTH_TOKEN',
-      'SRS_WEBHOOK_TOKEN',
-      'OME_ADMISSION_SECRET',
-    ]);
+    assert.deepEqual(v3.requiredSecrets, ['API_AUTH_TOKEN', 'SRS_WEBHOOK_TOKEN', 'OME_ADMISSION_SECRET']);
   });
 
   it('asks for no OME secret from a version that ships no OME sample', () => {
@@ -132,10 +123,30 @@ describe('readStackContract on main-v3', () => {
     cpSync(fixture('v3'), root, { recursive: true });
     rmSync(join(root, 'engines', 'ome', '.env.sample'));
 
-    assert.deepEqual(readStackContract(root).requiredSecrets, [
-      'API_AUTH_TOKEN',
-      'SRS_WEBHOOK_TOKEN',
-    ]);
+    assert.deepEqual(readStackContract(root).requiredSecrets, ['API_AUTH_TOKEN', 'SRS_WEBHOOK_TOKEN']);
+  });
+
+  /**
+   * The stack pins its engines by digest since 2026-09-27, and the engine
+   * config check runs `docker run` on the name this returns, so the digest has
+   * to survive the read whole: a name cut at the `@` runs whatever the tag
+   * points at that day.
+   */
+  it('names an engine image pinned by digest whole, digest included', () => {
+    const srs = 'ossrs/srs:v6.0-r1@sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3';
+    const ome =
+      'airensoft/ovenmediaengine:v0.21.0@sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6';
+    const root = mkdtempSync(join(tmpdir(), 'stack-contract-'));
+    cpSync(fixture('v3'), root, { recursive: true });
+    const compose = join(root, 'deploy', 'docker-compose.yml');
+    writeFileSync(
+      compose,
+      readFileSync(compose, 'utf8')
+        .replace('    image: ossrs/srs:6\n', `    image: ${srs}\n`)
+        .replace('    image: airensoft/ovenmediaengine:latest\n', `    image: ${ome}\n`),
+    );
+
+    assert.deepEqual(readStackContract(root).engineImages, { srs, ome });
   });
 
   it('leaves out the optional secret, which is off when empty', () => {
@@ -189,19 +200,13 @@ describe('readStackContract on a table it cannot fully read', () => {
   });
 
   it('carries the count into the plain words the page shows', () => {
-    assert.match(
-      describeStackContract(odd),
-      /2 ports, slots 1 to 999, no generated secrets, 1 line not understood/,
-    );
+    assert.match(describeStackContract(odd), /2 ports, slots 1 to 999, no generated secrets, 1 line not understood/);
   });
 });
 
 describe('readStackContract on a checkout that is not a stack', () => {
   it('says which file is missing rather than answering an empty contract', () => {
-    assert.throws(
-      () => readStackContract(join(here, '..', 'fixtures')),
-      /_lib\.sh is missing/,
-    );
+    assert.throws(() => readStackContract(join(here, '..', 'fixtures')), /_lib\.sh is missing/);
   });
 });
 
@@ -256,7 +261,9 @@ describe('readStackContract and the image tags a version builds', () => {
 
   it('counts an image key whose value it cannot read as a name, since a build under any name is shared', () => {
     const contract = readStackContract(
-      withCompose('services:\n  stream-uploader:\n    build:\n      context: ..\n    image: stream-uploader # one tag for every deployment\n'),
+      withCompose(
+        'services:\n  stream-uploader:\n    build:\n      context: ..\n    image: stream-uploader # one tag for every deployment\n',
+      ),
     );
 
     assert.equal(contract.features.sharedImageTags, true);
@@ -271,13 +278,15 @@ describe('readStackContract and the protocol of each port', () => {
     writeFileSync(join(root, 'deploy', 'docker-compose.yml'), compose);
     return root;
   };
-  const protocolOf = (contract: typeof v2, name: string) =>
-    contract.ports.find((port) => port.name === name)?.protocol;
+  const protocolOf = (contract: typeof v2, name: string) => contract.ports.find((port) => port.name === name)?.protocol;
 
   it('reads udp for the SRT ingest and tcp for every other port, on both branches', () => {
     assert.equal(protocolOf(v2, 'SRS_SRT_PORT'), 'udp');
     assert.equal(protocolOf(v2, 'API_PORT'), 'tcp');
-    assert.deepEqual(v2.ports.filter((port) => port.protocol === 'udp').map((port) => port.name), ['SRS_SRT_PORT']);
+    assert.deepEqual(
+      v2.ports.filter((port) => port.protocol === 'udp').map((port) => port.name),
+      ['SRS_SRT_PORT'],
+    );
     assert.equal(protocolOf(v3, 'SRS_SRT_PORT'), 'udp');
     assert.equal(protocolOf(v3, 'SRS_HTTP_API_PORT'), 'tcp');
     assert.equal(protocolOf(v3, 'BEE_RUNG_480P_P2P_PORT'), 'tcp');
@@ -286,8 +295,7 @@ describe('readStackContract and the protocol of each port', () => {
   });
 
   it('names the service that publishes each port, and none for a port the file does not map', () => {
-    const serviceOf = (contract: typeof v2, name: string) =>
-      contract.ports.find((port) => port.name === name)?.service;
+    const serviceOf = (contract: typeof v2, name: string) => contract.ports.find((port) => port.name === name)?.service;
     assert.equal(serviceOf(v2, 'API_PORT'), 'stream-uploader');
     assert.equal(serviceOf(v2, 'SRS_SRT_PORT'), 'srs');
     assert.equal(serviceOf(v3, 'BEE_RUNG_480P_P2P_PORT'), 'bee-uploader-480p');
@@ -309,7 +317,7 @@ describe('readStackContract and the protocol of each port', () => {
 
     assert.equal(protocolOf(contract, 'SRS_SRT_PORT'), 'udp');
     assert.equal(protocolOf(contract, 'SRS_RTMP_PORT'), 'tcp');
-    assert.doesNotMatch(contract.allocationProblem ?? "", /docker-compose\.yml line/);
+    assert.doesNotMatch(contract.allocationProblem ?? '', /docker-compose\.yml line/);
   });
 
   it('takes tcp for a port the compose file does not map, and refuses allocation because no slot then passes the policy', () => {
@@ -323,7 +331,9 @@ describe('readStackContract and the protocol of each port', () => {
 
   it('refuses allocation, naming the file and the line, for a mapping it cannot read, and still reads the rest', () => {
     const contract = readStackContract(
-      withCompose('services:\n  srs:\n    image: ossrs/srs:6\n    ports:\n      - "${SRS_SRT_PORT:-10080}:10080/udp"\n      - "what:is:this:even:here"\n'),
+      withCompose(
+        'services:\n  srs:\n    image: ossrs/srs:6\n    ports:\n      - "${SRS_SRT_PORT:-10080}:10080/udp"\n      - "what:is:this:even:here"\n',
+      ),
     );
 
     assert.equal(protocolOf(contract, 'SRS_SRT_PORT'), 'udp');

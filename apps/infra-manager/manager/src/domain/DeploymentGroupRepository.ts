@@ -116,9 +116,7 @@ export class DeploymentGroupRepository {
     return r.rows;
   }
 
-  async syncMembershipAfterRemoval(
-    groupId: number,
-  ): Promise<'deleted' | 'resized'> {
+  async syncMembershipAfterRemoval(groupId: number): Promise<'deleted' | 'resized'> {
     const result = await this.updateAfterRemoval(groupId);
     return result === 'deleted' || result === 'absent' ? 'deleted' : 'resized';
   }
@@ -129,7 +127,8 @@ export class DeploymentGroupRepository {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock($1)', [PROFILE_SLOT_LOCK_KEY]);
       const group = await client.query<{ name: string }>(
-        'SELECT name FROM deployment_groups WHERE id = $1 FOR UPDATE', [groupId],
+        'SELECT name FROM deployment_groups WHERE id = $1 FOR UPDATE',
+        [groupId],
       );
       if (!group.rows[0]) {
         await client.query('COMMIT');
@@ -141,7 +140,8 @@ export class DeploymentGroupRepository {
       }
       // Take a fresh statement snapshot after the parent lock waits for any FK insert.
       const count = await client.query<{ count: number }>(
-        'SELECT COUNT(*)::integer AS count FROM profiles WHERE group_id = $1', [groupId],
+        'SELECT COUNT(*)::integer AS count FROM profiles WHERE group_id = $1',
+        [groupId],
       );
       const size = count.rows[0]!.count;
       if (size === 0) {
@@ -204,9 +204,7 @@ export class DeploymentGroupRepository {
         );
 
         if (!r.rowCount || r.rowCount === 0) {
-          throw new Error(
-            `profile not found during group config update: ${w.name}`,
-          );
+          throw new Error(`profile not found during group config update: ${w.name}`);
         }
 
         profiles.push(r.rows[0]!);
@@ -267,7 +265,8 @@ export class DeploymentGroupRepository {
         shared.stack_settings.adminTokenOrigin ?? null,
       ],
     );
-    if (shared.stack_settings.copyManagerAdminToken) await copyManagerAdminToken(client, name, shared.stack_settings.copyManagerAdminToken);
+    if (shared.stack_settings.copyManagerAdminToken)
+      await copyManagerAdminToken(client, name, shared.stack_settings.copyManagerAdminToken);
     return r.rows[0]!;
   }
 
@@ -280,9 +279,7 @@ export class DeploymentGroupRepository {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock($1)', [
-        PROFILE_SLOT_LOCK_KEY,
-      ]);
+      await client.query('SELECT pg_advisory_xact_lock($1)', [PROFILE_SLOT_LOCK_KEY]);
 
       const groupResult = await client.query<DeploymentGroup>(
         `INSERT INTO deployment_groups (name, size, kind)
@@ -294,9 +291,7 @@ export class DeploymentGroupRepository {
 
       const profiles: Profile[] = [];
       for (const m of members) {
-        profiles.push(
-          await this.insertMemberWithFreeSlot(client, m.name, shared, group.id),
-        );
+        profiles.push(await this.insertMemberWithFreeSlot(client, m.name, shared, group.id));
       }
 
       await client.query('COMMIT');
@@ -309,23 +304,15 @@ export class DeploymentGroupRepository {
     }
   }
 
-  async addMembers(
-    groupId: number,
-    members: MemberSeed[],
-    shared: SharedProfileParams,
-  ): Promise<Profile[]> {
+  async addMembers(groupId: number, members: MemberSeed[], shared: SharedProfileParams): Promise<Profile[]> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock($1)', [
-        PROFILE_SLOT_LOCK_KEY,
-      ]);
+      await client.query('SELECT pg_advisory_xact_lock($1)', [PROFILE_SLOT_LOCK_KEY]);
 
       const profiles: Profile[] = [];
       for (const m of members) {
-        profiles.push(
-          await this.insertMemberWithFreeSlot(client, m.name, shared, groupId),
-        );
+        profiles.push(await this.insertMemberWithFreeSlot(client, m.name, shared, groupId));
       }
 
       await client.query(

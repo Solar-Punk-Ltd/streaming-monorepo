@@ -1,13 +1,5 @@
 import { useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Divider,
-  Stack,
-  Tooltip,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Divider, Stack, Tooltip, Typography } from '@mui/material';
 import ArticleIcon from '@mui/icons-material/Article';
 import CodeIcon from '@mui/icons-material/Code';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
@@ -103,22 +95,14 @@ export function EngineCard({
   const actions = useActions();
   const [logsOpen, setLogsOpen] = useState(false);
 
-  const engineRunning = profile.containers.some(
-    (container) => container.service === engine,
-  );
-  const restartOffBecause = whyRestartIsOff(
-    engineRunning,
-    actions.isBusy(profile.name),
-  );
+  const engineRunning = profile.containers.some((container) => container.service === engine);
+  const restartOffBecause = whyRestartIsOff(engineRunning, actions.isBusy(profile.name));
   const notice = rolloutNotice(
     profile.engine_config_state,
     { engine: ENGINE_LABEL[engine], hasConfig: profile.has_engine_config },
     profile.engine_config_error,
   );
-  const rolloutActionsOffBecause = whyRolloutActionsAreOff(
-    profile,
-    actions.isBusy(profile.name),
-  );
+  const rolloutActionsOffBecause = whyRolloutActionsAreOff(profile, actions.isBusy(profile.name));
   const rolloutAction = (offer: RolloutAction) =>
     offer === 'verify'
       ? actions.verifyEngineConfig(profile.name, engine)
@@ -129,23 +113,29 @@ export function EngineCard({
       title={ENGINE_LABEL[engine]}
       sub="media server"
       actions={
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Stack
+          direction="row"
+          spacing={1}
+          useFlexGap
+          sx={{
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
           <ReadinessPill
-            label={profile.status !== 'RUNNING' ? 'State not checked' : engineRunning ? 'Reported running' : 'No container reported'}
+            label={
+              profile.status !== 'RUNNING'
+                ? 'State not checked'
+                : engineRunning
+                  ? 'Reported running'
+                  : 'No container reported'
+            }
             tone={profile.status !== 'RUNNING' ? 'info' : engineRunning ? 'ok' : 'gray'}
           />
-          <Button
-            size="small"
-            startIcon={<TuneIcon />}
-            onClick={onShowSettings}
-          >
+          <Button size="small" startIcon={<TuneIcon />} onClick={onShowSettings}>
             Settings
           </Button>
-          <Button
-            size="small"
-            startIcon={<CodeIcon />}
-            onClick={() => openEngineConfig(profile.name)}
-          >
+          <Button size="small" startIcon={<CodeIcon />} onClick={() => openEngineConfig(profile.name)}>
             Config file
           </Button>
           <Tooltip title={restartOffBecause}>
@@ -160,11 +150,7 @@ export function EngineCard({
               </Button>
             </Box>
           </Tooltip>
-          <Button
-            size="small"
-            startIcon={<ArticleIcon />}
-            onClick={() => setLogsOpen(true)}
-          >
+          <Button size="small" startIcon={<ArticleIcon />} onClick={() => setLogsOpen(true)}>
             Logs
           </Button>
         </Stack>
@@ -199,17 +185,19 @@ export function EngineCard({
               {notice.title}
             </Typography>
             {notice.showsReason && profile.engine_config_error && (
-              <Box
-                component="pre"
-                sx={{ m: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12 }}
-              >
+              <Box component="pre" sx={{ m: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12 }}>
                 {profile.engine_config_error}
               </Box>
             )}
           </Alert>
         )}
         {profile.has_engine_config && (
-          <Typography variant="caption" color="text.secondary">
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
             {OWN_CONFIG_NOTE}
           </Typography>
         )}
@@ -250,22 +238,19 @@ export function EngineCard({
               bgcolor: 'action.hover',
             }}
           >
-            <Typography variant="caption" color="text.secondary">
-              {overview
-                ? overview.liveUnavailableReason
-                : `Could not read the engine's settings. ${loadError}`}
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'text.secondary',
+              }}
+            >
+              {overview ? overview.liveUnavailableReason : `Could not read the engine's settings. ${loadError}`}
             </Typography>
           </Box>
         )}
       </Stack>
 
-      {logsOpen && (
-        <LogsDialog
-          profile={profile}
-          engine={engine}
-          onClose={() => setLogsOpen(false)}
-        />
-      )}
+      {logsOpen && <LogsDialog profile={profile} engine={engine} onClose={() => setLogsOpen(false)} />}
     </SectionCard>
   );
 }
@@ -286,17 +271,45 @@ function SettingsList({
       key: field.label,
       value: (
         <Stack spacing={0.5}>
-          <Stack direction="row" spacing={1} alignItems="baseline" flexWrap="wrap">
-            <Box component="span" sx={{ fontFamily: MONO_STACK }}>{text.value}</Box>
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{
+              alignItems: 'baseline',
+              flexWrap: 'wrap',
+            }}
+          >
+            <Box component="span" sx={{ fontFamily: MONO_STACK }}>
+              {text.value}
+            </Box>
             {observation?.status === 'known' && (
-              <Typography variant="caption" color="text.secondary">{text.source}</Typography>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                }}
+              >
+                {text.source}
+              </Typography>
             )}
             {savedNotApplied.includes(field.key) && (
-              <Typography variant="caption" color="warning.main">{SAVED_NOT_APPLIED}</Typography>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'warning.main',
+                }}
+              >
+                {SAVED_NOT_APPLIED}
+              </Typography>
             )}
           </Stack>
           {text.detail && (
-            <Typography variant="caption" color="text.secondary">
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'text.secondary',
+              }}
+            >
               {text.detail}
             </Typography>
           )}

@@ -55,7 +55,10 @@ describe('the files it takes', () => {
 
   it('takes every suite file under test, and nothing else', () => {
     assert.ok(files.length > 20, files.join(' '));
-    assert.deepEqual(files.filter((file) => !file.startsWith('test/') || !file.endsWith('.test.mjs')), []);
+    assert.deepEqual(
+      files.filter((file) => !file.startsWith('test/') || !file.endsWith('.test.mjs')),
+      [],
+    );
   });
 
   it('takes them in one settled order, so a failure is always the same run', () => {
@@ -85,9 +88,7 @@ describe('how it starts one file', () => {
 
 describe('the rules it judges the run by, which are the SQL runner rules', () => {
   const summary = (counts) =>
-    ['# tests', '# pass', '# fail', '# skipped']
-      .map((key, index) => `${key} ${counts[index]}`)
-      .join('\n');
+    ['# tests', '# pass', '# fail', '# skipped'].map((key, index) => `${key} ${counts[index]}`).join('\n');
 
   it('refuses the three connected cases skipping themselves', () => {
     const output = [
@@ -127,10 +128,12 @@ describe('the gates it consults, and the order it consults them in', () => {
     const asked = [];
     const started = [];
     const lines = [];
-    const record = (step, call) => (...args) => {
-      asked.push(step);
-      return call(...args);
-    };
+    const record =
+      (step, call) =>
+      (...args) => {
+        asked.push(step);
+        return call(...args);
+      };
     const parts = {
       env: { CHROME_BIN: '/usr/bin/google-chrome' },
       canExecute: EVERYTHING_EXECUTABLE,
@@ -178,7 +181,10 @@ describe('the gates it consults, and the order it consults them in', () => {
     const { lines, start } = drive({ readSuites: () => ['test/a.test.mjs', 'test/b.test.mjs'] });
 
     assert.deepEqual(await start(), []);
-    assert.ok(lines.some((line) => line.startsWith('PASS: 6 tests, 0 failed, 0 skipped')), lines.join(' | '));
+    assert.ok(
+      lines.some((line) => line.startsWith('PASS: 6 tests, 0 failed, 0 skipped')),
+      lines.join(' | '),
+    );
   });
 
   it('refuses a file that outran its bound, by name, rather than letting the job be cancelled', async () => {
@@ -226,7 +232,10 @@ describe('the gates it consults, and the order it consults them in', () => {
     const { lines, start } = drive();
 
     assert.deepEqual(await start(), []);
-    assert.deepEqual(lines.filter((line) => /throttle/i.test(line)), []);
+    assert.deepEqual(
+      lines.filter((line) => /throttle/i.test(line)),
+      [],
+    );
   });
 
   it('hands every suite child the environment it was given, the throttle with it', async () => {

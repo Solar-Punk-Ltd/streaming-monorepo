@@ -7,8 +7,7 @@ import { MONO_STACK } from '../app/theme';
 
 import { isAtSampleValue } from './settingsDraft';
 
-const GENERATED_NOTE =
-  'Set per deployment by the manager unless you set a value here.';
+const GENERATED_NOTE = 'Set per deployment by the manager unless you set a value here.';
 
 const REMOVED_NOTE = 'This line goes out of the file when you save. Discard brings it back.';
 
@@ -49,7 +48,16 @@ export function SettingsEntryField({
 
   return (
     <Box component="li" sx={{ listStyle: 'none', py: 1.5, borderTop: 1, borderColor: 'divider' }}>
-      <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 0.5 }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        sx={{
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          mb: 0.5,
+        }}
+      >
         <Typography variant="body2" sx={{ fontFamily: MONO_STACK, fontWeight: 600, wordBreak: 'break-all' }}>
           {entry.key}
         </Typography>
@@ -58,22 +66,50 @@ export function SettingsEntryField({
       </Stack>
 
       {entry.description && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+            display: 'block',
+            mb: 1,
+          }}
+        >
           {entry.description}
         </Typography>
       )}
       {entry.generated && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+            display: 'block',
+            mb: 1,
+          }}
+        >
           {GENERATED_NOTE}
         </Typography>
       )}
       {removed && (
-        <Typography variant="caption" color="warning.main" sx={{ display: 'block', mb: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'warning.main',
+            display: 'block',
+            mb: 1,
+          }}
+        >
           {REMOVED_NOTE}
         </Typography>
       )}
 
-      <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ minWidth: 0 }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{
+          alignItems: 'flex-start',
+          minWidth: 0,
+        }}
+      >
         <TextField
           size="small"
           fullWidth
@@ -83,18 +119,20 @@ export function SettingsEntryField({
           error={problem !== null}
           helperText={problem === null ? undefined : `This value ${problem}`}
           onChange={(event) => onChange(event.target.value)}
-          inputProps={{
-            'aria-label': entry.key,
-            spellCheck: false,
-            // A masked field is a password field to a browser, and the manager
-            // is not the place these values belong: a password manager that
-            // offers to save one puts it somewhere nobody rotated it from.
-            // Browsers ignore `off` there and fill a saved sign-in into it, so a
-            // masked field asks for a new password, which is never filled.
-            autoComplete: entry.secret && !revealed ? 'new-password' : 'off',
-            autoCapitalize: 'off',
-            autoCorrect: 'off',
-            style: { fontFamily: MONO_STACK, fontSize: 13 },
+          slotProps={{
+            htmlInput: {
+              'aria-label': entry.key,
+              spellCheck: false,
+              // A masked field is a password field to a browser, and the manager
+              // is not the place these values belong: a password manager that
+              // offers to save one puts it somewhere nobody rotated it from.
+              // Browsers ignore `off` there and fill a saved sign-in into it, so a
+              // masked field asks for a new password, which is never filled.
+              autoComplete: entry.secret && !revealed ? 'new-password' : 'off',
+              autoCapitalize: 'off',
+              autoCorrect: 'off',
+              style: { fontFamily: MONO_STACK, fontSize: 13 },
+            },
           }}
         />
         {entry.secret && (

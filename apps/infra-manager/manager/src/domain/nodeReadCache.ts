@@ -34,10 +34,7 @@ export class NodeReadCache {
   private readonly windowMs: number;
   private readonly now: () => number;
 
-  constructor({
-    windowMs = NODE_READ_WINDOW_MS,
-    now = Date.now,
-  }: NodeReadCacheOptions = {}) {
+  constructor({ windowMs = NODE_READ_WINDOW_MS, now = Date.now }: NodeReadCacheOptions = {}) {
     this.windowMs = windowMs;
     this.now = now;
   }
@@ -86,9 +83,7 @@ export class NodeReadCache {
   }
 
   private isOpen(held: HeldRead): boolean {
-    return (
-      held.settledAt === null || this.now() - held.settledAt < this.windowMs
-    );
+    return held.settledAt === null || this.now() - held.settledAt < this.windowMs;
   }
 
   private dropClosed(): void {

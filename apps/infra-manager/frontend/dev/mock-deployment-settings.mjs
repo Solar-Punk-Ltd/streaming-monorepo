@@ -68,7 +68,7 @@ import { PORT_BASES, state } from './mock-seed.mjs';
 const UPLOADER = ['stream-uploader'];
 
 const ADMIN_URL_DESCRIPTION =
-  'Where the admin service lives. Setting ADMIN_API_URL by itself turns admin mode ON. Leaving it empty keeps this deployment exactly as it has always been, and the uploader mints each stream\'s feed topic itself. With it set, a stream has to be DECLARED in the admin before anything may publish to it. The admin mints the feed topic and the publish key, each engine refuses any publish that is unannounced or presents the wrong key, and the uploader publishes on the declared topic and reports live and vod back instead of writing the catalog.';
+  "Where the admin service lives. Setting ADMIN_API_URL by itself turns admin mode ON. Leaving it empty keeps this deployment exactly as it has always been, and the uploader mints each stream's feed topic itself. With it set, a stream has to be DECLARED in the admin before anything may publish to it. The admin mints the feed topic and the publish key, each engine refuses any publish that is unannounced or presents the wrong key, and the uploader publishes on the declared topic and reports live and vod back instead of writing the catalog.";
 
 const START_GATES_DESCRIPTION =
   'What the two startup gates below do about a node they cannot clear. chequebook-warn, the default, warns about the chequebook and starts, and refuses a postage batch the node answered about. warn warns about both and starts. refuse refuses both, which is what every boot did before 2026-09-17. A refusal stops the service and docker restarts it into the same refusal until someone reads the log.';
@@ -78,27 +78,158 @@ const START_GATES_DESCRIPTION =
  * `.env` sets, and a key without one is left to the stack's default.
  */
 const ROOT_SAMPLE = [
-  { key: 'STAMP', section: 'Required, and the stamp purchase defaults', description: 'The postage batch every upload pays with. Required only when BEE_PUBLISHERS below is empty.', version: '', services: UPLOADER },
-  { key: 'STAMP_IMMUTABLE', section: 'Required, and the stamp purchase defaults', description: 'Whether a batch bought with pnpm stamp:setup is immutable. An immutable batch refuses uploads once full, a mutable one overwrites its oldest chunks.', version: 'false', services: null },
-  { key: 'API_AUTH_TOKEN', section: 'Required, and the stamp purchase defaults', description: 'Bearer token for every gated route of the uploader. Required, because every accepted segment spends postage stamp money. Generate one with openssl rand -hex 32.', version: '', services: ['srs', 'stream-uploader'] },
-  { key: 'ADMIN_API_URL', section: 'Admin mode', description: ADMIN_URL_DESCRIPTION, version: '', services: ['srs', 'stream-uploader'] },
-  { key: 'ADMIN_API_TOKEN', section: 'Admin mode', description: "Bearer token for the admin's internal routes, required whenever ADMIN_API_URL is set. Minimum 32 characters.", version: '', services: ['srs', 'stream-uploader'] },
-  { key: 'BEE_URL', section: 'Stream Uploader', description: 'Where the uploader reaches Bee when the deployment runs no node of its own.', version: 'http://localhost:1633', services: UPLOADER },
-  { key: 'BEE_PUBLISHERS', section: 'Stream Uploader', description: 'One Bee node per ABR rung, as rung@url<batch>, space separated. Empty means one node for everything.', version: '', services: UPLOADER },
-  { key: 'BEE_REQUEST_TIMEOUT_MS', section: 'Stream Uploader', description: 'How long one Bee call may take before the uploader gives up on it and retries.', version: '4000', services: UPLOADER },
-  { key: 'MAX_QUEUE_SIZE', section: 'Stream Uploader', description: 'How many segments may wait for an upload before the oldest is dropped.', version: '100', services: UPLOADER },
-  { key: 'UPLOADER_START_GATES', section: 'Stream Uploader', description: START_GATES_DESCRIPTION, version: 'chequebook-warn', services: UPLOADER },
-  { key: 'START_GATE_TIMEOUT_MS', section: 'Stream Uploader', description: 'How long each read of a startup gate may take.', version: '20000', services: UPLOADER },
-  { key: 'CHEQUEBOOK_MIN_BZZ', section: 'Stream Uploader', description: 'The chequebook floor, in BZZ, that every Bee node must hold available for the uploader to call it funded.', version: '0.5', services: UPLOADER },
-  { key: 'CHEQUEBOOK_RECHECK_MS', section: 'Stream Uploader', description: 'How often a chequebook the uploader warned about is read again, so /health clears once it is funded.', version: '60000', services: UPLOADER },
-  { key: 'STAMP_MIN_TTL_HOURS', section: 'Stream Uploader', description: 'How much time a postage batch must have left for the uploader to call it usable.', version: '12', services: UPLOADER },
-  { key: 'STAMP_MAX_UTILIZATION', section: 'Stream Uploader', description: 'How full an immutable postage batch may be for the uploader to call it usable.', version: '0.9', services: UPLOADER },
-  { key: 'CLIENT_PORT', section: 'Client', description: 'The port the viewer is served on.', version: '5173', services: ['client'] },
-  { key: 'VITE_APP_OWNER', section: 'Client', description: 'The feed owner the viewer reads the stream catalog of.', version: '', services: ['client'] },
-  { key: 'BEE_UPLOADER_FULL_NODE', section: 'Bee Nodes (Docker deployment)', description: 'Whether the uploader node runs as a full node. Read by the deploy scripts, so a change redeploys everything.', version: 'false', services: null },
-  { key: 'BEE_GATEWAY_CACHE_RETRIEVAL', section: 'Bee Nodes (Docker deployment)', description: 'Whether the gateway node keeps what it retrieves in its cache.', version: 'true', services: ['bee-gateway'] },
-  { key: 'LOG_LEVEL', section: 'Logging', description: 'How much the uploader logs. An unrecognized value is reported once and then ignored.', version: 'info', services: UPLOADER },
-  { key: 'LOG_FORMAT', section: 'Logging', description: 'Empty for plain lines, json for one JSON object per line.', version: '', services: UPLOADER },
+  {
+    key: 'STAMP',
+    section: 'Required, and the stamp purchase defaults',
+    description: 'The postage batch every upload pays with. Required only when BEE_PUBLISHERS below is empty.',
+    version: '',
+    services: UPLOADER,
+  },
+  {
+    key: 'STAMP_IMMUTABLE',
+    section: 'Required, and the stamp purchase defaults',
+    description:
+      'Whether a batch bought with pnpm stamp:setup is immutable. An immutable batch refuses uploads once full, a mutable one overwrites its oldest chunks.',
+    version: 'false',
+    services: null,
+  },
+  {
+    key: 'API_AUTH_TOKEN',
+    section: 'Required, and the stamp purchase defaults',
+    description:
+      'Bearer token for every gated route of the uploader. Required, because every accepted segment spends postage stamp money. Generate one with openssl rand -hex 32.',
+    version: '',
+    services: ['srs', 'stream-uploader'],
+  },
+  {
+    key: 'ADMIN_API_URL',
+    section: 'Admin mode',
+    description: ADMIN_URL_DESCRIPTION,
+    version: '',
+    services: ['srs', 'stream-uploader'],
+  },
+  {
+    key: 'ADMIN_API_TOKEN',
+    section: 'Admin mode',
+    description:
+      "Bearer token for the admin's internal routes, required whenever ADMIN_API_URL is set. Minimum 32 characters.",
+    version: '',
+    services: ['srs', 'stream-uploader'],
+  },
+  {
+    key: 'BEE_URL',
+    section: 'Stream Uploader',
+    description: 'Where the uploader reaches Bee when the deployment runs no node of its own.',
+    version: 'http://localhost:1633',
+    services: UPLOADER,
+  },
+  {
+    key: 'BEE_PUBLISHERS',
+    section: 'Stream Uploader',
+    description: 'One Bee node per ABR rung, as rung@url<batch>, space separated. Empty means one node for everything.',
+    version: '',
+    services: UPLOADER,
+  },
+  {
+    key: 'BEE_REQUEST_TIMEOUT_MS',
+    section: 'Stream Uploader',
+    description: 'How long one Bee call may take before the uploader gives up on it and retries.',
+    version: '4000',
+    services: UPLOADER,
+  },
+  {
+    key: 'MAX_QUEUE_SIZE',
+    section: 'Stream Uploader',
+    description: 'How many segments may wait for an upload before the oldest is dropped.',
+    version: '100',
+    services: UPLOADER,
+  },
+  {
+    key: 'UPLOADER_START_GATES',
+    section: 'Stream Uploader',
+    description: START_GATES_DESCRIPTION,
+    version: 'chequebook-warn',
+    services: UPLOADER,
+  },
+  {
+    key: 'START_GATE_TIMEOUT_MS',
+    section: 'Stream Uploader',
+    description: 'How long each read of a startup gate may take.',
+    version: '20000',
+    services: UPLOADER,
+  },
+  {
+    key: 'CHEQUEBOOK_MIN_BZZ',
+    section: 'Stream Uploader',
+    description:
+      'The chequebook floor, in BZZ, that every Bee node must hold available for the uploader to call it funded.',
+    version: '0.5',
+    services: UPLOADER,
+  },
+  {
+    key: 'CHEQUEBOOK_RECHECK_MS',
+    section: 'Stream Uploader',
+    description: 'How often a chequebook the uploader warned about is read again, so /health clears once it is funded.',
+    version: '60000',
+    services: UPLOADER,
+  },
+  {
+    key: 'STAMP_MIN_TTL_HOURS',
+    section: 'Stream Uploader',
+    description: 'How much time a postage batch must have left for the uploader to call it usable.',
+    version: '12',
+    services: UPLOADER,
+  },
+  {
+    key: 'STAMP_MAX_UTILIZATION',
+    section: 'Stream Uploader',
+    description: 'How full an immutable postage batch may be for the uploader to call it usable.',
+    version: '0.9',
+    services: UPLOADER,
+  },
+  {
+    key: 'CLIENT_PORT',
+    section: 'Client',
+    description: 'The port the viewer is served on.',
+    version: '5173',
+    services: ['client'],
+  },
+  {
+    key: 'VITE_APP_OWNER',
+    section: 'Client',
+    description: 'The feed owner the viewer reads the stream catalog of.',
+    version: '',
+    services: ['client'],
+  },
+  {
+    key: 'BEE_UPLOADER_FULL_NODE',
+    section: 'Bee Nodes (Docker deployment)',
+    description:
+      'Whether the uploader node runs as a full node. Read by the deploy scripts, so a change redeploys everything.',
+    version: 'false',
+    services: null,
+  },
+  {
+    key: 'BEE_GATEWAY_CACHE_RETRIEVAL',
+    section: 'Bee Nodes (Docker deployment)',
+    description: 'Whether the gateway node keeps what it retrieves in its cache.',
+    version: 'true',
+    services: ['bee-gateway'],
+  },
+  {
+    key: 'LOG_LEVEL',
+    section: 'Logging',
+    description: 'How much the uploader logs. An unrecognized value is reported once and then ignored.',
+    version: 'info',
+    services: UPLOADER,
+  },
+  {
+    key: 'LOG_FORMAT',
+    section: 'Logging',
+    description: 'Empty for plain lines, json for one JSON object per line.',
+    version: '',
+    services: UPLOADER,
+  },
 ];
 
 /**
@@ -110,11 +241,23 @@ const ENGINE_SAMPLES = {
   srs: [
     { key: 'HLS_FRAGMENT', section: 'SRS Media Server', description: 'Segment length in seconds.' },
     { key: 'HLS_WINDOW', section: 'SRS Media Server', description: 'The playlist window in seconds.' },
-    { key: 'SRS_WEBHOOK_TOKEN', section: 'SRS Media Server', description: 'The token SRS sends with every webhook, which the uploader checks.', version: '', services: ['srs', 'stream-uploader'] },
+    {
+      key: 'SRS_WEBHOOK_TOKEN',
+      section: 'SRS Media Server',
+      description: 'The token SRS sends with every webhook, which the uploader checks.',
+      version: '',
+      services: ['srs', 'stream-uploader'],
+    },
   ],
   ome: [
     { key: 'HLS_SEGMENT_DURATION', section: 'OvenMediaEngine', description: 'Segment length in seconds.' },
-    { key: 'OME_ADMISSION_SECRET', section: 'OvenMediaEngine', description: 'The secret OvenMediaEngine signs its admission requests with.', version: '', services: ['ome', 'stream-uploader'] },
+    {
+      key: 'OME_ADMISSION_SECRET',
+      section: 'OvenMediaEngine',
+      description: 'The secret OvenMediaEngine signs its admission requests with.',
+      version: '',
+      services: ['ome', 'stream-uploader'],
+    },
   ],
 };
 
@@ -188,7 +331,7 @@ function withReaders(sample) {
 /** The root sample's keys, then those of the engine a deployment of this shape runs, if it runs one. */
 function samplesFor(shape) {
   const engine = engineOfServices(defaultServicesFor(shape));
-  return [...ROOT_SAMPLE, ...(engine ? ENGINE_SAMPLES[engine] ?? [] : [])].map(withReaders);
+  return [...ROOT_SAMPLE, ...(engine ? (ENGINE_SAMPLES[engine] ?? []) : [])].map(withReaders);
 }
 
 /** Who sets a key of the deployment's own list, where the deployment sets the engine settings it reads. */
@@ -281,9 +424,10 @@ function listedOf(profile, store, facts) {
 /** The services whose containers were started with another value for the key, or 'unknown'. */
 function differingServices(sample, next, store) {
   if (!store.record) return 'unknown';
-  const readers = sample.services === null
-    ? store.record.services
-    : store.record.services.filter((service) => sample.services.includes(service));
+  const readers =
+    sample.services === null
+      ? store.record.services
+      : store.record.services.filter((service) => sample.services.includes(service));
   if (readers.length === 0) return 'unknown';
   return store.record.values[sample.key] === next ? [] : readers;
 }
@@ -446,7 +590,10 @@ function catalogOf(profile) {
  * deployment of the mock gets there.
  */
 function storedEngineProblem(profile, facts) {
-  return engineSettingsSaveProblem(facts.engine, profile.engine_settings, { abr: facts.abr, defaults: facts.defaults.values });
+  return engineSettingsSaveProblem(facts.engine, profile.engine_settings, {
+    abr: facts.abr,
+    defaults: facts.defaults.values,
+  });
 }
 
 /**
@@ -513,7 +660,10 @@ export async function createdSettingsRefusal(stackSettings, version, shape, name
   try {
     settings = await newDeploymentSettingsField().validate(stackSettings, { abortEarly: false });
   } catch (error) {
-    return { status: 400, body: { error: 'validation_error', errors: error.errors ?? ['The stack settings are not valid.'] } };
+    return {
+      status: 400,
+      body: { error: 'validation_error', errors: error.errors ?? ['The stack settings are not valid.'] },
+    };
   }
   const refused = (errors) => ({ status: 400, body: { error: 'validation_error', errors: [errors], name } });
   if ((!settings || settings.length === 0) && !useManagerToken) return null;
@@ -523,14 +673,18 @@ export async function createdSettingsRefusal(stackSettings, version, shape, name
   if (useManagerToken) problems.push(...managerTokenProblems(settings ?? [], entries));
   if (problems.length > 0) return refused(problems.join(' '));
   const before = newAdminLinkBefore(version, shape);
-  const adminProblem = adminLinkEditProblem(settings ?? [], useManagerToken ? { ...before, token: { current: true, afterReset: true } } : before);
+  const adminProblem = adminLinkEditProblem(
+    settings ?? [],
+    useManagerToken ? { ...before, token: { current: true, afterReset: true } } : before,
+  );
   if (adminProblem) return refused(adminProblem);
   if (useManagerToken && !managerAdminLink.tokenStored) {
     return {
       status: 409,
       body: {
         error: 'admin_token_missing',
-        message: 'The manager stores no web2 admin token to copy into this deployment. Type a token for it, or save one on Manager settings.',
+        message:
+          'The manager stores no web2 admin token to copy into this deployment. Type a token for it, or save one on Manager settings.',
       },
     };
   }
@@ -549,7 +703,9 @@ export async function createdSettingsRefusal(stackSettings, version, shape, name
 
 /** The address a create gives the new deployment's uploader: the one it sends, else its version's. */
 function createdAdminUrl(settings, shape) {
-  return settings.find(({ key }) => key === ADMIN_API_URL_KEY)?.value ?? versionValuesFor(shape)[ADMIN_API_URL_KEY] ?? '';
+  return (
+    settings.find(({ key }) => key === ADMIN_API_URL_KEY)?.value ?? versionValuesFor(shape)[ADMIN_API_URL_KEY] ?? ''
+  );
 }
 
 /**
@@ -561,8 +717,16 @@ function createdAdminUrl(settings, shape) {
 export function withManagerLink(stackSettings, useManagerToken, version, shape) {
   const named = stackSettings ?? [];
   const untouched = { stackSettings, useManagerToken };
-  if (useManagerToken || editsAdminLink(named) || !managerAdminLink.url || !managerAdminLink.tokenStored || !version?.buildId) return untouched;
-  if (!defaultServicesFor({ kind: shape.kind, components: shape.components }).includes('stream-uploader')) return untouched;
+  if (
+    useManagerToken ||
+    editsAdminLink(named) ||
+    !managerAdminLink.url ||
+    !managerAdminLink.tokenStored ||
+    !version?.buildId
+  )
+    return untouched;
+  if (!defaultServicesFor({ kind: shape.kind, components: shape.components }).includes('stream-uploader'))
+    return untouched;
   const { entries } = newDeploymentCatalogOf(version, shape);
   const settable = (key) => entries.some((entry) => entry.key === key && entry.declared && entry.owner === null);
   if (!settable(ADMIN_API_URL_KEY) || !settable(ADMIN_API_TOKEN_KEY)) return untouched;
@@ -572,24 +736,36 @@ export function withManagerLink(stackSettings, useManagerToken, version, shape) 
 /** Why the manager's stored token cannot go into a deployment created with these settings, in the manager's words. */
 function managerTokenProblems(settings, entries) {
   if (settings.some(({ key }) => key === ADMIN_API_TOKEN_KEY)) {
-    return [`${ADMIN_API_TOKEN_KEY} is typed for this deployment and also asked for from the manager's stored token. Send one of the two.`];
+    return [
+      `${ADMIN_API_TOKEN_KEY} is typed for this deployment and also asked for from the manager's stored token. Send one of the two.`,
+    ];
   }
   const entry = entries.find(({ key }) => key === ADMIN_API_TOKEN_KEY);
   if (!entry?.declared || entry.owner !== null) {
-    return [`${ADMIN_API_TOKEN_KEY} is not a setting this deployment's version declares, so the manager's stored token has nowhere to go.`];
+    return [
+      `${ADMIN_API_TOKEN_KEY} is not a setting this deployment's version declares, so the manager's stored token has nowhere to go.`,
+    ];
   }
   return [];
 }
 
 /** What the version's samples set, which a deployment not created yet starts with. */
 function versionValuesFor(shape) {
-  return Object.fromEntries(samplesFor(shape).filter((sample) => sample.version !== undefined).map((sample) => [sample.key, sample.version]));
+  return Object.fromEntries(
+    samplesFor(shape)
+      .filter((sample) => sample.version !== undefined)
+      .map((sample) => [sample.key, sample.version]),
+  );
 }
 
 /** The two web2 admin keys of a deployment not created yet, as the manager's create judges them. */
 function newAdminLinkBefore(version, shape) {
   const values = versionValuesFor(shape);
-  return adminLinkBeforeOf({ current: values, version: values, requiredSecrets: version.contract?.requiredSecrets ?? [] });
+  return adminLinkBeforeOf({
+    current: values,
+    version: values,
+    requiredSecrets: version.contract?.requiredSecrets ?? [],
+  });
 }
 
 /**
@@ -618,7 +794,8 @@ export function storeCreatedSettings(profile, stackSettings = [], useManagerToke
     else store.plain[key] = value;
   }
   if (useManagerToken) store.secrets.set(ADMIN_API_TOKEN_KEY, store.revision);
-  if (store.secrets.has(ADMIN_API_TOKEN_KEY)) store.adminTokenOrigin = adminOriginOf(createdAdminUrl(stackSettings, profile)) ?? '';
+  if (store.secrets.has(ADMIN_API_TOKEN_KEY))
+    store.adminTokenOrigin = adminOriginOf(createdAdminUrl(stackSettings, profile)) ?? '';
 }
 
 /** Gives a member appended to a group the settings its sibling stores, as the manager copies them. */
@@ -673,7 +850,9 @@ function save(res, profile, body) {
   }
   const tokenEdit = body.entries.find(({ key }) => key === ADMIN_API_TOKEN_KEY);
   if (tokenEdit) {
-    store.adminTokenOrigin = tokenEdit.value ? (adminOriginOf(adminLinkAfterEdits(body.entries, before).url) ?? '') : null;
+    store.adminTokenOrigin = tokenEdit.value
+      ? (adminOriginOf(adminLinkAfterEdits(body.entries, before).url) ?? '')
+      : null;
   }
   store.revision += 1;
   for (const { key, value } of body.entries) {
@@ -717,7 +896,10 @@ async function newDeploymentList(req, res, id) {
     const query = Object.fromEntries(new URL(req.url, 'http://mock').searchParams);
     shape = await newDeploymentShapeQuerySchema.validate(query, { abortEarly: false, stripUnknown: true });
   } catch (error) {
-    return send(res, 400, { error: 'validation_error', errors: error.errors ?? ['The query does not describe a deployment.'] });
+    return send(res, 400, {
+      error: 'validation_error',
+      errors: error.errors ?? ['The query does not describe a deployment.'],
+    });
   }
   const components = servicesOfList(shape.components);
   const catalog = newDeploymentCatalogOf(version, {
@@ -735,7 +917,9 @@ async function newDeploymentList(req, res, id) {
  */
 export function deploymentSettingsRoutes({ readBody, withProfile, deploy }) {
   const withVersionBuilt = (handler) =>
-    withProfile((req, res, profile) => (versionOf(profile)?.buildId ? handler(req, res, profile) : notReady(res, profile)));
+    withProfile((req, res, profile) =>
+      versionOf(profile)?.buildId ? handler(req, res, profile) : notReady(res, profile),
+    );
   const saveRoute = withBody(saveDeploymentSettingsSchema, save);
   const applyRoute = withBody(applyDeploymentSettingsSchema, (res, profile) => apply(res, profile, deploy));
   return [
@@ -745,12 +929,22 @@ export function deploymentSettingsRoutes({ readBody, withProfile, deploy }) {
       /^\/profiles\/([^/]+)\/settings$/,
       withVersionBuilt((_req, res, profile) => send(res, 200, catalogOf(profile), { 'cache-control': 'no-store' })),
     ],
-    ['PUT', /^\/profiles\/([^/]+)\/settings$/, withVersionBuilt((req, res, profile) => saveRoute(req, res, profile, readBody))],
-    ['POST', /^\/profiles\/([^/]+)\/settings\/apply$/, withVersionBuilt((req, res, profile) => applyRoute(req, res, profile, readBody))],
+    [
+      'PUT',
+      /^\/profiles\/([^/]+)\/settings$/,
+      withVersionBuilt((req, res, profile) => saveRoute(req, res, profile, readBody)),
+    ],
+    [
+      'POST',
+      /^\/profiles\/([^/]+)\/settings\/apply$/,
+      withVersionBuilt((req, res, profile) => applyRoute(req, res, profile, readBody)),
+    ],
     [
       'POST',
       /^\/profiles\/([^/]+)\/settings\/admin-link\/test$/,
-      withVersionBuilt((_req, res, profile) => send(res, 200, { outcome: deploymentTestOutcome(profile) }, { 'cache-control': 'no-store' })),
+      withVersionBuilt((_req, res, profile) =>
+        send(res, 200, { outcome: deploymentTestOutcome(profile) }, { 'cache-control': 'no-store' }),
+      ),
     ],
   ];
 }
@@ -767,8 +961,11 @@ function deploymentTestOutcome(profile) {
   const store = storeOf(profile);
   const values = nextValuesOf(profile, store);
   const url = values[ADMIN_API_URL_KEY] ?? '';
-  if (store.adminTokenOrigin !== null && url !== '' && !sameAdminOrigin(url, store.adminTokenOrigin)) return 'stored-token-elsewhere';
+  if (store.adminTokenOrigin !== null && url !== '' && !sameAdminOrigin(url, store.adminTokenOrigin))
+    return 'stored-token-elsewhere';
   const hasToken = store.secrets.has(ADMIN_API_TOKEN_KEY) || isGenerated(ADMIN_API_TOKEN_KEY, profile);
-  const feedOwner = profile.has_private_key ? (profile.public_key ?? null) : addressOfStreamKey(values.STREAM_KEY ?? '');
+  const feedOwner = profile.has_private_key
+    ? (profile.public_key ?? null)
+    : addressOfStreamKey(values.STREAM_KEY ?? '');
   return mockTestOutcome({ url, hasToken, feedOwner });
 }

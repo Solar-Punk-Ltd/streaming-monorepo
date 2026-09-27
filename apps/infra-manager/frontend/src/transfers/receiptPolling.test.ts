@@ -19,8 +19,14 @@ import { RECEIPT_POLL_BUDGET_MS, RECEIPT_READ_INTERVAL_MS } from '@streaming-inf
 import { isPollingReceipt, receiptPollDeadline, receiptPollingSentence } from './receiptPolling';
 
 const at = (iso: string) => Date.parse(iso);
-const polled = { state: 'submitted' as const, failureReason: null, receiptPollUntil: '2026-09-10T14:32:00.000Z', updatedAt: '2026-09-10T14:02:00.000Z' };
-const localClock = (iso: string) => new Date(at(iso)).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+const polled = {
+  state: 'submitted' as const,
+  failureReason: null,
+  receiptPollUntil: '2026-09-10T14:32:00.000Z',
+  updatedAt: '2026-09-10T14:02:00.000Z',
+};
+const localClock = (iso: string) =>
+  new Date(at(iso)).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
 describe('receiptPollDeadline', () => {
   const whilePolling = at('2026-09-10T14:10:00.000Z');
@@ -31,23 +37,36 @@ describe('receiptPollDeadline', () => {
     assert.equal(receiptPollDeadline({ ...polled, state: 'settled' }), null);
     assert.equal(receiptPollDeadline({ ...polled, state: 'unknown' }), null);
     assert.equal(receiptPollDeadline({ ...polled, receiptPollUntil: 'soon' }), null);
-    assert.equal(receiptPollDeadline({ ...polled, updatedAt: 'recently' }), null, 'a record whose own timestamp is unreadable leaves no ceiling to read the deadline under');
+    assert.equal(
+      receiptPollDeadline({ ...polled, updatedAt: 'recently' }),
+      null,
+      'a record whose own timestamp is unreadable leaves no ceiling to read the deadline under',
+    );
   });
 
   it('never reads a deadline further ahead than one budget after the record last changed', () => {
     const distant = { ...polled, receiptPollUntil: '2030-01-01T00:00:00.000Z' };
     assert.equal(receiptPollDeadline(distant), at('2026-09-10T14:32:00.000Z'));
-    assert.equal(receiptPollDeadline(polled), at('2026-09-10T14:32:00.000Z'), 'an honest deadline inside the budget is read as it is');
-    assert.equal(receiptPollingSentence(distant, whilePolling)?.includes(localClock('2026-09-10T14:32:00.000Z')), true,
-      'the page never promises automatic checks further ahead than the manager could still be polling');
+    assert.equal(
+      receiptPollDeadline(polled),
+      at('2026-09-10T14:32:00.000Z'),
+      'an honest deadline inside the budget is read as it is',
+    );
+    assert.equal(
+      receiptPollingSentence(distant, whilePolling)?.includes(localClock('2026-09-10T14:32:00.000Z')),
+      true,
+      'the page never promises automatic checks further ahead than the manager could still be polling',
+    );
   });
 
   it('ends the checks one budget after the record last changed, however far ahead the field points', () => {
     const stale = { ...polled, receiptPollUntil: '2027-09-10T14:32:00.000Z', updatedAt: '2026-09-10T13:39:00.000Z' };
     assert.equal(receiptPollDeadline(stale), at('2026-09-10T14:09:00.000Z'));
     assert.equal(isPollingReceipt(stale, whilePolling), false);
-    assert.equal(receiptPollingSentence(stale, whilePolling),
-      `Automatic checks ended at ${localClock('2026-09-10T14:09:00.000Z')} without a final receipt. Use Check to ask the chain again.`);
+    assert.equal(
+      receiptPollingSentence(stale, whilePolling),
+      `Automatic checks ended at ${localClock('2026-09-10T14:09:00.000Z')} without a final receipt. Use Check to ask the chain again.`,
+    );
   });
 
   it('keeps reading a record that changed a minute ago, and promises no longer than the budget', () => {
@@ -79,14 +98,19 @@ describe('isPollingReceipt', () => {
 describe('receiptPollingSentence', () => {
   it('names the cadence and the deadline in the operator local time while polling lasts', () => {
     const sentence = receiptPollingSentence(polled, at('2026-09-10T14:10:00.000Z'));
-    assert.equal(sentence, `The manager checks the chain for this transaction's receipt about every 20 seconds until ${localClock('2026-09-10T14:32:00.000Z')}, ` +
-      'and leaves longer gaps while the chain endpoint does not answer. This page re-reads the saved record every 10 seconds meanwhile.');
+    assert.equal(
+      sentence,
+      `The manager checks the chain for this transaction's receipt about every 20 seconds until ${localClock('2026-09-10T14:32:00.000Z')}, ` +
+        'and leaves longer gaps while the chain endpoint does not answer. This page re-reads the saved record every 10 seconds meanwhile.',
+    );
     assert.equal(sentence?.includes(String(RECEIPT_READ_INTERVAL_MS / 1000)), true);
   });
 
   it('says automatic checking ended once the deadline has passed', () => {
-    assert.equal(receiptPollingSentence(polled, at('2026-09-10T14:32:00.001Z')),
-      `Automatic checks ended at ${localClock('2026-09-10T14:32:00.000Z')} without a final receipt. Use Check to ask the chain again.`);
+    assert.equal(
+      receiptPollingSentence(polled, at('2026-09-10T14:32:00.001Z')),
+      `Automatic checks ended at ${localClock('2026-09-10T14:32:00.000Z')} without a final receipt. Use Check to ask the chain again.`,
+    );
   });
 
   it('says nothing about a record the manager never polled or has already finished', () => {

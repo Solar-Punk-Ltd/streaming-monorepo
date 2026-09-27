@@ -7,7 +7,10 @@ import { operationId } from './operationIdentity.js';
 type InspectReceipt = (operation: ReceiptOperation) => Promise<ChequebookReceiptObservation>;
 
 export class ChequebookReceiptCheck {
-  constructor(private readonly repository: ChequebookOperationRepository, private readonly inspect: InspectReceipt) {}
+  constructor(
+    private readonly repository: ChequebookOperationRepository,
+    private readonly inspect: InspectReceipt,
+  ) {}
 
   async check(inputId: string): Promise<ChequebookOperation> {
     const id = operationId(inputId);
@@ -18,7 +21,8 @@ export class ChequebookReceiptCheck {
       throw new ChequebookJournalError();
     }
     if (!operation) throw new ChequebookJournalError();
-    if (operation.state !== 'submitted' || !operation.transactionHash || operation.failureReason === 'hash_conflict') return operation;
+    if (operation.state !== 'submitted' || !operation.transactionHash || operation.failureReason === 'hash_conflict')
+      return operation;
     const snapshot = Object.freeze({ ...operation, transactionHash: operation.transactionHash });
     let observation: ChequebookReceiptObservation;
     try {

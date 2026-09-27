@@ -1,10 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
-import {
-  passwordProblem,
-  usernameProblem,
-  type UserSummary,
-} from '@streaming-monorepo/web2-admin-common';
+import { passwordProblem, usernameProblem, type UserSummary } from '@streaming-monorepo/web2-admin-common';
 
 import type { UserRow } from '../../types/index.js';
 import {
@@ -21,21 +17,10 @@ import {
 import { Logger } from '../Logger.js';
 
 import type { CredentialRepository } from './CredentialRepository.js';
-import {
-  clientIpKey,
-  LoginLimiter,
-  passwordChangeKey,
-  usernameKey,
-} from './LoginLimiter.js';
+import { clientIpKey, LoginLimiter, passwordChangeKey, usernameKey } from './LoginLimiter.js';
 import { hashPassword, verifyPassword } from './passwordHash.js';
 import type { SessionRepository } from './SessionRepository.js';
-import {
-  absoluteExpiryFrom,
-  endsAt,
-  hasExpired,
-  idleSince,
-  needsTouch,
-} from './sessionLifetime.js';
+import { absoluteExpiryFrom, endsAt, hasExpired, idleSince, needsTouch } from './sessionLifetime.js';
 import { createSessionToken, hashSessionToken } from './sessionToken.js';
 import type { UserRepository } from './UserRepository.js';
 
@@ -97,9 +82,7 @@ export class AuthService {
     private readonly credentials: CredentialRepository,
     private readonly limiter: LoginLimiter = new LoginLimiter(),
   ) {
-    this.decoyHash = hashPassword(randomBytes(32).toString('base64')).catch(
-      () => '',
-    );
+    this.decoyHash = hashPassword(randomBytes(32).toString('base64')).catch(() => '');
   }
 
   countUsers(): Promise<number> {
@@ -126,16 +109,11 @@ export class AuthService {
     const user = await this.users.findByUsername(input.username);
     // The decoy keeps the cost of an unknown name the same as a known one, so
     // the clock does not say which usernames exist.
-    const matches = await verifyPassword(
-      input.password,
-      user ? user.password_hash : await this.decoyHash,
-    );
+    const matches = await verifyPassword(input.password, user ? user.password_hash : await this.decoyHash);
 
     if (!user || !matches) {
       attempt.fail();
-      logger.warn(
-        `[Auth] failed sign-in: username="${input.username}" ip=${input.ip}`,
-      );
+      logger.warn(`[Auth] failed sign-in: username="${input.username}" ip=${input.ip}`);
       throw new InvalidCredentialsError();
     }
 
@@ -214,11 +192,7 @@ export class AuthService {
    * The first user ever added can manage users whatever the caller asked,
    * because somebody has to be able to add the second.
    */
-  async addUser(
-    username: string,
-    password: string,
-    options: AddUserOptions = {},
-  ): Promise<UserSummary> {
+  async addUser(username: string, password: string, options: AddUserOptions = {}): Promise<UserSummary> {
     const badName = usernameProblem(username);
     if (badName) throw new InvalidUsernameError(badName);
 
@@ -226,16 +200,10 @@ export class AuthService {
     if (problem) throw new WeakPasswordError(problem);
 
     const isAdmin = options.admin === true || (await this.users.count()) === 0;
-    const row = await this.users.insert(
-      username,
-      await hashPassword(password),
-      isAdmin,
-    );
+    const row = await this.users.insert(username, await hashPassword(password), isAdmin);
     if (!row) throw new UserExistsError(username);
 
-    logger.info(
-      `[Auth] user added: ${username}${isAdmin ? ' (can manage users)' : ''}`,
-    );
+    logger.info(`[Auth] user added: ${username}${isAdmin ? ' (can manage users)' : ''}`);
     return {
       id: row.id,
       username: row.username,
@@ -248,17 +216,13 @@ export class AuthService {
 
   async removeUser(userId: string, actingUserId: string): Promise<void> {
     if (userId === actingUserId) {
-      throw new CannotRemoveUserError(
-        'You cannot remove your own account. Ask another user to remove it.',
-      );
+      throw new CannotRemoveUserError('You cannot remove your own account. Ask another user to remove it.');
     }
 
     const outcome = await this.users.deleteUnlessLast(userId);
     if (outcome === 'missing') throw new UserNotFoundError(userId);
     if (outcome === 'last') {
-      throw new CannotRemoveUserError(
-        'This is the last user. Removing it would lock everyone out.',
-      );
+      throw new CannotRemoveUserError('This is the last user. Removing it would lock everyone out.');
     }
     if (outcome === 'last_admin') {
       throw new CannotRemoveUserError(
@@ -290,11 +254,7 @@ export class AuthService {
    * The current password is throttled like a sign-in: a stolen session would
    * otherwise be an unlimited guessing machine for the password behind it.
    */
-  async changePassword(
-    session: SessionInfo,
-    current: string,
-    next: string,
-  ): Promise<UserRow> {
+  async changePassword(session: SessionInfo, current: string, next: string): Promise<UserRow> {
     const attempt = this.limiter.begin({
       account: passwordChangeKey(session.user.id),
     });
@@ -310,9 +270,7 @@ export class AuthService {
 
     if (!(await verifyPassword(current, user.password_hash))) {
       attempt.fail();
-      logger.warn(
-        `[Auth] password change refused, wrong current password: ${user.username}`,
-      );
+      logger.warn(`[Auth] password change refused, wrong current password: ${user.username}`);
       throw new InvalidCredentialsError();
     }
     attempt.succeed();
@@ -321,11 +279,7 @@ export class AuthService {
     if (problem) throw new WeakPasswordError(problem);
 
     const changedAt = new Date();
-    await this.credentials.changePassword(
-      user.id,
-      await hashPassword(next),
-      session.tokenHash,
-    );
+    await this.credentials.changePassword(user.id, await hashPassword(next), session.tokenHash);
     logger.info(`[Auth] password changed: ${user.username}`);
     return { ...user, password_changed_at: changedAt, updated_at: changedAt };
   }

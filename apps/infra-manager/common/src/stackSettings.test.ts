@@ -42,26 +42,13 @@ describe('isSecretSettingKey', () => {
   });
 
   it('holds a key a later version of the stack adds under one of the suffixes', () => {
-    for (const key of [
-      'ADMIN_TOKEN',
-      'WEBHOOK_SECRET',
-      'RELAY_PASSPHRASE',
-      'DB_PASSWORD',
-      'SIGNING_KEY',
-    ]) {
+    for (const key of ['ADMIN_TOKEN', 'WEBHOOK_SECRET', 'RELAY_PASSPHRASE', 'DB_PASSWORD', 'SIGNING_KEY']) {
       assert.equal(isSecretSettingKey(key), true, key);
     }
   });
 
   it('leaves a key that only reads like one alone', () => {
-    for (const key of [
-      'API_PORT',
-      'STAMP',
-      'KEYFRAME_INTERVAL',
-      'TOKEN_BUCKET_SIZE',
-      'SECRETS_DIR',
-      'ENGINE',
-    ]) {
+    for (const key of ['API_PORT', 'STAMP', 'KEYFRAME_INTERVAL', 'TOKEN_BUCKET_SIZE', 'SECRETS_DIR', 'ENGINE']) {
       assert.equal(isSecretSettingKey(key), false, key);
     }
   });

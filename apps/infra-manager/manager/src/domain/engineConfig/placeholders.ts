@@ -41,9 +41,7 @@ const FALLBACK_CHECK_VALUE = '1';
 
 /** The file as the engine's parser will see it, every placeholder filled in. */
 export function substituteForCheck(config: string): string {
-  const lines = config
-    .split('\n')
-    .filter((line) => !LINE_PLACEHOLDERS.some((token) => line.includes(token)));
+  const lines = config.split('\n').filter((line) => !LINE_PLACEHOLDERS.some((token) => line.includes(token)));
   let text = lines.join('\n');
   for (const token of placeholdersIn(text)) {
     text = text.split(token).join(CHECK_VALUES[token] ?? FALLBACK_CHECK_VALUE);

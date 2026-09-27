@@ -13,17 +13,17 @@ How the folders relate and the rules that keep them apart are in
 
 ## What is here
 
-| Folder | What it is |
-|---|---|
-| [`apps/web2-admin`](apps/web2-admin/README.md) | The brand console: an API on Postgres, a React front end, the API contract the two share, and its deploy script. |
-| [`apps/hls-stream`](apps/hls-stream/README.md) | The streaming stack: SRS and OME ingest, the uploader that writes HLS segments to Swarm, the viewer, Bee node setup, the deploy scripts, and the e2e and bench harness. |
-| [`apps/infra-manager`](apps/infra-manager/README.md) | The manager: an API and a console that deploy stack versions onto hosts and handle profiles, port slots, stamps and chequebooks. |
-| [`infra/edge`](apps/web2-admin/deploy/README.md#public-https-the-hosts-edge) | The front door of a host: one Caddy that holds ports 80 and 443, gets the HTTPS certificates and sends each domain to the console behind it. |
-| [`infra/terraform`](infra/terraform/README.md) | The pilot's cloud hosts: the GCP stage and monitoring hosts, the Vultr Bee hosts, and the monitoring stack. |
-| [`docs`](docs/) | How the pieces fit: the layout and its rules, the host roles, the roadmap, the design briefs, what is deployed where, and notes on the neighbouring systems. |
+| Folder                                                                       | What it is                                                                                                                                                              |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`apps/web2-admin`](apps/web2-admin/README.md)                               | The brand console: an API on Postgres, a React front end, the API contract the two share, and its deploy script.                                                        |
+| [`apps/hls-stream`](apps/hls-stream/README.md)                               | The streaming stack: SRS and OME ingest, the uploader that writes HLS segments to Swarm, the viewer, Bee node setup, the deploy scripts, and the e2e and bench harness. |
+| [`apps/infra-manager`](apps/infra-manager/README.md)                         | The manager: an API and a console that deploy stack versions onto hosts and handle profiles, port slots, stamps and chequebooks.                                        |
+| [`infra/edge`](apps/web2-admin/deploy/README.md#public-https-the-hosts-edge) | The front door of a host: one Caddy that holds ports 80 and 443, gets the HTTPS certificates and sends each domain to the console behind it.                            |
+| [`infra/terraform`](infra/terraform/README.md)                               | The pilot's cloud hosts: the GCP stage and monitoring hosts, the Vultr Bee hosts, and the monitoring stack.                                                             |
+| [`docs`](docs/)                                                              | How the pieces fit: the layout and its rules, the host roles, the roadmap, the design briefs, what is deployed where, and notes on the neighbouring systems.            |
 
-Scripts that serve the whole repository go under `tools/`, starting with the move-check kit, which
-proves that a move changed no file.
+Scripts that serve the whole repository go under `tools/`: the boundary check, which keeps the apps
+from depending on each other, and the cut of each app's own lockfile out of the root one.
 
 ## Working in an app
 
@@ -40,15 +40,19 @@ Each app keeps its own `package.json`, with its scripts and its dependencies, an
 package import only what it declares, so the apps stay apart. The pnpm release is the
 `packageManager` field of the root `package.json`, which each app's `package.json` repeats, and
 with corepack enabled `pnpm` is that release. The security overrides, the builds allowed and the
-other workspace settings are in the root `pnpm-workspace.yaml`. The Node release is an app's
-`.nvmrc` where it has one, and otherwise the base image of its Dockerfiles. The apps differ there,
-so read the numbers from those files.
+other workspace settings are in the root `pnpm-workspace.yaml`. The Node release is the root
+`.nvmrc`, one for every app: the workflows read it, and the Node base image of every Dockerfile
+matches it.
 
 At the root, `pnpm build`, `pnpm typecheck`, `pnpm test` and `pnpm lint` run that script in every
 package of every app that has it, through Nx, which runs a package after the packages it depends
-on. Nx replays a type check whose files and dependencies have not changed from its cache in
-`.nx/`, and runs everything else each time. It never contacts Nx Cloud. `pnpm boundaries` checks
+on. Nx replays a type check or a lint whose files and dependencies have not changed from its cache
+in `.nx/`, and runs everything else each time. It never contacts Nx Cloud. `pnpm boundaries` checks
 that no app depends on another ([the rules](docs/monorepo.md#projects-never-import-each-others-code)).
+
+`pnpm lint` is oxlint, and `pnpm format` and `pnpm format:check` are oxfmt, over the whole
+repository but `infra/`. Each reads its one settings file at the root, `.oxlintrc.json` and
+`.oxfmtrc.json`, and an app's own `lint`, `format` and `format:check` read the same files.
 
 Each app's README says what its commands are and what a development setup needs:
 [the admin's](apps/web2-admin/README.md), [the stack's](apps/hls-stream/README.md) and

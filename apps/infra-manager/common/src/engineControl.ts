@@ -2,19 +2,11 @@
  * The engine control facts the manager, the UI and the offline mock all have to
  * agree on, word for word.
  */
-import {
-  BEE_UPLOADER_SERVICE,
-  OME_SERVICE,
-  SRS_SERVICE,
-  STREAM_UPLOADER_SERVICE,
-} from './constants.js';
+import { BEE_UPLOADER_SERVICE, OME_SERVICE, SRS_SERVICE, STREAM_UPLOADER_SERVICE } from './constants.js';
 import type { EngineDefaultSources } from './engineDefaults.js';
 import type { EngineSettingObservations } from './engineSettingObservation.js';
 import type { EngineOverviewIdentity } from './engineOverviewIdentity.js';
-import type {
-  EngineSettingField,
-  EngineSettings,
-} from './engineSettings.js';
+import type { EngineSettingField, EngineSettings } from './engineSettings.js';
 import type { EngineName } from './engines.js';
 import type { StackContractFeatures } from './stackVersions.js';
 
@@ -43,10 +35,8 @@ export const RESTARTABLE_SERVICES: readonly string[] = [
  * available" with no reason is the least useful thing a card can say.
  */
 export const LIVE_UNAVAILABLE_REASON: Record<EngineName, string> = {
-  [SRS_SERVICE]:
-    'Live status needs the SRS API port, which this stack version does not publish.',
-  [OME_SERVICE]:
-    'Live status needs the OvenMediaEngine API, which this stack version does not enable.',
+  [SRS_SERVICE]: 'Live status needs the SRS API port, which this stack version does not publish.',
+  [OME_SERVICE]: 'Live status needs the OvenMediaEngine API, which this stack version does not enable.',
 };
 
 const SRS_API_NOT_READ_YET =
@@ -58,10 +48,7 @@ const SRS_API_NOT_READ_YET =
  * which is that the manager does not read it yet, rather than that the port
  * is not there.
  */
-export function liveUnavailableReason(
-  engine: EngineName,
-  features: StackContractFeatures | null | undefined,
-): string {
+export function liveUnavailableReason(engine: EngineName, features: StackContractFeatures | null | undefined): string {
   if (engine === SRS_SERVICE && features?.srsApiPort) {
     return SRS_API_NOT_READ_YET;
   }
@@ -117,14 +104,8 @@ export interface EngineOverview extends EngineSettingsOverview {
  */
 const NOT_RUNNING_PHRASE = 'container is running for';
 
-export function containerNotRunningMessage(
-  profileName: string,
-  service: string,
-): string {
-  return (
-    `No ${service} ${NOT_RUNNING_PHRASE} ${profileName}. ` +
-    'Start the deployment, then try again.'
-  );
+export function containerNotRunningMessage(profileName: string, service: string): string {
+  return `No ${service} ${NOT_RUNNING_PHRASE} ${profileName}. ` + 'Start the deployment, then try again.';
 }
 
 /** Whether a failed read failed because the container is not up. */

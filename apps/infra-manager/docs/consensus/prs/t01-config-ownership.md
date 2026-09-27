@@ -46,24 +46,24 @@ Commits 2 and 4 leave the manager's typecheck red on `index.ts` (the service and
 
 `manager/test/unit/engineConfigOwnership.test.ts`, the service over the in-memory profiles, the in-memory operations table and a scripted container watcher, at millisecond timings:
 
-| # | Guarantee (acceptance line) | On the test commit | After |
-| --- | --- | --- | --- |
-| 1 | A then B: A is superseded, B applies, A's last healthy tick cannot relabel A applied, B's file stays, two deploys | fail | pass |
-| 2 | A watch whose inspect fails ends interrupted, not still watching, and recreates nothing | fail | pass |
-| 3 | Stop during the watch: the row stays STOPPED, nothing recreated, the file untouched | fail | pass |
-| 4 | A failure callback that lost ownership writes nothing and launches nothing | fail | pass |
-| 5 | A recreate that fails puts the previous file back, tries once, keeps both reasons, ends failed on a RUNNING row | fail | pass |
-| 6 | Boot: applying becomes interrupted, nothing written or deployed | fail | pass |
-| 7 | Boot: watching a healthy same container runs a fresh watch to applied | fail | pass |
-| 8 | Boot: watching a deployment that is not running is superseded, nothing recreated | fail | pass |
-| 9 | Boot: watching a restarted container reverts through the owned path, one deploy | fail | pass |
-| 10 | Boot: a different container id is superseded, nothing deployed | fail | pass |
-| 11 | Boot: an engine that cannot be inspected is interrupted, nothing deployed | fail | pass |
-| 12 | Boot: a removed and recreated instance is never acted on | pass | pass |
-| 13 | Verify now supersedes the interrupted rollout and watches the stored file | fail | pass |
-| 14 | Verify now on an interrupted reset recreates on the template so nothing stays open | fail | pass |
-| 15 | Back to the previous file puts the recorded file back through a rollout of its own | fail | pass |
-| 16 | Back to the previous file is refused when no rollout is interrupted | fail | pass |
+| #   | Guarantee (acceptance line)                                                                                       | On the test commit | After |
+| --- | ----------------------------------------------------------------------------------------------------------------- | ------------------ | ----- |
+| 1   | A then B: A is superseded, B applies, A's last healthy tick cannot relabel A applied, B's file stays, two deploys | fail               | pass  |
+| 2   | A watch whose inspect fails ends interrupted, not still watching, and recreates nothing                           | fail               | pass  |
+| 3   | Stop during the watch: the row stays STOPPED, nothing recreated, the file untouched                               | fail               | pass  |
+| 4   | A failure callback that lost ownership writes nothing and launches nothing                                        | fail               | pass  |
+| 5   | A recreate that fails puts the previous file back, tries once, keeps both reasons, ends failed on a RUNNING row   | fail               | pass  |
+| 6   | Boot: applying becomes interrupted, nothing written or deployed                                                   | fail               | pass  |
+| 7   | Boot: watching a healthy same container runs a fresh watch to applied                                             | fail               | pass  |
+| 8   | Boot: watching a deployment that is not running is superseded, nothing recreated                                  | fail               | pass  |
+| 9   | Boot: watching a restarted container reverts through the owned path, one deploy                                   | fail               | pass  |
+| 10  | Boot: a different container id is superseded, nothing deployed                                                    | fail               | pass  |
+| 11  | Boot: an engine that cannot be inspected is interrupted, nothing deployed                                         | fail               | pass  |
+| 12  | Boot: a removed and recreated instance is never acted on                                                          | pass               | pass  |
+| 13  | Verify now supersedes the interrupted rollout and watches the stored file                                         | fail               | pass  |
+| 14  | Verify now on an interrupted reset recreates on the template so nothing stays open                                | fail               | pass  |
+| 15  | Back to the previous file puts the recorded file back through a rollout of its own                                | fail               | pass  |
+| 16  | Back to the previous file is refused when no rollout is interrupted                                               | fail               | pass  |
 
 `manager/test/unit/operatorIntent.test.ts`, the real orchestrator over in-memory rows: stop moves the intent and closes the open rollout saying why, a redeploy does the same, a removal closes it before the row goes, a refused stop moves nothing, and the rollout's own claim moves nothing. Four of five failed on the test commit.
 

@@ -1,22 +1,11 @@
-import {
-  STREAM_LIMITS,
-  type Stream,
-  type StreamListResponse,
-} from '@streaming-monorepo/web2-admin-common';
+import { STREAM_LIMITS, type Stream, type StreamListResponse } from '@streaming-monorepo/web2-admin-common';
 import express, { Request, RequestHandler, Response, Router } from 'express';
 
 import { UnsupportedMediaTypeError } from '../../domain/errors/index.js';
 import { IngestService } from '../../domain/IngestService.js';
 import { PublishService } from '../../domain/PublishService.js';
-import {
-  normaliseThumbnailMime,
-  StreamService,
-} from '../../domain/StreamService.js';
-import {
-  StreamInputBody,
-  streamIdParamSchema,
-  streamInputSchema,
-} from '../../schemas/stream.js';
+import { normaliseThumbnailMime, StreamService } from '../../domain/StreamService.js';
+import { StreamInputBody, streamIdParamSchema, streamInputSchema } from '../../schemas/stream.js';
 import { THUMBNAIL_MIME_TYPES } from '../../types/index.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requireUser } from '../middleware/requireAuth.js';
@@ -72,10 +61,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     validateBody(streamInputSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const { user } = requireUser(req);
-      const created = await streamService.create(
-        user.id,
-        req.body as StreamInputBody,
-      );
+      const created = await streamService.create(user.id, req.body as StreamInputBody);
       const response: Stream = toStream(created);
       res.status(201).json(response);
     }),
@@ -97,11 +83,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     validateBody(streamInputSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const { user } = requireUser(req);
-      const updated = await streamService.update(
-        streamId(req),
-        user.id,
-        req.body as StreamInputBody,
-      );
+      const updated = await streamService.update(streamId(req), user.id, req.body as StreamInputBody);
       res.json(toStream(updated));
     }),
   );
@@ -137,12 +119,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
         });
         return;
       }
-      const updated = await streamService.setThumbnail(
-        streamId(req),
-        user.id,
-        contentType,
-        body,
-      );
+      const updated = await streamService.setThumbnail(streamId(req), user.id, contentType, body);
       res.json(toStream(updated));
     }),
   );
@@ -152,10 +129,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     validateParams(streamIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const { user } = requireUser(req);
-      const thumbnail = await streamService.getThumbnail(
-        streamId(req),
-        user.id,
-      );
+      const thumbnail = await streamService.getThumbnail(streamId(req), user.id);
       res.type(thumbnail.thumbnail_mime ?? 'application/octet-stream');
       res.send(thumbnail.thumbnail);
     }),
@@ -166,10 +140,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     validateParams(streamIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const { user } = requireUser(req);
-      const updated = await streamService.removeThumbnail(
-        streamId(req),
-        user.id,
-      );
+      const updated = await streamService.removeThumbnail(streamId(req), user.id);
       res.json(toStream(updated));
     }),
   );

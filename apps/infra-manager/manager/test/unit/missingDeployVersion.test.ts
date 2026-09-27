@@ -39,9 +39,10 @@ describe('a missing stack version is not the bundled version', () => {
       const before = structuredClone(h.profiles.rows.get(h.profile.name));
       assert.ok(before);
       assert.equal('rpc_endpoint' in before, false);
-      const call = action === 'startDeployUploader'
-        ? h.orchestrator.startDeployUploader(h.profile)
-        : h.orchestrator[action](h.profile, ['srs']);
+      const call =
+        action === 'startDeployUploader'
+          ? h.orchestrator.startDeployUploader(h.profile)
+          : h.orchestrator[action](h.profile, ['srs']);
       await assert.rejects(call, missingVersion);
       if (action === 'startInitialDeploy') {
         assert.equal(h.profiles.rows.get(h.profile.name)?.status, 'ERROR');
@@ -65,12 +66,15 @@ describe('a missing stack version is not the bundled version', () => {
           heldBackForStamp: [],
           previousStatus: 'RUNNING',
           transitioned: true,
-          build: descriptor === 'absent' ? null : {
-            version: null,
-            root: process.env.SHLS_ROOT!,
-            buildId: 'bundled',
-            referenceId: null,
-          },
+          build:
+            descriptor === 'absent'
+              ? null
+              : {
+                  version: null,
+                  root: process.env.SHLS_ROOT!,
+                  buildId: 'bundled',
+                  referenceId: null,
+                },
         };
         await assert.rejects(h.orchestrator.runReserved(reservation, h.profile), missingVersion);
         assert.equal(h.profiles.rows.get(h.profile.name)?.status, 'ERROR');

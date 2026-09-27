@@ -14,17 +14,9 @@ import {
 } from '../../schemas/auth.js';
 import { clientIpOf } from '../../utils/clientIp.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import {
-  requireAdmin,
-  signedInSession,
-  signedInUser,
-} from '../middleware/requireSession.js';
+import { requireAdmin, signedInSession, signedInUser } from '../middleware/requireSession.js';
 import { validateBody, validateParams } from '../middleware/validate.js';
-import {
-  clearSessionCookie,
-  readSessionToken,
-  setSessionCookie,
-} from '../sessionCookie.js';
+import { clearSessionCookie, readSessionToken, setSessionCookie } from '../sessionCookie.js';
 
 /** Kept for the session row, so a revoke can be told which browser it drops. */
 const USER_AGENT_MAX_LENGTH = 255;
@@ -46,10 +38,7 @@ function userIdOf(req: Request): number {
  * answer without a session, and `/session` answers 401 either way: it exists so
  * the frontend can tell "signed out" from "no users have been created yet".
  */
-export function createAuthRouter(
-  authService: AuthService,
-  requireSession: RequestHandler,
-): Router {
+export function createAuthRouter(authService: AuthService, requireSession: RequestHandler): Router {
   const router = Router();
 
   router.post(
@@ -85,8 +74,7 @@ export function createAuthRouter(
       }
 
       if (token) clearSessionCookie(req, res);
-      const error =
-        (await authService.countUsers()) === 0 ? 'no_users' : 'not_signed_in';
+      const error = (await authService.countUsers()) === 0 ? 'no_users' : 'not_signed_in';
       res.status(401).json({ error });
     }),
   );
@@ -107,11 +95,7 @@ export function createAuthRouter(
     validateBody(changePasswordSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as ChangePasswordBody;
-      await authService.changePassword(
-        signedInSession(req),
-        body.current,
-        body.next,
-      );
+      await authService.changePassword(signedInSession(req), body.current, body.next);
       res.status(204).end();
     }),
   );

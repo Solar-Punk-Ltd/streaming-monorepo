@@ -10,13 +10,7 @@ export interface Segment {
   color: string;
 }
 
-export function UsageBar({
-  segments,
-  height = 12,
-}: {
-  segments: Segment[];
-  height?: number;
-}) {
+export function UsageBar({ segments, height = 12 }: { segments: Segment[]; height?: number }) {
   return (
     <Box
       sx={{

@@ -50,7 +50,7 @@ export const IMPORTERS = {
       zod:
         specifier: 4.0.0
         version: 4.0.0`,
-  tools: `  tools/move-check: {}`,
+  tools: `  tools/app-workspace: {}`,
 };
 
 export const PACKAGES = {
@@ -151,7 +151,14 @@ export const OVERRIDES = `overrides:
   qs: ^6.16.0`;
 
 /** A lockfile as pnpm writes one: top-level sections apart by a blank line, and so is every entry of a keyed one. */
-export function lockfileText({ version = `'9.0'`, settings = SETTINGS.plain, extra = [OVERRIDES], importers, packages, snapshots }) {
+export function lockfileText({
+  version = `'9.0'`,
+  settings = SETTINGS.plain,
+  extra = [OVERRIDES],
+  importers,
+  packages,
+  snapshots,
+}) {
   const keyed = (name, entries) => `${name}:\n\n${entries.join('\n\n')}`;
   return `${[
     `lockfileVersion: ${version}`,
@@ -197,6 +204,45 @@ overrides:
 saveExact: true
 `;
 
+/**
+ * The document pnpm 12 writes above the lockfile proper, recording the pnpm the workspace runs and its binaries, as
+ * pnpm 12.4.1 writes it, cut to one binary.
+ */
+export const PACKAGE_MANAGER_DOCUMENT = `---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    configDependencies: {}
+    packageManagerDependencies:
+      pnpm:
+        specifier: 12.4.1
+        version: 12.4.1
+
+packages:
+
+  '@pnpm/exe.linux-x64@12.4.1':
+    resolution: {integrity: sha512-0000}
+    cpu: [x64]
+    os: [linux]
+
+  pnpm@12.4.1:
+    resolution: {integrity: sha512-1111}
+    hasBin: true
+
+snapshots:
+
+  '@pnpm/exe.linux-x64@12.4.1':
+    optional: true
+
+  pnpm@12.4.1:
+    optionalDependencies:
+      '@pnpm/exe.linux-x64': 12.4.1
+
+---
+`;
+
 export const PACKAGE_MANAGER = 'pnpm@11.11.0+sha512.0000';
 
 /** A package.json naming `packageManager`, or naming none when it is undefined. */
@@ -229,7 +275,9 @@ export function asRealApps(text) {
 
 /** The two-app workspace with its apps at `apps/infra-manager` and `apps/web2-admin`. */
 export function realAppFiles() {
-  return Object.fromEntries(Object.entries(workspaceFiles()).map(([path, text]) => [asRealApps(path), asRealApps(text)]));
+  return Object.fromEntries(
+    Object.entries(workspaceFiles()).map(([path, text]) => [asRealApps(path), asRealApps(text)]),
+  );
 }
 
 /** What the tool writes for one of the real-named apps, computed by the library its scripts run. */

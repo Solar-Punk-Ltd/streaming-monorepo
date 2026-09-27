@@ -51,12 +51,7 @@ describe('the shipped ladder', () => {
 describe('member naming', () => {
   it('puts the rung in the name', () => {
     assert.equal(ladderMemberName('abr1', '360p'), 'abr1-360p');
-    assert.deepEqual(ladderMemberNames('abr1'), [
-      'abr1-360p',
-      'abr1-480p',
-      'abr1-720p',
-      'abr1-1080p',
-    ]);
+    assert.deepEqual(ladderMemberNames('abr1'), ['abr1-360p', 'abr1-480p', 'abr1-720p', 'abr1-1080p']);
   });
 
   it('round-trips the rung back out', () => {
@@ -82,18 +77,13 @@ describe('member naming', () => {
   it('produces names the profile-name constraint accepts, at max group length', () => {
     const longest = 'a'.repeat(LADDER_GROUP_NAME_MAX);
     for (const name of ladderMemberNames(longest)) {
-      assert.ok(
-        PROFILE_NAME_RE.test(name),
-        `"${name}" (${name.length} chars) violates the profile name constraint`,
-      );
+      assert.ok(PROFILE_NAME_RE.test(name), `"${name}" (${name.length} chars) violates the profile name constraint`);
     }
   });
 
   it('would overflow one character beyond the cap — the bound is tight', () => {
     const tooLong = 'a'.repeat(LADDER_GROUP_NAME_MAX + 1);
-    const overflowing = ladderMemberNames(tooLong).filter(
-      (name) => !PROFILE_NAME_RE.test(name),
-    );
+    const overflowing = ladderMemberNames(tooLong).filter((name) => !PROFILE_NAME_RE.test(name));
     assert.ok(overflowing.length > 0, 'expected the longest rung to overflow');
   });
 });
@@ -138,17 +128,11 @@ describe('BEE_PUBLISHERS assembly', () => {
   const batch = 'a'.repeat(64);
 
   it('brackets the batch rather than prefixing it with #', () => {
-    assert.equal(
-      beePublisherEntry('360p', 'http://host:10015', batch),
-      `360p@http://host:10015<${batch}>`,
-    );
+    assert.equal(beePublisherEntry('360p', 'http://host:10015', batch), `360p@http://host:10015<${batch}>`);
   });
 
   it('strips a 0x prefix — bee wants raw hex', () => {
-    assert.equal(
-      beePublisherEntry('360p', 'http://host:10015', `0x${batch}`),
-      `360p@http://host:10015<${batch}>`,
-    );
+    assert.equal(beePublisherEntry('360p', 'http://host:10015', `0x${batch}`), `360p@http://host:10015<${batch}>`);
   });
 
   it('joins entries with a single space, in the order given', () => {
@@ -202,22 +186,16 @@ describe('assembleBeePublishers', () => {
   });
 
   it('refuses a partial string when a rung has no batch', () => {
-    const result = assembleBeePublishers(
-      full().map((r) => (r.rung === '720p' ? { ...r, stampId: null } : r)),
-    );
+    const result = assembleBeePublishers(full().map((r) => (r.rung === '720p' ? { ...r, stampId: null } : r)));
     assert.equal(result.ready, false);
     assert.equal(result.value, null);
-    assert.deepEqual(result.missing, [
-      { rung: '720p', reason: 'no postage batch set on this rung yet' },
-    ]);
+    assert.deepEqual(result.missing, [{ rung: '720p', reason: 'no postage batch set on this rung yet' }]);
   });
 
   it('names a rung that has no member at all', () => {
     const result = assembleBeePublishers(full().filter((r) => r.rung !== '1080p'));
     assert.equal(result.ready, false);
-    assert.deepEqual(result.missing, [
-      { rung: '1080p', reason: 'no member deployed for this rung' },
-    ]);
+    assert.deepEqual(result.missing, [{ rung: '1080p', reason: 'no member deployed for this rung' }]);
   });
 
   it('reports every unready rung, not just the first', () => {
@@ -233,9 +211,7 @@ describe('assembleBeePublishers', () => {
   });
 
   it('carries each rung its own batch, never a shared one', () => {
-    const distinct = DEFAULT_ABR_RUNGS.map((r, i) =>
-      rung(r, { stampId: batch(String(i)) }),
-    );
+    const distinct = DEFAULT_ABR_RUNGS.map((r, i) => rung(r, { stampId: batch(String(i)) }));
     const result = assembleBeePublishers(distinct);
     const ids = result.value!.split(' ').map((e) => e.slice(e.lastIndexOf('<') + 1, -1));
     assert.equal(new Set(ids).size, ABR_LADDER_SIZE);
@@ -264,9 +240,7 @@ describe('assembleBeePublishers — live batch state', () => {
   // The reported bug: four recorded ids, four dead batches, and a value that
   // looked complete while every upload failed.
   it('refuses the string when every rung’s batch has expired', () => {
-    const result = assembleBeePublishers(
-      full().map((r) => ({ ...r, stampState: 'expired' as const })),
-    );
+    const result = assembleBeePublishers(full().map((r) => ({ ...r, stampState: 'expired' as const })));
     assert.equal(result.ready, false);
     assert.equal(result.value, null);
     assert.equal(result.missing.length, ABR_LADDER_SIZE);
@@ -288,7 +262,10 @@ describe('assembleBeePublishers — live batch state', () => {
       full().map((r) => (r.rung === '360p' ? { ...r, stampState: 'gone' as const } : r)),
     );
     assert.equal(result.ready, false);
-    assert.deepEqual(result.missing.map((m) => m.rung), ['360p']);
+    assert.deepEqual(
+      result.missing.map((m) => m.rung),
+      ['360p'],
+    );
   });
 
   it('refuses a batch bee has not settled yet', () => {
@@ -296,32 +273,31 @@ describe('assembleBeePublishers — live batch state', () => {
       full().map((r) => (r.rung === '480p' ? { ...r, stampState: 'pending' as const } : r)),
     );
     assert.equal(result.ready, false);
-    assert.deepEqual(result.missing.map((m) => m.rung), ['480p']);
+    assert.deepEqual(
+      result.missing.map((m) => m.rung),
+      ['480p'],
+    );
   });
 
   // A node being unreachable is not evidence that its batch is dead: the operator
   // still gets a value to paste, and the UI says it could not be verified.
   it('stays ready when a rung’s batch could not be verified', () => {
-    const result = assembleBeePublishers(
-      full().map((r) => ({ ...r, stampState: 'unknown' as const })),
-    );
+    const result = assembleBeePublishers(full().map((r) => ({ ...r, stampState: 'unknown' as const })));
     assert.equal(result.ready, true);
     assert.equal(result.missing.length, 0);
   });
 
   it('stays ready for callers that supply no live state at all', () => {
-    const result = assembleBeePublishers(
-      full().map(({ stampState: _drop, ...rest }) => rest),
-    );
+    const result = assembleBeePublishers(full().map(({ stampState: _drop, ...rest }) => rest));
     assert.equal(result.ready, true);
   });
 
   it('reports a missing member ahead of an expired batch on another rung', () => {
-    const result = assembleBeePublishers([
-      rung('360p', { stampState: 'expired' as const }),
-      rung('480p'),
-    ]);
-    assert.deepEqual(result.missing.map((m) => m.rung), ['360p', '720p', '1080p']);
+    const result = assembleBeePublishers([rung('360p', { stampState: 'expired' as const }), rung('480p')]);
+    assert.deepEqual(
+      result.missing.map((m) => m.rung),
+      ['360p', '720p', '1080p'],
+    );
   });
 
   // The tester's pool on 2026-09-24: the 1080p rung's immutable batch was full,
@@ -329,14 +305,15 @@ describe('assembleBeePublishers — live batch state', () => {
   it('refuses the string when one rung’s immutable batch is full', () => {
     const result = assembleBeePublishers(
       full().map((r) =>
-        (r.rung === '1080p'
-          ? { ...r, stampState: 'full' as const, stampFillRatio: 1, stampImmutable: true }
-          : r),
+        r.rung === '1080p' ? { ...r, stampState: 'full' as const, stampFillRatio: 1, stampImmutable: true } : r,
       ),
     );
     assert.equal(result.ready, false);
     assert.equal(result.value, null);
-    assert.deepEqual(result.missing.map((m) => m.rung), ['1080p']);
+    assert.deepEqual(
+      result.missing.map((m) => m.rung),
+      ['1080p'],
+    );
     assert.match(result.missing[0]!.reason, /full/);
     assert.match(result.missing[0]!.reason, /Dilute it or buy a new one/);
     assert.equal(result.warnings.length, 0);
@@ -374,9 +351,7 @@ describe('assembleBeePublishers — rung address and status', () => {
   // The Uploaders tab showed no status at all, so a stopped rung looked exactly
   // like a running one, and its address answers nothing.
   it('refuses a rung that is not running, and says which state it is in', () => {
-    const result = assembleBeePublishers(
-      full().map((r) => (r.rung === '720p' ? { ...r, status: 'STOPPED' } : r)),
-    );
+    const result = assembleBeePublishers(full().map((r) => (r.rung === '720p' ? { ...r, status: 'STOPPED' } : r)));
     assert.equal(result.ready, false);
     assert.equal(result.value, null);
     assert.equal(result.missing.length, 1);
@@ -386,9 +361,7 @@ describe('assembleBeePublishers — rung address and status', () => {
 
   it('refuses every non-running status, transitional ones included', () => {
     for (const status of ['STOPPED', 'ERROR', 'DEPLOYING', 'STOPPING', 'REMOVING']) {
-      const result = assembleBeePublishers(
-        full().map((r) => (r.rung === '360p' ? { ...r, status } : r)),
-      );
+      const result = assembleBeePublishers(full().map((r) => (r.rung === '360p' ? { ...r, status } : r)));
       assert.equal(result.ready, false, status);
     }
   });
@@ -396,9 +369,7 @@ describe('assembleBeePublishers — rung address and status', () => {
   // BEE_LOCAL_HOST=127.0.0.1, or a native manager: the value assembles and works
   // nowhere but this machine.
   it('refuses a loopback address', () => {
-    const result = assembleBeePublishers(
-      full().map((r) => ({ ...r, urlState: 'loopback' as const })),
-    );
+    const result = assembleBeePublishers(full().map((r) => ({ ...r, urlState: 'loopback' as const })));
     assert.equal(result.ready, false);
     assert.equal(result.missing.length, ABR_LADDER_SIZE);
     assert.ok(result.missing.every((m) => m.reason.includes('BEE_LOCAL_HOST')));
@@ -409,7 +380,10 @@ describe('assembleBeePublishers — rung address and status', () => {
       full().map((r) => (r.rung === '480p' ? { ...r, urlState: 'ssh-target' as const } : r)),
     );
     assert.equal(result.ready, false);
-    assert.deepEqual(result.missing.map((m) => m.rung), ['480p']);
+    assert.deepEqual(
+      result.missing.map((m) => m.rung),
+      ['480p'],
+    );
   });
 
   it('reports a stopped rung ahead of its address and its batch', () => {
@@ -427,9 +401,7 @@ describe('assembleBeePublishers — rung address and status', () => {
   it('reports an unusable address ahead of the batch behind it', () => {
     const result = assembleBeePublishers(
       full().map((r) =>
-        r.rung === '1080p'
-          ? { ...r, urlState: 'loopback' as const, stampState: 'expired' as const }
-          : r,
+        r.rung === '1080p' ? { ...r, urlState: 'loopback' as const, stampState: 'expired' as const } : r,
       ),
     );
     assert.equal(result.missing.length, 1);
@@ -443,44 +415,45 @@ describe('assembleBeePublishers — rung address and status', () => {
     // Could be hairpinning. Evidence, not proof.
     assert.equal(result.ready, true);
     assert.ok(result.value);
-    assert.deepEqual(result.warnings.map((w) => w.rung), ['360p']);
+    assert.deepEqual(
+      result.warnings.map((w) => w.rung),
+      ['360p'],
+    );
   });
 
   it('warns without withholding when a batch could not be verified', () => {
-    const result = assembleBeePublishers(
-      full().map((r) => ({ ...r, stampState: 'unknown' as const })),
-    );
+    const result = assembleBeePublishers(full().map((r) => ({ ...r, stampState: 'unknown' as const })));
     assert.equal(result.ready, true);
     assert.equal(result.warnings.length, ABR_LADDER_SIZE);
   });
 
   it('warns while a batch is still alive but nearly spent', () => {
-    const result = assembleBeePublishers(
-      full().map((r) => (r.rung === '1080p' ? { ...r, stampTtl: 6 * 3_600 } : r)),
-    );
+    const result = assembleBeePublishers(full().map((r) => (r.rung === '1080p' ? { ...r, stampTtl: 6 * 3_600 } : r)));
     assert.equal(result.ready, true);
-    assert.deepEqual(result.warnings.map((w) => w.rung), ['1080p']);
+    assert.deepEqual(
+      result.warnings.map((w) => w.rung),
+      ['1080p'],
+    );
     assert.ok(result.warnings[0]!.reason.includes('6h'));
   });
 
   it('warns while an immutable batch is past the uploader’s start ceiling but not yet full', () => {
     const result = assembleBeePublishers(
-      full().map((r) =>
-        (r.rung === '1080p' ? { ...r, stampFillRatio: 0.95, stampImmutable: true } : r),
-      ),
+      full().map((r) => (r.rung === '1080p' ? { ...r, stampFillRatio: 0.95, stampImmutable: true } : r)),
     );
     assert.equal(result.ready, true);
     assert.ok(result.value);
-    assert.deepEqual(result.warnings.map((w) => w.rung), ['1080p']);
+    assert.deepEqual(
+      result.warnings.map((w) => w.rung),
+      ['1080p'],
+    );
     assert.match(result.warnings[0]!.reason, /95% full/);
     assert.match(result.warnings[0]!.reason, /Dilute it or buy the next one$/);
     assert.doesNotMatch(result.warnings[0]!.reason, /[—;]/);
   });
 
   it('warns about a mutable batch past the ceiling in its own words, still offering the string', () => {
-    const result = assembleBeePublishers(
-      full().map((r) => ({ ...r, stampFillRatio: 0.95, stampImmutable: false })),
-    );
+    const result = assembleBeePublishers(full().map((r) => ({ ...r, stampFillRatio: 0.95, stampImmutable: false })));
     assert.equal(result.ready, true);
     assert.equal(result.warnings.length, 4);
     assert.match(result.warnings[0]!.reason, /overwrites its oldest chunks/);
@@ -489,9 +462,7 @@ describe('assembleBeePublishers — rung address and status', () => {
   });
 
   it('does not warn about a batch with plenty of life left', () => {
-    const result = assembleBeePublishers(
-      full().map((r) => ({ ...r, stampTtl: 30 * 24 * 3_600 })),
-    );
+    const result = assembleBeePublishers(full().map((r) => ({ ...r, stampTtl: 30 * 24 * 3_600 })));
     assert.equal(result.warnings.length, 0);
   });
 
@@ -499,21 +470,20 @@ describe('assembleBeePublishers — rung address and status', () => {
     // One complaint per rung: the blocking one, which is the actionable one.
     const result = assembleBeePublishers(
       full().map((r) =>
-        r.rung === '360p'
-          ? { ...r, status: 'STOPPED', urlState: 'unreachable' as const, stampTtl: 60 }
-          : r,
+        r.rung === '360p' ? { ...r, status: 'STOPPED', urlState: 'unreachable' as const, stampTtl: 60 } : r,
       ),
     );
-    assert.deepEqual(result.missing.map((m) => m.rung), ['360p']);
+    assert.deepEqual(
+      result.missing.map((m) => m.rung),
+      ['360p'],
+    );
     assert.equal(result.warnings.length, 0);
   });
 
   it('collects several warnings on one rung', () => {
     const result = assembleBeePublishers(
       full().map((r) =>
-        r.rung === '480p'
-          ? { ...r, urlState: 'unreachable' as const, stampState: 'unknown' as const }
-          : r,
+        r.rung === '480p' ? { ...r, urlState: 'unreachable' as const, stampState: 'unknown' as const } : r,
       ),
     );
     assert.equal(result.ready, true);
@@ -521,9 +491,7 @@ describe('assembleBeePublishers — rung address and status', () => {
   });
 
   it('stays ready for callers that supply neither address state nor TTL', () => {
-    const result = assembleBeePublishers(
-      full().map(({ urlState: _u, stampTtl: _t, ...rest }) => rest),
-    );
+    const result = assembleBeePublishers(full().map(({ urlState: _u, stampTtl: _t, ...rest }) => rest));
     assert.equal(result.ready, true);
   });
 });
@@ -616,21 +584,18 @@ describe('a pasted BEE_PUBLISHERS', () => {
   });
 
   it('writes ABR_LADDER exactly as the engine sample does, highest rung first', () => {
-    assert.equal(
-      abrLadderEnvValue(),
-      '1080p:1920:1080:5000 720p:1280:720:2800 480p:854:480:1200 360p:640:360:700',
-    );
+    assert.equal(abrLadderEnvValue(), '1080p:1920:1080:5000 720p:1280:720:2800 480p:854:480:1200 360p:640:360:700');
     // Every rung the publishers must cover is in it, and nothing else.
-    const names = abrLadderEnvValue().split(' ').map((r) => r.split(':')[0]);
+    const names = abrLadderEnvValue()
+      .split(' ')
+      .map((r) => r.split(':')[0]);
     assert.deepEqual([...names].sort(), [...DEFAULT_ABR_RUNGS].sort());
   });
 });
 
 describe('normalizeBeePublishers', () => {
   const batch = (rung: string) => rung.replace(/\D/g, '').padEnd(64, '0');
-  const entries = DEFAULT_ABR_RUNGS.map(
-    (rung, i) => `${rung}@http://192.0.2.58:${10015 + i * 10}<${batch(rung)}>`,
-  );
+  const entries = DEFAULT_ABR_RUNGS.map((rung, i) => `${rung}@http://192.0.2.58:${10015 + i * 10}<${batch(rung)}>`);
   const canonical = entries.join(' ');
 
   it('collapses a newline-separated paste to single spaces', () => {
@@ -653,8 +618,7 @@ describe('normalizeBeePublishers', () => {
     // got 66`. Every other batch-id write path in the manager strips it, and
     // stamp_id is routinely 0x-prefixed, so this form is easy to hand-assemble.
     const prefixed = DEFAULT_ABR_RUNGS.map(
-      (rung, i) =>
-        `${rung}@http://192.0.2.58:${10015 + i * 10}<0x${batch(rung).toUpperCase()}>`,
+      (rung, i) => `${rung}@http://192.0.2.58:${10015 + i * 10}<0x${batch(rung).toUpperCase()}>`,
     ).join(' ');
     assert.equal(normalizeBeePublishers(prefixed), canonical);
   });

@@ -1,13 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import {
-  Alert,
-  Button,
-  Checkbox,
-  FormControlLabel,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Alert, Button, Checkbox, FormControlLabel, Stack, TextField, Typography } from '@mui/material';
 
 import { getErrorMessage } from '@streaming-infra-manager/common';
 
@@ -29,9 +21,9 @@ export function AddUserCard({ onAdded }: { onAdded: () => Promise<void> }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  const set = (field: keyof typeof EMPTY, value: string) =>
-    setForm((prev) => ({ ...prev, [field]: value }));
+  const set = (field: keyof typeof EMPTY, value: string) => setForm((prev) => ({ ...prev, [field]: value }));
 
+  // Catches every failure into the form's error line, so the form calls it without awaiting.
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (pending) return;
@@ -56,15 +48,18 @@ export function AddUserCard({ onAdded }: { onAdded: () => Promise<void> }) {
     }
   };
 
-  const complete =
-    form.username.trim() !== '' && form.password !== '' && form.again !== '';
+  const complete = form.username.trim() !== '' && form.password !== '' && form.again !== '';
 
   return (
     <SectionCard title="Add user">
-      <Stack spacing={2} component="form" onSubmit={submit}>
-        <Typography variant="body2" color="text.secondary">
-          Type a starting password, tell it to them in person, and ask them to
-          change it here once they are in.
+      <Stack spacing={2} component="form" onSubmit={(event) => void submit(event)}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
+          Type a starting password, tell it to them in person, and ask them to change it here once they are in.
         </Typography>
 
         <TextField
@@ -107,19 +102,18 @@ export function AddUserCard({ onAdded }: { onAdded: () => Promise<void> }) {
         />
 
         <FormControlLabel
-          control={
-            <Checkbox
-              checked={admin}
-              onChange={(event) => setAdmin(event.target.checked)}
-              disabled={pending}
-            />
-          }
+          control={<Checkbox checked={admin} onChange={(event) => setAdmin(event.target.checked)} disabled={pending} />}
           label="Can manage users: add and remove them, sign anyone out"
         />
 
         {error && <Alert severity="error">{error}</Alert>}
 
-        <Stack direction="row" justifyContent="flex-end">
+        <Stack
+          direction="row"
+          sx={{
+            justifyContent: 'flex-end',
+          }}
+        >
           <Button type="submit" variant="contained" disabled={pending || !complete}>
             {pending ? 'Adding' : 'Add user'}
           </Button>

@@ -40,9 +40,7 @@
     {
       "branch": "fix/t01a-restart-count",
       "head": "115b1944085ae759d3d757a52d132f482022693b",
-      "containedBy": [
-        "fix/t01-config-ownership"
-      ]
+      "containedBy": ["fix/t01-config-ownership"]
     },
     {
       "branch": "fix/t02-srs-check-isolation",
@@ -52,18 +50,12 @@
     {
       "branch": "fix/t03-ome-xml",
       "head": "be10c3b2aeb95f3f43e50fb6aa949cdb32c4df84",
-      "containedBy": [
-        "fix/t11-effective-settings"
-      ]
+      "containedBy": ["fix/t11-effective-settings"]
     },
     {
       "branch": "fix/t04a-immutable-builds",
       "head": "c55c9d93b17b75619b239104099de28cdfff2a43",
-      "containedBy": [
-        "fix/t01-config-ownership",
-        "fix/t04b-bundled-builds",
-        "fix/t11-effective-settings"
-      ]
+      "containedBy": ["fix/t01-config-ownership", "fix/t04b-bundled-builds", "fix/t11-effective-settings"]
     },
     {
       "branch": "fix/t04b-bundled-builds",
@@ -113,17 +105,12 @@
     {
       "branch": "fix/t08-tested-approval",
       "head": "347c7dd61cc26c00f9f41af00da50455b0d3c8fd",
-      "containedBy": [
-        "codex/t15-pool-prerequisites",
-        "codex/t18-narrow-layouts"
-      ]
+      "containedBy": ["codex/t15-pool-prerequisites", "codex/t18-narrow-layouts"]
     },
     {
       "branch": "fix/t10-integration-client",
       "head": "284790c96547a0a3d6f75e4d120d676257874fc0",
-      "containedBy": [
-        "fix/t01-config-ownership"
-      ]
+      "containedBy": ["fix/t01-config-ownership"]
     },
     {
       "branch": "fix/t11-effective-settings",

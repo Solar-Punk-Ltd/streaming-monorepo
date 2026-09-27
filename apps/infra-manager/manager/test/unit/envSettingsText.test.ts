@@ -16,11 +16,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
-import {
-  envAssignmentsOf,
-  rewriteEnvText,
-  sampleSettingsOf,
-} from '../../src/domain/versions/envSettingsText.js';
+import { envAssignmentsOf, rewriteEnvText, sampleSettingsOf } from '../../src/domain/versions/envSettingsText.js';
 import { V3_FIXTURE } from '../support/stackFixtures.js';
 
 const SAMPLE = [
@@ -82,14 +78,15 @@ describe('sampleSettingsOf', () => {
       ['# What HLS_FRAGMENT is.', '# HLS_FRAGMENT=0.5', '# What this one is.', 'HLS_WINDOW=15'].join('\n'),
     );
 
-    assert.deepEqual(settings.map((setting) => setting.key), ['HLS_WINDOW']);
+    assert.deepEqual(
+      settings.map((setting) => setting.key),
+      ['HLS_WINDOW'],
+    );
     assert.equal(settings[0]?.description, 'What this one is.');
   });
 
   it('keeps a commented out assignment of the key itself, which is its example', () => {
-    const settings = sampleSettingsOf(
-      ['# What it is.', '# HLS_WINDOW=15', 'HLS_WINDOW='].join('\n'),
-    );
+    const settings = sampleSettingsOf(['# What it is.', '# HLS_WINDOW=15', 'HLS_WINDOW='].join('\n'));
 
     assert.equal(settings[0]?.description, 'What it is. HLS_WINDOW=15');
   });
@@ -110,9 +107,7 @@ describe('sampleSettingsOf', () => {
   });
 
   it('drops a section rule, so a description opens with a sentence', () => {
-    const settings = sampleSettingsOf(
-      ['# --- Logging ------------', '# What it is.', 'LOG_LEVEL=debug'].join('\n'),
-    );
+    const settings = sampleSettingsOf(['# --- Logging ------------', '# What it is.', 'LOG_LEVEL=debug'].join('\n'));
 
     assert.equal(settings[0]?.description, 'What it is.');
   });
@@ -120,9 +115,7 @@ describe('sampleSettingsOf', () => {
   it('reads a sample whose lines end with a carriage return', () => {
     const settings = sampleSettingsOf('# What it is.\r\nAPI_PORT=3000\r\n');
 
-    assert.deepEqual(settings, [
-      { key: 'API_PORT', value: '3000', description: 'What it is.' },
-    ]);
+    assert.deepEqual(settings, [{ key: 'API_PORT', value: '3000', description: 'What it is.' }]);
   });
 });
 
@@ -132,18 +125,24 @@ describe('envAssignmentsOf', () => {
       ['# a comment', '', 'API_PORT=3000', 'export ENGINE=srs', '  SPACED = yes '].join('\n'),
     );
 
-    assert.deepEqual([...assignments], [
-      ['API_PORT', '3000'],
-      ['ENGINE', 'srs'],
-      ['SPACED', ' yes '],
-    ]);
+    assert.deepEqual(
+      [...assignments],
+      [
+        ['API_PORT', '3000'],
+        ['ENGINE', 'srs'],
+        ['SPACED', ' yes '],
+      ],
+    );
   });
 
   it('keeps the last assignment of a repeated key, where the reader ends up', () => {
-    assert.deepEqual([...envAssignmentsOf('A=first\nB=2\nA=last\n')], [
-      ['A', 'last'],
-      ['B', '2'],
-    ]);
+    assert.deepEqual(
+      [...envAssignmentsOf('A=first\nB=2\nA=last\n')],
+      [
+        ['A', 'last'],
+        ['B', '2'],
+      ],
+    );
   });
 });
 
@@ -160,9 +159,7 @@ const LIVE = [
 
 describe('rewriteEnvText', () => {
   it('replaces one value and leaves every other byte where it was', () => {
-    const rewritten = rewriteEnvText(LIVE, [
-      { key: 'API_AUTH_TOKEN', value: 'new-token' },
-    ]);
+    const rewritten = rewriteEnvText(LIVE, [{ key: 'API_AUTH_TOKEN', value: 'new-token' }]);
 
     assert.equal(
       rewritten,
@@ -194,17 +191,11 @@ describe('rewriteEnvText', () => {
   });
 
   it('keeps a carriage return at the end of the line it rewrites', () => {
-    assert.equal(
-      rewriteEnvText(LIVE, [{ key: 'CRLF_KEY', value: 'new' }]).split('\n')[5],
-      'CRLF_KEY=new\r',
-    );
+    assert.equal(rewriteEnvText(LIVE, [{ key: 'CRLF_KEY', value: 'new' }]).split('\n')[5], 'CRLF_KEY=new\r');
   });
 
   it('appends a key the file does not assign yet', () => {
-    assert.equal(
-      rewriteEnvText('A=1\n', [{ key: 'B', value: '2' }]),
-      'A=1\nB=2\n',
-    );
+    assert.equal(rewriteEnvText('A=1\n', [{ key: 'B', value: '2' }]), 'A=1\nB=2\n');
   });
 
   it('separates an appended key from a file whose last line is unterminated', () => {
@@ -223,10 +214,7 @@ describe('rewriteEnvText', () => {
   });
 
   it('gives every line assigning a repeated key the value the operator typed', () => {
-    assert.equal(
-      rewriteEnvText('A=first\nB=2\nA=last\n', [{ key: 'A', value: 'one' }]),
-      'A=one\nB=2\nA=one\n',
-    );
+    assert.equal(rewriteEnvText('A=first\nB=2\nA=last\n', [{ key: 'A', value: 'one' }]), 'A=one\nB=2\nA=one\n');
   });
 
   it('returns the text unchanged when it is asked for nothing', () => {

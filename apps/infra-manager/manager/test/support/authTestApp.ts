@@ -1,19 +1,12 @@
 import http from 'node:http';
 
-import {
-  REQUESTED_WITH_HEADER,
-  REQUESTED_WITH_VALUE,
-  SESSION_COOKIE_NAME,
-} from '@streaming-infra-manager/common';
+import { REQUESTED_WITH_HEADER, REQUESTED_WITH_VALUE, SESSION_COOKIE_NAME } from '@streaming-infra-manager/common';
 import express from 'express';
 
 import { errorHandler } from '../../src/api/middleware/errorHandler.js';
 import { notFound } from '../../src/api/middleware/notFound.js';
 import { requireSameSite } from '../../src/api/middleware/requireSameSite.js';
-import {
-  createRequireSession,
-  signedInUser,
-} from '../../src/api/middleware/requireSession.js';
+import { createRequireSession, signedInUser } from '../../src/api/middleware/requireSession.js';
 import { createAuthRouter } from '../../src/api/routes/auth.js';
 import { createEventsRouter } from '../../src/api/routes/events.js';
 import { AuthService } from '../../src/domain/auth/AuthService.js';
@@ -43,9 +36,7 @@ export interface AuthTestApp {
   close(): Promise<void>;
 }
 
-export async function startAuthTestApp(
-  limiter?: LoginLimiter,
-): Promise<AuthTestApp> {
+export async function startAuthTestApp(limiter?: LoginLimiter): Promise<AuthTestApp> {
   const users = new InMemoryUserRepository();
   const sessions = new InMemorySessionRepository(users);
   const openStreams = new OpenStreams();
@@ -156,9 +147,7 @@ export async function call(
 
 /** The `sim_session=<token>` pair from a Set-Cookie list, or null. */
 export function sessionCookieFrom(setCookie: string[]): string | null {
-  const header = setCookie.find((value) =>
-    value.startsWith(`${SESSION_COOKIE_NAME}=`),
-  );
+  const header = setCookie.find((value) => value.startsWith(`${SESSION_COOKIE_NAME}=`));
   const pair = header?.split(';')[0];
   return pair && !pair.endsWith('=') ? pair : null;
 }
@@ -191,10 +180,7 @@ export interface EventStream {
  * stream is still running, and every wait carries a deadline so a stream that
  * never ends fails its test instead of hanging the suite.
  */
-export async function openEventStream(
-  app: AuthTestApp,
-  cookie: string,
-): Promise<EventStream> {
+export async function openEventStream(app: AuthTestApp, cookie: string): Promise<EventStream> {
   const hangUp = new AbortController();
   const res = await fetch(`${app.url}/events`, {
     headers: {
@@ -230,13 +216,7 @@ export async function openEventStream(
         await Promise.race([
           drained,
           new Promise<never>((_resolve, reject) => {
-            deadline = setTimeout(
-              () =>
-                reject(
-                  new Error(`the stream was still open after ${timeoutMs}ms`),
-                ),
-              timeoutMs,
-            );
+            deadline = setTimeout(() => reject(new Error(`the stream was still open after ${timeoutMs}ms`)), timeoutMs);
           }),
         ]);
       } finally {
@@ -247,18 +227,12 @@ export async function openEventStream(
 }
 
 /** Signs in over HTTP and hands back the cookie the browser would keep. */
-export async function signIn(
-  app: AuthTestApp,
-  username: string,
-  password: string,
-): Promise<SignedIn> {
+export async function signIn(app: AuthTestApp, username: string, password: string): Promise<SignedIn> {
   const res = await call(app, 'POST', '/auth/login', {
     body: { username, password },
   });
   if (res.status !== 204) {
-    throw new Error(
-      `sign-in failed with ${res.status}: ${JSON.stringify(res.body)}`,
-    );
+    throw new Error(`sign-in failed with ${res.status}: ${JSON.stringify(res.body)}`);
   }
 
   const cookie = sessionCookieFrom(res.setCookie);

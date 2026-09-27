@@ -32,12 +32,7 @@ function printedBy(failing: () => void): string {
     failing();
   } catch (error) {
     if (!(error instanceof AssertionError)) throw error;
-    return [
-      error.message,
-      inspect(error.actual),
-      inspect(error.expected),
-      String(error.operator),
-    ].join('\n');
+    return [error.message, inspect(error.actual), inspect(error.expected), String(error.operator)].join('\n');
   }
   throw new Error('the assertion passed, so there is nothing it would have printed');
 }

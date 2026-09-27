@@ -1,6 +1,16 @@
 import { ChainEvidenceError } from '../errors/ChainEvidenceError.js';
 import { ChainReadError } from '../errors/ChainReadError.js';
-import { chainAddress, chainHash, chainIdFromQuantity, chainObject, chainQuantity, parseChainReceipt, parseChainTransaction, type ChainReceipt, type ChainTransaction } from './chainEvidence.js';
+import {
+  chainAddress,
+  chainHash,
+  chainIdFromQuantity,
+  chainObject,
+  chainQuantity,
+  parseChainReceipt,
+  parseChainTransaction,
+  type ChainReceipt,
+  type ChainTransaction,
+} from './chainEvidence.js';
 
 export interface ChainBlockHeader {
   readonly number: string;
@@ -17,7 +27,13 @@ interface ChainRpcOptions {
   maxResponseBytes?: number;
 }
 
-type ReadMethod = 'eth_chainId' | 'eth_getTransactionCount' | 'eth_getTransactionByHash' | 'eth_getTransactionReceipt' | 'eth_getBlockByNumber' | 'eth_getBlockTransactionCountByHash';
+type ReadMethod =
+  | 'eth_chainId'
+  | 'eth_getTransactionCount'
+  | 'eth_getTransactionByHash'
+  | 'eth_getTransactionReceipt'
+  | 'eth_getBlockByNumber'
+  | 'eth_getBlockTransactionCountByHash';
 
 type BlockReference = bigint | 'latest' | 'finalized';
 
@@ -52,8 +68,15 @@ export class ChainRpc {
     this.#endpoint = endpoint;
     this.#timeoutMs = options.timeoutMs ?? 5000;
     this.#maxResponseBytes = options.maxResponseBytes ?? 2 * 1024 * 1024;
-    if (!Number.isInteger(this.#timeoutMs) || this.#timeoutMs < 1 || this.#timeoutMs > 60_000 ||
-        !Number.isInteger(this.#maxResponseBytes) || this.#maxResponseBytes < 1 || this.#maxResponseBytes > 16 * 1024 * 1024) throw new ChainReadError();
+    if (
+      !Number.isInteger(this.#timeoutMs) ||
+      this.#timeoutMs < 1 ||
+      this.#timeoutMs > 60_000 ||
+      !Number.isInteger(this.#maxResponseBytes) ||
+      this.#maxResponseBytes < 1 ||
+      this.#maxResponseBytes > 16 * 1024 * 1024
+    )
+      throw new ChainReadError();
   }
 
   async chainId(signal?: AbortSignal): Promise<number> {
@@ -61,7 +84,9 @@ export class ChainRpc {
   }
 
   async transactionCount(address: string, block: bigint, signal?: AbortSignal): Promise<string> {
-    return chainQuantity(await this.#call('eth_getTransactionCount', [chainAddress(address), blockTag(block)], signal)).toString();
+    return chainQuantity(
+      await this.#call('eth_getTransactionCount', [chainAddress(address), blockTag(block)], signal),
+    ).toString();
   }
 
   async transaction(hash: string, signal?: AbortSignal): Promise<ChainTransaction | null> {
@@ -97,9 +122,14 @@ export class ChainRpc {
     for (const [index, value] of rawTransactions.entries()) {
       const transaction = chainObject(value);
       const hash = chainHash(transaction.hash);
-      if (seenHashes.has(hash) || chainQuantity(transaction.transactionIndex) !== BigInt(index)) throw new ChainEvidenceError();
+      if (seenHashes.has(hash) || chainQuantity(transaction.transactionIndex) !== BigInt(index))
+        throw new ChainEvidenceError();
       seenHashes.add(hash);
-      if (chainHash(transaction.blockHash) !== header.hash || chainQuantity(transaction.blockNumber).toString() !== header.number) throw new ChainEvidenceError();
+      if (
+        chainHash(transaction.blockHash) !== header.hash ||
+        chainQuantity(transaction.blockNumber).toString() !== header.number
+      )
+        throw new ChainEvidenceError();
       if (chainAddress(transaction.from) === sender) transactions.push(parseChainTransaction(value));
     }
     const count = chainQuantity(await this.#call('eth_getBlockTransactionCountByHash', [header.hash], signal));
@@ -109,7 +139,11 @@ export class ChainRpc {
 
   async #call(method: ReadMethod, params: unknown[], callerSignal?: AbortSignal): Promise<unknown> {
     const cleanup = new AbortController();
-    const signal = AbortSignal.any([cleanup.signal, AbortSignal.timeout(this.#timeoutMs), ...(callerSignal ? [callerSignal] : [])]);
+    const signal = AbortSignal.any([
+      cleanup.signal,
+      AbortSignal.timeout(this.#timeoutMs),
+      ...(callerSignal ? [callerSignal] : []),
+    ]);
     const id = this.#nextId++;
     try {
       signal.throwIfAborted();
@@ -120,7 +154,8 @@ export class ChainRpc {
         redirect: 'error',
         signal,
       });
-      if (!response.ok || !response.body || Number(response.headers.get('content-length')) > this.#maxResponseBytes) throw new ChainReadError();
+      if (!response.ok || !response.body || Number(response.headers.get('content-length')) > this.#maxResponseBytes)
+        throw new ChainReadError();
       const reader = response.body.getReader();
       const chunks: Uint8Array[] = [];
       let bytes = 0;
@@ -136,8 +171,11 @@ export class ChainRpc {
         reader.releaseLock();
       }
       signal.throwIfAborted();
-      const body = chainObject(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks, bytes))));
-      if (body.jsonrpc !== '2.0' || body.id !== id || Object.hasOwn(body, 'error') || !Object.hasOwn(body, 'result')) throw new ChainReadError();
+      const body = chainObject(
+        JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks, bytes))),
+      );
+      if (body.jsonrpc !== '2.0' || body.id !== id || Object.hasOwn(body, 'error') || !Object.hasOwn(body, 'result'))
+        throw new ChainReadError();
       return body.result;
     } catch {
       throw new ChainReadError();

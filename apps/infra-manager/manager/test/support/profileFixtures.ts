@@ -212,12 +212,7 @@ export class InMemoryProfiles {
     if (slot === null) return null;
     // Asked before anything is stored, because the real insert's transaction rolls back whole.
     this.initialValuesOf(stackSettings);
-    const {
-      private_key: key,
-      srt_passphrase: passphrase,
-      rpc_endpoint: rpcEndpoint,
-      ...rest
-    } = data;
+    const { private_key: key, srt_passphrase: passphrase, rpc_endpoint: rpcEndpoint, ...rest } = data;
     if (key) this.privateKeys.set(name, key);
     if (passphrase) this.passphrases.set(name, passphrase);
     if (rpcEndpoint) this.rpcEndpoints.set(name, rpcEndpoint);
@@ -255,7 +250,8 @@ export class InMemoryProfiles {
     const values = { ...stackSettings.plain, ...stackSettings.secret };
     if (!stackSettings.copyManagerAdminToken) return values;
     if (this.managerAdminLink.token === null) throw new ManagerAdminTokenMissingError();
-    if (!sameAdminOrigin(stackSettings.copyManagerAdminToken.url, this.managerAdminLink.url ?? '')) throw new ManagerAdminTokenElsewhereError();
+    if (!sameAdminOrigin(stackSettings.copyManagerAdminToken.url, this.managerAdminLink.url ?? ''))
+      throw new ManagerAdminTokenElsewhereError();
     return { ...values, [ADMIN_API_TOKEN_KEY]: this.managerAdminLink.token };
   }
 
@@ -283,11 +279,7 @@ export class InMemoryProfiles {
     });
   }
 
-  async markTerminal(
-    name: string,
-    status: ProfileStatus,
-    expectedInstanceId?: string,
-  ): Promise<Profile | null> {
+  async markTerminal(name: string, status: ProfileStatus, expectedInstanceId?: string): Promise<Profile | null> {
     if (expectedInstanceId !== undefined && this.rows.get(name)?.instance_id !== expectedInstanceId) return null;
     return this.write(name, {
       status,
@@ -311,14 +303,29 @@ export class InMemoryProfiles {
 
   async claimRemoval(name: string, expectedInstanceId: string): Promise<Profile | null> {
     const row = this.rows.get(name);
-    if (!row || row.instance_id !== expectedInstanceId || this.claimsRefused.has(name)
-      || !['RUNNING', 'STOPPED', 'ERROR'].includes(row.status)) return null;
-    return this.write(name, { status: 'REMOVING', intent_revision: row.intent_revision + 1, last_error: null, last_error_at: null });
+    if (
+      !row ||
+      row.instance_id !== expectedInstanceId ||
+      this.claimsRefused.has(name) ||
+      !['RUNNING', 'STOPPED', 'ERROR'].includes(row.status)
+    )
+      return null;
+    return this.write(name, {
+      status: 'REMOVING',
+      intent_revision: row.intent_revision + 1,
+      last_error: null,
+      last_error_at: null,
+    });
   }
 
   private ownsRemoval(claim: ProfileRemovalClaim): boolean {
     const row = this.rows.get(claim.name);
-    return !!row && row.instance_id === claim.instance_id && row.intent_revision === claim.intent_revision && row.status === 'REMOVING';
+    return (
+      !!row &&
+      row.instance_id === claim.instance_id &&
+      row.intent_revision === claim.intent_revision &&
+      row.status === 'REMOVING'
+    );
   }
 
   async failRemoval(claim: ProfileRemovalClaim, message: string): Promise<Profile | null> {
@@ -326,7 +333,10 @@ export class InMemoryProfiles {
     return this.markError(claim.name, message);
   }
 
-  async completeRemoval(claim: ProfileRemovalClaim, cleanFiles: () => Promise<void>): Promise<{ port_slot: number } | null> {
+  async completeRemoval(
+    claim: ProfileRemovalClaim,
+    cleanFiles: () => Promise<void>,
+  ): Promise<{ port_slot: number } | null> {
     if (!this.ownsRemoval(claim)) return null;
     if (await this.reservations.hasRemovalHold(claim.name)) throw new Error('An unresolved removal hold remains');
     await cleanFiles();
@@ -337,11 +347,7 @@ export class InMemoryProfiles {
     return [...this.rows.values()].filter((row) => TRANSITIONAL_STATUSES.includes(row.status));
   }
 
-  async settleOrphanedTransition(
-    name: string,
-    status: ProfileStatus,
-    message: string | null,
-  ): Promise<Profile | null> {
+  async settleOrphanedTransition(name: string, status: ProfileStatus, message: string | null): Promise<Profile | null> {
     const row = this.rows.get(name);
     if (!row || !TRANSITIONAL_STATUSES.includes(row.status)) return null;
     return this.write(name, {
@@ -369,9 +375,16 @@ export class InMemoryProfiles {
     message: string,
   ): Promise<Profile | null> {
     const row = this.rows.get(name);
-    if (!row || row.status !== 'DEPLOYING' || row.instance_id !== owner.instanceId ||
-        row.intent_revision !== owner.intentRevision || row.engine_config_revision !== owner.configRevision ||
-        row.stack_version_id !== owner.stackVersionId || (this.activeDeployJobs.get(name) ?? null) !== referenceId) return null;
+    if (
+      !row ||
+      row.status !== 'DEPLOYING' ||
+      row.instance_id !== owner.instanceId ||
+      row.intent_revision !== owner.intentRevision ||
+      row.engine_config_revision !== owner.configRevision ||
+      row.stack_version_id !== owner.stackVersionId ||
+      (this.activeDeployJobs.get(name) ?? null) !== referenceId
+    )
+      return null;
     return this.markError(name, message);
   }
 
@@ -406,13 +419,7 @@ export class InMemoryProfiles {
     // A secret the write leaves out keeps the stored one, the way the real
     // statement does: COALESCE for the key, and for the passphrase a write
     // that happens only while the body named it, so an explicit null clears.
-    const {
-      private_key: key,
-      srt_passphrase: passphrase,
-      node_mode: mode,
-      rpc_endpoint: rpcEndpoint,
-      ...rest
-    } = data;
+    const { private_key: key, srt_passphrase: passphrase, node_mode: mode, rpc_endpoint: rpcEndpoint, ...rest } = data;
     if (key) this.privateKeys.set(name, key);
     if (passphrase === null) this.passphrases.delete(name);
     else if (passphrase !== undefined) this.passphrases.set(name, passphrase);
@@ -433,9 +440,7 @@ export class InMemoryProfiles {
       rpc_endpoint_host: endpointMetadata.host,
       ...(mode == null ? {} : { node_mode: mode }),
       ...(key ? { has_private_key: true } : {}),
-      ...(passphrase === undefined
-        ? {}
-        : { has_srt_passphrase: passphrase !== null }),
+      ...(passphrase === undefined ? {} : { has_srt_passphrase: passphrase !== null }),
       ...(notesChanged ? { notes_revision: row.notes_revision + 1 } : {}),
       // Keys leave the settings as they are at this write, the way the real
       // statement filters the column rather than replacing it.
@@ -449,11 +454,7 @@ export class InMemoryProfiles {
     });
   }
 
-  async updateNotes(
-    name: string,
-    notes: string | null,
-    expectedRevision: number,
-  ): Promise<Profile | null> {
+  async updateNotes(name: string, notes: string | null, expectedRevision: number): Promise<Profile | null> {
     const row = this.rows.get(name);
     if (!row || row.notes_revision !== expectedRevision) return null;
     return this.write(name, { notes, notes_revision: row.notes_revision + 1 });
@@ -466,10 +467,17 @@ export class InMemoryProfiles {
   ): Promise<Profile | null> {
     const profile = this.rows.get(name);
     const revision = this.settingsRevisions.get(name) ?? 0;
-    if (!profile || profile.instance_id !== owner.instanceId || profile.intent_revision !== owner.intentRevision ||
-        profile.engine_config_revision !== owner.configRevision || profile.stack_version_id !== owner.stackVersionId ||
-        profile.status !== 'DEPLOYING' || this.activeDeployJobs.get(name) !== owner.jobReferenceId ||
-        revision !== owner.settingsRevision) return null;
+    if (
+      !profile ||
+      profile.instance_id !== owner.instanceId ||
+      profile.intent_revision !== owner.intentRevision ||
+      profile.engine_config_revision !== owner.configRevision ||
+      profile.stack_version_id !== owner.stackVersionId ||
+      profile.status !== 'DEPLOYING' ||
+      this.activeDeployJobs.get(name) !== owner.jobReferenceId ||
+      revision !== owner.settingsRevision
+    )
+      return null;
     this.settingsRevisions.set(name, revision + 1);
     return this.write(name, { engine_settings: settings });
   }
@@ -478,11 +486,7 @@ export class InMemoryProfiles {
     return this.engineConfigs.get(name) ?? null;
   }
 
-  async setEngineConfig(
-    name: string,
-    config: string | null,
-    error: string | null,
-  ): Promise<Profile | null> {
+  async setEngineConfig(name: string, config: string | null, error: string | null): Promise<Profile | null> {
     if (config === null) this.engineConfigs.delete(name);
     else this.engineConfigs.set(name, config);
     return this.write(name, {
@@ -495,18 +499,17 @@ export class InMemoryProfiles {
     return this.privateKeys.get(name) ?? null;
   }
 
-  async rpcEndpointOf(
-    name: string,
-    owner?: ExpectedDeployOwner,
-  ): Promise<{ rpcEndpoint: string | null } | null> {
+  async rpcEndpointOf(name: string, owner?: ExpectedDeployOwner): Promise<{ rpcEndpoint: string | null } | null> {
     const profile = this.rows.get(name);
     if (!profile) return null;
-    if (owner && (
-      profile.instance_id !== owner.instanceId ||
-      profile.intent_revision !== owner.intentRevision ||
-      profile.engine_config_revision !== owner.configRevision ||
-      profile.stack_version_id !== owner.stackVersionId
-    )) return null;
+    if (
+      owner &&
+      (profile.instance_id !== owner.instanceId ||
+        profile.intent_revision !== owner.intentRevision ||
+        profile.engine_config_revision !== owner.configRevision ||
+        profile.stack_version_id !== owner.stackVersionId)
+    )
+      return null;
     return { rpcEndpoint: this.rpcEndpoints.get(name) ?? null };
   }
 

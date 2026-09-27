@@ -14,16 +14,18 @@ export function PoolTargetCard({ profile }: { profile: Profile }) {
   const rungs = sortedPublisherRungs(profile.bee_publishers);
 
   return (
-    <SectionCard
-      title="Publishes to"
-      sub="one Bee node per quality rung, possibly in another manager"
-    >
+    <SectionCard title="Publishes to" sub="one Bee node per quality rung, possibly in another manager">
       {rungs ? (
         <Stack spacing={1.25}>
           <PublisherRungList rungs={rungs} showBatchIds />
-          <Typography variant="caption" color="text.secondary">
-            Those nodes hold the postage. Funding and stamps are managed on the
-            pool's own page, on whichever manager owns it. Nothing to fund here.
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
+            Those nodes hold the postage. Funding and stamps are managed on the pool's own page, on whichever manager
+            owns it. Nothing to fund here.
           </Typography>
         </Stack>
       ) : (
@@ -37,14 +39,11 @@ export function PoolTargetCard({ profile }: { profile: Profile }) {
             }
           >
             The pool string on this deployment cannot be used.{' '}
-            {beePublishersProblem(profile.bee_publishers) ?? 'It is empty.'} Fix
-            it under Edit, or the uploader will refuse to start.
+            {beePublishersProblem(profile.bee_publishers) ?? 'It is empty.'} Fix it under Edit, or the uploader will
+            refuse to start.
           </Alert>
           {profile.bee_publishers && (
-            <Typography
-              variant="body2"
-              sx={{ fontFamily: MONO_STACK, wordBreak: 'break-all' }}
-            >
+            <Typography variant="body2" sx={{ fontFamily: MONO_STACK, wordBreak: 'break-all' }}>
               {profile.bee_publishers}
             </Typography>
           )}

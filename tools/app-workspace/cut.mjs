@@ -8,7 +8,7 @@ import { cutLockfile } from './lib/lockfile.mjs';
 import { Refusal } from './lib/refusal.mjs';
 import { cutWorkspace } from './lib/workspace.mjs';
 
-const USAGE = `Usage: node tools/app-workspace/cut.mjs --app <folder> --out <folder> [--root <folder>] [--in-export]
+const USAGE = `Usage: node tools/app-workspace/cut.mjs --app <folder> --out <folder> [--root <folder>]
 
 Writes the pnpm-lock.yaml and pnpm-workspace.yaml of one app of this repository into --out, cut out of the root
 ones, so the app builds from its own folder as it did before the root held the one lockfile. --app is the app's
@@ -20,7 +20,7 @@ each as the root has it. The workspace file is the root's with the app's own glo
 gives the app, and build permissions for the app's own packages alone.
 
 It writes nothing and says why when:
-  --out is inside the workspace, unless --in-export says the root is a git archive export, which has no .git
+  --out is inside the workspace
   --out already holds a pnpm-lock.yaml or a pnpm-workspace.yaml
   the root or the app names no packageManager, or the two name different ones
   apps.mjs has no entry for the app
@@ -33,7 +33,6 @@ const OPTION_SPECS = {
   app: { type: 'string' },
   out: { type: 'string' },
   root: { type: 'string' },
-  'in-export': { type: 'boolean' },
 };
 
 const LOCKFILE = 'pnpm-lock.yaml';
@@ -71,22 +70,17 @@ function packageManagerOf(folder) {
   return JSON.parse(readFileSync(manifest, 'utf8')).packageManager;
 }
 
-function assertOutFolder({ root, out, inExport }) {
+function assertOutFolder({ root, out }) {
   if (isInside(out, root)) {
-    if (!inExport) {
-      throw new Refusal(
-        `${out} is inside the workspace at ${root}. A ${WORKSPACE_FILE} there makes that folder a workspace of its own, which pnpm before 11.28 ignores without a word. Write the cut to a folder outside the workspace, or build from a copy with tools/app-workspace/in-copy.mjs.`,
-      );
-    }
-    if (existsSync(join(root, '.git'))) {
-      throw new Refusal(
-        `--in-export writes into ${out}, but ${root} is a git checkout, where a person may work, and not an export. Build from a copy with tools/app-workspace/in-copy.mjs instead.`,
-      );
-    }
+    throw new Refusal(
+      `${out} is inside the workspace at ${root}. A ${WORKSPACE_FILE} there makes that folder a workspace of its own, which pnpm before 11.28 ignores without a word. Write the cut to a folder outside the workspace, or build from a copy with tools/app-workspace/in-copy.mjs.`,
+    );
   }
   for (const name of [LOCKFILE, WORKSPACE_FILE]) {
     if (existsSync(join(out, name))) {
-      throw new Refusal(`${out} already holds ${name}. An app that keeps its own lockfile builds from it as it is, and a cut replaces nothing.`);
+      throw new Refusal(
+        `${out} already holds ${name}. An app that keeps its own lockfile builds from it as it is, and a cut replaces nothing.`,
+      );
     }
   }
 }
@@ -113,15 +107,19 @@ function assertSamePackageManager(root, app) {
  * Cuts one app's lockfile and workspace file out of the root's into `out`, after every check has passed.
  * @returns {string} the sentence that says what it wrote
  */
-export function cutApp({ root, app, out, inExport = false }) {
+export function cutApp({ root, app, out }) {
   const settings = APP_SETTINGS[app];
   if (settings === undefined) {
-    throw new Refusal(`tools/app-workspace/apps.mjs names no injection setting for ${app}. Add the app there with the setting its image build needs.`);
+    throw new Refusal(
+      `tools/app-workspace/apps.mjs names no injection setting for ${app}. Add the app there with the setting its image build needs.`,
+    );
   }
-  assertOutFolder({ root, out, inExport });
+  assertOutFolder({ root, out });
   for (const name of [LOCKFILE, WORKSPACE_FILE]) {
     if (!existsSync(join(root, name))) {
-      throw new Refusal(`${root} holds no ${name}, so its apps keep their own lockfiles and build from them as they are.`);
+      throw new Refusal(
+        `${root} holds no ${name}, so its apps keep their own lockfiles and build from them as they are.`,
+      );
     }
   }
   assertSamePackageManager(root, app);
@@ -149,7 +147,7 @@ export async function main(argv) {
   const app = normalizeApp(requireOption(options, 'app'));
   const out = resolve(requireOption(options, 'out'));
   const root = resolve(options.root ?? DEFAULT_ROOT);
-  process.stdout.write(`${cutApp({ root, app, out, inExport: options['in-export'] === true })}\n`);
+  process.stdout.write(`${cutApp({ root, app, out })}\n`);
   return 0;
 }
 

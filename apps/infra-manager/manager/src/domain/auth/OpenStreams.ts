@@ -34,10 +34,7 @@ export class OpenStreams {
 
   /** Every stream of a user's, apart from the one session named to keep. */
   closeUser(userId: number, keepTokenHash?: string): number {
-    return this.closeWhere(
-      (stream) =>
-        stream.userId === userId && stream.tokenHash !== keepTokenHash,
-    );
+    return this.closeWhere((stream) => stream.userId === userId && stream.tokenHash !== keepTokenHash);
   }
 
   closeAll(): number {

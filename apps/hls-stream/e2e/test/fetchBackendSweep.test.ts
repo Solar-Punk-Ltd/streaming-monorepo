@@ -186,7 +186,7 @@ describe('a retrieval through the node in the tab', () => {
 
   /** Runs the page function against this process's own globals, which is all this call touches. */
   const fakePage = (): Page =>
-    ({ evaluate: (fn: (arg: unknown) => unknown, arg: unknown) => Promise.resolve(fn(arg)) } as unknown as Page);
+    ({ evaluate: (fn: (arg: unknown) => unknown, arg: unknown) => Promise.resolve(fn(arg)) }) as unknown as Page;
 
   const installSwitch = (retrieveBytes: unknown): void => {
     (globalThis as Record<string, unknown>)[RETRIEVAL_HANDLE] = { retrieveBytes };

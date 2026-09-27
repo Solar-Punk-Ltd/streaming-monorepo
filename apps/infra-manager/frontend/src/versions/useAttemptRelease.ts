@@ -5,8 +5,7 @@ import type { DeployAttemptView } from '@streaming-infra-manager/common';
 import { useToast } from '../app/ToastProvider';
 import { useDeployments } from '../app/useDeploymentsStore';
 
-const RESOLVED_MEANWHILE =
-  'That attempt was resolved or released meanwhile. There is nothing to release.';
+const RESOLVED_MEANWHILE = 'That attempt was resolved or released meanwhile. There is nothing to release.';
 
 export interface AttemptRelease {
   /** The attempt the dialog is open on, read from the live list, or null. */

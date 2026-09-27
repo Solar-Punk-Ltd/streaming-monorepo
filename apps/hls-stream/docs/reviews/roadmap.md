@@ -552,9 +552,9 @@ is the honest third lever and it should be named beside the other two rather tha
 
 Both fixes have a number to move, measured, on a scenario that reproduces on demand:
 
-|      | scenario                | today |   target |
+| | scenario | today | target |
 | ---- | ----------------------- | ----: | -------: | ------------ |
-| 0.8a | `uploader-crash`        | 46.7s | under 5s | ✅ **4.1s**  |
+| 0.8a | `uploader-crash` | 46.7s | under 5s | ✅ **4.1s** |
 | 0.8b | `viewer-gateway-outage` | 16.2s | under 3s | ⚠️ see below |
 
 ⛔ **0.8b's target was never reachable and the instrument was why.** Recovery was clocked from

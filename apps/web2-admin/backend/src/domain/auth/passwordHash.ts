@@ -39,35 +39,19 @@ interface StoredHash {
   key: Buffer;
 }
 
-function deriveKey(
-  password: string,
-  salt: Buffer,
-  keyBytes: number,
-  params: ScryptParams,
-): Promise<Buffer> {
+function deriveKey(password: string, salt: Buffer, keyBytes: number, params: ScryptParams): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    scrypt(
-      password,
-      salt,
-      keyBytes,
-      { ...params, maxmem: MAX_MEM_BYTES },
-      (err, key) => {
-        if (err) reject(err);
-        else resolve(key);
-      },
-    );
+    scrypt(password, salt, keyBytes, { ...params, maxmem: MAX_MEM_BYTES }, (err, key) => {
+      if (err) reject(err);
+      else resolve(key);
+    });
   });
 }
 
 function encode(params: ScryptParams, salt: Buffer, key: Buffer): string {
-  return [
-    ALGORITHM,
-    params.N,
-    params.r,
-    params.p,
-    salt.toString('base64'),
-    key.toString('base64'),
-  ].join(FIELD_SEPARATOR);
+  return [ALGORITHM, params.N, params.r, params.p, salt.toString('base64'), key.toString('base64')].join(
+    FIELD_SEPARATOR,
+  );
 }
 
 function decode(stored: string): StoredHash | null {
@@ -77,9 +61,7 @@ function decode(stored: string): StoredHash | null {
   const N = Number(fields[1]);
   const r = Number(fields[2]);
   const p = Number(fields[3]);
-  const positiveIntegers = [N, r, p].every(
-    (value) => Number.isInteger(value) && value >= 1,
-  );
+  const positiveIntegers = [N, r, p].every((value) => Number.isInteger(value) && value >= 1);
   if (!positiveIntegers || N < 2) return null;
 
   const salt = Buffer.from(fields[4]!, 'base64');
@@ -99,19 +81,11 @@ export async function hashPassword(password: string): Promise<string> {
  * Whether `password` produced `stored`. False for a malformed stored value, so
  * an unreadable row refuses everyone rather than letting anyone in.
  */
-export async function verifyPassword(
-  password: string,
-  stored: string,
-): Promise<boolean> {
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   const parsed = decode(stored);
   if (!parsed) return false;
 
-  const candidate = await deriveKey(
-    password,
-    parsed.salt,
-    parsed.key.length,
-    parsed.params,
-  );
+  const candidate = await deriveKey(password, parsed.salt, parsed.key.length, parsed.params);
   return timingSafeEqual(candidate, parsed.key);
 }
 

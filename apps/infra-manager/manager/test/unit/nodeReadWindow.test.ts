@@ -84,27 +84,14 @@ function countingNode(answers: Record<string, (...args: never[]) => Promise<unkn
   };
 }
 
-const profiles = () =>
-  ({ findByName: async () => PROFILE }) as unknown as ProfileRepository;
+const profiles = () => ({ findByName: async () => PROFILE }) as unknown as ProfileRepository;
 
 function chequebooks(node: BeeClient, cache: NodeReadCache): ChequebookService {
-  return new ChequebookService(
-    profiles(),
-    FLOOR,
-    new EventBus(),
-    () => node,
-    cache,
-  );
+  return new ChequebookService(profiles(), FLOOR, new EventBus(), () => node, cache);
 }
 
 function stamps(node: BeeClient, cache: NodeReadCache): StampService {
-  return new StampService(
-    profiles(),
-    {} as ContainerRepository,
-    new EventBus(),
-    () => node,
-    cache,
-  );
+  return new StampService(profiles(), {} as ContainerRepository, new EventBus(), () => node, cache);
 }
 
 const answeringNode = (available = PLUR_PER_BZZ) =>
@@ -119,10 +106,7 @@ describe('the node read window', () => {
     const bee = answeringNode();
     const service = chequebooks(bee.node, clock().cache);
 
-    const [first, second] = await Promise.all([
-      service.summary(PROFILE.name),
-      service.summary(PROFILE.name),
-    ]);
+    const [first, second] = await Promise.all([service.summary(PROFILE.name), service.summary(PROFILE.name)]);
 
     assert.equal(bee.asked('getChequebookBalance'), 1);
     assert.equal(bee.asked('getSettlements'), 1);
@@ -150,9 +134,7 @@ describe('the node read window', () => {
       getChequebookAddress: async () => ADDRESS,
       getChequebookBalance: async () => {
         if (refusing) {
-          throw new Error(
-            'bee request GET /chequebook/balance failed: connection refused',
-          );
+          throw new Error('bee request GET /chequebook/balance failed: connection refused');
         }
         return plur(PLUR_PER_BZZ);
       },
@@ -202,10 +184,7 @@ describe('the node read window', () => {
     });
     const service = stamps(bee.node, clock().cache);
 
-    await Promise.all([
-      service.getWallet(PROFILE.name),
-      service.getWallet(PROFILE.name),
-    ]);
+    await Promise.all([service.getWallet(PROFILE.name), service.getWallet(PROFILE.name)]);
 
     assert.equal(bee.asked('getWallet'), 1);
   });
@@ -215,10 +194,7 @@ describe('the node read window', () => {
     const time = clock();
     const service = stamps(bee.node, time.cache);
 
-    assert.equal(
-      (await service.stampHealthFor(PROFILE, BATCH)).state,
-      'active',
-    );
+    assert.equal((await service.stampHealthFor(PROFILE, BATCH)).state, 'active');
     await service.assertStampUsable(PROFILE.name, BATCH);
 
     assert.equal(bee.asked('getStamp'), 2);

@@ -30,11 +30,7 @@ import { useToast } from '../app/ToastProvider';
 import { useDeployments } from '../app/useDeploymentsStore';
 import { CodeTextArea } from '../components/CodeTextArea';
 import { ConfirmDialog, type ConfirmRequest } from '../components/ConfirmDialog';
-import {
-  fetchEngineConfigView,
-  resetEngineConfig,
-  saveEngineConfig,
-} from '../deployments/engineApi';
+import { fetchEngineConfigView, resetEngineConfig, saveEngineConfig } from '../deployments/engineApi';
 import { ENGINE_LABEL } from '../deployments/engineText';
 
 const APPLY_LABEL = 'Check and apply';
@@ -51,15 +47,15 @@ const WHAT_THIS_IS =
  */
 const WHAT_APPLYING_DOES: Record<EngineName, string> = {
   [SRS_SERVICE]:
-    'Applying runs the file through SRS\'s own parser first, in a throwaway container, so a file it refuses changes nothing. Then the engine is recreated on it and watched for twenty seconds, and if it will not stay up the previous file comes back on its own, which is a recovery attempt and not a promise. A publisher, if one is live, is disconnected for a few seconds either way.',
+    "Applying runs the file through SRS's own parser first, in a throwaway container, so a file it refuses changes nothing. Then the engine is recreated on it and watched for twenty seconds, and if it will not stay up the previous file comes back on its own, which is a recovery attempt and not a promise. A publisher, if one is live, is disconnected for a few seconds either way.",
   [OME_SERVICE]:
-    'OvenMediaEngine has no parser to ask, so applying checks the file here first: it must be well formed XML and keep what the stack\'s uploader depends on from this version\'s template. Then the engine is recreated on it, watched for twenty seconds, and its HLS port is tried once the watch is over. If the engine will not stay up the previous file comes back on its own, which is a recovery attempt and not a promise, and a port that does not answer is reported as a note, not a failure. A publisher, if one is live, is disconnected for a few seconds either way.',
+    "OvenMediaEngine has no parser to ask, so applying checks the file here first: it must be well formed XML and keep what the stack's uploader depends on from this version's template. Then the engine is recreated on it, watched for twenty seconds, and its HLS port is tried once the watch is over. If the engine will not stay up the previous file comes back on its own, which is a recovery attempt and not a promise, and a port that does not answer is reported as a note, not a failure. A publisher, if one is live, is disconnected for a few seconds either way.",
 };
 
 function resetConfirm(name: string, onConfirm: () => void): ConfirmRequest {
   return {
     title: `Back to the template for ${name}?`,
-    body: 'The file you applied is forgotten and the engine is recreated on the stack\'s own template. Copy the file first if you want to keep it.',
+    body: "The file you applied is forgotten and the engine is recreated on the stack's own template. Copy the file first if you want to keep it.",
     confirmLabel: RESET_LABEL,
     danger: true,
     onConfirm,
@@ -80,13 +76,7 @@ function openingText(view: EngineConfigView): string {
  * template until a file has been applied, so the operator edits from a
  * known good starting point and never from a blank page.
  */
-export function EngineConfigDialog({
-  name,
-  onClose,
-}: {
-  name: string;
-  onClose: () => void;
-}) {
+export function EngineConfigDialog({ name, onClose }: { name: string; onClose: () => void }) {
   const toast = useToast();
   const { mergeProfiles, profiles } = useDeployments();
   // The view is read once, when the dialog opens, and holds the file. The
@@ -167,16 +157,23 @@ export function EngineConfigDialog({
     : view
       ? { state: view.state, hasConfig: view.config !== null, reason: view.error }
       : null;
-  const notice = rollout && view
-    ? rolloutNotice(rollout.state, { engine: engineName, hasConfig: rollout.hasConfig }, rollout.reason)
-    : null;
+  const notice =
+    rollout && view
+      ? rolloutNotice(rollout.state, { engine: engineName, hasConfig: rollout.hasConfig }, rollout.reason)
+      : null;
 
   return (
     <Dialog open maxWidth="lg" fullWidth onClose={close}>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Box sx={{ flex: 1 }}>
           Config file for {name}
-          <Typography variant="body2" color="text.secondary" component="div">
+          <Typography
+            variant="body2"
+            component="div"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
             {engineName}
             {view?.config ? ' · running on its own file' : ' · running on the template'}
           </Typography>
@@ -187,14 +184,17 @@ export function EngineConfigDialog({
       </DialogTitle>
       <DialogContent dividers>
         {!view ? (
-          <Stack alignItems="center" sx={{ py: 6 }}>
+          <Stack
+            sx={{
+              alignItems: 'center',
+              py: 6,
+            }}
+          >
             {error ? <Alert severity="error">{error}</Alert> : <CircularProgress />}
           </Stack>
         ) : (
           <Stack spacing={2}>
-            {!view.supported && (
-              <Alert severity="info">{view.unsupportedReason}</Alert>
-            )}
+            {!view.supported && <Alert severity="info">{view.unsupportedReason}</Alert>}
             {notice && (
               <Alert severity={notice.severity}>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -207,11 +207,29 @@ export function EngineConfigDialog({
                 )}
               </Alert>
             )}
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+              }}
+            >
               {WHAT_THIS_IS}
             </Typography>
-            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap alignItems="center">
-              <Typography variant="caption" color="text.secondary">
+            <Stack
+              direction="row"
+              spacing={0.5}
+              useFlexGap
+              sx={{
+                flexWrap: 'wrap',
+                alignItems: 'center',
+              }}
+            >
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                }}
+              >
                 This version fills:
               </Typography>
               {view.placeholders.map((token) => (
@@ -237,8 +255,17 @@ export function EngineConfigDialog({
                 version fills, so the engine would read {unknown.length === 1 ? 'it' : 'them'} as written.
               </Alert>
             )}
-            {error && <Alert ref={errorBox} severity="error">{error}</Alert>}
-            <Typography variant="caption" color="text.secondary">
+            {error && (
+              <Alert ref={errorBox} severity="error">
+                {error}
+              </Alert>
+            )}
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'text.secondary',
+              }}
+            >
               {WHAT_APPLYING_DOES[view.engine]}{' '}
               {view.references.map((reference) => (
                 <Link key={reference.url} href={reference.url} target="_blank" rel="noreferrer">
@@ -251,11 +278,7 @@ export function EngineConfigDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
         {view?.config && (
-          <Button
-            color="error"
-            disabled={busy}
-            onClick={() => setConfirm(resetConfirm(name, () => void reset()))}
-          >
+          <Button color="error" disabled={busy} onClick={() => setConfirm(resetConfirm(name, () => void reset()))}>
             {RESET_LABEL}
           </Button>
         )}

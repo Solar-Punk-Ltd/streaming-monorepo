@@ -80,16 +80,11 @@ export class SrtIngestHealthService {
       if (err instanceof ContainerNotRunningError) return unmeasured(SRT_INGEST_NOT_RUNNING);
       // The kind of failure and none of its text, which a stream error could
       // have filled with anything, a line of this log included.
-      logger.debug(
-        `[SrtIngestHealth] ${profile.name}: the SRS log could not be read (${failureKind(err)})`,
-      );
+      logger.debug(`[SrtIngestHealth] ${profile.name}: the SRS log could not be read (${failureKind(err)})`);
       return unmeasured(SRT_INGEST_UNREADABLE);
     }
 
-    return ingestReadingFrom(
-      parseTransportStatsLines(lines),
-      SRT_INGEST_LOG_WINDOW.sinceSeconds,
-    );
+    return ingestReadingFrom(parseTransportStatsLines(lines), SRT_INGEST_LOG_WINDOW.sinceSeconds);
   }
 }
 

@@ -1,12 +1,4 @@
-import {
-  Alert,
-  Box,
-  Button,
-  Drawer,
-  IconButton,
-  Stack,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Drawer, IconButton, Stack, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import type { ReactNode } from 'react';
 
@@ -45,9 +37,14 @@ export function EditDrawerFrame({
       <Stack sx={{ width: { xs: '100vw', sm: WIDTH }, height: '100%' }}>
         <Stack
           direction="row"
-          alignItems="center"
           spacing={1}
-          sx={{ px: 2.5, py: 1.75, borderBottom: 1, borderColor: 'divider' }}
+          sx={{
+            alignItems: 'center',
+            px: 2.5,
+            py: 1.75,
+            borderBottom: 1,
+            borderColor: 'divider',
+          }}
         >
           <Typography variant="h6" component="h2" sx={{ flex: 1 }}>
             {title}
@@ -64,11 +61,7 @@ export function EditDrawerFrame({
           </Stack>
         </Box>
 
-        <Stack
-          direction="row"
-          spacing={1}
-          sx={{ px: 2.5, py: 1.75, borderTop: 1, borderColor: 'divider' }}
-        >
+        <Stack direction="row" spacing={1} sx={{ px: 2.5, py: 1.75, borderTop: 1, borderColor: 'divider' }}>
           <Button onClick={close} disabled={saving}>
             Cancel
           </Button>

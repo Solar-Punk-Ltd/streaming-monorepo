@@ -13,10 +13,7 @@ export interface FeedIdentity {
   topicHex: string;
 }
 
-export function feedIdentityFrom(
-  feedPrivateKey: string,
-  feedTopic: string,
-): FeedIdentity {
+export function feedIdentityFrom(feedPrivateKey: string, feedTopic: string): FeedIdentity {
   const owner = new PrivateKey(feedPrivateKey).publicKey().address().toString();
   return {
     owner,

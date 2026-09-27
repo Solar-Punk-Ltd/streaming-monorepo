@@ -1,11 +1,5 @@
 import { useState } from 'react';
-import {
-  Alert,
-  Button,
-  CircularProgress,
-  Divider,
-  Stack,
-} from '@mui/material';
+import { Alert, Button, CircularProgress, Divider, Stack } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
 import {
@@ -24,22 +18,12 @@ import { SectionCard } from '../components/SectionCard';
 import { formatTtl, shortHex } from '../format';
 import type { Profile } from '../types';
 import { BuyStampForm } from '../uploaders/BuyStampForm';
-import {
-  MoveBzzDialog,
-  type MoveDirection,
-} from '../uploaders/MoveBzzDialog';
+import { MoveBzzDialog, type MoveDirection } from '../uploaders/MoveBzzDialog';
 import { NodeFunding } from '../uploaders/NodeFunding';
 import { StampTable } from '../uploaders/StampTable';
 import { DiluteStampDialog } from '../uploaders/DiluteStampDialog';
 import { diluteSentNotice } from '../uploaders/diluteView';
-import {
-  type BeeStamp,
-  buyStamp,
-  diluteStamp,
-  setStamp,
-  topUpStamp,
-  type BuyStampInput,
-} from '../uploaders/stampApi';
+import { type BeeStamp, buyStamp, diluteStamp, setStamp, topUpStamp, type BuyStampInput } from '../uploaders/stampApi';
 import { TopUpStampDialog } from '../uploaders/TopUpStampDialog';
 import { topUpSentNotice } from '../uploaders/topUpView';
 import type { BeeUtils } from '../uploaders/useBeeUtils';
@@ -87,6 +71,7 @@ export function StorageCard({
   /** What bee answered the last change with, until the operator closes it. */
   const [sentNotice, setSentNotice] = useState<string | null>(null);
 
+  // Every action goes through here and lands its failure in actionError, so a caller need not await it.
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
     setActionError(null);
@@ -143,9 +128,7 @@ export function StorageCard({
       : null;
 
   const moveSourcePlur =
-    moving === 'withdraw'
-      ? parsePlur(bee.chequebook?.availableBalance)
-      : parsePlur(bee.wallet?.bzzBalance);
+    moving === 'withdraw' ? parsePlur(bee.chequebook?.availableBalance) : parsePlur(bee.wallet?.bzzBalance);
 
   return (
     <SectionCard
@@ -153,12 +136,7 @@ export function StorageCard({
       title="Storage and funding"
       sub="this deployment's own Bee node pays for its uploads"
       actions={
-        <Button
-          size="small"
-          startIcon={<RefreshIcon />}
-          disabled={bee.loading}
-          onClick={() => void bee.reload()}
-        >
+        <Button size="small" startIcon={<RefreshIcon />} disabled={bee.loading} onClick={() => void bee.reload()}>
           Refresh
         </Button>
       }
@@ -180,38 +158,33 @@ export function StorageCard({
             {stampHealth.state === 'expired'
               ? 'The postage batch this deployment pays with has expired. '
               : 'This Bee node does not hold the batch recorded for it, usually because the batch expired and was dropped. '}
-            Uploads cannot be paid for until a new batch is bought below, which is
-            set here once it is usable.
+            Uploads cannot be paid for until a new batch is bought below, which is set here once it is usable.
           </Alert>
         )}
         {stampHealth.state === 'full' && (
           <Alert severity="error">
-            The postage batch this deployment pays with is full, and it cannot
-            overwrite what it holds, so this Bee node refuses the uploads it is
-            sent. Dilute it below to give it room, which keeps the batch, or buy
-            a new one, which is set here once it is usable.
+            The postage batch this deployment pays with is full, and it cannot overwrite what it holds, so this Bee node
+            refuses the uploads it is sent. Dilute it below to give it room, which keeps the batch, or buy a new one,
+            which is set here once it is usable.
           </Alert>
         )}
         {nearlyFullAt && (
           <Alert severity="warning">
             This batch is <strong>{nearlyFullAt} full</strong>.{' '}
-            {nearlyFullConsequence(stampHealth.immutable, stampHealth.fillRatio)}{' '}
-            Dilute it below, or buy the next one.
+            {nearlyFullConsequence(stampHealth.immutable, stampHealth.fillRatio)} Dilute it below, or buy the next one.
           </Alert>
         )}
         {!stampHealth.dead && stampHealth.state !== 'full' && isStampExpiringSoon(stampHealth.ttl) && (
           <Alert severity="warning">
-            This batch runs out in <strong>{formatTtl(stampHealth.ttl)}</strong>.
-            Top it up below, or buy the next one, before it does. Once a batch is
-            spent its uploads fail and it cannot be revived.
+            This batch runs out in <strong>{formatTtl(stampHealth.ttl)}</strong>. Top it up below, or buy the next one,
+            before it does. Once a batch is spent its uploads fail and it cannot be revived.
           </Alert>
         )}
         {bee.waitingBatch && (
           <Alert severity="info" icon={<CircularProgress size={18} />}>
-            Waiting for batch <code>{shortHex(bee.waitingBatch)}</code> to become
-            usable. This takes a few minutes, and it is then set here
-            automatically, unless another batch is set with <strong>Use</strong>{' '}
-            first.{reach ? ` ${reach}` : ''}
+            Waiting for batch <code>{shortHex(bee.waitingBatch)}</code> to become usable. This takes a few minutes, and
+            it is then set here automatically, unless another batch is set with <strong>Use</strong> first.
+            {reach ? ` ${reach}` : ''}
           </Alert>
         )}
 
@@ -226,7 +199,9 @@ export function StorageCard({
           onWithdraw={() => setMoving('withdraw')}
         />
 
-        <Button sx={{ alignSelf: 'flex-start' }} onClick={() => setMoving('fill')}>Saved transfer</Button>
+        <Button sx={{ alignSelf: 'flex-start' }} onClick={() => setMoving('fill')}>
+          Saved transfer
+        </Button>
 
         <Divider />
 
@@ -235,7 +210,7 @@ export function StorageCard({
           loading={bee.loading}
           currentStampId={profile.stamp_id}
           busy={busy}
-          onUse={handleUse}
+          onUse={(batchID) => void handleUse(batchID)}
           onTopUp={(stamp) => openChange('top-up', stamp)}
           onDilute={(stamp) => openChange('dilute', stamp)}
         />

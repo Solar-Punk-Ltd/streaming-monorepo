@@ -3,10 +3,7 @@ import type { ReactNode } from 'react';
 
 import { DEFAULT_ABR_RUNGS } from '@streaming-infra-manager/common';
 
-import {
-  configuredBeeRpcEndpoint,
-  CUSTOM_RPC_ENDPOINT_SOURCE,
-} from '@streaming-infra-manager/common';
+import { configuredBeeRpcEndpoint, CUSTOM_RPC_ENDPOINT_SOURCE } from '@streaming-infra-manager/common';
 
 import { MONO_STACK } from '../../../app/theme';
 import { KeyValueList, type KeyValueEntry } from '../../../components/KeyValueList';
@@ -36,12 +33,10 @@ import {
 
 const WHAT_HAPPENS_NEXT: Record<WizardGoal, string> = {
   stream: 'Containers start now and the uploader starts with them. The OBS URL appears on the deployment page.',
-  viewer:
-    'The player is ready as soon as the containers are up. Its link appears on the deployment page.',
+  viewer: 'The player is ready as soon as the containers are up. Its link appears on the deployment page.',
   'abr-pool':
     'Four nodes start. Fund each and buy its stamp from the pool page. When all four are stamped the pool string can be copied.',
-  'abr-uploader':
-    'Containers start now and the OBS URL appears on the deployment page.',
+  'abr-uploader': 'Containers start now and the OBS URL appears on the deployment page.',
   custom: 'Containers start now.',
 };
 
@@ -64,7 +59,13 @@ export function ReviewStep({ state, context }: WizardStepProps) {
     {
       key: 'Components',
       value: (
-        <Stack direction="row" spacing={0.5} flexWrap="wrap">
+        <Stack
+          direction="row"
+          spacing={0.5}
+          sx={{
+            flexWrap: 'wrap',
+          }}
+        >
           {chosenComponents(state).map((service) => (
             <ServiceChip key={service} service={service} />
           ))}
@@ -79,10 +80,7 @@ export function ReviewStep({ state, context }: WizardStepProps) {
   if (needsStreamKey(state)) {
     entries.push({
       key: 'Stream key',
-      value:
-        state.keyMode === 'generate'
-          ? 'new key, generated in the browser'
-          : 'existing key',
+      value: state.keyMode === 'generate' ? 'new key, generated in the browser' : 'existing key',
     });
   }
   if (state.goal === 'stream') {
@@ -158,9 +156,7 @@ export function ReviewStep({ state, context }: WizardStepProps) {
   }
 
   const next =
-    state.goal === 'stream' && state.stampMode === 'later'
-      ? STREAM_WAITS_FOR_STAMP
-      : WHAT_HAPPENS_NEXT[state.goal];
+    state.goal === 'stream' && state.stampMode === 'later' ? STREAM_WAITS_FOR_STAMP : WHAT_HAPPENS_NEXT[state.goal];
 
   return (
     <Stack spacing={2}>
@@ -168,7 +164,12 @@ export function ReviewStep({ state, context }: WizardStepProps) {
         <Typography variant="h6" component="h3">
           Review
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           Check it, then deploy.
         </Typography>
       </Box>
@@ -198,10 +199,7 @@ export function ReviewStep({ state, context }: WizardStepProps) {
  * ever shown of it: the manager answers its own endpoint as a host already,
  * and a typed URL can carry an API key after one.
  */
-function endpointHost(
-  state: WizardStepProps['state'],
-  context: WizardStepProps['context'],
-): string | null {
+function endpointHost(state: WizardStepProps['state'], context: WizardStepProps['context']): string | null {
   if (!offersRpcEndpoint(state)) return null;
   if (state.rpcEndpointSource === CUSTOM_RPC_ENDPOINT_SOURCE) {
     return configuredBeeRpcEndpoint(state.rpcEndpoint).host;
@@ -221,7 +219,13 @@ function NameSummary({ state }: { state: WizardStepProps['state'] }) {
     <span>
       <Mono>{state.name}</Mono>
       {suffix && (
-        <Typography component="span" variant="caption" color="text.secondary">
+        <Typography
+          component="span"
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {' '}
           ({suffix})
         </Typography>

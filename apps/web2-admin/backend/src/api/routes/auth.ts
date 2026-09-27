@@ -1,8 +1,4 @@
-import type {
-  MeResponse,
-  UserListResponse,
-  UserSummary,
-} from '@streaming-monorepo/web2-admin-common';
+import type { MeResponse, UserListResponse, UserSummary } from '@streaming-monorepo/web2-admin-common';
 import { Request, RequestHandler, Response, Router } from 'express';
 
 import { AuthService } from '../../domain/auth/AuthService.js';
@@ -17,17 +13,9 @@ import {
 } from '../../schemas/auth.js';
 import { USER_AGENT_MAX_LENGTH } from '../../types/index.js';
 import { clientIpOf } from '../../utils/clientIp.js';
-import {
-  clearSessionCookie,
-  readSessionToken,
-  setSessionCookie,
-} from '../cookies.js';
+import { clearSessionCookie, readSessionToken, setSessionCookie } from '../cookies.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import {
-  requireAdmin,
-  requireUser,
-  signedInSession,
-} from '../middleware/requireAuth.js';
+import { requireAdmin, requireUser, signedInSession } from '../middleware/requireAuth.js';
 import { validateBody, validateParams } from '../middleware/validate.js';
 import { toUser } from '../presenters.js';
 
@@ -50,10 +38,7 @@ function userIdOf(req: Request): string {
  * so the console can tell "signed out" from "no users have been created yet",
  * which is the state a fresh database is in until the `user:add` CLI has run.
  */
-export function createAuthRouter(
-  authService: AuthService,
-  requireAuth: RequestHandler,
-): Router {
+export function createAuthRouter(authService: AuthService, requireAuth: RequestHandler): Router {
   const router = Router();
 
   router.post(
@@ -98,8 +83,7 @@ export function createAuthRouter(
       }
 
       if (token) clearSessionCookie(req, res);
-      const error =
-        (await authService.countUsers()) === 0 ? 'no_users' : 'unauthenticated';
+      const error = (await authService.countUsers()) === 0 ? 'no_users' : 'unauthenticated';
       res.status(401).json({ error });
     }),
   );
@@ -118,11 +102,7 @@ export function createAuthRouter(
     validateBody(changePasswordSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as ChangePasswordBody;
-      const updated = await authService.changePassword(
-        signedInSession(req),
-        body.currentPassword,
-        body.newPassword,
-      );
+      const updated = await authService.changePassword(signedInSession(req), body.currentPassword, body.newPassword);
       const response: MeResponse = { user: toUser(updated) };
       res.json(response);
     }),
@@ -144,11 +124,9 @@ export function createAuthRouter(
     validateBody(createUserSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as CreateUserBody;
-      const created: UserSummary = await authService.addUser(
-        body.username,
-        body.password,
-        { admin: body.admin === true },
-      );
+      const created: UserSummary = await authService.addUser(body.username, body.password, {
+        admin: body.admin === true,
+      });
       res.status(201).json(created);
     }),
   );

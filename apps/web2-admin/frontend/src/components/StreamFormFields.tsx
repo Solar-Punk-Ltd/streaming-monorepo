@@ -14,10 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 import CancelIcon from '@mui/icons-material/Cancel';
-import {
-  STREAM_LIMITS,
-  type MediaType,
-} from '@streaming-monorepo/web2-admin-common';
+import { STREAM_LIMITS, type MediaType } from '@streaming-monorepo/web2-admin-common';
 
 /**
  * The fields, labels and limits are msrs-client's, reproduced in MUI so the
@@ -29,12 +26,7 @@ import {
  * offer SVG and HEIC, which save the row and then fail the thumbnail with a
  * 415 — better not to offer them at all.
  */
-export const THUMBNAIL_MIME_TYPES = [
-  'image/png',
-  'image/jpeg',
-  'image/webp',
-  'image/gif',
-] as const;
+export const THUMBNAIL_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
 
 export function NameField({
   value,
@@ -54,12 +46,14 @@ export function NameField({
       placeholder="Enter your stream name"
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      inputProps={{ maxLength: STREAM_LIMITS.TITLE_MAX }}
       helperText={`${value.length}/${STREAM_LIMITS.TITLE_MAX}`}
-      FormHelperTextProps={{ sx: { textAlign: 'right', m: 0, mt: 0.5 } }}
       error={error}
       disabled={disabled}
       fullWidth
+      slotProps={{
+        htmlInput: { maxLength: STREAM_LIMITS.TITLE_MAX },
+        formHelperText: { sx: { textAlign: 'right', m: 0, mt: 0.5 } },
+      }}
     />
   );
 }
@@ -82,14 +76,16 @@ export function DescriptionField({
       placeholder="Describe your stream..."
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      inputProps={{ maxLength: STREAM_LIMITS.DESCRIPTION_MAX }}
       helperText={`${value.length}/${STREAM_LIMITS.DESCRIPTION_MAX}`}
-      FormHelperTextProps={{ sx: { textAlign: 'right', m: 0, mt: 0.5 } }}
       error={error}
       disabled={disabled}
       multiline
       rows={4}
       fullWidth
+      slotProps={{
+        htmlInput: { maxLength: STREAM_LIMITS.DESCRIPTION_MAX },
+        formHelperText: { sx: { textAlign: 'right', m: 0, mt: 0.5 } },
+      }}
     />
   );
 }
@@ -124,42 +120,34 @@ export function TagsField({
 
   return (
     <Stack spacing={1}>
-      <Stack direction="row" spacing={1} alignItems="flex-start">
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
         <TextField
           id="stream-tags"
           label="Tags"
-          placeholder={
-            full
-              ? `Maximum ${STREAM_LIMITS.TAGS_MAX} tags reached`
-              : 'Add a tag and press Enter'
-          }
+          placeholder={full ? `Maximum ${STREAM_LIMITS.TAGS_MAX} tags reached` : 'Add a tag and press Enter'}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
-          inputProps={{ maxLength: STREAM_LIMITS.TAG_MAX_LENGTH }}
           helperText={`${value.length}/${STREAM_LIMITS.TAGS_MAX} tags`}
-          FormHelperTextProps={{ sx: { textAlign: 'right', m: 0, mt: 0.5 } }}
           disabled={disabled || full}
           fullWidth
+          slotProps={{
+            htmlInput: { maxLength: STREAM_LIMITS.TAG_MAX_LENGTH },
+            formHelperText: { sx: { textAlign: 'right', m: 0, mt: 0.5 } },
+          }}
         />
-        <Button
-          onClick={addTag}
-          disabled={disabled || !draft.trim() || full}
-          sx={{ mt: 0.5 }}
-        >
+        <Button onClick={addTag} disabled={disabled || !draft.trim() || full} sx={{ mt: 0.5 }}>
           Add
         </Button>
       </Stack>
       {value.length > 0 ? (
-        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+        <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
           {value.map((tag) => (
             <Chip
               key={tag}
               label={tag}
               size="small"
-              onDelete={
-                disabled ? undefined : () => onChange(value.filter((t) => t !== tag))
-              }
+              onDelete={disabled ? undefined : () => onChange(value.filter((t) => t !== tag))}
               // Chip clones the delete icon and attaches its own onClick; the
               // label is what tells ten otherwise identical X buttons apart.
               deleteIcon={<CancelIcon aria-label={`Remove tag ${tag}`} />}
@@ -191,16 +179,8 @@ export function MediaTypeField({
         value={value}
         onChange={(e) => onChange(e.target.value as MediaType)}
       >
-        <FormControlLabel
-          value="video"
-          control={<Radio size="small" />}
-          label="Video Stream"
-        />
-        <FormControlLabel
-          value="audio"
-          control={<Radio size="small" />}
-          label="Audio Only"
-        />
+        <FormControlLabel value="video" control={<Radio size="small" />} label="Video Stream" />
+        <FormControlLabel value="audio" control={<Radio size="small" />} label="Audio Only" />
       </RadioGroup>
       {helperText ? <FormHelperText>{helperText}</FormHelperText> : null}
     </FormControl>
@@ -229,9 +209,7 @@ export function ThumbnailField({
 
   return (
     <Stack spacing={1}>
-      <FormLabel htmlFor="stream-thumbnail">
-        Upload Thumbnail (Max 5MB)
-      </FormLabel>
+      <FormLabel htmlFor="stream-thumbnail">Upload Thumbnail (Max 5MB)</FormLabel>
       {/*
         A native file input, like msrs-client's, so the label and the picker
         stay plain and testable. Its browser-chrome button is light even in a
@@ -262,7 +240,7 @@ export function ThumbnailField({
         }}
       />
       {previewUrl || fileName ? (
-        <Stack direction="row" spacing={2} alignItems="center">
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
           {previewUrl ? (
             <Box
               component="img"
@@ -278,18 +256,13 @@ export function ThumbnailField({
               }}
             />
           ) : null}
-          <Stack spacing={0.5} alignItems="flex-start">
+          <Stack spacing={0.5} sx={{ alignItems: 'flex-start' }}>
             {fileName ? (
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                 {fileName}
               </Typography>
             ) : null}
-            <Button
-              size="small"
-              color="error"
-              onClick={onRemove}
-              disabled={disabled}
-            >
+            <Button size="small" color="error" onClick={onRemove} disabled={disabled}>
               Remove
             </Button>
           </Stack>

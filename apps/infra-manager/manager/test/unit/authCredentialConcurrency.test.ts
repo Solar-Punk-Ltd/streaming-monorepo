@@ -16,7 +16,12 @@ const SECOND_PASSWORD = 'a-long-losing-password';
 
 function signal() {
   let resolve!: () => void;
-  return { promise: new Promise<void>(done => { resolve = done; }), resolve };
+  return {
+    promise: new Promise<void>((done) => {
+      resolve = done;
+    }),
+    resolve,
+  };
 }
 
 function session(user: { id: number; username: string; isAdmin: boolean }): SessionInfo {
@@ -69,7 +74,11 @@ describe('password verification and credential writes', () => {
       userAgent: 'test',
     });
     await checked.promise;
-    await auth.changePassword(session({ id: added.id, username: added.username, isAdmin: true }), OLD_PASSWORD, FIRST_PASSWORD);
+    await auth.changePassword(
+      session({ id: added.id, username: added.username, isAdmin: true }),
+      OLD_PASSWORD,
+      FIRST_PASSWORD,
+    );
     resume.resolve();
 
     await assert.rejects(staleLogin);

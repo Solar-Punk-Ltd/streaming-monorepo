@@ -3,7 +3,13 @@ import type { BigIntStats } from 'node:fs';
 import { lstat, readdir, readlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { assertOwnedDirectory, assertOwnedTreeLinks, assertRelativeTreePath, readOwnedFile, readSharedOwnedFile } from './ownedTreePaths.js';
+import {
+  assertOwnedDirectory,
+  assertOwnedTreeLinks,
+  assertRelativeTreePath,
+  readOwnedFile,
+  readSharedOwnedFile,
+} from './ownedTreePaths.js';
 
 export type OwnedTreeEntry = { path: string; mode: number } & (
   | { type: 'directory' }
@@ -33,7 +39,8 @@ export const sha256 = (bytes: Buffer | string): string => createHash('sha256').u
 /** Format 1 is shared by final artifacts, execution sources and rollout recovery evidence. */
 export const ownedTreeDigest = ({ rootMode, entries }: Pick<OwnedTreeInventory, 'rootMode' | 'entries'>): string =>
   sha256(JSON.stringify({ format: 1, rootMode, entries }));
-const stamp = (info: BigIntStats): string => [info.dev, info.ino, info.mode, info.size, info.mtimeNs, info.ctimeNs].join(':');
+const stamp = (info: BigIntStats): string =>
+  [info.dev, info.ino, info.mode, info.size, info.mtimeNs, info.ctimeNs].join(':');
 /**
  * The fields of a stamp that still hold after the tree has been linked from,
  * in the order `inodeOfStamp` and `modeOfStamp` read them out of.
@@ -49,7 +56,7 @@ const stamp = (info: BigIntStats): string => [info.dev, info.ino, info.mode, inf
  * build instead.
  */
 const durableStamp = (info: BigIntStats): string => [info.dev, info.ino, info.mode, info.size, info.mtimeNs].join(':');
-const sharedStamp = (info: BigIntStats): string => info.isFile() ? durableStamp(info) : stamp(info);
+const sharedStamp = (info: BigIntStats): string => (info.isFile() ? durableStamp(info) : stamp(info));
 /** The device and inode a durable stamp opens with. Two paths whose stamps share it are one file, so they hold the same bytes. */
 export const inodeOfStamp = (durable: string): string => durable.split(':', 2).join(':');
 
@@ -68,7 +75,8 @@ export const FILE_TYPE_BITS: Record<OwnedTreeEntry['type'], number> = {
   file: 0o100000,
   symlink: 0o120000,
 };
-export const byPath = (left: { path: string }, right: { path: string }): number => left.path < right.path ? -1 : left.path > right.path ? 1 : 0;
+export const byPath = (left: { path: string }, right: { path: string }): number =>
+  left.path < right.path ? -1 : left.path > right.path ? 1 : 0;
 
 /**
  * How a walk learns a regular file's sha256, given its path in the tree being
@@ -110,24 +118,32 @@ async function walkOwnedTree(
         entries.push({ ...base, mode: SYMLINK_MODE, type: 'symlink', target: await readlink(join(root, path)) });
       } else throw new Error('Package tree contains an unsupported file type.');
       const identity = sharedRegularFiles ? sharedStamp : stamp;
-      if (identity(info) !== identity(await lstat(join(root, path), { bigint: true }))) throw new Error('Package tree changed during inventory.');
+      if (identity(info) !== identity(await lstat(join(root, path), { bigint: true })))
+        throw new Error('Package tree changed during inventory.');
       stamps[path] = stamp(info);
       durableStamps[path] = durable;
       sharedStamps[path] = sharedStamp(info);
     }
-    if (stamp(directoryInfo) !== stamp(await lstat(join(root, directory), { bigint: true }))) throw new Error('Package directory changed during inventory.');
+    if (stamp(directoryInfo) !== stamp(await lstat(join(root, directory), { bigint: true })))
+      throw new Error('Package directory changed during inventory.');
   }
   await walk('');
-  return { rootMode: Number(rootInfo.mode & 0o7777n), entries: entries.sort(byPath), stamps, durableStamps, sharedStamps };
+  return {
+    rootMode: Number(rootInfo.mode & 0o7777n),
+    entries: entries.sort(byPath),
+    stamps,
+    durableStamps,
+    sharedStamps,
+  };
 }
 
 /** The caller owns this tree exclusively and has stopped its builder before inventory starts. */
 export const inventoryOwnedTree = (root: string, excludedRootFile?: string): Promise<OwnedTreeInventory> =>
-  walkOwnedTree(root, async path => sha256(await readOwnedFile(root, path)), excludedRootFile);
+  walkOwnedTree(root, async (path) => sha256(await readOwnedFile(root, path)), excludedRootFile);
 
 /** Inventory a published tree whose regular files may be hard linked by another deployment while it is read. */
 export const inventorySharedOwnedTree = (root: string, excludedRootFile?: string): Promise<OwnedTreeInventory> =>
-  walkOwnedTree(root, async path => sha256(await readSharedOwnedFile(root, path)), excludedRootFile, true);
+  walkOwnedTree(root, async (path) => sha256(await readSharedOwnedFile(root, path)), excludedRootFile, true);
 
 /**
  * The same walk over a tree whose regular files are hard links of a tree that
@@ -137,7 +153,11 @@ export const inventorySharedOwnedTree = (root: string, excludedRootFile?: string
 export const inventoryLinkedTree = (root: string, digestOf: FileDigestSource): Promise<OwnedTreeInventory> =>
   walkOwnedTree(root, digestOf, undefined, true);
 
-async function stampWalk(root: string, of: (info: BigIntStats) => string, excludedRootFile?: string): Promise<Record<string, string>> {
+async function stampWalk(
+  root: string,
+  of: (info: BigIntStats) => string,
+  excludedRootFile?: string,
+): Promise<Record<string, string>> {
   const stamps: Record<string, string> = {};
   async function walk(directory: string): Promise<void> {
     await assertOwnedDirectory(root, directory);
@@ -169,12 +189,17 @@ export const stampOwnedTree = (root: string, excludedRootFile?: string): Promise
   stampWalk(root, stamp, excludedRootFile);
 
 /** The same walk against a record that outlives the links made from the tree, so without the status-change time. */
-export const durableStampOwnedTree = (root: string, excludedRootFile?: string): Promise<OwnedTreeInventory['durableStamps']> =>
-  stampWalk(root, durableStamp, excludedRootFile);
+export const durableStampOwnedTree = (
+  root: string,
+  excludedRootFile?: string,
+): Promise<OwnedTreeInventory['durableStamps']> => stampWalk(root, durableStamp, excludedRootFile);
 
 /** Strict non-file stamps and durable regular-file stamps for a published hard-linked tree. */
-export const sharedStampOwnedTree = (root: string, excludedRootFile?: string): Promise<OwnedTreeInventory['sharedStamps']> =>
-  stampWalk(root, sharedStamp, excludedRootFile);
+export const sharedStampOwnedTree = (
+  root: string,
+  excludedRootFile?: string,
+): Promise<OwnedTreeInventory['sharedStamps']> => stampWalk(root, sharedStamp, excludedRootFile);
 
 /** The durable stamp of one path, for a caller asking whether a record still describes the thing it names. */
-export const durablePathStamp = async (path: string): Promise<string> => durableStamp(await lstat(path, { bigint: true }));
+export const durablePathStamp = async (path: string): Promise<string> =>
+  durableStamp(await lstat(path, { bigint: true }));

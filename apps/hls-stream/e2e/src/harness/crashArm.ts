@@ -352,8 +352,8 @@ export function crashArmSummary(result: BrowserArmResult): string {
   const resumed = !recovery.recovered
     ? 'and never moved again'
     : recovery.recoveredAfterLiftMs === null
-    ? 'and was moving by the end, with nothing recording when it started'
-    : `moving again ${seconds(recovery.recoveredAfterLiftMs)}s after the service answered${startup}`;
+      ? 'and was moving by the end, with nothing recording when it started'
+      : `moving again ${seconds(recovery.recoveredAfterLiftMs)}s after the service answered${startup}`;
   const said = recovery.saidWhileFrozen.length > 0 ? `"${recovery.saidWhileFrozen.join('", "')}"` : 'NOTHING at all';
 
   return (

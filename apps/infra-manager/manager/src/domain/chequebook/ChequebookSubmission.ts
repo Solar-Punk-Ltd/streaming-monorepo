@@ -1,12 +1,23 @@
 import { ChequebookProfileChangedError } from '../errors/ChequebookProfileChangedError.js';
 import type { FrozenChequebookTarget } from './FrozenChequebookTarget.js';
 import { randomUUID } from 'node:crypto';
-import type { BeeTransaction, ChequebookAdmissionResult, ChequebookOperation, ChequebookTransferContext, ChequebookTransferIntent } from '@streaming-infra-manager/common';
+import type {
+  BeeTransaction,
+  ChequebookAdmissionResult,
+  ChequebookOperation,
+  ChequebookTransferContext,
+  ChequebookTransferIntent,
+} from '@streaming-infra-manager/common';
 import { ChequebookJournalError } from '../errors/ChequebookJournalError.js';
 import { ChequebookPreparationError } from '../errors/ChequebookPreparationError.js';
 import { ChequebookPreflightRefusedError } from '../errors/ChequebookPreflightRefusedError.js';
 import type { ChequebookOperationRepository, SubmissionOutcome } from './ChequebookOperationRepository.js';
-import { isTransactionHash, normalizeTransferContext, normalizeTransferIntent, sameTransferIntent } from './operationIdentity.js';
+import {
+  isTransactionHash,
+  normalizeTransferContext,
+  normalizeTransferIntent,
+  sameTransferIntent,
+} from './operationIdentity.js';
 
 export interface PreparedChequebookTransfer {
   /** Close the private Bee session. Must be idempotent and must not throw. */
@@ -47,9 +58,14 @@ export class ChequebookSubmission {
     }
   }
 
-  private async submitPrepared(prepared: PreparedChequebookTransfer, intent: ChequebookTransferIntent): Promise<ChequebookAdmissionResult> {
+  private async submitPrepared(
+    prepared: PreparedChequebookTransfer,
+    intent: ChequebookTransferIntent,
+  ): Promise<ChequebookAdmissionResult> {
     const context = normalizeTransferContext(prepared.context);
-    const admitted = await this.journal(() => this.operations.admit({ id: randomUUID(), ...intent, ...context, submissionTarget: prepared.submissionTarget }));
+    const admitted = await this.journal(() =>
+      this.operations.admit({ id: randomUUID(), ...intent, ...context, submissionTarget: prepared.submissionTarget }),
+    );
     if (admitted.kind !== 'admitted') return admitted;
     const operation = Object.freeze({ ...admitted.operation });
 
@@ -72,7 +88,11 @@ export class ChequebookSubmission {
     if (!isTransactionHash(result?.transactionHash)) {
       return this.finish(operation, { state: 'unknown', transactionHash: null, failureReason: 'invalid_response' });
     }
-    return this.finish(operation, { state: 'submitted', transactionHash: result.transactionHash.toLowerCase(), failureReason: null });
+    return this.finish(operation, {
+      state: 'submitted',
+      transactionHash: result.transactionHash.toLowerCase(),
+      failureReason: null,
+    });
   }
 
   private async finish(operation: ChequebookOperation, outcome: SubmissionOutcome): Promise<ChequebookAdmissionResult> {

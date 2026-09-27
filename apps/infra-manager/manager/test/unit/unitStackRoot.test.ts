@@ -50,7 +50,10 @@ describe('the stack root this suite deploys into', () => {
 
 describe('the runner that hands it that root', () => {
   it('replaces a root the caller exported, and keeps the rest of the environment', () => {
-    const env = sandboxedEnv({ [STACK_ROOT_VARIABLE]: '/somewhere/real', DATABASE_URL: 'postgres://unused' }, '/tmp/throwaway');
+    const env = sandboxedEnv(
+      { [STACK_ROOT_VARIABLE]: '/somewhere/real', DATABASE_URL: 'postgres://unused' },
+      '/tmp/throwaway',
+    );
     assert.equal(env[STACK_ROOT_VARIABLE], '/tmp/throwaway');
     assert.equal(env.DATABASE_URL, 'postgres://unused');
   });

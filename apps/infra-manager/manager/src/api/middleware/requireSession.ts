@@ -1,14 +1,7 @@
 import { Request, RequestHandler } from 'express';
 
-import type {
-  AuthService,
-  SessionInfo,
-  SignedInUser,
-} from '../../domain/auth/AuthService.js';
-import {
-  AdminRequiredError,
-  NotSignedInError,
-} from '../../domain/errors/index.js';
+import type { AuthService, SessionInfo, SignedInUser } from '../../domain/auth/AuthService.js';
+import { AdminRequiredError, NotSignedInError } from '../../domain/errors/index.js';
 import { clearSessionCookie, readSessionToken } from '../sessionCookie.js';
 
 import { asyncHandler } from './asyncHandler.js';

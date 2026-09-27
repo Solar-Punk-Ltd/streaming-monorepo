@@ -1,8 +1,20 @@
 import type { Readable } from 'node:stream';
 
-export interface ForwardClock { now(): number; schedule(call: () => void, milliseconds: number): () => void }
-export interface ForwardPathIdentity { readonly kind: 'directory' | 'socket' | 'other'; readonly dev: string; readonly ino: string; readonly uid: number; readonly mode: number }
-export interface OwnedForwardPath { readonly path: string; readonly identity: ForwardPathIdentity }
+export interface ForwardClock {
+  now(): number;
+  schedule(call: () => void, milliseconds: number): () => void;
+}
+export interface ForwardPathIdentity {
+  readonly kind: 'directory' | 'socket' | 'other';
+  readonly dev: string;
+  readonly ino: string;
+  readonly uid: number;
+  readonly mode: number;
+}
+export interface OwnedForwardPath {
+  readonly path: string;
+  readonly identity: ForwardPathIdentity;
+}
 export interface ForwardSpawnOwnership {
   readonly directory: OwnedForwardPath;
   readonly socketPath: string;
@@ -27,6 +39,11 @@ export interface ForwardChild {
   signal(signal: 'SIGTERM' | 'SIGKILL'): void;
 }
 export type ForwardResource = 'directory' | 'child' | 'socket';
-export type ForwardCleanupReason = 'pending_resource' | 'child_exit_unconfirmed' | 'path_identity_changed' | 'cleanup_failed';
-export type SshForwardCleanup = Readonly<{ state: 'closed' }> |
-  Readonly<{ state: 'unverified'; reason: ForwardCleanupReason; remaining: readonly ForwardResource[] }>;
+export type ForwardCleanupReason =
+  | 'pending_resource'
+  | 'child_exit_unconfirmed'
+  | 'path_identity_changed'
+  | 'cleanup_failed';
+export type SshForwardCleanup =
+  | Readonly<{ state: 'closed' }>
+  | Readonly<{ state: 'unverified'; reason: ForwardCleanupReason; remaining: readonly ForwardResource[] }>;

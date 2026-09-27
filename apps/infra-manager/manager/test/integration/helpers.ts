@@ -14,14 +14,7 @@ import assert from 'node:assert/strict';
 import { IntegrationResources } from './IntegrationResources.js';
 import { requestTimeoutMs } from './requestTimeout.js';
 import { requestHeaders, sessionCookieFrom } from './session.js';
-import {
-  baseUrlOf,
-  PASSWORD_VAR,
-  runIdFrom,
-  runName,
-  targetProblem,
-  USERNAME_VAR,
-} from './target.js';
+import { baseUrlOf, PASSWORD_VAR, runIdFrom, runName, targetProblem, USERNAME_VAR } from './target.js';
 
 export { PREFIX } from './target.js';
 
@@ -30,7 +23,9 @@ export const BASE = baseUrlOf(process.env);
 /** Every name this run makes carries it, and cleanup removes nothing without it. */
 export const RUN_ID = runIdFrom(process.env);
 
-const resources = new IntegrationResources(RUN_ID, (method, path, body, signal) => requestWith(method, path, body, { signal }));
+const resources = new IntegrationResources(RUN_ID, (method, path, body, signal) =>
+  requestWith(method, path, body, { signal }),
+);
 
 // Service names — mirrors common/src/constants.ts (kept as literals so the
 // tests stay decoupled from the app package).
@@ -169,11 +164,7 @@ export async function signOut(): Promise<string | null> {
 }
 
 /** Request expecting a 2xx. Creation evidence is saved before caller assertions. */
-export async function api<T>(
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<T> {
+export async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
   const { status, body: result } = await requestWith(method, path, body);
   if (status < 200 || status >= 300) {
     throw new Error(`${method} ${path} -> ${status}`);
@@ -182,11 +173,7 @@ export async function api<T>(
 }
 
 /** Request that returns status + parsed body without throwing on 4xx/5xx. */
-export function apiRaw(
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<{ status: number; body: unknown }> {
+export function apiRaw(method: string, path: string, body?: unknown): Promise<{ status: number; body: unknown }> {
   return requestWith(method, path, body);
 }
 
@@ -199,8 +186,11 @@ export async function requestWith(
 ): Promise<{ status: number; body: unknown }> {
   const rawBody = options.rawBody ?? (body !== undefined ? JSON.stringify(body) : undefined);
   let sentBody: unknown;
-  try { sentBody = rawBody === undefined ? undefined : JSON.parse(rawBody); }
-  catch { sentBody = undefined; }
+  try {
+    sentBody = rawBody === undefined ? undefined : JSON.parse(rawBody);
+  } catch {
+    sentBody = undefined;
+  }
   return resources.capture(method, path, sentBody, async () => {
     const { status, text } = await rawRequest(method, path, undefined, { ...options, rawBody });
     let parsed: unknown = text;
@@ -236,17 +226,12 @@ export interface CreateBody {
   bee_url?: string | null;
 }
 
-export const listProfiles = () =>
-  api<{ profiles: Profile[] }>('GET', '/profiles').then((r) => r.profiles);
+export const listProfiles = () => api<{ profiles: Profile[] }>('GET', '/profiles').then((r) => r.profiles);
 
-export const getProfile = (name: string) =>
-  api<Profile>('GET', `/profiles/${encodeURIComponent(name)}`);
+export const getProfile = (name: string) => api<Profile>('GET', `/profiles/${encodeURIComponent(name)}`);
 
 export async function getProfileOrNull(name: string): Promise<Profile | null> {
-  const { status, body } = await apiRaw(
-    'GET',
-    `/profiles/${encodeURIComponent(name)}`,
-  );
+  const { status, body } = await apiRaw('GET', `/profiles/${encodeURIComponent(name)}`);
   if (status === 404) return null;
   if (status < 200 || status >= 300) {
     throw new Error(`GET /profiles/${name} -> ${status}`);
@@ -254,24 +239,19 @@ export async function getProfileOrNull(name: string): Promise<Profile | null> {
   return body as Profile;
 }
 
-export const createProfile = (body: CreateBody) => 
-  api<Profile>('POST', '/profiles', body);
+export const createProfile = (body: CreateBody) => api<Profile>('POST', '/profiles', body);
 
 export const updateProfile = (name: string, body: Record<string, unknown>) =>
   api<Profile>('PUT', `/profiles/${encodeURIComponent(name)}`, body);
 
 export const deployProfile = async (name: string) => {
-   const r = await apiRaw(
-     'POST',
-     `/profiles/${encodeURIComponent(name)}/deploy`,
-     {},
-   );
-   if (r.status < 200 || r.status >= 300) {
-     throw new Error(`POST /profiles/${name}/deploy -> ${r.status}`);
-   }
-   return r;
- }
- 
+  const r = await apiRaw('POST', `/profiles/${encodeURIComponent(name)}/deploy`, {});
+  if (r.status < 200 || r.status >= 300) {
+    throw new Error(`POST /profiles/${name}/deploy -> ${r.status}`);
+  }
+  return r;
+};
+
 export const stopProfile = async (name: string) => {
   const r = await apiRaw('POST', `/profiles/${encodeURIComponent(name)}/stop`, {});
   if (r.status < 200 || r.status >= 300) {
@@ -282,8 +262,7 @@ export const stopProfile = async (name: string) => {
 
 export const removeProfile = (name: string) => resources.remove(name);
 
-export const listGroups = () =>
-  api<{ groups: Group[] }>('GET', '/groups').then((r) => r.groups);
+export const listGroups = () => api<{ groups: Group[] }>('GET', '/groups').then((r) => r.groups);
 
 export const createGroup = (body: {
   group_name: string;
@@ -295,19 +274,13 @@ export const createGroup = (body: {
   host?: string;
   abr_ladder?: boolean;
   stamp_id?: string;
-}) =>
-  api<{ group: Group; profiles: Profile[] }>('POST', '/groups', body);
+}) => api<{ group: Group; profiles: Profile[] }>('POST', '/groups', body);
 
 /** The assembled BEE_PUBLISHERS for a pool, or why it is being withheld. */
-export const beePublishers = (id: number) =>
-  api<BeePublishersResult>('GET', `/groups/${id}/bee-publishers`);
+export const beePublishers = (id: number) => api<BeePublishersResult>('GET', `/groups/${id}/bee-publishers`);
 
 export const updateGroupConfig = (id: number, body: Record<string, unknown>) =>
-  api<{ group: Group; profiles: Profile[] }>(
-    'PATCH',
-    `/groups/${id}/config`,
-    body,
-  );
+  api<{ group: Group; profiles: Profile[] }>('PATCH', `/groups/${id}/config`, body);
 
 export const addGroupMembers = (id: number, count: number) =>
   api<{ group: Group; profiles: Profile[] }>('POST', `/groups/${id}/members`, {
@@ -323,8 +296,7 @@ export const listGroupMembers = async (id: number): Promise<Profile[]> =>
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** The sorted set of service names actually deployed for a profile. */
-export const serviceNames = (p: Profile): string[] =>
-  p.containers.map((c) => c.service).sort();
+export const serviceNames = (p: Profile): string[] => p.containers.map((c) => c.service).sort();
 
 /**
  * Poll until `name` reaches `target`. Fails fast if it lands in ERROR while we
@@ -343,15 +315,11 @@ export async function waitForStatus(
     last = await getProfileOrNull(name);
     if (last?.status === target) return last;
     if (last?.status === 'ERROR' && target !== 'ERROR') {
-      throw new Error(
-        `profile ${name} entered ERROR while awaiting ${target}: ${last.last_error ?? '(no message)'}`,
-      );
+      throw new Error(`profile ${name} entered ERROR while awaiting ${target}: ${last.last_error ?? '(no message)'}`);
     }
     await sleep(intervalMs);
   }
-  throw new Error(
-    `timed out after ${timeoutMs}ms awaiting ${name}=${target}; last status=${last?.status ?? 'absent'}`,
-  );
+  throw new Error(`timed out after ${timeoutMs}ms awaiting ${name}=${target}; last status=${last?.status ?? 'absent'}`);
 }
 
 /**
@@ -373,9 +341,7 @@ export async function waitForRunningServices(
   while (Date.now() < deadline) {
     last = await getProfileOrNull(name);
     if (last?.status === 'ERROR') {
-      throw new Error(
-        `profile ${name} entered ERROR: ${last.last_error ?? '(no message)'}`,
-      );
+      throw new Error(`profile ${name} entered ERROR: ${last.last_error ?? '(no message)'}`);
     }
     if (last?.status === 'RUNNING') {
       const got = serviceNames(last);
@@ -391,10 +357,7 @@ export async function waitForRunningServices(
   );
 }
 
-export async function waitForGone(
-  name: string,
-  opts: { timeoutMs?: number; intervalMs?: number } = {},
-): Promise<void> {
+export async function waitForGone(name: string, opts: { timeoutMs?: number; intervalMs?: number } = {}): Promise<void> {
   const timeoutMs = opts.timeoutMs ?? 120_000;
   const intervalMs = opts.intervalMs ?? 2_000;
   const deadline = Date.now() + timeoutMs;
@@ -435,9 +398,7 @@ export async function waitForGroupSize(
     if (group && group.size === size) return;
     await sleep(intervalMs);
   }
-  throw new Error(
-    `timed out awaiting group ${id} size=${size}; last size=${last ?? 'absent'}`,
-  );
+  throw new Error(`timed out awaiting group ${id} size=${size}; last size=${last ?? 'absent'}`);
 }
 
 /**
@@ -457,9 +418,7 @@ export async function waitForUploaderHealthy(
   const timeoutMs = opts.timeoutMs ?? 90_000;
   const intervalMs = opts.intervalMs ?? 3_000;
 
-  const container = profile.containers.find(
-    (c) => c.service === STREAM_UPLOADER,
-  );
+  const container = profile.containers.find((c) => c.service === STREAM_UPLOADER);
   assert.ok(container, 'no stream-uploader container in the snapshot');
   const port = container.ports.API_PORT;
   assert.ok(port, 'stream-uploader snapshot carries no API_PORT');

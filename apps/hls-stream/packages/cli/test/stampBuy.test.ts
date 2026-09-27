@@ -81,7 +81,7 @@ async function run(
     await stampBuy(
       { ...TEST_BATCH, assumeYes: overrides.assumeYes, rung: overrides.rung },
       {
-        createBee: () => ({ getChainState: async () => CHAIN_STATE } as unknown as Bee),
+        createBee: () => ({ status: { getChainState: async () => CHAIN_STATE } }) as unknown as Bee,
         // Every test here predates the spend confirmation and is about some other step, so the
         // default answers yes. The prompt itself has its own tests below.
         confirm: async () => true,
@@ -263,9 +263,9 @@ describe('stampBuy, OPS-1: the second command that spends money', () => {
       envPath,
       createBee: () =>
         ({
-          getChainState: async () => CHAIN_STATE,
-          getWalletBalance: async () => ({ bzzBalance: BZZ.fromPLUR(1n) }),
-        } as unknown as Bee),
+          status: { getChainState: async () => CHAIN_STATE },
+          wallet: { getBalance: async () => ({ bzzBalance: BZZ.fromPLUR(1n) }) },
+        }) as unknown as Bee,
       confirm: async () => {
         asked += 1;
         return true;
@@ -283,9 +283,9 @@ describe('stampBuy, OPS-1: the second command that spends money', () => {
       envPath,
       createBee: () =>
         ({
-          getChainState: async () => CHAIN_STATE,
-          getWalletBalance: async () => ({ bzzBalance: BZZ.fromPLUR(TEST_BATCH_COST_PLUR) }),
-        } as unknown as Bee),
+          status: { getChainState: async () => CHAIN_STATE },
+          wallet: { getBalance: async () => ({ bzzBalance: BZZ.fromPLUR(TEST_BATCH_COST_PLUR) }) },
+        }) as unknown as Bee,
     });
 
     assert.equal(result.spends, 1, 'a wallet holding exactly the price was refused');
@@ -299,11 +299,13 @@ describe('stampBuy, OPS-1: the second command that spends money', () => {
       envPath,
       createBee: () =>
         ({
-          getChainState: async () => CHAIN_STATE,
-          getWalletBalance: async () => {
-            throw new Error('json-rpc: connection refused');
+          status: { getChainState: async () => CHAIN_STATE },
+          wallet: {
+            getBalance: async () => {
+              throw new Error('json-rpc: connection refused');
+            },
           },
-        } as unknown as Bee),
+        }) as unknown as Bee,
     });
 
     assert.equal(result.spends, 1);
@@ -344,10 +346,12 @@ describe('stampBuy, OPS-1: the second command that spends money', () => {
       envPath,
       createBee: () =>
         ({
-          getChainState: async () => {
-            throw new Error('json-rpc: connection refused');
+          status: {
+            getChainState: async () => {
+              throw new Error('json-rpc: connection refused');
+            },
           },
-        } as unknown as Bee),
+        }) as unknown as Bee,
     });
 
     assert.equal(result.spends, 1, 'an unreadable chain price blocked a purchase it has no bearing on');
@@ -385,7 +389,7 @@ describe('stampBuy on a configured ladder, finding 21: the rung is not optional'
       envPath,
       createBee: () => {
         beeMade += 1;
-        return { getChainState: async () => CHAIN_STATE } as unknown as Bee;
+        return { status: { getChainState: async () => CHAIN_STATE } } as unknown as Bee;
       },
     });
 
@@ -403,9 +407,9 @@ describe('stampBuy on a configured ladder, finding 21: the rung is not optional'
       rung: '1080p',
       createBee: () =>
         ({
-          getChainState: async () => CHAIN_STATE,
-          getWalletBalance: async () => ({ bzzBalance: BZZ.fromPLUR(TEST_BATCH_COST_PLUR) }),
-        } as unknown as Bee),
+          status: { getChainState: async () => CHAIN_STATE },
+          wallet: { getBalance: async () => ({ bzzBalance: BZZ.fromPLUR(TEST_BATCH_COST_PLUR) }) },
+        }) as unknown as Bee,
     });
 
     assert.equal(result.spends, 1);

@@ -5,9 +5,7 @@
  */
 export class UntestedVersionError extends Error {
   constructor(public readonly versionName: string) {
-    super(
-      `Mark ${versionName} as tested first, after one real deployment on it.`,
-    );
+    super(`Mark ${versionName} as tested first, after one real deployment on it.`);
     this.name = 'UntestedVersionError';
   }
 }

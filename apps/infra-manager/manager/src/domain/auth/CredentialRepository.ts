@@ -12,12 +12,7 @@ export interface CredentialRepository {
    * Creates the session and records the login only if the verified password
    * hash is still current.
    */
-  admitSession(
-    userId: number,
-    verifiedPasswordHash: string,
-    session: NewSession,
-    signedInAt: Date,
-  ): Promise<boolean>;
+  admitSession(userId: number, verifiedPasswordHash: string, session: NewSession, signedInAt: Date): Promise<boolean>;
   /**
    * Sets the password hash and deletes every other session atomically, only if
    * the verified password hash is still current.

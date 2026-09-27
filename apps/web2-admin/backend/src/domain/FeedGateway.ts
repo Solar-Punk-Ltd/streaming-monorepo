@@ -23,11 +23,7 @@ export interface FeedGateway {
   /** Writes the whole list at `index`. Returns the new chunk's reference hex. */
   write(entries: unknown[], index: number): Promise<string>;
   /** Uploads image bytes and returns the Swarm reference hex. */
-  uploadThumbnail(
-    bytes: Uint8Array,
-    filename: string,
-    contentType: string,
-  ): Promise<string>;
+  uploadThumbnail(bytes: Uint8Array, filename: string, contentType: string): Promise<string>;
   /**
    * Whether this gateway can still serve `reference`. A stored reference
    * outlives the gateway that produced it — FEED_GATEWAY=fake hands out

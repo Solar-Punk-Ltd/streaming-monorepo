@@ -16,7 +16,7 @@ export function DeployTargetsCard() {
   async function load(signal: AbortSignal) {
     const response = await apiFetch('/targets', { signal });
     if (!response.ok) await failWith(response, 'Could not read deploy targets.');
-    const next = await response.json() as DeployTargetsView;
+    const next = (await response.json()) as DeployTargetsView;
     if (!signal.aborted) setData(next);
   }
 
@@ -42,7 +42,9 @@ export function DeployTargetsCard() {
       }
       if (verify) {
         const response = await apiFetch('/targets/verify', {
-          method: 'POST', body: { alias: verify }, signal: controller.signal,
+          method: 'POST',
+          body: { alias: verify },
+          signal: controller.signal,
         });
         if (!response.ok) await failWith(response, 'Could not verify this target.');
       }
@@ -50,8 +52,11 @@ export function DeployTargetsCard() {
       if (!controller.signal.aborted) setError(getErrorMessage(caught));
     } finally {
       if (!controller.signal.aborted) {
-        try { await load(controller.signal); }
-        catch (caught) { if (!controller.signal.aborted) setError(getErrorMessage(caught)); }
+        try {
+          await load(controller.signal);
+        } catch (caught) {
+          if (!controller.signal.aborted) setError(getErrorMessage(caught));
+        }
         if (!controller.signal.aborted) setBusy(false);
       }
     }
@@ -61,39 +66,103 @@ export function DeployTargetsCard() {
     <SectionCard
       title="Deploy targets"
       sub="Targets that reach the same Docker daemon share port reservations"
-      actions={<Button size="small" disabled={busy} onClick={() => void refresh()}>Refresh</Button>}
+      actions={
+        <Button size="small" disabled={busy} onClick={() => void refresh()}>
+          Refresh
+        </Button>
+      }
     >
       <Stack spacing={2}>
         {error && <Alert severity="error">{error}</Alert>}
         {data && !data.inventorySeededAt && (
-          <Alert severity="warning" action={<Button disabled={busy} onClick={() => void refresh(undefined, true)}>Retry inventory</Button>}>
-            The initial reservation inventory is incomplete. Verify any unreachable targets, then retry. New deployments wait until this check completes.
+          <Alert
+            severity="warning"
+            action={
+              <Button disabled={busy} onClick={() => void refresh(undefined, true)}>
+                Retry inventory
+              </Button>
+            }
+          >
+            The initial reservation inventory is incomplete. Verify any unreachable targets, then retry. New deployments
+            wait until this check completes.
           </Alert>
         )}
-        {!data && !error && <Typography color="text.secondary">Loading targets…</Typography>}
+        {!data && !error && (
+          <Typography
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
+            Loading targets…
+          </Typography>
+        )}
         {data?.targets.map((target) => (
-          <Stack key={target.alias} direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+          <Stack
+            key={target.alias}
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            sx={{
+              alignItems: { sm: 'center' },
+            }}
+          >
             <Stack sx={{ flex: 1, minWidth: 0 }}>
               <Typography>{target.alias}</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.secondary',
+                  overflowWrap: 'anywhere',
+                }}
+              >
                 Docker daemon: {target.daemonId ?? 'not established'}
               </Typography>
-              <Typography variant="caption" color={target.verifiedAt ? 'text.secondary' : 'error.main'}>
+              <Typography variant="caption" sx={{ color: target.verifiedAt ? 'text.secondary' : 'error.main' }}>
                 {target.verifiedAt ? `Verified ${formatDateTime(target.verifiedAt)}` : 'Not verified'}
               </Typography>
-              {target.lastError && <Typography variant="body2" color="error.main">{target.lastError}</Typography>}
-              <Typography variant="caption" color={target.inventorySeededAt ? 'text.secondary' : 'warning.main'}>
-                {target.inventorySeededAt ? `Ports inventoried ${formatDateTime(target.inventorySeededAt)}` : 'Port inventory incomplete. Verify this target to scan it.'}
+              {target.lastError && (
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'error.main',
+                  }}
+                >
+                  {target.lastError}
+                </Typography>
+              )}
+              <Typography
+                variant="caption"
+                sx={{ color: target.inventorySeededAt ? 'text.secondary' : 'warning.main' }}
+              >
+                {target.inventorySeededAt
+                  ? `Ports inventoried ${formatDateTime(target.inventorySeededAt)}`
+                  : 'Port inventory incomplete. Verify this target to scan it.'}
               </Typography>
             </Stack>
-            <Button disabled={busy} onClick={() => void refresh(target.alias)} aria-label={`Verify ${target.alias}`}>Verify</Button>
+            <Button disabled={busy} onClick={() => void refresh(target.alias)} aria-label={`Verify ${target.alias}`}>
+              Verify
+            </Button>
           </Stack>
         ))}
-        <Stack component="form" direction={{ xs: 'column', sm: 'row' }} spacing={1}
-          onSubmit={(event) => { event.preventDefault(); if (alias.trim() && !busy) void refresh(alias.trim()); }}>
-          <TextField label="Deploy target" value={alias} onChange={(event) => setAlias(event.target.value)}
-            helperText="Use the same SSH alias or user@host as the deployment." size="small" fullWidth />
-          <Button type="submit" disabled={busy || !alias.trim()} sx={{ alignSelf: 'flex-start' }}>Verify target</Button>
+        <Stack
+          component="form"
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (alias.trim() && !busy) void refresh(alias.trim());
+          }}
+        >
+          <TextField
+            label="Deploy target"
+            value={alias}
+            onChange={(event) => setAlias(event.target.value)}
+            helperText="Use the same SSH alias or user@host as the deployment."
+            size="small"
+            fullWidth
+          />
+          <Button type="submit" disabled={busy || !alias.trim()} sx={{ alignSelf: 'flex-start' }}>
+            Verify target
+          </Button>
         </Stack>
       </Stack>
     </SectionCard>

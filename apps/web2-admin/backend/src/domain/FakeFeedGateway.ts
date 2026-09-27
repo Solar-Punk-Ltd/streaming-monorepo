@@ -78,24 +78,16 @@ export class FakeFeedGateway implements FeedGateway {
     // forgets everything, by design — must not refuse to continue it. That is
     // the normal `FEED_GATEWAY=fake` dev loop under `tsx watch`.
     if (this.snapshot.index !== null && index !== this.snapshot.index + 1) {
-      throw new Error(
-        `Fake feed write at index ${index}, expected ${this.snapshot.index + 1}`,
-      );
+      throw new Error(`Fake feed write at index ${index}, expected ${this.snapshot.index + 1}`);
     }
     this.snapshot = { index, entries: [...entries] };
     this.history.push(this.snapshot);
-    const reference = createHash('sha256')
-      .update(JSON.stringify(entries))
-      .digest('hex');
+    const reference = createHash('sha256').update(JSON.stringify(entries)).digest('hex');
     this.writes.push({ index, entries: [...entries], reference });
     return reference;
   }
 
-  async uploadThumbnail(
-    bytes: Uint8Array,
-    filename: string,
-    contentType: string,
-  ): Promise<string> {
+  async uploadThumbnail(bytes: Uint8Array, filename: string, contentType: string): Promise<string> {
     const failure = this.take('failNextThumbnail');
     if (failure) throw failure;
 
@@ -111,13 +103,7 @@ export class FakeFeedGateway implements FeedGateway {
     return this.references.has(reference);
   }
 
-  private take(
-    field:
-      | 'failNextRead'
-      | 'failNextWrite'
-      | 'failNextThumbnail'
-      | 'failNextHasReference',
-  ): Error | null {
+  private take(field: 'failNextRead' | 'failNextWrite' | 'failNextThumbnail' | 'failNextHasReference'): Error | null {
     const failure = this[field];
     this[field] = null;
     return failure;

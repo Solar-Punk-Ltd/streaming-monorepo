@@ -15,7 +15,10 @@ describe('engine observation wording', () => {
 
   it('keeps deployment, host, manager and stack sources distinct', () => {
     for (const [source, label] of [
-      ['deployment', 'Deployment override'], ['host', 'Host default'], ['manager', 'Manager default'], ['stack', 'Stack default'],
+      ['deployment', 'Deployment override'],
+      ['host', 'Host default'],
+      ['manager', 'Manager default'],
+      ['stack', 'Stack default'],
     ] as const) {
       const observation: EngineSettingObservation = { status: 'known', source, value: '2', environment: 'all' };
       assert.equal(engineObservationText(observation).source, label);
@@ -23,7 +26,13 @@ describe('engine observation wording', () => {
   });
 
   it("names SRS's own value as the engine's, and says in plain words why the config does not set it", () => {
-    const ignored: EngineSettingObservation = { status: 'known', source: 'built-in', value: '120', environment: 'none', reason: 'latency-without-recvlatency' };
+    const ignored: EngineSettingObservation = {
+      status: 'known',
+      source: 'built-in',
+      value: '120',
+      environment: 'none',
+      reason: 'latency-without-recvlatency',
+    };
     const absent: EngineSettingObservation = { ...ignored, reason: 'no-recvlatency' };
 
     const text = engineObservationText(ignored, 'milliseconds');
@@ -34,9 +43,13 @@ describe('engine observation wording', () => {
     assert.doesNotMatch(engineObservationText(absent).detail, /ignores latency/);
   });
 
-  it("says on a stack version that fills only latency that changing the setting will not change ingest there", () => {
+  it('says on a stack version that fills only latency that changing the setting will not change ingest there', () => {
     const version: EngineSettingObservation = {
-      status: 'known', source: 'built-in', value: '120', environment: 'none', reason: 'version-without-recvlatency',
+      status: 'known',
+      source: 'built-in',
+      value: '120',
+      environment: 'none',
+      reason: 'version-without-recvlatency',
     };
 
     const text = engineObservationText(version, 'milliseconds');
@@ -48,7 +61,11 @@ describe('engine observation wording', () => {
 
   it('says on a stack version that never reads the setting that its template decides the wait', () => {
     const version: EngineSettingObservation = {
-      status: 'known', source: 'built-in', value: '120', environment: 'none', reason: 'version-without-setting',
+      status: 'known',
+      source: 'built-in',
+      value: '120',
+      environment: 'none',
+      reason: 'version-without-setting',
     };
 
     const text = engineObservationText(version, 'milliseconds');
@@ -60,8 +77,20 @@ describe('engine observation wording', () => {
   });
 
   it('does not present missing and conflicting readings as the same absence', () => {
-    const omitted = engineObservationText({ status: 'unknown', source: 'omitted', reason: 'missing-directive', value: null, environment: 'partial' });
-    const conflict = engineObservationText({ status: 'unknown', source: 'unverified', reason: 'conflicting-values', value: null, environment: 'none' });
+    const omitted = engineObservationText({
+      status: 'unknown',
+      source: 'omitted',
+      reason: 'missing-directive',
+      value: null,
+      environment: 'partial',
+    });
+    const conflict = engineObservationText({
+      status: 'unknown',
+      source: 'unverified',
+      reason: 'conflicting-values',
+      value: null,
+      environment: 'none',
+    });
     assert.equal(omitted.value, 'Not specified');
     assert.match(omitted.detail, /omits this setting/);
     assert.match(omitted.detail, /default has not been observed/);
@@ -72,7 +101,13 @@ describe('engine observation wording', () => {
 
   it('keeps unsupported syntax and unavailable metadata uncertain', () => {
     for (const reason of ['unsupported-syntax', 'metadata-unavailable'] as const) {
-      const text = engineObservationText({ status: 'unknown', source: 'unverified', reason, value: null, environment: 'unknown' });
+      const text = engineObservationText({
+        status: 'unknown',
+        source: 'unverified',
+        reason,
+        value: null,
+        environment: 'unknown',
+      });
       assert.equal(text.value, 'Unverified');
       assert.doesNotMatch(text.detail, /not read|not used|omits/);
     }
@@ -80,12 +115,23 @@ describe('engine observation wording', () => {
   });
 
   it('does not claim audio bitrate is unused when only some encoders copy audio', () => {
-    const allCopy = engineObservationText({ status: 'unknown', source: 'unverified', reason: 'not-applicable', value: null, environment: 'none' });
-    const mixed = engineObservationText({ status: 'unknown', source: 'unverified', reason: 'mixed-applicability', value: null, environment: 'unknown' });
+    const allCopy = engineObservationText({
+      status: 'unknown',
+      source: 'unverified',
+      reason: 'not-applicable',
+      value: null,
+      environment: 'none',
+    });
+    const mixed = engineObservationText({
+      status: 'unknown',
+      source: 'unverified',
+      reason: 'mixed-applicability',
+      value: null,
+      environment: 'unknown',
+    });
     assert.equal(allCopy.value, 'Not applicable');
     assert.match(allCopy.detail, /All relevant encoders copy audio/);
     assert.equal(mixed.value, 'Unverified');
     assert.match(mixed.detail, /Some encoders copy audio/);
   });
-
 });

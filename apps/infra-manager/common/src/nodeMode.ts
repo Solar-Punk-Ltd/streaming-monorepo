@@ -15,10 +15,7 @@ export const LIGHT_NODE_MODE = 'light';
 export const ULTRA_LIGHT_NODE_MODE = 'ultra-light';
 
 /** Every mode, for a schema's choices and for a form's options. */
-export const NODE_MODES: readonly NodeMode[] = [
-  LIGHT_NODE_MODE,
-  ULTRA_LIGHT_NODE_MODE,
-];
+export const NODE_MODES: readonly NodeMode[] = [LIGHT_NODE_MODE, ULTRA_LIGHT_NODE_MODE];
 
 /**
  * The mode the stack starts these services in when nothing names one.
@@ -28,9 +25,7 @@ export const NODE_MODES: readonly NodeMode[] = [
  * mode has to read exactly as the deployment already behaves.
  */
 export function shippedNodeMode(services: readonly string[]): NodeMode {
-  return services.includes(BEE_UPLOADER_SERVICE)
-    ? LIGHT_NODE_MODE
-    : ULTRA_LIGHT_NODE_MODE;
+  return services.includes(BEE_UPLOADER_SERVICE) ? LIGHT_NODE_MODE : ULTRA_LIGHT_NODE_MODE;
 }
 
 export function effectiveNodeMode(profile: StampGatedProfile): NodeMode {
@@ -46,10 +41,7 @@ export function effectiveNodeMode(profile: StampGatedProfile): NodeMode {
  */
 export function nodeModeProblem(profile: StampGatedProfile): string | null {
   const services = defaultServicesFor(profile);
-  if (
-    services.includes(BEE_UPLOADER_SERVICE) &&
-    effectiveNodeMode(profile) === ULTRA_LIGHT_NODE_MODE
-  ) {
+  if (services.includes(BEE_UPLOADER_SERVICE) && effectiveNodeMode(profile) === ULTRA_LIGHT_NODE_MODE) {
     return 'an ultra-light node cannot upload';
   }
   return null;
@@ -63,15 +55,8 @@ export function nodeModeProblem(profile: StampGatedProfile): string | null {
  * that also runs a bee-uploader is not one: its node is the uploader, and the
  * endpoint it reads is that node's own.
  */
-export function isLightGateway(
-  services: readonly string[],
-  mode: NodeMode,
-): boolean {
-  return (
-    mode === LIGHT_NODE_MODE &&
-    services.includes(BEE_GATEWAY_SERVICE) &&
-    !services.includes(BEE_UPLOADER_SERVICE)
-  );
+export function isLightGateway(services: readonly string[], mode: NodeMode): boolean {
+  return mode === LIGHT_NODE_MODE && services.includes(BEE_GATEWAY_SERVICE) && !services.includes(BEE_UPLOADER_SERVICE);
 }
 
 /**
@@ -85,7 +70,5 @@ export function isLightGateway(
 export function gatewayNodeMode(profile: StampGatedProfile): NodeMode | null {
   const services = defaultServicesFor(profile);
   if (!services.includes(BEE_GATEWAY_SERVICE)) return null;
-  return isLightGateway(services, effectiveNodeMode(profile))
-    ? LIGHT_NODE_MODE
-    : ULTRA_LIGHT_NODE_MODE;
+  return isLightGateway(services, effectiveNodeMode(profile)) ? LIGHT_NODE_MODE : ULTRA_LIGHT_NODE_MODE;
 }

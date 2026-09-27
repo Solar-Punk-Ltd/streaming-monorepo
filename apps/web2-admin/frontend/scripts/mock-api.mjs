@@ -36,8 +36,7 @@ const KEY_VERIFIED = process.env.INGEST_KEY_VERIFIED === 'true';
 
 const OWNER = '1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c';
 const FEED_TOPIC = 'swarm-stream';
-const FEED_TOPIC_HEX =
-  '4c4b1a0d9e5b1f7a3c2d8e6f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3';
+const FEED_TOPIC_HEX = '4c4b1a0d9e5b1f7a3c2d8e6f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3';
 
 /**
  * The users the mock knows. `MOCK_NO_USERS=true` starts with none, which is
@@ -150,8 +149,7 @@ function publicStream(row) {
   return {
     ...rest,
     hasThumbnail: thumbnail !== null && thumbnailMime !== null,
-    hasUnpublishedEdits:
-      editsNotOnFeed && ON_FEED_STATUSES.includes(row.status),
+    hasUnpublishedEdits: editsNotOnFeed && ON_FEED_STATUSES.includes(row.status),
   };
 }
 
@@ -177,13 +175,7 @@ function ingestDetails(row) {
 
 /** What the catalogue entry carries of a stream's own fields. */
 function entryContent(row) {
-  return JSON.stringify([
-    row.title,
-    row.description,
-    row.tags,
-    row.mediaType,
-    row.scheduledStartTime,
-  ]);
+  return JSON.stringify([row.title, row.description, row.tags, row.mediaType, row.scheduledStartTime]);
 }
 
 /**
@@ -294,11 +286,7 @@ async function handle(req, res) {
 
   // Every write must carry the header no cross-origin page can add without a
   // preflight this mock, like the API, never answers.
-  if (
-    method !== 'GET' &&
-    method !== 'HEAD' &&
-    req.headers['x-requested-with'] !== 'web2-admin'
-  ) {
+  if (method !== 'GET' && method !== 'HEAD' && req.headers['x-requested-with'] !== 'web2-admin') {
     return send(res, 403, { error: 'cross_site_request' });
   }
 
@@ -368,11 +356,7 @@ async function handle(req, res) {
     if (byUsername(body.username)) {
       return send(res, 409, { error: 'user_exists' });
     }
-    const added = makeUser(
-      String(body.username),
-      String(body.password),
-      body.admin === true,
-    );
+    const added = makeUser(String(body.username), String(body.password), body.admin === true);
     return send(res, 201, { user: added });
   }
 
@@ -395,11 +379,7 @@ async function handle(req, res) {
     if (!userRoute[2] && method === 'DELETE') {
       if (!user.isAdmin) return send(res, 403, { error: 'admin_required' });
       const admins = [...users.values()].filter((u) => u.isAdmin).length;
-      if (
-        target.id === user.id ||
-        users.size <= 1 ||
-        (target.isAdmin && admins <= 1)
-      ) {
+      if (target.id === user.id || users.size <= 1 || (target.isAdmin && admins <= 1)) {
         return send(res, 409, { error: 'cannot_remove_user' });
       }
       users.delete(target.id);
@@ -435,9 +415,7 @@ async function handle(req, res) {
   }
 
   if (path === '/api/streams' && method === 'GET') {
-    const list = [...streams.values()]
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .map(publicStream);
+    const list = [...streams.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(publicStream);
     return send(res, 200, { streams: list });
   }
 

@@ -83,7 +83,7 @@ export function createOmeEngine(
   // Blanked rather than read alongside, for the reason `srs.ts` gives: the two modes answer the same
   // question from two different sources of truth, and a deployment where they disagree has no right
   // answer. Admin mode is the one that wins, because it is the one a stream was declared in.
-  const publishKeySecret = adminApi ? '' : options.publishKeySecret ?? '';
+  const publishKeySecret = adminApi ? '' : (options.publishKeySecret ?? '');
   if (publishKeySecret) {
     assertUsablePublishKeySecret(publishKeySecret);
   }

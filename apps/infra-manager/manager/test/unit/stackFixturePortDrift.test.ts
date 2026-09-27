@@ -19,9 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 import { stackFile } from '../support/stackCheckout.js';
 
-const FIXTURE_COMPOSE = fileURLToPath(
-  new URL('../fixtures/stack/v3/deploy/docker-compose.yml', import.meta.url),
-);
+const FIXTURE_COMPOSE = fileURLToPath(new URL('../fixtures/stack/v3/deploy/docker-compose.yml', import.meta.url));
 const BRANCH_COMPOSE = stackFile('deploy', 'docker-compose.yml');
 
 /** A line a compose file carries under a `ports:` key, and where it sits. */

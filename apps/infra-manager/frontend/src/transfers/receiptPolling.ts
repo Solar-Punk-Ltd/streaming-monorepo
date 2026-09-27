@@ -1,4 +1,9 @@
-import { RECEIPT_POLL_BUDGET_MS, RECEIPT_POLL_INTERVAL_MS, RECEIPT_READ_INTERVAL_MS, type ChequebookOperation } from '@streaming-infra-manager/common';
+import {
+  RECEIPT_POLL_BUDGET_MS,
+  RECEIPT_POLL_INTERVAL_MS,
+  RECEIPT_READ_INTERVAL_MS,
+  type ChequebookOperation,
+} from '@streaming-infra-manager/common';
 
 export type PolledTransfer = Pick<ChequebookOperation, 'state' | 'failureReason' | 'receiptPollUntil' | 'updatedAt'>;
 
@@ -11,7 +16,12 @@ export type PolledTransfer = Pick<ChequebookOperation, 'state' | 'failureReason'
  * dishonest one buys a tab one budget of re-reading rather than an endless one.
  */
 export function receiptPollDeadline(operation: PolledTransfer): number | null {
-  if (operation.state !== 'submitted' || operation.failureReason === 'hash_conflict' || operation.receiptPollUntil === null) return null;
+  if (
+    operation.state !== 'submitted' ||
+    operation.failureReason === 'hash_conflict' ||
+    operation.receiptPollUntil === null
+  )
+    return null;
   const deadline = Date.parse(operation.receiptPollUntil);
   const ceiling = Date.parse(operation.updatedAt) + RECEIPT_POLL_BUDGET_MS;
   return Number.isFinite(deadline) && Number.isFinite(ceiling) ? Math.min(deadline, ceiling) : null;
@@ -23,12 +33,16 @@ export function isPollingReceipt(operation: PolledTransfer, now = Date.now()): b
 }
 
 const wholeSeconds = (milliseconds: number) => String(milliseconds / 1000);
-const localClockTime = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+const localClockTime = (at: number) =>
+  new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
 export function receiptPollingSentence(operation: PolledTransfer, now = Date.now()): string | null {
   const deadline = receiptPollDeadline(operation);
   if (deadline === null) return null;
-  if (deadline <= now) return `Automatic checks ended at ${localClockTime(deadline)} without a final receipt. Use Check to ask the chain again.`;
-  return `The manager checks the chain for this transaction's receipt about every ${wholeSeconds(RECEIPT_POLL_INTERVAL_MS)} seconds until ${localClockTime(deadline)}, ` +
-    `and leaves longer gaps while the chain endpoint does not answer. This page re-reads the saved record every ${wholeSeconds(RECEIPT_READ_INTERVAL_MS)} seconds meanwhile.`;
+  if (deadline <= now)
+    return `Automatic checks ended at ${localClockTime(deadline)} without a final receipt. Use Check to ask the chain again.`;
+  return (
+    `The manager checks the chain for this transaction's receipt about every ${wholeSeconds(RECEIPT_POLL_INTERVAL_MS)} seconds until ${localClockTime(deadline)}, ` +
+    `and leaves longer gaps while the chain endpoint does not answer. This page re-reads the saved record every ${wholeSeconds(RECEIPT_READ_INTERVAL_MS)} seconds meanwhile.`
+  );
 }

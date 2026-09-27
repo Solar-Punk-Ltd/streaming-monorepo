@@ -10,9 +10,7 @@ export class MediaTypeLockedError extends Error {
     public readonly streamId: string,
     public readonly currentMediaType: MediaType,
   ) {
-    super(
-      'Unpublish the stream before changing its media type; it is part of the OBS stream id.',
-    );
+    super('Unpublish the stream before changing its media type; it is part of the OBS stream id.');
     this.name = 'MediaTypeLockedError';
   }
 }

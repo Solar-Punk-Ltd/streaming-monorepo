@@ -44,6 +44,8 @@ function batch(over: Partial<PostageBatch> = {}): PostageBatch {
     size: Size.fromBytes(1),
     remainingSize: Size.fromBytes(1),
     theoreticalSize: Size.fromBytes(1),
+    calculateSize: () => Size.fromBytes(1),
+    calculateRemainingSize: () => Size.fromBytes(1),
     ...over,
   };
 }
@@ -59,9 +61,11 @@ function node(rung: string, url: string, stamp: string, reads: Reads, read: () =
     url,
     stamp,
     bee: {
-      getPostageBatch: async (batchId: string): Promise<PostageBatch> => {
-        reads.asked.push(`${url} ${batchId}`);
-        return read();
+      stamp: {
+        get: async (batchId: string): Promise<PostageBatch> => {
+          reads.asked.push(`${url} ${batchId}`);
+          return read();
+        },
       },
     },
   } satisfies StampedPublisher;
@@ -495,9 +499,11 @@ describe('which reading a postage refusal carries', () => {
       url: 'http://a:1633',
       stamp: 'a'.repeat(64),
       bee: {
-        getPostageBatch: async (batchId: string): Promise<PostageBatch> => {
-          reads.asked.push(batchId);
-          throw failure;
+        stamp: {
+          get: async (batchId: string): Promise<PostageBatch> => {
+            reads.asked.push(batchId);
+            throw failure;
+          },
         },
       },
     };

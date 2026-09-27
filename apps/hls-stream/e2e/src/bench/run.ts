@@ -335,6 +335,7 @@ async function collectSamples(
           `no feed poll has succeeded at ${gatewayUrl} for ${FEED_BLACKOUT_LIMIT_MS}ms, so this is the ` +
             `gateway being gone rather than the feed being slow. Last error: ` +
             `${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
         );
       }
       await sleep(idlePollIntervalMs);

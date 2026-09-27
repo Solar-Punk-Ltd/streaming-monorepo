@@ -31,15 +31,10 @@ const REGEXP_SYNTAX_RE = /[.*+?^${}()|[\]\\]/g;
  * logs` shows to anyone with docker access there. The answer to that one is to
  * use an endpoint that carries no key, and the manager's env sample says so.
  */
-export function redactEndpoints(
-  text: string,
-  endpoints: readonly (string | null | undefined)[],
-): string {
+export function redactEndpoints(text: string, endpoints: readonly (string | null | undefined)[]): string {
   const addresses = [
     ...new Set(
-      endpoints
-        .map((endpoint) => endpoint?.trim())
-        .filter((endpoint): endpoint is string => Boolean(endpoint)),
+      endpoints.map((endpoint) => endpoint?.trim()).filter((endpoint): endpoint is string => Boolean(endpoint)),
     ),
   ]
     // Longest first: where one endpoint is the beginning of another, replacing
@@ -49,10 +44,7 @@ export function redactEndpoints(
 
   let out = text;
   for (const address of addresses) {
-    const pattern = new RegExp(
-      `${address.replace(REGEXP_SYNTAX_RE, '\\$&')}/?`,
-      'g',
-    );
+    const pattern = new RegExp(`${address.replace(REGEXP_SYNTAX_RE, '\\$&')}/?`, 'g');
     // A replacer function rather than the mask itself, because as a replacement
     // string `$&` and its siblings are substitution patterns. The mask is built
     // from a host and carries none today, and this is what keeps that from

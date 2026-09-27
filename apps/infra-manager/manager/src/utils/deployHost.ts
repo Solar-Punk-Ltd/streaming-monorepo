@@ -26,14 +26,7 @@ const DEFAULT_TTL_MS = 60_000;
  * `native` is swarm-hls-stream's sentinel for "runs outside compose on this
  * machine" (see `is_native` in deploy/scripts/_lib.sh), not a host at all.
  */
-const NOT_ALIASES = new Set([
-  '',
-  'localhost',
-  '127.0.0.1',
-  '0.0.0.0',
-  '::1',
-  'native',
-]);
+const NOT_ALIASES = new Set(['', 'localhost', '127.0.0.1', '0.0.0.0', '::1', 'native']);
 
 /**
  * What may be handed to `ssh -G`. `profiles.host` is already validated by
@@ -88,9 +81,7 @@ function stripUserInfo(target: string): string {
  * and its own way of running ssh. Use {@link resolveNetworkHost} unless you are
  * a test that needs to control both.
  */
-export function createNetworkHostResolver(
-  options: NetworkHostResolverOptions = {},
-): (target: string) => string {
+export function createNetworkHostResolver(options: NetworkHostResolverOptions = {}): (target: string) => string {
   const exec = options.exec ?? sshConfigDump;
   const now = options.now ?? Date.now;
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
@@ -103,9 +94,7 @@ export function createNetworkHostResolver(
     try {
       dump = exec(name);
     } catch (err) {
-      logger.debug(
-        `[deployHost] ssh -G ${name} failed, using the name as given: ${getErrorMessage(err)}`,
-      );
+      logger.debug(`[deployHost] ssh -G ${name} failed, using the name as given: ${getErrorMessage(err)}`);
       return name;
     }
 
@@ -113,9 +102,7 @@ export function createNetworkHostResolver(
     // ssh echoes an unknown name straight back, so equality means "no Host block
     // matched" rather than "resolves to itself".
     if (!resolved || resolved === name) {
-      logger.debug(
-        `[deployHost] no ssh Host block for ${name}, using the name as given`,
-      );
+      logger.debug(`[deployHost] no ssh Host block for ${name}, using the name as given`);
       return name;
     }
     return resolved;

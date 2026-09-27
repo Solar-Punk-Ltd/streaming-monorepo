@@ -9,27 +9,14 @@
  * words it refuses with are the whole point.
  */
 import assert from 'node:assert/strict';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 
-import {
-  type CommandResult,
-  EngineConfigChecker,
-} from '../../src/domain/engineConfig/engineConfigCheck.js';
+import { type CommandResult, EngineConfigChecker } from '../../src/domain/engineConfig/engineConfigCheck.js';
 import { omeXmlProblem } from '../../src/domain/engineConfig/omeXml.js';
-import {
-  placeholdersFilledBy,
-  substituteForCheck,
-} from '../../src/domain/engineConfig/placeholders.js';
+import { placeholdersFilledBy, substituteForCheck } from '../../src/domain/engineConfig/placeholders.js';
 import { OME_TEMPLATE } from '../support/omeTemplate.js';
 
 const SRS_FILLS = [
@@ -112,10 +99,7 @@ describe('substituteForCheck', () => {
       'passphrase PASSPHRASE_PLACEHOLDER;\nhls_fragment HLS_FRAGMENT_PLACEHOLDER;\nTRANSCODE_PLACEHOLDER\nlisten SRT_PORT_PLACEHOLDER;\n',
     );
 
-    assert.equal(
-      text,
-      'passphrase checkpassphrase16;\nhls_fragment 1.5;\nlisten 10080;\n',
-    );
+    assert.equal(text, 'passphrase checkpassphrase16;\nhls_fragment 1.5;\nlisten 10080;\n');
     assert.equal(/PLACEHOLDER/.test(text), false);
   });
 
@@ -156,11 +140,7 @@ describe('the SRS check', () => {
     // The whole set, in order, not a membership test: a parser container gets
     // no network, a quarter of a gigabyte and 64 processes, and any one of
     // those going missing is a container that can do more than parse.
-    assert.deepEqual(
-      args.slice(2, 8),
-      ['--network', 'none', '--memory', '256m', '--pids-limit', '64'],
-      args.join(' '),
-    );
+    assert.deepEqual(args.slice(2, 8), ['--network', 'none', '--memory', '256m', '--pids-limit', '64'], args.join(' '));
     assert.ok(args.includes('ossrs/srs:6.0.184'), 'the version image');
     assert.deepEqual(args.slice(-4), ['./objs/srs', '-t', '-c', '/check/srs.conf']);
     const mount = mountOptionIn(args);
@@ -218,7 +198,11 @@ describe('the SRS check', () => {
       scratchDir: scratch(),
     });
 
-    assert.ok(calls[0]?.args.includes('ossrs/srs:6'));
+    assert.ok(
+      calls[0]?.args.includes(
+        'ossrs/srs:v6.0-r1@sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3',
+      ),
+    );
   });
 
   it('gives two checks in flight a copy each, and refuses only the refused one', async () => {
@@ -370,31 +354,19 @@ describe('the OvenMediaEngine check', () => {
   });
 
   it('refuses a second root element, naming its line', () => {
-    assert.match(
-      omeXmlProblem('<Server>\n  <Name>a</Name>\n</Server>\n<Server/>\n') ?? '',
-      /^Line 4: .*one root/,
-    );
+    assert.match(omeXmlProblem('<Server>\n  <Name>a</Name>\n</Server>\n<Server/>\n') ?? '', /^Line 4: .*one root/);
   });
 
   it('refuses an entity XML does not define', () => {
-    assert.match(
-      omeXmlProblem('<Server>\n  <Name>a &nope; b</Name>\n</Server>\n') ?? '',
-      /^Line 2: .*entity/,
-    );
+    assert.match(omeXmlProblem('<Server>\n  <Name>a &nope; b</Name>\n</Server>\n') ?? '', /^Line 2: .*entity/);
   });
 
   it('refuses an attribute without quotes', () => {
-    assert.match(
-      omeXmlProblem('<Server version=8>\n</Server>\n') ?? '',
-      /^Line 1: .*attribute/,
-    );
+    assert.match(omeXmlProblem('<Server version=8>\n</Server>\n') ?? '', /^Line 1: .*attribute/);
   });
 
   it('names the line of a tag closed by the wrong one, and the tag still open', () => {
-    assert.match(
-      omeXmlProblem('<Server>\n  <Bind>\n  </Server>\n') ?? '',
-      /^Line 3: .*<Bind> opened on line 2/,
-    );
+    assert.match(omeXmlProblem('<Server>\n  <Bind>\n  </Server>\n') ?? '', /^Line 3: .*<Bind> opened on line 2/);
   });
 
   it('names an element left open', () => {
@@ -416,18 +388,14 @@ describe('the OvenMediaEngine check', () => {
   });
 
   it('refuses a file that keeps every placeholder but changes the admission route, before running anything', async () => {
-    const { problem, calls } = await omeProblem(
-      OME_TEMPLATE.replace('/engines/ome/admission', '/engines/ome/admit'),
-    );
+    const { problem, calls } = await omeProblem(OME_TEMPLATE.replace('/engines/ome/admission', '/engines/ome/admit'));
 
     assert.match(problem ?? '', /ControlServerUrl/);
     assert.deepEqual(calls, []);
   });
 
   it('accepts the template with only the segment duration made a literal', async () => {
-    const { problem } = await omeProblem(
-      OME_TEMPLATE.split('SEGMENT_DURATION_PLACEHOLDER').join('4'),
-    );
+    const { problem } = await omeProblem(OME_TEMPLATE.split('SEGMENT_DURATION_PLACEHOLDER').join('4'));
 
     assert.equal(problem, null);
   });

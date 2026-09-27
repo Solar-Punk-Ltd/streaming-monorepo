@@ -13,18 +13,9 @@
  */
 import assert from 'node:assert/strict';
 
-import {
-  REQUESTED_WITH_HEADER,
-  REQUESTED_WITH_VALUE,
-} from '@streaming-monorepo/web2-admin-common';
+import { REQUESTED_WITH_HEADER, REQUESTED_WITH_VALUE } from '@streaming-monorepo/web2-admin-common';
 
-import {
-  ITEST_INTERNAL_TOKEN,
-  ITEST_PASSWORD,
-  ITEST_USERNAME,
-  startInstance,
-  type Instance,
-} from './instance.js';
+import { ITEST_INTERNAL_TOKEN, ITEST_PASSWORD, ITEST_USERNAME, startInstance, type Instance } from './instance.js';
 
 export const ADMIN_USERNAME = ITEST_USERNAME;
 export const ADMIN_PASSWORD = ITEST_PASSWORD;
@@ -104,11 +95,7 @@ export interface RequestOptions {
   headers?: Record<string, string>;
 }
 
-export async function raw(
-  method: string,
-  path: string,
-  options: RequestOptions = {},
-): Promise<RawResponse> {
+export async function raw(method: string, path: string, options: RequestOptions = {}): Promise<RawResponse> {
   const headers: Record<string, string> = {};
   if (cookie && !options.anonymous) headers.cookie = cookie;
   // What the console's fetch wrapper adds to every write, and what a page on
@@ -157,11 +144,7 @@ export async function raw(
 }
 
 /** Request expecting a 2xx; fails with the server's body on anything else. */
-export async function api<T>(
-  method: string,
-  path: string,
-  options: RequestOptions = {},
-): Promise<T> {
+export async function api<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
   const response = await raw(method, path, options);
   assert.ok(
     response.status >= 200 && response.status < 300,
@@ -170,10 +153,7 @@ export async function api<T>(
   return response.body as T;
 }
 
-export async function login(
-  username = ADMIN_USERNAME,
-  password = ADMIN_PASSWORD,
-): Promise<void> {
+export async function login(username = ADMIN_USERNAME, password = ADMIN_PASSWORD): Promise<void> {
   forgetCookie();
   await api('POST', '/api/auth/login', { body: { username, password } });
   assert.ok(sessionCookie(), 'login did not set a session cookie');

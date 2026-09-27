@@ -22,7 +22,8 @@ export const PROGRESS_FLOOR = 500;
 /** How many lines one copy says about itself while it runs, whatever its size. */
 const PROGRESS_LINES = 10;
 
-const filesIn = (inventory: RecordedOwnedTree): number => inventory.entries.filter(entry => entry.type === 'file').length;
+const filesIn = (inventory: RecordedOwnedTree): number =>
+  inventory.entries.filter((entry) => entry.type === 'file').length;
 
 /**
  * What the copy says about itself while it runs, so a deployment of the real
@@ -32,8 +33,9 @@ const filesIn = (inventory: RecordedOwnedTree): number => inventory.entries.filt
 function progressLines(profile: string, buildId: string, files: number): ExecutionCopyOptions['onProgress'] {
   if (files < PROGRESS_FLOOR) return undefined;
   const step = Math.ceil(files / PROGRESS_LINES);
-  return async linked => {
-    if (linked % step === 0) logger.info(`[Executions] ${profile}: linked ${linked} of ${files} files of build ${buildId}`);
+  return async (linked) => {
+    if (linked % step === 0)
+      logger.info(`[Executions] ${profile}: linked ${linked} of ${files} files of build ${buildId}`);
   };
 }
 
@@ -47,7 +49,10 @@ export interface ExecutionRootStore {
   claimUnstartedCleanup(id: string): Promise<ExecutionRootRecord | null>;
   claimInterruptedCopyCleanup(id: string): Promise<ExecutionRootRecord | null>;
   claimRetiredCleanup(id: string): Promise<ExecutionRootRecord | null>;
-  completeCleanup(id: string, removeOwnedRoot: (record: ExecutionRootRecord) => Promise<void>): Promise<ExecutionRootRecord>;
+  completeCleanup(
+    id: string,
+    removeOwnedRoot: (record: ExecutionRootRecord) => Promise<void>,
+  ): Promise<ExecutionRootRecord>;
 }
 
 export interface ExecutionSourceBuild {
@@ -59,7 +64,12 @@ export interface ExecutionSourceBuild {
 }
 
 export interface ExecutionPreparation {
-  profile: { name: string; instanceId: string; intentRevision: number; status: ExecutionRootRegistration['profile']['status'] };
+  profile: {
+    name: string;
+    instanceId: string;
+    intentRevision: number;
+    status: ExecutionRootRegistration['profile']['status'];
+  };
   build: ExecutionSourceBuild;
   jobReferenceId: number;
   target: { alias: string; daemonId: string };
@@ -77,22 +87,25 @@ export interface ReclaimedExecutions {
   kept: string[];
 }
 
-export type ExecutionMountReaderFor = (
-  target: ExecutionRootRecord['target'],
-) => Promise<ExecutionDockerReader | null>;
+export type ExecutionMountReaderFor = (target: ExecutionRootRecord['target']) => Promise<ExecutionDockerReader | null>;
 
-function isManagerAdministrativeContainer(
-  container: AttributedExecutionContainer,
-  executionsParent: string,
-): boolean {
+function isManagerAdministrativeContainer(container: AttributedExecutionContainer, executionsParent: string): boolean {
   const versionsRoot = dirname(executionsParent);
-  const hasVersionsRoot = container.mounts.some(mount =>
-    mount.type === 'bind' && mount.source === versionsRoot && mount.destination === versionsRoot);
-  const hasHostRoot = container.mounts.some(mount =>
-    mount.type === 'bind' && mount.source === '/' && mount.destination === '/host/rootfs');
-  return container.project !== null && container.service === 'api' && container.workingDirectory !== null &&
-    container.workingDirectory !== executionsParent && !container.workingDirectory.startsWith(`${executionsParent}/`) &&
-    hasVersionsRoot && hasHostRoot;
+  const hasVersionsRoot = container.mounts.some(
+    (mount) => mount.type === 'bind' && mount.source === versionsRoot && mount.destination === versionsRoot,
+  );
+  const hasHostRoot = container.mounts.some(
+    (mount) => mount.type === 'bind' && mount.source === '/' && mount.destination === '/host/rootfs',
+  );
+  return (
+    container.project !== null &&
+    container.service === 'api' &&
+    container.workingDirectory !== null &&
+    container.workingDirectory !== executionsParent &&
+    !container.workingDirectory.startsWith(`${executionsParent}/`) &&
+    hasVersionsRoot &&
+    hasHostRoot
+  );
 }
 
 /**
@@ -155,8 +168,11 @@ export class ExecutionRootService implements ExecutionRoots {
     const inventory = await buildInventory(input.build.root);
     const files = filesIn(inventory.record);
     if (inventory.hashed) {
-      logger.info(`[Executions] ${input.profile.name}: inventoried build ${input.build.buildId} once, ${files} files, took ${
-        (inventory.tookMs / 1000).toFixed(1)}s`);
+      logger.info(
+        `[Executions] ${input.profile.name}: inventoried build ${input.build.buildId} once, ${files} files, took ${(
+          inventory.tookMs / 1000
+        ).toFixed(1)}s`,
+      );
     }
     logger.info(`[Executions] ${input.profile.name}: preparing a copy of build ${input.build.buildId}, ${files} files`);
     const registration: ExecutionRootRegistration = {
@@ -185,7 +201,9 @@ export class ExecutionRootService implements ExecutionRoots {
         onProgress: progressLines(input.profile.name, input.build.buildId, files),
       });
       await this.roots.markReady(copying.executionId, copying.copyToken, copied.artifactDigest);
-      logger.info(`[Executions] ${input.profile.name}: copied build ${input.build.buildId} to ${registered.executionId}`);
+      logger.info(
+        `[Executions] ${input.profile.name}: copied build ${input.build.buildId} to ${registered.executionId}`,
+      );
       return { executionId: registered.executionId, root: copied.root };
     } catch (err) {
       await this.retireUnstarted(registered.executionId);
@@ -226,7 +244,9 @@ export class ExecutionRootService implements ExecutionRoots {
         await this.remove(record.executionId, () => this.roots.claimRetiredCleanup(record.executionId));
       }
     } catch (err) {
-      logger.warn(`[Executions] ${profileName}: an older copy was not retired: ${getErrorMessage(err)}. It keeps its hold on its build.`);
+      logger.warn(
+        `[Executions] ${profileName}: an older copy was not retired: ${getErrorMessage(err)}. It keeps its hold on its build.`,
+      );
     }
   }
 
@@ -251,17 +271,28 @@ export class ExecutionRootService implements ExecutionRoots {
         records,
       });
       if (observed.state !== 'complete') continue;
-      if (observed.containers.some(container => container.dependencyState === 'unknown')) continue;
-      removable.push(...group.filter(record => !observed.containers.some(container => {
-        const dependsOnRecord = container.dependencies.some(dependency => dependency.executionId === record.executionId);
-        const specificBind = container.mounts.some(mount => mount.type === 'bind' && mount.source !== null &&
-          (mount.source === record.root || mount.source.startsWith(`${record.root}/`)));
-        if (specificBind || container.workingDirectoryExecutionId === record.executionId) return true;
-        if (!dependsOnRecord) return false;
-        // Only the manager API's exact compose-shaped administrative mounts
-        // are exempt. Every other parent bind can consume the copy beneath it.
-        return !isManagerAdministrativeContainer(container, this.executionsParent);
-      })));
+      if (observed.containers.some((container) => container.dependencyState === 'unknown')) continue;
+      removable.push(
+        ...group.filter(
+          (record) =>
+            !observed.containers.some((container) => {
+              const dependsOnRecord = container.dependencies.some(
+                (dependency) => dependency.executionId === record.executionId,
+              );
+              const specificBind = container.mounts.some(
+                (mount) =>
+                  mount.type === 'bind' &&
+                  mount.source !== null &&
+                  (mount.source === record.root || mount.source.startsWith(`${record.root}/`)),
+              );
+              if (specificBind || container.workingDirectoryExecutionId === record.executionId) return true;
+              if (!dependsOnRecord) return false;
+              // Only the manager API's exact compose-shaped administrative mounts
+              // are exempt. Every other parent bind can consume the copy beneath it.
+              return !isManagerAdministrativeContainer(container, this.executionsParent);
+            }),
+        ),
+      );
     }
     return removable;
   }
@@ -301,18 +332,22 @@ export class ExecutionRootService implements ExecutionRoots {
         await this.remove(record.executionId, claim);
         outcome.removed.push(record.executionId);
       } catch (err) {
-        logger.warn(`[Executions] copy ${record.executionId} was not reclaimed: ${getErrorMessage(err)}. It keeps its hold on its build.`);
+        logger.warn(
+          `[Executions] copy ${record.executionId} was not reclaimed: ${getErrorMessage(err)}. It keeps its hold on its build.`,
+        );
         outcome.kept.push(record.executionId);
       }
     }
     if (outcome.removed.length > 0 || outcome.kept.length > 0) {
-      logger.info(`[Executions] copies at boot: removed ${outcome.removed.join(', ') || 'none'}, kept ${outcome.kept.join(', ') || 'none'}`);
+      logger.info(
+        `[Executions] copies at boot: removed ${outcome.removed.join(', ') || 'none'}, kept ${outcome.kept.join(', ') || 'none'}`,
+      );
     }
     return outcome;
   }
 
   private async remove(executionId: string, claim: () => Promise<ExecutionRootRecord | null>): Promise<void> {
     if (!(await claim())) return;
-    await this.roots.completeCleanup(executionId, record => removeExecutionRoot(record, this.executionsParent));
+    await this.roots.completeCleanup(executionId, (record) => removeExecutionRoot(record, this.executionsParent));
   }
 }

@@ -8,7 +8,10 @@ const REASONS: Record<VersionRemovalHold, string> = {
 };
 
 export class StackVersionRemovalHeldError extends Error {
-  constructor(public readonly versionName: string, public readonly reason: VersionRemovalHold) {
+  constructor(
+    public readonly versionName: string,
+    public readonly reason: VersionRemovalHold,
+  ) {
     super(`${versionName} ${REASONS[reason]}.`);
     this.name = 'StackVersionRemovalHeldError';
   }

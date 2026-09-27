@@ -40,10 +40,7 @@ export class Database {
       .sort();
 
     for (const file of files) {
-      const seen = await this.pool.query(
-        'SELECT 1 FROM _migrations WHERE name = $1',
-        [file],
-      );
+      const seen = await this.pool.query('SELECT 1 FROM _migrations WHERE name = $1', [file]);
       if (seen.rowCount && seen.rowCount > 0) continue;
 
       const sql = readFileSync(join(MIGRATIONS_DIR, file), 'utf8');

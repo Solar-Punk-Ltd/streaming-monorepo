@@ -1,18 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import {
-  Alert,
-  Button,
-  Checkbox,
-  FormControlLabel,
-  Paper,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material';
-import {
-  passwordProblem,
-  usernameProblem,
-} from '@streaming-monorepo/web2-admin-common';
+import { Alert, Button, Checkbox, FormControlLabel, Paper, Stack, TextField, Typography } from '@mui/material';
+import { passwordProblem, usernameProblem } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../../api';
 import { PASSWORD_MISMATCH, PASSWORD_RULE } from '../../authMessages';
@@ -36,25 +24,18 @@ export function AddUserCard({ onAdded }: { onAdded: () => Promise<void> }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  const set = (field: keyof typeof EMPTY, value: string) =>
-    setForm((prev) => ({ ...prev, [field]: value }));
+  const set = (field: keyof typeof EMPTY, value: string) => setForm((prev) => ({ ...prev, [field]: value }));
 
   const username = form.username.trim();
   // Only complain about what has been typed: an empty field is not yet wrong.
   const usernameError = username === '' ? null : usernameProblem(username);
-  const passwordError =
-    form.password === '' ? null : passwordProblem(form.password, username);
-  const againError =
-    form.again === '' || form.again === form.password ? null : PASSWORD_MISMATCH;
+  const passwordError = form.password === '' ? null : passwordProblem(form.password, username);
+  const againError = form.again === '' || form.again === form.password ? null : PASSWORD_MISMATCH;
 
-  const complete =
-    username !== '' && form.password !== '' && form.again !== '';
-  const valid =
-    complete &&
-    usernameError === null &&
-    passwordError === null &&
-    againError === null;
+  const complete = username !== '' && form.password !== '' && form.again !== '';
+  const valid = complete && usernameError === null && passwordError === null && againError === null;
 
+  // Catches every failure into the form's error line, so the form calls it without awaiting.
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (pending || !valid) return;
@@ -76,11 +57,10 @@ export function AddUserCard({ onAdded }: { onAdded: () => Promise<void> }) {
 
   return (
     <Paper variant="outlined" sx={{ p: 3, maxWidth: 520 }}>
-      <Stack spacing={2} component="form" onSubmit={submit} noValidate>
+      <Stack spacing={2} component="form" onSubmit={(event) => void submit(event)} noValidate>
         <Typography variant="h6">Add user</Typography>
-        <Typography variant="body2" color="text.secondary">
-          Type a starting password, tell it to them in person, and ask them to
-          change it here once they are in.
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          Type a starting password, tell it to them in person, and ask them to change it here once they are in.
         </Typography>
 
         <TextField
@@ -89,10 +69,7 @@ export function AddUserCard({ onAdded }: { onAdded: () => Promise<void> }) {
           value={form.username}
           onChange={(e) => set('username', e.target.value)}
           error={usernameError !== null}
-          helperText={
-            usernameError ??
-            'Lower case letters, digits, dot, underscore or dash.'
-          }
+          helperText={usernameError ?? 'Lower case letters, digits, dot, underscore or dash.'}
           autoComplete="off"
           disabled={pending}
           slotProps={{
@@ -130,24 +107,13 @@ export function AddUserCard({ onAdded }: { onAdded: () => Promise<void> }) {
         />
 
         <FormControlLabel
-          control={
-            <Checkbox
-              checked={admin}
-              onChange={(e) => setAdmin(e.target.checked)}
-              disabled={pending}
-            />
-          }
+          control={<Checkbox checked={admin} onChange={(e) => setAdmin(e.target.checked)} disabled={pending} />}
           label="Admin: can add and remove users, and sign anyone out"
         />
 
         {error ? <Alert severity="error">{error}</Alert> : null}
 
-        <Button
-          type="submit"
-          variant="contained"
-          disabled={pending || !valid}
-          sx={{ alignSelf: 'flex-start' }}
-        >
+        <Button type="submit" variant="contained" disabled={pending || !valid} sx={{ alignSelf: 'flex-start' }}>
           {pending ? 'Adding…' : 'Add user'}
         </Button>
       </Stack>

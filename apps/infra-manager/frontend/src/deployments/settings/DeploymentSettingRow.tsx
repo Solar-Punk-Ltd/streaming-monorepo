@@ -52,7 +52,11 @@ interface RowActions {
 }
 
 /** A chip whose label wraps, because a service list is longer than a phone is wide. */
-const WRAPPING_CHIP = { maxWidth: '100%', height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', overflowWrap: 'anywhere' } };
+const WRAPPING_CHIP = {
+  maxWidth: '100%',
+  height: 'auto',
+  '& .MuiChip-label': { whiteSpace: 'normal', overflowWrap: 'anywhere' },
+};
 
 const CAPTION_WRAP = { overflowWrap: 'anywhere' } as const;
 
@@ -95,17 +99,42 @@ export function DeploymentSettingRow({
       data-setting={entry.key}
       sx={{ listStyle: 'none', py: 1.5, borderTop: 1, borderColor: 'divider', minWidth: 0 }}
     >
-      <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 0.5 }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        sx={{
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          mb: 0.5,
+        }}
+      >
         {engineRow ? (
-          <Stack direction="row" alignItems="baseline" spacing={1} flexWrap="wrap" useFlexGap sx={{ minWidth: 0 }}>
-            <Typography id={settingLabelId(entry.key)} variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>
+          <Stack
+            direction="row"
+            spacing={1}
+            useFlexGap
+            sx={{
+              alignItems: 'baseline',
+              flexWrap: 'wrap',
+              minWidth: 0,
+            }}
+          >
+            <Typography
+              id={settingLabelId(entry.key)}
+              variant="body2"
+              sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}
+            >
               {engineRow.field.label}
             </Typography>
             <Typography
               id={settingKeyId(entry.key)}
               variant="caption"
-              color="text.secondary"
-              sx={{ fontFamily: MONO_STACK, wordBreak: 'break-all' }}
+              sx={{
+                color: 'text.secondary',
+                fontFamily: MONO_STACK,
+                wordBreak: 'break-all',
+              }}
             >
               {entry.key}
             </Typography>
@@ -130,7 +159,14 @@ export function DeploymentSettingRow({
       ) : !entry.declared ? (
         <UndeclaredBody entry={entry} edit={state.edit} disabled={disabled} {...actions} />
       ) : engineRow ? (
-        <EngineValueBody entry={entry} engine={engineRow} state={state} running={running} disabled={disabled} {...actions} />
+        <EngineValueBody
+          entry={entry}
+          engine={engineRow}
+          state={state}
+          running={running}
+          disabled={disabled}
+          {...actions}
+        />
       ) : (
         <ValueBody entry={entry} state={state} running={running} disabled={disabled} target={target} {...actions} />
       )}
@@ -138,7 +174,15 @@ export function DeploymentSettingRow({
   );
 }
 
-function RowChips({ entry, state, target }: { entry: DeploymentSettingEntry; state: SettingRowState; target: SettingsEditTarget }) {
+function RowChips({
+  entry,
+  state,
+  target,
+}: {
+  entry: DeploymentSettingEntry;
+  state: SettingRowState;
+  target: SettingsEditTarget;
+}) {
   const ownValue = entry.stored && state.edit?.kind !== 'reset';
   // A control's own key reaches the containers through that control, so a
   // reset of a value stored for it from before recreates nothing. A
@@ -157,7 +201,17 @@ function RowChips({ entry, state, target }: { entry: DeploymentSettingEntry; sta
   );
 }
 
-function ActionButton({ label, settingKey, disabled, onClick }: { label: string; settingKey: string; disabled: boolean; onClick: () => void }) {
+function ActionButton({
+  label,
+  settingKey,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  settingKey: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
   return (
     <Button size="small" disabled={disabled} aria-label={`${label} for ${settingKey}`} onClick={onClick}>
       {label}
@@ -173,11 +227,25 @@ function RemovalLine({
   disabled,
   onReset,
   onUndo,
-}: { entry: DeploymentSettingEntry; edit: SettingEdit | undefined; note: string; disabled: boolean } & Omit<RowActions, 'onValue'>) {
+}: { entry: DeploymentSettingEntry; edit: SettingEdit | undefined; note: string; disabled: boolean } & Omit<
+  RowActions,
+  'onValue'
+>) {
   const pending = edit?.kind === 'reset';
   return (
-    <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap>
-      <Typography variant="caption" color={pending ? 'info.main' : 'text.secondary'} sx={{ flex: '1 1 12rem', ...CAPTION_WRAP }}>
+    <Stack
+      direction="row"
+      spacing={1}
+      useFlexGap
+      sx={{
+        alignItems: 'center',
+        flexWrap: 'wrap',
+      }}
+    >
+      <Typography
+        variant="caption"
+        sx={{ color: pending ? 'info.main' : 'text.secondary', flex: '1 1 12rem', ...CAPTION_WRAP }}
+      >
         {pending ? REMOVAL_PENDING_NOTE : note}
       </Typography>
       {pending ? (
@@ -212,11 +280,23 @@ function OwnedBody({
           {value}
         </Typography>
       )}
-      <Typography variant="caption" color="text.secondary">
+      <Typography
+        variant="caption"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
         {ownerSentence(owner)}
       </Typography>
       {entry.stored && (
-        <RemovalLine entry={entry} edit={edit} note={OWNED_STORED_NOTE} disabled={disabled} onReset={onReset} onUndo={onUndo} />
+        <RemovalLine
+          entry={entry}
+          edit={edit}
+          note={OWNED_STORED_NOTE}
+          disabled={disabled}
+          onReset={onReset}
+          onUndo={onUndo}
+        />
       )}
     </Stack>
   );
@@ -234,7 +314,14 @@ function UndeclaredBody({
       <Typography variant="body2" sx={{ fontFamily: MONO_STACK, ...CAPTION_WRAP }}>
         {entry.secret ? 'hidden' : (entry.storedValue ?? '')}
       </Typography>
-      <RemovalLine entry={entry} edit={edit} note={UNDECLARED_NOTE} disabled={disabled} onReset={onReset} onUndo={onUndo} />
+      <RemovalLine
+        entry={entry}
+        edit={edit}
+        note={UNDECLARED_NOTE}
+        disabled={disabled}
+        onReset={onReset}
+        onUndo={onUndo}
+      />
     </Stack>
   );
 }
@@ -269,12 +356,23 @@ function ValueFrame({
   return (
     <Stack spacing={0.75}>
       {field}
-      <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap>
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        sx={{
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}
+      >
         <Typography
           id={settingDefaultId(entry.key)}
           variant="caption"
-          color="text.secondary"
-          sx={{ flex: '1 1 12rem', ...CAPTION_WRAP }}
+          sx={{
+            color: 'text.secondary',
+            flex: '1 1 12rem',
+            ...CAPTION_WRAP,
+          }}
         >
           {defaultLine}
         </Typography>
@@ -285,12 +383,22 @@ function ValueFrame({
       </Stack>
       {notes}
       {resetPending && (
-        <Typography variant="caption" color="info.main">
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'info.main',
+          }}
+        >
           {RESET_PENDING_NOTE}
         </Typography>
       )}
       {state.behind && !state.pending && (
-        <Typography variant="caption" color="warning.main">
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'warning.main',
+          }}
+        >
           {behindNote(running)}
         </Typography>
       )}
@@ -307,7 +415,13 @@ function ValueBody({
   onValue,
   onReset,
   onUndo,
-}: { entry: DeploymentSettingEntry; state: SettingRowState; running: boolean; disabled: boolean; target: SettingsEditTarget } & RowActions) {
+}: {
+  entry: DeploymentSettingEntry;
+  state: SettingRowState;
+  running: boolean;
+  disabled: boolean;
+  target: SettingsEditTarget;
+} & RowActions) {
   const resetPending = state.edit?.kind === 'reset';
   return (
     <ValueFrame
@@ -321,7 +435,12 @@ function ValueBody({
       field={
         <>
           {entry.secret && (
-            <Typography variant="caption" color="text.secondary">
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'text.secondary',
+              }}
+            >
               {secretNote(entry, target)}
             </Typography>
           )}
@@ -348,7 +467,13 @@ function EngineValueBody({
   onValue,
   onReset,
   onUndo,
-}: { entry: DeploymentSettingEntry; engine: EngineRowFacts; state: SettingRowState; running: boolean; disabled: boolean } & RowActions) {
+}: {
+  entry: DeploymentSettingEntry;
+  engine: EngineRowFacts;
+  state: SettingRowState;
+  running: boolean;
+  disabled: boolean;
+} & RowActions) {
   const resetPending = state.edit?.kind === 'reset';
   return (
     <ValueFrame
@@ -371,7 +496,15 @@ function EngineValueBody({
       }
       notes={
         entry.engineSetting?.notInConfig && (
-          <Typography variant="caption" color="warning.main" sx={CAPTION_WRAP}>
+          <Typography
+            variant="caption"
+            sx={[
+              {
+                color: 'warning.main',
+              },
+              ...(Array.isArray(CAPTION_WRAP) ? CAPTION_WRAP : [CAPTION_WRAP]),
+            ]}
+          >
             {notInConfigNote(engine.ownConfig)}
           </Typography>
         )

@@ -31,9 +31,7 @@ export interface BuildManifest {
   treeSharing?: BuildTreeSharing;
 }
 
-export type BuildManifestRead =
-  | { manifest: BuildManifest; problem: null }
-  | { manifest: null; problem: string };
+export type BuildManifestRead = { manifest: BuildManifest; problem: null } | { manifest: null; problem: string };
 
 /** Why a string is not a build id, or null. A build id is one path segment under the builds root. */
 export function buildIdProblem(id: string): string | null {

@@ -1,6 +1,10 @@
 import type { ManagerAdminLink } from '@streaming-infra-manager/common';
 
-import type { ManagerAdminLinkStore, ManagerAdminLinkWrite, StoredAdminLinkSecret } from '../../src/domain/adminLink/ManagerAdminLinkRepository.js';
+import type {
+  ManagerAdminLinkStore,
+  ManagerAdminLinkWrite,
+  StoredAdminLinkSecret,
+} from '../../src/domain/adminLink/ManagerAdminLinkRepository.js';
 
 /** The manager's web2 admin link as its single-row table holds it, in memory, with the table's revision guard. */
 export class InMemoryManagerAdminLink implements ManagerAdminLinkStore {
@@ -13,7 +17,11 @@ export class InMemoryManagerAdminLink implements ManagerAdminLinkStore {
     return { url: this.url, tokenStored: this.token !== null, revision: this.revision };
   }
 
-  async write(change: ManagerAdminLinkWrite, expectedRevision: number, username: string): Promise<ManagerAdminLink | null> {
+  async write(
+    change: ManagerAdminLinkWrite,
+    expectedRevision: number,
+    username: string,
+  ): Promise<ManagerAdminLink | null> {
     if (expectedRevision !== this.revision) return null;
     this.url = change.url;
     if (change.url === null) this.token = null;

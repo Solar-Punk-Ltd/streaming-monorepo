@@ -20,7 +20,11 @@ const compose = readFileSync(join(here, '..', '..', 'docker-compose.yml'), 'utf8
 describe('the api image', () => {
   it('pins the Compose plugin to the version the host runs and the harness verifies', () => {
     assert.match(dockerfile, /docker-cli-compose=5\.1\.4-r\d+/);
-    assert.equal(/\bdocker-cli-compose\s/.test(dockerfile.replace(/docker-cli-compose=[^\s]+/g, '')), false, 'the plugin is installed only pinned');
+    assert.equal(
+      /\bdocker-cli-compose\s/.test(dockerfile.replace(/docker-cli-compose=[^\s]+/g, '')),
+      false,
+      'the plugin is installed only pinned',
+    );
   });
 
   /**

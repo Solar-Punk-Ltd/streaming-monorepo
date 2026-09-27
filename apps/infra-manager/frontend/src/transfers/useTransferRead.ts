@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 
-type ReadState<T> = { readonly status: 'loading' } | { readonly status: 'ready'; readonly value: T } | { readonly status: 'failed'; readonly error: unknown };
+type ReadState<T> =
+  | { readonly status: 'loading' }
+  | { readonly status: 'ready'; readonly value: T }
+  | { readonly status: 'failed'; readonly error: unknown };
 
 /**
  * Asks for another read of the same key on a cadence, for as long as the last value still warrants one.
@@ -28,26 +31,50 @@ export function useTransferRead<T>(key: string, load: (signal: AbortSignal) => P
   useEffect(() => {
     const controller = new AbortController();
     let live = true;
-    setSaved(previous => ({ token, state: attempt.keepsValue && previous?.state.status === 'ready' ? previous.state : { status: 'loading' } }));
+    setSaved((previous) => ({
+      token,
+      state: attempt.keepsValue && previous?.state.status === 'ready' ? previous.state : { status: 'loading' },
+    }));
     let timeout: ReturnType<typeof setTimeout>;
     let again: ReturnType<typeof setTimeout>;
     const wantsAnother = (value: T) => repeatIntervalMs !== undefined && whileReading?.(value) === true;
-    const readAgain = () => { again = setTimeout(() => setAttempt(previous => ({ count: previous.count + 1, keepsValue: true })), repeatIntervalMs); };
+    const readAgain = () => {
+      again = setTimeout(
+        () => setAttempt((previous) => ({ count: previous.count + 1, keepsValue: true })),
+        repeatIntervalMs,
+      );
+    };
     const deadline = new Promise<never>((_resolve, reject) => {
-      timeout = setTimeout(() => { controller.abort(); reject(new Error('Saved transfer read timed out')); }, 15_000);
+      timeout = setTimeout(() => {
+        controller.abort();
+        reject(new Error('Saved transfer read timed out'));
+      }, 15_000);
     });
-    void Promise.race([load(controller.signal), deadline]).then(value => {
-      if (!live) return;
-      setSaved({ token, state: { status: 'ready', value } });
-      repeating.current = wantsAnother(value) ? { key, value } : null;
-      if (repeating.current !== null) readAgain();
-    }, error => {
-      if (!live) return;
-      setSaved({ token, state: { status: 'failed', error } });
-      const last = repeating.current;
-      if (last?.key === key && wantsAnother(last.value)) readAgain();
-    }).finally(() => clearTimeout(timeout));
-    return () => { live = false; controller.abort(); clearTimeout(timeout); clearTimeout(again); };
+    void Promise.race([load(controller.signal), deadline])
+      .then(
+        (value) => {
+          if (!live) return;
+          setSaved({ token, state: { status: 'ready', value } });
+          repeating.current = wantsAnother(value) ? { key, value } : null;
+          if (repeating.current !== null) readAgain();
+        },
+        (error) => {
+          if (!live) return;
+          setSaved({ token, state: { status: 'failed', error } });
+          const last = repeating.current;
+          if (last?.key === key && wantsAnother(last.value)) readAgain();
+        },
+      )
+      .finally(() => clearTimeout(timeout));
+    return () => {
+      live = false;
+      controller.abort();
+      clearTimeout(timeout);
+      clearTimeout(again);
+    };
   }, [token, key, load, attempt.keepsValue, repeatIntervalMs, whileReading]);
-  return { state: saved?.token === token ? saved.state : { status: 'loading' } as ReadState<T>, refresh: () => setAttempt(previous => ({ count: previous.count + 1, keepsValue: false })) };
+  return {
+    state: saved?.token === token ? saved.state : ({ status: 'loading' } as ReadState<T>),
+    refresh: () => setAttempt((previous) => ({ count: previous.count + 1, keepsValue: false })),
+  };
 }

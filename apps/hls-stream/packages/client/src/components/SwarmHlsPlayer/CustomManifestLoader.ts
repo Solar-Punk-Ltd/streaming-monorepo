@@ -46,10 +46,6 @@ const PlaylistLoader = Hls.DefaultConfig.loader as unknown as {
 };
 
 export class CustomManifestLoader extends PlaylistLoader {
-  constructor(config: HlsConfig) {
-    super(config);
-  }
-
   load(context: PlaylistLoaderContext, config: LoaderConfiguration, callbacks: LoaderCallbacks<PlaylistLoaderContext>) {
     if (!['manifest', 'level'].includes(context.type)) {
       super.load(context, config, callbacks);
@@ -64,10 +60,10 @@ export class CustomManifestLoader extends PlaylistLoader {
 
     manifest
       .then((data) => {
-        callbacks.onSuccess({ url: context.url, data, code: 200 }, this.stats, context, undefined);
+        callbacks.onSuccess({ url: context.url, data, code: 200 }, this.stats, context, null);
       })
       .catch((error) => {
-        callbacks.onError?.({ code: 0, text: error.message }, context, undefined, this.stats);
+        callbacks.onError?.({ code: 0, text: error.message }, context, null, this.stats);
       });
   }
 }
@@ -128,10 +124,6 @@ export class CustomFragmentLoader extends FragmentLoader {
    */
   private retrievalOutstanding = false;
 
-  constructor(config: HlsConfig) {
-    super(config);
-  }
-
   load(context: FragmentLoaderContext, config: LoaderConfiguration, callbacks: LoaderCallbacks<LoaderContext>) {
     // ⛔ One attempt to one settle line, enforced here rather than rested on hls.js. A second `load` on
     // one instance is unreachable in 1.6.15, whose own loader throws `Loader can only be used once` and
@@ -171,7 +163,7 @@ export class CustomFragmentLoader extends FragmentLoader {
       callbacks.onError(
         { code: 0, text: `fragment url is not absolute, so it names no gateway: ${url}` },
         context,
-        undefined,
+        null,
         this.stats,
       );
       return;
@@ -348,7 +340,7 @@ export class CustomFragmentLoader extends FragmentLoader {
       callbacks.onError(
         { code: 0, text: `fragment url carries no Swarm reference: ${context.url}` },
         context,
-        undefined,
+        null,
         this.stats,
       );
       return;
@@ -395,7 +387,7 @@ export class CustomFragmentLoader extends FragmentLoader {
         stats.loaded = bytes.byteLength;
         stats.total = bytes.byteLength;
         this.recordSettle(FRAGMENT_LOADED);
-        callbacks.onSuccess({ url: context.url, data: asArrayBuffer(bytes), code: 200 }, stats, context, undefined);
+        callbacks.onSuccess({ url: context.url, data: asArrayBuffer(bytes), code: 200 }, stats, context, null);
       },
       (error: unknown) => {
         if (this.abandoned) {
@@ -409,7 +401,7 @@ export class CustomFragmentLoader extends FragmentLoader {
         callbacks.onError(
           { code: 0, text: `weeb-3 could not retrieve ${ref}: ${errorText(error)}` },
           context,
-          undefined,
+          null,
           stats,
         );
       },

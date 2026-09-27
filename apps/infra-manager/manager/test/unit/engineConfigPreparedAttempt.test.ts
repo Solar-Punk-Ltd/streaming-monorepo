@@ -20,8 +20,15 @@ async function prepared() {
   const h = orchestratorHarness([makeProfile({ name: 'prepared-owner' })]);
   const reservation = await h.orchestrator.reserveDeploy(h.profiles.rows.get('prepared-owner')!, ['srs']);
   const before = await h.daemon.snapshot('prepared-owner', 'localhost');
-  const attempt = await h.attempts.open({ daemonId: h.daemon.id, target: 'localhost', project: 'prepared-owner',
-    jobId: 'synthetic-config-attempt', kind: 'shared', services: ['srs'], preJobContainerIds: allContainerIds(before.containers) });
+  const attempt = await h.attempts.open({
+    daemonId: h.daemon.id,
+    target: 'localhost',
+    project: 'prepared-owner',
+    jobId: 'synthetic-config-attempt',
+    kind: 'shared',
+    services: ['srs'],
+    preJobContainerIds: allContainerIds(before.containers),
+  });
   return { h, reservation: { ...reservation, attempt: structuredClone(attempt) } };
 }
 
@@ -29,7 +36,10 @@ it('consumes the exact admitted config attempt without recapturing or opening an
   const { h, reservation } = await prepared();
   let snapshots = 0;
   const originalSnapshot = h.daemon.snapshot.bind(h.daemon);
-  h.daemon.snapshot = async (...args) => { snapshots++; return originalSnapshot(...args); };
+  h.daemon.snapshot = async (...args) => {
+    snapshots++;
+    return originalSnapshot(...args);
+  };
   await h.orchestrator.runReserved(reservation, reservation.claimedProfile!);
   assert.equal(h.runner.runs.length, 1);
   assert.equal(h.attempts.rows.length, 1);
@@ -51,7 +61,7 @@ for (const changed of ['target', 'services', 'released'] as const) {
     assert.equal(h.attempts.rows[0]!.state, changed === 'released' ? 'released' : 'open');
     assert.equal(h.profiles.statusOf('prepared-owner'), 'ERROR');
     assert.equal(h.profiles.activeDeployJobs.get('prepared-owner'), reservation.build!.referenceId);
-    assert.equal(h.ledger.references.find(row => row.id === reservation.build!.referenceId)!.resolvedAt, null);
+    assert.equal(h.ledger.references.find((row) => row.id === reservation.build!.referenceId)!.resolvedAt, null);
   });
 }
 
@@ -61,12 +71,22 @@ it('ordinary deploy rejects a snapshot that spans another same-project attempt o
   const snapshot = h.daemon.snapshot.bind(h.daemon);
   h.daemon.snapshot = async (...args) => {
     const captured = await snapshot(...args);
-    const intervening = await h.attempts.open({ daemonId: h.daemon.id, target: 'localhost', project: 'ordinary-owner',
-      jobId: 'synthetic-intervening', kind: 'fixed', services: ['srs'], preJobContainerIds: [] });
+    const intervening = await h.attempts.open({
+      daemonId: h.daemon.id,
+      target: 'localhost',
+      project: 'ordinary-owner',
+      jobId: 'synthetic-intervening',
+      kind: 'fixed',
+      services: ['srs'],
+      preJobContainerIds: [],
+    });
     await h.attempts.resolve(intervening.id, { state: 'released', reason: null });
     return captured;
   };
-  await assert.rejects(h.orchestrator.runReserved(reservation, reservation.claimedProfile!), /history|snapshot|attempt/i);
+  await assert.rejects(
+    h.orchestrator.runReserved(reservation, reservation.claimedProfile!),
+    /history|snapshot|attempt/i,
+  );
   assert.equal(h.runner.runs.length, 0);
   assert.equal(h.attempts.rows.length, 1);
   assert.equal(h.attempts.rows[0]!.jobId, 'synthetic-intervening');

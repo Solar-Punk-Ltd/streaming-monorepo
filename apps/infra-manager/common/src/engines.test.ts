@@ -16,10 +16,7 @@ describe('engineForComponents', () => {
 
   it('selects ome only when the ome component is present', () => {
     assert.equal(engineForComponents(['srs', 'stream-uploader']), 'srs');
-    assert.equal(
-      engineForComponents(['bee-uploader', 'ome', 'stream-uploader']),
-      'ome',
-    );
+    assert.equal(engineForComponents(['bee-uploader', 'ome', 'stream-uploader']), 'ome');
   });
 });
 

@@ -21,8 +21,7 @@ const DOCKER_HOST_NAME = 'host.docker.internal';
  * this way.
  */
 export const LOCAL_PUBLISHED_HOST =
-  process.env.BEE_LOCAL_HOST ??
-  (existsSync('/.dockerenv') ? DOCKER_HOST_NAME : '127.0.0.1');
+  process.env.BEE_LOCAL_HOST ?? (existsSync('/.dockerenv') ? DOCKER_HOST_NAME : '127.0.0.1');
 
 /**
  * Every spelling of `profiles.host` that means this machine, after
@@ -38,13 +37,7 @@ export const LOCAL_PUBLISHED_HOST =
  * One set rather than one per reader: a spelling added to a copy of this and
  * not to the other sends one of the two to an address nothing answers on.
  */
-export const LOCAL_DEPLOY_TARGETS: ReadonlySet<string> = new Set([
-  '',
-  'localhost',
-  '127.0.0.1',
-  '0.0.0.0',
-  'native',
-]);
+export const LOCAL_DEPLOY_TARGETS: ReadonlySet<string> = new Set(['', 'localhost', '127.0.0.1', '0.0.0.0', 'native']);
 
 export interface LocalPublisherHostDeps {
   env?: { BEE_LOCAL_HOST?: string | undefined };
@@ -71,9 +64,7 @@ export type LocalPublisherHostReader = () => Promise<string>;
  * literal address does. Running natively there is no bridge to read, so the name
  * is the answer, which is what Docker Desktop resolves inside a container anyway.
  */
-export async function resolveLocalPublisherHost(
-  deps: LocalPublisherHostDeps = {},
-): Promise<string> {
+export async function resolveLocalPublisherHost(deps: LocalPublisherHostDeps = {}): Promise<string> {
   return (await readLocalPublisherHost(deps)).host;
 }
 
@@ -84,9 +75,7 @@ export async function resolveLocalPublisherHost(
  * container resolves it nowhere, so caching it would hand out a string that
  * reads as reachable and reaches nothing for the life of the process.
  */
-export function localPublisherHostReader(
-  deps: LocalPublisherHostDeps = {},
-): LocalPublisherHostReader {
+export function localPublisherHostReader(deps: LocalPublisherHostDeps = {}): LocalPublisherHostReader {
   let known: Promise<string> | null = null;
   return async () => {
     if (known) return known;
@@ -105,14 +94,11 @@ interface LocalPublisherHostReading {
   settled: boolean;
 }
 
-async function readLocalPublisherHost(
-  deps: LocalPublisherHostDeps,
-): Promise<LocalPublisherHostReading> {
+async function readLocalPublisherHost(deps: LocalPublisherHostDeps): Promise<LocalPublisherHostReading> {
   const {
     env = process.env,
     isInContainer = () => existsSync('/.dockerenv'),
-    lookupIpv4 = async (hostname: string) =>
-      (await lookup(hostname, { family: 4 })).address,
+    lookupIpv4 = async (hostname: string) => (await lookup(hostname, { family: 4 })).address,
     warn = (message: string) => logger.warn(message),
   } = deps;
 

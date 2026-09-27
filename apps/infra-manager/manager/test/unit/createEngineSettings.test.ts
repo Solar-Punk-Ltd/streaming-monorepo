@@ -16,8 +16,7 @@ import { describe, it } from 'node:test';
 import { createProfileSchema } from '../../src/schemas/profile.js';
 import { profileServiceHarness } from '../support/profileServiceHarness.js';
 
-const validate = (value: unknown) =>
-  createProfileSchema.validate(value, { abortEarly: false, stripUnknown: true });
+const validate = (value: unknown) => createProfileSchema.validate(value, { abortEarly: false, stripUnknown: true });
 
 describe('what the create body accepts as engine settings', () => {
   it('takes the keys of either engine, as strings', async () => {

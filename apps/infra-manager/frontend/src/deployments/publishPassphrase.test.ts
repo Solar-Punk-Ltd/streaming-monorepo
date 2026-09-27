@@ -64,17 +64,16 @@ function reader(answer: string | null = OWN): PassphraseReader & { asked: string
 
 describe('the passphrase the publish URL carries', () => {
   it('waits only for an SRT deployment that owns its passphrase', () => {
-    assert.equal(
-      publishUrlNeedsReveal(stage({ has_srt_passphrase: true })),
-      true,
-    );
+    assert.equal(publishUrlNeedsReveal(stage({ has_srt_passphrase: true })), true);
     assert.equal(publishUrlNeedsReveal(stage()), false);
     assert.equal(
-      publishUrlNeedsReveal(stage({
-        components: ['ome', 'stream-uploader'],
-        containers: [{ service: 'ome', ports: {}, buildId: null, buildCommit: null }],
-        has_srt_passphrase: true,
-      })),
+      publishUrlNeedsReveal(
+        stage({
+          components: ['ome', 'stream-uploader'],
+          containers: [{ service: 'ome', ports: {}, buildId: null, buildCommit: null }],
+          has_srt_passphrase: true,
+        }),
+      ),
       false,
       'OvenMediaEngine takes no SRT passphrase',
     );
@@ -92,11 +91,7 @@ describe('the passphrase the publish URL carries', () => {
   it('is the deployment’s own when it holds one, asked for on the spot', async () => {
     const read = reader();
 
-    const passphrase = await publishPassphrase(
-      stage({ has_srt_passphrase: true }),
-      HOST_WIDE,
-      read,
-    );
+    const passphrase = await publishPassphrase(stage({ has_srt_passphrase: true }), HOST_WIDE, read);
 
     assert.equal(passphrase, OWN, 'the deployment’s own outranks the host-wide one');
     assert.deepEqual(read.asked, ['stage'], 'one deployment, asked about once');
@@ -105,11 +100,7 @@ describe('the passphrase the publish URL carries', () => {
   it('falls back to the host-wide one when the reveal answers nothing', async () => {
     // The row said a passphrase was stored and the reveal disagreed, which is
     // a deployment edited from another page between the two reads.
-    const passphrase = await publishPassphrase(
-      stage({ has_srt_passphrase: true }),
-      HOST_WIDE,
-      reader(null),
-    );
+    const passphrase = await publishPassphrase(stage({ has_srt_passphrase: true }), HOST_WIDE, reader(null));
 
     assert.equal(passphrase, HOST_WIDE);
   });
@@ -123,13 +114,8 @@ describe('srtPublishUrl', () => {
   it('puts the passphrase it is given in the query, and nothing when given none', () => {
     const profile = stage();
 
-    assert.match(
-      srtPublishUrl(profile, 'stream.example', OWN) ?? '',
-      new RegExp(`&passphrase=${OWN}$`),
-    );
-    assert.ok(
-      !(srtPublishUrl(profile, 'stream.example', null) ?? '').includes('passphrase'),
-    );
+    assert.match(srtPublishUrl(profile, 'stream.example', OWN) ?? '', new RegExp(`&passphrase=${OWN}$`));
+    assert.ok(!(srtPublishUrl(profile, 'stream.example', null) ?? '').includes('passphrase'));
   });
 
   it('reads no passphrase off the profile, so a page cannot leak one it was handed', () => {

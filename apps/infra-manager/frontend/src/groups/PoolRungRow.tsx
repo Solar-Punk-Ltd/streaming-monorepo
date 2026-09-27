@@ -19,13 +19,7 @@ import { PrimaryAction } from '../deployments/PrimaryAction';
 import { readinessOf } from '../deployments/readiness';
 import { isRunning, isTransitional, statusLabelOf } from '../deployments/shape';
 import { rungStampHealth } from './rungStampHealth';
-import {
-  BZZ_DECIMALS,
-  formatTokenBalance,
-  formatTtl,
-  NO_VALUE,
-  XDAI_DECIMALS,
-} from '../format';
+import { BZZ_DECIMALS, formatTokenBalance, formatTtl, NO_VALUE, XDAI_DECIMALS } from '../format';
 import type { Profile } from '../types';
 import { useBeeUtils } from '../uploaders/useBeeUtils';
 
@@ -58,12 +52,9 @@ export function PoolRungRow({
   // The wallet this row reads is the only one anything on this page reads, so
   // the pill has to answer to it: a rung that spent its BZZ reads as funded
   // otherwise, beside its own zero balance.
-  const readiness = readinessOf(
-    profile,
-    rungStampHealth(rungState, profile.stamp_id),
-    chequebook,
-    { wallet: bee.loading ? undefined : bee.wallet },
-  );
+  const readiness = readinessOf(profile, rungStampHealth(rungState, profile.stamp_id), chequebook, {
+    wallet: bee.loading ? undefined : bee.wallet,
+  });
   const bzz = bee.wallet?.bzzBalance;
   // Only a balance the node actually reported counts as empty. Before the
   // wallet loads there is nothing to warn about yet.
@@ -71,28 +62,36 @@ export function PoolRungRow({
   const needsStamp = isRunning(profile) && !hasStampId(profile);
 
   return (
-    <TableRow
-      hover
-      sx={{ cursor: 'pointer' }}
-      onClick={() => navigate(routes.deployment(profile.name))}
-    >
+    <TableRow hover sx={{ cursor: 'pointer' }} onClick={() => navigate(routes.deployment(profile.name))}>
       <TableCell sx={{ width: 28 }}>
-        <StatusDot
-          tone={statusLabelOf(profile).tone}
-          pulsing={isTransitional(profile)}
-        />
+        <StatusDot tone={statusLabelOf(profile).tone} pulsing={isTransitional(profile)} />
       </TableCell>
       <TableCell>
-        <Stack direction="row" spacing={0.75} alignItems="baseline" flexWrap="wrap">
-          <Typography sx={{ fontFamily: MONO_STACK, fontWeight: 600, fontSize: 13 }}>
-            {rung}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
+        <Stack
+          direction="row"
+          spacing={0.75}
+          sx={{
+            alignItems: 'baseline',
+            flexWrap: 'wrap',
+          }}
+        >
+          <Typography sx={{ fontFamily: MONO_STACK, fontWeight: 600, fontSize: 13 }}>{rung}</Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
             {spec ? `${spec.width}×${spec.height} · ${spec.kbps} kbps` : ''}
             {rung === COORDINATOR_RUNG ? ' · coordinator' : ''}
           </Typography>
         </Stack>
-        <Typography variant="caption" color="text.secondary">
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {profile.name} · slot {profile.port_slot}
         </Typography>
       </TableCell>
@@ -106,18 +105,13 @@ export function PoolRungRow({
         <Typography
           variant="caption"
           component="div"
-          sx={{ fontFamily: MONO_STACK }}
-          color={bzzEmpty ? 'warning.main' : 'text.primary'}
+          sx={{ color: bzzEmpty ? 'warning.main' : 'text.primary', fontFamily: MONO_STACK }}
         >
           BZZ {formatTokenBalance(bzz, BZZ_DECIMALS)}
         </Typography>
       </TableCell>
       <TableCell>
-        <Typography
-          variant="caption"
-          sx={{ fontFamily: MONO_STACK }}
-          color={chequebookColour(chequebook)}
-        >
+        <Typography variant="caption" sx={{ color: chequebookColour(chequebook), fontFamily: MONO_STACK }}>
           {chequebookText(chequebook)}
         </Typography>
       </TableCell>
@@ -125,13 +119,16 @@ export function PoolRungRow({
         <Typography variant="caption">{stampText(profile, rungState)}</Typography>
       </TableCell>
       <TableCell align="right" onClick={(event) => event.stopPropagation()}>
-        <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
+        <Stack
+          direction="row"
+          spacing={0.5}
+          sx={{
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+          }}
+        >
           {needsStamp ? (
-            <Button
-              size="small"
-              variant="contained"
-              onClick={() => navigate(routes.deploymentStorage(profile.name))}
-            >
+            <Button size="small" variant="contained" onClick={() => navigate(routes.deploymentStorage(profile.name))}>
               Buy stamp
             </Button>
           ) : (
@@ -175,14 +172,9 @@ function chequebookColour(health: ChequebookHealth | null): string {
   return 'text.primary';
 }
 
-function stampText(
-  profile: Profile,
-  rungState: LadderRungState | null,
-): string {
+function stampText(profile: Profile, rungState: LadderRungState | null): string {
   if (rungState?.stampState === 'active') {
-    return rungState.stampTtl != null
-      ? `${formatTtl(rungState.stampTtl)} left`
-      : 'active';
+    return rungState.stampTtl != null ? `${formatTtl(rungState.stampTtl)} left` : 'active';
   }
   if (rungState && isDeadStampState(rungState.stampState)) return 'expired';
   if (rungState?.stampState === 'full') return 'full';

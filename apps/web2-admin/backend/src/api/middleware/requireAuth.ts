@@ -1,13 +1,7 @@
 import { NextFunction, Request, RequestHandler, Response } from 'express';
 
-import type {
-  AuthService,
-  SessionInfo,
-} from '../../domain/auth/AuthService.js';
-import {
-  AdminRequiredError,
-  UnauthenticatedError,
-} from '../../domain/errors/index.js';
+import type { AuthService, SessionInfo } from '../../domain/auth/AuthService.js';
+import { AdminRequiredError, UnauthenticatedError } from '../../domain/errors/index.js';
 import type { UserRow } from '../../types/index.js';
 import { clearSessionCookie, readSessionToken } from '../cookies.js';
 

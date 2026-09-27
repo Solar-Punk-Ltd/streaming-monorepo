@@ -2,17 +2,17 @@
 
 Partial redeploys could remove files still mounted by a running engine. Profile responses exposed custom RPC keys, and an overlapping sign-in could survive password rotation. This batch fixes those failures and six related control-panel and monitoring findings from the cross-provider review, OpenAI-hosted, of `main-v2` at `a5b42539`.
 
-| Finding | Priority | Result |
-| --- | --- | --- |
-| F01 | P1 | Cleanup retains execution copies used by containers and keeps them when Docker observations are uncertain. Unresolved deployment attempts prevent retirement. |
-| F02 | P1 | Public profiles, groups and events expose endpoint presence and host only. Private reads preserve the exact saved URL for deployment. Unrelated edits keep it, and replacement or source changes work without sending it back to the browser. |
-| F03 | P1 | Session admission and password replacement compare the verified credential under the same user row lock. Stale sign-ins and competing password changes are refused. Throttle reservations settle on error paths. |
-| F04 | P1 | Recreating a deployment under the same name discards the removed node's wallet address immediately. |
-| F05 | P2 | Uploader startup guidance follows D15 and D16. Low balance and an unreachable node warn, while proven unusable postage still refuses. |
-| F06 | P2 | ABR readiness includes the uploader's runtime health after its pool configuration. |
-| F07 | P2 | Passphrase rotation refreshes the publish URL. Obsolete responses are ignored, and Copy stays disabled while the current URL is incomplete. |
-| F08 | P2 | Session revocation closes active and pending command-output streams without cancelling accepted deployments or builds. |
-| F09 | P2 | Host traffic comes from the host init process's network view. Missing readings remain unavailable, and recovery resets the rate baseline. |
+| Finding | Priority | Result                                                                                                                                                                                                                                        |
+| ------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F01     | P1       | Cleanup retains execution copies used by containers and keeps them when Docker observations are uncertain. Unresolved deployment attempts prevent retirement.                                                                                 |
+| F02     | P1       | Public profiles, groups and events expose endpoint presence and host only. Private reads preserve the exact saved URL for deployment. Unrelated edits keep it, and replacement or source changes work without sending it back to the browser. |
+| F03     | P1       | Session admission and password replacement compare the verified credential under the same user row lock. Stale sign-ins and competing password changes are refused. Throttle reservations settle on error paths.                              |
+| F04     | P1       | Recreating a deployment under the same name discards the removed node's wallet address immediately.                                                                                                                                           |
+| F05     | P2       | Uploader startup guidance follows D15 and D16. Low balance and an unreachable node warn, while proven unusable postage still refuses.                                                                                                         |
+| F06     | P2       | ABR readiness includes the uploader's runtime health after its pool configuration.                                                                                                                                                            |
+| F07     | P2       | Passphrase rotation refreshes the publish URL. Obsolete responses are ignored, and Copy stays disabled while the current URL is incomplete.                                                                                                   |
+| F08     | P2       | Session revocation closes active and pending command-output streams without cancelling accepted deployments or builds.                                                                                                                        |
+| F09     | P2       | Host traffic comes from the host init process's network view. Missing readings remain unavailable, and recovery resets the rate baseline.                                                                                                     |
 
 ## Validation
 

@@ -15,11 +15,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  type DeployAttempt,
-  attemptOutcome,
-  whyAdmissionIsRefused,
-} from '../../src/domain/deployAttempts.js';
+import { type DeployAttempt, attemptOutcome, whyAdmissionIsRefused } from '../../src/domain/deployAttempts.js';
 
 const OPEN: DeployAttempt = {
   target: null,
@@ -43,19 +39,27 @@ const DEPLOY_FAILED = false;
 
 describe('attemptOutcome', () => {
   it('releases when every touched service has a container the attempt did not start with', () => {
-    const outcome = attemptOutcome(OPEN, new Map([
-      ['srs', ['c-srs-new']],
-      ['stream-uploader', ['c-up-new']],
-    ]), DEPLOY_FAILED);
+    const outcome = attemptOutcome(
+      OPEN,
+      new Map([
+        ['srs', ['c-srs-new']],
+        ['stream-uploader', ['c-up-new']],
+      ]),
+      DEPLOY_FAILED,
+    );
 
     assert.deepEqual(outcome, { state: 'released', reason: null });
   });
 
   it('stays blocked while one touched service still shows only ids from before', () => {
-    const outcome = attemptOutcome(OPEN, new Map([
-      ['srs', ['c-srs-new']],
-      ['stream-uploader', ['c-up-old']],
-    ]), DEPLOY_FAILED);
+    const outcome = attemptOutcome(
+      OPEN,
+      new Map([
+        ['srs', ['c-srs-new']],
+        ['stream-uploader', ['c-up-old']],
+      ]),
+      DEPLOY_FAILED,
+    );
 
     assert.equal(outcome.state, 'blocked');
     assert.match(outcome.reason ?? '', /stream-uploader/);
@@ -70,19 +74,27 @@ describe('attemptOutcome', () => {
   });
 
   it('does not count an old id as new because it was seen again, whatever its timestamps say', () => {
-    const outcome = attemptOutcome(OPEN, new Map([
-      ['srs', ['c-srs-old']],
-      ['stream-uploader', ['c-up-old']],
-    ]), DEPLOY_FAILED);
+    const outcome = attemptOutcome(
+      OPEN,
+      new Map([
+        ['srs', ['c-srs-old']],
+        ['stream-uploader', ['c-up-old']],
+      ]),
+      DEPLOY_FAILED,
+    );
 
     assert.equal(outcome.state, 'blocked');
   });
 
   it('counts a new id beside an old one, which is what a recreate leaves for a moment', () => {
-    const outcome = attemptOutcome(OPEN, new Map([
-      ['srs', ['c-srs-old', 'c-srs-new']],
-      ['stream-uploader', ['c-up-new']],
-    ]), DEPLOY_FAILED);
+    const outcome = attemptOutcome(
+      OPEN,
+      new Map([
+        ['srs', ['c-srs-old', 'c-srs-new']],
+        ['stream-uploader', ['c-up-new']],
+      ]),
+      DEPLOY_FAILED,
+    );
 
     assert.equal(outcome.state, 'released');
   });
@@ -95,19 +107,27 @@ describe('attemptOutcome', () => {
    * project's half-finished image, because nothing rebuilt it.
    */
   it('releases a clean run that left every container exactly where it was', () => {
-    const outcome = attemptOutcome(OPEN, new Map([
-      ['srs', ['c-srs-old']],
-      ['stream-uploader', ['c-up-old']],
-    ]), DEPLOY_SUCCEEDED);
+    const outcome = attemptOutcome(
+      OPEN,
+      new Map([
+        ['srs', ['c-srs-old']],
+        ['stream-uploader', ['c-up-old']],
+      ]),
+      DEPLOY_SUCCEEDED,
+    );
 
     assert.deepEqual(outcome, { state: 'released', reason: null });
   });
 
   it('stays blocked when a clean run left a touched service with no container at all', () => {
-    const outcome = attemptOutcome(OPEN, new Map([
-      ['srs', ['c-srs-old']],
-      ['stream-uploader', []],
-    ]), DEPLOY_SUCCEEDED);
+    const outcome = attemptOutcome(
+      OPEN,
+      new Map([
+        ['srs', ['c-srs-old']],
+        ['stream-uploader', []],
+      ]),
+      DEPLOY_SUCCEEDED,
+    );
 
     assert.equal(outcome.state, 'blocked');
     assert.match(outcome.reason ?? '', /stream-uploader/);
@@ -115,7 +135,11 @@ describe('attemptOutcome', () => {
 });
 
 describe('whyAdmissionIsRefused', () => {
-  const blockedOnStage: DeployAttempt = { ...OPEN, state: 'blocked', reason: 'stream-uploader was never seen with a new container' };
+  const blockedOnStage: DeployAttempt = {
+    ...OPEN,
+    state: 'blocked',
+    reason: 'stream-uploader was never seen with a new container',
+  };
   const openOnOther: DeployAttempt = { ...OPEN, id: 8, project: 'other', jobId: 'job-b' };
   const fixedOnOther: DeployAttempt = { ...openOnOther, kind: 'fixed' };
 
@@ -135,11 +159,17 @@ describe('whyAdmissionIsRefused', () => {
   });
 
   it('lets a fixed-image job of another project run beside anything', () => {
-    assert.equal(whyAdmissionIsRefused({ daemonId: 'daemon-1', project: 'stage', kind: 'fixed' }, [openOnOther, fixedOnOther]), null);
+    assert.equal(
+      whyAdmissionIsRefused({ daemonId: 'daemon-1', project: 'stage', kind: 'fixed' }, [openOnOther, fixedOnOther]),
+      null,
+    );
   });
 
   it('lets a shared-tag job run beside a fixed-image job of another project', () => {
-    assert.equal(whyAdmissionIsRefused({ daemonId: 'daemon-1', project: 'stage', kind: 'shared' }, [fixedOnOther]), null);
+    assert.equal(
+      whyAdmissionIsRefused({ daemonId: 'daemon-1', project: 'stage', kind: 'shared' }, [fixedOnOther]),
+      null,
+    );
   });
 
   it('says a running attempt resolves on its own and a blocked one waits for a person', () => {
@@ -160,6 +190,9 @@ describe('whyAdmissionIsRefused', () => {
     const elsewhere = { ...OPEN, daemonId: 'daemon-2' };
     const released = { ...OPEN, state: 'released' as const, resolvedAt: new Date(1) };
 
-    assert.equal(whyAdmissionIsRefused({ daemonId: 'daemon-1', project: 'stage', kind: 'shared' }, [elsewhere, released]), null);
+    assert.equal(
+      whyAdmissionIsRefused({ daemonId: 'daemon-1', project: 'stage', kind: 'shared' }, [elsewhere, released]),
+      null,
+    );
   });
 });

@@ -17,10 +17,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  OME_PORT_SOURCES,
-  PUBLIC_PORT_ROLES,
-} from '@streaming-infra-manager/common';
+import { OME_PORT_SOURCES, PUBLIC_PORT_ROLES } from '@streaming-infra-manager/common';
 
 import { BUNDLED_PORT_TABLE } from '../../src/domain/versions/portTable.js';
 
@@ -45,9 +42,7 @@ const PORT_KEYS = [
 ];
 
 function calledPublic(): string[] {
-  return [...new Set(PORT_KEYS)].filter(
-    (key) => endpointKindOf(key).audience === 'public',
-  );
+  return [...new Set(PORT_KEYS)].filter((key) => endpointKindOf(key).audience === 'public');
 }
 
 describe('what the port cell calls public', () => {
@@ -62,16 +57,13 @@ describe('what the port cell calls public', () => {
   });
 
   it('reaches the ports that are genuinely public, so it can fail', () => {
-    assert.deepEqual(
-      calledPublic().sort(),
-      [
-        'BEE_GATEWAY_P2P_PORT',
-        'BEE_UPLOADER_P2P_PORT',
-        'CLIENT_PORT',
-        'OME_SRT_PORT',
-        'SRS_SRT_PORT',
-      ],
-    );
+    assert.deepEqual(calledPublic().sort(), [
+      'BEE_GATEWAY_P2P_PORT',
+      'BEE_UPLOADER_P2P_PORT',
+      'CLIENT_PORT',
+      'OME_SRT_PORT',
+      'SRS_SRT_PORT',
+    ]);
   });
 
   it('was written for the RTMP port, which no role names at all', () => {

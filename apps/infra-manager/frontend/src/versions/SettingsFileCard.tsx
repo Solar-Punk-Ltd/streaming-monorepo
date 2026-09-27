@@ -52,13 +52,7 @@ export function SettingsFileCard({
           )
         }
       >
-        <CodeTextArea
-          value={text}
-          onChange={onTextChange}
-          readOnly={disabled}
-          minHeight={280}
-          ariaLabel={file.path}
-        />
+        <CodeTextArea value={text} onChange={onTextChange} readOnly={disabled} minHeight={280} ariaLabel={file.path} />
       </SectionCard>
     );
   }
@@ -68,7 +62,12 @@ export function SettingsFileCard({
   return (
     <SectionCard title={file.path} sub={subFor(file.path)}>
       {file.entries.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           This file assigns nothing yet.
         </Typography>
       ) : (

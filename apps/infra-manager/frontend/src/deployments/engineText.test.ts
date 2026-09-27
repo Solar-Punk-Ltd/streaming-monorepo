@@ -14,7 +14,7 @@ import { describe, it } from 'node:test';
 
 import { engineSummary } from './engineText';
 
-const known = (value: string) => ({ status: 'known', source: 'deployment', value, environment: 'all' } as const);
+const known = (value: string) => ({ status: 'known', source: 'deployment', value, environment: 'all' }) as const;
 
 describe('the engine in one line', () => {
   it('names what the manager says the engine runs with', () => {
@@ -26,9 +26,16 @@ describe('the engine in one line', () => {
 
   it('distinguishes an omitted field from an unverified one', () => {
     assert.equal(
-      engineSummary('srs', { HLS_FRAGMENT: known('0.5'), HLS_WINDOW: {
-        status: 'unknown', source: 'omitted', value: null, reason: 'missing-directive', environment: 'none',
-      } }),
+      engineSummary('srs', {
+        HLS_FRAGMENT: known('0.5'),
+        HLS_WINDOW: {
+          status: 'unknown',
+          source: 'omitted',
+          value: null,
+          reason: 'missing-directive',
+          environment: 'none',
+        },
+      }),
       'SRS · segment 0.5 s · window not specified',
     );
     assert.equal(engineSummary('srs', {}), 'SRS · segment unverified · window unverified');
@@ -42,9 +49,18 @@ describe('the engine in one line', () => {
   });
 
   it('uses the observed literal regardless of a stored override elsewhere', () => {
-    assert.equal(engineSummary('ome', { HLS_SEGMENT_DURATION: {
-      status: 'known', source: 'config-file', value: '4', environment: 'none',
-    }, HLS_SEGMENT_COUNT: known('8') }), 'OvenMediaEngine · segment 4 s · playlist 8 pieces');
+    assert.equal(
+      engineSummary('ome', {
+        HLS_SEGMENT_DURATION: {
+          status: 'known',
+          source: 'config-file',
+          value: '4',
+          environment: 'none',
+        },
+        HLS_SEGMENT_COUNT: known('8'),
+      }),
+      'OvenMediaEngine · segment 4 s · playlist 8 pieces',
+    );
   });
 
   // The line is built from the stored settings, so between a save and Apply it

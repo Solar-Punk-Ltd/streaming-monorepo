@@ -32,7 +32,11 @@ export function createManagerSettingsRouter(adminLink: ManagerAdminLinkService):
       const { username } = signedInUser(req);
       const body = req.body as SaveManagerAdminLinkBody;
       const saved = await adminLink.save(
-        { expectedRevision: body.expectedRevision, url: body.url as string, ...(body.token !== undefined ? { token: body.token } : {}) },
+        {
+          expectedRevision: body.expectedRevision,
+          url: body.url as string,
+          ...(body.token !== undefined ? { token: body.token } : {}),
+        },
         username,
       );
       res.setHeader('Cache-Control', 'no-store');

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
-import { commitAll, makeTempDir, runScript, writeFiles } from './support/fixtures.mjs';
+import { makeTempDir, runScript, writeFiles } from './support/fixtures.mjs';
 import { PACKAGE_MANAGER, expectedCut, manifest, manifestOf, realAppFiles } from './support/workspace.mjs';
 
 const CUT = 'cut.mjs';
@@ -61,28 +61,6 @@ describe('cut.mjs', () => {
     assert.equal(result.status, 1);
     assert.match(result.stderr, /inside the workspace/);
     assert.match(result.stderr, /in-copy\.mjs/);
-    assert.equal(existsSync(join(out, 'pnpm-lock.yaml')), false);
-  });
-
-  it('writes into the app folder of an export when told --in-export, since an export is thrown away after its build', (t) => {
-    const root = makeWorkspace(t);
-    const out = join(root, 'apps', 'web2-admin');
-
-    const result = runScript(CUT, ['--root', root, '--app', 'apps/web2-admin', '--out', out, '--in-export']);
-
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(readFileSync(join(out, 'pnpm-lock.yaml'), 'utf8'), expectedCut('apps/web2-admin', false).lockfile);
-  });
-
-  it('refuses --in-export in a git checkout, where a person may work', (t) => {
-    const root = makeWorkspace(t);
-    commitAll(root);
-    const out = join(root, 'apps', 'web2-admin');
-
-    const result = runScript(CUT, ['--root', root, '--app', 'apps/web2-admin', '--out', out, '--in-export']);
-
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /git checkout/);
     assert.equal(existsSync(join(out, 'pnpm-lock.yaml')), false);
   });
 
@@ -147,7 +125,7 @@ describe('cut.mjs', () => {
     assert.match(result.stderr, /no pnpm-lock\.yaml/);
   });
 
-  it('exits 2 with its usage when --app or --out is missing', (t) => {
+  it('exits 2 with its usage when --app or --out is missing', () => {
     const result = runScript(CUT, ['--app', 'apps/web2-admin']);
 
     assert.equal(result.status, 2);

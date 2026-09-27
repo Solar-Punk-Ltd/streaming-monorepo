@@ -12,13 +12,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
 import { hashSessionToken } from '../../src/domain/auth/sessionToken.js';
-import {
-  AuthTestApp,
-  call,
-  sessionCookieFrom,
-  signIn,
-  startAuthTestApp,
-} from '../support/authTestApp.js';
+import { AuthTestApp, call, sessionCookieFrom, signIn, startAuthTestApp } from '../support/authTestApp.js';
 
 const USERNAME = 'levi';
 const PASSWORD = 'a-long-enough-password';
@@ -122,11 +116,7 @@ describe('requireSession', () => {
     const first = await lastSeenAt(token);
 
     await call(app, 'GET', '/profiles', { cookie });
-    assert.deepEqual(
-      await lastSeenAt(token),
-      first,
-      'a second request within the minute must not write',
-    );
+    assert.deepEqual(await lastSeenAt(token), first, 'a second request within the minute must not write');
 
     await lastSeen(token, 61 * 1000);
     await call(app, 'GET', '/profiles', { cookie });

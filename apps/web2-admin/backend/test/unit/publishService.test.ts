@@ -46,8 +46,7 @@ import {
 const feed: FeedIdentity = {
   owner: TEST_OWNER,
   topic: 'swarm-stream',
-  topicHex:
-    'cfbbc155d709547b198638d0fb11d733359561538d8bd606a9ab257354d13bcc',
+  topicHex: 'cfbbc155d709547b198638d0fb11d733359561538d8bd606a9ab257354d13bcc',
 };
 
 /** One rung of a ladder, as the uploader reports it; `index` set marks it finished. */
@@ -65,13 +64,7 @@ function setup(gateway = new FakeFeedGateway()) {
   const renditions = new FakeRenditionStore();
   const store = new FakeStreamStore(renditions);
   const writes = new FakeFeedWriteLog();
-  const service = new PublishService(
-    store,
-    renditions,
-    writes,
-    gateway,
-    feed,
-  );
+  const service = new PublishService(store, renditions, writes, gateway, feed);
   return { store, renditions, writes, gateway, service };
 }
 
@@ -194,10 +187,10 @@ describe('PublishService.publish', () => {
   it('uploads a stored thumbnail once and reuses the reference', async () => {
     const { store, gateway, service } = setup();
     const bytes = Buffer.from('89504e470d0a1a0a', 'hex');
-    const row = store.add(
-      streamRow({ has_thumbnail: true, thumbnail_mime: 'image/png' }),
-      { thumbnail: bytes, thumbnail_mime: 'image/png' },
-    );
+    const row = store.add(streamRow({ has_thumbnail: true, thumbnail_mime: 'image/png' }), {
+      thumbnail: bytes,
+      thumbnail_mime: 'image/png',
+    });
 
     const first = await service.publish(row.id, TEST_USER_ID);
     assert.equal(gateway.thumbnails.length, 1);
@@ -263,9 +256,7 @@ describe('PublishService.publish', () => {
     await assert.rejects(
       () => service.publish(row.id, TEST_USER_ID),
       (err: unknown) =>
-        err instanceof PublishFailedError &&
-        err.reason.includes(stale) &&
-        err.reason.includes('fetch failed'),
+        err instanceof PublishFailedError && err.reason.includes(stale) && err.reason.includes('fetch failed'),
     );
 
     const after = store.get(row.id);
@@ -280,10 +271,10 @@ describe('PublishService.publish', () => {
     // The chunk is paid for the moment the upload returns, so a publish that
     // fails afterwards must not make the retry upload the same image again.
     const { store, gateway, service } = setup();
-    const row = store.add(
-      streamRow({ has_thumbnail: true, thumbnail_mime: 'image/png' }),
-      { thumbnail: Buffer.from([1, 2, 3]), thumbnail_mime: 'image/png' },
-    );
+    const row = store.add(streamRow({ has_thumbnail: true, thumbnail_mime: 'image/png' }), {
+      thumbnail: Buffer.from([1, 2, 3]),
+      thumbnail_mime: 'image/png',
+    });
     gateway.failNextWrite = new Error('postage batch not usable');
 
     await assert.rejects(() => service.publish(row.id, TEST_USER_ID), PublishFailedError);
@@ -301,8 +292,7 @@ describe('PublishService.publish', () => {
 
     await assert.rejects(
       () => service.publish(row.id, TEST_USER_ID),
-      (err: unknown) =>
-        err instanceof StreamBusyError && err.currentStatus === 'publishing',
+      (err: unknown) => err instanceof StreamBusyError && err.currentStatus === 'publishing',
     );
   });
 
@@ -310,10 +300,7 @@ describe('PublishService.publish', () => {
     const { store, service } = setup();
     const row = store.add(streamRow());
 
-    await assert.rejects(
-      () => service.publish(row.id, '00000000-0000-4000-8000-0000000000ff'),
-      StreamNotFoundError,
-    );
+    await assert.rejects(() => service.publish(row.id, '00000000-0000-4000-8000-0000000000ff'), StreamNotFoundError);
   });
 
   it('refuses a stream created under a different feed owner', async () => {
@@ -326,9 +313,7 @@ describe('PublishService.publish', () => {
     await assert.rejects(
       () => service.publish(row.id, TEST_USER_ID),
       (err: unknown) =>
-        err instanceof FeedOwnerMismatchError &&
-        err.streamOwner === 'f'.repeat(40) &&
-        err.feedOwner === TEST_OWNER,
+        err instanceof FeedOwnerMismatchError && err.streamOwner === 'f'.repeat(40) && err.feedOwner === TEST_OWNER,
     );
     assert.equal(gateway.writes.length, 0);
     assert.equal(store.get(row.id).status, 'draft', 'never even claimed');
@@ -348,9 +333,7 @@ describe('PublishService.publish', () => {
 
     await assert.rejects(
       () => service.publish(row.id, TEST_USER_ID),
-      (err: unknown) =>
-        err instanceof PublishFailedError &&
-        err.reason === 'postage batch not usable',
+      (err: unknown) => err instanceof PublishFailedError && err.reason === 'postage batch not usable',
     );
 
     const after = store.get(row.id);
@@ -381,9 +364,7 @@ describe('PublishService.publish', () => {
 
     await assert.rejects(
       () => service.publish(row.id, TEST_USER_ID),
-      (err: unknown) =>
-        err instanceof PublishFailedError &&
-        err.reason === 'postage batch not usable',
+      (err: unknown) => err instanceof PublishFailedError && err.reason === 'postage batch not usable',
     );
     assert.equal(store.get(row.id).status, 'publishing', 'boot clears this');
   });
@@ -458,8 +439,7 @@ describe('PublishService republishing a stream that has gone live', () => {
 
     await assert.rejects(
       () => service.republishWithState(store.get(row.id)),
-      (err: unknown) =>
-        err instanceof PublishFailedError && err.reason === 'bee unreachable',
+      (err: unknown) => err instanceof PublishFailedError && err.reason === 'bee unreachable',
     );
 
     const after = store.get(row.id);
@@ -482,9 +462,7 @@ describe('PublishService republishing a stream that has gone live', () => {
     // failure that put that back would tell every viewer the broadcast never
     // started, on the strength of a row nobody has since.
     const { store, gateway, service } = setup();
-    const asCallerReadIt = store.add(
-      streamRow({ status: 'published', published_feed_index: 3 }),
-    );
+    const asCallerReadIt = store.add(streamRow({ status: 'published', published_feed_index: 3 }));
     store.add({
       ...asCallerReadIt,
       status: 'live',
@@ -494,8 +472,7 @@ describe('PublishService republishing a stream that has gone live', () => {
 
     await assert.rejects(
       () => service.republishWithState(asCallerReadIt),
-      (err: unknown) =>
-        err instanceof PublishFailedError && err.reason === 'bee unreachable',
+      (err: unknown) => err instanceof PublishFailedError && err.reason === 'bee unreachable',
     );
 
     const after = store.get(asCallerReadIt.id);
@@ -507,9 +484,7 @@ describe('PublishService republishing a stream that has gone live', () => {
 
   it('writes the entry from the row as it is at write time, not as the caller read it', async () => {
     const { store, gateway, service } = setup();
-    const asCallerReadIt = store.add(
-      streamRow({ status: 'published', published_feed_index: 3 }),
-    );
+    const asCallerReadIt = store.add(streamRow({ status: 'published', published_feed_index: 3 }));
     store.add({ ...asCallerReadIt, status: 'live' });
 
     const outcome = await service.republishWithState(asCallerReadIt);
@@ -523,9 +498,7 @@ describe('PublishService republishing a stream that has gone live', () => {
     // A title fixed mid-broadcast: POST /streams/:id/publish on a live stream
     // must reach the feed without the stream leaving `live`.
     const { store, gateway, service } = setup();
-    const row = store.add(
-      streamRow({ status: 'live', published_feed_index: 0 }),
-    );
+    const row = store.add(streamRow({ status: 'live', published_feed_index: 0 }));
 
     const outcome = await service.publish(row.id, TEST_USER_ID);
 
@@ -582,10 +555,7 @@ describe('PublishService republishing a stream that has gone live', () => {
     const row = store.add(streamRow({ manifest_index: 7, duration_seconds: 61 }));
     gateway.failNextWrite = new Error('bee unreachable');
 
-    await assert.rejects(
-      () => service.publish(row.id, TEST_USER_ID),
-      PublishFailedError,
-    );
+    await assert.rejects(() => service.publish(row.id, TEST_USER_ID), PublishFailedError);
 
     const after = store.get(row.id);
     assert.equal(after.status, 'draft');
@@ -751,10 +721,10 @@ describe('PublishService.unpublish', () => {
 
   it('keeps the thumbnail reference, which is still paid for', async () => {
     const { store, service } = setup();
-    const row = store.add(
-      streamRow({ has_thumbnail: true, thumbnail_mime: 'image/png' }),
-      { thumbnail: Buffer.from([1, 2, 3]), thumbnail_mime: 'image/png' },
-    );
+    const row = store.add(streamRow({ has_thumbnail: true, thumbnail_mime: 'image/png' }), {
+      thumbnail: Buffer.from([1, 2, 3]),
+      thumbnail_mime: 'image/png',
+    });
     const published = await service.publish(row.id, TEST_USER_ID);
 
     const outcome = await service.unpublish(row.id, TEST_USER_ID);
@@ -832,8 +802,7 @@ describe('PublishService.unpublish', () => {
 
     await assert.rejects(
       () => service.unpublish(row.id, TEST_USER_ID),
-      (err: unknown) =>
-        err instanceof StreamLiveError && err.streamId === row.id,
+      (err: unknown) => err instanceof StreamLiveError && err.streamId === row.id,
     );
     assert.equal(store.get(row.id).status, 'live', 'never claimed');
     assert.equal(gateway.writes.length, 0);
@@ -845,10 +814,7 @@ describe('PublishService.unpublish', () => {
     await service.publish(row.id, TEST_USER_ID);
     gateway.failNextWrite = new Error('bee unreachable');
 
-    await assert.rejects(
-      () => service.unpublish(row.id, TEST_USER_ID),
-      PublishFailedError,
-    );
+    await assert.rejects(() => service.unpublish(row.id, TEST_USER_ID), PublishFailedError);
     const after = store.get(row.id);
     assert.equal(after.status, 'published');
     assert.equal(after.publish_error, 'bee unreachable');
@@ -866,22 +832,14 @@ describe('FakeFeedGateway', () => {
     assert.equal((await gateway.readLatest()).index, 41);
 
     await gateway.write([], 42);
-    await assert.rejects(
-      () => gateway.write([], 42),
-      /expected 43/,
-      'within one process the check still stands',
-    );
+    await assert.rejects(() => gateway.write([], 42), /expected 43/, 'within one process the check still stands');
   });
 });
 
 describe('FakeFeedGateway.hasReference', () => {
   it('knows only the references it handed out', async () => {
     const gateway = new FakeFeedGateway();
-    const reference = await gateway.uploadThumbnail(
-      Buffer.from([1, 2, 3]),
-      'a.png',
-      'image/png',
-    );
+    const reference = await gateway.uploadThumbnail(Buffer.from([1, 2, 3]), 'a.png', 'image/png');
 
     assert.equal(await gateway.hasReference(reference), true);
     assert.equal(await gateway.hasReference('c'.repeat(64)), false);
@@ -935,10 +893,7 @@ describe('PublishService against a feed lookup that lags its own writes', () => 
     // a fresh install against an existing catalogue, or rows that predate
     // migration 003. The first write has to trust the network; from then on
     // the log leads, even though this node never stops answering 7.
-    const gateway = new FakeFeedGateway(
-      { index: 7, entries: [] },
-      { readLagWrites: 99 },
-    );
+    const gateway = new FakeFeedGateway({ index: 7, entries: [] }, { readLagWrites: 99 });
     const { store, writes, service } = setup(gateway);
     const first = store.add(streamRow());
     const second = store.add(streamRow());
@@ -1053,12 +1008,8 @@ describe('PublishService.reconcile', () => {
   it('adds a published row that is missing from the feed', async () => {
     // The other half of the collision: the write that carried this entry was
     // overwritten, so the row says `published` and the catalogue does not.
-    const { store, gateway, service } = setup(
-      new FakeFeedGateway({ index: 4, entries: [] }),
-    );
-    const row = store.add(
-      streamRow({ status: 'published', published_feed_index: 4 }),
-    );
+    const { store, gateway, service } = setup(new FakeFeedGateway({ index: 4, entries: [] }));
+    const row = store.add(streamRow({ status: 'published', published_feed_index: 4 }));
 
     const outcome = await service.reconcile(TEST_USER_ID);
 
@@ -1156,10 +1107,7 @@ describe('PublishService.reconcile', () => {
     const outcome = await service.reconcile(TEST_USER_ID);
 
     assert.equal(outcome.index, null, 'no index spent');
-    assert.deepEqual(
-      [outcome.removed, outcome.added, outcome.updated],
-      [[], [], []],
-    );
+    assert.deepEqual([outcome.removed, outcome.added, outcome.updated], [[], [], []]);
     assert.equal(outcome.entryCount, 1);
     assert.equal(gateway.writes.length, 1, 'no stamp spent either');
     assert.equal(writes.records.length, 1);
@@ -1183,10 +1131,7 @@ describe('PublishService and the edited-since-published notice', () => {
 
     const outcome = await service.publish(row.id, TEST_USER_ID);
 
-    assert.equal(
-      outcome.stream.entry_content_edited_at?.getTime(),
-      EDITED_AT.getTime(),
-    );
+    assert.equal(outcome.stream.entry_content_edited_at?.getTime(), EDITED_AT.getTime());
     assert.equal(hasUnpublishedEdits(outcome.stream), false);
   });
 
@@ -1211,11 +1156,7 @@ describe('PublishService and the edited-since-published notice', () => {
     const outcome = await service.publish(row.id, TEST_USER_ID);
 
     assert.equal(entriesOf(gateway)[0]!.title, 'Retitled after the broadcast');
-    assert.equal(
-      outcome.stream.published_at?.getTime(),
-      REBUILT_AT.getTime(),
-      'still the first announcement',
-    );
+    assert.equal(outcome.stream.published_at?.getTime(), REBUILT_AT.getTime(), 'still the first announcement');
     assert.equal(hasUnpublishedEdits(outcome.stream), false);
     assert.equal(hasUnpublishedEdits(store.get(row.id)), false);
   });
@@ -1309,10 +1250,10 @@ describe('PublishService and the edited-since-published notice', () => {
     // A reconcile uploads nothing, so an image that replaced the published one
     // goes out as no thumbnail at all, and only a republish uploads it.
     const { store, gateway, service } = setup();
-    const row = store.add(
-      streamRow({ has_thumbnail: true, thumbnail_mime: 'image/png' }),
-      { thumbnail: Buffer.from([1, 2, 3]), thumbnail_mime: 'image/png' },
-    );
+    const row = store.add(streamRow({ has_thumbnail: true, thumbnail_mime: 'image/png' }), {
+      thumbnail: Buffer.from([1, 2, 3]),
+      thumbnail_mime: 'image/png',
+    });
     await service.publish(row.id, TEST_USER_ID);
     store.add({
       ...store.get(row.id),

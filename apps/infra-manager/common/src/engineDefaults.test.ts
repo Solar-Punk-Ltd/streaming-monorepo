@@ -55,11 +55,7 @@ describe('effectiveEngineDefaults', () => {
   });
 
   it("takes the version's own fallback over the pinned one, and still calls it the stack's", () => {
-    const { values, sources } = effectiveEngineDefaults(
-      SRS_SERVICE,
-      {},
-      { HLS_FRAGMENT: '0.5', HLS_WINDOW: '15' },
-    );
+    const { values, sources } = effectiveEngineDefaults(SRS_SERVICE, {}, { HLS_FRAGMENT: '0.5', HLS_WINDOW: '15' });
 
     assert.equal(values.HLS_FRAGMENT, '0.5');
     assert.equal(values.HLS_WINDOW, '15');
@@ -68,11 +64,7 @@ describe('effectiveEngineDefaults', () => {
   });
 
   it('lets the host value win over the version fallback as well', () => {
-    const { values, sources } = effectiveEngineDefaults(
-      SRS_SERVICE,
-      { HLS_FRAGMENT: '2' },
-      { HLS_FRAGMENT: '0.5' },
-    );
+    const { values, sources } = effectiveEngineDefaults(SRS_SERVICE, { HLS_FRAGMENT: '2' }, { HLS_FRAGMENT: '0.5' });
 
     assert.equal(values.HLS_FRAGMENT, '2');
     assert.equal(sources.HLS_FRAGMENT, 'host');
@@ -81,11 +73,7 @@ describe('effectiveEngineDefaults', () => {
   it("takes the manager's own SRT latency over a version's fallback, and says the manager set it", () => {
     // v3.1's entrypoint falls back to 200. The owner decided 2000 on
     // 2026-09-23, and a version pinned before that does not know it.
-    const { values, sources } = effectiveEngineDefaults(
-      SRS_SERVICE,
-      {},
-      { SRT_LATENCY: '200', HLS_FRAGMENT: '0.5' },
-    );
+    const { values, sources } = effectiveEngineDefaults(SRS_SERVICE, {}, { SRT_LATENCY: '200', HLS_FRAGMENT: '0.5' });
 
     assert.equal(values.SRT_LATENCY, '2000');
     assert.equal(sources.SRT_LATENCY, 'manager');
@@ -93,11 +81,7 @@ describe('effectiveEngineDefaults', () => {
   });
 
   it('still lets a value set on the host win over the manager default', () => {
-    const { values, sources } = effectiveEngineDefaults(
-      SRS_SERVICE,
-      { SRT_LATENCY: '500' },
-      { SRT_LATENCY: '200' },
-    );
+    const { values, sources } = effectiveEngineDefaults(SRS_SERVICE, { SRT_LATENCY: '500' }, { SRT_LATENCY: '200' });
 
     assert.equal(values.SRT_LATENCY, '500');
     assert.equal(sources.SRT_LATENCY, 'host');

@@ -27,16 +27,13 @@ export function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <Paper
-      id={id}
-      sx={{ overflow: 'hidden', borderColor: tone === 'error' ? 'error.main' : 'divider' }}
-    >
+    <Paper id={id} sx={{ overflow: 'hidden', borderColor: tone === 'error' ? 'error.main' : 'divider' }}>
       {(title || actions) && (
         <Stack
           direction="row"
-          alignItems="center"
           spacing={1.25}
           sx={{
+            alignItems: 'center',
             px: 2.25,
             py: 1.5,
             borderBottom: 1,
@@ -50,7 +47,12 @@ export function SectionCard({
             </Typography>
           )}
           {sub && (
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+              }}
+            >
               {sub}
             </Typography>
           )}

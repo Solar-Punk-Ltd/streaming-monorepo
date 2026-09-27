@@ -1,12 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import {
-  Alert,
-  Button,
-  Paper,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Alert, Button, Paper, Stack, TextField, Typography } from '@mui/material';
 import { passwordProblem } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../../api';
@@ -30,19 +23,16 @@ export function ChangePasswordCard() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const set = (field: keyof typeof EMPTY, value: string) =>
-    setForm((prev) => ({ ...prev, [field]: value }));
+  const set = (field: keyof typeof EMPTY, value: string) => setForm((prev) => ({ ...prev, [field]: value }));
 
   const username = user?.username ?? '';
-  const nextError =
-    form.next === '' ? null : passwordProblem(form.next, username);
-  const againError =
-    form.again === '' || form.again === form.next ? null : PASSWORD_MISMATCH;
+  const nextError = form.next === '' ? null : passwordProblem(form.next, username);
+  const againError = form.again === '' || form.again === form.next ? null : PASSWORD_MISMATCH;
 
-  const complete =
-    form.current !== '' && form.next !== '' && form.again !== '';
+  const complete = form.current !== '' && form.next !== '' && form.again !== '';
   const valid = complete && nextError === null && againError === null;
 
+  // Catches every failure into the form's error line, so the form calls it without awaiting.
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (saving || !valid) return;
@@ -56,9 +46,7 @@ export function ChangePasswordCard() {
       });
       if (updated) setUser(updated);
       setForm(EMPTY);
-      snackbar.success(
-        'Password changed. Your other browsers were signed out.',
-      );
+      snackbar.success('Password changed. Your other browsers were signed out.');
     } catch (caught) {
       setError(errorMessage(caught, 'Failed to change the password'));
     } finally {
@@ -74,16 +62,16 @@ export function ChangePasswordCard() {
           <Typography variant="body2">
             Logged in as <strong>{username}</strong>
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
             Password last changed {formatDateTime(user?.passwordChangedAt)}
           </Typography>
         </Stack>
 
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           This browser stays signed in. Every other one is signed out.
         </Typography>
 
-        <Stack spacing={2} component="form" onSubmit={submit} noValidate>
+        <Stack spacing={2} component="form" onSubmit={(e) => void submit(e)} noValidate>
           {error ? <Alert severity="error">{error}</Alert> : null}
           <TextField
             id="current-password"
@@ -119,12 +107,7 @@ export function ChangePasswordCard() {
             disabled={saving}
             fullWidth
           />
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={saving || !valid}
-            sx={{ alignSelf: 'flex-start' }}
-          >
+          <Button type="submit" variant="contained" disabled={saving || !valid} sx={{ alignSelf: 'flex-start' }}>
             {saving ? 'Saving…' : 'Change password'}
           </Button>
         </Stack>

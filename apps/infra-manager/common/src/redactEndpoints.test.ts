@@ -26,10 +26,7 @@ describe('redactEndpoints', () => {
   });
 
   it('takes a trailing slash with it', () => {
-    assert.equal(
-      redactEndpoints(`at ${MANAGER}/ now`, [MANAGER]),
-      'at <rpc.example.org> now',
-    );
+    assert.equal(redactEndpoints(`at ${MANAGER}/ now`, [MANAGER]), 'at <rpc.example.org> now');
   });
 
   it('finds it inside a longer token', () => {

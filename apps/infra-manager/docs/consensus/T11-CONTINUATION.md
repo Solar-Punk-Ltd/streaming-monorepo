@@ -38,13 +38,11 @@ Cross-provider review, OpenAI-hosted. T11 is clean and accepted at `b9fb144`. RE
 
 Final Chrome63854 and loopback59231/59234 are gone. No T11 database or browser fixture remains. The worker now owns the separate T04a guarded version-removal slice. Stronger active-job integration and immutable filesystem observation remain later dependencies. Local draft `prs/t11-effective-settings.md` is rewritten around the final behavior.
 
-
 ## Newest backend acceptance
 
 Cross-provider review, OpenAI-hosted. Root accepts `9de434d` after reading its complete source and 11 actual HTTP plus6 actual SQL regressions. All618 manager checks and workspace types pass. Expected instance is enforced before claim and on the claimed row's settings, intent and cancellation writes. Stronger same-instance intent/job ownership remains the later T04b integration. Drawer/mock request wiring and final browser proof are active.
 
 The exact12175d92335ea09036fef7a18911ee6ad04beba5fc757ac15c01a72a2e3c02a1 fixture is now removed and56899 closed. Cleanup's automatic approval timed out, explicitly permitted one retry, and that identical retry succeeded. No rejection was bypassed.
-
 
 ## Current UI acceptance and save fence
 

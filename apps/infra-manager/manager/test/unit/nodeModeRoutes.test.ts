@@ -117,9 +117,7 @@ describe('what the profile routes carry to the service', () => {
 
   it('takes all three off a group body', async () => {
     const service = new RecordingService();
-    const app = await opened(
-      startRouterTestApp(createGroupsRouter(service.asService(), true), '/groups'),
-    );
+    const app = await opened(startRouterTestApp(createGroupsRouter(service.asService(), true), '/groups'));
 
     const res = await call(app, 'POST', '/groups', {
       group_name: 'pool',
@@ -153,9 +151,7 @@ describe('what a read answers about a deployment’s node', () => {
 
   it('carries both fields on the list and on one deployment', async () => {
     const harness = profileServiceHarness([stored]);
-    const app = await opened(
-      startRouterTestApp(createProfilesRouter(harness.service, noHealth, true), '/profiles'),
-    );
+    const app = await opened(startRouterTestApp(createProfilesRouter(harness.service, noHealth, true), '/profiles'));
 
     const list = await call(app, 'GET', '/profiles');
     const one = await call(app, 'GET', '/profiles/stage');

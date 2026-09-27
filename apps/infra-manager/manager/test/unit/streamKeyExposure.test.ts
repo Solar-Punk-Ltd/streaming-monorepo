@@ -31,19 +31,11 @@ const root = throwawayRoot('stream-key-');
 process.env.SHLS_ROOT = root;
 writeFileSync(join(root, '.env'), 'ENGINE=srs\n', 'utf8');
 
-const { orchestratorHarness, untilRunning } = await import(
-  '../support/orchestratorHarness.js'
-);
-const { profileServiceHarness } = await import(
-  '../support/profileServiceHarness.js'
-);
-const { createProfilesRouter } = await import(
-  '../../src/api/routes/profiles.js'
-);
+const { orchestratorHarness, untilRunning } = await import('../support/orchestratorHarness.js');
+const { profileServiceHarness } = await import('../support/profileServiceHarness.js');
+const { createProfilesRouter } = await import('../../src/api/routes/profiles.js');
 import { uploaderHealthStub } from '../support/uploaderHealthStub.js';
-const { call, startRouterTestApp } = await import(
-  '../support/routerTestApp.js'
-);
+const { call, startRouterTestApp } = await import('../support/routerTestApp.js');
 
 const KEY = `0x${'1a'.repeat(32)}`;
 
@@ -57,10 +49,7 @@ describe('deploying a profile that carries a private key', () => {
 
     await orchestrator.startDeploy(stored, undefined);
 
-    assert.match(
-      readFileSync(join(root, '.env.stage'), 'utf8'),
-      new RegExp(`^STREAM_KEY=${KEY}$`, 'm'),
-    );
+    assert.match(readFileSync(join(root, '.env.stage'), 'utf8'), new RegExp(`^STREAM_KEY=${KEY}$`, 'm'));
     const asSent: Record<string, unknown> = { ...stored };
     assert.equal(
       asSent.private_key,
@@ -70,14 +59,8 @@ describe('deploying a profile that carries a private key', () => {
     assert.equal(stored.has_private_key, true, 'the row says a key is stored');
 
     const args = runner.runs[0]!.args;
-    assert.ok(
-      !args.some((arg) => arg.startsWith('--private-key')),
-      'the key must not be a script argument',
-    );
-    assert.ok(
-      !args.join(' ').includes(KEY),
-      'the key must not appear in the arguments at all',
-    );
+    assert.ok(!args.some((arg) => arg.startsWith('--private-key')), 'the key must not be a script argument');
+    assert.ok(!args.join(' ').includes(KEY), 'the key must not appear in the arguments at all');
   });
 });
 
@@ -115,10 +98,7 @@ describe('what a page is told about a deployment that holds a private key', () =
         ['the profile.changed events', published],
       ];
       for (const [door, body] of answers) {
-        assert.ok(
-          !JSON.stringify(body).includes(KEY),
-          `${door} carried the signing key`,
-        );
+        assert.ok(!JSON.stringify(body).includes(KEY), `${door} carried the signing key`);
       }
 
       const profile = one.body as { has_private_key: boolean; public_key: string };
@@ -195,9 +175,6 @@ describe('describeArgsForLog', () => {
 
   it('does not mistake a bare flag or a value with an equals sign in it', () => {
     assert.equal(describeArgsForLog(['--volumes']), '--volumes');
-    assert.equal(
-      describeArgsForLog(['--feed-topic=a=b']),
-      '--feed-topic=a=b',
-    );
+    assert.equal(describeArgsForLog(['--feed-topic=a=b']), '--feed-topic=a=b');
   });
 });

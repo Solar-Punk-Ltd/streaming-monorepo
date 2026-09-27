@@ -20,11 +20,7 @@ export interface CommandResult {
 }
 
 /** Runs one command to completion, or answers a non zero code when it will not finish. */
-export type CommandRunner = (
-  file: string,
-  args: string[],
-  timeoutMs: number,
-) => Promise<CommandResult>;
+export type CommandRunner = (file: string, args: string[], timeoutMs: number) => Promise<CommandResult>;
 
 /**
  * Long enough for the image to be pulled on a host that has never run this
@@ -37,7 +33,7 @@ const CHECK_TIMEOUT_MS = 120_000;
 const CONTAINER_LIMITS = ['--network', 'none', '--memory', '256m', '--pids-limit', '64'];
 
 const SRS_CHECK_PATH = '/check/srs.conf';
-const SRS_DEFAULT_IMAGE = 'ossrs/srs:6';
+const SRS_DEFAULT_IMAGE = 'ossrs/srs:v6.0-r1@sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3';
 /** Each check writes its copy into a directory of its own, `check-<random>/srs.conf`. */
 const CHECK_DIR_PREFIX = 'check-';
 const CHECK_FILE_NAME = 'srs.conf';
@@ -62,20 +58,15 @@ export interface ConfigCheckInput {
 
 export const execFileRunner: CommandRunner = (file, args, timeoutMs) =>
   new Promise((resolve) => {
-    execFile(
-      file,
-      args,
-      { timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        const code =
-          error && typeof (error as { code?: unknown }).code === 'number'
-            ? (error as { code: number }).code
-            : error
-              ? -1
-              : 0;
-        resolve({ code, stdout: String(stdout), stderr: String(stderr) });
-      },
-    );
+    execFile(file, args, { timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
+      const code =
+        error && typeof (error as { code?: unknown }).code === 'number'
+          ? (error as { code: number }).code
+          : error
+            ? -1
+            : 0;
+      resolve({ code, stdout: String(stdout), stderr: String(stderr) });
+    });
   });
 
 /**
@@ -154,9 +145,7 @@ function srsReason(result: CommandResult): string {
     .split('\n')
     .map((line) => line.replace(SRS_LOG_PREFIX_RE, '').trim())
     .filter((line) => line.length > 0);
-  const reasons = lines.filter(
-    (line) => /invalid config|parse|illegal/i.test(line) && !/parse complete/i.test(line),
-  );
+  const reasons = lines.filter((line) => /invalid config|parse|illegal/i.test(line) && !/parse complete/i.test(line));
   const picked = reasons.length > 0 ? reasons : lines.slice(-OUTPUT_TAIL_LINES);
   const text = picked.join(' ').split(SRS_CHECK_PATH).join('your config');
   return text || `srs -t exited with code ${result.code} and printed nothing.`;

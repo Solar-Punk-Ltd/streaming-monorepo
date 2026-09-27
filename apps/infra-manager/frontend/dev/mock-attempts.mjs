@@ -8,10 +8,7 @@
  * seeded on the deployment whose last deploy failed, so the refusal, the
  * card and the typed release can be seen without a host.
  */
-import {
-  attemptReleaseProblem,
-  isAttemptUnresolved,
-} from '@streaming-infra-manager/common';
+import { attemptReleaseProblem, isAttemptUnresolved } from '@streaming-infra-manager/common';
 
 import { send } from './mock-http.mjs';
 import { hex, state } from './mock-seed.mjs';
@@ -121,11 +118,7 @@ export function resolveAttempt(attempt, publish) {
 
 export function attemptRoutes(readBody, publish) {
   return [
-    [
-      'GET',
-      /^\/versions\/attempts$/,
-      (_req, res) => send(res, 200, { attempts: unresolvedAttempts() }),
-    ],
+    ['GET', /^\/versions\/attempts$/, (_req, res) => send(res, 200, { attempts: unresolvedAttempts() })],
     [
       'POST',
       /^\/versions\/attempts\/(\d+)\/release$/,
@@ -134,10 +127,7 @@ export function attemptRoutes(readBody, publish) {
         if (!attempt) return send(res, 404, { error: 'attempt_not_found', id });
         const body = await readBody(req);
         // The same rule the manager applies, from the same module.
-        const problem = attemptReleaseProblem(
-          typeof body.jobId === 'string' ? body.jobId : '',
-          attempt,
-        );
+        const problem = attemptReleaseProblem(typeof body.jobId === 'string' ? body.jobId : '', attempt);
         if (problem) {
           return send(res, 400, { error: 'validation_error', errors: [problem] });
         }

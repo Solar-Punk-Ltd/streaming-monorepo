@@ -47,14 +47,18 @@ function EngineNumberInput({ entry, field, value, disabled, problem, onChange }:
       disabled={disabled}
       error={problem !== null}
       helperText={problem ?? engineFieldHint(field) ?? undefined}
-      FormHelperTextProps={announcedHelperOf(entry.key)}
       onChange={(event) => onChange(event.target.value)}
-      InputProps={field.unit ? { endAdornment: <InputAdornment position="end">{field.unit}</InputAdornment> } : undefined}
-      inputProps={{
-        ...PLAIN_TEXT_INPUT,
-        'aria-labelledby': engineFieldLabelledBy(entry.key),
-        'aria-describedby': engineFieldDescribedBy(entry.key, { helperText: true }),
-        inputMode: field.kind === 'integer' ? 'numeric' : 'decimal',
+      slotProps={{
+        input: field.unit ? { endAdornment: <InputAdornment position="end">{field.unit}</InputAdornment> } : undefined,
+
+        htmlInput: {
+          ...PLAIN_TEXT_INPUT,
+          'aria-labelledby': engineFieldLabelledBy(entry.key),
+          'aria-describedby': engineFieldDescribedBy(entry.key, { helperText: true }),
+          inputMode: field.kind === 'integer' ? 'numeric' : 'decimal',
+        },
+
+        formHelperText: announcedHelperOf(entry.key),
       }}
     />
   );
@@ -77,13 +81,16 @@ function EngineChoiceInput({ entry, field, value, disabled, problem, onChange }:
       disabled={disabled}
       error={problem !== null}
       helperText={problem ?? undefined}
-      FormHelperTextProps={announcedHelperOf(entry.key)}
       onChange={(event) => onChange(event.target.value)}
-      SelectProps={{ native: true }}
-      inputProps={{
-        'aria-labelledby': engineFieldLabelledBy(entry.key),
-        'aria-describedby': engineFieldDescribedBy(entry.key, { helperText: problem !== null }),
-        style: { fontFamily: MONO_STACK, fontSize: 13 },
+      slotProps={{
+        htmlInput: {
+          'aria-labelledby': engineFieldLabelledBy(entry.key),
+          'aria-describedby': engineFieldDescribedBy(entry.key, { helperText: problem !== null }),
+          style: { fontFamily: MONO_STACK, fontSize: 13 },
+        },
+
+        select: { native: true },
+        formHelperText: announcedHelperOf(entry.key),
       }}
     >
       {options.map((choice) => (

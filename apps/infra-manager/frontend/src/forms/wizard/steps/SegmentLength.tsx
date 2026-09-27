@@ -31,9 +31,11 @@ export function SegmentLength({ state, update }: WizardStepProps) {
         value={state.segmentSeconds}
         onChange={(event) => update({ segmentSeconds: event.target.value })}
         placeholder={SEGMENT_LENGTH_FIELD.defaultValue}
-        inputProps={{
-          inputMode: 'decimal',
-          'aria-describedby': messageIdFor(FIELD_ID),
+        slotProps={{
+          htmlInput: {
+            inputMode: 'decimal',
+            'aria-describedby': messageIdFor(FIELD_ID),
+          },
         }}
       />
     </FormField>

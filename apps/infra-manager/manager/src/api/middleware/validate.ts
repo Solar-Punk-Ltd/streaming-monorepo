@@ -13,10 +13,7 @@ import type { AnySchema } from 'yup';
  *   of its own. Read once per request, so a schema test sees what the process
  *   is configured with rather than a copy taken at startup.
  */
-export function validateBody(
-  schema: AnySchema,
-  context?: () => object,
-): RequestHandler {
+export function validateBody(schema: AnySchema, context?: () => object): RequestHandler {
   return bodyValidator(schema, { stripUnknown: true, context });
 }
 
@@ -29,10 +26,7 @@ export function validateBodyRefusingUnknown(schema: AnySchema): RequestHandler {
   return bodyValidator(schema, { stripUnknown: false });
 }
 
-function bodyValidator(
-  schema: AnySchema,
-  options: { stripUnknown: boolean; context?: () => object },
-): RequestHandler {
+function bodyValidator(schema: AnySchema, options: { stripUnknown: boolean; context?: () => object }): RequestHandler {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
       req.body = await schema.validate(req.body ?? {}, {

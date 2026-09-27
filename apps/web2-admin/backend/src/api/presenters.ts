@@ -67,9 +67,7 @@ export function toPublishResult(outcome: PublishOutcome): PublishResult {
  * than inside it — `Stream.renditions` is the console's field, filled in by a
  * later checkpoint, and the uploader reads this one.
  */
-export function toRenditionReportResponse(
-  outcome: RenditionReportOutcome,
-): RenditionReportResponse {
+export function toRenditionReportResponse(outcome: RenditionReportOutcome): RenditionReportResponse {
   return {
     stream: toStream(outcome.publish.stream),
     renditions: outcome.renditions,

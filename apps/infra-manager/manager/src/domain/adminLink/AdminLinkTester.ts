@@ -39,9 +39,10 @@ export class AdminLinkTester {
   async testTyped(request: AdminLinkTestRequest, username: string): Promise<AdminLinkTestAnswer> {
     const problems = adminLinkTestProblems(request);
     if (problems.length > 0) throw new AdminLinkInputError(problems);
-    const outcome = request.token.source === 'typed'
-      ? await this.probe({ url: request.url, token: request.token.value, feedOwner: request.feedOwner ?? null })
-      : await this.outcomeWithStoredToken(request);
+    const outcome =
+      request.token.source === 'typed'
+        ? await this.probe({ url: request.url, token: request.token.value, feedOwner: request.feedOwner ?? null })
+        : await this.outcomeWithStoredToken(request);
     logger.info(`[AdminLink] ${username} tested a web2 admin link typed on a page: ${outcome}`);
     return { outcome };
   }
@@ -67,9 +68,14 @@ export class AdminLinkTester {
     const { env } = await this.orchestrator.nextEnvFor(profile);
     const url = env[ADMIN_API_URL_KEY] ?? '';
     const storedWith = (await this.profiles.stackSettingsOf(name))?.adminTokenOrigin ?? null;
-    const outcome = storedWith !== null && url !== '' && !sameAdminOrigin(url, storedWith)
-      ? 'stored-token-elsewhere'
-      : await this.outcomeFor({ url, token: env[ADMIN_API_TOKEN_KEY] ?? '', feedOwner: addressOfStreamKey(env.STREAM_KEY ?? '') });
+    const outcome =
+      storedWith !== null && url !== '' && !sameAdminOrigin(url, storedWith)
+        ? 'stored-token-elsewhere'
+        : await this.outcomeFor({
+            url,
+            token: env[ADMIN_API_TOKEN_KEY] ?? '',
+            feedOwner: addressOfStreamKey(env.STREAM_KEY ?? ''),
+          });
     logger.info(`[AdminLink] ${username} tested the web2 admin link of ${name}: ${outcome}`);
     return { outcome };
   }

@@ -5,13 +5,17 @@
   "description": "Fails when a project in the Nx project graph depends on another across the boundaries their tags draw.",
   "license": "MIT",
   "type": "module",
-  "engines": {
-    "node": ">=22"
-  },
   "scripts": {
+    "lint": "oxlint .",
     "test": "node --test"
   },
+  "engines": {
+    "node": ">=24"
+  },
   "nx": {
-    "tags": ["scope:tools", "type:app"]
+    "tags": [
+      "scope:tools",
+      "type:app"
+    ]
   }
 }

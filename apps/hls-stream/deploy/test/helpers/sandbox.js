@@ -193,7 +193,7 @@ export function makeSandbox({
     binDir,
     remoteHome,
     /** What a script in this sandbox runs with, stubs first and a real pnpm only where one is wanted. */
-    path: `${binDir}${delimiter}${pnpm ? process.env.PATH ?? '' : pathWithoutPnpm()}`,
+    path: `${binDir}${delimiter}${pnpm ? (process.env.PATH ?? '') : pathWithoutPnpm()}`,
     /** Path to one of the real deploy scripts, copied into this sandbox. */
     scriptPath: (name) => join(deploy, 'scripts', name),
     /** Every `docker` invocation made on this host, in order, one argv per entry. */

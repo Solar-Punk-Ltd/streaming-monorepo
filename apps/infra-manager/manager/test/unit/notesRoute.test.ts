@@ -16,16 +16,8 @@ import { describe, it } from 'node:test';
 
 import { createProfilesRouter } from '../../src/api/routes/profiles.js';
 import type { ProfileStatus } from '../../src/types/index.js';
-import {
-  profileRow,
-  profileServiceHarness,
-  type ProfileServiceHarness,
-} from '../support/profileServiceHarness.js';
-import {
-  call,
-  startRouterTestApp,
-  type RouterTestApp,
-} from '../support/routerTestApp.js';
+import { profileRow, profileServiceHarness, type ProfileServiceHarness } from '../support/profileServiceHarness.js';
+import { call, startRouterTestApp, type RouterTestApp } from '../support/routerTestApp.js';
 import { uploaderHealthStub } from '../support/uploaderHealthStub.js';
 
 /** The revision the row is at when a page loads it. */

@@ -49,20 +49,15 @@ function serviceAnswering(
     },
   } as unknown as StackVersionRepository;
 
-  const service = new UploaderHealthService(
-    profiles.asRepository(),
-    containers,
-    versions,
-    async (url, init) => {
-      asked.push(url);
-      aborts.push(init.signal);
-      if (answer instanceof Error) throw answer;
-      return new Response(JSON.stringify(answer.body), {
-        status: answer.status,
-        headers: { 'content-type': 'application/json' },
-      });
-    },
-  );
+  const service = new UploaderHealthService(profiles.asRepository(), containers, versions, async (url, init) => {
+    asked.push(url);
+    aborts.push(init.signal);
+    if (answer instanceof Error) throw answer;
+    return new Response(JSON.stringify(answer.body), {
+      status: answer.status,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
   return { service, asked, aborts };
 }
 
@@ -223,10 +218,10 @@ describe('the manager reading an uploader health route', () => {
   });
 
   it('asks nothing of a deployment that runs no uploader', async () => {
-    const { service, asked } = serviceAnswering(
-      { status: 200, body: { status: 'ok', reasons: [] } },
-      ['srs', 'bee-uploader'],
-    );
+    const { service, asked } = serviceAnswering({ status: 200, body: { status: 'ok', reasons: [] } }, [
+      'srs',
+      'bee-uploader',
+    ]);
 
     const reading = await service.read('stage');
 

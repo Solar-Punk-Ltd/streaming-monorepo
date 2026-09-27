@@ -15,10 +15,7 @@ import { describe, it } from 'node:test';
 
 import type { BeeClient } from '../../src/domain/BeeClient.js';
 import type { ContainerRepository } from '../../src/domain/ContainerRepository.js';
-import {
-  BeeHttpError,
-  StampNotUsableError,
-} from '../../src/domain/errors/index.js';
+import { BeeHttpError, StampNotUsableError } from '../../src/domain/errors/index.js';
 import { EventBus, type ManagerEvent } from '../../src/domain/EventBus.js';
 import { StampService } from '../../src/domain/StampService.js';
 import { InMemoryProfiles, makeProfile } from '../support/profileFixtures.js';
@@ -89,8 +86,7 @@ describe('the stamp check before an uploader starts', () => {
 
     await assert.rejects(
       () => service.assertStampUsable('stage', BATCH),
-      (err: unknown) =>
-        err instanceof StampNotUsableError && /expired/.test(err.message),
+      (err: unknown) => err instanceof StampNotUsableError && /expired/.test(err.message),
     );
   });
 

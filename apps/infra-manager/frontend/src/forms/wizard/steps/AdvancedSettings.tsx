@@ -31,7 +31,15 @@ export function AdvancedSettings({ state, context, update }: WizardStepProps) {
           aria-expanded={open}
           aria-controls={regionId}
           onClick={() => setOpen((was) => !was)}
-          sx={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left', px: 1.5, py: 1.25, gap: 1, borderRadius: 2 }}
+          sx={{
+            width: '100%',
+            justifyContent: 'flex-start',
+            textAlign: 'left',
+            px: 1.5,
+            py: 1.25,
+            gap: 1,
+            borderRadius: 2,
+          }}
         >
           <ExpandMoreIcon
             fontSize="small"
@@ -41,7 +49,14 @@ export function AdvancedSettings({ state, context, update }: WizardStepProps) {
             <Box component="span" sx={{ fontWeight: 600 }}>
               Advanced settings
             </Box>
-            <Typography component="span" variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+            <Typography
+              component="span"
+              variant="caption"
+              sx={{
+                color: 'text.secondary',
+                overflowWrap: 'anywhere',
+              }}
+            >
               {advancedSettingsFoldLine(state, context)}
             </Typography>
           </Stack>

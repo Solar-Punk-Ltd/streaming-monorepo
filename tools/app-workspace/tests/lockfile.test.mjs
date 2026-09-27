@@ -3,7 +3,16 @@ import { describe, it } from 'node:test';
 
 import { cutLockfile } from '../lib/lockfile.mjs';
 import { Refusal } from '../lib/refusal.mjs';
-import { IMPORTERS, OVERRIDES, PACKAGES, ROOT_LOCKFILE, SETTINGS, SNAPSHOTS, lockfileText } from './support/workspace.mjs';
+import {
+  IMPORTERS,
+  OVERRIDES,
+  PACKAGE_MANAGER_DOCUMENT,
+  PACKAGES,
+  ROOT_LOCKFILE,
+  SETTINGS,
+  SNAPSHOTS,
+  lockfileText,
+} from './support/workspace.mjs';
 
 const ALPHA = { app: 'apps/alpha', injectWorkspacePackages: false };
 const BETA = { app: 'apps/beta', injectWorkspacePackages: false };
@@ -20,7 +29,12 @@ const ALPHA_IMPORTERS = [
   IMPORTERS.alphaServer.replace('  apps/alpha/server:', '  server:'),
 ];
 
-function withBlocks({ importers = Object.values(IMPORTERS), packages = Object.values(PACKAGES), snapshots = Object.values(SNAPSHOTS), ...rest }) {
+function withBlocks({
+  importers = Object.values(IMPORTERS),
+  packages = Object.values(PACKAGES),
+  snapshots = Object.values(SNAPSHOTS),
+  ...rest
+}) {
   return lockfileText({ importers, packages, snapshots, ...rest });
 }
 
@@ -59,10 +73,17 @@ describe('cutLockfile', () => {
   it('names every package it keeps, so the workspace file can keep their build permissions alone', () => {
     const { packageNames } = cutLockfile(ROOT_LOCKFILE, ALPHA);
 
-    assert.deepEqual(
-      [...packageNames].sort(),
-      ['abitype', 'body-parser', 'express', 'fsevents', 'qs', 'string-width', 'typescript', 'viem', 'zod'],
-    );
+    assert.deepEqual([...packageNames].sort(), [
+      'abitype',
+      'body-parser',
+      'express',
+      'fsevents',
+      'qs',
+      'string-width',
+      'typescript',
+      'viem',
+      'zod',
+    ]);
   });
 
   it("counts what it kept against the root's packages", () => {
@@ -90,12 +111,17 @@ describe('cutLockfile', () => {
     const checksum = 'pnpmfileChecksum: sha256-abc';
     const cut = cutLockfile(withBlocks({ extra: [OVERRIDES, catalogs, checksum] }), ALPHA);
 
-    assert.equal(cut.text.includes(`${SETTINGS.plain}\n\n${OVERRIDES}\n\n${catalogs}\n\n${checksum}\n\nimporters:\n\n`), true);
+    assert.equal(
+      cut.text.includes(`${SETTINGS.plain}\n\n${OVERRIDES}\n\n${catalogs}\n\n${checksum}\n\nimporters:\n\n`),
+      true,
+    );
   });
 
   it('refuses a workspace link that leaves the app', () => {
     const leaving = IMPORTERS.alphaServer.replace('link:../common', 'link:../../beta');
-    const text = withBlocks({ importers: [IMPORTERS.root, IMPORTERS.alpha, IMPORTERS.alphaCommon, leaving, IMPORTERS.beta] });
+    const text = withBlocks({
+      importers: [IMPORTERS.root, IMPORTERS.alpha, IMPORTERS.alphaCommon, leaving, IMPORTERS.beta],
+    });
 
     assert.throws(
       () => cutLockfile(text, ALPHA),
@@ -119,7 +145,8 @@ describe('cutLockfile', () => {
 
     assert.throws(
       () => cutLockfile(text, ALPHA),
-      (error) => error instanceof Refusal && /qs@6\.16\.0/.test(error.message) && /no package entry/.test(error.message),
+      (error) =>
+        error instanceof Refusal && /qs@6\.16\.0/.test(error.message) && /no package entry/.test(error.message),
     );
   });
 
@@ -128,7 +155,9 @@ describe('cutLockfile', () => {
       'version: 2.0.0(typescript@5.6.3)(zod@4.0.0)',
       'version: file:vendor/viem',
     );
-    const text = withBlocks({ importers: [IMPORTERS.root, IMPORTERS.alpha, local, IMPORTERS.alphaServer, IMPORTERS.beta] });
+    const text = withBlocks({
+      importers: [IMPORTERS.root, IMPORTERS.alpha, local, IMPORTERS.alphaServer, IMPORTERS.beta],
+    });
 
     assert.throws(
       () => cutLockfile(text, ALPHA),
@@ -140,6 +169,28 @@ describe('cutLockfile', () => {
     assert.throws(
       () => cutLockfile(withBlocks({ version: `'6.0'` }), ALPHA),
       (error) => error instanceof Refusal && /'6\.0'/.test(error.message) && /9\.0/.test(error.message),
+    );
+  });
+
+  it("keeps pnpm's own document above the lockfile as the root has it, and cuts the one below it", () => {
+    const cut = cutLockfile(`${PACKAGE_MANAGER_DOCUMENT}${ROOT_LOCKFILE}`, ALPHA);
+
+    assert.equal(cut.text, `${PACKAGE_MANAGER_DOCUMENT}${cutLockfile(ROOT_LOCKFILE, ALPHA).text}`);
+    assert.equal(cut.rootPackageCount, cutLockfile(ROOT_LOCKFILE, ALPHA).rootPackageCount);
+  });
+
+  it('refuses a document opened above the lockfile and never closed', () => {
+    assert.throws(
+      () => cutLockfile(`---\n${ROOT_LOCKFILE}`, ALPHA),
+      (error) => error instanceof Refusal && /---/.test(error.message),
+    );
+  });
+
+  it("refuses a first document that is not pnpm's record of its own version", () => {
+    const other = PACKAGE_MANAGER_DOCUMENT.replace('    packageManagerDependencies:\n', '    dependencies:\n');
+    assert.throws(
+      () => cutLockfile(`${other}${ROOT_LOCKFILE}`, ALPHA),
+      (error) => error instanceof Refusal && /packageManagerDependencies/.test(error.message),
     );
   });
 

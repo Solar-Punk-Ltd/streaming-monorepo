@@ -27,7 +27,16 @@ export function SettingsDriftBanner({
         {notice.text}
       </Typography>
       {notice.offersApply && (
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          useFlexGap
+          sx={{
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            mt: 1,
+          }}
+        >
           <Button variant="contained" color="warning" size="small" disabled={busy} onClick={onApply}>
             Apply
           </Button>

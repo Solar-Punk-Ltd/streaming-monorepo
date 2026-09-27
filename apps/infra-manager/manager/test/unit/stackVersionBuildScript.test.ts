@@ -15,7 +15,18 @@
  */
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { describe, it } from 'node:test';
@@ -98,7 +109,7 @@ describe('stack-version-build.sh attempts', () => {
     assert.match(script, /if \[ "\$code" -ne 0 \]; then rm -rf "\$STAGING"; fi/);
   });
 
-  it('copies nothing back and publishes nothing: that is the manager\'s', () => {
+  it("copies nothing back and publishes nothing: that is the manager's", () => {
     assert.equal(script.includes('rsync'), false);
     assert.equal(script.includes('copy_when_missing'), false);
   });
@@ -179,7 +190,8 @@ function recordingDocker(root: string, status = 0): { command: string; sideFolde
  * is then the one part of the build that runs for real, with this host's node.
  */
 function runningDocker(root: string): void {
-  for (const name of ['corepack', 'pnpm']) writeFileSync(join(root, 'bin', name), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  for (const name of ['corepack', 'pnpm'])
+    writeFileSync(join(root, 'bin', name), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
   writeFileSync(
     join(root, 'bin', 'docker'),
     [
@@ -342,8 +354,12 @@ describe('stack-version-build.sh fetches a pinned commit', () => {
       const added = join(root, 'staging-added');
       const updated = join(root, 'staging-updated');
 
-      execFileSync('bash', [BUILD_SCRIPT, repo, added, 'stack/v1', STACK_URL, '.', 'none', 'abcdef01'], { env: environment });
-      execFileSync('bash', [BUILD_SCRIPT, repo, updated, 'stack/v1', STACK_URL, '.', 'none', 'abcdef02'], { env: environment });
+      execFileSync('bash', [BUILD_SCRIPT, repo, added, 'stack/v1', STACK_URL, '.', 'none', 'abcdef01'], {
+        env: environment,
+      });
+      execFileSync('bash', [BUILD_SCRIPT, repo, updated, 'stack/v1', STACK_URL, '.', 'none', 'abcdef02'], {
+        env: environment,
+      });
 
       assert.equal(readFileSync(join(added, STACK_COMMIT_FILE), 'utf8').trim(), pinned);
       assert.equal(readFileSync(join(updated, STACK_COMMIT_FILE), 'utf8').trim(), pinned);
@@ -454,7 +470,10 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     const moved = git(origin, 'rev-parse', 'HEAD');
 
     git(origin, 'switch', '-q', '-c', 'own-lockfile-named');
-    writeFileSync(join(origin, FOLDER, 'package.json'), `${JSON.stringify({ name: 'stack-naming-its-pnpm', packageManager: ONE_PNPM })}\n`);
+    writeFileSync(
+      join(origin, FOLDER, 'package.json'),
+      `${JSON.stringify({ name: 'stack-naming-its-pnpm', packageManager: ONE_PNPM })}\n`,
+    );
     git(origin, 'commit', '-qam', 'the stack names its pnpm and keeps its own lockfile');
     const ownLockfileNamed = git(origin, 'rev-parse', 'HEAD');
     git(origin, 'switch', '-q', 'main');
@@ -464,9 +483,15 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     writeFileSync(join(origin, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\n");
     writeFileSync(join(origin, 'pnpm-workspace.yaml'), `packages:\n  - ${FOLDER}\n`);
     mkdirSync(join(origin, 'tools', 'app-workspace'), { recursive: true });
-    writeFileSync(join(origin, 'tools', 'app-workspace', 'cut.mjs'), '// cuts the stack\'s own lockfile out of the root one\n');
+    writeFileSync(
+      join(origin, 'tools', 'app-workspace', 'cut.mjs'),
+      "// cuts the stack's own lockfile out of the root one\n",
+    );
     git(origin, 'rm', '-q', join(FOLDER, 'pnpm-lock.yaml'));
-    writeFileSync(join(origin, FOLDER, 'package.json'), `${JSON.stringify({ name: 'stack-on-one-workspace', packageManager: ONE_PNPM })}\n`);
+    writeFileSync(
+      join(origin, FOLDER, 'package.json'),
+      `${JSON.stringify({ name: 'stack-on-one-workspace', packageManager: ONE_PNPM })}\n`,
+    );
     git(origin, 'add', '.');
     git(origin, 'commit', '-qm', 'one workspace at the root');
     const oneWorkspace = git(origin, 'rev-parse', 'HEAD');
@@ -477,13 +502,16 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     const noCutTool = git(origin, 'rev-parse', 'HEAD');
 
     git(origin, 'switch', '-q', '-c', 'yarn-named', oneWorkspace);
-    writeFileSync(join(origin, FOLDER, 'package.json'), `${JSON.stringify({ name: 'stack-on-yarn', packageManager: 'yarn@4.1.0' })}\n`);
+    writeFileSync(
+      join(origin, FOLDER, 'package.json'),
+      `${JSON.stringify({ name: 'stack-on-yarn', packageManager: 'yarn@4.1.0' })}\n`,
+    );
     git(origin, 'commit', '-qam', 'a stack that names yarn');
     const yarnNamed = git(origin, 'rev-parse', 'HEAD');
 
     git(origin, 'switch', '-q', '-c', 'side-folder-taken', oneWorkspace);
     mkdirSync(join(origin, FOLDER, WORKSPACE_ROOT_DIR));
-    writeFileSync(join(origin, FOLDER, WORKSPACE_ROOT_DIR, 'stray.txt'), 'the stack\'s own\n');
+    writeFileSync(join(origin, FOLDER, WORKSPACE_ROOT_DIR, 'stray.txt'), "the stack's own\n");
     git(origin, 'add', '.');
     git(origin, 'commit', '-qm', 'a stack with a .workspace-root of its own');
     const sideFolderTaken = git(origin, 'rev-parse', 'HEAD');
@@ -521,7 +549,13 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     stderr: string;
   }
 
-  function build(root: string, ref: string, historyHead: string, environment: NodeJS.ProcessEnv, folder = FOLDER): Built {
+  function build(
+    root: string,
+    ref: string,
+    historyHead: string,
+    environment: NodeJS.ProcessEnv,
+    folder = FOLDER,
+  ): Built {
     const staging = join(root, `staging-${ref.replaceAll('/', '-').slice(0, 12)}`);
     const run = spawnSync(
       'bash',
@@ -540,20 +574,23 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     }
   }
 
-  it('exports a branch\'s apps/hls-stream and nothing else of the repository', () => {
+  it("exports a branch's apps/hls-stream and nothing else of the repository", () => {
     withMonorepo('stack-build-mono-branch-', (root, repo) => {
       const built = build(root, 'main', repo.stackHead, repo.environment);
 
       assert.equal(built.status, 0, built.stderr);
       const stack = git(join(root, 'origin'), 'ls-tree', '-r', '--name-only', `${repo.moved}:${FOLDER}`).split('\n');
-      assert.deepEqual(filesUnder(built.staging), [...stack, STACK_COMMIT_FILE, STACK_FOLDER_FILE, STACK_TOOLCHAIN_FILE].sort());
+      assert.deepEqual(
+        filesUnder(built.staging),
+        [...stack, STACK_COMMIT_FILE, STACK_FOLDER_FILE, STACK_TOOLCHAIN_FILE].sort(),
+      );
       assert.equal(readFileSync(join(built.staging, 'package.json'), 'utf8'), '{"name":"stack-in-the-monorepo"}\n');
       assert.equal(readFileSync(join(built.staging, STACK_COMMIT_FILE), 'utf8').trim(), repo.moved);
       assert.equal(readFileSync(join(built.staging, STACK_FOLDER_FILE), 'utf8'), `${FOLDER}\n`);
     });
   });
 
-  it('exports a commit\'s apps/hls-stream the same way', () => {
+  it("exports a commit's apps/hls-stream the same way", () => {
     withMonorepo('stack-build-mono-commit-', (root, repo) => {
       const built = build(root, repo.moved, repo.stackHead, repo.environment);
 
@@ -576,7 +613,7 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     });
   });
 
-  it('builds a commit of the stack\'s own history whole, since there the stack is the root', () => {
+  it("builds a commit of the stack's own history whole, since there the stack is the root", () => {
     withMonorepo('stack-build-mono-old-', (root, repo) => {
       const built = build(root, repo.stackOld, repo.stackHead, repo.environment);
 
@@ -597,7 +634,7 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     });
   });
 
-  it('decides by the layout when the stack\'s history cannot be fetched', () => {
+  it("decides by the layout when the stack's history cannot be fetched", () => {
     withMonorepo('stack-build-mono-layout-', (root, repo) => {
       const unreachable = 'f'.repeat(40);
 
@@ -630,7 +667,7 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
   it('writes what it exported after the build, so the build cannot change it or write through it', () => {
     withMonorepo('stack-build-mono-hostile-', (root, repo) => {
       const kept = join(root, 'kept.txt');
-      writeFileSync(kept, 'not the build\'s to write\n');
+      writeFileSync(kept, "not the build's to write\n");
       writeFileSync(
         join(root, 'bin', 'docker'),
         [
@@ -638,8 +675,8 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
           'while [ "$#" -gt 0 ]; do if [ "$1" = -w ]; then dir="$2"; fi; shift; done',
           'rm -f "$dir/.stack-commit" "$dir/.stack-folder" "$dir/.stack-toolchain"',
           `ln -s '${kept}' "$dir/.stack-commit"`,
-          "printf '.\\n' > \"$dir/.stack-folder\"",
-          "printf 'node:0 pnpm@0.0.0\\n' > \"$dir/.stack-toolchain\"",
+          'printf \'.\\n\' > "$dir/.stack-folder"',
+          'printf \'node:0 pnpm@0.0.0\\n\' > "$dir/.stack-toolchain"',
           '',
         ].join('\n'),
         { mode: 0o755 },
@@ -648,7 +685,11 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
       const built = build(root, repo.moved, repo.stackHead, repo.environment);
 
       assert.equal(built.status, 0, built.stderr);
-      assert.equal(readFileSync(kept, 'utf8'), 'not the build\'s to write\n', 'the write went through a link the build left');
+      assert.equal(
+        readFileSync(kept, 'utf8'),
+        "not the build's to write\n",
+        'the write went through a link the build left',
+      );
       assert.equal(lstatSync(join(built.staging, STACK_COMMIT_FILE)).isSymbolicLink(), false);
       assert.equal(readFileSync(join(built.staging, STACK_COMMIT_FILE), 'utf8').trim(), repo.moved);
       assert.equal(readFileSync(join(built.staging, STACK_FOLDER_FILE), 'utf8'), `${FOLDER}\n`);
@@ -693,7 +734,11 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
         `${WORKSPACE_ROOT_DIR}/pnpm-workspace.yaml`,
         `${WORKSPACE_ROOT_DIR}/tools/app-workspace/cut.mjs`,
       ]);
-      assert.equal(existsSync(join(built.staging, WORKSPACE_ROOT_DIR)), false, 'the side folder is gone before the manager publishes');
+      assert.equal(
+        existsSync(join(built.staging, WORKSPACE_ROOT_DIR)),
+        false,
+        'the side folder is gone before the manager publishes',
+      );
       assert.equal(readFileSync(join(built.staging, STACK_TOOLCHAIN_FILE), 'utf8'), `${BUILD_IMAGE} pnpm@11.11.0\n`);
     });
   });

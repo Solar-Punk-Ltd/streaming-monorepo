@@ -27,11 +27,7 @@ import {
   SRT_PASSPHRASE_MESSAGE,
 } from '@streaming-infra-manager/common';
 
-import {
-  STACK_SECRET_KEY_RE,
-  STACK_SECRET_VALUE_RE,
-  type StackSecrets,
-} from '../domain/versions/stackSecrets.js';
+import { STACK_SECRET_KEY_RE, STACK_SECRET_VALUE_RE, type StackSecrets } from '../domain/versions/stackSecrets.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // Default: the monorepo's apps/hls-stream, the stack of the same commit as
@@ -42,8 +38,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // This is the bundled version's checkout. Added versions live under their own
 // roots, so every function here takes the root it is working in rather than
 // reading this one.
-export const BUNDLED_STACK_ROOT =
-  process.env.SHLS_ROOT ?? resolve(HERE, '../../../../hls-stream');
+export const BUNDLED_STACK_ROOT = process.env.SHLS_ROOT ?? resolve(HERE, '../../../../hls-stream');
 
 /**
  * Every env file the manager writes, owner only.
@@ -83,10 +78,7 @@ export function parseEnvText(text: string): Record<string, string> {
     if (eq <= 0) continue;
     const key = line.slice(0, eq).trim();
     let value = line.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
     out[key] = value;
@@ -293,13 +285,9 @@ export interface ProfileEnvValues {
  * happens whenever BEE_RPC_ENDPOINT is removed from a manager that has
  * deployments on it.
  */
-function resolveRpcEndpoint(
-  source: RpcEndpointSource,
-  values: ProfileEnvValues,
-): string | null {
+function resolveRpcEndpoint(source: RpcEndpointSource, values: ProfileEnvValues): string | null {
   if (source === 'stack') return null;
-  const named =
-    source === 'manager' ? values.managerRpcEndpoint : values.rpcEndpoint;
+  const named = source === 'manager' ? values.managerRpcEndpoint : values.rpcEndpoint;
   const address = named?.trim();
   if (!address) {
     throw new Error(
@@ -347,26 +335,15 @@ export interface EngineSettingsLines {
  * does nothing. A key that does not apply in a new request is still refused,
  * by the request schema and by the settings save.
  */
-export function engineSettingsLinesOf(
-  values: ProfileEnvValues,
-  baseText: string,
-): EngineSettingsLines {
+export function engineSettingsLinesOf(values: ProfileEnvValues, baseText: string): EngineSettingsLines {
   const abr = Boolean(normalizeBeePublishers(values.beePublishers?.trim()));
-  const engineSettings = applicableEngineSettings(
-    values.engine,
-    values.engineSettings ?? {},
-    { abr },
-  );
+  const engineSettings = applicableEngineSettings(values.engine, values.engineSettings ?? {}, { abr });
   // Against the defaults this host actually falls back to, not the stack's own:
   // an unset key is left out of the file and whatever the base .env says
   // stands, so checking a pair against the stack values refuses a deployment
   // that would start and passes one that would not. A default the manager owns
   // is the one unset key written, which the same answer says.
-  const defaults = effectiveEngineDefaults(
-    values.engine,
-    parseEnvText(baseText),
-    values.stackEngineDefaults ?? {},
-  );
+  const defaults = effectiveEngineDefaults(values.engine, parseEnvText(baseText), values.stackEngineDefaults ?? {});
   return {
     lines: engineSettingsEnv(values.engine, engineSettings, { abr, defaults }),
     problem: engineSettingsProblem(values.engine, engineSettings, {
@@ -424,14 +401,10 @@ export function managedEnvLines(
   if (publishers) {
     const problem = beePublishersProblem(publishers);
     if (problem) {
-      throw new Error(
-        `refusing to write BEE_PUBLISHERS to the env file: ${problem}`,
-      );
+      throw new Error(`refusing to write BEE_PUBLISHERS to the env file: ${problem}`);
     }
     if (values.engine === OME_SERVICE) {
-      throw new Error(
-        'BEE_PUBLISHERS requires the srs engine — the ABR ladder is SRS-only',
-      );
+      throw new Error('BEE_PUBLISHERS requires the srs engine — the ABR ladder is SRS-only');
     }
     set('BEE_PUBLISHERS', publishers);
     set('ABR_ENABLED', 'true');
@@ -458,17 +431,12 @@ export function managedEnvLines(
   // endpoint is never implied here: the orchestrator always names the source,
   // and nothing else writes this file.
   const rpcEndpointSource =
-    values.rpcEndpointSource ??
-    (values.rpcEndpoint?.trim()
-      ? CUSTOM_RPC_ENDPOINT_SOURCE
-      : DEFAULT_RPC_ENDPOINT_SOURCE);
+    values.rpcEndpointSource ?? (values.rpcEndpoint?.trim() ? CUSTOM_RPC_ENDPOINT_SOURCE : DEFAULT_RPC_ENDPOINT_SOURCE);
   const rpcEndpoint = resolveRpcEndpoint(rpcEndpointSource, values);
   if (rpcEndpoint) {
     const problem = rpcEndpointProblem(rpcEndpoint);
     if (problem) {
-      throw new Error(
-        `refusing to write RPC_ENDPOINT to the env file: ${problem}`,
-      );
+      throw new Error(`refusing to write RPC_ENDPOINT to the env file: ${problem}`);
     }
     set('RPC_ENDPOINT', rpcEndpoint);
   }
@@ -527,9 +495,7 @@ export function managedEnvLines(
   const passphrase = values.srtPassphrase?.trim();
   if (passphrase) {
     if (!isValidSrtPassphrase(passphrase)) {
-      throw new Error(
-        `refusing to write SRT_PASSPHRASE: ${SRT_PASSPHRASE_MESSAGE}`,
-      );
+      throw new Error(`refusing to write SRT_PASSPHRASE: ${SRT_PASSPHRASE_MESSAGE}`);
     }
     set('SRT_PASSPHRASE', passphrase);
   }
@@ -540,18 +506,14 @@ export function managedEnvLines(
   const streamKey = values.streamKey?.trim();
   if (streamKey) {
     if (!/^0x[0-9a-fA-F]{64}$/.test(streamKey)) {
-      throw new Error(
-        'refusing to write STREAM_KEY: expected 0x followed by 64 hex characters',
-      );
+      throw new Error('refusing to write STREAM_KEY: expected 0x followed by 64 hex characters');
     }
     set('STREAM_KEY', streamKey);
   }
 
   const engineSettings = engineSettingsLinesOf(values, baseText);
   if (engineSettings.problem && !options.keepRefusedEngineSettings) {
-    throw new Error(
-      `refusing to write the engine settings to the env file: ${engineSettings.problem}`,
-    );
+    throw new Error(`refusing to write the engine settings to the env file: ${engineSettings.problem}`);
   }
   for (const [key, value] of Object.entries(engineSettings.lines)) {
     set(key, value);
@@ -562,9 +524,7 @@ export function managedEnvLines(
   // the column. A key that fails is a bug, not an operator error.
   for (const [key, value] of Object.entries(values.stackSecrets ?? {})) {
     if (!STACK_SECRET_KEY_RE.test(key) || !STACK_SECRET_VALUE_RE.test(value)) {
-      throw new Error(
-        `refusing to write ${key} to the env file: not a secret this manager generated`,
-      );
+      throw new Error(`refusing to write ${key} to the env file: not a secret this manager generated`);
     }
     set(key, value);
   }
@@ -632,14 +592,8 @@ export function writeProfileEnv(
   stored: Readonly<Record<string, string>> = {},
 ): string {
   const basePath = baseEnvPath(root);
-  const baseContents = existsSync(basePath)
-    ? readFileSync(basePath, 'utf8')
-    : '';
-  const contents = renderProfileEnv(
-    baseContents,
-    managedEnvLines(values, baseContents),
-    stored,
-  );
+  const baseContents = existsSync(basePath) ? readFileSync(basePath, 'utf8') : '';
+  const contents = renderProfileEnv(baseContents, managedEnvLines(values, baseContents), stored);
 
   const path = profileEnvPath(root, name);
   writeFileSync(path, contents, { encoding: 'utf8', mode: ENV_FILE_MODE });

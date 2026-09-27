@@ -18,14 +18,22 @@ export class OwnedHttpStream extends Duplex {
     transport.on('close', this.onClose);
     transport.on('end', this.onEnd);
     transport.on('readable', this.onReadable);
-    if (transport.destroyed || transport.readableEnded || transport.writableEnded || transport.readableEncoding || transport.readableObjectMode || transport.writableObjectMode) {
+    if (
+      transport.destroyed ||
+      transport.readableEnded ||
+      transport.writableEnded ||
+      transport.readableEncoding ||
+      transport.readableObjectMode ||
+      transport.writableObjectMode
+    ) {
       this.destroy();
       throw new BeeConnectionError();
     }
   }
 
   setTimeout(milliseconds: number, callback?: () => void): this {
-    if (!Number.isFinite(milliseconds) || milliseconds < 0 || milliseconds > 2_147_483_647) throw new BeeConnectionError();
+    if (!Number.isFinite(milliseconds) || milliseconds < 0 || milliseconds > 2_147_483_647)
+      throw new BeeConnectionError();
     this.timeout = milliseconds;
     if (callback) this.once('timeout', callback);
     this.touch();
@@ -33,12 +41,14 @@ export class OwnedHttpStream extends Duplex {
   }
 
   setKeepAlive(enable = false, initialDelay = 0): this {
-    if ('setKeepAlive' in this.transport && typeof this.transport.setKeepAlive === 'function') this.transport.setKeepAlive(enable, initialDelay);
+    if ('setKeepAlive' in this.transport && typeof this.transport.setKeepAlive === 'function')
+      this.transport.setKeepAlive(enable, initialDelay);
     return this;
   }
 
   setNoDelay(enable = true): this {
-    if ('setNoDelay' in this.transport && typeof this.transport.setNoDelay === 'function') this.transport.setNoDelay(enable);
+    if ('setNoDelay' in this.transport && typeof this.transport.setNoDelay === 'function')
+      this.transport.setNoDelay(enable);
     return this;
   }
 
@@ -56,20 +66,41 @@ export class OwnedHttpStream extends Duplex {
     return this;
   }
 
-  override _read(): void { this.#pressured = false; this.pump(); }
+  override _read(): void {
+    this.#pressured = false;
+    this.pump();
+  }
 
   override _write(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
-    if (!Buffer.isBuffer(chunk) || this.transport.destroyed || this.transport.writableEnded) { callback(new BeeConnectionError()); return; }
+    if (!Buffer.isBuffer(chunk) || this.transport.destroyed || this.transport.writableEnded) {
+      callback(new BeeConnectionError());
+      return;
+    }
     this.touch();
-    try { this.transport.write(chunk, error => { this.touch(); callback(error ? new BeeConnectionError() : undefined); }); }
-    catch { callback(new BeeConnectionError()); }
+    try {
+      this.transport.write(chunk, (error) => {
+        this.touch();
+        callback(error ? new BeeConnectionError() : undefined);
+      });
+    } catch {
+      callback(new BeeConnectionError());
+    }
   }
 
   override _final(callback: (error?: Error | null) => void): void {
-    if (this.transport.writableFinished) { callback(); return; }
-    if (this.transport.destroyed) { callback(new BeeConnectionError()); return; }
-    try { this.transport.end((error?: Error | null) => callback(error ? new BeeConnectionError() : undefined)); }
-    catch { callback(new BeeConnectionError()); }
+    if (this.transport.writableFinished) {
+      callback();
+      return;
+    }
+    if (this.transport.destroyed) {
+      callback(new BeeConnectionError());
+      return;
+    }
+    try {
+      this.transport.end((error?: Error | null) => callback(error ? new BeeConnectionError() : undefined));
+    } catch {
+      callback(new BeeConnectionError());
+    }
   }
 
   override _destroy(error: Error | null, callback: (error?: Error | null) => void): void {
@@ -85,8 +116,13 @@ export class OwnedHttpStream extends Duplex {
 
   private readonly onReadable = () => this.pump();
   private readonly onError = () => this.destroy(new BeeConnectionError());
-  private readonly onClose = () => { if (!this.#ended) this.destroy(new BeeConnectionError()); };
-  private readonly onEnd = () => { this.#ended = true; this.push(null); };
+  private readonly onClose = () => {
+    if (!this.#ended) this.destroy(new BeeConnectionError());
+  };
+  private readonly onEnd = () => {
+    this.#ended = true;
+    this.push(null);
+  };
 
   private touch(): void {
     clearTimeout(this.#timer);
@@ -107,6 +143,8 @@ export class OwnedHttpStream extends Duplex {
         this.touch();
         this.#pressured = !this.push(chunk);
       }
-    } catch { this.destroy(new BeeConnectionError()); }
+    } catch {
+      this.destroy(new BeeConnectionError());
+    }
   }
 }

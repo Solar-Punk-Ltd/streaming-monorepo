@@ -82,10 +82,7 @@ describe('the proxy in front of the deployment actions', () => {
     const json = blockStartingWith(JSON_API_LOCATION);
 
     assert.ok(stream && json);
-    assert.ok(
-      stream.at < json.at,
-      'the JSON location matches /profiles first, so the stream block never runs',
-    );
+    assert.ok(stream.at < json.at, 'the JSON location matches /profiles first, so the stream block never runs');
   });
 });
 
@@ -95,13 +92,26 @@ describe('the dev server proxy in front of the same routes', () => {
     options: string;
   }
 
-  /** The proxy map of vite.config.ts, in the order vite consults it. */
+  /**
+   * The proxy map of vite.config.ts, in the order vite consults it. An entry's options run to the end of its
+   * line, or to the matching brace when they are an object the formatter spread over several lines.
+   */
   function proxyEntries(): ProxyEntry[] {
     const config = readFileSync(VITE_CONFIG, 'utf8');
-    return [...config.matchAll(/^\s*'(\^?\/[^']*)':\s*(.+?),?\s*$/gm)].map((entry) => ({
+    return [...config.matchAll(/^\s*'(\^?\/[^']*)':\s*/gm)].map((entry) => ({
       key: entry[1]!,
-      options: entry[2]!,
+      options: optionsFrom(config, entry.index + entry[0].length),
     }));
+  }
+
+  function optionsFrom(config: string, start: number): string {
+    if (config[start] !== '{') return config.slice(start, config.indexOf('\n', start)).replace(/,\s*$/, '');
+    let depth = 0;
+    for (let at = start; at < config.length; at++) {
+      if (config[at] === '{') depth++;
+      if (config[at] === '}' && --depth === 0) return config.slice(start, at + 1);
+    }
+    return config.slice(start);
   }
 
   /**
@@ -111,15 +121,13 @@ describe('the dev server proxy in front of the same routes', () => {
    */
   function proxyFor(url: string): ProxyEntry | undefined {
     return proxyEntries().find(
-      (entry) =>
-        (entry.key.startsWith('^') && new RegExp(entry.key).test(url)) ||
-        url.startsWith(entry.key),
+      (entry) => (entry.key.startsWith('^') && new RegExp(entry.key).test(url)) || url.startsWith(entry.key),
     );
   }
 
   it('reads the map at all, so a rewritten config cannot pass by being unreadable', () => {
     assert.ok(proxyEntries().length >= 8, 'found no proxy entries in vite.config.ts');
-    assert.ok(proxyFor('/config'), "the generic entries are gone from vite.config.ts");
+    assert.ok(proxyFor('/config'), 'the generic entries are gone from vite.config.ts');
   });
 
   it('gives every action route an entry with no timeouts, as the actions stream', () => {

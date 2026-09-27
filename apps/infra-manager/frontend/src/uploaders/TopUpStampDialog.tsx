@@ -71,9 +71,14 @@ export function TopUpStampDialog({
           />
           {view.shortfall && <Alert severity="warning">{view.shortfall}</Alert>}
           {error && <Alert severity="error">{error}</Alert>}
-          <Typography variant="caption" color="text.secondary">
-            The node pays from its own wallet and sends the transaction itself.
-            Closing this dialog after confirming does not stop it.
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
+            The node pays from its own wallet and sends the transaction itself. Closing this dialog after confirming
+            does not stop it.
           </Typography>
         </Stack>
       </DialogContent>

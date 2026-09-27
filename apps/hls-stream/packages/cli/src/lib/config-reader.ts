@@ -32,7 +32,8 @@ interface BeeTarget {
 }
 
 export function loadEnv(): void {
-  loadDotenv({ path: ENV_PATH });
+  // Quiet, because dotenv 17 otherwise prints a line of its own on every load, into this command's output.
+  loadDotenv({ path: ENV_PATH, quiet: true });
 }
 
 export function getEnvPath(): string {
@@ -56,7 +57,7 @@ export function readDeployConfig(path: string): DeployConfig {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
       return { services: {} };
     }
-    throw new Error(`Cannot read ${path}: ${err instanceof Error ? err.message : 'unknown error'}`);
+    throw new Error(`Cannot read ${path}: ${err instanceof Error ? err.message : 'unknown error'}`, { cause: err });
   }
 
   try {
@@ -65,6 +66,7 @@ export function readDeployConfig(path: string): DeployConfig {
     throw new Error(
       `${path} is not valid JSON: ${err instanceof Error ? err.message : 'unknown error'}. ` +
         'Fix it, or delete it and run ./deploy/scripts/setup.sh to recreate it from the sample.',
+      { cause: err },
     );
   }
 }

@@ -24,13 +24,28 @@ import { buildChecklist, type ChecklistInput } from './checklist';
 const BATCH = `0x${'a'.repeat(64)}`;
 
 const profile: Profile = {
-  name: 'main-stage', kind: 'streamer', port_slot: 1, notes: null, notes_revision: 0,
-  status: 'RUNNING', last_error: null, last_error_at: null, last_full_deploy_commit: null,
-  created_at: '2026-09-17T00:00:00Z', updated_at: '2026-09-17T00:00:00Z',
-  engine_settings: {}, has_private_key: false, has_rpc_endpoint: false, has_srt_passphrase: false, has_engine_config: false,
-  engine_config_error: null, engine_config_state: null,
+  name: 'main-stage',
+  kind: 'streamer',
+  port_slot: 1,
+  notes: null,
+  notes_revision: 0,
+  status: 'RUNNING',
+  last_error: null,
+  last_error_at: null,
+  last_full_deploy_commit: null,
+  created_at: '2026-09-17T00:00:00Z',
+  updated_at: '2026-09-17T00:00:00Z',
+  engine_settings: {},
+  has_private_key: false,
+  has_rpc_endpoint: false,
+  has_srt_passphrase: false,
+  has_engine_config: false,
+  engine_config_error: null,
+  engine_config_state: null,
   instance_id: '00000000-0000-4000-8000-000000000002',
-  engine_config_revision: 0, intent_revision: 0, stamp_id: BATCH,
+  engine_config_revision: 0,
+  intent_revision: 0,
+  stamp_id: BATCH,
   containers: [
     { service: 'srs', ports: {}, buildId: null, buildCommit: null },
     { service: 'stream-uploader', ports: {}, buildId: null, buildCommit: null },
@@ -54,9 +69,7 @@ function input(overrides: Partial<ChecklistInput> = {}): ChecklistInput {
 }
 
 const uploaderStep = (uploaderHealth?: UploaderHealthReading) =>
-  buildChecklist(input(uploaderHealth ? { uploaderHealth } : {})).find(
-    (step) => step.title === 'Uploader running',
-  );
+  buildChecklist(input(uploaderHealth ? { uploaderHealth } : {})).find((step) => step.title === 'Uploader running');
 
 const WAITING_SINCE = '2026-09-17T09:00:00.000Z';
 
@@ -170,7 +183,10 @@ describe('the uploader step once the uploader has been asked', () => {
   it('says what postage refused means for a deployment with its own node', () => {
     const step = uploaderStep({ state: 'unhealthy', reasons: ['postage_refused'] });
 
-    assert.match(step?.detail ?? '', /its Bee node refused its postage batch, usually because it is full or has expired, so its uploads fail/);
+    assert.match(
+      step?.detail ?? '',
+      /its Bee node refused its postage batch, usually because it is full or has expired, so its uploads fail/,
+    );
     assert.match(step?.detail ?? '', /until the uploader is deployed again with a batch that pays/);
     assert.doesNotMatch(step?.detail ?? '', /[—;]/);
   });
@@ -211,11 +227,13 @@ const abrProfile: Profile = {
 };
 
 const abrUploaderStep = (uploaderHealth: UploaderHealthReading, candidate = abrProfile) =>
-  buildChecklist(input({
-    profile: candidate,
-    stampHealth: stampHealthFrom(null, null),
-    uploaderHealth,
-  })).find((step) => step.title === 'Uploader running');
+  buildChecklist(
+    input({
+      profile: candidate,
+      stampHealth: stampHealthFrom(null, null),
+      uploaderHealth,
+    }),
+  ).find((step) => step.title === 'Uploader running');
 
 describe('a pool-backed ABR uploader reports its own health', () => {
   it('shows the wait for a pool node', () => {
@@ -245,7 +263,10 @@ describe('a pool-backed ABR uploader reports its own health', () => {
 
     assert.equal(step?.state, 'err');
     assert.match(step?.detail ?? '', /postage refused/);
-    assert.match(step?.detail ?? '', /a rung’s Bee node refused that rung’s postage batch, usually because it is full or has expired, so that rung’s uploads fail/);
+    assert.match(
+      step?.detail ?? '',
+      /a rung’s Bee node refused that rung’s postage batch, usually because it is full or has expired, so that rung’s uploads fail/,
+    );
   });
 
   it('shows a healthy pool-backed uploader', () => {
@@ -256,11 +277,13 @@ describe('a pool-backed ABR uploader reports its own health', () => {
   });
 
   it('puts pool configuration before uploader health and asks for no single-node stamp', () => {
-    const steps = buildChecklist(input({
-      profile: abrProfile,
-      stampHealth: stampHealthFrom(null, null),
-      uploaderHealth: { state: 'ok', reasons: [] },
-    }));
+    const steps = buildChecklist(
+      input({
+        profile: abrProfile,
+        stampHealth: stampHealthFrom(null, null),
+        uploaderHealth: { state: 'ok', reasons: [] },
+      }),
+    );
 
     assert.deepEqual(
       steps.map((step) => step.title),

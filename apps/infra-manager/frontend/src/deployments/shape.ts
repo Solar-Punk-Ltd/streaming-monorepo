@@ -25,12 +25,7 @@ import type { Profile } from '../types';
  * is a stream in every way that matters on screen, and a `streamer` whose
  * components were narrowed is not.
  */
-export type DeploymentShape =
-  | 'stream'
-  | 'viewer'
-  | 'bee-node'
-  | 'abr-uploader'
-  | 'custom';
+export type DeploymentShape = 'stream' | 'viewer' | 'bee-node' | 'abr-uploader' | 'custom';
 
 export const SHAPE_LABEL: Record<DeploymentShape, string> = {
   stream: 'Stream',
@@ -69,10 +64,7 @@ export function hasService(profile: Profile, service: string): boolean {
 
 /** A deployment that runs a Bee node of any kind, an uploader or a gateway. */
 export function ownsAnyBeeNode(profile: Profile): boolean {
-  return (
-    hasService(profile, BEE_UPLOADER_SERVICE) ||
-    hasService(profile, BEE_GATEWAY_SERVICE)
-  );
+  return hasService(profile, BEE_UPLOADER_SERVICE) || hasService(profile, BEE_GATEWAY_SERVICE);
 }
 
 /**
@@ -95,10 +87,7 @@ export function shapeOf(profile: Profile): DeploymentShape {
   if (profile.kind === ABR_UPLOADER_KIND) return 'abr-uploader';
 
   const services = servicesOf(profile);
-  if (
-    services.includes(STREAM_UPLOADER_SERVICE) &&
-    engineOfServices(services) !== null
-  ) {
+  if (services.includes(STREAM_UPLOADER_SERVICE) && engineOfServices(services) !== null) {
     return 'stream';
   }
   if (services.includes(CLIENT_SERVICE)) return 'viewer';
@@ -109,17 +98,11 @@ export function shapeOf(profile: Profile): DeploymentShape {
 /** Everything on this manager that signs a feed, so a viewer can follow it. */
 export function streamersOf(profiles: Profile[]): Profile[] {
   return profiles.filter(
-    (profile) =>
-      Boolean(profile.public_key) &&
-      ['stream', 'abr-uploader'].includes(shapeOf(profile)),
+    (profile) => Boolean(profile.public_key) && ['stream', 'abr-uploader'].includes(shapeOf(profile)),
   );
 }
 
-const TRANSITIONAL_STATUSES: readonly string[] = [
-  'DEPLOYING',
-  'STOPPING',
-  'REMOVING',
-];
+const TRANSITIONAL_STATUSES: readonly string[] = ['DEPLOYING', 'STOPPING', 'REMOVING'];
 
 export function isRunning(profile: Profile): boolean {
   return profile.status === 'RUNNING';
@@ -165,5 +148,7 @@ export function statusLabelOf(profile: Profile): StatusLabel {
 }
 
 export function isStreamLike(profile: Profile, shape = shapeOf(profile)): boolean {
-  return shape === 'stream' || (shape === 'custom' && hasService(profile, STREAM_UPLOADER_SERVICE) && !usesNodePool(profile));
+  return (
+    shape === 'stream' || (shape === 'custom' && hasService(profile, STREAM_UPLOADER_SERVICE) && !usesNodePool(profile))
+  );
 }

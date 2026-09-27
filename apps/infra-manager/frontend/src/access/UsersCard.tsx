@@ -14,10 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 
-import {
-  getErrorMessage,
-  type UserSummary,
-} from '@streaming-infra-manager/common';
+import { getErrorMessage, type UserSummary } from '@streaming-infra-manager/common';
 
 import { useToast } from '../app/ToastProvider';
 import { removeUser, revokeSessions } from '../auth/authApi';
@@ -35,8 +32,7 @@ const CANNOT_REMOVE = {
 } as const;
 
 const NO_SESSIONS = 'This user has no open sessions.';
-const CANNOT_REVOKE_OTHERS =
-  'Only a user who can manage users can sign someone else out.';
+const CANNOT_REVOKE_OTHERS = 'Only a user who can manage users can sign someone else out.';
 
 // A disabled button receives no pointer events, so each Tooltip below wraps its
 // button in a span that does. Without it the reason a button is greyed out is
@@ -78,11 +74,7 @@ export function UsersCard({
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
-  const run = async (
-    user: UserSummary,
-    done: string,
-    action: (id: number) => Promise<void>,
-  ) => {
+  const run = async (user: UserSummary, done: string, action: (id: number) => Promise<void>) => {
     setBusyId(user.id);
     try {
       await action(user.id);
@@ -101,8 +93,7 @@ export function UsersCard({
       body: 'They will be signed out everywhere and will not be able to sign in again. This cannot be undone.',
       confirmLabel: 'Remove',
       danger: true,
-      onConfirm: () =>
-        void run(user, `Removed ${user.username}`, removeUser),
+      onConfirm: () => void run(user, `Removed ${user.username}`, removeUser),
     });
 
   const askRevoke = (user: UserSummary) =>
@@ -113,16 +104,11 @@ export function UsersCard({
           ? 'Every browser you are signed in with is asked for the password again, this one included.'
           : 'Every browser they are signed in with is asked for the password again.',
       confirmLabel: 'Sign out everywhere',
-      onConfirm: () =>
-        void run(user, `Signed ${user.username} out everywhere`, revokeSessions),
+      onConfirm: () => void run(user, `Signed ${user.username} out everywhere`, revokeSessions),
     });
 
   return (
-    <SectionCard
-      title="Users"
-      sub="Everyone who can sign in to this manager"
-      flush
-    >
+    <SectionCard title="Users" sub="Everyone who can sign in to this manager" flush>
       {error && (
         <Alert
           severity="error"
@@ -138,7 +124,12 @@ export function UsersCard({
       )}
 
       {!users && !error && (
-        <Stack alignItems="center" sx={{ py: 5 }}>
+        <Stack
+          sx={{
+            alignItems: 'center',
+            py: 5,
+          }}
+        >
           <CircularProgress size={24} />
         </Stack>
       )}
@@ -155,20 +146,11 @@ export function UsersCard({
           </TableHead>
           <TableBody>
             {users.map((user) => {
-              const blocked = removalBlockedBecause(
-                user,
-                currentUsername,
-                users.length,
-                canManage,
-              );
+              const blocked = removalBlockedBecause(user, currentUsername, users.length, canManage);
               const busy = busyId === user.id;
               const isSelf = user.username === currentUsername;
               const revokeBlocked =
-                user.sessions === 0
-                  ? NO_SESSIONS
-                  : !canManage && !isSelf
-                    ? CANNOT_REVOKE_OTHERS
-                    : '';
+                user.sessions === 0 ? NO_SESSIONS : !canManage && !isSelf ? CANNOT_REVOKE_OTHERS : '';
 
               return (
                 <TableRow key={user.id} hover>
@@ -179,8 +161,10 @@ export function UsersCard({
                         <Typography
                           component="span"
                           variant="caption"
-                          color="text.secondary"
-                          sx={{ ml: 0.75 }}
+                          sx={{
+                            color: 'text.secondary',
+                            ml: 0.75,
+                          }}
                         >
                           manages users
                         </Typography>
@@ -189,8 +173,10 @@ export function UsersCard({
                         <Typography
                           component="span"
                           variant="caption"
-                          color="text.secondary"
-                          sx={{ ml: 0.75 }}
+                          sx={{
+                            color: 'text.secondary',
+                            ml: 0.75,
+                          }}
                         >
                           you
                         </Typography>
@@ -198,10 +184,13 @@ export function UsersCard({
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {user.lastLoginAt
-                        ? formatDateTime(user.lastLoginAt)
-                        : NEVER_SIGNED_IN}
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: 'text.secondary',
+                      }}
+                    >
+                      {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : NEVER_SIGNED_IN}
                     </Typography>
                   </TableCell>
                   <TableCell align="right">{user.sessions}</TableCell>
@@ -209,15 +198,13 @@ export function UsersCard({
                     <Stack
                       direction="row"
                       spacing={0.5}
-                      justifyContent="flex-end"
+                      sx={{
+                        justifyContent: 'flex-end',
+                      }}
                     >
                       <Tooltip title={revokeBlocked}>
                         <Box component="span">
-                          <Button
-                            size="small"
-                            disabled={busy || revokeBlocked !== ''}
-                            onClick={() => askRevoke(user)}
-                          >
+                          <Button size="small" disabled={busy || revokeBlocked !== ''} onClick={() => askRevoke(user)}>
                             Sign out everywhere
                           </Button>
                         </Box>

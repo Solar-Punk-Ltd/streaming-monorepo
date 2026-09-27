@@ -87,17 +87,20 @@ describe('the keys a new deployment lists', () => {
   it('lists the root sample first and the engine sample after, a key both declare once', () => {
     const catalog = newDeploymentSettingsCatalogOf(input());
 
-    assert.deepEqual(catalog.entries.map((entry) => entry.key), [
-      'UPLOADER_START_GATES',
-      'CHEQUEBOOK_RECHECK_MS',
-      'ADMIN_API_TOKEN',
-      'API_AUTH_TOKEN',
-      'RPC_ENDPOINT',
-      'BEE_UPLOADER_DATA_DIR',
-      'LOG_LEVEL',
-      'HLS_FRAGMENT',
-      'SRS_LOG_TANK',
-    ]);
+    assert.deepEqual(
+      catalog.entries.map((entry) => entry.key),
+      [
+        'UPLOADER_START_GATES',
+        'CHEQUEBOOK_RECHECK_MS',
+        'ADMIN_API_TOKEN',
+        'API_AUTH_TOKEN',
+        'RPC_ENDPOINT',
+        'BEE_UPLOADER_DATA_DIR',
+        'LOG_LEVEL',
+        'HLS_FRAGMENT',
+        'SRS_LOG_TANK',
+      ],
+    );
     assert.equal(catalog.versionId, 4);
     assert.equal(catalog.buildId, 'build-9');
   });
@@ -142,7 +145,11 @@ describe('what the first deploy writes', () => {
     const catalog = newDeploymentSettingsCatalogOf(input());
 
     assert.deepEqual(
-      { owner: entryOf(catalog, 'HLS_FRAGMENT').owner, source: entryOf(catalog, 'HLS_FRAGMENT').source, value: entryOf(catalog, 'HLS_FRAGMENT').value },
+      {
+        owner: entryOf(catalog, 'HLS_FRAGMENT').owner,
+        source: entryOf(catalog, 'HLS_FRAGMENT').source,
+        value: entryOf(catalog, 'HLS_FRAGMENT').value,
+      },
       { owner: 'engine-settings', source: 'manager', value: null },
     );
     assert.equal(entryOf(catalog, 'RPC_ENDPOINT').owner, 'chain-endpoint');
@@ -172,7 +179,13 @@ describe('what a new deployment list never answers', () => {
     const entry = entryOf(catalog, 'ADMIN_API_TOKEN');
 
     assert.deepEqual(
-      { secret: entry.secret, versionSet: entry.versionSet, versionValue: entry.versionValue, value: entry.value, source: entry.source },
+      {
+        secret: entry.secret,
+        versionSet: entry.versionSet,
+        versionValue: entry.versionValue,
+        value: entry.value,
+        source: entry.source,
+      },
       { secret: true, versionSet: true, versionValue: null, value: null, source: 'version' },
     );
     assert.doesNotMatch(JSON.stringify(catalog), new RegExp(VERSION_TOKEN));
@@ -198,7 +211,11 @@ describe('the engine settings of a new deployment', () => {
       { owner: fragment.owner, source: fragment.source, value: fragment.value, engineSetting: fragment.engineSetting },
       { owner: 'engine-settings', source: 'manager', value: null, engineSetting: null },
     );
-    assert.equal(catalog.entries.some((entry) => entry.key === 'HLS_WINDOW'), false, 'no engine setting is added that no sample declares');
+    assert.equal(
+      catalog.entries.some((entry) => entry.key === 'HLS_WINDOW'),
+      false,
+      'no engine setting is added that no sample declares',
+    );
     assert.deepEqual(Object.keys(catalog).sort(), ['buildId', 'entries', 'versionId']);
   });
 });

@@ -93,11 +93,7 @@ export interface ApiServerHandle {
   close(): Promise<void>;
 }
 
-export function startApiServer(
-  deps: ApiDeps,
-  port: number,
-  host: string,
-): ApiServerHandle {
+export function startApiServer(deps: ApiDeps, port: number, host: string): ApiServerHandle {
   const app = express();
 
   app.use(requestLogger);
@@ -137,7 +133,10 @@ export function startApiServer(
   );
   app.use('/profiles', createSrtPassphraseRouter(deps.profileService));
   app.use('/profiles', createSrtIngestRouter(deps.srtIngestHealthService));
-  app.use('/targets', createTargetsRouter(deps.deployTargets, deps.portReservations, deps.portInventory, deps.firewallInventory));
+  app.use(
+    '/targets',
+    createTargetsRouter(deps.deployTargets, deps.portReservations, deps.portInventory, deps.firewallInventory),
+  );
   app.use('/groups', createGroupsRouter(deps.profileService, deps.beeRpcEndpoint !== null));
   app.use('/versions', createVersionsRouter(deps.stackVersionService, deps.openStreams));
   app.use('/', createActionsRouter(deps.deployService, deps.openStreams));
@@ -164,9 +163,7 @@ export function startApiServer(
 
       return new Promise<void>((resolve, reject) => {
         const forceTimer = setTimeout(() => {
-          logger.warn(
-            `[ApiServer] Shutdown timed out after ${SHUTDOWN_TIMEOUT_MS}ms, forcing close`,
-          );
+          logger.warn(`[ApiServer] Shutdown timed out after ${SHUTDOWN_TIMEOUT_MS}ms, forcing close`);
           server.closeAllConnections?.();
         }, SHUTDOWN_TIMEOUT_MS);
 

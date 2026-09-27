@@ -76,17 +76,10 @@ describe('BeeFeedGateway', { skip: configured ? false : 'BEE_URL / POSTAGE_BATCH
 
   it('uploads a thumbnail that downloads byte-identical', async () => {
     const bytes = randomBytes(64);
-    const reference = await gateway!.uploadThumbnail(
-      bytes,
-      'thumbnail.png',
-      'image/png',
-    );
+    const reference = await gateway!.uploadThumbnail(bytes, 'thumbnail.png', 'image/png');
     assert.match(reference, /^[0-9a-f]{64}$/);
 
-    const downloaded = await new Bee(beeUrl!).downloadFile(reference);
-    assert.deepEqual(
-      Buffer.from(downloaded.data.toUint8Array()),
-      Buffer.from(bytes),
-    );
+    const downloaded = await new Bee(beeUrl!).file.download(reference);
+    assert.deepEqual(Buffer.from(downloaded.data.toUint8Array()), Buffer.from(bytes));
   });
 });

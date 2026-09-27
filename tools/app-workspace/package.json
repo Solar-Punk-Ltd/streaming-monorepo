@@ -5,13 +5,17 @@
   "description": "Cuts one app's own pnpm-lock.yaml and pnpm-workspace.yaml out of the repository's root ones, so each app still builds from its own folder.",
   "license": "MIT",
   "type": "module",
-  "engines": {
-    "node": ">=22"
-  },
   "scripts": {
+    "lint": "oxlint .",
     "test": "node --test"
   },
+  "engines": {
+    "node": ">=24"
+  },
   "nx": {
-    "tags": ["scope:tools", "type:app"]
+    "tags": [
+      "scope:tools",
+      "type:app"
+    ]
   }
 }

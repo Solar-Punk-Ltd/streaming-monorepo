@@ -34,10 +34,7 @@ describe('what an RPC endpoint is called on a page', () => {
     rpcEndpointLabel({ mode: LIGHT_NODE_MODE, source, host });
 
   it('names the manager endpoint with the host it is on', () => {
-    assert.equal(
-      light(MANAGER_RPC_ENDPOINT_SOURCE, 'rpc.internal:8545'),
-      "Manager's endpoint (rpc.internal:8545)",
-    );
+    assert.equal(light(MANAGER_RPC_ENDPOINT_SOURCE, 'rpc.internal:8545'), "Manager's endpoint (rpc.internal:8545)");
   });
 
   it('says the stack default is the public one', () => {

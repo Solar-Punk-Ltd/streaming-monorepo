@@ -15,10 +15,13 @@ const { makeProfile } = await import('../support/profileFixtures.js');
 const { orchestratorHarness } = await import('../support/orchestratorHarness.js');
 
 function contract(base: number): StackContract {
-  return { ...structuredClone(ALLOCATION_CONTRACT), ports: [
-    { name: 'RTMP_PORT', defaultPort: base, slotBase: base, protocol: 'tcp', service: 'srs' },
-    { name: 'HTTP_PORT', defaultPort: base + 1, slotBase: base + 1, protocol: 'tcp', service: 'stream-uploader' },
-  ] };
+  return {
+    ...structuredClone(ALLOCATION_CONTRACT),
+    ports: [
+      { name: 'RTMP_PORT', defaultPort: base, slotBase: base, protocol: 'tcp', service: 'srs' },
+      { name: 'HTTP_PORT', defaultPort: base + 1, slotBase: base + 1, protocol: 'tcp', service: 'stream-uploader' },
+    ],
+  };
 }
 
 async function setup() {
@@ -26,7 +29,10 @@ async function setup() {
   const old = contract(10000);
   await h.versions.markBuilt(1, { commitSha: 'old', contract: old });
   await h.profiles.reservations.plan('daemon-1', 'a', portPlanFor(old.ports, 1), 'old active build');
-  await h.profiles.reservations.setState(h.profiles.reservations.rows.map(r => r.id), 'active');
+  await h.profiles.reservations.setState(
+    h.profiles.reservations.rows.map((r) => r.id),
+    'active',
+  );
   return { ...h, row: () => h.profiles.rows.get('a')!, ports: h.profiles.reservations };
 }
 
@@ -35,12 +41,14 @@ describe('captured contract port admission', () => {
     const h = orchestratorHarness([makeProfile({ name: 'a', port_slot: 1, components: ['ome'] })]);
     const table = structuredClone(ALLOCATION_CONTRACT);
     table.portAliases = ['SRS_SRT_PORT', 'SRS_HTTP_PORT'].map((source, index) => ({
-      ...table.ports.find(port => port.name === source)!, name: index === 0 ? 'OME_SRT_PORT' : 'OME_HLS_PORT', service: 'ome',
+      ...table.ports.find((port) => port.name === source)!,
+      name: index === 0 ? 'OME_SRT_PORT' : 'OME_HLS_PORT',
+      service: 'ome',
     }));
     await h.versions.markBuilt(1, { commitSha: 'OME', contract: table });
     await h.orchestrator.reserveDeploy(h.profiles.rows.get('a')!, ['ome']);
-    assert.deepEqual(h.profiles.reservations.rows.find(row => row.port === 10011)?.heldServices, ['ome']);
-    assert.deepEqual(h.profiles.reservations.rows.find(row => row.port === 10013)?.heldServices, ['ome']);
+    assert.deepEqual(h.profiles.reservations.rows.find((row) => row.port === 10011)?.heldServices, ['ome']);
+    assert.deepEqual(h.profiles.reservations.rows.find((row) => row.port === 10013)?.heldServices, ['ome']);
   });
 
   // 10006 puts the first port on the bee-uploader peer band, which belongs to
@@ -51,7 +59,10 @@ describe('captured contract port admission', () => {
       await h.versions.markBuilt(1, { commitSha: 'unsafe', contract: contract(base) });
       await assert.rejects(h.orchestrator.startDeploy(h.row(), ['srs']), /public|protected/);
       assert.equal(h.runner.runs.length, 0);
-      assert.deepEqual(h.ports.rows.map(row => row.port), [10010, 10011]);
+      assert.deepEqual(
+        h.ports.rows.map((row) => row.port),
+        [10010, 10011],
+      );
       assert.deepEqual(h.ledger.openJobReferences('a'), []);
     });
   }
@@ -62,7 +73,10 @@ describe('captured contract port admission', () => {
     await h.versions.markBuilt(1, { commitSha: 'new', contract: contract(13000) });
     await h.ports.plan('daemon-1', 'b', portPlanFor(contract(13000).ports, 1), 'conflict');
     await assert.rejects(h.orchestrator.reserveDeploy(h.row(), undefined), /b holds/);
-    assert.deepEqual(h.ledger.openJobReferences('a').map(reference => reference.id), [old.referenceId]);
+    assert.deepEqual(
+      h.ledger.openJobReferences('a').map((reference) => reference.id),
+      [old.referenceId],
+    );
     assert.equal(h.row().status, 'RUNNING');
   });
 
@@ -70,10 +84,19 @@ describe('captured contract port admission', () => {
     const h = await setup();
     await h.versions.markBuilt(1, { commitSha: 'new', contract: contract(13000) });
     await h.orchestrator.reserveDeploy(h.row(), ['srs']);
-    assert.deepEqual(h.ports.rows.map(r => [r.port, r.state]), [
-      [10010, 'active'], [10011, 'active'], [13010, 'planned'], [13011, 'planned'],
-    ]);
-    await assert.rejects(h.ports.plan('daemon-1', 'b', [{ protocol: 'tcp', port: 10010, service: 'srs', portVar: 'RTMP_PORT' }], 'other'), /a holds/);
+    assert.deepEqual(
+      h.ports.rows.map((r) => [r.port, r.state]),
+      [
+        [10010, 'active'],
+        [10011, 'active'],
+        [13010, 'planned'],
+        [13011, 'planned'],
+      ],
+    );
+    await assert.rejects(
+      h.ports.plan('daemon-1', 'b', [{ protocol: 'tcp', port: 10010, service: 'srs', portVar: 'RTMP_PORT' }], 'other'),
+      /a holds/,
+    );
   });
 
   it('refuses a conflicting new table and restores the claim without starting a script', async () => {
@@ -83,7 +106,10 @@ describe('captured contract port admission', () => {
     await assert.rejects(h.orchestrator.reserveDeploy(h.row(), ['srs']), /b holds/);
     assert.equal(h.row().status, 'RUNNING');
     assert.equal(h.runner.runs.length, 0);
-    assert.deepEqual((await h.ports.listByProfile('a')).map(r => r.port), [10010, 10011]);
+    assert.deepEqual(
+      (await h.ports.listByProfile('a')).map((r) => r.port),
+      [10010, 10011],
+    );
   });
 
   it('uses X for reservation and launch after Y is published', async () => {
@@ -93,7 +119,10 @@ describe('captured contract port admission', () => {
     await h.versions.markBuilt(1, { commitSha: 'Y', contract: contract(14000) });
     await h.orchestrator.runReserved(reserved, h.row());
     assert.equal(reserved.build?.version?.commitSha, 'X');
-    assert.deepEqual(h.ports.rows.map(r => r.port), [10010, 10011, 13010, 13011]);
+    assert.deepEqual(
+      h.ports.rows.map((r) => r.port),
+      [10010, 10011, 13010, 13011],
+    );
     assert.equal(h.runner.runs.length, 1);
   });
 
@@ -102,14 +131,22 @@ describe('captured contract port admission', () => {
     await h.versions.markBuilt(1, { commitSha: 'new', contract: contract(13000) });
     await h.orchestrator.startDeploy(h.row(), ['srs']);
     h.daemon.autoRecreate = false;
-    const failed = new Promise<void>(resolve => h.events.subscribe(event => {
-      if (event.type === 'profile.changed' && event.profile.status === 'ERROR') resolve();
-    }));
+    const failed = new Promise<void>((resolve) =>
+      h.events.subscribe((event) => {
+        if (event.type === 'profile.changed' && event.profile.status === 'ERROR') resolve();
+      }),
+    );
     h.runner.finish(0, 1);
     await failed;
-    assert.deepEqual(h.ports.rows.map(r => [r.port, r.state]), [
-      [10010, 'active'], [10011, 'active'], [13010, 'planned'], [13011, 'planned'],
-    ]);
+    assert.deepEqual(
+      h.ports.rows.map((r) => [r.port, r.state]),
+      [
+        [10010, 'active'],
+        [10011, 'active'],
+        [13010, 'planned'],
+        [13011, 'planned'],
+      ],
+    );
   });
 
   for (const missing of ['empty', 'absent', 'unparseable', 'inventory'] as const) {
@@ -142,6 +179,6 @@ describe('captured contract port admission', () => {
     h.daemon.id = 'replacement-daemon';
     await assert.rejects(h.orchestrator.runReserved(reserved, h.row()), /different Docker daemon/);
     assert.equal(h.runner.runs.length, 0);
-    assert.ok(h.ports.rows.every(r => r.daemonId === 'daemon-1'));
+    assert.ok(h.ports.rows.every((r) => r.daemonId === 'daemon-1'));
   });
 });

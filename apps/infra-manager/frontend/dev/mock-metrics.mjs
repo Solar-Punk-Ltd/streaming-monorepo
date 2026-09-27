@@ -57,10 +57,7 @@ export function metricsSnapshot() {
 
   const infraCpu = containers.reduce((sum, c) => sum + c.cpuPercent, 0);
   const infraMem = containers.reduce((sum, c) => sum + c.memUsageBytes, 0);
-  const hostCpuPercent = Math.min(
-    92,
-    Number((infraCpu / ncpu + 8 + Math.random() * 6).toFixed(1)),
-  );
+  const hostCpuPercent = Math.min(92, Number((infraCpu / ncpu + 8 + Math.random() * 6).toFixed(1)));
   const memUsedBytes = infraMem + 11 * GB;
 
   netRx += 9_000_000;
@@ -100,9 +97,7 @@ export function metricsSnapshot() {
       containerCount: containers.length,
     },
     outside: {
-      cpuPercent: Number(
-        Math.max(0, hostCpuPercent * ncpu - infraCpu).toFixed(2),
-      ),
+      cpuPercent: Number(Math.max(0, hostCpuPercent * ncpu - infraCpu).toFixed(2)),
       memUsageBytes: memUsedBytes - infraMem,
     },
     containers,

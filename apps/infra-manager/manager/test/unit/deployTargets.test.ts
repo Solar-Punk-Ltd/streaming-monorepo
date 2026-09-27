@@ -11,7 +11,10 @@ describe('deploy target verification', () => {
     const repo = new InMemoryDeployTargets();
     const calls: string[] = [];
     const targets = new VerifiedDeployTargets(repo, {
-      daemonId: async (alias) => { calls.push(alias); return 'daemon-1'; },
+      daemonId: async (alias) => {
+        calls.push(alias);
+        return 'daemon-1';
+      },
     });
 
     for (const alias of [null, 'localhost', 'edge', 'admin@edge']) {
@@ -26,7 +29,9 @@ describe('deploy target verification', () => {
   it('records a failed verification without raw command output and refuses allocation', async () => {
     const repo = new InMemoryDeployTargets();
     const targets = new VerifiedDeployTargets(repo, {
-      daemonId: async () => { throw new Error('sensitive subprocess diagnostics'); },
+      daemonId: async () => {
+        throw new Error('sensitive subprocess diagnostics');
+      },
     });
     await assert.rejects(targets.daemonIdFor('edge'), TargetNotVerifiedError);
     const row = (await targets.list())[0]!;
@@ -81,8 +86,10 @@ describe('the read-only target probe', () => {
 
   it('keeps the state of a container that is not up, rather than only that it exists', async () => {
     const id = 'b'.repeat(64);
-    const docker = new TargetDocker({ daemonId: async () => 'local-id' },
-      async () => `"remote-id"\n${id} srs exited\n"remote-id"\n`);
+    const docker = new TargetDocker(
+      { daemonId: async () => 'local-id' },
+      async () => `"remote-id"\n${id} srs exited\n"remote-id"\n`,
+    );
 
     const snapshot = await docker.snapshot('stage', 'edge');
 
@@ -101,8 +108,10 @@ describe('the read-only target probe', () => {
   });
 
   it('rejects a container row with no state, the way it rejects one with no readable id', async () => {
-    const docker = new TargetDocker({ daemonId: async () => 'local-id' },
-      async () => `"id"\n${'c'.repeat(64)} srs\n"id"\n`);
+    const docker = new TargetDocker(
+      { daemonId: async () => 'local-id' },
+      async () => `"id"\n${'c'.repeat(64)} srs\n"id"\n`,
+    );
     await assert.rejects(docker.snapshot('stage', 'edge'));
   });
   it('uses the local socket only for localhost, and ssh for every other alias including 127.0.0.1', async () => {

@@ -204,17 +204,11 @@ describe('stream lifecycle', () => {
     for (const body of [withoutSchedule, { ...draft, scheduledStartTime: null }]) {
       const created = await raw('POST', '/api/streams', { body });
       assert.equal(created.status, 400, JSON.stringify(body));
-      assert.equal(
-        (created.body as { error: string }).error,
-        'validation_error',
-      );
+      assert.equal((created.body as { error: string }).error, 'validation_error');
 
       const updated = await raw('PUT', `/api/streams/${stream.id}`, { body });
       assert.equal(updated.status, 400, JSON.stringify(body));
-      assert.equal(
-        (updated.body as { error: string }).error,
-        'validation_error',
-      );
+      assert.equal((updated.body as { error: string }).error, 'validation_error');
     }
   });
 
@@ -247,11 +241,10 @@ describe('stream lifecycle', () => {
   });
 
   it('stores a thumbnail and serves the bytes back', async () => {
-    const withThumbnail = await api<Stream>(
-      'PUT',
-      `/api/streams/${stream.id}/thumbnail`,
-      { raw: PNG_1X1, contentType: 'image/png' },
-    );
+    const withThumbnail = await api<Stream>('PUT', `/api/streams/${stream.id}/thumbnail`, {
+      raw: PNG_1X1,
+      contentType: 'image/png',
+    });
     assert.equal(withThumbnail.hasThumbnail, true);
     assert.equal(withThumbnail.thumbnailRef, null, 'not uploaded to Swarm yet');
 
@@ -267,27 +260,17 @@ describe('stream lifecycle', () => {
       contentType: 'text/html',
     });
     assert.equal(response.status, 415);
-    assert.equal(
-      (response.body as { error: string }).error,
-      'unsupported_media_type',
-    );
+    assert.equal((response.body as { error: string }).error, 'unsupported_media_type');
   });
 
   it('publishes: entry on the feed, thumbnail uploaded, status published', async () => {
-    const result = await api<PublishResult>(
-      'POST',
-      `/api/streams/${stream.id}/publish`,
-    );
+    const result = await api<PublishResult>('POST', `/api/streams/${stream.id}/publish`);
 
     assert.equal(result.stream.status, 'published');
     assert.ok(result.stream.publishedAt);
     assert.equal(result.stream.publishedFeedIndex, result.feed.index);
     assert.equal(result.stream.publishError, null);
-    assert.equal(
-      result.stream.hasUnpublishedEdits,
-      false,
-      'the edits made as a draft went out with the publish',
-    );
+    assert.equal(result.stream.hasUnpublishedEdits, false, 'the edits made as a draft went out with the publish');
     assert.match(result.stream.thumbnailRef ?? '', /^[0-9a-f]{64}$/);
     assert.ok(result.feed.index >= 0);
     assert.ok(result.feed.entryCount >= 1);
@@ -296,10 +279,7 @@ describe('stream lifecycle', () => {
   });
 
   it('serves the OBS details for the published stream', async () => {
-    const details = await api<IngestDetails>(
-      'GET',
-      `/api/streams/${stream.id}/ingest`,
-    );
+    const details = await api<IngestDetails>('GET', `/api/streams/${stream.id}/ingest`);
     assert.equal(details.app, 'video');
     assert.equal(details.stream, stream.topic);
     assert.equal(details.streamId, `video/${stream.topic}`);
@@ -307,15 +287,9 @@ describe('stream lifecycle', () => {
     assert.ok(details.srt.url.includes(`r=video/${stream.topic}`));
     assert.ok(details.srt.url.includes(`key=${details.publishKey}`));
     assert.ok(details.rtmp.server.endsWith('/video'));
-    assert.equal(
-      details.rtmp.streamKey,
-      `${stream.topic}?key=${details.publishKey}`,
-    );
+    assert.equal(details.rtmp.streamKey, `${stream.topic}?key=${details.publishKey}`);
 
-    const rotated = await api<IngestDetails>(
-      'POST',
-      `/api/streams/${stream.id}/ingest/rotate-key`,
-    );
+    const rotated = await api<IngestDetails>('POST', `/api/streams/${stream.id}/ingest/rotate-key`);
     assert.notEqual(rotated.publishKey, details.publishKey);
     assert.match(rotated.publishKey, /^[0-9a-f]{32}$/);
     assert.ok(rotated.publishKeyRotatedAt);
@@ -333,11 +307,7 @@ describe('stream lifecycle', () => {
     });
     assert.equal(updated.status, 'published');
     assert.equal(updated.publishedFeedIndex, stream.publishedFeedIndex);
-    assert.equal(
-      updated.hasUnpublishedEdits,
-      true,
-      'the entry on the feed still has the old title',
-    );
+    assert.equal(updated.hasUnpublishedEdits, true, 'the entry on the feed still has the old title');
   });
 
   it('refuses a media type change while published', async () => {
@@ -348,8 +318,7 @@ describe('stream lifecycle', () => {
     assert.equal(response.status, 409);
     assert.deepEqual(response.body, {
       error: 'media_type_locked',
-      message:
-        'Unpublish the stream before changing its media type; it is part of the OBS stream id.',
+      message: 'Unpublish the stream before changing its media type; it is part of the OBS stream id.',
     });
 
     const unchanged = await api<Stream>('GET', `/api/streams/${stream.id}`);
@@ -358,17 +327,11 @@ describe('stream lifecycle', () => {
   });
 
   it('unpublishes: entry removed, stream back to draft', async () => {
-    const result = await api<PublishResult>(
-      'POST',
-      `/api/streams/${stream.id}/unpublish`,
-    );
+    const result = await api<PublishResult>('POST', `/api/streams/${stream.id}/unpublish`);
     assert.equal(result.stream.status, 'draft');
     assert.equal(result.stream.publishedAt, null);
     assert.equal(result.stream.publishedFeedIndex, null);
-    assert.ok(
-      result.stream.thumbnailRef,
-      'the uploaded thumbnail is still paid for, so it is kept',
-    );
+    assert.ok(result.stream.thumbnailRef, 'the uploaded thumbnail is still paid for, so it is kept');
     stream = result.stream;
   });
 
@@ -383,18 +346,12 @@ describe('stream lifecycle', () => {
   });
 
   it('404s an unknown id and 400s a malformed one', async () => {
-    const unknown = await raw(
-      'GET',
-      '/api/streams/1867808f-7b1c-4e46-b437-f7423b466b39',
-    );
+    const unknown = await raw('GET', '/api/streams/1867808f-7b1c-4e46-b437-f7423b466b39');
     assert.equal(unknown.status, 404);
 
     const malformed = await raw('GET', '/api/streams/not-a-uuid');
     assert.equal(malformed.status, 400);
-    assert.equal(
-      (malformed.body as { error: string }).error,
-      'validation_error',
-    );
+    assert.equal((malformed.body as { error: string }).error, 'validation_error');
   });
 });
 

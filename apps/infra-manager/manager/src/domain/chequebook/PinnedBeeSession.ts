@@ -25,11 +25,22 @@ export interface PinnedBeeSessionOptions {
   maxResponseBytes?: number;
 }
 
-export function normalizePinnedBeeSessionOptions(options: PinnedBeeSessionOptions): Readonly<Required<PinnedBeeSessionOptions>> {
+export function normalizePinnedBeeSessionOptions(
+  options: PinnedBeeSessionOptions,
+): Readonly<Required<PinnedBeeSessionOptions>> {
   if (!options || typeof options !== 'object') throw new BeeConnectionError();
-  const value = { readTimeoutMs: options.readTimeoutMs ?? 10_000, postTimeoutMs: options.postTimeoutMs ?? 180_000,
-    maxResponseBytes: options.maxResponseBytes ?? 64 * 1024, preflightTimeoutMs: options.preflightTimeoutMs ?? 30_000 };
-  for (const [amount, maximum] of [[value.readTimeoutMs, 30_000], [value.postTimeoutMs, 180_000], [value.preflightTimeoutMs, 60_000], [value.maxResponseBytes, 1024 * 1024]]) {
+  const value = {
+    readTimeoutMs: options.readTimeoutMs ?? 10_000,
+    postTimeoutMs: options.postTimeoutMs ?? 180_000,
+    maxResponseBytes: options.maxResponseBytes ?? 64 * 1024,
+    preflightTimeoutMs: options.preflightTimeoutMs ?? 30_000,
+  };
+  for (const [amount, maximum] of [
+    [value.readTimeoutMs, 30_000],
+    [value.postTimeoutMs, 180_000],
+    [value.preflightTimeoutMs, 60_000],
+    [value.maxResponseBytes, 1024 * 1024],
+  ]) {
     if (!Number.isInteger(amount) || amount! < 1 || amount! > maximum!) throw new BeeConnectionError();
   }
   return Object.freeze(value);
@@ -42,14 +53,23 @@ class OneConnectionAgent extends http.Agent {
   #socket: Duplex | undefined;
   #closed = false;
 
-  constructor(private readonly source: ConnectionSource, private readonly unavailable: () => void) {
+  constructor(
+    private readonly source: ConnectionSource,
+    private readonly unavailable: () => void,
+  ) {
     super({ keepAlive: true, maxSockets: 1, maxTotalSockets: 1, maxFreeSockets: 1 });
     if (source.kind === 'owned') this.own(source.stream);
   }
 
   // Node's Agent calls this hook for every attempted connection, including replacement sockets.
-  createConnection(_options: http.ClientRequestArgs, callback: (error: Error | null, socket?: Duplex) => void): Duplex | undefined {
-    if (this.#opened || this.#closed || this.#socket?.destroyed) { queueMicrotask(() => callback(new BeeConnectionError())); return; }
+  createConnection(
+    _options: http.ClientRequestArgs,
+    callback: (error: Error | null, socket?: Duplex) => void,
+  ): Duplex | undefined {
+    if (this.#opened || this.#closed || this.#socket?.destroyed) {
+      queueMicrotask(() => callback(new BeeConnectionError()));
+      return;
+    }
     this.#opened = true;
     if (this.source.kind === 'url') this.own(createConnection({ host: this.source.hostname, port: this.source.port }));
     return this.#socket;
@@ -62,8 +82,12 @@ class OneConnectionAgent extends http.Agent {
     socket.on('error', this.unavailable);
   }
 
-  accepts(socket: Duplex): boolean { return socket === this.#socket && !this.#closed; }
-  isConnected(): boolean { return this.#opened && !this.#closed && !!this.#socket && !this.#socket.destroyed && !this.#socket.readableEnded; }
+  accepts(socket: Duplex): boolean {
+    return socket === this.#socket && !this.#closed;
+  }
+  isConnected(): boolean {
+    return this.#opened && !this.#closed && !!this.#socket && !this.#socket.destroyed && !this.#socket.readableEnded;
+  }
   override destroy(): void {
     this.#closed = true;
     if (this.#socket && !this.#socket.destroyed) this.#socket.destroy();
@@ -90,18 +114,34 @@ class HttpBeeSession implements BeeTransferSession {
     this.#postTimeoutMs = normalized.postTimeoutMs;
     this.#maxResponseBytes = normalized.maxResponseBytes;
     const preflightTimeoutMs = normalized.preflightTimeoutMs;
-    this.#agent = new OneConnectionAgent(source, () => { this.#unusable = true; });
+    this.#agent = new OneConnectionAgent(source, () => {
+      this.#unusable = true;
+    });
     this.#preflightDeadline = performance.now() + preflightTimeoutMs;
     this.#preflightTimer = setTimeout(() => this.dispose(), preflightTimeoutMs);
   }
 
-  getAddresses(): Promise<BeeAddresses> { return this.#request('GET', '/addresses', this.#readTimeoutMs); }
-  getWallet(): Promise<BeeWallet> { return this.#request('GET', '/wallet', this.#readTimeoutMs); }
-  getChequebookAddress(): Promise<BeeChequebookAddress> { return this.#request('GET', '/chequebook/address', this.#readTimeoutMs); }
-  getChequebookBalance(): Promise<ChequebookBalance> { return this.#request('GET', '/chequebook/balance', this.#readTimeoutMs); }
-  getPendingTransactions(): Promise<unknown> { return this.#request('GET', '/transactions', this.#readTimeoutMs); }
-  depositChequebook(amountPlur: bigint): Promise<BeeTransaction> { return this.#send('deposit', amountPlur); }
-  withdrawChequebook(amountPlur: bigint): Promise<BeeTransaction> { return this.#send('withdraw', amountPlur); }
+  getAddresses(): Promise<BeeAddresses> {
+    return this.#request('GET', '/addresses', this.#readTimeoutMs);
+  }
+  getWallet(): Promise<BeeWallet> {
+    return this.#request('GET', '/wallet', this.#readTimeoutMs);
+  }
+  getChequebookAddress(): Promise<BeeChequebookAddress> {
+    return this.#request('GET', '/chequebook/address', this.#readTimeoutMs);
+  }
+  getChequebookBalance(): Promise<ChequebookBalance> {
+    return this.#request('GET', '/chequebook/balance', this.#readTimeoutMs);
+  }
+  getPendingTransactions(): Promise<unknown> {
+    return this.#request('GET', '/transactions', this.#readTimeoutMs);
+  }
+  depositChequebook(amountPlur: bigint): Promise<BeeTransaction> {
+    return this.#send('deposit', amountPlur);
+  }
+  withdrawChequebook(amountPlur: bigint): Promise<BeeTransaction> {
+    return this.#send('withdraw', amountPlur);
+  }
 
   assertUsable(): void {
     if (!this.#posted && performance.now() >= this.#preflightDeadline) this.dispose();
@@ -115,7 +155,8 @@ class HttpBeeSession implements BeeTransferSession {
   }
 
   async #send(direction: 'deposit' | 'withdraw', amount: bigint): Promise<BeeTransaction> {
-    if (typeof amount !== 'bigint' || amount < 1n || amount.toString().length > 30 || this.#posted || this.#busy) throw new BeeConnectionError();
+    if (typeof amount !== 'bigint' || amount < 1n || amount.toString().length > 30 || this.#posted || this.#busy)
+      throw new BeeConnectionError();
     this.assertUsable();
     this.#posted = true;
     clearTimeout(this.#preflightTimer);
@@ -128,26 +169,44 @@ class HttpBeeSession implements BeeTransferSession {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await new Promise<T>((resolve, reject) => {
-        const request = http.request(this.#target, { method, path, agent: this.#agent, maxHeaderSize: 16 * 1024 }, response => {
-          const closes = response.headers.connection?.split(',').some(value => value.trim().toLowerCase() === 'close');
-          if (closes) this.#unusable = true;
-          if ((closes && method === 'GET') || response.statusCode !== 200 || Number(response.headers['content-length']) > this.#maxResponseBytes) {
-            response.destroy(); reject(new BeeConnectionError()); return;
-          }
-          const chunks: Buffer[] = [];
-          let size = 0;
-          response.on('data', (chunk: Buffer) => {
-            size += chunk.length;
-            if (size > this.#maxResponseBytes) { response.destroy(new BeeConnectionError()); return; }
-            chunks.push(chunk);
-          });
-          response.on('error', () => reject(new BeeConnectionError()));
-          response.on('end', () => {
-            try { resolve(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks, size))) as T); }
-            catch { reject(new BeeConnectionError()); }
-          });
-        });
-        request.on('socket', socket => {
+        const request = http.request(
+          this.#target,
+          { method, path, agent: this.#agent, maxHeaderSize: 16 * 1024 },
+          (response) => {
+            const closes = response.headers.connection
+              ?.split(',')
+              .some((value) => value.trim().toLowerCase() === 'close');
+            if (closes) this.#unusable = true;
+            if (
+              (closes && method === 'GET') ||
+              response.statusCode !== 200 ||
+              Number(response.headers['content-length']) > this.#maxResponseBytes
+            ) {
+              response.destroy();
+              reject(new BeeConnectionError());
+              return;
+            }
+            const chunks: Buffer[] = [];
+            let size = 0;
+            response.on('data', (chunk: Buffer) => {
+              size += chunk.length;
+              if (size > this.#maxResponseBytes) {
+                response.destroy(new BeeConnectionError());
+                return;
+              }
+              chunks.push(chunk);
+            });
+            response.on('error', () => reject(new BeeConnectionError()));
+            response.on('end', () => {
+              try {
+                resolve(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks, size))) as T);
+              } catch {
+                reject(new BeeConnectionError());
+              }
+            });
+          },
+        );
+        request.on('socket', (socket) => {
           if (!this.#agent.accepts(socket)) request.destroy(new BeeConnectionError());
         });
         request.on('error', () => reject(new BeeConnectionError()));
@@ -170,15 +229,36 @@ export class PinnedBeeSession extends HttpBeeSession {
     let target: URL;
     try {
       target = new URL(baseUrl);
-      if (target.protocol !== 'http:' || target.username || target.password || target.pathname !== '/' || target.search || target.hash) throw new BeeConnectionError();
-    } catch { throw new BeeConnectionError(); }
-    super(target, { kind: 'url', hostname: target.hostname.replace(/^\[|\]$/g, ''), port: Number(target.port || 80) }, options);
+      if (
+        target.protocol !== 'http:' ||
+        target.username ||
+        target.password ||
+        target.pathname !== '/' ||
+        target.search ||
+        target.hash
+      )
+        throw new BeeConnectionError();
+    } catch {
+      throw new BeeConnectionError();
+    }
+    super(
+      target,
+      { kind: 'url', hostname: target.hostname.replace(/^\[|\]$/g, ''), port: Number(target.port || 80) },
+      options,
+    );
   }
 
   /** Takes ownership now. The fixed authority supplies HTTP headers only, never a network destination. */
-  static fromStream(stream: Duplex, options: PinnedBeeSessionOptions = {}): BeeTransferSession & Pick<HttpBeeSession, 'getPendingTransactions'> {
+  static fromStream(
+    stream: Duplex,
+    options: PinnedBeeSessionOptions = {},
+  ): BeeTransferSession & Pick<HttpBeeSession, 'getPendingTransactions'> {
     const owned = new OwnedHttpStream(stream);
-    try { return new HttpBeeSession(new URL('http://bee.invalid/'), { kind: 'owned', stream: owned }, options); }
-    catch { owned.destroy(); throw new BeeConnectionError(); }
+    try {
+      return new HttpBeeSession(new URL('http://bee.invalid/'), { kind: 'owned', stream: owned }, options);
+    } catch {
+      owned.destroy();
+      throw new BeeConnectionError();
+    }
   }
 }

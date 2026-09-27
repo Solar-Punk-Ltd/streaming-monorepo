@@ -6,10 +6,7 @@ import { ChequebookOperationNotFoundError } from '../../domain/errors/Chequebook
 import { ChequebookJournalError } from '../../domain/errors/ChequebookJournalError.js';
 import { ChequebookPreparationError } from '../../domain/errors/ChequebookPreparationError.js';
 import { ChequebookRecoveryRequiredError } from '../../domain/errors/ChequebookRecoveryRequiredError.js';
-import {
-  getErrorMessage,
-  getErrorStack,
-} from '@streaming-infra-manager/common';
+import { getErrorMessage, getErrorStack } from '@streaming-infra-manager/common';
 import { NextFunction, Request, Response } from 'express';
 import { ValidationError as YupValidationError } from 'yup';
 
@@ -79,8 +76,7 @@ import { StackVersionRemovalHeldError } from '../../domain/errors/StackVersionRe
 
 const logger = Logger.getInstance();
 
-const BODY_TOO_LARGE =
-  'That request is larger than this manager accepts. Save fewer files or fewer keys at once.';
+const BODY_TOO_LARGE = 'That request is larger than this manager accepts. Save fewer files or fewer keys at once.';
 
 /**
  * A body over `express.json`'s limit. body-parser marks it with `entity.too.large`
@@ -354,11 +350,7 @@ export function errorHandler(
     });
     return;
   }
-  if (
-    err instanceof ChequebookFundsError ||
-    err instanceof DiluteDepthError ||
-    err instanceof DiluteLifeError
-  ) {
+  if (err instanceof ChequebookFundsError || err instanceof DiluteDepthError || err instanceof DiluteLifeError) {
     // Same shape as a schema rejection: the amount or the depth asked for is
     // the problem, and the reason is the only text worth showing.
     res.status(400).json({ error: 'validation_error', errors: [err.reason] });
@@ -427,9 +419,7 @@ export function errorHandler(
     return;
   }
   if (err instanceof StackVersionExistsError) {
-    res
-      .status(409)
-      .json({ error: 'stack_version_exists', name: err.versionName });
+    res.status(409).json({ error: 'stack_version_exists', name: err.versionName });
     return;
   }
   if (err instanceof StackVersionChangedError) {
@@ -451,7 +441,9 @@ export function errorHandler(
     return;
   }
   if (err instanceof StackVersionRemovalHeldError) {
-    res.status(409).json({ error: 'stack_version_removal_held', name: err.versionName, reason: err.reason, message: err.message });
+    res
+      .status(409)
+      .json({ error: 'stack_version_removal_held', name: err.versionName, reason: err.reason, message: err.message });
     return;
   }
   if (err instanceof BundledVersionError) {
@@ -522,10 +514,7 @@ export function errorHandler(
     return;
   }
 
-  logger.error(
-    `[HTTP] ${req.method} ${req.originalUrl} unhandled:`,
-    getErrorMessage(err),
-  );
+  logger.error(`[HTTP] ${req.method} ${req.originalUrl} unhandled:`, getErrorMessage(err));
   const stack = getErrorStack(err);
   if (stack) logger.error(stack);
   res.status(500).json({ error: 'internal_error' });

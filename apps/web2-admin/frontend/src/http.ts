@@ -12,10 +12,7 @@
  * says nothing useful.
  */
 
-import {
-  REQUESTED_WITH_HEADER,
-  REQUESTED_WITH_VALUE,
-} from '@streaming-monorepo/web2-admin-common';
+import { REQUESTED_WITH_HEADER, REQUESTED_WITH_VALUE } from '@streaming-monorepo/web2-admin-common';
 
 import { SIGN_IN_MESSAGES } from './authMessages';
 import { mappedApiError } from './errors';
@@ -72,11 +69,7 @@ export interface RequestOptions {
  * The one door out of the console. Returns the response untouched; only a 401
  * that is not expected is turned into a sign-out and an error.
  */
-export async function apiFetch(
-  path: string,
-  init: RequestInit = {},
-  options: RequestOptions = {},
-): Promise<Response> {
+export async function apiFetch(path: string, init: RequestInit = {}, options: RequestOptions = {}): Promise<Response> {
   const method = (init.method ?? 'GET').toUpperCase();
   // A plain record rather than a Headers instance: the whole console reads
   // these back in tests, and a record is what the other wrappers pass in.
@@ -106,10 +99,7 @@ interface ApiFailure {
   code: string | null;
 }
 
-async function readFailure(
-  res: Response,
-  fallback: string,
-): Promise<ApiFailure> {
+async function readFailure(res: Response, fallback: string): Promise<ApiFailure> {
   try {
     const err = (await res.json()) as {
       error?: string;
@@ -138,27 +128,17 @@ async function readFailure(
   }
 }
 
-export async function extractApiError(
-  res: Response,
-  fallback: string,
-): Promise<string> {
+export async function extractApiError(res: Response, fallback: string): Promise<string> {
   return (await readFailure(res, fallback)).message;
 }
 
 /** Throws with whatever the API said went wrong, code and status attached. */
-export async function failWith(
-  res: Response,
-  fallback: string,
-): Promise<never> {
+export async function failWith(res: Response, fallback: string): Promise<never> {
   const failure = await readFailure(res, fallback);
   throw new ApiError(failure.message, failure.code, res.status);
 }
 
-async function request(
-  path: string,
-  init: RequestInit,
-  options: RequestOptions = {},
-): Promise<Response> {
+async function request(path: string, init: RequestInit, options: RequestOptions = {}): Promise<Response> {
   const res = await apiFetch(path, init, options);
   if (!res.ok) {
     await failWith(res, options.fallback ?? `request failed (${res.status})`);

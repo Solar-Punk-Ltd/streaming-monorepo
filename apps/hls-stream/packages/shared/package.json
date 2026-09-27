@@ -15,25 +15,19 @@
       "default": "./src/publishKey.ts"
     }
   },
-  "dependencies": {
-    "@ethersphere/bee-js": "^9.0.3",
-    "cafe-utility": "31.1.1"
-  },
   "scripts": {
-    "lint": "eslint .",
+    "lint": "oxlint --type-aware .",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "TSX_DISABLE_CACHE=1 tsx --test test/*.test.ts"
   },
+  "dependencies": {
+    "@ethersphere/bee-js": "13.1.0",
+    "cafe-utility": "36.3.0"
+  },
   "devDependencies": {
-    "@types/node": "^22.8.1",
-    "@typescript-eslint/eslint-plugin": "^6.14.0",
-    "@typescript-eslint/parser": "^6.14.0",
-    "eslint": "^8.55.0",
-    "eslint-import-resolver-typescript": "^4.3.4",
-    "eslint-plugin-import": "^2.29.1",
-    "eslint-plugin-simple-import-sort": "^10.0.0",
-    "tsx": "^4.23.1",
-    "typescript": "^6.0.2"
+    "@types/node": "24.13.4",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2"
   },
   "nx": {
     "tags": [

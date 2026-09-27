@@ -28,8 +28,8 @@ export interface EngineOverviewIdentity {
 }
 
 function revisionText(value: string | number | bigint): string {
-  if ((typeof value === 'number' && (!Number.isSafeInteger(value) || value < 0))
-    || !/^\d+$/.test(String(value))) throw new Error('Engine observation revision is invalid.');
+  if ((typeof value === 'number' && (!Number.isSafeInteger(value) || value < 0)) || !/^\d+$/.test(String(value)))
+    throw new Error('Engine observation revision is invalid.');
   return BigInt(value).toString();
 }
 
@@ -40,7 +40,7 @@ export function engineOverviewIdentity(profile: EngineOverviewIdentityInput): En
   const settings = Object.entries(profile.engine_settings)
     .map(([key, value]) => [key, value.trim()] as const)
     .filter(([, value]) => value !== '')
-    .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0);
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
   return {
     name: profile.name,
     instanceId: profile.instance_id,
@@ -58,7 +58,15 @@ export function engineOverviewIdentity(profile: EngineOverviewIdentityInput): En
 /** Explicit field order also handles an HTTP object's different property order. */
 export function engineOverviewIdentityKey(identity: EngineOverviewIdentity): string {
   return JSON.stringify([
-    identity.name, identity.instanceId, identity.configRevision, identity.intentRevision, identity.updatedAt,
-    identity.stackVersionId, identity.hasConfig, identity.engine, identity.abr, identity.settingsKey,
+    identity.name,
+    identity.instanceId,
+    identity.configRevision,
+    identity.intentRevision,
+    identity.updatedAt,
+    identity.stackVersionId,
+    identity.hasConfig,
+    identity.engine,
+    identity.abr,
+    identity.settingsKey,
   ]);
 }

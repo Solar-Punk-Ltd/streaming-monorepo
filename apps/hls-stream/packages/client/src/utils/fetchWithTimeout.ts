@@ -14,7 +14,11 @@ export class FetchTimeoutError extends Error {
    */
   readonly cause?: unknown;
 
-  constructor(readonly url: string, readonly timeoutMs: number, cause?: unknown) {
+  constructor(
+    readonly url: string,
+    readonly timeoutMs: number,
+    cause?: unknown,
+  ) {
     super(`Request to ${url} timed out after ${timeoutMs}ms`);
     this.name = 'FetchTimeoutError';
     this.cause = cause;

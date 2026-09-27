@@ -28,9 +28,7 @@ export function reconcileProfiles<Row extends TimestampedRow>(
   const inSnapshot = new Set(snapshot.map((row) => row.name));
   const onScreen = new Map(previous.map((row) => [row.name, row]));
 
-  const arrivedDuringFetch = previous.filter(
-    (row) => !inSnapshot.has(row.name) && changedAtMs(row) >= fetchStartedAt,
-  );
+  const arrivedDuringFetch = previous.filter((row) => !inSnapshot.has(row.name) && changedAtMs(row) >= fetchStartedAt);
 
   const merged = snapshot.map((row) => {
     const mine = onScreen.get(row.name);

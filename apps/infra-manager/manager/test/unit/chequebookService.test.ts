@@ -99,10 +99,7 @@ const failing = (what: string) => async () => {
 };
 
 /** A ChequebookService whose only live dependency is a scripted bee node. */
-function serviceAnswering(
-  client: Partial<BeeClient>,
-  floorPlur: bigint = FLOOR,
-): ChequebookService {
+function serviceAnswering(client: Partial<BeeClient>, floorPlur: bigint = FLOOR): ChequebookService {
   return build(client, floorPlur).service;
 }
 
@@ -118,12 +115,7 @@ function build(client: Partial<BeeClient>, floorPlur: bigint = FLOOR) {
 
   return {
     published,
-    service: new ChequebookService(
-      profiles,
-      floorPlur,
-      events,
-      () => client as unknown as BeeClient,
-    ),
+    service: new ChequebookService(profiles, floorPlur, events, () => client as unknown as BeeClient),
   };
 }
 
@@ -200,10 +192,7 @@ describe('ChequebookService.deposit', () => {
   it('reports an unreachable node as such, not as a funding problem', async () => {
     const service = serviceAnswering({ getWallet: failing('GET /wallet') });
 
-    await assert.rejects(
-      () => service.deposit(PROFILE.name, HALF_BZZ),
-      BeeNodeError,
-    );
+    await assert.rejects(() => service.deposit(PROFILE.name, HALF_BZZ), BeeNodeError);
   });
 
   it('reports a node that answered 503 as still starting, not unreachable', async () => {
@@ -213,10 +202,7 @@ describe('ChequebookService.deposit', () => {
       },
     });
 
-    await assert.rejects(
-      () => service.deposit(PROFILE.name, HALF_BZZ),
-      BeeNotReadyError,
-    );
+    await assert.rejects(() => service.deposit(PROFILE.name, HALF_BZZ), BeeNotReadyError);
   });
 
   it('refuses a profile this manager does not have', async () => {
@@ -227,10 +213,7 @@ describe('ChequebookService.deposit', () => {
       () => ({}) as unknown as BeeClient,
     );
 
-    await assert.rejects(
-      () => service.deposit('nobody', HALF_BZZ),
-      ProfileNotFoundError,
-    );
+    await assert.rejects(() => service.deposit('nobody', HALF_BZZ), ProfileNotFoundError);
   });
 });
 
@@ -238,8 +221,7 @@ describe('ChequebookService.withdraw', () => {
   it('refuses more than the chequebook has available', async () => {
     let submitted = false;
     const service = serviceAnswering({
-      getChequebookBalance: async () =>
-        balance('300000000000000', ONE_BZZ.toString()),
+      getChequebookBalance: async () => balance('300000000000000', ONE_BZZ.toString()),
       withdrawChequebook: async () => {
         submitted = true;
         return { transactionHash: '0xshould-not-happen' };
@@ -261,8 +243,7 @@ describe('ChequebookService.withdraw', () => {
     // The gap is cheques already handed out and not yet cashed. A withdrawal
     // against the total would be refused by the contract itself.
     const service = serviceAnswering({
-      getChequebookBalance: async () =>
-        balance(ONE_BZZ.toString(), (ONE_BZZ * 3n).toString()),
+      getChequebookBalance: async () => balance(ONE_BZZ.toString(), (ONE_BZZ * 3n).toString()),
       withdrawChequebook: async () => ({ transactionHash: '0xwithdrawn' }),
     });
 
@@ -328,10 +309,7 @@ describe('one transfer per node at a time', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    await assert.rejects(
-      () => service.withdraw(PROFILE.name, HALF_BZZ),
-      ChequebookBusyError,
-    );
+    await assert.rejects(() => service.withdraw(PROFILE.name, HALF_BZZ), ChequebookBusyError);
 
     submit.release({ transactionHash: '0xdeposited' });
     await deposit;
@@ -355,16 +333,10 @@ describe('one transfer per node at a time', () => {
       depositChequebook: async () => ({ transactionHash: '0xdeposited' }),
     });
 
-    await assert.rejects(
-      () => service.deposit(PROFILE.name, ONE_BZZ),
-      ChequebookFundsError,
-    );
+    await assert.rejects(() => service.deposit(PROFILE.name, ONE_BZZ), ChequebookFundsError);
     // A refusal that left the node marked busy would need a manager restart to
     // clear, which is a worse failure than the one being prevented.
-    await assert.rejects(
-      () => service.deposit(PROFILE.name, ONE_BZZ),
-      ChequebookFundsError,
-    );
+    await assert.rejects(() => service.deposit(PROFILE.name, ONE_BZZ), ChequebookFundsError);
   });
 });
 
@@ -476,10 +448,7 @@ describe('ChequebookService.assertFunded', () => {
   it('reads the floor it was built with, not a hardcoded one', async (t) => {
     const warnings = warningsOf(t);
     const twoBzz = PLUR_PER_BZZ * 2n;
-    const service = serviceAnswering(
-      { getChequebookBalance: async () => balance(ONE_BZZ.toString()) },
-      twoBzz,
-    );
+    const service = serviceAnswering({ getChequebookBalance: async () => balance(ONE_BZZ.toString()) }, twoBzz);
 
     await service.assertFunded(PROFILE.name);
 
@@ -494,8 +463,7 @@ describe('ChequebookService.summary', () => {
   it('carries every piece the node reported', async () => {
     const service = serviceAnswering({
       getChequebookAddress: async () => ({ chequebookAddress: '0xcheques' }),
-      getChequebookBalance: async () =>
-        balance('12400000000000000', '13100000000000000'),
+      getChequebookBalance: async () => balance('12400000000000000', '13100000000000000'),
       getSettlements: async () => ({
         totalSent: '700000000000000',
         totalReceived: '0',
@@ -552,9 +520,7 @@ describe('ChequebookService.summary', () => {
 describe('why the storage card has no reading', () => {
   /** A node that takes the headers and never finishes, the way a hung one does. */
   const timingOut = () => async () => {
-    throw new Error(
-      'bee request GET /chequebook/balance failed: The operation was aborted due to timeout',
-    );
+    throw new Error('bee request GET /chequebook/balance failed: The operation was aborted due to timeout');
   };
 
   it('reports a balance read that ran out of time as one, with how long it took', async () => {

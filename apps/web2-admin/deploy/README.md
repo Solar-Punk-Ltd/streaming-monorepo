@@ -42,9 +42,9 @@ Each profile has one env file in `apps/web2-admin/backend/`, and it travels
 with every deploy: your checkout is the source of truth, and an edit made on
 the host is undone by the next deploy of that profile.
 
-| Profile | Env file | Compose project |
-|---|---|---|
-| none (`default`) | `backend/.env` | `web2-admin-default` |
+| Profile             | Env file               | Compose project      |
+| ------------------- | ---------------------- | -------------------- |
+| none (`default`)    | `backend/.env`         | `web2-admin-default` |
 | `--profile=brand-a` | `backend/.env.brand-a` | `web2-admin-brand-a` |
 
 Make one from the sample and fill it in, from `apps/web2-admin`:
@@ -184,10 +184,10 @@ own, and it is also a quick way to try the production stack on a laptop.
 
 ## Port slots
 
-| | Console port on the host's loopback |
-|---|---|
+|                | Console port on the host's loopback                                 |
+| -------------- | ------------------------------------------------------------------- |
 | `--portSlot=N` | `11009 + N*10` (slot 1 is 11019, slot 3 is 11039, slot 99 is 11999) |
-| no slot | `WEB2_ADMIN_WEB_PORT` from the env file, else `9090` |
+| no slot        | `WEB2_ADMIN_WEB_PORT` from the env file, else `9090`                |
 
 With a slot the slot wins, and a `WEB2_ADMIN_WEB_PORT` in the file is ignored
 with a line saying so. That is swarm-hls-stream's rule.
@@ -396,13 +396,13 @@ ssh -t admin-host 'cd /home/solarpunk/streaming-monorepo && docker compose -p ed
 `infra/edge/.env` is gitignored, because the names belong to one deployment.
 The sample carries example.org names only.
 
-| Key | What | Default |
-|---|---|---|
-| `ADMIN_DOMAIN` | The name the web2-admin console is served at. Empty: not served. | empty |
-| `ADMIN_PORT` | The loopback port that console is on, as `deploy.sh` printed: 9090, `WEB2_ADMIN_WEB_PORT`, or `11009 + N*10` with a port slot. | 9090 |
-| `MANAGER_DOMAIN` | The name streaming-infra-manager's console is served at. Empty: not served. | empty |
-| `MANAGER_PORT` | The loopback port that console is on, the manager's `WEB_PORT`. | 8080 |
-| `ACME_EMAIL` | Contact address on the Let's Encrypt account. With it set, Caddy also lists ZeroSSL as a fallback authority. | empty |
+| Key              | What                                                                                                                           | Default |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| `ADMIN_DOMAIN`   | The name the web2-admin console is served at. Empty: not served.                                                               | empty   |
+| `ADMIN_PORT`     | The loopback port that console is on, as `deploy.sh` printed: 9090, `WEB2_ADMIN_WEB_PORT`, or `11009 + N*10` with a port slot. | 9090    |
+| `MANAGER_DOMAIN` | The name streaming-infra-manager's console is served at. Empty: not served.                                                    | empty   |
+| `MANAGER_PORT`   | The loopback port that console is on, the manager's `WEB_PORT`.                                                                | 8080    |
+| `ACME_EMAIL`     | Contact address on the Let's Encrypt account. With it set, Caddy also lists ZeroSSL as a fallback authority.                   | empty   |
 
 At least one domain must be set, and a host that runs one console leaves the
 other empty. The manager's site is served only when `MANAGER_DOMAIN` is set
@@ -491,6 +491,7 @@ that gets its certificates from certbot's webroot plugin:
    `X-Forwarded-Proto https` is what makes the session cookie `Secure`; and
    the console's own nginx takes the client address from `X-Forwarded-For`,
    since the connection reaches it from the Docker bridge gateway.
+
 4. Reload. If that nginx runs in a container with the config bind-mounted as
    a single file, edit the file in place (`cat new.conf > nginx.conf`) rather
    than replacing it: a new inode is invisible to the running container until

@@ -11,20 +11,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { ProfileBusyError } from '../../src/domain/errors/index.js';
-import {
-  profileRow,
-  profileServiceHarness,
-} from '../support/profileServiceHarness.js';
+import { profileRow, profileServiceHarness } from '../support/profileServiceHarness.js';
 
 describe('updateEngineSettings and the claim', () => {
   it('stores nothing when the deployment is claimed by someone else', async () => {
     const harness = profileServiceHarness([profileRow()]);
     harness.profiles.claimsRefused.add('stream1');
 
-    await assert.rejects(
-      harness.service.updateEngineSettings('stream1', { HLS_FRAGMENT: '2' }),
-      ProfileBusyError,
-    );
+    await assert.rejects(harness.service.updateEngineSettings('stream1', { HLS_FRAGMENT: '2' }), ProfileBusyError);
 
     assert.deepEqual(harness.profiles.rows.get('stream1')?.engine_settings, {});
     assert.equal(harness.profiles.statusOf('stream1'), 'RUNNING');
@@ -36,9 +30,7 @@ describe('updateEngineSettings and the claim', () => {
     const harness = profileServiceHarness([profileRow()]);
     harness.orchestrator.failingDeploys.add('stream1');
 
-    await assert.rejects(
-      harness.service.updateEngineSettings('stream1', { HLS_FRAGMENT: '2' }),
-    );
+    await assert.rejects(harness.service.updateEngineSettings('stream1', { HLS_FRAGMENT: '2' }));
 
     assert.deepEqual(harness.profiles.rows.get('stream1')?.engine_settings, {
       HLS_FRAGMENT: '2',
@@ -56,8 +48,6 @@ describe('updateEngineSettings and the claim', () => {
     // Both containers, because HLS_FRAGMENT is read by both. This case is about
     // the order of claim, store and recreate, and it carries the service list
     // only so that a change to who comes back cannot pass here unnoticed.
-    assert.deepEqual(harness.orchestrator.deploys, [
-      { profileName: 'stream1', services: ['srs', 'stream-uploader'] },
-    ]);
+    assert.deepEqual(harness.orchestrator.deploys, [{ profileName: 'stream1', services: ['srs', 'stream-uploader'] }]);
   });
 });

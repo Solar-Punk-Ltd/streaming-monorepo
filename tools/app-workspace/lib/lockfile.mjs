@@ -3,8 +3,11 @@ import { posix } from 'node:path';
 import { Refusal } from './refusal.mjs';
 import { indentOf, readKey, readScalar, spell } from './yaml-lines.mjs';
 
-/** The lockfile format pnpm 9, 10 and 11 write, and the only one this reader knows. */
+/** The lockfile format pnpm 9, 10, 11 and 12 write, and the only one this reader knows. */
 const LOCKFILE_VERSION = '9.0';
+
+/** The line that opens and closes the document pnpm 12 writes above the lockfile proper. */
+const DOCUMENT_MARKER = '---';
 
 const INJECT_SETTING = 'injectWorkspacePackages';
 const IMPORTER_DEPENDENCY_FIELDS = new Set(['dependencies', 'devDependencies', 'optionalDependencies']);
@@ -18,6 +21,29 @@ const ALIASED_VERSION = /^(?:@[^/@\s]+\/)?[^@/:(\s]+@/;
 
 /** @typedef {{ key: string, lines: string[] }} Section  A top-level key's line and its body, trailing blank lines off. */
 /** @typedef {{ key: import('./yaml-lines.mjs').Key, lines: string[] }} Entry  One entry of a keyed section. */
+
+/**
+ * Splits off the document pnpm 12 writes above the lockfile proper, which records the pnpm the workspace runs and
+ * that pnpm's own binaries. It names the pnpm every app of this repository repeats in its packageManager, so a cut
+ * keeps it as the root has it.
+ *
+ * @returns {{ packageManagerDocument: string, lockfile: string }}  the first document with both marker lines, or
+ *   an empty string when the lockfile has none, and the lockfile after it
+ */
+function splitPackageManagerDocument(text) {
+  if (!text.startsWith(`${DOCUMENT_MARKER}\n`)) return { packageManagerDocument: '', lockfile: text };
+  const close = text.indexOf(`\n${DOCUMENT_MARKER}\n`, DOCUMENT_MARKER.length);
+  if (close === -1) {
+    throw new Refusal(`The root lockfile opens a document with ${DOCUMENT_MARKER} and never closes it.`);
+  }
+  const packageManagerDocument = text.slice(0, close + DOCUMENT_MARKER.length + 2);
+  if (!/^ {4}packageManagerDependencies:$/m.test(packageManagerDocument)) {
+    throw new Refusal(
+      `The root lockfile's first document records no packageManagerDependencies, so it is not the record of pnpm's own version that pnpm 12 writes there.`,
+    );
+  }
+  return { packageManagerDocument, lockfile: text.slice(packageManagerDocument.length) };
+}
 
 /** Splits a lockfile into its top-level sections, in order. */
 function readSections(text) {
@@ -46,7 +72,8 @@ function readEntries(section) {
     if (line.trim() === '') continue;
     if (indentOf(line) === DEPTH.ENTRY) {
       const key = readKey(line.slice(DEPTH.ENTRY));
-      if (key === null) throw new Refusal(`The root lockfile's ${section.key} has an entry this tool cannot read: ${line}`);
+      if (key === null)
+        throw new Refusal(`The root lockfile's ${section.key} has an entry this tool cannot read: ${line}`);
       entries.push({ key, lines: [line] });
     } else if (indentOf(line) > DEPTH.ENTRY && entries.length > 0) {
       entries.at(-1).lines.push(line);
@@ -91,7 +118,8 @@ function snapshotEdges(entry) {
     const depth = indentOf(line);
     const key = readKey(line.slice(depth));
     if (depth === DEPTH.FIELD) inField = SNAPSHOT_EDGE_FIELDS.has(key?.value);
-    else if (inField && depth === DEPTH.DEPENDENCY) found.push({ name: key.value, version: valueAfterKey(line, depth) });
+    else if (inField && depth === DEPTH.DEPENDENCY)
+      found.push({ name: key.value, version: valueAfterKey(line, depth) });
   }
   return found;
 }
@@ -155,12 +183,13 @@ function sectionNamed(sections, name) {
  * @returns {{ text: string, projects: string[], packageNames: Set<string>, packageCount: number, rootPackageCount: number }}
  */
 export function cutLockfile(text, { app, injectWorkspacePackages }) {
-  const sections = readSections(text);
+  const { packageManagerDocument, lockfile } = splitPackageManagerDocument(text);
+  const sections = readSections(lockfile);
   const version = sections.find((section) => section.key === 'lockfileVersion');
   const spelled = version === undefined ? 'missing' : version.lines[0].slice('lockfileVersion:'.length).trim();
   if (version === undefined || readScalar(spelled).value !== LOCKFILE_VERSION) {
     throw new Refusal(
-      `The root lockfile is format ${spelled}. This tool reads format '${LOCKFILE_VERSION}', which pnpm 9 to 11 write, and cuts nothing else.`,
+      `The root lockfile is format ${spelled}. This tool reads format '${LOCKFILE_VERSION}', which pnpm 9 to 12 write, and cuts nothing else.`,
     );
   }
 
@@ -181,7 +210,9 @@ export function cutLockfile(text, { app, injectWorkspacePackages }) {
           );
         }
         if (!importerIds.has(target)) {
-          throw new Refusal(`${importer.key.value} links ${name} from ${target}, which the root lockfile has no importer for.`);
+          throw new Refusal(
+            `${importer.key.value} links ${name} from ${target}, which the root lockfile has no importer for.`,
+          );
         }
       } else if (dependency.startsWith('file:')) {
         throw new Refusal(
@@ -199,11 +230,14 @@ export function cutLockfile(text, { app, injectWorkspacePackages }) {
     const key = queue.pop();
     if (reached.has(key)) continue;
     const snapshot = snapshots.get(key);
-    if (snapshot === undefined) throw new Refusal(`${app} reaches ${key}, but the root lockfile holds no snapshot of it.`);
+    if (snapshot === undefined)
+      throw new Refusal(`${app} reaches ${key}, but the root lockfile holds no snapshot of it.`);
     reached.add(key);
     for (const { name, version: dependency } of snapshotEdges(snapshot)) {
       if (dependency.startsWith('link:') || dependency.startsWith('file:')) {
-        throw new Refusal(`The snapshot ${key} depends on ${name} at ${dependency}, which a cut app folder cannot carry.`);
+        throw new Refusal(
+          `The snapshot ${key} depends on ${name} at ${dependency}, which a cut app folder cannot carry.`,
+        );
       }
       queue.push(snapshotKeyOf(name, dependency));
     }
@@ -213,7 +247,8 @@ export function cutLockfile(text, { app, injectWorkspacePackages }) {
   const packageKeys = new Set(packages.map((entry) => entry.key.value));
   const keptPackageKeys = new Set([...reached].map(packageKeyOf));
   for (const key of keptPackageKeys) {
-    if (!packageKeys.has(key)) throw new Refusal(`${app} reaches ${key}, but the root lockfile holds no package entry for it.`);
+    if (!packageKeys.has(key))
+      throw new Refusal(`${app} reaches ${key}, but the root lockfile holds no package entry for it.`);
   }
 
   const written = sections.map((section) => {
@@ -221,18 +256,27 @@ export function cutLockfile(text, { app, injectWorkspacePackages }) {
       case 'settings':
         return settingsFor(section, injectWorkspacePackages).join('\n');
       case 'importers':
-        return keyedSection('importers', importers.map((entry) => renamedEntry(app, entry)));
+        return keyedSection(
+          'importers',
+          importers.map((entry) => renamedEntry(app, entry)),
+        );
       case 'packages':
-        return keyedSection('packages', packages.filter((entry) => keptPackageKeys.has(entry.key.value)).map((entry) => entry.lines));
+        return keyedSection(
+          'packages',
+          packages.filter((entry) => keptPackageKeys.has(entry.key.value)).map((entry) => entry.lines),
+        );
       case 'snapshots':
-        return keyedSection('snapshots', [...snapshots.values()].filter((entry) => reached.has(entry.key.value)).map((entry) => entry.lines));
+        return keyedSection(
+          'snapshots',
+          [...snapshots.values()].filter((entry) => reached.has(entry.key.value)).map((entry) => entry.lines),
+        );
       default:
         return section.lines.join('\n');
     }
   });
 
   return {
-    text: `${written.join('\n\n')}\n`,
+    text: `${packageManagerDocument}${written.join('\n\n')}\n`,
     projects: importers.map((entry) => renameImporter(app, entry.key.value)).filter((id) => id !== '.'),
     packageNames: new Set([...keptPackageKeys].map(packageNameOf)),
     packageCount: keptPackageKeys.size,

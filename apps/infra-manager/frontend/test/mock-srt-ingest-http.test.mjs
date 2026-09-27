@@ -39,7 +39,7 @@ async function request(path, method = 'GET', body) {
       ...(cookie ? { cookie } : {}),
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal: AbortSignal.timeout(2_000),
   });
   assert.ok(response.ok, `${method} ${path} returned ${response.status}`);
@@ -78,7 +78,11 @@ before(async () => {
       child.stdout.off('data', onData);
       child.off('exit', onExit);
       child.off('error', finish);
-      error ? reject(error) : resolve();
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
     };
     child.stdout.on('data', onData);
     child.once('exit', onExit);
@@ -92,12 +96,21 @@ after(async () => {
   const exited = once(child, 'exit');
   const timeout = setTimeout(() => child.kill('SIGKILL'), 2_000);
   child.kill('SIGTERM');
-  try { await exited; } finally { clearTimeout(timeout); }
+  try {
+    await exited;
+  } finally {
+    clearTimeout(timeout);
+  }
 });
 
 async function runningDeployment(engine) {
   const name = `mock-ingest-${nextProfile++}`;
-  await request('/profiles', 'POST', { name, kind: 'custom', components: [engine, 'stream-uploader'], stack_version_id: 2 });
+  await request('/profiles', 'POST', {
+    name,
+    kind: 'custom',
+    components: [engine, 'stream-uploader'],
+    stack_version_id: 2,
+  });
   await until(`/profiles/${name}`, (profile) => profile.status === 'RUNNING');
   return name;
 }

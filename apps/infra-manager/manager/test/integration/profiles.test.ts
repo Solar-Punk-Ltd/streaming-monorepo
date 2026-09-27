@@ -34,7 +34,6 @@ import {
 // deploy fails with a useful message instead of blocking forever.
 const DEPLOY_TIMEOUT = 240_000;
 
-
 before(requireStack);
 // Safety net: remove anything a failed test left behind.
 after(async () => {
@@ -60,10 +59,7 @@ describe('profile lifecycle (create → verify → modify → stop → remove)',
     assert.equal(running.pendingStamp, false);
     assert.equal(running.feed_owner, FEED_OWNER_A);
     for (const c of running.containers) {
-      assert.ok(
-        Object.keys(c.ports).length > 0,
-        `container ${c.service} should expose at least one port`,
-      );
+      assert.ok(Object.keys(c.ports).length > 0, `container ${c.service} should expose at least one port`);
     }
 
     // MODIFY: change feed target + notes → redeploys.

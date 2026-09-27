@@ -32,7 +32,7 @@
  *
  * `page.context().newCDPSession(page)` attaches to pages and frames only. Reaching a worker target
  * means `Target.setAutoAttach` with `flatten: true`, and a flattened child session is addressed by
- * putting its `sessionId` on every message. Verified against the pinned playwright-core 1.61.1:
+ * putting its `sessionId` on every message. Verified against the pinned playwright-core 1.63.0:
  * `CDPSession.send(method, params)` takes no third argument and exposes no `sessionId`, so a child
  * session cannot be driven through it. Hence a second, raw client to Chrome's own debugging
  * endpoint, which also keeps our auto-attach state separate from Playwright's own.

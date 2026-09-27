@@ -58,7 +58,8 @@ function transactionChainId(transaction: Record<string, unknown>): number {
   if (v < 35n) throw new ChainEvidenceError();
   const derived = (v - 35n) / 2n;
   const chainId = chainIdFromQuantity(`0x${derived.toString(16)}`);
-  if (transaction.chainId !== undefined && chainIdFromQuantity(transaction.chainId) !== chainId) throw new ChainEvidenceError();
+  if (transaction.chainId !== undefined && chainIdFromQuantity(transaction.chainId) !== chainId)
+    throw new ChainEvidenceError();
   return chainId;
 }
 

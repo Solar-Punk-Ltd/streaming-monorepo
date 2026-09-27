@@ -174,7 +174,10 @@ function ownEngineEntries(catalog: DeploymentSettingsCatalog): DeploymentSetting
 }
 
 /** What the deployment's engine settings will be once the draft is saved: the stored ones, with its edits applied. */
-export function engineSettingsOfDraft(catalog: DeploymentSettingsCatalog, draft: DeploymentSettingsDraft): EngineSettings {
+export function engineSettingsOfDraft(
+  catalog: DeploymentSettingsCatalog,
+  draft: DeploymentSettingsDraft,
+): EngineSettings {
   const stored: EngineSettings = {};
   for (const entry of ownEngineEntries(catalog)) {
     if (entry.stored && entry.storedValue !== null) stored[entry.key] = entry.storedValue;
@@ -195,7 +198,10 @@ export function engineDraftProblem(catalog: DeploymentSettingsCatalog, draft: De
   const problems = draftProblems(catalog, draft);
   if (edits.some(({ key }) => engineSettingFieldOf(key) !== null && key in problems)) return null;
   const defaults = Object.fromEntries(ownEngineEntries(catalog).map((entry) => [entry.key, entry.versionValue ?? '']));
-  return engineSettingsSaveProblem(catalog.engine, engineSettingsOfDraft(catalog, draft), { abr: catalog.abr, defaults });
+  return engineSettingsSaveProblem(catalog.engine, engineSettingsOfDraft(catalog, draft), {
+    abr: catalog.abr,
+    defaults,
+  });
 }
 
 /**
@@ -211,10 +217,7 @@ export function storedEngineProblem(catalog: DeploymentSettingsCatalog, draft: D
 }
 
 /** The body of `PUT /profiles/:name/settings` for this draft. */
-export function saveOf(
-  catalog: DeploymentSettingsCatalog,
-  draft: DeploymentSettingsDraft,
-): DeploymentSettingsSave {
+export function saveOf(catalog: DeploymentSettingsCatalog, draft: DeploymentSettingsDraft): DeploymentSettingsSave {
   return {
     expectedInstanceId: catalog.instanceId,
     expectedRevision: draft.revision ?? catalog.revision,

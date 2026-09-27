@@ -72,11 +72,7 @@ const HOST_BASE_ENV = { HLS_FRAGMENT: '2' };
 /** What an unset setting falls back to for this deployment: the host's value, else its version's. */
 function hostDefaults(engine, profile) {
   const contract = contractOfVersion(profile.stack_version_id);
-  return effectiveEngineDefaults(
-    engine,
-    HOST_BASE_ENV,
-    contract?.engineDefaults ?? {},
-  );
+  return effectiveEngineDefaults(engine, HOST_BASE_ENV, contract?.engineDefaults ?? {});
 }
 
 /**
@@ -91,7 +87,12 @@ export function engineSettingsFacts(profile) {
   const defaults = hostDefaults(engine, profile);
   const fields = engineSettingsFieldsFor(engine, { abr });
   const { template, config } = engineConfigSource(profile.name, engine);
-  const readings = deploymentEngineReadings(engine, fields, { template, hasOwn: profile.has_engine_config, own: config }, { abr });
+  const readings = deploymentEngineReadings(
+    engine,
+    fields,
+    { template, hasOwn: profile.has_engine_config, own: config },
+    { abr },
+  );
   const observed = assembleEngineSettingObservations({ fields, settings: profile.engine_settings, defaults, readings });
   return { engine, abr, fields, defaults, ...observed };
 }
@@ -127,12 +128,7 @@ const LOG_LINES = {
     'uploaded segment 000142 in 380 ms',
     'feed updated at index 142',
   ],
-  [BEE_UPLOADER_SERVICE]: [
-    'bee 2.8.1 starting',
-    'connected to 68 peers',
-    'postage batch usable',
-    'chunk synced',
-  ],
+  [BEE_UPLOADER_SERVICE]: ['bee 2.8.1 starting', 'connected to 68 peers', 'postage batch usable', 'chunk synced'],
 };
 
 function generateLogs(profile, service, tail) {
@@ -221,10 +217,7 @@ export function engineRoutes({ readBody, withProfile, findProfile, deploy, publi
           notInConfig,
           fields,
           live: null,
-          liveUnavailableReason: liveUnavailableReason(
-            engine,
-            contractOfVersion(profile.stack_version_id)?.features,
-          ),
+          liveUnavailableReason: liveUnavailableReason(engine, contractOfVersion(profile.stack_version_id)?.features),
         });
       }),
     ],
@@ -243,9 +236,15 @@ export function engineRoutes({ readBody, withProfile, findProfile, deploy, publi
           return send(res, 400, { error: 'validation_error', errors: error.errors ?? ['Invalid engine settings.'] });
         }
         const { expectedInstanceId, ...values } = input;
-        if (findProfile(profile.name) !== profile || (expectedInstanceId !== undefined && profile.instance_id !== expectedInstanceId)) {
-          return send(res, 409, { error: 'profile_instance_changed', name: profile.name,
-            message: 'This deployment instance changed. Refresh before changing it.' });
+        if (
+          findProfile(profile.name) !== profile ||
+          (expectedInstanceId !== undefined && profile.instance_id !== expectedInstanceId)
+        ) {
+          return send(res, 409, {
+            error: 'profile_instance_changed',
+            name: profile.name,
+            message: 'This deployment instance changed. Refresh before changing it.',
+          });
         }
         if (['DEPLOYING', 'STOPPING', 'REMOVING'].includes(profile.status)) {
           return send(res, 409, { error: 'profile_busy', name: profile.name, status: profile.status });
@@ -312,10 +311,7 @@ export function engineRoutes({ readBody, withProfile, findProfile, deploy, publi
             message: containerNotRunningMessage(profile.name, service),
           });
         }
-        const tail = Number(
-          new URL(req.url, 'http://mock').searchParams.get('tail') ??
-            DEFAULT_LOG_LINES,
-        );
+        const tail = Number(new URL(req.url, 'http://mock').searchParams.get('tail') ?? DEFAULT_LOG_LINES);
         sendText(res, 200, generateLogs(profile, service, tail));
       }),
     ],
@@ -334,17 +330,10 @@ export function engineRoutes({ readBody, withProfile, findProfile, deploy, publi
           });
         }
 
-        const settings = effectiveEngineSettings(
-          engine,
-          profile.engine_settings,
-          hostDefaults(engine, profile).values,
-        );
-        sendText(
-          res,
-          200,
-          engine === OME_SERVICE ? serverXml(settings) : srsConf(settings),
-          { 'cache-control': 'no-store' },
-        );
+        const settings = effectiveEngineSettings(engine, profile.engine_settings, hostDefaults(engine, profile).values);
+        sendText(res, 200, engine === OME_SERVICE ? serverXml(settings) : srsConf(settings), {
+          'cache-control': 'no-store',
+        });
       }),
     ],
   ];

@@ -47,7 +47,15 @@ export async function startVersionsTestApp(
   repository.seedBundled();
   const runner = new FakeScriptSpawner();
   const bus = new EventBus();
-  const service = new StackVersionService(repository, runner, bus, versionsRoot, { openReferences: async () => [] }, bundledRoot, settingsLockWaitMs);
+  const service = new StackVersionService(
+    repository,
+    runner,
+    bus,
+    versionsRoot,
+    { openReferences: async () => [] },
+    bundledRoot,
+    settingsLockWaitMs,
+  );
 
   const app = express();
   app.use(express.json({ limit: '256kb' }));
@@ -117,12 +125,8 @@ export async function readSseFrames(res: Response): Promise<SseFrame[]> {
 
   for (const block of body.split('\n\n')) {
     const lines = block.split('\n');
-    const event = lines
-      .find((line) => line.startsWith('event: '))
-      ?.slice('event: '.length);
-    const data = lines
-      .find((line) => line.startsWith('data: '))
-      ?.slice('data: '.length);
+    const event = lines.find((line) => line.startsWith('event: '))?.slice('event: '.length);
+    const data = lines.find((line) => line.startsWith('data: '))?.slice('data: '.length);
     if (event) frames.push({ event, data: data ?? '' });
   }
 

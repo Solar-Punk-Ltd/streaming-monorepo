@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import type { Stream } from '@streaming-monorepo/web2-admin-common';
 
@@ -16,8 +16,7 @@ import {
 
 const ID = 'stream-under-test';
 
-const EDITED_SINCE_PUBLISH =
-  'Edited since it was published. Republish to update the feed.';
+const EDITED_SINCE_PUBLISH = 'Edited since it was published. Republish to update the feed.';
 
 function routesFor(stream: Stream, extra: MockRoute[] = []): MockRoute[] {
   return [
@@ -66,9 +65,7 @@ describe('StreamDetailsPage', () => {
 
     expect(await screen.findByText(EDITED_SINCE_PUBLISH)).toBeInTheDocument();
     // Republish is the way out, so it has to be the button's label.
-    expect(
-      screen.getByRole('button', { name: /Republish/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Republish/ })).toBeInTheDocument();
   });
 
   it('does not warn about a stream that only the uploader has moved on', async () => {
@@ -196,9 +193,7 @@ describe('StreamDetailsPage', () => {
     // under its topic, so the link goes to the catalogue the viewer was built for.
     const link = await screen.findByRole('link', { name: /Open player catalogue/ });
     expect(link).toHaveAttribute('href', 'https://player.example.com/#/');
-    expect(
-      screen.getByText(`#/watch/video/${stream.owner}/${stream.topic}`),
-    ).toBeInTheDocument();
+    expect(screen.getByText(`#/watch/video/${stream.owner}/${stream.topic}`)).toBeInTheDocument();
   });
 
   it('reports an unpublish without claiming the feed was rewritten', async () => {
@@ -209,9 +204,7 @@ describe('StreamDetailsPage', () => {
       updatedAt: '2026-09-11T10:00:00.000Z',
       publishedFeedIndex: 4,
     });
-    mockFetch(
-      routesFor(published, [unpublishRoute(published)]),
-    );
+    mockFetch(routesFor(published, [unpublishRoute(published)]));
 
     renderDetails();
 
@@ -222,9 +215,7 @@ describe('StreamDetailsPage', () => {
       }),
     );
 
-    expect(
-      await screen.findByText('Unpublished. Feed is at index 4.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Unpublished. Feed is at index 4.')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByText('Draft')).toBeInTheDocument();
     });
@@ -237,9 +228,7 @@ describe('StreamDetailsPage', () => {
     // A recording comes off the catalogue, and viewers lose it until it is
     // published again, so one click is not enough.
     const recording = recordingStream();
-    const fetchMock = mockFetch(
-      routesFor(recording, [unpublishRoute(recording)]),
-    );
+    const fetchMock = mockFetch(routesFor(recording, [unpublishRoute(recording)]));
 
     renderDetails();
 
@@ -248,12 +237,8 @@ describe('StreamDetailsPage', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Unpublish recording')).toBeInTheDocument();
     expect(dialog).toHaveTextContent('stops being listed in the catalogue');
-    expect(dialog).toHaveTextContent(
-      'this admin keeps where it is, how long it runs and when it was live',
-    );
-    expect(dialog).toHaveTextContent(
-      'Publish it again to list it as this recording',
-    );
+    expect(dialog).toHaveTextContent('this admin keeps where it is, how long it runs and when it was live');
+    expect(dialog).toHaveTextContent('Publish it again to list it as this recording');
     expect(unpublishCalls(fetchMock)).toBe(0);
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
@@ -298,9 +283,7 @@ describe('StreamDetailsPage', () => {
       publishedAt: '2026-09-11T10:00:00.000Z',
       publishedFeedIndex: 4,
     });
-    const fetchMock = mockFetch(
-      routesFor(published, [unpublishRoute(published)]),
-    );
+    const fetchMock = mockFetch(routesFor(published, [unpublishRoute(published)]));
 
     renderDetails();
 
@@ -308,17 +291,13 @@ describe('StreamDetailsPage', () => {
 
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Unpublish stream')).toBeInTheDocument();
-    expect(dialog).toHaveTextContent(
-      'stops being listed in the catalogue and goes back to a draft',
-    );
+    expect(dialog).toHaveTextContent('stops being listed in the catalogue and goes back to a draft');
     expect(dialog).not.toHaveTextContent('recording');
     expect(unpublishCalls(fetchMock)).toBe(0);
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Unpublish' }));
 
-    expect(
-      await screen.findByText('Unpublished. Feed is at index 4.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Unpublished. Feed is at index 4.')).toBeInTheDocument();
     expect(unpublishCalls(fetchMock)).toBe(1);
   });
 
@@ -414,8 +393,6 @@ function unpublishRoute(stream: Stream): MockRoute {
 
 function unpublishCalls(fetchMock: ReturnType<typeof mockFetch>): number {
   return fetchMock.mock.calls.filter(
-    ([url, init]) =>
-      String(url) === `/api/streams/${ID}/unpublish` &&
-      init?.method === 'POST',
+    ([url, init]) => String(url) === `/api/streams/${ID}/unpublish` && init?.method === 'POST',
   ).length;
 }

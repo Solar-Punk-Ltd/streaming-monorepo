@@ -23,20 +23,11 @@ import { createProfileSchema } from '../../src/schemas/profile.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SCHEMA_SOURCE = join(here, '..', '..', 'src', 'schemas', 'profile.ts');
-const MIGRATION = join(
-  here,
-  '..',
-  '..',
-  'src',
-  'migrations',
-  '033_profile_feed_topic_shape.sql',
-);
+const MIGRATION = join(here, '..', '..', 'src', 'migrations', '033_profile_feed_topic_shape.sql');
 
 /** The shape the request refuses on, read from its own source, never copied. */
 function schemaShape(): string {
-  const found = readFileSync(SCHEMA_SOURCE, 'utf8').match(
-    /const FEED_TOPIC_RE = \/(.+)\/;/,
-  );
+  const found = readFileSync(SCHEMA_SOURCE, 'utf8').match(/const FEED_TOPIC_RE = \/(.+)\/;/);
   assert.ok(found, 'FEED_TOPIC_RE is gone from the profile schema, or was renamed');
   return found[1]!;
 }
@@ -51,8 +42,7 @@ function columnShape(sql: string): string {
 const BASE = { name: 'stage', kind: 'custom', components: ['srs'] };
 
 /** The shape in the words the deploy script itself uses for it. */
-const SHAPE_MESSAGE =
-  /letters, digits, dot, underscore or hyphen, at most 64 characters/;
+const SHAPE_MESSAGE = /letters, digits, dot, underscore or hyphen, at most 64 characters/;
 
 const REFUSED = [
   ['a space', 'my stream'],
@@ -70,10 +60,7 @@ const ACCEPTED = [
 describe('the feed topic a create body may carry', () => {
   for (const [label, topic] of REFUSED) {
     it(`refuses ${label}, as the deploy script does`, async () => {
-      await assert.rejects(
-        () => createProfileSchema.validate({ ...BASE, feed_topic: topic }),
-        SHAPE_MESSAGE,
-      );
+      await assert.rejects(() => createProfileSchema.validate({ ...BASE, feed_topic: topic }), SHAPE_MESSAGE);
     });
   }
 

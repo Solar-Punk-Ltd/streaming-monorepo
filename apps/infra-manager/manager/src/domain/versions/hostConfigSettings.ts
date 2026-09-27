@@ -53,8 +53,7 @@ export const SETTINGS_NEED_A_BUILD =
  * The files are there but nothing committed them as a set. Capture refuses a
  * root in that state too, so the way out is the same one a build takes.
  */
-export const SETTINGS_NEED_A_REVISION =
-  `Its files are here but there is no committed revision of them, so nothing can say which bytes a save was made against. Commit them with ${CONFIG_EDIT_SCRIPT} <root> commit, or Update the version, which commits them as it builds.`;
+export const SETTINGS_NEED_A_REVISION = `Its files are here but there is no committed revision of them, so nothing can say which bytes a save was made against. Commit them with ${CONFIG_EDIT_SCRIPT} <root> commit, or Update the version, which commits them as it builds.`;
 
 /** Only a build this manager made has a tree of its own to publish another one from. */
 export const SETTINGS_NEED_A_MANAGED_BUILD =
@@ -71,10 +70,7 @@ export interface ReadyHostConfigSettings extends HostConfigSettingsSources {
  * describe them from its first build, so before that there is nothing to read,
  * save or apply.
  */
-export function readySettingsSources(
-  versionName: string,
-  sources: HostConfigSettingsSources,
-): ReadyHostConfigSettings {
+export function readySettingsSources(versionName: string, sources: HostConfigSettingsSources): ReadyHostConfigSettings {
   if (sources.buildRoot === null || !existsSync(sources.configRoot)) {
     throw new StackSettingsNotReadyError(versionName, SETTINGS_NEED_A_BUILD);
   }
@@ -145,11 +141,7 @@ async function readSample(buildRoot: string, relative: string): Promise<string |
  * file assigns. A key the version stopped shipping is still the operator's and
  * still shown, at the end, where it reads as the extra it is.
  */
-function entriesOf(
-  text: string,
-  sampleText: string | null,
-  requiredSecrets: readonly string[],
-): StackSettingsEntry[] {
+function entriesOf(text: string, sampleText: string | null, requiredSecrets: readonly string[]): StackSettingsEntry[] {
   const assigned = envAssignmentsOf(text);
   const entries: StackSettingsEntry[] = [];
   const placed = new Set<string>();

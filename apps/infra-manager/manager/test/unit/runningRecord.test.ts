@@ -62,10 +62,14 @@ describe('the record of what a container was started with', () => {
   });
 
   it('covers the keys the deploy decided for every container as well as the ones its own block reads', () => {
-    const snapshot = buildContainerSnapshot(STREAM_UPLOADER_SERVICE, { COMPOSE_NETWORK: 'host' }, {
-      keys: ['LOG_LEVEL'],
-      deployKeys: ['COMPOSE_NETWORK'],
-    });
+    const snapshot = buildContainerSnapshot(
+      STREAM_UPLOADER_SERVICE,
+      { COMPOSE_NETWORK: 'host' },
+      {
+        keys: ['LOG_LEVEL'],
+        deployKeys: ['COMPOSE_NETWORK'],
+      },
+    );
 
     assert.deepEqual(Object.keys(snapshot.envDigests).sort(), ['COMPOSE_NETWORK', 'LOG_LEVEL']);
   });

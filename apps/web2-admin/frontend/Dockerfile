@@ -2,7 +2,7 @@
 # Build context is apps/web2-admin:
 #   docker build -f frontend/Dockerfile -t web2-admin-frontend .
 
-FROM node:22-alpine AS build
+FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 WORKDIR /repo
 # pnpm comes from the root package.json's `packageManager` field via corepack;
 # the prompt has to be off or the non-interactive build stalls on it.
@@ -24,7 +24,7 @@ COPY frontend ./frontend
 RUN pnpm --filter @streaming-monorepo/web2-admin-frontend build
 
 # --- runtime stage ----------------------------------------------------------
-FROM nginx:1.27-alpine
+FROM nginx:1.30.4-alpine@sha256:dc5069ad14f19660b141b21236140b91656bf89bbc3e2417c70ae650cd66104c
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/frontend/dist /usr/share/nginx/html
 

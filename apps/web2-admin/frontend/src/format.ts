@@ -21,7 +21,5 @@ export function formatDuration(seconds: number): string {
   const hours = Math.floor(whole / 3600);
   const minutes = Math.floor((whole % 3600) / 60);
   const rest = whole % 60;
-  return hours > 0
-    ? `${hours}:${pad(minutes)}:${pad(rest)}`
-    : `${minutes}:${pad(rest)}`;
+  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(rest)}` : `${minutes}:${pad(rest)}`;
 }

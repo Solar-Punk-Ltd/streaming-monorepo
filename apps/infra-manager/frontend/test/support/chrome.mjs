@@ -32,6 +32,26 @@ export async function waitFor(read, accepts = Boolean, description = '', timeout
 }
 
 /**
+ * Reloads the page and returns once the old document is gone.
+ *
+ * `Page.reload` answers before the navigation replaces the document, so a wait
+ * on the page's text that follows it can be met by the page that is being
+ * thrown away, and the next read then lands on a new document that has not
+ * rendered yet. Under Vite 8 that turned deployment-layout.test.mjs red on
+ * most runs. The new document is told apart by its own time origin, and a read
+ * that throws while the navigation is under way is taken as not yet.
+ */
+export async function reloadDocument({ call, evaluate }) {
+  const before = await evaluate('performance.timeOrigin');
+  await call('Page.reload');
+  await waitFor(
+    () => evaluate('performance.timeOrigin').catch(() => before),
+    (origin) => origin !== before,
+    'the reloaded document',
+  );
+}
+
+/**
  * What a wait that ran out had in front of it, short enough for a log.
  *
  * The description says what was wanted and nothing says what arrived instead,
@@ -43,8 +63,10 @@ export async function waitFor(read, accepts = Boolean, description = '', timeout
 function lastReading(value, readAnything) {
   if (!readAnything) return 'nothing: it never read anything at all';
   if (value === undefined || value === null) return String(value);
-  const text = typeof value === 'string' ? value : JSON.stringify(value) ?? String(value);
-  return text.length > 300 ? `${JSON.stringify(text.slice(0, 300))} (cut, ${text.length} characters)` : JSON.stringify(text);
+  const text = typeof value === 'string' ? value : (JSON.stringify(value) ?? String(value));
+  return text.length > 300
+    ? `${JSON.stringify(text.slice(0, 300))} (cut, ${text.length} characters)`
+    : JSON.stringify(text);
 }
 
 /**
@@ -121,8 +143,11 @@ export async function clickWhenEnabled(evaluate, finder, description, timeoutMs)
       element.click();
       return { found: true, enabled: true };
     })()`);
-    seen = !state.found ? 'no such element on the page'
-      : state.enabled ? 'the element, enabled' : 'the element, disabled';
+    seen = !state.found
+      ? 'no such element on the page'
+      : state.enabled
+        ? 'the element, enabled'
+        : 'the element, disabled';
     return state.found && state.enabled;
   };
   try {
@@ -130,7 +155,7 @@ export async function clickWhenEnabled(evaluate, finder, description, timeoutMs)
   } catch (error) {
     // Which of the two it was decides where to look, and a bare timeout says
     // neither. The runner's log is often the only evidence a failure leaves.
-    throw new Error(`${error.message}. The last read saw ${seen}.`);
+    throw new Error(`${error.message}. The last read saw ${seen}.`, { cause: error });
   }
 }
 
@@ -145,13 +170,19 @@ export async function clickWhenEnabled(evaluate, finder, description, timeoutMs)
  * @returns {Promise<{ x: number, y: number }>} the middle of that element.
  */
 export function pointToClick(evaluate, finder, description, timeoutMs) {
-  return waitFor(() => evaluate(`(() => {
+  return waitFor(
+    () =>
+      evaluate(`(() => {
     const element = ${finder};
     if (!element || element.disabled) return null;
     element.scrollIntoView({ block: 'center' });
     const rect = element.getBoundingClientRect();
     return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-  })()`), Boolean, description, timeoutMs);
+  })()`),
+    Boolean,
+    description,
+    timeoutMs,
+  );
 }
 
 /**
@@ -175,7 +206,9 @@ export function readWhenPresent(evaluate, finder, property, description, timeout
  * input event, so the native setter and that event are what typing is here.
  */
 export function fillWhenPresent(evaluate, finder, value, description, timeoutMs) {
-  return waitFor(() => evaluate(`(() => {
+  return waitFor(
+    () =>
+      evaluate(`(() => {
     const field = ${finder};
     if (!field || field.disabled) return false;
     const shape = field.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -183,7 +216,11 @@ export function fillWhenPresent(evaluate, finder, value, description, timeoutMs)
     Object.getOwnPropertyDescriptor(shape, 'value').set.call(field, ${JSON.stringify(value)});
     field.dispatchEvent(new Event('input', { bubbles: true }));
     return true;
-  })()`), Boolean, description, timeoutMs);
+  })()`),
+    Boolean,
+    description,
+    timeoutMs,
+  );
 }
 
 /**
@@ -218,7 +255,8 @@ export async function watchCompletedRequests(evaluate, suffix) {
     }
     counts.set(${watched}, 0);
   })()`);
-  return () => evaluate(`(() => {
+  return () =>
+    evaluate(`(() => {
     const counts = window.completedRequestCounts;
     if (!counts?.has(${watched})) throw new Error('Nothing in this document is counting requests ending ' + ${watched} + '. A reload ends a count.');
     return counts.get(${watched});
@@ -271,8 +309,11 @@ export function createProtocolClient(socket, timeoutMs = PROTOCOL_TIMEOUT_MS) {
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => finish(id, null, new Error(`Chrome request timed out: ${method}`)), timeoutMs);
         pending.set(id, { resolve, reject, timer });
-        try { socket.send(JSON.stringify({ id, method, params })); }
-        catch { finish(id, null, new Error('Chrome request could not be sent')); }
+        try {
+          socket.send(JSON.stringify({ id, method, params }));
+        } catch {
+          finish(id, null, new Error('Chrome request could not be sent'));
+        }
       });
     },
   };
@@ -346,8 +387,11 @@ function hasExited(child) {
  */
 function signalTree(child, signal) {
   if (!child.pid) return;
-  try { process.kill(-child.pid, signal); }
-  catch { child.kill(signal); }
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    child.kill(signal);
+  }
 }
 
 /**
@@ -362,8 +406,12 @@ async function stopChromeTree(child) {
     if (hasExited(child)) break;
     const wait = once(child, 'exit', { signal: AbortSignal.timeout(EXIT_WAIT_MS) });
     signalTree(child, signal);
-    try { await wait; break; }
-    catch (error) { if (error.name !== 'AbortError') throw error; }
+    try {
+      await wait;
+      break;
+    } catch (error) {
+      if (error.name !== 'AbortError') throw error;
+    }
   }
   if (!hasExited(child)) throw new Error(`Owned Chrome process ${child.pid} did not exit`);
   signalTree(child, 'SIGKILL');
@@ -401,8 +449,11 @@ export async function removeProfile(profile, options = {}) {
  */
 export async function endChromeSession(reporter, child, profile, removal = {}) {
   let failure = null;
-  try { await stopChromeTree(child); }
-  catch (error) { failure = error; }
+  try {
+    await stopChromeTree(child);
+  } catch (error) {
+    failure = error;
+  }
   const leftover = await removeProfile(profile, removal);
   if (leftover) reporter.diagnostic(`Left the Chrome profile ${profile} behind: ${leftover.message}`);
   if (failure) throw failure;
@@ -410,8 +461,11 @@ export async function endChromeSession(reporter, child, profile, removal = {}) {
 
 /** The account table, or empty where there is none, which is every macOS laptop. */
 async function passwdFile() {
-  try { return await readFile('/etc/passwd', 'utf8'); }
-  catch { return ''; }
+  try {
+    return await readFile('/etc/passwd', 'utf8');
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -461,12 +515,20 @@ export function browserIdentity(currentUid, passwd) {
  */
 export function browserArguments(identity, profile) {
   return [
-    '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-    '--disable-background-networking', '--disable-component-update',
-    '--disable-default-apps', '--disable-extensions', '--disable-sync',
+    '--headless=new',
+    '--disable-gpu',
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-background-networking',
+    '--disable-component-update',
+    '--disable-default-apps',
+    '--disable-extensions',
+    '--disable-sync',
     ...(identity.sandbox ? [] : ['--no-sandbox', '--disable-dev-shm-usage']),
-    '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0',
-    `--user-data-dir=${profile}`, 'about:blank',
+    '--remote-debugging-address=127.0.0.1',
+    '--remote-debugging-port=0',
+    `--user-data-dir=${profile}`,
+    'about:blank',
   ];
 }
 
@@ -505,8 +567,7 @@ function browserGone(executable, ended, said) {
  * profile it was given are cleaned up.
  */
 export async function launchChrome(t, origin) {
-  const executable = process.env.CHROME_BIN ??
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  const executable = process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
   await access(executable);
   const profile = await mkdtemp(join(tmpdir(), 't15-chrome-'));
   const identity = browserIdentity(process.getuid?.() ?? -1, await passwdFile());
@@ -514,37 +575,53 @@ export async function launchChrome(t, origin) {
   // browser running as somebody else cannot write the very directory it was
   // told to keep its profile in.
   if (identity.runAs) await chown(profile, identity.runAs.uid, identity.runAs.gid);
-  const child = spawn(executable, browserArguments(identity, profile),
-    { stdio: ['ignore', 'pipe', 'pipe'], detached: true, ...(identity.runAs ?? {}),
-      env: browserEnvironment(identity, profile, process.env) });
+  const child = spawn(executable, browserArguments(identity, profile), {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
+    ...(identity.runAs ?? {}),
+    env: browserEnvironment(identity, profile, process.env),
+  });
   // Chrome explains a refusal on its own standard error, at once and in one
   // line, and then exits. Discarding that stream leaves a run with nothing but
   // the absence of a port file fifteen seconds later, which is how sixteen
   // suites in a container run each reported the same timeout and no
   // reason among them.
   let said = '';
-  const collect = (chunk) => { said += chunk; };
+  const collect = (chunk) => {
+    said += chunk;
+  };
   child.stdout.on('data', collect);
   child.stderr.on('data', collect);
   let ended = null;
-  child.on('exit', (code, signal) => { ended = { code, signal }; });
+  child.on('exit', (code, signal) => {
+    ended = { code, signal };
+  });
   let socket;
   t.after(async () => {
     socket?.close();
     await endChromeSession(t, child, profile);
   });
   const portFile = join(profile, 'DevToolsActivePort');
-  const port = await waitFor(async () => {
-    // A process that has exited is never going to write the file this is
-    // waiting for, so the budget is spent learning nothing.
-    if (ended) throw new Error(browserGone(executable, ended, said));
-    try { return Number((await readFile(portFile, 'utf8')).split('\n')[0]); }
-    catch { return null; }
-  }, Boolean, 'Chrome debugging port').catch((error) => {
+  const port = await waitFor(
+    async () => {
+      // A process that has exited is never going to write the file this is
+      // waiting for, so the budget is spent learning nothing.
+      if (ended) throw new Error(browserGone(executable, ended, said));
+      try {
+        return Number((await readFile(portFile, 'utf8')).split('\n')[0]);
+      } catch {
+        return null;
+      }
+    },
+    Boolean,
+    'Chrome debugging port',
+  ).catch((error) => {
     if (ended) throw error;
     throw new Error(`${error.message}. The browser is still running and said: ${saidOrNothing(said)}`);
   });
-  const tabs = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(5000) }).then((r) => r.json());
+  const tabs = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(5000) }).then((r) =>
+    r.json(),
+  );
   socket = new WebSocket(tabs.find((tab) => tab.type === 'page').webSocketDebuggerUrl);
   await once(socket, 'open', { signal: AbortSignal.timeout(5000) });
   const { call } = createProtocolClient(socket, protocolTimeoutFor());
@@ -563,21 +640,31 @@ export async function launchChrome(t, origin) {
   });
   async function evaluate(expression) {
     const response = await call('Runtime.evaluate', {
-      expression, returnByValue: true, awaitPromise: true,
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
     });
     assert.equal(response.exceptionDetails, undefined, JSON.stringify(response.exceptionDetails));
     return response.result.value;
   }
   await call('Runtime.enable');
   await call('Page.enable');
-  await call('Page.addScriptToEvaluateOnNewDocument', { source: `performance.setResourceTimingBufferSize(${RESOURCE_TIMING_BUFFER});` });
+  await call('Page.addScriptToEvaluateOnNewDocument', {
+    source: `performance.setResourceTimingBufferSize(${RESOURCE_TIMING_BUFFER});`,
+  });
   await call('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
   const throttled = await throttleCpu(call);
   const version = await call('Browser.getVersion');
   const slowedBy = throttled === null ? '' : `, CPU throttled ${throttled}x`;
   t.diagnostic(`${version.product} at ${executable}, debugging port ${port}${slowedBy}`);
   return {
-    call, evaluate, errors, blockedRequests,
-    pid: child.pid, profile, debuggingPort: port, version: version.product,
+    call,
+    evaluate,
+    errors,
+    blockedRequests,
+    pid: child.pid,
+    profile,
+    debuggingPort: port,
+    version: version.product,
   };
 }

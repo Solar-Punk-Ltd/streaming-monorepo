@@ -5,11 +5,7 @@ import { WIZARD_STEPS } from './wizardState';
 /** The four steps down the left of the dialog, with the done ones ticked. */
 export function StepRail({ step }: { step: number }) {
   return (
-    <Stack
-      component="ol"
-      spacing={1}
-      sx={{ listStyle: 'none', m: 0, p: 0, width: { sm: 180 }, flex: 'none' }}
-    >
+    <Stack component="ol" spacing={1} sx={{ listStyle: 'none', m: 0, p: 0, width: { sm: 180 }, flex: 'none' }}>
       {WIZARD_STEPS.map((label, index) => {
         const number = index + 1;
         const done = number < step;
@@ -20,7 +16,9 @@ export function StepRail({ step }: { step: number }) {
             component="li"
             direction="row"
             spacing={1}
-            alignItems="center"
+            sx={{
+              alignItems: 'center',
+            }}
           >
             <Box
               sx={{
@@ -39,8 +37,10 @@ export function StepRail({ step }: { step: number }) {
             </Box>
             <Typography
               variant="body2"
-              color={current ? 'text.primary' : 'text.secondary'}
-              fontWeight={current ? 600 : 400}
+              sx={{
+                color: current ? 'text.primary' : 'text.secondary',
+                fontWeight: current ? 600 : 400,
+              }}
             >
               {label}
             </Typography>

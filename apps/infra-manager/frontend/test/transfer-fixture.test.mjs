@@ -44,11 +44,15 @@ function collectedTeardown() {
   };
 }
 
-test('a fixture teardown that cannot write its log still closes the servers it opened', async t => {
+test('a fixture teardown that cannot write its log still closes the servers it opened', async (t) => {
   const evidenceParent = await ownedEvidenceParent(t);
   const teardown = collectedTeardown();
   const fixture = await launchTransferFixture(teardown.context, (_req, res) => json(res, 404, {}), { evidenceParent });
-  assert.match(String(fixture.managerOrigin), /^http:\/\/127\.0\.0\.1:\d+$/, 'the fixture names the synthetic API it owns');
+  assert.match(
+    String(fixture.managerOrigin),
+    /^http:\/\/127\.0\.0\.1:\d+$/,
+    'the fixture names the synthetic API it owns',
+  );
   await rm(fixture.evidence, { recursive: true, force: true });
 
   await assert.rejects(teardown.run(), { code: 'ENOENT' }, 'the hook still reports the step it could not finish');
@@ -57,29 +61,37 @@ test('a fixture teardown that cannot write its log still closes the servers it o
   await assert.rejects(fetch(fixture.origin), 'and so was the Vite in front of it');
 });
 
-test('a run with nothing to report leaves no evidence directory behind', async t => {
+test('a run with nothing to report leaves no evidence directory behind', async (t) => {
   const evidenceParent = await ownedEvidenceParent(t);
   let origin = '';
   let evidence = '';
-  await t.test('one owned fixture', async inner => {
+  await t.test('one owned fixture', async (inner) => {
     const fixture = await launchTransferFixture(inner, (_req, res) => json(res, 404, {}), { evidenceParent });
     origin = fixture.origin;
     evidence = fixture.evidence;
     assert.ok((await stat(evidence)).isDirectory(), 'the fixture has somewhere to put evidence while it runs');
   });
   assert.ok(origin.startsWith('http://127.0.0.1:'), 'the fixture served loopback only');
-  await assert.rejects(stat(evidence), { code: 'ENOENT' }, 'a fixture with nothing to report removes its own evidence directory');
+  await assert.rejects(
+    stat(evidence),
+    { code: 'ENOENT' },
+    'a fixture with nothing to report removes its own evidence directory',
+  );
   assert.deepEqual(await readdir(evidenceParent), [], 'and leaves nothing behind in the directory it was handed');
 });
 
-test('every fixture builds into the one shared Vite cache and never into one of its own', async t => {
+test('every fixture builds into the one shared Vite cache and never into one of its own', async (t) => {
   const evidenceParent = await ownedEvidenceParent(t);
   const caches = [];
   for (const name of ['first fixture', 'second fixture']) {
-    await t.test(name, async inner => {
+    await t.test(name, async (inner) => {
       const fixture = await launchTransferFixture(inner, (_req, res) => json(res, 404, {}), { evidenceParent });
       caches.push(fixture.viteCache);
-      assert.deepEqual(await readdir(fixture.evidence), [], 'the running fixture built nothing beside its own evidence');
+      assert.deepEqual(
+        await readdir(fixture.evidence),
+        [],
+        'the running fixture built nothing beside its own evidence',
+      );
     });
   }
   assert.equal(caches[0], sharedCache, 'the fixture named the one cache the transfer suites share');
@@ -87,10 +99,16 @@ test('every fixture builds into the one shared Vite cache and never into one of 
   assert.ok((await stat(caches[0])).isDirectory(), 'which is a directory the run can actually reuse');
 });
 
-test('the Vite fixture binds the port it probed and never one from the environment', async t => {
+test('the Vite fixture binds the port it probed and never one from the environment', async (t) => {
   const planted = '54291';
   process.env.T09_VITE_PORT = planted;
-  t.after(() => { delete process.env.T09_VITE_PORT; });
+  t.after(() => {
+    delete process.env.T09_VITE_PORT;
+  });
   const fixture = await launchTransferFixture(t, (_req, res) => json(res, 404, {}));
-  assert.notEqual(new URL(fixture.origin).port, planted, 'the port came from the fixture probe and not from the environment');
+  assert.notEqual(
+    new URL(fixture.origin).port,
+    planted,
+    'the port came from the fixture probe and not from the environment',
+  );
 });
