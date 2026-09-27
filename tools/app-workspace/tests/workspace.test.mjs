@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { cutLockfile } from '../lib/lockfile.mjs';
 import { Refusal } from '../lib/refusal.mjs';
 import { cutWorkspace } from '../lib/workspace.mjs';
-import { ROOT_WORKSPACE } from './support/workspace.mjs';
+import { ROOT_WORKSPACE, SHARED_ROOT_LOCKFILE, SHARED_ROOT_WORKSPACE } from './support/workspace.mjs';
 
 const ALPHA = {
   app: 'apps/alpha',
@@ -146,5 +147,58 @@ saveExact: true
       () => cutWorkspace('saveExact: true\n', ALPHA),
       (error) => error instanceof Refusal && /packages/.test(error.message),
     );
+  });
+
+  describe('with a shared package the lockfile carries', () => {
+    /** The options the cut of alpha's lockfile out of the shared root gives the workspace cut. */
+    function carriedAlpha() {
+      const lockfile = cutLockfile(SHARED_ROOT_LOCKFILE, { app: 'apps/alpha', injectWorkspacePackages: true });
+      return {
+        ...ALPHA,
+        packageNames: lockfile.packageNames,
+        projects: lockfile.projects,
+        sharedPackages: lockfile.sharedPackages,
+      };
+    }
+
+    it('lists workspace-packages/* after the app globs, and keeps the build permissions of what the package reaches', () => {
+      assert.equal(
+        cutWorkspace(SHARED_ROOT_WORKSPACE, carriedAlpha()),
+        `${header('apps/alpha')}# Every app's projects, and the repository's tools.
+packages:
+  - server
+  - common
+  - workspace-packages/*
+
+# The app's own setting, from tools/app-workspace/apps.mjs.
+injectWorkspacePackages: true
+
+allowBuilds:
+  esbuild: true # build tooling
+  fsevents: false
+
+overrides:
+  body-parser: ^2.3.0 # a reason
+  qs: ^6.16.0
+
+saveExact: true
+`,
+      );
+    });
+
+    it('lists workspace-packages/* alone for an app with no globs of its own', () => {
+      const cut = cutWorkspace(SHARED_ROOT_WORKSPACE.replace("  - 'apps/beta/packages/*'\n", ''), {
+        ...BETA,
+        projects: ['workspace-packages/contracts'],
+        sharedPackages: [{ from: 'packages/contracts', to: 'workspace-packages/contracts' }],
+      });
+
+      assert.equal(cut.includes('\npackages:\n  - workspace-packages/*\n\n'), true);
+    });
+
+    it('adds no glob, and writes the same bytes, when nothing is carried', () => {
+      assert.equal(cutWorkspace(SHARED_ROOT_WORKSPACE, { ...BETA, sharedPackages: [] }), cutWorkspace(ROOT_WORKSPACE, BETA));
+      assert.equal(cutWorkspace(ROOT_WORKSPACE, BETA).includes('workspace-packages'), false);
+    });
   });
 });
