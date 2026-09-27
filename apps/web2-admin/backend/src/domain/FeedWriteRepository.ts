@@ -41,14 +41,7 @@ export class FeedWriteRepository {
       `INSERT INTO feed_writes
          (feed_owner, feed_topic, feed_index, entry_count, payload, reference)
        VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
-      [
-        normalise(owner),
-        normalise(topic),
-        feedIndex,
-        entryCount,
-        JSON.stringify(payload),
-        reference,
-      ],
+      [normalise(owner), normalise(topic), feedIndex, entryCount, JSON.stringify(payload), reference],
     );
   }
 
@@ -72,9 +65,7 @@ export class FeedWriteRepository {
     if (!Array.isArray(row.payload)) {
       // Only this backend writes the column, so this is corruption rather than
       // someone else's format. Stop instead of rewriting the catalogue from it.
-      throw new FeedFormatError(
-        `feed_writes row at index ${row.feed_index} is not a JSON array`,
-      );
+      throw new FeedFormatError(`feed_writes row at index ${row.feed_index} is not a JSON array`);
     }
     return {
       index: row.feed_index,

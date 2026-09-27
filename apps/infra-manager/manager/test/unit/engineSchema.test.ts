@@ -12,15 +12,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  containerParamsSchema,
-  engineSettingsSchema,
-  logsQuerySchema,
-} from '../../src/schemas/engine.js';
+import { containerParamsSchema, engineSettingsSchema, logsQuerySchema } from '../../src/schemas/engine.js';
 
-const validate = <T>(schema: {
-  validate: (value: unknown, options: object) => Promise<T>;
-}, stripUnknown = true) =>
+const validate =
+  <T>(
+    schema: {
+      validate: (value: unknown, options: object) => Promise<T>;
+    },
+    stripUnknown = true,
+  ) =>
   (value: unknown): Promise<T> =>
     schema.validate(value, { abortEarly: false, stripUnknown });
 
@@ -30,10 +30,10 @@ describe('engineSettingsSchema', () => {
   const accept = validate(engineSettingsSchema, false);
 
   it('takes the keys of either engine, as strings', async () => {
-    assert.deepEqual(
-      await accept({ HLS_FRAGMENT: '2', ABR_PRESET: 'faster' }),
-      { HLS_FRAGMENT: '2', ABR_PRESET: 'faster' },
-    );
+    assert.deepEqual(await accept({ HLS_FRAGMENT: '2', ABR_PRESET: 'faster' }), {
+      HLS_FRAGMENT: '2',
+      ABR_PRESET: 'faster',
+    });
     assert.deepEqual(await accept({ HLS_SEGMENT_COUNT: '8' }), {
       HLS_SEGMENT_COUNT: '8',
     });
@@ -78,17 +78,11 @@ describe('containerParamsSchema', () => {
   });
 
   it('refuses a service name that is not in the stack', async () => {
-    await assert.rejects(
-      () => accept({ name: 'stream1', service: 'postgres' }),
-      /service must be one of this stack/,
-    );
+    await assert.rejects(() => accept({ name: 'stream1', service: 'postgres' }), /service must be one of this stack/);
   });
 
   it('refuses a deployment name the profile routes would refuse', async () => {
-    await assert.rejects(
-      () => accept({ name: '../etc', service: 'srs' }),
-      /name must match/,
-    );
+    await assert.rejects(() => accept({ name: '../etc', service: 'srs' }), /name must match/);
   });
 });
 
@@ -104,9 +98,6 @@ describe('logsQuerySchema', () => {
   });
 
   it('names the bound when there are too many lines asked for', async () => {
-    await assert.rejects(
-      () => accept({ tail: '50000' }),
-      /tail must be at most 2000 lines/,
-    );
+    await assert.rejects(() => accept({ tail: '50000' }), /tail must be at most 2000 lines/);
   });
 });

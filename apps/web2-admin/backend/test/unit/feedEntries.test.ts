@@ -18,7 +18,7 @@ import { buildFeedEntry, feedEntryState } from '../../src/domain/feedEntries.js'
 import { streamRow, TEST_OWNER } from './support/fakes.js';
 
 describe('feedEntryState', () => {
-  it('maps every admin status onto one of the viewer\'s three states', () => {
+  it("maps every admin status onto one of the viewer's three states", () => {
     const expected: Record<StreamStatus, string> = {
       draft: 'scheduled',
       publishing: 'scheduled',
@@ -36,11 +36,7 @@ describe('buildFeedEntry', () => {
   it('announces a published stream as scheduled, with no index or duration', () => {
     // `publishing` is what the row says while the publish that writes this
     // entry holds it, and that is still an announcement.
-    const entry = buildFeedEntry(
-      streamRow({ status: 'publishing' }),
-      null,
-      1_700_000_000_000,
-    );
+    const entry = buildFeedEntry(streamRow({ status: 'publishing' }), null, 1_700_000_000_000);
 
     assert.equal(entry.state, 'scheduled');
     assert.equal(entry.owner, TEST_OWNER);
@@ -97,11 +93,7 @@ describe('buildFeedEntry', () => {
   });
 
   it('accepts index 0, which is a feed index like any other', () => {
-    const entry = buildFeedEntry(
-      streamRow({ status: 'vod', manifest_index: 0, duration_seconds: 0 }),
-      null,
-      1,
-    );
+    const entry = buildFeedEntry(streamRow({ status: 'vod', manifest_index: 0, duration_seconds: 0 }), null, 1);
 
     assert.equal(entry.index, 0);
     assert.equal(entry.duration, 0);
@@ -151,23 +143,18 @@ describe('buildFeedEntry', () => {
   it('keeps the ladder on a vod entry, beside the master index', () => {
     // The entry's own `index` is the master playlist's, not a rung's: it is
     // what the viewer opens, and each rung carries its own index inside.
-    const entry = buildFeedEntry(
-      streamRow({ status: 'vod', manifest_index: 9, duration_seconds: 61.5 }),
-      null,
-      1,
-      [
-        {
-          name: '720p',
-          width: 1280,
-          height: 720,
-          topic: 'bbbbbbbb-0000-4000-8000-000000000720',
-          bandwidth: 2_800_000,
-          avgBandwidth: 2_400_000,
-          index: 42,
-          duration: 61.5,
-        },
-      ],
-    );
+    const entry = buildFeedEntry(streamRow({ status: 'vod', manifest_index: 9, duration_seconds: 61.5 }), null, 1, [
+      {
+        name: '720p',
+        width: 1280,
+        height: 720,
+        topic: 'bbbbbbbb-0000-4000-8000-000000000720',
+        bandwidth: 2_800_000,
+        avgBandwidth: 2_400_000,
+        index: 42,
+        duration: 61.5,
+      },
+    ]);
 
     assert.equal(entry.index, 9, 'the master, not the rung');
     assert.equal(entry.renditions?.[0]?.index, 42);

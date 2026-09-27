@@ -126,27 +126,31 @@ export function neverSettles(): Promise<never> {
 export function makeFakeBee(uploads: FakeUploads = {}): Bee {
   let refCounter = 0;
   return {
-    uploadData: uploads.uploadData ?? (async () => ({ reference: { toHex: () => `ref${refCounter++}` } })),
-    makeFeedReader: (topic: Topic) => ({
-      // Both shapes bee-js offers, answered the way bee-js answers them. The index comes from the
-      // no-index call and the playlist only from the indexed one, per
-      // {@link OVERSIZED_PAYLOAD_WRAPPER}. A read at an index this feed is not at is a defect rather
-      // than an empty feed, so it is refused rather than answered.
-      downloadPayload: async (opts?: { index?: FeedIndex }) => {
-        const head = uploads.feedHead ? uploads.feedHead(topicKey(topic)) : CRASHED_MID_BROADCAST;
-        if (head === null || (opts?.index !== undefined && Number(opts.index.toBigInt()) !== head.index)) {
-          throw feedNotFound();
-        }
-        const payload = opts?.index === undefined ? OVERSIZED_PAYLOAD_WRAPPER : head.manifest;
-        return { feedIndex: FeedIndex.fromBigInt(BigInt(head.index)), payload: { toUtf8: () => payload } };
-      },
-    }),
-    makeFeedWriter: (topic: Topic) => ({
-      uploadPayload: async (_stamp: string, data: unknown, opts: { index: number }) =>
-        uploads.uploadPayload
-          ? uploads.uploadPayload(opts.index, data, topicKey(topic))
-          : { reference: { toHex: () => `soc${opts.index}` } },
-    }),
+    data: {
+      upload: uploads.uploadData ?? (async () => ({ reference: { toHex: () => `ref${refCounter++}` } })),
+    },
+    feed: {
+      makeReader: (topic: Topic) => ({
+        // Both shapes bee-js offers, answered the way bee-js answers them. The index comes from the
+        // no-index call and the playlist only from the indexed one, per
+        // {@link OVERSIZED_PAYLOAD_WRAPPER}. A read at an index this feed is not at is a defect rather
+        // than an empty feed, so it is refused rather than answered.
+        downloadPayload: async (opts?: { index?: FeedIndex }) => {
+          const head = uploads.feedHead ? uploads.feedHead(topicKey(topic)) : CRASHED_MID_BROADCAST;
+          if (head === null || (opts?.index !== undefined && Number(opts.index.toBigInt()) !== head.index)) {
+            throw feedNotFound();
+          }
+          const payload = opts?.index === undefined ? OVERSIZED_PAYLOAD_WRAPPER : head.manifest;
+          return { feedIndex: FeedIndex.fromBigInt(BigInt(head.index)), payload: { toUtf8: () => payload } };
+        },
+      }),
+      makeWriter: (topic: Topic) => ({
+        uploadPayload: async (_stamp: string, data: unknown, opts: { index: number }) =>
+          uploads.uploadPayload
+            ? uploads.uploadPayload(opts.index, data, topicKey(topic))
+            : { reference: { toHex: () => `soc${opts.index}` } },
+      }),
+    },
   } as unknown as Bee;
 }
 

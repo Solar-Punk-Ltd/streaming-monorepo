@@ -15,9 +15,9 @@ import {
  * Stack settings card and the create body cannot disagree about it. Every
  * other engine setting is set in that card, once the deployment exists.
  */
-export const SEGMENT_LENGTH_FIELD: EngineSettingField = engineSettingsFields(
-  SRS_SERVICE,
-).find((field) => field.key === 'HLS_FRAGMENT')!;
+export const SEGMENT_LENGTH_FIELD: EngineSettingField = engineSettingsFields(SRS_SERVICE).find(
+  (field) => field.key === 'HLS_FRAGMENT',
+)!;
 
 /**
  * What is wrong with the typed segment length, in the words the Stack
@@ -32,9 +32,7 @@ export function segmentLengthError(value: string): string | null {
 }
 
 /** The engine settings the create body carries for it, or nothing. */
-export function segmentLengthSettings(
-  value: string,
-): EngineSettings | undefined {
+export function segmentLengthSettings(value: string): EngineSettings | undefined {
   const seconds = value.trim();
   return seconds ? { [SEGMENT_LENGTH_FIELD.key]: seconds } : undefined;
 }

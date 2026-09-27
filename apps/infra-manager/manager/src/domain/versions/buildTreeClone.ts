@@ -49,11 +49,7 @@ function isPerDeploymentEnv(name: string): boolean {
  * caller writes itself, and every deployment's own env file, which belongs to
  * the deployment rather than to the build.
  */
-export async function cloneBuildTree(
-  from: string,
-  to: string,
-  skip: ReadonlySet<string>,
-): Promise<ClonedBuildTree> {
+export async function cloneBuildTree(from: string, to: string, skip: ReadonlySet<string>): Promise<ClonedBuildTree> {
   const cloned: ClonedBuildTree = { sharing: 'linked', passedBy: [] };
   await mkdir(to, { recursive: true });
   await chmod(to, (await lstat(from)).mode & 0o777);

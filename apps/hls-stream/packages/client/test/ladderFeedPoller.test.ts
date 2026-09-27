@@ -845,8 +845,10 @@ describe('LadderFeedPoller feed health', () => {
       gateway.publishFeedHead(topic, 0, manifest(1));
 
       // Frozen, so the hold stands for the whole of the wait below and nothing returns early. What
-      // the poller is owed counts down separately, in real time, so both shapes terminate and what
-      // separates them is how often the spread was drawn rather than whether the loop ends.
+      // the poller is owed counts down separately, in real time from the poller's first ask, so both
+      // shapes terminate and what separates them is how often the spread was drawn rather than
+      // whether the loop ends. Counted from before the start instead, a machine slower than OWED_MS to
+      // reach the first ask would owe nothing, and the spread would never be drawn.
       const health = new FeedHealthTracker(() => 0);
       health.recordGatewayFailure(topic.toString());
 
@@ -857,13 +859,17 @@ describe('LadderFeedPoller feed health', () => {
       });
       const OWED_MS = 60;
       const SLICE_MS = 5;
-      const startedAt = performance.now();
+      let startedAt: number | undefined;
       // Gated on the tracker exactly as production is, so that a hold which has been lifted owes
       // nothing and no second backoff starts. The countdown itself is independent of the tracker's
       // frozen clock, which is what lets the shape this guards against terminate and be counted
       // rather than hang.
-      const owedMs = () =>
-        health.backoffRemainingMs(topic.toString()) === 0 ? 0 : Math.max(0, OWED_MS - (performance.now() - startedAt));
+      const owedMs = () => {
+        startedAt ??= performance.now();
+        return health.backoffRemainingMs(topic.toString()) === 0
+          ? 0
+          : Math.max(0, OWED_MS - (performance.now() - startedAt));
+      };
 
       const poller = new LadderFeedPoller(state, gateway.fetchResource, SLICE_MS, health, () =>
         jitter.spread(owedMs()),

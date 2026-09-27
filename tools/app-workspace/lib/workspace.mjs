@@ -33,7 +33,12 @@ function findBlock(lines, name) {
 function globPattern(glob) {
   const source = glob
     .split('**')
-    .map((part) => part.replace(/[.+^${}()|[\]\\]/g, '\\$&').replaceAll('*', '[^/]*').replaceAll('?', '[^/]'))
+    .map((part) =>
+      part
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replaceAll('*', '[^/]*')
+        .replaceAll('?', '[^/]'),
+    )
     .join('.*');
   return new RegExp(`^${source}$`);
 }
@@ -51,7 +56,9 @@ function cutGlobs(items, app) {
     }
     const literal = glob.split(GLOB_CHARACTERS)[0];
     if (GLOB_CHARACTERS.test(glob) && `${app}/`.startsWith(literal)) {
-      throw new Refusal(`The root's glob ${value} can match projects inside ${app} from outside its folder, which a cut cannot rename.`);
+      throw new Refusal(
+        `The root's glob ${value} can match projects inside ${app} from outside its folder, which a cut cannot rename.`,
+      );
     }
   }
   return kept;
@@ -61,7 +68,8 @@ function assertCovers(globs, projects, app) {
   const include = globs.filter((glob) => !glob.value.startsWith('!')).map((glob) => globPattern(glob.value));
   const exclude = globs.filter((glob) => glob.value.startsWith('!')).map((glob) => globPattern(glob.value.slice(1)));
   for (const project of projects) {
-    const listed = include.some((pattern) => pattern.test(project)) && !exclude.some((pattern) => pattern.test(project));
+    const listed =
+      include.some((pattern) => pattern.test(project)) && !exclude.some((pattern) => pattern.test(project));
     if (!listed) throw new Refusal(`The cut's globs for ${app} leave out ${project}, a project the lockfile keeps.`);
   }
 }
@@ -113,9 +121,12 @@ function allowBuildsBlock(lines, block, packageNames) {
 export function cutWorkspace(text, { app, injectWorkspacePackages, packageNames, projects }) {
   const lines = text.replace(/\n$/, '').split('\n');
   const packages = findBlock(lines, 'packages');
-  if (packages === null) throw new Refusal('The root pnpm-workspace.yaml lists no packages, so there is no project to cut.');
+  if (packages === null)
+    throw new Refusal('The root pnpm-workspace.yaml lists no packages, so there is no project to cut.');
 
-  const edits = new Map([[packages.start, { end: packages.end, lines: packagesBlock(lines, packages, { app, projects }) }]]);
+  const edits = new Map([
+    [packages.start, { end: packages.end, lines: packagesBlock(lines, packages, { app, projects }) }],
+  ]);
 
   const inject = findBlock(lines, INJECT_SETTING);
   const setting = `${INJECT_SETTING}: ${injectWorkspacePackages}`;

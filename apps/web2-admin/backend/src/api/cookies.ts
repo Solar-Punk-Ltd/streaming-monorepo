@@ -46,11 +46,7 @@ export function readSessionToken(req: Request): string | null {
   return value ? value : null;
 }
 
-export function setSessionCookie(
-  req: Request,
-  res: Response,
-  token: string,
-): void {
+export function setSessionCookie(req: Request, res: Response, token: string): void {
   res.cookie(SESSION_COOKIE_NAME, token, cookieOptions(req));
 }
 

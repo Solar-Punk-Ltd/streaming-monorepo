@@ -45,17 +45,27 @@ const { call, startRouterTestApp } = await import('../support/routerTestApp.js')
 const INSTANCE_ID = '6f1c2b1e-3a4d-4c5e-9f60-7a8b9c0d1e2f';
 
 function sessionFor(username: string): SessionInfo {
-  return { user: { id: 1, username, isAdmin: false }, tokenHash: 'not-a-token', expiresAt: new Date(Date.now() + 60_000) };
+  return {
+    user: { id: 1, username, isAdmin: false },
+    tokenHash: 'not-a-token',
+    expiresAt: new Date(Date.now() + 60_000),
+  };
 }
 
 /** A running deployment, SRS unless told otherwise, deployed once so each container has a record to compare with. */
 async function running(over: Partial<Profile> = {}) {
-  const harness = orchestratorHarness([makeProfile({ name: 'stage', stamp_id: 'a'.repeat(64), instance_id: INSTANCE_ID, ...over })]);
+  const harness = orchestratorHarness([
+    makeProfile({ name: 'stage', stamp_id: 'a'.repeat(64), instance_id: INSTANCE_ID, ...over }),
+  ]);
   await harness.orchestrator.startDeploy(harness.profiles.rows.get('stage')!, undefined);
   harness.runner.finish(0);
   await untilRunning(harness.profiles, 'stage');
-  const service = new DeploymentSettingsService(harness.profiles.asRepository(), harness.containers.asRepository(),
-    harness.orchestrator, harness.versions);
+  const service = new DeploymentSettingsService(
+    harness.profiles.asRepository(),
+    harness.containers.asRepository(),
+    harness.orchestrator,
+    harness.versions,
+  );
   const outer = Router();
   const session = sessionFor('operator');
   outer.use((req, _res, next) => {
@@ -97,7 +107,10 @@ describe('saving an engine setting from the settings page', () => {
       assert.deepEqual(harness.profiles.stackSettings.get('stage') ?? {}, {});
       assert.equal(harness.runner.runs.length, 1, 'only the first deploy ran');
       const entry = entryOf(await listed(app), 'HLS_WINDOW');
-      assert.deepEqual({ source: entry.source, storedValue: entry.storedValue }, { source: 'deployment', storedValue: '20' });
+      assert.deepEqual(
+        { source: entry.source, storedValue: entry.storedValue },
+        { source: 'deployment', storedValue: '20' },
+      );
     } finally {
       await app.close();
     }
@@ -171,7 +184,10 @@ describe('saving an engine setting from the settings page', () => {
   it('stores a stack key and an engine key of one save under one revision', async () => {
     const { app, harness } = await running();
     try {
-      const saved = await save(app, 0, [{ key: 'LOG_LEVEL', value: 'warn' }, { key: 'SRT_LATENCY', value: '3000' }]);
+      const saved = await save(app, 0, [
+        { key: 'LOG_LEVEL', value: 'warn' },
+        { key: 'SRT_LATENCY', value: '3000' },
+      ]);
 
       assert.equal(saved.status, 200, JSON.stringify(saved.body));
       assert.deepEqual(saved.body, { revision: 1 });
@@ -236,7 +252,11 @@ describe('applying a saved engine setting', () => {
     const ome = { kind: 'custom' as const, components: ['ome', 'stream-uploader', 'bee-uploader'] };
     const { behind, answer, run } = await applied('OME_HLS_POLL_INTERVAL_MS', '250', ome);
 
-    assert.deepEqual(behind, { keys: ['OME_HLS_POLL_INTERVAL_MS'], services: ['stream-uploader'], fullRedeploy: false });
+    assert.deepEqual(behind, {
+      keys: ['OME_HLS_POLL_INTERVAL_MS'],
+      services: ['stream-uploader'],
+      fullRedeploy: false,
+    });
     assert.deepEqual(answer.body, { recreated: ['stream-uploader'] });
     assert.ok(run.includes('stream-uploader'), run.join(' '));
     assert.equal(run.includes('ome'), false, run.join(' '));

@@ -106,7 +106,7 @@ export function readStackContract(root: string): StackContract {
   return {
     ports: portsWithProtocol,
     portAliases: Object.entries(OME_PORT_SOURCES).flatMap(([name, sourceName]) => {
-      const source = ports.find(port => port.name === sourceName);
+      const source = ports.find((port) => port.name === sourceName);
       const mapping = mappings.published.get(name);
       return source && mapping ? [{ ...source, name, protocol: mapping.protocol, service: mapping.service }] : [];
     }),
@@ -131,7 +131,8 @@ export function readStackContract(root: string): StackContract {
 
 /** Why no slot can be allocated on this version, or null. The first problem is the one named. */
 function allocationProblemOf(ports: StackPortVar[], problems: string[], maxSlot: number): string | null {
-  if (ports.length === 0) return `${LIB_SCRIPT} has no port table the manager could read, so it cannot reserve this version's ports.`;
+  if (ports.length === 0)
+    return `${LIB_SCRIPT} has no port table the manager could read, so it cannot reserve this version's ports.`;
   return problems[0] ?? portPlacementProblem(ports, maxSlot);
 }
 
@@ -152,7 +153,14 @@ export function portPlacementProblem(ports: readonly StackPortVar[], maxSlot: nu
   let refusal: string | undefined;
   for (let slot = 1; slot <= cap; slot += 1) {
     const problem = ports
-      .map((port) => portExposureProblem({ protocol: port.protocol, port: portFor(port, slot), portVar: port.name, service: port.service }))
+      .map((port) =>
+        portExposureProblem({
+          protocol: port.protocol,
+          port: portFor(port, slot),
+          portVar: port.name,
+          service: port.service,
+        }),
+      )
       .find((entry) => entry !== null);
     if (!problem) return null;
     refusal ??= problem;
@@ -222,9 +230,7 @@ function parsePortVars(lib: string): PortTable {
     if (port) {
       ports.push(port);
     } else {
-      warnings.push(
-        `${LIB_SCRIPT} line ${index + 1} is not NAME:default or NAME:default:slotbase: ${content}`,
-      );
+      warnings.push(`${LIB_SCRIPT} line ${index + 1} is not NAME:default or NAME:default:slotbase: ${content}`);
     }
   }
 
@@ -233,7 +239,12 @@ function parsePortVars(lib: string): PortTable {
 
 /** A line with its trailing comment and surrounding quotes taken off. */
 function contentOf(raw: string): string {
-  return raw.split('#')[0]?.trim().replace(/^["']|["']$/g, '') ?? '';
+  return (
+    raw
+      .split('#')[0]
+      ?.trim()
+      .replace(/^["']|["']$/g, '') ?? ''
+  );
 }
 
 function parsePortVarEntry(line: string): PortTableEntry | null {
@@ -258,9 +269,7 @@ function parseMaxSlot(deployScript: string): number {
 // ------------------------------------------------------------- the secrets
 
 function readRequiredSecrets(root: string): string[] {
-  return REQUIRED_SECRETS.filter(({ key, sample }) =>
-    declares(readOptional(root, sample), key),
-  ).map(({ key }) => key);
+  return REQUIRED_SECRETS.filter(({ key, sample }) => declares(readOptional(root, sample), key)).map(({ key }) => key);
 }
 
 /**
@@ -334,7 +343,7 @@ function readPortMappings(compose: string): PortMappings {
     long = null;
   };
   const record = (mapping: string | null, protocol: PortProtocol, line: number): void => {
-    const name = mapping === null ? null : PUBLISHED_VAR.exec(mapping)?.[1] ?? null;
+    const name = mapping === null ? null : (PUBLISHED_VAR.exec(mapping)?.[1] ?? null);
     if (name) {
       published.set(name, { protocol, service });
       return;

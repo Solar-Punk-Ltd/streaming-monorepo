@@ -81,7 +81,15 @@ function rigFor(t: TestContext, recorded: string | null): Rig {
         setImmediate(resolve);
       }),
   );
-  return { service, profiles, published, infoLines, settle: () => { settled = true; } };
+  return {
+    service,
+    profiles,
+    published,
+    infoLines,
+    settle: () => {
+      settled = true;
+    },
+  };
 }
 
 /**
@@ -114,9 +122,7 @@ describe('a batch bought on a deployment', () => {
 
     assert.equal(profiles.rows.get('stage')?.stamp_id, BOUGHT);
     assert.ok(
-      published.some(
-        (event) => event.type === 'profile.changed' && event.profile.stamp_id === BOUGHT,
-      ),
+      published.some((event) => event.type === 'profile.changed' && event.profile.stamp_id === BOUGHT),
       'the pages hear about the new stamp',
     );
   });

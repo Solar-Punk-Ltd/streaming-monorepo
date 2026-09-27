@@ -25,9 +25,7 @@ process.env.SHLS_ROOT = root;
 process.env.BEE_DATA_ROOT = dataRoot;
 
 const { makeProfile } = await import('../support/profileFixtures.js');
-const { orchestratorHarness, untilRunning } = await import(
-  '../support/orchestratorHarness.js'
-);
+const { orchestratorHarness, untilRunning } = await import('../support/orchestratorHarness.js');
 const { writeProfileEnv } = await import('../../src/utils/envUtils.js');
 
 const WITH_HOOK: StackContract = {
@@ -167,9 +165,7 @@ describe('a deploy with a stored config file', () => {
     harness.profiles.engineConfigs.set('plain', CONFIG);
     const file = join(dataRoot, 'plain', 'engine', 'srs.0123456789ab.conf');
     writeFileSync(join(root, '.env'), 'ENGINE=srs\n', 'utf8');
-    await import('node:fs/promises').then((fs) =>
-      fs.mkdir(join(dataRoot, 'plain', 'engine'), { recursive: true }),
-    );
+    await import('node:fs/promises').then((fs) => fs.mkdir(join(dataRoot, 'plain', 'engine'), { recursive: true }));
     writeFileSync(file, 'left over\n', 'utf8');
 
     await harness.orchestrator.startDeploy(stored, ['srs']);

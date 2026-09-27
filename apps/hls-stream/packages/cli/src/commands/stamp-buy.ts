@@ -109,7 +109,7 @@ export async function stampBuy(args: StampCommandArgs = {}, seams: StampBuySeams
   // buy. That is OPS-12's mistake exactly, and the test for this refusal is what caught it here.
   let balance: BZZ | null = null;
   try {
-    balance = (await bee.getWalletBalance()).bzzBalance;
+    balance = (await bee.wallet.getBalance()).bzzBalance;
   } catch (err) {
     warn(`Could not check the wallet balance: ${err instanceof Error ? err.message : 'unknown'}`);
     warn('Buying anyway if you confirm, but the transaction will fail if the node cannot pay.');

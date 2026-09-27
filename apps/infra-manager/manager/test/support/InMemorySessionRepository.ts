@@ -1,8 +1,4 @@
-import type {
-  NewSession,
-  SessionRepository,
-  StoredSession,
-} from '../../src/domain/auth/SessionRepository.js';
+import type { NewSession, SessionRepository, StoredSession } from '../../src/domain/auth/SessionRepository.js';
 import type { UserRepository } from '../../src/domain/auth/UserRepository.js';
 
 interface SessionRow {
@@ -61,22 +57,14 @@ export class InMemorySessionRepository implements SessionRepository {
 
   /** The other half of a password change, paired with the hash write. */
   deleteForUserExcept(userId: number, keepTokenHash: string): void {
-    this.removeWhere(
-      (row) => row.userId === userId && row.tokenHash !== keepTokenHash,
-    );
+    this.removeWhere((row) => row.userId === userId && row.tokenHash !== keepTokenHash);
   }
 
   async deleteExpired(now: Date, idleSince: Date): Promise<number> {
-    return this.removeWhere(
-      (row) => row.expiresAt <= now || row.lastSeenAt <= idleSince,
-    );
+    return this.removeWhere((row) => row.expiresAt <= now || row.lastSeenAt <= idleSince);
   }
 
-  async findLiveTokenHashes(
-    tokenHashes: readonly string[],
-    now: Date,
-    idleSince: Date,
-  ): Promise<Set<string>> {
+  async findLiveTokenHashes(tokenHashes: readonly string[], now: Date, idleSince: Date): Promise<Set<string>> {
     const live = new Set<string>();
     for (const tokenHash of tokenHashes) {
       const session = await this.findByTokenHash(tokenHash);
@@ -88,10 +76,7 @@ export class InMemorySessionRepository implements SessionRepository {
     return live;
   }
 
-  async countActiveByUser(
-    now: Date,
-    idleSince: Date,
-  ): Promise<Map<number, number>> {
+  async countActiveByUser(now: Date, idleSince: Date): Promise<Map<number, number>> {
     const counts = new Map<number, number>();
     for (const row of this.rows.values()) {
       if (row.expiresAt <= now || row.lastSeenAt <= idleSince) continue;

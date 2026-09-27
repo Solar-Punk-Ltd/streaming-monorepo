@@ -32,19 +32,27 @@ beforeEach(async () => {
   executions = join(root, '.executions');
   await mkdir(executions, { mode: 0o700 });
   store = new InMemoryExecutionRoots(executions, () => randomUUID());
-  service = new ExecutionRootService(store, executions, async target => ({
+  service = new ExecutionRootService(store, executions, async (target) => ({
     readDaemonId: async () => target.daemonId,
     listAllContainers: async () => [],
     inspectContainer: async () => null,
   }));
 });
-afterEach(async () => { await rm(root, { recursive: true, force: true }); });
+afterEach(async () => {
+  await rm(root, { recursive: true, force: true });
+});
 
 /** A copy on disk in the state a restart left it, with a row to match. */
 async function copyLeftBehind(state: ExecutionRootState): Promise<ExecutionRootRecord> {
   const record = await store.register({
     executionId: randomUUID(),
-    source: { versionId: 2, buildId: commit, commit, root: join(root, 'v3.builds', commit), artifactDigest: 'b'.repeat(64) },
+    source: {
+      versionId: 2,
+      buildId: commit,
+      commit,
+      root: join(root, 'v3.builds', commit),
+      artifactDigest: 'b'.repeat(64),
+    },
     profile: { name: 'stage', instanceId: randomUUID(), intentRevision: 1, status: 'DEPLOYING' },
     jobReferenceId: store.records.length + 1,
     target: { alias: 'localhost', daemonId: 'daemon' },
@@ -55,7 +63,8 @@ async function copyLeftBehind(state: ExecutionRootState): Promise<ExecutionRootR
   await writeFile(join(dirname(record.root), 'owner.json'), JSON.stringify({ executionId: record.executionId }));
   if (state !== 'registered') {
     const copying = (await store.beginCopy(record.executionId))!;
-    if (state === 'ready' || state === 'launch-uncertain') await store.markReady(record.executionId, copying.copyToken!, record.source.artifactDigest);
+    if (state === 'ready' || state === 'launch-uncertain')
+      await store.markReady(record.executionId, copying.copyToken!, record.source.artifactDigest);
     if (state === 'launch-uncertain') await store.claimLaunch(record.executionId);
     if (state === 'deleting') await store.claimInterruptedCopyCleanup(record.executionId);
   }
@@ -73,10 +82,10 @@ describe('the execution copies a restart left', () => {
 
     const outcome = await service.reclaimInterrupted();
 
-    assert.deepEqual(outcome.removed.sort(), left.map(record => record.executionId).sort());
+    assert.deepEqual(outcome.removed.sort(), left.map((record) => record.executionId).sort());
     assert.deepEqual(outcome.kept, []);
     for (const record of left) assert.equal(existsSync(dirname(record.root)), false);
-    assert.deepEqual(new Set(store.records.map(record => record.state)), new Set(['released']));
+    assert.deepEqual(new Set(store.records.map((record) => record.state)), new Set(['released']));
   });
 
   it('leaves a copy a job may have spawned under exactly as it is', async () => {
@@ -97,7 +106,7 @@ describe('the execution copies a restart left', () => {
       Config: { Labels: {} },
       Mounts: [{ Type: 'bind', Source: `${deleting.root}/entrypoint.sh`, Destination: '/entrypoint.sh' }],
     };
-    service = new ExecutionRootService(store, executions, async target => ({
+    service = new ExecutionRootService(store, executions, async (target) => ({
       readDaemonId: async () => target.daemonId,
       listAllContainers: async () => [{ Id: mounted.Id }],
       inspectContainer: async () => mounted,

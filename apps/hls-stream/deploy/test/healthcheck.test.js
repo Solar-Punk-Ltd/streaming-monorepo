@@ -39,7 +39,7 @@ function runProbe(apiPort) {
       process.execPath,
       ['-e', readHealthcheckProbe()],
       { env: { ...process.env, API_PORT: String(apiPort) } },
-      (error) => resolve(error ? error.code ?? -1 : 0),
+      (error) => resolve(error ? (error.code ?? -1) : 0),
     );
   });
 }
@@ -62,7 +62,7 @@ describe('stream-uploader healthcheck (OBS-17)', () => {
   });
 
   /**
-   * The reason this is a test and not a review comment: the image is `node:22-alpine`, which ships
+   * The reason this is a test and not a review comment: the image is `node:24-alpine`, which ships
    * neither curl nor wget's https support, so the obvious probe would have failed only on a real
    * deployment and only as a container that never reports healthy.
    */

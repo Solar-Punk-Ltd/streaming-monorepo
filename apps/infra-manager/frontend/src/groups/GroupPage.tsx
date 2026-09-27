@@ -1,12 +1,4 @@
-import {
-  Box,
-  Button,
-  CircularProgress,
-  Link,
-  Paper,
-  Stack,
-  Typography,
-} from '@mui/material';
+import { Box, Button, CircularProgress, Link, Paper, Stack, Typography } from '@mui/material';
 
 import { isLadderKind } from '@streaming-infra-manager/common';
 
@@ -50,7 +42,12 @@ export function GroupPage({ id }: { id: number }) {
 
   if (!profiles) {
     return (
-      <Stack alignItems="center" sx={{ py: 8 }}>
+      <Stack
+        sx={{
+          alignItems: 'center',
+          py: 8,
+        }}
+      >
         <CircularProgress />
       </Stack>
     );
@@ -72,36 +69,46 @@ export function GroupPage({ id }: { id: number }) {
     );
   }
 
-  const readiness = groupReadinessOf(
-    group,
-    members,
-    publishers.result,
-    chequebooks,
-  );
+  const readiness = groupReadinessOf(group, members, publishers.result, chequebooks);
   const startable = members.some((m) => !isRunning(m) && !isTransitional(m));
-  const streamerName =
-    streamerFor(members[0]?.feed_owner, streamersOf(profiles))?.name ?? null;
+  const streamerName = streamerFor(members[0]?.feed_owner, streamersOf(profiles))?.name ?? null;
 
   return (
     <Box>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         spacing={2}
-        alignItems={{ sm: 'flex-start' }}
-        sx={{ pt: 1.5, pb: 2.25 }}
+        sx={{
+          alignItems: { sm: 'flex-start' },
+          pt: 1.5,
+          pb: 2.25,
+        }}
       >
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           <Typography variant="caption" component="div" sx={{ mb: 1 }}>
             <Link href={routes.deployments}>Deployments</Link>
           </Typography>
-          <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Stack
+            direction="row"
+            spacing={1.25}
+            useFlexGap
+            sx={{
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
             <Typography variant="h1" sx={{ fontFamily: MONO_STACK }}>
               {group.name}
             </Typography>
             <ShapePill label={isPool ? 'ABR node pool' : 'Group'} />
             <ReadinessPill label={readiness.label} tone={readiness.tone} />
           </Stack>
-          <Typography variant="caption" color="text.secondary">
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
             {members.length} members · created {formatDate(group.created_at)} ·{' '}
             {isPool
               ? 'one Bee node per quality rung, used as upload targets by an ABR uploader'
@@ -109,28 +116,23 @@ export function GroupPage({ id }: { id: number }) {
           </Typography>
         </Box>
 
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 'none' }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          useFlexGap
+          sx={{
+            flexWrap: 'wrap',
+            flex: 'none',
+          }}
+        >
           {startable && (
-            <Button
-              variant="contained"
-              onClick={() => actions.startGroup(group, members)}
-            >
+            <Button variant="contained" onClick={() => actions.startGroup(group, members)}>
               Start all
             </Button>
           )}
-          {members.some(isRunning) && (
-            <Button onClick={() => actions.stopGroup(group, members)}>Stop all</Button>
-          )}
-          {!isPool && (
-            <Button onClick={() => openEditGroup(group.id)}>
-              Edit shared settings
-            </Button>
-          )}
-          <Button
-            color="error"
-            variant="outlined"
-            onClick={() => actions.requestRemoveGroup(group, members)}
-          >
+          {members.some(isRunning) && <Button onClick={() => actions.stopGroup(group, members)}>Stop all</Button>}
+          {!isPool && <Button onClick={() => openEditGroup(group.id)}>Edit shared settings</Button>}
+          <Button color="error" variant="outlined" onClick={() => actions.requestRemoveGroup(group, members)}>
             Remove group
           </Button>
         </Stack>
@@ -158,17 +160,17 @@ export function GroupPage({ id }: { id: number }) {
 
         {isPool ? (
           <SectionCard title="How a pool works">
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+              }}
+            >
               {POOL_EXPLAINER}
             </Typography>
           </SectionCard>
         ) : (
-          <SharedSettingsCard
-            group={group}
-            members={members}
-            serverHost={serverHost}
-            streamerName={streamerName}
-          />
+          <SharedSettingsCard group={group} members={members} serverHost={serverHost} streamerName={streamerName} />
         )}
       </Stack>
     </Box>

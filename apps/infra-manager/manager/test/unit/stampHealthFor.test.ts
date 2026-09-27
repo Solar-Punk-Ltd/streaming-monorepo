@@ -111,9 +111,7 @@ describe('StampService.stampHealthFor', () => {
   });
 
   it('reports expired at zero TTL', async () => {
-    const { service } = serviceAnswering(async () =>
-      stamp({ batchTTL: 0, usable: false }),
-    );
+    const { service } = serviceAnswering(async () => stamp({ batchTTL: 0, usable: false }));
     assert.equal((await service.stampHealthFor(PROFILE, BATCH)).state, 'expired');
   });
 
@@ -155,7 +153,7 @@ describe('StampService.stampHealthFor', () => {
 
   it('asks on a short timeout, so a dead node cannot hold the page', async () => {
     const { service, timeouts } = serviceAnswering(async () => stamp());
-    (await service.stampHealthFor(PROFILE, BATCH)).state;
+    await service.stampHealthFor(PROFILE, BATCH);
     assert.equal(timeouts.length, 1);
     assert.ok(timeouts[0]! > 0 && timeouts[0]! <= 5_000);
   });

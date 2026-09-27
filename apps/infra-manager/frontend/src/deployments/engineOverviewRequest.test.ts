@@ -3,9 +3,18 @@ import { it } from 'node:test';
 import { engineOverviewIdentity, engineOverviewIdentityKey } from '@streaming-infra-manager/common';
 import { engineOverviewRequestKey } from './engineOverviewRequest';
 
-const profile = { name: 'synthetic-engine', instance_id: 'instance-one', kind: 'custom', components: ['ome'],
-  engine_config_revision: 3, intent_revision: 4, updated_at: '2026-09-09T00:00:00.123Z',
-  stack_version_id: 2, has_engine_config: true, engine_settings: { HLS_SEGMENT_DURATION: '7' } };
+const profile = {
+  name: 'synthetic-engine',
+  instance_id: 'instance-one',
+  kind: 'custom',
+  components: ['ome'],
+  engine_config_revision: 3,
+  intent_revision: 4,
+  updated_at: '2026-09-09T00:00:00.123Z',
+  stack_version_id: 2,
+  has_engine_config: true,
+  engine_settings: { HLS_SEGMENT_DURATION: '7' },
+};
 
 it('uses the shared identity for a complete profile', () => {
   assert.equal(engineOverviewRequestKey(profile), engineOverviewIdentityKey(engineOverviewIdentity(profile)));

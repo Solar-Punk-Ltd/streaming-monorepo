@@ -75,15 +75,23 @@ describe('allocating a port slot', () => {
     assert.equal(reservations.rows.length, 0);
   });
 
-  it('takes the lowest slot whose every port is free, and reserves each port of it planned in the deployment\'s name', async () => {
+  it("takes the lowest slot whose every port is free, and reserves each port of it planned in the deployment's name", async () => {
     const { reservations, profiles } = tables();
 
-    const row = await profiles.insertWithFreeSlot('a', 'custom', 'DEPLOYING', { host: 'localhost' }, placement(TABLE_X, 100));
+    const row = await profiles.insertWithFreeSlot(
+      'a',
+      'custom',
+      'DEPLOYING',
+      { host: 'localhost' },
+      placement(TABLE_X, 100),
+    );
 
     assert.equal(row?.port_slot, 1);
     const held = await reservations.listByProfile('a');
     assert.deepEqual(
-      held.map((entry) => [entry.daemonId, entry.protocol, entry.port, entry.portVar, entry.service, entry.state]).sort(),
+      held
+        .map((entry) => [entry.daemonId, entry.protocol, entry.port, entry.portVar, entry.service, entry.state])
+        .sort(),
       [
         ['daemon-1', 'tcp', 10010, 'API_PORT', 'stream-uploader', 'planned'],
         ['daemon-1', 'udp', 10011, 'SRS_SRT_PORT', 'srs', 'planned'],
@@ -91,11 +99,17 @@ describe('allocating a port slot', () => {
     );
   });
 
-  it('skips a slot number whose ports another deployment\'s version already holds', async () => {
+  it("skips a slot number whose ports another deployment's version already holds", async () => {
     const { profiles } = tables();
     await profiles.insertWithFreeSlot('y1', 'custom', 'DEPLOYING', { host: 'localhost' }, placement(TABLE_Y, 100));
 
-    const row = await profiles.insertWithFreeSlot('x1', 'custom', 'DEPLOYING', { host: 'localhost' }, placement(TABLE_X, 100));
+    const row = await profiles.insertWithFreeSlot(
+      'x1',
+      'custom',
+      'DEPLOYING',
+      { host: 'localhost' },
+      placement(TABLE_X, 100),
+    );
 
     assert.equal(row?.port_slot, 3, 'slot 2 would bind 10020, which y1 holds from slot 1 of its own table');
   });
@@ -104,7 +118,13 @@ describe('allocating a port slot', () => {
     const { profiles } = tables();
     await profiles.insertWithFreeSlot('y1', 'custom', 'DEPLOYING', { host: 'localhost' }, placement(TABLE_Y, 100));
 
-    const row = await profiles.insertWithFreeSlot('x1', 'custom', 'DEPLOYING', { host: 'remote' }, placement(TABLE_X, 100, 'daemon-2'));
+    const row = await profiles.insertWithFreeSlot(
+      'x1',
+      'custom',
+      'DEPLOYING',
+      { host: 'remote' },
+      placement(TABLE_X, 100, 'daemon-2'),
+    );
 
     assert.equal(row?.port_slot, 2);
   });
@@ -115,18 +135,35 @@ describe('allocating a port slot', () => {
     );
     const { profiles } = tables(stored);
 
-    const hundredth = await profiles.insertWithFreeSlot('h', 'custom', 'DEPLOYING', { host: 'localhost' }, placement(TABLE_X, 100));
-    const past = await profiles.insertWithFreeSlot('more', 'custom', 'DEPLOYING', { host: 'localhost' }, placement(TABLE_X, 100));
+    const hundredth = await profiles.insertWithFreeSlot(
+      'h',
+      'custom',
+      'DEPLOYING',
+      { host: 'localhost' },
+      placement(TABLE_X, 100),
+    );
+    const past = await profiles.insertWithFreeSlot(
+      'more',
+      'custom',
+      'DEPLOYING',
+      { host: 'localhost' },
+      placement(TABLE_X, 100),
+    );
 
     assert.equal(hundredth?.port_slot, 100);
     assert.equal(past, null);
   });
 
-  it('never hands out a slot above a version\'s own maximum', async () => {
-    const stored = Array.from({ length: 99 }, (_value, index) => makeProfile({ name: `p${index}`, port_slot: index + 1 }));
+  it("never hands out a slot above a version's own maximum", async () => {
+    const stored = Array.from({ length: 99 }, (_value, index) =>
+      makeProfile({ name: `p${index}`, port_slot: index + 1 }),
+    );
     const { profiles } = tables(stored);
 
-    assert.equal(await profiles.insertWithFreeSlot('h', 'custom', 'DEPLOYING', { host: 'localhost' }, placement(TABLE_X, 99)), null);
+    assert.equal(
+      await profiles.insertWithFreeSlot('h', 'custom', 'DEPLOYING', { host: 'localhost' }, placement(TABLE_X, 99)),
+      null,
+    );
   });
 
   it('reserves a whole group or none of it', async () => {
@@ -146,9 +183,17 @@ describe('allocating a port slot', () => {
     const { reservations, profiles } = tables();
     const groups = new InMemoryGroups(profiles);
 
-    const { profiles: members } = await groups.createGroupWithMembers('g', STANDARD_GROUP_KIND, [{ name: 'g-1' }, { name: 'g-2' }], shared(TABLE_X, 100));
+    const { profiles: members } = await groups.createGroupWithMembers(
+      'g',
+      STANDARD_GROUP_KIND,
+      [{ name: 'g-1' }, { name: 'g-2' }],
+      shared(TABLE_X, 100),
+    );
 
-    assert.deepEqual(members.map((member) => member.port_slot), [1, 2]);
+    assert.deepEqual(
+      members.map((member) => member.port_slot),
+      [1, 2],
+    );
     assert.equal((await reservations.listByDaemon('daemon-1')).length, 4);
   });
 });
@@ -160,7 +205,8 @@ describe('what the allocator says when it found no slot', () => {
   });
 
   it('gives the version its own reason instead, so nobody removes a deployment that would not help', () => {
-    const reason = 'No port slot from 1 to 99 passes this version\'s port policy, so no deployment can be created from it.';
+    const reason =
+      "No port slot from 1 to 99 passes this version's port policy, so no deployment can be created from it.";
     assert.equal(new AllSlotsUsedError(99, reason).message, reason);
     assert.doesNotMatch(new AllSlotsUsedError(99, reason).message, /Remove a deployment/);
   });

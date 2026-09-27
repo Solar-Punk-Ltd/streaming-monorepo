@@ -241,7 +241,7 @@ export function parseAppStream(url: string): AppStream {
   } catch (e) {
     const errorMsg = getErrorMessage(e);
     logger.error(`[OME] URL is not parseable: ${safeUrl} (${errorMsg})`);
-    throw new Error(`Could not parse app/stream from URL: ${safeUrl} (unparseable: ${errorMsg})`);
+    throw new Error(`Could not parse app/stream from URL: ${safeUrl} (unparseable: ${errorMsg})`, { cause: e });
   }
 
   const [app, stream] = parts;

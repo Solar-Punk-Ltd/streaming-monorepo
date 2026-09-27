@@ -20,7 +20,7 @@ import { rungCountersOf, uploaderMetricsCommand, uploaderMetricsScript } from '.
  *
  * So the request is made by the container that already holds the token, with the shell inside it
  * expanding `$API_AUTH_TOKEN`, and only the exposition text comes back out. ⚠️ `node -e` rather than
- * curl, because the image is `node:22-alpine` and has neither curl nor wget. That is the same reason
+ * curl, because the image is `node:24-alpine` and has neither curl nor wget. That is the same reason
  * the compose healthcheck reaches `/health` with `node -e`, and it is recorded there too.
  *
  * ## What the parse is for
@@ -225,7 +225,7 @@ describe('the scrape program, run', () => {
         ['-e', uploaderMetricsScript()],
         { env: { API_PORT: String(port), API_AUTH_TOKEN: TOKEN }, timeout: 20_000 },
         (error, stdout, stderr) => {
-          const status = error === null ? 0 : (error as NodeJS.ErrnoException & { code?: number }).code ?? null;
+          const status = error === null ? 0 : ((error as NodeJS.ErrnoException & { code?: number }).code ?? null);
           resolve({ status: typeof status === 'number' ? status : null, stdout, stderr });
         },
       );

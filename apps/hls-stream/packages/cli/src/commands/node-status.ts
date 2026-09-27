@@ -6,12 +6,12 @@ export async function nodeStatus(urlOverride?: string): Promise<void> {
   loadEnv();
 
   await forEachNode(resolveNodeTargets(), urlOverride, async (bee) => {
-    const health = await bee.getHealth();
+    const health = await bee.status.getHealth();
     ok(`Status: ${health.status}`);
     table('Version', health.version);
 
     try {
-      const topology = await bee.getTopology();
+      const topology = await bee.connectivity.getTopology();
       table('Connected peers', String(topology.connected));
     } catch {
       table('Connected peers', 'unavailable');

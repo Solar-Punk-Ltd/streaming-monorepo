@@ -76,9 +76,12 @@ describe(`${CONFIG_EDIT_SCRIPT} run against a root`, () => {
     const out = edit(
       root,
       'set',
-      '.env', join(sources, 'env'),
-      'deploy/config.json', join(sources, 'config'),
-      'engines/srs/.env', join(sources, 'srs-env'),
+      '.env',
+      join(sources, 'env'),
+      'deploy/config.json',
+      join(sources, 'config'),
+      'engines/srs/.env',
+      join(sources, 'srs-env'),
     );
     assert.match(out, /Committed revision 1/);
     assert.equal(existsSync(join(root, CONFIG_LOCK_DIR)), false);
@@ -86,7 +89,11 @@ describe(`${CONFIG_EDIT_SCRIPT} run against a root`, () => {
     const captured = await captureHostConfig(root, { sampleEnvKeys: ['ENGINE', 'API_PORT'], lockWaitMs: 60 });
     assert.equal(captured.problem, null);
     assert.equal(captured.captured?.generation, 1);
-    assert.deepEqual([...(captured.captured?.files.keys() ?? [])].sort(), ['.env', 'deploy/config.json', 'engines/srs/.env']);
+    assert.deepEqual([...(captured.captured?.files.keys() ?? [])].sort(), [
+      '.env',
+      'deploy/config.json',
+      'engines/srs/.env',
+    ]);
 
     writeFileSync(join(root, '.env'), 'ENGINE=ome\nAPI_PORT=3000\n');
     assert.match(edit(root, 'commit'), /Committed revision 2/);
@@ -104,7 +111,12 @@ describe(`${CONFIG_EDIT_SCRIPT} run against a root`, () => {
     mkdirSync(join(root, CONFIG_LOCK_DIR));
 
     assert.throws(
-      () => execFileSync('bash', [SCRIPT, root, 'commit'], { encoding: 'utf8', env: { ...process.env, LOCK_WAIT_SECONDS_OVERRIDE: '0' }, timeout: 40_000 }),
+      () =>
+        execFileSync('bash', [SCRIPT, root, 'commit'], {
+          encoding: 'utf8',
+          env: { ...process.env, LOCK_WAIT_SECONDS_OVERRIDE: '0' },
+          timeout: 40_000,
+        }),
       /is being edited/,
     );
     assert.match(edit(root, '--unlock'), /Removed/);
@@ -118,8 +130,12 @@ describe(`${CONFIG_EDIT_SCRIPT} and the modes it leaves behind`, () => {
   // readable by anyone on the host. The umask is fixed here so the answer is
   // the script's rather than the machine's.
   let umask: number;
-  before(() => { umask = process.umask(0o022); });
-  after(() => { process.umask(umask); });
+  before(() => {
+    umask = process.umask(0o022);
+  });
+  after(() => {
+    process.umask(umask);
+  });
 
   const modeOf = (path: string): number => statSync(path).mode & 0o777;
 

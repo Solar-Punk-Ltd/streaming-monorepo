@@ -1,10 +1,6 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import {
-  type Editors,
-  EditorsProvider,
-  type WizardPrefill,
-} from '../app/EditorsContext';
+import { type Editors, EditorsProvider, type WizardPrefill } from '../app/EditorsContext';
 import { EditDeploymentDrawer } from './EditDeploymentDrawer';
 import { EditGroupDrawer } from './EditGroupDrawer';
 import { EngineConfigDialog } from './EngineConfigDialog';
@@ -46,8 +42,7 @@ export function EditorsHost({ children }: { children: ReactNode }) {
       openWizard: (prefill) => setOpen({ kind: 'wizard', prefill, seq: seq() }),
       openEditDeployment: (name) => setOpen({ kind: 'deployment', name, seq: seq() }),
       openEditGroup: (id) => setOpen({ kind: 'group', id, seq: seq() }),
-      openEngineConfig: (name) =>
-        setOpen({ kind: 'engine-config', name, seq: seq() }),
+      openEngineConfig: (name) => setOpen({ kind: 'engine-config', name, seq: seq() }),
     };
   }, []);
 
@@ -56,18 +51,10 @@ export function EditorsHost({ children }: { children: ReactNode }) {
   return (
     <EditorsProvider value={editors}>
       {children}
-      {open?.kind === 'wizard' && (
-        <NewDeploymentWizard key={open.seq} prefill={open.prefill} onClose={close} />
-      )}
-      {open?.kind === 'deployment' && (
-        <EditDeploymentDrawer key={open.seq} name={open.name} onClose={close} />
-      )}
-      {open?.kind === 'group' && (
-        <EditGroupDrawer key={open.seq} id={open.id} onClose={close} />
-      )}
-      {open?.kind === 'engine-config' && (
-        <EngineConfigDialog key={open.seq} name={open.name} onClose={close} />
-      )}
+      {open?.kind === 'wizard' && <NewDeploymentWizard key={open.seq} prefill={open.prefill} onClose={close} />}
+      {open?.kind === 'deployment' && <EditDeploymentDrawer key={open.seq} name={open.name} onClose={close} />}
+      {open?.kind === 'group' && <EditGroupDrawer key={open.seq} id={open.id} onClose={close} />}
+      {open?.kind === 'engine-config' && <EngineConfigDialog key={open.seq} name={open.name} onClose={close} />}
     </EditorsProvider>
   );
 }

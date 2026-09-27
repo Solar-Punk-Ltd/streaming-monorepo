@@ -58,11 +58,7 @@ async function readPassword(fromStdin: boolean): Promise<string> {
   return password;
 }
 
-async function addUser(
-  username: string,
-  fromStdin: boolean,
-  admin: boolean,
-): Promise<void> {
+async function addUser(username: string, fromStdin: boolean, admin: boolean): Promise<void> {
   // Checked before the prompt, so a bad name is not found out after the
   // password has been typed twice.
   const badName = usernameProblem(username);
@@ -81,9 +77,7 @@ async function addUser(
       new PostgresCredentialRepository(database.pool),
     );
     const created = await authService.addUser(username, password, { admin });
-    logger.info(
-      `[cli] created user ${username}${created.isAdmin ? ' (can manage users)' : ''}`,
-    );
+    logger.info(`[cli] created user ${username}${created.isAdmin ? ' (can manage users)' : ''}`);
   } finally {
     await database.close();
   }
@@ -91,25 +85,15 @@ async function addUser(
 
 export async function runUserAdd(argv: readonly string[]): Promise<void> {
   const flags = argv.filter((argument) => argument.startsWith('-'));
-  const unknownFlag = flags.find(
-    (flag) => flag !== PASSWORD_STDIN_FLAG && flag !== ADMIN_FLAG,
-  );
+  const unknownFlag = flags.find((flag) => flag !== PASSWORD_STDIN_FLAG && flag !== ADMIN_FLAG);
   if (unknownFlag) {
     throw new Error(`unknown option: ${unknownFlag}\n\n${USER_ADD_USAGE}`);
   }
 
-  const [username, ...extra] = argv.filter(
-    (argument) => !argument.startsWith('-'),
-  );
+  const [username, ...extra] = argv.filter((argument) => !argument.startsWith('-'));
   if (!username || extra.length > 0) {
-    throw new Error(
-      `${USER_ADD} takes exactly one username\n\n${USER_ADD_USAGE}`,
-    );
+    throw new Error(`${USER_ADD} takes exactly one username\n\n${USER_ADD_USAGE}`);
   }
 
-  await addUser(
-    username,
-    flags.includes(PASSWORD_STDIN_FLAG),
-    flags.includes(ADMIN_FLAG),
-  );
+  await addUser(username, flags.includes(PASSWORD_STDIN_FLAG), flags.includes(ADMIN_FLAG));
 }

@@ -1,10 +1,7 @@
 import { useState } from 'react';
 import { Button, Stack, TextField } from '@mui/material';
 
-import {
-  generateSrtPassphrase,
-  SRT_PASSPHRASE_MESSAGE,
-} from '@streaming-infra-manager/common';
+import { generateSrtPassphrase, SRT_PASSPHRASE_MESSAGE } from '@streaming-infra-manager/common';
 
 import { MONO_STACK } from '../app/theme';
 import { ChoiceGroup } from './ChoiceGroup';
@@ -17,8 +14,7 @@ export type PassphraseMode = 'host' | 'own';
 
 const MASK = '••••••••';
 
-const HINT =
-  'Publishers must use the new passphrase after the redeploy. The publish URL updates itself.';
+const HINT = 'Publishers must use the new passphrase after the redeploy. The publish URL updates itself.';
 
 /**
  * The passphrase question as the edit drawers ask it: the host-wide one, or
@@ -67,9 +63,7 @@ export function PassphraseField({
           {
             value: 'host',
             title: 'Use the host-wide passphrase',
-            detail: `Clears any passphrase of its own.${
-              appliesToAll ? ' Applied to every member.' : ''
-            }`,
+            detail: `Clears any passphrase of its own.${appliesToAll ? ' Applied to every member.' : ''}`,
           },
           {
             value: 'own',
@@ -84,21 +78,15 @@ export function PassphraseField({
                   disabled={masked}
                   onChange={(event) => onValueChange(event.target.value)}
                   placeholder="my-stage-passphrase-2026"
-                  inputProps={{ style: { fontFamily: MONO_STACK } }}
+                  slotProps={{
+                    htmlInput: { style: { fontFamily: MONO_STACK } },
+                  }}
                 />
-                <Button
-                  size="small"
-                  onClick={() => onValueChange(generateSrtPassphrase())}
-                  sx={{ flex: 'none' }}
-                >
+                <Button size="small" onClick={() => onValueChange(generateSrtPassphrase())} sx={{ flex: 'none' }}>
                   Generate
                 </Button>
                 {masked && (
-                  <Button
-                    size="small"
-                    onClick={() => setReplacing(true)}
-                    sx={{ flex: 'none' }}
-                  >
+                  <Button size="small" onClick={() => setReplacing(true)} sx={{ flex: 'none' }}>
                     Type another
                   </Button>
                 )}

@@ -42,7 +42,12 @@ export function asksAdminLink(state: WizardState): boolean {
 
 /** Where the group starts: on at the manager's own address when it has one, with its token when it stores one, and off otherwise. */
 function defaultChoiceOf(link: ManagerAdminLink | null | undefined): AdminLinkChoice {
-  return { on: Boolean(link?.url), url: link?.url ?? '', tokenSource: link?.tokenStored ? 'stored' : 'typed', token: '' };
+  return {
+    on: Boolean(link?.url),
+    url: link?.url ?? '',
+    tokenSource: link?.tokenStored ? 'stored' : 'typed',
+    token: '',
+  };
 }
 
 /** The choice on screen: the operator's once they touched the group, the manager's own link until then. */
@@ -99,7 +104,10 @@ export function storedTokenElsewhere(state: WizardState, context: WizardContext)
 }
 
 /** The token a test or a create presents, or why there is none to present. */
-function tokenOf(choice: AdminLinkChoice, context: WizardContext): { token: AdminLinkTokenChoice } | { problem: string } {
+function tokenOf(
+  choice: AdminLinkChoice,
+  context: WizardContext,
+): { token: AdminLinkTokenChoice } | { problem: string } {
   if (choice.tokenSource === 'stored') {
     const link = context.managerAdminLink;
     if (!link?.tokenStored) return { problem: 'the manager stores no token, so type one here' };
@@ -194,7 +202,10 @@ export function adminLinkSummary(state: WizardState, context: WizardContext): st
  * Advanced settings does not offer a second way to set them. Every other key,
  * and every key of any other deployment, is left as the list gives it.
  */
-export function withAdminLinkPointed(entries: readonly DeploymentSettingEntry[], state: WizardState): DeploymentSettingEntry[] {
+export function withAdminLinkPointed(
+  entries: readonly DeploymentSettingEntry[],
+  state: WizardState,
+): DeploymentSettingEntry[] {
   if (!asksAdminLink(state) || !takesAdminLink(entries)) return [...entries];
   return entries.map((entry) =>
     (entry.key === ADMIN_API_URL_KEY || entry.key === ADMIN_API_TOKEN_KEY) && entry.owner === null && entry.declared

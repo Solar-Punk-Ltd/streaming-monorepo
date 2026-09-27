@@ -24,9 +24,7 @@ describe('printing what the engine said', () => {
   });
 
   it('hides a webhook token in the query the template builds', () => {
-    const masked = redactEngineOutput(
-      'on_publish http://stream-uploader:3000/engines/srs/streams?token=a1b2c3d4e5;',
-    );
+    const masked = redactEngineOutput('on_publish http://stream-uploader:3000/engines/srs/streams?token=a1b2c3d4e5;');
     assert.equal(masked.includes('a1b2c3d4e5'), false, masked);
     assert.match(masked, /streams\?token=/);
   });

@@ -164,10 +164,7 @@ describe('SrtIngestHealthService.read', () => {
   });
 
   it('reads nothing for a deployment whose media server is not SRS', async () => {
-    for (const profile of [
-      { components: ['ome', 'stream-uploader', 'bee-uploader'] },
-      { kind: 'viewer' as const },
-    ]) {
+    for (const profile of [{ components: ['ome', 'stream-uploader', 'bee-uploader'] }, { kind: 'viewer' as const }]) {
       const { service, reads } = serviceOver([FIRST], profile);
 
       assert.deepEqual(await service.read('stage'), { state: SRT_INGEST_NOT_SRS, windowSeconds: 60 });

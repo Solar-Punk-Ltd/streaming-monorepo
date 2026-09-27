@@ -387,12 +387,14 @@ describe('what the wait says about the node url', () => {
  * answering.
  */
 describe('the reachability probe in front of the boot', () => {
-  const live = { url: NODE_URL, bee: { isConnected: async () => true } };
-  const dead = { url: NODE_URL, bee: { isConnected: async () => false } };
+  const live = { url: NODE_URL, bee: { connectivity: { isConnected: async () => true } } };
+  const dead = { url: NODE_URL, bee: { connectivity: { isConnected: async () => false } } };
   const refusing = {
     url: NODE_URL,
     bee: {
-      isConnected: () => Promise.reject(new Error('connect ECONNREFUSED 10.0.0.9:1633')),
+      connectivity: {
+        isConnected: () => Promise.reject(new Error('connect ECONNREFUSED 10.0.0.9:1633')),
+      },
     },
   };
 
@@ -411,7 +413,10 @@ describe('the reachability probe in front of the boot', () => {
   });
 
   it('keeps a credential out of what it says about the node', async () => {
-    const credentialled = { url: 'http://operator:hunter2@bee-a:1633', bee: { isConnected: async () => false } };
+    const credentialled = {
+      url: 'http://operator:hunter2@bee-a:1633',
+      bee: { connectivity: { isConnected: async () => false } },
+    };
 
     await assert.rejects(
       () => assertNodeReachable(credentialled),
@@ -452,7 +457,10 @@ describe('the reachability probe in front of the boot', () => {
  */
 describe('which node the report names', () => {
   class RefusalAboutANode extends Error {
-    constructor(message: string, readonly nodeUrl: string) {
+    constructor(
+      message: string,
+      readonly nodeUrl: string,
+    ) {
       super(message);
     }
   }

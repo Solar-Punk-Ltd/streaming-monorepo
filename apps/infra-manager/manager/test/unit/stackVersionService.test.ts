@@ -16,10 +16,7 @@ import { join } from 'node:path';
 import { beforeEach, describe, it } from 'node:test';
 
 import { EventBus } from '../../src/domain/EventBus.js';
-import {
-  BUILD_SCRIPT,
-  StackVersionService,
-} from '../../src/domain/versions/StackVersionService.js';
+import { BUILD_SCRIPT, StackVersionService } from '../../src/domain/versions/StackVersionService.js';
 import { repoRootFor, stagingDirFor } from '../../src/domain/versions/stackPaths.js';
 import { FakeScriptSpawner } from '../support/FakeScriptSpawner.js';
 import { InMemoryStackVersionRepository } from '../support/InMemoryStackVersionRepository.js';
@@ -59,7 +56,14 @@ beforeEach(() => {
   bus.subscribe((event) => events.push(event.type));
   // A bundled root of this test's own, so whether this checkout carries a
   // pinned stack commit changes nothing here.
-  service = new StackVersionService(repository, runner, bus, versionsRoot, { openReferences: async () => [] }, join(versionsRoot, 'bundled-tree'));
+  service = new StackVersionService(
+    repository,
+    runner,
+    bus,
+    versionsRoot,
+    { openReferences: async () => [] },
+    join(versionsRoot, 'bundled-tree'),
+  );
 });
 
 /** Waits until no version is building any more, which is when the outcome is recorded. */
@@ -185,10 +189,7 @@ describe('adding a version', () => {
   });
 
   it('refuses a name that is already taken', async () => {
-    await assert.rejects(
-      () => service.add('bundled', 'main-v2'),
-      /already exists/,
-    );
+    await assert.rejects(() => service.add('bundled', 'main-v2'), /already exists/);
   });
 
   it('refuses a branch git would read as an option, before spawning anything', async () => {
@@ -204,7 +205,7 @@ describe('adding a version', () => {
   });
 });
 
-describe('where a version\'s stack comes from', () => {
+describe("where a version's stack comes from", () => {
   it('records the monorepo on the row it adds, and then the folder its build took the stack from', async () => {
     await service.add('v3', 'main-v3');
     assert.deepEqual((await repository.findByName('v3'))?.source, { url: MONOREPO_URL, folder: null });
@@ -216,7 +217,7 @@ describe('where a version\'s stack comes from', () => {
     assert.deepEqual((await repository.findByName('v3'))?.source, { url: MONOREPO_URL, folder: MONOREPO_STACK_FOLDER });
   });
 
-  it('records the whole tree for a commit of the stack\'s own history', async () => {
+  it("records the whole tree for a commit of the stack's own history", async () => {
     await service.add('v3', 'stack/v3.4');
     built('v3', COMMIT, '.');
     runner.finish(0, 'built\n');
@@ -226,7 +227,12 @@ describe('where a version\'s stack comes from', () => {
   });
 
   it('rebuilds a version that came from swarm-hls-stream from there, as its whole tree', async () => {
-    const old = await repository.insert({ name: 'v3', gitRef: 'v3.4', rootPath: join(versionsRoot, 'v3'), sourceUrl: SWARM_HLS_STREAM_URL });
+    const old = await repository.insert({
+      name: 'v3',
+      gitRef: 'v3.4',
+      rootPath: join(versionsRoot, 'v3'),
+      sourceUrl: SWARM_HLS_STREAM_URL,
+    });
 
     await service.update(old.id);
 
@@ -278,10 +284,7 @@ describe('the build mutex', () => {
   it('refuses a second build while one is running, and names the first', async () => {
     await service.add('v3', 'main-v3');
 
-    await assert.rejects(
-      () => service.add('other', 'main-v2'),
-      /v3 is building/,
-    );
+    await assert.rejects(() => service.add('other', 'main-v2'), /v3 is building/);
     assert.equal(runner.spawned.length, 1);
   });
 
@@ -307,10 +310,7 @@ describe('the build mutex', () => {
 
   it('frees the mutex when the update is refused', async () => {
     const bundled = await repository.findByName('bundled');
-    await assert.rejects(
-      () => service.update(bundled?.id ?? 0),
-      /pins no stack commit/,
-    );
+    await assert.rejects(() => service.update(bundled?.id ?? 0), /pins no stack commit/);
 
     await service.add('v3', 'main-v3');
     assert.equal(runner.spawned.length, 1);
@@ -355,20 +355,14 @@ describe('the default version', () => {
     await settled();
     const added = await repository.findByName('v3');
 
-    await assert.rejects(
-      () => service.setDefault(added?.id ?? 0),
-      /Mark v3 as tested first/,
-    );
+    await assert.rejects(() => service.setDefault(added?.id ?? 0), /Mark v3 as tested first/);
   });
 
   it('refuses a version that has not finished building', async () => {
     await service.add('v3', 'main-v3');
     const building = await repository.findByName('v3');
 
-    await assert.rejects(
-      () => service.setDefault(building?.id ?? 0),
-      /Only a version that finished building/,
-    );
+    await assert.rejects(() => service.setDefault(building?.id ?? 0), /Only a version that finished building/);
   });
 
   it('refuses a version that does not exist', async () => {
@@ -386,20 +380,14 @@ describe('removing a version', () => {
     const added = await repository.findByName('v3');
     repository.setDeployments(added?.id ?? 0, ['main-stage', 'backup-stage']);
 
-    await assert.rejects(
-      () => service.remove(added?.id ?? 0),
-      /main-stage, backup-stage/,
-    );
+    await assert.rejects(() => service.remove(added?.id ?? 0), /main-stage, backup-stage/);
     assert.notEqual(await repository.findByName('v3'), null);
   });
 
   it('refuses the bundled version, which comes with the manager', async () => {
     const bundled = await repository.findByName('bundled');
 
-    await assert.rejects(
-      () => service.remove(bundled?.id ?? 0),
-      /cannot be removed/,
-    );
+    await assert.rejects(() => service.remove(bundled?.id ?? 0), /cannot be removed/);
   });
 
   it('refuses the version that carries the default badge', async () => {
@@ -426,10 +414,7 @@ describe('removing a version', () => {
     await service.add('v3', 'main-v3');
     const building = await repository.findByName('v3');
 
-    await assert.rejects(
-      () => service.remove(building?.id ?? 0),
-      /is building/,
-    );
+    await assert.rejects(() => service.remove(building?.id ?? 0), /is building/);
   });
 });
 
@@ -552,22 +537,15 @@ describe('a build the manager was restarted during', () => {
     await service.add('v3', 'main-v3');
     // No finish: this is a manager that went away mid-build. A fresh service
     // over the same table is what the next boot has.
-    const rebooted = new StackVersionService(
-      repository,
-      new FakeScriptSpawner(),
-      bus,
-      versionsRoot,
-      { openReferences: async () => [] },
-    );
+    const rebooted = new StackVersionService(repository, new FakeScriptSpawner(), bus, versionsRoot, {
+      openReferences: async () => [],
+    });
 
     assert.deepEqual(await rebooted.failInterruptedBuilds(), ['v3']);
 
     const version = await repository.findByName('v3');
     assert.equal(version?.status, 'failed');
-    assert.equal(
-      version?.lastError,
-      'Interrupted by a manager restart. Update the version to build it again.',
-    );
+    assert.equal(version?.lastError, 'Interrupted by a manager restart. Update the version to build it again.');
   });
 
   it('leaves a ready version alone and says nothing was interrupted', async () => {

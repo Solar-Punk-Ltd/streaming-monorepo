@@ -1,7 +1,5 @@
 import { createChequebookOperationsService } from './domain/chequebook/createChequebookOperationsService.js';
-import { configuredBeeRpcEndpoint, getErrorStack, plurToBzz,
-  getErrorMessage,
-} from '@streaming-infra-manager/common';
+import { configuredBeeRpcEndpoint, getErrorStack, plurToBzz, getErrorMessage } from '@streaming-infra-manager/common';
 
 import { ApiServerHandle, startApiServer } from './api/server.js';
 import { AuthService } from './domain/auth/AuthService.js';
@@ -10,10 +8,7 @@ import { PostgresCredentialRepository } from './domain/auth/PostgresCredentialRe
 import { PostgresSessionRepository } from './domain/auth/PostgresSessionRepository.js';
 import { PostgresUserRepository } from './domain/auth/PostgresUserRepository.js';
 import { SessionSweep, startSessionSweep } from './domain/auth/sessionSweep.js';
-import {
-  StreamRevalidation,
-  startStreamRevalidation,
-} from './domain/auth/streamRevalidation.js';
+import { StreamRevalidation, startStreamRevalidation } from './domain/auth/streamRevalidation.js';
 import { ChequebookService } from './domain/ChequebookService.js';
 import { ContainerControl } from './domain/ContainerControl.js';
 import { ContainerRepository } from './domain/ContainerRepository.js';
@@ -75,14 +70,10 @@ function redactDatabaseUrl(url: string): string {
 function logStartupConfig(): void {
   logger.info('[Boot] configuration:');
   logger.info(`[Boot]   listen: ${config.host}:${config.port}`);
-  logger.info(
-    `[Boot]   publicHost: ${config.publicHost || '(unset → localhost)'}`,
-  );
+  logger.info(`[Boot]   publicHost: ${config.publicHost || '(unset → localhost)'}`);
   logger.info(`[Boot]   serverHost (resolved): ${resolveServerHost()}`);
   logger.info(`[Boot]   logLevel: ${config.logLevel}`);
-  logger.info(
-    `[Boot]   chequebookFloor: ${plurToBzz(config.chequebookFloorPlur)} BZZ`,
-  );
+  logger.info(`[Boot]   chequebookFloor: ${plurToBzz(config.chequebookFloorPlur)} BZZ`);
   logger.info(`[Boot]   database: ${redactDatabaseUrl(config.databaseUrl)}`);
   // The host alone, never the URL: an endpoint can carry an API key, and this
   // line goes to the log.
@@ -122,10 +113,16 @@ async function gracefulShutdown(signal: string): Promise<void> {
       metricsCollector.stop();
       metricsCollector = undefined;
     }
-    const [apiClosed, transferCleanup] = await Promise.allSettled([apiServer?.close(), chequebookOperations?.shutdown()]);
+    const [apiClosed, transferCleanup] = await Promise.allSettled([
+      apiServer?.close(),
+      chequebookOperations?.shutdown(),
+    ]);
     if (transferCleanup.status === 'rejected') throw new Error('Transfer transport cleanup could not be verified.');
     for (const outcome of transferCleanup.value ?? []) {
-      if (outcome.state === 'unverified') logger.warn(`[Shutdown] transfer transport ${outcome.leaseId}: ${outcome.reason} (${outcome.remaining.join(', ')})`);
+      if (outcome.state === 'unverified')
+        logger.warn(
+          `[Shutdown] transfer transport ${outcome.leaseId}: ${outcome.reason} (${outcome.remaining.join(', ')})`,
+        );
     }
     if (apiClosed.status === 'rejected') throw new Error('API shutdown could not be verified.');
     apiServer = undefined;
@@ -169,18 +166,12 @@ async function main(): Promise<void> {
   }
 
   const scriptRunner = new ScriptRunner();
-  const stackVersionRepository = new PostgresStackVersionRepository(
-    database.pool,
-  );
+  const stackVersionRepository = new PostgresStackVersionRepository(database.pool);
   // Ahead of the profiles: the versions are what deployments run on.
   const containerControl = new ContainerControl(eventBus);
   // Which build each deployment runs on. The claim writes it, the success
   // hook and boot observe the containers, and prune keeps what they mount.
-  const buildLedger = new PostgresBuildLedger(
-    database.pool,
-    containerControl,
-    config.stackVersionsRoot,
-  );
+  const buildLedger = new PostgresBuildLedger(database.pool, containerControl, config.stackVersionsRoot);
   // The private copy each deployment runs its scripts from, so a build is
   // never written into by a deploy. Under the versions root, which the api
   // container sees at the same absolute path the host does.
@@ -188,7 +179,7 @@ async function main(): Promise<void> {
   const executionRoots = new ExecutionRootService(
     new PostgresExecutionRootRepository(database.pool, executionsParent),
     executionsParent,
-    async target => isLocalTarget(target.alias) ? containerControl.executionMountReader() : null,
+    async (target) => (isLocalTarget(target.alias) ? containerControl.executionMountReader() : null),
   );
   const stackVersionService = new StackVersionService(
     stackVersionRepository,
@@ -201,9 +192,7 @@ async function main(): Promise<void> {
 
   const interruptedBuilds = await stackVersionService.failInterruptedBuilds();
   if (interruptedBuilds.length > 0) {
-    logger.warn(
-      `[Boot] stack version builds interrupted by a restart: ${interruptedBuilds.join(', ')}`,
-    );
+    logger.warn(`[Boot] stack version builds interrupted by a restart: ${interruptedBuilds.join(', ')}`);
   }
 
   const profileRepository = new ProfileRepository(database.pool);
@@ -224,10 +213,7 @@ async function main(): Promise<void> {
   // After the containers were observed, so a bundled build one still mounts
   // has its reference before anything prunes.
   try {
-    await stackVersionService.syncBundled(
-      BUNDLED_STACK_ROOT,
-      readBundledCommit(BUNDLED_STACK_ROOT),
-    );
+    await stackVersionService.syncBundled(BUNDLED_STACK_ROOT, readBundledCommit(BUNDLED_STACK_ROOT));
   } catch (err) {
     logger.warn(`[Boot] the bundled version was not synced: ${getErrorMessage(err)}`);
   }
@@ -252,24 +238,14 @@ async function main(): Promise<void> {
     logger.warn(`[Boot] the pinned stack commit was not built: ${getErrorMessage(err)}. The api starts either way.`);
   }
 
-  const deploymentGroupRepository = new DeploymentGroupRepository(
-    database.pool,
-  );
+  const deploymentGroupRepository = new DeploymentGroupRepository(database.pool);
   // Ahead of the orchestrator and ProfileService: the uploader gate asks it
   // whether a batch is still usable, and a ladder's readiness depends on what
   // each rung's bee node says about its own.
-  const stampService = new StampService(
-    profileRepository,
-    containerRepository,
-    eventBus,
-  );
+  const stampService = new StampService(profileRepository, containerRepository, eventBus);
   // A drained chequebook is the stamp failure one layer down: peers stop
   // forwarding what the node cannot pay them for. The gate asks about both.
-  const chequebookService = new ChequebookService(
-    profileRepository,
-    config.chequebookFloorPlur,
-    eventBus,
-  );
+  const chequebookService = new ChequebookService(profileRepository, config.chequebookFloorPlur, eventBus);
   // What an uploader says about itself, which since D16 includes a Bee node it
   // may still be waiting for. It reads the version's port table for the API
   // port of the deployment's own slot.
@@ -292,21 +268,25 @@ async function main(): Promise<void> {
   const targetDocker = new TargetDocker(containerControl);
   // SRS's own count of the packets its SRT publishers lost and dropped, read
   // out of the engine's log on whichever host the deployment runs on.
-  const srtIngestHealthService = new SrtIngestHealthService(
-    profileRepository,
-    targetDocker,
-  );
-  const deployTargets = new VerifiedDeployTargets(
-    new PostgresDeployTargetRepository(database.pool),
-    targetDocker,
-  );
+  const srtIngestHealthService = new SrtIngestHealthService(profileRepository, targetDocker);
+  const deployTargets = new VerifiedDeployTargets(new PostgresDeployTargetRepository(database.pool), targetDocker);
   try {
     await deployTargets.verify('localhost');
   } catch {
     logger.warn('[Boot] The local Docker target could not be verified. Port allocation stays blocked for it.');
   }
-  const portInventory = new PortInventory(profileRepository, stackVersionRepository, portReservations, deployTargets, targetDocker);
-  const firewallInventory = new FirewallInventoryExporter(new PostgresFirewallStateSource(database.pool), targetDocker, new ImmutableFirewallContractReader());
+  const portInventory = new PortInventory(
+    profileRepository,
+    stackVersionRepository,
+    portReservations,
+    deployTargets,
+    targetDocker,
+  );
+  const firewallInventory = new FirewallInventoryExporter(
+    new PostgresFirewallStateSource(database.pool),
+    targetDocker,
+    new ImmutableFirewallContractReader(),
+  );
   try {
     await portInventory.seed();
   } catch (err) {
@@ -314,10 +294,7 @@ async function main(): Promise<void> {
   }
   // The rollouts of config files, which the orchestrator closes when an
   // operator acts on the deployment and the config service acts through.
-  const engineConfigOperations = new PostgresEngineConfigOperationRepository(
-    database.pool,
-    config.stackVersionsRoot,
-  );
+  const engineConfigOperations = new PostgresEngineConfigOperationRepository(database.pool, config.stackVersionsRoot);
   const orchestrator = new DeploymentOrchestrator(
     profileRepository,
     containerRepository,
@@ -340,7 +317,9 @@ async function main(): Promise<void> {
   try {
     const judged = await orchestrator.reconcileAttempts();
     if (judged.released.length > 0 || judged.blocked.length > 0) {
-      logger.info(`[Boot] deploy attempts judged: released ${judged.released.join(', ') || 'none'}, blocked ${judged.blocked.join(', ') || 'none'}`);
+      logger.info(
+        `[Boot] deploy attempts judged: released ${judged.released.join(', ') || 'none'}, blocked ${judged.blocked.join(', ') || 'none'}`,
+      );
     }
   } catch (err) {
     logger.warn(`[Boot] the deploy attempts were not judged: ${getErrorMessage(err)}. They stay as they are.`);
@@ -396,10 +375,7 @@ async function main(): Promise<void> {
   await engineConfigService.reconcileAtBoot();
 
   metricsCollector = new MetricsCollector();
-  metricsCollector.setManagedProjectsProvider(
-    async () => new Set((await profileRepository.list()).map((p) => p.name)),
-  );
-
+  metricsCollector.setManagedProjectsProvider(async () => new Set((await profileRepository.list()).map((p) => p.name)));
 
   apiServer = startApiServer(
     {
@@ -415,7 +391,12 @@ async function main(): Promise<void> {
       srtIngestHealthService,
       containerControl,
       engineConfigService,
-      deploymentSettingsService: new DeploymentSettingsService(profileRepository, containerRepository, orchestrator, stackVersionRepository),
+      deploymentSettingsService: new DeploymentSettingsService(
+        profileRepository,
+        containerRepository,
+        orchestrator,
+        stackVersionRepository,
+      ),
       managerAdminLinkService: new ManagerAdminLinkService(managerAdminLink),
       adminLinkTester: new AdminLinkTester(managerAdminLink, profileRepository, orchestrator),
       stackVersionService,
@@ -437,8 +418,9 @@ function stop() {
   setTimeout(() => process.exit(1), 1000).unref();
 }
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+// gracefulShutdown catches every failure and exits with its status, so the signal need not await it.
+process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
 
 process.on('uncaughtException', (error) => {
   logger.error('Uncaught Exception:', error);

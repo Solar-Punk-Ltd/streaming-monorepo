@@ -1,11 +1,4 @@
-import {
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-} from '@mui/material';
+import { Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle } from '@mui/material';
 import type { ReactNode } from 'react';
 
 export interface ConfirmRequest {
@@ -16,13 +9,7 @@ export interface ConfirmRequest {
   onConfirm: () => void;
 }
 
-export function ConfirmDialog({
-  request,
-  onClose,
-}: {
-  request: ConfirmRequest | null;
-  onClose: () => void;
-}) {
+export function ConfirmDialog({ request, onClose }: { request: ConfirmRequest | null; onClose: () => void }) {
   return (
     <Dialog open={request !== null} onClose={onClose} maxWidth="xs" fullWidth>
       <DialogTitle>{request?.title}</DialogTitle>

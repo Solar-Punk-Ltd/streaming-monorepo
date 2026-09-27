@@ -17,21 +17,15 @@ import {
 
 describe('formatHumanDateTime', () => {
   it('pads a single-digit day, month, hour and minute', () => {
-    expect(formatHumanDateTime(new Date(2026, 0, 5, 9, 7))).toBe(
-      '05/01/2026 09:07',
-    );
+    expect(formatHumanDateTime(new Date(2026, 0, 5, 9, 7))).toBe('05/01/2026 09:07');
   });
 
   it('writes midnight as 00:00 rather than 24:00 or 12 AM', () => {
-    expect(formatHumanDateTime(new Date(2026, 8, 20, 0, 0))).toBe(
-      '20/09/2026 00:00',
-    );
+    expect(formatHumanDateTime(new Date(2026, 8, 20, 0, 0))).toBe('20/09/2026 00:00');
   });
 
   it('keeps the 24-hour clock in the afternoon', () => {
-    expect(formatHumanDateTime(new Date(2026, 11, 31, 23, 59))).toBe(
-      '31/12/2026 23:59',
-    );
+    expect(formatHumanDateTime(new Date(2026, 11, 31, 23, 59))).toBe('31/12/2026 23:59');
   });
 
   it('spells the same shape the picker is told to render', () => {

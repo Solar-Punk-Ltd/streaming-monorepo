@@ -43,13 +43,16 @@ export function SrtIngestCard({
       actions={<ReadinessPill label={view.pill.label} tone={view.pill.tone} />}
     >
       <Stack spacing={2}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {view.summary}
         </Typography>
 
-        {view.rows.length > 0 && (
-          <KeyValueList entries={view.rows.map(countEntry)} labelWidth={150} />
-        )}
+        {view.rows.length > 0 && <KeyValueList entries={view.rows.map(countEntry)} labelWidth={150} />}
 
         {view.verdict && <Typography variant="body2">{view.verdict}</Typography>}
 
@@ -91,7 +94,12 @@ function countEntry(row: SrtIngestRow): KeyValueEntry {
         <Box component="span" sx={{ fontFamily: MONO_STACK }}>
           {row.value}
         </Box>
-        <Typography variant="caption" color="text.secondary">
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {row.detail}
         </Typography>
       </Stack>

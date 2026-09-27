@@ -17,19 +17,27 @@ function setup(expectedId?: string) {
     makeProfile({ name: 'alias', host: 'admin@edge', port_slot: 2, components: ['srs'] }),
     makeProfile({ name: 'local', host: 'localhost', port_slot: 3, components: ['srs'] }),
   ];
-  const h = orchestratorHarness(profiles, undefined, undefined,
-    expectedId ? { daemonIdFor: async () => expectedId } : undefined);
+  const h = orchestratorHarness(
+    profiles,
+    undefined,
+    undefined,
+    expectedId ? { daemonIdFor: async () => expectedId } : undefined,
+  );
   h.daemon.autoRecreate = false;
   let remoteId = 'remote-daemon';
   let remoteContainer = 'remote-old';
-  h.daemon.daemonId = async (target = 'localhost') => target === 'localhost' ? 'local-daemon' : remoteId;
+  h.daemon.daemonId = async (target = 'localhost') => (target === 'localhost' ? 'local-daemon' : remoteId);
   h.daemon.observe = async (_project, target = 'localhost') =>
     new Map([['srs', [{ id: target === 'localhost' ? 'local-new' : remoteContainer, state: 'running' }]]]);
   return {
     ...h,
     row: (name: string) => h.profiles.rows.get(name)!,
-    move: () => { remoteId = 'different-daemon'; },
-    recreate: () => { remoteContainer = 'remote-new'; },
+    move: () => {
+      remoteId = 'different-daemon';
+    },
+    recreate: () => {
+      remoteContainer = 'remote-new';
+    },
   };
 }
 
@@ -37,10 +45,22 @@ describe('deploy attempts on their target daemon', () => {
   it('requires inventory for deploy admission but never for Stop or Remove identity checks', async () => {
     const stored = [makeProfile({ name: 'incomplete', status: 'RUNNING', components: ['srs'] })];
     let scans = 0;
-    const h = orchestratorHarness(stored, undefined, undefined,
+    const h = orchestratorHarness(
+      stored,
+      undefined,
+      undefined,
       { daemonIdFor: async () => 'daemon-1' },
-      { daemonIdFor: async () => { scans += 1; throw new Error('inventory cannot parse the old contract'); } });
-    await assert.rejects(h.orchestrator.startDeploy(h.profiles.rows.get('incomplete')!, ['srs']), /inventory cannot parse/);
+      {
+        daemonIdFor: async () => {
+          scans += 1;
+          throw new Error('inventory cannot parse the old contract');
+        },
+      },
+    );
+    await assert.rejects(
+      h.orchestrator.startDeploy(h.profiles.rows.get('incomplete')!, ['srs']),
+      /inventory cannot parse/,
+    );
     assert.equal(scans, 1);
     assert.equal(h.runner.runs.length, 0);
     await h.orchestrator.startStop(h.profiles.rows.get('incomplete')!, undefined);
@@ -62,12 +82,17 @@ describe('deploy attempts on their target daemon', () => {
     await assert.rejects(h.orchestrator.startDeploy(h.row('remote'), ['srs']), /different Docker daemon/);
     assert.equal(h.runner.runs.length, 0);
     assert.equal(h.attempts.rows.length, 0);
-    assert.deepEqual(h.ledger.openJobReferences('remote').map(reference => reference.id), [older.referenceId]);
+    assert.deepEqual(
+      h.ledger.openJobReferences('remote').map((reference) => reference.id),
+      [older.referenceId],
+    );
   });
 
   it('retains the job reference if runner invocation throws with an uncertain launch outcome', async () => {
     const h = setup('remote-daemon');
-    h.runner.run = () => { throw new Error('unknown runner outcome'); };
+    h.runner.run = () => {
+      throw new Error('unknown runner outcome');
+    };
     await assert.rejects(h.orchestrator.startDeploy(h.row('remote'), ['srs']), /unknown runner outcome/);
     assert.equal(h.ledger.openJobReferences('remote').length, 1);
     assert.equal(h.attempts.rows.length, 1);
@@ -112,7 +137,10 @@ describe('deploy attempts on their target daemon', () => {
     await h.orchestrator.startDeploy(h.row('remote'), ['srs']);
     await assert.rejects(h.orchestrator.startDeploy(h.row('alias'), ['srs']), /remote/);
     await h.orchestrator.startDeploy(h.row('local'), ['srs']);
-    assert.deepEqual(h.attempts.rows.map((row) => row.daemonId), ['remote-daemon', 'local-daemon']);
+    assert.deepEqual(
+      h.attempts.rows.map((row) => row.daemonId),
+      ['remote-daemon', 'local-daemon'],
+    );
   });
 
   it('judges completion using the same remote target, never the local project', async () => {

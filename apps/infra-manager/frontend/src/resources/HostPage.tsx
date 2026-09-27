@@ -17,36 +17,45 @@ import { DeployTargetsCard } from './DeployTargetsCard';
  * Docker at all, so it only runs while this page is open.
  */
 export function HostPage() {
-  return <Stack spacing={2}><DeployTargetsCard /><HostMetrics /></Stack>;
+  return (
+    <Stack spacing={2}>
+      <DeployTargetsCard />
+      <HostMetrics />
+    </Stack>
+  );
 }
 
 function HostMetrics() {
-  const { snapshot, history, connected, stale, staleSeconds, fetchProfileDiskBytes } =
-    useMetrics();
-  const [diskByProject, setDiskByProject] = useState<Map<string, number | null>>(
-    new Map(),
-  );
+  const { snapshot, history, connected, stale, staleSeconds, fetchProfileDiskBytes } = useMetrics();
+  const [diskByProject, setDiskByProject] = useState<Map<string, number | null>>(new Map());
   const requested = useRef<Set<string>>(new Set());
 
   const onExpandProject = useCallback(
     (project: string) => {
       if (requested.current.has(project)) return;
       requested.current.add(project);
-      void fetchProfileDiskBytes(project).then((size) =>
-        setDiskByProject((prev) => new Map(prev).set(project, size)),
-      );
+      void fetchProfileDiskBytes(project).then((size) => setDiskByProject((prev) => new Map(prev).set(project, size)));
     },
     [fetchProfileDiskBytes],
   );
 
   if (!snapshot) {
     return (
-      <Stack alignItems="center" spacing={2} sx={{ py: 8 }}>
+      <Stack
+        spacing={2}
+        sx={{
+          alignItems: 'center',
+          py: 8,
+        }}
+      >
         <CircularProgress />
-        <Typography variant="body2" color="text.secondary">
-          {connected
-            ? 'Waiting for the first sample…'
-            : 'Connecting to the metrics stream…'}
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
+          {connected ? 'Waiting for the first sample…' : 'Connecting to the metrics stream…'}
         </Typography>
       </Stack>
     );

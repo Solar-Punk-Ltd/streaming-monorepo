@@ -73,13 +73,13 @@ and nothing offers to fill a field from something the operator already runs.
 Hash routes, so the nginx and vite proxies for `/profiles`, `/groups`, `/metrics` and friends
 are never in the way and no server config changes.
 
-| hash | page |
-|---|---|
-| `#/` | Overview |
-| `#/deployments` | Deployments list |
-| `#/deployments/<name>` | Deployment page |
-| `#/groups/<id>` | Group page |
-| `#/host` | Host |
+| hash                   | page             |
+| ---------------------- | ---------------- |
+| `#/`                   | Overview         |
+| `#/deployments`        | Deployments list |
+| `#/deployments/<name>` | Deployment page  |
+| `#/groups/<id>`        | Group page       |
+| `#/host`               | Host             |
 
 `useRoute()` parses `location.hash` and re-renders on `hashchange`. `navigate(route)` sets the
 hash. Unknown hashes render the Overview.
@@ -94,13 +94,13 @@ or `ome` inside that list.
 
 **Shape** (the plain-words type), from the services, not from `kind`:
 
-| shape | rule | label |
-|---|---|---|
-| `abr-uploader` | `kind === ABR_UPLOADER_KIND` | ABR uploader |
-| `stream` | services include `stream-uploader` and an engine | Stream |
-| `viewer` | services include `client` | Viewer |
-| `bee-node` | `isBeeNodeOnly(profile)` | Bee node (a pool rung shows its rung too) |
-| `custom` | anything else | Custom |
+| shape          | rule                                             | label                                     |
+| -------------- | ------------------------------------------------ | ----------------------------------------- |
+| `abr-uploader` | `kind === ABR_UPLOADER_KIND`                     | ABR uploader                              |
+| `stream`       | services include `stream-uploader` and an engine | Stream                                    |
+| `viewer`       | services include `client`                        | Viewer                                    |
+| `bee-node`     | `isBeeNodeOnly(profile)`                         | Bee node (a pool rung shows its rung too) |
+| `custom`       | anything else                                    | Custom                                    |
 
 **Readiness** (`readinessOf(profile, health?)` returns `{ label, tone }`, tone is one of
 `ok | warn | err | info | gray`). `health` is the optional `StampHealth` from the node, known
@@ -351,16 +351,16 @@ or Create pool (4 nodes).
 **Payloads.** Validation regexes move to `frontend/src/forms/validation.ts` (name, host,
 address, private key, stamp id) and are shared with the drawers.
 
-| goal | call |
-|---|---|
+| goal           | call                                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Stream, single | `createProfile({ name, kind: 'streamer', host, notes, components, private_key, public_key, stamp_id?, srt_passphrase?, bee_url? })`. `components` is the default list with `ome` swapped in for `srs` when chosen, and without `bee-uploader` when an external node is chosen (then `bee_url` is set). `public_key` is `privateKeyToAccount(key).address`. Host passphrase means the field is omitted. |
-| Stream, group | `createDeploymentGroup({ group_name, size, kind: 'streamer', host, notes, components, private_key, public_key, stamp_id?, srt_passphrase? })` |
-| Viewer, single | `createProfile({ name, kind: 'viewer', host, notes, feed_owner })` |
-| Viewer, group | `createDeploymentGroup({ group_name, size, kind: 'viewer', host, notes, feed_owner })` |
-| ABR node pool | `createDeploymentGroup({ group_name, size: ABR_LADDER_SIZE, abr_ladder: true, kind: 'custom', host, notes })` |
-| ABR uploader | `createProfile({ name, kind: 'abr-uploader', host, notes, bee_publishers, private_key, public_key, srt_passphrase? })` |
-| Custom, single | `createProfile({ name, kind: 'custom', host, notes, components, ...the fields its components need })` |
-| Custom, group | `createDeploymentGroup({ ... same, without bee_url })` |
+| Stream, group  | `createDeploymentGroup({ group_name, size, kind: 'streamer', host, notes, components, private_key, public_key, stamp_id?, srt_passphrase? })`                                                                                                                                                                                                                                                          |
+| Viewer, single | `createProfile({ name, kind: 'viewer', host, notes, feed_owner })`                                                                                                                                                                                                                                                                                                                                     |
+| Viewer, group  | `createDeploymentGroup({ group_name, size, kind: 'viewer', host, notes, feed_owner })`                                                                                                                                                                                                                                                                                                                 |
+| ABR node pool  | `createDeploymentGroup({ group_name, size: ABR_LADDER_SIZE, abr_ladder: true, kind: 'custom', host, notes })`                                                                                                                                                                                                                                                                                          |
+| ABR uploader   | `createProfile({ name, kind: 'abr-uploader', host, notes, bee_publishers, private_key, public_key, srt_passphrase? })`                                                                                                                                                                                                                                                                                 |
+| Custom, single | `createProfile({ name, kind: 'custom', host, notes, components, ...the fields its components need })`                                                                                                                                                                                                                                                                                                  |
+| Custom, group  | `createDeploymentGroup({ ... same, without bee_url })`                                                                                                                                                                                                                                                                                                                                                 |
 
 After a successful call: merge the returned profiles into the store, reload groups, close, toast
 "Deploying <name>…", and navigate to the new deployment's page, or the group's page for a group
@@ -396,8 +396,8 @@ could never go back to the host passphrase. Change `UpdateGroupConfigBody.srt_pa
 ## Shared pieces
 
 - `frontend/src/app/theme.ts`: `createTheme({ cssVariables: { colorSchemeSelector: 'data' },
-  colorSchemes: { light: { palette }, dark: { palette } }, shape: { borderRadius: 10 },
-  typography, components })`. Mode switching with `useColorScheme()` from
+colorSchemes: { light: { palette }, dark: { palette } }, shape: { borderRadius: 10 },
+typography, components })`. Mode switching with `useColorScheme()` from
   `@mui/material/styles` (System, Light, Dark, default system, MUI persists the choice).
   Palette from the mockup. Light: background default `#f4f5f7`, paper `#ffffff`, primary
   `#3b5bfd`, success `#158f52`, warning `#b56e00`, error `#cf3238`, info `#2a7fd4`, text

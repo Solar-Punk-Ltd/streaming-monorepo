@@ -9,10 +9,32 @@ name: infra-manager
 on:
   pull_request:
     branches: [main, main-v3]
-    paths: ['apps/infra-manager/**', 'apps/hls-stream/**', 'tools/app-workspace/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.github/workflows/infra-manager.yml']
+    paths:
+      [
+        'apps/infra-manager/**',
+        'apps/hls-stream/**',
+        'tools/app-workspace/**',
+        'package.json',
+        'pnpm-lock.yaml',
+        'pnpm-workspace.yaml',
+        '.oxlintrc.json',
+        '.oxfmtrc.json',
+        '.github/workflows/infra-manager.yml',
+      ]
   push:
     branches: [main, main-v3]
-    paths: ['apps/infra-manager/**', 'apps/hls-stream/**', 'tools/app-workspace/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.github/workflows/infra-manager.yml']
+    paths:
+      [
+        'apps/infra-manager/**',
+        'apps/hls-stream/**',
+        'tools/app-workspace/**',
+        'package.json',
+        'pnpm-lock.yaml',
+        'pnpm-workspace.yaml',
+        '.oxlintrc.json',
+        '.oxfmtrc.json',
+        '.github/workflows/infra-manager.yml',
+      ]
 
 permissions:
   contents: read
@@ -37,12 +59,12 @@ jobs:
       # Pinned by commit, the tag in the comment. Each was released more than
       # two weeks before it was pinned here. pnpm comes from packageManager.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -54,6 +76,12 @@ jobs:
 
       - name: Type checks, every package, tests included
         run: pnpm typecheck
+
+      - name: Lint, every package, with oxlint and the root .oxlintrc.json
+        run: pnpm lint
+
+      - name: Formatting, with oxfmt and the root .oxfmtrc.json
+        run: pnpm format:check
 
       - name: Unit tests, common
         run: pnpm --filter @streaming-infra-manager/common test
@@ -95,10 +123,10 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        # postgres:16-alpine, digest resolved 2026-09-10. Trust authentication
+        # postgres:16.15-alpine, the image the compose files run, digest resolved 2026-09-27. Trust authentication
         # because these databases are created empty here, hold synthetic rows
         # for the length of one job, and are reachable only from it.
-        image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+        image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: postgres
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -136,12 +164,12 @@ jobs:
           done
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -165,10 +193,10 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        # The same pin as the database job, resolved 2026-09-10. Only the
+        # The same pin as the database job, resolved 2026-09-27. Only the
         # connected transfer suite needs it: it signs into a real manager over
         # a real journal with the browser as the only client.
-        image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+        image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: postgres
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -205,12 +233,12 @@ jobs:
         run: docker exec ${{ job.services.postgres.id }} createdb -U postgres t09_test
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -247,7 +275,7 @@ jobs:
       # Node's standard library alone, which in-copy.mjs needs at 22 or later.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       - name: The daemon the images are built with
         run: docker version --format 'server {{.Server.Version}}'

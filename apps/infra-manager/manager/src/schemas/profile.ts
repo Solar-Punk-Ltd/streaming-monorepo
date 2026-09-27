@@ -27,8 +27,7 @@ import { ALL_SERVICES, PROFILE_KINDS } from '../types/index.js';
 import { managerAdminTokenField, newDeploymentSettingsField } from './deploymentSettings.js';
 import { ENGINE_SETTING_VALUE_FIELDS } from './engineSettingValues.js';
 
-const ONE_ENGINE_MESSAGE =
-  'components may include at most one engine (srs or ome, not both)';
+const ONE_ENGINE_MESSAGE = 'components may include at most one engine (srs or ome, not both)';
 
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,30}$/;
 
@@ -64,9 +63,7 @@ const beePublishersField = () =>
     .transform((value) => normalizeBeePublishers(value))
     .test('bee-publishers', 'invalid bee_publishers', function (value) {
       const problem = beePublishersProblem(value);
-      return problem
-        ? this.createError({ message: `bee_publishers: ${problem}` })
-        : true;
+      return problem ? this.createError({ message: `bee_publishers: ${problem}` }) : true;
     })
     // An abr-uploader is defined by publishing to a pool. Without the value it
     // is a streamer with no Bee node and no postage. It would deploy and never
@@ -96,8 +93,7 @@ const beeUrlField = () =>
       const { bee_publishers } = this.parent as { bee_publishers?: string | null };
       if (bee_publishers && bee_publishers.trim()) {
         return this.createError({
-          message:
-            'bee_url is not used when bee_publishers is set — the uploader publishes to the pool',
+          message: 'bee_url is not used when bee_publishers is set — the uploader publishes to the pool',
         });
       }
       return true;
@@ -116,15 +112,11 @@ const rpcEndpointField = () =>
     // Blank is null and nothing else, because the column carries a CHECK that
     // the value looks like an address, so a blank one reaching the write is a
     // raw database error rather than an answer. `nullify` maps only undefined.
-    .transform((value: unknown) =>
-      typeof value === 'string' ? value.trim() || null : value,
-    )
+    .transform((value: unknown) => (typeof value === 'string' ? value.trim() || null : value))
     .max(255)
     .test('rpc-endpoint', 'invalid rpc_endpoint', function (value) {
       const problem = rpcEndpointProblem(value);
-      return problem
-        ? this.createError({ message: `rpc_endpoint: ${problem}` })
-        : true;
+      return problem ? this.createError({ message: `rpc_endpoint: ${problem}` }) : true;
     });
 
 /**
@@ -151,10 +143,7 @@ const nodeModeField = () =>
   string()
     .nullable()
     .notRequired()
-    .oneOf(
-      [...NODE_MODES, null],
-      `node_mode must be one of ${NODE_MODES.join(', ')}`,
-    );
+    .oneOf([...NODE_MODES, null], `node_mode must be one of ${NODE_MODES.join(', ')}`);
 
 /** The fields an endpoint choice is judged against, from whichever body carries it. */
 interface EndpointChoiceBody {
@@ -224,9 +213,7 @@ const rpcEndpointSourceField = (
         nodeMode,
         services: servicesOf(body),
       });
-      return problem
-        ? this.createError({ message: `rpc_endpoint_source: ${problem}` })
-        : true;
+      return problem ? this.createError({ message: `rpc_endpoint_source: ${problem}` }) : true;
     });
 
 /**
@@ -258,29 +245,19 @@ const stackVersionIdField = () =>
  * ProfileService calls it with the version's own defaults so the pair is
  * judged against the host this deployment will run on.
  */
-const engineSettingsField = () =>
-  object(ENGINE_SETTING_VALUE_FIELDS)
-    .notRequired()
-    .default(undefined)
-    .noUnknown(true);
+const engineSettingsField = () => object(ENGINE_SETTING_VALUE_FIELDS).notRequired().default(undefined).noUnknown(true);
 
 export const profileNameSchema = object({
-  name: string()
-    .required()
-    .matches(PROFILE_NAME_RE, 'name must match /^[a-z0-9][a-z0-9-]{0,30}$/'),
+  name: string().required().matches(PROFILE_NAME_RE, 'name must match /^[a-z0-9][a-z0-9-]{0,30}$/'),
 }).strict();
 
 export const createProfileSchema = object({
-  name: string()
-    .required()
-    .matches(PROFILE_NAME_RE, 'name must match /^[a-z0-9][a-z0-9-]{0,30}$/'),
+  name: string().required().matches(PROFILE_NAME_RE, 'name must match /^[a-z0-9][a-z0-9-]{0,30}$/'),
   kind: string()
     .oneOf([...PROFILE_KINDS])
     .default('custom'),
   notes: string().nullable().notRequired().max(500),
-  host: string()
-    .notRequired()
-    .matches(HOST_RE, 'host must be "localhost", an ssh alias, or user@host'),
+  host: string().notRequired().matches(HOST_RE, 'host must be "localhost", an ssh alias, or user@host'),
   components: array()
     .of(
       string()
@@ -289,18 +266,10 @@ export const createProfileSchema = object({
     )
     .notRequired()
     .test('one-engine', ONE_ENGINE_MESSAGE, (v) => !hasConflictingEngines(v)),
-  feed_owner: string()
-    .notRequired()
-    .matches(
-      ETH_ADDRESS_RE,
-      'feed_owner must be a 0x-prefixed Ethereum address',
-    ),
+  feed_owner: string().notRequired().matches(ETH_ADDRESS_RE, 'feed_owner must be a 0x-prefixed Ethereum address'),
   feed_topic: string()
     .notRequired()
-    .matches(
-      FEED_TOPIC_RE,
-      'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters',
-    ),
+    .matches(FEED_TOPIC_RE, 'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters'),
   private_key: string()
     .notRequired()
     .matches(PRIVATE_KEY_RE, 'private_key must be 0x + 64 hex chars')
@@ -315,18 +284,8 @@ export const createProfileSchema = object({
         message: `private_key is required for a ${ABR_UPLOADER_KIND} — it is the uploader's STREAM_KEY, and it cannot start without one`,
       });
     }),
-  public_key: string()
-    .notRequired()
-    .matches(
-      ETH_ADDRESS_RE,
-      'public_key must be a 0x-prefixed Ethereum address',
-    ),
-  stamp_id: string()
-    .notRequired()
-    .matches(
-      STAMP_ID_RE,
-      'stamp_id must be 32-byte hex (optionally 0x-prefixed)',
-    ),
+  public_key: string().notRequired().matches(ETH_ADDRESS_RE, 'public_key must be a 0x-prefixed Ethereum address'),
+  stamp_id: string().notRequired().matches(STAMP_ID_RE, 'stamp_id must be 32-byte hex (optionally 0x-prefixed)'),
   bee_publishers: beePublishersField().test(
     'bee-publishers-srs-only',
     'bee_publishers requires the srs engine — the ABR ladder is SRS-only',
@@ -360,9 +319,7 @@ export const createProfileSchema = object({
           });
     },
   ),
-  srt_passphrase: string()
-    .notRequired()
-    .matches(SRT_PASSPHRASE_RE, `srt_passphrase ${SRT_PASSPHRASE_MESSAGE}`),
+  srt_passphrase: string().notRequired().matches(SRT_PASSPHRASE_RE, `srt_passphrase ${SRT_PASSPHRASE_MESSAGE}`),
   stack_version_id: stackVersionIdField(),
   engine_settings: engineSettingsField(),
   stack_settings: newDeploymentSettingsField(),
@@ -390,48 +347,24 @@ export const newDeploymentShapeQuerySchema = object({
     .default('custom'),
   components: string()
     .notRequired()
-    .test(
-      'known-services',
-      `components must be a comma list of ${ALL_SERVICES.join(', ')}`,
-      (value) => servicesOfList(value).every((service) => (ALL_SERVICES as readonly string[]).includes(service)),
+    .test('known-services', `components must be a comma list of ${ALL_SERVICES.join(', ')}`, (value) =>
+      servicesOfList(value).every((service) => (ALL_SERVICES as readonly string[]).includes(service)),
     )
     .test('one-engine', ONE_ENGINE_MESSAGE, (value) => !hasConflictingEngines(servicesOfList(value))),
-  host: string()
-    .notRequired()
-    .matches(HOST_RE, 'host must be "localhost", an ssh alias, or user@host'),
+  host: string().notRequired().matches(HOST_RE, 'host must be "localhost", an ssh alias, or user@host'),
 }).noUnknown(true);
 
 export const updateProfileSchema = object({
   notes: string().nullable().notRequired().max(500),
   /** The revision the drawer loaded the notes at. Sent with an edited note. */
   notes_revision: number().integer().min(0).notRequired(),
-  feed_owner: string()
-    .notRequired()
-    .matches(
-      ETH_ADDRESS_RE,
-      'feed_owner must be a 0x-prefixed Ethereum address',
-    ),
+  feed_owner: string().notRequired().matches(ETH_ADDRESS_RE, 'feed_owner must be a 0x-prefixed Ethereum address'),
   feed_topic: string()
     .notRequired()
-    .matches(
-      FEED_TOPIC_RE,
-      'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters',
-    ),
-  private_key: string()
-    .notRequired()
-    .matches(PRIVATE_KEY_RE, 'private_key must be 0x + 64 hex chars'),
-  public_key: string()
-    .notRequired()
-    .matches(
-      ETH_ADDRESS_RE,
-      'public_key must be a 0x-prefixed Ethereum address',
-    ),
-  stamp_id: string()
-    .notRequired()
-    .matches(
-      STAMP_ID_RE,
-      'stamp_id must be 32-byte hex (optionally 0x-prefixed)',
-    ),
+    .matches(FEED_TOPIC_RE, 'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters'),
+  private_key: string().notRequired().matches(PRIVATE_KEY_RE, 'private_key must be 0x + 64 hex chars'),
+  public_key: string().notRequired().matches(ETH_ADDRESS_RE, 'public_key must be a 0x-prefixed Ethereum address'),
+  stamp_id: string().notRequired().matches(STAMP_ID_RE, 'stamp_id must be 32-byte hex (optionally 0x-prefixed)'),
   // Neither the engine nor the components are in an update body. writeProfileEnv
   // refuses an OME profile at deploy time, and components are immutable after
   // the first deploy so the bee-uploader check cannot newly fail here.
@@ -440,22 +373,24 @@ export const updateProfileSchema = object({
   rpc_endpoint: rpcEndpointField(),
   rpc_endpoint_source: rpcEndpointSourceField(false),
   node_mode: nodeModeField(),
-  srt_passphrase: string()
-    .notRequired()
-    .matches(SRT_PASSPHRASE_RE, `srt_passphrase ${SRT_PASSPHRASE_MESSAGE}`),
+  srt_passphrase: string().notRequired().matches(SRT_PASSPHRASE_RE, `srt_passphrase ${SRT_PASSPHRASE_MESSAGE}`),
 }).noUnknown(true);
 
 export type UpdateProfileInput = InferType<typeof updateProfileSchema>;
 
 export const removeProfileSchema = object({
   expectedInstanceId: string().optional().uuid('expectedInstanceId must be a deployment instance UUID'),
-}).noUnknown(true).strict();
+})
+  .noUnknown(true)
+  .strict();
 
 export type RemoveProfileInput = InferType<typeof removeProfileSchema>;
 
 export const removeGroupSchema = object({
   expectedName: string().required().matches(PROFILE_NAME_RE, 'expectedName must be a group name'),
-}).noUnknown(true).strict();
+})
+  .noUnknown(true)
+  .strict();
 
 export type RemoveGroupInput = InferType<typeof removeGroupSchema>;
 
@@ -470,10 +405,7 @@ export type UpdateNotesInput = InferType<typeof updateNotesSchema>;
 export const createGroupSchema = object({
   group_name: string()
     .required()
-    .matches(
-      PROFILE_NAME_RE,
-      'group_name must match /^[a-z0-9][a-z0-9-]{0,30}$/',
-    )
+    .matches(PROFILE_NAME_RE, 'group_name must match /^[a-z0-9][a-z0-9-]{0,30}$/')
     // A ladder member is named `<group>-<rung>`, and profile names cap at 31
     // characters, so a ladder's group name has less room than an ordinary one.
     // Caught here rather than as a check-constraint violation partway through
@@ -497,9 +429,7 @@ export const createGroupSchema = object({
     .oneOf([...PROFILE_KINDS])
     .default('custom'),
   notes: string().nullable().notRequired().max(500),
-  host: string()
-    .notRequired()
-    .matches(HOST_RE, 'host must be "localhost", an ssh alias, or user@host'),
+  host: string().notRequired().matches(HOST_RE, 'host must be "localhost", an ssh alias, or user@host'),
   components: array()
     .of(
       string()
@@ -508,36 +438,14 @@ export const createGroupSchema = object({
     )
     .notRequired()
     .test('one-engine', ONE_ENGINE_MESSAGE, (v) => !hasConflictingEngines(v)),
-  feed_owner: string()
-    .notRequired()
-    .matches(
-      ETH_ADDRESS_RE,
-      'feed_owner must be a 0x-prefixed Ethereum address',
-    ),
+  feed_owner: string().notRequired().matches(ETH_ADDRESS_RE, 'feed_owner must be a 0x-prefixed Ethereum address'),
   feed_topic: string()
     .notRequired()
-    .matches(
-      FEED_TOPIC_RE,
-      'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters',
-    ),
-  private_key: string()
-    .notRequired()
-    .matches(PRIVATE_KEY_RE, 'private_key must be 0x + 64 hex chars'),
-  public_key: string()
-    .notRequired()
-    .matches(
-      ETH_ADDRESS_RE,
-      'public_key must be a 0x-prefixed Ethereum address',
-    ),
-  stamp_id: string()
-    .notRequired()
-    .matches(
-      STAMP_ID_RE,
-      'stamp_id must be 32-byte hex (optionally 0x-prefixed)',
-    ),
-  srt_passphrase: string()
-    .notRequired()
-    .matches(SRT_PASSPHRASE_RE, `srt_passphrase ${SRT_PASSPHRASE_MESSAGE}`),
+    .matches(FEED_TOPIC_RE, 'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters'),
+  private_key: string().notRequired().matches(PRIVATE_KEY_RE, 'private_key must be 0x + 64 hex chars'),
+  public_key: string().notRequired().matches(ETH_ADDRESS_RE, 'public_key must be a 0x-prefixed Ethereum address'),
+  stamp_id: string().notRequired().matches(STAMP_ID_RE, 'stamp_id must be 32-byte hex (optionally 0x-prefixed)'),
+  srt_passphrase: string().notRequired().matches(SRT_PASSPHRASE_RE, `srt_passphrase ${SRT_PASSPHRASE_MESSAGE}`),
   // One answer for every member, as the engine settings are: see
   // SharedProfileParams for why a pool cannot have one rung on the chain and
   // another off it.
@@ -558,32 +466,21 @@ export const groupIdParamSchema = object({
   id: string()
     .required()
     .matches(/^[1-9]\d*$/, 'id must be a positive integer')
-    .test('group-id-range', 'id must fit a group identifier', value => value !== undefined && Number(value) <= 2_147_483_647),
+    .test(
+      'group-id-range',
+      'id must fit a group identifier',
+      (value) => value !== undefined && Number(value) <= 2_147_483_647,
+    ),
 }).strict();
 
 export const updateGroupConfigSchema = object({
   notes: string().nullable().notRequired().max(500),
-  feed_owner: string()
-    .notRequired()
-    .matches(
-      ETH_ADDRESS_RE,
-      'feed_owner must be a 0x-prefixed Ethereum address',
-    ),
+  feed_owner: string().notRequired().matches(ETH_ADDRESS_RE, 'feed_owner must be a 0x-prefixed Ethereum address'),
   feed_topic: string()
     .notRequired()
-    .matches(
-      FEED_TOPIC_RE,
-      'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters',
-    ),
-  stamp_id: string()
-    .notRequired()
-    .matches(
-      STAMP_ID_RE,
-      'stamp_id must be 32-byte hex (optionally 0x-prefixed)',
-    ),
-  srt_passphrase: string()
-    .notRequired()
-    .matches(SRT_PASSPHRASE_RE, `srt_passphrase ${SRT_PASSPHRASE_MESSAGE}`),
+    .matches(FEED_TOPIC_RE, 'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters'),
+  stamp_id: string().notRequired().matches(STAMP_ID_RE, 'stamp_id must be 32-byte hex (optionally 0x-prefixed)'),
+  srt_passphrase: string().notRequired().matches(SRT_PASSPHRASE_RE, `srt_passphrase ${SRT_PASSPHRASE_MESSAGE}`),
 }).noUnknown(true);
 
 export type UpdateGroupConfigInput = InferType<typeof updateGroupConfigSchema>;

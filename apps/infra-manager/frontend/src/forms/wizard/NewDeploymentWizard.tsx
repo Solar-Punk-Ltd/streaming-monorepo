@@ -24,7 +24,13 @@ import { useDeployments } from '../../app/useDeploymentsStore';
 import { useNewDeploymentSettings } from '../../deployments/settings/useNewDeploymentSettings';
 import { usePoolResults } from '../../groups/useBeePublishers';
 import { ApiError, SessionEndedError } from '../../http';
-import { beginPoolSetup, finishPoolSetup, overlayCreatedPool, type CreatedPool, type PoolSetupOutcome } from './poolDraft';
+import {
+  beginPoolSetup,
+  finishPoolSetup,
+  overlayCreatedPool,
+  type CreatedPool,
+  type PoolSetupOutcome,
+} from './poolDraft';
 import { matchingPool } from './poolIdentity';
 import { PoolResponseError } from './PoolResponseError';
 import { readPoolMembership } from './poolMembership';
@@ -41,13 +47,7 @@ import { GoalStep } from './steps/GoalStep';
 import { ReviewStep } from './steps/ReviewStep';
 import { SettingsStep } from './steps/SettingsStep';
 import { footerError } from './wizardError';
-import {
-  deployLabel,
-  initialWizardState,
-  LAST_STEP,
-  type WizardContext,
-  type WizardState,
-} from './wizardState';
+import { deployLabel, initialWizardState, LAST_STEP, type WizardContext, type WizardState } from './wizardState';
 import { submitWizard } from './wizardSubmit';
 
 /**
@@ -58,30 +58,27 @@ import { submitWizard } from './wizardSubmit';
  * choices and a prefill from a row or a pool card lands on step 2 with the
  * pick already made.
  */
-export function NewDeploymentWizard({
-  prefill,
-  onClose,
-}: {
-  prefill?: WizardPrefill;
-  onClose: () => void;
-}) {
-  const {
-    profiles,
-    groups,
-    serverHost,
-    hostPassphrase,
-    beeRpcEndpoint,
-    versions,
-    mergeProfiles,
-    reload,
-  } = useDeployments();
+export function NewDeploymentWizard({ prefill, onClose }: { prefill?: WizardPrefill; onClose: () => void }) {
+  const { profiles, groups, serverHost, hostPassphrase, beeRpcEndpoint, versions, mergeProfiles, reload } =
+    useDeployments();
   const [createdPool, setCreatedPool] = useState<CreatedPool | null>(null);
   const [poolToVerify, setPoolToVerify] = useState<CreatedPool | null>(null);
   const [unavailablePoolIds, setUnavailablePoolIds] = useState<ReadonlySet<number>>(() => new Set());
-  const projected = useMemo(() => overlayCreatedPool(groups.filter(group => !unavailablePoolIds.has(group.id)),
-    (profiles ?? []).filter(profile => profile.group_id == null || !unavailablePoolIds.has(profile.group_id)), createdPool), [groups, profiles, createdPool, unavailablePoolIds]);
+  const projected = useMemo(
+    () =>
+      overlayCreatedPool(
+        groups.filter((group) => !unavailablePoolIds.has(group.id)),
+        (profiles ?? []).filter((profile) => profile.group_id == null || !unavailablePoolIds.has(profile.group_id)),
+        createdPool,
+      ),
+    [groups, profiles, createdPool, unavailablePoolIds],
+  );
   const poolResults = usePoolResults(projected.groups, projected.profiles);
-  const { link: managerAdminLink, error: managerAdminLinkError, reload: reloadManagerAdminLink } = useManagerAdminLink();
+  const {
+    link: managerAdminLink,
+    error: managerAdminLinkError,
+    reload: reloadManagerAdminLink,
+  } = useManagerAdminLink();
   const managerAdminLinkStatus = managerAdminLink ? 'read' : managerAdminLinkError ? 'failed' : 'reading';
   const toast = useToast();
 
@@ -98,12 +95,20 @@ export function NewDeploymentWizard({
       managerAdminLinkStatus,
       reloadManagerAdminLink: () => void reloadManagerAdminLink(),
     }),
-    [projected, serverHost, hostPassphrase, beeRpcEndpoint, poolResults, versions, managerAdminLink, managerAdminLinkStatus, reloadManagerAdminLink],
+    [
+      projected,
+      serverHost,
+      hostPassphrase,
+      beeRpcEndpoint,
+      poolResults,
+      versions,
+      managerAdminLink,
+      managerAdminLinkStatus,
+      reloadManagerAdminLink,
+    ],
   );
 
-  const [state, setState] = useState<WizardState>(() =>
-    initialWizardState(prefill, managerContext),
-  );
+  const [state, setState] = useState<WizardState>(() => initialWizardState(prefill, managerContext));
   const newDeploymentSettings = useNewDeploymentSettings(newDeploymentSettingsPathOf(state));
   const context = useMemo<WizardContext>(
     () => ({ ...managerContext, newDeploymentSettings }),
@@ -139,22 +144,39 @@ export function NewDeploymentWizard({
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
     // These reads start after acceptance, so an older global refresh cannot erase the accepted identity.
-    void readPoolMembership(controller.signal).then(({ groups: freshGroups, profiles: freshProfiles }) => {
-      if (cancelled || !mounted.current) return;
-      const group = freshGroups.find(group => group.id === poolToVerify.group.id);
-      if (!matchingPool({ group, profiles: freshProfiles.filter(profile => profile.group_id === poolToVerify.group.id) }, poolToVerify.group.name)) {
-        setUnavailablePoolIds(previous => new Set([...previous, poolToVerify.group.id]));
-        setCreatedPool(null);
-        setNotice('The newly created pool is no longer available as a compatible pool. Your uploader draft is unchanged. Check the deployment list.');
-      }
-    }).catch(() => {
-      if (!cancelled && mounted.current) setNotice('The pool was accepted, but its current membership could not be checked. The displayed identity comes from the creation response. Your uploader is still a draft.');
-    }).finally(() => {
+    void readPoolMembership(controller.signal)
+      .then(({ groups: freshGroups, profiles: freshProfiles }) => {
+        if (cancelled || !mounted.current) return;
+        const group = freshGroups.find((group) => group.id === poolToVerify.group.id);
+        if (
+          !matchingPool(
+            { group, profiles: freshProfiles.filter((profile) => profile.group_id === poolToVerify.group.id) },
+            poolToVerify.group.name,
+          )
+        ) {
+          setUnavailablePoolIds((previous) => new Set([...previous, poolToVerify.group.id]));
+          setCreatedPool(null);
+          setNotice(
+            'The newly created pool is no longer available as a compatible pool. Your uploader draft is unchanged. Check the deployment list.',
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled && mounted.current)
+          setNotice(
+            'The pool was accepted, but its current membership could not be checked. The displayed identity comes from the creation response. Your uploader is still a draft.',
+          );
+      })
+      .finally(() => {
+        clearTimeout(timeout);
+        controller.abort();
+        if (!cancelled && mounted.current) setPoolToVerify((previous) => (previous === poolToVerify ? null : previous));
+      });
+    return () => {
+      cancelled = true;
       clearTimeout(timeout);
       controller.abort();
-      if (!cancelled && mounted.current) setPoolToVerify(previous => previous === poolToVerify ? null : previous);
-    });
-    return () => { cancelled = true; clearTimeout(timeout); controller.abort(); };
+    };
   }, [poolToVerify]);
 
   const update = useCallback((patch: Partial<WizardState>) => {
@@ -248,9 +270,13 @@ export function NewDeploymentWizard({
         returnToUploader({ kind: 'accepted', expectedName: state.name, value: null });
       } else if (state.goal === 'abr-pool' && !(caught instanceof ApiError)) {
         setUncertainSubmission(true);
-        setSubmitError(caught instanceof PoolResponseError ? caught.message
-          : timedOut ? message
-          : 'The pool request did not finish with a readable response. It may already exist. Check the deployment list before creating another pool.');
+        setSubmitError(
+          caught instanceof PoolResponseError
+            ? caught.message
+            : timedOut
+              ? message
+              : 'The pool request did not finish with a readable response. It may already exist. Check the deployment list before creating another pool.',
+        );
       } else {
         setSubmitError(message);
       }
@@ -279,8 +305,7 @@ export function NewDeploymentWizard({
     if (submitFailures > 0) errorRef.current?.focus();
   }, [submitFailures]);
 
-  const blocked =
-    state.step === 1 ? state.goal === null : stepError !== null;
+  const blocked = state.step === 1 ? state.goal === null : stepError !== null;
 
   return (
     <Dialog open maxWidth="md" fullWidth onClose={close}>
@@ -303,7 +328,11 @@ export function NewDeploymentWizard({
               '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: '4px' },
             }}
           >
-            {notice && <Alert severity="info" sx={{ mb: 2 }}>{notice}</Alert>}
+            {notice && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                {notice}
+              </Alert>
+            )}
             {state.step === 1 && <GoalStep {...stepProps} />}
             {state.step === 2 && <BasicsStep {...stepProps} />}
             {state.step === 3 && <SettingsStep {...stepProps} />}
@@ -329,25 +358,31 @@ export function NewDeploymentWizard({
         )}
         <Box sx={{ flex: 1 }}>
           {submitting ? (
-            <Typography variant="caption" color="text.secondary">
-              Creating {state.name}. The manager answers once the deploy has
-              started, which takes longer on a version it has to build first.
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'text.secondary',
+              }}
+            >
+              Creating {state.name}. The manager answers once the deploy has started, which takes longer on a version it
+              has to build first.
             </Typography>
           ) : (
             state.step > 1 &&
             stepError && (
-              <Typography variant="caption" color="warning.main">
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'warning.main',
+                }}
+              >
                 {stepError}
               </Typography>
             )
           )}
         </Box>
         {state.step < LAST_STEP ? (
-          <Button
-            variant="contained"
-            disabled={blocked || submitting}
-            onClick={() => update({ step: state.step + 1 })}
-          >
+          <Button variant="contained" disabled={blocked || submitting} onClick={() => update({ step: state.step + 1 })}>
             Continue
           </Button>
         ) : (

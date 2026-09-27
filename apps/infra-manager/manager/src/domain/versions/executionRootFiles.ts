@@ -2,7 +2,12 @@ import { constants } from 'node:fs';
 import { chmod, copyFile, link, lstat, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { assertExecutionId, assertExecutionRegistration, executionRootPath, type ExecutionRootRecord } from './ExecutionRoot.js';
+import {
+  assertExecutionId,
+  assertExecutionRegistration,
+  executionRootPath,
+  type ExecutionRootRecord,
+} from './ExecutionRoot.js';
 import { BUILD_COMPLETE_MARKER, BUILD_MANIFEST_FILE, parseBuildManifestBytes } from './buildManifest.js';
 import { COPY_INSTEAD } from './buildTreeClone.js';
 import { hostConfigFilesOf } from './hostConfigCapture.js';
@@ -16,7 +21,12 @@ import {
   type FileDigestSource,
   type RecordedOwnedTree,
 } from './ownedTreeInventory.js';
-import { assertOwnedDirectory, assertSeparateOwnedTrees, readOwnedFile, readSharedOwnedFile } from './ownedTreePaths.js';
+import {
+  assertOwnedDirectory,
+  assertSeparateOwnedTrees,
+  readOwnedFile,
+  readSharedOwnedFile,
+} from './ownedTreePaths.js';
 
 export interface ExecutionCopyOptions {
   onProgress?: (copiedFiles: number) => Promise<void>;
@@ -83,12 +93,16 @@ async function shareOrCopyFile(from: string, to: string, mode: number): Promise<
  * for it the way they did before any of this was recorded.
  */
 function copiedFileDigest(root: string, source: RecordedOwnedTree, ownFiles: ReadonlySet<string>): FileDigestSource {
-  const recorded = new Map(source.entries.flatMap(entry => entry.type === 'file' ? [[entry.path, entry.sha256] as const] : []));
+  const recorded = new Map(
+    source.entries.flatMap((entry) => (entry.type === 'file' ? [[entry.path, entry.sha256] as const] : [])),
+  );
   return async (path, durable) => {
     const known = recorded.get(path);
     const stamped = source.durableStamps[path];
-    if (known === undefined || ownFiles.has(path) || typeof stamped !== 'string') return sha256(await readOwnedFile(root, path));
-    if (inodeOfStamp(durable) !== inodeOfStamp(stamped)) throw new Error('Execution copy inventory differs from its source.');
+    if (known === undefined || ownFiles.has(path) || typeof stamped !== 'string')
+      return sha256(await readOwnedFile(root, path));
+    if (inodeOfStamp(durable) !== inodeOfStamp(stamped))
+      throw new Error('Execution copy inventory differs from its source.');
     return known;
   };
 }
@@ -125,35 +139,54 @@ export async function copyExecutionRoot(
 ): Promise<{ root: string; artifactDigest: string }> {
   const record = structuredClone(input);
   assertExecutionRegistration(record);
-  if (record.state !== 'copying' || record.copyToken === null || record.project !== record.profile.name) throw new Error('Execution has no exclusive copy ownership.');
+  if (record.state !== 'copying' || record.copyToken === null || record.project !== record.profile.name)
+    throw new Error('Execution has no exclusive copy ownership.');
   assertExecutionId(record.copyToken);
   const root = executionRootPath(executionsParent, record.executionId);
   if (record.root !== root) throw new Error('Execution root differs from its configured UUID path.');
   await assertOwnedDirectory(executionsParent);
   const ownerRoot = dirname(root);
   await assertSeparateOwnedTrees(record.source.root, ownerRoot);
-  const source = options.sourceInventory ? structuredClone(options.sourceInventory) : await inventorySharedOwnedTree(record.source.root);
+  const source = options.sourceInventory
+    ? structuredClone(options.sourceInventory)
+    : await inventorySharedOwnedTree(record.source.root);
   if (ownedTreeDigest(source) !== record.source.artifactDigest) throw new Error('Execution source digest changed.');
   const manifestBytes = await readSharedOwnedFile(record.source.root, BUILD_MANIFEST_FILE);
   await readSharedOwnedFile(record.source.root, BUILD_COMPLETE_MARKER);
   const manifest = parseBuildManifestBytes(manifestBytes, join(record.source.root, BUILD_MANIFEST_FILE)).manifest;
-  if (manifest?.buildId !== record.source.buildId || manifest.commit !== record.source.commit) throw new Error('Execution source build identity changed.');
-  const sourceChanged = (during: string) => new Error(`Execution source changed during ${during}.${options.sourceInventoryPath
-    ? ` It was proved against ${options.sourceInventoryPath}, which is removed to have the source read again.` : ''}`);
-  if (!isDeepStrictEqual(await durableStampOwnedTree(record.source.root), source.durableStamps)) throw sourceChanged('verification');
+  if (manifest?.buildId !== record.source.buildId || manifest.commit !== record.source.commit)
+    throw new Error('Execution source build identity changed.');
+  const sourceChanged = (during: string) =>
+    new Error(
+      `Execution source changed during ${during}.${
+        options.sourceInventoryPath
+          ? ` It was proved against ${options.sourceInventoryPath}, which is removed to have the source read again.`
+          : ''
+      }`,
+    );
+  if (!isDeepStrictEqual(await durableStampOwnedTree(record.source.root), source.durableStamps))
+    throw sourceChanged('verification');
 
   await mkdir(ownerRoot, { mode: 0o700 });
   const owned = await lstat(ownerRoot);
   try {
     await chmod(ownerRoot, 0o700);
     const owner = {
-      executionId: record.executionId, copyToken: record.copyToken, source: record.source, profile: record.profile,
-      jobReferenceId: record.jobReferenceId, target: record.target, project: record.project, action: record.action,
-      services: record.services, referenceId: record.referenceId,
+      executionId: record.executionId,
+      copyToken: record.copyToken,
+      source: record.source,
+      profile: record.profile,
+      jobReferenceId: record.jobReferenceId,
+      target: record.target,
+      project: record.project,
+      action: record.action,
+      services: record.services,
+      referenceId: record.referenceId,
     };
     await writeFile(join(ownerRoot, 'owner.json'), JSON.stringify(owner), { flag: 'wx', mode: 0o600 });
     await mkdir(root, { mode: 0o700 });
-    for (const entry of source.entries.filter(entry => entry.type === 'directory')) await mkdir(join(root, entry.path), { mode: 0o700 });
+    for (const entry of source.entries.filter((entry) => entry.type === 'directory'))
+      await mkdir(join(root, entry.path), { mode: 0o700 });
     const settings = new Set(hostConfigFilesOf(record.source.root));
     const ownFiles = new Set<string>();
     let copied = 0;
@@ -170,12 +203,19 @@ export async function copyExecutionRoot(
         await symlink(entry.target, join(root, entry.path));
       }
     }
-    for (const entry of source.entries.filter(entry => entry.type === 'directory').reverse()) await chmod(join(root, entry.path), entry.mode);
+    for (const entry of source.entries.filter((entry) => entry.type === 'directory').reverse())
+      await chmod(join(root, entry.path), entry.mode);
     await chmod(root, source.rootMode);
-    if (!isDeepStrictEqual(await durableStampOwnedTree(record.source.root), source.durableStamps)) throw sourceChanged('copying');
+    if (!isDeepStrictEqual(await durableStampOwnedTree(record.source.root), source.durableStamps))
+      throw sourceChanged('copying');
     const copy = await inventoryLinkedTree(root, copiedFileDigest(root, source, ownFiles));
-    if (ownedTreeDigest(copy) !== record.source.artifactDigest) throw new Error('Execution copy inventory differs from its source.');
-    await writeFile(join(ownerRoot, 'ready.json'), JSON.stringify({ copyToken: record.copyToken, artifactDigest: record.source.artifactDigest }), { flag: 'wx', mode: 0o600 });
+    if (ownedTreeDigest(copy) !== record.source.artifactDigest)
+      throw new Error('Execution copy inventory differs from its source.');
+    await writeFile(
+      join(ownerRoot, 'ready.json'),
+      JSON.stringify({ copyToken: record.copyToken, artifactDigest: record.source.artifactDigest }),
+      { flag: 'wx', mode: 0o600 },
+    );
     return { root, artifactDigest: record.source.artifactDigest };
   } catch (error) {
     const current = await lstat(ownerRoot).catch(() => null);
@@ -202,7 +242,7 @@ export async function removeExecutionRoot(input: ExecutionRootRecord, executions
   if (record.root !== root) throw new Error('Execution root differs from its configured UUID path.');
   const ownerRoot = dirname(root);
   const owned = await readOwnedFile(ownerRoot, 'owner.json')
-    .then(bytes => (JSON.parse(bytes.toString('utf8')) as { executionId?: unknown }).executionId)
+    .then((bytes) => (JSON.parse(bytes.toString('utf8')) as { executionId?: unknown }).executionId)
     .catch(() => undefined);
   if (owned !== undefined && owned !== record.executionId) throw new Error('The owner file names another execution.');
   await rm(ownerRoot, { recursive: true, force: true });

@@ -11,13 +11,7 @@ export interface RowMenuItem {
 }
 
 /** The per-row overflow menu. Clicks never reach the row underneath. */
-export function RowMenu({
-  items,
-  ariaLabel,
-}: {
-  items: RowMenuItem[];
-  ariaLabel: string;
-}) {
+export function RowMenu({ items, ariaLabel }: { items: RowMenuItem[]; ariaLabel: string }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
   const open = (event: MouseEvent<HTMLElement>) => {
@@ -53,9 +47,7 @@ export function RowMenu({
               {item.label}
             </MenuItem>
           );
-          return item.separated
-            ? [<Divider key={`${item.label}-divider`} />, entry]
-            : [entry];
+          return item.separated ? [<Divider key={`${item.label}-divider`} />, entry] : [entry];
         })}
       </Menu>
     </>

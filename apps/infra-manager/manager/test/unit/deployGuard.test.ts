@@ -56,12 +56,17 @@ async function setup(sharedImageTags = true) {
   const row = (name: string) => harness.profiles.rows.get(name)!;
   /** What a deploy that recreated every container leaves behind. */
   const recreated = (project: string) => {
-    for (const service of ['srs', 'stream-uploader', 'bee-uploader']) harness.daemon.set(project, service, [`${service}-new`]);
+    for (const service of ['srs', 'stream-uploader', 'bee-uploader'])
+      harness.daemon.set(project, service, [`${service}-new`]);
   };
   return { harness, row, recreated };
 }
 
-async function untilStatus(harness: Awaited<ReturnType<typeof setup>>['harness'], name: string, status: string): Promise<void> {
+async function untilStatus(
+  harness: Awaited<ReturnType<typeof setup>>['harness'],
+  name: string,
+  status: string,
+): Promise<void> {
   for (let tick = 0; tick < 300; tick += 1) {
     if (harness.profiles.statusOf(name) === status) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -70,7 +75,7 @@ async function untilStatus(harness: Awaited<ReturnType<typeof setup>>['harness']
 }
 
 describe('a deploy attempt', () => {
-  it('is opened before the script runs, with the project\'s containers as they were and the services it touches', async () => {
+  it("is opened before the script runs, with the project's containers as they were and the services it touches", async () => {
     const { harness, row } = await setup();
 
     await harness.orchestrator.startDeploy(row('stage'), undefined);
@@ -153,9 +158,14 @@ describe('what an unresolved attempt refuses', () => {
 
     await assert.rejects(
       harness.orchestrator.startDeploy(row('stage'), undefined),
-      (err: unknown) => err instanceof DeployAttemptRefusedError && /stage/.test(err.reason) && /job-|attempt/.test(err.reason),
+      (err: unknown) =>
+        err instanceof DeployAttemptRefusedError && /stage/.test(err.reason) && /job-|attempt/.test(err.reason),
     );
-    assert.equal(harness.profiles.statusOf('stage'), 'ERROR', 'the refused deploy took no claim, so the row is where the failed one left it');
+    assert.equal(
+      harness.profiles.statusOf('stage'),
+      'ERROR',
+      'the refused deploy took no claim, so the row is where the failed one left it',
+    );
     assert.equal(harness.attempts.rows.length, 1);
   });
 
@@ -244,7 +254,10 @@ describe('what ends an attempt without its script', () => {
     assert.equal(harness.attempts.rows[0]?.state, 'blocked');
 
     await assert.rejects(harness.orchestrator.startRemove(row('stage')), /unresolved/);
-    await harness.orchestrator.releaseAttempt(harness.attempts.rows[0]!.id, 'operator checked that the attempt cannot create more containers');
+    await harness.orchestrator.releaseAttempt(
+      harness.attempts.rows[0]!.id,
+      'operator checked that the attempt cannot create more containers',
+    );
     await harness.orchestrator.startRemove(row('stage'));
     harness.daemon.containers.delete('stage');
     harness.runner.finish(1, 0);

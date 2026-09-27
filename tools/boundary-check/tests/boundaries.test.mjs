@@ -31,7 +31,10 @@ function writeTempFiles(t, files) {
 /** A graph in the shape `nx graph --file` writes, from `{ name: [tags] }` and `[source, target]` pairs. */
 function nxGraph(projects, pairs) {
   const nodes = Object.fromEntries(
-    Object.entries(projects).map(([name, tags]) => [name, { name, type: 'app', data: { root: `apps/${name}`, name, tags } }]),
+    Object.entries(projects).map(([name, tags]) => [
+      name,
+      { name, type: 'app', data: { root: `apps/${name}`, name, tags } },
+    ]),
   );
   const dependencies = Object.fromEntries(Object.keys(projects).map((name) => [name, []]));
   for (const [source, target] of pairs) dependencies[source].push({ source, target, type: 'static' });
@@ -83,7 +86,9 @@ describe('boundaries.mjs', () => {
   it('lets an exception through and counts it', (t) => {
     const files = writeTempFiles(t, {
       'graph.json': nxGraph(MANAGER, [['manager-frontend', 'manager-api']]),
-      'exceptions.json': [{ source: 'manager-frontend', target: 'manager-api', reason: 'the dev mocks reuse the API schemas' }],
+      'exceptions.json': [
+        { source: 'manager-frontend', target: 'manager-api', reason: 'the dev mocks reuse the API schemas' },
+      ],
     });
     const result = runCheck(['--graph', files['graph.json'], '--exceptions', files['exceptions.json']]);
     assert.equal(result.status, 0, result.stderr);
@@ -93,7 +98,9 @@ describe('boundaries.mjs', () => {
   it('exits 1 when an exception no longer matches the graph', (t) => {
     const files = writeTempFiles(t, {
       'graph.json': nxGraph(MANAGER, []),
-      'exceptions.json': [{ source: 'manager-frontend', target: 'manager-api', reason: 'the dev mocks reuse the API schemas' }],
+      'exceptions.json': [
+        { source: 'manager-frontend', target: 'manager-api', reason: 'the dev mocks reuse the API schemas' },
+      ],
     });
     const result = runCheck(['--graph', files['graph.json'], '--exceptions', files['exceptions.json']]);
     assert.equal(result.status, 1, result.stderr);

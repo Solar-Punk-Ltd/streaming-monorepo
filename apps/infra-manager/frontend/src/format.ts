@@ -7,10 +7,7 @@ export const NO_VALUE = '–';
 export function formatBytes(bytes: number | null | undefined): string {
   if (bytes == null || !Number.isFinite(bytes)) return NO_VALUE;
   if (bytes < 1) return '0 B';
-  const exp = Math.min(
-    UNITS.length - 1,
-    Math.floor(Math.log(bytes) / Math.log(1024)),
-  );
+  const exp = Math.min(UNITS.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
   const value = bytes / 1024 ** exp;
   return `${value.toFixed(value >= 100 || exp === 0 ? 0 : 1)} ${UNITS[exp]}`;
 }
@@ -29,11 +26,7 @@ export const XDAI_DECIMALS = 18;
  * Format a base-unit integer string (e.g. wei) to a decimal token amount.
  * Uses BigInt to avoid precision loss. xDAI has 18 decimals, BZZ (PLUR) has 16.
  */
-export function formatTokenBalance(
-  raw: string | null | undefined,
-  decimals: number,
-  fractionDigits = 4,
-): string {
+export function formatTokenBalance(raw: string | null | undefined, decimals: number, fractionDigits = 4): string {
   if (raw == null || raw === '') return NO_VALUE;
   let value: bigint;
   try {
@@ -66,10 +59,7 @@ export function formatCores(cpuPercent: number | null | undefined): string {
   return (cpuPercent / 100).toFixed(2);
 }
 
-export function formatPercent(
-  percent: number | null | undefined,
-  digits = 0,
-): string {
+export function formatPercent(percent: number | null | undefined, digits = 0): string {
   if (percent == null || !Number.isFinite(percent)) return NO_VALUE;
   return `${percent.toFixed(digits)}%`;
 }
@@ -78,17 +68,8 @@ export function formatPercent(
  * `used / total` as a percentage, with decimals scaled to the magnitude so
  * tiny shares stay legible (0.04%) while big ones stay clean (37%).
  */
-export function formatSharePercent(
-  used: number | null | undefined,
-  total: number | null | undefined,
-): string {
-  if (
-    used == null ||
-    total == null ||
-    !Number.isFinite(used) ||
-    !Number.isFinite(total) ||
-    total <= 0
-  ) {
+export function formatSharePercent(used: number | null | undefined, total: number | null | undefined): string {
+  if (used == null || total == null || !Number.isFinite(used) || !Number.isFinite(total) || total <= 0) {
     return NO_VALUE;
   }
   return formatScaledPercent((used / total) * 100);

@@ -89,16 +89,30 @@ test('the wizard creates a deployment with its own settings at a phone width', {
   const rowOf = (key) => `document.querySelector('li[data-setting="${key}"]')`;
   const fieldOf = (key) => `document.getElementById('deployment-setting-${key}')`;
   const rowText = (key) => readWhenPresent(evaluate, rowOf(key), 'innerText', `the ${key} row`);
-  const search = (text) => fillWhenPresent(evaluate, `${dialog}?.querySelector('input[aria-label="Search settings"]')`, text, 'the search field');
-  const choose = (key, value) => waitFor(() => evaluate(`(() => {
+  const search = (text) =>
+    fillWhenPresent(
+      evaluate,
+      `${dialog}?.querySelector('input[aria-label="Search settings"]')`,
+      text,
+      'the search field',
+    );
+  const choose = (key, value) =>
+    waitFor(
+      () =>
+        evaluate(`(() => {
     const field = ${fieldOf(key)};
     if (!field || field.disabled) return false;
     Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(field, ${JSON.stringify(value)});
     field.dispatchEvent(new Event('change', { bubbles: true }));
     return true;
-  })()`), Boolean, `the ${key} list`);
-  const engine = (label) => click(found(`input[type=radio][aria-label=${JSON.stringify(label)}]`), `the ${label} engine`);
-  const continueDisabled = () => readWhenPresent(evaluate, buttonWithText('Continue'), 'disabled', 'the Continue button');
+  })()`),
+      Boolean,
+      `the ${key} list`,
+    );
+  const engine = (label) =>
+    click(found(`input[type=radio][aria-label=${JSON.stringify(label)}]`), `the ${label} engine`);
+  const continueDisabled = () =>
+    readWhenPresent(evaluate, buttonWithText('Continue'), 'disabled', 'the Continue button');
   // The viewport alone, as the deployment settings suite takes it.
   const screenshot = async (name) => {
     const { data } = await call('Page.captureScreenshot', { captureBeyondViewport: false });
@@ -119,8 +133,16 @@ test('the wizard creates a deployment with its own settings at a phone width', {
       'the Stream to Swarm goal',
     );
     await click(buttonWithText('Continue'), 'the Continue button');
-    await fillWhenPresent(evaluate, found('input[placeholder="main-stage"]'), NAME, 'the name field', COLD_OPTIMIZE_BUDGET_MS);
-    await evaluate(`${found('#wizard-version')}?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))`);
+    await fillWhenPresent(
+      evaluate,
+      found('input[placeholder="main-stage"]'),
+      NAME,
+      'the name field',
+      COLD_OPTIMIZE_BUDGET_MS,
+    );
+    await evaluate(
+      `${found('#wizard-version')}?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))`,
+    );
     await click(found(`[role="option"][data-value="${VERSION}"]`), 'main-v3 in the version list');
     await click(buttonWithText('Continue'), 'the Continue button');
 
@@ -131,13 +153,25 @@ test('the wizard creates a deployment with its own settings at a phone width', {
 
   await t.test('opened, it lists the version keys folded by section, with a search over them', async () => {
     await click(foldButton, 'the Advanced settings fold');
-    await waitFor(() => evaluate(`Boolean(${fold}?.querySelector('input[aria-label="Search settings"]'))`), Boolean, 'the list');
-    await waitFor(() => evaluate(`Boolean((${foldButton})?.closest('section')?.querySelector('.MuiCollapse-entered'))`), Boolean, 'the fold fully open');
+    await waitFor(
+      () => evaluate(`Boolean(${fold}?.querySelector('input[aria-label="Search settings"]'))`),
+      Boolean,
+      'the list',
+    );
+    await waitFor(
+      () => evaluate(`Boolean((${foldButton})?.closest('section')?.querySelector('.MuiCollapse-entered'))`),
+      Boolean,
+      'the fold fully open',
+    );
     const text = await foldText();
     assert.match(text, /Each key shows the version's value as its default\./);
     assert.match(text, /Stream Uploader\s+\d+ settings/);
     assert.match(text, /SRS Media Server\s+3 settings/);
-    assert.equal(await evaluate(`${fold}.querySelectorAll('li[data-setting]').length`), 0, 'every section starts folded');
+    assert.equal(
+      await evaluate(`${fold}.querySelectorAll('li[data-setting]').length`),
+      0,
+      'every section starts folded',
+    );
     await evaluate(`(${foldButton}).scrollIntoView({ block: 'start' })`);
     await screenshot('folded-sections-phone.png');
   });
@@ -145,7 +179,11 @@ test('the wizard creates a deployment with its own settings at a phone width', {
   await t.test('a changed key is marked changed, and nothing to recreate', async () => {
     await search('LOG_LEVEL');
     await choose('LOG_LEVEL', 'debug');
-    await waitFor(() => rowText('LOG_LEVEL'), (text) => text.includes('changed'), 'the changed marker');
+    await waitFor(
+      () => rowText('LOG_LEVEL'),
+      (text) => text.includes('changed'),
+      'the changed marker',
+    );
     const row = await rowText('LOG_LEVEL');
     assert.match(row, /Default: info/);
     assert.doesNotMatch(row, /recreates|full redeploy|unsaved/);
@@ -155,7 +193,11 @@ test('the wizard creates a deployment with its own settings at a phone width', {
   await t.test('a value the manager would refuse is named under its field and stops Continue', async () => {
     await search('MAX_QUEUE_SIZE');
     await fillWhenPresent(evaluate, fieldOf('MAX_QUEUE_SIZE'), '0', 'the queue size field');
-    await waitFor(() => rowText('MAX_QUEUE_SIZE'), (text) => text.includes('MAX_QUEUE_SIZE must be at least 1. Got 0.'), 'the refusal under the field');
+    await waitFor(
+      () => rowText('MAX_QUEUE_SIZE'),
+      (text) => text.includes('MAX_QUEUE_SIZE must be at least 1. Got 0.'),
+      'the refusal under the field',
+    );
     await waitFor(continueDisabled, (off) => off === true, 'a Continue that stops at the refused value');
     assert.match(await footer(), /Advanced settings: One value cannot be used as written: MAX_QUEUE_SIZE/);
     await screenshot('refused-value-phone.png');
@@ -164,28 +206,49 @@ test('the wizard creates a deployment with its own settings at a phone width', {
     await waitFor(continueDisabled, (off) => off === false, 'Continue back on');
   });
 
-  await t.test('a secret is a masked field that starts empty, and a generated one says it is made at the first deploy', async () => {
-    await search('TOKEN');
-    await waitFor(() => evaluate(`Boolean(${fieldOf('API_AUTH_TOKEN')})`), Boolean, 'the auth token field');
-    assert.equal(await evaluate(`${fieldOf('API_AUTH_TOKEN')}.type`), 'password');
-    assert.equal(await evaluate(`${fieldOf('API_AUTH_TOKEN')}.value`), '');
-    assert.match(await rowText('API_AUTH_TOKEN'), /The manager generates a value for this deployment when it first deploys\./);
-    // The web2 admin token is set in the step's own Web2 admin group, so this list points at it.
-    assert.match(await rowText('ADMIN_API_TOKEN'), /Decided by the Web2 admin group of this step\./);
-    await fillWhenPresent(evaluate, fieldOf('API_AUTH_TOKEN'), TOKEN, 'the auth token field');
-    await waitFor(() => rowText('API_AUTH_TOKEN'), (text) => text.includes('changed'), 'the typed token marked changed');
-    assert.equal((await body()).includes(TOKEN), false, 'a typed secret is never shown as text');
-  });
+  await t.test(
+    'a secret is a masked field that starts empty, and a generated one says it is made at the first deploy',
+    async () => {
+      await search('TOKEN');
+      await waitFor(() => evaluate(`Boolean(${fieldOf('API_AUTH_TOKEN')})`), Boolean, 'the auth token field');
+      assert.equal(await evaluate(`${fieldOf('API_AUTH_TOKEN')}.type`), 'password');
+      assert.equal(await evaluate(`${fieldOf('API_AUTH_TOKEN')}.value`), '');
+      assert.match(
+        await rowText('API_AUTH_TOKEN'),
+        /The manager generates a value for this deployment when it first deploys\./,
+      );
+      // The web2 admin token is set in the step's own Web2 admin group, so this list points at it.
+      assert.match(await rowText('ADMIN_API_TOKEN'), /Decided by the Web2 admin group of this step\./);
+      await fillWhenPresent(evaluate, fieldOf('API_AUTH_TOKEN'), TOKEN, 'the auth token field');
+      await waitFor(
+        () => rowText('API_AUTH_TOKEN'),
+        (text) => text.includes('changed'),
+        'the typed token marked changed',
+      );
+      assert.equal((await body()).includes(TOKEN), false, 'a typed secret is never shown as text');
+    },
+  );
 
   await t.test('HLS_FRAGMENT shows the segment length above it and takes no input', async () => {
     await search('HLS_FRAGMENT');
-    await waitFor(() => rowText('HLS_FRAGMENT'), (text) => text.includes('Decided by the engine settings'), 'the owned row');
+    await waitFor(
+      () => rowText('HLS_FRAGMENT'),
+      (text) => text.includes('Decided by the engine settings'),
+      'the owned row',
+    );
     assert.equal(await evaluate(`${rowOf('HLS_FRAGMENT')}.querySelectorAll('input, select, textarea').length`), 0);
     const segment = await evaluate(`${found('#wizard-segment-length')}.value`);
-    assert.match(await rowText('HLS_FRAGMENT'), new RegExp(`^HLS_FRAGMENT[\\s\\S]*\\n${segment.replace('.', '\\.')}\\n`));
+    assert.match(
+      await rowText('HLS_FRAGMENT'),
+      new RegExp(`^HLS_FRAGMENT[\\s\\S]*\\n${segment.replace('.', '\\.')}\\n`),
+    );
 
     await fillWhenPresent(evaluate, found('#wizard-segment-length'), '1.5', 'the segment length field');
-    await waitFor(() => rowText('HLS_FRAGMENT'), (text) => /\n1\.5\n/.test(text), 'the owned row following the segment length');
+    await waitFor(
+      () => rowText('HLS_FRAGMENT'),
+      (text) => /\n1\.5\n/.test(text),
+      'the owned row following the segment length',
+    );
   });
 
   await t.test('a key typed under one engine is kept aside, not sent, under another', async () => {
@@ -202,25 +265,38 @@ test('the wizard creates a deployment with its own settings at a phone width', {
     await waitFor(foldText, (text) => text.includes('3 settings changed'), 'three keys sent under OvenMediaEngine');
 
     await engine('SRS');
-    await waitFor(foldText, (text) => text.includes('4 settings changed') && !text.includes('Not sent'), 'the webhook token back under SRS');
+    await waitFor(
+      foldText,
+      (text) => text.includes('4 settings changed') && !text.includes('Not sent'),
+      'the webhook token back under SRS',
+    );
   });
 
-  await t.test('the open fold fits a phone with no sideways scroll, every section at the height of its keys', async () => {
-    await search('');
-    await evaluate(`[...${fold}.querySelectorAll('h4 button')].filter(button => button.getAttribute('aria-expanded') === 'false').forEach(button => button.click())`);
-    await waitFor(() => evaluate(`${fold}.querySelectorAll('li[data-setting]').length`), (count) => count > 20, 'every key on screen');
-    // A section grows to its keys over a short animation. One that stays
-    // shorter than its keys is drawn under the next heading, which no text
-    // read can see, so this waits for every one to settle at its keys.
-    await waitFor(
-      () => evaluate(`[...${fold}.querySelectorAll('.MuiCollapse-root')].map(section => ({
+  await t.test(
+    'the open fold fits a phone with no sideways scroll, every section at the height of its keys',
+    async () => {
+      await search('');
+      await evaluate(
+        `[...${fold}.querySelectorAll('h4 button')].filter(button => button.getAttribute('aria-expanded') === 'false').forEach(button => button.click())`,
+      );
+      await waitFor(
+        () => evaluate(`${fold}.querySelectorAll('li[data-setting]').length`),
+        (count) => count > 20,
+        'every key on screen',
+      );
+      // A section grows to its keys over a short animation. One that stays
+      // shorter than its keys is drawn under the next heading, which no text
+      // read can see, so this waits for every one to settle at its keys.
+      await waitFor(
+        () =>
+          evaluate(`[...${fold}.querySelectorAll('.MuiCollapse-root')].map(section => ({
         section: Math.round(section.getBoundingClientRect().height),
         keys: Math.round(section.querySelector('ul')?.getBoundingClientRect().height ?? 0),
       }))`),
-      (sections) => sections.length === 7 && sections.every(({ section, keys }) => keys > 0 && section >= keys - 1),
-      'every section at the height of its keys',
-    );
-    const measurement = await evaluate(`(() => {
+        (sections) => sections.length === 7 && sections.every(({ section, keys }) => keys > 0 && section >= keys - 1),
+        'every section at the height of its keys',
+      );
+      const measurement = await evaluate(`(() => {
       const paper = ${dialog};
       const content = paper.querySelector('.MuiDialogContent-root');
       return {
@@ -231,19 +307,23 @@ test('the wizard creates a deployment with its own settings at a phone width', {
           .map(el => el.getAttribute('aria-label') ?? el.textContent.trim()),
       };
     })()`);
-    assert.ok(measurement.page <= NARROW, `page width ${measurement.page} exceeds ${NARROW}`);
-    assert.equal(measurement.sideways, 0, 'the dialog scrolls sideways');
-    assert.deepEqual(measurement.outside, []);
-    await evaluate(`(${foldButton}).scrollIntoView({ block: 'start' })`);
-    await screenshot('open-fold-phone.png');
-  });
+      assert.ok(measurement.page <= NARROW, `page width ${measurement.page} exceeds ${NARROW}`);
+      assert.equal(measurement.sideways, 0, 'the dialog scrolls sideways');
+      assert.deepEqual(measurement.outside, []);
+      await evaluate(`(${foldButton}).scrollIntoView({ block: 'start' })`);
+      await screenshot('open-fold-phone.png');
+    },
+  );
 
   await t.test('the review names the keys the create sets and never a value', async () => {
     await click(buttonWithText('Continue'), 'the Continue button');
     await waitFor(body, (text) => text.includes('Check it, then deploy.'), 'the review');
     const review = await body();
     // In the list's order, which puts the required section first.
-    assert.match(review, /Advanced settings\s+API_AUTH_TOKEN, MAX_QUEUE_SIZE, LOG_LEVEL and SRS_WEBHOOK_TOKEN set for this deployment\. Every other key keeps the version's value\./);
+    assert.match(
+      review,
+      /Advanced settings\s+API_AUTH_TOKEN, MAX_QUEUE_SIZE, LOG_LEVEL and SRS_WEBHOOK_TOKEN set for this deployment\. Every other key keeps the version's value\./,
+    );
     // This mock manager has no web2 admin link of its own, so the group starts off.
     assert.match(review, /Web2 admin\s+Not linked\. The uploader runs standalone\./);
     assert.equal(review.includes(TOKEN) || review.includes(WEBHOOK_TOKEN), false);
@@ -252,14 +332,36 @@ test('the wizard creates a deployment with its own settings at a phone width', {
 
   await t.test('the deployment it creates lists those values as its own', async () => {
     await click(buttonWithText('Deploy'), 'the Deploy button');
-    await waitFor(body, (text) => text.includes(NAME) && text.includes('Stack settings'), `the ${NAME} page with its settings card`);
+    await waitFor(
+      body,
+      (text) => text.includes(NAME) && text.includes('Stack settings'),
+      `the ${NAME} page with its settings card`,
+    );
     const card = `document.getElementById('stack-settings')`;
-    await fillWhenPresent(evaluate, `${card}?.querySelector('input[aria-label="Search settings"]')`, 'LOG_LEVEL', 'the card search');
-    await waitFor(() => rowText('LOG_LEVEL'), (text) => text.includes('set here'), 'the created value as the deployment own');
+    await fillWhenPresent(
+      evaluate,
+      `${card}?.querySelector('input[aria-label="Search settings"]')`,
+      'LOG_LEVEL',
+      'the card search',
+    );
+    await waitFor(
+      () => rowText('LOG_LEVEL'),
+      (text) => text.includes('set here'),
+      'the created value as the deployment own',
+    );
     assert.equal(await evaluate(`${fieldOf('LOG_LEVEL')}.value`), 'debug');
 
-    await fillWhenPresent(evaluate, `${card}?.querySelector('input[aria-label="Search settings"]')`, 'API_AUTH_TOKEN', 'the card search');
-    await waitFor(() => rowText('API_AUTH_TOKEN'), (text) => text.includes('A value is stored for this deployment. It is never shown.'), 'the stored token');
+    await fillWhenPresent(
+      evaluate,
+      `${card}?.querySelector('input[aria-label="Search settings"]')`,
+      'API_AUTH_TOKEN',
+      'the card search',
+    );
+    await waitFor(
+      () => rowText('API_AUTH_TOKEN'),
+      (text) => text.includes('A value is stored for this deployment. It is never shown.'),
+      'the stored token',
+    );
 
     const stored = await evaluate(`fetch('/profiles/${NAME}/settings').then(r => r.json()).then(list => list.entries
       .filter(entry => entry.stored).map(entry => [entry.key, entry.storedValue]))`);

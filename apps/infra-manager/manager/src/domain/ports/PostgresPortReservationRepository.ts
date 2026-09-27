@@ -2,7 +2,15 @@ import { Pool } from 'pg';
 
 import { OPERATION_HOLD_FOR_OWNER_SQL, PROFILE_SLOT_LOCK_KEY } from '../profileSql.js';
 import type { PortReservationRepository } from './PortReservationRepository.js';
-import { type PortKey, type PortPlanEntry, type PortReconciliation, type PortReservation, type ReservationState, ownersAfterHandover, portKeyOf } from './portReservations.js';
+import {
+  type PortKey,
+  type PortPlanEntry,
+  type PortReconciliation,
+  type PortReservation,
+  type ReservationState,
+  ownersAfterHandover,
+  portKeyOf,
+} from './portReservations.js';
 import { RESERVATION_COLUMNS, type ReservationRow, planPortReservations, toReservation } from './reservationSql.js';
 
 const INVENTORY_ROW = 1;
@@ -38,7 +46,12 @@ export class PostgresPortReservationRepository implements PortReservationReposit
     return result.rows.map(toReservation);
   }
 
-  async plan(daemonId: string, profileName: string, entries: readonly PortPlanEntry[], reason: string): Promise<PortReservation[]> {
+  async plan(
+    daemonId: string,
+    profileName: string,
+    entries: readonly PortPlanEntry[],
+    reason: string,
+  ): Promise<PortReservation[]> {
     const captured = structuredClone(entries);
     const client = await this.pool.connect();
     try {
@@ -56,10 +69,10 @@ export class PostgresPortReservationRepository implements PortReservationReposit
 
   async setState(ids: readonly number[], state: ReservationState): Promise<void> {
     if (ids.length === 0) return;
-    await this.pool.query(
-      `UPDATE port_reservations SET state = $2, updated_at = NOW() WHERE id = ANY($1::int[])`,
-      [[...ids], state],
-    );
+    await this.pool.query(`UPDATE port_reservations SET state = $2, updated_at = NOW() WHERE id = ANY($1::int[])`, [
+      [...ids],
+      state,
+    ]);
   }
 
   async remove(ids: readonly number[]): Promise<void> {
@@ -72,7 +85,9 @@ export class PostgresPortReservationRepository implements PortReservationReposit
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock($1)', [PROFILE_SLOT_LOCK_KEY]);
-      const profile = await client.query<{ status: string }>('SELECT status FROM profiles WHERE name = $1 FOR UPDATE', [observation.profileName]);
+      const profile = await client.query<{ status: string }>('SELECT status FROM profiles WHERE name = $1 FOR UPDATE', [
+        observation.profileName,
+      ]);
       if (profile.rows[0]?.status !== 'DEPLOYING') {
         await client.query('COMMIT');
         return;
@@ -83,8 +98,11 @@ export class PostgresPortReservationRepository implements PortReservationReposit
       );
       const bound = new Set(observation.bound.map(portKeyOf));
       const planned = new Set(observation.planned.map(portKeyOf));
-      const active = rows.rows.filter(row => bound.has(portKeyOf(row))).map(row => row.id);
-      await client.query("UPDATE port_reservations SET state = 'active', updated_at = NOW() WHERE id = ANY($1::int[])", [active]);
+      const active = rows.rows.filter((row) => bound.has(portKeyOf(row))).map((row) => row.id);
+      await client.query(
+        "UPDATE port_reservations SET state = 'active', updated_at = NOW() WHERE id = ANY($1::int[])",
+        [active],
+      );
       const blocked = await client.query<{ held: boolean }>(
         `SELECT EXISTS (SELECT 1 FROM build_references WHERE resolved_at IS NULL
            AND ((holder_kind = 'job' AND holder_id = $1) OR (${OPERATION_HOLD_FOR_OWNER_SQL})))
@@ -94,30 +112,47 @@ export class PostgresPortReservationRepository implements PortReservationReposit
       );
       if (!blocked.rows[0]?.held) {
         for (const row of rows.rows) {
-          const current = observation.planned.filter(entry => portKeyOf(entry) === portKeyOf(row));
-          const owners = ownersAfterHandover(row.held_services, current.map(entry => entry.service), observation.services);
+          const current = observation.planned.filter((entry) => portKeyOf(entry) === portKeyOf(row));
+          const owners = ownersAfterHandover(
+            row.held_services,
+            current.map((entry) => entry.service),
+            observation.services,
+          );
           row.held_services = owners;
-          const confirmed = current.find(entry => entry.service !== null && observation.services.includes(entry.service));
-          await client.query('UPDATE port_reservations SET held_services = $2::text[], service = $3, updated_at = NOW() WHERE id = $1',
-            [row.id, owners, confirmed?.service ?? row.service]);
+          const confirmed = current.find(
+            (entry) => entry.service !== null && observation.services.includes(entry.service),
+          );
+          await client.query(
+            'UPDATE port_reservations SET held_services = $2::text[], service = $3, updated_at = NOW() WHERE id = $1',
+            [row.id, owners, confirmed?.service ?? row.service],
+          );
         }
-        const releasing = rows.rows.filter(row => row.held_services.length === 0
-          && !bound.has(portKeyOf(row)) && !planned.has(portKeyOf(row))).map(row => row.id);
-        await client.query("UPDATE port_reservations SET state = 'releasing', updated_at = NOW() WHERE id = ANY($1::int[])", [releasing]);
-        await client.query("DELETE FROM port_reservations WHERE id = ANY($1::int[]) AND state = 'releasing'", [releasing]);
+        const releasing = rows.rows
+          .filter((row) => row.held_services.length === 0 && !bound.has(portKeyOf(row)) && !planned.has(portKeyOf(row)))
+          .map((row) => row.id);
+        await client.query(
+          "UPDATE port_reservations SET state = 'releasing', updated_at = NOW() WHERE id = ANY($1::int[])",
+          [releasing],
+        );
+        await client.query("DELETE FROM port_reservations WHERE id = ANY($1::int[]) AND state = 'releasing'", [
+          releasing,
+        ]);
       }
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK').catch(() => {});
       throw err;
-    } finally { client.release(); }
+    } finally {
+      client.release();
+    }
   }
 
   async hasRemovalHold(profileName: string): Promise<boolean> {
     const result = await this.pool.query<{ held: boolean }>(
       `SELECT EXISTS (SELECT 1 FROM deploy_attempts WHERE project = $1 AND state <> 'released')
         OR EXISTS (SELECT 1 FROM build_references WHERE ${OPERATION_HOLD_FOR_OWNER_SQL}) AS held
-        FROM profiles owner WHERE owner.name = $1`, [profileName],
+        FROM profiles owner WHERE owner.name = $1`,
+      [profileName],
     );
     return result.rows[0]?.held ?? true;
   }
@@ -130,7 +165,8 @@ export class PostgresPortReservationRepository implements PortReservationReposit
   async inventorySeededAt(daemonId?: string): Promise<Date | null> {
     if (daemonId !== undefined) {
       const result = await this.pool.query<{ seeded_at: Date }>(
-        'SELECT seeded_at FROM reservation_daemon_inventory WHERE daemon_id = $1', [daemonId],
+        'SELECT seeded_at FROM reservation_daemon_inventory WHERE daemon_id = $1',
+        [daemonId],
       );
       return result.rows[0]?.seeded_at ?? null;
     }
@@ -144,13 +180,13 @@ export class PostgresPortReservationRepository implements PortReservationReposit
   async markInventorySeeded(daemonId?: string): Promise<void> {
     if (daemonId !== undefined) {
       await this.pool.query(
-        'INSERT INTO reservation_daemon_inventory (daemon_id) VALUES ($1) ON CONFLICT (daemon_id) DO NOTHING', [daemonId],
+        'INSERT INTO reservation_daemon_inventory (daemon_id) VALUES ($1) ON CONFLICT (daemon_id) DO NOTHING',
+        [daemonId],
       );
       return;
     }
-    await this.pool.query(
-      `UPDATE reservation_inventory SET seeded_at = COALESCE(seeded_at, NOW()) WHERE id = $1`,
-      [INVENTORY_ROW],
-    );
+    await this.pool.query(`UPDATE reservation_inventory SET seeded_at = COALESCE(seeded_at, NOW()) WHERE id = $1`, [
+      INVENTORY_ROW,
+    ]);
   }
 }

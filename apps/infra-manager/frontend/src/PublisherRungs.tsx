@@ -20,9 +20,7 @@ import { shortHex } from './format';
  * settles all of those, and because it guarantees every rung is a rung of the
  * shipped ladder, `rungOrder` below can never come back -1.
  */
-export function sortedPublisherRungs(
-  value: string | null | undefined,
-): BeePublisherEntry[] | null {
+export function sortedPublisherRungs(value: string | null | undefined): BeePublisherEntry[] | null {
   if (!value || beePublishersProblem(value)) return null;
   const entries = parseBeePublishers(value);
   if (!entries) return null;
@@ -53,10 +51,12 @@ export function PublisherRungList({
         <li key={entry.rung}>
           <Stack
             direction="row"
-            alignItems="center"
             spacing={1}
             useFlexGap
-            sx={{ flexWrap: 'wrap' }}
+            sx={{
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
           >
             <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
               {entry.rung} → {entry.url}
@@ -65,15 +65,14 @@ export function PublisherRungList({
               <>
                 <Typography
                   variant="caption"
-                  color="text.secondary"
-                  sx={{ fontFamily: 'monospace' }}
+                  sx={{
+                    color: 'text.secondary',
+                    fontFamily: 'monospace',
+                  }}
                 >
                   {shortHex(entry.batchId)}
                 </Typography>
-                <CopyButton
-                  value={entry.batchId}
-                  label={`${entry.rung} batch id`}
-                />
+                <CopyButton value={entry.batchId} label={`${entry.rung} batch id`} />
               </>
             )}
           </Stack>

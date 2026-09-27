@@ -61,7 +61,11 @@ function fieldsOf(entry: string): string[] {
   for (const char of entry) {
     if (char === '{') depth += 1;
     else if (char === '}') depth -= 1;
-    if (char === ':' && depth === 0) { fields.push(current); current = ''; continue; }
+    if (char === ':' && depth === 0) {
+      fields.push(current);
+      current = '';
+      continue;
+    }
     current += char;
   }
   return [...fields, current];
@@ -71,12 +75,23 @@ function mountsIn(file: string): Mount[] {
   const mounts: Mount[] = [];
   let inVolumes = false;
   for (const line of readFileSync(join(STACK, file), 'utf8').split('\n')) {
-    if (/^\s*volumes:\s*$/.test(line)) { inVolumes = true; continue; }
+    if (/^\s*volumes:\s*$/.test(line)) {
+      inVolumes = true;
+      continue;
+    }
     const item = /^\s*-\s+'?([^'\n]+?)'?\s*$/.exec(line);
-    if (!inVolumes || !item) { if (/^\s*\w[\w-]*:/.test(line)) inVolumes = false; continue; }
+    if (!inVolumes || !item) {
+      if (/^\s*\w[\w-]*:/.test(line)) inVolumes = false;
+      continue;
+    }
     const fields = fieldsOf(item[1]!);
     if (fields.length < 2) continue;
-    mounts.push({ file, line: line.trim(), source: fields[0]!, readOnly: fields.length > 2 && fields[fields.length - 1] === 'ro' });
+    mounts.push({
+      file,
+      line: line.trim(),
+      source: fields[0]!,
+      readOnly: fields.length > 2 && fields[fields.length - 1] === 'ro',
+    });
   }
   return mounts;
 }
@@ -107,36 +122,48 @@ function mountsOfBuildFiles(): BuildFileMount[] {
 describe('what an engine container mounts out of a deployment copy', () => {
   it('is read only for every file the build carries, so no container can write the published build', () => {
     for (const mount of mountsOfBuildFiles()) {
-      assert.ok(mount.readOnly,
+      assert.ok(
+        mount.readOnly,
         `${mount.file} mounts a file of the build without :ro (${mount.line}). ` +
-        'That file is a hard link of the published build, so a container writing it writes the build, ' +
-        'and every later deploy of that build is refused against its inventory record.');
+          'That file is a hard link of the published build, so a container writing it writes the build, ' +
+          'and every later deploy of that build is refused against its inventory record.',
+      );
     }
   });
 
   it('reads a mount that is not read only as one, so the check above can fail', () => {
     // The media directory is the writable mount, and it is a directory the deployment makes rather than a file the build carries.
-    const writable = composeFilesUnder('engines').flatMap(mountsIn).filter(mount => !mount.readOnly);
+    const writable = composeFilesUnder('engines')
+      .flatMap(mountsIn)
+      .filter((mount) => !mount.readOnly);
 
-    assert.ok(writable.length > 0,
+    assert.ok(
+      writable.length > 0,
       'every mount in the engines parsed as read only, so the check above passes whatever the compose files say. ' +
-      'If the stack really made them all read only, put a synthetic line through mountsIn here instead.');
+        'If the stack really made them all read only, put a synthetic line through mountsIn here instead.',
+    );
     for (const mount of writable) {
       const fallback = defaultOf(mount.source);
-      assert.ok(fallback === null || !existsSync(resolve(STACK, dirname(mount.file), fallback)),
-        `${mount.file} mounts something that is in the build tree and is not read only: ${mount.line}`);
+      assert.ok(
+        fallback === null || !existsSync(resolve(STACK, dirname(mount.file), fallback)),
+        `${mount.file} mounts something that is in the build tree and is not read only: ${mount.line}`,
+      );
     }
   });
 
   it('still covers the engine templates and entrypoints, so a rename cannot empty this check', () => {
-    const covered = [...new Set(mountsOfBuildFiles().map(mount => mount.path))].sort();
+    const covered = [...new Set(mountsOfBuildFiles().map((mount) => mount.path))].sort();
 
-    assert.deepEqual(covered, [
-      'engines/ome/Server.xml.template',
-      'engines/ome/entrypoint.sh',
-      'engines/srs/entrypoint.sh',
-      'engines/srs/healthcheck.sh',
-      'engines/srs/srs.conf.template',
-    ], 'the set of build files mounted into a container moved. Read the diff, then record the new set here.');
+    assert.deepEqual(
+      covered,
+      [
+        'engines/ome/Server.xml.template',
+        'engines/ome/entrypoint.sh',
+        'engines/srs/entrypoint.sh',
+        'engines/srs/healthcheck.sh',
+        'engines/srs/srs.conf.template',
+      ],
+      'the set of build files mounted into a container moved. Read the diff, then record the new set here.',
+    );
   });
 });

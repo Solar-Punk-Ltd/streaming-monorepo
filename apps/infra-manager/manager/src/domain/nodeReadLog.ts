@@ -57,10 +57,7 @@ export class NodeReadLog {
   private readonly now: () => number;
   private readonly reminderMs: number;
 
-  constructor({
-    now = Date.now,
-    reminderMs = READ_REMINDER_MS,
-  }: NodeReadLogOptions = {}) {
+  constructor({ now = Date.now, reminderMs = READ_REMINDER_MS }: NodeReadLogOptions = {}) {
     this.now = now;
     this.reminderMs = reminderMs;
   }

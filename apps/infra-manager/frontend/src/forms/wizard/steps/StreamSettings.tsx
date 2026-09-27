@@ -59,8 +59,7 @@ export function StreamSettings(props: WizardStepProps) {
               {
                 value: 'own',
                 title: 'Run its own Bee node',
-                detail:
-                  'Default. One node per stream, funded and stamped from this manager.',
+                detail: 'Default. One node per stream, funded and stamped from this manager.',
               },
               {
                 value: 'external',
@@ -73,7 +72,9 @@ export function StreamSettings(props: WizardStepProps) {
                     value={state.beeUrl}
                     onChange={(event) => update({ beeUrl: event.target.value })}
                     placeholder="http://10.0.0.7:1633"
-                    inputProps={{ style: { fontFamily: MONO_STACK } }}
+                    slotProps={{
+                      htmlInput: { style: { fontFamily: MONO_STACK } },
+                    }}
                   />
                 ),
               },

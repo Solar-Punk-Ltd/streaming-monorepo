@@ -1,4 +1,4 @@
-import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { HashRouter, Navigate, Route, Routes } from 'react-router';
 
 import { AuthProvider } from './auth';
 import { RequireAuth } from './components/RequireAuth';
@@ -25,10 +25,7 @@ export function App() {
               {/* The account page folded into Access, which is the one page
                   about logging in. The old hash is kept so a bookmark of it
                   still lands somewhere with a change-password form. */}
-              <Route
-                path="/account"
-                element={<Navigate to="/access" replace />}
-              />
+              <Route path="/account" element={<Navigate to="/access" replace />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

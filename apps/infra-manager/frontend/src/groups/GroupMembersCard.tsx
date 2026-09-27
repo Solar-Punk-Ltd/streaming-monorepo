@@ -1,20 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import {
-  Button,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  TextField,
-} from '@mui/material';
+import { Button, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField } from '@mui/material';
 
-import {
-  type BeePublishersResult,
-  rungFromMemberName,
-  rungOrder,
-} from '@streaming-infra-manager/common';
+import { type BeePublishersResult, rungFromMemberName, rungOrder } from '@streaming-infra-manager/common';
 
 import { useActions } from '../app/useDeploymentActions';
 import { EmptyState } from '../components/EmptyState';
@@ -49,10 +36,7 @@ export function GroupMembersCard({
       flush
     >
       {members.length === 0 ? (
-        <EmptyState
-          title="This group has no members."
-          hint="Add one above, or remove the group if it is not needed."
-        />
+        <EmptyState title="This group has no members." hint="Add one above, or remove the group if it is not needed." />
       ) : (
         <Table>
           <TableHead>
@@ -100,18 +84,14 @@ function poolRows(
       profile,
       rung: rungFromMemberName(group.name, profile.name),
     }))
-    .filter(
-      (entry): entry is { profile: Profile; rung: string } => entry.rung !== null,
-    )
+    .filter((entry): entry is { profile: Profile; rung: string } => entry.rung !== null)
     .sort((a, b) => rungOrder(a.rung) - rungOrder(b.rung))
     .map(({ profile, rung }) => (
       <PoolRungRow
         key={profile.name}
         rung={rung}
         profile={profile}
-        rungState={
-          poolResult?.rungs.find((entry) => entry.rung === rung) ?? null
-        }
+        rungState={poolResult?.rungs.find((entry) => entry.rung === rung) ?? null}
         chequebook={chequebooks.get(profile.name) ?? null}
       />
     ));

@@ -52,9 +52,11 @@ export interface PortReconciliation {
 
 /** An untouched or unknown owner keeps its claim even when another service has moved onto the same port. */
 export function ownersAfterHandover(
-  previous: readonly (string | null)[], current: readonly (string | null)[], replaced: readonly string[],
+  previous: readonly (string | null)[],
+  current: readonly (string | null)[],
+  replaced: readonly string[],
 ): (string | null)[] {
-  return [...new Set([...previous.filter(service => service === null || !replaced.includes(service)), ...current])];
+  return [...new Set([...previous.filter((service) => service === null || !replaced.includes(service)), ...current])];
 }
 
 /** The ports a deployment binds for a slot: the version's table shifted by ten per slot. */

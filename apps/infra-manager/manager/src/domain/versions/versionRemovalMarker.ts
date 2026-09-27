@@ -1,21 +1,35 @@
 import { randomUUID } from 'node:crypto';
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from 'node:fs';
+import { type BigIntStats, closeSync, constants, fstatSync, lstatSync, openSync, readSync } from 'node:fs';
 import { lstat, open, rename, unlink } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { stackVersionNameProblem } from '@streaming-infra-manager/common';
 import { assertOwnedVersionParent } from './ownedVersionParent.js';
 
-interface RemovalIdentity { id?: number; rootPath: string | null }
-interface RemovalMarker { schema: 1; versionId: number; name: string; rootPath: string; removalId: string }
+interface RemovalIdentity {
+  id?: number;
+  rootPath: string | null;
+}
+interface RemovalMarker {
+  schema: 1;
+  versionId: number;
+  name: string;
+  rootPath: string;
+  removalId: string;
+}
 const MAX_MARKER_BYTES = 4096;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const UNVERIFIED = 'This version removal marker cannot be verified. Resolve the interrupted removal before using this version.';
-const REMOVING = 'Removal of this version has started. Finish removing it before creating another version with this name.';
+const UNVERIFIED =
+  'This version removal marker cannot be verified. Resolve the interrupted removal before using this version.';
+const REMOVING =
+  'Removal of this version has started. Finish removing it before creating another version with this name.';
 
-function markerPath(rootPath: string): string { return `${rootPath}.removal.json`; }
+function markerPath(rootPath: string): string {
+  return `${rootPath}.removal.json`;
+}
 function assertAnchor(rootPath: string): void {
-  if (!isAbsolute(rootPath) || resolve(rootPath) !== rootPath || stackVersionNameProblem(basename(rootPath))) throw new Error(UNVERIFIED);
+  if (!isAbsolute(rootPath) || resolve(rootPath) !== rootPath || stackVersionNameProblem(basename(rootPath)))
+    throw new Error(UNVERIFIED);
 }
 
 function readMarker(rootPath: string): RemovalMarker | null {
@@ -23,11 +37,14 @@ function readMarker(rootPath: string): RemovalMarker | null {
   if (!assertOwnedVersionParent(dirname(rootPath), true)) return null;
   const path = markerPath(rootPath);
   let before;
-  try { before = lstatSync(path, { bigint: true }); } catch (error) {
+  try {
+    before = lstatSync(path, { bigint: true });
+  } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw new Error(UNVERIFIED);
+    throw new Error(UNVERIFIED, { cause: error });
   }
-  if (!before.isFile() || before.isSymbolicLink() || before.size > BigInt(MAX_MARKER_BYTES)) throw new Error(UNVERIFIED);
+  if (!before.isFile() || before.isSymbolicLink() || before.size > BigInt(MAX_MARKER_BYTES))
+    throw new Error(UNVERIFIED);
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const opened = fstatSync(fd, { bigint: true });
@@ -41,18 +58,42 @@ function readMarker(rootPath: string): RemovalMarker | null {
     }
     const after = fstatSync(fd, { bigint: true });
     const current = lstatSync(path, { bigint: true });
-    if (length > MAX_MARKER_BYTES || [after, current].some(info => info.dev !== before.dev || info.ino !== before.ino ||
-      info.size !== before.size || info.mode !== before.mode || info.mtimeNs !== before.mtimeNs || info.ctimeNs !== before.ctimeNs)) throw new Error(UNVERIFIED);
+    if (
+      length > MAX_MARKER_BYTES ||
+      [after, current].some(
+        (info) =>
+          info.dev !== before.dev ||
+          info.ino !== before.ino ||
+          info.size !== before.size ||
+          info.mode !== before.mode ||
+          info.mtimeNs !== before.mtimeNs ||
+          info.ctimeNs !== before.ctimeNs,
+      )
+    )
+      throw new Error(UNVERIFIED);
     let value: unknown;
-    try { value = JSON.parse(bytes.subarray(0, length).toString('utf8')); }
-    catch { throw new Error(UNVERIFIED); }
+    try {
+      value = JSON.parse(bytes.subarray(0, length).toString('utf8'));
+    } catch {
+      throw new Error(UNVERIFIED);
+    }
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(UNVERIFIED);
     const marker = value as Record<string, unknown>;
-    if (!isDeepStrictEqual(Object.keys(marker).sort(), ['name', 'removalId', 'rootPath', 'schema', 'versionId']) ||
-      marker.schema !== 1 || !Number.isSafeInteger(marker.versionId) || (marker.versionId as number) < 1 ||
-      marker.name !== basename(rootPath) || marker.rootPath !== rootPath || typeof marker.removalId !== 'string' || !UUID.test(marker.removalId)) throw new Error(UNVERIFIED);
+    if (
+      !isDeepStrictEqual(Object.keys(marker).sort(), ['name', 'removalId', 'rootPath', 'schema', 'versionId']) ||
+      marker.schema !== 1 ||
+      !Number.isSafeInteger(marker.versionId) ||
+      (marker.versionId as number) < 1 ||
+      marker.name !== basename(rootPath) ||
+      marker.rootPath !== rootPath ||
+      typeof marker.removalId !== 'string' ||
+      !UUID.test(marker.removalId)
+    )
+      throw new Error(UNVERIFIED);
     return marker as unknown as RemovalMarker;
-  } finally { closeSync(fd); }
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** Synchronous because deployment's existing artifact admission is synchronous. Reads at most 4097 bytes. */
@@ -64,21 +105,39 @@ export function versionRemovalProblem(version: RemovalIdentity): string | null {
     if (!Number.isSafeInteger(version.id) || version.id! < 1) return UNVERIFIED;
     if (marker.versionId > version.id!) return UNVERIFIED;
     return marker.versionId === version.id ? REMOVING : null;
-  } catch { return UNVERIFIED; }
+  } catch {
+    return UNVERIFIED;
+  }
 }
 
 /** The caller holds the version row lock and has checked every hold and all owned payload paths. */
-export async function persistVersionRemoval(version: { id: number; name: string; rootPath: string | null }): Promise<void> {
+export async function persistVersionRemoval(version: {
+  id: number;
+  name: string;
+  rootPath: string | null;
+}): Promise<void> {
   const anchor = version.rootPath;
-  if (!anchor || !Number.isSafeInteger(version.id) || version.id < 1 || version.name !== basename(anchor)) throw new Error(UNVERIFIED);
+  if (!anchor || !Number.isSafeInteger(version.id) || version.id < 1 || version.name !== basename(anchor))
+    throw new Error(UNVERIFIED);
   assertOwnedVersionParent(dirname(anchor));
   const previous = readMarker(anchor);
   if (previous && previous.versionId > version.id) throw new Error(UNVERIFIED);
-  const marker: RemovalMarker = previous?.versionId === version.id ? previous : {
-    schema: 1, versionId: version.id, name: version.name, rootPath: anchor, removalId: randomUUID(),
-  };
+  const marker: RemovalMarker =
+    previous?.versionId === version.id
+      ? previous
+      : {
+          schema: 1,
+          versionId: version.id,
+          name: version.name,
+          rootPath: anchor,
+          removalId: randomUUID(),
+        };
   const temporary = `${markerPath(anchor)}.${randomUUID()}.tmp`;
-  const handle = await open(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
+  const handle = await open(
+    temporary,
+    constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+    0o600,
+  );
   let owned;
   let renamed = false;
   try {
@@ -90,14 +149,27 @@ export async function persistVersionRemoval(version: { id: number; name: string;
     await rename(temporary, markerPath(anchor));
     renamed = true;
     const directory = await open(dirname(anchor), constants.O_RDONLY | constants.O_NOFOLLOW);
-    try { await directory.sync(); } finally { await directory.close(); }
-  } finally {
-    await handle.close();
-    if (!renamed) {
-      try {
-        const current = await lstat(temporary, { bigint: true });
-        if (owned && current.isFile() && current.dev === owned.dev && current.ino === owned.ino) await unlink(temporary);
-      } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    try {
+      await directory.sync();
+    } finally {
+      await directory.close();
     }
+  } catch (error) {
+    await handle.close();
+    if (!renamed) await removeOwnedTemporary(temporary, owned);
+    throw error;
+  }
+}
+
+/**
+ * Best effort: the failed write is what the caller hears, never a cleanup failure after it. A temporary
+ * file left behind carries a random name and blocks nothing.
+ */
+async function removeOwnedTemporary(temporary: string, owned: BigIntStats | undefined): Promise<void> {
+  try {
+    const current = await lstat(temporary, { bigint: true });
+    if (owned && current.isFile() && current.dev === owned.dev && current.ino === owned.ino) await unlink(temporary);
+  } catch {
+    // Already gone, or unreadable: either way the write's own error is the one to report.
   }
 }

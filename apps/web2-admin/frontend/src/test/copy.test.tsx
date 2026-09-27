@@ -28,13 +28,10 @@ afterEach(() => {
 
 function render(secret = false) {
   mockFetch([]);
-  return renderWithProviders(
-    <ValueField label="SRT URL" value={VALUE} secret={secret} />,
-  );
+  return renderWithProviders(<ValueField label="SRT URL" value={VALUE} secret={secret} />);
 }
 
-const clickCopy = () =>
-  fireEvent.click(screen.getByLabelText('copy srt url'));
+const clickCopy = () => fireEvent.click(screen.getByLabelText('copy srt url'));
 
 describe('copying a value', () => {
   it('uses the async clipboard when the page has one', async () => {
@@ -44,9 +41,7 @@ describe('copying a value', () => {
 
     clickCopy();
 
-    expect(
-      await screen.findByText('SRT URL copied to your clipboard.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('SRT URL copied to your clipboard.')).toBeInTheDocument();
     expect(writeText).toHaveBeenCalledWith(VALUE);
   });
 
@@ -61,9 +56,7 @@ describe('copying a value', () => {
 
     clickCopy();
 
-    expect(
-      await screen.findByText('SRT URL copied to your clipboard.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('SRT URL copied to your clipboard.')).toBeInTheDocument();
     expect(execCommand).toHaveBeenCalledWith('copy');
     // The value has to reach a real, selectable textarea for the command to
     // have anything to copy — and that node must not be left behind.
@@ -81,9 +74,7 @@ describe('copying a value', () => {
 
     clickCopy();
 
-    expect(
-      await screen.findByText('SRT URL copied to your clipboard.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('SRT URL copied to your clipboard.')).toBeInTheDocument();
     expect(execCommand).toHaveBeenCalledWith('copy');
   });
 
@@ -94,9 +85,7 @@ describe('copying a value', () => {
 
     clickCopy();
 
-    expect(
-      await screen.findByText(/The srt url is selected — copy it with your keyboard/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/The srt url is selected — copy it with your keyboard/)).toBeInTheDocument();
     const field = screen.getByLabelText('SRT URL') as HTMLInputElement;
     expect(field.selectionStart).toBe(0);
     expect(field.selectionEnd).toBe(VALUE.length);
@@ -106,9 +95,7 @@ describe('copying a value', () => {
     render(true);
 
     // Hidden to start with.
-    expect((screen.getByLabelText('SRT URL') as HTMLInputElement).value).not.toBe(
-      VALUE,
-    );
+    expect((screen.getByLabelText('SRT URL') as HTMLInputElement).value).not.toBe(VALUE);
 
     clickCopy();
 

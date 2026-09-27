@@ -13,12 +13,7 @@ import { describe, it } from 'node:test';
 
 import type { StackVersion } from '@streaming-infra-manager/common';
 
-import {
-  initialWizardState,
-  type WizardContext,
-  type WizardGoal,
-  type WizardState,
-} from './wizardState';
+import { initialWizardState, type WizardContext, type WizardGoal, type WizardState } from './wizardState';
 import { submitWizard } from './wizardSubmit';
 
 const context: WizardContext = {
@@ -28,9 +23,7 @@ const context: WizardContext = {
   hostPassphrase: null,
   beeRpcEndpoint: { configured: false, host: null },
   poolResults: new Map(),
-  versions: [
-    { id: 7, status: 'ready', isDefault: true, tested: true } as StackVersion,
-  ],
+  versions: [{ id: 7, status: 'ready', isDefault: true, tested: true } as StackVersion],
 };
 
 interface SentRequest {

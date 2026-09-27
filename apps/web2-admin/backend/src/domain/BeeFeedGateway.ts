@@ -1,10 +1,4 @@
-import {
-  Bee,
-  BeeResponseError,
-  FeedIndex,
-  PrivateKey,
-  Topic,
-} from '@ethersphere/bee-js';
+import { Bee, BeeResponseError, FeedIndex, PrivateKey, Topic } from '@ethersphere/bee-js';
 
 import { getErrorMessage } from '../utils/errorUtils.js';
 
@@ -64,9 +58,7 @@ export class BeeFeedGateway implements FeedGateway {
   async readLatest(): Promise<FeedSnapshot> {
     const owner = this.signer.publicKey().address();
     try {
-      const result = await this.bee
-        .makeFeedReader(this.topic, owner)
-        .downloadPayload();
+      const result = await this.bee.feed.makeReader(this.topic, owner).downloadPayload();
       const payload = result.payload.toJSON();
       if (!Array.isArray(payload)) {
         throw new FeedFormatError(`expected a JSON array, got ${typeof payload}`);
@@ -76,10 +68,7 @@ export class BeeFeedGateway implements FeedGateway {
       // 404 = the topic was never written, 503 = the feed exists but has no
       // update yet. Both mean "start at index 0 with an empty list"; anything
       // else is a real failure and must not silently clear the catalog.
-      if (
-        error instanceof BeeResponseError &&
-        (error.status === 404 || error.status === 503)
-      ) {
+      if (error instanceof BeeResponseError && (error.status === 404 || error.status === 503)) {
         logger.info('[BeeFeedGateway] No feed update yet, starting fresh');
         return { index: null, entries: [] };
       }
@@ -94,28 +83,17 @@ export class BeeFeedGateway implements FeedGateway {
     // title is then counted as one unit but takes more than one byte, so a
     // list just under the limit would be rejected by the node.
     const payload = new TextEncoder().encode(JSON.stringify(entries));
-    const result = await this.bee
-      .makeFeedWriter(this.topic, this.signer)
-      .uploadPayload(this.postageBatchId, payload, {
-        index: FeedIndex.fromBigInt(BigInt(index)),
-      });
+    const result = await this.bee.feed.makeWriter(this.topic, this.signer).uploadPayload(this.postageBatchId, payload, {
+      index: FeedIndex.fromBigInt(BigInt(index)),
+    });
     logger.info(
       `[BeeFeedGateway] Wrote feed index=${index} entries=${entries.length} bytes=${payload.length} ref=${result.reference.toHex()}`,
     );
     return result.reference.toHex();
   }
 
-  async uploadThumbnail(
-    bytes: Uint8Array,
-    filename: string,
-    contentType: string,
-  ): Promise<string> {
-    const result = await this.bee.uploadFile(
-      this.postageBatchId,
-      bytes,
-      filename,
-      { contentType },
-    );
+  async uploadThumbnail(bytes: Uint8Array, filename: string, contentType: string): Promise<string> {
+    const result = await this.bee.file.upload(this.postageBatchId, bytes, filename, { contentType });
     logger.info(
       `[BeeFeedGateway] Uploaded thumbnail ${filename} (${bytes.length} bytes) ref=${result.reference.toHex()}`,
     );
@@ -158,16 +136,10 @@ export class BeeFeedGateway implements FeedGateway {
 
     if (response.ok) return true;
     if (response.status === 404) return false;
-    throw new ThumbnailCheckError(
-      reference,
-      `the node answered ${response.status}`,
-    );
+    throw new ThumbnailCheckError(reference, `the node answered ${response.status}`);
   }
 }
 
 function isTimeout(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    (error.name === 'TimeoutError' || error.name === 'AbortError')
-  );
+  return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
 }

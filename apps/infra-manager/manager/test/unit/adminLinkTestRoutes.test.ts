@@ -55,7 +55,11 @@ const FAKE_STREAM_ADDRESS = '0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf';
 const session = {
   async sessionFor(token: string) {
     return token === 'test-session'
-      ? { user: { id: 7, username: 'operator', isAdmin: false }, tokenHash: 'test-hash', expiresAt: new Date(Date.now() + 60_000) }
+      ? {
+          user: { id: 7, username: 'operator', isAdmin: false },
+          tokenHash: 'test-hash',
+          expiresAt: new Date(Date.now() + 60_000),
+        }
       : null;
   },
 } as unknown as AuthService;
@@ -114,14 +118,20 @@ async function testApi(options: TestApiOptions = {}) {
       body: JSON.stringify(body),
     });
     const text = await response.text();
-    return { status: response.status, text, body: text ? (JSON.parse(text) as unknown) : undefined, cache: response.headers.get('cache-control') };
+    return {
+      status: response.status,
+      text,
+      body: text ? (JSON.parse(text) as unknown) : undefined,
+      cache: response.headers.get('cache-control'),
+    };
   }
 
   return {
     harness,
     probed,
     testTyped: (body: unknown, authenticated = true) => post('/manager-settings/admin-link/test', body, authenticated),
-    testDeployment: (name = 'stage', authenticated = true) => post(`/profiles/${name}/settings/admin-link/test`, {}, authenticated),
+    testDeployment: (name = 'stage', authenticated = true) =>
+      post(`/profiles/${name}/settings/admin-link/test`, {}, authenticated),
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
@@ -153,10 +163,13 @@ async function fakeAdmin(t: TestContext, token: string, owner: string): Promise<
     return reply(404, { error: 'not_found' });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise<void>((resolve) => {
-    server.closeAllConnections();
-    server.close(() => resolve());
-  }));
+  t.after(
+    () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections();
+        server.close(() => resolve());
+      }),
+  );
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
   return { url: `http://127.0.0.1:${address.port}`, received };
@@ -177,13 +190,20 @@ describe('POST /manager-settings/admin-link/test', () => {
     const logs = capturedLogs(t);
     const api = await testApi({ outcome: 'owner-mismatch' });
     try {
-      const answer = await api.testTyped({ url: ADMIN_URL, token: { source: 'typed', value: TOKEN }, feedOwner: OWNER });
+      const answer = await api.testTyped({
+        url: ADMIN_URL,
+        token: { source: 'typed', value: TOKEN },
+        feedOwner: OWNER,
+      });
 
       assert.equal(answer.status, 200, answer.text);
       assert.deepEqual(answer.body, { outcome: 'owner-mismatch' });
       assert.equal(answer.cache, 'no-store');
       assert.deepEqual(api.probed, [{ url: ADMIN_URL, token: TOKEN, feedOwner: OWNER }]);
-      assert.ok(logs.some((line) => line.includes('owner-mismatch')), logs.join('\n'));
+      assert.ok(
+        logs.some((line) => line.includes('owner-mismatch')),
+        logs.join('\n'),
+      );
       for (const line of logs) assert.equal(line.includes(ADMIN_URL) || line.includes(TOKEN), false, line);
     } finally {
       await api.close();
@@ -206,13 +226,20 @@ describe('POST /manager-settings/admin-link/test', () => {
   it('sends the stored token to no origin but the one it was saved with, and asks nothing there', async () => {
     const api = await testApi({ storedToken: STORED_TOKEN });
     try {
-      for (const elsewhere of ['https://admin2.example.com', 'http://admin.example.com', 'https://admin.example.com:8443']) {
+      for (const elsewhere of [
+        'https://admin2.example.com',
+        'http://admin.example.com',
+        'https://admin.example.com:8443',
+      ]) {
         const answer = await api.testTyped({ url: elsewhere, token: { source: 'stored' } });
         assert.deepEqual(answer.body, { outcome: 'stored-token-elsewhere' });
       }
       assert.deepEqual(api.probed, []);
 
-      const typed = await api.testTyped({ url: 'https://admin2.example.com', token: { source: 'typed', value: TOKEN } });
+      const typed = await api.testTyped({
+        url: 'https://admin2.example.com',
+        token: { source: 'typed', value: TOKEN },
+      });
       assert.deepEqual(typed.body, { outcome: 'linked' });
       assert.deepEqual(api.probed, [{ url: 'https://admin2.example.com', token: TOKEN, feedOwner: null }]);
     } finally {
@@ -235,8 +262,15 @@ describe('POST /manager-settings/admin-link/test', () => {
   it('refuses an address or a token the uploader would refuse, repeating neither, and asks nothing', async () => {
     const api = await testApi();
     try {
-      const address = refusalOf(await api.testTyped({ url: 'https://operator:synthetic-password@admin.example.com', token: { source: 'stored' } }));
-      const token = refusalOf(await api.testTyped({ url: ADMIN_URL, token: { source: 'typed', value: 'synthetic-short-token' } }));
+      const address = refusalOf(
+        await api.testTyped({
+          url: 'https://operator:synthetic-password@admin.example.com',
+          token: { source: 'stored' },
+        }),
+      );
+      const token = refusalOf(
+        await api.testTyped({ url: ADMIN_URL, token: { source: 'typed', value: 'synthetic-short-token' } }),
+      );
       const empty = refusalOf(await api.testTyped({ url: '', token: { source: 'stored' } }));
 
       assert.deepEqual(address, ['ADMIN_API_URL cannot carry a user name or a password.']);
@@ -271,7 +305,10 @@ describe('POST /manager-settings/admin-link/test', () => {
   it('refuses a browser with no session', async () => {
     const api = await testApi();
     try {
-      assert.equal((await api.testTyped({ url: ADMIN_URL, token: { source: 'typed', value: TOKEN } }, false)).status, 401);
+      assert.equal(
+        (await api.testTyped({ url: ADMIN_URL, token: { source: 'typed', value: TOKEN } }, false)).status,
+        401,
+      );
       assert.equal(api.probed.length, 0);
     } finally {
       await api.close();
@@ -298,7 +335,10 @@ describe('POST /profiles/:name/settings/admin-link/test', () => {
 
   it("compares the admin's feed owner with the address of a stream key the version's base .env sets", async (t) => {
     const logs = capturedLogs(t);
-    for (const [owner, outcome] of [[OWNER, 'owner-mismatch'], [FAKE_STREAM_ADDRESS, 'linked']] as const) {
+    for (const [owner, outcome] of [
+      [OWNER, 'owner-mismatch'],
+      [FAKE_STREAM_ADDRESS, 'linked'],
+    ] as const) {
       const admin = await fakeAdmin(t, TOKEN, owner);
       const api = await testApi({ baseEnv: `STREAM_KEY=${FAKE_STREAM_KEY}\n`, probe: probeAdminLink });
       try {
@@ -310,13 +350,19 @@ describe('POST /profiles/:name/settings/admin-link/test', () => {
         assert.equal(api.probed[0]?.feedOwner, FAKE_STREAM_ADDRESS);
         assert.equal(carriesKey(answer.text, FAKE_STREAM_KEY), false);
         assert.equal(admin.received.length, 2);
-        assert.equal(admin.received.some((request) => carriesKey(request, FAKE_STREAM_KEY)), false);
+        assert.equal(
+          admin.received.some((request) => carriesKey(request, FAKE_STREAM_KEY)),
+          false,
+        );
       } finally {
         await api.close();
       }
     }
     assert.ok(logs.length > 0);
-    assert.equal(logs.some((line) => carriesKey(line, FAKE_STREAM_KEY)), false);
+    assert.equal(
+      logs.some((line) => carriesKey(line, FAKE_STREAM_KEY)),
+      false,
+    );
   });
 
   it("answers without the owner, and without repeating the value, for a version's stream key no address derives from", async (t) => {
@@ -331,8 +377,14 @@ describe('POST /profiles/:name/settings/admin-link/test', () => {
       assert.equal(answer.status, 200, answer.text);
       assert.deepEqual(answer.body, { outcome: 'token-accepted' });
       assert.equal(carriesKey(answer.text, unusableKey), false);
-      assert.equal(admin.received.some((request) => carriesKey(request, unusableKey)), false);
-      assert.equal(logs.some((line) => carriesKey(line, unusableKey)), false);
+      assert.equal(
+        admin.received.some((request) => carriesKey(request, unusableKey)),
+        false,
+      );
+      assert.equal(
+        logs.some((line) => carriesKey(line, unusableKey)),
+        false,
+      );
     } finally {
       await api.close();
     }

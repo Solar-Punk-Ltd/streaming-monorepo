@@ -79,51 +79,64 @@ interface CatalogBeeOptions {
 
 function makeCatalogBee(writes: CapturedWrite[], opts: CatalogBeeOptions = {}): Bee {
   return {
-    makeFeedReader: () => ({
-      downloadPayload: async (dlOpts?: { index?: FeedIndex }) => {
-        // With an index this is fetchCurrentState; without, it is the init head lookup.
-        if (dlOpts?.index) {
-          if (opts.stateReadFails) {
-            throw chunkNotFound();
+    feed: {
+      makeReader: () => ({
+        downloadPayload: async (dlOpts?: { index?: FeedIndex }) => {
+          // With an index this is fetchCurrentState; without, it is the init head lookup.
+          if (dlOpts?.index) {
+            if (opts.stateReadFails) {
+              throw chunkNotFound();
+            }
+            return { payload: { toJSON: () => opts.published ?? opts.stateEntries ?? [] } };
           }
-          return { payload: { toJSON: () => opts.published ?? opts.stateEntries ?? [] } };
-        }
-        if (opts.lookupThrows) {
-          throw opts.lookupThrows;
-        }
-        if (opts.lookupFails404) {
-          throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
-        }
-        if (opts.lookupFails503) {
-          throw new BeeResponseError('GET', '/feeds', 'Service Unavailable.', undefined, 503, 'Service Unavailable');
-        }
-        if (opts.lookupDropsBody) {
-          throw droppedBody();
-        }
-        if (opts.lookupRefused) {
-          throw connectionRefused();
-        }
-        return { feedIndex: FeedIndex.fromBigInt(opts.lookupIndex ?? 0n), payload: { toJSON: () => [] } };
-      },
-    }),
-    isConnected: async () => opts.nodeLive ?? true,
-    getReadiness: async () => {
-      if (opts.nodeReady === false) {
-        throw new BeeResponseError('GET', '/readiness', 'Service Unavailable.', undefined, 503, 'Service Unavailable');
-      }
-      return { status: 'ready', version: '2.6.0', apiVersion: '7.2.0' };
+          if (opts.lookupThrows) {
+            throw opts.lookupThrows;
+          }
+          if (opts.lookupFails404) {
+            throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
+          }
+          if (opts.lookupFails503) {
+            throw new BeeResponseError('GET', '/feeds', 'Service Unavailable.', undefined, 503, 'Service Unavailable');
+          }
+          if (opts.lookupDropsBody) {
+            throw droppedBody();
+          }
+          if (opts.lookupRefused) {
+            throw connectionRefused();
+          }
+          return { feedIndex: FeedIndex.fromBigInt(opts.lookupIndex ?? 0n), payload: { toJSON: () => [] } };
+        },
+      }),
+      makeWriter: () => ({
+        uploadPayload: async (_stamp: string, payload: unknown, writeOpts: Omit<CapturedWrite, 'payload'>) => {
+          const err = opts.writeFails?.();
+          if (err) {
+            throw err;
+          }
+          await opts.holdWrite?.();
+          writes.push({ ...writeOpts, payload: String(payload) });
+          return { reference: { toHex: () => 'ref' } };
+        },
+      }),
     },
-    makeFeedWriter: () => ({
-      uploadPayload: async (_stamp: string, payload: unknown, writeOpts: Omit<CapturedWrite, 'payload'>) => {
-        const err = opts.writeFails?.();
-        if (err) {
-          throw err;
+    connectivity: {
+      isConnected: async () => opts.nodeLive ?? true,
+    },
+    status: {
+      getReadiness: async () => {
+        if (opts.nodeReady === false) {
+          throw new BeeResponseError(
+            'GET',
+            '/readiness',
+            'Service Unavailable.',
+            undefined,
+            503,
+            'Service Unavailable',
+          );
         }
-        await opts.holdWrite?.();
-        writes.push({ ...writeOpts, payload: String(payload) });
-        return { reference: { toHex: () => 'ref' } };
+        return { status: 'ready', version: '2.6.0', apiVersion: '7.2.0' };
       },
-    }),
+    },
   } as unknown as Bee;
 }
 
@@ -154,19 +167,23 @@ async function logLinesDuring(run: () => Promise<unknown>): Promise<string[]> {
 function feedbackBee(writes: CapturedWrite[]): Bee {
   const latest = () => (writes.length === 0 ? [] : JSON.parse(writes[writes.length - 1].payload));
   return {
-    makeFeedReader: () => ({
-      downloadPayload: async (dlOpts?: { index?: FeedIndex }) =>
-        dlOpts?.index
-          ? { payload: { toJSON: latest } }
-          : { feedIndex: FeedIndex.fromBigInt(BigInt(writes.length)), payload: { toJSON: latest } },
-    }),
-    isConnected: async () => true,
-    makeFeedWriter: () => ({
-      uploadPayload: async (_stamp: string, payload: unknown, writeOpts: Omit<CapturedWrite, 'payload'>) => {
-        writes.push({ ...writeOpts, payload: String(payload) });
-        return { reference: { toHex: () => 'ref' } };
-      },
-    }),
+    feed: {
+      makeReader: () => ({
+        downloadPayload: async (dlOpts?: { index?: FeedIndex }) =>
+          dlOpts?.index
+            ? { payload: { toJSON: latest } }
+            : { feedIndex: FeedIndex.fromBigInt(BigInt(writes.length)), payload: { toJSON: latest } },
+      }),
+      makeWriter: () => ({
+        uploadPayload: async (_stamp: string, payload: unknown, writeOpts: Omit<CapturedWrite, 'payload'>) => {
+          writes.push({ ...writeOpts, payload: String(payload) });
+          return { reference: { toHex: () => 'ref' } };
+        },
+      }),
+    },
+    connectivity: {
+      isConnected: async () => true,
+    },
   } as unknown as Bee;
 }
 
@@ -686,21 +703,25 @@ describe('StreamCatalog unreadable-head hardening', () => {
     const { store } = fakeIndexStore(125n);
     const reads = { fails: false };
     const bee = {
-      makeFeedReader: () => ({
-        downloadPayload: async (dlOpts?: { index?: FeedIndex }) => {
-          if (!dlOpts?.index) {
-            throw droppedBody();
-          }
-          if (reads.fails) {
-            throw chunkNotFound();
-          }
-          return { payload: { toJSON: () => [] } };
-        },
-      }),
-      isConnected: async () => true,
-      makeFeedWriter: () => ({
-        uploadPayload: async () => ({ reference: { toHex: () => 'ref' } }),
-      }),
+      feed: {
+        makeReader: () => ({
+          downloadPayload: async (dlOpts?: { index?: FeedIndex }) => {
+            if (!dlOpts?.index) {
+              throw droppedBody();
+            }
+            if (reads.fails) {
+              throw chunkNotFound();
+            }
+            return { payload: { toJSON: () => [] } };
+          },
+        }),
+        makeWriter: () => ({
+          uploadPayload: async () => ({ reference: { toHex: () => 'ref' } }),
+        }),
+      },
+      connectivity: {
+        isConnected: async () => true,
+      },
     } as unknown as Bee;
     const catalog = new StreamCatalog(makePublishers(bee), TEST_STREAM_KEY, TEST_TOPIC, store);
 

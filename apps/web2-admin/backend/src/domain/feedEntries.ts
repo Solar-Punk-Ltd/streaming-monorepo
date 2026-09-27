@@ -1,10 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 
-import type {
-  FeedStreamEntry,
-  Rendition,
-  StreamStatus,
-} from '@streaming-monorepo/web2-admin-common';
+import type { FeedStreamEntry, Rendition, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
 import type { StreamRow } from '../types/index.js';
 
@@ -28,10 +24,7 @@ function sameId(value: unknown, owner: string, topic: string): boolean {
 }
 
 /** Replaces the stream's entry in place, or appends it when it is not there. */
-export function upsertEntry(
-  entries: unknown[],
-  entry: FeedStreamEntry,
-): unknown[] {
+export function upsertEntry(entries: unknown[], entry: FeedStreamEntry): unknown[] {
   const index = entries.findIndex((e) => sameId(e, entry.owner, entry.topic));
   if (index === -1) return [...entries, entry];
 
@@ -60,11 +53,7 @@ export function removeEntry(
  * what was there, that one costs a repeated `vod` report, which the state
  * route takes; the other costs a `vod` that is never sent.
  */
-export function ladderOnFeed(
-  entries: unknown[],
-  owner: string,
-  topic: string,
-): Rendition[] {
+export function ladderOnFeed(entries: unknown[], owner: string, topic: string): Rendition[] {
   const entry = entries.find((e) => sameId(e, owner, topic));
   if (typeof entry !== 'object' || entry === null) return [];
   const renditions = (entry as { renditions?: unknown }).renditions;
@@ -120,9 +109,7 @@ export function buildFeedEntry(
     state,
     mediatype: stream.media_type,
     thumbnail: thumbnailRef ?? '',
-    scheduledStartTime: stream.scheduled_start_time
-      ? stream.scheduled_start_time.toISOString()
-      : null,
+    scheduledStartTime: stream.scheduled_start_time ? stream.scheduled_start_time.toISOString() : null,
     timestamp,
   };
   if (state === 'vod') {
@@ -257,9 +244,7 @@ export function planReconcile(
     if (userId && row.user_id !== userId) continue;
     if (row.owner.toLowerCase() !== owner) continue;
     added.push(row.topic);
-    entries.push(
-      buildFeedEntry(row, row.thumbnail_ref, now, ladders.get(row.id) ?? []),
-    );
+    entries.push(buildFeedEntry(row, row.thumbnail_ref, now, ladders.get(row.id) ?? []));
   }
 
   return {

@@ -36,7 +36,7 @@ function trackInserted(harness: Harness) {
   return inserted;
 }
 
-const identities = (rows: readonly Profile[]) => rows.map(row => [row.name, row.instance_id]);
+const identities = (rows: readonly Profile[]) => rows.map((row) => [row.name, row.instance_id]);
 
 for (const action of ['create', 'resize'] as const) {
   for (const change of ['replaced', 'removed', 'same-instance-error'] as const) {
@@ -45,10 +45,13 @@ for (const action of ['create', 'resize'] as const) {
       const inserted = trackInserted(harness);
       harness.orchestrator.runReserved = async (_reservation, profile) => {
         if (change === 'removed') harness.profiles.rows.delete(profile.name);
-        else harness.profiles.rows.set(profile.name, { ...profile,
-          instance_id: change === 'replaced' ? randomUUID() : profile.instance_id,
-          status: 'ERROR', last_error: 'synthetic startup failure',
-        });
+        else
+          harness.profiles.rows.set(profile.name, {
+            ...profile,
+            instance_id: change === 'replaced' ? randomUUID() : profile.instance_id,
+            status: 'ERROR',
+            last_error: 'synthetic startup failure',
+          });
         return { emitter: new EventEmitter(), kill: () => undefined };
       };
       let path = '/groups';
@@ -68,14 +71,19 @@ for (const action of ['create', 'resize'] as const) {
         const returned = (response.body as { profiles: ProfileWithContainers[] }).profiles;
         assert.equal(returned.length, 2);
         assert.deepEqual(identities(returned), identities(inserted));
-        assert.equal(returned.some(row => row.name === 'owned-profile-1'), false);
+        assert.equal(
+          returned.some((row) => row.name === 'owned-profile-1'),
+          false,
+        );
         if (change === 'same-instance-error') {
-          assert.ok(returned.every(row => row.status === 'ERROR' && row.last_error === 'synthetic startup failure'));
+          assert.ok(returned.every((row) => row.status === 'ERROR' && row.last_error === 'synthetic startup failure'));
         }
         if (change === 'replaced') {
-          assert.ok(returned.every(row => harness.profiles.rows.get(row.name)!.instance_id !== row.instance_id));
+          assert.ok(returned.every((row) => harness.profiles.rows.get(row.name)!.instance_id !== row.instance_id));
         }
-      } finally { await app.close(); }
+      } finally {
+        await app.close();
+      }
     });
   }
 }
@@ -94,5 +102,7 @@ it('single creation already preserves the inserted identity if startup is follow
     assert.equal(response.status, 202);
     assert.equal((response.body as Profile).instance_id, inserted!.instance_id);
     assert.notEqual((response.body as Profile).instance_id, harness.profiles.rows.get('owned')!.instance_id);
-  } finally { await app.close(); }
+  } finally {
+    await app.close();
+  }
 });

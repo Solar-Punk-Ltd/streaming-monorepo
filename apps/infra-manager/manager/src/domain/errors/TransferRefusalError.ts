@@ -1,4 +1,9 @@
-import { chequebookRefusal, type BeeBridgeCheck, type ChequebookRefusal, type ChequebookRefusalCause } from '@streaming-infra-manager/common';
+import {
+  chequebookRefusal,
+  type BeeBridgeCheck,
+  type ChequebookRefusal,
+  type ChequebookRefusalCause,
+} from '@streaming-infra-manager/common';
 
 /**
  * A chequebook failure that knows why a transfer was refused. The cause is set

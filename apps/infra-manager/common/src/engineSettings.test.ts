@@ -28,14 +28,8 @@ describe('the field lists', () => {
   it('accepts its own defaults, on both engines', () => {
     // The list is the only place these numbers exist. A default outside its own
     // bounds would open the settings page already showing an error.
-    assert.equal(
-      engineSettingsProblem(SRS_SERVICE, ownDefaults(SRS_SERVICE), ABR),
-      null,
-    );
-    assert.equal(
-      engineSettingsProblem(OME_SERVICE, ownDefaults(OME_SERVICE), PLAIN),
-      null,
-    );
+    assert.equal(engineSettingsProblem(SRS_SERVICE, ownDefaults(SRS_SERVICE), ABR), null);
+    assert.equal(engineSettingsProblem(OME_SERVICE, ownDefaults(OME_SERVICE), PLAIN), null);
   });
 
   it('accepts every choice a choice field offers', () => {
@@ -62,8 +56,7 @@ describe('the field lists', () => {
   });
 
   it("names two seconds as the manager's own segment length", () => {
-    const field = (key: string) =>
-      SRS_SETTINGS.find((candidate) => candidate.key === key);
+    const field = (key: string) => SRS_SETTINGS.find((candidate) => candidate.key === key);
 
     assert.equal(field('HLS_FRAGMENT')?.defaultValue, '2');
     assert.equal(field('HLS_WINDOW')?.defaultValue, '15');
@@ -72,32 +65,18 @@ describe('the field lists', () => {
   it('keeps the ABR fields out of a deployment that does not encode a ladder', () => {
     const plain = engineSettingsFieldsFor(SRS_SERVICE, PLAIN).map((f) => f.key);
     assert.deepEqual(plain, ['HLS_FRAGMENT', 'HLS_SEGMENT_MAX', 'HLS_WINDOW', 'SRT_LATENCY']);
-    assert.equal(
-      engineSettingsFieldsFor(SRS_SERVICE, ABR).length,
-      engineSettingsFields(SRS_SERVICE).length,
-    );
+    assert.equal(engineSettingsFieldsFor(SRS_SERVICE, ABR).length, engineSettingsFields(SRS_SERVICE).length);
   });
 });
 
 describe('the keyframe rule', () => {
   it('refuses 25 frames against a 1.5 second segment', () => {
-    const problem = engineSettingsProblem(
-      SRS_SERVICE,
-      { ABR_FPS: '25', HLS_FRAGMENT: '1.5' },
-      ABR,
-    );
+    const problem = engineSettingsProblem(SRS_SERVICE, { ABR_FPS: '25', HLS_FRAGMENT: '1.5' }, ABR);
     assert.match(problem ?? '', /37\.5 frames, which is not a whole number/);
   });
 
   it('accepts 30 frames against the same segment', () => {
-    assert.equal(
-      engineSettingsProblem(
-        SRS_SERVICE,
-        { ABR_FPS: '30', HLS_FRAGMENT: '1.5' },
-        ABR,
-      ),
-      null,
-    );
+    assert.equal(engineSettingsProblem(SRS_SERVICE, { ABR_FPS: '30', HLS_FRAGMENT: '1.5' }, ABR), null);
   });
 
   it('reads the stack default for whichever of the two is not stored', () => {
@@ -108,11 +87,7 @@ describe('the keyframe rule', () => {
     // stores a shorter one.
     assert.equal(engineSettingsProblem(SRS_SERVICE, { ABR_FPS: '25' }, ABR), null);
     assert.match(
-      engineSettingsProblem(
-        SRS_SERVICE,
-        { ABR_FPS: '25', HLS_FRAGMENT: '1.5' },
-        ABR,
-      ) ?? '',
+      engineSettingsProblem(SRS_SERVICE, { ABR_FPS: '25', HLS_FRAGMENT: '1.5' }, ABR) ?? '',
       /segment length 1\.5 is 37\.5 frames/,
     );
   });
@@ -122,11 +97,7 @@ describe('the keyframe rule', () => {
     // the rates a publisher actually sends is what makes that default usable.
     for (const fps of ['25', '30', '60']) {
       assert.equal(
-        engineSettingsProblem(
-          SRS_SERVICE,
-          { ABR_FPS: fps, HLS_FRAGMENT: '2' },
-          ABR,
-        ),
+        engineSettingsProblem(SRS_SERVICE, { ABR_FPS: fps, HLS_FRAGMENT: '2' }, ABR),
         null,
         `${fps} frames against a 2 second segment should be accepted`,
       );
@@ -134,23 +105,13 @@ describe('the keyframe rule', () => {
   });
 
   it('does not apply to a deployment without the ladder', () => {
-    assert.equal(
-      engineSettingsProblem(SRS_SERVICE, { HLS_FRAGMENT: '1.7' }, PLAIN),
-      null,
-    );
+    assert.equal(engineSettingsProblem(SRS_SERVICE, { HLS_FRAGMENT: '1.7' }, PLAIN), null);
   });
 
   it('answers on decimals a float would get wrong', () => {
     // 3 x 0.1 is 0.30000000000000004 as a float, and 10 x 0.7 is
     // 6.999999999999999. Both products are whole and must be accepted.
-    assert.equal(
-      engineSettingsProblem(
-        SRS_SERVICE,
-        { ABR_FPS: '30', HLS_FRAGMENT: '0.7' },
-        ABR,
-      ),
-      null,
-    );
+    assert.equal(engineSettingsProblem(SRS_SERVICE, { ABR_FPS: '30', HLS_FRAGMENT: '0.7' }, ABR), null);
   });
 });
 
@@ -251,13 +212,9 @@ describe('values the entrypoint could not splice', () => {
   it('takes six fraction digits and no more', () => {
     // The keyframe rule scales by ten to the number of digits, so the fraction
     // is what bounds that arithmetic.
-    assert.equal(
-      engineSettingsProblem(SRS_SERVICE, { HLS_WINDOW: '22.500000' }, PLAIN),
-      null,
-    );
+    assert.equal(engineSettingsProblem(SRS_SERVICE, { HLS_WINDOW: '22.500000' }, PLAIN), null);
     assert.match(
-      engineSettingsProblem(SRS_SERVICE, { HLS_WINDOW: '22.5000000' }, PLAIN) ??
-        '',
+      engineSettingsProblem(SRS_SERVICE, { HLS_WINDOW: '22.5000000' }, PLAIN) ?? '',
       /must be a positive number, use a period for decimals/,
     );
   });
@@ -265,28 +222,19 @@ describe('values the entrypoint could not splice', () => {
 
 describe('engineSettingsEnv', () => {
   it('writes the stored keys and nothing else', () => {
-    assert.deepEqual(
-      engineSettingsEnv(
-        SRS_SERVICE,
-        { HLS_FRAGMENT: '2', ABR_PRESET: 'faster' },
-        ABR,
-      ),
-      { HLS_FRAGMENT: '2', ABR_PRESET: 'faster' },
-    );
+    assert.deepEqual(engineSettingsEnv(SRS_SERVICE, { HLS_FRAGMENT: '2', ABR_PRESET: 'faster' }, ABR), {
+      HLS_FRAGMENT: '2',
+      ABR_PRESET: 'faster',
+    });
   });
 
   it('drops a rung setting stored before the ladder was turned off', () => {
     // The key stays in the column when the pool string is cleared elsewhere.
     // Writing it would be a line the engine ignores. Refusing it would fail the
     // deploy over a value that does nothing.
-    assert.deepEqual(
-      engineSettingsEnv(
-        SRS_SERVICE,
-        { HLS_FRAGMENT: '2', ABR_PRESET: 'faster' },
-        PLAIN,
-      ),
-      { HLS_FRAGMENT: '2' },
-    );
+    assert.deepEqual(engineSettingsEnv(SRS_SERVICE, { HLS_FRAGMENT: '2', ABR_PRESET: 'faster' }, PLAIN), {
+      HLS_FRAGMENT: '2',
+    });
   });
 
   it('leaves an unset key out, so the host .env still decides it', () => {
@@ -306,13 +254,7 @@ describe('engineSettingsEnv', () => {
 
   it('renders in the field list order, whatever order it was given', () => {
     assert.deepEqual(
-      Object.keys(
-        engineSettingsEnv(
-          SRS_SERVICE,
-          { ABR_PRESET: 'fast', HLS_WINDOW: '30', HLS_FRAGMENT: '2' },
-          ABR,
-        ),
-      ),
+      Object.keys(engineSettingsEnv(SRS_SERVICE, { ABR_PRESET: 'fast', HLS_WINDOW: '30', HLS_FRAGMENT: '2' }, ABR)),
       ['HLS_FRAGMENT', 'HLS_WINDOW', 'ABR_PRESET'],
     );
   });
@@ -321,24 +263,16 @@ describe('engineSettingsEnv', () => {
 describe('applicableEngineSettings', () => {
   it('keeps what the deployment still reads and drops the rest', () => {
     assert.deepEqual(
-      applicableEngineSettings(
-        SRS_SERVICE,
-        { HLS_FRAGMENT: '2', ABR_FPS: '30', HLS_SEGMENT_COUNT: '5' },
-        PLAIN,
-      ),
+      applicableEngineSettings(SRS_SERVICE, { HLS_FRAGMENT: '2', ABR_FPS: '30', HLS_SEGMENT_COUNT: '5' }, PLAIN),
       { HLS_FRAGMENT: '2' },
     );
   });
 
   it('keeps the rung settings while the ladder is on', () => {
-    assert.deepEqual(
-      applicableEngineSettings(
-        SRS_SERVICE,
-        { HLS_FRAGMENT: '2', ABR_FPS: '30' },
-        ABR,
-      ),
-      { HLS_FRAGMENT: '2', ABR_FPS: '30' },
-    );
+    assert.deepEqual(applicableEngineSettings(SRS_SERVICE, { HLS_FRAGMENT: '2', ABR_FPS: '30' }, ABR), {
+      HLS_FRAGMENT: '2',
+      ABR_FPS: '30',
+    });
   });
 });
 
@@ -353,11 +287,7 @@ describe('effectiveEngineSettings', () => {
   });
 
   it('falls back to the host default before the stack one', () => {
-    const effective = effectiveEngineSettings(
-      OME_SERVICE,
-      { HLS_SEGMENT_COUNT: '8' },
-      { HLS_SEGMENT_DURATION: '4' },
-    );
+    const effective = effectiveEngineSettings(OME_SERVICE, { HLS_SEGMENT_COUNT: '8' }, { HLS_SEGMENT_DURATION: '4' });
     assert.equal(effective.HLS_SEGMENT_COUNT, '8');
     assert.equal(effective.HLS_SEGMENT_DURATION, '4');
     assert.equal(effective.OME_HLS_POLL_INTERVAL_MS, '500');
@@ -381,22 +311,20 @@ describe('the keyframe rule against a host default', () => {
 
   it('refuses a frame rate the field default would accept', () => {
     assert.equal(engineSettingsProblem(SRS_SERVICE, { ABR_FPS: '25' }, ABR), null);
-    assert.match(
-      engineSettingsProblem(SRS_SERVICE, { ABR_FPS: '25' }, HOST_SHORT) ?? '',
-      /37\.5 frames/,
-    );
+    assert.match(engineSettingsProblem(SRS_SERVICE, { ABR_FPS: '25' }, HOST_SHORT) ?? '', /37\.5 frames/);
   });
 
   it('accepts a frame rate the host leaves whole, and refuses one it does not', () => {
-    assert.equal(
-      engineSettingsProblem(SRS_SERVICE, { ABR_FPS: '30' }, HOST_SHORT),
-      null,
-    );
+    assert.equal(engineSettingsProblem(SRS_SERVICE, { ABR_FPS: '30' }, HOST_SHORT), null);
     assert.match(
-      engineSettingsProblem(SRS_SERVICE, { ABR_FPS: '30' }, {
-        abr: true,
-        defaults: { HLS_FRAGMENT: '1.25' },
-      }) ?? '',
+      engineSettingsProblem(
+        SRS_SERVICE,
+        { ABR_FPS: '30' },
+        {
+          abr: true,
+          defaults: { HLS_FRAGMENT: '1.25' },
+        },
+      ) ?? '',
       /segment length 1\.25 is 37\.5 frames/,
     );
   });
@@ -415,12 +343,7 @@ describe('the keyframe rule against a host default', () => {
 
 describe('effectiveEngineSettings on a deployment whose config file dropped a key', () => {
   it('leaves that key out rather than naming a value nothing reads', () => {
-    const effective = effectiveEngineSettings(
-      'srs',
-      { HLS_WINDOW: '20' },
-      { HLS_FRAGMENT: '0.5' },
-      ['HLS_WINDOW'],
-    );
+    const effective = effectiveEngineSettings('srs', { HLS_WINDOW: '20' }, { HLS_FRAGMENT: '0.5' }, ['HLS_WINDOW']);
 
     assert.equal(effective.HLS_FRAGMENT, '0.5');
     assert.equal('HLS_WINDOW' in effective, false);
@@ -441,21 +364,11 @@ describe('the force-close ceiling against the segment length', () => {
   });
 
   it('accepts the same segment length once the ceiling moves with it', () => {
-    assert.equal(
-      engineSettingsProblem(
-        SRS_SERVICE,
-        { HLS_FRAGMENT: '4', HLS_SEGMENT_MAX: '4' },
-        STACK_CEILING,
-      ),
-      null,
-    );
+    assert.equal(engineSettingsProblem(SRS_SERVICE, { HLS_FRAGMENT: '4', HLS_SEGMENT_MAX: '4' }, STACK_CEILING), null);
   });
 
   it("accepts the manager's own segment length under the ceiling it falls back to", () => {
-    assert.equal(
-      engineSettingsProblem(SRS_SERVICE, { HLS_FRAGMENT: '2' }, STACK_CEILING),
-      null,
-    );
+    assert.equal(engineSettingsProblem(SRS_SERVICE, { HLS_FRAGMENT: '2' }, STACK_CEILING), null);
     // Unstored, the rule reads the field's own two seconds, so a ceiling set
     // under that is refused in those words.
     assert.match(
@@ -465,27 +378,13 @@ describe('the force-close ceiling against the segment length', () => {
   });
 
   it('accepts a segment length equal to the ceiling, as the entrypoint does', () => {
-    assert.equal(
-      engineSettingsProblem(
-        SRS_SERVICE,
-        { HLS_FRAGMENT: '2.5' },
-        STACK_CEILING,
-      ),
-      null,
-    );
+    assert.equal(engineSettingsProblem(SRS_SERVICE, { HLS_FRAGMENT: '2.5' }, STACK_CEILING), null);
   });
 
   it('applies to a deployment without the ABR ladder', () => {
     // The only cross-field rule before this one ran under the ladder alone, and
     // this pair is read by every SRS deployment.
-    assert.notEqual(
-      engineSettingsProblem(
-        SRS_SERVICE,
-        { HLS_FRAGMENT: '3', HLS_SEGMENT_MAX: '2' },
-        PLAIN,
-      ),
-      null,
-    );
+    assert.notEqual(engineSettingsProblem(SRS_SERVICE, { HLS_FRAGMENT: '3', HLS_SEGMENT_MAX: '2' }, PLAIN), null);
   });
 });
 
@@ -547,10 +446,7 @@ describe('the SRT latency', () => {
   });
 
   it('reaches SRS when a deployment sets it', () => {
-    assert.deepEqual(
-      engineSettingsEnv(SRS_SERVICE, { SRT_LATENCY: '3000' }, PLAIN),
-      { SRT_LATENCY: '3000' },
-    );
+    assert.deepEqual(engineSettingsEnv(SRS_SERVICE, { SRT_LATENCY: '3000' }, PLAIN), { SRT_LATENCY: '3000' });
   });
 
   it('is not a setting OvenMediaEngine reads', () => {
@@ -597,10 +493,7 @@ describe("engineSettingsEnv and the manager's own SRT latency", () => {
   });
 
   it('writes what the deployment stored over the manager default', () => {
-    assert.deepEqual(
-      engineSettingsEnv(SRS_SERVICE, { SRT_LATENCY: '3000' }, onV31()),
-      { SRT_LATENCY: '3000' },
-    );
+    assert.deepEqual(engineSettingsEnv(SRS_SERVICE, { SRT_LATENCY: '3000' }, onV31()), { SRT_LATENCY: '3000' });
   });
 
   it('writes nothing of it for OvenMediaEngine', () => {
@@ -611,8 +504,7 @@ describe("engineSettingsEnv and the manager's own SRT latency", () => {
 });
 
 describe('what an operator can see about the force-close ceiling', () => {
-  const field = (key: string) =>
-    SRS_SETTINGS.find((candidate) => candidate.key === key);
+  const field = (key: string) => SRS_SETTINGS.find((candidate) => candidate.key === key);
 
   /**
    * The engine cuts a piece without a keyframe once it runs past
@@ -648,7 +540,6 @@ describe('what an operator can see about the force-close ceiling', () => {
     assert.match(fragment.help, /floor|shortest/i);
   });
 });
-
 
 describe('engineSettingFieldOf and engineOfSettingKey', () => {
   it('find the field a key names, of either engine, and the engine that reads it', () => {

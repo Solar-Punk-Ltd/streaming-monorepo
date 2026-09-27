@@ -26,10 +26,7 @@ import { after, before, describe, it } from 'node:test';
 import { Database } from '../../src/domain/Database.js';
 import { newPublishKey } from '../../src/domain/StreamService.js';
 import { StreamRenditionRepository } from '../../src/domain/StreamRenditionRepository.js';
-import {
-  StreamRepository,
-  type StreamUpdateData,
-} from '../../src/domain/StreamRepository.js';
+import { StreamRepository, type StreamUpdateData } from '../../src/domain/StreamRepository.js';
 import { hasUnpublishedEdits } from '../../src/domain/unpublishedEdits.js';
 import { EDITABLE_STATUSES, type StreamRow } from '../../src/types/index.js';
 
@@ -106,8 +103,7 @@ describe('resetOrphanedPublishing', () => {
 
     const reset = await streams.resetOrphanedPublishing();
     assert.ok(
-      reset.some((s) => s.id === firstPublish) &&
-        reset.some((s) => s.id === republish),
+      reset.some((s) => s.id === firstPublish) && reset.some((s) => s.id === republish),
       'both claimed rows are reported',
     );
 
@@ -116,11 +112,7 @@ describe('resetOrphanedPublishing', () => {
     assert.equal(draft?.publish_error, 'backend restarted while publishing');
 
     const published = await streams.findById(republish, userId);
-    assert.equal(
-      published?.status,
-      'published',
-      'was on the feed before the interrupted publish, so it still is',
-    );
+    assert.equal(published?.status, 'published', 'was on the feed before the interrupted publish, so it still is');
     assert.equal(published?.published_feed_index, 7);
     assert.equal(published?.publish_error, 'backend restarted while publishing');
   });
@@ -143,11 +135,7 @@ describe('resetOrphanedPublishing', () => {
     const republish = await claimedStream(9);
     await streams.resetOrphanedPublishing();
 
-    assert.equal(
-      await streams.deleteById(republish, userId, ['draft']),
-      false,
-      'its entry is still on the feed',
-    );
+    assert.equal(await streams.deleteById(republish, userId, ['draft']), false, 'its entry is still on the feed');
     assert.ok(await streams.findById(republish, userId));
   });
 });
@@ -165,14 +153,7 @@ async function recordedLadder(): Promise<string> {
     scheduled_start_time: null,
     publish_key: newPublishKey(),
   });
-  await streams.finishPublish(
-    row.id,
-    userId,
-    1,
-    null,
-    row.content_edited_at,
-    'published',
-  );
+  await streams.finishPublish(row.id, userId, 1, null, row.content_edited_at, 'published');
   await renditions.upsert(row.id, {
     name: '360p',
     width: 640,
@@ -212,11 +193,7 @@ describe('markLive un-finishes a broadcast that comes back', () => {
     const rungs = await renditions.listByStream(id);
     assert.equal(rungs.length, 2, 'the rungs themselves survive');
     for (const rung of rungs) {
-      assert.equal(
-        rung.manifest_index ?? null,
-        null,
-        `${rung.name} no longer points at the previous recording`,
-      );
+      assert.equal(rung.manifest_index ?? null, null, `${rung.name} no longer points at the previous recording`);
       assert.equal(rung.duration_seconds ?? null, null, `${rung.name} duration`);
     }
   });
@@ -241,11 +218,7 @@ describe('markLive un-finishes a broadcast that comes back', () => {
 
     const rungs = await renditions.listByStream(id);
     const low = rungs.find((r) => r.name === '360p');
-    assert.equal(
-      Number(low?.manifest_index),
-      99,
-      'a repeated live report must not throw away what finished since',
-    );
+    assert.equal(Number(low?.manifest_index), 99, 'a repeated live report must not throw away what finished since');
     assert.equal(Number(low?.duration_seconds), 5);
   });
 
@@ -292,14 +265,7 @@ describe('an unpublish keeps the recording for the next publish', () => {
     const draft = await streams.finishUnpublish(id, userId);
     assert.ok(draft);
 
-    const listed = await streams.finishPublish(
-      id,
-      userId,
-      2,
-      null,
-      draft.content_edited_at,
-      'vod',
-    );
+    const listed = await streams.finishPublish(id, userId, 2, null, draft.content_edited_at, 'vod');
 
     assert.equal(listed?.status, 'vod');
     assert.equal(listed?.published_feed_index, 2);
@@ -309,9 +275,7 @@ describe('an unpublish keeps the recording for the next publish', () => {
 });
 
 /** A published stream nobody has edited, as a first publish leaves it. */
-async function publishedStream(
-  scheduledStartTime: string | null = null,
-): Promise<StreamRow> {
+async function publishedStream(scheduledStartTime: string | null = null): Promise<StreamRow> {
   const row = await streams.insert({
     user_id: userId,
     topic: randomUUID(),
@@ -323,14 +287,7 @@ async function publishedStream(
     scheduled_start_time: scheduledStartTime,
     publish_key: newPublishKey(),
   });
-  const published = await streams.finishPublish(
-    row.id,
-    userId,
-    1,
-    null,
-    row.content_edited_at,
-    'published',
-  );
+  const published = await streams.finishPublish(row.id, userId, 1, null, row.content_edited_at, 'published');
   assert.ok(published);
   return published;
 }
@@ -348,10 +305,7 @@ function sameValues(row: StreamRow): StreamUpdateData {
 
 /** Puts the edit stamp somewhere unmistakable, so a write can be seen to move it. */
 async function setEditStamp(id: string, at: string): Promise<void> {
-  await database.pool.query(
-    'UPDATE streams SET content_edited_at = $2 WHERE id = $1',
-    [id, at],
-  );
+  await database.pool.query('UPDATE streams SET content_edited_at = $2 WHERE id = $1', [id, at]);
 }
 
 describe('which writes count as a console edit (migration 006)', () => {
@@ -410,11 +364,7 @@ describe('which writes count as a console edit (migration 006)', () => {
   it('counts a new image always, and a removal only when there was an image', async () => {
     const row = await publishedStream();
 
-    const nothingRemoved = await streams.clearThumbnail(
-      row.id,
-      userId,
-      EDITABLE_STATUSES,
-    );
+    const nothingRemoved = await streams.clearThumbnail(row.id, userId, EDITABLE_STATUSES);
     assert.ok(nothingRemoved);
     assert.equal(nothingRemoved.content_edited_at, null);
 
@@ -429,11 +379,7 @@ describe('which writes count as a console edit (migration 006)', () => {
     assert.ok(withImage.content_edited_at, 'a new image is an edit');
 
     await setEditStamp(row.id, '2000-01-01T00:00:00.000Z');
-    const removed = await streams.clearThumbnail(
-      row.id,
-      userId,
-      EDITABLE_STATUSES,
-    );
+    const removed = await streams.clearThumbnail(row.id, userId, EDITABLE_STATUSES);
     assert.ok(removed);
     assert.ok(removed.content_edited_at);
     assert.ok(
@@ -461,11 +407,7 @@ describe('which writes count as a console edit (migration 006)', () => {
          FROM streams WHERE id = $1`,
       [row.id],
     );
-    assert.equal(
-      equal.rows[0]?.equal,
-      true,
-      'equal in SQL too, after the round trip through a Date',
-    );
+    assert.equal(equal.rows[0]?.equal, true, 'equal in SQL too, after the round trip through a Date');
 
     // The console saves another edit while the next write is on its way, and
     // that write still records the edit its entry was built from.

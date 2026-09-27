@@ -23,16 +23,9 @@ import type {
   StackSettingsJsonFile,
 } from '@streaming-infra-manager/common';
 
-import {
-  CONFIG_LOCK_DIR,
-  CONFIG_REVISION_FILE,
-} from '../../src/domain/versions/hostConfigCapture.js';
+import { CONFIG_LOCK_DIR, CONFIG_REVISION_FILE } from '../../src/domain/versions/hostConfigCapture.js';
 import { leaveBuildMarkers, scratchVersionsRoot, V3_FIXTURE } from '../support/stackFixtures.js';
-import {
-  nextVersionChange,
-  startVersionsTestApp,
-  type VersionsTestApp,
-} from '../support/versionsTestApp.js';
+import { nextVersionChange, startVersionsTestApp, type VersionsTestApp } from '../support/versionsTestApp.js';
 
 const ROUTE_COMMIT = 'be440d65e0e82bcf9000a8a0dde905dc215255d6';
 
@@ -139,12 +132,10 @@ describe('GET /versions/:id/settings', () => {
     const settings = answer.body as StackSettings;
 
     assert.equal(answer.status, 200);
-    assert.deepEqual(settings.files.map((file) => file.path), [
-      '.env',
-      'deploy/config.json',
-      'engines/ome/.env',
-      'engines/srs/.env',
-    ]);
+    assert.deepEqual(
+      settings.files.map((file) => file.path),
+      ['.env', 'deploy/config.json', 'engines/ome/.env', 'engines/srs/.env'],
+    );
     assert.equal(settings.generation, 2);
     assert.equal(settings.buildId, ROUTE_COMMIT);
   });
@@ -155,24 +146,27 @@ describe('GET /versions/:id/settings', () => {
 
     const settings = (await callJson('GET', `/versions/${id}/settings`)).body as StackSettings;
 
-    assert.deepEqual(envFileAt(settings, '.env').entries.map((entry) => entry.key), [
-      'STAMP',
-      'STREAM_KEY',
-      'STREAM_LIST_TOPIC',
-      'API_AUTH_TOKEN',
-      'PUBLISH_KEY_SECRET',
-      'CHEQUEBOOK_MIN_BZZ',
-      'STAMP_MIN_TTL_HOURS',
-      'STAMP_MAX_UTILIZATION',
-      'ORPHAN_REAP_MS',
-      'API_PORT',
-      'ENGINE',
-      'BEE_UPLOADER_API_PORT',
-      'BEE_GATEWAY_API_PORT',
-      'BEE_PUBLISHERS',
-      'LOG_LEVEL',
-      'EXTRA_LOCAL_KEY',
-    ]);
+    assert.deepEqual(
+      envFileAt(settings, '.env').entries.map((entry) => entry.key),
+      [
+        'STAMP',
+        'STREAM_KEY',
+        'STREAM_LIST_TOPIC',
+        'API_AUTH_TOKEN',
+        'PUBLISH_KEY_SECRET',
+        'CHEQUEBOOK_MIN_BZZ',
+        'STAMP_MIN_TTL_HOURS',
+        'STAMP_MAX_UTILIZATION',
+        'ORPHAN_REAP_MS',
+        'API_PORT',
+        'ENGINE',
+        'BEE_UPLOADER_API_PORT',
+        'BEE_GATEWAY_API_PORT',
+        'BEE_PUBLISHERS',
+        'LOG_LEVEL',
+        'EXTRA_LOCAL_KEY',
+      ],
+    );
   });
 
   it('describes a key from the comment block the sample keeps above it', async () => {
@@ -241,12 +235,10 @@ describe('GET /versions/:id/settings', () => {
 
     const settings = (await callJson('GET', `/versions/${id}/settings`)).body as StackSettings;
 
-    assert.deepEqual(settings.files.map((file) => file.path), [
-      '.env',
-      'deploy/config.json',
-      'engines/ome/.env',
-      'engines/srs/.env',
-    ]);
+    assert.deepEqual(
+      settings.files.map((file) => file.path),
+      ['.env', 'deploy/config.json', 'engines/ome/.env', 'engines/srs/.env'],
+    );
     assert.equal(
       readFileSync(join(configRoot, 'engines', 'ome', '.env'), 'utf8'),
       readFileSync(join(V3_FIXTURE, 'engines', 'ome', '.env.sample'), 'utf8'),
@@ -298,12 +290,12 @@ describe('GET /versions/:id/settings', () => {
     seedHostFiles();
     const id = await buildV3();
 
-    const carried = ((await callJson('GET', `/versions/${id}/settings`)).body as StackSettings);
+    const carried = (await callJson('GET', `/versions/${id}/settings`)).body as StackSettings;
     await callJson('PUT', `/versions/${id}/settings`, {
       expectedGeneration: 2,
       files: [{ path: '.env', entries: [{ key: 'API_PORT', value: '3100' }] }],
     });
-    const lagging = ((await callJson('GET', `/versions/${id}/settings`)).body as StackSettings);
+    const lagging = (await callJson('GET', `/versions/${id}/settings`)).body as StackSettings;
 
     assert.deepEqual(
       { generation: carried.generation, buildGeneration: carried.buildGeneration },
@@ -413,7 +405,11 @@ describe('the edit lock an ssh session holds', () => {
 
     const calls = [
       ['GET', `/versions/${id}/settings`, undefined],
-      ['PUT', `/versions/${id}/settings`, { expectedGeneration: 2, files: [{ path: '.env', entries: [{ key: 'API_PORT', value: '3100' }] }] }],
+      [
+        'PUT',
+        `/versions/${id}/settings`,
+        { expectedGeneration: 2, files: [{ path: '.env', entries: [{ key: 'API_PORT', value: '3100' }] }] },
+      ],
       ['POST', `/versions/${id}/settings/apply`, undefined],
     ] as const;
     for (const [method, path, body] of calls) {
@@ -452,7 +448,10 @@ describe('a path of the set that is not a regular file', () => {
 
     const settings = (await callJson('GET', `/versions/${id}/settings`)).body as StackSettings;
 
-    assert.equal(settings.files.some((file) => file.path === '.env'), false);
+    assert.equal(
+      settings.files.some((file) => file.path === '.env'),
+      false,
+    );
     assert.deepEqual(settings.leftAlone, ['.env']);
   });
 
@@ -481,11 +480,10 @@ describe('a path of the set that is not a regular file', () => {
     const settings = (await callJson('GET', `/versions/${id}/settings`)).body as StackSettings;
 
     assert.deepEqual(settings.leftAlone, ['engines/ome/.env']);
-    assert.deepEqual(settings.files.map((file) => file.path), [
-      '.env',
-      'deploy/config.json',
-      'engines/srs/.env',
-    ]);
+    assert.deepEqual(
+      settings.files.map((file) => file.path),
+      ['.env', 'deploy/config.json', 'engines/srs/.env'],
+    );
   });
 
   it('names nothing as left alone where every path of the set is a file', async () => {
@@ -611,7 +609,10 @@ describe('PUT /versions/:id/settings', () => {
 
     assert.equal(answer.status, 409);
     assert.deepEqual(
-      { error: (answer.body as { error: string }).error, generation: (answer.body as { generation: number }).generation },
+      {
+        error: (answer.body as { error: string }).error,
+        generation: (answer.body as { generation: number }).generation,
+      },
       { error: 'settings_changed', generation: 2 },
     );
     assert.deepEqual(readFileSync(join(configRoot, '.env')), before);
@@ -688,7 +689,10 @@ describe('PUT /versions/:id/settings', () => {
     });
 
     assert.equal(answer.status, 200);
-    assert.match(readFileSync(join(configRoot, '.env'), 'utf8'), /^OME_CONF_FILE=\/srv\/stack\/engines\/ome\/Server\.xml$/m);
+    assert.match(
+      readFileSync(join(configRoot, '.env'), 'utf8'),
+      /^OME_CONF_FILE=\/srv\/stack\/engines\/ome\/Server\.xml$/m,
+    );
   });
 
   it('refuses a body whose key or value is not text, without echoing what it was', async () => {
@@ -760,17 +764,21 @@ describe('PUT /versions/:id/settings', () => {
     const id = await buildV3();
 
     assert.equal(
-      (await callJson('PUT', `/versions/${id}/settings`, {
-        expectedGeneration: 2,
-        files: [{ path: '.env', text: 'API_PORT=3100' }],
-      })).status,
+      (
+        await callJson('PUT', `/versions/${id}/settings`, {
+          expectedGeneration: 2,
+          files: [{ path: '.env', text: 'API_PORT=3100' }],
+        })
+      ).status,
       400,
     );
     assert.equal(
-      (await callJson('PUT', `/versions/${id}/settings`, {
-        expectedGeneration: 2,
-        files: [{ path: 'deploy/config.json', entries: [{ key: 'A', value: 'b' }] }],
-      })).status,
+      (
+        await callJson('PUT', `/versions/${id}/settings`, {
+          expectedGeneration: 2,
+          files: [{ path: 'deploy/config.json', entries: [{ key: 'A', value: 'b' }] }],
+        })
+      ).status,
       400,
     );
   });

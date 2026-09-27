@@ -4,8 +4,8 @@ import { defineConfig } from 'vitest/config';
 // Read through globalThis so the config typechecks with only vite/client types
 // loaded (no @types/node in this package) — the manager's frontend does the same.
 const WEB2_ADMIN_URL =
-  (globalThis as { process?: { env?: Record<string, string | undefined> } })
-    .process?.env?.VITE_WEB2_ADMIN_URL ?? 'http://localhost:9877';
+  (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.VITE_WEB2_ADMIN_URL ??
+  'http://localhost:9877';
 
 export default defineConfig({
   plugins: [react()],

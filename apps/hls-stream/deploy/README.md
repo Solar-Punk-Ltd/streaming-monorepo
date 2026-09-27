@@ -5,7 +5,7 @@ Config-driven deployment for the Swarm HLS Stream stack.
 ## Prerequisites
 
 - Docker and Docker Compose
-- Node.js 22+ and pnpm
+- Node.js 24+ and pnpm
 - [jq](https://jqlang.github.io/jq/download/)
 - SSH access for remote targets
 

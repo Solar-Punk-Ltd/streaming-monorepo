@@ -1,10 +1,6 @@
 import { Box, Typography } from '@mui/material';
 
-import {
-  LIGHT_NODE_MODE,
-  type NodeMode,
-  ULTRA_LIGHT_NODE_MODE,
-} from '@streaming-infra-manager/common';
+import { LIGHT_NODE_MODE, type NodeMode, ULTRA_LIGHT_NODE_MODE } from '@streaming-infra-manager/common';
 
 import { ChoiceGroup } from '../../ChoiceGroup';
 import { FormField } from '../../FormField';
@@ -18,11 +14,9 @@ const REQUIRED_FOR_PUBLISHING = 'Light node, required to publish';
 const REQUIRED_DETAIL =
   'A node that uploads pays the peers that carry its data, so it needs the chain on, a chequebook, and gas.';
 
-const ULTRA_LIGHT_DETAIL =
-  'Downloads only. No chain, no chequebook and no gas, so there is nothing to fund.';
+const ULTRA_LIGHT_DETAIL = 'Downloads only. No chain, no chequebook and no gas, so there is nothing to fund.';
 
-const LIGHT_DETAIL =
-  'Pays for the bandwidth it uses through a chequebook, so it needs gas and an RPC endpoint.';
+const LIGHT_DETAIL = 'Pays for the bandwidth it uses through a chequebook, so it needs gas and an RPC endpoint.';
 
 /**
  * How much of a chain this deployment's Bee node runs with.
@@ -39,10 +33,13 @@ export function NodeModeChoice({ state, update }: WizardStepProps) {
   if (question === 'line') {
     return (
       <FormField label={LABEL} hint={REQUIRED_DETAIL}>
-        <Box
-          sx={{ border: 1, borderColor: 'divider', borderRadius: 2, px: 1.5, py: 1.25 }}
-        >
-          <Typography variant="body2" fontWeight={600}>
+        <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 2, px: 1.5, py: 1.25 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              fontWeight: 600,
+            }}
+          >
             {REQUIRED_FOR_PUBLISHING}
           </Typography>
         </Box>

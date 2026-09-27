@@ -112,7 +112,8 @@ describe('parseBuildManifestBytes', () => {
   it('retains malformed JSON, object and field diagnostics without reading a path', async () => {
     const { parseBuildManifestBytes } = await import('../../src/domain/versions/buildManifest.js');
     for (const [bytes, problem] of [
-      ['{ invalid', /does not parse as JSON/], ['[]', /manifest object/],
+      ['{ invalid', /does not parse as JSON/],
+      ['[]', /manifest object/],
       [JSON.stringify({ ...MANIFEST, commit: 'wrong' }), /commit/],
       [JSON.stringify({ ...MANIFEST, buildId: '../escape' }), /buildId/],
       [JSON.stringify({ ...MANIFEST, builtAt: 'wrong' }), /builtAt/],

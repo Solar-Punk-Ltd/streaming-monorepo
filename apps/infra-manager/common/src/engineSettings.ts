@@ -22,10 +22,7 @@
 import { OME_SERVICE, SRS_SERVICE } from './constants.js';
 import type { EngineDefaults } from './engineDefaults.js';
 import type { EngineName } from './engines.js';
-import {
-  ENV_SAFE_VALUE_MESSAGE,
-  isEnvSafeValue,
-} from './envSafeValue.js';
+import { ENV_SAFE_VALUE_MESSAGE, isEnvSafeValue } from './envSafeValue.js';
 
 /**
  * `number` is any positive decimal, `integer` a whole one, `choice` a value from
@@ -279,20 +276,13 @@ export const OME_SETTINGS: readonly EngineSettingField[] = [
   },
 ];
 
-export function engineSettingsFields(
-  engine: EngineName,
-): readonly EngineSettingField[] {
+export function engineSettingsFields(engine: EngineName): readonly EngineSettingField[] {
   return engine === OME_SERVICE ? OME_SETTINGS : SRS_SETTINGS;
 }
 
 /** The fields an operator may set, which for an ABR field means an ABR profile. */
-export function engineSettingsFieldsFor(
-  engine: EngineName,
-  options: { abr: boolean },
-): readonly EngineSettingField[] {
-  return engineSettingsFields(engine).filter(
-    (field) => options.abr || !field.abrOnly,
-  );
+export function engineSettingsFieldsFor(engine: EngineName, options: { abr: boolean }): readonly EngineSettingField[] {
+  return engineSettingsFields(engine).filter((field) => options.abr || !field.abrOnly);
 }
 
 /** The engine that reads each key, which no two engines share. */
@@ -356,8 +346,7 @@ export function effectiveEngineSettings(
   for (const field of engineSettingsFields(engine)) {
     if (omitted.includes(field.key)) continue;
     const stored = settings[field.key]?.trim();
-    effective[field.key] =
-      stored || defaults[field.key] || field.defaultValue;
+    effective[field.key] = stored || defaults[field.key] || field.defaultValue;
   }
   return effective;
 }
@@ -383,10 +372,7 @@ const NUMBER_RE = /^\d+(\.\d{1,6})?$/;
  * default, because the field's own number is not what an unset key falls back
  * to on a host that sets one.
  */
-export function engineSettingFieldProblem(
-  field: EngineSettingField,
-  rawValue: string,
-): string | null {
+export function engineSettingFieldProblem(field: EngineSettingField, rawValue: string): string | null {
   const value = rawValue.trim();
   if (!value) {
     return `${field.label} cannot be empty. Leave it unset to use the default instead.`;
@@ -394,9 +380,7 @@ export function engineSettingFieldProblem(
 
   if (field.kind === 'choice') {
     const choices = field.choices ?? [];
-    return choices.includes(value)
-      ? null
-      : `${field.label} must be one of ${choices.join(', ')}. Got "${value}".`;
+    return choices.includes(value) ? null : `${field.label} must be one of ${choices.join(', ')}. Got "${value}".`;
   }
 
   // The shape before the character set. Both refuse `1,5`, and only one of them
@@ -442,10 +426,7 @@ function framesPerSegment(fps: string, fragmentSeconds: string): number {
   return (Number(fps) * scaledFragment) / scale;
 }
 
-function gopProblem(
-  settings: EngineSettings,
-  defaults: EngineSettings,
-): string | null {
+function gopProblem(settings: EngineSettings, defaults: EngineSettings): string | null {
   const effective = effectiveEngineSettings(SRS_SERVICE, settings, defaults);
   const fps = effective.ABR_FPS ?? '';
   const fragment = effective.HLS_FRAGMENT ?? '';
@@ -467,10 +448,7 @@ function gopProblem(
  * supplies 2.5 whenever the profile sets no ceiling of its own, which is why an
  * unset ceiling is checked at what the host falls back to.
  */
-function forceCloseCeilingProblem(
-  settings: EngineSettings,
-  defaults: EngineSettings,
-): string | null {
+function forceCloseCeilingProblem(settings: EngineSettings, defaults: EngineSettings): string | null {
   const effective = effectiveEngineSettings(SRS_SERVICE, settings, defaults);
   const fragment = effective.HLS_FRAGMENT ?? '';
   const ceiling = effective.HLS_SEGMENT_MAX ?? '';
@@ -569,18 +547,12 @@ export function engineSettingsEnv(
 ): Record<string, string> {
   const pairs: Record<string, string> = {};
   for (const field of engineSettingsFieldsFor(engine, options)) {
-    const value =
-      settings[field.key]?.trim() || managerDefaultOf(field, options.defaults);
+    const value = settings[field.key]?.trim() || managerDefaultOf(field, options.defaults);
     if (value) pairs[field.key] = value;
   }
   return pairs;
 }
 
-function managerDefaultOf(
-  field: EngineSettingField,
-  defaults: EngineDefaults | undefined,
-): string | undefined {
-  return defaults?.sources[field.key] === 'manager'
-    ? defaults.values[field.key]
-    : undefined;
+function managerDefaultOf(field: EngineSettingField, defaults: EngineDefaults | undefined): string | undefined {
+  return defaults?.sources[field.key] === 'manager' ? defaults.values[field.key] : undefined;
 }

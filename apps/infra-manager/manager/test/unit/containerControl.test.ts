@@ -14,15 +14,8 @@ import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import { describe, it } from 'node:test';
 
-import {
-  COMPOSE_PROJECT_LABEL,
-  COMPOSE_SERVICE_LABEL,
-} from '../../src/domain/composeLabels.js';
-import {
-  ContainerControl,
-  type ContainerControlLimits,
-  MAX_CONFIG_BYTES,
-} from '../../src/domain/ContainerControl.js';
+import { COMPOSE_PROJECT_LABEL, COMPOSE_SERVICE_LABEL } from '../../src/domain/composeLabels.js';
+import { ContainerControl, type ContainerControlLimits, MAX_CONFIG_BYTES } from '../../src/domain/ContainerControl.js';
 import { ContainerNotRunningError } from '../../src/domain/errors/index.js';
 import { EventBus, type ManagerEvent } from '../../src/domain/EventBus.js';
 import { captureExecutionMounts } from '../../src/domain/versions/executionMountCapture.js';
@@ -41,14 +34,22 @@ describe('published port inventory', () => {
   it('retains ports owned by paused containers', async () => {
     const docker = fakeDocker([{ id: 'paused', labels: labels('outside', 'web') }]);
     const handle = docker.getContainer('paused');
-    docker.getContainer = () => ({ ...handle, inspect: async () => ({
-      Id: 'paused', RestartCount: 0, State: { Status: 'paused', StartedAt: '2026-09-07T10:00:00Z' },
-      Config: { Labels: labels('outside', 'web') },
-      HostConfig: { NetworkMode: 'bridge' },
-      NetworkSettings: { Ports: { '80/tcp': [{ HostIp: '0.0.0.0', HostPort: '10012' }] } },
-    }) });
+    docker.getContainer = () => ({
+      ...handle,
+      inspect: async () => ({
+        Id: 'paused',
+        RestartCount: 0,
+        State: { Status: 'paused', StartedAt: '2026-09-07T10:00:00Z' },
+        Config: { Labels: labels('outside', 'web') },
+        HostConfig: { NetworkMode: 'bridge' },
+        NetworkSettings: { Ports: { '80/tcp': [{ HostIp: '0.0.0.0', HostPort: '10012' }] } },
+      }),
+    });
     const snapshot = await new ContainerControl(new EventBus(), docker).publishedPorts();
-    assert.deepEqual(snapshot.bindings.map(binding => [binding.project, binding.protocol, binding.port]), [['outside', 'tcp', 10012]]);
+    assert.deepEqual(
+      snapshot.bindings.map((binding) => [binding.project, binding.protocol, binding.port]),
+      [['outside', 'tcp', 10012]],
+    );
   });
 });
 
@@ -67,7 +68,9 @@ describe('daemon identity verification', () => {
     const docker = fakeDocker([]);
     const control = new ContainerControl(new EventBus(), docker);
     await control.daemonId();
-    docker.info = async () => { throw new Error('offline'); };
+    docker.info = async () => {
+      throw new Error('offline');
+    };
     await assert.rejects(control.daemonId());
   });
 });
@@ -75,51 +78,75 @@ describe('daemon identity verification', () => {
 describe('execution mount inventory', () => {
   it('reads every container in every state through the local daemon-bound client', async () => {
     const id = 'a'.repeat(64);
-    const docker = fakeDocker([{ id, labels: labels('stage', 'srs'), inspectAnswer: {
-      Id: id,
-      RestartCount: 0,
-      State: { Status: 'exited', StartedAt: '2026-09-19T00:00:00Z' },
-      Config: { Labels: {
-        ...labels('stage', 'srs'),
-        'com.docker.compose.project.working_dir': '/srv/versions/.executions/one/tree/deploy',
-      } },
-      Mounts: [{ Type: 'bind', Source: '/srv/versions/.executions/one/tree/entrypoint.sh', Destination: '/entrypoint.sh' }],
-    } }]);
+    const docker = fakeDocker([
+      {
+        id,
+        labels: labels('stage', 'srs'),
+        inspectAnswer: {
+          Id: id,
+          RestartCount: 0,
+          State: { Status: 'exited', StartedAt: '2026-09-19T00:00:00Z' },
+          Config: {
+            Labels: {
+              ...labels('stage', 'srs'),
+              'com.docker.compose.project.working_dir': '/srv/versions/.executions/one/tree/deploy',
+            },
+          },
+          Mounts: [
+            { Type: 'bind', Source: '/srv/versions/.executions/one/tree/entrypoint.sh', Destination: '/entrypoint.sh' },
+          ],
+        },
+      },
+    ]);
     docker.info = async () => ({ ID: 'retention-daemon' });
 
-    const captured = await captureExecutionMounts(
-      new ContainerControl(new EventBus(), docker).executionMountReader(),
-      { daemonId: 'retention-daemon' },
-    );
+    const captured = await captureExecutionMounts(new ContainerControl(new EventBus(), docker).executionMountReader(), {
+      daemonId: 'retention-daemon',
+    });
 
     assert.equal(captured.state, 'complete');
     if (captured.state !== 'complete') return;
-    assert.deepEqual(captured.containers.map(container => ({
-      id: container.id,
-      status: container.status,
-      mounts: container.mounts,
-    })), [{
-      id,
-      status: 'exited',
-      mounts: [{ type: 'bind', source: '/srv/versions/.executions/one/tree/entrypoint.sh', destination: '/entrypoint.sh' }],
-    }]);
-    assert.deepEqual(docker.listCalls.map(call => call.all), [true, true]);
+    assert.deepEqual(
+      captured.containers.map((container) => ({
+        id: container.id,
+        status: container.status,
+        mounts: container.mounts,
+      })),
+      [
+        {
+          id,
+          status: 'exited',
+          mounts: [
+            { type: 'bind', source: '/srv/versions/.executions/one/tree/entrypoint.sh', destination: '/entrypoint.sh' },
+          ],
+        },
+      ],
+    );
+    assert.deepEqual(
+      docker.listCalls.map((call) => call.all),
+      [true, true],
+    );
   });
 
   it('keeps a missing mount inventory unknown', async () => {
     const id = 'b'.repeat(64);
-    const docker = fakeDocker([{ id, labels: labels('stage', 'srs'), inspectAnswer: {
-      Id: id,
-      RestartCount: 0,
-      State: { Status: 'running', StartedAt: '2026-09-19T00:00:00Z' },
-      Config: { Labels: labels('stage', 'srs') },
-    } }]);
+    const docker = fakeDocker([
+      {
+        id,
+        labels: labels('stage', 'srs'),
+        inspectAnswer: {
+          Id: id,
+          RestartCount: 0,
+          State: { Status: 'running', StartedAt: '2026-09-19T00:00:00Z' },
+          Config: { Labels: labels('stage', 'srs') },
+        },
+      },
+    ]);
     docker.info = async () => ({ ID: 'retention-daemon' });
 
-    const captured = await captureExecutionMounts(
-      new ContainerControl(new EventBus(), docker).executionMountReader(),
-      { daemonId: 'retention-daemon' },
-    );
+    const captured = await captureExecutionMounts(new ContainerControl(new EventBus(), docker).executionMountReader(), {
+      daemonId: 'retention-daemon',
+    });
 
     assert.deepEqual(captured, { state: 'unknown', reason: 'invalid-container-inspect', cleanupAuthorized: false });
   });
@@ -170,17 +197,12 @@ describe('ContainerControl.find', () => {
     assert.deepEqual(docker.restarted, [{ id: 'own-srs', timeoutSeconds: 10 }]);
     // And the daemon was asked for both labels, so a healthy one filters for us.
     assert.deepEqual(docker.listCalls[0]?.filters, {
-      label: [
-        `${COMPOSE_PROJECT_LABEL}=stream1`,
-        `${COMPOSE_SERVICE_LABEL}=srs`,
-      ],
+      label: [`${COMPOSE_PROJECT_LABEL}=stream1`, `${COMPOSE_SERVICE_LABEL}=srs`],
     });
   });
 
   it('says what to do when nothing of that service is up', async () => {
-    const { control } = controlOver([
-      { id: 'other-srs', labels: labels('stream2', 'srs') },
-    ]);
+    const { control } = controlOver([{ id: 'other-srs', labels: labels('stream2', 'srs') }]);
 
     await assert.rejects(
       () => control.restart('stream1', 'srs'),
@@ -269,8 +291,7 @@ describe('ContainerControl.logs', () => {
 
     assert.equal(
       text,
-      '2026-09-06T10:00:00Z srs.conf generated from template\n' +
-        '2026-09-06T10:00:01Z listening on 10080',
+      '2026-09-06T10:00:00Z srs.conf generated from template\n' + '2026-09-06T10:00:01Z listening on 10080',
     );
   });
 
@@ -306,9 +327,7 @@ describe('ContainerControl.logs', () => {
       {
         id: 'own-srs',
         labels: labels('stream1', 'srs'),
-        logBytes: frame(
-          Array.from({ length: 3000 }, (_value, i) => `line ${i}`).join('\n'),
-        ),
+        logBytes: frame(Array.from({ length: 3000 }, (_value, i) => `line ${i}`).join('\n')),
       },
     ]);
 
@@ -325,9 +344,7 @@ describe('ContainerControl.logs', () => {
       {
         id: 'own-srs',
         labels: labels('stream1', 'srs'),
-        logBytes: frame(
-          Array.from({ length: 3000 }, (_value, i) => `line ${i}\n`).join(''),
-        ),
+        logBytes: frame(Array.from({ length: 3000 }, (_value, i) => `line ${i}\n`).join('')),
       },
     ]);
 
@@ -357,14 +374,8 @@ describe('ContainerControl.logs: when a followed read stops', () => {
   // bounds shortened so the test does not have to wait out the real ones.
   const SHORT_BOUNDS = { maxBytes: 64, idleMs: 40, totalMs: 250 };
 
-  function controlOverStream(
-    open: () => NodeJS.ReadableStream,
-    log: ContainerControlLimits['log'] = SHORT_BOUNDS,
-  ) {
-    return controlOver(
-      [{ id: 'own-srs', labels: labels('stream1', 'srs'), logStream: open }],
-      { log },
-    );
+  function controlOverStream(open: () => NodeJS.ReadableStream, log: ContainerControlLimits['log'] = SHORT_BOUNDS) {
+    return controlOver([{ id: 'own-srs', labels: labels('stream1', 'srs'), logStream: open }], { log });
   }
 
   it('stops at the byte cap, however much more was sent', async () => {
@@ -430,8 +441,10 @@ describe('ContainerControl.logs: when a followed read stops', () => {
     // for that and for nothing else, because with the idle gap at five seconds
     // and the cap at a megabyte no other exit is reachable this early.
     const CLOCK_SKEW_MS = 5;
-    assert.ok(took >= REACHABLE_ONLY_BY_THE_TOTAL_BOUND.totalMs - CLOCK_SKEW_MS,
-      `stopped after ${took} ms, which is before the bound rather than at it`);
+    assert.ok(
+      took >= REACHABLE_ONLY_BY_THE_TOTAL_BOUND.totalMs - CLOCK_SKEW_MS,
+      `stopped after ${took} ms, which is before the bound rather than at it`,
+    );
     assert.equal(feed.stream.destroyed, true);
   });
 });
@@ -442,8 +455,7 @@ describe('ContainerControl: a daemon that does not answer', () => {
   // HTTP request, so without a bound the request waits until the browser gives
   // up and the operator learns nothing.
   const SOON: Partial<ContainerControlLimits> = { dockerTimeoutMs: 30 };
-  const NOT_IN_TIME =
-    /The Docker daemon did not answer in time\. Try again in a moment\./;
+  const NOT_IN_TIME = /The Docker daemon did not answer in time\. Try again in a moment\./;
 
   it('gives up on a listing that never comes back', async () => {
     const docker = fakeDocker(HOST_CONTAINERS, true);
@@ -453,9 +465,7 @@ describe('ContainerControl: a daemon that does not answer', () => {
   });
 
   it('gives up on a restart the daemon accepted and never finished', async () => {
-    const docker = fakeDocker([
-      { id: 'own-srs', labels: labels('stream1', 'srs'), stalls: true },
-    ]);
+    const docker = fakeDocker([{ id: 'own-srs', labels: labels('stream1', 'srs'), stalls: true }]);
     const control = new ContainerControl(new EventBus(), docker, SOON);
 
     await assert.rejects(() => control.restart('stream1', 'srs'), NOT_IN_TIME);
@@ -463,9 +473,7 @@ describe('ContainerControl: a daemon that does not answer', () => {
 
   it('leaves the container restartable, since nothing was confirmed', async () => {
     // The cooldown follows a restart that landed. This one did not.
-    const docker = fakeDocker([
-      { id: 'own-srs', labels: labels('stream1', 'srs'), stalls: true },
-    ]);
+    const docker = fakeDocker([{ id: 'own-srs', labels: labels('stream1', 'srs'), stalls: true }]);
     const control = new ContainerControl(new EventBus(), docker, SOON);
 
     await assert.rejects(() => control.restart('stream1', 'srs'), NOT_IN_TIME);
@@ -479,9 +487,7 @@ describe('ContainerControl.effectiveConfig', () => {
 
     const config = await control.effectiveConfig('stream1', 'srs');
 
-    assert.deepEqual(docker.execCommands, [
-      ['cat', '/usr/local/srs/conf/srs.conf'],
-    ]);
+    assert.deepEqual(docker.execCommands, [['cat', '/usr/local/srs/conf/srs.conf']]);
     assert.equal(config, 'listen 1935;\nhls_fragment 1.5;\n');
   });
 
@@ -515,9 +521,7 @@ describe('ContainerControl.effectiveConfig', () => {
 
     await control.effectiveConfig('stream1', 'ome');
 
-    assert.deepEqual(docker.execCommands, [
-      ['cat', '/opt/ovenmediaengine/bin/origin_conf/Server.xml'],
-    ]);
+    assert.deepEqual(docker.execCommands, [['cat', '/opt/ovenmediaengine/bin/origin_conf/Server.xml']]);
   });
 });
 
@@ -547,9 +551,7 @@ describe('ContainerControl.inspect', () => {
   });
 
   it('answers null when the deployment has no container of that service', async () => {
-    const { control } = controlOver([
-      { id: 'other-srs', labels: labels('stream2', 'srs') },
-    ]);
+    const { control } = controlOver([{ id: 'other-srs', labels: labels('stream2', 'srs') }]);
 
     assert.equal(await control.inspect('stream1', 'srs'), null);
   });
@@ -639,9 +641,6 @@ describe('ContainerControl.logLinesContaining', () => {
       { id: 'other-srs', labels: labels('stream2', 'srs'), logBytes: frame(`${REPORT}\n`) },
     ]);
 
-    await assert.rejects(
-      () => control.logLinesContaining('stream1', 'srs', MARKER, WINDOW),
-      ContainerNotRunningError,
-    );
+    await assert.rejects(() => control.logLinesContaining('stream1', 'srs', MARKER, WINDOW), ContainerNotRunningError);
   });
 });

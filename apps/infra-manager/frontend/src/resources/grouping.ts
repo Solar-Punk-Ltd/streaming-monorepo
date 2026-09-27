@@ -18,9 +18,7 @@ export function groupByProject(containers: ContainerMetrics[]): Group[] {
   return [...map.entries()]
     .map(([project, list]) => ({
       project,
-      containers: list.sort((a, b) =>
-        (a.service ?? '').localeCompare(b.service ?? ''),
-      ),
+      containers: list.sort((a, b) => (a.service ?? '').localeCompare(b.service ?? '')),
       cpuPercent: list.reduce((s, c) => s + c.cpuPercent, 0),
       memUsageBytes: list.reduce((s, c) => s + c.memUsageBytes, 0),
     }))

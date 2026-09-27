@@ -1,11 +1,7 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
-import {
-  type EngineName,
-  OME_SERVICE,
-  SRS_SERVICE,
-} from '@streaming-infra-manager/common';
+import { type EngineName, OME_SERVICE, SRS_SERVICE } from '@streaming-infra-manager/common';
 
 import { isLocalTarget } from './ports/DeployTargets.js';
 
@@ -17,8 +13,7 @@ import { isLocalTarget } from './ports/DeployTargets.js';
  * checkout, and goes when the deployment is removed. A deployment on a remote
  * target gets no directory here at all, `beeDataDirsFor` below says why.
  */
-export const BEE_DATA_ROOT =
-  process.env.BEE_DATA_ROOT ?? '/opt/streaming/streaming-infra-manager-data';
+export const BEE_DATA_ROOT = process.env.BEE_DATA_ROOT ?? '/opt/streaming/streaming-infra-manager-data';
 
 export function profileDataRoot(profileName: string): string {
   return join(BEE_DATA_ROOT, profileName);
@@ -50,10 +45,7 @@ export function profileDataRoot(profileName: string): string {
  * recreates the very mismatch above. Extending what counts as local is a change
  * to LOCAL_TARGET_ALIASES, in one place, for the whole manager.
  */
-export function beeDataDirsFor(
-  profileName: string,
-  target: string,
-): Record<string, string> {
+export function beeDataDirsFor(profileName: string, target: string): Record<string, string> {
   if (!isLocalTarget(target)) return {};
   return {
     BEE_UPLOADER_DATA_DIR: `${BEE_DATA_ROOT}/${profileName}/bee-uploader`,
@@ -101,16 +93,10 @@ export function engineConfigFileName(engine: EngineName, config: string): string
  */
 export function isEngineConfigFile(engine: EngineName, name: string): boolean {
   const { stem, ext } = ENGINE_CONFIG_FILE_PARTS[engine];
-  return new RegExp(
-    `^${stem}\\.(?:[0-9a-f]{${CONTENT_TAG_LENGTH}}\\.)?${ext}$`,
-  ).test(name);
+  return new RegExp(`^${stem}\\.(?:[0-9a-f]{${CONTENT_TAG_LENGTH}}\\.)?${ext}$`).test(name);
 }
 
 /** The file the compose override mounts into the engine container. */
-export function engineConfigPathFor(
-  profileName: string,
-  engine: EngineName,
-  config: string,
-): string {
+export function engineConfigPathFor(profileName: string, engine: EngineName, config: string): string {
   return join(engineConfigDirFor(profileName), engineConfigFileName(engine, config));
 }

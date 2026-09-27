@@ -1,24 +1,10 @@
 import { useState, type FormEvent } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  CircularProgress,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Navigate, useLocation } from 'react-router';
+import { Alert, Box, Button, Card, CardContent, CircularProgress, Stack, TextField, Typography } from '@mui/material';
 
 import type { SignedOutReason } from '../api';
 import { useAuth } from '../auth';
-import {
-  FIRST_USER_COMMAND,
-  FIRST_USER_HINT,
-  SIGN_IN_MESSAGES,
-} from '../authMessages';
+import { FIRST_USER_COMMAND, FIRST_USER_HINT, SIGN_IN_MESSAGES } from '../authMessages';
 import { APP_NAME } from '../components/AppShell';
 import { ValueField } from '../components/ValueField';
 
@@ -56,6 +42,7 @@ export function LoginPage() {
 
   const notice = NOTICES[reason];
 
+  // Signing in answers every failure as a message rather than rejecting, so the form calls it without awaiting.
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
@@ -84,7 +71,7 @@ export function LoginPage() {
           <Typography variant="h5" component="h1" gutterBottom>
             {APP_NAME}
           </Typography>
-          <Box component="form" onSubmit={submit} noValidate>
+          <Box component="form" onSubmit={(e) => void submit(e)} noValidate>
             <Stack spacing={2} sx={{ mt: 1 }}>
               {error ? <Alert severity="error">{error}</Alert> : null}
               {notice && !error ? (
@@ -92,11 +79,7 @@ export function LoginPage() {
                   <Stack spacing={1}>
                     <span>{notice}</span>
                     {reason === 'noUsers' ? (
-                      <ValueField
-                        label="Command"
-                        value={FIRST_USER_COMMAND}
-                        helperText={FIRST_USER_HINT}
-                      />
+                      <ValueField label="Command" value={FIRST_USER_COMMAND} helperText={FIRST_USER_HINT} />
                     ) : null}
                   </Stack>
                 </Alert>
@@ -130,11 +113,7 @@ export function LoginPage() {
                 disabled={busy}
                 fullWidth
               />
-              <Button
-                type="submit"
-                variant="contained"
-                disabled={busy || !username.trim() || !password}
-              >
+              <Button type="submit" variant="contained" disabled={busy || !username.trim() || !password}>
                 {busy ? 'Logging in…' : 'Log in'}
               </Button>
             </Stack>

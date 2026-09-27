@@ -44,13 +44,20 @@ beforeEach(() => {
   writeFileSync(join(root, '.env.sample'), ROOT_SAMPLE, 'utf8');
   writeFileSync(join(root, '.env'), 'LOG_LEVEL=info\nUPLOADER_START_GATES=chequebook-warn\n', 'utf8');
   mkdirSync(join(root, 'engines', 'srs'), { recursive: true });
-  writeFileSync(join(root, 'engines', 'srs', '.env.sample'), '# === SRS Media Server ===\nHLS_FRAGMENT=\nSRS_LOG_TANK=console\n', 'utf8');
+  writeFileSync(
+    join(root, 'engines', 'srs', '.env.sample'),
+    '# === SRS Media Server ===\nHLS_FRAGMENT=\nSRS_LOG_TANK=console\n',
+    'utf8',
+  );
 });
 
 type Harness = ReturnType<typeof profileServiceHarness>;
 
 async function appFor(harness: Harness) {
-  const profiles = await startRouterTestApp(createProfilesRouter(harness.service, uploaderHealthStub(), false), '/profiles');
+  const profiles = await startRouterTestApp(
+    createProfilesRouter(harness.service, uploaderHealthStub(), false),
+    '/profiles',
+  );
   const groups = await startRouterTestApp(createGroupsRouter(harness.service, false), '/groups');
   return {
     create: (body: unknown) => call(profiles, 'POST', '/profiles', body),
@@ -121,16 +128,18 @@ describe('POST /profiles with stack settings', () => {
     const harness = profileServiceHarness();
     const app = await appFor(harness);
     try {
-      const refused = refusalOf(await app.create({
-        name: 'stage',
-        kind: 'streamer',
-        stack_settings: [
-          { key: 'NOT_A_SETTING', value: 'x' },
-          { key: 'STAMP', value: 'b'.repeat(64) },
-          { key: 'HLS_FRAGMENT', value: '2' },
-          { key: 'UPLOADER_START_GATES', value: 'sometimes' },
-        ],
-      }));
+      const refused = refusalOf(
+        await app.create({
+          name: 'stage',
+          kind: 'streamer',
+          stack_settings: [
+            { key: 'NOT_A_SETTING', value: 'x' },
+            { key: 'STAMP', value: 'b'.repeat(64) },
+            { key: 'HLS_FRAGMENT', value: '2' },
+            { key: 'UPLOADER_START_GATES', value: 'sometimes' },
+          ],
+        }),
+      );
 
       assert.match(refused, /NOT_A_SETTING is not a setting this deployment's version declares\./);
       assert.match(refused, /STAMP is set by the deployment's postage stamp, not here\./);
@@ -148,11 +157,13 @@ describe('POST /profiles with stack settings', () => {
     const app = await appFor(harness);
     const mangled = 'synthetic/token&with|sed-syntax';
     try {
-      const refused = refusalOf(await app.create({
-        name: 'stage',
-        kind: 'streamer',
-        stack_settings: [{ key: 'ADMIN_API_TOKEN', value: mangled }],
-      }));
+      const refused = refusalOf(
+        await app.create({
+          name: 'stage',
+          kind: 'streamer',
+          stack_settings: [{ key: 'ADMIN_API_TOKEN', value: mangled }],
+        }),
+      );
 
       assert.match(refused, /ADMIN_API_TOKEN must not contain/);
       assert.equal(refused.includes(mangled), false);
@@ -165,8 +176,12 @@ describe('POST /profiles with stack settings', () => {
     const harness = profileServiceHarness();
     const app = await appFor(harness);
     try {
-      const notText = refusalOf(await app.create({ name: 'stage', kind: 'streamer', stack_settings: [{ key: 'LOG_LEVEL', value: 42 }] }));
-      const notAKey = refusalOf(await app.create({ name: 'stage', kind: 'streamer', stack_settings: [{ key: 'LOG LEVEL', value: 'debug' }] }));
+      const notText = refusalOf(
+        await app.create({ name: 'stage', kind: 'streamer', stack_settings: [{ key: 'LOG_LEVEL', value: 42 }] }),
+      );
+      const notAKey = refusalOf(
+        await app.create({ name: 'stage', kind: 'streamer', stack_settings: [{ key: 'LOG LEVEL', value: 'debug' }] }),
+      );
 
       assert.match(notText, /a settings value is text/);
       assert.doesNotMatch(notText, /42/);
@@ -181,10 +196,16 @@ describe('POST /profiles with stack settings', () => {
     const harness = profileServiceHarness();
     const app = await appFor(harness);
     try {
-      const wrongShapes = [{ key: 'ADMIN_API_TOKEN', value: TOKEN }, [`ADMIN_API_TOKEN=${TOKEN}`], `ADMIN_API_TOKEN=${TOKEN}`];
+      const wrongShapes = [
+        { key: 'ADMIN_API_TOKEN', value: TOKEN },
+        [`ADMIN_API_TOKEN=${TOKEN}`],
+        `ADMIN_API_TOKEN=${TOKEN}`,
+      ];
       for (const stack_settings of wrongShapes) {
         const single = refusalOf(await app.create({ name: 'stage', kind: 'streamer', stack_settings }));
-        const group = refusalOf(await app.createGroup({ group_name: 'pool', size: 2, kind: 'streamer', stack_settings }));
+        const group = refusalOf(
+          await app.createGroup({ group_name: 'pool', size: 2, kind: 'streamer', stack_settings }),
+        );
 
         assert.equal(single.includes(TOKEN), false, 'the create refusal repeats the value');
         assert.equal(group.includes(TOKEN), false, 'the group refusal repeats the value');
@@ -198,11 +219,16 @@ describe('POST /profiles with stack settings', () => {
     const harness = profileServiceHarness();
     const app = await appFor(harness);
     try {
-      const refused = refusalOf(await app.create({
-        name: 'stage',
-        kind: 'streamer',
-        stack_settings: [{ key: 'LOG_LEVEL', value: 'debug' }, { key: 'LOG_LEVEL', value: 'warn' }],
-      }));
+      const refused = refusalOf(
+        await app.create({
+          name: 'stage',
+          kind: 'streamer',
+          stack_settings: [
+            { key: 'LOG_LEVEL', value: 'debug' },
+            { key: 'LOG_LEVEL', value: 'warn' },
+          ],
+        }),
+      );
 
       assert.match(refused, /LOG_LEVEL is named twice/);
     } finally {
@@ -220,14 +246,21 @@ describe('POST /groups with stack settings', () => {
         group_name: 'fleet',
         size: 2,
         kind: 'streamer',
-        stack_settings: [{ key: 'LOG_LEVEL', value: 'debug' }, { key: 'ADMIN_API_TOKEN', value: TOKEN }],
+        stack_settings: [
+          { key: 'LOG_LEVEL', value: 'debug' },
+          { key: 'ADMIN_API_TOKEN', value: TOKEN },
+        ],
       });
 
       assert.equal(created.status, 202, JSON.stringify(created.body));
       const members = (created.body as { profiles: ProfileWithContainers[] }).profiles.map((profile) => profile.name);
       assert.deepEqual(members, ['fleet-profile-1', 'fleet-profile-2']);
       for (const name of members) {
-        assert.deepEqual(await harness.profiles.stackSettingsForDeploy(name), { LOG_LEVEL: 'debug', ADMIN_API_TOKEN: TOKEN }, name);
+        assert.deepEqual(
+          await harness.profiles.stackSettingsForDeploy(name),
+          { LOG_LEVEL: 'debug', ADMIN_API_TOKEN: TOKEN },
+          name,
+        );
       }
       assert.doesNotMatch(JSON.stringify(created.body), new RegExp(TOKEN));
     } finally {
@@ -262,12 +295,17 @@ describe('POST /groups with stack settings', () => {
     const harness = profileServiceHarness();
     const app = await appFor(harness);
     try {
-      const refused = refusalOf(await app.createGroup({
-        group_name: 'fleet',
-        size: 2,
-        kind: 'streamer',
-        stack_settings: [{ key: 'LOG_LEVEL', value: 'debug' }, { key: 'STAMP', value: 'c'.repeat(64) }],
-      }));
+      const refused = refusalOf(
+        await app.createGroup({
+          group_name: 'fleet',
+          size: 2,
+          kind: 'streamer',
+          stack_settings: [
+            { key: 'LOG_LEVEL', value: 'debug' },
+            { key: 'STAMP', value: 'c'.repeat(64) },
+          ],
+        }),
+      );
 
       assert.match(refused, /STAMP is set by the deployment's postage stamp, not here\./);
       assert.equal(harness.groups.groups.length, 0);
@@ -287,7 +325,10 @@ describe('POST /groups/:id/members', () => {
         group_name: 'fleet',
         size: 1,
         kind: 'streamer',
-        stack_settings: [{ key: 'LOG_LEVEL', value: 'debug' }, { key: 'ADMIN_API_TOKEN', value: TOKEN }],
+        stack_settings: [
+          { key: 'LOG_LEVEL', value: 'debug' },
+          { key: 'ADMIN_API_TOKEN', value: TOKEN },
+        ],
       });
       const { group } = created.body as { group: { id: number } };
 
@@ -301,7 +342,10 @@ describe('POST /groups/:id/members', () => {
         revision: 0,
         adminTokenOrigin: '',
       });
-      assert.deepEqual(await harness.profiles.stackSettingsForDeploy('fleet-profile-2'), { LOG_LEVEL: 'debug', ADMIN_API_TOKEN: TOKEN });
+      assert.deepEqual(await harness.profiles.stackSettingsForDeploy('fleet-profile-2'), {
+        LOG_LEVEL: 'debug',
+        ADMIN_API_TOKEN: TOKEN,
+      });
       assert.doesNotMatch(JSON.stringify(appended.body), new RegExp(TOKEN));
     } finally {
       await app.close();

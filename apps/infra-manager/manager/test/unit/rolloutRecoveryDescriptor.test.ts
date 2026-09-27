@@ -7,7 +7,11 @@ import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
-import { captureRolloutRecovery, parseRolloutRecoveryDescriptor, validateCapturedRecovery } from '../../src/domain/engineConfig/rolloutRecoveryDescriptor.js';
+import {
+  captureRolloutRecovery,
+  parseRolloutRecoveryDescriptor,
+  validateCapturedRecovery,
+} from '../../src/domain/engineConfig/rolloutRecoveryDescriptor.js';
 import { BUILD_COMPLETE_MARKER, BUILD_MANIFEST_FILE } from '../../src/domain/versions/buildManifest.js';
 import { inventoryOwnedTree, sha256 } from '../../src/domain/versions/ownedTreeInventory.js';
 import { buildDirFor } from '../../src/domain/versions/stackPaths.js';
@@ -25,22 +29,46 @@ describe('captured config rollback artifact evidence', () => {
     parent = await mkdtemp(join(tmpdir(), 't01-recovery-descriptor-'));
     artifact = buildDirFor(parent, 'source-stack', A);
     await mkdir(artifact, { recursive: true });
-    await writeFile(join(artifact, BUILD_MANIFEST_FILE), JSON.stringify({ commit: A, buildId: A, builtAt: '2026-01-01T00:00:00Z', toolchain: 'synthetic' }));
+    await writeFile(
+      join(artifact, BUILD_MANIFEST_FILE),
+      JSON.stringify({ commit: A, buildId: A, builtAt: '2026-01-01T00:00:00Z', toolchain: 'synthetic' }),
+    );
     await writeFile(join(artifact, BUILD_COMPLETE_MARKER), '');
     await writeFile(join(artifact, 'source.sh'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     await symlink('source.sh', join(artifact, 'internal-link'));
-    version = { id: 9, name: 'source-stack', gitRef: 'synthetic', rootPath: join(parent, 'source-stack'), layout: 'builds', buildId: A,
-      previousBuildId: null, commitSha: A, contract: ALLOCATION_CONTRACT, status: 'ready', isDefault: false, tested: false, testedInvalidatedAt: null,
-      createdAt: new Date(0), builtAt: new Date(0), lastError: null, source: { url: SWARM_HLS_STREAM_SOURCE.url, folder: '.' } };
+    version = {
+      id: 9,
+      name: 'source-stack',
+      gitRef: 'synthetic',
+      rootPath: join(parent, 'source-stack'),
+      layout: 'builds',
+      buildId: A,
+      previousBuildId: null,
+      commitSha: A,
+      contract: ALLOCATION_CONTRACT,
+      status: 'ready',
+      isDefault: false,
+      tested: false,
+      testedInvalidatedAt: null,
+      createdAt: new Date(0),
+      builtAt: new Date(0),
+      lastError: null,
+      source: { url: SWARM_HLS_STREAM_SOURCE.url, folder: '.' },
+    };
   });
-  afterEach(async () => { if (parent) await rm(parent, { recursive: true, force: true }); });
+  afterEach(async () => {
+    if (parent) await rm(parent, { recursive: true, force: true });
+  });
 
   it('captures path, type, mode and content identity including internal links and generated evidence files', async () => {
     const captured = await captureRolloutRecovery(version, parent);
     assert.equal(captured.kind, 'immutable-build');
     if (captured.kind !== 'immutable-build') throw new Error('immutable evidence required');
     const inventory = await inventoryOwnedTree(artifact);
-    assert.equal(captured.artifactDigest, sha256(JSON.stringify({ format: 1, rootMode: inventory.rootMode, entries: inventory.entries })));
+    assert.equal(
+      captured.artifactDigest,
+      sha256(JSON.stringify({ format: 1, rootMode: inventory.rootMode, entries: inventory.entries })),
+    );
     assert.equal(captured.manifestHash, sha256(await readFile(join(artifact, BUILD_MANIFEST_FILE))));
     assert.equal(captured.completeHash, sha256(''));
     assert.deepEqual(parseRolloutRecoveryDescriptor(JSON.parse(JSON.stringify(captured))), captured);
@@ -50,23 +78,30 @@ describe('captured config rollback artifact evidence', () => {
   });
 
   it('refuses source mutation between the inventory and its proof', async () => {
-    await assert.rejects(captureRolloutRecovery(version, parent, { afterInventory: async () => {
-      await writeFile(join(artifact, 'source.sh'), 'synthetic changed source');
-    } }), /changed/i);
+    await assert.rejects(
+      captureRolloutRecovery(version, parent, {
+        afterInventory: async () => {
+          await writeFile(join(artifact, 'source.sh'), 'synthetic changed source');
+        },
+      }),
+      /changed/i,
+    );
   });
 
   it('accepts a hard link made and removed after immutable source inventory', async () => {
     const transient = join(parent, 'transient-source-link');
 
-    const captured = await captureRolloutRecovery(version, parent, { afterInventory: async () => {
-      await link(join(artifact, 'source.sh'), transient);
-      await unlink(transient);
-    } });
+    const captured = await captureRolloutRecovery(version, parent, {
+      afterInventory: async () => {
+        await link(join(artifact, 'source.sh'), transient);
+        await unlink(transient);
+      },
+    });
 
     assert.equal(captured.kind, 'immutable-build');
   });
 
-  it('accepts a hard link made and removed while reading immutable recovery metadata', async t => {
+  it('accepts a hard link made and removed while reading immutable recovery metadata', async (t) => {
     const manifest = join(artifact, BUILD_MANIFEST_FILE);
     const transient = join(parent, 'transient-evidence-link');
     const realOpen = fs.openSync;
@@ -81,7 +116,10 @@ describe('captured config rollback artifact evidence', () => {
       return fd;
     }) as typeof fs.openSync);
     syncBuiltinESMExports();
-    t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+    t.after(() => {
+      t.mock.restoreAll();
+      syncBuiltinESMExports();
+    });
 
     const captured = await captureRolloutRecovery(version, parent);
 
@@ -90,9 +128,14 @@ describe('captured config rollback artifact evidence', () => {
   });
 
   it('refuses a source mode change between immutable inventory and proof', async () => {
-    await assert.rejects(captureRolloutRecovery(version, parent, { afterInventory: async () => {
-      await chmod(join(artifact, 'source.sh'), 0o600);
-    } }), /changed/i);
+    await assert.rejects(
+      captureRolloutRecovery(version, parent, {
+        afterInventory: async () => {
+          await chmod(join(artifact, 'source.sh'), 0o600);
+        },
+      }),
+      /changed/i,
+    );
   });
 
   /**
@@ -106,19 +149,27 @@ describe('captured config rollback artifact evidence', () => {
   it('reads the payload of the build once for one capture', async (t) => {
     const opened = t.mock.method(fsPromises, 'open');
     syncBuiltinESMExports();
-    t.after(() => { opened.mock.restore(); syncBuiltinESMExports(); });
+    t.after(() => {
+      opened.mock.restore();
+      syncBuiltinESMExports();
+    });
 
     await captureRolloutRecovery(version, parent);
 
     const payload = join(artifact, 'source.sh');
-    const reads = opened.mock.calls.filter(call => String(call.arguments[0]) === payload).length;
+    const reads = opened.mock.calls.filter((call) => String(call.arguments[0]) === payload).length;
     assert.equal(reads, 1, `one capture opened the build's payload ${reads} times`);
   });
 
   it('refuses a build that gains a file nothing inventoried', async () => {
-    await assert.rejects(captureRolloutRecovery(version, parent, { afterInventory: async () => {
-      await writeFile(join(artifact, 'late.txt'), 'arrived after the inventory\n');
-    } }), /changed/i);
+    await assert.rejects(
+      captureRolloutRecovery(version, parent, {
+        afterInventory: async () => {
+          await writeFile(join(artifact, 'late.txt'), 'arrived after the inventory\n');
+        },
+      }),
+      /changed/i,
+    );
   });
 
   it('uses recovery evidence directly as the execution copy source digest without changing format', async () => {
@@ -127,20 +178,45 @@ describe('captured config rollback artifact evidence', () => {
     const executions = join(parent, '.executions');
     await mkdir(executions);
     const executionId = randomUUID();
-    const result = await copyExecutionRoot({ executionId,
-      source: { versionId: version.id, root: artifact, buildId: A, commit: A, artifactDigest: captured.artifactDigest },
-      profile: { name: 'synthetic-owner', instanceId: randomUUID(), intentRevision: 1, status: 'DEPLOYING' },
-      jobReferenceId: 9, target: { alias: 'localhost', daemonId: 'synthetic-daemon' }, project: 'synthetic-owner', action: 'deploy', services: ['srs'],
-      root: join(executions, executionId, 'tree'), state: 'copying', copyToken: randomUUID(), referenceId: 10, createdAt: new Date(0),
-    }, executions);
+    const result = await copyExecutionRoot(
+      {
+        executionId,
+        source: {
+          versionId: version.id,
+          root: artifact,
+          buildId: A,
+          commit: A,
+          artifactDigest: captured.artifactDigest,
+        },
+        profile: { name: 'synthetic-owner', instanceId: randomUUID(), intentRevision: 1, status: 'DEPLOYING' },
+        jobReferenceId: 9,
+        target: { alias: 'localhost', daemonId: 'synthetic-daemon' },
+        project: 'synthetic-owner',
+        action: 'deploy',
+        services: ['srs'],
+        root: join(executions, executionId, 'tree'),
+        state: 'copying',
+        copyToken: randomUUID(),
+        referenceId: 10,
+        createdAt: new Date(0),
+      },
+      executions,
+    );
     assert.equal(result.artifactDigest, captured.artifactDigest);
-    assert.equal(await readFile(join(result.root, 'source.sh'), 'utf8'), await readFile(join(artifact, 'source.sh'), 'utf8'));
+    assert.equal(
+      await readFile(join(result.root, 'source.sh'), 'utf8'),
+      await readFile(join(artifact, 'source.sh'), 'utf8'),
+    );
   });
 
   it('refuses a disappearing source during capture', async () => {
-    await assert.rejects(captureRolloutRecovery(version, parent, { afterInventory: async () => {
-      await rm(artifact, { recursive: true });
-    } }));
+    await assert.rejects(
+      captureRolloutRecovery(version, parent, {
+        afterInventory: async () => {
+          await rm(artifact, { recursive: true });
+        },
+      }),
+    );
   });
 
   for (const file of [BUILD_MANIFEST_FILE, BUILD_COMPLETE_MARKER]) {
@@ -164,7 +240,10 @@ describe('captured config rollback artifact evidence', () => {
   });
 
   it('refuses a build root outside the configured version parent', async () => {
-    await assert.rejects(captureRolloutRecovery({ ...version, rootPath: join(parent, 'elsewhere', version.name) }, parent), /root|parent/i);
+    await assert.rejects(
+      captureRolloutRecovery({ ...version, rootPath: join(parent, 'elsewhere', version.name) }, parent),
+      /root|parent/i,
+    );
   });
 
   it('refuses a malformed name before inventory can reach a sibling artifact', async () => {
@@ -172,9 +251,14 @@ describe('captured config rollback artifact evidence', () => {
     await mkdir(configured);
     const sentinel = await readFile(join(artifact, 'source.sh'), 'utf8');
     let inventoriedSibling = false;
-    await assert.rejects(captureRolloutRecovery({ ...version, name: '../source-stack' }, configured, {
-      afterInventory: async () => { inventoriedSibling = true; },
-    }), /descriptor|name/i);
+    await assert.rejects(
+      captureRolloutRecovery({ ...version, name: '../source-stack' }, configured, {
+        afterInventory: async () => {
+          inventoriedSibling = true;
+        },
+      }),
+      /descriptor|name/i,
+    );
     assert.equal(inventoriedSibling, false, 'malformed identity must be rejected before any sibling inventory');
     assert.equal(await readFile(join(artifact, 'source.sh'), 'utf8'), sentinel);
     assert.equal((await captureRolloutRecovery(version, parent)).kind, 'immutable-build');
@@ -185,11 +269,19 @@ describe('captured config rollback artifact evidence', () => {
     await assert.rejects(captureRolloutRecovery({ ...version, id: -1 }, parent), /Invalid rollout recovery descriptor/);
   });
 
-  it('parses the bounded manifest bytes without reopening a replaced path under admission locks', async t => {
+  it('parses the bounded manifest bytes without reopening a replaced path under admission locks', async (t) => {
     const captured = await captureRolloutRecovery(version, parent);
     const manifestPath = join(artifact, BUILD_MANIFEST_FILE);
     const sibling = join(parent, 'synthetic-replacement.json');
-    await writeFile(sibling, JSON.stringify({ commit: 'b'.repeat(40), buildId: 'b'.repeat(40), builtAt: '2026-01-01', toolchain: 'synthetic' }));
+    await writeFile(
+      sibling,
+      JSON.stringify({
+        commit: 'b'.repeat(40),
+        buildId: 'b'.repeat(40),
+        builtAt: '2026-01-01',
+        toolchain: 'synthetic',
+      }),
+    );
     const originalClose = fs.closeSync;
     const originalRead = fs.readFileSync;
     let replaced = false;
@@ -209,7 +301,11 @@ describe('captured config rollback artifact evidence', () => {
     }) as typeof fs.readFileSync);
     try {
       syncBuiltinESMExports();
-      try { validateCapturedRecovery(captured, version, parent); } catch (error) { failure = error; }
+      try {
+        validateCapturedRecovery(captured, version, parent);
+      } catch (error) {
+        failure = error;
+      }
     } finally {
       t.mock.restoreAll();
       syncBuiltinESMExports();
@@ -221,7 +317,10 @@ describe('captured config rollback artifact evidence', () => {
 
   it('checks selected identity again rather than accepting another version with identical file bytes', async () => {
     const captured = await captureRolloutRecovery(version, parent);
-    assert.throws(() => validateCapturedRecovery(captured, { ...version, id: version.id + 1 }, parent), /identity|changed/i);
+    assert.throws(
+      () => validateCapturedRecovery(captured, { ...version, id: version.id + 1 }, parent),
+      /identity|changed/i,
+    );
   });
 
   for (const rootPath of [null, '/synthetic/mutable-legacy']) {
@@ -243,6 +342,7 @@ describe('captured config rollback artifact evidence', () => {
       { ...captured, kind: 'legacy-unproven', reason: 'mutable-legacy-source' },
       { ...captured, version: { ...captured.version, layout: 'legacy' } },
       { ...captured, version: { ...captured.version, buildId: '../escape' } },
-    ]) assert.throws(() => parseRolloutRecoveryDescriptor(changed), /recovery|descriptor/i);
+    ])
+      assert.throws(() => parseRolloutRecoveryDescriptor(changed), /recovery|descriptor/i);
   });
 });

@@ -1,6 +1,6 @@
 services:
   ome:
-    image: airensoft/ovenmediaengine:latest
+    image: airensoft/ovenmediaengine:v0.21.0@sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6
     container_name: ome
     restart: unless-stopped
     entrypoint: ['/bin/bash', '/opt/ovenmediaengine/conf-template/entrypoint.sh']

@@ -60,10 +60,7 @@ describe('the template against itself', () => {
 
 describe('the protected part', () => {
   it('refuses a changed callback route with every placeholder still in place', () => {
-    const problem = omeContractProblem(
-      OME_TEMPLATE,
-      edited('/engines/ome/admission', '/engines/ome/admit'),
-    );
+    const problem = omeContractProblem(OME_TEMPLATE, edited('/engines/ome/admission', '/engines/ome/admit'));
 
     assert.match(problem ?? '', /AdmissionWebhooks\/ControlServerUrl/);
     assert.match(problem ?? '', /engines\/ome\/admission/);
@@ -109,10 +106,7 @@ describe('the protected part', () => {
   });
 
   it('refuses a changed stream name mapping', () => {
-    assert.match(
-      omeContractProblem(OME_TEMPLATE, edited('${OriginStreamName}', 'fixed')) ?? '',
-      /OutputStreamName/,
-    );
+    assert.match(omeContractProblem(OME_TEMPLATE, edited('${OriginStreamName}', 'fixed')) ?? '', /OutputStreamName/);
   });
 
   it('refuses a file with no admission element at all', () => {
@@ -150,7 +144,10 @@ describe('a duplicate of a protected element', () => {
   });
 
   it('refuses a second admission block or bind block inside the host', () => {
-    const twoBinds = OME_TEMPLATE.replace('</Bind>', '</Bind><Bind><Providers><SRT><Port>10081</Port></SRT></Providers></Bind>');
+    const twoBinds = OME_TEMPLATE.replace(
+      '</Bind>',
+      '</Bind><Bind><Providers><SRT><Port>10081</Port></SRT></Providers></Bind>',
+    );
     assert.match(omeContractProblem(OME_TEMPLATE, twoBinds) ?? '', /Bind/);
 
     const twoAdmissions = OME_TEMPLATE.replace(
@@ -161,7 +158,10 @@ describe('a duplicate of a protected element', () => {
   });
 
   it('refuses an application without a name', () => {
-    const nameless = OME_TEMPLATE.replace('</Applications>', '<Application><Type>live</Type></Application></Applications>');
+    const nameless = OME_TEMPLATE.replace(
+      '</Applications>',
+      '<Application><Type>live</Type></Application></Applications>',
+    );
 
     assert.match(omeContractProblem(OME_TEMPLATE, nameless) ?? '', /Application.*Name/);
   });
@@ -185,10 +185,7 @@ describe('the tunable part', () => {
   });
 
   it("refuses a literal outside the setting's range, naming the range", () => {
-    const problem = omeContractProblem(
-      OME_TEMPLATE,
-      OME_TEMPLATE.split('SEGMENT_DURATION_PLACEHOLDER').join('45'),
-    );
+    const problem = omeContractProblem(OME_TEMPLATE, OME_TEMPLATE.split('SEGMENT_DURATION_PLACEHOLDER').join('45'));
 
     assert.match(problem ?? '', /Segment duration/);
     assert.match(problem ?? '', /at most 30/);

@@ -49,10 +49,19 @@ function sourcesOf(version: StackVersionRecord, shape: NewDeploymentShape): NewD
   if (problem) throw new StackSettingsNotReadyError(version.name, problem);
   const root = stackRootOf(version);
   const engine = engineForComponents(shape.components);
-  return { root, engine, files: versionSettingsFilesAt(root, engine), required: version.contract?.requiredSecrets ?? [] };
+  return {
+    root,
+    engine,
+    files: versionSettingsFilesAt(root, engine),
+    required: version.contract?.requiredSecrets ?? [],
+  };
 }
 
-function catalogOf(version: StackVersionRecord, shape: NewDeploymentShape, sources: NewDeploymentSources): NewDeploymentSettingsCatalog {
+function catalogOf(
+  version: StackVersionRecord,
+  shape: NewDeploymentShape,
+  sources: NewDeploymentSources,
+): NewDeploymentSettingsCatalog {
   const supplied = versionSuppliedSecrets(sources.root, sources.engine, sources.required);
   return newDeploymentSettingsCatalogOf({
     versionId: version.id,
@@ -81,13 +90,18 @@ export function newDeploymentSettingsCatalogFor(
  * deployment created with these settings, or null: the create types a token
  * of its own too, or the version gives the operator no `ADMIN_API_TOKEN` to set.
  */
-function managerTokenProblem(settings: readonly NewDeploymentSetting[], entries: readonly DeploymentSettingEntry[]): string | null {
+function managerTokenProblem(
+  settings: readonly NewDeploymentSetting[],
+  entries: readonly DeploymentSettingEntry[],
+): string | null {
   if (settings.some(({ key }) => key === ADMIN_API_TOKEN_KEY)) {
     return `${ADMIN_API_TOKEN_KEY} is typed for this deployment and also asked for from the manager's stored token. Send one of the two.`;
   }
   const entry = entries.find(({ key }) => key === ADMIN_API_TOKEN_KEY);
-  if (!entry?.declared) return `${ADMIN_API_TOKEN_KEY} is not a setting this deployment's version declares, so the manager's stored token has nowhere to go.`;
-  if (entry.owner !== null) return `${ADMIN_API_TOKEN_KEY} is not one this deployment sets, so the manager's stored token has nowhere to go.`;
+  if (!entry?.declared)
+    return `${ADMIN_API_TOKEN_KEY} is not a setting this deployment's version declares, so the manager's stored token has nowhere to go.`;
+  if (entry.owner !== null)
+    return `${ADMIN_API_TOKEN_KEY} is not one this deployment sets, so the manager's stored token has nowhere to go.`;
   return null;
 }
 
@@ -115,7 +129,10 @@ export function managerLinkSettingsFor(
 }
 
 /** Whether a create leaves the web2 admin link to the manager's default: it names neither key and asks for no token. */
-export function leavesAdminLinkToManager(settings: readonly NewDeploymentSetting[], copyManagerAdminToken: boolean): boolean {
+export function leavesAdminLinkToManager(
+  settings: readonly NewDeploymentSetting[],
+  copyManagerAdminToken: boolean,
+): boolean {
   return !copyManagerAdminToken && !editsAdminLink(settings);
 }
 
@@ -149,7 +166,11 @@ export function initialStackSettingsFor(
   if (tokenProblem) problems.push(tokenProblem);
   if (problems.length > 0) throw new ProfileConfigError(name, problems.join(' '));
   const versionValues = versionValuesOf(sources.files);
-  const before = adminLinkBeforeOf({ current: versionValues, version: versionValues, requiredSecrets: sources.required });
+  const before = adminLinkBeforeOf({
+    current: versionValues,
+    version: versionValues,
+    requiredSecrets: sources.required,
+  });
   const token = copyManagerAdminToken ? { current: true, afterReset: true } : before.token;
   const adminProblem = adminLinkEditProblem(settings, { ...before, token });
   if (adminProblem) throw new ProfileConfigError(name, adminProblem);

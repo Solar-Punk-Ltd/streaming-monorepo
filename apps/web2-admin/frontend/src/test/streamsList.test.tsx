@@ -2,14 +2,7 @@ import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { StreamsPage } from '../pages/StreamsPage';
-import {
-  jsonError,
-  jsonOk,
-  makeStream,
-  mockFetch,
-  pendingFetch,
-  renderWithProviders,
-} from './helpers';
+import { jsonError, jsonOk, makeStream, mockFetch, pendingFetch, renderWithProviders } from './helpers';
 
 const STREAMS = '/api/streams';
 
@@ -27,9 +20,7 @@ describe('StreamsPage', () => {
     renderWithProviders(<StreamsPage />);
 
     expect(await screen.findByText('No streams yet.')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /Create New Stream/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Create New Stream/ })).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
@@ -42,9 +33,7 @@ describe('StreamsPage', () => {
     ]);
     renderWithProviders(<StreamsPage />);
 
-    expect(
-      await screen.findByText('The server hit an unexpected error.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('The server hit an unexpected error.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 
@@ -94,8 +83,6 @@ describe('StreamsPage', () => {
 
     const image = await screen.findByAltText('With image thumbnail');
     expect(image.getAttribute('src')).toContain('/thumbnail?v=');
-    expect(
-      screen.queryByAltText('Without image thumbnail'),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByAltText('Without image thumbnail')).not.toBeInTheDocument();
   });
 });

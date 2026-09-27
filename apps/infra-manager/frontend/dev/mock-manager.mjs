@@ -26,7 +26,6 @@ import {
   configuredBeeRpcEndpoint,
   CUSTOM_RPC_ENDPOINT_SOURCE,
   DEFAULT_CHEQUEBOOK_FLOOR_BZZ,
-  DEFAULT_RPC_ENDPOINT_SOURCE,
   defaultServicesFor,
   effectiveNodeMode,
   impliedRpcEndpointSource,
@@ -38,21 +37,8 @@ import {
   stampStateReason,
 } from '@streaming-infra-manager/common';
 
-import {
-  authRoutes,
-  DEV_PASSWORD,
-  DEV_USERNAME,
-  refuseRequest,
-  seedAuth,
-  userFor,
-} from './mock-auth.mjs';
-import {
-  attemptRefusal,
-  attemptRoutes,
-  openAttempt,
-  resolveAttempt,
-  seedAttempts,
-} from './mock-attempts.mjs';
+import { authRoutes, DEV_PASSWORD, DEV_USERNAME, refuseRequest, seedAuth, userFor } from './mock-auth.mjs';
+import { attemptRefusal, attemptRoutes, openAttempt, resolveAttempt, seedAttempts } from './mock-attempts.mjs';
 import { adminLinkRoutes } from './mock-admin-link.mjs';
 import {
   copyStoredSettings,
@@ -71,12 +57,7 @@ import { readBody, send as sendRaw, sendScriptRun } from './mock-http.mjs';
 import { metricsClients, metricsSnapshot } from './mock-metrics.mjs';
 import { srtIngestRoutes } from './mock-srt-ingest.mjs';
 import { MOCK_CURRENT_PRICE, stampChangeRoutes } from './mock-stamps.mjs';
-import {
-  defaultVersionId,
-  newDeploymentVersionProblem,
-  seedVersions,
-  versionRoutes,
-} from './mock-versions.mjs';
+import { defaultVersionId, newDeploymentVersionProblem, seedVersions, versionRoutes } from './mock-versions.mjs';
 import {
   containersFor,
   DAY,
@@ -137,9 +118,7 @@ const eventClients = new Set();
 function publicValue(value) {
   if (Array.isArray(value)) return value.map(publicValue);
   if (!value || typeof value !== 'object') return value;
-  const projected = Object.fromEntries(
-    Object.entries(value).map(([key, entry]) => [key, publicValue(entry)]),
-  );
+  const projected = Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, publicValue(entry)]));
   if ('rpc_endpoint_source' in projected && 'rpc_endpoint' in projected) {
     const endpoint = configuredBeeRpcEndpoint(projected.rpc_endpoint);
     delete projected.rpc_endpoint;
@@ -179,10 +158,7 @@ function deploy(profile, { withUploader, onRunning } = {}) {
   changed(profile);
   const containers = containersFor(profile, {
     withUploader:
-      withUploader ??
-      (!needsStamp(profile) ||
-        Boolean(profile.stamp_id) ||
-        Boolean(profile.bee_publishers)),
+      withUploader ?? (!needsStamp(profile) || Boolean(profile.stamp_id) || Boolean(profile.bee_publishers)),
   });
   // The guard the manager takes before anything runs, resolved the way a
   // deploy that gave every service a new container resolves it.
@@ -306,9 +282,7 @@ function chequebookSummary(name) {
       availableBalance: null,
       totalSent: null,
       totalReceived: null,
-      health: chequebookHealthPayload(
-        chequebookHealthFrom(null, CHEQUEBOOK_FLOOR_PLUR),
-      ),
+      health: chequebookHealthPayload(chequebookHealthFrom(null, CHEQUEBOOK_FLOOR_PLUR)),
     };
   }
 
@@ -338,8 +312,13 @@ const chequebookJournal = createMockChequebookJournal({
   onSubmitted(operation) {
     const entry = nodeIfKnown(operation.profileName);
     setTimeout(() => {
-      chequebookJournal.observeReceipt(operation.id, { kind: 'settled', receiptBlockNumber: '501', receiptBlockHash: `0x${hex(32)}`,
-        finalizedBlockNumber: '510', finalizedBlockHash: `0x${hex(32)}` });
+      chequebookJournal.observeReceipt(operation.id, {
+        kind: 'settled',
+        receiptBlockNumber: '501',
+        receiptBlockHash: `0x${hex(32)}`,
+        finalizedBlockNumber: '510',
+        finalizedBlockHash: `0x${hex(32)}`,
+      });
       if (!entry || entry.ethereum.toLowerCase() !== operation.nodeAddress) return;
       const amount = BigInt(operation.amountPlur);
       const walletDelta = operation.direction === 'deposit' ? -amount : amount;
@@ -371,9 +350,7 @@ function beePublishersFor(group) {
   const missing = [];
 
   for (const rung of RUNGS) {
-    const profile = members.find(
-      (entry) => entry.name === `${group.name}-${rung.name}`,
-    );
+    const profile = members.find((entry) => entry.name === `${group.name}-${rung.name}`);
     if (!profile) {
       missing.push({ rung: rung.name, reason: 'no member deployed for this rung' });
       continue;
@@ -408,9 +385,7 @@ function beePublishersFor(group) {
   const ready = missing.length === 0;
   return {
     ready,
-    value: ready
-      ? rungs.map((entry) => `${entry.rung}@${entry.url}<${entry.stampId}>`).join(' ')
-      : null,
+    value: ready ? rungs.map((entry) => `${entry.rung}@${entry.url}<${entry.stampId}>`).join(' ') : null,
     rungs,
     missing,
     warnings: [],
@@ -446,15 +421,7 @@ function withProfile(handler) {
   };
 }
 
-const EDITABLE_FIELDS = [
-  'notes',
-  'feed_owner',
-  'feed_topic',
-  'public_key',
-  'stamp_id',
-  'bee_publishers',
-  'bee_url',
-];
+const EDITABLE_FIELDS = ['notes', 'feed_owner', 'feed_topic', 'public_key', 'stamp_id', 'bee_publishers', 'bee_url'];
 
 /** The manager's rule: a note saved from a page that loaded before another save is refused. */
 function notesMoved(profile, body) {
@@ -505,10 +472,7 @@ function nodeEditProblem(profile, body) {
 /** The custom address after this edit, preserving it unless the body changes it or its source. */
 function editedEndpoint(profile, body) {
   if ('rpc_endpoint' in body) return body.rpc_endpoint ?? null;
-  if (
-    body.rpc_endpoint_source !== undefined &&
-    body.rpc_endpoint_source !== CUSTOM_RPC_ENDPOINT_SOURCE
-  ) {
+  if (body.rpc_endpoint_source !== undefined && body.rpc_endpoint_source !== CUSTOM_RPC_ENDPOINT_SOURCE) {
     return null;
   }
   return profile.rpc_endpoint;
@@ -651,8 +615,19 @@ const ROUTES = [
       // Kept off the profile, which every page and event carries.
       const { stack_settings: namedSettings, use_manager_admin_token: askedToken, ...profileBody } = body;
       const shape = { kind: body.kind ?? 'custom', components: body.components ?? null, host: body.host ?? null };
-      const { stackSettings, useManagerToken } = withManagerLink(namedSettings, askedToken === true, versionForCreate(body), shape);
-      const refusal = await createdSettingsRefusal(stackSettings, versionForCreate(body), shape, body.name, useManagerToken === true);
+      const { stackSettings, useManagerToken } = withManagerLink(
+        namedSettings,
+        askedToken === true,
+        versionForCreate(body),
+        shape,
+      );
+      const refusal = await createdSettingsRefusal(
+        stackSettings,
+        versionForCreate(body),
+        shape,
+        body.name,
+        useManagerToken === true,
+      );
       if (refusal) return send(res, refusal.status, refusal.body);
       const profile = createFromBody(profileBody);
       storeCreatedSettings(profile, stackSettings, useManagerToken === true);
@@ -666,9 +641,14 @@ const ROUTES = [
     'GET',
     /^\/profiles\/([^/]+)\/srt-passphrase$/,
     withProfile((_req, res, p) =>
-      send(res, 200, { srt_passphrase: srtPassphraseOf(p.name) }, {
-        'cache-control': 'no-store',
-      }),
+      send(
+        res,
+        200,
+        { srt_passphrase: srtPassphraseOf(p.name) },
+        {
+          'cache-control': 'no-store',
+        },
+      ),
     ),
   ],
   [
@@ -752,17 +732,12 @@ const ROUTES = [
     /^\/profiles\/([^/]+)\/uploader-health$/,
     withProfile((req, res, profile) => send(res, 200, uploaderHealth(req, profile))),
   ],
-  [
-    'GET',
-    /^\/profiles\/([^/]+)\/chequebook$/,
-    (_req, res, [name]) => send(res, 200, chequebookSummary(name)),
-  ],
+  ['GET', /^\/profiles\/([^/]+)\/chequebook$/, (_req, res, [name]) => send(res, 200, chequebookSummary(name))],
   ...chequebookJournal.routes,
   [
     'GET',
     /^\/profiles\/([^/]+)\/stamp\/address$/,
-    (_req, res, [name]) =>
-      send(res, 200, { ethereum: node(name).ethereum, overlay: hex(32) }),
+    (_req, res, [name]) => send(res, 200, { ethereum: node(name).ethereum, overlay: hex(32) }),
   ],
   [
     'GET',
@@ -773,11 +748,7 @@ const ROUTES = [
         nativeTokenBalance: node(name).xdai,
       }),
   ],
-  [
-    'GET',
-    /^\/profiles\/([^/]+)\/stamp\/stamps$/,
-    (_req, res, [name]) => send(res, 200, { stamps: node(name).stamps }),
-  ],
+  ['GET', /^\/profiles\/([^/]+)\/stamp\/stamps$/, (_req, res, [name]) => send(res, 200, { stamps: node(name).stamps })],
   [
     'GET',
     /^\/profiles\/([^/]+)\/stamp\/chainstate$/,
@@ -837,8 +808,19 @@ const ROUTES = [
         components: memberShape.components ?? body.components ?? null,
         host: body.host ?? null,
       };
-      const { stackSettings, useManagerToken } = withManagerLink(namedSettings, askedToken === true, versionForCreate(body), settingsShape);
-      const refusal = await createdSettingsRefusal(stackSettings, versionForCreate(body), settingsShape, body.group_name, useManagerToken === true);
+      const { stackSettings, useManagerToken } = withManagerLink(
+        namedSettings,
+        askedToken === true,
+        versionForCreate(body),
+        settingsShape,
+      );
+      const refusal = await createdSettingsRefusal(
+        stackSettings,
+        versionForCreate(body),
+        settingsShape,
+        body.group_name,
+        useManagerToken === true,
+      );
       if (refusal) return send(res, refusal.status, refusal.body);
       const group = {
         id: takeGroupId(),
@@ -857,10 +839,7 @@ const ROUTES = [
             ),
           )
         : Array.from({ length: group.size }, (_value, index) =>
-            createFromBody(
-              { ...groupBody, name: `${group.name}-profile-${index + 1}` },
-              { group_id: group.id },
-            ),
+            createFromBody({ ...groupBody, name: `${group.name}-profile-${index + 1}` }, { group_id: group.id }),
           );
       for (const profile of profiles) storeCreatedSettings(profile, stackSettings, useManagerToken === true);
 
@@ -965,9 +944,11 @@ const server = createServer((req, res) => {
   for (const [method, pattern, handler] of ROUTES) {
     const match = pattern.exec(path);
     if (match && method === req.method) {
-      return Promise.resolve(handler(req, res, match.slice(1))).catch((error) =>
+      // The catch answers every failure with a 500.
+      void Promise.resolve(handler(req, res, match.slice(1))).catch((error) =>
         send(res, 500, { error: String(error) }),
       );
+      return;
     }
   }
 

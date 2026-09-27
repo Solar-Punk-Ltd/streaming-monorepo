@@ -8,10 +8,7 @@ import { object, string, InferType } from 'yup';
 export const engineConfigBodySchema = object({
   config: string()
     .required('config is required')
-    .max(
-      ENGINE_CONFIG_MAX_BYTES,
-      `config must be at most ${ENGINE_CONFIG_MAX_BYTES / 1024} KiB`,
-    ),
+    .max(ENGINE_CONFIG_MAX_BYTES, `config must be at most ${ENGINE_CONFIG_MAX_BYTES / 1024} KiB`),
 }).noUnknown(true);
 
 export type EngineConfigBody = InferType<typeof engineConfigBodySchema>;

@@ -27,11 +27,7 @@ writeFileSync(
   '# The stack reads its own LOG_LEVEL\nLOG_LEVEL=info\nAPI_PORT=10000\n# ENGINE=srs\n',
   'utf8',
 );
-writeFileSync(
-  join(root, 'engines', 'srs', '.env.sample'),
-  'SRT_PASSPHRASE=\n',
-  'utf8',
-);
+writeFileSync(join(root, 'engines', 'srs', '.env.sample'), 'SRT_PASSPHRASE=\n', 'utf8');
 
 const PRINT_ENV = join(root, 'print-env.sh');
 writeFileSync(PRINT_ENV, 'env\n', 'utf8');
@@ -47,9 +43,7 @@ const PARENT = {
 };
 
 /** The environment the script actually saw, by key. */
-async function childEnv(
-  options: { cwd?: string; env?: Record<string, string> } = {},
-): Promise<Map<string, string>> {
+async function childEnv(options: { cwd?: string; env?: Record<string, string> } = {}): Promise<Map<string, string>> {
   const restore = new Map<string, string | undefined>();
   for (const [key, value] of Object.entries(PARENT)) {
     restore.set(key, process.env[key]);
@@ -124,6 +118,6 @@ describe('the environment a stack script is run with', () => {
 
     assert.equal(env.has('DATABASE_URL'), false);
     assert.equal(env.has('LOG_LEVEL'), false);
-    assert.equal(env.get('API_PORT'), '19999', 'no sample says this is the stack\'s');
+    assert.equal(env.get('API_PORT'), '19999', "no sample says this is the stack's");
   });
 });

@@ -1,34 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  Divider,
-  Grid2 as Grid,
-  Paper,
-  Stack,
-  Typography,
-} from '@mui/material';
-import {
-  STREAM_LIMITS,
-  type MediaType,
-  type Stream,
-  type StreamInput,
-} from '@streaming-monorepo/web2-admin-common';
+import { useNavigate, useParams } from 'react-router';
+import { Alert, Box, Button, CircularProgress, Divider, Grid, Paper, Stack, Typography } from '@mui/material';
+import { STREAM_LIMITS, type MediaType, type Stream, type StreamInput } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
-import {
-  errorMessage,
-  MEDIA_TYPE_LOCKED,
-  SCHEDULE_LOCKED,
-  UNSUPPORTED_IMAGE_TYPE,
-} from '../errors';
-import {
-  dateTimeLocalValueToIso,
-  isoToDateTimeLocalValue,
-} from '../dateUtil';
+import { errorMessage, MEDIA_TYPE_LOCKED, SCHEDULE_LOCKED, UNSUPPORTED_IMAGE_TYPE } from '../errors';
+import { dateTimeLocalValueToIso, isoToDateTimeLocalValue } from '../dateUtil';
 import {
   DescriptionField,
   MediaTypeField,
@@ -122,9 +99,7 @@ export function StreamFormPage() {
   const navigate = useNavigate();
   const snackbar = useSnackbar();
 
-  const [form, setForm] = useState<FormState>(() =>
-    isEdit ? EMPTY : freshForm(),
-  );
+  const [form, setForm] = useState<FormState>(() => (isEdit ? EMPTY : freshForm()));
   const [loaded, setLoaded] = useState<Stream | null>(null);
   const [loading, setLoading] = useState(isEdit);
   const [error, setError] = useState<string | null>(null);
@@ -172,9 +147,7 @@ export function StreamFormPage() {
           description: stream.description,
           tags: stream.tags,
           mediaType: stream.mediaType,
-          scheduledStartTime: isoToDateTimeLocalValue(
-            stream.scheduledStartTime,
-          ),
+          scheduledStartTime: isoToDateTimeLocalValue(stream.scheduledStartTime),
         });
       })
       .catch((e: unknown) => {
@@ -216,10 +189,7 @@ export function StreamFormPage() {
   const mediaTypeLocked = loaded?.status === 'published' || hasGoneLive;
   const scheduleLocked = hasGoneLive && loaded?.scheduledStartTime !== null;
 
-  const storedThumbnail =
-    loaded?.hasThumbnail && !removeStored && !picked
-      ? api.thumbnailUrl(loaded)
-      : null;
+  const storedThumbnail = loaded?.hasThumbnail && !removeStored && !picked ? api.thumbnailUrl(loaded) : null;
 
   const pickThumbnail = (file: File) => {
     // `accept` is a hint the operator can bypass with "all files", so the
@@ -243,6 +213,7 @@ export function StreamFormPage() {
     if (loaded?.hasThumbnail) setRemoveStored(true);
   };
 
+  // Catches every failure into the form's error line, so the form calls it without awaiting.
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const invalid = firstMissing(form);
@@ -260,16 +231,9 @@ export function StreamFormPage() {
 
     let saved: Stream;
     try {
-      saved = id
-        ? await api.updateStream(id, input)
-        : await api.createStream(input);
+      saved = id ? await api.updateStream(id, input) : await api.createStream(input);
     } catch (err) {
-      setError(
-        errorMessage(
-          err,
-          isEdit ? 'Failed to update stream' : 'Failed to create stream',
-        ),
-      );
+      setError(errorMessage(err, isEdit ? 'Failed to update stream' : 'Failed to create stream'));
       setSaving(false);
       return;
     }
@@ -286,12 +250,7 @@ export function StreamFormPage() {
       }
       snackbar.success(isEdit ? 'Stream updated.' : `"${saved.title}" created.`);
     } catch (err) {
-      snackbar.error(
-        `Stream saved, but the thumbnail did not: ${errorMessage(
-          err,
-          'the upload failed',
-        )}`,
-      );
+      snackbar.error(`Stream saved, but the thumbnail did not: ${errorMessage(err, 'the upload failed')}`);
     }
 
     setSaving(false);
@@ -316,7 +275,7 @@ export function StreamFormPage() {
       </Typography>
 
       <Paper variant="outlined" sx={{ p: 3 }}>
-        <Box component="form" onSubmit={submit} noValidate>
+        <Box component="form" onSubmit={(e) => void submit(e)} noValidate>
           <Stack spacing={3}>
             {error ? <Alert severity="error">{error}</Alert> : null}
 
@@ -337,13 +296,9 @@ export function StreamFormPage() {
               a time with its shortcuts — so they sit side by side on a wide
               screen and stack on a narrow one.
             */}
-            <Grid container spacing={3} alignItems="flex-start">
+            <Grid container spacing={3} sx={{ alignItems: 'flex-start' }}>
               <Grid size={{ xs: 12, md: 6 }}>
-                <TagsField
-                  value={form.tags}
-                  onChange={(v) => set('tags', v)}
-                  disabled={saving}
-                />
+                <TagsField value={form.tags} onChange={(v) => set('tags', v)} disabled={saving} />
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
                 <ScheduleField

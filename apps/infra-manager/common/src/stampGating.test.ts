@@ -10,13 +10,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  ABR_UPLOADER_KIND,
-  beeTargetProblem,
-  isUploader,
-  managesOwnStamp,
-  usesNodePool,
-} from './stampGating.js';
+import { ABR_UPLOADER_KIND, beeTargetProblem, isUploader, managesOwnStamp, usesNodePool } from './stampGating.js';
 
 const batch = (rung: string) => rung.replace(/\D/g, '').padEnd(64, '0');
 const PUBLISHERS = ['360p', '480p', '720p', '1080p']
@@ -27,10 +21,7 @@ const EXTERNAL = 'http://10.0.0.7:1633';
 
 describe('beeTargetProblem', () => {
   it('accepts an abr-uploader that has its pool', () => {
-    assert.equal(
-      beeTargetProblem({ kind: ABR_UPLOADER_KIND, bee_publishers: PUBLISHERS }),
-      null,
-    );
+    assert.equal(beeTargetProblem({ kind: ABR_UPLOADER_KIND, bee_publishers: PUBLISHERS }), null);
   });
 
   it('refuses an abr-uploader with no pool at all', () => {
@@ -38,10 +29,7 @@ describe('beeTargetProblem', () => {
     // body is cleared by the full-replace update, the next deploy writes no
     // BEE_PUBLISHERS/ABR_ENABLED/ABR_LADDER, and the uploader crash-loops on a
     // BEE_URL fallback while the manager reports RUNNING.
-    assert.match(
-      beeTargetProblem({ kind: ABR_UPLOADER_KIND }) ?? '',
-      /bee_publishers is required for a abr-uploader/,
-    );
+    assert.match(beeTargetProblem({ kind: ABR_UPLOADER_KIND }) ?? '', /bee_publishers is required for a abr-uploader/);
     assert.match(
       beeTargetProblem({ kind: ABR_UPLOADER_KIND, bee_publishers: null }) ?? '',
       /bee_publishers is required/,
@@ -67,10 +55,7 @@ describe('beeTargetProblem', () => {
     // A streamer's default services include bee-uploader, and resolve_bee_url
     // computes BEE_URL into an override file that outranks .env.<profile>
     // whenever a local node is enabled, so the stored value would never apply.
-    assert.match(
-      beeTargetProblem({ kind: 'streamer', bee_url: EXTERNAL }) ?? '',
-      /runs no bee-uploader/,
-    );
+    assert.match(beeTargetProblem({ kind: 'streamer', bee_url: EXTERNAL }) ?? '', /runs no bee-uploader/);
     assert.match(
       beeTargetProblem({
         kind: 'custom',
@@ -98,10 +83,7 @@ describe('beeTargetProblem', () => {
     assert.equal(beeTargetProblem({ kind: 'custom', components: [] }), null);
     // A streamer publishing through a pool is unusual but not incoherent: it
     // runs its own node, and BEE_PUBLISHERS is what the uploader reads.
-    assert.equal(
-      beeTargetProblem({ kind: 'streamer', bee_publishers: PUBLISHERS }),
-      null,
-    );
+    assert.equal(beeTargetProblem({ kind: 'streamer', bee_publishers: PUBLISHERS }), null);
   });
 
   it('refuses an uploader that runs no node of its own and names none either', () => {
@@ -141,15 +123,12 @@ describe('beeTargetProblem', () => {
   it('reports the missing pool before anything else', () => {
     // Ordered by what has to be fixed first: an abr-uploader with neither a
     // pool nor a usable bee_url has one real problem, not two.
-    assert.match(
-      beeTargetProblem({ kind: ABR_UPLOADER_KIND, bee_url: EXTERNAL }) ?? '',
-      /bee_publishers is required/,
-    );
+    assert.match(beeTargetProblem({ kind: ABR_UPLOADER_KIND, bee_url: EXTERNAL }) ?? '', /bee_publishers is required/);
   });
 });
 
 describe('usesNodePool / managesOwnStamp — who the Uploaders tab shows', () => {
-  it('excludes an abr-uploader: its batches are the pool\'s, bought per rung', () => {
+  it("excludes an abr-uploader: its batches are the pool's, bought per rung", () => {
     const profile = { kind: ABR_UPLOADER_KIND, bee_publishers: PUBLISHERS };
     assert.equal(usesNodePool(profile), true);
     // The reason for the exclusion: it runs no bee node, so a funding panel

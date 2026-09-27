@@ -22,8 +22,7 @@ export function stampTtlSeconds(
   pricePerBlockPlur: string | null | undefined,
 ): number | null {
   const amountPerChunk = parsePositiveBigInt(amountPerChunkPlur);
-  const pricePerBlock =
-    pricePerBlockPlur != null ? parsePositiveBigInt(pricePerBlockPlur) : null;
+  const pricePerBlock = pricePerBlockPlur != null ? parsePositiveBigInt(pricePerBlockPlur) : null;
   if (amountPerChunk == null || pricePerBlock == null || pricePerBlock <= 0n) {
     return null;
   }
@@ -33,17 +32,9 @@ export function stampTtlSeconds(
   return Number(lifetimeSeconds);
 }
 
-export function stampCostPlur(
-  amountPerChunkPlur: string,
-  depth: number | null | undefined,
-): string | null {
+export function stampCostPlur(amountPerChunkPlur: string, depth: number | null | undefined): string | null {
   const amountPerChunk = parsePositiveBigInt(amountPerChunkPlur);
-  if (
-    amountPerChunk == null ||
-    depth == null ||
-    !Number.isInteger(depth) ||
-    depth < 0
-  ) {
+  if (amountPerChunk == null || depth == null || !Number.isInteger(depth) || depth < 0) {
     return null;
   }
 
@@ -65,11 +56,8 @@ export const MINIMUM_STAMP_VALIDITY_SECONDS = 24n * 60n * 60n;
  * floor moves with the chain price, so it has to be worked out rather than
  * written down.
  */
-export function minimumStampAmountPlur(
-  pricePerBlockPlur: string | null | undefined,
-): string | null {
-  const pricePerBlock =
-    pricePerBlockPlur != null ? parsePositiveBigInt(pricePerBlockPlur) : null;
+export function minimumStampAmountPlur(pricePerBlockPlur: string | null | undefined): string | null {
+  const pricePerBlock = pricePerBlockPlur != null ? parsePositiveBigInt(pricePerBlockPlur) : null;
   if (pricePerBlock == null || pricePerBlock <= 0n) return null;
   return String((MINIMUM_STAMP_VALIDITY_SECONDS * pricePerBlock) / BLOCK_TIME_SECONDS);
 }

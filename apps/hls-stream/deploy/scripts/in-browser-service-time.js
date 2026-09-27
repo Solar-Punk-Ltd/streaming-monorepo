@@ -80,7 +80,8 @@
     }
   }
 
-  (async () => {
+  // Its catch records any failure in the page state that the operator reads.
+  void (async () => {
     try {
       const playlist = await (await fetch(`/weeb-3/feeds/${OWNER}/${TOPIC}`, { cache: 'no-store' })).text();
       const R = playlist.match(/[a-f0-9]{64}/g) || [];

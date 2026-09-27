@@ -27,7 +27,13 @@ describe('runningCommitOf', () => {
         { service: 'srs', buildCommit: B },
         { service: 'stream-uploader', buildCommit: A },
       ]),
-      { kind: 'mixed', byService: [{ service: 'srs', commit: B }, { service: 'stream-uploader', commit: A }] },
+      {
+        kind: 'mixed',
+        byService: [
+          { service: 'srs', commit: B },
+          { service: 'stream-uploader', commit: A },
+        ],
+      },
     );
   });
 
@@ -42,7 +48,13 @@ describe('runningCommitOf', () => {
         { service: 'srs', buildCommit: A },
         { service: 'bee-uploader', buildCommit: null },
       ]),
-      { kind: 'mixed', byService: [{ service: 'srs', commit: A }, { service: 'bee-uploader', commit: null }] },
+      {
+        kind: 'mixed',
+        byService: [
+          { service: 'srs', commit: A },
+          { service: 'bee-uploader', commit: null },
+        ],
+      },
     );
   });
 });

@@ -8,20 +8,17 @@ export const SIGN_IN_MESSAGES = {
   wrongPair: 'Wrong username or password.',
   sessionEnded: 'Your session ended. Sign in again.',
   noUsers: 'No users yet. Create the first one on the host.',
-  unreachable:
-    'The manager did not answer. Check that it is running, then try again.',
+  unreachable: 'The manager did not answer. Check that it is running, then try again.',
 } as const;
 
 /** Said by both password forms, so they say it the same way. */
 export const PASSWORD_MISMATCH = 'The two passwords are not the same.';
 
 /** The rule, stated before it is broken rather than after. */
-export const PASSWORD_RULE =
-  'At least 12 characters, and it must not contain the username.';
+export const PASSWORD_RULE = 'At least 12 characters, and it must not contain the username.';
 
 /** The command that creates the first user, shown when there are none. */
-export const FIRST_USER_COMMAND =
-  'docker compose exec -it api node dist/cli.js user:add <username>';
+export const FIRST_USER_COMMAND = 'docker compose exec -it api node dist/cli.js user:add <username>';
 
 const SECONDS_PER_MINUTE = 60;
 const SECONDS_PER_HOUR = 60 * SECONDS_PER_MINUTE;

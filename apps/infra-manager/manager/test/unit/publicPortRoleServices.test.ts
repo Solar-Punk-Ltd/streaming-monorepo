@@ -41,12 +41,6 @@ describe('the services a public band is opened for', () => {
   });
 
   it('reaches the services that do have one, so the check can fail', () => {
-    assert.deepEqual(servicesWithAPublicBand().sort(), [
-      'bee-gateway',
-      'bee-uploader',
-      'client',
-      'ome',
-      'srs',
-    ]);
+    assert.deepEqual(servicesWithAPublicBand().sort(), ['bee-gateway', 'bee-uploader', 'client', 'ome', 'srs']);
   });
 });

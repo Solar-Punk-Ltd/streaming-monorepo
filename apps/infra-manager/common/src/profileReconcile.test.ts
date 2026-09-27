@@ -96,9 +96,6 @@ describe('reconcileProfiles', () => {
     reconcileProfiles(previous, snapshot, at('2026-09-06T10:00:10Z'));
 
     assert.deepEqual(previous, [row('a', '2026-09-06T10:00:11Z')]);
-    assert.deepEqual(snapshot, [
-      row('a', '2026-09-06T10:00:09Z'),
-      row('b', '2026-09-06T10:00:09Z'),
-    ]);
+    assert.deepEqual(snapshot, [row('a', '2026-09-06T10:00:09Z'), row('b', '2026-09-06T10:00:09Z')]);
   });
 });

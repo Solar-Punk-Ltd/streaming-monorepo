@@ -79,19 +79,24 @@ async function until(satisfied: () => boolean, description: string): Promise<voi
   const deadline = Date.now() + GIVE_UP_MS;
   while (Date.now() < deadline) {
     if (satisfied()) return;
-    await new Promise(resolve => { setTimeout(resolve, POLL_MS); });
+    await new Promise((resolve) => {
+      setTimeout(resolve, POLL_MS);
+    });
   }
   throw new Error(`Timed out waiting for ${description}`);
 }
 
 describe('a fixture whose parent is gone', () => {
-  it('ends itself rather than outliving the job', async t => {
+  it('ends itself rather than outliving the job', async (t) => {
     const directory = await mkdtemp(join(tmpdir(), 'orphan-watchdog-'));
-    const parent = spawn(process.execPath, ['--input-type=module', '-e', PARENT, directory, ORPHAN],
-      { stdio: ['ignore', 'pipe', 'inherit'] });
+    const parent = spawn(process.execPath, ['--input-type=module', '-e', PARENT, directory, ORPHAN], {
+      stdio: ['ignore', 'pipe', 'inherit'],
+    });
     let reported = '';
     let orphan = 0;
-    parent.stdout.on('data', chunk => { reported += chunk; });
+    parent.stdout.on('data', (chunk) => {
+      reported += chunk;
+    });
     t.after(async () => {
       parent.kill('SIGKILL');
       if (orphan > 0 && alive(orphan)) process.kill(orphan, 'SIGKILL');

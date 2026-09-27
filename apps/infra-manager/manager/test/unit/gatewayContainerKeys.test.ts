@@ -13,15 +13,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  BEE_GATEWAY_SERVICE,
-  BEE_UPLOADER_SERVICE,
-} from '@streaming-infra-manager/common';
+import { BEE_GATEWAY_SERVICE, BEE_UPLOADER_SERVICE } from '@streaming-infra-manager/common';
 
-import {
-  buildContainerSnapshot,
-  SERVICE_ENV_KEYS,
-} from '../../src/domain/containerKeysSpec.js';
+import { buildContainerSnapshot, SERVICE_ENV_KEYS } from '../../src/domain/containerKeysSpec.js';
 import { settingDigest } from '../../src/domain/settings/runningRecord.js';
 
 const gatewayKeys = () => SERVICE_ENV_KEYS[BEE_GATEWAY_SERVICE] ?? [];

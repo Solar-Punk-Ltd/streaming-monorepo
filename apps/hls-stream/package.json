@@ -3,10 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=22"
-  },
-  "packageManager": "pnpm@11.11.0+sha512.4463f65fd80ed80d69bc1d4bf163ee94f605c7380fc318bb5b2ebe15f8cd12d49c51a4d59e951b401e764d3b6ca751cbf51bc50ed7001a6bcb4935e684c34882",
   "scripts": {
     "build": "pnpm -r --filter './**' --filter '!.' build",
     "test": "pnpm -r --filter './**' --filter '!.' test",
@@ -15,6 +11,8 @@
     "client:start": "pnpm --filter @swarm-hls-stream/client dev",
     "uploader:start": "pnpm --filter @swarm-hls-stream/stream-uploader start",
     "lint": "pnpm -r --filter './**' --filter '!.' lint",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "typecheck": "pnpm -r --filter './**' --filter '!.' typecheck",
     "stamp:setup": "tsx packages/cli/src/index.ts stamp-setup",
     "stamp:buy": "tsx packages/cli/src/index.ts stamp-buy",
@@ -59,7 +57,8 @@
     "audit:check": "tsx packages/audit-gate/src/index.ts",
     "mutate": "stryker run",
     "mutate:client": "stryker run stryker.client.config.json",
-    "verify": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && git ls-files -z | xargs -0 -r npx prettier --check --ignore-unknown",
+    "mutate:changed": "node deploy/scripts/mutate-changed.mjs",
+    "verify": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm format:check",
     "gate:facts": "tsx packages/gate-facts/src/index.ts",
     "shellcheck": "docker run --rm -v \"$PWD:/mnt\" -w /mnt koalaman/shellcheck@sha256:bb596a0d169b85ddd81d8b6d3a2ff6d5baf5fca10b97f575ebc647c3dff62b3d --severity=style --format=gcc deploy/scripts/*.sh nodes/*.sh engines/*/*.sh e2e/*.sh",
     "bench:sweep-report": "pnpm --filter @swarm-hls-stream/e2e bench:sweep-report",
@@ -71,14 +70,13 @@
     "browser:in-tab-throttle-probe": "pnpm --filter @swarm-hls-stream/e2e browser:in-tab-throttle-probe"
   },
   "devDependencies": {
-    "@commitlint/cli": "^19.8.0",
-    "@commitlint/config-conventional": "^19.8.0",
-    "@stryker-mutator/core": "9.6.1",
-    "husky": "^9.1.7",
-    "lint-staged": "^15.5.0",
-    "prettier": "^2.8.8",
-    "tsx": "^4.23.1"
+    "@stryker-mutator/core": "10.0.0",
+    "tsx": "4.23.13"
   },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
   "nx": {
     "tags": [
       "scope:stack",

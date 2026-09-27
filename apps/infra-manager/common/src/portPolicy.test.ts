@@ -25,15 +25,18 @@ describe('shared port exposure policy', () => {
     }
     // Still a legal endpoint. It is simply nobody's public tuple now, so any
     // owner may hold it and the reservation plan may go on reserving it.
-    assert.equal(
-      portExposureProblem({ port: 11012, protocol: 'tcp', portVar: 'SRS_RTMP_PORT', service: 'srs' }),
-      null,
-    );
+    assert.equal(portExposureProblem({ port: 11012, protocol: 'tcp', portVar: 'SRS_RTMP_PORT', service: 'srs' }), null);
   });
 
   it('keeps TCP and UDP permissions distinct', () => {
-    assert.equal(portExposureProblem({ port: 10011, protocol: 'tcp', portVar: 'API_PORT', service: 'stream-uploader' }), null);
-    assert.match(portExposureProblem({ port: 10011, protocol: 'udp', portVar: 'API_PORT', service: 'stream-uploader' })!, /public/);
+    assert.equal(
+      portExposureProblem({ port: 10011, protocol: 'tcp', portVar: 'API_PORT', service: 'stream-uploader' }),
+      null,
+    );
+    assert.match(
+      portExposureProblem({ port: 10011, protocol: 'udp', portVar: 'API_PORT', service: 'stream-uploader' })!,
+      /public/,
+    );
   });
 
   it('refuses endpoints outside the firewall protected range', () => {
@@ -41,7 +44,10 @@ describe('shared port exposure policy', () => {
       assert.ok(portExposureProblem({ port, protocol: 'tcp', portVar: 'API_PORT', service: 'stream-uploader' }));
     }
     for (const port of [10000, 19999]) {
-      assert.equal(portExposureProblem({ port, protocol: 'tcp', portVar: 'API_PORT', service: 'stream-uploader' }), null);
+      assert.equal(
+        portExposureProblem({ port, protocol: 'tcp', portVar: 'API_PORT', service: 'stream-uploader' }),
+        null,
+      );
     }
   });
 });

@@ -17,13 +17,7 @@ import { formatDateTime } from '../format';
 const LOG_MAX_HEIGHT = 260;
 
 /** What the deploy script printed when it gave up, verbatim, newest line first in view. */
-export function LastErrorCard({
-  message,
-  at,
-}: {
-  message: string;
-  at: string | null;
-}) {
+export function LastErrorCard({ message, at }: { message: string; at: string | null }) {
   const log = useRef<HTMLElement>(null);
   // The end is where the failure is. A pull that preceded it is evidence to
   // scroll back through, not the first thing to read.
@@ -35,10 +29,13 @@ export function LastErrorCard({
   return (
     <SectionCard tone="error">
       <Stack spacing={1}>
-        <Typography sx={{ fontWeight: 600, color: 'error.main' }}>
-          Last deploy failed
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography sx={{ fontWeight: 600, color: 'error.main' }}>Last deploy failed</Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {formatDateTime(at)}
         </Typography>
         <Box

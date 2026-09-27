@@ -11,10 +11,7 @@ import assert from 'node:assert/strict';
 import { PassThrough, Writable } from 'node:stream';
 import { describe, it } from 'node:test';
 
-import {
-  promptSecret,
-  readSecretFromStdin,
-} from '../../src/utils/secretInput.js';
+import { promptSecret, readSecretFromStdin } from '../../src/utils/secretInput.js';
 
 const SECRET = 'a-long-enough-password';
 
@@ -43,11 +40,7 @@ describe('promptSecret', () => {
 
     assert.equal(await answer, SECRET);
     assert.match(echo.text(), /Password: /);
-    assert.equal(
-      echo.text().includes(SECRET),
-      false,
-      'the typed password must never reach the terminal',
-    );
+    assert.equal(echo.text().includes(SECRET), false, 'the typed password must never reach the terminal');
   });
 
   it('reads an empty answer as an empty answer', async () => {

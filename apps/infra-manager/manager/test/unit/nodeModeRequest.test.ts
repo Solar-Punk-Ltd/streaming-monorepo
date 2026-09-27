@@ -13,11 +13,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  createGroupSchema,
-  createProfileSchema,
-  updateProfileSchema,
-} from '../../src/schemas/profile.js';
+import { createGroupSchema, createProfileSchema, updateProfileSchema } from '../../src/schemas/profile.js';
 import { makeProfile } from '../support/profileFixtures.js';
 import { profileServiceHarness } from '../support/profileServiceHarness.js';
 
@@ -34,10 +30,7 @@ const update = (body: Record<string, unknown>, options = withManager) =>
   updateProfileSchema.validate(body, { abortEarly: false, ...options });
 
 const createGroup = (body: Record<string, unknown>, options = withManager) =>
-  createGroupSchema.validate(
-    { group_name: 'pool', size: 2, ...body },
-    { abortEarly: false, ...options },
-  );
+  createGroupSchema.validate({ group_name: 'pool', size: 2, ...body }, { abortEarly: false, ...options });
 
 describe('the node mode a body may carry', () => {
   it('takes either mode on a create', async () => {
@@ -72,21 +65,12 @@ describe('the endpoint source a body may carry', () => {
   });
 
   it('refuses a source that is none of the three', async () => {
-    await assert.rejects(
-      () => create({ rpc_endpoint_source: 'whatever' }),
-      /rpc_endpoint_source/,
-    );
+    await assert.rejects(() => create({ rpc_endpoint_source: 'whatever' }), /rpc_endpoint_source/);
   });
 
   it('requires an address for a new custom source and lets an update preserve one', async () => {
-    await assert.rejects(
-      () => create({ rpc_endpoint_source: 'custom' }),
-      /a custom RPC endpoint needs an address/,
-    );
-    assert.equal(
-      (await update({ rpc_endpoint_source: 'custom' })).rpc_endpoint_source,
-      'custom',
-    );
+    await assert.rejects(() => create({ rpc_endpoint_source: 'custom' }), /a custom RPC endpoint needs an address/);
+    assert.equal((await update({ rpc_endpoint_source: 'custom' })).rpc_endpoint_source, 'custom');
   });
 
   it('refuses an address beside a source that does not carry one', async () => {
@@ -193,16 +177,12 @@ describe('a new deployment’s mode and endpoint', () => {
 });
 
 describe('an edit of a deployment that already exists', () => {
-  const stored = (over = {}) =>
-    makeProfile({ name: 'stage', kind: 'streamer', status: 'RUNNING', ...over });
+  const stored = (over = {}) => makeProfile({ name: 'stage', kind: 'streamer', status: 'RUNNING', ...over });
 
   it('refuses a mode that differs from the one the node was created with', async () => {
     const harness = profileServiceHarness([stored({ node_mode: 'light' })]);
 
-    await assert.rejects(
-      harness.service.update('stage', { node_mode: 'ultra-light' }),
-      /chosen when it is created/,
-    );
+    await assert.rejects(harness.service.update('stage', { node_mode: 'ultra-light' }), /chosen when it is created/);
     assert.equal(harness.profiles.rows.get('stage')?.node_mode, 'light');
   });
 
@@ -246,9 +226,7 @@ describe('an edit of a deployment that already exists', () => {
   });
 
   it('takes the custom choice away when the address is explicitly cleared', async () => {
-    const harness = profileServiceHarness([
-      stored({ rpc_endpoint_source: 'custom', rpc_endpoint: ENDPOINT }),
-    ]);
+    const harness = profileServiceHarness([stored({ rpc_endpoint_source: 'custom', rpc_endpoint: ENDPOINT })]);
 
     await harness.service.update('stage', { notes: 'cleared', rpc_endpoint: null });
 

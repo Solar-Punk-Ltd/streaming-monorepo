@@ -33,6 +33,7 @@ import {
   launchChrome,
   PAGE_TEXT,
   paintedInView,
+  reloadDocument,
   stillWithin,
   waitFor,
 } from './support/chrome.mjs';
@@ -46,25 +47,49 @@ const frontend = fileURLToPath(new URL('../', import.meta.url));
 const ENGINE_DRAWER_OPEN = `[...document.querySelectorAll('h2')].some(heading => heading.textContent.startsWith('Engine settings for'))`;
 const common = fileURLToPath(new URL('../../common/src/index.ts', import.meta.url));
 
-const RUNNING_SRS = [{ service: 'srs', ports: {} }, { service: 'stream-uploader', ports: {} }, { service: 'bee-uploader', ports: {} }];
+const RUNNING_SRS = [
+  { service: 'srs', ports: {} },
+  { service: 'stream-uploader', ports: {} },
+  { service: 'bee-uploader', ports: {} },
+];
 
 const base = {
-  name: 'ingest-stage', kind: 'streamer', status: 'RUNNING', port_slot: 1, host: 'localhost',
-  instance_id: '33333333-3333-4333-8333-333333333333', engine_config_revision: 0, intent_revision: 0,
-  stack_version_id: 1, engine_config_state: null, engine_config_error: null, has_engine_config: false,
-  notes: null, last_error: null, last_error_at: null, has_srt_passphrase: false,
-  created_at: '2026-09-23T08:00:00.000Z', updated_at: '2026-09-23T08:00:00.000Z',
-  engine_settings: {}, stamp_id: null, public_key: '1'.repeat(40), pendingStamp: false,
+  name: 'ingest-stage',
+  kind: 'streamer',
+  status: 'RUNNING',
+  port_slot: 1,
+  host: 'localhost',
+  instance_id: '33333333-3333-4333-8333-333333333333',
+  engine_config_revision: 0,
+  intent_revision: 0,
+  stack_version_id: 1,
+  engine_config_state: null,
+  engine_config_error: null,
+  has_engine_config: false,
+  notes: null,
+  last_error: null,
+  last_error_at: null,
+  has_srt_passphrase: false,
+  created_at: '2026-09-23T08:00:00.000Z',
+  updated_at: '2026-09-23T08:00:00.000Z',
+  engine_settings: {},
+  stamp_id: null,
+  public_key: '1'.repeat(40),
+  pendingStamp: false,
   containers: RUNNING_SRS,
 };
 
 /** The two reports SRS printed for the tester's broadcast of 2026-09-22. */
 const BROKEN_UP = measuredSrtIngest({
-  windowSeconds: 60, reports: 2, connections: 1,
+  windowSeconds: 60,
+  reports: 2,
+  connections: 1,
   counts: { received: 12_957, lost: 761, retransmitted: 731, dropped: 763 },
 });
 const RECOVERED = measuredSrtIngest({
-  windowSeconds: 60, reports: 6, connections: 1,
+  windowSeconds: 60,
+  reports: 6,
+  connections: 1,
   counts: { received: 39_000, lost: 118, retransmitted: 118, dropped: 0 },
 });
 const NO_REPORTS = { state: 'no_reports', windowSeconds: 60 };
@@ -86,9 +111,9 @@ function overviewOf(profile, offersLatency) {
 
 async function freePort() {
   const server = createNetServer();
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address();
-  await new Promise(resolve => server.close(resolve));
+  await new Promise((resolve) => server.close(resolve));
   return port;
 }
 
@@ -98,35 +123,53 @@ test('the SRT ingest card says how the link is holding up, and how to fix it', {
   let offersLatency = false;
   let ingestReads = 0;
   const server = await createServer({
-    root: frontend, configFile: false, cacheDir: viteCacheFor('srt-ingest'),
+    root: frontend,
+    configFile: false,
+    cacheDir: viteCacheFor('srt-ingest'),
     resolve: { alias: { '@streaming-infra-manager/common': common } },
     server: { host: '127.0.0.1', port: await freePort(), strictPort: true },
-    plugins: [react(), { name: 'srt-ingest-fixture', configureServer(vite) {
-      vite.middlewares.use((req, res, next) => {
-        const path = req.url?.split('?')[0];
-        const json = (body, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
-        if (!/^\/(auth|profiles|groups|config|events|metrics|versions)(\/|$)/.test(path)) return next();
-        if (req.method !== 'GET') return json({}, 405);
-        if (path === '/auth/session') return json({ username: 'ingest-review', isAdmin: true, expiresAt: '2099-01-01T00:00:00Z' });
-        if (path === '/profiles') return json({ profiles: [profile] });
-        if (path === '/groups') return json({ groups: [] });
-        if (path === '/versions') return json([]);
-        if (path === '/versions/attempts') return json({ attempts: [] });
-        if (path === '/config') return json({ host: 'offline.example', srtPassphrase: null, chequebookFloorBzz: '0.5' });
-        if (path === '/events' || path.startsWith('/metrics')) {
-          res.writeHead(200, { 'content-type': 'text/event-stream' });
-          res.write(': offline fixture\n\n');
-          return;
-        }
-        if (path === '/profiles/ingest-stage/srt-ingest') { ingestReads += 1; return json(reading); }
-        if (path === '/profiles/ingest-stage/engine') return json(overviewOf(profile, offersLatency));
-        if (path === '/profiles/ingest-stage/settings') return json({ ...runningCatalog(), instanceId: profile.instance_id });
-        // Every other read of the deployment is a node that does not answer,
-        // which is what the page shows beside a link that is breaking up.
-        if (path.startsWith('/profiles/')) return json({ error: 'Node unavailable', code: 'bee_node_unreachable' }, 503);
-        return next();
-      });
-    } }],
+    plugins: [
+      react(),
+      {
+        name: 'srt-ingest-fixture',
+        configureServer(vite) {
+          vite.middlewares.use((req, res, next) => {
+            const path = req.url?.split('?')[0];
+            const json = (body, status = 200) => {
+              res.writeHead(status, { 'content-type': 'application/json' });
+              res.end(JSON.stringify(body));
+            };
+            if (!/^\/(auth|profiles|groups|config|events|metrics|versions)(\/|$)/.test(path)) return next();
+            if (req.method !== 'GET') return json({}, 405);
+            if (path === '/auth/session')
+              return json({ username: 'ingest-review', isAdmin: true, expiresAt: '2099-01-01T00:00:00Z' });
+            if (path === '/profiles') return json({ profiles: [profile] });
+            if (path === '/groups') return json({ groups: [] });
+            if (path === '/versions') return json([]);
+            if (path === '/versions/attempts') return json({ attempts: [] });
+            if (path === '/config')
+              return json({ host: 'offline.example', srtPassphrase: null, chequebookFloorBzz: '0.5' });
+            if (path === '/events' || path.startsWith('/metrics')) {
+              res.writeHead(200, { 'content-type': 'text/event-stream' });
+              res.write(': offline fixture\n\n');
+              return;
+            }
+            if (path === '/profiles/ingest-stage/srt-ingest') {
+              ingestReads += 1;
+              return json(reading);
+            }
+            if (path === '/profiles/ingest-stage/engine') return json(overviewOf(profile, offersLatency));
+            if (path === '/profiles/ingest-stage/settings')
+              return json({ ...runningCatalog(), instanceId: profile.instance_id });
+            // Every other read of the deployment is a node that does not answer,
+            // which is what the page shows beside a link that is breaking up.
+            if (path.startsWith('/profiles/'))
+              return json({ error: 'Node unavailable', code: 'bee_node_unreachable' }, 503);
+            return next();
+          });
+        },
+      },
+    ],
   });
   await server.listen();
   t.after(() => endViteServer(t, server));
@@ -135,20 +178,31 @@ test('the SRT ingest card says how the link is holding up, and how to fix it', {
   const { call, evaluate } = browser;
   const evidence = await evidenceDirectory('srt-ingest-browser-');
   const body = () => evaluate(PAGE_TEXT);
-  const shows = (description, ...texts) => waitFor(body, (text) => texts.every((part) => text.includes(part)), description);
+  const shows = (description, ...texts) =>
+    waitFor(body, (text) => texts.every((part) => text.includes(part)), description);
   const reload = async () => {
-    await call('Page.reload');
+    await reloadDocument({ call, evaluate });
     await shows('the deployment page', 'Readiness');
   };
 
   await call('Page.navigate', { url: `${origin}/#/deployments/ingest-stage` });
   await t.test('a link that is breaking up reads as bad, with the fix beside it', async () => {
-    await shows('the bad link and its remedy', 'SRT ingest', 'Bad', '12,957', "The broadcaster's connection is losing packets");
+    await shows(
+      'the bad link and its remedy',
+      'SRT ingest',
+      'Bad',
+      '12,957',
+      "The broadcaster's connection is losing packets",
+    );
     const text = await body();
     assert.match(text, /5\.9% · 763 packets/);
     assert.match(text, /&latency=4000000/);
     assert.match(text, /Until this manager offers that setting/);
-    assert.equal(await evaluate(`!!${buttonWithText(RAISE_LATENCY_BUTTON)}`), false, 'no setting to lead to on this version');
+    assert.equal(
+      await evaluate(`!!${buttonWithText(RAISE_LATENCY_BUTTON)}`),
+      false,
+      'no setting to lead to on this version',
+    );
     const { data } = await call('Page.captureScreenshot', { captureBeyondViewport: true });
     await writeFile(join(evidence, 'bad-link.png'), Buffer.from(data, 'base64'));
   });
@@ -178,24 +232,39 @@ test('the SRT ingest card says how the link is holding up, and how to fix it', {
     assert.doesNotMatch(await body(), /Packets received/);
   });
 
-  await t.test('the latency step brings the Stack settings card into view at the SRT latency, focused, once the version offers the field', async () => {
-    reading = BROKEN_UP;
-    offersLatency = true;
-    await reload();
-    await shows('the latency step with its button', 'in its stack settings');
-    await evaluate('scrollTo(0, 0)');
+  await t.test(
+    'the latency step brings the Stack settings card into view at the SRT latency, focused, once the version offers the field',
+    async () => {
+      reading = BROKEN_UP;
+      offersLatency = true;
+      await reload();
+      await shows('the latency step with its button', 'in its stack settings');
+      await evaluate('scrollTo(0, 0)');
 
-    await clickWhenEnabled(evaluate, buttonWithText(RAISE_LATENCY_BUTTON), 'the latency button in the remedy');
+      await clickWhenEnabled(evaluate, buttonWithText(RAISE_LATENCY_BUTTON), 'the latency button in the remedy');
 
-    await waitFor(() => evaluate('document.activeElement?.id'), (id) => id === `deployment-setting-${SRT_LATENCY_KEY}`, 'the SRT latency focused');
-    const latencyRow = `document.querySelector('li[data-setting="${SRT_LATENCY_KEY}"]')`;
-    assert.equal(await evaluate(paintedInView(latencyRow)), true, 'the SRT latency on screen as it is focused');
-    assert.equal(await evaluate(ENGINE_DRAWER_OPEN), false, 'no engine settings drawer opened');
-    await waitFor(() => evaluate(stillWithin(`document.getElementById('stack-settings')`)), Boolean, 'the settings card still');
-    assert.equal(await evaluate(paintedInView(latencyRow)), true, 'the SRT latency still on screen once the card is still');
-    const { data } = await call('Page.captureScreenshot', { captureBeyondViewport: false });
-    await writeFile(join(evidence, 'latency-setting.png'), Buffer.from(data, 'base64'));
-  });
+      await waitFor(
+        () => evaluate('document.activeElement?.id'),
+        (id) => id === `deployment-setting-${SRT_LATENCY_KEY}`,
+        'the SRT latency focused',
+      );
+      const latencyRow = `document.querySelector('li[data-setting="${SRT_LATENCY_KEY}"]')`;
+      assert.equal(await evaluate(paintedInView(latencyRow)), true, 'the SRT latency on screen as it is focused');
+      assert.equal(await evaluate(ENGINE_DRAWER_OPEN), false, 'no engine settings drawer opened');
+      await waitFor(
+        () => evaluate(stillWithin(`document.getElementById('stack-settings')`)),
+        Boolean,
+        'the settings card still',
+      );
+      assert.equal(
+        await evaluate(paintedInView(latencyRow)),
+        true,
+        'the SRT latency still on screen once the card is still',
+      );
+      const { data } = await call('Page.captureScreenshot', { captureBeyondViewport: false });
+      await writeFile(join(evidence, 'latency-setting.png'), Buffer.from(data, 'base64'));
+    },
+  );
 
   await t.test('a deployment with no SRS running shows no card and asks nothing', async () => {
     profile = { ...profile, containers: [{ service: 'bee-uploader', ports: {} }] };

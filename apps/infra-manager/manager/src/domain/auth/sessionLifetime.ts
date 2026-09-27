@@ -1,7 +1,4 @@
-import {
-  SESSION_ABSOLUTE_TIMEOUT_MS,
-  SESSION_IDLE_TIMEOUT_MS,
-} from '@streaming-infra-manager/common';
+import { SESSION_ABSOLUTE_TIMEOUT_MS, SESSION_IDLE_TIMEOUT_MS } from '@streaming-infra-manager/common';
 
 import type { StoredSession } from './SessionRepository.js';
 

@@ -20,9 +20,7 @@ export function FeedChoice({ state, context, update }: WizardStepProps) {
           {
             value: 'pick',
             title: 'A stream on this manager',
-            detail: streams.length
-              ? 'Its address is filled in for you.'
-              : 'No streams here yet.',
+            detail: streams.length ? 'Its address is filled in for you.' : 'No streams here yet.',
             disabled: streams.length === 0,
             extra: (
               <TextField
@@ -51,7 +49,9 @@ export function FeedChoice({ state, context, update }: WizardStepProps) {
                 value={state.feedOwner}
                 onChange={(event) => update({ feedOwner: event.target.value })}
                 placeholder="0x plus 40 hex characters"
-                inputProps={{ style: { fontFamily: MONO_STACK } }}
+                slotProps={{
+                  htmlInput: { style: { fontFamily: MONO_STACK } },
+                }}
               />
             ),
           },

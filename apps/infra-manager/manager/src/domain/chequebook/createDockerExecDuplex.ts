@@ -20,10 +20,23 @@ function disposeTransport(transport: Duplex): void {
 }
 
 /** Takes ownership immediately. Docker stdout is framed, while bytes written to stdin are raw. */
-export function createDockerExecDuplex(transport: Duplex, bounds: DockerExecStreamBounds, signal?: AbortSignal): Duplex {
-  if (!bounds || typeof bounds !== 'object' || transport.destroyed || transport.readableEncoding || transport.readableObjectMode || transport.writableObjectMode ||
-      ![bounds.maxFrameBytes, bounds.maxOutputBytes, bounds.maxInputBytes, bounds.totalTimeoutMs].every(value => Number.isSafeInteger(value) && value > 0) ||
-      bounds.totalTimeoutMs > 2_147_483_647) {
+export function createDockerExecDuplex(
+  transport: Duplex,
+  bounds: DockerExecStreamBounds,
+  signal?: AbortSignal,
+): Duplex {
+  if (
+    !bounds ||
+    typeof bounds !== 'object' ||
+    transport.destroyed ||
+    transport.readableEncoding ||
+    transport.readableObjectMode ||
+    transport.writableObjectMode ||
+    ![bounds.maxFrameBytes, bounds.maxOutputBytes, bounds.maxInputBytes, bounds.totalTimeoutMs].every(
+      (value) => Number.isSafeInteger(value) && value > 0,
+    ) ||
+    bounds.totalTimeoutMs > 2_147_483_647
+  ) {
     disposeTransport(transport);
     throw new DockerExecStreamError();
   }
@@ -43,7 +56,11 @@ class DockerExecDuplex extends Duplex {
   readonly #timer: NodeJS.Timeout;
   readonly #deadline: number;
 
-  constructor(private readonly transport: Duplex, private readonly bounds: DockerExecStreamBounds, private readonly signal?: AbortSignal) {
+  constructor(
+    private readonly transport: Duplex,
+    private readonly bounds: DockerExecStreamBounds,
+    private readonly signal?: AbortSignal,
+  ) {
     super({ allowHalfOpen: true, autoDestroy: true });
     this.#deadline = performance.now() + bounds.totalTimeoutMs;
     transport.on('readable', this.onReadable);
@@ -61,21 +78,42 @@ class DockerExecDuplex extends Duplex {
   }
 
   override _write(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
-    if (this.expired() || !Buffer.isBuffer(chunk) || chunk.length > this.bounds.maxInputBytes - this.#inputBytes || this.transport.destroyed || this.transport.writableEnded) {
+    if (
+      this.expired() ||
+      !Buffer.isBuffer(chunk) ||
+      chunk.length > this.bounds.maxInputBytes - this.#inputBytes ||
+      this.transport.destroyed ||
+      this.transport.writableEnded
+    ) {
       callback(new DockerExecStreamError());
       return;
     }
     this.#inputBytes += chunk.length;
-    try { this.transport.write(chunk, error => callback(error ? new DockerExecStreamError() : undefined)); }
-    catch { callback(new DockerExecStreamError()); }
+    try {
+      this.transport.write(chunk, (error) => callback(error ? new DockerExecStreamError() : undefined));
+    } catch {
+      callback(new DockerExecStreamError());
+    }
   }
 
   override _final(callback: (error?: Error | null) => void): void {
-    if (this.expired()) { callback(new DockerExecStreamError()); return; }
-    if (this.transport.writableFinished) { callback(); return; }
-    if (this.transport.destroyed) { callback(new DockerExecStreamError()); return; }
-    try { this.transport.end((error?: Error | null) => callback(error ? new DockerExecStreamError() : undefined)); }
-    catch { callback(new DockerExecStreamError()); }
+    if (this.expired()) {
+      callback(new DockerExecStreamError());
+      return;
+    }
+    if (this.transport.writableFinished) {
+      callback();
+      return;
+    }
+    if (this.transport.destroyed) {
+      callback(new DockerExecStreamError());
+      return;
+    }
+    try {
+      this.transport.end((error?: Error | null) => callback(error ? new DockerExecStreamError() : undefined));
+    } catch {
+      callback(new DockerExecStreamError());
+    }
   }
 
   override _destroy(error: Error | null, callback: (error?: Error | null) => void): void {
@@ -93,19 +131,29 @@ class DockerExecDuplex extends Duplex {
   private readonly onReadable = () => this.pump();
   private readonly onError = () => this.destroy(new DockerExecStreamError());
   private readonly onAbort = () => this.destroy(new DockerExecStreamError());
-  private readonly onClose = () => { if (!this.#receivedEof) this.destroy(new DockerExecStreamError()); };
+  private readonly onClose = () => {
+    if (!this.#receivedEof) this.destroy(new DockerExecStreamError());
+  };
   private readonly onEnd = () => {
-    if (this.expired() || this.#headerBytes || this.#remainingPayload) { this.destroy(new DockerExecStreamError()); return; }
+    if (this.expired() || this.#headerBytes || this.#remainingPayload) {
+      this.destroy(new DockerExecStreamError());
+      return;
+    }
     this.#receivedEof = true;
     this.push(null);
     if (!this.writableEnded) this.end();
   };
 
-  private expired(): boolean { return performance.now() >= this.#deadline; }
+  private expired(): boolean {
+    return performance.now() >= this.#deadline;
+  }
 
   private pump(): void {
     if (this.destroyed) return;
-    if (this.expired()) { this.destroy(new DockerExecStreamError()); return; }
+    if (this.expired()) {
+      this.destroy(new DockerExecStreamError());
+      return;
+    }
     if (this.#receivedEof || this.#pressured || this.#pumping || this.#scheduled) return;
     this.#pumping = true;
     try {
@@ -113,7 +161,9 @@ class DockerExecDuplex extends Duplex {
         if (this.expired() || this.transport.readableEncoding) throw new DockerExecStreamError();
         if (!this.transport.readableLength) this.transport.read(0);
         if (!this.transport.readableLength) return;
-        const desired = this.#remainingPayload ? Math.min(this.#remainingPayload, this.readableHighWaterMark) : HEADER_BYTES - this.#headerBytes;
+        const desired = this.#remainingPayload
+          ? Math.min(this.#remainingPayload, this.readableHighWaterMark)
+          : HEADER_BYTES - this.#headerBytes;
         const chunk: unknown = this.transport.read(Math.min(desired, this.transport.readableLength));
         if (this.expired() || !Buffer.isBuffer(chunk)) throw new DockerExecStreamError();
         if (this.#remainingPayload) {
@@ -126,15 +176,24 @@ class DockerExecDuplex extends Duplex {
         }
       }
       // A producer of empty frames must still yield to cancellation and the lifetime deadline.
-      if (!this.#pressured) this.#scheduled = setImmediate(() => { this.#scheduled = undefined; this.pump(); });
-    } catch { this.destroy(new DockerExecStreamError()); }
-    finally { this.#pumping = false; }
+      if (!this.#pressured)
+        this.#scheduled = setImmediate(() => {
+          this.#scheduled = undefined;
+          this.pump();
+        });
+    } catch {
+      this.destroy(new DockerExecStreamError());
+    } finally {
+      this.#pumping = false;
+    }
   }
 
   private readHeader(): void {
-    if (this.#header[0] !== 1 || this.#header[1] || this.#header[2] || this.#header[3]) throw new DockerExecStreamError();
+    if (this.#header[0] !== 1 || this.#header[1] || this.#header[2] || this.#header[3])
+      throw new DockerExecStreamError();
     const length = this.#header.readUInt32BE(4);
-    if (length > this.bounds.maxFrameBytes || length > this.bounds.maxOutputBytes - this.#declaredOutputBytes) throw new DockerExecStreamError();
+    if (length > this.bounds.maxFrameBytes || length > this.bounds.maxOutputBytes - this.#declaredOutputBytes)
+      throw new DockerExecStreamError();
     this.#declaredOutputBytes += length;
     this.#remainingPayload = length;
     this.#headerBytes = 0;

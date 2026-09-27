@@ -19,9 +19,7 @@ import { fetchUploaderHealth } from './uploaderHealthApi';
  * @param profile the deployment to ask about, or null for a view with no
  *   uploader to ask, which asks nothing at all.
  */
-export function useUploaderHealth(
-  profile: Profile | null,
-): UploaderHealthReading | undefined {
+export function useUploaderHealth(profile: Profile | null): UploaderHealthReading | undefined {
   const [reading, setReading] = useState<UploaderHealthReading | undefined>(undefined);
   const name = profile?.name ?? null;
 

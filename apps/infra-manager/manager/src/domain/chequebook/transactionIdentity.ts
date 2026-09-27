@@ -23,12 +23,17 @@ export function matchesChequebookTransfer(operation: TransferIdentity, transacti
   if (BigInt(transaction.nonce) < BigInt(operation.nonceLowerBound)) return false;
   if (transaction.blockNumber !== null) {
     if (BigInt(transaction.blockNumber) < BigInt(operation.startBlockNumber)) return false;
-    if (transaction.blockNumber === operation.startBlockNumber && transaction.blockHash !== operation.startBlockHash) return false;
+    if (transaction.blockNumber === operation.startBlockNumber && transaction.blockHash !== operation.startBlockHash)
+      return false;
   }
   const amountWord = BigInt(operation.amountPlur).toString(16).padStart(64, '0');
   if (operation.direction === 'deposit') {
     const recipientWord = operation.chequebookAddress.slice(2).padStart(64, '0');
     return transaction.to === token && transaction.data === `0x${ERC20_TRANSFER_SELECTOR}${recipientWord}${amountWord}`;
   }
-  return operation.direction === 'withdraw' && transaction.to === operation.chequebookAddress && transaction.data === `0x${CHEQUEBOOK_WITHDRAW_SELECTOR}${amountWord}`;
+  return (
+    operation.direction === 'withdraw' &&
+    transaction.to === operation.chequebookAddress &&
+    transaction.data === `0x${CHEQUEBOOK_WITHDRAW_SELECTOR}${amountWord}`
+  );
 }

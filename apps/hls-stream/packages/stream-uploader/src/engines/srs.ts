@@ -179,7 +179,7 @@ export function createSrsEngine(mediaRootPath: string, options: SrsEngineOptions
   // Blanked rather than read alongside, so no later change can accidentally consult both. The two
   // modes answer the same question — is this publisher the owner of this stream — from two different
   // sources of truth, and a deployment in which they disagree has no right answer.
-  const publishKeySecret = adminApi ? '' : options.publishKeySecret ?? '';
+  const publishKeySecret = adminApi ? '' : (options.publishKeySecret ?? '');
   if (adminApi) {
     // The one boot line that says which mode this engine is in. Loud rather than debug: an operator
     // reading a refusal has to be able to tell "no declaration for this ingest id" from "wrong

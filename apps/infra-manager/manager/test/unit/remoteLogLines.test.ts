@@ -19,11 +19,7 @@ import { describe, it } from 'node:test';
 
 import { ContainerNotRunningError } from '../../src/domain/errors/index.js';
 import type { LogWindow } from '../../src/domain/logWindow.js';
-import {
-  type MarkedLines,
-  remoteLogLinesCommand,
-  remoteLogLinesFrom,
-} from '../../src/domain/ports/remoteLogLines.js';
+import { type MarkedLines, remoteLogLinesCommand, remoteLogLinesFrom } from '../../src/domain/ports/remoteLogLines.js';
 import { TargetDocker } from '../../src/domain/ports/TargetDocker.js';
 import { TRANSPORT_STATS_HOST_PATTERN } from '../../src/domain/srtIngest/transportStatsLine.js';
 import { throwawayRoot } from '../support/throwawayRoot.js';
@@ -41,10 +37,8 @@ const WEBHOOK =
  * second the id also carries a line break, so a line that begins in the exact
  * report shape goes on to the token.
  */
-const QUOTING_WEBHOOK =
-  `[2026-09-22 17:33:41.123][INFO][1][4ek6chsn] http: on_publish ok, stream=x${MARKER}pktRecv=1, pktRcvLoss=0, pktRcvRetrans=0, pktRcvDrop=0, url=http://stream-uploader:3000/engines/srs/streams?token=quoted123`;
-const SPLIT_WEBHOOK =
-  `[2026-09-22 17:33:42.123][INFO][1][4ek6chsn] http: on_publish ok, stream=x\n[2026-09-22 17:33:42.123][INFO][1][4ek6chsn] ${MARKER}pktRecv=1, pktRcvLoss=0, pktRcvRetrans=0, pktRcvDrop=0, url=http://stream-uploader:3000/engines/srs/streams?token=split123`;
+const QUOTING_WEBHOOK = `[2026-09-22 17:33:41.123][INFO][1][4ek6chsn] http: on_publish ok, stream=x${MARKER}pktRecv=1, pktRcvLoss=0, pktRcvRetrans=0, pktRcvDrop=0, url=http://stream-uploader:3000/engines/srs/streams?token=quoted123`;
+const SPLIT_WEBHOOK = `[2026-09-22 17:33:42.123][INFO][1][4ek6chsn] http: on_publish ok, stream=x\n[2026-09-22 17:33:42.123][INFO][1][4ek6chsn] ${MARKER}pktRecv=1, pktRcvLoss=0, pktRcvRetrans=0, pktRcvDrop=0, url=http://stream-uploader:3000/engines/srs/streams?token=split123`;
 /** SRS starts most of its console lines with a colour reset, as 67 of the 75 lines of 2026-09-22 did. */
 const COLOURED_REPORT = `\u001b[0m${REPORT}`;
 const CONTAINER_ID = 'c'.repeat(64);
@@ -91,10 +85,10 @@ describe('remoteLogLinesCommand', () => {
 
 describe('remoteLogLinesFrom', () => {
   it('answers the marked lines of a running container that read to its end', () => {
-    assert.deepEqual(
-      remoteLogLinesFrom(`container=running\n${REPORT}\n${REPORT}\ndocker-logs-exit=0\n`, MARKER),
-      { container: 'running', lines: [REPORT, REPORT] },
-    );
+    assert.deepEqual(remoteLogLinesFrom(`container=running\n${REPORT}\n${REPORT}\ndocker-logs-exit=0\n`, MARKER), {
+      container: 'running',
+      lines: [REPORT, REPORT],
+    });
   });
 
   it('answers a running container whose window held no marked line', () => {
@@ -109,16 +103,11 @@ describe('remoteLogLinesFrom', () => {
   });
 
   it('refuses a log read that failed, rather than calling it empty', () => {
-    assert.throws(
-      () => remoteLogLinesFrom('container=running\ndocker-logs-exit=1\n', MARKER),
-      /could not be read/,
-    );
+    assert.throws(() => remoteLogLinesFrom('container=running\ndocker-logs-exit=1\n', MARKER), /could not be read/);
   });
 
   it('refuses an answer that stopped before its last line ended', () => {
-    assert.throws(() =>
-      remoteLogLinesFrom(`container=running\n${REPORT}\ndocker-logs-exit=0`, MARKER),
-    );
+    assert.throws(() => remoteLogLinesFrom(`container=running\n${REPORT}\ndocker-logs-exit=0`, MARKER));
   });
 
   it('refuses an answer in any other shape, and says nothing of what it held', () => {
@@ -130,10 +119,10 @@ describe('remoteLogLinesFrom', () => {
   });
 
   it('keeps an unmarked line out even when the host let it through', () => {
-    assert.deepEqual(
-      remoteLogLinesFrom(`container=running\n${WEBHOOK}\n${REPORT}\ndocker-logs-exit=0\n`, MARKER),
-      { container: 'running', lines: [REPORT] },
-    );
+    assert.deepEqual(remoteLogLinesFrom(`container=running\n${WEBHOOK}\n${REPORT}\ndocker-logs-exit=0\n`, MARKER), {
+      container: 'running',
+      lines: [REPORT],
+    });
   });
 });
 
@@ -197,14 +186,18 @@ describe('the remote command, run by a POSIX shell', () => {
 
   it('asks for the logs of the container it found, within the window', () => {
     const run = runOnHost({ ids: CONTAINER_ID, log: REPORT });
-    const logsCalls = readFileSync(run.calls, 'utf8').split('\n').filter((call) => call.startsWith('logs'));
+    const logsCalls = readFileSync(run.calls, 'utf8')
+      .split('\n')
+      .filter((call) => call.startsWith('logs'));
 
     assert.deepEqual(logsCalls, [`logs --since 60s --tail 20000 ${CONTAINER_ID}`]);
   });
 
   it('reads the first of two containers rather than both run together', () => {
     const run = runOnHost({ ids: `${CONTAINER_ID}\n${'d'.repeat(64)}`, log: REPORT });
-    const logsCalls = readFileSync(run.calls, 'utf8').split('\n').filter((call) => call.startsWith('logs'));
+    const logsCalls = readFileSync(run.calls, 'utf8')
+      .split('\n')
+      .filter((call) => call.startsWith('logs'));
 
     assert.deepEqual(logsCalls, [`logs --since 60s --tail 20000 ${CONTAINER_ID}`]);
     assert.deepEqual(remoteLogLinesFrom(run.stdout, MARKER), { container: 'running', lines: [REPORT] });
@@ -282,7 +275,13 @@ describe('TargetDocker.logLinesContaining', () => {
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.file, 'ssh');
     assert.deepEqual(calls[0]!.args.slice(0, 7), [
-      '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'StrictHostKeyChecking=yes', 'edge',
+      '-o',
+      'BatchMode=yes',
+      '-o',
+      'ConnectTimeout=10',
+      '-o',
+      'StrictHostKeyChecking=yes',
+      'edge',
     ]);
     assert.equal(calls[0]!.args[7], remoteLogLinesCommand('stream1', 'srs', LINES, WINDOW));
   });

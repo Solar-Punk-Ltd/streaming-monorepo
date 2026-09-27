@@ -12,7 +12,7 @@ import '../src/utils/env.js';
 
 import { BeePublisherPool } from '../src/libs/BeePublisherPool.js';
 
-type Config = typeof import('../src/utils/config.js')['config'];
+type Config = (typeof import('../src/utils/config.js'))['config'];
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 

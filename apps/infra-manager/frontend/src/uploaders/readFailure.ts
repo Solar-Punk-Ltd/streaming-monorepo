@@ -18,10 +18,7 @@ export const NODE_NOT_READY_CODE = 'bee_node_not_ready';
  * Anything it cannot place is `unreachable`, which says the page got no answer
  * without claiming the node gave one.
  */
-export function readFailureFrom(
-  caught: unknown,
-  elapsedMs: number,
-): ReadFailure {
+export function readFailureFrom(caught: unknown, elapsedMs: number): ReadFailure {
   return { reason: reasonOf(caught), elapsedMs };
 }
 

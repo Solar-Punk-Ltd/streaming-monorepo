@@ -19,8 +19,7 @@ const LOCAL_HOSTS = new Set(['', 'localhost', '0.0.0.0', '127.0.0.1', 'native'])
  * the fallback for a manager that does not send it yet.
  */
 export function hostFor(profile: Profile, serverHost: string): string {
-  const profileHost =
-    profile.network_host?.trim() || profile.host?.trim() || '';
+  const profileHost = profile.network_host?.trim() || profile.host?.trim() || '';
   if (!LOCAL_HOSTS.has(profileHost)) return profileHost;
   return serverHost || window.location.hostname;
 }
@@ -39,9 +38,7 @@ export function clientUrl(profile: Profile, serverHost: string): string | null {
 
 /** The API of this deployment's own Bee node, when it runs one. */
 export function beeApiUrl(profile: Profile, serverHost: string): string | null {
-  const bee = profile.containers.find(
-    (c) => c.service === BEE_UPLOADER_SERVICE,
-  );
+  const bee = profile.containers.find((c) => c.service === BEE_UPLOADER_SERVICE);
   const port = bee?.ports.BEE_UPLOADER_API_PORT;
   if (!port) return null;
   return componentUrl(hostFor(profile, serverHost), port);
@@ -63,11 +60,7 @@ const OME_DEFAULT_APP_STREAM = 'video/stream';
  * that only a page about to show or copy the URL should make. Only SRS reads a
  * passphrase. OME's SRT listener has none.
  */
-export function srtPublishUrl(
-  profile: Profile,
-  serverHost: string,
-  passphrase?: string | null,
-): string | null {
+export function srtPublishUrl(profile: Profile, serverHost: string, passphrase?: string | null): string | null {
   const host = hostFor(profile, serverHost);
   // The kind's default services count too: a viewer stores no components list,
   // and reading only the stored list handed every viewer an SRT URL for a port
@@ -76,11 +69,7 @@ export function srtPublishUrl(
 
   const ome = profile.containers.find((c) => c.service === OME_SERVICE);
   if (ome || services.includes(OME_SERVICE)) {
-    const port =
-      ome?.ports.OME_SRT_PORT ??
-      (profile.port_slot > 0
-        ? OME_SRT_BASE_PORT + profile.port_slot * 10
-        : null);
+    const port = ome?.ports.OME_SRT_PORT ?? (profile.port_slot > 0 ? OME_SRT_BASE_PORT + profile.port_slot * 10 : null);
     if (!port) {
       return null;
     }
@@ -92,9 +81,7 @@ export function srtPublishUrl(
   if (!srs && !services.includes(SRS_SERVICE)) {
     return null;
   }
-  const port =
-    srs?.ports.SRS_SRT_PORT ??
-    (profile.port_slot > 0 ? SRS_SRT_BASE_PORT + profile.port_slot * 10 : null);
+  const port = srs?.ports.SRS_SRT_PORT ?? (profile.port_slot > 0 ? SRS_SRT_BASE_PORT + profile.port_slot * 10 : null);
   if (!port) return null;
   const base = `srt://${host}:${port}?streamid=#!::r=${SRT_DEFAULT_APP_STREAM},m=publish`;
   return passphrase?.trim() ? `${base}&passphrase=${passphrase.trim()}` : base;

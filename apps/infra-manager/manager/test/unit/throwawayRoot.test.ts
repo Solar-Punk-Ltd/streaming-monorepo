@@ -26,9 +26,15 @@ function childLeaving(ending: string): string {
     ${ending}
   `;
   // The child loads a TypeScript file, so it needs the same loader this run has.
-  const child = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], { encoding: 'utf8' });
+  const child = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
+    encoding: 'utf8',
+  });
   const root = child.stdout.split('\n')[0]!.trim();
-  assert.match(root, /throwaway-root-case-/, `the child said where its root was, saw ${JSON.stringify(child.stdout + child.stderr)}`);
+  assert.match(
+    root,
+    /throwaway-root-case-/,
+    `the child said where its root was, saw ${JSON.stringify(child.stdout + child.stderr)}`,
+  );
   return root;
 }
 

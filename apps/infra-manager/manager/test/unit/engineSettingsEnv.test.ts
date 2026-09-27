@@ -49,10 +49,7 @@ function withBaseEnv(contents: string = BASE_ENV): void {
 }
 
 function envFor(name: string, engineSettings: EngineSettings): string {
-  return readFileSync(
-    writeProfileEnv(root, name, { engine: 'srs', engineSettings }),
-    'utf8',
-  );
+  return readFileSync(writeProfileEnv(root, name, { engine: 'srs', engineSettings }), 'utf8');
 }
 
 describe('writeProfileEnv: engine settings', () => {
@@ -140,10 +137,7 @@ describe('writeProfileEnv: engine settings', () => {
 
   it('gives an OvenMediaEngine deployment no SRT latency line', () => {
     withBaseEnv('ENGINE=ome\n');
-    const env = readFileSync(
-      writeProfileEnv(root, 'omeplain', { engine: 'ome', engineSettings: {} }),
-      'utf8',
-    );
+    const env = readFileSync(writeProfileEnv(root, 'omeplain', { engine: 'ome', engineSettings: {} }), 'utf8');
 
     assert.doesNotMatch(env, /^SRT_LATENCY=/m);
   });
@@ -151,10 +145,7 @@ describe('writeProfileEnv: engine settings', () => {
   it('refuses a keyframe pair the engine would refuse to start on', () => {
     withBaseEnv();
     const publishers = ['1080p', '720p', '480p', '360p']
-      .map(
-        (rung, index) =>
-          `${rung}@http://10.0.0.7:${10015 + index * 10}<${'a'.repeat(64)}>`,
-      )
+      .map((rung, index) => `${rung}@http://10.0.0.7:${10015 + index * 10}<${'a'.repeat(64)}>`)
       .join(' ');
     assert.throws(
       () =>

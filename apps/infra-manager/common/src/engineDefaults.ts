@@ -64,10 +64,7 @@ interface ChosenDefault {
   refused: string | null;
 }
 
-function fallbackFor(
-  field: EngineSettingField,
-  stackDefaults: EngineSettings,
-): Fallback {
+function fallbackFor(field: EngineSettingField, stackDefaults: EngineSettings): Fallback {
   if (field.managerOwnsDefault) {
     return { value: field.defaultValue, source: 'manager' };
   }
@@ -77,11 +74,7 @@ function fallbackFor(
   };
 }
 
-function chooseDefault(
-  field: EngineSettingField,
-  hostValue: string | undefined,
-  fallback: Fallback,
-): ChosenDefault {
+function chooseDefault(field: EngineSettingField, hostValue: string | undefined, fallback: Fallback): ChosenDefault {
   const value = hostValue?.trim();
   if (!value) {
     return { ...fallback, refused: null };
@@ -106,11 +99,7 @@ export function effectiveEngineDefaults(
   const rejected: string[] = [];
 
   for (const field of engineSettingsFields(engine)) {
-    const chosen = chooseDefault(
-      field,
-      baseEnv[field.key],
-      fallbackFor(field, stackDefaults),
-    );
+    const chosen = chooseDefault(field, baseEnv[field.key], fallbackFor(field, stackDefaults));
     values[field.key] = chosen.value;
     sources[field.key] = chosen.source;
     if (chosen.refused !== null) rejected.push(field.key);

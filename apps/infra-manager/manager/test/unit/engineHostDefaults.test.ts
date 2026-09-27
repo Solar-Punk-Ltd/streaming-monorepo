@@ -24,23 +24,13 @@ import { throwawayRoot } from '../support/throwawayRoot.js';
 // env through it, so the root is set before anything importing it is loaded.
 const root = throwawayRoot('engine-host-defaults-');
 process.env.SHLS_ROOT = root;
-writeFileSync(
-  join(root, '.env'),
-  'ENGINE=srs\nHLS_FRAGMENT=1.5\nAPI_PORT=10000\n',
-  'utf8',
-);
+writeFileSync(join(root, '.env'), 'ENGINE=srs\nHLS_FRAGMENT=1.5\nAPI_PORT=10000\n', 'utf8');
 
-const { ContainerControl } = await import(
-  '../../src/domain/ContainerControl.js'
-);
+const { ContainerControl } = await import('../../src/domain/ContainerControl.js');
 const { EventBus } = await import('../../src/domain/EventBus.js');
-const { callEngine, startEngineTestApp } = await import(
-  '../support/engineTestApp.js'
-);
+const { callEngine, startEngineTestApp } = await import('../support/engineTestApp.js');
 const { fakeDocker } = await import('../support/fakeDocker.js');
-const { harnessFor, profileRow } = await import(
-  '../support/profileServiceHarness.js'
-);
+const { harnessFor, profileRow } = await import('../support/profileServiceHarness.js');
 
 type EngineTestApp = Awaited<ReturnType<typeof startEngineTestApp>>;
 type RecordedDeploy = { name: string; services: string[] | undefined };
@@ -51,13 +41,8 @@ async function abrApp(): Promise<{
   app: EngineTestApp;
   deploys: RecordedDeploy[];
 }> {
-  const { service, deploys } = harnessFor(
-    profileRow({ kind: 'abr-uploader', bee_publishers: PUBLISHERS }),
-  );
-  const app = await startEngineTestApp(
-    service,
-    new ContainerControl(new EventBus(), fakeDocker([])),
-  );
+  const { service, deploys } = harnessFor(profileRow({ kind: 'abr-uploader', bee_publishers: PUBLISHERS }));
+  const app = await startEngineTestApp(service, new ContainerControl(new EventBus(), fakeDocker([])));
   return { app, deploys };
 }
 
@@ -106,28 +91,15 @@ describe('PUT /profiles/:name/engine-settings against a host default', () => {
     // 25 frames a second is 50 frames against the manager's own 2 second
     // segment and 37.5 against this host's 1.5 second one, so only one of the
     // two answers what the engine would do with it.
-    const res = await callEngine(
-      refusing,
-      'PUT',
-      '/profiles/stream1/engine-settings',
-      { ABR_FPS: '25' },
-    );
+    const res = await callEngine(refusing, 'PUT', '/profiles/stream1/engine-settings', { ABR_FPS: '25' });
 
     assert.equal(res.status, 400);
     assert.deepEqual(refusingDeploys, []);
-    assert.match(
-      JSON.stringify(res.body),
-      /37\.5 frames, which is not a whole number/,
-    );
+    assert.match(JSON.stringify(res.body), /37\.5 frames, which is not a whole number/);
   });
 
   it('still accepts a pair that is whole against the host value', async () => {
-    const res = await callEngine(
-      accepting,
-      'PUT',
-      '/profiles/stream1/engine-settings',
-      { ABR_FPS: '30' },
-    );
+    const res = await callEngine(accepting, 'PUT', '/profiles/stream1/engine-settings', { ABR_FPS: '30' });
 
     assert.equal(res.status, 202);
     assert.deepEqual(acceptingDeploys, [{ name: 'stream1', services: ['srs'] }]);

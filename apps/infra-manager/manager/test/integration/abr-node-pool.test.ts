@@ -29,11 +29,7 @@ const BATCH = (seed: string) => seed.replace(/\D/g, '').padEnd(64, '0');
 const DEPLOY_TIMEOUT = 240_000;
 
 const waitForMembersRunning = (names: readonly string[]) =>
-  Promise.all(names.map((name) => waitForRunningServices(
-    name,
-    [BEE_UPLOADER],
-    { timeoutMs: DEPLOY_TIMEOUT },
-  )));
+  Promise.all(names.map((name) => waitForRunningServices(name, [BEE_UPLOADER], { timeoutMs: DEPLOY_TIMEOUT })));
 
 before(requireStack);
 after(async () => {
@@ -62,10 +58,7 @@ describe('ABR node pool', () => {
     await waitForMembersRunning(profiles.map((profile) => profile.name));
 
     const members = await listGroupMembers(group.id);
-    assert.deepEqual(
-      members.map((m) => m.name).sort(),
-      RUNGS.map((r) => `${pool}-${r}`).sort(),
-    );
+    assert.deepEqual(members.map((m) => m.name).sort(), RUNGS.map((r) => `${pool}-${r}`).sort());
 
     for (const member of members) {
       assert.deepEqual(member.components, [BEE_UPLOADER], `${member.name} components`);
@@ -130,19 +123,13 @@ describe('ABR node pool', () => {
       stamp_id: BATCH('480'),
     });
     assert.equal(stamped.status, 409);
-    assert.equal(
-      (stamped.body as { error: string }).error,
-      'ladder_group_invalid_operation',
-    );
+    assert.equal((stamped.body as { error: string }).error, 'ladder_group_invalid_operation');
 
     const appended = await apiRaw('POST', `/groups/${group.id}/members`, {
       count: 1,
     });
     assert.equal(appended.status, 409);
-    assert.equal(
-      (appended.body as { error: string }).error,
-      'ladder_group_invalid_operation',
-    );
+    assert.equal((appended.body as { error: string }).error, 'ladder_group_invalid_operation');
 
     // Still exactly the four rungs.
     assert.equal((await listGroupMembers(group.id)).length, RUNGS.length);
@@ -205,10 +192,7 @@ describe('ABR node pool', () => {
     await waitForMembersRunning(profiles.map((profile) => profile.name));
 
     assert.equal(group.kind, 'standard');
-    const { status, body } = await apiRaw(
-      'GET',
-      `/groups/${group.id}/bee-publishers`,
-    );
+    const { status, body } = await apiRaw('GET', `/groups/${group.id}/bee-publishers`);
     assert.equal(status, 409);
     assert.match((body as { message: string }).message, /not an ABR node pool/);
   });

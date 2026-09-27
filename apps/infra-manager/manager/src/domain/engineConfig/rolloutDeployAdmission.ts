@@ -46,44 +46,80 @@ export interface ClaimedRolloutDeploy extends RolloutStarted {
 }
 
 export function rolloutProfileIdentity(profile: Profile) {
-  return { name: profile.name, ...deployOwnerOf(profile), status: profile.status, host: profile.host,
-    portSlot: profile.port_slot, components: profile.components, kind: profile.kind };
+  return {
+    name: profile.name,
+    ...deployOwnerOf(profile),
+    status: profile.status,
+    host: profile.host,
+    portSlot: profile.port_slot,
+    components: profile.components,
+    kind: profile.kind,
+  };
 }
 
 const STAMP_FORMAT = `YYYY-MM-DD"T"HH24:MI:SS.US"Z"`;
 
-async function readTargetProof(client: PoolClient, alias: string, daemonId: string): Promise<Omit<RolloutAdmissionProof, 'snapshotToken'>> {
-  const target = (await client.query<{ daemon_id: string | null; verified_at: string | null; last_error: string | null }>(
-    `SELECT daemon_id, to_char(verified_at AT TIME ZONE 'UTC', '${STAMP_FORMAT}') AS verified_at, last_error
-       FROM deploy_targets WHERE alias = $1 FOR SHARE`, [alias],
-  )).rows[0];
-  const inventory = (await client.query<{ seeded_at: string | null }>(
-    `SELECT to_char(seeded_at AT TIME ZONE 'UTC', '${STAMP_FORMAT}') AS seeded_at
+async function readTargetProof(
+  client: PoolClient,
+  alias: string,
+  daemonId: string,
+): Promise<Omit<RolloutAdmissionProof, 'snapshotToken'>> {
+  const target = (
+    await client.query<{ daemon_id: string | null; verified_at: string | null; last_error: string | null }>(
+      `SELECT daemon_id, to_char(verified_at AT TIME ZONE 'UTC', '${STAMP_FORMAT}') AS verified_at, last_error
+       FROM deploy_targets WHERE alias = $1 FOR SHARE`,
+      [alias],
+    )
+  ).rows[0];
+  const inventory = (
+    await client.query<{ seeded_at: string | null }>(
+      `SELECT to_char(seeded_at AT TIME ZONE 'UTC', '${STAMP_FORMAT}') AS seeded_at
        FROM reservation_inventory WHERE id = 1 FOR SHARE`,
-  )).rows[0];
-  const daemon = (await client.query<{ seeded_at: string }>(
-    `SELECT to_char(seeded_at AT TIME ZONE 'UTC', '${STAMP_FORMAT}') AS seeded_at
-       FROM reservation_daemon_inventory WHERE daemon_id = $1 FOR SHARE`, [daemonId],
-  )).rows[0];
-  if (!target || target.daemon_id !== daemonId || !target.verified_at || target.last_error !== null ||
-      !inventory?.seeded_at || !daemon?.seeded_at) {
+    )
+  ).rows[0];
+  const daemon = (
+    await client.query<{ seeded_at: string }>(
+      `SELECT to_char(seeded_at AT TIME ZONE 'UTC', '${STAMP_FORMAT}') AS seeded_at
+       FROM reservation_daemon_inventory WHERE daemon_id = $1 FOR SHARE`,
+      [daemonId],
+    )
+  ).rows[0];
+  if (
+    !target ||
+    target.daemon_id !== daemonId ||
+    !target.verified_at ||
+    target.last_error !== null ||
+    !inventory?.seeded_at ||
+    !daemon?.seeded_at
+  ) {
     throw new TargetNotVerifiedError(alias, 'The deployment target or its port inventory is not verified.');
   }
-  return { alias, daemonId, verifiedAt: target.verified_at, inventorySeededAt: inventory.seeded_at,
-    daemonInventorySeededAt: daemon.seeded_at };
+  return {
+    alias,
+    daemonId,
+    verifiedAt: target.verified_at,
+    inventorySeededAt: inventory.seeded_at,
+    daemonInventorySeededAt: daemon.seeded_at,
+  };
 }
 
 /** Read before Docker. The final transaction rechecks every value while holding the same locks. */
 export async function captureRolloutAdmission(client: PoolClient, expected: Profile): Promise<RolloutAdmissionProof> {
   await client.query('SELECT pg_advisory_xact_lock($1)', [PROFILE_SLOT_LOCK_KEY]);
   const alias = targetAlias(expected.host);
-  const locator = (await client.query<{ daemon_id: string | null }>('SELECT daemon_id FROM deploy_targets WHERE alias = $1', [alias])).rows[0];
+  const locator = (
+    await client.query<{ daemon_id: string | null }>('SELECT daemon_id FROM deploy_targets WHERE alias = $1', [alias])
+  ).rows[0];
   if (!locator?.daemon_id) throw new TargetNotVerifiedError(alias);
   await lockAttemptDaemon(client, locator.daemon_id);
-  if (!(await client.query('SELECT id FROM stack_versions WHERE id = $1 FOR SHARE', [expected.stack_version_id])).rowCount) {
+  if (
+    !(await client.query('SELECT id FROM stack_versions WHERE id = $1 FOR SHARE', [expected.stack_version_id])).rowCount
+  ) {
     throw new ProfileConfigError(expected.name, 'The selected stack version no longer exists.');
   }
-  const profile = (await client.query<Profile>(`SELECT ${PROFILE_COLUMNS} FROM profiles WHERE name = $1 FOR UPDATE`, [expected.name])).rows[0];
+  const profile = (
+    await client.query<Profile>(`SELECT ${PROFILE_COLUMNS} FROM profiles WHERE name = $1 FOR UPDATE`, [expected.name])
+  ).rows[0];
   if (!profile || !isDeepStrictEqual(rolloutProfileIdentity(profile), rolloutProfileIdentity(expected))) {
     throw new ProfileConfigError(expected.name, 'The deployment changed before its target could be captured.');
   }
@@ -98,55 +134,107 @@ export interface LockedRolloutDeploy {
 }
 
 /** Every admission takes these global locks before version or profile rows. */
-export async function lockRolloutPrefix(client: PoolClient, input: Omit<PreparedRolloutDeploy, 'version'>): Promise<void> {
+export async function lockRolloutPrefix(
+  client: PoolClient,
+  input: Omit<PreparedRolloutDeploy, 'version'>,
+): Promise<void> {
   const { profile: expected, admission, snapshot } = input;
-  if (!admission?.snapshotToken) throw new DeployAttemptRefusedError(expected.name, 'A captured container snapshot token is required.');
-  if (snapshot.daemonId !== admission.daemonId) throw new TargetNotVerifiedError(admission.alias, 'The container snapshot came from another daemon.');
+  if (!admission?.snapshotToken)
+    throw new DeployAttemptRefusedError(expected.name, 'A captured container snapshot token is required.');
+  if (snapshot.daemonId !== admission.daemonId)
+    throw new TargetNotVerifiedError(admission.alias, 'The container snapshot came from another daemon.');
   await client.query('SELECT pg_advisory_xact_lock($1)', [PROFILE_SLOT_LOCK_KEY]);
   await lockAttemptDaemon(client, admission.daemonId);
 }
 
 /** Locks allocation, daemon, version, profile and target evidence before any final writes. */
-export async function lockRolloutDeploy(client: PoolClient, input: PreparedRolloutDeploy, jobId: string): Promise<LockedRolloutDeploy | null> {
+export async function lockRolloutDeploy(
+  client: PoolClient,
+  input: PreparedRolloutDeploy,
+  jobId: string,
+): Promise<LockedRolloutDeploy | null> {
   const { profile: expected, version, engine } = input;
   await lockRolloutPrefix(client, input);
-  const profile = await lockBuildJobProfile(client, { profileName: expected.name, version,
-    ownership: deployOwnerOf(expected), services: [engine], transition: { from: [expected.status], intent: 'preserve' } });
+  const profile = await lockBuildJobProfile(client, {
+    profileName: expected.name,
+    version,
+    ownership: deployOwnerOf(expected),
+    services: [engine],
+    transition: { from: [expected.status], intent: 'preserve' },
+  });
   return planLockedRollout(client, input, profile, version, jobId);
 }
 
 /** The caller has already locked its artifact authority and profile. No ownership or payload is written here. */
 export async function planLockedRollout(
-  client: PoolClient, input: Omit<PreparedRolloutDeploy, 'version'>, profile: Profile | null,
-  version: DeployVersionSnapshot, jobId: string,
+  client: PoolClient,
+  input: Omit<PreparedRolloutDeploy, 'version'>,
+  profile: Profile | null,
+  version: DeployVersionSnapshot,
+  jobId: string,
 ): Promise<LockedRolloutDeploy | null> {
   const { profile: expected, engine, admission, snapshot } = input;
-  if (!profile || !['RUNNING', 'STOPPED', 'ERROR'].includes(profile.status) ||
-      !isDeepStrictEqual(rolloutProfileIdentity(profile), rolloutProfileIdentity(expected))) return null;
+  if (
+    !profile ||
+    !['RUNNING', 'STOPPED', 'ERROR'].includes(profile.status) ||
+    !isDeepStrictEqual(rolloutProfileIdentity(profile), rolloutProfileIdentity(expected))
+  )
+    return null;
   if (targetAlias(profile.host) !== admission.alias) return null;
-  const current = { ...await readTargetProof(client, admission.alias, admission.daemonId),
-    snapshotToken: await captureAttemptSnapshotToken(client, admission.daemonId, profile.name) };
+  const current = {
+    ...(await readTargetProof(client, admission.alias, admission.daemonId)),
+    snapshotToken: await captureAttemptSnapshotToken(client, admission.daemonId, profile.name),
+  };
   if (!isDeepStrictEqual(current, admission)) {
     if (!isDeepStrictEqual(current.snapshotToken, admission.snapshotToken)) {
-      throw new DeployAttemptRefusedError(profile.name, 'Deploy attempt history changed while the container snapshot was read.');
+      throw new DeployAttemptRefusedError(
+        profile.name,
+        'Deploy attempt history changed while the container snapshot was read.',
+      );
     }
-    throw new TargetNotVerifiedError(admission.alias, 'The target verification or inventory generation changed during preparation.');
+    throw new TargetNotVerifiedError(
+      admission.alias,
+      'The target verification or inventory generation changed during preparation.',
+    );
   }
   const contract = version.contract;
-  if (!contract?.ports.length || contract.allocationProblem || !contract.engineConfig[engine] || engineForComponents(profile.components) !== engine) {
+  if (
+    !contract?.ports.length ||
+    contract.allocationProblem ||
+    !contract.engineConfig[engine] ||
+    engineForComponents(profile.components) !== engine
+  ) {
     throw new ProfileConfigError(profile.name, 'The captured version cannot deploy this engine configuration.');
   }
-  if (profile.port_slot < 1 || profile.port_slot > slotCapFor(contract)) throw new ProfileConfigError(profile.name, 'The captured deployment slot is outside its supported range.');
+  if (profile.port_slot < 1 || profile.port_slot > slotCapFor(contract))
+    throw new ProfileConfigError(profile.name, 'The captured deployment slot is outside its supported range.');
   const ports = portPlanFor(portTableForEngine(contract, engine), profile.port_slot);
-  const problem = ports.map(portExposureProblem).find(value => value !== null);
+  const problem = ports.map(portExposureProblem).find((value) => value !== null);
   if (problem) throw new ProfileConfigError(profile.name, problem);
-  return { profile, ports, attempt: { daemonId: admission.daemonId, target: admission.alias,
-    project: profile.name, jobId, kind: contract.features.sharedImageTags ? 'shared' : 'fixed', services: [engine],
-    preJobContainerIds: snapshot.containerIds, snapshotToken: admission.snapshotToken } };
+  return {
+    profile,
+    ports,
+    attempt: {
+      daemonId: admission.daemonId,
+      target: admission.alias,
+      project: profile.name,
+      jobId,
+      kind: contract.features.sharedImageTags ? 'shared' : 'fixed',
+      services: [engine],
+      preJobContainerIds: snapshot.containerIds,
+      snapshotToken: admission.snapshotToken,
+    },
+  };
 }
 
 /** The owner and operation preconditions have passed while their locks remain held. */
 export async function reserveRolloutDeploy(client: PoolClient, locked: LockedRolloutDeploy): Promise<DeployAttempt> {
-  await planPortReservations(client, locked.attempt.daemonId, locked.profile.name, locked.ports, `config rollout ${locked.attempt.jobId}`);
+  await planPortReservations(
+    client,
+    locked.attempt.daemonId,
+    locked.profile.name,
+    locked.ports,
+    `config rollout ${locked.attempt.jobId}`,
+  );
   return openDeployAttempt(client, locked.attempt);
 }

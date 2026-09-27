@@ -42,8 +42,7 @@ export function defaultServicesFor(profile: StampGatedProfile): string[] {
   if (profile.components && profile.components.length > 0) {
     return [...profile.components];
   }
-  const defaults =
-    KIND_DEFAULT_SERVICES[profile.kind as keyof typeof KIND_DEFAULT_SERVICES];
+  const defaults = KIND_DEFAULT_SERVICES[profile.kind as keyof typeof KIND_DEFAULT_SERVICES];
   return [...(defaults ?? [])];
 }
 
@@ -195,9 +194,5 @@ export function beeTargetProblem(profile: BeeTargetProfile): string | null {
 }
 
 export function isPendingStamp(profile: StampGatedProfile): boolean {
-  return (
-    servicesNeedStamp(defaultServicesFor(profile)) &&
-    !hasStampId(profile) &&
-    !hasBeePublishers(profile)
-  );
+  return servicesNeedStamp(defaultServicesFor(profile)) && !hasStampId(profile) && !hasBeePublishers(profile);
 }

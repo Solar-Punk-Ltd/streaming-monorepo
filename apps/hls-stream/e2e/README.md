@@ -492,7 +492,7 @@ the same `WebSocketTraffic` every existing reader already sums, and applies the 
 attached session **including ones that attach after a squeeze started**, which is what a respawned
 worker produces. A raw client rather than Playwright's own because a flattened child session is
 addressed by putting its `sessionId` on every message and `CDPSession.send(method, params)` exposes
-no such argument, verified against the pinned playwright-core 1.61.1. Chrome is launched with
+no such argument, verified against the pinned playwright-core 1.63.0. Chrome is launched with
 `--remote-debugging-port` on a port the harness picks, through `launchViewerWatchingWorkers`, and
 `BROWSER_CHROME_PATH` still chooses the binary.
 
@@ -616,7 +616,7 @@ and spend-ceiling gates as every other sitting, one broadcast per fault (or one 
 sweep), and an arm that does not name its byte source is refused before anything is published.
 
 The in-tab node needs time to boot: a few megabytes of wasm and several seconds of dialling. The
-payload is 3.87 MB at the pinned `@lat-murmeldjur/weeb_3` 0.0.341001, and it is the one place in this
+payload is 3.32 MB at the pinned `@lat-murmeldjur/weeb_3` 0.0.350001, and it is the one place in this
 repo that quotes a figure, because every other mention would go stale on the next bump. Every driver
 holds the boot for `BROWSER_BYTE_SOURCE_SETTLE_SECONDS` (default 60) before opening its window, so
 the join is never inside a counted stretch. `watch.ts` reads that window from

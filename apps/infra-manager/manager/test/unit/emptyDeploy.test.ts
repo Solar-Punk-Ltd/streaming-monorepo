@@ -28,9 +28,7 @@ const { orchestratorHarness } = await import('../support/orchestratorHarness.js'
 describe('a deploy with no service to run', () => {
   for (const status of ['STOPPED', 'ERROR'] as const) {
     it(`leaves a components-less custom deployment ${status}, as it was`, async () => {
-      const h = orchestratorHarness([
-        makeProfile({ name: 'stage', kind: 'custom', components: [], status }),
-      ]);
+      const h = orchestratorHarness([makeProfile({ name: 'stage', kind: 'custom', components: [], status })]);
 
       await h.orchestrator.startDeploy(h.profiles.rows.get('stage')!, undefined);
 
@@ -40,9 +38,7 @@ describe('a deploy with no service to run', () => {
   }
 
   it('says why a deployment that goes back to ERROR is still there', async () => {
-    const h = orchestratorHarness([
-      makeProfile({ name: 'stage', kind: 'custom', components: [], status: 'ERROR' }),
-    ]);
+    const h = orchestratorHarness([makeProfile({ name: 'stage', kind: 'custom', components: [], status: 'ERROR' })]);
 
     await h.orchestrator.startDeploy(h.profiles.rows.get('stage')!, undefined);
 
@@ -50,9 +46,7 @@ describe('a deploy with no service to run', () => {
   });
 
   it('refuses a deploy of the uploader alone while it waits for a stamp', async () => {
-    const h = orchestratorHarness([
-      makeProfile({ name: 'stage', stamp_id: null, bee_publishers: null }),
-    ]);
+    const h = orchestratorHarness([makeProfile({ name: 'stage', stamp_id: null, bee_publishers: null })]);
 
     await assert.rejects(
       h.orchestrator.startDeploy(h.profiles.rows.get('stage')!, ['stream-uploader']),

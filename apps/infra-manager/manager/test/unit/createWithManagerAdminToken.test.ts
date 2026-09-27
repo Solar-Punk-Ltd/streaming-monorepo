@@ -33,7 +33,8 @@ const ADMIN_URL = 'https://admin.example.com';
 const STORED_TOKEN = 'synthetic-stored-admin-token-fedcba9876543210';
 const TYPED_TOKEN = 'synthetic-typed-admin-token-0123456789abcdef';
 
-const SAMPLE_WITH_ADMIN = '# === Stream Uploader ===\nLOG_LEVEL=info\nSTAMP=\n\n# === Admin mode ===\nADMIN_API_URL=\nADMIN_API_TOKEN=\n';
+const SAMPLE_WITH_ADMIN =
+  '# === Stream Uploader ===\nLOG_LEVEL=info\nSTAMP=\n\n# === Admin mode ===\nADMIN_API_URL=\nADMIN_API_TOKEN=\n';
 
 function writeVersion(sample = SAMPLE_WITH_ADMIN): void {
   writeFileSync(join(root, '.env.sample'), sample, 'utf8');
@@ -48,12 +49,17 @@ async function appFor(options: { storedToken?: string | null } = {}) {
   const harness = profileServiceHarness();
   harness.profiles.managerAdminLink.url = ADMIN_URL;
   harness.profiles.managerAdminLink.token = options.storedToken === undefined ? STORED_TOKEN : options.storedToken;
-  const profiles = await startRouterTestApp(createProfilesRouter(harness.service, uploaderHealthStub(), false), '/profiles');
+  const profiles = await startRouterTestApp(
+    createProfilesRouter(harness.service, uploaderHealthStub(), false),
+    '/profiles',
+  );
   const groups = await startRouterTestApp(createGroupsRouter(harness.service, false), '/groups');
   return {
     harness,
-    create: (body: Record<string, unknown>) => call(profiles, 'POST', '/profiles', { name: 'stage', kind: 'streamer', ...body }),
-    createGroup: (body: Record<string, unknown>) => call(groups, 'POST', '/groups', { group_name: 'fleet', size: 2, kind: 'streamer', ...body }),
+    create: (body: Record<string, unknown>) =>
+      call(profiles, 'POST', '/profiles', { name: 'stage', kind: 'streamer', ...body }),
+    createGroup: (body: Record<string, unknown>) =>
+      call(groups, 'POST', '/groups', { group_name: 'fleet', size: 2, kind: 'streamer', ...body }),
     close: async () => {
       await profiles.close();
       await groups.close();
@@ -70,7 +76,10 @@ describe("a create that asks for the manager's stored web2 admin token", () => {
       const created = await app.create(LINKED);
 
       assert.equal(created.status, 202, JSON.stringify(created.body));
-      assert.deepEqual(await app.harness.profiles.stackSettingsForDeploy('stage'), { ADMIN_API_URL: ADMIN_URL, ADMIN_API_TOKEN: STORED_TOKEN });
+      assert.deepEqual(await app.harness.profiles.stackSettingsForDeploy('stage'), {
+        ADMIN_API_URL: ADMIN_URL,
+        ADMIN_API_TOKEN: STORED_TOKEN,
+      });
       assert.deepEqual((await app.harness.profiles.stackSettingsOf('stage'))?.secretKeys, ['ADMIN_API_TOKEN']);
       assert.equal(app.harness.profiles.adminTokenOrigins.get('stage'), ADMIN_URL);
       assert.equal(JSON.stringify(created.body).includes(STORED_TOKEN), false);
@@ -111,7 +120,11 @@ describe("a create that asks for the manager's stored web2 admin token", () => {
   it('is refused for an address on another origin than the stored link, and creates nothing', async () => {
     const app = await appFor();
     try {
-      for (const elsewhere of ['https://elsewhere.example.net', 'http://admin.example.com', 'https://admin.example.com:8443']) {
+      for (const elsewhere of [
+        'https://elsewhere.example.net',
+        'http://admin.example.com',
+        'https://admin.example.com:8443',
+      ]) {
         const refused = await app.create({ ...LINKED, stack_settings: [{ key: 'ADMIN_API_URL', value: elsewhere }] });
 
         assert.equal(refused.status, 409, JSON.stringify(refused.body));
@@ -121,7 +134,10 @@ describe("a create that asks for the manager's stored web2 admin token", () => {
             "The manager's stored web2 admin token was saved for another address than this deployment's ADMIN_API_URL, and it goes only to the address it was saved with. Type a token for this address, or use the address saved on Manager settings.",
         });
       }
-      const group = await app.createGroup({ ...LINKED, stack_settings: [{ key: 'ADMIN_API_URL', value: 'https://elsewhere.example.net' }] });
+      const group = await app.createGroup({
+        ...LINKED,
+        stack_settings: [{ key: 'ADMIN_API_URL', value: 'https://elsewhere.example.net' }],
+      });
       assert.equal(group.status, 409, JSON.stringify(group.body));
       assert.equal(app.harness.profiles.rows.size, 0);
       assert.equal(app.harness.orchestrator.deploys.length, 0);
@@ -134,7 +150,10 @@ describe("a create that asks for the manager's stored web2 admin token", () => {
     const app = await appFor();
     try {
       const unnamed = await app.create({ use_manager_admin_token: true });
-      const emptied = await app.create({ stack_settings: [{ key: 'ADMIN_API_URL', value: '' }], use_manager_admin_token: true });
+      const emptied = await app.create({
+        stack_settings: [{ key: 'ADMIN_API_URL', value: '' }],
+        use_manager_admin_token: true,
+      });
 
       for (const refused of [unnamed, emptied]) {
         assert.equal(refused.status, 409, JSON.stringify(refused.body));
@@ -146,10 +165,13 @@ describe("a create that asks for the manager's stored web2 admin token", () => {
     }
   });
 
-  it('takes an address on the stored link\'s origin with another path', async () => {
+  it("takes an address on the stored link's origin with another path", async () => {
     const app = await appFor();
     try {
-      const created = await app.create({ ...LINKED, stack_settings: [{ key: 'ADMIN_API_URL', value: `${ADMIN_URL}/v2` }] });
+      const created = await app.create({
+        ...LINKED,
+        stack_settings: [{ key: 'ADMIN_API_URL', value: `${ADMIN_URL}/v2` }],
+      });
 
       assert.equal(created.status, 202, JSON.stringify(created.body));
       assert.equal((await app.harness.profiles.stackSettingsForDeploy('stage')).ADMIN_API_TOKEN, STORED_TOKEN);
@@ -162,12 +184,18 @@ describe("a create that asks for the manager's stored web2 admin token", () => {
     const app = await appFor();
     try {
       const refused = await app.create({
-        stack_settings: [{ key: 'ADMIN_API_URL', value: ADMIN_URL }, { key: 'ADMIN_API_TOKEN', value: TYPED_TOKEN }],
+        stack_settings: [
+          { key: 'ADMIN_API_URL', value: ADMIN_URL },
+          { key: 'ADMIN_API_TOKEN', value: TYPED_TOKEN },
+        ],
         use_manager_admin_token: true,
       });
 
       assert.equal(refused.status, 400, JSON.stringify(refused.body));
-      assert.match(JSON.stringify(refused.body), /ADMIN_API_TOKEN is typed for this deployment and also asked for from the manager/);
+      assert.match(
+        JSON.stringify(refused.body),
+        /ADMIN_API_TOKEN is typed for this deployment and also asked for from the manager/,
+      );
       assert.equal(JSON.stringify(refused.body).includes(TYPED_TOKEN), false);
       assert.equal(app.harness.profiles.rows.has('stage'), false);
     } finally {
@@ -220,7 +248,10 @@ describe('a scripted create for an uploader that names neither web2 admin key', 
       const created = await app.create({});
 
       assert.equal(created.status, 202, JSON.stringify(created.body));
-      assert.deepEqual(await app.harness.profiles.stackSettingsForDeploy('stage'), { ADMIN_API_URL: ADMIN_URL, ADMIN_API_TOKEN: STORED_TOKEN });
+      assert.deepEqual(await app.harness.profiles.stackSettingsForDeploy('stage'), {
+        ADMIN_API_URL: ADMIN_URL,
+        ADMIN_API_TOKEN: STORED_TOKEN,
+      });
       assert.equal(app.harness.profiles.adminTokenOrigins.get('stage'), ADMIN_URL);
       assert.equal(JSON.stringify(created.body).includes(STORED_TOKEN), false);
     } finally {
@@ -235,7 +266,11 @@ describe('a scripted create for an uploader that names neither web2 admin key', 
 
       assert.equal(created.status, 202, JSON.stringify(created.body));
       for (const name of ['fleet-profile-1', 'fleet-profile-2']) {
-        assert.deepEqual(await app.harness.profiles.stackSettingsForDeploy(name), { ADMIN_API_URL: ADMIN_URL, ADMIN_API_TOKEN: STORED_TOKEN }, name);
+        assert.deepEqual(
+          await app.harness.profiles.stackSettingsForDeploy(name),
+          { ADMIN_API_URL: ADMIN_URL, ADMIN_API_TOKEN: STORED_TOKEN },
+          name,
+        );
       }
     } finally {
       await app.close();

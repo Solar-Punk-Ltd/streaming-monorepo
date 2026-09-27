@@ -71,8 +71,12 @@ async function startMockManager(t) {
   const child = spawn(
     process.execPath,
     [
-      '--import', 'tsx', '--conditions=development', '--input-type=module',
-      '-e', "await import('./dev/mock-manager.mjs'); process.send({ ready: true });",
+      '--import',
+      'tsx',
+      '--conditions=development',
+      '--input-type=module',
+      '-e',
+      "await import('./dev/mock-manager.mjs'); process.send({ ready: true });",
     ],
     { cwd: frontend, env: { ...process.env, PORT: String(port) }, stdio: ['ignore', 'ignore', 'inherit', 'ipc'] },
   );
@@ -97,7 +101,11 @@ async function startMockManager(t) {
       clearTimeout(bound);
       child.off('message', onMessage);
       child.off('exit', onExit);
-      error ? fail(error) : done();
+      if (error) {
+        fail(error);
+      } else {
+        done();
+      }
     };
     child.on('message', onMessage);
     child.once('exit', onExit);
@@ -142,7 +150,8 @@ test('a batch is topped up and diluted from its deployment’s Storage card', as
   /** Once any dialog has faded all the way in, so the picture is of what the operator reads. */
   const screenshot = async (name) => {
     await waitFor(
-      () => evaluate(`(() => {
+      () =>
+        evaluate(`(() => {
         const container = document.querySelector('.MuiDialog-container');
         return container ? getComputedStyle(container).opacity : '1';
       })()`),
@@ -196,7 +205,11 @@ test('a batch is topped up and diluted from its deployment’s Storage card', as
   assert.equal(batch.immutableFlag, true);
   assert.match(await storageText(), /is full, and it cannot overwrite what it holds/);
   assert.match(await storageText(), /Dilute it below to give it room, which keeps the batch, or buy a new one/);
-  assert.match(await storageText(), new RegExp(`${batch.utilization} of ${batch.utilization}`), 'the Used column names the chunks in the fullest bucket');
+  assert.match(
+    await storageText(),
+    new RegExp(`${batch.utilization} of ${batch.utilization}`),
+    'the Used column names the chunks in the fullest bucket',
+  );
   // A laptop's card is narrower than the table's readings, and a control past
   // its right edge is one the operator has to find by scrolling the table.
   const offTheCard = await evaluate(`(() => {
@@ -224,7 +237,11 @@ test('a batch is topped up and diluted from its deployment’s Storage card', as
   await screenshot('top-up-dialog');
   await click(inDialog(`Top up for ${cost} BZZ`), 'the enabled top-up confirm');
   await waitFor(dialogOpen, (open) => open === false, 'the top-up dialog to close once bee answered');
-  await waitFor(storageText, (text) => text.includes('Bee sent the top-up of batch'), 'the card to say the top-up was sent');
+  await waitFor(
+    storageText,
+    (text) => text.includes('Bee sent the top-up of batch'),
+    'the card to say the top-up was sent',
+  );
   assert.match(await storageText(), /The new life shows here once the node has read it back from the chain/);
   assert.deepEqual(await writes(), [
     { path: `/profiles/${RUNG}/stamp/topup`, body: { batch_id: batch.batchID, amount: oneDay } },
@@ -241,18 +258,31 @@ test('a batch is topped up and diluted from its deployment’s Storage card', as
   await click(inStorage('Dilute'), 'the row’s Dilute button');
   await waitFor(dialogText, (text) => text.includes('Dilute batch'), 'the dilute dialog');
   const next = batch.depth + 1;
-  await waitFor(dialogText, (text) => text.includes(`Dilute to depth ${next}`), 'the confirm to name the depth it starts at');
+  await waitFor(
+    dialogText,
+    (text) => text.includes(`Dilute to depth ${next}`),
+    'the confirm to name the depth it starts at',
+  );
   assert.match(await dialogText(), /Full after\s+50%/);
   assert.match(await dialogText(), /No BZZ, only the transaction fee in xDAI/);
   await screenshot('dilute-dialog');
   await click(inDialog(`Dilute to depth ${next}`), 'the enabled dilute confirm');
   await waitFor(dialogOpen, (open) => open === false, 'the dilute dialog to close once bee answered');
-  await waitFor(storageText, (text) => text.includes('Bee sent the dilution of batch'), 'the card to say the dilute was sent');
+  await waitFor(
+    storageText,
+    (text) => text.includes('Bee sent the dilution of batch'),
+    'the card to say the dilute was sent',
+  );
   assert.deepEqual((await writes())[1], {
     path: `/profiles/${RUNG}/stamp/dilute`,
     body: { batch_id: batch.batchID, depth: next },
   });
-  const diluted = await waitFor(readBatch, (read) => read.depth === next, 'the new depth to land on the batch', LANDED_BUDGET_MS);
+  const diluted = await waitFor(
+    readBatch,
+    (read) => read.depth === next,
+    'the new depth to land on the batch',
+    LANDED_BUDGET_MS,
+  );
   assert.equal(diluted.batchTTL, Math.floor(toppedUp.batchTTL / 2));
   await refreshUntil(
     (text) => text.includes(formatTtl(diluted.batchTTL)) && !text.includes('is full, and it cannot overwrite'),

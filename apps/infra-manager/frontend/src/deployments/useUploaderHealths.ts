@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import {
-  STREAM_UPLOADER_SERVICE,
-  type UploaderHealthReading,
-} from '@streaming-infra-manager/common';
+import { STREAM_UPLOADER_SERVICE, type UploaderHealthReading } from '@streaming-infra-manager/common';
 
 import type { Profile } from '../types';
 import { isRunning } from './shape';
@@ -25,9 +22,7 @@ const REFRESH_MS = 30_000;
 const NAME_SEPARATOR = ',';
 
 function runsUploader(profile: Profile): boolean {
-  return profile.containers.some(
-    (container) => container.service === STREAM_UPLOADER_SERVICE,
-  );
+  return profile.containers.some((container) => container.service === STREAM_UPLOADER_SERVICE);
 }
 
 /**
@@ -54,12 +49,7 @@ export function askableUploaders(profiles: Profile[] | null): string[] {
 export function uploaderHealthsFrom(
   answers: readonly (readonly [string, UploaderHealthReading | null])[],
 ): UploaderHealths {
-  return new Map(
-    answers.filter(
-      (answer): answer is readonly [string, UploaderHealthReading] =>
-        answer[1] !== null,
-    ),
-  );
+  return new Map(answers.filter((answer): answer is readonly [string, UploaderHealthReading] => answer[1] !== null));
 }
 
 /**

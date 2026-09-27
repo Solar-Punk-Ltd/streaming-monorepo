@@ -1,18 +1,11 @@
-import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
-  Stack,
-  Typography,
-} from '@mui/material';
+import { Accordion, AccordionDetails, AccordionSummary, Stack, Typography } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 import { MONO_STACK } from '../app/theme';
 import { KeyValueList } from '../components/KeyValueList';
 import { ServiceChip } from '../components/ServiceChip';
 
-const SUMMARY =
-  'Fixed at creation: type, components, host, name. Remove and recreate to change these.';
+const SUMMARY = 'Fixed at creation: type, components, host, name. Remove and recreate to change these.';
 
 /** What an edit cannot touch, folded away until someone wants to check it. */
 export function FixedAtCreation({
@@ -29,7 +22,12 @@ export function FixedAtCreation({
   return (
     <Accordion disableGutters elevation={0} sx={{ border: 1, borderColor: 'divider' }}>
       <AccordionSummary expandIcon={<ExpandMoreIcon fontSize="small" />}>
-        <Typography variant="caption" color="text.secondary">
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {SUMMARY}
         </Typography>
       </AccordionSummary>
@@ -41,7 +39,13 @@ export function FixedAtCreation({
             {
               key: 'Components',
               value: (
-                <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  sx={{
+                    flexWrap: 'wrap',
+                  }}
+                >
                   {services.map((service) => (
                     <ServiceChip key={service} service={service} />
                   ))}

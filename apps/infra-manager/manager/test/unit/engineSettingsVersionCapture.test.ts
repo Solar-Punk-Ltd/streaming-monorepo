@@ -23,19 +23,41 @@ const { ALLOCATION_CONTRACT } = await import('../support/allocationContract.js')
 
 const instanceId = '11111111-1111-4111-8111-111111111111';
 const publishers = ['1080p', '720p', '480p', '360p']
-  .map((rung, index) => `${rung}@http://192.0.2.10:${12015 + index * 10}<${'a'.repeat(64)}>`).join(' ');
-const initial = () => makeProfile({ name: 'observed', instance_id: instanceId, kind: 'custom',
-  components: ['srs', 'stream-uploader'], stamp_id: 'a'.repeat(64), bee_publishers: publishers });
+  .map((rung, index) => `${rung}@http://192.0.2.10:${12015 + index * 10}<${'a'.repeat(64)}>`)
+  .join(' ');
+const initial = () =>
+  makeProfile({
+    name: 'observed',
+    instance_id: instanceId,
+    kind: 'custom',
+    components: ['srs', 'stream-uploader'],
+    stamp_id: 'a'.repeat(64),
+    bee_publishers: publishers,
+  });
 
-function build(base: StackVersionRecord, parent: string, id: string, fps: string, fragment: string): StackVersionRecord {
+function build(
+  base: StackVersionRecord,
+  parent: string,
+  id: string,
+  fps: string,
+  fragment: string,
+): StackVersionRecord {
   const dir = join(parent, 'bundled.builds', id);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, '.env'), `ENGINE=srs\nABR_FPS=${fps}\n`);
-  writeFileSync(join(dir, '.stack-manifest.json'), JSON.stringify({ buildId: id, commit: id,
-    builtAt: '2026-09-09T00:00:00Z', toolchain: 'synthetic fixture' }));
+  writeFileSync(
+    join(dir, '.stack-manifest.json'),
+    JSON.stringify({ buildId: id, commit: id, builtAt: '2026-09-09T00:00:00Z', toolchain: 'synthetic fixture' }),
+  );
   writeFileSync(join(dir, '.complete'), '');
-  return { ...structuredClone(base), rootPath: join(parent, 'bundled'), layout: 'builds', buildId: id,
-    commitSha: id, contract: { ...structuredClone(ALLOCATION_CONTRACT), engineDefaults: { HLS_FRAGMENT: fragment } } };
+  return {
+    ...structuredClone(base),
+    rootPath: join(parent, 'bundled'),
+    layout: 'builds',
+    buildId: id,
+    commitSha: id,
+    contract: { ...structuredClone(ALLOCATION_CONTRACT), engineDefaults: { HLS_FRAGMENT: fragment } },
+  };
 }
 
 async function setup(fragments: [string, string]) {
@@ -45,8 +67,14 @@ async function setup(fragments: [string, string]) {
   const a = build(stored, parent, 'aaaaaaa', '30', fragments[0]);
   const b = build(stored, parent, 'bbbbbbb', '25', fragments[1]);
   Object.assign(stored, structuredClone(a));
-  const service = new ProfileService(h.profiles.asRepository(), h.containers.asRepository(), h.orchestrator,
-    h.events, {} as DeploymentGroupRepository, h.versions);
+  const service = new ProfileService(
+    h.profiles.asRepository(),
+    h.containers.asRepository(),
+    h.orchestrator,
+    h.events,
+    {} as DeploymentGroupRepository,
+    h.versions,
+  );
   const app = await startEngineTestApp(service, new ContainerControl(h.events, fakeDocker([])));
   return { ...h, service, app, a, b, stored };
 }
@@ -54,8 +82,12 @@ async function setup(fragments: [string, string]) {
 function hold() {
   let arrive!: () => void;
   let release!: () => void;
-  const arrived = new Promise<void>(resolve => { arrive = resolve; });
-  const resume = new Promise<void>(resolve => { release = resolve; });
+  const arrived = new Promise<void>((resolve) => {
+    arrive = resolve;
+  });
+  const resume = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   return { arrive, release, resume, arrived };
 }
 
@@ -65,12 +97,17 @@ describe('engine settings capture one version for defaults and admission', { tim
     let reads = 0;
     h.versions.findById = async () => structuredClone(++reads === 1 ? h.a : h.b);
     try {
-      const result = await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', { ABR_PRESET: 'fast', expectedInstanceId: instanceId });
+      const result = await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', {
+        ABR_PRESET: 'fast',
+        expectedInstanceId: instanceId,
+      });
       assert.equal(result.status, 202);
       assert.equal(reads, 1, 'validation and admission must not select independent version records');
       assert.equal(h.runner.runs.length, 1);
       assert.ok(h.runner.runs[0]!.script.includes('/aaaaaaa/'));
-    } finally { await h.app.close(); }
+    } finally {
+      await h.app.close();
+    }
   });
 
   it('does not falsely accept two invalid versions by combining A host defaults with B contract defaults', async () => {
@@ -79,13 +116,18 @@ describe('engine settings capture one version for defaults and admission', { tim
     let reads = 0;
     h.versions.findById = async () => structuredClone(++reads === 1 ? h.a : h.b);
     try {
-      const result = await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', { ABR_PRESET: 'fast', expectedInstanceId: instanceId });
+      const result = await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', {
+        ABR_PRESET: 'fast',
+        expectedInstanceId: instanceId,
+      });
       assert.equal(result.status, 400);
       assert.deepEqual(h.profiles.rows.get('observed'), before);
       assert.deepEqual(h.ledger.references, []);
       assert.deepEqual(h.runner.runs, []);
       assert.equal(reads, 1);
-    } finally { await h.app.close(); }
+    } finally {
+      await h.app.close();
+    }
   });
 
   for (const selected of ['a', 'b'] as const) {
@@ -93,11 +135,16 @@ describe('engine settings capture one version for defaults and admission', { tim
       const h = await setup(['0.5', '0.52']);
       Object.assign(h.stored, structuredClone(h[selected]));
       try {
-        const result = await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', { ABR_PRESET: 'fast', expectedInstanceId: instanceId });
+        const result = await callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', {
+          ABR_PRESET: 'fast',
+          expectedInstanceId: instanceId,
+        });
         assert.equal(result.status, 202);
         assert.equal(h.runner.runs.length, 1);
         assert.deepEqual(h.profiles.rows.get('observed')!.engine_settings, { ABR_PRESET: 'fast' });
-      } finally { await h.app.close(); }
+      } finally {
+        await h.app.close();
+      }
     });
   }
 
@@ -107,23 +154,41 @@ describe('engine settings capture one version for defaults and admission', { tim
     h.versions.findById = async () => returned;
     const gate = hold();
     const reserve = h.orchestrator.reserveDeploy.bind(h.orchestrator);
-    h.orchestrator.reserveDeploy = async (...args) => { gate.arrive(); await gate.resume; return reserve(...args); };
-    const pending = callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', { ABR_PRESET: 'fast', expectedInstanceId: instanceId });
+    h.orchestrator.reserveDeploy = async (...args) => {
+      gate.arrive();
+      await gate.resume;
+      return reserve(...args);
+    };
+    const pending = callEngine(h.app, 'PUT', '/profiles/observed/engine-settings', {
+      ABR_PRESET: 'fast',
+      expectedInstanceId: instanceId,
+    });
     try {
       await gate.arrived;
       Object.assign(returned, structuredClone(h.b));
       gate.release();
       assert.equal((await pending).status, 202);
       assert.ok(h.runner.runs[0]!.script.includes('/aaaaaaa/'));
-    } finally { gate.release(); await pending; await h.app.close(); }
+    } finally {
+      gate.release();
+      await pending;
+      await h.app.close();
+    }
   });
 
   it('copies an explicitly supplied capture before asynchronous admission checks and never reselects', async () => {
     const h = await setup(['0.5', '0.52']);
     const gate = hold();
-    h.daemon.daemonId = async () => { gate.arrive(); await gate.resume; return h.daemon.id; };
+    h.daemon.daemonId = async () => {
+      gate.arrive();
+      await gate.resume;
+      return h.daemon.id;
+    };
     let reads = 0;
-    h.versions.findById = async () => { reads += 1; return structuredClone(h.b); };
+    h.versions.findById = async () => {
+      reads += 1;
+      return structuredClone(h.b);
+    };
     const selected = structuredClone(h.a);
     const pending = h.orchestrator.reserveDeploy(initial(), ['srs'], selected);
     pending.catch(() => {});
@@ -136,6 +201,10 @@ describe('engine settings capture one version for defaults and admission', { tim
       assert.equal(result.build?.version?.buildId, h.a.buildId);
       assert.equal(result.build?.version?.contract?.engineDefaults.HLS_FRAGMENT, '0.5');
       await h.orchestrator.cancelReservation(result);
-    } finally { gate.release(); await pending.catch(() => {}); await h.app.close(); }
+    } finally {
+      gate.release();
+      await pending.catch(() => {});
+      await h.app.close();
+    }
   });
 });

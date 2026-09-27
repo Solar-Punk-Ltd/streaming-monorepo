@@ -92,21 +92,16 @@ export function useMetrics(): UseMetrics {
     return () => clearInterval(timer);
   }, [snapshot]);
 
-  const fetchProfileDiskBytes = useCallback(
-    async (project: string): Promise<number | null> => {
-      try {
-        const res = await apiFetch(
-          `/metrics/disk/${encodeURIComponent(project)}`,
-        );
-        if (!res.ok) return null;
-        const body = (await res.json()) as { sizeBytes: number | null };
-        return body.sizeBytes;
-      } catch {
-        return null;
-      }
-    },
-    [],
-  );
+  const fetchProfileDiskBytes = useCallback(async (project: string): Promise<number | null> => {
+    try {
+      const res = await apiFetch(`/metrics/disk/${encodeURIComponent(project)}`);
+      if (!res.ok) return null;
+      const body = (await res.json()) as { sizeBytes: number | null };
+      return body.sizeBytes;
+    } catch {
+      return null;
+    }
+  }, []);
 
   return {
     snapshot,

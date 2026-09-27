@@ -18,7 +18,10 @@ describe('the shape of a stack setting', () => {
     for (const mode of ['chequebook-warn', 'warn', 'refuse']) {
       assert.equal(stackSettingFieldProblem('UPLOADER_START_GATES', mode), null, mode);
     }
-    assert.match(stackSettingFieldProblem('UPLOADER_START_GATES', 'off') ?? '', /UPLOADER_START_GATES must be one of chequebook-warn, warn, refuse/);
+    assert.match(
+      stackSettingFieldProblem('UPLOADER_START_GATES', 'off') ?? '',
+      /UPLOADER_START_GATES must be one of chequebook-warn, warn, refuse/,
+    );
   });
 
   it('holds a number to the range the uploader accepts', () => {
@@ -53,14 +56,29 @@ describe('the shape of a stack setting', () => {
 
 describe('the web2 admin link keys', () => {
   it('takes an http or https address with a host, a port or a path', () => {
-    for (const url of ['http://admin:9877', 'https://admin.example.com', 'https://admin.example.com/', 'http://10.0.0.5:9877/admin']) {
+    for (const url of [
+      'http://admin:9877',
+      'https://admin.example.com',
+      'https://admin.example.com/',
+      'http://10.0.0.5:9877/admin',
+    ]) {
       assert.equal(stackSettingFieldProblem('ADMIN_API_URL', url), null, url);
     }
   });
 
   it('refuses an address that is not http or https, or names no host', () => {
-    for (const url of ['admin.example.com', 'ftp://admin.example.com', 'javascript:alert(1)', 'https://', 'not an address']) {
-      assert.match(stackSettingFieldProblem('ADMIN_API_URL', url) ?? '', /ADMIN_API_URL must be an http or https address/, url);
+    for (const url of [
+      'admin.example.com',
+      'ftp://admin.example.com',
+      'javascript:alert(1)',
+      'https://',
+      'not an address',
+    ]) {
+      assert.match(
+        stackSettingFieldProblem('ADMIN_API_URL', url) ?? '',
+        /ADMIN_API_URL must be an http or https address/,
+        url,
+      );
     }
   });
 

@@ -11,10 +11,7 @@ const NODE_CHECKS_PASSED = 'Node checks passed.';
  * not reach are two different answers, and only a state nothing probed leaves
  * publishing unverified.
  */
-export function rungPublishingSummary(
-  rung: LadderRungState | null,
-  asking = false,
-): string {
+export function rungPublishingSummary(rung: LadderRungState | null, asking = false): string {
   if (!rung && asking) {
     return `${NODE_CHECKS_PASSED} The manager is asking the publishing address.`;
   }

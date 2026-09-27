@@ -36,10 +36,7 @@ function limiterAt(start = 1_700_000_000_000) {
 }
 
 /** One wrong password, start to finish. Returns the wait it was refused with. */
-function wrongPassword(
-  limiter: LoginLimiter,
-  keys: AttemptKeys = { account: KEY },
-): number {
+function wrongPassword(limiter: LoginLimiter, keys: AttemptKeys = { account: KEY }): number {
   const attempt = limiter.begin(keys);
   attempt.fail();
   return attempt.lockedForSeconds;
@@ -50,11 +47,7 @@ describe('LoginLimiter', () => {
     const { limiter } = limiterAt();
 
     for (let attempt = 1; attempt <= 4; attempt += 1) {
-      assert.equal(
-        wrongPassword(limiter),
-        0,
-        `failure ${attempt} must not lock`,
-      );
+      assert.equal(wrongPassword(limiter), 0, `failure ${attempt} must not lock`);
     }
     assert.equal(limiter.retryAfterSeconds(KEY), 0);
   });
@@ -75,11 +68,7 @@ describe('LoginLimiter', () => {
 
     for (const minutes of expectedMinutes) {
       wrongPassword(limiter);
-      assert.equal(
-        limiter.retryAfterSeconds(KEY),
-        minutes * 60,
-        `expected a ${minutes} minute lockout`,
-      );
+      assert.equal(limiter.retryAfterSeconds(KEY), minutes * 60, `expected a ${minutes} minute lockout`);
       // Wait it out, then fail again: the count keeps climbing.
       advance(minutes * MINUTE);
       assert.equal(limiter.retryAfterSeconds(KEY), 0);
@@ -118,11 +107,7 @@ describe('LoginLimiter', () => {
     limiter.begin({ account: KEY }).succeed();
 
     for (let attempt = 1; attempt <= 4; attempt += 1) {
-      assert.equal(
-        wrongPassword(limiter),
-        0,
-        `failure ${attempt} after the reset`,
-      );
+      assert.equal(wrongPassword(limiter), 0, `failure ${attempt} after the reset`);
     }
   });
 
@@ -152,11 +137,7 @@ describe('LoginLimiter', () => {
     // Five sign-ins waiting on scrypt and not one of them settled. This is the
     // shape of a burst sent all at once, and it used to see zero failures.
     for (let attempt = 1; attempt <= 5; attempt += 1) {
-      assert.equal(
-        limiter.begin({ account: KEY }).lockedForSeconds,
-        0,
-        `attempt ${attempt} should have been reserved`,
-      );
+      assert.equal(limiter.begin({ account: KEY }).lockedForSeconds, 0, `attempt ${attempt} should have been reserved`);
     }
 
     assert.equal(limiter.begin({ account: KEY }).lockedForSeconds, 60);
@@ -181,11 +162,7 @@ describe('LoginLimiter', () => {
       limiter.trackedKeys() <= MAX_TRACKED_KEYS,
       `${limiter.trackedKeys()} keys held, the cap is ${MAX_TRACKED_KEYS}`,
     );
-    assert.equal(
-      limiter.retryAfterSeconds(newest),
-      60,
-      'the oldest keys go first, so the newest lockout survives',
-    );
+    assert.equal(limiter.retryAfterSeconds(newest), 60, 'the oldest keys go first, so the newest lockout survives');
   });
 
   it('keeps every key on its own count', () => {

@@ -1,14 +1,4 @@
-import {
-  Box,
-  Button,
-  CircularProgress,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableRow,
-  Typography,
-} from '@mui/material';
+import { Box, Button, CircularProgress, Stack, Table, TableBody, TableCell, TableRow, Typography } from '@mui/material';
 
 import {
   type ChequebookHealth,
@@ -47,15 +37,17 @@ export function OverviewPage() {
   const poolResults = usePoolResults(groups, profiles);
   const chequebooks = useChequebookHealths(profiles);
   const nodeStamps = useStampHealths(profiles);
-  const stampHealths = mergedStampHealths(
-    poolStampHealths(poolResults, profiles),
-    nodeStamps,
-  );
+  const stampHealths = mergedStampHealths(poolStampHealths(poolResults, profiles), nodeStamps);
   const uploaderHealths = useUploaderHealths(profiles);
 
   if (!profiles) {
     return (
-      <Stack alignItems="center" sx={{ py: 8 }}>
+      <Stack
+        sx={{
+          alignItems: 'center',
+          py: 8,
+        }}
+      >
         <CircularProgress />
       </Stack>
     );
@@ -74,9 +66,7 @@ export function OverviewPage() {
     .map((group) => ({ group, result: poolResults.get(group.id) ?? null }))
     .filter(({ result }) => result !== null && !result.ready);
 
-  const streams = profiles.filter((profile) =>
-    ['stream', 'abr-uploader'].includes(shapeOf(profile)),
-  );
+  const streams = profiles.filter((profile) => ['stream', 'abr-uploader'].includes(shapeOf(profile)));
 
   const counts = {
     running: profiles.filter(isRunning).length,
@@ -114,8 +104,19 @@ export function OverviewPage() {
             />
             <Count label="Stopped" value={counts.stopped} color="text.secondary" />
           </Stack>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1.75, display: 'block' }}>
-            {mixLine(profiles, groups.filter((g) => isLadderKind(g.kind)).length, groups.filter((g) => !isLadderKind(g.kind)).length)}
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              mt: 1.75,
+              display: 'block',
+            }}
+          >
+            {mixLine(
+              profiles,
+              groups.filter((g) => isLadderKind(g.kind)).length,
+              groups.filter((g) => !isLadderKind(g.kind)).length,
+            )}
           </Typography>
         </SectionCard>
       </Box>
@@ -189,19 +190,18 @@ function StreamRow({
   const copyable = publish.url !== null && readiness.tone === 'ok';
 
   return (
-    <TableRow
-      hover
-      sx={{ cursor: 'pointer' }}
-      onClick={() => navigate(routes.deployment(profile.name))}
-    >
+    <TableRow hover sx={{ cursor: 'pointer' }} onClick={() => navigate(routes.deployment(profile.name))}>
       <TableCell sx={{ width: 28 }}>
         <StatusDot tone={statusLabelOf(profile).tone} />
       </TableCell>
       <TableCell>
-        <Typography sx={{ fontFamily: MONO_STACK, fontWeight: 600, fontSize: 13 }}>
-          {profile.name}
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography sx={{ fontFamily: MONO_STACK, fontWeight: 600, fontSize: 13 }}>{profile.name}</Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {SHAPE_LABEL[shapeOf(profile)]}
         </Typography>
       </TableCell>
@@ -219,18 +219,16 @@ function StreamRow({
   );
 }
 
-function Count({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number;
-  color: string;
-}) {
+function Count({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <Box>
-      <Typography variant="overline" color="text.secondary" display="block">
+      <Typography
+        variant="overline"
+        sx={{
+          color: 'text.secondary',
+          display: 'block',
+        }}
+      >
         {label}
       </Typography>
       <Typography sx={{ fontSize: 26, fontWeight: 600, color }}>{value}</Typography>
@@ -238,13 +236,8 @@ function Count({
   );
 }
 
-function mixLine(
-  profiles: Profile[],
-  poolCount: number,
-  groupCount: number,
-): string {
-  const by = (shape: string) =>
-    profiles.filter((profile) => shapeOf(profile) === shape).length;
+function mixLine(profiles: Profile[], poolCount: number, groupCount: number): string {
+  const by = (shape: string) => profiles.filter((profile) => shapeOf(profile) === shape).length;
   return [
     plural(by('stream'), 'stream'),
     plural(by('viewer'), 'viewer'),

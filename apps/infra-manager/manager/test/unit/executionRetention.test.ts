@@ -33,7 +33,13 @@ function copy(input: {
   const name = input.name ?? 'stage';
   return {
     executionId,
-    source: { versionId: 2, buildId: commit, commit, root: `/srv/versions/v3.builds/${commit}`, artifactDigest: 'b'.repeat(64) },
+    source: {
+      versionId: 2,
+      buildId: commit,
+      commit,
+      root: `/srv/versions/v3.builds/${commit}`,
+      artifactDigest: 'b'.repeat(64),
+    },
     profile: { name, instanceId: input.instanceId ?? instance, intentRevision: 1, status: 'DEPLOYING' },
     jobReferenceId: input.minute + 1,
     target: { alias: 'localhost', daemonId: 'daemon' },
@@ -48,7 +54,7 @@ function copy(input: {
   };
 }
 
-const idsOf = (records: readonly ExecutionRootRecord[]) => records.map(record => record.executionId);
+const idsOf = (records: readonly ExecutionRootRecord[]) => records.map((record) => record.executionId);
 
 describe('which copies a deployment retires', () => {
   it('offers none when it has no copies at all', () => {
@@ -66,17 +72,19 @@ describe('which copies a deployment retires', () => {
     const current = copy({ minute: 2 });
 
     assert.deepEqual(executionsToRetire([previous, current], { profileName: 'stage', keep: 2 }), []);
-    assert.deepEqual(idsOf(executionsToRetire([previous, current], { profileName: 'stage', keep: 1 })), [previous.executionId]);
+    assert.deepEqual(idsOf(executionsToRetire([previous, current], { profileName: 'stage', keep: 1 })), [
+      previous.executionId,
+    ]);
   });
 
   it('offers every copy of a deployment that is gone, the last one included', () => {
     const previous = copy({ minute: 1 });
     const last = copy({ minute: 2 });
 
-    assert.deepEqual(
-      idsOf(executionsToRetire([previous, last], { profileName: 'stage', keep: 0 })),
-      [last.executionId, previous.executionId],
-    );
+    assert.deepEqual(idsOf(executionsToRetire([previous, last], { profileName: 'stage', keep: 0 })), [
+      last.executionId,
+      previous.executionId,
+    ]);
   });
 
   it('offers everything older than the previous one, so repeated failures do not grow the disk', () => {
@@ -86,11 +94,15 @@ describe('which copies a deployment retires', () => {
     const current = copy({ minute: 4 });
     const records = [current, oldest, previous, older];
 
-    assert.deepEqual(idsOf(executionsToRetire(records, { profileName: 'stage', keep: 2 })), [older.executionId, oldest.executionId]);
-    assert.deepEqual(
-      idsOf(executionsToRetire(records, { profileName: 'stage', keep: 1 })),
-      [previous.executionId, older.executionId, oldest.executionId],
-    );
+    assert.deepEqual(idsOf(executionsToRetire(records, { profileName: 'stage', keep: 2 })), [
+      older.executionId,
+      oldest.executionId,
+    ]);
+    assert.deepEqual(idsOf(executionsToRetire(records, { profileName: 'stage', keep: 1 })), [
+      previous.executionId,
+      older.executionId,
+      oldest.executionId,
+    ]);
   });
 
   it('offers only launched copies, because an unfinished one is retired as an unstarted job', () => {
@@ -105,7 +117,9 @@ describe('which copies a deployment retires', () => {
     ];
 
     assert.deepEqual(executionsToRetire(records, { profileName: 'stage', keep: 1 }), []);
-    assert.deepEqual(idsOf(executionsToRetire([...records, copy({ minute: 7 })], { profileName: 'stage', keep: 1 })), [launched.executionId]);
+    assert.deepEqual(idsOf(executionsToRetire([...records, copy({ minute: 7 })], { profileName: 'stage', keep: 1 })), [
+      launched.executionId,
+    ]);
   });
 
   it('never offers another deployment its copies', () => {
@@ -113,22 +127,30 @@ describe('which copies a deployment retires', () => {
     const current = copy({ minute: 2 });
     const theirs = copy({ minute: 3, name: 'other' });
 
-    assert.deepEqual(idsOf(executionsToRetire([mine, current, theirs], { profileName: 'stage', keep: 1 })), [mine.executionId]);
+    assert.deepEqual(idsOf(executionsToRetire([mine, current, theirs], { profileName: 'stage', keep: 1 })), [
+      mine.executionId,
+    ]);
   });
 
   it('offers a copy left by an earlier instance of the same name, which no longer exists', () => {
     const beforeRemoval = copy({ minute: 1, instanceId: randomUUID() });
     const current = copy({ minute: 2 });
 
-    assert.deepEqual(idsOf(executionsToRetire([beforeRemoval, current], { profileName: 'stage', keep: 1 })), [beforeRemoval.executionId]);
+    assert.deepEqual(idsOf(executionsToRetire([beforeRemoval, current], { profileName: 'stage', keep: 1 })), [
+      beforeRemoval.executionId,
+    ]);
   });
 
   it('breaks a tie on the same timestamp by identity, so two runs agree', () => {
     const first = copy({ minute: 1, executionId: '11111111-1111-1111-1111-111111111111' });
     const second = copy({ minute: 1, executionId: '22222222-2222-2222-2222-222222222222' });
 
-    assert.deepEqual(idsOf(executionsToRetire([first, second], { profileName: 'stage', keep: 1 })), [first.executionId]);
-    assert.deepEqual(idsOf(executionsToRetire([second, first], { profileName: 'stage', keep: 1 })), [first.executionId]);
+    assert.deepEqual(idsOf(executionsToRetire([first, second], { profileName: 'stage', keep: 1 })), [
+      first.executionId,
+    ]);
+    assert.deepEqual(idsOf(executionsToRetire([second, first], { profileName: 'stage', keep: 1 })), [
+      first.executionId,
+    ]);
   });
 });
 
@@ -137,11 +159,17 @@ describe('the copy a deployment is running from', () => {
     const previous = copy({ minute: 1 });
     const current = copy({ minute: 2 });
 
-    assert.equal(currentExecutionOf([previous, current], { name: 'stage', instanceId: instance })?.executionId, current.executionId);
+    assert.equal(
+      currentExecutionOf([previous, current], { name: 'stage', instanceId: instance })?.executionId,
+      current.executionId,
+    );
   });
 
   it('is none while the first deploy is still copying, and none for a deployment with no copies', () => {
-    assert.equal(currentExecutionOf([copy({ minute: 1, state: 'ready' })], { name: 'stage', instanceId: instance }), null);
+    assert.equal(
+      currentExecutionOf([copy({ minute: 1, state: 'ready' })], { name: 'stage', instanceId: instance }),
+      null,
+    );
     assert.equal(currentExecutionOf([], { name: 'stage', instanceId: instance }), null);
   });
 

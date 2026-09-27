@@ -14,12 +14,7 @@ import {
   type MountObserver,
   type Observation,
 } from './buildLedger.js';
-import {
-  type BuildReference,
-  buildIdOfRoot,
-  commitOfRoot,
-  coveredJobReferences,
-} from './buildReferences.js';
+import { type BuildReference, buildIdOfRoot, commitOfRoot, coveredJobReferences } from './buildReferences.js';
 import { stackRootOf } from './stackPaths.js';
 import type { StackVersionRecord } from './StackVersionRepository.js';
 import { cancelBuildJob, claimBuildJob } from './buildJobClaim.js';
@@ -81,9 +76,14 @@ export class PostgresBuildLedger implements BuildLedger, BuildReferenceReader {
     services: readonly string[],
     ownership: DeployClaimOwnership,
   ): Promise<ClaimedDeploy | null> {
-    const input = structuredClone({ profileName, version, services, ownership,
-      transition: { from, intent: ownership.intent, supersedeReason: ownership.supersedeReason } });
-    return this.transaction(client => claimBuildJob(client, input, this.versionsRoot));
+    const input = structuredClone({
+      profileName,
+      version,
+      services,
+      ownership,
+      transition: { from, intent: ownership.intent, supersedeReason: ownership.supersedeReason },
+    });
+    return this.transaction((client) => claimBuildJob(client, input, this.versionsRoot));
   }
 
   async describe(
@@ -93,16 +93,24 @@ export class PostgresBuildLedger implements BuildLedger, BuildReferenceReader {
     ownership: ExpectedDeployOwner,
   ): Promise<BuildDescriptor> {
     const input = structuredClone({ profileName, version, services, ownership, transition: null });
-    return this.transaction(async client => {
+    return this.transaction(async (client) => {
       const captured = await claimBuildJob(client, input, this.versionsRoot);
-      if (!captured) throw new ProfileConfigError(profileName, 'The deployment no longer owns this initial build job. No deployment was started.');
+      if (!captured)
+        throw new ProfileConfigError(
+          profileName,
+          'The deployment no longer owns this initial build job. No deployment was started.',
+        );
       return captured.descriptor;
     });
   }
 
-  async cancelClaim(profile: Pick<Profile, 'name' | 'instance_id' | 'intent_revision'>, referenceId: number, previousStatus: ProfileStatus): Promise<Profile | null> {
+  async cancelClaim(
+    profile: Pick<Profile, 'name' | 'instance_id' | 'intent_revision'>,
+    referenceId: number,
+    previousStatus: ProfileStatus,
+  ): Promise<Profile | null> {
     const owner = { name: profile.name, instance_id: profile.instance_id, intent_revision: profile.intent_revision };
-    return this.transaction(client => cancelBuildJob(client, owner, referenceId, previousStatus));
+    return this.transaction((client) => cancelBuildJob(client, owner, referenceId, previousStatus));
   }
 
   private async transaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -115,7 +123,9 @@ export class PostgresBuildLedger implements BuildLedger, BuildReferenceReader {
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
       throw error;
-    } finally { client.release(); }
+    } finally {
+      client.release();
+    }
   }
 
   async observe(profileName: string, services: readonly string[]): Promise<Observation[]> {
@@ -161,10 +171,7 @@ export class PostgresBuildLedger implements BuildLedger, BuildReferenceReader {
       );
       const covered = coveredJobReferences(own.rows.map(toReference));
       if (covered.length > 0) {
-        await client.query(
-          'UPDATE build_references SET resolved_at = NOW() WHERE id = ANY($1::int[])',
-          [covered],
-        );
+        await client.query('UPDATE build_references SET resolved_at = NOW() WHERE id = ANY($1::int[])', [covered]);
       }
       await client.query('COMMIT');
       return observations;
@@ -242,7 +249,9 @@ export class PostgresBuildLedger implements BuildLedger, BuildReferenceReader {
 
   private async versionOfRoot(client: PoolClient, root: string): Promise<number | null> {
     if (root === stackRootOf({ rootPath: null })) {
-      const found = await client.query<{ id: number }>('SELECT id FROM stack_versions WHERE name = $1', [BUNDLED_VERSION_NAME]);
+      const found = await client.query<{ id: number }>('SELECT id FROM stack_versions WHERE name = $1', [
+        BUNDLED_VERSION_NAME,
+      ]);
       return found.rows[0]?.id ?? null;
     }
     if (!root.startsWith(`${this.versionsRoot}/`)) return null;

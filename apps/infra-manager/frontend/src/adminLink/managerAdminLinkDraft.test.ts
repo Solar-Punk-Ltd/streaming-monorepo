@@ -43,12 +43,23 @@ describe("the manager's web2 admin link draft", () => {
     assert.deepEqual(managerAdminLinkDraftProblems(STORED, { ...moved, token: TOKEN }), []);
     assert.deepEqual(managerAdminLinkDraftProblems(STORED, { ...moved, clearToken: true }), []);
     assert.equal(managerAdminLinkTestOf(STORED, moved), null);
-    assert.deepEqual(managerAdminLinkTestOf(STORED, { ...moved, token: TOKEN })?.token, { source: 'typed', value: TOKEN });
+    assert.deepEqual(managerAdminLinkTestOf(STORED, { ...moved, token: TOKEN })?.token, {
+      source: 'typed',
+      value: TOKEN,
+    });
   });
 
   it('replaces the token with a typed one, and clears it on Clear', () => {
-    assert.deepEqual(managerAdminLinkSaveOf(STORED, { ...draftOf(STORED), token: TOKEN }), { expectedRevision: 4, url: ADMIN_URL, token: TOKEN });
-    assert.deepEqual(managerAdminLinkSaveOf(STORED, { ...draftOf(STORED), clearToken: true }), { expectedRevision: 4, url: ADMIN_URL, token: null });
+    assert.deepEqual(managerAdminLinkSaveOf(STORED, { ...draftOf(STORED), token: TOKEN }), {
+      expectedRevision: 4,
+      url: ADMIN_URL,
+      token: TOKEN,
+    });
+    assert.deepEqual(managerAdminLinkSaveOf(STORED, { ...draftOf(STORED), clearToken: true }), {
+      expectedRevision: 4,
+      url: ADMIN_URL,
+      token: null,
+    });
   });
 
   it('has nothing to save until something changed', () => {
@@ -57,12 +68,22 @@ describe("the manager's web2 admin link draft", () => {
   });
 
   it('names a problem the manager would refuse, repeating neither the address nor the token', () => {
-    const problems = managerAdminLinkDraftProblems(STORED, { url: 'https://operator:synthetic-password@admin.example.com', token: 'short', clearToken: false });
-    assert.deepEqual(problems, ['ADMIN_API_URL cannot carry a user name or a password.', 'ADMIN_API_TOKEN must be at least 32 characters.']);
+    const problems = managerAdminLinkDraftProblems(STORED, {
+      url: 'https://operator:synthetic-password@admin.example.com',
+      token: 'short',
+      clearToken: false,
+    });
+    assert.deepEqual(problems, [
+      'ADMIN_API_URL cannot carry a user name or a password.',
+      'ADMIN_API_TOKEN must be at least 32 characters.',
+    ]);
   });
 
   it('tests the typed token, else the stored one, and nothing without a token or an address', () => {
-    assert.deepEqual(managerAdminLinkTestOf(STORED, { ...draftOf(STORED), token: TOKEN }), { url: ADMIN_URL, token: { source: 'typed', value: TOKEN } });
+    assert.deepEqual(managerAdminLinkTestOf(STORED, { ...draftOf(STORED), token: TOKEN }), {
+      url: ADMIN_URL,
+      token: { source: 'typed', value: TOKEN },
+    });
     assert.deepEqual(managerAdminLinkTestOf(STORED, draftOf(STORED)), { url: ADMIN_URL, token: { source: 'stored' } });
     assert.equal(managerAdminLinkTestOf(STORED, { ...draftOf(STORED), clearToken: true }), null);
     assert.equal(managerAdminLinkTestOf(NONE, { url: ADMIN_URL, token: '', clearToken: false }), null);

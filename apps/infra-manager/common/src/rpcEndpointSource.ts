@@ -1,9 +1,4 @@
-import {
-  isLightGateway,
-  type NodeMode,
-  shippedNodeMode,
-  ULTRA_LIGHT_NODE_MODE,
-} from './nodeMode.js';
+import { isLightGateway, type NodeMode, shippedNodeMode, ULTRA_LIGHT_NODE_MODE } from './nodeMode.js';
 import { rpcEndpointProblem } from './publishUrl.js';
 
 /**
@@ -31,8 +26,7 @@ export const RPC_ENDPOINT_SOURCES: readonly RpcEndpointSource[] = [
  * What every existing deployment has always done, and the column's default: no
  * RPC_ENDPOINT line in the env file, so the stack's own value applies.
  */
-export const DEFAULT_RPC_ENDPOINT_SOURCE: RpcEndpointSource =
-  STACK_RPC_ENDPOINT_SOURCE;
+export const DEFAULT_RPC_ENDPOINT_SOURCE: RpcEndpointSource = STACK_RPC_ENDPOINT_SOURCE;
 
 /** What a node is, as far as an endpoint choice is concerned. */
 export interface RpcEndpointNode {
@@ -68,9 +62,7 @@ export function impliedRpcEndpointSource({
   if (url?.trim()) return CUSTOM_RPC_ENDPOINT_SOURCE;
   const mode = nodeMode ?? shippedNodeMode(services);
   if (mode === ULTRA_LIGHT_NODE_MODE) return DEFAULT_RPC_ENDPOINT_SOURCE;
-  return managerHasEndpoint
-    ? MANAGER_RPC_ENDPOINT_SOURCE
-    : DEFAULT_RPC_ENDPOINT_SOURCE;
+  return managerHasEndpoint ? MANAGER_RPC_ENDPOINT_SOURCE : DEFAULT_RPC_ENDPOINT_SOURCE;
 }
 
 /**
@@ -142,10 +134,7 @@ export function rpcEndpointChoiceProblem({
   // The stack gives its gateway an empty endpoint, which is what makes that
   // node ultra-light. A light one taking that default would come up with no
   // chain at all, and nothing anywhere would say so.
-  if (
-    source === STACK_RPC_ENDPOINT_SOURCE &&
-    isLightGateway(services, nodeMode ?? shippedNodeMode(services))
-  ) {
+  if (source === STACK_RPC_ENDPOINT_SOURCE && isLightGateway(services, nodeMode ?? shippedNodeMode(services))) {
     return 'a light gateway needs an endpoint: the manager’s or a custom one';
   }
   return null;
@@ -167,9 +156,7 @@ export interface ConfiguredBeeRpcEndpoint {
  * either: a provider that issues an account its own subdomain is named by the
  * host alone.
  */
-export function configuredBeeRpcEndpoint(
-  endpoint: string | null | undefined,
-): ConfiguredBeeRpcEndpoint {
+export function configuredBeeRpcEndpoint(endpoint: string | null | undefined): ConfiguredBeeRpcEndpoint {
   const address = endpoint?.trim();
   if (!address) return { configured: false, host: null };
   try {

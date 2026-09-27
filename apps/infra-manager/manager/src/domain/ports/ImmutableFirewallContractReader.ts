@@ -14,7 +14,9 @@ export class ImmutableFirewallContractReader implements FirewallContractReader {
     const root = buildDirFor(dirname(version.rootPath), basename(version.rootPath), buildId);
     const read = readBuildManifest(root);
     if (read.problem || read.manifest?.buildId !== buildId) {
-      throw new InvalidStackVersionError(`Firewall inventory: ${read.problem ?? 'The build manifest names a different build.'}`);
+      throw new InvalidStackVersionError(
+        `Firewall inventory: ${read.problem ?? 'The build manifest names a different build.'}`,
+      );
     }
     const { ports, portAliases, maxSlot, allocationProblem } = readStackContract(root);
     return { ports, portAliases, maxSlot, allocationProblem };

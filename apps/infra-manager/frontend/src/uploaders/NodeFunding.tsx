@@ -1,17 +1,9 @@
 import { Box, Stack, Typography } from '@mui/material';
 
-import type {
-  ChequebookHealth,
-  ChequebookSummary,
-} from '@streaming-infra-manager/common';
+import type { ChequebookHealth, ChequebookSummary } from '@streaming-infra-manager/common';
 
 import { CopyButton } from '../CopyButton';
-import {
-  BZZ_DECIMALS,
-  formatTokenBalance,
-  NO_VALUE,
-  XDAI_DECIMALS,
-} from '../format';
+import { BZZ_DECIMALS, formatTokenBalance, NO_VALUE, XDAI_DECIMALS } from '../format';
 import { ChequebookRow } from './ChequebookRow';
 import type { BeeAddress, BeeWallet } from './stampApi';
 
@@ -38,28 +30,44 @@ export function NodeFunding({
   return (
     <>
       <Box>
-        <Typography variant="overline" color="text.secondary">
+        <Typography
+          variant="overline"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           Node funding address (Gnosis Chain)
         </Typography>
-        <Stack direction="row" alignItems="center" spacing={1}>
-          <Typography
-            variant="body2"
-            sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}
-          >
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{
+            alignItems: 'center',
+          }}
+        >
+          <Typography variant="body2" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
             {address?.ethereum ?? NO_VALUE}
           </Typography>
-          {address?.ethereum && (
-            <CopyButton value={address.ethereum} label="address" />
-          )}
+          {address?.ethereum && <CopyButton value={address.ethereum} label="address" />}
         </Stack>
-        <Typography variant="caption" color="text.secondary">
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           Send xDAI (gas) and BZZ (storage) here, then buy a stamp.
         </Typography>
       </Box>
 
       <Stack direction="row" spacing={3}>
         <Box>
-          <Typography variant="overline" color="text.secondary">
+          <Typography
+            variant="overline"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
             xDAI
           </Typography>
           <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
@@ -67,7 +75,12 @@ export function NodeFunding({
           </Typography>
         </Box>
         <Box>
-          <Typography variant="overline" color="text.secondary">
+          <Typography
+            variant="overline"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
             BZZ
           </Typography>
           <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>

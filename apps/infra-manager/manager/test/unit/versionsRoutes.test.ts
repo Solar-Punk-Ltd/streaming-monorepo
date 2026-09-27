@@ -57,11 +57,7 @@ interface JsonAnswer {
   body: unknown;
 }
 
-async function callJson(
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<JsonAnswer> {
+async function callJson(method: string, path: string, body?: unknown): Promise<JsonAnswer> {
   const res = await fetch(`${app.url}${path}`, {
     method,
     headers: body === undefined ? {} : { 'content-type': 'application/json' },
@@ -105,10 +101,7 @@ describe('GET /versions', () => {
 
     assert.equal(answer.status, 200);
     assert.deepEqual(
-      (answer.body as { name: string; isDefault: boolean }[]).map((row) => [
-        row.name,
-        row.isDefault,
-      ]),
+      (answer.body as { name: string; isDefault: boolean }[]).map((row) => [row.name, row.isDefault]),
       [['bundled', true]],
     );
   });
@@ -217,10 +210,7 @@ describe('POST /versions/:id/default', () => {
 
     const answer = await callJson('POST', `/versions/${added?.id}/default`);
     assert.equal(answer.status, 409);
-    assert.equal(
-      (answer.body as { error: string }).error,
-      'stack_version_untested',
-    );
+    assert.equal((answer.body as { error: string }).error, 'stack_version_untested');
   });
 
   it('answers 204 and moves the badge', async () => {
@@ -237,9 +227,7 @@ describe('POST /versions/:id/default', () => {
 
     const listed = await callJson('GET', '/versions');
     assert.deepEqual(
-      (listed.body as { name: string; isDefault: boolean }[])
-        .filter((row) => row.isDefault)
-        .map((row) => row.name),
+      (listed.body as { name: string; isDefault: boolean }[]).filter((row) => row.isDefault).map((row) => row.name),
       ['v3'],
     );
   });
@@ -250,11 +238,23 @@ describe('PATCH /versions/:id', () => {
     await build('/versions', { name: 'v3', ref: 'main-v3' });
     const shown = (await app.repository.findByName('v3'))!;
     const rebuilt = `${shown.buildId}-r1`;
-    await app.repository.publish(shown.id, { buildId: rebuilt, commitSha: shown.commitSha!, contract: shown.contract! });
-    const stale = await callJson('PATCH', `/versions/${shown.id}`, { tested: true, commitSha: shown.commitSha, buildId: shown.buildId });
+    await app.repository.publish(shown.id, {
+      buildId: rebuilt,
+      commitSha: shown.commitSha!,
+      contract: shown.contract!,
+    });
+    const stale = await callJson('PATCH', `/versions/${shown.id}`, {
+      tested: true,
+      commitSha: shown.commitSha,
+      buildId: shown.buildId,
+    });
     assert.equal(stale.status, 409, JSON.stringify(stale.body));
     assert.equal((await app.repository.findById(shown.id))?.tested, false);
-    const current = await callJson('PATCH', `/versions/${shown.id}`, { tested: true, commitSha: shown.commitSha, buildId: rebuilt });
+    const current = await callJson('PATCH', `/versions/${shown.id}`, {
+      tested: true,
+      commitSha: shown.commitSha,
+      buildId: rebuilt,
+    });
     assert.equal(current.status, 200, JSON.stringify(current.body));
     assert.equal((current.body as { tested: boolean }).tested, true);
   });
@@ -263,11 +263,19 @@ describe('PATCH /versions/:id', () => {
     await build('/versions', { name: 'v3', ref: 'main-v3' });
     const shown = (await app.repository.findByName('v3'))!;
     for (const buildId of [undefined, null]) {
-      const answer = await callJson('PATCH', `/versions/${shown.id}`, { tested: true, commitSha: shown.commitSha, buildId });
+      const answer = await callJson('PATCH', `/versions/${shown.id}`, {
+        tested: true,
+        commitSha: shown.commitSha,
+        buildId,
+      });
       assert.equal(answer.status, 409, JSON.stringify(answer.body));
     }
     await app.repository.markBuilding(shown.id);
-    const answer = await callJson('PATCH', `/versions/${shown.id}`, { tested: true, commitSha: shown.commitSha, buildId: shown.buildId });
+    const answer = await callJson('PATCH', `/versions/${shown.id}`, {
+      tested: true,
+      commitSha: shown.commitSha,
+      buildId: shown.buildId,
+    });
     assert.equal(answer.status, 400);
     assert.equal((await app.repository.findById(shown.id))?.tested, false);
   });
@@ -275,7 +283,11 @@ describe('PATCH /versions/:id', () => {
   it('does not treat a legacy row as an immutable build named by a caller', async () => {
     const bundled = (await app.repository.findByName('bundled'))!;
     await app.repository.setCommitSha(bundled.id, SHOWN_COMMIT);
-    const answer = await callJson('PATCH', `/versions/${bundled.id}`, { tested: true, commitSha: SHOWN_COMMIT, buildId: SHOWN_COMMIT });
+    const answer = await callJson('PATCH', `/versions/${bundled.id}`, {
+      tested: true,
+      commitSha: SHOWN_COMMIT,
+      buildId: SHOWN_COMMIT,
+    });
     assert.equal(answer.status, 409, JSON.stringify(answer.body));
     assert.equal((await app.repository.findById(bundled.id))?.tested, false);
   });
@@ -406,10 +418,7 @@ describe('DELETE /versions/:id', () => {
     const answer = await callJson('DELETE', `/versions/${added?.id}`);
 
     assert.equal(answer.status, 409);
-    assert.equal(
-      (answer.body as { error: string }).error,
-      'stack_version_is_default',
-    );
+    assert.equal((answer.body as { error: string }).error, 'stack_version_is_default');
   });
 
   it('answers 409 for the bundled version', async () => {

@@ -46,10 +46,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
  * them: it takes the chequebook readings this page collects, so that a node is
  * listed for what it reported rather than for what nothing asked it.
  */
-const MATCHERS: Record<
-  Exclude<FilterKey, 'all' | 'groups' | 'attention'>,
-  (profile: Profile) => boolean
-> = {
+const MATCHERS: Record<Exclude<FilterKey, 'all' | 'groups' | 'attention'>, (profile: Profile) => boolean> = {
   streams: (profile) => ['stream', 'abr-uploader'].includes(shapeOf(profile)),
   viewers: (profile) => shapeOf(profile) === 'viewer',
   abr: (profile) => ['bee-node', 'abr-uploader'].includes(shapeOf(profile)),
@@ -62,15 +59,17 @@ export function DeploymentsPage({ search }: { search: string }) {
   const poolResults = usePoolResults(groups, profiles);
   const chequebooks = useChequebookHealths(profiles);
   const nodeStamps = useStampHealths(profiles);
-  const stampHealths = mergedStampHealths(
-    poolStampHealths(poolResults, profiles),
-    nodeStamps,
-  );
+  const stampHealths = mergedStampHealths(poolStampHealths(poolResults, profiles), nodeStamps);
   const uploaderHealths = useUploaderHealths(profiles);
 
   if (!profiles) {
     return (
-      <Stack alignItems="center" sx={{ py: 8 }}>
+      <Stack
+        sx={{
+          alignItems: 'center',
+          py: 8,
+        }}
+      >
         <CircularProgress />
       </Stack>
     );
@@ -86,9 +85,7 @@ export function DeploymentsPage({ search }: { search: string }) {
     );
   const matches = (profile: Profile): boolean => {
     const hitsQuery =
-      !query ||
-      profile.name.toLowerCase().includes(query) ||
-      (profile.notes ?? '').toLowerCase().includes(query);
+      !query || profile.name.toLowerCase().includes(query) || (profile.notes ?? '').toLowerCase().includes(query);
     if (!hitsQuery) return false;
     if (filter === 'all' || filter === 'groups') return true;
     if (filter === 'attention') return wantsAttention(profile);
@@ -104,8 +101,7 @@ export function DeploymentsPage({ search }: { search: string }) {
     attention: profiles.filter(wantsAttention).length,
   };
 
-  const membersOf = (groupId: number) =>
-    profiles.filter((profile) => profile.group_id === groupId);
+  const membersOf = (groupId: number) => profiles.filter((profile) => profile.group_id === groupId);
 
   const groupBlocks = groups
     .map((group) => {
@@ -123,9 +119,7 @@ export function DeploymentsPage({ search }: { search: string }) {
     filter === 'groups'
       ? []
       : profiles.filter(
-          (profile) =>
-            (profile.group_id == null || !loadedGroupIds.has(profile.group_id)) &&
-            matches(profile),
+          (profile) => (profile.group_id == null || !loadedGroupIds.has(profile.group_id)) && matches(profile),
         );
 
   const hasRows = groupBlocks.length > 0 || standalone.length > 0;
@@ -180,11 +174,7 @@ export function DeploymentsPage({ search }: { search: string }) {
                     group={group}
                     members={members}
                     visibleMembers={visible}
-                    poolResult={
-                      isLadderKind(group.kind)
-                        ? (poolResults.get(group.id) ?? null)
-                        : null
-                    }
+                    poolResult={isLadderKind(group.kind) ? (poolResults.get(group.id) ?? null) : null}
                     chequebooks={chequebooks}
                     stampHealths={stampHealths}
                     uploaderHealths={uploaderHealths}
@@ -204,10 +194,7 @@ export function DeploymentsPage({ search }: { search: string }) {
             ) : (
               <TableRow>
                 <TableCell colSpan={5}>
-                  <EmptyState
-                    title="Nothing matches."
-                    hint="Clear the search box or pick another filter above."
-                  />
+                  <EmptyState title="Nothing matches." hint="Clear the search box or pick another filter above." />
                 </TableCell>
               </TableRow>
             )}
@@ -215,9 +202,15 @@ export function DeploymentsPage({ search }: { search: string }) {
         </Table>
       </Paper>
 
-      <Typography variant="caption" color="text.secondary" sx={{ mt: 1.25, display: 'block' }}>
-        Click a row to open it. Every action is on the row itself, nothing needs
-        to be selected first.
+      <Typography
+        variant="caption"
+        sx={{
+          color: 'text.secondary',
+          mt: 1.25,
+          display: 'block',
+        }}
+      >
+        Click a row to open it. Every action is on the row itself, nothing needs to be selected first.
       </Typography>
     </Box>
   );

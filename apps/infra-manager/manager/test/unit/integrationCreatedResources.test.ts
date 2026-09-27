@@ -20,7 +20,9 @@ describe('confirmed integration resource inventory', () => {
       assert.equal(returned.status, 400, 'a negative test unexpectedly created a profile');
     });
     assert.deepEqual(inventory.snapshot(), {
-      profiles: [{ name: profile().name, instanceId: FIRST }], groups: [], unresolved: [],
+      profiles: [{ name: profile().name, instanceId: FIRST }],
+      groups: [],
+      unresolved: [],
     });
   });
 
@@ -32,25 +34,38 @@ describe('confirmed integration resource inventory', () => {
 
   it('reports lost and server-error outcomes without adopting their body or exposing error content', async () => {
     const inventory = new CreatedResourceInventory('run');
-    await assert.rejects(inventory.capture({ kind: 'profile' }, async () => {
-      throw new Error('synthetic-private-payload');
-    }), error => error instanceof Error && !error.message.includes('synthetic-private-payload'));
+    await assert.rejects(
+      inventory.capture({ kind: 'profile' }, async () => {
+        throw new Error('synthetic-private-payload');
+      }),
+      (error) => error instanceof Error && !error.message.includes('synthetic-private-payload'),
+    );
     await inventory.capture({ kind: 'profile' }, async () => ({ status: 500, body: profile() }));
     const snapshot = inventory.snapshot();
     assert.deepEqual(snapshot.profiles, []);
     assert.equal(snapshot.unresolved.length, 2);
-    assert.ok(snapshot.unresolved.every(issue => issue.reason === 'response-unavailable'));
+    assert.ok(snapshot.unresolved.every((issue) => issue.reason === 'response-unavailable'));
     assert.ok(!JSON.stringify(snapshot).includes('synthetic-private-payload'));
   });
 
   it('retains a confirmed group and each valid member of an incomplete response', async () => {
     const inventory = new CreatedResourceInventory('run');
-    await inventory.capture({ kind: 'group', expectedMembers: 3 }, accepted({
-      group, profiles: [profile(FIRST, 'itest-run-pool-a-profile-7'), null, profile(SECOND, 'itest-run-pool-a-profile-12')],
-    }));
+    await inventory.capture(
+      { kind: 'group', expectedMembers: 3 },
+      accepted({
+        group,
+        profiles: [profile(FIRST, 'itest-run-pool-a-profile-7'), null, profile(SECOND, 'itest-run-pool-a-profile-12')],
+      }),
+    );
     assert.deepEqual(inventory.snapshot().groups, [group]);
-    assert.deepEqual(inventory.snapshot().profiles.map(item => item.instanceId), [FIRST, SECOND]);
-    assert.deepEqual(inventory.snapshot().unresolved.map(issue => issue.reason), ['invalid-member', 'member-count-mismatch']);
+    assert.deepEqual(
+      inventory.snapshot().profiles.map((item) => item.instanceId),
+      [FIRST, SECOND],
+    );
+    assert.deepEqual(
+      inventory.snapshot().unresolved.map((issue) => issue.reason),
+      ['invalid-member', 'member-count-mismatch'],
+    );
   });
 
   it('retains a valid group with a missing member list and valid members with an invalid group', async () => {
@@ -59,17 +74,27 @@ describe('confirmed integration resource inventory', () => {
     await inventory.capture({ kind: 'group', expectedMembers: 1 }, accepted({ group: null, profiles: [profile()] }));
     assert.deepEqual(inventory.snapshot().groups, [group]);
     assert.equal(inventory.snapshot().profiles.length, 1);
-    assert.deepEqual(inventory.snapshot().unresolved.map(issue => issue.reason), ['missing-members', 'invalid-group']);
+    assert.deepEqual(
+      inventory.snapshot().unresolved.map((issue) => issue.reason),
+      ['missing-members', 'invalid-group'],
+    );
   });
 
   it('captures only returned added members and never adopts an existing group', async () => {
     const inventory = new CreatedResourceInventory('run');
-    await inventory.capture({ kind: 'members', groupId: 17, expectedMembers: 2 }, accepted({
-      group, profiles: [profile(THIRD, 'itest-run-pool-a-profile-42')],
-    }));
+    await inventory.capture(
+      { kind: 'members', groupId: 17, expectedMembers: 2 },
+      accepted({
+        group,
+        profiles: [profile(THIRD, 'itest-run-pool-a-profile-42')],
+      }),
+    );
     assert.deepEqual(inventory.snapshot().groups, []);
     assert.deepEqual(inventory.snapshot().profiles, [{ name: 'itest-run-pool-a-profile-42', instanceId: THIRD }]);
-    assert.deepEqual(inventory.snapshot().unresolved.map(issue => issue.reason), ['member-count-mismatch']);
+    assert.deepEqual(
+      inventory.snapshot().unresolved.map((issue) => issue.reason),
+      ['member-count-mismatch'],
+    );
   });
 
   it('does not grant authority from malformed or foreign successful identities', async () => {
@@ -86,7 +111,10 @@ describe('confirmed integration resource inventory', () => {
     await inventory.capture({ kind: 'profile' }, accepted(profile()));
     await inventory.capture({ kind: 'profile' }, accepted(profile()));
     await inventory.capture({ kind: 'profile' }, accepted(profile(SECOND)));
-    assert.deepEqual(inventory.snapshot().profiles.map(item => item.instanceId), [FIRST, SECOND]);
+    assert.deepEqual(
+      inventory.snapshot().profiles.map((item) => item.instanceId),
+      [FIRST, SECOND],
+    );
     assert.equal(inventory.snapshot().unresolved.length, 0);
   });
 
@@ -97,17 +125,28 @@ describe('confirmed integration resource inventory', () => {
     body.name = 'review-20260907';
     await inventory.capture({ kind: 'profile' }, accepted(profile(FIRST, 'itest-run-other-name')));
     const snapshot = inventory.snapshot();
-    assert.throws(() => { (snapshot.profiles[0] as { name: string }).name = 'changed'; });
+    assert.throws(() => {
+      (snapshot.profiles[0] as { name: string }).name = 'changed';
+    });
     assert.equal(inventory.snapshot().profiles[0]?.name, 'itest-run-viewer-a');
-    assert.deepEqual(inventory.snapshot().unresolved.map(issue => issue.reason), ['identity-conflict']);
+    assert.deepEqual(
+      inventory.snapshot().unresolved.map((issue) => issue.reason),
+      ['identity-conflict'],
+    );
   });
 
   it('reports distinct-member coverage when a group or added-members response repeats an identity', async () => {
-    for (const attempt of [{ kind: 'group', expectedMembers: 2 }, { kind: 'members', groupId: 17, expectedMembers: 2 }] as const) {
+    for (const attempt of [
+      { kind: 'group', expectedMembers: 2 },
+      { kind: 'members', groupId: 17, expectedMembers: 2 },
+    ] as const) {
       const inventory = new CreatedResourceInventory('run');
       await inventory.capture(attempt, accepted({ group, profiles: [profile(), profile()] }));
       assert.deepEqual(inventory.snapshot().profiles, [{ name: profile().name, instanceId: FIRST }]);
-      assert.deepEqual(inventory.snapshot().unresolved.map(issue => issue.reason), ['member-count-mismatch']);
+      assert.deepEqual(
+        inventory.snapshot().unresolved.map((issue) => issue.reason),
+        ['member-count-mismatch'],
+      );
     }
   });
 

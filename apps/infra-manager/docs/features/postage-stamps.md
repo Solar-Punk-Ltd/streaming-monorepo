@@ -100,15 +100,15 @@ The readiness step **Postage stamp set** and the batch alerts on the Storage
 card read the batch recorded on the deployment against what its node says
 (`stampHealthFrom`). The pool page and the overview read the same verdict.
 
-| State | What it means | Blocks | What is offered |
-|---|---|---|---|
-| none | No batch recorded on the deployment. | yes | Buy stamp |
-| pending | Bought, and Bee has not made it usable yet. | yes | nothing, it settles by itself |
-| active | Usable, with room or mutable, and time left. | no | Top up or buy within two days of running out, Dilute or buy past 90% full |
-| full | Immutable, its fullest bucket full. | yes | Dilute or buy |
-| expired | No time left. | yes | Buy stamp |
-| gone | The node no longer holds the recorded batch. | yes | Buy stamp |
-| unknown | The node was not asked or did not answer. | no | Retry node checks, where the page asked |
+| State   | What it means                                | Blocks | What is offered                                                           |
+| ------- | -------------------------------------------- | ------ | ------------------------------------------------------------------------- |
+| none    | No batch recorded on the deployment.         | yes    | Buy stamp                                                                 |
+| pending | Bought, and Bee has not made it usable yet.  | yes    | nothing, it settles by itself                                             |
+| active  | Usable, with room or mutable, and time left. | no     | Top up or buy within two days of running out, Dilute or buy past 90% full |
+| full    | Immutable, its fullest bucket full.          | yes    | Dilute or buy                                                             |
+| expired | No time left.                                | yes    | Buy stamp                                                                 |
+| gone    | The node no longer holds the recorded batch. | yes    | Buy stamp                                                                 |
+| unknown | The node was not asked or did not answer.    | no     | Retry node checks, where the page asked                                   |
 
 Under **Needs attention** on the overview, a missing, expired, full, nearly
 full or ending batch carries the same remedy as a button that opens the
@@ -236,19 +236,19 @@ whole list of stamp routes is in [manager/README.md](../../manager/README.md#pos
 
 ## Implementation
 
-| File | What it does |
-|---|---|
-| `common/src/stampChanges.ts` | `dilutionPreview` and `topUpPreview`, what a change leaves a batch with, including whether a dilution leaves it under a day, and `BeeStampTransaction`, `TopUpStampRequest` and `DiluteStampRequest`, the shapes that cross the stack. |
-| `common/src/stampHealth.ts`, `stampCost.ts` | How full a batch is and what state it is in, and what life and cost an amount buys. |
-| `manager/src/domain/BeeClient.ts` | `topUpStamp` and `diluteStamp`, the two `PATCH` requests, on the on-chain budget buying uses. |
-| `manager/src/domain/StampService.ts` | `topUpStamp` and `diluteStamp` for a deployment's own node: read the batch first, refuse, send, forget the node's cached reads, log one line. |
-| `manager/src/domain/errors/StampNotFoundError.ts`, `DiluteDepthError.ts`, `DiluteLifeError.ts` | The three refusals, answered 404, 400 and 400. |
-| `manager/src/api/routes/stamp.ts`, `manager/src/schemas/stamp.ts` | The two routes and their bodies. |
-| `frontend/src/uploaders/StampTable.tsx`, `stampRowActions.ts`, `bucketFill.ts` | The table's Used column and each batch's actions, with Use unavailable on a full immutable batch. |
-| `frontend/src/uploaders/TopUpStampDialog.tsx`, `topUpView.ts`, `DiluteStampDialog.tsx`, `diluteView.ts`, `BatchSummary.tsx` | The two dialogs and what they show before the operator confirms. |
-| `frontend/src/deployments/StorageCard.tsx` | Opens the dialogs, sends the change, reads the node again and says what was sent. |
-| `frontend/dev/mock-stamps.mjs` | The offline mock's two routes, with the manager's schemas and refusals, and the change landing on its batch two seconds later. The mock seeds the pool's 720p rung with a full immutable batch. |
-| `frontend/test/stamp-changes-browser.test.mjs` | A headless Chrome against the mock tops up and dilutes that batch from the Storage card. |
+| File                                                                                                                        | What it does                                                                                                                                                                                                                           |
+| --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `common/src/stampChanges.ts`                                                                                                | `dilutionPreview` and `topUpPreview`, what a change leaves a batch with, including whether a dilution leaves it under a day, and `BeeStampTransaction`, `TopUpStampRequest` and `DiluteStampRequest`, the shapes that cross the stack. |
+| `common/src/stampHealth.ts`, `stampCost.ts`                                                                                 | How full a batch is and what state it is in, and what life and cost an amount buys.                                                                                                                                                    |
+| `manager/src/domain/BeeClient.ts`                                                                                           | `topUpStamp` and `diluteStamp`, the two `PATCH` requests, on the on-chain budget buying uses.                                                                                                                                          |
+| `manager/src/domain/StampService.ts`                                                                                        | `topUpStamp` and `diluteStamp` for a deployment's own node: read the batch first, refuse, send, forget the node's cached reads, log one line.                                                                                          |
+| `manager/src/domain/errors/StampNotFoundError.ts`, `DiluteDepthError.ts`, `DiluteLifeError.ts`                              | The three refusals, answered 404, 400 and 400.                                                                                                                                                                                         |
+| `manager/src/api/routes/stamp.ts`, `manager/src/schemas/stamp.ts`                                                           | The two routes and their bodies.                                                                                                                                                                                                       |
+| `frontend/src/uploaders/StampTable.tsx`, `stampRowActions.ts`, `bucketFill.ts`                                              | The table's Used column and each batch's actions, with Use unavailable on a full immutable batch.                                                                                                                                      |
+| `frontend/src/uploaders/TopUpStampDialog.tsx`, `topUpView.ts`, `DiluteStampDialog.tsx`, `diluteView.ts`, `BatchSummary.tsx` | The two dialogs and what they show before the operator confirms.                                                                                                                                                                       |
+| `frontend/src/deployments/StorageCard.tsx`                                                                                  | Opens the dialogs, sends the change, reads the node again and says what was sent.                                                                                                                                                      |
+| `frontend/dev/mock-stamps.mjs`                                                                                              | The offline mock's two routes, with the manager's schemas and refusals, and the change landing on its batch two seconds later. The mock seeds the pool's 720p rung with a full immutable batch.                                        |
+| `frontend/test/stamp-changes-browser.test.mjs`                                                                              | A headless Chrome against the mock tops up and dilutes that batch from the Storage card.                                                                                                                                               |
 
 ## Limits
 

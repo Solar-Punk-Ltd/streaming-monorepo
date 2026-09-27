@@ -18,11 +18,7 @@ import {
 import { streamIdParamSchema } from '../../schemas/stream.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validateBody, validateParams } from '../middleware/validate.js';
-import {
-  toIngestLookup,
-  toPublishResult,
-  toRenditionReportResponse,
-} from '../presenters.js';
+import { toIngestLookup, toPublishResult, toRenditionReportResponse } from '../presenters.js';
 
 export interface InternalRoutesDeps {
   streamStateService: StreamStateService;
@@ -66,10 +62,7 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
     validateParams(streamIdParamSchema),
     validateBody(streamStateSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const outcome = await streamStateService.report(
-        String(req.params.id),
-        req.body as StreamStateBody,
-      );
+      const outcome = await streamStateService.report(String(req.params.id), req.body as StreamStateBody);
       const response: StreamStateResponse = toPublishResult(outcome);
       res.json(response);
     }),
@@ -80,12 +73,8 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
     validateParams(streamIdParamSchema),
     validateBody(renditionReportSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const outcome = await ladderService.report(
-        String(req.params.id),
-        req.body as RenditionReport,
-      );
-      const response: RenditionReportResponse =
-        toRenditionReportResponse(outcome);
+      const outcome = await ladderService.report(String(req.params.id), req.body as RenditionReport);
+      const response: RenditionReportResponse = toRenditionReportResponse(outcome);
       res.json(response);
     }),
   );

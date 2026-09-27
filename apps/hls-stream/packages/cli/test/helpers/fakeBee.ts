@@ -107,62 +107,66 @@ export function createFakeBee(options: FakeBeeOptions = {}): FakeBee {
   let healths = 0;
 
   const bee = {
-    getHealth: async () => {
-      healths += 1;
-      if (healths <= (options.unhealthyPolls ?? 0)) {
-        throw new Error('connect ECONNREFUSED: node still starting');
-      }
-      return { status: 'ok' };
+    status: {
+      getHealth: async () => {
+        healths += 1;
+        if (healths <= (options.unhealthyPolls ?? 0)) {
+          throw new Error('connect ECONNREFUSED: node still starting');
+        }
+        return { status: 'ok' };
+      },
+
+      getChainState: async () => {
+        if (options.chainStateError) {
+          throw new Error(options.chainStateError);
+        }
+        return { chainTip: 1, block: 1, totalAmount: '0', currentPrice: options.currentPrice ?? TEST_CHAIN_PRICE };
+      },
     },
 
-    getNodeAddresses: async () => ({ ethereum: { toHex: () => '0xnode' } }),
-
-    // Real BZZ and DAI rather than objects with the two methods the caller happens to use. The
-    // sufficiency check compares two BZZ values, and a hand-rolled balance would have made that
-    // comparison untestable by being the one thing it could not do.
-    getWalletBalance: async () => ({
-      bzzBalance: BZZ.fromPLUR(options.bzz ?? TEST_BATCH_COST_PLUR),
-      nativeTokenBalance: DAI.fromWei(options.xdai ?? 1n),
-    }),
-
-    getChainState: async () => {
-      if (options.chainStateError) {
-        throw new Error(options.chainStateError);
-      }
-      return { chainTip: 1, block: 1, totalAmount: '0', currentPrice: options.currentPrice ?? TEST_CHAIN_PRICE };
+    connectivity: {
+      getNodeAddresses: async () => ({ ethereum: { toHex: () => '0xnode' } }),
     },
 
-    getPostageBatches: async () => (options.existingBatches ?? []).map((b) => batch(b.batchID, b.usable)),
-
-    createPostageBatch: async (
-      _amount: string,
-      _depth: number,
-      opts?: { waitForUsable?: boolean; immutableFlag?: boolean },
-    ) => {
-      purchases += 1;
-      purchaseOpts = opts;
-      if (options.purchaseError) {
-        throw new Error(options.purchaseError);
-      }
-      purchasedId = BATCH_ID;
-      return { toHex: () => BATCH_ID };
+    wallet: {
+      // Real BZZ and DAI rather than objects with the two methods the caller happens to use. The
+      // sufficiency check compares two BZZ values, and a hand-rolled balance would have made that
+      // comparison untestable by being the one thing it could not do.
+      getBalance: async () => ({
+        bzzBalance: BZZ.fromPLUR(options.bzz ?? TEST_BATCH_COST_PLUR),
+        nativeTokenBalance: DAI.fromWei(options.xdai ?? 1n),
+      }),
     },
 
-    getPostageBatch: async (id: string) => {
-      polls += 1;
-      // A real node 404s an id it does not know, forever. Without this the fake happily returns a
-      // batch for any string, and a test polling the wrong id would still pass.
-      if (purchasedId !== undefined && id !== purchasedId) {
-        throw new Error(`batch not found: ${id}`);
-      }
-      if (polls <= notFoundPolls) {
-        // What a real node does before it has indexed the batch. The caller must swallow this.
-        throw new Error(`batch not found: ${id}`);
-      }
-      if (options.neverUsable || polls <= notFoundPolls + unusablePolls) {
-        return batch(id, false);
-      }
-      return batch(id, true);
+    stamp: {
+      getAll: async () => (options.existingBatches ?? []).map((b) => batch(b.batchID, b.usable)),
+
+      create: async (_amount: string, _depth: number, opts?: { waitForUsable?: boolean; immutableFlag?: boolean }) => {
+        purchases += 1;
+        purchaseOpts = opts;
+        if (options.purchaseError) {
+          throw new Error(options.purchaseError);
+        }
+        purchasedId = BATCH_ID;
+        return { toHex: () => BATCH_ID };
+      },
+
+      get: async (id: string) => {
+        polls += 1;
+        // A real node 404s an id it does not know, forever. Without this the fake happily returns a
+        // batch for any string, and a test polling the wrong id would still pass.
+        if (purchasedId !== undefined && id !== purchasedId) {
+          throw new Error(`batch not found: ${id}`);
+        }
+        if (polls <= notFoundPolls) {
+          // What a real node does before it has indexed the batch. The caller must swallow this.
+          throw new Error(`batch not found: ${id}`);
+        }
+        if (options.neverUsable || polls <= notFoundPolls + unusablePolls) {
+          return batch(id, false);
+        }
+        return batch(id, true);
+      },
     },
   } as unknown as Bee;
 

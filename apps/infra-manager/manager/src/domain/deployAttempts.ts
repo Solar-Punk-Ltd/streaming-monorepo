@@ -23,10 +23,7 @@
  * and no delayed export can follow. Anything less blocks, and a person who
  * checked the host releases it.
  */
-import type {
-  DeployAttemptKind,
-  DeployAttemptState,
-} from '@streaming-infra-manager/common';
+import type { DeployAttemptKind, DeployAttemptState } from '@streaming-infra-manager/common';
 
 export type { DeployAttemptKind, DeployAttemptState };
 
@@ -101,10 +98,7 @@ export function attemptOutcome(
 }
 
 /** Why a new attempt may not start now, in one sentence naming what holds it, or null. */
-export function whyAdmissionIsRefused(
-  request: AdmissionRequest,
-  attempts: readonly DeployAttempt[],
-): string | null {
+export function whyAdmissionIsRefused(request: AdmissionRequest, attempts: readonly DeployAttempt[]): string | null {
   const unresolved = attempts.filter(
     (attempt) => attempt.daemonId === request.daemonId && attempt.state !== 'released',
   );

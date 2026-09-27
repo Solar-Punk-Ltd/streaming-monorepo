@@ -17,20 +17,10 @@ import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import {
-  NODE_MODES,
-  RPC_ENDPOINT_SOURCES,
-} from '@streaming-infra-manager/common';
+import { NODE_MODES, RPC_ENDPOINT_SOURCES } from '@streaming-infra-manager/common';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const MIGRATION = join(
-  here,
-  '..',
-  '..',
-  'src',
-  'migrations',
-  '035_profile_node_mode.sql',
-);
+const MIGRATION = join(here, '..', '..', 'src', 'migrations', '035_profile_node_mode.sql');
 
 const sql = () => readFileSync(MIGRATION, 'utf8');
 
@@ -56,10 +46,7 @@ describe('the node mode column', () => {
 
 describe('the endpoint source column', () => {
   it('admits exactly the sources the shared rule knows', () => {
-    assert.deepEqual(
-      admitted('rpc_endpoint_source', sql()),
-      [...RPC_ENDPOINT_SOURCES],
-    );
+    assert.deepEqual(admitted('rpc_endpoint_source', sql()), [...RPC_ENDPOINT_SOURCES]);
   });
 
   it('defaults to the stack, which is what every stored row does today', () => {
@@ -67,19 +54,13 @@ describe('the endpoint source column', () => {
   });
 
   it('backfills a deployment that already names an address to custom', () => {
-    assert.match(
-      sql(),
-      /UPDATE profiles\s+SET rpc_endpoint_source = 'custom'\s+WHERE rpc_endpoint IS NOT NULL/,
-    );
+    assert.match(sql(), /UPDATE profiles\s+SET rpc_endpoint_source = 'custom'\s+WHERE rpc_endpoint IS NOT NULL/);
   });
 
   it('pairs custom with a stored address, both ways', () => {
     // Without the second direction a row could say it takes the manager's
     // endpoint and carry an address of its own, and nothing would say which of
     // the two the deploy used.
-    assert.match(
-      sql(),
-      /CHECK \(\(rpc_endpoint_source = 'custom'\) = \(rpc_endpoint IS NOT NULL\)\)/,
-    );
+    assert.match(sql(), /CHECK \(\(rpc_endpoint_source = 'custom'\) = \(rpc_endpoint IS NOT NULL\)\)/);
   });
 });

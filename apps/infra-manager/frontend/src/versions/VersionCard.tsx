@@ -1,18 +1,6 @@
 import type { ReactNode } from 'react';
-import {
-  Box,
-  Button,
-  FormControlLabel,
-  Stack,
-  Switch,
-  Tooltip,
-  Typography,
-} from '@mui/material';
-import {
-  BUNDLED_VERSION_NAME,
-  describeStackContract,
-  type StackVersion,
-} from '@streaming-infra-manager/common';
+import { Box, Button, FormControlLabel, Stack, Switch, Tooltip, Typography } from '@mui/material';
+import { BUNDLED_VERSION_NAME, describeStackContract, type StackVersion } from '@streaming-infra-manager/common';
 
 import { navigate, routes } from '../app/router';
 import { MONO_STACK } from '../app/theme';
@@ -21,7 +9,14 @@ import { ShapePill } from '../components/ShapePill';
 import type { Tone } from '../components/tone';
 import { formatDateTime, shortCommit } from '../format';
 import { ANOTHER_BUILDING } from './buildSlot';
-import { describeBuild, describePreviousBuild, describeSource, lostApprovalWarning, updateHint, versionPlacementProblem } from './versionText';
+import {
+  describeBuild,
+  describePreviousBuild,
+  describeSource,
+  lostApprovalWarning,
+  updateHint,
+  versionPlacementProblem,
+} from './versionText';
 
 const STATUS_LABELS: Record<StackVersion['status'], string> = {
   building: 'Building',
@@ -141,57 +136,74 @@ export function VersionCard({
         '&:last-child': { borderBottom: 0 },
       }}
     >
-      <Stack direction="row" alignItems="center" flexWrap="wrap" useFlexGap spacing={1}>
-        <Typography
-          id={headingId}
-          component="h4"
-          variant="subtitle2"
-          sx={{ minWidth: 0 }}
-        >
+      <Stack
+        direction="row"
+        useFlexGap
+        spacing={1}
+        sx={{
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}
+      >
+        <Typography id={headingId} component="h4" variant="subtitle2" sx={{ minWidth: 0 }}>
           {version.name}
         </Typography>
-        <ReadinessPill
-          label={STATUS_LABELS[version.status]}
-          tone={STATUS_TONES[version.status]}
-        />
+        <ReadinessPill label={STATUS_LABELS[version.status]} tone={STATUS_TONES[version.status]} />
         {version.isDefault && <ShapePill label="Default" />}
       </Stack>
 
       {approvalWarning && (
-        <Typography variant="body2" color="warning.main" component="p">
+        <Typography
+          variant="body2"
+          component="p"
+          sx={{
+            color: 'warning.main',
+          }}
+        >
           {approvalWarning}
         </Typography>
       )}
 
-      <Stack direction="row" alignItems="center" flexWrap="wrap" useFlexGap spacing={2}>
+      <Stack
+        direction="row"
+        useFlexGap
+        spacing={2}
+        sx={{
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}
+      >
         <Typography
           variant="body2"
-          color="text.secondary"
-          sx={{ fontFamily: MONO_STACK }}
+          sx={{
+            color: 'text.secondary',
+            fontFamily: MONO_STACK,
+          }}
         >
-          {version.commitSha
-            ? `Commit ${shortCommit(version.commitSha)}`
-            : 'Commit unknown on this host'}
+          {version.commitSha ? `Commit ${shortCommit(version.commitSha)}` : 'Commit unknown on this host'}
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {version.deployments} {version.deployments === 1 ? 'deployment' : 'deployments'}
         </Typography>
         <Tooltip title={testBlocked || TESTED_MEANS}>
           <Box component="span">
             <FormControlLabel
               sx={{ m: 0 }}
-              label={
-                <Typography variant="body2">
-                  {version.tested ? 'Tested' : 'Not tested'}
-                </Typography>
-              }
+              label={<Typography variant="body2">{version.tested ? 'Tested' : 'Not tested'}</Typography>}
               control={
                 <Switch
                   size="small"
                   checked={version.tested}
                   disabled={busy || cannotApprove}
                   onChange={(event) => onSetTested(event.target.checked)}
-                  inputProps={{ 'aria-label': `${version.name} tested` }}
+                  slotProps={{
+                    input: { 'aria-label': `${version.name} tested` },
+                  }}
                 />
               }
             />
@@ -199,15 +211,17 @@ export function VersionCard({
         </Tooltip>
       </Stack>
 
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        sx={{
+          flexWrap: 'wrap',
+        }}
+      >
         <Tooltip title={waiting || updateHint(version)}>
           <Box component="span">
-            <Button
-              size="small"
-              variant="outlined"
-              disabled={acting}
-              onClick={onUpdate}
-            >
+            <Button size="small" variant="outlined" disabled={acting} onClick={onUpdate}>
               Update
             </Button>
           </Box>
@@ -238,12 +252,7 @@ export function VersionCard({
         </Tooltip>
         <Tooltip title={waiting || removalBlocked}>
           <Box component="span">
-            <Button
-              size="small"
-              color="error"
-              disabled={acting || removalBlocked !== ''}
-              onClick={onRemove}
-            >
+            <Button size="small" color="error" disabled={acting || removalBlocked !== ''} onClick={onRemove}>
               Remove
             </Button>
           </Box>
@@ -266,32 +275,31 @@ export function VersionCard({
         <VersionFact label="Repository">{describeSource(version)}</VersionFact>
         <VersionFact label="Built">
           {builtLabel(version)}
-          <Typography
-            component="span"
-            variant="caption"
-            sx={{ display: 'block', fontFamily: MONO_STACK }}
-          >
+          <Typography component="span" variant="caption" sx={{ display: 'block', fontFamily: MONO_STACK }}>
             {describeBuild(version)}
             {previousBuild ? `, ${previousBuild}` : ''}
           </Typography>
         </VersionFact>
       </Box>
 
-      {version.lastError &&
-        (version.status === 'failed' || version.status === 'ready') && (
-          <Typography
-            variant="caption"
-            color={version.status === 'failed' ? 'error.main' : 'warning.main'}
-            sx={{ fontFamily: MONO_STACK }}
-          >
-            {version.lastError.split('\n').slice(-1)[0]}
-          </Typography>
-        )}
+      {version.lastError && (version.status === 'failed' || version.status === 'ready') && (
+        <Typography
+          variant="caption"
+          sx={{ color: version.status === 'failed' ? 'error.main' : 'warning.main', fontFamily: MONO_STACK }}
+        >
+          {version.lastError.split('\n').slice(-1)[0]}
+        </Typography>
+      )}
 
       {/* Outside the details below on purpose: a version that can place nothing
           is the first thing to know about it, not a line in a collapsed list. */}
       {versionPlacementProblem(version) && (
-        <Typography variant="caption" color="error.main">
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'error.main',
+          }}
+        >
           {versionPlacementProblem(version)}
         </Typography>
       )}
@@ -317,7 +325,12 @@ export function VersionCard({
             : ''}
         </Box>
         <Stack spacing={0.75} sx={{ pt: 1 }}>
-          <Typography variant="caption" color="text.secondary">
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
             {version.contract
               ? describeStackContract(version.contract)
               : 'The contract is read from the checkout once the build finishes.'}
@@ -326,8 +339,10 @@ export function VersionCard({
             <Typography
               key={warning}
               variant="caption"
-              color="warning.main"
-              sx={{ fontFamily: MONO_STACK }}
+              sx={{
+                color: 'warning.main',
+                fontFamily: MONO_STACK,
+              }}
             >
               {warning}
             </Typography>
@@ -341,7 +356,13 @@ export function VersionCard({
 function VersionFact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Box>
-      <Typography component="dt" variant="caption" color="text.secondary">
+      <Typography
+        component="dt"
+        variant="caption"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
         {label}
       </Typography>
       <Typography component="dd" variant="body2" sx={{ m: 0 }}>

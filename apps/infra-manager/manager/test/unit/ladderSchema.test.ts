@@ -11,11 +11,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  ABR_LADDER_SIZE,
-  LADDER_GROUP_NAME_MAX,
-  ladderMemberNames,
-} from '@streaming-infra-manager/common';
+import { ABR_LADDER_SIZE, LADDER_GROUP_NAME_MAX, ladderMemberNames } from '@streaming-infra-manager/common';
 
 import { createGroupSchema } from '../../src/schemas/profile.js';
 
@@ -35,17 +31,11 @@ describe('createGroupSchema — ABR ladder', () => {
   const oneOver = 'a'.repeat(LADDER_GROUP_NAME_MAX + 1);
 
   it('accepts a ladder whose group name is exactly at the cap', async () => {
-    assert.equal(
-      await accepts({ group_name: atMax, size: ABR_LADDER_SIZE, abr_ladder: true }),
-      true,
-    );
+    assert.equal(await accepts({ group_name: atMax, size: ABR_LADDER_SIZE, abr_ladder: true }), true);
   });
 
   it('rejects a ladder one character over the cap', async () => {
-    assert.equal(
-      await accepts({ group_name: oneOver, size: ABR_LADDER_SIZE, abr_ladder: true }),
-      false,
-    );
+    assert.equal(await accepts({ group_name: oneOver, size: ABR_LADDER_SIZE, abr_ladder: true }), false);
   });
 
   it('leaves non-ladder groups on the ordinary 31-char limit', async () => {
@@ -55,10 +45,7 @@ describe('createGroupSchema — ABR ladder', () => {
   });
 
   it('accepts an ordinary short ladder name', async () => {
-    assert.equal(
-      await accepts({ group_name: 'abr1', size: ABR_LADDER_SIZE, abr_ladder: true }),
-      true,
-    );
+    assert.equal(await accepts({ group_name: 'abr1', size: ABR_LADDER_SIZE, abr_ladder: true }), true);
   });
 
   it('rejects publisher-ish component lists it cannot honour', async () => {
@@ -92,10 +79,7 @@ describe('what a group create body accepts as engine settings', () => {
   });
 
   it('leaves the field out when the body says nothing about it', async () => {
-    const body = await createGroupSchema.validate(
-      { group_name: 'studio', size: 2 },
-      { abortEarly: false },
-    );
+    const body = await createGroupSchema.validate({ group_name: 'studio', size: 2 }, { abortEarly: false });
 
     assert.equal(body.engine_settings, undefined);
   });

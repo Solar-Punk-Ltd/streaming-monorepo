@@ -1,11 +1,12 @@
 {
   "name": "@streaming-monorepo/web2-admin-backend",
-  "private": true,
   "version": "0.1.0",
-  "type": "module",
+  "private": true,
   "description": "web2-admin API: auth, stream drafts in Postgres, publishing to the Swarm stream list feed, OBS ingest details.",
   "license": "MIT",
+  "type": "module",
   "scripts": {
+    "lint": "oxlint --type-aware .",
     "build": "pnpm --filter @streaming-monorepo/web2-admin-common build && tsc && rm -rf dist/migrations && cp -r src/migrations dist/migrations",
     "start": "node dist/index.js",
     "user:add": "tsx --conditions=development src/cli.ts user:add",
@@ -17,21 +18,24 @@
     "database:stop": "docker compose -p web2-admin -f ./docker-compose.yml stop postgres"
   },
   "dependencies": {
-    "@ethersphere/bee-js": "9.8.1",
+    "@ethersphere/bee-js": "13.1.0",
     "@streaming-monorepo/web2-admin-common": "workspace:*",
-    "dotenv": "16.4.7",
+    "dotenv": "17.4.2",
     "express": "5.2.1",
-    "pg": "8.13.1",
-    "yup": "1.7.0"
+    "pg": "8.23.0",
+    "yup": "1.7.1"
   },
   "devDependencies": {
     "@types/express": "5.0.6",
-    "@types/node": "22.9.0",
-    "@types/pg": "8.11.10",
-    "tsx": "4.19.2",
-    "typescript": "5.6.3"
+    "@types/node": "24.13.4",
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2"
   },
   "nx": {
-    "tags": ["scope:admin", "type:app"]
+    "tags": [
+      "scope:admin",
+      "type:app"
+    ]
   }
 }

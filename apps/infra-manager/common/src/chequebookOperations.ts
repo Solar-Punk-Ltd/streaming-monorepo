@@ -2,9 +2,12 @@ import { plurToBzzExact } from './chequebook.js';
 import type { TransferDirection } from './chequebook.js';
 import type { ChequebookPreflightRefusal } from './chequebookRefusals.js';
 
-export const CHEQUEBOOK_ACCOUNT_CHANGED_MESSAGE = 'The signed-in account changed. Sign in with the account that confirmed this transfer.';
-export const CHEQUEBOOK_RECOVERY_ACCOUNT_CHANGED_MESSAGE = 'The signed-in account changed. Review this action again with your current account.';
-export const CHEQUEBOOK_OPERATION_CHANGED_MESSAGE = 'The saved transfer changed. Refresh its evidence and review the action again.';
+export const CHEQUEBOOK_ACCOUNT_CHANGED_MESSAGE =
+  'The signed-in account changed. Sign in with the account that confirmed this transfer.';
+export const CHEQUEBOOK_RECOVERY_ACCOUNT_CHANGED_MESSAGE =
+  'The signed-in account changed. Review this action again with your current account.';
+export const CHEQUEBOOK_OPERATION_CHANGED_MESSAGE =
+  'The saved transfer changed. Refresh its evidence and review the action again.';
 
 /** How long the manager keeps checking one submitted transfer. Set once when it enters that state, never renewed. */
 export const RECEIPT_POLL_BUDGET_MS = 30 * 60_000;
@@ -59,8 +62,19 @@ export interface ChequebookTransferContext {
   readonly nonceQueryTag: string;
 }
 
-export type ChequebookOperationState = 'submitting' | 'submitted' | 'unknown' | 'settled' | 'reverted' | 'asserted' | 'rejected';
-export type ChequebookSubmissionFailure = ChequebookPreflightRefusal | 'response_unavailable' | 'invalid_response' | 'hash_conflict';
+export type ChequebookOperationState =
+  | 'submitting'
+  | 'submitted'
+  | 'unknown'
+  | 'settled'
+  | 'reverted'
+  | 'asserted'
+  | 'rejected';
+export type ChequebookSubmissionFailure =
+  | ChequebookPreflightRefusal
+  | 'response_unavailable'
+  | 'invalid_response'
+  | 'hash_conflict';
 
 export interface ChequebookReceiptHistory {
   readonly transactionHash: string;
@@ -75,16 +89,26 @@ export interface ChequebookReceiptHistory {
 
 export type ChequebookReceiptObservation =
   | { readonly kind: 'pending'; readonly reason: 'awaiting_transaction' | 'awaiting_receipt' | 'awaiting_finality' }
-  | { readonly kind: 'could_not_check'; readonly reason: 'rpc_unavailable' | 'identity_mismatch' | 'chain_changed' | 'history_incomplete' | 'attribution_conflict'; readonly history?: ChequebookReceiptHistory }
   | {
-    readonly kind: 'settled' | 'reverted';
-    readonly receiptBlockNumber: string;
-    readonly receiptBlockHash: string;
-    readonly finalizedBlockNumber: string;
-    readonly finalizedBlockHash: string;
-  };
+      readonly kind: 'could_not_check';
+      readonly reason:
+        | 'rpc_unavailable'
+        | 'identity_mismatch'
+        | 'chain_changed'
+        | 'history_incomplete'
+        | 'attribution_conflict';
+      readonly history?: ChequebookReceiptHistory;
+    }
+  | {
+      readonly kind: 'settled' | 'reverted';
+      readonly receiptBlockNumber: string;
+      readonly receiptBlockHash: string;
+      readonly finalizedBlockNumber: string;
+      readonly finalizedBlockHash: string;
+    };
 
-export interface ChequebookOperation extends Omit<ChequebookTransferIntent, 'profileInstanceId'>, ChequebookTransferContext {
+export interface ChequebookOperation
+  extends Omit<ChequebookTransferIntent, 'profileInstanceId'>, ChequebookTransferContext {
   /** NULL on historical records whose profile lifetime was not captured. */
   readonly profileInstanceId: string | null;
   readonly id: string;
@@ -119,13 +143,22 @@ export interface ChequebookRecoveryScan {
 }
 
 type RecoveryEvidence = { readonly candidateHashes: readonly string[]; readonly scan?: ChequebookRecoveryScan };
-export type ChequebookRecoveryObservation = RecoveryEvidence & (
-  | { readonly kind: 'searching'; readonly scan: ChequebookRecoveryScan }
-  | { readonly kind: 'no_match'; readonly scan: ChequebookRecoveryScan }
-  | { readonly kind: 'candidate' | 'ambiguous' }
-  | { readonly kind: 'could_not_check'; readonly reason: 'rpc_unavailable' | 'chain_changed' | 'identity_mismatch' | 'evidence_limit'; readonly additionalEvidenceInResponseJournal?: never }
-  | { readonly kind: 'could_not_check'; readonly reason: 'attribution_conflict'; readonly additionalEvidenceInResponseJournal?: true }
-);
+export type ChequebookRecoveryObservation = RecoveryEvidence &
+  (
+    | { readonly kind: 'searching'; readonly scan: ChequebookRecoveryScan }
+    | { readonly kind: 'no_match'; readonly scan: ChequebookRecoveryScan }
+    | { readonly kind: 'candidate' | 'ambiguous' }
+    | {
+        readonly kind: 'could_not_check';
+        readonly reason: 'rpc_unavailable' | 'chain_changed' | 'identity_mismatch' | 'evidence_limit';
+        readonly additionalEvidenceInResponseJournal?: never;
+      }
+    | {
+        readonly kind: 'could_not_check';
+        readonly reason: 'attribution_conflict';
+        readonly additionalEvidenceInResponseJournal?: true;
+      }
+  );
 
 export interface ChequebookAssertionInput {
   /** Supplied by authenticated server context, never by the request body. */

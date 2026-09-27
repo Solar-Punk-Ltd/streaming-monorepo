@@ -44,7 +44,11 @@ export class ChequebookReceiptPoller {
   private started = false;
   private stopped = false;
 
-  constructor(private readonly repository: DueRows, private readonly receipts: CheckReceipt, options: ReceiptPollerOptions = {}) {
+  constructor(
+    private readonly repository: DueRows,
+    private readonly receipts: CheckReceipt,
+    options: ReceiptPollerOptions = {},
+  ) {
     this.intervalMs = options.intervalMs ?? RECEIPT_POLL_INTERVAL_MS;
     this.batchLimit = options.batchLimit ?? DEFAULT_BATCH_LIMIT;
     this.log = options.log ?? unrecorded;
@@ -68,25 +72,38 @@ export class ChequebookReceiptPoller {
 
   private runBatch(): void {
     if (this.stopped) return;
-    const batch = this.tick().catch(() => {}).then(() => {
-      if (this.batch !== batch) return;
-      this.batch = null;
-      if (!this.stopped) this.cancelTick = this.schedule(() => { this.cancelTick = null; this.runBatch(); }, this.intervalMs);
-    });
+    const batch = this.tick()
+      .catch(() => {})
+      .then(() => {
+        if (this.batch !== batch) return;
+        this.batch = null;
+        if (!this.stopped)
+          this.cancelTick = this.schedule(() => {
+            this.cancelTick = null;
+            this.runBatch();
+          }, this.intervalMs);
+      });
     this.batch = batch;
   }
 
   private async tick(): Promise<void> {
     let due;
-    try { due = await this.repository.listAwaitingReceipt({ intervalMs: this.intervalMs, limit: this.batchLimit }); }
-    catch { this.log.warn('Receipt polling could not read the transfer journal.'); return; }
+    try {
+      due = await this.repository.listAwaitingReceipt({ intervalMs: this.intervalMs, limit: this.batchLimit });
+    } catch {
+      this.log.warn('Receipt polling could not read the transfer journal.');
+      return;
+    }
     const notes: string[] = [];
     for (const operation of due) {
       if (this.stopped) break;
       try {
         const checked = await this.receipts.check(operation.id);
-        if (checked.state !== 'submitted') notes.push(`${operation.id} ${checked.receiptObservation?.kind ?? checked.state}`);
-      } catch { notes.push(`${operation.id} journal_error`); }
+        if (checked.state !== 'submitted')
+          notes.push(`${operation.id} ${checked.receiptObservation?.kind ?? checked.state}`);
+      } catch {
+        notes.push(`${operation.id} journal_error`);
+      }
     }
     if (notes.length > 0) this.log.info(`Receipt polling checked ${due.length}: ${notes.join(', ')}`);
   }

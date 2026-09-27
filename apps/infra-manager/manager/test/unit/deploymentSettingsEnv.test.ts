@@ -100,7 +100,14 @@ describe('who decides a key', () => {
       '',
     );
     const ome = managedEnvLines(
-      { engine: 'ome', beeUrl: 'http://10.0.0.1:1633', omeSrtPort: 10180, omeHlsPort: 10181, localBeeUploader: false, gatewayMode: 'ultra-light' },
+      {
+        engine: 'ome',
+        beeUrl: 'http://10.0.0.1:1633',
+        omeSrtPort: 10180,
+        omeHlsPort: 10181,
+        localBeeUploader: false,
+        gatewayMode: 'ultra-light',
+      },
       '',
     );
     const context = { ports: ALLOCATION_CONTRACT.ports, isLocalTarget: true };
@@ -135,7 +142,10 @@ describe('who decides a key', () => {
     assert.equal(settingOwnerOf('ABR_FPS', srs), 'abr-only');
     assert.equal(settingOwnerOf('ABR_FPS', { ...srs, engineReader: { engine: 'srs', abr: true } }), null);
     assert.equal(settingOwnerOf('HLS_SEGMENT_COUNT', srs), 'ome-only');
-    assert.equal(settingOwnerOf('SRT_LATENCY', { ...NO_PORTS, engineReader: { engine: null, abr: false } }), 'srs-only');
+    assert.equal(
+      settingOwnerOf('SRT_LATENCY', { ...NO_PORTS, engineReader: { engine: null, abr: false } }),
+      'srs-only',
+    );
   });
 });
 
@@ -155,7 +165,12 @@ const V3_CONTRACT: StackContract = {
 };
 
 async function versionRequiringSecrets(harness: OrchestratorHarness): Promise<number> {
-  const row = await harness.versions.insert({ name: 'main-v3', gitRef: 'main-v3', rootPath: root, sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
+  const row = await harness.versions.insert({
+    name: 'main-v3',
+    gitRef: 'main-v3',
+    rootPath: root,
+    sourceUrl: SWARM_HLS_STREAM_SOURCE.url,
+  });
   await harness.versions.markBuilt(row.id, { commitSha: 'abc1234', contract: V3_CONTRACT });
   return row.id;
 }

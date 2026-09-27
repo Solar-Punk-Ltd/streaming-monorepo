@@ -12,21 +12,30 @@
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { RECEIPT_POLL_INTERVAL_MS, type ChequebookOperation, type ChequebookReceiptObservation } from '@streaming-infra-manager/common';
+import {
+  RECEIPT_POLL_INTERVAL_MS,
+  type ChequebookOperation,
+  type ChequebookReceiptObservation,
+} from '@streaming-infra-manager/common';
 import { ChequebookJournalError } from '../../src/domain/errors/ChequebookJournalError.js';
 import { ChequebookReceiptCheck } from '../../src/domain/chequebook/ChequebookReceiptCheck.js';
 import { ChequebookReceiptPoller } from '../../src/domain/chequebook/ChequebookReceiptPoller.js';
 import { InMemoryChequebookOperations, operationCandidate } from '../support/chequebookOperations.js';
 
-const settled: ChequebookReceiptObservation = { kind: 'settled', receiptBlockNumber: '501', receiptBlockHash: `0x${'77'.repeat(32)}`,
-  finalizedBlockNumber: '510', finalizedBlockHash: `0x${'88'.repeat(32)}` };
+const settled: ChequebookReceiptObservation = {
+  kind: 'settled',
+  receiptBlockNumber: '501',
+  receiptBlockHash: `0x${'77'.repeat(32)}`,
+  finalizedBlockNumber: '510',
+  finalizedBlockHash: `0x${'88'.repeat(32)}`,
+};
 const pending: ChequebookReceiptObservation = { kind: 'pending', reason: 'awaiting_receipt' };
 const node = (index: number) => `0x${index.toString(16).padStart(2, '0').repeat(20)}`;
 const hash = (index: number) => `0x${index.toString(16).padStart(2, '0').repeat(32)}`;
 
 /** Lets every already-resolved promise chain in the poller run to completion. */
 async function drain(rounds = 8): Promise<void> {
-  for (let round = 0; round < rounds; round++) await new Promise(resolve => setImmediate(resolve));
+  for (let round = 0; round < rounds; round++) await new Promise((resolve) => setImmediate(resolve));
 }
 
 function injectedTicks() {
@@ -53,13 +62,16 @@ function injectedTicks() {
   };
 }
 
-function harness(options: { observation?: (id: string) => ChequebookReceiptObservation; failOn?: () => string | null } = {}) {
-  const repository = new InMemoryChequebookOperations();
+function harness(
+  options: { observation?: (id: string) => ChequebookReceiptObservation; failOn?: () => string | null } = {},
+) {
+  const startedAt = Date.now();
+  const repository = new InMemoryChequebookOperations({ now: () => startedAt });
   const lines: string[] = [];
   const warnings: string[] = [];
   const log = { info: (line: string) => lines.push(line), warn: (line: string) => warnings.push(line) };
   const inspected: string[] = [];
-  const receipts = new ChequebookReceiptCheck(repository, async operation => {
+  const receipts = new ChequebookReceiptCheck(repository, async (operation) => {
     inspected.push(operation.transactionHash);
     return options.observation?.(operation.transactionHash) ?? pending;
   });
@@ -73,22 +85,36 @@ function harness(options: { observation?: (id: string) => ChequebookReceiptObser
   };
   const ticks = injectedTicks();
   async function submitted(index: number): Promise<ChequebookOperation> {
-    const { operation } = await repository.admit(operationCandidate({ profileName: `alias-${index}`, nodeAddress: node(index) }));
+    const { operation } = await repository.admit(
+      operationCandidate({ profileName: `alias-${index}`, nodeAddress: node(index) }),
+    );
     await repository.claimDispatch(operation.id);
-    return repository.recordSubmission(operation.id, { state: 'submitted', transactionHash: hash(index), failureReason: null });
+    return repository.recordSubmission(operation.id, {
+      state: 'submitted',
+      transactionHash: hash(index),
+      failureReason: null,
+    });
   }
   function poller(overrides: { intervalMs?: number; batchLimit?: number } = {}) {
-    return new ChequebookReceiptPoller(repository, check, { intervalMs: 50, schedule: ticks.schedule, log, ...overrides });
+    return new ChequebookReceiptPoller(repository, check, {
+      intervalMs: 50,
+      schedule: ticks.schedule,
+      log,
+      ...overrides,
+    });
   }
   function age(id: string, milliseconds: number) {
     const row = repository.rows.get(id)!;
-    repository.rows.set(id, { ...row, receiptCheckedAt: new Date(Date.parse(row.receiptCheckedAt!) - milliseconds).toISOString() });
+    repository.rows.set(id, {
+      ...row,
+      receiptCheckedAt: new Date(Date.parse(row.receiptCheckedAt!) - milliseconds).toISOString(),
+    });
   }
-  return { repository, receipts, ticks, lines, warnings, log, checked, inspected, submitted, poller, age };
+  return { startedAt, repository, receipts, ticks, lines, warnings, log, checked, inspected, submitted, poller, age };
 }
 
 describe('ChequebookReceiptPoller', () => {
-  it('checks a submitted row on start and again one interval later', async t => {
+  it('checks a submitted row on start and again one interval later', async (t) => {
     const h = harness();
     const row = await h.submitted(1);
     const poller = h.poller();
@@ -104,10 +130,14 @@ describe('ChequebookReceiptPoller', () => {
     assert.deepEqual(h.checked, [row.id, row.id]);
     const polled = await h.repository.findById(row.id);
     assert.equal(polled?.state, 'submitted');
-    assert.equal(polled?.revision, String(BigInt(row.revision) + 1n), 'a poll that sees nothing new does not move the revision under the operator');
+    assert.equal(
+      polled?.revision,
+      String(BigInt(row.revision) + 1n),
+      'a poll that sees nothing new does not move the revision under the operator',
+    );
   });
 
-  it('stops polling a row once the chain answers with a terminal receipt', async t => {
+  it('stops polling a row once the chain answers with a terminal receipt', async (t) => {
     const h = harness({ observation: () => settled });
     const row = await h.submitted(1);
     const poller = h.poller();
@@ -119,16 +149,26 @@ describe('ChequebookReceiptPoller', () => {
     assert.deepEqual(h.checked, [row.id]);
   });
 
-  it('never checks a spent budget, a submitting row, an unknown row or a conflicted row', async t => {
+  it('never checks a spent budget, a submitting row, an unknown row or a conflicted row', async (t) => {
     const h = harness();
     const spent = await h.submitted(1);
-    h.repository.rows.set(spent.id, { ...h.repository.rows.get(spent.id)!, receiptPollUntil: new Date(Date.now() - 1000).toISOString() });
+    h.repository.rows.set(spent.id, {
+      ...h.repository.rows.get(spent.id)!,
+      receiptPollUntil: new Date(h.startedAt - 1000).toISOString(),
+    });
     const conflicted = await h.submitted(2);
     h.repository.rows.set(conflicted.id, { ...h.repository.rows.get(conflicted.id)!, failureReason: 'hash_conflict' });
-    const submitting = (await h.repository.admit(operationCandidate({ profileName: 'alias-3', nodeAddress: node(3) }))).operation;
-    const { operation: fourth } = await h.repository.admit(operationCandidate({ profileName: 'alias-4', nodeAddress: node(4) }));
+    const submitting = (await h.repository.admit(operationCandidate({ profileName: 'alias-3', nodeAddress: node(3) })))
+      .operation;
+    const { operation: fourth } = await h.repository.admit(
+      operationCandidate({ profileName: 'alias-4', nodeAddress: node(4) }),
+    );
     await h.repository.claimDispatch(fourth.id);
-    const unknown = await h.repository.recordSubmission(fourth.id, { state: 'unknown', transactionHash: null, failureReason: 'response_unavailable' });
+    const unknown = await h.repository.recordSubmission(fourth.id, {
+      state: 'unknown',
+      transactionHash: null,
+      failureReason: 'response_unavailable',
+    });
     const poller = h.poller();
     t.after(() => poller.stop());
     poller.start();
@@ -136,11 +176,14 @@ describe('ChequebookReceiptPoller', () => {
     await h.ticks.fire();
     assert.deepEqual(h.checked, []);
     assert.deepEqual(h.inspected, []);
-    assert.deepEqual([spent, conflicted, submitting, unknown].map(row => row.state), ['submitted', 'submitted', 'submitting', 'unknown']);
+    assert.deepEqual(
+      [spent, conflicted, submitting, unknown].map((row) => row.state),
+      ['submitted', 'submitted', 'submitting', 'unknown'],
+    );
     assert.deepEqual(h.lines, []);
   });
 
-  it('carries on through a journal failure on one row and still schedules the next tick', async t => {
+  it('carries on through a journal failure on one row and still schedules the next tick', async (t) => {
     let failing: string | null = null;
     const h = harness({ observation: () => settled, failOn: () => failing });
     const first = await h.submitted(1);
@@ -159,14 +202,29 @@ describe('ChequebookReceiptPoller', () => {
     assert.equal((await h.repository.findById(second.id))?.state, 'settled');
   });
 
-  it('starts no batch while one is still running, however long a check takes', async t => {
+  it('starts no batch while one is still running, however long a check takes', async (t) => {
     let release!: () => void;
-    const held = new Promise<void>(resolve => { release = resolve; });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const h = harness();
     const row = await h.submitted(1);
-    const slow = { check: async (id: string) => { h.checked.push(id); await held; return h.receipts.check(id); } };
-    const poller = new ChequebookReceiptPoller(h.repository, slow, { intervalMs: 50, schedule: h.ticks.schedule, log: h.log });
-    t.after(async () => { release(); await poller.stop(); });
+    const slow = {
+      check: async (id: string) => {
+        h.checked.push(id);
+        await held;
+        return h.receipts.check(id);
+      },
+    };
+    const poller = new ChequebookReceiptPoller(h.repository, slow, {
+      intervalMs: 50,
+      schedule: h.ticks.schedule,
+      log: h.log,
+    });
+    t.after(async () => {
+      release();
+      await poller.stop();
+    });
     poller.start();
     await drain();
     assert.deepEqual(h.checked, [row.id]);
@@ -179,12 +237,24 @@ describe('ChequebookReceiptPoller', () => {
 
   it('waits for the running batch and schedules nothing more once stopped', async () => {
     let release!: () => void;
-    const held = new Promise<void>(resolve => { release = resolve; });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const h = harness();
     const row = await h.submitted(1);
     let finished = false;
-    const slow = { check: async (id: string) => { await held; finished = true; return h.receipts.check(id); } };
-    const poller = new ChequebookReceiptPoller(h.repository, slow, { intervalMs: 50, schedule: h.ticks.schedule, log: h.log });
+    const slow = {
+      check: async (id: string) => {
+        await held;
+        finished = true;
+        return h.receipts.check(id);
+      },
+    };
+    const poller = new ChequebookReceiptPoller(h.repository, slow, {
+      intervalMs: 50,
+      schedule: h.ticks.schedule,
+      log: h.log,
+    });
     poller.start();
     await drain();
     const stopping = poller.stop();
@@ -202,9 +272,21 @@ describe('ChequebookReceiptPoller', () => {
     await h.submitted(1);
     await h.submitted(2);
     let release!: () => void;
-    const held = new Promise<void>(resolve => { release = resolve; });
-    const slow = { check: async (id: string) => { h.checked.push(id); await held; return h.receipts.check(id); } };
-    const poller = new ChequebookReceiptPoller(h.repository, slow, { intervalMs: 50, schedule: h.ticks.schedule, log: h.log });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const slow = {
+      check: async (id: string) => {
+        h.checked.push(id);
+        await held;
+        return h.receipts.check(id);
+      },
+    };
+    const poller = new ChequebookReceiptPoller(h.repository, slow, {
+      intervalMs: 50,
+      schedule: h.ticks.schedule,
+      log: h.log,
+    });
     poller.start();
     await drain();
     assert.equal(h.checked.length, 1, 'the batch is inside its first row');
@@ -239,7 +321,7 @@ describe('ChequebookReceiptPoller', () => {
     assert.deepEqual(h.ticks.scheduled, []);
   });
 
-  it('logs one line naming operation ids and observation kinds, and nothing else', async t => {
+  it('logs one line naming operation ids and observation kinds, and nothing else', async (t) => {
     let failing: string | null = null;
     const h = harness({ observation: () => settled, failOn: () => failing });
     const first = await h.submitted(1);
@@ -253,7 +335,8 @@ describe('ChequebookReceiptPoller', () => {
     const line = h.lines[0]!;
     assert.match(line, new RegExp(`${first.id} settled`));
     assert.match(line, new RegExp(`${second.id} journal_error`));
-    for (const secret of ['http', 'socket', 'Error', 'stack', hash(1), node(1)]) assert.equal(line.includes(secret), false, `${secret} must not reach the log`);
+    for (const secret of ['http', 'socket', 'Error', 'stack', hash(1), node(1)])
+      assert.equal(line.includes(secret), false, `${secret} must not reach the log`);
     failing = null;
     await h.ticks.fire();
     assert.equal(h.lines.length, 2);
@@ -264,7 +347,9 @@ describe('ChequebookReceiptPoller', () => {
   it('warns rather than notes when the journal cannot be read', async () => {
     const h = harness();
     await h.submitted(1);
-    h.repository.listAwaitingReceipt = async () => { throw new Error('synthetic-journal-failure'); };
+    h.repository.listAwaitingReceipt = async () => {
+      throw new Error('synthetic-journal-failure');
+    };
     const poller = h.poller();
     poller.start();
     await drain();
@@ -274,7 +359,7 @@ describe('ChequebookReceiptPoller', () => {
     await poller.stop();
   });
 
-  it('reads at most one batch of due rows and defaults to the shared interval', async t => {
+  it('reads at most one batch of due rows and defaults to the shared interval', async (t) => {
     const h = harness();
     for (const index of [1, 2, 3]) await h.submitted(index);
     const poller = h.poller({ batchLimit: 2 });
@@ -282,7 +367,15 @@ describe('ChequebookReceiptPoller', () => {
     poller.start();
     await drain();
     assert.equal(h.checked.length, 2);
-    const shared = new ChequebookReceiptPoller(h.repository, { check: async () => { throw new ChequebookJournalError(); } }, { schedule: h.ticks.schedule });
+    const shared = new ChequebookReceiptPoller(
+      h.repository,
+      {
+        check: async () => {
+          throw new ChequebookJournalError();
+        },
+      },
+      { schedule: h.ticks.schedule },
+    );
     shared.start();
     await drain();
     assert.equal(h.ticks.scheduled.at(-1)?.milliseconds, RECEIPT_POLL_INTERVAL_MS);

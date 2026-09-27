@@ -1,5 +1,6 @@
 import { Autocomplete, Chip, Stack, TextField, Typography } from '@mui/material';
 import { DesktopDatePicker } from '@mui/x-date-pickers/DesktopDatePicker';
+import { pickersInputBaseClasses } from '@mui/x-date-pickers/PickersTextField';
 import dayjs, { type Dayjs } from 'dayjs';
 
 import { DATE_FORMAT } from '../../dateUtil';
@@ -42,13 +43,7 @@ const digitsOf = (text: string) => text.replace(/\D/g, '');
  * dayjs lives at this boundary only: the form state is the same
  * `datetime-local` string the API helpers have always converted.
  */
-export function ScheduleField({
-  value,
-  onChange,
-  error = false,
-  disabled = false,
-  helperText,
-}: ScheduleFieldProps) {
+export function ScheduleField({ value, onChange, error = false, disabled = false, helperText }: ScheduleFieldProps) {
   const now = new Date();
   const picks = quickPicks(now);
   const caption = describeSchedule(value, now);
@@ -85,13 +80,7 @@ export function ScheduleField({
 
   return (
     <Stack spacing={1}>
-      <Stack
-        direction="row"
-        spacing={2}
-        useFlexGap
-        flexWrap="wrap"
-        alignItems="flex-start"
-      >
+      <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <DesktopDatePicker
           label="Scheduled Date *"
           value={dateToDayjs(date)}
@@ -100,7 +89,13 @@ export function ScheduleField({
           disablePast={floored}
           minDate={floor}
           format={DATE_FORMAT}
-          sx={{ flex: '1 1 14rem' }}
+          sx={{
+            flex: '1 1 14rem',
+            // The pickers' section field dims a locked date to the faint
+            // action.disabled grey, while the time field beside it keeps
+            // text.disabled. Keep the two locked fields reading alike.
+            [`& .${pickersInputBaseClasses.root}.${pickersInputBaseClasses.disabled}`]: { color: 'text.disabled' },
+          }}
           slotProps={{
             textField: {
               id: 'scheduled-date',
@@ -138,26 +133,15 @@ export function ScheduleField({
           filterOptions={(options, { inputValue }) => {
             const typed = digitsOf(inputValue);
             if (!typed) return options;
-            return options.filter((option) =>
-              digitsOf(option).startsWith(typed),
-            );
+            return options.filter((option) => digitsOf(option).startsWith(typed));
           }}
-          getOptionDisabled={(option) =>
-            floored && isSlotPast(date || todayValue(now), option, now)
-          }
+          getOptionDisabled={(option) => floored && isSlotPast(date || todayValue(now), option, now)}
           sx={{ flex: '1 1 10rem' }}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              label="Scheduled Time *"
-              fullWidth
-              error={error}
-            />
-          )}
+          renderInput={(params) => <TextField {...params} label="Scheduled Time *" fullWidth error={error} />}
         />
       </Stack>
       {disabled ? null : (
-        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+        <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
           {picks.map((pick) => (
             <Chip
               key={pick.key}
@@ -171,7 +155,7 @@ export function ScheduleField({
         </Stack>
       )}
       {caption ? (
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
           {caption}
         </Typography>
       ) : null}

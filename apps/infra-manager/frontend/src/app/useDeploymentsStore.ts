@@ -1,12 +1,4 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   type ConfiguredBeeRpcEndpoint,
@@ -122,12 +114,11 @@ export function useDeploymentsStore(): DeploymentsStore {
   const [groups, setGroups] = useState<DeploymentGroup[]>([]);
   const [serverHost, setServerHost] = useState(window.location.hostname);
   const [hostPassphrase, setHostPassphrase] = useState<string | null>(null);
-  const [chequebookFloorBzz, setChequebookFloorBzz] = useState(
-    DEFAULT_CHEQUEBOOK_FLOOR_BZZ,
-  );
-  const [beeRpcEndpoint, setBeeRpcEndpoint] = useState<ConfiguredBeeRpcEndpoint>(
-    () => ({ configured: false, host: null }),
-  );
+  const [chequebookFloorBzz, setChequebookFloorBzz] = useState(DEFAULT_CHEQUEBOOK_FLOOR_BZZ);
+  const [beeRpcEndpoint, setBeeRpcEndpoint] = useState<ConfiguredBeeRpcEndpoint>(() => ({
+    configured: false,
+    host: null,
+  }));
   const [connected, setConnected] = useState(false);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -143,13 +134,13 @@ export function useDeploymentsStore(): DeploymentsStore {
     const fetchStartedAt = Date.now();
     fetchProfiles()
       .then((next) => {
-        setProfiles((previous) =>
-          previous ? reconcileProfiles(previous, next, fetchStartedAt) : next,
-        );
+        setProfiles((previous) => (previous ? reconcileProfiles(previous, next, fetchStartedAt) : next));
         setLoadError(null);
       })
       .catch((error: unknown) => setLoadError(getErrorMessage(error)));
-    fetchGroups().then(setGroups).catch(() => undefined);
+    fetchGroups()
+      .then(setGroups)
+      .catch(() => undefined);
   }, []);
 
   const reloadVersions = useCallback(() => {
@@ -180,15 +171,14 @@ export function useDeploymentsStore(): DeploymentsStore {
         return true;
       });
     });
-    fetchGroups().then(setGroups).catch(() => undefined);
+    fetchGroups()
+      .then(setGroups)
+      .catch(() => undefined);
   }, []);
 
   const log = useCallback((text: string, tone: Tone) => {
     setActivity((prev) =>
-      [
-        { id: nextActivityId.current++, time: nowTime(), text, tone },
-        ...prev,
-      ].slice(0, ACTIVITY_LIMIT),
+      [{ id: nextActivityId.current++, time: nowTime(), text, tone }, ...prev].slice(0, ACTIVITY_LIMIT),
     );
   }, []);
 
@@ -248,11 +238,11 @@ export function useDeploymentsStore(): DeploymentsStore {
 
           'profile.deleted': (event: MessageEvent<string>) => {
             const { name } = JSON.parse(event.data) as { name: string };
-            setProfiles((prev) =>
-              prev ? prev.filter((p) => p.name !== name) : prev,
-            );
+            setProfiles((prev) => (prev ? prev.filter((p) => p.name !== name) : prev));
             log(`${name} removed`, 'gray');
-            fetchGroups().then(setGroups).catch(() => undefined);
+            fetchGroups()
+              .then(setGroups)
+              .catch(() => undefined);
           },
 
           'engine.restarted': (event: MessageEvent<string>) => {

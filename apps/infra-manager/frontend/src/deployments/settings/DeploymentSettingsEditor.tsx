@@ -59,7 +59,9 @@ function recreatedNothing(applied: DeploymentSettingsApplied): boolean {
 }
 
 function refusalOf(caught: unknown): { message: string; reload: boolean } {
-  return caught instanceof ApiError ? saveRefusalOf(caught.code, caught.message) : { message: getErrorMessage(caught), reload: false };
+  return caught instanceof ApiError
+    ? saveRefusalOf(caught.code, caught.message)
+    : { message: getErrorMessage(caught), reload: false };
 }
 
 /** The deployment's own engine settings the list holds, by key, in the order the engine lists them. */
@@ -129,7 +131,12 @@ export function DeploymentSettingsEditor({
   if (!catalog) {
     if (!load.failure) {
       return (
-        <Stack alignItems="center" sx={{ py: 3 }}>
+        <Stack
+          sx={{
+            alignItems: 'center',
+            py: 3,
+          }}
+        >
           <CircularProgress size={24} aria-label="Reading the settings" />
         </Stack>
       );
@@ -211,7 +218,12 @@ export function DeploymentSettingsEditor({
 
   return (
     <Stack spacing={2} sx={{ minWidth: 0 }}>
-      <Typography variant="body2" color="text.secondary">
+      <Typography
+        variant="body2"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
         {WHAT_SAVING_DOES}
       </Typography>
 
@@ -228,7 +240,12 @@ export function DeploymentSettingsEditor({
       )}
 
       {unrecorded && (
-        <Typography variant="caption" color="text.secondary">
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           {UNRECORDED_NOTE}
         </Typography>
       )}
@@ -258,20 +275,26 @@ export function DeploymentSettingsEditor({
         </Alert>
       )}
 
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
-        <Button
-          variant="contained"
-          size="small"
-          disabled={disabled || saveOff}
-          onClick={() => void save()}
-        >
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        sx={{
+          flexWrap: 'wrap',
+          alignItems: 'center',
+        }}
+      >
+        <Button variant="contained" size="small" disabled={disabled || saveOff} onClick={() => void save()}>
           Save
         </Button>
         <Button size="small" disabled={disabled || !hasEdits} onClick={() => edit(() => EMPTY_DRAFT)}>
           Discard
         </Button>
         <Box sx={{ flex: '1 1 auto' }} />
-        <Typography variant="caption" color={refused.length > 0 ? 'error.main' : 'text.secondary'} sx={{ overflowWrap: 'anywhere' }}>
+        <Typography
+          variant="caption"
+          sx={{ color: refused.length > 0 ? 'error.main' : 'text.secondary', overflowWrap: 'anywhere' }}
+        >
           {saveNote(pending.length, refused)}
         </Typography>
       </Stack>
@@ -285,13 +308,7 @@ export function DeploymentSettingsEditor({
   );
 }
 
-function LoadFailureAlert({
-  failure,
-  onRetry,
-}: {
-  failure: LoadFailure;
-  onRetry: () => void;
-}) {
+function LoadFailureAlert({ failure, onRetry }: { failure: LoadFailure; onRetry: () => void }) {
   return (
     <Alert
       severity={failure.severity}

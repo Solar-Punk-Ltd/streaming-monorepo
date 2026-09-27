@@ -50,17 +50,17 @@ The shared `SessionInfo` returned by `GET /auth/session` includes the existing n
 
 All routes remain behind the existing session gate. Writes retain the existing same-site request header requirement. The submitting and asserting identity is `user:<signed-in-user-id>`, derived by the server. The body cannot select an actor, chain, contract, RPC endpoint or Bee endpoint. Unknown body or query fields are rejected.
 
-| Method and path | Input | Result |
-| --- | --- | --- |
-| GET `/profiles/:name/chequebook` | Profile name | Existing balance summary |
-| POST `/profiles/:name/chequebook/deposit` | `{requestId, profileInstanceId, expectedAccountId, amount}` | `ChequebookAdmissionDetail` |
-| POST `/profiles/:name/chequebook/withdraw` | `{requestId, profileInstanceId, expectedAccountId, amount}` | `ChequebookAdmissionDetail` |
-| GET `/chequebook/operations` | Optional `limit`, `cursor`, `profileName` | `ChequebookHistoryPage` |
-| GET `/chequebook/operations/by-request/:requestId` | Exact intent UUID | `ChequebookOperationDetail` |
-| GET `/chequebook/operations/:id` | Saved operation UUID | `ChequebookOperationDetail` |
-| POST `/chequebook/operations/:id/check` | `{expectedAccountId}` | `ChequebookOperationDetail` |
-| POST `/chequebook/operations/:id/resolve` | `{transactionHash, expectedAccountId}` | `ChequebookOperationDetail` |
-| POST `/chequebook/operations/:id/assert` | `{amountPlur, confirmation, expectedAccountId, expectedRevision}` | `ChequebookOperationDetail` |
+| Method and path                                    | Input                                                             | Result                      |
+| -------------------------------------------------- | ----------------------------------------------------------------- | --------------------------- |
+| GET `/profiles/:name/chequebook`                   | Profile name                                                      | Existing balance summary    |
+| POST `/profiles/:name/chequebook/deposit`          | `{requestId, profileInstanceId, expectedAccountId, amount}`       | `ChequebookAdmissionDetail` |
+| POST `/profiles/:name/chequebook/withdraw`         | `{requestId, profileInstanceId, expectedAccountId, amount}`       | `ChequebookAdmissionDetail` |
+| GET `/chequebook/operations`                       | Optional `limit`, `cursor`, `profileName`                         | `ChequebookHistoryPage`     |
+| GET `/chequebook/operations/by-request/:requestId` | Exact intent UUID                                                 | `ChequebookOperationDetail` |
+| GET `/chequebook/operations/:id`                   | Saved operation UUID                                              | `ChequebookOperationDetail` |
+| POST `/chequebook/operations/:id/check`            | `{expectedAccountId}`                                             | `ChequebookOperationDetail` |
+| POST `/chequebook/operations/:id/resolve`          | `{transactionHash, expectedAccountId}`                            | `ChequebookOperationDetail` |
+| POST `/chequebook/operations/:id/assert`           | `{amountPlur, confirmation, expectedAccountId, expectedRevision}` | `ChequebookOperationDetail` |
 
 Every submission includes the saved positive safe-integer account ID as `expectedAccountId`. The route compares it with the authenticated user before any preparation, journal access or Bee action. A different session account receives the fixed 409 `account_changed` refusal. This field cannot choose the actor. Returning to the original account permits exact request replay even after profile deletion.
 

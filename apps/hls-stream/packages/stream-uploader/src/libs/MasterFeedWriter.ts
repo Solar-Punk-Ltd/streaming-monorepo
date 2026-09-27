@@ -35,7 +35,10 @@ export class MasterFeedWriter {
   private queue = new PQueue({ concurrency: 1 });
   private logger = Logger.getInstance();
 
-  constructor(private readonly publishers: BeePublisherPool, private readonly signer: PrivateKey) {}
+  constructor(
+    private readonly publishers: BeePublisherPool,
+    private readonly signer: PrivateKey,
+  ) {}
 
   public get owner(): string {
     return this.signer.publicKey().address().toHex();
@@ -63,7 +66,7 @@ export class MasterFeedWriter {
       const playlist = buildMasterPlaylist(this.owner, renditions);
       const publisher = this.publishers.coordinator();
 
-      const writer = publisher.bee.makeFeedWriter(topic, this.signer);
+      const writer = publisher.bee.feed.makeWriter(topic, this.signer);
       await retryUntilDeadlineAsync(
         () => writer.uploadPayload(publisher.stamp, playlist, { index, deferred: true }),
         MASTER_RETRY_WINDOW_MS,
@@ -101,7 +104,7 @@ export class MasterFeedWriter {
 
   private async readIndex(topic: Topic): Promise<FeedIndex | null> {
     try {
-      const reader = this.publishers.coordinator().bee.makeFeedReader(topic, this.signer.publicKey().address());
+      const reader = this.publishers.coordinator().bee.feed.makeReader(topic, this.signer.publicKey().address());
       const data = await reader.downloadPayload();
       return data.feedIndex;
     } catch (error) {

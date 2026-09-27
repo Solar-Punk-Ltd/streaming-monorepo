@@ -12,13 +12,7 @@ import { MONO_STACK } from '../app/theme';
 import { useToast } from '../app/ToastProvider';
 import { useDeployments } from '../app/useDeploymentsStore';
 import { nodeModeLabel } from '../deployments/nodeText';
-import {
-  ownsAnyBeeNode,
-  servicesOf,
-  SHAPE_LABEL,
-  shapeOf,
-  streamersOf,
-} from '../deployments/shape';
+import { ownsAnyBeeNode, servicesOf, SHAPE_LABEL, shapeOf, streamersOf } from '../deployments/shape';
 import { updateProfile } from '../data';
 import { hostFor } from '../urls';
 import {
@@ -40,18 +34,11 @@ import { addressProblem, notesProblem, stampIdProblem } from './validation';
 
 const savedMessage = (name: string): string => `Saved. Redeploying ${name}…`;
 
-const STAMP_HINT =
-  'Usually set from the Storage card. Paste one here only to point at a batch bought elsewhere.';
+const STAMP_HINT = 'Usually set from the Storage card. Paste one here only to point at a batch bought elsewhere.';
 
 const MODE_HINT = 'Chosen when the node is created. Remove and recreate it to change this.';
 
-export function EditDeploymentDrawer({
-  name,
-  onClose,
-}: {
-  name: string;
-  onClose: () => void;
-}) {
+export function EditDeploymentDrawer({ name, onClose }: { name: string; onClose: () => void }) {
   const { profiles, serverHost, beeRpcEndpoint, mergeProfiles } = useDeployments();
   const toast = useToast();
   const profile = (profiles ?? []).find((entry) => entry.name === name) ?? null;
@@ -66,8 +53,7 @@ export function EditDeploymentDrawer({
 
   if (!profile) return null;
 
-  const update = (patch: Partial<DeploymentEdits>) =>
-    setEdits((prev) => ({ ...prev, ...patch }));
+  const update = (patch: Partial<DeploymentEdits>) => setEdits((prev) => ({ ...prev, ...patch }));
 
   const shown = fieldsFor(profile);
   const problem = editProblem(edits, shown, {
@@ -80,10 +66,7 @@ export function EditDeploymentDrawer({
     setSaving(true);
     setError(null);
     try {
-      const saved = await updateProfile(
-        profile.name,
-        bodyFor(profile, initial, edits, shown, loadedNotesRevision),
-      );
+      const saved = await updateProfile(profile.name, bodyFor(profile, initial, edits, shown, loadedNotesRevision));
       mergeProfiles([saved]);
       onClose();
       toast(savedMessage(profile.name));
@@ -142,7 +125,9 @@ export function EditDeploymentDrawer({
             value={edits.stampId}
             onChange={(event) => update({ stampId: event.target.value })}
             placeholder="64 hex characters"
-            inputProps={{ style: { fontFamily: MONO_STACK } }}
+            slotProps={{
+              htmlInput: { style: { fontFamily: MONO_STACK } },
+            }}
           />
         </FormField>
       )}
@@ -159,7 +144,9 @@ export function EditDeploymentDrawer({
             value={edits.beeUrl}
             onChange={(event) => update({ beeUrl: event.target.value })}
             placeholder="http://10.0.0.7:1633"
-            inputProps={{ style: { fontFamily: MONO_STACK } }}
+            slotProps={{
+              htmlInput: { style: { fontFamily: MONO_STACK } },
+            }}
           />
         </FormField>
       )}
@@ -171,12 +158,7 @@ export function EditDeploymentDrawer({
       )}
 
       {shown.rpcEndpoint && (
-        <RpcEndpointField
-          profile={profile}
-          edits={edits}
-          managerEndpoint={beeRpcEndpoint}
-          onChange={update}
-        />
+        <RpcEndpointField profile={profile} edits={edits} managerEndpoint={beeRpcEndpoint} onChange={update} />
       )}
 
       {shown.poolString && (
@@ -192,7 +174,9 @@ export function EditDeploymentDrawer({
             minRows={3}
             value={edits.poolString}
             onChange={(event) => update({ poolString: event.target.value })}
-            inputProps={{ style: { fontFamily: MONO_STACK } }}
+            slotProps={{
+              htmlInput: { style: { fontFamily: MONO_STACK } },
+            }}
           />
         </FormField>
       )}
@@ -204,14 +188,17 @@ export function EditDeploymentDrawer({
           error={addressProblem(edits.feedOwner)}
           hint={
             streams.length > 0 ? (
-              <Stack direction="row" spacing={0.5} flexWrap="wrap" alignItems="center">
+              <Stack
+                direction="row"
+                spacing={0.5}
+                sx={{
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                }}
+              >
                 <span>On this manager:</span>
                 {streams.map((stream) => (
-                  <Button
-                    key={stream.name}
-                    size="small"
-                    onClick={() => update({ feedOwner: stream.public_key ?? '' })}
-                  >
+                  <Button key={stream.name} size="small" onClick={() => update({ feedOwner: stream.public_key ?? '' })}>
                     {stream.name}
                   </Button>
                 ))}
@@ -227,7 +214,9 @@ export function EditDeploymentDrawer({
             value={edits.feedOwner}
             onChange={(event) => update({ feedOwner: event.target.value })}
             placeholder="0x plus 40 hex characters"
-            inputProps={{ style: { fontFamily: MONO_STACK } }}
+            slotProps={{
+              htmlInput: { style: { fontFamily: MONO_STACK } },
+            }}
           />
         </FormField>
       )}
@@ -242,7 +231,9 @@ export function EditDeploymentDrawer({
           error={notesProblem(edits.notes) !== null}
           value={edits.notes}
           onChange={(event) => update({ notes: event.target.value })}
-          inputProps={{ 'aria-describedby': messageIdFor('edit-notes') }}
+          slotProps={{
+            htmlInput: { 'aria-describedby': messageIdFor('edit-notes') },
+          }}
         />
       </FormField>
     </EditDrawerFrame>

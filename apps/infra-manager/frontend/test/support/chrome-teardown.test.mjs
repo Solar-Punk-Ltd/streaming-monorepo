@@ -62,7 +62,12 @@ const alive = (pid) => {
   }
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
-    return stat.slice(stat.lastIndexOf(')') + 1).trim().startsWith('Z') === false;
+    return (
+      stat
+        .slice(stat.lastIndexOf(')') + 1)
+        .trim()
+        .startsWith('Z') === false
+    );
   } catch {
     return true;
   }
@@ -71,7 +76,11 @@ const alive = (pid) => {
 /** Whatever the case under test left, swept by process group, so nothing of this file outlives it. */
 function sweepAfter(t, child, profile) {
   t.after(async () => {
-    try { process.kill(-child.pid, 'SIGKILL'); } catch { /* the group is already gone */ }
+    try {
+      process.kill(-child.pid, 'SIGKILL');
+    } catch {
+      /* the group is already gone */
+    }
     await rm(profile, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   });
 }
@@ -82,10 +91,17 @@ async function syntheticChrome(t) {
   await mkdir(join(profile, 'Default'));
   const child = spawn(process.execPath, ['-e', MAIN, profile], { stdio: 'ignore', detached: true });
   sweepAfter(t, child, profile);
-  const helperPid = await waitFor(async () => {
-    try { return Number(await readFile(join(profile, 'helper.pid'), 'utf8')); }
-    catch { return null; }
-  }, Boolean, 'the synthetic helper to report its pid');
+  const helperPid = await waitFor(
+    async () => {
+      try {
+        return Number(await readFile(join(profile, 'helper.pid'), 'utf8'));
+      } catch {
+        return null;
+      }
+    },
+    Boolean,
+    'the synthetic helper to report its pid',
+  );
   return { profile, child, helperPid };
 }
 
@@ -95,7 +111,7 @@ function reporting() {
   return { said, reporter: { diagnostic: (line) => said.push(line) } };
 }
 
-test('the teardown ends the helper the browser started, and not only the browser', async t => {
+test('the teardown ends the helper the browser started, and not only the browser', async (t) => {
   const { profile, child, helperPid } = await syntheticChrome(t);
   const { said, reporter } = reporting();
 
@@ -120,12 +136,16 @@ const refusing = (code, profile, attempts) => () => {
   return Promise.reject(error);
 };
 
-test('a profile that stays busy is retried for its budget and then given up on', async t => {
+test('a profile that stays busy is retried for its budget and then given up on', async (t) => {
   const profile = await emptyProfile(t);
   const attempts = [];
   const started = Date.now();
 
-  const failure = await removeProfile(profile, { remove: refusing('ENOTEMPTY', profile, attempts), budgetMs: 400, stepMs: 50 });
+  const failure = await removeProfile(profile, {
+    remove: refusing('ENOTEMPTY', profile, attempts),
+    budgetMs: 400,
+    stepMs: 50,
+  });
 
   assert.ok(failure instanceof Error, 'the removal reported what stopped it rather than throwing');
   assert.ok(failure.message.includes(profile), `the removal named the profile it could not remove: ${failure.message}`);
@@ -133,19 +153,23 @@ test('a profile that stays busy is retried for its budget and then given up on',
   assert.ok(Date.now() - started >= 400, 'it kept trying for the whole budget');
 });
 
-test('a refusal that waiting cannot fix is reported at once rather than waited out', async t => {
+test('a refusal that waiting cannot fix is reported at once rather than waited out', async (t) => {
   const profile = await emptyProfile(t);
   const attempts = [];
   const started = Date.now();
 
-  const failure = await removeProfile(profile, { remove: refusing('EACCES', profile, attempts), budgetMs: 10_000, stepMs: 250 });
+  const failure = await removeProfile(profile, {
+    remove: refusing('EACCES', profile, attempts),
+    budgetMs: 10_000,
+    stepMs: 250,
+  });
 
   assert.equal(failure.code, 'EACCES');
   assert.equal(attempts.length, 1, 'a permission is not a thing that stops being true');
   assert.ok(Date.now() - started < 1000, 'and nothing is gained by spending the budget on it');
 });
 
-test('a profile that cannot be removed is a diagnostic and never a failed suite', async t => {
+test('a profile that cannot be removed is a diagnostic and never a failed suite', async (t) => {
   const { profile, child } = await syntheticChrome(t);
   const { said, reporter } = reporting();
   const refuses = () => {

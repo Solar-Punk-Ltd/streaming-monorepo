@@ -1,13 +1,4 @@
-import {
-  Box,
-  Button,
-  IconButton,
-  InputAdornment,
-  Stack,
-  TextField,
-  Tooltip,
-  Typography,
-} from '@mui/material';
+import { Box, Button, IconButton, InputAdornment, Stack, TextField, Tooltip, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import MenuIcon from '@mui/icons-material/Menu';
 import SearchIcon from '@mui/icons-material/Search';
@@ -40,9 +31,9 @@ export function TopBar({
   return (
     <Stack
       direction="row"
-      alignItems="center"
       spacing={1.5}
       sx={{
+        alignItems: 'center',
         px: { xs: 2, md: 3.5 },
         py: 1.75,
         position: 'sticky',
@@ -53,11 +44,7 @@ export function TopBar({
         borderColor: 'divider',
       }}
     >
-      <IconButton
-        aria-label="open navigation"
-        onClick={onOpenNav}
-        sx={{ display: { md: 'none' } }}
-      >
+      <IconButton aria-label="open navigation" onClick={onOpenNav} sx={{ display: { md: 'none' } }}>
         <MenuIcon />
       </IconButton>
       <Typography
@@ -96,9 +83,20 @@ export function TopBar({
             : 'Not connected to the manager event stream. Reload the page.'
         }
       >
-        <Stack direction="row" spacing={0.75} alignItems="center">
+        <Stack
+          direction="row"
+          spacing={0.75}
+          sx={{
+            alignItems: 'center',
+          }}
+        >
           <StatusDot tone={connected ? 'ok' : 'err'} />
-          <Typography variant="caption" color="text.secondary">
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
             {connected ? 'live' : 'offline'}
           </Typography>
         </Stack>

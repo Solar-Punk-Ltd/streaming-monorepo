@@ -8,17 +8,8 @@
  * the life it has left, because the same balance now pays for twice the chunks.
  * Both keep the batch id, so nothing that names the batch has to change with it.
  */
-import {
-  MAX_STAMP_DEPTH,
-  MINIMUM_STAMP_VALIDITY_SECONDS,
-  stampCostPlur,
-  stampTtlSeconds,
-} from './stampCost.js';
-import {
-  fullestBucketFillRatio,
-  stampBucketCapacity,
-  type StampFill,
-} from './stampHealth.js';
+import { MAX_STAMP_DEPTH, MINIMUM_STAMP_VALIDITY_SECONDS, stampCostPlur, stampTtlSeconds } from './stampCost.js';
+import { fullestBucketFillRatio, stampBucketCapacity, type StampFill } from './stampHealth.js';
 
 /**
  * What Bee answers a top-up or a dilute with: the batch, whose id the change
@@ -92,10 +83,7 @@ function isKnownTtl(ttl: number | undefined): ttl is number {
  * dilution: a depth that is not deeper than the batch's own, one past
  * `MAX_STAMP_DEPTH`, or a batch whose own depth the node did not report.
  */
-export function dilutionPreview(
-  stamp: StampReading,
-  newDepth: number,
-): DilutionPreview | null {
+export function dilutionPreview(stamp: StampReading, newDepth: number): DilutionPreview | null {
   const { depth } = stamp;
   if (!isWholeNumber(depth) || !isWholeNumber(newDepth)) return null;
   if (newDepth <= depth || newDepth > MAX_STAMP_DEPTH) return null;

@@ -108,10 +108,7 @@ describe('what the Review step says about the passphrase', () => {
     const context = hostWith(null);
     const state = { ...initialWizardState({ goal: 'stream' }, context), passMode: 'host' as const };
 
-    assert.equal(
-      passphraseSummary(state, context),
-      'none on this host, so the ingest is unencrypted',
-    );
+    assert.equal(passphraseSummary(state, context), 'none on this host, so the ingest is unencrypted');
   });
 
   it('says generated, and your own', () => {
@@ -119,10 +116,7 @@ describe('what the Review step says about the passphrase', () => {
     const generated = initialWizardState({ goal: 'stream' }, context);
 
     assert.equal(passphraseSummary(generated, context), 'generated for this deployment');
-    assert.equal(
-      passphraseSummary({ ...generated, passMode: 'custom' }, context),
-      'a passphrase of your own',
-    );
+    assert.equal(passphraseSummary({ ...generated, passMode: 'custom' }, context), 'a passphrase of your own');
   });
 });
 
@@ -252,7 +246,10 @@ describe('the advanced settings a new deployment starts with', () => {
 
   it('starts them over with a new goal, whose list is another one, and keeps them for the same goal', () => {
     const context = hostWith(null);
-    const typed: WizardState = { ...initialWizardState({ goal: 'stream' }, context), stackSettings: { LOG_LEVEL: 'debug' } };
+    const typed: WizardState = {
+      ...initialWizardState({ goal: 'stream' }, context),
+      stackSettings: { LOG_LEVEL: 'debug' },
+    };
 
     assert.deepEqual(withGoal(typed, 'viewer', context).stackSettings, {});
     assert.deepEqual(withGoal(typed, 'stream', context).stackSettings, { LOG_LEVEL: 'debug' });

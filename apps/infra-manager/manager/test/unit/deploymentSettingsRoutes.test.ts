@@ -62,12 +62,16 @@ async function appFor(options: { signedIn?: boolean; status?: 'RUNNING' | 'STOPP
   const harness = orchestratorHarness([stored]);
   await harness.versions.setContract(1, {
     ...structuredClone(ALLOCATION_CONTRACT),
-    serviceEnvKeys: { 'stream-uploader': ['ADMIN_API_TOKEN', 'LOG_LEVEL', 'STAMP', 'UPLOADER_START_GATES'], srs: ['SRS_SRT_PORT'] },
+    serviceEnvKeys: {
+      'stream-uploader': ['ADMIN_API_TOKEN', 'LOG_LEVEL', 'STAMP', 'UPLOADER_START_GATES'],
+      srs: ['SRS_SRT_PORT'],
+    },
   });
   await harness.orchestrator.startDeploy(stored, undefined);
   harness.runner.finish(0);
   await untilRunning(harness.profiles, 'stage');
-  if (options.status === 'STOPPED') harness.profiles.rows.set('stage', { ...harness.profiles.rows.get('stage')!, status: 'STOPPED' });
+  if (options.status === 'STOPPED')
+    harness.profiles.rows.set('stage', { ...harness.profiles.rows.get('stage')!, status: 'STOPPED' });
 
   const service = new DeploymentSettingsService(
     harness.profiles.asRepository(),
@@ -104,10 +108,19 @@ describe('GET /profiles/:name/settings', () => {
       const catalog = (await response.json()) as DeploymentSettingsCatalog;
 
       assert.equal(response.headers.get('cache-control'), 'no-store');
-      assert.deepEqual(catalog.entries.map((entry) => entry.key), [
-        'LOG_LEVEL', 'ADMIN_API_TOKEN', 'UPLOADER_START_GATES', 'STAMP',
-        'HLS_FRAGMENT', 'HLS_SEGMENT_MAX', 'HLS_WINDOW', 'SRT_LATENCY',
-      ]);
+      assert.deepEqual(
+        catalog.entries.map((entry) => entry.key),
+        [
+          'LOG_LEVEL',
+          'ADMIN_API_TOKEN',
+          'UPLOADER_START_GATES',
+          'STAMP',
+          'HLS_FRAGMENT',
+          'HLS_SEGMENT_MAX',
+          'HLS_WINDOW',
+          'SRT_LATENCY',
+        ],
+      );
       assert.deepEqual({ engine: catalog.engine, abr: catalog.abr }, { engine: 'srs', abr: false });
       assert.deepEqual(catalog.drift, { keys: [], services: [], fullRedeploy: false });
     } finally {
@@ -123,7 +136,10 @@ describe('PUT /profiles/:name/settings', () => {
       const saved = await call(app, 'PUT', '/profiles/stage/settings', {
         expectedInstanceId: instanceId,
         expectedRevision: 0,
-        entries: [{ key: 'LOG_LEVEL', value: 'warn' }, { key: 'ADMIN_API_TOKEN', value: SECRET }],
+        entries: [
+          { key: 'LOG_LEVEL', value: 'warn' },
+          { key: 'ADMIN_API_TOKEN', value: SECRET },
+        ],
       });
       const catalog = await listed(app);
 
@@ -132,7 +148,11 @@ describe('PUT /profiles/:name/settings', () => {
       const logLevel = catalog.entries.find((entry) => entry.key === 'LOG_LEVEL');
       assert.equal(logLevel?.source, 'deployment');
       assert.equal(logLevel?.value, 'warn');
-      assert.deepEqual(catalog.drift, { keys: ['LOG_LEVEL', 'ADMIN_API_TOKEN'], services: ['stream-uploader'], fullRedeploy: false });
+      assert.deepEqual(catalog.drift, {
+        keys: ['LOG_LEVEL', 'ADMIN_API_TOKEN'],
+        services: ['stream-uploader'],
+        fullRedeploy: false,
+      });
       assert.doesNotMatch(JSON.stringify(catalog), new RegExp(SECRET));
     } finally {
       await app.close();
@@ -142,7 +162,11 @@ describe('PUT /profiles/:name/settings', () => {
   it('refuses a save made against an older revision', async () => {
     const { app, instanceId } = await appFor();
     try {
-      const body = { expectedInstanceId: instanceId, expectedRevision: 0, entries: [{ key: 'LOG_LEVEL', value: 'warn' }] };
+      const body = {
+        expectedInstanceId: instanceId,
+        expectedRevision: 0,
+        entries: [{ key: 'LOG_LEVEL', value: 'warn' }],
+      };
       await call(app, 'PUT', '/profiles/stage/settings', body);
 
       const late = await call(app, 'PUT', '/profiles/stage/settings', body);
@@ -177,9 +201,17 @@ describe('PUT /profiles/:name/settings', () => {
   it('refuses a save of the wrong shape without repeating a value in the refusal', async () => {
     const { app, harness, instanceId } = await appFor();
     try {
-      const wrongShapes = [{ key: 'ADMIN_API_TOKEN', value: SECRET }, [`ADMIN_API_TOKEN=${SECRET}`], `ADMIN_API_TOKEN=${SECRET}`];
+      const wrongShapes = [
+        { key: 'ADMIN_API_TOKEN', value: SECRET },
+        [`ADMIN_API_TOKEN=${SECRET}`],
+        `ADMIN_API_TOKEN=${SECRET}`,
+      ];
       for (const entries of wrongShapes) {
-        const refused = await call(app, 'PUT', '/profiles/stage/settings', { expectedInstanceId: instanceId, expectedRevision: 0, entries });
+        const refused = await call(app, 'PUT', '/profiles/stage/settings', {
+          expectedInstanceId: instanceId,
+          expectedRevision: 0,
+          entries,
+        });
 
         assert.equal(refused.status, 400);
         assert.equal(JSON.stringify(refused.body).includes(SECRET), false, 'the refusal repeats the value');
@@ -268,7 +300,10 @@ function writeEngineSamples(): void {
   }
 }
 
-async function newDeploymentList(app: Awaited<ReturnType<typeof startRouterTestApp>>, query: string): Promise<NewDeploymentSettingsCatalog> {
+async function newDeploymentList(
+  app: Awaited<ReturnType<typeof startRouterTestApp>>,
+  query: string,
+): Promise<NewDeploymentSettingsCatalog> {
   const answered = await call(app, 'GET', `/versions/1/settings-catalog${query}`);
   assert.equal(answered.status, 200, JSON.stringify(answered.body));
   return answered.body as NewDeploymentSettingsCatalog;
@@ -284,10 +319,19 @@ describe('GET /versions/:id/settings-catalog', () => {
       assert.equal(response.status, 200);
       assert.equal(response.headers.get('cache-control'), 'no-store');
       assert.equal(catalog.versionId, 1);
-      assert.deepEqual(catalog.entries.map((entry) => entry.key), ['LOG_LEVEL', 'ADMIN_API_TOKEN', 'UPLOADER_START_GATES', 'STAMP']);
-      assert.deepEqual(catalog.entries.map((entry) => [entry.stored, entry.running]), [
-        [false, 'not-running'], [false, 'not-running'], [false, 'not-running'], [false, 'not-running'],
-      ]);
+      assert.deepEqual(
+        catalog.entries.map((entry) => entry.key),
+        ['LOG_LEVEL', 'ADMIN_API_TOKEN', 'UPLOADER_START_GATES', 'STAMP'],
+      );
+      assert.deepEqual(
+        catalog.entries.map((entry) => [entry.stored, entry.running]),
+        [
+          [false, 'not-running'],
+          [false, 'not-running'],
+          [false, 'not-running'],
+          [false, 'not-running'],
+        ],
+      );
       const stamp = catalog.entries.find((entry) => entry.key === 'STAMP');
       assert.deepEqual({ owner: stamp?.owner, value: stamp?.value }, { owner: 'stamp', value: null });
       assert.equal(harness.profiles.rows.size, 1, 'nothing was created');
@@ -303,8 +347,14 @@ describe('GET /versions/:id/settings-catalog', () => {
       const srs = await newDeploymentList(app, '?kind=streamer');
       const ome = await newDeploymentList(app, '?kind=custom&components=ome,stream-uploader');
 
-      assert.deepEqual(srs.entries.slice(4).map((entry) => entry.key), ['HLS_FRAGMENT', 'SRS_LOG_TANK']);
-      assert.deepEqual(ome.entries.slice(4).map((entry) => entry.key), ['OME_ADMISSION_FAIL_OPEN']);
+      assert.deepEqual(
+        srs.entries.slice(4).map((entry) => entry.key),
+        ['HLS_FRAGMENT', 'SRS_LOG_TANK'],
+      );
+      assert.deepEqual(
+        ome.entries.slice(4).map((entry) => entry.key),
+        ['OME_ADMISSION_FAIL_OPEN'],
+      );
     } finally {
       rmSync(join(root, 'engines'), { recursive: true, force: true });
       await app.close();
@@ -330,14 +380,19 @@ describe('GET /versions/:id/settings-catalog', () => {
     writeFileSync(join(root, '.env'), `ENGINE=srs\nLOG_LEVEL=debug\nADMIN_API_TOKEN=${SECRET}\n`, 'utf8');
     try {
       const answered = await call(app, 'GET', '/versions/1/settings-catalog?kind=streamer');
-      const token = (answered.body as NewDeploymentSettingsCatalog).entries.find((entry) => entry.key === 'ADMIN_API_TOKEN');
+      const token = (answered.body as NewDeploymentSettingsCatalog).entries.find(
+        (entry) => entry.key === 'ADMIN_API_TOKEN',
+      );
 
       assert.equal(answered.status, 200);
-      assert.deepEqual({ versionSet: token?.versionSet, versionValue: token?.versionValue, value: token?.value }, {
-        versionSet: true,
-        versionValue: null,
-        value: null,
-      });
+      assert.deepEqual(
+        { versionSet: token?.versionSet, versionValue: token?.versionValue, value: token?.value },
+        {
+          versionSet: true,
+          versionValue: null,
+          value: null,
+        },
+      );
       assert.doesNotMatch(JSON.stringify(answered.body), new RegExp(SECRET));
     } finally {
       await app.close();
@@ -346,7 +401,12 @@ describe('GET /versions/:id/settings-catalog', () => {
 
   it('refuses a version with no build to read the settings from', async () => {
     const { app, harness } = await appFor();
-    const candidate = await harness.versions.insert({ name: 'candidate', gitRef: 'main', rootPath: join(root, 'candidate'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
+    const candidate = await harness.versions.insert({
+      name: 'candidate',
+      gitRef: 'main',
+      rootPath: join(root, 'candidate'),
+      sourceUrl: SWARM_HLS_STREAM_SOURCE.url,
+    });
     // Published under the builds layout, and its build has not landed.
     Object.assign(candidate, { layout: 'builds', status: 'ready', buildId: null });
     try {

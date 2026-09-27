@@ -51,7 +51,7 @@ async function request(path, method = 'GET', body) {
       ...(cookie ? { cookie } : {}),
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal: AbortSignal.timeout(5000),
   });
   return {
@@ -105,14 +105,20 @@ before(async () => {
   );
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => finish(new Error('Node mode mock did not start')), 8000);
-    const onMessage = (message) => { if (message?.ready) finish(); };
+    const onMessage = (message) => {
+      if (message?.ready) finish();
+    };
     const onExit = () => finish(new Error('Node mode mock exited before startup'));
     const finish = (error) => {
       clearTimeout(timeout);
       child.off('message', onMessage);
       child.off('exit', onExit);
       child.off('error', finish);
-      error ? reject(error) : resolve();
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
     };
     child.on('message', onMessage);
     child.once('exit', onExit);
@@ -131,7 +137,11 @@ after(async () => {
   const exited = once(child, 'exit');
   const timeout = setTimeout(() => child.kill('SIGKILL'), 2000);
   child.kill('SIGTERM');
-  try { await exited; } finally { clearTimeout(timeout); }
+  try {
+    await exited;
+  } finally {
+    clearTimeout(timeout);
+  }
 });
 
 describe('the endpoint the offline manager offers', { concurrency: false, timeout: 20000 }, () => {
@@ -328,9 +338,13 @@ describe('what an edit of that node may change', { concurrency: false, timeout: 
   });
 
   it('refuses a mode that is not the one the node was created with', async () => {
-    await request('/profiles', 'POST', newViewer('offline-fixed-gateway', {
-      node_mode: ULTRA_LIGHT_NODE_MODE,
-    }));
+    await request(
+      '/profiles',
+      'POST',
+      newViewer('offline-fixed-gateway', {
+        node_mode: ULTRA_LIGHT_NODE_MODE,
+      }),
+    );
 
     await running('offline-fixed-gateway');
     const { status, body } = await request('/profiles/offline-fixed-gateway', 'PUT', {

@@ -81,12 +81,14 @@ function TextInput({ entry, value, disabled, problem, onChange, masked }: FieldP
       error={problem !== null}
       helperText={problem ?? hint ?? undefined}
       onChange={(event) => onChange(event.target.value)}
-      inputProps={{
-        ...PLAIN_TEXT_INPUT,
-        ...(masked ? { autoComplete: MASKED_AUTOCOMPLETE } : {}),
-        'aria-label': entry.key,
-        ...(numeric ? { inputMode: entry.field?.kind === 'integer' ? 'numeric' : 'decimal' } : {}),
-        ...(entry.field?.kind === 'url' ? { inputMode: 'url' } : {}),
+      slotProps={{
+        htmlInput: {
+          ...PLAIN_TEXT_INPUT,
+          ...(masked ? { autoComplete: MASKED_AUTOCOMPLETE } : {}),
+          'aria-label': entry.key,
+          ...(numeric ? { inputMode: entry.field?.kind === 'integer' ? 'numeric' : 'decimal' } : {}),
+          ...(entry.field?.kind === 'url' ? { inputMode: 'url' } : {}),
+        },
       }}
     />
   );
@@ -102,7 +104,14 @@ function choiceLabel(choice: string, choices: readonly string[]): string {
  * offered even when it is not one of the stack's choices, so the list shows
  * what is stored rather than silently showing the first choice.
  */
-function ChoiceInput({ entry, value, disabled, problem, onChange, choices }: FieldProps & { choices: readonly string[] }) {
+function ChoiceInput({
+  entry,
+  value,
+  disabled,
+  problem,
+  onChange,
+  choices,
+}: FieldProps & { choices: readonly string[] }) {
   const options = [...new Set(['', ...choices, value])];
   return (
     <TextField
@@ -115,8 +124,10 @@ function ChoiceInput({ entry, value, disabled, problem, onChange, choices }: Fie
       error={problem !== null}
       helperText={problem ?? undefined}
       onChange={(event) => onChange(event.target.value)}
-      SelectProps={{ native: true }}
-      inputProps={{ 'aria-label': entry.key, style: { fontFamily: MONO_STACK, fontSize: 13 } }}
+      slotProps={{
+        htmlInput: { 'aria-label': entry.key, style: { fontFamily: MONO_STACK, fontSize: 13 } },
+        select: { native: true },
+      }}
     >
       {options.map((choice) => (
         <option key={choice} value={choice}>
@@ -144,7 +155,9 @@ function BooleanInput({ entry, value, disabled, problem, onChange }: FieldProps)
             size="small"
             checked={value === BOOLEAN_TRUE}
             onChange={(event) => onChange(event.target.checked ? BOOLEAN_TRUE : BOOLEAN_FALSE)}
-            inputProps={{ 'aria-label': entry.key }}
+            slotProps={{
+              input: { 'aria-label': entry.key },
+            }}
           />
         }
         label={
@@ -154,7 +167,12 @@ function BooleanInput({ entry, value, disabled, problem, onChange }: FieldProps)
         }
       />
       {problem && (
-        <Typography variant="caption" color="error.main">
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'error.main',
+          }}
+        >
           {problem}
         </Typography>
       )}

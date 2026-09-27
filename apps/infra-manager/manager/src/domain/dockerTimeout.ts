@@ -17,8 +17,7 @@ export const DOCKER_TIMEOUT_MS = 15_000;
 export async function answeredInTime<T>(
   call: Promise<T>,
   timeoutMs: number = DOCKER_TIMEOUT_MS,
-  timedOut: () => Error = () =>
-    new Error(`docker did not answer within ${timeoutMs}ms`),
+  timedOut: () => Error = () => new Error(`docker did not answer within ${timeoutMs}ms`),
 ): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const bound = new Promise<never>((_resolve, reject) => {

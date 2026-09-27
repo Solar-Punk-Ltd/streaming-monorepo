@@ -127,7 +127,8 @@ export function treeCpu(rows, rootPid) {
     processCount: collected.length,
     byType: collected.reduce((byType, row) => {
       const type = chromeProcessType(row.command);
-      return { ...byType, [type]: (byType[type] ?? 0) + row.cpuSeconds };
+      byType[type] = (byType[type] ?? 0) + row.cpuSeconds;
+      return byType;
     }, {}),
   };
 }

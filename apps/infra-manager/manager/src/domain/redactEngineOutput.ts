@@ -33,9 +33,7 @@ export const REDACTED = '<redacted>';
  */
 export function redactEngineOutput(text: string): string {
   return text
-    .replace(ASSIGNED_VALUE_RE, (whole, word: string) =>
-      namesASecret(word) ? `${word}=${REDACTED}` : whole,
-    )
+    .replace(ASSIGNED_VALUE_RE, (whole, word: string) => (namesASecret(word) ? `${word}=${REDACTED}` : whole))
     .replace(DIRECTIVE_VALUE_RE, (whole, word: string, spacing: string) =>
       namesASecret(word) ? `${word}${spacing}${REDACTED}` : whole,
     );
