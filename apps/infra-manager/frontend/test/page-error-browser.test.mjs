@@ -16,7 +16,14 @@ import test from 'node:test';
 import { createServer } from 'vite';
 
 import { DEV_PASSWORD, DEV_USERNAME } from '../dev/mock-auth.mjs';
-import { buttonWithText, clickWhenEnabled, fillWhenPresent, launchChrome, PAGE_TEXT, waitFor } from './support/chrome.mjs';
+import {
+  buttonWithText,
+  clickWhenEnabled,
+  fillWhenPresent,
+  launchChrome,
+  PAGE_TEXT,
+  waitFor,
+} from './support/chrome.mjs';
 import { freePort, startMockManager } from './support/mock-manager-process.mjs';
 import { endViteServer } from './support/teardown.mjs';
 import { viteCacheFor } from './support/vite-cache.mjs';
