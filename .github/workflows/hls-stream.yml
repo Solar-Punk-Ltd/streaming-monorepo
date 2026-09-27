@@ -40,15 +40,7 @@ defaults:
 
 jobs:
   verify:
-    name: verify (node ${{ matrix.node }})
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # 22 is engines.node, the node:22-alpine production image, and what the
-        # team runs locally. One entry because those three now agree. Add a
-        # version here only when something is actually supposed to run on it.
-        node: [22]
     steps:
       - uses: actions/checkout@v4
 
@@ -58,7 +50,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -108,7 +100,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -180,7 +172,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
