@@ -616,7 +616,7 @@ and spend-ceiling gates as every other sitting, one broadcast per fault (or one 
 sweep), and an arm that does not name its byte source is refused before anything is published.
 
 The in-tab node needs time to boot: a few megabytes of wasm and several seconds of dialling. The
-payload is 3.87 MB at the pinned `@lat-murmeldjur/weeb_3` 0.0.341001, and it is the one place in this
+payload is 3.32 MB at the pinned `@lat-murmeldjur/weeb_3` 0.0.350001, and it is the one place in this
 repo that quotes a figure, because every other mention would go stale on the next bump. Every driver
 holds the boot for `BROWSER_BYTE_SOURCE_SETTLE_SECONDS` (default 60) before opening its window, so
 the join is never inside a counted stretch. `watch.ts` reads that window from
