@@ -92,6 +92,18 @@ const CHANGE_COMMITS: readonly FixtureCommit[] = [
   },
 ];
 
+/**
+ * What the base gains after the change has branched off it: source and a CI file in the stack, and a
+ * file outside it, none of which the change touches.
+ */
+const BASE_MOVES_ON: FixtureCommit = {
+  stack: {
+    'packages/audit-gate/src/later.ts': ['export const later = 1;', 'export const laterStill = 2;', ''].join('\n'),
+    '.github/workflows/later.yml': 'name: later\n',
+  },
+  outside: { 'apps/web2-admin/src/later.ts': 'export const later = 1;\n' },
+};
+
 const fixtureDirs: string[] = [];
 
 after(() => {
@@ -143,6 +155,16 @@ function writeTree(root: string, tree: FileTree): void {
   }
 }
 
+/** Writes `change` into the fixture and commits it on whichever branch is checked out. */
+function commitChange(fixture: Fixture, change: FixtureCommit, message: string): void {
+  writeTree(fixture.stack, change.stack);
+  if (fixture.stack !== fixture.repo) {
+    writeTree(fixture.repo, change.outside);
+  }
+  gitIn(fixture.repo, 'add', '-A');
+  gitIn(fixture.repo, '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', message);
+}
+
 /**
  * A throwaway repository with the stack at `stackPath` inside it: a base commit, a `base` branch on it,
  * and the change on top. An empty `stackPath` is the stack checked out on its own. `rootFiles` go into
@@ -150,22 +172,25 @@ function writeTree(root: string, tree: FileTree): void {
  */
 function commitFixture(stackPath: string, rootFiles: FileTree = {}): Fixture {
   const repo = tempDir('gate-facts-repo-');
-  const stack = join(repo, stackPath);
-  const commit = (change: FixtureCommit, message: string): void => {
-    writeTree(stack, change.stack);
-    if (stackPath !== '') {
-      writeTree(repo, change.outside);
-    }
-    gitIn(repo, 'add', '-A');
-    gitIn(repo, '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', message);
-  };
+  const fixture = { repo, stack: join(repo, stackPath) };
 
   gitIn(repo, 'init', '-q');
   writeTree(repo, rootFiles);
-  commit(BASE_COMMIT, 'base');
+  commitChange(fixture, BASE_COMMIT, 'base');
   gitIn(repo, 'branch', BASE);
-  CHANGE_COMMITS.forEach((change, index) => commit(change, `change ${index + 1}`));
-  return { repo, stack };
+  CHANGE_COMMITS.forEach((change, index) => commitChange(fixture, change, `change ${index + 1}`));
+  return fixture;
+}
+
+/**
+ * Commits onto the base after the change has branched off it, the way the base moves on while a pull
+ * request is open, then checks the change out again.
+ */
+function moveBaseOn(fixture: Fixture): void {
+  const changeBranch = gitIn(fixture.repo, 'branch', '--show-current');
+  gitIn(fixture.repo, 'switch', '-q', BASE);
+  commitChange(fixture, BASE_MOVES_ON, 'the base moves on');
+  gitIn(fixture.repo, 'switch', '-q', changeBranch);
 }
 
 /**
@@ -280,6 +305,19 @@ describe('the diff facts read by a real git, wherever the stack sits', () => {
     assert.notDeepEqual(changedOutside, [], 'the fixture has to change files outside the stack for this case to see');
 
     assert.deepEqual(await diffFrom(nested), await diffFrom(commitFixture('')));
+  });
+
+  it('counts only the change once the base has moved on past the point the change branched from', async () => {
+    const movedOn = commitFixture(STACK_SUBFOLDER);
+    moveBaseOn(movedOn);
+    assert.notEqual(
+      gitIn(movedOn.stack, 'diff', '--name-only', '--relative', `${HEAD}...${BASE}`),
+      '',
+      'the fixture has to be one where the base changed files in the stack after the change branched off it',
+    );
+
+    // The commits row is held to the same count: the base's own commit is not the change's.
+    assert.deepEqual(await diffFrom(movedOn), await diffFrom(commitFixture('')));
   });
 });
 
