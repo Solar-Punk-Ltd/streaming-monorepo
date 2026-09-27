@@ -157,7 +157,7 @@ HLS_WINDOW="${HLS_WINDOW:-15}"
 # seconds: the segment the publisher's GOP actually produces, plus the ~0.135s constant overshoot
 # measured on 2026-08-12. Held as a ratio it scaled with `HLS_FRAGMENT`, which an operator edits from
 # the settings drawer, so the shipped 0.5 x 5.0 = 2.5s became 10s the moment the segment length was
-# set to 2 and nothing in the product said so. the owner hit that on 2026-09-15: a stream asking for 2s
+# set to 2 and nothing in the product said so. The owner hit that on 2026-09-15: a stream asking for 2s
 # segments produced 2.067s to 10.033s. The ratio is now derived from this and the fragment, so this
 # number stays what it says whatever the fragment becomes.
 #

@@ -121,9 +121,9 @@ function recheckOver({ nodes, latched, gate = chequebookGate(nodes) }: Setup) {
  * The chequebook gate warns rather than refusing under the shipped `chequebook-warn`, and what it found
  * is latched onto `/health` as `start_gate_warned`. Nothing read the chequebook again after the boot, so
  * funding the node changed nothing an operator could see: the container stayed unhealthy for the life
- * of the process, and only a restart cleared it. the tester met exactly that on 2026-09-25 and reported the
- * uploader as stuck. So while that warning stands the chequebook is read again, on the same gate the
- * boot ran, and the warning goes the moment every node holds its floor.
+ * of the process, and only a restart cleared it. An outside tester met exactly that on 2026-09-25 and
+ * reported the uploader as stuck. So while that warning stands the chequebook is read again, on the
+ * same gate the boot ran, and the warning goes the moment every node holds its floor.
  */
 describe('the chequebook is read again while its warning stands', () => {
   it('clears the warning on the first read after the node is funded, and stops reading', async () => {

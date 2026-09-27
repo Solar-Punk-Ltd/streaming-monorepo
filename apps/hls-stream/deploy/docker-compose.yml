@@ -161,7 +161,7 @@ services:
       # version of this comment stated the rule wrongly and four other places in the tree carried
       # the same error.
       #
-      # the owner ruled on 2026-09-17 (T27) that a node's mode is chosen when the node is created, so the
+      # The owner ruled on 2026-09-17 (T27) that a node's mode is chosen when the node is created, so the
       # two flags below are settings and their defaults are what this file has always started. A
       # deployment that sets neither key gets the ultra-light gateway exactly as before: the endpoint
       # is empty, swap is off, and there is nothing to fund. The manager writes both keys into a
