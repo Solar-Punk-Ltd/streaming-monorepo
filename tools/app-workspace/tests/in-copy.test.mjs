@@ -30,7 +30,7 @@ const walk = (dir) => {
   }
 };
 walk(process.cwd());
-writeFileSync(process.argv[1], JSON.stringify({ cwd: process.cwd(), files, links }));
+writeFileSync(process.argv[1], JSON.stringify({ cwd: process.cwd(), files, links, named: process.env.APP_WORKSPACE_COPY }));
 process.exit(Number(process.argv[2] ?? 0));
 `;
 
@@ -57,13 +57,14 @@ function makeCheckout(t, files = {}) {
   return root;
 }
 
-function listIn(t, root, { status = 0 } = {}) {
+function listIn(t, root, { status = 0, options = [] } = {}) {
   const listing = join(makeTempDir(t), 'listing.json');
   const result = runScript(IN_COPY, [
     '--root',
     root,
     '--app',
     'apps/web2-admin',
+    ...options,
     '--',
     process.execPath,
     '-e',
@@ -90,6 +91,40 @@ describe('in-copy.mjs', () => {
     assert.equal(seen.files['backend/src/index.ts'], 'export const changed = 1;\n');
     assert.equal(seen.files['pnpm-lock.yaml'], expectedCut('apps/web2-admin', false).lockfile);
     assert.equal(seen.files['pnpm-workspace.yaml'], expectedCut('apps/web2-admin', false).workspace);
+  });
+
+  it('names the copy to the command in APP_WORKSPACE_COPY, so a compose file can point a build context at it', (t) => {
+    const { seen } = listIn(t, makeCheckout(t));
+
+    assert.equal(seen.named, seen.cwd);
+  });
+
+  it('copies a path git ignores when --also names it, such as a build output an image copies in', (t) => {
+    const root = makeCheckout(t, { '.gitignore': '.env\nnode_modules/\ndist/\n' });
+    writeFiles(root, { 'apps/web2-admin/backend/dist/index.js': 'built\n', 'apps/web2-admin/dist/other.js': 'not asked for\n' });
+
+    const { result, seen } = listIn(t, root, { options: ['--also', 'backend/dist'] });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(seen.files['backend/dist/index.js'], 'built\n');
+    assert.equal(seen.files['dist/other.js'], undefined, 'an ignored path --also does not name stays behind');
+  });
+
+  it('refuses an --also path that is not there, and runs nothing', (t) => {
+    const { result, seen } = listIn(t, makeCheckout(t), { options: ['--also', 'backend/dist'] });
+
+    assert.equal(result.status, 125);
+    assert.match(result.stderr, /backend\/dist/);
+    assert.equal(seen, null);
+  });
+
+  it('refuses an --also path that leaves the app, and runs nothing', (t) => {
+    for (const path of ['../infra-manager', '/etc']) {
+      const { result, seen } = listIn(t, makeCheckout(t), { options: ['--also', path] });
+
+      assert.equal(result.status, 125, path);
+      assert.equal(seen, null, path);
+    }
   });
 
   it('copies a link as a link', (t) => {
