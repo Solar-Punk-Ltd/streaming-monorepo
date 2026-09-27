@@ -136,7 +136,7 @@ describe('StreamFormPage validation', () => {
         path: '/api/streams/new-id/thumbnail',
         respond: (init) => {
           calls.push({ url: '/api/streams/new-id/thumbnail', method: 'PUT' });
-          expect((init?.headers as Record<string, string>)['content-type']).toBe('image/png');
+          expect((init?.headers as Record<string, string> | undefined)?.['content-type']).toBe('image/png');
           return jsonOk({ ...created, hasThumbnail: true });
         },
       },
