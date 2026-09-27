@@ -25,6 +25,12 @@ const PACKAGE_MANAGER_LINE = /^\s*"?packageManager"?\s*:\s*["']?([^"',\s]+)/m;
 const YAML_TOP_LEVEL_KEY = /^([^\s#-][^:]*):(?:\s|$)/;
 const TOP_LEVEL = { json: 'JSON', yaml: 'YAML' };
 
+/** A node_modules/.bin folder, where pnpm writes a shell script for each command a package offers. */
+const COMMAND_SHIMS = /(^|\/)node_modules\/\.bin(\/|$)/;
+/** pnpm itself, installed as a global npm package, as the bench and browser images install it. */
+const PNPM_PROGRAM = /^(?:.*?\/)?lib\/node_modules\/pnpm(?=\/|$)/;
+const PNPM_PROGRAM_TARGET = /(^|\/)lib\/node_modules\/pnpm\//;
+
 /**
  * Which of pnpm's own files a path is, or null. The file must sit in the first node_modules folder of the path, so a
  * package's own file of the same name is never taken for one. The path is in the tar reader's form.
@@ -35,6 +41,27 @@ export function pnpmOwnFileName(path) {
   if (modules === -1) return null;
   const name = segments.slice(modules + 1).join('/');
   return Object.hasOwn(PNPM_OWN_FILES, name) ? name : null;
+}
+
+/** True for a node_modules/.bin folder and the command shims pnpm writes into it, at any depth. */
+export function isCommandShimPath(path) {
+  return COMMAND_SHIMS.test(path);
+}
+
+/** The folder of pnpm itself installed as a global npm package, when the path is that folder or inside it, else null. */
+export function pnpmProgramRoot(path) {
+  return PNPM_PROGRAM.exec(path)?.[0] ?? null;
+}
+
+/** True for pnpm's own package.json in that folder, which says which pnpm it is. */
+export function isPnpmProgramManifest(path) {
+  const root = pnpmProgramRoot(path);
+  return root !== null && path === `${root}/package.json`;
+}
+
+/** True for a link target inside pnpm itself, as npm links pnpm's commands into a bin folder. */
+export function linksIntoPnpmProgram(target) {
+  return typeof target === 'string' && PNPM_PROGRAM_TARGET.test(target);
 }
 
 /** The pnpm a file says wrote it, such as `pnpm@9.12.0`, from its packageManager key in either format. */

@@ -17,7 +17,15 @@ import {
   runWhenStarted,
   showHelp,
 } from './lib/shared.mjs';
-import { MATCH_APART_FROM_PNPM, describeContentChange, pnpmOwnFileName } from './lib/pnpm-files.mjs';
+import {
+  MATCH_APART_FROM_PNPM,
+  describeContentChange,
+  isCommandShimPath,
+  isPnpmProgramManifest,
+  linksIntoPnpmProgram,
+  pnpmOwnFileName,
+  pnpmProgramRoot,
+} from './lib/pnpm-files.mjs';
 import { TarFormatError, readTarSummaries } from './lib/tar.mjs';
 
 const USAGE = `Usage: node tools/move-check/image.mjs --before <image> --after <image> [--map <old>=<new>]... [--allow <path>]...
@@ -36,10 +44,13 @@ The files pnpm writes about an install rather than for a package, which are
 .modules.yaml, .pnpm/lock.yaml, .pnpm-workspace-state-v1.json and
 .package-map.json in an install's own node_modules folder, are listed by name
 whenever they differ, with the pnpm that wrote each side and the keys that
-differ. They never fail the check and never count as allowed. When their
-install time is all that differs, the images match. When more does, as after
-a pnpm version change, the verdict is "match apart from pnpm's own files",
-which still exits 0.
+differ. So is the rest of what pnpm itself puts in an image: the command shims
+it writes into a node_modules/.bin folder, a node_modules folder that holds
+nothing but them, pnpm installed as a global npm package, on one line with the
+version each side holds, and a link into it. None of them fails the check or
+counts as allowed. When the install time is all that differs, the images
+match. When more does, as after a pnpm version change, the verdict is "match
+apart from pnpm's own files", which still exits 0.
 
   --map     renames a path of the before image, or a folder and everything
             under it, before the two are compared, for a folder the after image
@@ -77,6 +88,8 @@ const COMPARED_ENTRY_FIELDS = ['type', 'mode', 'owner', 'size', 'sha256', 'linkT
 const CONTENT_FIELDS = new Set(['size', 'sha256']);
 const ENTRY_FIELD_LABEL = { type: 'type', mode: 'mode', owner: 'owner', size: 'size', sha256: 'sha256', linkTarget: 'target' };
 const DIFFERENCE_KINDS = ['changed', 'missing', 'added'];
+/** The order pnpm itself tallies its differing entries in, the new ones first. */
+const PROGRAM_TALLY_ORDER = ['added', 'changed', 'missing'];
 const SHORT_DIGEST_LENGTH = 12;
 
 /** Picks the compared fields from one `docker image inspect` record. A field the image leaves out reads as null. */
@@ -261,6 +274,83 @@ function describePnpmFile(kind, difference, beforeByPath, afterByPath) {
   return { path, text: parts.join(', '), installTimeOnly };
 }
 
+/** What changed in an entry, or that it was added or is missing, leaving out the digest, which says nothing more here. */
+function changeText(kind, difference) {
+  if (kind !== 'changed') return kind;
+  const fields = difference.fields.filter(({ name }) => name !== 'sha256');
+  return fields.length > 0 ? fields.map(formatField).join(', ') : 'rewritten';
+}
+
+/** True for a node_modules folder that holds command shims and nothing else, as pnpm makes one inside a package folder. */
+function holdsOnlyShims(path, entriesByPath) {
+  if (!/(^|\/)node_modules$/.test(path) || entriesByPath.get(path)?.type !== 'directory') return false;
+  const inside = [...entriesByPath.keys()].filter((candidate) => candidate.startsWith(`${path}/`));
+  return inside.length > 0 && inside.every(isCommandShimPath);
+}
+
+/** pnpm itself as one entry: the version each side holds, and how many of its entries differ. */
+function describePnpmProgram(root, counts, beforeByPath, afterByPath) {
+  const versionIn = (entriesByPath) => {
+    const manifest = entriesByPath.get(`${root}/package.json`);
+    if (manifest?.content === undefined) return 'none';
+    try {
+      return JSON.parse(manifest.content.toString('utf8')).version ?? 'no version';
+    } catch {
+      return 'no version';
+    }
+  };
+  const before = versionIn(beforeByPath);
+  const after = versionIn(afterByPath);
+  const tally = PROGRAM_TALLY_ORDER.filter((kind) => counts[kind] > 0).map((kind, index) =>
+    index === 0 ? `${countOf(counts[kind], 'entry', 'entries')} ${kind}` : `${counts[kind]} ${kind}`,
+  );
+  return { path: root, text: `pnpm itself, ${before === after ? before : `${before} -> ${after}`}: ${tally.join(', ')}`, installTimeOnly: false };
+}
+
+/**
+ * Takes pnpm's own differences out of a comparison: the files pnpm writes about an install, the command shims it writes
+ * and a node_modules folder that holds nothing but them, pnpm itself installed with npm, told as one entry, and a link
+ * into it. Returns them described, sorted by path, and the differences that are left.
+ */
+function takePnpmOwn(fileSystem, beforeByPath, afterByPath) {
+  const sideOf = (kind) => (kind === 'added' ? afterByPath : beforeByPath);
+  const programs = new Map();
+  const pnpmFiles = [];
+  const isPnpmOwn = (kind, difference) => {
+    const { path } = difference;
+    if (pnpmOwnFileName(path) !== null) {
+      pnpmFiles.push(describePnpmFile(kind, difference, beforeByPath, afterByPath));
+      return true;
+    }
+    const root = pnpmProgramRoot(path);
+    if (root !== null) {
+      const counts = programs.get(root) ?? { added: 0, changed: 0, missing: 0 };
+      counts[kind] += 1;
+      programs.set(root, counts);
+      return true;
+    }
+    if ([beforeByPath.get(path)?.linkTarget, afterByPath.get(path)?.linkTarget].some(linksIntoPnpmProgram)) {
+      pnpmFiles.push({ path, text: `a link to pnpm itself, ${changeText(kind, difference)}`, installTimeOnly: false });
+      return true;
+    }
+    if (isCommandShimPath(path)) {
+      const what = sideOf(kind).get(path)?.type === 'directory' ? "a folder of pnpm's command shims" : 'a command shim pnpm writes';
+      pnpmFiles.push({ path, text: `${what}, ${changeText(kind, difference)}`, installTimeOnly: false });
+      return true;
+    }
+    if (kind !== 'changed' && holdsOnlyShims(path, sideOf(kind))) {
+      const what = kind === 'missing' ? "a folder that held only pnpm's command shims" : "a folder that holds only pnpm's command shims";
+      pnpmFiles.push({ path, text: `${what}, ${kind}`, installTimeOnly: false });
+      return true;
+    }
+    return false;
+  };
+  const others = { identical: fileSystem.identical };
+  for (const kind of DIFFERENCE_KINDS) others[kind] = fileSystem[kind].filter((difference) => !isPnpmOwn(kind, difference));
+  for (const [root, counts] of programs) pnpmFiles.push(describePnpmProgram(root, counts, beforeByPath, afterByPath));
+  return { pnpmFiles: pnpmFiles.toSorted((left, right) => (left.path < right.path ? -1 : 1)), others };
+}
+
 /** The listing of pnpm's own files that differ, and the part of the summary line that counts them. */
 function describePnpmFiles(pnpmFiles) {
   if (pnpmFiles.length === 0) return { lines: [], summary: null };
@@ -294,13 +384,8 @@ function formatFailure({ configDifferences, fileSystem, allows, notAllowedCount,
 }
 
 function report({ configDifferences, fileSystem, allows, renamedCount, beforeByPath, afterByPath }) {
-  const isPnpmOwn = (difference) => pnpmOwnFileName(difference.path) !== null;
-  const pnpmFiles = DIFFERENCE_KINDS.flatMap((kind) =>
-    fileSystem[kind].filter(isPnpmOwn).map((difference) => describePnpmFile(kind, difference, beforeByPath, afterByPath)),
-  ).toSorted((left, right) => (left.path < right.path ? -1 : 1));
+  const { pnpmFiles, others } = takePnpmOwn(fileSystem, beforeByPath, afterByPath);
   const pnpm = describePnpmFiles(pnpmFiles);
-  const others = { identical: fileSystem.identical };
-  for (const kind of DIFFERENCE_KINDS) others[kind] = fileSystem[kind].filter((difference) => !isPnpmOwn(difference));
   const otherDifferences = DIFFERENCE_KINDS.flatMap((kind) => others[kind]);
   const allowedCount = otherDifferences.filter((difference) => isAllowedPath(difference.path, allows)).length;
   const notAllowedCount = otherDifferences.length - allowedCount;
@@ -336,11 +421,11 @@ export async function main(argv) {
   const containers = createContainerTracker();
   try {
     // A before path is compared under the name --map gives it, so that name decides whether its bytes are kept.
-    const isPnpmOwn = (path) => pnpmOwnFileName(path) !== null;
+    const isKept = (path) => pnpmOwnFileName(path) !== null || isPnpmProgramManifest(path);
     const beforeEntries = await exportFileSystem(containers.create(beforeInspect.Id), `--before ${beforeImage}`, (path) =>
-      isPnpmOwn(applyPrefixMaps(path, renames)),
+      isKept(applyPrefixMaps(path, renames)),
     );
-    const afterEntries = await exportFileSystem(containers.create(afterInspect.Id), `--after ${afterImage}`, isPnpmOwn);
+    const afterEntries = await exportFileSystem(containers.create(afterInspect.Id), `--after ${afterImage}`, isKept);
     const renamed = renameEntries(beforeEntries, renames);
     return report({
       configDifferences,

@@ -293,6 +293,103 @@ describe('image.mjs', () => {
       assert.match(result.stdout, /^changed \(1\):\n {2}\/app\/\.modules\.yaml {2}sha256/m);
       assert.doesNotMatch(result.stdout, /pnpm's own files/);
     });
+
+    it('names each command shim pnpm writes, and a folder that held nothing but shims', (t) => {
+      const SEMVER = 'app/node_modules/.pnpm/semver@7.7.4/node_modules/semver';
+      const semverManifest = { [`${SEMVER}/package.json`]: { content: '{"name":"semver"}\n' } };
+      const docker = dockerWithImages(t, {
+        beforeFiles: {
+          ...BASE_FILES,
+          ...semverManifest,
+          'app/node_modules/.bin/semver': { content: 'shim written by pnpm 9\n', mode: 0o755 },
+          [`${SEMVER}/node_modules/`]: { type: '5', mode: 0o755 },
+          [`${SEMVER}/node_modules/.bin/`]: { type: '5', mode: 0o755 },
+          [`${SEMVER}/node_modules/.bin/semver`]: { content: 'a shim of its own\n', mode: 0o755 },
+        },
+        afterFiles: { ...BASE_FILES, ...semverManifest, 'app/node_modules/.bin/semver': { content: 'shim written by pnpm 11, longer\n', mode: 0o755 } },
+      });
+
+      const result = runScript(IMAGE, COMPARE, { env: docker.env });
+
+      assert.equal(result.status, 0, result.stdout);
+      assert.equal(
+        result.stdout,
+        [
+          "pnpm's own files (4):",
+          '  /app/node_modules/.bin/semver  a command shim pnpm writes, size 23 -> 32',
+          `  /${SEMVER}/node_modules  a folder that held only pnpm's command shims, missing`,
+          `  /${SEMVER}/node_modules/.bin  a folder of pnpm's command shims, missing`,
+          `  /${SEMVER}/node_modules/.bin/semver  a command shim pnpm writes, missing`,
+          "image: match apart from pnpm's own files, 9 config fields equal, 4 identical filesystem entries, 4 of pnpm's own files differ",
+          '',
+        ].join('\n'),
+      );
+    });
+
+    it('fails on a node_modules folder that held anything besides shims', (t) => {
+      const docker = dockerWithImages(t, {
+        beforeFiles: {
+          ...BASE_FILES,
+          'app/node_modules/demo/node_modules/': { type: '5', mode: 0o755 },
+          'app/node_modules/demo/node_modules/dep/index.js': { content: 'bundled\n' },
+          'app/node_modules/demo/node_modules/.bin/dep': { content: 'shim\n' },
+        },
+      });
+
+      const result = runScript(IMAGE, COMPARE, { env: docker.env });
+
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(result.stdout, /^missing \(2\):\n {2}\/app\/node_modules\/demo\/node_modules\n {2}\/app\/node_modules\/demo\/node_modules\/dep\/index\.js$/m);
+      assert.match(result.stdout, /^ {2}\/app\/node_modules\/demo\/node_modules\/\.bin\/dep {2}a command shim pnpm writes, missing$/m);
+    });
+
+    it('names pnpm itself, installed with npm, on one line with its versions, and the links to it', (t) => {
+      const PNPM = 'usr/local/lib/node_modules/pnpm';
+      const docker = dockerWithImages(t, {
+        beforeFiles: {
+          ...BASE_FILES,
+          [`${PNPM}/package.json`]: { content: '{"name":"pnpm","version":"9.12.0"}\n' },
+          [`${PNPM}/bin/pnpm.cjs`]: { content: 'pnpm 9 entry\n' },
+          [`${PNPM}/dist/pnpm.cjs`]: { content: 'pnpm 9\n' },
+          'usr/local/bin/pnpm': { type: '2', linkname: '../lib/node_modules/pnpm/bin/pnpm.cjs' },
+        },
+        afterFiles: {
+          ...BASE_FILES,
+          [`${PNPM}/package.json`]: { content: '{"name":"pnpm","version":"11.11.0"}\n' },
+          [`${PNPM}/bin/pnpm.mjs`]: { content: 'pnpm 11 entry\n' },
+          [`${PNPM}/dist/pnpm.cjs`]: { content: 'pnpm 11\n' },
+          'usr/local/bin/pnpm': { type: '2', linkname: '../lib/node_modules/pnpm/bin/pnpm.mjs' },
+          'usr/local/bin/pn': { type: '2', linkname: '../lib/node_modules/pnpm/bin/pnpm.mjs' },
+        },
+      });
+
+      const result = runScript(IMAGE, COMPARE, { env: docker.env });
+
+      assert.equal(result.status, 0, result.stdout);
+      assert.equal(
+        result.stdout,
+        [
+          "pnpm's own files (3):",
+          '  /usr/local/bin/pn  a link to pnpm itself, added',
+          '  /usr/local/bin/pnpm  a link to pnpm itself, target ../lib/node_modules/pnpm/bin/pnpm.cjs -> ../lib/node_modules/pnpm/bin/pnpm.mjs',
+          `  /${PNPM}  pnpm itself, 9.12.0 -> 11.11.0: 1 entry added, 2 changed, 1 missing`,
+          "image: match apart from pnpm's own files, 9 config fields equal, 3 identical filesystem entries, 3 of pnpm's own files differ",
+          '',
+        ].join('\n'),
+      );
+    });
+
+    it('fails on a link that does not point into pnpm', (t) => {
+      const docker = dockerWithImages(t, {
+        beforeFiles: { ...BASE_FILES, 'usr/local/bin/node': { type: '2', linkname: '../lib/node/bin/node' } },
+        afterFiles: { ...BASE_FILES, 'usr/local/bin/node': { type: '2', linkname: '../lib/other/bin/node' } },
+      });
+
+      const result = runScript(IMAGE, COMPARE, { env: docker.env });
+
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(result.stdout, /^changed \(1\):\n {2}\/usr\/local\/bin\/node {2}target/m);
+    });
   });
 
   describe('when the after image keeps a folder under another name', () => {
