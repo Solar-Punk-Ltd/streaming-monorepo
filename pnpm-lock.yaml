@@ -405,6 +405,9 @@ importers:
 
   apps/infra-manager/common:
     dependencies:
+      '@streaming-monorepo/contracts':
+        specifier: workspace:*
+        version: link:../../../packages/contracts
       viem:
         specifier: 2.56.5
         version: 2.56.5(typescript@7.0.2)(zod@4.6.4)
