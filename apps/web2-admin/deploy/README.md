@@ -125,10 +125,20 @@ A deploy:
 4. rsyncs `apps/web2-admin` to the host with `--delete`, leaving out `.git`,
    `node_modules`, `dist`, build caches, `.scratch/`, `.claude/`,
    `deploy/edge/` (the host's edge, which `edge.sh` looks after), and every env
-   file except this profile's and the sample;
+   file except this profile's and the sample. When the repository keeps its
+   one lockfile at its root, the admin's own `pnpm-lock.yaml` and
+   `pnpm-workspace.yaml` go with it, cut out of the root's by
+   `tools/app-workspace/cut.mjs` into a folder outside the checkout that is
+   removed when the deploy exits;
 5. over one ssh session, runs `docker compose up -d --build` for the profile's
    project, waits for each service's healthcheck, then asks for `/api/health`
    through nginx from inside the console container.
+
+With `--host=localhost` nothing is sent, and when the root keeps the one
+lockfile the two images build from a copy of `apps/web2-admin` made outside the
+checkout by `tools/app-workspace/in-copy.mjs`, with the admin's pair cut into
+it. Compose still runs from the checkout, so the profile's env file and its
+data stay where they are.
 
 The API applies its migrations when it boots, before it listens, so healthy
 means migrated and there is no separate step. The commit is also set as the

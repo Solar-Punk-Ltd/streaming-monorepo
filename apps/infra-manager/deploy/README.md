@@ -55,6 +55,13 @@ This rsyncs the repo, then builds the images on the server and runs the upgrade
 command that brings the project back up. The rsync leaves out `node_modules`,
 `.git`, build caches, `.scratch/` and `manager/swarm-hls-stream/`.
 
+When the repository keeps its one lockfile at its root, the manager's folder
+holds none of its own. The deploy then cuts the manager's `pnpm-lock.yaml` and
+`pnpm-workspace.yaml` out of the root's with `tools/app-workspace/cut.mjs`, into
+a folder outside the checkout that it removes when it exits, and sends the pair
+with the folder. The server's folder holds what its image builds need, and your
+checkout gains no file.
+
 `manager/.env` is the one env file that travels with it, and `rsync --delete`
 means your checkout is the only source of truth for that file: an edit made on
 the server is undone by the next deploy. **The streaming stack's own `.env` is
