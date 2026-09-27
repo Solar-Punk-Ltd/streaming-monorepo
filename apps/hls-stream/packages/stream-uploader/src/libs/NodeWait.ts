@@ -244,7 +244,7 @@ const UNREACHABLE_CODES = new Set([
 const UNREACHABLE_TEXT =
   /ECONNREFUSED|ECONNRESET|ECONNABORTED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|socket hang up|fetch failed|network error|timeout of \d+ms exceeded|status code 5\d\d/i;
 
-/** A status the node answered with, from bee-js or from the axios response under it. */
+/** A status the node answered with, on the error itself or one level down on `response`. */
 function statusOf(error: unknown): number | null {
   const carrier = error as { status?: unknown; response?: { status?: unknown } } | null | undefined;
   const status = typeof carrier?.status === 'number' ? carrier.status : carrier?.response?.status;
