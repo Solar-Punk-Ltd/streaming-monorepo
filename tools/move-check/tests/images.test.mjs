@@ -196,6 +196,49 @@ describe('images.mjs builds each image from both commits and compares them', () 
     assert.match(result.stdout, /a-file-with-a-long-enough-name-19999\.js/, 'the last difference is in the listing');
   });
 
+  it("runs each side's prepare commands in its context before building it, as a deploy script builds first", (t) => {
+    const { repo, before, after } = movedProject(t);
+    const docker = dockerFor(t, [{ name: 'demo' }]);
+    const prepare = [[process.execPath, '-e', "require('node:fs').writeFileSync('prepared.txt', 'built\\n')"]];
+    const image = demoImage(before, after, {
+      before: { commit: before, context: '.', dockerfile: 'Dockerfile', prepare },
+      after: { commit: after, context: 'apps/demo', dockerfile: 'apps/demo/Dockerfile', prepare },
+    });
+
+    const result = runScript(IMAGES, ['--manifest', manifestFile(t, [image]), '--keep'], { cwd: repo, env: docker.env });
+    keptExports(t, result.stdout);
+
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.equal(builds(docker).length, 2);
+    for (const build of builds(docker)) assert.equal(existsSync(join(build.args.at(-1), 'prepared.txt')), true, build.args.at(-1));
+  });
+
+  it('stops with 2 when a prepare command fails, naming the side, and builds nothing of that pair', (t) => {
+    const { repo, before, after } = movedProject(t);
+    const docker = dockerFor(t, [{ name: 'demo' }]);
+    const image = demoImage(before, after, {
+      before: { commit: before, context: '.', dockerfile: 'Dockerfile', prepare: [[process.execPath, '-e', 'process.exit(3)']] },
+    });
+
+    const result = runScript(IMAGES, ['--manifest', manifestFile(t, [image])], { cwd: repo, env: docker.env });
+
+    assert.equal(result.status, 2, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /^demo: could not be checked: the before prepare failed/m);
+    assert.equal(builds(docker).length, 0);
+  });
+
+  it('refuses a prepare that is not a list of commands, before anything is built', (t) => {
+    const { repo, before, after } = movedProject(t);
+    const docker = dockerFor(t, [{ name: 'demo' }]);
+    const image = demoImage(before, after, { before: { commit: before, context: '.', dockerfile: 'Dockerfile', prepare: 'pnpm build' } });
+
+    const result = runScript(IMAGES, ['--manifest', manifestFile(t, [image])], { cwd: repo, env: docker.env });
+
+    assert.equal(result.status, 2);
+    assert.match(result.stderr + result.stdout, /prepare is a list of commands/);
+    assert.equal(builds(docker).length, 0);
+  });
+
   it('prints each pair as it is compared, so a run cut off later keeps the verdicts it reached', (t) => {
     const { repo, before, after } = movedProject(t);
     const docker = dockerFor(t, [{ name: 'demo' }, { name: 'other' }], {

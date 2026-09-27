@@ -37,6 +37,12 @@ A context and a Dockerfile are paths from the root of the repository at that
 commit, and a context of . is the root itself. Each allow is handed to
 image.mjs as --allow. A note is for whoever reads the manifest.
 
+A side may also carry "prepare", a list of commands, each a list of its words,
+such as [["corepack", "pnpm", "install", "--frozen-lockfile"]]. They run in the
+side's context, without a shell, before its build, for an image whose
+Dockerfile copies what a deploy script builds first. Such a side builds from an
+export of its own, so what it builds reaches no other image.
+
   --plan   finds every commit, context and Dockerfile, prints the builds and builds nothing
   --only   checks one image of the manifest by name, and can be given more than once
   --keep   leaves the exports on disk and says where
@@ -79,6 +85,11 @@ function repositoryPath(value, label, { rootAllowed }) {
   return value;
 }
 
+/** A command as a manifest writes it: its words, the program first, none of them empty. */
+function isCommand(value) {
+  return Array.isArray(value) && value.length > 0 && value.every((word) => typeof word === 'string' && word !== '');
+}
+
 function readSide(entry, sideName) {
   const side = entry[sideName];
   const label = `${entry.name} ${sideName}`;
@@ -86,10 +97,15 @@ function readSide(entry, sideName) {
   if (typeof side.commit !== 'string' || !COMMIT_ID.test(side.commit)) {
     throw new CheckError(`${label}: commit is a commit id, got ${JSON.stringify(side.commit)}.`);
   }
+  const prepare = side.prepare ?? [];
+  if (!Array.isArray(prepare) || !prepare.every(isCommand)) {
+    throw new CheckError(`${label}: prepare is a list of commands, each a list of its words, got ${JSON.stringify(side.prepare)}.`);
+  }
   return {
     commit: side.commit,
     context: repositoryPath(side.context, `${label}: context`, { rootAllowed: true }),
     dockerfile: repositoryPath(side.dockerfile, `${label}: dockerfile`, { rootAllowed: false }),
+    prepare,
   };
 }
 
@@ -167,6 +183,7 @@ function printPlan(images) {
     for (const sideName of SIDES) {
       const side = image[sideName];
       const context = side.context === '' ? '.' : side.context;
+      for (const command of side.prepare) console.log(`  ${sideName} ${side.commit}: in ${context}: ${command.join(' ')}`);
       console.log(`  ${sideName} ${side.commit}: docker build --no-cache --file ${side.dockerfile} --tag ${tagOf(image.name, sideName)} ${context}`);
     }
   }
@@ -178,26 +195,47 @@ function indented(text) {
   return text.trim() === '' ? [] : text.trimEnd().split('\n').map((line) => `  ${line}`);
 }
 
-/** Exports each commit once, into a folder of its own under `root`, with git's own archive of it. */
+/**
+ * Exports each commit once, into a folder of its own under `root`, with git's own archive of it. An `owner`
+ * gets an export of its own, for a side whose prepare commands write into it.
+ */
 function commitExporter(root) {
   const exported = new Map();
-  return (commit) => {
-    if (!exported.has(commit)) {
-      const dir = join(root, commit);
+  return (commit, owner = null) => {
+    const key = owner === null ? commit : `${commit}-${owner}`;
+    if (!exported.has(key)) {
+      const dir = join(root, key);
       const archive = `${dir}.tar`;
       mkdirSync(dir);
       runGit(['archive', '--format=tar', `--output=${archive}`, commit]);
       runCommand('tar', ['-x', '-f', archive, '-C', dir]);
       rmSync(archive);
-      exported.set(commit, dir);
+      exported.set(key, dir);
     }
-    return exported.get(commit);
+    return exported.get(key);
   };
+}
+
+/** The export a side builds from: its commit's shared one, or one of its own when it prepares first. */
+function exportFor(image, sideName, exportOf) {
+  const side = image[sideName];
+  return exportOf(side.commit, side.prepare.length > 0 ? `${image.name}-${sideName}` : null);
+}
+
+/** Runs a side's prepare commands in its context, in order, and stops at the first that fails. */
+function prepare(image, sideName, exportOf) {
+  const side = image[sideName];
+  const dir = exportFor(image, sideName, exportOf);
+  const context = side.context === '' ? dir : join(dir, side.context);
+  for (const [command, ...args] of side.prepare) {
+    process.stderr.write(`${image.name}: preparing ${sideName}: ${[command, ...args].join(' ')}\n`);
+    runCommand(command, args, { cwd: context });
+  }
 }
 
 function build(image, sideName, exportOf) {
   const side = image[sideName];
-  const dir = exportOf(side.commit);
+  const dir = exportFor(image, sideName, exportOf);
   process.stderr.write(`${image.name}: building ${sideName} from ${side.commit.slice(0, SHORT_COMMIT_LENGTH)}\n`);
   const context = side.context === '' ? dir : join(dir, side.context);
   runCommand('docker', ['build', '--no-cache', '--file', join(dir, side.dockerfile), '--tag', tagOf(image.name, sideName), context]);
@@ -209,6 +247,14 @@ function unchecked(image, reason, detail) {
 
 /** Builds both sides of one image, compares them with image.mjs, and says how that went. */
 function checkImage(image, exportOf) {
+  for (const sideName of SIDES) {
+    try {
+      prepare(image, sideName, exportOf);
+    } catch (error) {
+      if (!(error instanceof CheckError)) throw error;
+      return unchecked(image, `the ${sideName} prepare failed.`, error.message);
+    }
+  }
   for (const sideName of SIDES) {
     try {
       build(image, sideName, exportOf);
