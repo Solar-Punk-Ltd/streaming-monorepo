@@ -202,7 +202,7 @@ function RemovalLine({
         alignItems: "center",
         flexWrap: "wrap"
       }}>
-      <Typography variant="caption" color={pending ? 'info.main' : 'text.secondary'} sx={{ flex: '1 1 12rem', ...CAPTION_WRAP }}>
+      <Typography variant="caption" sx={{ color: pending ? 'info.main' : 'text.secondary', flex: '1 1 12rem', ...CAPTION_WRAP }}>
         {pending ? REMOVAL_PENDING_NOTE : note}
       </Typography>
       {pending ? (

@@ -56,8 +56,8 @@ export function BuildLogPane({
           key={line.id}
           component="pre"
           variant="caption"
-          color={line.isError ? 'error.main' : 'text.secondary'}
           sx={{
+            color: line.isError ? 'error.main' : 'text.secondary',
             fontFamily: MONO_STACK,
             m: 0,
             whiteSpace: 'pre-wrap',

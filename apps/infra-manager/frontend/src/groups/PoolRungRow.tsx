@@ -116,8 +116,7 @@ export function PoolRungRow({
         <Typography
           variant="caption"
           component="div"
-          sx={{ fontFamily: MONO_STACK }}
-          color={bzzEmpty ? 'warning.main' : 'text.primary'}
+          sx={{ color: bzzEmpty ? 'warning.main' : 'text.primary', fontFamily: MONO_STACK }}
         >
           BZZ {formatTokenBalance(bzz, BZZ_DECIMALS)}
         </Typography>
@@ -125,8 +124,7 @@ export function PoolRungRow({
       <TableCell>
         <Typography
           variant="caption"
-          sx={{ fontFamily: MONO_STACK }}
-          color={chequebookColour(chequebook)}
+          sx={{ color: chequebookColour(chequebook), fontFamily: MONO_STACK }}
         >
           {chequebookText(chequebook)}
         </Typography>

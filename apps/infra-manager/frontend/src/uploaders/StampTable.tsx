@@ -166,7 +166,7 @@ function BatchRows({
         >
           <Typography
             variant="body2"
-            color={fill.warning ? FILL_COLOUR[fill.warning] : undefined}
+            sx={{ color: fill.warning ? FILL_COLOUR[fill.warning] : undefined }}
           >
             {fill.percent}
           </Typography>

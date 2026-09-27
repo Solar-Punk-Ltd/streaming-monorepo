@@ -286,7 +286,7 @@ export function DeploymentSettingsEditor({
           Discard
         </Button>
         <Box sx={{ flex: '1 1 auto' }} />
-        <Typography variant="caption" color={refused.length > 0 ? 'error.main' : 'text.secondary'} sx={{ overflowWrap: 'anywhere' }}>
+        <Typography variant="caption" sx={{ color: refused.length > 0 ? 'error.main' : 'text.secondary', overflowWrap: 'anywhere' }}>
           {saveNote(pending.length, refused)}
         </Typography>
       </Stack>

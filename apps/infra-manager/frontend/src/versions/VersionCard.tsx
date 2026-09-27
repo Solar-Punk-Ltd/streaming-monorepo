@@ -304,8 +304,7 @@ export function VersionCard({
         (version.status === 'failed' || version.status === 'ready') && (
           <Typography
             variant="caption"
-            color={version.status === 'failed' ? 'error.main' : 'warning.main'}
-            sx={{ fontFamily: MONO_STACK }}
+            sx={{ color: version.status === 'failed' ? 'error.main' : 'warning.main', fontFamily: MONO_STACK }}
           >
             {version.lastError.split('\n').slice(-1)[0]}
           </Typography>
