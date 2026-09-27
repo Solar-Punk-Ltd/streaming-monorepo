@@ -1,6 +1,12 @@
-import { ADMIN_API_TOKEN_MIN_LENGTH } from '@swarm-hls-stream/shared';
+import {
+  ADMIN_API_TOKEN_MIN_LENGTH,
+  feedOwnerOf,
+  ingestLookupAnswerSchema,
+  ingestLookupPath,
+  renditionReportAnswerSchema,
+} from '@swarm-hls-stream/shared';
 
-import { MediaType, mediaTypeSchema, Rendition } from '../types.js';
+import { MediaType, Rendition } from '../types.js';
 import { getErrorMessage } from '../utils/common.js';
 
 import { Logger } from './Logger.js';
@@ -196,119 +202,6 @@ export function assertUsableAdminApiToken(token: string): void {
   }
 }
 
-/**
- * Whether a body the admin sent back really is a draft.
- *
- * Screened rather than cast, because the fields decide who may publish and where the broadcast is
- * written. A body missing `publishKey` would otherwise arrive as `undefined`, and an undefined
- * expectation compared against a presented key is a comparison that can only be got wrong. A missing
- * `topic` would mint a feed at `Topic.fromString(undefined)`. Both are refusals, and a refusal has to
- * be spelled here rather than discovered three layers down.
- */
-function asDraft(body: unknown): AdminStreamDraft | null {
-  if (typeof body !== 'object' || body === null) {
-    return null;
-  }
-  const candidate = body as Record<string, unknown>;
-  const strings = ['id', 'topic', 'owner', 'title', 'status', 'publishKey'] as const;
-  for (const field of strings) {
-    if (typeof candidate[field] !== 'string' || (candidate[field] as string).length === 0) {
-      return null;
-    }
-  }
-  if (!mediaTypeSchema.safeParse(candidate.mediaType).success) {
-    return null;
-  }
-  return candidate as unknown as AdminStreamDraft;
-}
-
-/**
- * Whether one entry of a merged ladder really is a rendition.
- *
- * Screened rather than cast, for the reason {@link asDraft} is and then one step further: what is
- * built out of these is the master playlist every viewer of the broadcast resolves, through
- * `buildMasterPlaylist`. A missing `topic` would address a rung's feed at `Topic.fromString(undefined)`,
- * a missing `bandwidth` would write `BANDWIDTH=undefined` into a tag hls.js parses, and a `height`
- * that is not a number would sort the ladder into an order no player can climb. Every one of those is
- * a broadcast that publishes and cannot be played, discovered by a viewer rather than here.
- *
- * ⛔ `index` and `duration` are either both present or both absent, which is the contract's own rule
- * and `keepingWhatFinished`'s: the index names a position inside the feed the topic addresses and the
- * duration is what the entry that points at it carries, so one without the other is a recording
- * nothing can be said about.
- */
-function isRendition(value: unknown): value is Rendition {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  const candidate = value as Record<string, unknown>;
-  if (typeof candidate.name !== 'string' || candidate.name.length === 0) {
-    return false;
-  }
-  if (typeof candidate.topic !== 'string' || candidate.topic.length === 0) {
-    return false;
-  }
-  for (const field of ['width', 'height', 'bandwidth', 'avgBandwidth'] as const) {
-    if (typeof candidate[field] !== 'number' || !Number.isFinite(candidate[field])) {
-      return false;
-    }
-  }
-  const finished = candidate.index !== undefined;
-  if (finished !== (candidate.duration !== undefined)) {
-    return false;
-  }
-  return !finished || (typeof candidate.index === 'number' && typeof candidate.duration === 'number');
-}
-
-/** Whether a body the admin sent back really is a merged ladder. See {@link isRendition}. */
-function asRenditionReport(body: unknown): RenditionReportResponse | null {
-  if (typeof body !== 'object' || body === null) {
-    return null;
-  }
-  const candidate = body as Record<string, unknown>;
-  if (!Array.isArray(candidate.renditions) || !candidate.renditions.every(isRendition)) {
-    return null;
-  }
-  const ladder = candidate.ladder;
-  if (typeof ladder !== 'object' || ladder === null) {
-    return null;
-  }
-  const state = ladder as Record<string, unknown>;
-  if (typeof state.finished !== 'boolean' || typeof state.flippedToFinished !== 'boolean') {
-    return null;
-  }
-  if (state.duration !== null && typeof state.duration !== 'number') {
-    return null;
-  }
-  // Optional rather than screened: a body without it is still a ladder, and the caller then falls
-  // back to the flip alone, which is what it had before the status was read at all.
-  const stream = candidate.stream;
-  const status =
-    typeof stream === 'object' && stream !== null && typeof (stream as Record<string, unknown>).status === 'string'
-      ? ((stream as Record<string, unknown>).status as string)
-      : null;
-  // Optional for the same reason: an answer without it is taken in arrival order, which is what every
-  // answer was before the index was read at all.
-  const feed = candidate.feed;
-  const feedIndex =
-    typeof feed === 'object' &&
-    feed !== null &&
-    typeof (feed as Record<string, unknown>).index === 'number' &&
-    Number.isFinite((feed as Record<string, unknown>).index)
-      ? ((feed as Record<string, unknown>).index as number)
-      : null;
-  return {
-    renditions: candidate.renditions as Rendition[],
-    streamStatus: status,
-    feedIndex,
-    ladder: {
-      finished: state.finished,
-      flippedToFinished: state.flippedToFinished,
-      duration: state.duration as number | null,
-    },
-  };
-}
-
 export class AdminApiClient {
   private readonly logger = Logger.getInstance();
   private readonly baseUrl: string;
@@ -359,10 +252,8 @@ export class AdminApiClient {
         this.logger.warn(`[Admin] ${url} answered ${response.status}, so the feed owner could not be confirmed`);
         return null;
       }
-      const body = await this.readJson(response);
-      const feed = typeof body === 'object' && body !== null ? (body as Record<string, unknown>).feed : undefined;
-      const owner = typeof feed === 'object' && feed !== null ? (feed as Record<string, unknown>).owner : undefined;
-      if (typeof owner !== 'string' || owner.length === 0) {
+      const owner = feedOwnerOf(await this.readJson(response));
+      if (owner === null) {
         this.logger.warn(`[Admin] ${url} answered without a feed owner, so it could not be confirmed`);
         return null;
       }
@@ -389,11 +280,7 @@ export class AdminApiClient {
     // Encoded per segment even though `isUsableStreamId` has already restricted these to
     // `[A-Za-z0-9._-]`, where encoding is a no-op. The screening lives in the engines and this is a
     // url; a caller added later that skips it must not be able to write a path of its own.
-    const path = streamId
-      .split('/')
-      .map((segment) => encodeURIComponent(segment))
-      .join('/');
-    const url = `${this.baseUrl}/api/internal/streams/by-ingest/${path}`;
+    const url = `${this.baseUrl}${ingestLookupPath(streamId)}`;
 
     const response = await this.send(url, { method: 'GET' }, this.lookupTimeoutMs);
 
@@ -404,11 +291,14 @@ export class AdminApiClient {
       throw new Error(`Admin API answered ${response.status} for ${url}`);
     }
 
-    const draft = asDraft(await this.readJson(response));
-    if (draft === null) {
+    // Screened rather than cast, because the fields decide who may publish and where the broadcast
+    // is written: a body missing `publishKey` would be compared against a presented key as undefined,
+    // and a missing `topic` would mint a feed at `Topic.fromString(undefined)`.
+    const draft = ingestLookupAnswerSchema.safeParse(await this.readJson(response));
+    if (!draft.success) {
       throw new Error(`Admin API answered 200 for ${url} with a body that is not a stream`);
     }
-    return draft;
+    return draft.data;
   }
 
   /**
@@ -502,13 +392,17 @@ export class AdminApiClient {
       );
 
       if (response.ok) {
-        const report = asRenditionReport(await this.readJson(response));
-        if (report === null) {
+        // Screened rather than cast, because the rungs become the master playlist every viewer of the
+        // broadcast resolves: a missing `topic` or `bandwidth` is a broadcast that publishes and cannot
+        // be played, discovered by a viewer rather than here.
+        const report = renditionReportAnswerSchema.safeParse(await this.readJson(response));
+        if (!report.success) {
           this.logger.error(
             `[Admin] Report of rendition ${rung} answered 200 for ${url} with a body that is not a ladder`,
           );
+          return null;
         }
-        return report;
+        return report.data;
       }
       if (!isRetryableReportStatus(response.status)) {
         this.logger.error(`[Admin] Report of rendition ${rung} refused with ${response.status} for ${url}`);
