@@ -170,33 +170,38 @@ function lockfileShowArgs(ref: string): string[] {
 /**
  * Publish age, signature and SLSA provenance for every version this change introduces.
  *
- * Returns null when the lockfile did not move. A failed read is a thrown `CollectionError` rather
- * than a null, because "no dependency changed" and "I could not tell" must not render the same.
+ * The lockfile is compared from the merge base, the commit the change branched from, where the diff
+ * rows start as well. Compared from the base's tip, a package the base bumped after the change branched
+ * off it would read as a version this change introduced.
+ *
+ * Returns null when the change did not move the lockfile. A failed read is a thrown `CollectionError`
+ * rather than a null, because "no dependency changed" and "I could not tell" must not render the same.
  *
  * This covers two of the owner's four dependency checks. The other two are named in the artifact
  * rather than left out silently, because a section that lists some checks reads as listing all of
  * them, and the auditor is told not to re-derive what the block already emits.
  */
 export async function collectProvenance(base: string, head: string): Promise<FactGroup | null> {
-  const lockAt = async (ref: string): Promise<string> => {
-    const args = lockfileShowArgs(ref);
+  const git = async (args: string[]): Promise<string> => {
     const result = await run('git', args);
     if (result.exitCode !== 0) {
       throw new CollectionError(describe('git', args), result.stderr.trim() || `exit ${result.exitCode}`);
     }
     return result.stdout;
   };
+  const lockAt = (ref: string): Promise<string> => git(lockfileShowArgs(ref));
 
-  const baseLock = await lockAt(base);
+  const branchPoint = (await git(['merge-base', base, head])).trim();
+  const branchPointLock = await lockAt(branchPoint);
   const headLock = await lockAt(head);
-  if (baseLock === headLock) {
-    // The group is absent only when the lockfile is untouched. A lockfile that moved and introduced
-    // nothing is a different fact and gets a row saying so, because an absent group and a clean one
-    // would otherwise read the same.
+  if (branchPointLock === headLock) {
+    // The group is absent only when the change left the lockfile untouched. A lockfile that moved and
+    // introduced nothing is a different fact and gets a row saying so, because an absent group and a
+    // clean one would otherwise read the same.
     return null;
   }
 
-  const introduced = introducedVersions(baseLock, headLock);
+  const introduced = introducedVersions(branchPointLock, headLock);
   if (introduced.length === 0) {
     return {
       title: 'Provenance of introduced versions',
@@ -204,7 +209,8 @@ export async function collectProvenance(base: string, head: string): Promise<Fac
         {
           key: 'versions introduced',
           value: '0, though the lockfile did change. Nothing new resolved, so there is nothing to check.',
-          command: describe('git', ['diff', `${base}..${head}`, '--', 'pnpm-lock.yaml']),
+          // Three dots, so the diff a reader runs starts from the merge base the lockfiles were compared from.
+          command: describe('git', ['diff', `${base}...${head}`, '--', 'pnpm-lock.yaml']),
         },
       ],
     };
