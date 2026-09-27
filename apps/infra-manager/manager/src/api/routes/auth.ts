@@ -1,5 +1,6 @@
 import { Request, RequestHandler, Response, Router } from 'express';
 import type { SessionInfo } from '@streaming-infra-manager/common';
+import { clientIpOf } from '@streaming-monorepo/web-auth';
 
 import { AuthService } from '../../domain/auth/AuthService.js';
 import { AdminRequiredError } from '../../domain/errors/index.js';
@@ -12,7 +13,6 @@ import {
   loginSchema,
   userIdParamSchema,
 } from '../../schemas/auth.js';
-import { clientIpOf } from '../../utils/clientIp.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requireAdmin, signedInSession, signedInUser } from '../middleware/requireSession.js';
 import { validateBody, validateParams } from '../middleware/validate.js';
