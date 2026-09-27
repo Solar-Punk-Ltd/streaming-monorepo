@@ -11,7 +11,7 @@
     "test": "TSX_DISABLE_CACHE=1 tsx --test --test-reporter=dot --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=.test-summary.tap test/*.test.ts && node scripts/assert-test-floor.mjs .test-summary.tap"
   },
   "dependencies": {
-    "@ethersphere/bee-js": "^9.0.3",
+    "@ethersphere/bee-js": "13.1.0",
     "cafe-utility": "31.1.1",
     "dotenv": "^16.4.7",
     "express": "^5.2.1",

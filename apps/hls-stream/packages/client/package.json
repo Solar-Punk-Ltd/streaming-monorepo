@@ -14,7 +14,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ethersphere/bee-js": "^9.0.3",
+    "@ethersphere/bee-js": "13.1.0",
     "@lat-murmeldjur/weeb_3": "0.0.341001",
     "@swarm-hls-stream/shared": "workspace:*",
     "hls.js": "^1.6.2",

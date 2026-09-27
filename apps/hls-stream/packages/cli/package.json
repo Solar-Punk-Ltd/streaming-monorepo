@@ -9,7 +9,7 @@
     "test": "TSX_DISABLE_CACHE=1 tsx --test test/*.test.ts"
   },
   "dependencies": {
-    "@ethersphere/bee-js": "^9.0.3",
+    "@ethersphere/bee-js": "13.1.0",
     "dotenv": "^16.4.7"
   },
   "devDependencies": {
