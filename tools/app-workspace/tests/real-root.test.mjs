@@ -12,7 +12,7 @@ const REPOSITORY_ROOT = DEFAULT_ROOT;
 const LOCKFILE = 'pnpm-lock.yaml';
 const WORKSPACE_FILE = 'pnpm-workspace.yaml';
 const INJECT_SETTING = 'injectWorkspacePackages';
-/** The release-age gate of decision 51: one week, in minutes, strict, for every install in the repository. */
+/** The release-age gate: one week, in minutes, strict, for every install in the repository. */
 const RELEASE_AGE_SETTINGS = ['minimumReleaseAge: 10080', 'minimumReleaseAgeStrict: true'];
 
 /** One of the repository's root files, failing in words when the repository keeps none. */
