@@ -309,7 +309,8 @@ describe('cutLockfile', () => {
 
       assert.throws(
         () => cutLockfile(sharedWith({ alpha }), ALPHA),
-        (error) => error instanceof Refusal && /packages\/missing/.test(error.message) && /no importer/.test(error.message),
+        (error) =>
+          error instanceof Refusal && /packages\/missing/.test(error.message) && /no importer/.test(error.message),
       );
     });
 

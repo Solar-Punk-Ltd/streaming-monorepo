@@ -197,7 +197,10 @@ saveExact: true
     });
 
     it('adds no glob, and writes the same bytes, when nothing is carried', () => {
-      assert.equal(cutWorkspace(SHARED_ROOT_WORKSPACE, { ...BETA, sharedPackages: [] }), cutWorkspace(ROOT_WORKSPACE, BETA));
+      assert.equal(
+        cutWorkspace(SHARED_ROOT_WORKSPACE, { ...BETA, sharedPackages: [] }),
+        cutWorkspace(ROOT_WORKSPACE, BETA),
+      );
       assert.equal(cutWorkspace(ROOT_WORKSPACE, BETA).includes('workspace-packages'), false);
     });
   });
