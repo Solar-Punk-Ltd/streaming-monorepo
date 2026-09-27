@@ -621,6 +621,8 @@ importers:
         specifier: 2.1.9
         version: 2.1.9(@types/node@22.9.0)(jsdom@25.0.1)(lightningcss@1.33.0)(sass@1.99.0)
 
+  tools/app-workspace: {}
+
   tools/boundary-check: {}
 
   tools/move-check: {}
