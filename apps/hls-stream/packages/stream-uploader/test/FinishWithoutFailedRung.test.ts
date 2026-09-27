@@ -276,7 +276,7 @@ const isFinishedLadder = (rungs: readonly Rendition[]): boolean =>
 
 /**
  * The admin's side of the two internal routes a ladder in admin mode uses, merging by the rule the
- * admin ships in `web2-admin/backend/src/domain/renditions.ts`: a report without an index keeps the
+ * admin ships in `apps/web2-admin/backend/src/domain/renditions.ts`: a report without an index keeps the
  * index already held for that rung on the same feed, the ladder is finished once every rung it holds
  * has one, and `flippedToFinished` is judged against the ladder the report replaced. A `live` report
  * over a recording un-finishes it, as `StreamStateService.apply` does.

@@ -325,7 +325,8 @@ for the manager's bridge.
 One Caddy per host serves the consoles that host publishes on its loopback,
 each under its own name with its own Let's Encrypt certificate: this repo's
 console, and streaming-infra-manager's when the host runs that too. It is a
-compose project of its own, `edge`, in `infra/edge/`, on the host's network:
+compose project of its own, `edge`, kept in `infra/edge/` in this repository
+and run from `deploy/edge/` in the host's checkout, on the host's network:
 Caddy binds ports 80 and 443 itself and reaches `127.0.0.1:9090` and
 `127.0.0.1:8080` as the host does, so the consoles stay published on loopback
 only and neither console's compose file changes. For two names on one host it
