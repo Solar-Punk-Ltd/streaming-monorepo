@@ -1,5 +1,6 @@
 export * from './authSql.js';
 export * from './clientIp.js';
+export * from './cookies.js';
 export * from './errors/index.js';
 export * from './LoginLimiter.js';
 export * from './passwordHash.js';
