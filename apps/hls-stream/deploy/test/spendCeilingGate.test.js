@@ -74,7 +74,7 @@ describe('the spend ceiling is wired into everything that can spend', () => {
   it('is sourced with a guard that stops the run when the file cannot be read', () => {
     for (const name of scriptsThatSpend()) {
       const lines = bodyOf(name).split('\n');
-      const at = lines.findIndex((line) => /^\. "\$\{CEILING\}" \|\|/.test(line));
+      const at = lines.findIndex((line) => line.startsWith('. "${CEILING}" ||'));
       assert.ok(at >= 0, `${name} does not source the ceiling it resolved a path to`);
       assert.match(
         lines.slice(at, at + 8).join('\n'),
