@@ -11,6 +11,7 @@ import type {
 import { ChequebookJournalError } from '../errors/ChequebookJournalError.js';
 import { ChequebookPreparationError } from '../errors/ChequebookPreparationError.js';
 import { ChequebookPreflightRefusedError } from '../errors/ChequebookPreflightRefusedError.js';
+import { TransferRefusalError } from '../errors/TransferRefusalError.js';
 import type { ChequebookOperationRepository, SubmissionOutcome } from './ChequebookOperationRepository.js';
 import {
   isTransactionHash,
@@ -105,6 +106,8 @@ export class ChequebookSubmission {
       return await action();
     } catch (error) {
       if (error instanceof ChequebookProfileChangedError) throw error;
+      // A refusal the journal decided, such as a target that changed, is answered with its own cause.
+      if (TransferRefusalError.carried(error)) throw ChequebookPreparationError.keeping(error);
       // Driver messages may include connection details. The durable row is left intact.
       throw new ChequebookJournalError();
     }
