@@ -271,6 +271,33 @@ describe('stack-version-build.sh fetches a pinned commit', () => {
     }
   });
 
+  /**
+   * Every stack release tag is annotated, so a tag names a tag object of its
+   * own. An Update fetches the tag into the clone the version already has, and
+   * what it records has to be the commit, or it publishes a new build of the
+   * same tree under an id that is no commit and clears the Tested mark.
+   */
+  it('records the commit an annotated tag points at, in a new clone and in the clone it already has', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stack-build-tag-'));
+    try {
+      const { pinned, environment } = fixture(root);
+      const origin = join(root, 'origin');
+      git(origin, 'tag', '-a', 'stack/v1', '-m', 'a release', pinned);
+      assert.notEqual(git(origin, 'rev-parse', 'stack/v1'), pinned, 'an annotated tag is an object of its own');
+      const repo = join(root, 'stack.repo');
+      const added = join(root, 'staging-added');
+      const updated = join(root, 'staging-updated');
+
+      execFileSync('bash', [BUILD_SCRIPT, repo, added, 'stack/v1', STACK_URL, '.', 'none', 'abcdef01'], { env: environment });
+      execFileSync('bash', [BUILD_SCRIPT, repo, updated, 'stack/v1', STACK_URL, '.', 'none', 'abcdef02'], { env: environment });
+
+      assert.equal(readFileSync(join(added, STACK_COMMIT_FILE), 'utf8').trim(), pinned);
+      assert.equal(readFileSync(join(updated, STACK_COMMIT_FILE), 'utf8').trim(), pinned);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('says the whole tree is the stack', () => {
     const root = mkdtempSync(join(tmpdir(), 'stack-build-whole-'));
     try {
