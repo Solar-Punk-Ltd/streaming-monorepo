@@ -20,6 +20,6 @@
     "oxfmt": "0.67.0",
     "oxlint": "1.82.0",
     "oxlint-tsgolint": "7.0.2001",
-    "typescript": "6.0.2"
+    "typescript": "7.0.2"
   }
 }
