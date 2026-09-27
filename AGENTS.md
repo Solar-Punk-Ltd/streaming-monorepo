@@ -14,8 +14,8 @@ Read by AI coding agents working in this repository.
   version of the interactive MVP model and is the reference for what the
   admin layer is and is not.
 - `docs/infra-state.md` says what is deployed where.
-- `docs/research/` holds condensed reports on the sibling repos (msrs-client,
-  streaming-infra-manager, swarm-hls-stream). Read the relevant one before
+- `docs/research/` holds condensed reports on the sibling repos
+  (streaming-infra-manager, swarm-hls-stream). Read the relevant one before
   touching anything that talks to those systems.
 
 ## Conventions
