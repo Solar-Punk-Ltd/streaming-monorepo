@@ -27,20 +27,22 @@ proves that a move changed no file.
 
 ## Working in an app
 
-Each app is still a pnpm workspace of its own, with its own lockfile and its own pinned pnpm and
-Node. Go into the app first, then use its own commands:
+The repository is one pnpm workspace, so one install at the root, from its one lockfile, installs
+all three apps. Then go into an app and use its own commands, which cover that app alone:
 
 ```sh
+pnpm install            # at the root, once
 cd apps/web2-admin      # or apps/hls-stream, or apps/infra-manager
-pnpm install
 pnpm test
 ```
 
-The pnpm release an app is built with is the `packageManager` field of its `package.json`, and
-with corepack enabled `pnpm` in that folder is that release. The Node release is its `.nvmrc`
-where it has one, and otherwise the base image of its Dockerfiles. The three apps differ, so read
-the numbers from those files rather than assuming one toolchain. There is nothing to install at
-the root, and nothing at the root builds or tests all three at once.
+Each app keeps its own `package.json`, with its scripts and its dependencies, and pnpm lets a
+package import only what it declares, so the apps stay apart. The pnpm release is the
+`packageManager` field of the root `package.json`, which each app's `package.json` repeats, and
+with corepack enabled `pnpm` is that release. The security overrides, the builds allowed and the
+other workspace settings are in the root `pnpm-workspace.yaml`. The Node release is an app's
+`.nvmrc` where it has one, and otherwise the base image of its Dockerfiles. The apps differ there,
+so read the numbers from those files. Nothing at the root builds or tests all three at once yet.
 
 Each app's README says what its commands are and what a development setup needs:
 [the admin's](apps/web2-admin/README.md), [the stack's](apps/hls-stream/README.md) and
