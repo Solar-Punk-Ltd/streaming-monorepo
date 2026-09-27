@@ -40,7 +40,7 @@ async function git(args: string[]): Promise<string> {
  * Both rules used to be settled by the author's own description of their own change, which is the
  * shape of claim this whole artifact exists to remove.
  *
- * `base` arrives resolved by `resolveBase`, the same ref the lockfile is read from.
+ * `base` arrives resolved by `resolveBase`, the same ref the lockfiles are read from.
  */
 export async function collectDiff(base: string, head: string): Promise<FactGroup> {
   // In a diff `...` starts from the merge base, the commit the change branched from, so what the base

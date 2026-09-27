@@ -11,10 +11,10 @@ React application for browsing and playing HLS streams delivered via the Swarm d
 
 ## Getting Started
 
-From the monorepo root:
+From the stack's folder, `apps/hls-stream`:
 
 ```bash
-# Install dependencies
+# Install the whole workspace, from the root lockfile
 pnpm install
 
 # Create .env from sample (if not done yet)

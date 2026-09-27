@@ -16,7 +16,7 @@ Roadmap: [docs/ROADMAP.md](../../docs/ROADMAP.md).
 ## Run it locally
 
 ```bash
-pnpm install
+pnpm install                                                # the whole workspace, from the root lockfile
 cp backend/.env.sample backend/.env                         # set FEED_PRIVATE_KEY and INGEST_HOST. FEED_GATEWAY=fake needs no Bee
 pnpm --filter @streaming-monorepo/web2-admin-backend database:start
 pnpm dev                                                    # backend on :9877, frontend on :5081

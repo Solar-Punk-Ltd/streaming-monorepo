@@ -46,9 +46,10 @@ and how the pieces fit under `docs/`. Read it before moving anything.
 
 ## Conventions
 
-- TypeScript and ESM throughout. Each app pins its own pnpm in `packageManager` and its Node in
-  `.nvmrc` where it has one. Work inside the app (`cd apps/<app>`), because there is no workspace
-  at the root yet.
+- TypeScript and ESM throughout. The repository is one pnpm workspace: install once at the root,
+  then work inside the app (`cd apps/<app>`), whose commands cover that app alone. pnpm is pinned in
+  the root `package.json`, which each app repeats, and Node in an app's `.nvmrc` where it has one.
+  Overrides and workspace settings live in the root `pnpm-workspace.yaml` alone.
 - When you change behaviour, change the page that describes it in the same pull request.
 
 ## Working model

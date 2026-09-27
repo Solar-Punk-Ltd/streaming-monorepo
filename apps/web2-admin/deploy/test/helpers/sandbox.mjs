@@ -103,11 +103,38 @@ exit 128
 `,
 };
 
-/** The machine's own git, found before a sandbox puts its stub first on PATH. */
-const REAL_GIT = (process.env.PATH ?? '')
-  .split(delimiter)
-  .map((dir) => join(dir, 'git'))
-  .find((path) => existsSync(path));
+/** The machine's own copy of a command, found before a sandbox puts its stub first on PATH. */
+const onPath = (name) =>
+  (process.env.PATH ?? '')
+    .split(delimiter)
+    .map((dir) => join(dir, name))
+    .find((path) => existsSync(path));
+
+const REAL_GIT = onPath('git');
+
+/** The machine's own rsync, which a sandbox made with `realRsync` sends through for real. */
+export const REAL_RSYNC = onPath('rsync');
+
+/**
+ * An rsync that runs the real one, for a test of what --delete and a second source do to a real
+ * destination. It keeps its arguments as given, NUL separated, sends a host:/path destination to the
+ * path on this machine, and copies the destination as the real rsync left it, before the deploy's
+ * host steps run in it. openrsync, macOS's rsync, starts its receiving side as `rsync --server` from
+ * PATH, which reaches this stub too and goes straight on to the real one.
+ */
+const REAL_RSYNC_STUB = `#!/bin/bash
+if [ "\${1:-}" = --server ]; then exec "$REAL_RSYNC" "$@"; fi
+printf 'rsync %s\\n' "$*" >> "$STUB_JOURNAL"
+printf '%s\\0' "$@" > "$STUB_JOURNAL-rsync-argv"
+args=()
+for arg in "$@"; do
+  if [[ "$arg" =~ ^[A-Za-z0-9._@-]+:(/.*)$ ]]; then args+=("\${BASH_REMATCH[1]}"); else args+=("$arg"); fi
+done
+"$REAL_RSYNC" "\${args[@]}"
+status=$?
+if [ "$status" -eq 0 ]; then cp -R "\${args[\${#args[@]}-1]}" "$STUB_JOURNAL-rsync-after"; fi
+exit "$status"
+`;
 
 /** The repository's cut tool, which a checkout of the one workspace carries at its root. */
 const CUT_TOOL = 'tools/app-workspace';
@@ -171,7 +198,7 @@ export function fakeEdgeEnv(marker) {
  * `checkout` and `host` map a path to the content written there. Without `host` the fake host does
  * not exist yet, which is a host nothing was deployed to.
  */
-export function makeSandbox({ checkout = {}, host, cutTool = false } = {}) {
+export function makeSandbox({ checkout = {}, host, cutTool = false, realRsync = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'web2-admin-deploy-'));
   sandboxes.push(dir);
   const root = join(dir, 'checkout');
@@ -186,7 +213,7 @@ export function makeSandbox({ checkout = {}, host, cutTool = false } = {}) {
   if (cutTool) cpSync(join(REPOSITORY_ROOT, CUT_TOOL), join(root, CUT_TOOL), { recursive: true });
   writeTree(root, { ...SAMPLES, ...checkout });
   if (host) writeTree(hostDir, host);
-  writeTree(bin, STUBS);
+  writeTree(bin, realRsync ? { ...STUBS, rsync: REAL_RSYNC_STUB } : STUBS);
   for (const name of Object.keys(STUBS)) chmodSync(join(bin, name), 0o755);
 
   const env = {
@@ -197,6 +224,7 @@ export function makeSandbox({ checkout = {}, host, cutTool = false } = {}) {
     HEALTH_TIMEOUT: '10',
     PROBE_TIMEOUT: '0',
     REAL_GIT,
+    REAL_RSYNC,
   };
   // A file bash would source before every script it starts.
   delete env.BASH_ENV;
@@ -227,6 +255,10 @@ export function makeSandbox({ checkout = {}, host, cutTool = false } = {}) {
     runScript: (script, args = [], { cwd = root, env: extraEnv = {} } = {}) => spawn('bash', [join(root, script), ...args], cwd, extraEnv),
     /** What each copy in-copy.mjs named to docker held, one sorted file list per docker call, as `./path` lines. */
     copies: () => (existsSync(`${journal}-copy`) ? readFileSync(`${journal}-copy`, 'utf8').split('\n').filter(Boolean) : []),
+    /** The arguments the rsync of a `realRsync` sandbox was given, as it was given them. */
+    rsyncArgv: () => readFileSync(`${journal}-rsync-argv`, 'utf8').split('\0').slice(0, -1),
+    /** The destination as the real rsync of a `realRsync` sandbox left it. */
+    rsyncAfter: `${journal}-rsync-after`,
     /** Runs a command line a script printed for the operator, with the same stubs. */
     runPrinted: (commandLine, { cwd = root } = {}) => spawn('sh', ['-c', commandLine], cwd),
   };
