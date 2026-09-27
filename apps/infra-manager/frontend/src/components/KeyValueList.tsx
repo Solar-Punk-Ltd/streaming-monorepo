@@ -28,7 +28,9 @@ export function KeyValueList({
     >
       {entries.map((entry) => (
         <Box key={entry.key} sx={{ display: 'contents' }}>
-          <Typography component="dt" variant="body2" color="text.secondary">
+          <Typography component="dt" variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             {entry.key}
           </Typography>
           <Box

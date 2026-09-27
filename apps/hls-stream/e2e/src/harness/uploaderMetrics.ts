@@ -13,7 +13,7 @@
  * So the request is made by the process that already holds the token: the shell inside the uploader
  * container expands `$API_AUTH_TOKEN` itself, and only the exposition text comes back out.
  *
- * ⚠️ `node -e` rather than curl or wget, because the image is `node:22-alpine` and ships neither.
+ * ⚠️ `node -e` rather than curl or wget, because the image is `node:24-alpine` and ships neither.
  * The compose healthcheck reaches `/health` the same way and records the same reason.
  *
  * ## What a reading is worth

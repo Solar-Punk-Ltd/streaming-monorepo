@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
-import { HashRouter } from 'react-router-dom';
+import { HashRouter } from 'react-router';
 
 import { AppContextProvider as AppProvider } from './providers/App';
 import BaseRouter from './routes';

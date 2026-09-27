@@ -55,7 +55,11 @@ export function OverviewPage() {
 
   if (!profiles) {
     return (
-      <Stack alignItems="center" sx={{ py: 8 }}>
+      <Stack
+        sx={{
+          alignItems: "center",
+          py: 8
+        }}>
         <CircularProgress />
       </Stack>
     );
@@ -114,7 +118,13 @@ export function OverviewPage() {
             />
             <Count label="Stopped" value={counts.stopped} color="text.secondary" />
           </Stack>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1.75, display: 'block' }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              mt: 1.75,
+              display: 'block'
+            }}>
             {mixLine(profiles, groups.filter((g) => isLadderKind(g.kind)).length, groups.filter((g) => !isLadderKind(g.kind)).length)}
           </Typography>
         </SectionCard>
@@ -201,7 +211,9 @@ function StreamRow({
         <Typography sx={{ fontFamily: MONO_STACK, fontWeight: 600, fontSize: 13 }}>
           {profile.name}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {SHAPE_LABEL[shapeOf(profile)]}
         </Typography>
       </TableCell>
@@ -230,7 +242,12 @@ function Count({
 }) {
   return (
     <Box>
-      <Typography variant="overline" color="text.secondary" display="block">
+      <Typography
+        variant="overline"
+        sx={{
+          color: "text.secondary",
+          display: "block"
+        }}>
         {label}
       </Typography>
       <Typography sx={{ fontSize: 26, fontWeight: 600, color }}>{value}</Typography>

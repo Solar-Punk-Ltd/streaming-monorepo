@@ -36,7 +36,13 @@ export function Sparkline({
   const points = toPolylinePoints(values, width, height, floor);
 
   return (
-    <Box component="svg" width={width} height={height} sx={{ display: 'block' }}>
+    <Box
+      component="svg"
+      sx={{
+        width: width,
+        height: height,
+        display: 'block'
+      }}>
       <polyline
         points={points}
         fill="none"

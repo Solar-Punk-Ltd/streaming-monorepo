@@ -1,4 +1,4 @@
-import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { HashRouter, Navigate, Route, Routes } from 'react-router';
 
 import { AuthProvider } from './auth';
 import { RequireAuth } from './components/RequireAuth';

@@ -5,7 +5,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useParams } from 'react-router';
 import {
   Alert,
   Box,
@@ -53,7 +53,10 @@ function Field({
 }) {
   return (
     <Box>
-      <Typography variant="caption" color="text.secondary" display="block">
+      <Typography
+        variant="caption"
+        sx={{ color: 'text.secondary', display: 'block' }}
+      >
         {label}
       </Typography>
       <Box sx={{ mt: 0.25 }}>{children}</Box>
@@ -63,7 +66,7 @@ function Field({
 
 function Mono({ value, label }: { value: string; label: string }) {
   return (
-    <Stack direction="row" spacing={0.5} alignItems="center">
+    <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
       <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
         {shortHex(value, 10, 8)}
       </Typography>
@@ -272,7 +275,11 @@ export function StreamDetailsPage() {
     // The same column width as the form the operator arrived from, so the two
     // screens do not jump about between each other.
     <Stack spacing={3} sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
-      <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap">
+      <Stack
+        direction="row"
+        spacing={2}
+        sx={{ alignItems: 'center', flexWrap: 'wrap' }}
+      >
         <Typography variant="h5" component="h1" sx={{ flexGrow: 1 }}>
           {stream.title}
         </Typography>
@@ -325,7 +332,7 @@ export function StreamDetailsPage() {
 
       <Paper variant="outlined" sx={{ p: 3 }}>
         <Grid container spacing={3}>
-          <Grid item xs={12} sm={4} md={3}>
+          <Grid size={{ xs: 12, sm: 4, md: 3 }}>
             {stream.hasThumbnail ? (
               <Box
                 component="img"
@@ -356,64 +363,79 @@ export function StreamDetailsPage() {
               </Box>
             )}
           </Grid>
-          <Grid item xs={12} sm={8} md={9}>
+          <Grid size={{ xs: 12, sm: 8, md: 9 }}>
             <Stack spacing={2}>
               <Field label="Description">
                 <Typography variant="body2">{stream.description}</Typography>
               </Field>
               <Field label="Tags">
                 {stream.tags.length ? (
-                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    useFlexGap
+                    sx={{ flexWrap: 'wrap' }}
+                  >
                     {stream.tags.map((tag) => (
                       <Chip key={tag} size="small" label={tag} />
                     ))}
                   </Stack>
                 ) : (
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                     —
                   </Typography>
                 )}
               </Field>
-              <Grid container spacing={2}>
-                <Grid item xs={6} sm={4}>
+              {/*
+                The Grid before MUI 7 sat here with its item padding, and the
+                Stack's margin reset cancelled the negative margins that
+                padding relies on. So these fields stood 16px in from and 16px
+                below the ones above. The padding and width keep that layout.
+              */}
+              <Grid
+                container
+                spacing={2}
+                sx={{ width: 'calc(100% + 16px)', pl: 2, pt: 2 }}
+              >
+                <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Media type">
                     <Typography variant="body2">
                       {MEDIA_TYPE_LABEL[stream.mediaType]}
                     </Typography>
                   </Field>
                 </Grid>
-                <Grid item xs={6} sm={4}>
+                <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Scheduled start">
                     <Typography variant="body2">
                       {formatDateTime(stream.scheduledStartTime)}
                     </Typography>
                   </Field>
                 </Grid>
-                <Grid item xs={6} sm={4}>
+                <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Published">
                     <Typography variant="body2">
                       {formatDateTime(stream.publishedAt)}
                     </Typography>
                   </Field>
                 </Grid>
-                <Grid item xs={6} sm={4}>
+                <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Feed owner">
                     <Mono value={stream.owner} label="Feed owner" />
                   </Field>
                 </Grid>
-                <Grid item xs={6} sm={4}>
+                <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Topic">
                     <Mono value={stream.topic} label="Topic" />
                   </Field>
                 </Grid>
-                <Grid item xs={6} sm={4}>
+                <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Feed index">
                     <Typography variant="body2">
                       {stream.publishedFeedIndex ?? '—'}
                     </Typography>
                   </Field>
                 </Grid>
-                <Grid item xs={6} sm={4}>
+                <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Thumbnail reference">
                     {stream.thumbnailRef ? (
                       <Mono
@@ -421,14 +443,17 @@ export function StreamDetailsPage() {
                         label="Thumbnail reference"
                       />
                     ) : (
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography
+                        variant="body2"
+                        sx={{ color: 'text.secondary' }}
+                      >
                         —
                       </Typography>
                     )}
                   </Field>
                 </Grid>
                 {stream.liveSince ? (
-                  <Grid item xs={6} sm={4}>
+                  <Grid size={{ xs: 6, sm: 4 }}>
                     <Field label="Live since">
                       <Typography variant="body2">
                         {formatDateTime(stream.liveSince)}
@@ -437,7 +462,7 @@ export function StreamDetailsPage() {
                   </Grid>
                 ) : null}
                 {stream.endedAt ? (
-                  <Grid item xs={6} sm={4}>
+                  <Grid size={{ xs: 6, sm: 4 }}>
                     <Field label="Ended">
                       <Typography variant="body2">
                         {formatDateTime(stream.endedAt)}
@@ -446,7 +471,7 @@ export function StreamDetailsPage() {
                   </Grid>
                 ) : null}
                 {stream.durationSeconds != null ? (
-                  <Grid item xs={6} sm={4}>
+                  <Grid size={{ xs: 6, sm: 4 }}>
                     <Field label="Duration">
                       <Typography variant="body2">
                         {formatDuration(stream.durationSeconds)}
@@ -455,7 +480,7 @@ export function StreamDetailsPage() {
                   </Grid>
                 ) : null}
                 {stream.manifestIndex != null ? (
-                  <Grid item xs={6} sm={4}>
+                  <Grid size={{ xs: 6, sm: 4 }}>
                     <Field label="Manifest index">
                       <Typography variant="body2">
                         {stream.manifestIndex}
@@ -463,14 +488,14 @@ export function StreamDetailsPage() {
                     </Field>
                   </Grid>
                 ) : null}
-                <Grid item xs={6} sm={4}>
+                <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Created">
                     <Typography variant="body2">
                       {formatDateTime(stream.createdAt)}
                     </Typography>
                   </Field>
                 </Grid>
-                <Grid item xs={6} sm={4}>
+                <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Updated">
                     <Typography variant="body2">
                       {formatDateTime(stream.updatedAt)}
@@ -484,7 +509,11 @@ export function StreamDetailsPage() {
 
         <Divider sx={{ my: 3 }} />
 
-        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+        <Stack
+          direction="row"
+          spacing={2}
+          sx={{ alignItems: 'center', flexWrap: 'wrap' }}
+        >
           <Button
             variant="contained"
             startIcon={<CloudUploadIcon />}
@@ -517,12 +546,10 @@ export function StreamDetailsPage() {
         <Stack
           direction="row"
           spacing={0.5}
-          alignItems="center"
           useFlexGap
-          flexWrap="wrap"
-          sx={{ mt: 1 }}
+          sx={{ alignItems: 'center', flexWrap: 'wrap', mt: 1 }}
         >
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
             Direct stream route, once the stream has gone live:
           </Typography>
           <Typography

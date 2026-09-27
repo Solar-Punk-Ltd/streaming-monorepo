@@ -62,7 +62,9 @@ export function AddUserCard({ onAdded }: { onAdded: () => Promise<void> }) {
   return (
     <SectionCard title="Add user">
       <Stack spacing={2} component="form" onSubmit={submit}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           Type a starting password, tell it to them in person, and ask them to
           change it here once they are in.
         </Typography>
@@ -119,7 +121,9 @@ export function AddUserCard({ onAdded }: { onAdded: () => Promise<void> }) {
 
         {error && <Alert severity="error">{error}</Alert>}
 
-        <Stack direction="row" justifyContent="flex-end">
+        <Stack direction="row" sx={{
+          justifyContent: "flex-end"
+        }}>
           <Button type="submit" variant="contained" disabled={pending || !complete}>
             {pending ? 'Adding' : 'Add user'}
           </Button>

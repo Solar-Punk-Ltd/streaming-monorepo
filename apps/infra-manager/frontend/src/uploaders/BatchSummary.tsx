@@ -15,7 +15,9 @@ export function BatchSummary({ stamp }: { stamp: BeeStamp }) {
           {shortHex(stamp.batchID)}
         </Box>
       </Typography>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" sx={{
+        color: "text.secondary"
+      }}>
         {batchSummaryLine(stamp)}
       </Typography>
     </Stack>

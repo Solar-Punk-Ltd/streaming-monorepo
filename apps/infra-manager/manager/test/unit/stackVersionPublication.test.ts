@@ -48,6 +48,7 @@ import {
   stagingDirFor,
 } from '../../src/domain/versions/stackPaths.js';
 import {
+  BUILD_IMAGE,
   BUILD_SCRIPT,
   StackVersionService,
 } from '../../src/domain/versions/StackVersionService.js';
@@ -166,10 +167,10 @@ describe('adding a version', () => {
     await service.add('v3', 'main-v3');
     const staging = stagingDirFor(versionsRoot, 'v3', attemptOf());
     cpSync(V3_FIXTURE, staging, { recursive: true });
-    leaveBuildMarkers(staging, COMMIT_A, MONOREPO_STACK_FOLDER, 'node:22-alpine pnpm@11.11.0');
+    leaveBuildMarkers(staging, COMMIT_A, MONOREPO_STACK_FOLDER, `${BUILD_IMAGE} pnpm@11.11.0`);
     await finished('v3');
 
-    assert.equal(readBuildManifest(buildDirFor(versionsRoot, 'v3', COMMIT_A)).manifest?.toolchain, 'node:22-alpine pnpm@11.11.0');
+    assert.equal(readBuildManifest(buildDirFor(versionsRoot, 'v3', COMMIT_A)).manifest?.toolchain, `${BUILD_IMAGE} pnpm@11.11.0`);
   });
 
   it('treats a build that left no word of its pnpm as failed, naming what is missing', async () => {

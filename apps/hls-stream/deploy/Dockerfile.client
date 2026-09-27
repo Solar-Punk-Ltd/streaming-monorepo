@@ -6,7 +6,7 @@
 # own image, so streamer1 and streamer2 ship their own pre-built JS.
 
 # --- Build stage --------------------------------------------------------
-FROM node:22-alpine AS build
+FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 WORKDIR /app
 
 # Build args (declare → ENV so Vite picks them up via process.env.VITE_*).
@@ -22,7 +22,7 @@ ARG VITE_APP_RAW_TOPIC=swarm-stream
 ARG VITE_EXPOSE_PLAYER=
 # ⛔ Empty by default, meaning segments come from the viewer's bee gateway. Set to `weeb3`, the bundle
 # fetches segment bytes from a Swarm node running in the viewer's own tab instead. Experimental: it
-# pulls in a few megabytes of WebAssembly (3.87 MB at the pinned @lat-murmeldjur/weeb_3 0.0.341001),
+# pulls in a few megabytes of WebAssembly (3.32 MB at the pinned @lat-murmeldjur/weeb_3 0.0.350001),
 # as a lazy chunk no gateway-backed viewer ever downloads. The feed and the manifests still travel
 # through the gateway either way.
 ARG VITE_BROWSER_FETCH_BACKEND=
@@ -84,7 +84,7 @@ RUN printf '{"clientTree":"%s","sharedTree":"%s","head":"%s","dirty":%s,"builtAt
       > /app/packages/client/dist/build-stamp.json
 
 # --- Runtime stage ------------------------------------------------------
-FROM nginx:1.27-alpine
+FROM nginx:1.30.4-alpine@sha256:dc5069ad14f19660b141b21236140b91656bf89bbc3e2417c70ae650cd66104c
 
 COPY --from=build /app/packages/client/dist /usr/share/nginx/html
 COPY deploy/client-nginx.conf.template /etc/nginx/templates/default.conf.template

@@ -970,7 +970,7 @@ out of the records written before.
 Adding and updating run `manager/scripts/stack-version-build.sh <repo-root>
 <staging-dir> <ref> <repo-url> <attempt-id>`, which clones or fetches, exports
 the fetched commit into the staging tree under the version's builds directory,
-and builds the packages there in a throwaway `node:22-alpine` container shown
+and builds the packages there in a throwaway `node:24-alpine` container shown
 that tree and nothing else. When the commit keeps one lockfile at the
 repository's root, the container first cuts the stack's own pair out of it with
 that commit's `tools/app-workspace`, from a side folder of the staging tree

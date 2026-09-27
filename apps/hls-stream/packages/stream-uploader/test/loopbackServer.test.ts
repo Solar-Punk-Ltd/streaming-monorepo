@@ -118,13 +118,14 @@ describe('listenOnLoopback binds the family it dials (TEST-31)', () => {
     await assert.rejects(
       () => fetch(`http://${LOOPBACK_HOST}:${port}/probe`),
       (error: Error) => {
-        // `Error.cause` is ES2022 and this project's test lib predates it, so the shape is declared
-        // here rather than read off the built-in type.
-        const { cause } = error as Error & { cause?: { code?: string } };
+        // The squatter answers with something that is not HTTP, which undici reports as an
+        // HTTPParserError. Read by its name: Node 22's undici also set `code` to HPE_INVALID_CONSTANT
+        // on it and Node 24's sets none (measured 2026-09-27 on 22.22.3 and 24.19.0).
+        const { cause } = error as Error & { cause?: { name?: string } };
         assert.equal(
-          cause?.code,
-          'HPE_INVALID_CONSTANT',
-          `dialling IPv4 reached something, but not the squatter this test set up: ${String(cause?.code)}`,
+          cause?.name,
+          'HTTPParserError',
+          `dialling IPv4 reached something, but not the squatter this test set up: ${String(cause?.name)}`,
         );
         return true;
       },

@@ -1,4 +1,4 @@
-import { Bee } from '@ethersphere/bee-js';
+import { Bee, BeeRequestOptions } from '@ethersphere/bee-js';
 
 import { redactUrlSecrets } from '../utils/urlSecrets.js';
 
@@ -192,17 +192,49 @@ export interface PublisherRoute {
 }
 
 /**
+ * A Bee whose `timeout` option actually ends a request.
+ *
+ * ⛔⛔⛔ **bee-js 13 accepts `timeout`, validates it, and never applies it.** Its transport is the
+ * platform's `fetch`, which has no timeout of its own and ignores the field, so a node that accepts
+ * the connection and then answers nothing holds the call for ever, exactly as `new Bee(url)` did
+ * before this pool carried a timeout. Measured 2026-09-27 against a silent local socket: bee-js 9.8.1
+ * rejected at 505ms of a 500ms timeout, bee-js 13.1.0 was still waiting at 4s. What bee-js 13 does
+ * honour is a per-call `signal`, and every call it makes asks this method for its options, so the
+ * deadline goes on here and reaches every group, `data`, `feed`, `stamp` and the rest.
+ *
+ * ⚠️ **The deadline is now total, where axios's was idle.** axios put `timeout` on the socket, so a node
+ * still sending bytes never tripped it: a 500ms timeout let a 1.8s answer trickle in. `AbortSignal`
+ * counts from the start of the request whatever arrives. The two differ only by the time the bytes
+ * spend on the wire, since a node thinking before it answers sends nothing and tripped the old limit
+ * too. The uploader's largest body is one top-rung segment, a few megabytes at most, sent to a node on
+ * the same host, which is milliseconds against `BEE_REQUEST_TIMEOUT_MS`'s 4 seconds.
+ *
+ * `getRequestOptionsForCall` returns the client's own options object when a call passes none, so a new
+ * object is returned rather than that one changed: a signal written onto it would be the same spent
+ * signal for every later request.
+ */
+class DeadlineBee extends Bee {
+  protected override getRequestOptionsForCall(requestOptions?: BeeRequestOptions): BeeRequestOptions {
+    const options = super.getRequestOptionsForCall(requestOptions);
+    if (options.signal !== undefined || !options.timeout) {
+      return options;
+    }
+
+    return { ...options, signal: AbortSignal.timeout(options.timeout) };
+  }
+}
+
+/**
  * Every Bee client this pool hands out, and the one place a request deadline is put on one.
  *
- * ⛔ **A client built with no options waits for ever.** bee-js passes axios
- * `timeout: options?.timeout ?? 0`, and axios reads 0 as no timeout, so a node that accepts the
- * connection and then answers nothing never fails the call that reached it. That is not one slow
- * request: a rung's uploads run at concurrency 1, so it is the rung stopped, and on the coordinator it
- * is the catalog stopped for every stream on the stage. The window comes from `BEE_REQUEST_TIMEOUT_MS`,
- * whose default is derived from the retry windows that wrap these calls.
+ * ⛔ **A client built with no timeout waits for ever**, so a node that accepts the connection and then
+ * answers nothing never fails the call that reached it. That is not one slow request: a rung's uploads
+ * run at concurrency 1, so it is the rung stopped, and on the coordinator it is the catalog stopped for
+ * every stream on the stage. The window comes from `BEE_REQUEST_TIMEOUT_MS`, whose default is derived
+ * from the retry windows that wrap these calls, and {@link DeadlineBee} is what makes bee-js 13 keep it.
  */
 function boundedBee(url: string, requestTimeoutMs: number): Bee {
-  return new Bee(url, { timeout: requestTimeoutMs });
+  return new DeadlineBee(url, { timeout: requestTimeoutMs });
 }
 
 /**

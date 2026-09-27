@@ -2,7 +2,7 @@ import { ThemeProvider, createTheme } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { render, type RenderResult } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { vi } from 'vitest';
 import type { ReactNode } from 'react';
 import type {

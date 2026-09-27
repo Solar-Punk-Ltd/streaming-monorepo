@@ -88,21 +88,25 @@ function recordingMasterWriter(masters: MasterWrite[]): MasterFeedWriter {
 function catalogFeed(payloads: string[]): Bee {
   const latest = () => (payloads.length === 0 ? [] : JSON.parse(payloads[payloads.length - 1]));
   return {
-    makeFeedReader: () => ({
-      downloadPayload: async (options?: { index?: FeedIndex }) => {
-        if (options?.index) {
-          return { payload: { toJSON: latest } };
-        }
-        return { feedIndex: FeedIndex.fromBigInt(BigInt(payloads.length)), payload: { toJSON: latest } };
-      },
-    }),
-    isConnected: async () => true,
-    makeFeedWriter: () => ({
-      uploadPayload: async (_stamp: string, payload: unknown) => {
-        payloads.push(String(payload));
-        return { reference: { toHex: () => 'ref' } };
-      },
-    }),
+    feed: {
+      makeReader: () => ({
+        downloadPayload: async (options?: { index?: FeedIndex }) => {
+          if (options?.index) {
+            return { payload: { toJSON: latest } };
+          }
+          return { feedIndex: FeedIndex.fromBigInt(BigInt(payloads.length)), payload: { toJSON: latest } };
+        },
+      }),
+      makeWriter: () => ({
+        uploadPayload: async (_stamp: string, payload: unknown) => {
+          payloads.push(String(payload));
+          return { reference: { toHex: () => 'ref' } };
+        },
+      }),
+    },
+    connectivity: {
+      isConnected: async () => true,
+    },
   } as unknown as Bee;
 }
 

@@ -88,7 +88,7 @@ function pageBaseUrl(): string {
 }
 
 /**
- * ⛔⛔ Dynamic, and it has to stay dynamic. The pinned 0.0.341001 is 3.87 MB of wasm plus 96 KB of
+ * ⛔⛔ Dynamic, and it has to stay dynamic. The pinned 0.0.350001 is 3.32 MB of wasm plus 96 KB of
  * glue, and a static import would put all of it in the entry chunk of every viewer, including the
  * overwhelming majority who fetch through a gateway and never call this. As an `import()` inside a
  * lazily reached method it is a separate chunk that is only ever fetched by a build that selected

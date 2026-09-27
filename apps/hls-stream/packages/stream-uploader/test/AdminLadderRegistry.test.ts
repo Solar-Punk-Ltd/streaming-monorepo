@@ -126,23 +126,25 @@ function makeRegistry(options: HarnessOptions = {}): Harness {
   }) as typeof globalThis.fetch;
 
   const bee = {
-    makeFeedReader: () => ({
-      // A group whose master has never been written, which is every broadcast's first report.
-      downloadPayload: async () => {
-        throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
-      },
-    }),
-    makeFeedWriter: (topic: Topic) => ({
-      uploadPayload: async (_stamp: string, payload: unknown, opts: { index: FeedIndex }) => {
-        if (options.masterWritesFail?.()) {
-          // A status outside the retryable set, so the master writer's own ten second window rethrows
-          // on the first attempt rather than spending itself proving what the first attempt said.
-          throw Object.assign(new Error('the node refused the master write'), { status: 400 });
-        }
-        masters.push({ topicHex: topic.toString(), index: opts.index.toBigInt(), playlist: String(payload) });
-        return { reference: { toHex: () => 'ref' } };
-      },
-    }),
+    feed: {
+      makeReader: () => ({
+        // A group whose master has never been written, which is every broadcast's first report.
+        downloadPayload: async () => {
+          throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
+        },
+      }),
+      makeWriter: (topic: Topic) => ({
+        uploadPayload: async (_stamp: string, payload: unknown, opts: { index: FeedIndex }) => {
+          if (options.masterWritesFail?.()) {
+            // A status outside the retryable set, so the master writer's own ten second window rethrows
+            // on the first attempt rather than spending itself proving what the first attempt said.
+            throw Object.assign(new Error('the node refused the master write'), { status: 400 });
+          }
+          masters.push({ topicHex: topic.toString(), index: opts.index.toBigInt(), playlist: String(payload) });
+          return { reference: { toHex: () => 'ref' } };
+        },
+      }),
+    },
   };
   const publisher = { rung: 'coordinator', url: '', stamp: 'stamp', bee };
   const publishers = { coordinator: () => publisher } as unknown as BeePublisherPool;

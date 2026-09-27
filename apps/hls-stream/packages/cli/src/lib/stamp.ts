@@ -92,7 +92,7 @@ export async function quoteStamp(bee: Bee, options: StampOptions): Promise<Stamp
 
   let currentPrice: number;
   try {
-    ({ currentPrice } = await bee.getChainState());
+    ({ currentPrice } = await bee.status.getChainState());
   } catch (err) {
     const why = err instanceof Error ? err.message : 'unknown error';
     return { cost, duration: null, durationUnavailable: `the node could not report the postage price: ${why}` };
@@ -206,7 +206,7 @@ export function printStampQuote(options: StampOptions, quote: StampQuote): void 
 export async function buyStamp(bee: Bee, options: StampOptions): Promise<string> {
   info(`Buying stamp (amount: ${options.amount}, depth: ${options.depth}, immutable: ${options.immutable})...`);
 
-  const batchId = await bee.createPostageBatch(options.amount, options.depth, {
+  const batchId = await bee.stamp.create(options.amount, options.depth, {
     immutableFlag: options.immutable,
     waitForUsable: false,
   });

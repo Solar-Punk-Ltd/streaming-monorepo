@@ -40,7 +40,9 @@ export function GroupBlock({
         onClick={() => setOpen((v) => !v)}
       >
         <TableCell colSpan={2}>
-          <Stack direction="row" alignItems="center" spacing={1}>
+          <Stack direction="row" spacing={1} sx={{
+            alignItems: "center"
+          }}>
             <IconButton
               size="small"
               aria-label={`${open ? 'collapse' : 'expand'} ${group.project}`}

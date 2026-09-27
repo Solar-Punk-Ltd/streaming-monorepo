@@ -176,7 +176,9 @@ export function EngineConfigDialog({
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Box sx={{ flex: 1 }}>
           Config file for {name}
-          <Typography variant="body2" color="text.secondary" component="div">
+          <Typography variant="body2" component="div" sx={{
+            color: "text.secondary"
+          }}>
             {engineName}
             {view?.config ? ' · running on its own file' : ' · running on the template'}
           </Typography>
@@ -187,7 +189,11 @@ export function EngineConfigDialog({
       </DialogTitle>
       <DialogContent dividers>
         {!view ? (
-          <Stack alignItems="center" sx={{ py: 6 }}>
+          <Stack
+            sx={{
+              alignItems: "center",
+              py: 6
+            }}>
             {error ? <Alert severity="error">{error}</Alert> : <CircularProgress />}
           </Stack>
         ) : (
@@ -207,11 +213,22 @@ export function EngineConfigDialog({
                 )}
               </Alert>
             )}
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               {WHAT_THIS_IS}
             </Typography>
-            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap alignItems="center">
-              <Typography variant="caption" color="text.secondary">
+            <Stack
+              direction="row"
+              spacing={0.5}
+              useFlexGap
+              sx={{
+                flexWrap: "wrap",
+                alignItems: "center"
+              }}>
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>
                 This version fills:
               </Typography>
               {view.placeholders.map((token) => (
@@ -238,7 +255,9 @@ export function EngineConfigDialog({
               </Alert>
             )}
             {error && <Alert ref={errorBox} severity="error">{error}</Alert>}
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>
               {WHAT_APPLYING_DOES[view.engine]}{' '}
               {view.references.map((reference) => (
                 <Link key={reference.url} href={reference.url} target="_blank" rel="noreferrer">
