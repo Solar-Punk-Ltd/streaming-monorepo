@@ -69,7 +69,12 @@ function archiveOf(files) {
  */
 function dockerFor(t, images, { first = [] } = {}) {
   const dir = makeTempDir(t, 'move-check-images-exports-');
-  const replies = [...first, { argsInclude: ['build'], stdout: '' }, { argsInclude: ['rm'], stdout: '' }];
+  const replies = [
+    ...first,
+    { argsInclude: ['build'], stdout: '' },
+    { argsInclude: ['builder', 'prune'], stdout: '' },
+    { argsInclude: ['rm'], stdout: '' },
+  ];
   images.forEach(({ name, beforeFiles = FILES, afterFiles = FILES }, index) => {
     for (const [side, files] of [['before', beforeFiles], ['after', afterFiles]]) {
       const tag = `move-check-images/${name}:${side}`;
@@ -130,6 +135,31 @@ describe('images.mjs builds each image from both commits and compares them', () 
 
     assert.equal(result.status, 0, result.stderr);
     for (const build of builds(docker)) assert.equal(existsSync(build.args.at(-1)), false, build.args.at(-1));
+  });
+
+  it('removes each pair of images and the build cache once the pair is compared, when asked, and never otherwise', (t) => {
+    const { repo, before, after } = movedProject(t);
+    const docker = dockerFor(t, [{ name: 'demo' }, { name: 'other' }]);
+    const manifest = manifestFile(t, [demoImage(before, after), demoImage(before, after, { name: 'other' })]);
+
+    const kept = runScript(IMAGES, ['--manifest', manifest], { cwd: repo, env: docker.env });
+    assert.equal(kept.status, 0, kept.stderr);
+    assert.equal(docker.calls().some((call) => call.args[0] === 'image' && call.args[1] === 'rm'), false, 'the images stay for a person to inspect');
+
+    const removed = runScript(IMAGES, ['--manifest', manifest, '--remove-images'], { cwd: repo, env: docker.env });
+    assert.equal(removed.status, 0, removed.stderr);
+    const cleanups = docker.calls().filter((call) => (call.args[0] === 'image' && call.args[1] === 'rm') || call.args[0] === 'builder');
+    assert.deepEqual(cleanups.map((call) => call.args), [
+      ['image', 'rm', '--force', 'move-check-images/demo:before', 'move-check-images/demo:after'],
+      ['builder', 'prune', '--force'],
+      ['image', 'rm', '--force', 'move-check-images/other:before', 'move-check-images/other:after'],
+      ['builder', 'prune', '--force'],
+    ]);
+    const calls = docker.calls().map((call) => call.args.join(' '));
+    assert.ok(
+      calls.indexOf('image rm --force move-check-images/demo:before move-check-images/demo:after') < calls.indexOf(calls.find((call) => call.includes('move-check-images/other:before') && call.startsWith('build'))),
+      'a pair is removed before the next pair is built',
+    );
   });
 
   it('lets a difference the manifest allows through', (t) => {
