@@ -91,7 +91,7 @@ function stats(values) {
 
 async function main() {
   console.log(`writing ${SLOTS} slots to ${topic.toString()} as ${owner}`);
-  const writer = writeBee.makeFeedWriter(topic, signer);
+  const writer = writeBee.feed.makeWriter(topic, signer);
   for (let index = 0; index < SLOTS; index++) {
     await writer.uploadPayload(STAMP, PAYLOAD, { index: FeedIndex.fromBigInt(BigInt(index)), deferred: false });
   }

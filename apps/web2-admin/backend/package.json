@@ -18,18 +18,18 @@
     "database:stop": "docker compose -p web2-admin -f ./docker-compose.yml stop postgres"
   },
   "dependencies": {
-    "@ethersphere/bee-js": "9.8.1",
+    "@ethersphere/bee-js": "13.1.0",
     "@streaming-monorepo/web2-admin-common": "workspace:*",
-    "dotenv": "16.4.7",
+    "dotenv": "17.4.2",
     "express": "5.2.1",
-    "pg": "8.13.1",
-    "yup": "1.7.0"
+    "pg": "8.23.0",
+    "yup": "1.7.1"
   },
   "devDependencies": {
     "@types/express": "5.0.6",
-    "@types/node": "22.9.0",
-    "@types/pg": "8.11.10",
-    "tsx": "4.19.2",
+    "@types/node": "24.13.4",
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.13",
     "typescript": "7.0.2"
   },
   "nx": {

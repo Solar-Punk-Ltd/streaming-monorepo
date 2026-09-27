@@ -14,18 +14,18 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ethersphere/bee-js": "^9.0.3",
+    "@ethersphere/bee-js": "13.1.0",
     "@lat-murmeldjur/weeb_3": "0.0.350001",
     "@swarm-hls-stream/shared": "workspace:*",
     "hls.js": "^1.7.3",
-    "p-queue": "^8.1.0",
+    "p-queue": "9.3.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router": "^8.3.1",
     "swr": "^2.5.1"
   },
   "devDependencies": {
-    "@types/node": "^22.8.1",
+    "@types/node": "24.13.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react-swc": "^4.3.3",

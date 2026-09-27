@@ -32,9 +32,11 @@ function reader(): Reads {
 /** A bee whose chequebook call answers with `body`, recording that it was asked. */
 function answering(url: string, body: unknown, reads: Reads): ChequebookClient {
   return {
-    getChequebookBalance: async () => {
-      reads.urls.push(url);
-      return body;
+    chequebook: {
+      getBalance: async () => {
+        reads.urls.push(url);
+        return body;
+      },
     },
   };
 }
@@ -53,9 +55,11 @@ function refusingNode(url: string, reason: string, reads: Reads): ChequebookNode
   return {
     url,
     bee: {
-      getChequebookBalance: async () => {
-        reads.urls.push(url);
-        throw new Error(reason);
+      chequebook: {
+        getBalance: async () => {
+          reads.urls.push(url);
+          throw new Error(reason);
+        },
       },
     },
   };
@@ -112,9 +116,11 @@ describe('the chequebook gate', () => {
     const drained: ChequebookNode = {
       url: 'http://bee-a:1633',
       bee: {
-        getChequebookBalance: async () => {
-          reads.urls.push('http://bee-a:1633');
-          return { totalBalance: balance(bzzToPlur(50)), availableBalance: balance(bzzToPlur(0.01)) };
+        chequebook: {
+          getBalance: async () => {
+            reads.urls.push('http://bee-a:1633');
+            return { totalBalance: balance(bzzToPlur(50)), availableBalance: balance(bzzToPlur(0.01)) };
+          },
         },
       },
     };
@@ -474,8 +480,10 @@ describe('which reading a chequebook refusal carries', () => {
     return {
       url,
       bee: {
-        getChequebookBalance: async () => {
-          throw failure;
+        chequebook: {
+          getBalance: async () => {
+            throw failure;
+          },
         },
       },
     };

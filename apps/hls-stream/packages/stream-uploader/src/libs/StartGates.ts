@@ -1,4 +1,5 @@
 import { StartGateWarning } from '../types.js';
+import { describeFailure } from '../utils/transportFailure.js';
 
 import { SINGLE_PUBLISHER } from './BeePublisherPool.js';
 import { GateRefusalError } from './GateRefusalError.js';
@@ -313,8 +314,4 @@ function warningLine(gate: string, rung: string | undefined, message: string): s
     `[startGates] ${subject} did not clear and the uploader is starting anyway: ${message} ` +
     `Set ${START_GATE_MODE_ENV}=${START_GATE_REFUSE} to make this stop the start again.`
   );
-}
-
-function describeFailure(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

@@ -46,7 +46,7 @@ import { promisify } from 'node:util';
 
 const run = promisify(execFile);
 
-const IMAGE = 'ossrs/srs:6';
+const IMAGE = 'ossrs/srs:v6.0-r1@sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3';
 const CONTAINER = 'srs-fragment-probe';
 const RTMP_PORT = 11935;
 const SRT_PORT = 11936;

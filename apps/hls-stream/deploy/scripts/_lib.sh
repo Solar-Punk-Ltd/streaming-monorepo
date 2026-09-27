@@ -752,7 +752,7 @@ shell_quote() {
 # through from this shell's environment, so the container's command line carries only the name. What
 # it does add is that the value is visible to anyone who can `docker inspect`, which on this host is
 # anyone in the docker group, and membership of that group is already root-equivalent.
-readonly PUBLISH_KEY_NODE_IMAGE="node:22-alpine"
+readonly PUBLISH_KEY_NODE_IMAGE="node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1"
 readonly PUBLISH_KEY_DERIVATION='
     const { createHmac } = require("node:crypto");
     const secret = process.env.PUBLISH_KEY_SECRET || "";

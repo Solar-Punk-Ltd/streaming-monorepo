@@ -13,7 +13,7 @@
 #
 # Needs `--network host` to reach the engine and the gateway over loopback, and the docker socket for
 # the log reads the split is built from. See `deploy/scripts/bench-on-host.sh`.
-FROM node:22-bookworm-slim
+FROM node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
 
 # ffmpeg and ffprobe are the instrument. curl is what `Host.curlJson` shells out to, and bash is what
 # `LOCAL_TARGET` runs every command line through.

@@ -4,7 +4,9 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const rootDir = path.resolve(path.dirname(__filename), '../../../..');
-dotenv.config({ path: path.join(rootDir, '.env') });
+// Quiet, because dotenv 17 otherwise prints a line of its own, with an advertisement in it, on every
+// load, into output that tests and log collectors read.
+dotenv.config({ path: path.join(rootDir, '.env'), quiet: true });
 
 /**
  * The selected engine's own `.env`, loaded here rather than later from `loadEngines()`.
@@ -15,7 +17,7 @@ dotenv.config({ path: path.join(rootDir, '.env') });
  * an already-set variable, so a value from the real environment still wins.
  */
 export function loadEngineEnv(engineName: string): void {
-  dotenv.config({ path: path.join(rootDir, 'engines', engineName, '.env') });
+  dotenv.config({ path: path.join(rootDir, 'engines', engineName, '.env'), quiet: true });
 }
 
 if (process.env.ENGINE) {

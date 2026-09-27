@@ -474,7 +474,7 @@ fetched again from this repository on GitHub, and checks the staging tree it
 leaves for the manager.
 
 What it proves: on the one workspace the builder cuts the stack's own lockfile
-and workspace file out of the root ones inside its `node:22-alpine` container,
+and workspace file out of the root ones inside its `node:24-alpine` container,
 installs from them with the pnpm the stack names, and builds every package.
 The tree records the commit, the folder and that pnpm, holds no side folder,
 carries the cut byte for byte as `tools/app-workspace` writes it from the
@@ -482,7 +482,8 @@ checkout, and has the uploader's `dist`, which the uploader image copies in.
 
 What it does not prove: that the images build from that tree, or that a
 deployment runs on it. The integration job below starts a manager on a bundled
-build. No workflow builds the stack's images, a deploy does.
+build. The `images` job of `hls-stream.yml` builds the stack's images the way a
+deploy does, from the checkout rather than from this tree.
 
 Locally, from `apps/infra-manager` on a checkout of a pushed commit:
 `bash manager/test/docker/stack-version-build.sh <commit> <repo-url>`. Exit 0

@@ -6,7 +6,7 @@ export async function nodeWallets(urlOverride?: string): Promise<void> {
   loadEnv();
 
   await forEachNode(resolveNodeTargets(), urlOverride, async (bee, node) => {
-    const wallet = await bee.getWalletBalance();
+    const wallet = await bee.wallet.getBalance();
     table('BZZ', wallet.bzzBalance.toDecimalString());
     table('xDAI', wallet.nativeTokenBalance.toDecimalString());
     table('Address', wallet.walletAddress);

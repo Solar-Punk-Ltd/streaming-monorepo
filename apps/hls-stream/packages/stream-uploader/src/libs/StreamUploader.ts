@@ -1134,7 +1134,7 @@ export class StreamUploader {
    */
   private async readManifestFeedHead(question: FeedHeadQuestion): Promise<{ index: number; manifest: string } | null> {
     const owner = this.streamSigner.publicKey().address();
-    const feedReader = this.bee.makeFeedReader(Topic.fromString(this.streamRawTopic), owner);
+    const feedReader = this.bee.feed.makeReader(Topic.fromString(this.streamRawTopic), owner);
 
     try {
       const head = await this.readWithinWindow(async () => {
@@ -1651,7 +1651,7 @@ export class StreamUploader {
 
   private async uploadDataAsSoc(index: number, data: Uint8Array) {
     try {
-      const { uploadPayload } = this.bee.makeFeedWriter(Topic.fromString(this.streamRawTopic), this.streamSigner);
+      const { uploadPayload } = this.bee.feed.makeWriter(Topic.fromString(this.streamRawTopic), this.streamSigner);
       // NOT deferred, unlike the segment write below, and the asymmetry is deliberate.
       //
       // Deferred means bee acks the SOC from its own local store and push-syncs it in the
@@ -1681,7 +1681,7 @@ export class StreamUploader {
   private async uploadDataToBee(data: Uint8Array) {
     try {
       return await retryUntilDeadlineAsync(
-        () => this.bee.uploadData(this.stamp, data, { redundancyLevel: this.redundancyLevel, deferred: true }),
+        () => this.bee.data.upload(this.stamp, data, { redundancyLevel: this.redundancyLevel, deferred: true }),
         SEGMENT_UPLOAD_RETRY_WINDOW_MS,
         UPLOAD_RETRY_BASE_MS,
         UPLOAD_RETRY_CAP_MS,
