@@ -125,6 +125,28 @@ describe('LoginPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('says the server did not answer when a login is accepted with a body that is not JSON', async () => {
+    // A proxy in front of the API can answer 200 with its own page. The form must come back usable
+    // rather than stay busy on a rejection nothing catches.
+    mockFetch([
+      { path: SESSION, respond: signedOut },
+      {
+        method: 'POST',
+        path: LOGIN,
+        respond: () => new Response('<html>proxy</html>', { status: 200, headers: { 'content-type': 'text/html' } }),
+      },
+    ]);
+
+    renderWithAuth(<LoginPage />, { route: '/login' });
+
+    await fillAndSubmit('admin', 'admin12345678');
+
+    expect(
+      await screen.findByText('The server did not answer. Check that it is running, then try again.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled();
+  });
+
   it('keeps the log in button disabled until both fields are filled', async () => {
     mockFetch([{ path: SESSION, respond: signedOut }]);
 
