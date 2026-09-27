@@ -53,11 +53,15 @@ export function PublishCard({
         </Alert>
         <CopyBox value={url} disabled={passphrasePending} />
         {passphrasePending && (
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             Reading this deployment&apos;s passphrase. Copy is available when the complete URL is ready.
           </Typography>
         )}
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {!passphrasePending && <>{passphraseNote(profile, hostPassphrase)} </>}
           Change{' '}
           <code>live/stream</code> to your own app and stream name if you use

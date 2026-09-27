@@ -51,7 +51,9 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
         <Typography variant="h6" component="h3">
           Basics
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           {goal?.title}
         </Typography>
       </Box>
@@ -71,9 +73,11 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
           value={state.name}
           onChange={(event) => update({ name: event.target.value })}
           placeholder={NAME_PLACEHOLDERS[state.goal ?? ''] ?? 'main-stage'}
-          inputProps={{
-            style: { fontFamily: MONO_STACK },
-            'aria-describedby': messageIdFor('wizard-name'),
+          slotProps={{
+            htmlInput: {
+              style: { fontFamily: MONO_STACK },
+              'aria-describedby': messageIdFor('wizard-name'),
+            }
           }}
         />
       </FormField>
@@ -100,7 +104,9 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
                   value={state.hostCustom}
                   onChange={(event) => update({ hostCustom: event.target.value })}
                   placeholder="deploy@10.0.0.7"
-                  inputProps={{ style: { fontFamily: MONO_STACK } }}
+                  slotProps={{
+                    htmlInput: { style: { fontFamily: MONO_STACK } }
+                  }}
                 />
               ),
             },
@@ -122,9 +128,11 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
             fullWidth
             value={state.versionId ?? ''}
             onChange={(event) => update({ versionId: event.target.value === '' ? null : Number(event.target.value) })}
-            SelectProps={{
-              'aria-label': 'Stack version',
-              SelectDisplayProps: { id: 'wizard-version' },
+            slotProps={{
+              select: {
+                'aria-label': 'Stack version',
+                SelectDisplayProps: { id: 'wizard-version' },
+              }
             }}
           >
             {choosableVersions(context).map((version) => (
@@ -148,14 +156,22 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
             label={
               <Typography variant="body2">
                 Deploy several at once as a group{' '}
-                <Typography component="span" variant="caption" color="text.secondary">
+                <Typography component="span" variant="caption" sx={{
+                  color: "text.secondary"
+                }}>
                   identical members sharing one configuration
                 </Typography>
               </Typography>
             }
           />
           {state.group && (
-            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mt: 1 }}>
+            <Stack
+              direction="row"
+              spacing={1.5}
+              sx={{
+                alignItems: "center",
+                mt: 1
+              }}>
               <TextField
                 size="small"
                 label="How many"
@@ -163,7 +179,9 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
                 onChange={(event) => update({ size: event.target.value })}
                 sx={{ width: 110 }}
               />
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>
                 {groupHint(state.size, state.goal)}
               </Typography>
             </Stack>
@@ -182,9 +200,11 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
           value={state.notes}
           onChange={(event) => update({ notes: event.target.value })}
           placeholder="What is this for?"
-          inputProps={{
-            maxLength: NOTES_MAX,
-            'aria-describedby': messageIdFor('wizard-notes'),
+          slotProps={{
+            htmlInput: {
+              maxLength: NOTES_MAX,
+              'aria-describedby': messageIdFor('wizard-notes'),
+            }
           }}
         />
       </FormField>

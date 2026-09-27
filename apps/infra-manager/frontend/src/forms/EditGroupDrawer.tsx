@@ -135,7 +135,13 @@ export function EditGroupDrawer({
           error={addressProblem(edits.feedOwner)}
           hint={
             streams.length > 0 ? (
-              <Stack direction="row" spacing={0.5} flexWrap="wrap" alignItems="center">
+              <Stack
+                direction="row"
+                spacing={0.5}
+                sx={{
+                  flexWrap: "wrap",
+                  alignItems: "center"
+                }}>
                 <span>On this manager:</span>
                 {streams.map((stream) => (
                   <Button
@@ -158,7 +164,9 @@ export function EditGroupDrawer({
             value={edits.feedOwner}
             onChange={(event) => update({ feedOwner: event.target.value })}
             placeholder="0x plus 40 hex characters"
-            inputProps={{ style: { fontFamily: MONO_STACK } }}
+            slotProps={{
+              htmlInput: { style: { fontFamily: MONO_STACK } }
+            }}
           />
         </FormField>
       )}

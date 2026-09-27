@@ -29,7 +29,9 @@ export function FixedAtCreation({
   return (
     <Accordion disableGutters elevation={0} sx={{ border: 1, borderColor: 'divider' }}>
       <AccordionSummary expandIcon={<ExpandMoreIcon fontSize="small" />}>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {SUMMARY}
         </Typography>
       </AccordionSummary>
@@ -41,7 +43,9 @@ export function FixedAtCreation({
             {
               key: 'Components',
               value: (
-                <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                <Stack direction="row" spacing={0.5} sx={{
+                  flexWrap: "wrap"
+                }}>
                   {services.map((service) => (
                     <ServiceChip key={service} service={service} />
                   ))}

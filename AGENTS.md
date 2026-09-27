@@ -52,7 +52,8 @@ and how the pieces fit under `docs/`. Read it before moving anything.
   workflows read and every image's Node base image matches.
   Overrides and workspace settings live in the root `pnpm-workspace.yaml` alone.
 - The root's `pnpm build`, `typecheck`, `test` and `lint` run every package's own script through
-  Nx. `pnpm boundaries` fails when one app depends on another. A new package gets its scope and
+  Nx. Lint is oxlint and formatting is oxfmt (`pnpm format`), with one settings file each at the
+  root, `.oxlintrc.json` and `.oxfmtrc.json`. `pnpm boundaries` fails when one app depends on another. A new package gets its scope and
   type tags in its `package.json`'s `nx` field, or that check fails.
 - When you change behaviour, change the page that describes it in the same pull request.
 

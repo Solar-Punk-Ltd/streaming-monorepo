@@ -6,9 +6,10 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "scripts": {
+    "lint": "oxlint .",
     "test": "node --test"
   },
   "nx": {

@@ -42,13 +42,13 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: package.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -92,13 +92,13 @@ jobs:
     # reads as benign. This makes a hung audit go red.
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: package.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -134,7 +134,7 @@ jobs:
     name: shell
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Pinned by digest rather than by tag. ShellCheck is pre-installed on the
       # GitHub runner image and `stable` is a moving tag, so either of those
@@ -216,13 +216,13 @@ jobs:
     name: format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: package.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -231,14 +231,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
         working-directory: .
 
-      # Whole tree. The 28 files that predated any formatting gate are clean as
-      # of the sweep, so there is no backlog left to work around and no reason
-      # to scope this to what a pull request happens to touch.
-      #
-      # Tracked files rather than `prettier --check .`, because a bare walk also
-      # picks up untracked and gitignored paths like .vscode/settings.json and
-      # so reports a number that depends on whose machine it ran on.
-      # --ignore-unknown lets prettier skip what it cannot parse, which keeps
-      # Dockerfiles and images from failing the job.
+      # The stack's whole folder, through oxfmt and the root .oxfmtrc.json. oxfmt
+      # skips what git ignores and what that file's ignorePatterns name, so the
+      # result does not depend on untracked files on whoever's machine it ran.
       - name: Check formatting
-        run: git ls-files -z | xargs -0 -r npx prettier --check --ignore-unknown
+        run: pnpm format:check

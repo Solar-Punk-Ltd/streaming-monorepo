@@ -39,6 +39,7 @@ import {
   PAGE_TEXT,
   paintedInView,
   readWhenPresent,
+  reloadDocument,
   stillWithin,
   waitFor,
 } from './support/chrome.mjs';
@@ -581,7 +582,7 @@ test('a deployment settings card lists, edits, saves and applies at a phone widt
     await waitFor(() => writes.length, (count) => count === before + 1, 'the latency save');
     await waitFor(engineCardText, (text) => marked.test(text), 'the saved latency marked on the Engine card');
 
-    await call('Page.reload');
+    await reloadDocument({ call, evaluate });
     await shows('the page read again', 'Stack settings');
     await waitFor(engineCardText, (text) => marked.test(text), 'the saved latency marked after a reload');
     await screenshot('engine-card-saved-not-applied-phone.png', engineCard);
@@ -605,7 +606,7 @@ test('a deployment settings card lists, edits, saves and applies at a phone widt
   });
 
   await t.test("the Engine card opens no drawer: its Settings button brings this card into view with the engine settings open and the first focused", async () => {
-    await call('Page.reload');
+    await reloadDocument({ call, evaluate });
     await shows('the page read again, every section folded', 'Stack settings');
     await evaluate('scrollTo(0, 0)');
 

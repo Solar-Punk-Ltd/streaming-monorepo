@@ -80,15 +80,18 @@ export function BuyStampForm({
 
   return (
     <Box>
-      <Typography variant="overline" color="text.secondary">
+      <Typography variant="overline" sx={{
+        color: "text.secondary"
+      }}>
         Buy a stamp
       </Typography>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         spacing={2}
-        alignItems={{ sm: 'flex-start' }}
-        sx={{ mt: 1 }}
-      >
+        sx={{
+          alignItems: { sm: 'flex-start' },
+          mt: 1
+        }}>
         <TextField
           label="Amount (PLUR / chunk)"
           size="small"
@@ -145,7 +148,9 @@ export function BuyStampForm({
         sx={{ mt: 1 }}
         divider={<Box sx={{ borderLeft: 1, borderColor: 'divider' }} />}
       >
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           Estimated life:{' '}
           <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
             {amountValid ? formatTtl(ttlSeconds) : NO_VALUE}
@@ -154,14 +159,18 @@ export function BuyStampForm({
             ? ' (price unavailable)'
             : ''}
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           Cost:{' '}
           <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
             {costBzz != null ? `${costBzz} BZZ` : NO_VALUE}
           </Box>
         </Typography>
       </Stack>
-      <Typography variant="caption" color="text.secondary">
+      <Typography variant="caption" sx={{
+        color: "text.secondary"
+      }}>
         A new batch takes a few minutes to become usable and is then set on
         this deployment automatically, unless another batch is set here with
         Use first. {newBatchReach ? `${newBatchReach} ` : ''}The readiness

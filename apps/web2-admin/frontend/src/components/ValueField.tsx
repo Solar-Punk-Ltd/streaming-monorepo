@@ -52,7 +52,7 @@ export function ValueField({
   };
 
   return (
-    <Stack direction="row" spacing={1} alignItems="flex-start">
+    <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
       <TextField
         label={label}
         value={hidden ? (maskedValue ?? MASK) : value}
@@ -60,13 +60,15 @@ export function ValueField({
         size="small"
         fullWidth
         inputRef={inputRef}
-        InputProps={{
-          readOnly: true,
-          sx: { fontFamily: 'monospace', fontSize: 13 },
+        slotProps={{
+          input: {
+            readOnly: true,
+            sx: { fontFamily: 'monospace', fontSize: 13 },
+          },
+          // Read-only display, not an editable field: keep it out of the tab
+          // order so copy buttons are the next stop after the previous control.
+          htmlInput: { 'aria-label': label, tabIndex: -1 },
         }}
-        // Read-only display, not an editable field: keep it out of the tab
-        // order so copy buttons are the next stop after the previous control.
-        inputProps={{ 'aria-label': label, tabIndex: -1 }}
       />
       <Stack direction="row" sx={{ pt: 0.5 }}>
         {secret ? (

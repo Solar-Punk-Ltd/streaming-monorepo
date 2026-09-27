@@ -45,10 +45,14 @@ export function EditDrawerFrame({
       <Stack sx={{ width: { xs: '100vw', sm: WIDTH }, height: '100%' }}>
         <Stack
           direction="row"
-          alignItems="center"
           spacing={1}
-          sx={{ px: 2.5, py: 1.75, borderBottom: 1, borderColor: 'divider' }}
-        >
+          sx={{
+            alignItems: "center",
+            px: 2.5,
+            py: 1.75,
+            borderBottom: 1,
+            borderColor: 'divider'
+          }}>
           <Typography variant="h6" component="h2" sx={{ flex: 1 }}>
             {title}
           </Typography>

@@ -7,7 +7,7 @@ import test from 'node:test';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import { assembleEngineSettingObservations, effectiveEngineDefaults, engineOverviewIdentity, engineSettingsFieldsFor, environmentSettingReadings } from '@streaming-infra-manager/common';
-import { launchChrome, PAGE_TEXT, waitFor } from './support/chrome.mjs';
+import { launchChrome, PAGE_TEXT, reloadDocument, waitFor } from './support/chrome.mjs';
 import { endViteServer } from './support/teardown.mjs';
 import { evidenceDirectory } from './support/evidence.mjs';
 import { viteCacheFor } from './support/vite-cache.mjs';
@@ -109,7 +109,7 @@ test('engine values and their read freshness in the actual browser', { timeout: 
     await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
     if (await evaluate('location.origin') === origin) {
       await evaluate(`location.hash = '#/deployments/observed-stream'`);
-      await call('Page.reload');
+      await reloadDocument({ call, evaluate });
     } else await call('Page.navigate', { url: `${origin}/#/deployments/observed-stream` });
     await waitFor(body, text => text.includes('segment 4 s'), 'initial observed literal');
     await waitFor(() => events.size, n => n > 0, 'profile event stream');

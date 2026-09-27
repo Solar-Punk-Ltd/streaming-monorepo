@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import {
   Alert,
   Box,
@@ -96,7 +96,7 @@ export function StreamsPage() {
 
   return (
     <Stack spacing={3}>
-      <Stack direction="row" alignItems="center" spacing={2}>
+      <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
         <Typography variant="h5" component="h1" sx={{ flexGrow: 1 }}>
           My Streams
         </Typography>
@@ -139,7 +139,7 @@ export function StreamsPage() {
           <Typography variant="body1" gutterBottom>
             No streams yet.
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             Create your first stream to get its OBS connection details, then
             publish it to the stream list.
           </Typography>
@@ -167,7 +167,10 @@ export function StreamsPage() {
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2">{stream.title}</Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography
+                      variant="caption"
+                      sx={{ color: 'text.secondary' }}
+                    >
                       {stream.description}
                     </Typography>
                   </TableCell>
@@ -185,7 +188,7 @@ export function StreamsPage() {
                     <Stack
                       direction="row"
                       spacing={1}
-                      justifyContent="flex-end"
+                      sx={{ justifyContent: 'flex-end' }}
                     >
                       <Button
                         size="small"

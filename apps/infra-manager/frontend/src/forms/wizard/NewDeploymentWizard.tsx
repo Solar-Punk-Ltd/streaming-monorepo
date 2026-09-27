@@ -329,14 +329,18 @@ export function NewDeploymentWizard({
         )}
         <Box sx={{ flex: 1 }}>
           {submitting ? (
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>
               Creating {state.name}. The manager answers once the deploy has
               started, which takes longer on a version it has to build first.
             </Typography>
           ) : (
             state.step > 1 &&
             stepError && (
-              <Typography variant="caption" color="warning.main">
+              <Typography variant="caption" sx={{
+                color: "warning.main"
+              }}>
                 {stepError}
               </Typography>
             )
