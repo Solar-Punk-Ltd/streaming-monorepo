@@ -2,7 +2,6 @@
 
 What is deployed and where, by role, kept current by hand. Update when something moves. Real host
 names, addresses and domains belong to each deployment's own env files and are not written here.
-[hosts.md](hosts.md) describes the roles.
 
 | Piece | Where | State |
 |---|---|---|
