@@ -411,6 +411,53 @@ init_bee_dirs() {
 
 # --- Sync files to remote ---
 
+# --- The stack's lockfile in a checkout of the one workspace ---
+#
+# An image build reads pnpm-lock.yaml and pnpm-workspace.yaml at the root of the stack's folder. Every
+# build tree the manager makes holds them there, and so does a checkout from before the repository
+# became one workspace. A checkout of the one workspace holds them only at its root. A remote deploy
+# from one sends a pair cut out of the root's by tools/app-workspace, into a folder under $TMPDIR that
+# goes when this script exits, however it exits. A local one builds its two images from a copy of the
+# stack's folder that tools/app-workspace/in-copy.mjs makes the same way, while compose runs from here.
+# Nothing is written into the checkout, where a second pnpm-workspace.yaml would make the stack's
+# folder a workspace of its own.
+
+# The folder pnpm would take as the workspace root above the stack, when it holds the root lockfile.
+one_workspace_root() {
+  local dir
+  dir="$(dirname "$ROOT_DIR")"
+  while [ "$dir" != "/" ]; do
+    if [ -f "$dir/pnpm-workspace.yaml" ]; then
+      if [ -f "$dir/pnpm-lock.yaml" ]; then
+        printf '%s\n' "$dir"
+      fi
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+}
+
+CUT_DIR=""
+
+# Cuts the stack's pair out of the root's into $CUT_DIR/stack, once, and removes the folder on exit.
+cut_stack_lockfile() {
+  [ -n "$CUT_DIR" ] && return 0
+  CUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/stack-cut.XXXXXX")"
+  trap 'rm -rf "$CUT_DIR"' EXIT
+  node "$WORKSPACE_ROOT/tools/app-workspace/cut.mjs" --root "$WORKSPACE_ROOT" --app "$STACK_APP" --out "$CUT_DIR/stack"
+}
+
+# Whether a list of services holds one of the two the stack builds an image for.
+has_built_image() {
+  local svc
+  for svc in "$@"; do
+    case "$svc" in
+      "$SVC_UPLOADER" | "$SVC_CLIENT") return 0 ;;
+    esac
+  done
+  return 1
+}
+
 sync_to_remote() {
   local target="$1"
   shift
@@ -513,10 +560,15 @@ sync_to_remote() {
   # `pnpm.overrides` that pin it, so a build context missing them re-resolves and the reviewed
   # versions never reach the deployment host.
   if [ "$need_uploader" = "true" ] || [ "$need_client" = "true" ]; then
+    local workspace_files="$ROOT_DIR"
+    if [ -n "$WORKSPACE_ROOT" ]; then
+      cut_stack_lockfile
+      workspace_files="$CUT_DIR/stack"
+    fi
     rsync -az \
       "$ROOT_DIR/package.json" \
-      "$ROOT_DIR/pnpm-lock.yaml" \
-      "$ROOT_DIR/pnpm-workspace.yaml" \
+      "$workspace_files/pnpm-lock.yaml" \
+      "$workspace_files/pnpm-workspace.yaml" \
       "$target:$REMOTE_BASE/"
   fi
 
@@ -677,8 +729,22 @@ deploy_target() {
     if [ -s "$override_file" ]; then
       override_envfile_flag="--env-file $override_file"
     fi
-    # shellcheck disable=SC2086
-    docker compose $project_flag $compose_files --env-file "$ENV_FILE" $override_envfile_flag $profiles up -d --build
+    if [ -n "$WORKSPACE_ROOT" ] && has_built_image "${services[@]}"; then
+      # The images build from a copy with the stack's own pair cut into it, which in-copy.mjs names in
+      # APP_WORKSPACE_COPY for docker-compose.copy.yml, and removes when compose returns. The uploader's
+      # image copies its built dist/, which git ignores, so the copy is told to carry it.
+      local svc also=()
+      for svc in "${services[@]}"; do
+        [ "$svc" = "$SVC_UPLOADER" ] && also=(--also packages/stream-uploader/dist)
+      done
+      # shellcheck disable=SC2086
+      node "$WORKSPACE_ROOT/tools/app-workspace/in-copy.mjs" --root "$WORKSPACE_ROOT" --app "$STACK_APP" "${also[@]}" -- \
+        docker compose --project-directory "$DEPLOY_DIR" $project_flag $compose_files -f "$DEPLOY_DIR/docker-compose.copy.yml" \
+        --env-file "$ENV_FILE" $override_envfile_flag $profiles up -d --build
+    else
+      # shellcheck disable=SC2086
+      docker compose $project_flag $compose_files --env-file "$ENV_FILE" $override_envfile_flag $profiles up -d --build
+    fi
 
     rm -f "$override_file"
 
@@ -727,6 +793,15 @@ REMOTE_SCRIPT
 }
 
 # --- Main ---
+
+# The root of the one workspace and the stack's folder under it, when the stack keeps no lockfile of
+# its own. Both stay empty for a stack that keeps one, as every build tree the manager makes does.
+WORKSPACE_ROOT=""
+STACK_APP=""
+if [ ! -f "$ROOT_DIR/pnpm-lock.yaml" ]; then
+  WORKSPACE_ROOT="$(one_workspace_root)"
+  STACK_APP="${ROOT_DIR#"$WORKSPACE_ROOT"/}"
+fi
 
 # Pre-scan: check if we need to build
 has_remote=false

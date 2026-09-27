@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -7,6 +7,10 @@ import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { ALL_REMOTE, makeSandbox, removeSandboxes, runScript, runScriptOk } from './helpers/sandbox.js';
+import { classifySpawn, SPAWN_ABSENT, SPAWN_OK, SPAWN_TIMED_OUT } from './helpers/spawnOutcome.js';
+
+/** `docker compose config` parses files without the daemon, so this bound only guards a wedged CLI. */
+const COMPOSE_CONFIG_TIMEOUT_MS = 30_000;
 
 after(removeSandboxes);
 
@@ -208,6 +212,55 @@ describe('a local deploy from a checkout of the one workspace', () => {
 
     assert.notEqual(run.exitCode, 0);
     assert.deepEqual(readdirSync(tmp), []);
+  });
+});
+
+/** The two files rendered as compose loads them, with the stack's two images in play. */
+function renderWithCopy(env) {
+  return spawnSync(
+    'docker',
+    ['compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.copy.yml', '--profile', 'stream-uploader', '--profile', 'client', 'config', '--format', 'json'],
+    {
+      cwd: join(STACK, 'deploy'),
+      encoding: 'utf-8',
+      env: { ...process.env, STAMP: 'x', STREAM_KEY: 'x', API_AUTH_TOKEN: 'x', ...env },
+      timeout: COMPOSE_CONFIG_TIMEOUT_MS,
+    },
+  );
+}
+
+describe('docker-compose.copy.yml', () => {
+  it("moves the two images' build context to the copy, each keeping its own Dockerfile", (t) => {
+    const copy = '/copy/of/the/stack';
+    const render = renderWithCopy({ APP_WORKSPACE_COPY: copy });
+
+    const outcome = classifySpawn(render);
+    if (outcome.kind === SPAWN_ABSENT) {
+      t.skip('docker is not available on this host');
+      return;
+    }
+    assert.notEqual(outcome.kind, SPAWN_TIMED_OUT, `docker compose config did not answer: ${outcome.detail}`);
+    assert.equal(outcome.kind, SPAWN_OK, `docker compose refused the files: ${outcome.detail}`);
+    const { services } = JSON.parse(render.stdout);
+    for (const [service, dockerfile] of [
+      ['stream-uploader', 'deploy/Dockerfile.uploader'],
+      ['client', 'deploy/Dockerfile.client'],
+    ]) {
+      assert.equal(services[service].build.context, copy, service);
+      assert.equal(services[service].build.dockerfile, dockerfile, service);
+    }
+  });
+
+  it('refuses to render without a copy named, rather than build from somewhere else', (t) => {
+    const render = renderWithCopy({ APP_WORKSPACE_COPY: undefined });
+
+    const outcome = classifySpawn(render);
+    if (outcome.kind === SPAWN_ABSENT) {
+      t.skip('docker is not available on this host');
+      return;
+    }
+    assert.notEqual(outcome.kind, SPAWN_OK, 'compose rendered a build context from an unset copy');
+    assert.match(render.stderr, /in-copy\.mjs/);
   });
 });
 
