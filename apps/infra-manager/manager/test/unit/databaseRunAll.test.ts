@@ -258,7 +258,7 @@ describe('the gates the run consults, and the order it consults them in', () => 
   const GREEN = { code: 0, signal: null, output: '# tests 3\n# pass 3\n# fail 0\n# skipped 0\n' };
 
   /** One file, gated the way the nine real ones are, so the scan has nothing to say about it. */
-  const GATED_ON_THE_TABLE = [{ file: 't09.test.ts', text: 'process.env.CHEQUEBOOK_TEST_PG_PORT' }];
+  const GATED_ON_THE_TABLE = [{ file: 'chequebook.test.ts', text: 'process.env.CHEQUEBOOK_TEST_PG_PORT' }];
 
   const emptyDatabase = () => ({
     connect: async () => undefined,
