@@ -32,6 +32,22 @@ export async function waitFor(read, accepts = Boolean, description = '', timeout
 }
 
 /**
+ * Reloads the page and returns once the old document is gone.
+ *
+ * `Page.reload` answers before the navigation replaces the document, so a wait
+ * on the page's text that follows it can be met by the page that is being
+ * thrown away, and the next read then lands on a new document that has not
+ * rendered yet. Under Vite 8 that turned deployment-layout.test.mjs red on
+ * most runs. The new document is told apart by its own time origin, and a read
+ * that throws while the navigation is under way is taken as not yet.
+ */
+export async function reloadDocument({ call, evaluate }) {
+  const before = await evaluate('performance.timeOrigin');
+  await call('Page.reload');
+  await waitFor(() => evaluate('performance.timeOrigin').catch(() => before), (origin) => origin !== before, 'the reloaded document');
+}
+
+/**
  * What a wait that ran out had in front of it, short enough for a log.
  *
  * The description says what was wanted and nothing says what arrived instead,
