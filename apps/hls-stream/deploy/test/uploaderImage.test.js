@@ -46,7 +46,7 @@ describe('uploader image install (ARCH-1)', () => {
    * production. Measured that day: the root manifest's `pnpm.overrides` pinned axios to ^0.33.0
    * after a provenance check, `pnpm why axios` reported 0.33.0, and the built image ran 0.30.3.
    *
-   * `--frozen-lockfile` is what refuses instead of re-resolving. `pnpm deploy` does NOT honour it
+   * `--frozen-lockfile` is what refuses instead of re-resolving. `pnpm deploy` did NOT honour it
    * on pnpm 9.12.0, measured against a manifest whose zod range had been moved off the lockfile's:
    * the deploy re-resolved to the drifted version and exited 0, while `pnpm install` with the same
    * flag exited ERR_PNPM_OUTDATED_LOCKFILE. So the install is the gate and a deploy alone is not.
@@ -62,7 +62,7 @@ describe('uploader image install (ARCH-1)', () => {
     );
   });
 
-  it('copies the lockfile and the root manifest that carries the overrides', () => {
+  it('copies the lockfile, the root manifest and the workspace file that carries the overrides', () => {
     const copied = contextPaths(dockerfile);
 
     for (const path of ['pnpm-lock.yaml', 'package.json', 'pnpm-workspace.yaml']) {
@@ -73,12 +73,17 @@ describe('uploader image install (ARCH-1)', () => {
   /**
    * One pnpm, named in one place. Corepack activates whatever this line says, so a Dockerfile
    * pinning a different version from the root manifest installs with a resolver the workspace was
-   * never checked against.
+   * never checked against. The pin carries the checksum of the pnpm package, which corepack checks
+   * the download against.
    */
   it('activates the pnpm version the root manifest names', () => {
     const pinned = rootManifest.packageManager;
 
-    assert.match(pinned, /^pnpm@\d+\.\d+\.\d+$/, `the root manifest no longer pins pnpm: ${pinned}`);
+    assert.match(
+      pinned,
+      /^pnpm@\d+\.\d+\.\d+\+sha512\.[0-9a-f]{128}$/,
+      `the root manifest no longer pins pnpm by version and checksum: ${pinned}`,
+    );
     assert.ok(
       dockerfile.includes(`corepack prepare ${pinned} --activate`),
       `the image must activate ${pinned}, the version the root manifest names`,

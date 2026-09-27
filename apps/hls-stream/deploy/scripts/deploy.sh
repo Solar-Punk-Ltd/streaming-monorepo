@@ -539,9 +539,9 @@ sync_to_remote() {
 
   # Both images install with `pnpm --frozen-lockfile` off these three, so they go up for either
   # service and are hoisted out of the two blocks above rather than sent twice by a deploy of both.
-  # The lockfile is the tree the dependency review was run against and the root manifest carries the
-  # `pnpm.overrides` that pin it, so a build context missing them re-resolves and the reviewed
-  # versions never reach the deployment host.
+  # The lockfile is the tree the dependency review was run against and the workspace file carries the
+  # `overrides` that pin it, so a build context missing them re-resolves and the reviewed versions
+  # never reach the deployment host.
   if [ "$need_uploader" = "true" ] || [ "$need_client" = "true" ]; then
     local workspace_files="$ROOT_DIR"
     if [ -n "$WORKSPACE_ROOT" ]; then

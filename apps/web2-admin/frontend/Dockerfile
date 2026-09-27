@@ -10,7 +10,7 @@ ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable
 
 # Workspace manifests first so the install layer caches when sources change.
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY common/package.json ./common/
 COPY frontend/package.json ./frontend/
 

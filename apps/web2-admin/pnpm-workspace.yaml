@@ -4,3 +4,13 @@ packages:
   - backend
   - frontend
   - common
+
+# Every dependency is added at its exact version. It was save-exact in .npmrc, which pnpm 11 reads
+# for registry and login settings alone.
+saveExact: true
+
+# pnpm 11 refuses an install when a dependency's build script is neither allowed nor refused, where
+# pnpm 10 skipped it with a warning. esbuild's script checks that its binary for the platform runs, and
+# the stack and the manager allow it too.
+allowBuilds:
+  esbuild: true
