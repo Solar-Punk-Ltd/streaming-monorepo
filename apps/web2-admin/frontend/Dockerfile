@@ -13,11 +13,14 @@ RUN corepack enable
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY common/package.json ./common/
 COPY frontend/package.json ./frontend/
+# The repository's shared packages the admin links, where the cut carries them. See tools/app-workspace.
+COPY workspace-packages/contracts/package.json ./workspace-packages/contracts/
 
 RUN pnpm install --frozen-lockfile \
       --filter @streaming-monorepo/web2-admin-frontend... \
       --filter @streaming-monorepo/web2-admin-common...
 
+COPY workspace-packages/contracts ./workspace-packages/contracts
 COPY common ./common
 COPY frontend ./frontend
 

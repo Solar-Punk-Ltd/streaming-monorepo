@@ -7,7 +7,9 @@
  * Field names on the wire are camelCase. Timestamps are ISO 8601 strings.
  */
 
-export type MediaType = 'video' | 'audio';
+import type { CatalogState, MediaType } from '@streaming-monorepo/contracts';
+
+export { MEDIA_TYPES, type MediaType } from '@streaming-monorepo/contracts';
 
 /**
  * draft      never published, or unpublished again. It may still hold the
@@ -20,7 +22,6 @@ export type MediaType = 'video' | 'audio';
  */
 export type StreamStatus = 'draft' | 'publishing' | 'published' | 'live' | 'vod';
 
-export const MEDIA_TYPES: readonly MediaType[] = ['video', 'audio'];
 export const STREAM_STATUSES: readonly StreamStatus[] = ['draft', 'publishing', 'published', 'live', 'vod'];
 
 /** Limits copied from msrs-client so the two consoles feel the same. */
@@ -180,7 +181,7 @@ export interface FeedStreamEntry {
   title: string;
   description: string;
   tags: string[];
-  state: 'scheduled' | 'live' | 'vod';
+  state: CatalogState;
   mediatype: MediaType;
   /** Swarm reference hex of the thumbnail, or '' when there is none. */
   thumbnail: string;

@@ -1,7 +1,11 @@
+/**
+ * The yup schemas the internal routes read their requests with before the contracts package held these shapes, kept
+ * as they were so internalSchemaParity.test.ts can show the contract reads every request the same way.
+ */
 import { MEDIA_TYPES, type MediaType } from '@streaming-monorepo/web2-admin-common';
-import { InferType, NumberSchema, number, object, string } from 'yup';
+import { NumberSchema, number, object, string } from 'yup';
 
-import { UUID_RE } from './stream.js';
+import { UUID_RE } from '../../../src/schemas/stream.js';
 
 /**
  * `/streams/by-ingest/:app/:stream` — the ingest stream id split in two. The
@@ -35,8 +39,6 @@ export const streamStateSchema = object({
   index: vodOnly('index', number().integer('index must be a whole number')),
   duration: vodOnly('duration', number()),
 }).noUnknown(true);
-
-export type StreamStateBody = InferType<typeof streamStateSchema>;
 
 /**
  * Rung names go into the uploader's ingest ids as `<base>_<rung>`, so '_' is
@@ -75,5 +77,3 @@ export const renditionReportSchema = object({
     (value) => (value.index === undefined) === (value.duration === undefined),
   )
   .noUnknown(true);
-
-export type RenditionReportBody = InferType<typeof renditionReportSchema>;

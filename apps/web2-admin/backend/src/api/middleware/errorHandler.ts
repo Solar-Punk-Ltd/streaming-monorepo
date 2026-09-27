@@ -13,6 +13,7 @@ import {
   MediaTypeLockedError,
   NoUsersError,
   PublishFailedError,
+  RequestShapeError,
   StreamBusyError,
   StreamLiveError,
   StreamLockedError,
@@ -52,6 +53,10 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
   }
   if (err instanceof YupValidationError) {
     res.status(400).json({ error: 'validation_error', errors: err.errors });
+    return;
+  }
+  if (err instanceof RequestShapeError) {
+    res.status(400).json({ error: 'validation_error', errors: err.problems });
     return;
   }
   if (err instanceof WeakPasswordError || err instanceof InvalidUsernameError) {

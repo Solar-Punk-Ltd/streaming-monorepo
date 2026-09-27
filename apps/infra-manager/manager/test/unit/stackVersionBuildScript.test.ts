@@ -420,6 +420,8 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     ownLockfileNamed: string;
     /** A commit made once the repository became one workspace: the lockfile at the root, and none in the stack. */
     oneWorkspace: string;
+    /** The same with a package every app shares under the root's packages/, which the cut carries into the stack. */
+    withPackages: string;
     /** The same with no tools/app-workspace to cut the stack's lockfile out of the root one. */
     noCutTool: string;
     /** The same with a stack that names yarn rather than a pnpm. */
@@ -496,6 +498,15 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     git(origin, 'commit', '-qm', 'one workspace at the root');
     const oneWorkspace = git(origin, 'rev-parse', 'HEAD');
 
+    git(origin, 'switch', '-q', '-c', 'with-packages');
+    mkdirSync(join(origin, 'packages', 'contracts', 'src'), { recursive: true });
+    writeFileSync(join(origin, 'packages', 'contracts', 'package.json'), '{"name":"@example/contracts"}\n');
+    writeFileSync(join(origin, 'packages', 'contracts', 'src', 'index.ts'), 'export {};\n');
+    git(origin, 'add', '.');
+    git(origin, 'commit', '-qm', 'a package every app shares');
+    const withPackages = git(origin, 'rev-parse', 'HEAD');
+    git(origin, 'switch', '-q', 'one-workspace');
+
     git(origin, 'switch', '-q', '-c', 'no-cut-tool');
     git(origin, 'rm', '-q', '-r', 'tools');
     git(origin, 'commit', '-qm', 'no cut tool');
@@ -535,6 +546,7 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
       moved,
       ownLockfileNamed,
       oneWorkspace,
+      withPackages,
       noCutTool,
       yarnNamed,
       sideFolderTaken,
@@ -740,6 +752,68 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
         'the side folder is gone before the manager publishes',
       );
       assert.equal(readFileSync(join(built.staging, STACK_TOOLCHAIN_FILE), 'utf8'), `${BUILD_IMAGE} pnpm@11.11.0\n`);
+    });
+  });
+
+  /**
+   * A package every app shares sits under the root's packages/, and the cut
+   * copies each one the stack links into the stack's workspace-packages/, so it
+   * reads them from the side folder too. The command is the same: only what the
+   * side folder holds changes.
+   */
+  it('shows the cut the packages every app shares when the commit has them, and runs the same command', () => {
+    withMonorepo('stack-build-mono-root-packages-', (root, repo) => {
+      const record = recordingDocker(root);
+
+      const built = build(root, repo.withPackages, repo.stackHead, repo.environment);
+
+      assert.equal(built.status, 0, built.stderr);
+      assert.equal(
+        readFileSync(record.command, 'utf8'),
+        `node ${WORKSPACE_ROOT_DIR}/tools/app-workspace/cut.mjs --root ${WORKSPACE_ROOT_DIR} --app ${FOLDER} --out . && ` +
+          `corepack enable && corepack prepare ${ONE_PNPM} --activate && pnpm install --frozen-lockfile && pnpm -r build\n`,
+      );
+      assert.deepEqual(readFileSync(record.sideFolder, 'utf8').trim().split('\n'), [
+        `${WORKSPACE_ROOT_DIR}/${FOLDER}/package.json`,
+        `${WORKSPACE_ROOT_DIR}/package.json`,
+        `${WORKSPACE_ROOT_DIR}/packages/contracts/package.json`,
+        `${WORKSPACE_ROOT_DIR}/packages/contracts/src/index.ts`,
+        `${WORKSPACE_ROOT_DIR}/pnpm-lock.yaml`,
+        `${WORKSPACE_ROOT_DIR}/pnpm-workspace.yaml`,
+        `${WORKSPACE_ROOT_DIR}/tools/app-workspace/cut.mjs`,
+      ]);
+      assert.equal(existsSync(join(built.staging, WORKSPACE_ROOT_DIR)), false, 'the side folder still goes');
+    });
+  });
+
+  /** The script's own trace of what it archived, which a commit without packages/ must not change. */
+  it('archives exactly what it did before for a commit without packages/', () => {
+    withMonorepo('stack-build-mono-root-no-packages-', (root, repo) => {
+      const traced = spawnSync(
+        'bash',
+        [
+          '-x',
+          BUILD_SCRIPT,
+          join(root, 'monorepo.repo'),
+          join(root, 'staging-traced'),
+          repo.oneWorkspace,
+          MONOREPO_URL,
+          FOLDER,
+          repo.stackHead,
+          'abcdef01',
+        ],
+        { env: repo.environment, encoding: 'utf8' },
+      );
+
+      assert.equal(traced.status, 0, traced.stderr);
+      const archives = traced.stderr.split('\n').filter((line) => /^\++ git -C \S+ archive /.test(line));
+      assert.deepEqual(
+        archives.map((line) => line.replace(/^\++ git -C \S+ archive \S+/, '')),
+        [
+          ' -- apps/hls-stream',
+          ' -- package.json pnpm-lock.yaml pnpm-workspace.yaml tools/app-workspace apps/hls-stream/package.json',
+        ],
+      );
     });
   });
 

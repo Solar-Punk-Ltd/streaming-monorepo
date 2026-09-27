@@ -1,4 +1,6 @@
-import { MEDIA_TYPE_AUDIO, MEDIA_TYPE_VIDEO, Rendition, Stream } from '@/types/stream';
+import { mediaTypeSchema } from '@swarm-hls-stream/shared';
+
+import { Rendition, Stream } from '@/types/stream';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -49,7 +51,7 @@ function isStream(value: unknown): value is Stream {
     typeof value.topic === 'string' &&
     typeof value.title === 'string' &&
     isFiniteNumber(value.timestamp) &&
-    (value.mediatype === MEDIA_TYPE_AUDIO || value.mediatype === MEDIA_TYPE_VIDEO) &&
+    mediaTypeSchema.safeParse(value.mediatype).success &&
     (value.state === undefined || typeof value.state === 'string') &&
     hasUsableDuration &&
     isOptionalFiniteNumber(value.index) &&
