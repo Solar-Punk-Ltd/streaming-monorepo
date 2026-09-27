@@ -60,8 +60,9 @@ export function NameField({
       fullWidth
       slotProps={{
         htmlInput: { maxLength: STREAM_LIMITS.TITLE_MAX },
-        formHelperText: { sx: { textAlign: 'right', m: 0, mt: 0.5 } }
-      }} />
+        formHelperText: { sx: { textAlign: 'right', m: 0, mt: 0.5 } },
+      }}
+    />
   );
 }
 
@@ -91,8 +92,9 @@ export function DescriptionField({
       fullWidth
       slotProps={{
         htmlInput: { maxLength: STREAM_LIMITS.DESCRIPTION_MAX },
-        formHelperText: { sx: { textAlign: 'right', m: 0, mt: 0.5 } }
-      }} />
+        formHelperText: { sx: { textAlign: 'right', m: 0, mt: 0.5 } },
+      }}
+    />
   );
 }
 
@@ -126,9 +128,7 @@ export function TagsField({
 
   return (
     <Stack spacing={1}>
-      <Stack direction="row" spacing={1} sx={{
-        alignItems: "flex-start"
-      }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
         <TextField
           id="stream-tags"
           label="Tags"
@@ -145,8 +145,9 @@ export function TagsField({
           fullWidth
           slotProps={{
             htmlInput: { maxLength: STREAM_LIMITS.TAG_MAX_LENGTH },
-            formHelperText: { sx: { textAlign: 'right', m: 0, mt: 0.5 } }
-          }} />
+            formHelperText: { sx: { textAlign: 'right', m: 0, mt: 0.5 } },
+          }}
+        />
         <Button
           onClick={addTag}
           disabled={disabled || !draft.trim() || full}
@@ -156,9 +157,7 @@ export function TagsField({
         </Button>
       </Stack>
       {value.length > 0 ? (
-        <Stack direction="row" spacing={1} useFlexGap sx={{
-          flexWrap: "wrap"
-        }}>
+        <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
           {value.map((tag) => (
             <Chip
               key={tag}
@@ -269,9 +268,7 @@ export function ThumbnailField({
         }}
       />
       {previewUrl || fileName ? (
-        <Stack direction="row" spacing={2} sx={{
-          alignItems: "center"
-        }}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
           {previewUrl ? (
             <Box
               component="img"
@@ -287,13 +284,9 @@ export function ThumbnailField({
               }}
             />
           ) : null}
-          <Stack spacing={0.5} sx={{
-            alignItems: "flex-start"
-          }}>
+          <Stack spacing={0.5} sx={{ alignItems: 'flex-start' }}>
             {fileName ? (
-              <Typography variant="caption" sx={{
-                color: "text.secondary"
-              }}>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                 {fileName}
               </Typography>
             ) : null}

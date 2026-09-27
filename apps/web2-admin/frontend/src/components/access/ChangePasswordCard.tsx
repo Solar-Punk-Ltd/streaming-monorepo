@@ -74,16 +74,12 @@ export function ChangePasswordCard() {
           <Typography variant="body2">
             Logged in as <strong>{username}</strong>
           </Typography>
-          <Typography variant="caption" sx={{
-            color: "text.secondary"
-          }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
             Password last changed {formatDateTime(user?.passwordChangedAt)}
           </Typography>
         </Stack>
 
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           This browser stays signed in. Every other one is signed out.
         </Typography>
 

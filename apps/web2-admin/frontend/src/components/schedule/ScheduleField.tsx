@@ -89,10 +89,8 @@ export function ScheduleField({
         direction="row"
         spacing={2}
         useFlexGap
-        sx={{
-          flexWrap: "wrap",
-          alignItems: "flex-start"
-        }}>
+        sx={{ flexWrap: 'wrap', alignItems: 'flex-start' }}
+      >
         <DesktopDatePicker
           label="Scheduled Date *"
           value={dateToDayjs(date)}
@@ -158,9 +156,7 @@ export function ScheduleField({
         />
       </Stack>
       {disabled ? null : (
-        <Stack direction="row" spacing={1} useFlexGap sx={{
-          flexWrap: "wrap"
-        }}>
+        <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
           {picks.map((pick) => (
             <Chip
               key={pick.key}
@@ -174,9 +170,7 @@ export function ScheduleField({
         </Stack>
       )}
       {caption ? (
-        <Typography variant="caption" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
           {caption}
         </Typography>
       ) : null}

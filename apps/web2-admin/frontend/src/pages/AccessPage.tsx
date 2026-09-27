@@ -27,9 +27,7 @@ export function AccessPage() {
         Access
       </Typography>
 
-      <Typography variant="body2" sx={{
-        color: "text.secondary"
-      }}>
+      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
         {canManage
           ? 'You can add and remove users here.'
           : 'Only an admin adds or removes a user.'}{' '}

@@ -78,9 +78,7 @@ export function AddUserCard({ onAdded }: { onAdded: () => Promise<void> }) {
     <Paper variant="outlined" sx={{ p: 3, maxWidth: 520 }}>
       <Stack spacing={2} component="form" onSubmit={submit} noValidate>
         <Typography variant="h6">Add user</Typography>
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           Type a starting password, tell it to them in person, and ask them to
           change it here once they are in.
         </Typography>

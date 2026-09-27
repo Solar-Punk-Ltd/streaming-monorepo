@@ -139,9 +139,7 @@ export function UsersCard({
       <Stack spacing={2}>
         <Stack spacing={0.5}>
           <Typography variant="h6">Users</Typography>
-          <Typography variant="body2" sx={{
-            color: "text.secondary"
-          }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             Everyone who can log in to this console.
           </Typography>
         </Stack>
@@ -160,11 +158,7 @@ export function UsersCard({
         ) : null}
 
         {!users && !error ? (
-          <Stack
-            sx={{
-              alignItems: "center",
-              py: 4
-            }}>
+          <Stack sx={{ alignItems: 'center', py: 4 }}>
             <CircularProgress size={24} aria-label="Loading users" />
           </Stack>
         ) : null}
@@ -203,10 +197,8 @@ export function UsersCard({
                       <Stack
                         direction="row"
                         spacing={0.75}
-                        sx={{
-                          alignItems: "center",
-                          flexWrap: "wrap"
-                        }}>
+                        sx={{ alignItems: 'center', flexWrap: 'wrap' }}
+                      >
                         <Typography variant="body2" sx={{ fontWeight: 500 }}>
                           {user.username}
                         </Typography>
@@ -214,25 +206,28 @@ export function UsersCard({
                           <Chip label="admin" size="small" color="primary" />
                         ) : null}
                         {isSelf ? (
-                          <Typography variant="caption" sx={{
-                            color: "text.secondary"
-                          }}>
+                          <Typography
+                            variant="caption"
+                            sx={{ color: 'text.secondary' }}
+                          >
                             you
                           </Typography>
                         ) : null}
                       </Stack>
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2" sx={{
-                        color: "text.secondary"
-                      }}>
+                      <Typography
+                        variant="body2"
+                        sx={{ color: 'text.secondary' }}
+                      >
                         {formatDateTime(user.createdAt)}
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2" sx={{
-                        color: "text.secondary"
-                      }}>
+                      <Typography
+                        variant="body2"
+                        sx={{ color: 'text.secondary' }}
+                      >
                         {user.lastLoginAt
                           ? formatDateTime(user.lastLoginAt)
                           : NEVER_SIGNED_IN}
@@ -243,9 +238,7 @@ export function UsersCard({
                       <Stack
                         direction="row"
                         spacing={0.5}
-                        sx={{
-                          justifyContent: "flex-end"
-                        }}
+                        sx={{ justifyContent: 'flex-end' }}
                       >
                         <Tooltip title={revokeBlocked}>
                           <Box component="span">
