@@ -76,8 +76,11 @@ same stack as the commit being deployed, so a deploy that changes only the manag
 finds the bundled build the server already has: it builds nothing and the bundled
 version keeps its Tested mark. The server fetches the pin from GitHub, so the deploy
 refuses a commit that no remote branch holds: push it first, or `git fetch` when it
-was pushed from elsewhere. That file ships with the repo rsync. Nothing of the stack
-is installed or built on your machine.
+was pushed from elsewhere. It also refuses while the monorepo cannot be read
+without a login, which it asks with an anonymous `git ls-remote` before anything
+reaches the server, because the server fetches that way and would otherwise stop
+the old manager and migrate its database before finding out. That file ships with
+the repo rsync. Nothing of the stack is installed or built on your machine.
 
 **The first deploy from the monorepo moves the bundled version off `v3.4`.** Until
 then the server's bundled version was the stack's release `v3.4`, the last pin of

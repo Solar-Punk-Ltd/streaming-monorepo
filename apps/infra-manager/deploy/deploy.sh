@@ -121,6 +121,18 @@ if [ -z "$PUSHED_IN" ]; then
     echo "ERROR: no remote branch holds $MANAGER_COMMIT, the commit being deployed. The host fetches it from GitHub to build the stack it bundles, so push it first, or git fetch if it is pushed already." >&2
     exit 1
 fi
+# The host fetches the pin from the monorepo with no login at all. A repository it
+# cannot read that way would let the upgrade stop the old api and migrate the
+# database before the bundled build fails, so it is asked the same way here first:
+# no credential helper, no prompt, and none of this machine's git configuration,
+# which could hold a helper or rewrite the address. The address is the manager's
+# MONOREPO_STACK_SOURCE, and a test holds the two to each other.
+STACK_REPO_URL="https://github.com/Solar-Punk-Ltd/streaming-monorepo.git"
+if ! GIT_TERMINAL_PROMPT=0 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
+    git -c credential.helper= ls-remote "$STACK_REPO_URL" HEAD > /dev/null 2>&1; then
+    echo "ERROR: $STACK_REPO_URL does not answer without a login, and the host fetches the stack from it that way. Deploy once the repository can be read anonymously, which it can once it is public." >&2
+    exit 1
+fi
 # An ancestor of the deployed commit, which a remote branch holds, so the host
 # can fetch it too. :(top) reads the path from the repository root, wherever
 # this script runs from.
