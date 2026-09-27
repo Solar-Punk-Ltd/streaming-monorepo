@@ -25,8 +25,10 @@ node ../../tools/app-workspace/in-copy.mjs --app apps/infra-manager -- docker bu
 ```
 
 The copy holds the files git sees on disk: every tracked file with its changes not yet committed, and every new file
-git does not ignore. Ignored files, such as `node_modules`, `dist` and every `.env`, stay behind. Where the root holds
-no lockfile, as on a commit from before it did, the apps keep their own and the copy gets no cut.
+git does not ignore. Ignored files, such as `node_modules`, `dist` and every `.env`, stay behind. `--also` copies one
+more path git ignores, such as a build output an image copies in, and refuses a path that is or holds an env file,
+`.env` or `.env.<anything>`. Where the root holds no lockfile, as on a commit from before it did, the apps keep their
+own and the copy gets no cut.
 
 Each script prints its usage with `--help`.
 

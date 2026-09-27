@@ -15,7 +15,7 @@
  */
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { describe, it } from 'node:test';
@@ -30,6 +30,8 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BUILD_SCRIPT = join(here, '..', '..', 'scripts', 'stack-version-build.sh');
+/** The repository's own cut tool, which a fixture commit carries when the cut has to run for real. */
+const CUT_TOOL = join(here, '..', '..', '..', '..', '..', 'tools', 'app-workspace');
 
 const script = readFileSync(BUILD_SCRIPT, 'utf8');
 
@@ -169,6 +171,26 @@ function recordingDocker(root: string, status = 0): { command: string; sideFolde
     { mode: 0o755 },
   );
   return { command, sideFolder };
+}
+
+/**
+ * A docker that runs the command it was asked to run in the staging tree, as
+ * the container would, beside a corepack and a pnpm that do nothing. The cut
+ * is then the one part of the build that runs for real, with this host's node.
+ */
+function runningDocker(root: string): void {
+  for (const name of ['corepack', 'pnpm']) writeFileSync(join(root, 'bin', name), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  writeFileSync(
+    join(root, 'bin', 'docker'),
+    [
+      '#!/bin/sh',
+      'for arg in "$@"; do command="$arg"; done',
+      'while [ "$#" -gt 0 ]; do if [ "$1" = -w ]; then dir="$2"; fi; shift; done',
+      'cd "$dir" && exec sh -c "$command"',
+      '',
+    ].join('\n'),
+    { mode: 0o755 },
+  );
 }
 
 /** A committer time in the past, so a file dated by its commit cannot pass for one dated by the run. */
@@ -378,6 +400,8 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     adminOnly: string;
     /** The head of main, after the import and one change to the stack. */
     moved: string;
+    /** The same stack naming its pnpm while it keeps its own lockfile, as main-v3's has done since it moved to pnpm 11.11.0. */
+    ownLockfileNamed: string;
     /** A commit made once the repository became one workspace: the lockfile at the root, and none in the stack. */
     oneWorkspace: string;
     /** The same with no tools/app-workspace to cut the stack's lockfile out of the root one. */
@@ -386,6 +410,8 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     yarnNamed: string;
     /** The same with a stack that holds a .workspace-root of its own. */
     sideFolderTaken: string;
+    /** The same with the repository's real cut tool and a stack that names no pnpm, which the cut refuses. */
+    unnamedStack: string;
     environment: NodeJS.ProcessEnv;
   }
 
@@ -427,6 +453,12 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     git(origin, 'commit', '-qam', 'the stack moves on');
     const moved = git(origin, 'rev-parse', 'HEAD');
 
+    git(origin, 'switch', '-q', '-c', 'own-lockfile-named');
+    writeFileSync(join(origin, FOLDER, 'package.json'), `${JSON.stringify({ name: 'stack-naming-its-pnpm', packageManager: ONE_PNPM })}\n`);
+    git(origin, 'commit', '-qam', 'the stack names its pnpm and keeps its own lockfile');
+    const ownLockfileNamed = git(origin, 'rev-parse', 'HEAD');
+    git(origin, 'switch', '-q', 'main');
+
     git(origin, 'switch', '-q', '-c', 'one-workspace');
     writeFileSync(join(origin, 'package.json'), `${JSON.stringify({ name: 'monorepo', packageManager: ONE_PNPM })}\n`);
     writeFileSync(join(origin, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\n");
@@ -455,6 +487,17 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     git(origin, 'add', '.');
     git(origin, 'commit', '-qm', 'a stack with a .workspace-root of its own');
     const sideFolderTaken = git(origin, 'rev-parse', 'HEAD');
+
+    git(origin, 'switch', '-q', '-c', 'unnamed-stack', oneWorkspace);
+    git(origin, 'rm', '-q', '-r', 'tools');
+    cpSync(CUT_TOOL, join(origin, 'tools', 'app-workspace'), {
+      recursive: true,
+      filter: (source) => !source.split(/[\\/]/).includes('node_modules'),
+    });
+    writeFileSync(join(origin, FOLDER, 'package.json'), `${JSON.stringify({ name: 'stack-naming-no-pnpm' })}\n`);
+    git(origin, 'add', '.');
+    git(origin, 'commit', '-qm', 'a stack on one workspace that names no pnpm');
+    const unnamedStack = git(origin, 'rev-parse', 'HEAD');
     git(origin, 'switch', '-q', 'main');
 
     return {
@@ -462,10 +505,12 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
       stackHead,
       adminOnly,
       moved,
+      ownLockfileNamed,
       oneWorkspace,
       noCutTool,
       yarnNamed,
       sideFolderTaken,
+      unnamedStack,
       environment: offline(root, MONOREPO_URL, origin),
     };
   }
@@ -666,6 +711,28 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
     });
   });
 
+  /**
+   * The stack as main-v3 holds it today: its own lockfile, and a pnpm named in
+   * its package.json. Nothing is cut. corepack already ran the named pnpm, so
+   * the build is the same, and only the pin it activates and the pnpm it
+   * records now match the named one, where they said the pinned one before.
+   */
+  it('builds a stack that keeps its own lockfile and names its pnpm with that pnpm, and cuts nothing', () => {
+    withMonorepo('stack-build-mono-own-named-', (root, repo) => {
+      const record = recordingDocker(root);
+
+      const built = build(root, repo.ownLockfileNamed, repo.stackHead, repo.environment);
+
+      assert.equal(built.status, 0, built.stderr);
+      assert.equal(
+        readFileSync(record.command, 'utf8'),
+        `corepack enable && corepack prepare ${ONE_PNPM} --activate && pnpm install --frozen-lockfile && pnpm -r build\n`,
+      );
+      assert.equal(existsSync(record.sideFolder), false, 'a stack with its own lockfile gets no side folder');
+      assert.equal(readFileSync(join(built.staging, STACK_TOOLCHAIN_FILE), 'utf8'), `${BUILD_IMAGE} pnpm@11.11.0\n`);
+    });
+  });
+
   it("builds a commit of the stack's own history exactly as before", () => {
     withMonorepo('stack-build-mono-own-history-', (root, repo) => {
       const record = recordingDocker(root);
@@ -714,6 +781,23 @@ describe('stack-version-build.sh takes the stack out of its folder in a monorepo
       assert.match(built.stderr, /yarn@4\.1\.0/);
       assert.equal(existsSync(record.command), false, 'nothing of the commit ran');
       assert.equal(existsSync(built.staging), false);
+    });
+  });
+
+  /**
+   * Each app names its own pnpm, and the cut refuses one that names none rather
+   * than fall back to the root's, which would hide a break of that rule. The
+   * build therefore stops in the container, with the cut's own sentence.
+   */
+  it("stops, with the cut's own refusal, on a commit whose lockfile is at the root and whose stack names no pnpm", () => {
+    withMonorepo('stack-build-mono-unnamed-', (root, repo) => {
+      runningDocker(root);
+
+      const built = build(root, repo.unnamedStack, repo.stackHead, repo.environment);
+
+      assert.notEqual(built.status, 0);
+      assert.match(built.stderr, new RegExp(`${FOLDER}/package\\.json names no packageManager`));
+      assert.equal(existsSync(built.staging), false, 'the failed build takes its staging tree with it');
     });
   });
 

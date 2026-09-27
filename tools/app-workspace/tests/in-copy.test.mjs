@@ -118,6 +118,24 @@ describe('in-copy.mjs', () => {
     assert.equal(seen, null);
   });
 
+  it('refuses an --also path that is or holds an env file, and runs nothing', (t) => {
+    const root = makeCheckout(t, { '.gitignore': '.env\n.env.*\nnode_modules/\ndist/\n' });
+    writeFiles(root, {
+      'apps/web2-admin/backend/.env.local': 'LOCAL_ONLY=1\n',
+      'apps/web2-admin/backend/dist/index.js': 'built\n',
+      'apps/web2-admin/backend/dist/config/.env.production': 'LOCAL_ONLY=1\n',
+    });
+
+    for (const path of ['backend/.env', 'backend/.env.local', 'backend/dist']) {
+      const { result, seen } = listIn(t, root, { options: ['--also', path] });
+
+      assert.equal(result.status, 125, `${path}: ${result.stderr}`);
+      assert.match(result.stderr, /env file/, path);
+      assert.doesNotMatch(result.stderr, /LOCAL_ONLY/, `${path}: the refusal printed what the file holds`);
+      assert.equal(seen, null, `${path}: the command ran`);
+    }
+  });
+
   it('refuses an --also path that leaves the app, and runs nothing', (t) => {
     for (const path of ['../infra-manager', '/etc']) {
       const { result, seen } = listIn(t, makeCheckout(t), { options: ['--also', path] });
