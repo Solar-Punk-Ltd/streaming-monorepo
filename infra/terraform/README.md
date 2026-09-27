@@ -12,8 +12,8 @@ and never touches `BEE_PUBLISHERS`, `ABR_LADDER`, stamps or keys — those stay 
   project (`gcloud auth login && gcloud auth application-default login`)
 - On the project: rights to create compute, Secret Manager, service-account and storage
   resources, plus `roles/iap.tunnelResourceAccessor` for whoever will SSH
-- For the appliers: `ssh`, `rsync`. The media deploy is not run from here — it runs on the
-  `streaming-infra-manager` host, which reaches the stage hosts over ssh on its own
+- For the appliers: `ssh`, `rsync`. The media deploy is not run from here. It runs on the
+  control host, from the manager, which reaches the stage hosts over ssh on its own
 - Nothing to install on the hosts: the startup scripts provision docker, `node_exporter` and the
   Grafana Alloy log shipper themselves on first boot
 
@@ -61,15 +61,18 @@ What M2 gives you before anything is deployed on the host: `node_exporter` scrap
 and Alloy shipping every container's logs to Loki — SRS and the uploader from the moment they
 first start, with no step of its own. See "Reading the logs" below.
 
-The host does not deploy itself and runs no manager of its own. The ABR Uploader — SRS plus
-`stream-uploader` — is pushed onto it over plain ssh by the one `streaming-infra-manager` per
-brand, which lives on a host outside GCP and drives the Bee hosts at Vultr the same way. Two
-variables are what make that reach the host at all: `ssh_source_ranges` carries the manager
-host's /32, which is the only thing besides IAP that gets past the VPC's deny-all on port 22,
-and `additional_ssh_public_keys` carries its deploy key into the instance's `ssh-keys` metadata
-alongside `ssh_public_key`, where the guest agent converges `solarpunk`'s `authorized_keys` to
-the whole roster. The profile's host is entered in the manager as `solarpunk@<external ip>`,
-never an ssh alias: the manager writes that value, minus the `user@`, straight into the SRT URL.
+The host does not deploy itself and runs no manager of its own. The ABR Uploader, SRS plus
+`stream-uploader`, is pushed onto it over plain ssh by the one manager per brand, which runs on
+the control host and drives the Bee hosts at Vultr the same way. In this root the monitoring host
+is also the control host: `https_public` opens 80 and 443 on it for the edge in front of the two
+consoles, and [docs/hosts.md](../../docs/hosts.md) has the recipe that puts the edge, the manager
+and the admin there. Two variables are what make the manager reach a stage host at all:
+`ssh_source_ranges` carries the control host's /32, which is the only thing besides IAP that gets
+past the VPC's deny-all on port 22, and `additional_ssh_public_keys` carries its deploy key into
+the instance's `ssh-keys` metadata alongside `ssh_public_key`, where the guest agent converges
+`solarpunk`'s `authorized_keys` to the whole roster. The profile's host is entered in the manager
+as `solarpunk@<external ip>`, never an ssh alias: the manager writes that value, minus the
+`user@`, straight into the SRT URL.
 
 Two things the plan insists on: run the media stack from the ABR lineage (`main` predates
 `BEE_PUBLISHERS`), and deploy with `--portSlot >= 1`. **Port slots are global to the manager's
@@ -77,7 +80,7 @@ one Postgres**, so the uploader takes whatever slot is free rather than always s
 SRT port is `10001 + 10 × slot`. Put that number in `stages.stage1.srt_port` and apply again —
 the ingest rule admits exactly one port per stage, and a mismatch is a stream that connects to
 nothing. `rendered/stage1/manager.env` is still rendered here and is not part of this rollout:
-the manager's env lives on the manager host, with the manager. The SRT passphrase for the
+the manager's env lives on the control host, with the manager. The SRT passphrase for the
 hand-authored engine env:
 `gcloud secrets versions access latest --secret=devcon-srt-passphrase-stage1`.
 
@@ -102,7 +105,7 @@ its `known_hosts` disagrees with, and that one line has to go before the redeplo
 
 The Bee publishers run on their own machines at Vultr, in a second root:
 [vultr/README.md](vultr/README.md). One host carries three ABR ladders — twelve Bee publisher
-nodes — deployed onto it over ssh by the same external `streaming-infra-manager` that deploys the
+nodes, deployed onto it over ssh by the same manager, on the control host, that deploys the
 uploader here. That root reads this one's `stage_external_ips` and `monitoring_external_ip` out
 of the state bucket, so **this root is applied first**; the one thing that has to come back the
 other way is a list of addresses:
@@ -119,7 +122,7 @@ The rendered `ssh_config` here `Include`s the Vultr root's, so one file reaches 
 line is inert until that root has been applied. That file is the human path, over IAP. The
 manager's path is a separate rendered file, `rendered/vultr/manager_ssh_config`, which the Vultr
 root writes with a block for every host in both clouds — direct TCP, host keys pinned — and the
-operator copies to the manager host. See [vultr/README.md](vultr/README.md).
+operator copies to the control host. See [vultr/README.md](vultr/README.md).
 
 ## Day-to-day access
 
@@ -129,8 +132,8 @@ ssh -F rendered/ssh_config -L 3000:localhost:3000 monitoring       # Grafana
 ```
 
 Aliases must stay dotless — `swarm-hls-stream` resolves deploy targets through `ssh -G` only for
-names without a dot. The manager's web UI is not on either of these hosts and needs no tunnel
-from here.
+names without a dot. The manager's console is on the monitoring host, behind the edge at its
+own name, so it needs no tunnel from here either.
 
 ## Reading the logs
 
@@ -192,7 +195,7 @@ encoder has a static address and belongs in `srt_source_ranges`.
   script in place (idempotent by design — the apt work is behind a marker file, and the Alloy
   stack is recreated from the config it just wrote); a reboot; or `-replace`, which rebuilds the
   host. Apply first, then re-run: the runner reads the metadata Terraform has already written.
-- **SSH is one shared key** for user `solarpunk` across all three hosts, plus the manager host's
+- **SSH is one shared key** for user `solarpunk` across all three hosts, plus the control host's
   deploy key on the stage hosts through `additional_ssh_public_keys`, so there is no per-human
   attribution and no per-human revocation. Instance metadata is authoritative for that roster and
   the guest agent converges `authorized_keys` to it, which is also why a key appended by hand on
@@ -214,7 +217,7 @@ encoder has a static address and belongs in `srt_source_ranges`.
   "temporarily".
 - **One rule puts a stage host's sshd on the public internet**: `devcon-ssh-external`, tcp 22
   from the /32s in `ssh_source_ranges`, targeting the stage tag only. It exists because the
-  `streaming-infra-manager` host deploys the uploader over plain ssh from inside a container and
+  manager on the control host deploys the uploader over plain ssh from inside a container and
   has no gcloud and no Google identity to open an IAP tunnel with. It is IP-keyed and logged,
   like the SRT ingest rule and for the same reason: with no application auth behind it, matching
   the rule is the whole authorization event and the only record of it. The monitoring host is not
