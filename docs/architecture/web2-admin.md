@@ -87,9 +87,9 @@ the same open question as the auth component above, seen from the other end.
 Same as streaming-infra-manager, so the two codebases feel like one team's:
 
 - TypeScript, ESM, exact-pinned dependencies, pnpm workspace.
-- `web2-admin/backend`: Express 5, `pg`, yup validation, SQL migrations in the
-  repo run on startup, Node test runner through tsx (unit and integration).
-- `web2-admin/frontend`: React 18, MUI, Vite. The console is modelled on
+- `apps/web2-admin/backend`: Express 5, `pg`, yup validation, SQL migrations in
+  the repo run on startup, Node test runner through tsx (unit and integration).
+- `apps/web2-admin/frontend`: React 18, MUI, Vite. The console is modelled on
   msrs-client (https://github.com/Solar-Punk-Ltd/msrs-client), which is the
   admin UI operators use today.
 - Package scope `@streaming-monorepo/`.
