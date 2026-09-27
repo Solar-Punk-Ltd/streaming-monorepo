@@ -32,7 +32,8 @@ interface BeeTarget {
 }
 
 export function loadEnv(): void {
-  loadDotenv({ path: ENV_PATH });
+  // Quiet, because dotenv 17 otherwise prints a line of its own on every load, into this command's output.
+  loadDotenv({ path: ENV_PATH, quiet: true });
 }
 
 export function getEnvPath(): string {
