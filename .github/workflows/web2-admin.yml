@@ -98,3 +98,30 @@ jobs:
         env:
           DATABASE_URL: postgres://web2admin@127.0.0.1:5432/web2admin
         run: pnpm -C backend run test:integration
+
+  web2-admin-images:
+    # The api and web images, built the way deploy/deploy.sh builds them: from
+    # a copy of the admin's folder that tools/app-workspace/in-copy.mjs makes,
+    # with the admin's own lockfile pair cut out of the root's, and the
+    # Dockerfiles deploy/docker-compose.yml names. The other jobs run the code
+    # from pnpm install on the runner and never build an image, so a Dockerfile
+    # that no longer builds goes red here rather than at a deploy. Built and
+    # thrown away, never pushed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Node's standard library alone, which in-copy.mjs needs.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: The daemon the images are built with
+        run: docker version --format 'server {{.Server.Version}}'
+
+      - name: The api image, backend/Dockerfile
+        run: node ../../tools/app-workspace/in-copy.mjs --app apps/web2-admin -- docker build --file backend/Dockerfile --tag web2-admin-api:checks .
+
+      - name: The web image, frontend/Dockerfile
+        run: node ../../tools/app-workspace/in-copy.mjs --app apps/web2-admin -- docker build --file frontend/Dockerfile --tag web2-admin-web:checks .
