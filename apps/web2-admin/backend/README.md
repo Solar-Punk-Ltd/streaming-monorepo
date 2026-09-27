@@ -23,7 +23,7 @@ a feed entry second.
 ```bash
 cp .env.sample .env       # then set FEED_PRIVATE_KEY and INGEST_HOST
 pnpm database:start       # postgres:16-alpine on 127.0.0.1:5433
-pnpm user:add alice        # the first user — prompts twice, echoes nothing
+pnpm user:add alice        # the first user: prompts twice, echoes nothing
 pnpm dev                  # API on :9877
 curl localhost:9877/api/health                   # {"status":"ok"}
 ```
