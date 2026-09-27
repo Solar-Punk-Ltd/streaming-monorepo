@@ -1,8 +1,9 @@
+import { sameFeedOwner } from '@swarm-hls-stream/shared';
+
 import { AdminApiClient, AdminStreamDraft } from '../libs/AdminApiClient.js';
 import { Logger } from '../libs/Logger.js';
 import { AdminSession, MediaType } from '../types.js';
 import { getErrorMessage } from '../utils/common.js';
-import { sameFeedOwner } from '../utils/feedOwner.js';
 import { matchesPublishKey } from '../utils/publishKey.js';
 
 const logger = Logger.getInstance();

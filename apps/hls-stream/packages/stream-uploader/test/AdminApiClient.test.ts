@@ -37,7 +37,7 @@ const TOKEN = 'admin-api-token-0123456789abcdef';
 const STREAM_ID = 'video/demo';
 const ADMIN_STREAM_ID = 'str_01HZY';
 
-/** A draft shaped the way the admin contract states it, so `asDraft` accepts it. */
+/** A draft shaped the way the admin contract states it, so `ingestLookupAnswerSchema` accepts it. */
 const DRAFT: AdminStreamDraft = {
   id: ADMIN_STREAM_ID,
   topic: 'declared-topic-0001',
@@ -173,6 +173,12 @@ describe('the admin API client, looking a draft up by ingest id', () => {
 
     await withAdmin(always(200, withoutKey), async ({ client }) => {
       await assert.rejects(() => client.lookupByIngestId(STREAM_ID), /not a stream/);
+    });
+  });
+
+  it('takes an audio stream as it takes a video one', async () => {
+    await withAdmin(always(200, { ...DRAFT, mediaType: 'audio' }), async ({ client }) => {
+      assert.equal((await client.lookupByIngestId(STREAM_ID))?.mediaType, 'audio');
     });
   });
 
@@ -324,7 +330,7 @@ describe('the admin API client, reporting one rung of a ladder', () => {
     avgBandwidth: 2_400_000,
   };
 
-  /** The merged ladder as the contract states it, so `asRenditionReport` accepts it. */
+  /** The merged ladder as the contract states it, so `renditionReportAnswerSchema` accepts it. */
   const MERGED = {
     stream: { id: ADMIN_STREAM_ID },
     renditions: [RUNG],
@@ -485,6 +491,10 @@ describe('the admin API token', () => {
       () => new AdminApiClient({ baseUrl: 'http://admin.test', token: 'a'.repeat(MIN_ADMIN_API_TOKEN_LENGTH - 1) }),
       /ADMIN_API_TOKEN/,
     );
+  });
+
+  it('puts the floor at 32 characters, as the admin and the manager do', () => {
+    assert.equal(MIN_ADMIN_API_TOKEN_LENGTH, 32);
   });
 
   it('accepts one exactly at the floor', () => {

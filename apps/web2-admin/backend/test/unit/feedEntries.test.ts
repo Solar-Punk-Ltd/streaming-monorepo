@@ -11,6 +11,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { viewerCatalogEntrySchema } from '@streaming-monorepo/contracts';
 import type { StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
 import { buildFeedEntry, feedEntryState } from '../../src/domain/feedEntries.js';
@@ -158,5 +159,39 @@ describe('buildFeedEntry', () => {
 
     assert.equal(entry.index, 9, 'the master, not the rung');
     assert.equal(entry.renditions?.[0]?.index, 42);
+  });
+});
+
+describe('what the viewer reads of an entry the admin writes', () => {
+  const ladder = [
+    {
+      name: '720p',
+      width: 1280,
+      height: 720,
+      topic: 'bbbbbbbb-0000-4000-8000-000000000720',
+      bandwidth: 2_800_000,
+      avgBandwidth: 2_400_000,
+      index: 42,
+      duration: 61.5,
+    },
+  ];
+
+  it('is every entry, in every status, with a ladder and without, and with a thumbnail and a start time', () => {
+    const statuses: StreamStatus[] = ['draft', 'publishing', 'published', 'live', 'vod'];
+    for (const status of statuses) {
+      for (const renditions of [[], ladder]) {
+        const row = streamRow({
+          status,
+          manifest_index: 9,
+          duration_seconds: 61.5,
+          scheduled_start_time: new Date(1_800_000_000_000),
+        });
+        for (const thumbnail of [null, 'aa'.repeat(32)]) {
+          const entry = buildFeedEntry(row, thumbnail, 1_700_000_000_000, renditions);
+          const read = viewerCatalogEntrySchema.safeParse(entry);
+          assert.ok(read.success, `${status} ${renditions.length} ${thumbnail}: ${JSON.stringify(read.error?.issues)}`);
+        }
+      }
+    }
   });
 });

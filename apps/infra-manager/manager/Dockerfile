@@ -21,9 +21,16 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY common/package.json ./common/
 COPY manager/package.json ./manager/
 COPY frontend/package.json ./frontend/
+# The repository's shared packages the manager links, where the cut carries them. See tools/app-workspace.
+COPY workspace-packages/contracts/package.json ./workspace-packages/contracts/
+COPY workspace-packages/db-migrate/package.json ./workspace-packages/db-migrate/
+COPY workspace-packages/web-auth/package.json ./workspace-packages/web-auth/
 
 RUN pnpm install --frozen-lockfile --filter @streaming-infra-manager/api...
 
+COPY workspace-packages/contracts ./workspace-packages/contracts
+COPY workspace-packages/db-migrate ./workspace-packages/db-migrate
+COPY workspace-packages/web-auth ./workspace-packages/web-auth
 COPY common ./common
 COPY manager ./manager
 
@@ -65,5 +72,8 @@ COPY --from=build /out ./
 COPY manager/scripts ./scripts
 
 ENV NODE_ENV=production
+# A shared package's default entry is its TypeScript source, which node does not load from node_modules. This
+# condition points every node process here, the CLI included, at the compiled copy.
+ENV NODE_OPTIONS=--conditions=compiled
 EXPOSE 9876
 CMD ["node", "dist/index.js"]

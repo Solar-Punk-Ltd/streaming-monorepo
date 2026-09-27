@@ -30,9 +30,10 @@ import { createHmac } from 'node:crypto';
  * Both SRS spellings repeat `param` verbatim on `on_unpublish`, which is what lets the close path be
  * screened at all. See SEC-29.
  *
- * The name is short because a broadcaster types it into a publish URL by hand.
+ * The name is short because a broadcaster types it into a publish URL by hand. The contracts package holds it,
+ * because the admin writes it into every publish URL it hands a broadcaster.
  */
-export const PUBLISH_KEY_PARAM = 'key';
+export { PUBLISH_KEY_PARAM } from '@streaming-monorepo/contracts';
 
 /** Matching the SRS webhook token and the API token: short enough to guess is short enough to guess. */
 export const MIN_PUBLISH_KEY_SECRET_LENGTH = 32;

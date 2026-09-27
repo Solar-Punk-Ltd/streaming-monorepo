@@ -84,6 +84,7 @@ export const GIT_STUB = {
   head: '1111111111111111111111111111111111111111',
   clientTree: '2222222222222222222222222222222222222222',
   sharedTree: '3333333333333333333333333333333333333333',
+  contractsTree: '4444444444444444444444444444444444444444',
 };
 
 const sandboxes = [];
@@ -369,6 +370,7 @@ const REVISIONS = {
   'HEAD': ${JSON.stringify(GIT_STUB.head)},
   'HEAD:./packages/client': ${JSON.stringify(GIT_STUB.clientTree)},
   'HEAD:./packages/shared': ${JSON.stringify(GIT_STUB.sharedTree)},
+  'HEAD:./packages/contracts': ${JSON.stringify(GIT_STUB.contractsTree)},
 };
 
 if (rest[0] === 'rev-parse') {

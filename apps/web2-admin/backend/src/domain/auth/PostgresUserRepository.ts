@@ -1,9 +1,9 @@
+import { USER_REMOVAL_LOCK_KEY } from '@streaming-monorepo/web-auth';
 import { Pool } from 'pg';
 
 import type { UserRow } from '../../types/index.js';
 import { USER_COLUMNS } from '../userSql.js';
 
-import { USER_REMOVAL_LOCK_KEY } from './authSql.js';
 import type { UserDeletion, UserRepository } from './UserRepository.js';
 
 export class PostgresUserRepository implements UserRepository {

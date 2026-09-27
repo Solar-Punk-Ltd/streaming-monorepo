@@ -46,6 +46,13 @@ describe('the shipped ladder', () => {
   it('has unique rung names', () => {
     assert.equal(new Set(DEFAULT_ABR_RUNGS).size, ABR_LADDER_SIZE);
   });
+
+  it('is the four rungs the uploader encodes when nothing else is set', () => {
+    assert.deepEqual(
+      DEFAULT_ABR_LADDER.map((rung) => `${rung.name}:${rung.width}:${rung.height}:${rung.kbps}`),
+      ['360p:640:360:700', '480p:854:480:1200', '720p:1280:720:2800', '1080p:1920:1080:5000'],
+    );
+  });
 });
 
 describe('member naming', () => {

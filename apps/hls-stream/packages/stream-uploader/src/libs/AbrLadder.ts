@@ -1,3 +1,5 @@
+import { DEFAULT_QUALITY_LADDER, qualityLadderSpec } from '@swarm-hls-stream/shared';
+
 import { LadderRung } from '../types.js';
 
 import { Logger } from './Logger.js';
@@ -8,7 +10,7 @@ import { Logger } from './Logger.js';
  * uploader's copy is what supplies width, height and the starting bandwidth for the master
  * playlist, none of which SRS puts in its webhooks.
  */
-export const DEFAULT_LADDER_SPEC = '1080p:1920:1080:5000 720p:1280:720:2800 480p:854:480:1200 360p:640:360:700';
+export const DEFAULT_LADDER_SPEC = qualityLadderSpec(DEFAULT_QUALITY_LADDER);
 
 // No underscore, deliberately: match() recovers a rung by splitting the stream id on its last
 // underscore (`live_720p`), so a name that contained one could never be resolved back to its rung.

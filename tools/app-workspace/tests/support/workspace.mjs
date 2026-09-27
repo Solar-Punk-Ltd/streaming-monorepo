@@ -280,14 +280,148 @@ export function realAppFiles() {
   );
 }
 
-/** What the tool writes for one of the real-named apps, computed by the library its scripts run. */
-export function expectedCut(app, injectWorkspacePackages) {
-  const lockfile = cutLockfile(asRealApps(ROOT_LOCKFILE), { app, injectWorkspacePackages });
-  const workspace = cutWorkspace(asRealApps(ROOT_WORKSPACE), {
+/**
+ * What the tool writes for one of the real-named apps, computed by the library its scripts run, out of the two-app
+ * workspace or the root files given.
+ */
+export function expectedCut(
+  app,
+  injectWorkspacePackages,
+  { root = ROOT_LOCKFILE, rootWorkspace = ROOT_WORKSPACE } = {},
+) {
+  const lockfile = cutLockfile(asRealApps(root), { app, injectWorkspacePackages });
+  const workspace = cutWorkspace(asRealApps(rootWorkspace), {
     app,
     injectWorkspacePackages,
     packageNames: lockfile.packageNames,
     projects: lockfile.projects,
+    sharedPackages: lockfile.sharedPackages,
   });
   return { lockfile: lockfile.text, workspace };
+}
+
+/**
+ * The same workspace with shared packages under `packages/`, as the root's `packages/*` glob lists them. `apps/alpha`
+ * and its `server` link `packages/contracts`, which reaches `valibot` and `esbuild`, whose build the root permits.
+ * `packages/unused` is linked by nobody. Every block is in the order pnpm sorts its keys.
+ */
+export const SHARED_IMPORTERS = {
+  root: IMPORTERS.root,
+  alpha: `  apps/alpha:
+    dependencies:
+      '@example/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      typescript:
+        specifier: 5.6.3
+        version: 5.6.3`,
+  alphaCommon: IMPORTERS.alphaCommon,
+  alphaServer: `  apps/alpha/server:
+    dependencies:
+      '@alpha/common':
+        specifier: workspace:*
+        version: link:../common
+      '@example/contracts':
+        specifier: workspace:*
+        version: link:../../../packages/contracts
+      express:
+        specifier: 5.0.0
+        version: 5.0.0
+      string-width-cjs:
+        specifier: npm:string-width@4.2.3
+        version: string-width@4.2.3
+    optionalDependencies:
+      fsevents:
+        specifier: 2.3.3
+        version: 2.3.3`,
+  beta: IMPORTERS.beta,
+  contracts: `  packages/contracts:
+    dependencies:
+      valibot:
+        specifier: 1.1.0
+        version: 1.1.0
+    devDependencies:
+      esbuild:
+        specifier: 0.25.0
+        version: 0.25.0`,
+  unused: `  packages/unused:
+    dependencies:
+      left-pad:
+        specifier: 1.3.0
+        version: 1.3.0`,
+  tools: IMPORTERS.tools,
+};
+
+export const SHARED_PACKAGES = {
+  esbuildLinux: `  '@esbuild/linux-x64@0.25.0':
+    resolution: {integrity: sha512-esbuildlinux}
+    cpu: [x64]
+    os: [linux]`,
+  abitype: PACKAGES.abitype,
+  bodyParser: PACKAGES.bodyParser,
+  esbuild: `  esbuild@0.25.0:
+    resolution: {integrity: sha512-esbuild}
+    engines: {node: '>=18'}
+    hasBin: true`,
+  express: PACKAGES.express,
+  fsevents: PACKAGES.fsevents,
+  jsTokens: PACKAGES.jsTokens,
+  leftPad: `  left-pad@1.3.0:
+    resolution: {integrity: sha512-leftpad}`,
+  looseEnvify: PACKAGES.looseEnvify,
+  qs: PACKAGES.qs,
+  react: PACKAGES.react,
+  stringWidth: PACKAGES.stringWidth,
+  typescript: PACKAGES.typescript,
+  valibot: `  valibot@1.1.0:
+    resolution: {integrity: sha512-valibot}`,
+  viem: PACKAGES.viem,
+  zod: PACKAGES.zod,
+};
+
+export const SHARED_SNAPSHOTS = {
+  esbuildLinux: `  '@esbuild/linux-x64@0.25.0':
+    optional: true`,
+  abitype: SNAPSHOTS.abitype,
+  bodyParser: SNAPSHOTS.bodyParser,
+  esbuild: `  esbuild@0.25.0:
+    optionalDependencies:
+      '@esbuild/linux-x64': 0.25.0`,
+  express: SNAPSHOTS.express,
+  fsevents: SNAPSHOTS.fsevents,
+  jsTokens: SNAPSHOTS.jsTokens,
+  leftPad: `  left-pad@1.3.0: {}`,
+  looseEnvify: SNAPSHOTS.looseEnvify,
+  qs: SNAPSHOTS.qs,
+  react: SNAPSHOTS.react,
+  stringWidth: SNAPSHOTS.stringWidth,
+  typescript: SNAPSHOTS.typescript,
+  valibot: `  valibot@1.1.0: {}`,
+  viem: SNAPSHOTS.viem,
+  zod: SNAPSHOTS.zod,
+};
+
+/** The root lockfile of the two apps and the shared packages. */
+export const SHARED_ROOT_LOCKFILE = lockfileText({
+  importers: ALL(SHARED_IMPORTERS),
+  packages: ALL(SHARED_PACKAGES),
+  snapshots: ALL(SHARED_SNAPSHOTS),
+});
+
+/** The root workspace file with the glob that lists the shared packages. */
+export const SHARED_ROOT_WORKSPACE = ROOT_WORKSPACE.replace('  - tools/*\n', '  - tools/*\n  - packages/*\n');
+
+/** The files of the workspace with shared packages, under the real apps' names, keyed by their paths from its root. */
+export function sharedAppFiles() {
+  return {
+    ...Object.fromEntries(
+      Object.entries(workspaceFiles({ lockfile: SHARED_ROOT_LOCKFILE, workspace: SHARED_ROOT_WORKSPACE })).map(
+        ([path, text]) => [asRealApps(path), asRealApps(text)],
+      ),
+    ),
+    'packages/contracts/package.json': manifest('@example/contracts'),
+    'packages/contracts/src/index.ts': 'export const contract = 1;\n',
+    'packages/unused/package.json': manifest('@example/unused'),
+  };
 }

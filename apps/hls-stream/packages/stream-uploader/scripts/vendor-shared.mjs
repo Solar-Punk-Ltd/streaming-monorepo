@@ -1,83 +1,133 @@
 /**
- * Compile `@swarm-hls-stream/shared` into the uploader's own `dist/node_modules`.
+ * Compile `@swarm-hls-stream/shared` into the uploader's own `dist/node_modules`, with every workspace
+ * package it links.
  *
  * The production image copies `packages/stream-uploader/dist/` and installs from the manifests
  * alone, so the shared package's sources are never in it and a workspace link has nothing to point
  * at. Node's module resolution walks up from the importing file, so a copy under `dist/node_modules`
  * is found from `dist/index.js` and from `dist/utils/env.js` alike, and it rides into the image
- * inside the `dist/` copy that is already there.
+ * inside the `dist/` copy that is already there. A package shared links, such as
+ * `@streaming-monorepo/contracts`, is vendored beside it at `dist/node_modules/<its name>`, where the
+ * vendored shared's own imports find it the same way.
  *
  * Shared is therefore a devDependency of the uploader, because by then it is vendored rather than
  * resolved, and the image's `pnpm install --prod` skips the whole dev block. `deploy/Dockerfile.uploader`
- * still has to copy `packages/shared/package.json` into its build context, because pnpm resolves a
- * `workspace:` link before a filter narrows anything, and `deploy/test/uploaderImage.test.js` holds
- * the two together.
+ * still has to copy the manifest of shared and of every package it links into its build context,
+ * because pnpm resolves a `workspace:` link before a filter narrows anything, and
+ * `deploy/test/uploaderImage.test.js` holds the two together.
  *
  * The alternative was bundling, which is rejected for one specific reason: `src/utils/env.ts`
  * resolves the repository root by walking four levels up from its own compiled location, so
  * collapsing `dist/utils/env.js` into `dist/index.js` moves the `.env` it reads without any error.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sharedRoot = resolve(packageRoot, '../shared');
-const vendorDir = resolve(packageRoot, 'dist/node_modules/@swarm-hls-stream/shared');
+const vendorRoot = resolve(packageRoot, 'dist/node_modules');
 
-rmSync(vendorDir, { recursive: true, force: true });
-mkdirSync(vendorDir, { recursive: true });
+function readManifest(root) {
+  return JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
+}
 
-execFileSync(
-  'npx',
-  ['tsc', '-p', resolve(sharedRoot, 'tsconfig.json'), '--noEmit', 'false', '--outDir', vendorDir, '--declaration'],
-  { cwd: sharedRoot, stdio: 'inherit' },
-);
-
-// Written rather than copied: the source package points `exports` at its `.ts` entry, which is what
-// lets tsx, vitest and tsc consume it without a build step, and node cannot load that.
-//
-// **Derived from the source manifest rather than restated.** This used to hard-code a single `.`
-// entry, so the day `@swarm-hls-stream/shared` gained a `./publishKey` subpath, every check in the
-// repository stayed green and the deployed uploader crash-looped on
-// `ERR_PACKAGE_PATH_NOT_EXPORTED` at its first import. Nothing in `pnpm verify` runs the vendored
-// copy, because everything outside the image resolves the workspace source directly. Reading the
-// real `exports` is what keeps the two from drifting again.
-const sourceManifest = JSON.parse(readFileSync(resolve(sharedRoot, 'package.json'), 'utf8'));
+/**
+ * Shared's folder and the folder of every workspace package its `dependencies` reach, by name, each
+ * once. A linked package is found where the linking package's own `node_modules` points, so the same
+ * code finds contracts at `packages/contracts` in a checkout and at `workspace-packages/contracts` in
+ * a cut.
+ */
+function vendoredPackages() {
+  const reached = new Map([[readManifest(sharedRoot).name, sharedRoot]]);
+  const pending = [sharedRoot];
+  while (pending.length > 0) {
+    const root = pending.shift();
+    for (const [name, range] of Object.entries(readManifest(root).dependencies ?? {})) {
+      if (String(range).startsWith('workspace:') && !reached.has(name)) {
+        const linked = realpathSync(resolve(root, 'node_modules', name));
+        reached.set(name, linked);
+        pending.push(linked);
+      }
+    }
+  }
+  return reached;
+}
 
 /** `./src/publishKey.ts` as the compiler emits it beside `index.js`: `./publishKey.js`. */
 function compiledPath(sourcePath, extension) {
   return sourcePath.replace(/^\.\/src\//, './').replace(/\.ts$/, extension);
 }
 
-const exports = Object.fromEntries(
-  Object.entries(sourceManifest.exports).map(([subpath, entry]) => [
-    subpath,
-    { types: compiledPath(entry.types, '.d.ts'), default: compiledPath(entry.default, '.js') },
-  ]),
-);
+/**
+ * Every export condition of the source kept, pointed at what the compiler emitted: `types` at the
+ * declaration, and every other condition, such as `default` or `compiled`, at the JavaScript.
+ */
+function compiledExports(sourceExports) {
+  return Object.fromEntries(
+    Object.entries(sourceExports).map(([subpath, entry]) => [
+      subpath,
+      Object.fromEntries(
+        Object.keys(entry).map((condition) => [
+          condition,
+          condition === 'types' ? compiledPath(entry.types, '.d.ts') : compiledPath(entry.default, '.js'),
+        ]),
+      ),
+    ]),
+  );
+}
 
-writeFileSync(
-  resolve(vendorDir, 'package.json'),
-  `${JSON.stringify(
-    {
-      name: sourceManifest.name,
-      version: sourceManifest.version,
-      private: true,
-      type: 'module',
-      main: exports['.'].default,
-      types: exports['.'].types,
-      exports,
-      // Carried across so the vendored copy states what it needs rather than relying on whatever the
-      // image happens to have. It installs nothing by itself, since nothing runs `npm install` inside
-      // `dist/node_modules`, so the load-bearing half of this is that the uploader's own manifest
-      // declares the same packages. `uploaderImage.test.js` asserts that it does. Without both, an
-      // import here resolves only by hoisting luck: `cafe-utility` reached the image because
-      // `@ethersphere/bee-js` happens to depend on a compatible range of it.
-      dependencies: sourceManifest.dependencies ?? {},
-    },
-    null,
-    2,
-  )}\n`,
-);
+function vendor(sourceRoot, vendorDir) {
+  rmSync(vendorDir, { recursive: true, force: true });
+  mkdirSync(vendorDir, { recursive: true });
+
+  // A package whose own build leaves its tests out says so in a tsconfig.build.json.
+  const buildConfig = resolve(sourceRoot, 'tsconfig.build.json');
+  const tsconfig = existsSync(buildConfig) ? buildConfig : resolve(sourceRoot, 'tsconfig.json');
+  execFileSync('npx', ['tsc', '-p', tsconfig, '--noEmit', 'false', '--outDir', vendorDir, '--declaration'], {
+    cwd: sourceRoot,
+    stdio: 'inherit',
+  });
+
+  // Written rather than copied: the source package points `exports` at its `.ts` entry, which is what
+  // lets tsx, vitest and tsc consume it without a build step, and node cannot load that.
+  //
+  // **Derived from the source manifest rather than restated.** This used to hard-code a single `.`
+  // entry, so the day `@swarm-hls-stream/shared` gained a `./publishKey` subpath, every check in the
+  // repository stayed green and the deployed uploader crash-looped on
+  // `ERR_PACKAGE_PATH_NOT_EXPORTED` at its first import. Nothing in `pnpm verify` runs the vendored
+  // copy, because everything outside the image resolves the workspace source directly. Reading the
+  // real `exports` is what keeps the two from drifting again.
+  const sourceManifest = readManifest(sourceRoot);
+  const exports = compiledExports(sourceManifest.exports);
+
+  writeFileSync(
+    resolve(vendorDir, 'package.json'),
+    `${JSON.stringify(
+      {
+        name: sourceManifest.name,
+        version: sourceManifest.version,
+        private: true,
+        type: 'module',
+        main: exports['.'].default,
+        types: exports['.'].types,
+        exports,
+        // Carried across so the vendored copy states what it needs rather than relying on whatever the
+        // image happens to have. It installs nothing by itself, since nothing runs `npm install` inside
+        // `dist/node_modules`, so the load-bearing half of this is that the uploader's own manifest
+        // declares the same packages. `uploaderImage.test.js` asserts that it does. Without both, an
+        // import here resolves only by hoisting luck: `cafe-utility` reached the image because
+        // `@ethersphere/bee-js` happens to depend on a compatible range of it. A `workspace:` entry
+        // is the exception, being vendored beside this one.
+        dependencies: sourceManifest.dependencies ?? {},
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+for (const [name, sourceRoot] of vendoredPackages()) {
+  vendor(sourceRoot, resolve(vendorRoot, name));
+}

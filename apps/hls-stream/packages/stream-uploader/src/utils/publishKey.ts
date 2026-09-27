@@ -49,7 +49,7 @@ export function hasValidPublishKey(secret: string, streamId: string, presented: 
  *
  * ⛔ Both emptiness guards are load-bearing rather than defensive. Two empty strings encode to two
  * zero-length buffers, which `timingSafeEqual` reports as **equal**, so a draft that arrived without
- * a key would otherwise authenticate a broadcaster who presented none. `AdminApiClient.asDraft`
+ * a key would otherwise authenticate a broadcaster who presented none. `AdminApiClient.lookupByIngestId`
  * already refuses such a draft; this is the half that does not depend on it. See SEC-3.
  */
 export function matchesPublishKey(expected: string, presented: string | null): boolean {

@@ -1,15 +1,20 @@
-export { AdminRequiredError } from './AdminRequiredError.js';
-export { CannotRemoveUserError } from './CannotRemoveUserError.js';
-export { CrossSiteRequestError } from './CrossSiteRequestError.js';
+export {
+  AdminRequiredError,
+  CannotRemoveUserError,
+  CrossSiteRequestError,
+  InvalidCredentialsError,
+  InvalidUsernameError,
+  UserExistsError,
+  WeakPasswordError,
+} from '@streaming-monorepo/web-auth';
 export { FeedFormatError } from './FeedFormatError.js';
 export { FeedOwnerMismatchError } from './FeedOwnerMismatchError.js';
-export { InvalidCredentialsError } from './InvalidCredentialsError.js';
 export { InvalidStateError } from './InvalidStateError.js';
 export { InvalidStateTransitionError } from './InvalidStateTransitionError.js';
-export { InvalidUsernameError } from './InvalidUsernameError.js';
 export { MediaTypeLockedError } from './MediaTypeLockedError.js';
 export { NoUsersError } from './NoUsersError.js';
 export { PublishFailedError } from './PublishFailedError.js';
+export { RequestShapeError } from './RequestShapeError.js';
 export { StreamBusyError } from './StreamBusyError.js';
 export { StreamLiveError } from './StreamLiveError.js';
 export { StreamLockedError } from './StreamLockedError.js';
@@ -20,6 +25,4 @@ export { ThumbnailNotFoundError } from './ThumbnailNotFoundError.js';
 export { TooManyAttemptsError } from './TooManyAttemptsError.js';
 export { UnauthenticatedError } from './UnauthenticatedError.js';
 export { UnsupportedMediaTypeError } from './UnsupportedMediaTypeError.js';
-export { UserExistsError } from './UserExistsError.js';
 export { UserNotFoundError } from './UserNotFoundError.js';
-export { WeakPasswordError } from './WeakPasswordError.js';

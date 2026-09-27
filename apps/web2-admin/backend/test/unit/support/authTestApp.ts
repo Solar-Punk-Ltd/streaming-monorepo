@@ -14,6 +14,7 @@ import {
   REQUESTED_WITH_VALUE,
   SESSION_COOKIE_NAME,
 } from '@streaming-monorepo/web2-admin-common';
+import type { LoginLimiter } from '@streaming-monorepo/web-auth';
 import express from 'express';
 
 import { errorHandler } from '../../../src/api/middleware/errorHandler.js';
@@ -23,7 +24,6 @@ import { createRequireInternalToken } from '../../../src/api/middleware/requireI
 import { requireSameSite } from '../../../src/api/middleware/requireSameSite.js';
 import { createAuthRouter } from '../../../src/api/routes/auth.js';
 import { AuthService } from '../../../src/domain/auth/AuthService.js';
-import type { LoginLimiter } from '../../../src/domain/auth/LoginLimiter.js';
 
 import { InMemoryCredentialRepository, InMemorySessionRepository, InMemoryUserRepository } from './authFixtures.js';
 

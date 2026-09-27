@@ -1,0 +1,99 @@
+# The shared packages under packages/, which every app that imports them trusts: their own tests, type checks and
+# lint, and a build of each, since a backend runs a package's compiled copy. The apps' own workflows start on a
+# change here too and prove the packages from the side of each app. This one proves them on their own, so a change
+# to a package alone is checked even where no app's suite exercises it.
+name: packages
+
+on:
+  push:
+    branches: [main, main-v3]
+    paths:
+      [
+        'packages/**',
+        'package.json',
+        'pnpm-lock.yaml',
+        'pnpm-workspace.yaml',
+        '.oxlintrc.json',
+        '.oxfmtrc.json',
+        '.github/workflows/packages.yml',
+      ]
+  pull_request:
+    paths:
+      [
+        'packages/**',
+        'package.json',
+        'pnpm-lock.yaml',
+        'pnpm-workspace.yaml',
+        '.oxlintrc.json',
+        '.oxfmtrc.json',
+        '.github/workflows/packages.yml',
+      ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  packages-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        # The same pin as the apps' database jobs, for the packages whose suites run SQL against a real server.
+        # Trust authentication because the server starts empty, holds synthetic rows for one job, and is reachable
+        # only from it.
+        image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        # Published on loopback rather than on every interface. Nothing outside the runner needs it.
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # db-migrate's database suite reaches 127.0.0.1 at this port, in the t04b_test database, and skips without it.
+      T04B_TEST_PG_PORT: 5432
+      # So a missing port fails the suite rather than passing it as all skipped.
+      DATABASE_TESTS_REQUIRED: '1'
+    steps:
+      - name: Create the database the package database suites open, through the service container's own client
+        run: docker exec ${{ job.services.postgres.id }} createdb -U postgres t04b_test
+
+      # Pinned by commit, the tag in the comment, the same pins as the other root workflows. pnpm comes from
+      # packageManager.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      # The whole workspace, as the apps' workflows install it, since the lint and the type checks run the root's
+      # oxlint and TypeScript.
+      - run: pnpm install --frozen-lockfile
+
+      # Every package in the folder, found by the filter, so a new package is checked without an edit here.
+      - name: Type checks, every package
+        run: pnpm --filter './packages/*' run typecheck
+
+      - name: Lint, every package, with oxlint and the root .oxlintrc.json
+        run: pnpm --filter './packages/*' run lint
+
+      - name: Tests, every package
+        run: pnpm --filter './packages/*' run test
+
+      - name: Database tests, every package that has them
+        run: pnpm --filter './packages/*' --if-present run test:database
+
+      - name: Build, every package, as a backend image runs it
+        run: pnpm --filter './packages/*' run build
