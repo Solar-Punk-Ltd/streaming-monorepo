@@ -72,7 +72,7 @@ interface ClientBuildStamp {
 }
 
 /** The three tree hashes and the dirty flag, from whichever side could answer. */
-export interface ClientTrees {
+interface ClientTrees {
   readonly clientTree: string;
   readonly sharedTree: string;
   readonly contractsTree: string;
