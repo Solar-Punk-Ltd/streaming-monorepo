@@ -7,9 +7,9 @@
  * against a fake feed, and the ingest details.
  *
  * It is NOT the contract and never validates like yup does. Point the console
- * at it with:
+ * at it with these, from apps/web2-admin:
  *
- *   node web2-admin/frontend/scripts/mock-api.mjs
+ *   node frontend/scripts/mock-api.mjs
  *   VITE_WEB2_ADMIN_URL=http://localhost:9877 pnpm --filter @streaming-monorepo/web2-admin-frontend dev
  *
  * MOCK_NO_USERS=true starts with an empty users table, which is the only way

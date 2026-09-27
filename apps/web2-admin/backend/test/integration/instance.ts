@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 
 const here = dirname(fileURLToPath(import.meta.url));
-/** web2-admin/backend, whatever the suite was run from. */
+/** apps/web2-admin/backend, whatever the suite was run from. */
 const PACKAGE_ROOT = join(here, '..', '..');
 const TSX = join(PACKAGE_ROOT, 'node_modules', '.bin', 'tsx');
 

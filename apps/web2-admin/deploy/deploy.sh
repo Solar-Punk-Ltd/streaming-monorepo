@@ -17,9 +17,9 @@
 #   2. Writes the commit this checkout is at into deploy/.deployed-commit,
 #      with -dirty appended when the tree has changes, since this repository
 #      is often deployed before its work is committed.
-#   3. rsyncs the checkout to <remote-path> on the host, leaving out .git,
+#   3. rsyncs apps/web2-admin to <remote-path> on the host, leaving out .git,
 #      node_modules, build output, deploy/edge/ (the host's edge, which
-#      deploy/edge.sh maintains) and every env file but the one this profile
+#      infra/edge/edge.sh maintains) and every env file but the one this profile
 #      uses. --delete keeps the host's tree identical to this one. The other
 #      env files are left out rather than shipped because the host keeps one
 #      checkout for every profile: a laptop that has only .env.brand-a must not
@@ -40,7 +40,7 @@
 set -euo pipefail
 
 readonly DEFAULT_REMOTE_PATH="/home/solarpunk/streaming-monorepo"
-readonly ENV_DIR="web2-admin/backend"
+readonly ENV_DIR="backend"
 readonly COMPOSE_FILE="deploy/docker-compose.yml"
 readonly KNOWN_SERVICES="postgres api web"
 # The loopback port the console gets without a port slot. The manager's own
@@ -55,8 +55,8 @@ usage() {
     cat <<'USAGE'
 Usage: deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path=<dir>] [service...]
 
-  deploy.sh --host=admin-host                          Deploy the default profile (web2-admin/backend/.env)
-  deploy.sh --host=admin-host --profile=brand-a        Deploy profile brand-a (web2-admin/backend/.env.brand-a)
+  deploy.sh --host=admin-host                          Deploy the default profile (backend/.env)
+  deploy.sh --host=admin-host --profile=brand-a        Deploy profile brand-a (backend/.env.brand-a)
   deploy.sh --host=admin-host --profile=brand-a --portSlot=3
                                                        Same, console on 127.0.0.1:11039 on the host
   deploy.sh --host=admin-host --profile=brand-a api    Rebuild and restart the API only
@@ -66,7 +66,7 @@ Flags (each also accepts a separate value, as in --host admin-host):
   --host=<target>       Required. An ssh alias from ~/.ssh/config, user@host, or
                         "localhost" for this machine. There is no default host.
   --profile=<name>      Profile name, ^[a-z0-9][a-z0-9-]{0,30}$. Default: "default".
-                        Selects web2-admin/backend/.env.<name> (plain .env for
+                        Selects backend/.env.<name> (plain .env for
                         "default"), which must exist, and the compose project
                         web2-admin-<name>.
   --portSlot=<N> (1-99) Publishes the console on 11009 + N*10 on the host's
@@ -412,7 +412,9 @@ fi
 COMMIT="unknown"
 if git rev-parse --verify -q HEAD >/dev/null 2>&1; then
     COMMIT="$(git rev-parse HEAD)"
-    if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+    # Only this folder's changes count: the repository holds other projects,
+    # and a change in one of them is not a change to what this deploy ships.
+    if [ -n "$(git status --porcelain -- . 2>/dev/null)" ]; then
         COMMIT="$COMMIT-dirty"
     fi
 fi
@@ -527,23 +529,25 @@ else
     # rsync --delete empties whatever directory it is pointed at of everything
     # this checkout does not have. A mistyped --remote-path naming a home
     # directory would be wiped, so the target must be new, empty, or already a
-    # checkout of this repository, which includes one deploy/edge.sh has so
-    # far only put the host's edge into. A checkout is known by web2-admin/
-    # beside deploy/deploy.sh: the manager's checkout has a deploy/deploy.sh of
-    # its own, and a --remote-path mistyped onto it must not pass.
-    if ! ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p '$REMOTE_PATH' && { { [ -f '$REMOTE_PATH/deploy/deploy.sh' ] && [ -d '$REMOTE_PATH/web2-admin' ]; } || [ -f '$REMOTE_PATH/deploy/edge/docker-compose.yml' ] || [ -z \"\$(ls -A '$REMOTE_PATH')\" ]; }" </dev/null; then
+    # checkout of this repository, which includes one infra/edge/edge.sh has
+    # so far only put the host's edge into. A checkout is known by what sits
+    # beside deploy/deploy.sh: web2-admin/ in one sent from the repository
+    # root, as every deploy was before the admin moved into apps/web2-admin,
+    # and backend/Dockerfile in one sent from apps/web2-admin. The manager's
+    # checkout has a deploy/deploy.sh of its own and neither of the two, and a
+    # --remote-path mistyped onto it must not pass.
+    if ! ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p '$REMOTE_PATH' && { { [ -f '$REMOTE_PATH/deploy/deploy.sh' ] && { [ -d '$REMOTE_PATH/web2-admin' ] || [ -f '$REMOTE_PATH/backend/Dockerfile' ]; }; } || [ -f '$REMOTE_PATH/deploy/edge/docker-compose.yml' ] || [ -z \"\$(ls -A '$REMOTE_PATH')\" ]; }" </dev/null; then
         die "$HOST:$REMOTE_PATH could not be created, or it is a non-empty directory that is not a checkout of this repository. rsync --delete would empty it, so nothing was sent."
     fi
     # Filter order matters: the first rule that matches a path wins. The
     # profile's env file and the sample are sent, every other .env is neither
     # sent nor, being excluded, deleted on the host.
     #
-    # deploy/edge/ belongs to deploy/edge.sh, which puts the Caddyfile it
-    # renders there. That file is gitignored, so this checkout may not have
-    # it, or may have one rendered for another host, and --delete would then
-    # remove or replace the one the host's edge runs on. Excluded, the whole
-    # directory is neither sent nor deleted, so a web2-admin deploy never
-    # touches the edge.
+    # deploy/edge/ on the host belongs to infra/edge/edge.sh, which puts the
+    # edge's compose file and the Caddyfile it renders there. apps/web2-admin
+    # has no deploy/edge/ of its own, so --delete would remove the one the
+    # host's edge runs on. Excluded, the whole directory is neither sent nor
+    # deleted, so a web2-admin deploy never touches the edge.
     rsync -az --delete \
         -e "ssh ${SSH_OPTS[*]}" \
         --exclude '/deploy/edge/' \

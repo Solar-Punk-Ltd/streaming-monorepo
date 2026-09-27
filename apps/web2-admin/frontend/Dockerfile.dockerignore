@@ -2,9 +2,10 @@
 # `<dockerfile>.dockerignore` in preference to the context root's
 # `.dockerignore`, which lets this live next to the Dockerfile it belongs to.
 #
-# The context is the repository root, so without this the daemon is handed a
+# The context is apps/web2-admin, so without this the daemon is handed a
 # few hundred megabytes of installed node_modules — which the image installs
-# itself, from the lockfile — and every local .env.
+# itself, from the lockfile — and every local .env, including the backend's,
+# which holds the feed signing key.
 **/node_modules
 **/dist
 **/*.tsbuildinfo

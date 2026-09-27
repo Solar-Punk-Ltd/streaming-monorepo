@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
 # Put the host's HTTPS edge in front of the consoles it runs.
 #
-#   ./deploy/edge.sh --host=<ssh-target> [--remote-path=<dir>]
+#   ./infra/edge/edge.sh --host=<ssh-target> [--remote-path=<dir>]
 #
 # One Caddy per host, as its own compose project (`edge`) on the host's
 # network, serving each console the host publishes on its loopback under its
-# own name: web2-admin's (deploy/deploy.sh, 9090 by default) and
-# streaming-infra-manager's (8080). The names are in deploy/edge/.env, which is
-# gitignored because they belong to one deployment; copy
-# deploy/edge/.env.sample to make it. See "Public HTTPS: the host's edge" in
-# deploy/README.md.
+# own name: web2-admin's (apps/web2-admin/deploy/deploy.sh, 9090 by default)
+# and streaming-infra-manager's (8080). The names are in infra/edge/.env,
+# which is gitignored because they belong to one deployment. Copy
+# infra/edge/.env.sample to make it. See "Public HTTPS: the host's edge" in
+# apps/web2-admin/deploy/README.md.
 #
 # What it does:
-#   1. Checks the arguments and deploy/edge/.env before anything leaves this
+#   1. Checks the arguments and infra/edge/.env before anything leaves this
 #      machine.
-#   2. Renders deploy/edge/Caddyfile from that file, one site per domain set,
+#   2. Renders infra/edge/Caddyfile from that file, one site per domain set,
 #      and has the pinned Caddy image validate it when Docker runs on this
 #      machine.
 #   3. Sends the Caddyfile and the compose file to <remote-path>/deploy/edge/
-#      on the host: the checkout deploy/deploy.sh maintains, whose rsync
-#      leaves that directory alone.
+#      on the host: the checkout apps/web2-admin/deploy/deploy.sh maintains,
+#      whose rsync leaves that directory alone.
 #   4. Over one ssh session, refuses when something else holds port 80 or 443,
 #      recreates the edge so Caddy reads the new Caddyfile, waits for it to
 #      stay running, and asks each console behind it for an answer on the
@@ -40,10 +40,14 @@
 set -euo pipefail
 
 readonly DEFAULT_REMOTE_PATH="/home/solarpunk/streaming-monorepo"
-readonly EDGE_DIR="deploy/edge"
+readonly EDGE_DIR="infra/edge"
 readonly ENV_FILE="$EDGE_DIR/.env"
 readonly CADDYFILE="$EDGE_DIR/Caddyfile"
 readonly COMPOSE_FILE="$EDGE_DIR/docker-compose.yml"
+# Where the edge lives on the host, under <remote-path>: the directory of the
+# checkout deploy.sh maintains that its rsync leaves alone. It kept its place
+# when this script moved to infra/edge.
+readonly HOST_EDGE_DIR="deploy/edge"
 readonly PROJECT="edge"
 readonly SERVICE="caddy"
 readonly DEFAULT_ADMIN_PORT=9090
@@ -64,7 +68,7 @@ usage() {
     cat <<'USAGE'
 Usage: edge.sh --host=<ssh-target> [--remote-path=<dir>]
 
-  edge.sh --host=admin-host        Serve the consoles named in deploy/edge/.env on admin-host
+  edge.sh --host=admin-host        Serve the consoles named in infra/edge/.env on admin-host
   edge.sh --host=localhost         The same on this machine, which must be the server itself
 
 Flags (each also accepts a separate value, as in --host admin-host):
@@ -75,7 +79,7 @@ Flags (each also accepts a separate value, as in --host admin-host):
                         uses. Not accepted with --host=localhost.
   -h, --help            Show this help.
 
-deploy/edge/.env (copy deploy/edge/.env.sample):
+infra/edge/.env (copy infra/edge/.env.sample):
   ADMIN_DOMAIN, ADMIN_PORT      the web2-admin console, port default 9090
   MANAGER_DOMAIN, MANAGER_PORT  the streaming-infra-manager console, port default 8080
   ACME_EMAIL                    optional Let's Encrypt contact address
@@ -175,7 +179,7 @@ if ! [[ "$PROBE_TIMEOUT" =~ ^[0-9]+$ ]]; then
 fi
 PROBE_TIMEOUT=$((10#$PROBE_TIMEOUT))
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 # The image the host will run, read from the compose file so the Caddyfile is
@@ -340,7 +344,7 @@ fi
 render_caddyfile() {
     local domain port key label
     cat <<'HEADER'
-# The host's HTTPS edge. Written by deploy/edge.sh from deploy/edge/.env on
+# The host's HTTPS edge. Written by infra/edge/edge.sh from infra/edge/.env on
 # the machine that ran it: change that file and run edge.sh again, since the
 # next run replaces this one.
 #
@@ -402,6 +406,14 @@ fi
 
 # --- What runs on the host ----------------------------------------------------
 
+# The compose file the host's steps run: the copy sent to the host's edge
+# directory, or with --host=localhost, which runs them here, this checkout's.
+if [ "$LOCAL" = true ]; then
+    HOST_COMPOSE_FILE="$COMPOSE_FILE"
+else
+    HOST_COMPOSE_FILE="$HOST_EDGE_DIR/docker-compose.yml"
+fi
+
 # One line per site for the host script to check. Every value in it has been
 # held to a pattern above, so none can end the single quotes it sits in, which
 # goes for the path, project and service interpolated below as well. The
@@ -433,7 +445,7 @@ docker compose version >/dev/null 2>&1 || {
 }
 
 compose() {
-    docker compose -p '$PROJECT' -f '$COMPOSE_FILE' "\$@"
+    docker compose -p '$PROJECT' -f '$HOST_COMPOSE_FILE' "\$@"
 }
 
 # The edge's container when it exists, whatever its state.
@@ -462,7 +474,7 @@ while IFS='|' read -r name project; do
 done <<<"\$HOLDERS"
 if [ -n "\$OTHERS" ]; then
     echo "[edge] ERROR: port 80 or 443 of this host is already published by \$OTHERS, and only one thing per host can hold them. Nothing was started." >&2
-    echo "[edge] If that is the manager's own edge (compose project manager, container manager-edge-1), empty MANAGER_DOMAIN in the manager's manager/.env and deploy the manager again, which removes it, then run edge.sh again. Put the manager's name in MANAGER_DOMAIN of deploy/edge/.env instead." >&2
+    echo "[edge] If that is the manager's own edge (compose project manager, container manager-edge-1), empty MANAGER_DOMAIN in the manager's manager/.env and deploy the manager again, which removes it, then run edge.sh again. Put the manager's name in MANAGER_DOMAIN of infra/edge/.env instead." >&2
     exit 1
 fi
 
@@ -527,10 +539,10 @@ check_upstream() {
             return 0
             ;;
         7)
-            echo "[edge] ERROR: nothing listens on 127.0.0.1:\$port, so https://\$domain answers 502. Deploy the \$label on this host, or set \$key in deploy/edge/.env to the port docker ps shows for it." >&2
+            echo "[edge] ERROR: nothing listens on 127.0.0.1:\$port, so https://\$domain answers 502. Deploy the \$label on this host, or set \$key in infra/edge/.env to the port docker ps shows for it." >&2
             ;;
         28)
-            echo "[edge] ERROR: 127.0.0.1:\$port did not answer within 5 seconds, so https://\$domain will time out. If docker ps shows the \$label healthy on that port, the host's firewall is dropping Docker's bridge traffic: see \"When a loopback port connects but nothing answers\" in deploy/README.md." >&2
+            echo "[edge] ERROR: 127.0.0.1:\$port did not answer within 5 seconds, so https://\$domain will time out. If docker ps shows the \$label healthy on that port, the host's firewall is dropping Docker's bridge traffic: see \"When a loopback port connects but nothing answers\" in apps/web2-admin/deploy/README.md." >&2
             ;;
         52 | 56)
             echo "[edge] ERROR: 127.0.0.1:\$port closed the connection without an answer, so https://\$domain answers 502. Check the \$label with docker ps." >&2
@@ -566,13 +578,13 @@ else
     # but a mistyped --remote-path would still scatter files into somebody's
     # directory. The target must be new, empty, a checkout of this repository
     # (the test deploy.sh uses), or a directory an earlier run wrote into.
-    if ! ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p '$REMOTE_PATH' && { { [ -f '$REMOTE_PATH/deploy/deploy.sh' ] && [ -d '$REMOTE_PATH/web2-admin' ]; } || [ -d '$REMOTE_PATH/$EDGE_DIR' ] || [ -z \"\$(ls -A '$REMOTE_PATH')\" ]; } && mkdir -p '$REMOTE_PATH/$EDGE_DIR'" </dev/null; then
+    if ! ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p '$REMOTE_PATH' && { { [ -f '$REMOTE_PATH/deploy/deploy.sh' ] && { [ -d '$REMOTE_PATH/web2-admin' ] || [ -f '$REMOTE_PATH/backend/Dockerfile' ]; }; } || [ -d '$REMOTE_PATH/$HOST_EDGE_DIR' ] || [ -z \"\$(ls -A '$REMOTE_PATH')\" ]; } && mkdir -p '$REMOTE_PATH/$HOST_EDGE_DIR'" </dev/null; then
         die "$HOST:$REMOTE_PATH could not be created, or it is a non-empty directory that is neither a checkout of this repository nor one an earlier edge.sh wrote into. Nothing was sent."
     fi
     # The two files the host needs. The env file stays here: the compose file
     # interpolates nothing, and the Caddyfile already says what it serves.
-    log "rsync $CADDYFILE and $COMPOSE_FILE to $HOST:$REMOTE_PATH/$EDGE_DIR/"
-    rsync -az -e "ssh ${SSH_OPTS[*]}" "$CADDYFILE" "$COMPOSE_FILE" "$HOST:$REMOTE_PATH/$EDGE_DIR/"
+    log "rsync $CADDYFILE and $COMPOSE_FILE to $HOST:$REMOTE_PATH/$HOST_EDGE_DIR/"
+    rsync -az -e "ssh ${SSH_OPTS[*]}" "$CADDYFILE" "$COMPOSE_FILE" "$HOST:$REMOTE_PATH/$HOST_EDGE_DIR/"
 
     log "starting the edge on $HOST"
     host_script | ssh "${SSH_OPTS[@]}" "$HOST" bash -s || HOST_RC=$?
@@ -587,7 +599,7 @@ esac
 
 # --- From the outside ---------------------------------------------------------
 
-LOGS_CMD="docker compose -p $PROJECT -f $COMPOSE_FILE logs -f"
+LOGS_CMD="docker compose -p $PROJECT -f $HOST_COMPOSE_FILE logs -f"
 if [ "$LOCAL" = true ]; then
     WATCH="$LOGS_CMD"
 else

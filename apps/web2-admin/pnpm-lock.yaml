@@ -8,7 +8,7 @@ importers:
 
   .: {}
 
-  web2-admin/backend:
+  backend:
     dependencies:
       '@ethersphere/bee-js':
         specifier: 9.8.1
@@ -45,7 +45,7 @@ importers:
         specifier: 5.6.3
         version: 5.6.3
 
-  web2-admin/common:
+  common:
     devDependencies:
       '@types/node':
         specifier: 22.9.0
@@ -57,7 +57,7 @@ importers:
         specifier: 5.6.3
         version: 5.6.3
 
-  web2-admin/frontend:
+  frontend:
     dependencies:
       '@emotion/react':
         specifier: 11.13.5

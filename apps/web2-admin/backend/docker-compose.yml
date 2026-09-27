@@ -32,10 +32,10 @@ services:
   api:
     profiles: ["full"]
     build:
-      # The repository root: the image needs pnpm-lock.yaml and the workspace
+      # apps/web2-admin: the image needs pnpm-lock.yaml and the workspace
       # manifests to install the backend with its workspace dependency.
-      context: ../..
-      dockerfile: web2-admin/backend/Dockerfile
+      context: ..
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:
