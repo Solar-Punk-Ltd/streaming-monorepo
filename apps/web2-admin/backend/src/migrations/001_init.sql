@@ -1,9 +1,7 @@
 -- web2-admin, checkpoint 2. Four tables, one per thing the admin layer owns.
 --
--- users / sessions: msrs-client had no server-side login at all — an admin's
--- identity was a credential bundle decrypted in the browser, holding shared
--- server secrets and a Swarm private key. Here the password never leaves the
--- server: `password_hash` is node:crypto scrypt in the self-describing format
+-- users / sessions: the password never leaves the server. `password_hash` is
+-- node:crypto scrypt in the self-describing format
 -- "scrypt$N$r$p$saltb64$hashb64" so the cost parameters can be raised later
 -- without invalidating stored hashes. A session is a random 32-byte token in
 -- an httpOnly cookie; only its sha256 is stored, so a database dump cannot be
