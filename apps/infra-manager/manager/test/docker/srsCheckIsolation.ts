@@ -1,5 +1,5 @@
 /**
- * T02: the real SRS parser, asked eight questions at once, on eight files that
+ * The real SRS parser, asked eight questions at once, on eight files that
  * differ in one directive each.
  *
  * The manager's config check writes a copy of the file into a directory of its
@@ -179,7 +179,7 @@ async function main(): Promise<number> {
 
   // Inside the root the shell script owns when there is one, so a signal that
   // never reaches the finally below still leaves nothing behind.
-  const scratchDir = await mkdtemp(join(scratchRoot ?? tmpdir(), 't02-srs-check-'));
+  const scratchDir = await mkdtemp(join(scratchRoot ?? tmpdir(), 'srs-check-'));
   const checker = new EngineConfigChecker(execFileRunner);
   try {
     console.log(`Eight checks at once on ${image}, scratch ${scratchDir}`);

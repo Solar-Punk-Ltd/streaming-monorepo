@@ -6,8 +6,14 @@ import pg, { type Pool } from 'pg';
 import { PostgresDeployAttemptRepository } from '../../src/domain/PostgresDeployAttemptRepository.js';
 import { openDeployAttempt } from '../../src/domain/deployAttemptSql.js';
 
-const port = Number(process.env.T01_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't01_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.ENGINE_CONFIG_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'engine_config_test',
+  connectionTimeoutMillis: 10000,
+};
 const daemonId = 'synthetic-daemon';
 const project = 'synthetic-project';
 const emptyToken = { daemonId, project, latestAttemptId: null as string | null };
@@ -30,7 +36,7 @@ describe(
     let attempts: PostgresDeployAttemptRepository;
 
     beforeEach(async () => {
-      schema = `t01_attempt_admission_${randomBytes(8).toString('hex')}`;
+      schema = `attempt_admission_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 5, options: `-c search_path=${schema} -c statement_timeout=10000` });

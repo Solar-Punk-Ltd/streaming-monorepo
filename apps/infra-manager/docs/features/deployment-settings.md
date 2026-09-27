@@ -10,13 +10,13 @@ own in the wizard and Test connection on the card, merged in #64 and #65. All of
 ## What this is
 
 Every key a deployment's stack version declares is editable per deployment, with the version's value
-as the default. Levi ruled this on 2026-09-25 ("fully configurable all envs and params everywhere,
+as the default. This is the rule since 2026-09-25 ("fully configurable all envs and params everywhere,
 just give defaults where it make sense"). A deployment's own value goes into its env file,
 `.env.<name>`, over the version's base `.env`, and the manager's own lines are written after it. So a
 stored value never takes the place of a key the manager computes.
 
 The deployment's engine settings are in the same list, so a deployment has one list of settings
-(Levi, 2026-09-26). They are stored where they always were, in `profiles.engine_settings`, and held
+(since 2026-09-26). They are stored where they always were, in `profiles.engine_settings`, and held
 to the engine's own rules, as [The engine settings](#the-engine-settings) below says.
 
 ## Where a value comes from

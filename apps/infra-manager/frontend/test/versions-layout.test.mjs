@@ -11,7 +11,7 @@ import { viteCacheFor } from './support/vite-cache.mjs';
 import { passingRejections } from './support/passing-rejections.mjs';
 
 const frontend = fileURLToPath(new URL('../', import.meta.url));
-const evidence = process.env.T18_EVIDENCE_DIR;
+const evidence = process.env.VERSIONS_PAGE_EVIDENCE_DIR;
 
 test('version identity, states and actions fit verified narrow viewports', async (t) => {
   let versions = seedVersions();

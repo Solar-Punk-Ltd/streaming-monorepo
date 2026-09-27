@@ -8,9 +8,9 @@ ran here and are gone. Neither workflow reaches a host, a Bee node or funds.
 
 ## infra-manager.yml, on pull requests and pushes into main and main-v3
 
-Four jobs, all on `ubuntu-latest`, the fourth, `images`, since 2026-09-25. Decision D06 of 2026-09-07: turning the
-requirement on is a repository setting Levi makes after the workflow has run
-once, and he keeps a bypass. Main-branch pushes still require Levi's explicit instruction.
+Four jobs, all on `ubuntu-latest`, the fourth, `images`, since 2026-09-25. Since 2026-09-07, turning the
+requirement on is a repository setting, made after the workflow has run
+once, with a bypass kept for the repository's administrators. Main-branch pushes still require the owner's explicit instruction.
 
 The workflow runs on a pull request into `main` or `main-v3`, the monorepo's
 integration branch, and on a push to either, whenever `apps/infra-manager`,
@@ -85,9 +85,9 @@ runner: diagnose it, never retry it.
 ### database
 
 The 42 SQL suites in `manager/test/database/` (2026-09-26), each against the
-task database it owns, through `manager/test/database/run-all.mjs`.
+suite database it owns, through `manager/test/database/run-all.mjs`.
 
-Every one of those files gates itself on a task port variable and skips
+Every one of those files gates itself on a port variable and skips
 silently when the variable is unset. Nothing set them before this job existed,
 so a green check said nothing about the database ownership, admission and
 recovery rules they pin. The runner closes that. Before it starts anything it
@@ -106,11 +106,11 @@ zero. The rules that read those markers live in
 
 Disposable is checked rather than asked for: with the nine connections open,
 a database whose public schema already holds `_migrations` or `profiles` stops
-the run by name. A task database is created empty and every suite makes a
+the run by name. A suite database is created empty and every suite makes a
 schema of its own, so those tables mean the port leads to somebody's
 deployment.
 
-The nine databases and their variables live in one table, `TASK_DATABASES` in
+The nine databases and their variables live in one table, `SUITE_DATABASES` in
 that file. That table is the list. This page does not repeat it.
 
 A Postgres 16 service container sits beside the runner with trust
@@ -148,7 +148,7 @@ all of them, through `frontend/test/run-all.mjs`.
 That runner is the browser counterpart of the SQL one and judges a run by the
 same shared rules: a skipped test, a suite that skipped itself whole, a run of
 no tests, a missing summary, a signal or a non-zero exit each stop it in
-words. Checked by running it with `T09_TEST_PG_PORT` unset, which is exactly
+words. Checked by running it with `CHEQUEBOOK_TEST_PG_PORT` unset, which is exactly
 the hole it exists to close: on 2026-09-10, before the suites below were
 added, 163 passed, 3 skipped, refused, exit 1.
 
@@ -170,7 +170,7 @@ measurement to beat is below.
 2026-09-10 was the first time this job ran on a GitHub runner, against Chrome
 152.0.7977.82 at `/usr/bin/google-chrome`. Every suite that drove that Chrome
 ended `not ok` with `ENOTEMPTY: directory not empty, rmdir
-'/tmp/t15-chrome-XXXX/Default'`, and the job was cancelled at its thirty
+'/tmp/chrome-XXXX/Default'`, and the job was cancelled at its thirty
 minute limit with a chrome, two chrome_crashpad_handler processes and several
 node processes in the runner's own orphan list. The tests themselves had
 passed. The teardown signalled the one process `spawn` returned, and on Linux
@@ -245,10 +245,10 @@ when nothing executable is there, and the runner does the same again from its
 own side, so a missing browser is a failed check and never a passed one. Every
 launch also prints the browser it got and where it found it.
 
-It carries the same Postgres service as the database job with `t09_test` alone,
+It carries the same Postgres service as the database job with `chequebook_test` alone,
 because `transfer-connected-browser.test.mjs` signs into a real manager over a
 real journal with the browser as the only client. That suite skips itself when
-`T09_TEST_PG_PORT` is unset, which is the one silent-skip hole left in this
+`CHEQUEBOOK_TEST_PG_PORT` is unset, which is the one silent-skip hole left in this
 workflow: it is closed by the job setting the variable and creating the
 database in a step that fails loudly, and by nothing else. Anyone removing
 either would turn three passing cases into three invisible ones.
@@ -339,10 +339,10 @@ That puts `checks` at about 3 minutes, `database` at about 9, and `browser` at
 about 13. **Estimate about 25 Actions minutes per push, somewhere between 19
 and 30.** The browser job is more than half of it.
 
-**A decision that is Levi's, not this page's.** Whether every job stays
+**A decision for the repository's administrators, not this page.** Whether every job stays
 required on every push, or the browser job moves to a schedule or a manual
-dispatch, is a spend question. Keeping all of them required is what the D06
-agreement says. Moving the browser job off every
+dispatch, is a spend question. Keeping all of them required is what the 2026-09-07
+agreement on required checks says. Moving the browser job off every
 push would take roughly half the minutes back and would mean a pull request
 can go green while every Chrome suite has not run on it.
 
@@ -391,7 +391,7 @@ the repository is public. If it is ever made private, give the job a deploy key
 for it and never a personal access token, which would carry every repository the
 person can reach into every one of these runs.
 
-### srs-parser, T02
+### srs-parser
 
 `manager/test/docker/srs-check-isolation.sh`, which runs the tsx driver beside
 it. It calls the manager's own config checker, with its own command runner and
@@ -422,7 +422,7 @@ corrected image pin below, with the same four refusal strings word for word.
 `@sha256:`, because a tag can move under the check and the whole claim of the
 harness is that its parser is a deployment's parser.
 
-### ome-gate, T03
+### ome-gate
 
 `manager/test/docker/ome-admission-gate.sh`. SRT in, signed admission webhook
 out, HLS playlist served, all in throwaway containers on a private network,
@@ -448,7 +448,7 @@ script's own header records. SRT in, one segment in the media playlist, a
 signed opening admission call for `video/gate` and a closing call after the
 publisher ended, on `airensoft/ovenmediaengine@sha256:172da912...`.
 
-### image-race, T05a
+### image-race
 
 `manager/test/docker/shared-image-race.sh`. Two Compose projects building one
 image name, reproduced and then closed with per-project image names.
@@ -459,7 +459,7 @@ interleaving reproduced the race, the bounded control hit the window three
 times in 20 creations, and the corrected variant put the right content under
 every one of its 20 containers.
 
-**The T05a qualification is a separate obligation this job does not
+**The shared image guard's qualification is a separate obligation this job does not
 discharge.** It names Docker Engine 29.1.3 with Compose 5.1.4. The runner
 carries Engine 28.0.4 and Compose 2.38.2, and this laptop carries 29.7.2 and
 5.5.1. Neither is that pair. The harness prints the versions it ran on and a
@@ -490,7 +490,7 @@ Locally, from `apps/infra-manager` on a checkout of a pushed commit:
 on a pass, 1 on a wrong answer, 2 on a harness problem. It builds the stack,
 so it belongs on a runner rather than on a laptop.
 
-### integration, T10 and T01
+### integration
 
 The manager built and started on the runner with Postgres beside it, the user
 created from the repository secret through the CLI's stdin, and the signed-in
@@ -498,7 +498,7 @@ integration suite run against it with `MANAGER_TEST_TARGET` declared. Real
 containers are built and started on the runner and nowhere else. Nothing is
 paid for.
 
-Secrets Levi sets: `ITEST_PASSWORD`, the password of the user the suite signs
+Secrets the repository's administrators set: `ITEST_PASSWORD`, the password of the user the suite signs
 in as. The workflow refuses to start without it and never prints it. Only
 whether it is set is ever looked at.
 
@@ -516,7 +516,7 @@ not prove that asynchronous build has finished. The gate checks its status,
 layout, build id, commit and root before any test starts. The test client stays
 unprivileged.
 
-`engine-startup-failure.test.ts` is T01's container-backed startup-command
+`engine-startup-failure.test.ts` is the engine config ownership work's container-backed startup-command
 failure. A config file the manager's own check accepts makes SRS exit at start,
 so stack v3.1's `assert-started.sh` refuses the apply before the manager commits
 RUNNING or starts its watch. A successful recovery ends the operation in
@@ -578,7 +578,7 @@ There is still no workflow lint and no secret scanner, so beyond that review the
 person reading a diff is the whole control. A pull request could empty the
 required jobs while keeping their names, and every check would go green.
 
-**One thing is still open and it is Levi's**, because it is a repository
+**One thing is still open and it is for the repository's administrators**, because it is a repository
 setting rather than a file: "require review from code owners" has to be turned
 on in branch protection for the CODEOWNERS entry to block rather than merely
 request.
@@ -602,11 +602,11 @@ is a flag and the newest release is the riskiest choice.
 
 Container images are pinned by digest, each with the date it was resolved:
 
-| Image                       | Digest                                                                    | Resolved   | Used by                              |
-| --------------------------- | ------------------------------------------------------------------------- | ---------- | ------------------------------------ |
-| `postgres:16-alpine`        | `sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685` | 2026-09-10 | database, browser, integration       |
-| `ossrs/srs:6`               | `sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3` | 2026-09-10 | srs-parser, and the T01 observations |
-| `airensoft/ovenmediaengine` | `sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6` | 2026-09-08 | ome-gate                             |
+| Image                       | Digest                                                                    | Resolved   | Used by                                         |
+| --------------------------- | ------------------------------------------------------------------------- | ---------- | ----------------------------------------------- |
+| `postgres:16-alpine`        | `sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685` | 2026-09-10 | database, browser, integration                  |
+| `ossrs/srs:6`               | `sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3` | 2026-09-10 | srs-parser, and the engine startup observations |
+| `airensoft/ovenmediaengine` | `sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6` | 2026-09-08 | ome-gate                                        |
 
 ## Running any of it here
 
@@ -615,26 +615,26 @@ From `apps/infra-manager`, with Docker running.
 The SQL suites, on a disposable PostgreSQL of their own:
 
 ```sh
-docker run --rm -d --name t20-pg -e POSTGRES_HOST_AUTH_METHOD=trust \
+docker run --rm -d --name manager-test-pg -e POSTGRES_HOST_AUTH_METHOD=trust \
   -p 127.0.0.1:55432:5432 \
   postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
-for name in t01_test t04a_test t04b_test t06_test t08_test t09_test t10_test t11_test t12_test; do
-  docker exec t20-pg createdb -U postgres "$name"
+for name in engine_config_test build_references_test stack_versions_test port_reservations_test version_approval_test chequebook_test profile_removal_test deployment_settings_test deploy_phases_test; do
+  docker exec manager-test-pg createdb -U postgres "$name"
 done
-export T01_TEST_PG_PORT=55432 T04A_TEST_PG_PORT=55432 T04B_TEST_PG_PORT=55432 \
-  T06_TEST_PG_PORT=55432 T08_TEST_PG_PORT=55432 T09_TEST_PG_PORT=55432 \
-  T10_TEST_PG_PORT=55432 T11_TEST_PG_PORT=55432 T12_TEST_PG_PORT=55432
+export ENGINE_CONFIG_TEST_PG_PORT=55432 BUILD_REFERENCES_TEST_PG_PORT=55432 STACK_VERSIONS_TEST_PG_PORT=55432 \
+  PORT_RESERVATIONS_TEST_PG_PORT=55432 VERSION_APPROVAL_TEST_PG_PORT=55432 CHEQUEBOOK_TEST_PG_PORT=55432 \
+  PROFILE_REMOVAL_TEST_PG_PORT=55432 DEPLOYMENT_SETTINGS_TEST_PG_PORT=55432 DEPLOY_PHASES_TEST_PG_PORT=55432
 pnpm --filter @streaming-infra-manager/api test:database
-docker rm -f t20-pg
+docker rm -f manager-test-pg
 ```
 
 The browser suites, with the same container up so the connected one runs too.
-Without `T09_TEST_PG_PORT` the run ends in a refusal rather than in a pass,
+Without `CHEQUEBOOK_TEST_PG_PORT` the run ends in a refusal rather than in a pass,
 which is the point of it:
 
 ```sh
 export CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-export T09_TEST_PG_PORT=55432
+export CHEQUEBOOK_TEST_PG_PORT=55432
 pnpm --filter @streaming-infra-manager/frontend-prototype test:browser
 ```
 

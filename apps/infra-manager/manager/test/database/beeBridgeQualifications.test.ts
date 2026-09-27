@@ -6,7 +6,7 @@
  * transfers racing on a new tuple both check, and one pass row lands, which the
  * partial unique index on passes makes true where the application cannot.
  *
- * It needs a disposable PostgreSQL on T09_TEST_PG_PORT, and skips without it.
+ * It needs a disposable PostgreSQL on CHEQUEBOOK_TEST_PG_PORT, and skips without it.
  */
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
@@ -25,8 +25,14 @@ import { DOCKER_BEE_STREAM_BOUNDS } from '../../src/domain/chequebook/beeBridgeQ
 import { PostgresBeeBridgeQualifications } from '../../src/domain/chequebook/PostgresBeeBridgeQualifications.js';
 import { syntheticBeeBridgeCheckAnswer } from '../support/beeBridgeCheckAnswer.js';
 
-const port = Number(process.env.T09_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't09_test', connectionTimeoutMillis: 30000 };
+const port = Number(process.env.CHEQUEBOOK_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'chequebook_test',
+  connectionTimeoutMillis: 30000,
+};
 const tuple = (): BeeBridgeTuple => ({
   imageId: `sha256:${'d'.repeat(64)}`,
   engineVersion: '29.1.3',

@@ -1,6 +1,6 @@
 /**
  * A deployment's engine settings, saved and applied through its settings page
- * beside every other key (Levi, 2026-09-26: the Engine card's drawer goes, its
+ * beside every other key (since 2026-09-26: the Engine card's drawer goes, its
  * settings edited in the same editor).
  *
  * Unit test through the real routes, the real service and an orchestrator over

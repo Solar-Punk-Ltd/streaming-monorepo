@@ -8,10 +8,10 @@ import type { DeploymentGroupRepository } from '../../src/domain/DeploymentGroup
 import type { ManagerEvent } from '../../src/domain/EventBus.js';
 import type { Profile } from '../../src/types/index.js';
 
-const root = throwawayRoot('t11-settings-instance-');
+const root = throwawayRoot('settings-instance-');
 process.env.SHLS_ROOT = root;
 process.env.BEE_DATA_ROOT = join(root, 'data');
-process.env.DATABASE_URL = 'postgresql://127.0.0.1:1/t11_unused';
+process.env.DATABASE_URL = 'postgresql://127.0.0.1:1/unused';
 writeFileSync(join(root, '.env'), 'ENGINE=srs\n');
 after(() => rmSync(root, { recursive: true, force: true }));
 

@@ -91,7 +91,8 @@ export interface ChecklistInput {
    * `undefined` where the view never asked, or could not reach the manager for
    * it. The deployment page reads it every ten seconds, and since 2026-09-25 the
    * overview and the Deployments page read it every thirty seconds for each
-   * running uploader. The step then reads exactly as it did before D16: the
+   * running uploader. The step then reads exactly as it did before an uploader
+   * could start without its Bee node answering: the
    * container is running and nothing beyond that has been verified.
    */
   uploaderHealth?: UploaderHealthReading;
@@ -565,8 +566,8 @@ function uploaderStep(input: ChecklistInput): ChecklistStep {
   }
 
   // The manager asks the node again before it changes containers. A node that
-  // says nothing and any chequebook balance are warning states under D15 and
-  // D16, so neither can hide the action. A stamp the node already reported as
+  // says nothing and any chequebook balance are warning states, not refusals,
+  // so neither can hide the action. A stamp the node already reported as
   // missing, expired, full or not usable is the evidence that still blocks it.
   const poolBacked = shapeOf(profile) === 'abr-uploader';
   const prerequisiteReady = poolBacked
@@ -615,7 +616,8 @@ const RUNNING_UPLOADER_STEPS: Record<UploaderHealthState, { state: StepState; pr
 /**
  * The uploader's own account of itself, for a view that asked.
  *
- * Since D16 a started uploader may be waiting for a Bee node that is not
+ * Since an uploader may start before its Bee node answers, a started uploader
+ * may be waiting for a Bee node that is not
  * answering, or running on a startup gate that warned instead of refusing.
  * Both are states nothing on the container says, which is why they are read
  * from the uploader rather than inferred here.

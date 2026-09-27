@@ -141,9 +141,9 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
   // row they read, since the manager announces no change for a save.
   const settings = useDeploymentSettings(profile);
   const savedNotApplied = settings.catalog?.drift.keys ?? [];
-  // Only where there is an uploader to ask. Since D16 one can be running and
-  // still waiting for a Bee node that never answered, which nothing on the
-  // container says.
+  // Only where there is an uploader to ask. Since an uploader may start before
+  // its Bee node answers, one can be running and still waiting for a Bee node
+  // that never answered, which nothing on the container says.
   const uploaderDeployed = profile.containers.some((container) => container.service === STREAM_UPLOADER_SERVICE);
   const uploaderHealth = useUploaderHealth(uploaderDeployed ? profile : null);
   const srtIngestShown = readsSrtIngest(profile);

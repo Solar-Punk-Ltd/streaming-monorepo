@@ -1,4 +1,4 @@
-# T09 transaction API integration contract
+# Chequebook transaction API integration contract
 
 **Status.** This work is on `main`. It was written at `6dc33d1` on `feat/ai-remediation`, the head of pull request #40, which was merged. The sections below are in the order they were built and each is the checkpoint it says it is. Target ownership integration is done: `createChequebookOperationsService` builds the production preparation from `PostgresChequebookTargetOwnership.capture`, so an admission on a real database gets the proof rather than failing closed. The last section, "Bounded receipt polling and connected acceptance", is the current state. It was deployed twice, on 2026-09-11 and 2026-09-13, recorded in [../handover/main-v2-remediation.md](../handover/main-v2-remediation.md).
 
@@ -14,7 +14,7 @@ Admission copies this proof before its first wait. Exact request replay precedes
 
 That checkpoint proved SQL ownership only, and at it the direct locator did not supply the proof, so new admissions on a real database failed closed. The owned transport factory closed that, and the production composition now passes the capture into preparation. Container-bound preparation and full-container inspection on its private connection came with it. The exact-image bridge qualification has since run: `PRODUCTION_BEE_BRIDGE_QUALIFICATIONS` carries one record, `bee-2.8.2-docker-29.1.3`, qualified on 2026-09-14 by `manager/scripts/qualify-bee-bridge.mjs`, pinning an image id, an engine version, a platform and the bridge script's revision, and keeping the harness revision and an evidence digest as its record. An entry stops matching the moment any of the four it pins moves. No Docker inspection or network call runs inside these SQL transactions. A later immutable transport must keep an already-claimed send on the original container even if ownership changes after commit.
 
-The merged dependency baseline passed all 47 prior T09 SQL cases. The target checkpoint adds 31 cases for stale identity and alias verification, exact reservation ownership, both sides of ownership locks, attempt admission, caller mutation, historical NULL, lost dispatch acknowledgement and a one-connection pool. Refusal reads use the same checked-out client after rollback so they cannot wait for their own connection to be released. All evidence uses a dedicated synthetic PostgreSQL database, never a Bee or deployment.
+The merged dependency baseline passed all 47 prior chequebook transaction SQL cases. The target checkpoint adds 31 cases for stale identity and alias verification, exact reservation ownership, both sides of ownership locks, attempt admission, caller mutation, historical NULL, lost dispatch acknowledgement and a one-connection pool. Refusal reads use the same checked-out client after rollback so they cannot wait for their own connection to be released. All evidence uses a dedicated synthetic PostgreSQL database, never a Bee or deployment.
 
 ## Runtime trust and target selection
 
@@ -32,7 +32,7 @@ A malformed value refuses the transfer with its cause, `chain_setting_invalid` o
 
 The transport is selected by the deploy target alias, wrapped so the operation owns it for its lifetime, and qualified before a byte is sent to Bee: pinned records on the bridge's own connection, or, on an automatic route, the check described under "Where a transfer reaches the node and the chain" in `docs/features/chequebook.md`, which runs on a connection of its own before the bridge's and stores its result in `bee_bridge_qualifications` (migration 040). `ConfiguredBeeTargetResolver`, which this section once described, resolved a target from the saved `bee-uploader` service and its `BEE_UPLOADER_API_PORT`, and the production composition no longer builds it. The external publishing destination `bee_url` does not select the transaction target. Known deploy, stop and remove transitions refuse preparation. Missing or duplicate Bee services, malformed ports and profiles without an owned Bee component refuse it too.
 
-The target revision includes the canonical T01 `profiles.instance_id`, profile creation/update timestamps, host, port slot, kind, components, status, stack version and selected API port. It is compared again before dispatch. The instance UUID identifies one deployment lifetime independently of timestamp precision. A saved name that is removed and recreated receives a different instance UUID. No second SSH or Docker ownership implementation was added here: the default remote route is the same supervised forward with a second locator kind.
+The target revision includes the canonical `profiles.instance_id`, profile creation/update timestamps, host, port slot, kind, components, status, stack version and selected API port. It is compared again before dispatch. The instance UUID identifies one deployment lifetime independently of timestamp precision. A saved name that is removed and recreated receives a different instance UUID. No second SSH or Docker ownership implementation was added here: the default remote route is the same supervised forward with a second locator kind.
 
 ## Single-connection submission
 
@@ -66,7 +66,7 @@ Every submission includes the saved positive safe-integer account ID as `expecte
 
 Recovery writes also require `expectedAccountId`, checked before service or journal access. This is the account that reviewed the recovery action. Any currently authenticated operator may recover another operator's saved operation under the existing authorization policy. A switched account returns fixed 409 `account_changed` and asks the operator to review the action again under the current account. These request preconditions are not stored as assertion evidence.
 
-New submissions require the current profile UUID as `profileInstanceId`. It is part of the immutable intent and journal record. Preparation compares it before opening Bee, admission locks the profile row and checks it in the same transaction as journal insertion, and preflight compares it again. Exact request replay still precedes current-profile lookup. A mismatched instance refuses a new intent with a fixed `chequebook_profile_changed` response. An unavailable profile cannot open a Bee session. A profile removed before admission also receives the fixed refusal. Migration 023 adds only nullable `chequebook_operations.profile_instance_id`. It depends on T01 migration 014 and never infers a historical value from a current same-name profile. Historical NULL values remain readable and recoverable.
+New submissions require the current profile UUID as `profileInstanceId`. It is part of the immutable intent and journal record. Preparation compares it before opening Bee, admission locks the profile row and checks it in the same transaction as journal insertion, and preflight compares it again. Exact request replay still precedes current-profile lookup. A mismatched instance refuses a new intent with a fixed `chequebook_profile_changed` response. An unavailable profile cannot open a Bee session. A profile removed before admission also receives the fixed refusal. Migration 023 adds only nullable `chequebook_operations.profile_instance_id`. It depends on migration 014 and never infers a historical value from a current same-name profile. Historical NULL values remain readable and recoverable.
 
 Amounts are canonical positive integer PLUR strings, at most 30 digits. New transfer intent uses a UUID that the browser must persist before its POST. Repeated UUIDs replay the same intent and never prepare another transfer. A different payload under that key returns a conflict. The browser must use the read-only by-request route if it knows the UUID but lost the response containing the operation ID. No money POST is needed to discover that record, and no current profile is needed.
 
@@ -88,7 +88,7 @@ The pending-list adapter opens a separate read-only pinned session and verifies 
 
 The adapter and API tests use injected state or disposable loopback HTTP servers. They do not touch a deployment, wallet, live RPC or Bee. The production composition uses the reviewed private connection, runtime registry and journal repository. Frontend behavior is unchanged in this slice.
 
-Levi approved a dedicated disposable local PostgreSQL database on 2026-09-08. All 39 preexisting SQL regressions passed at `960c378`, including the four previously pending checks for unchanged 129-candidate progress, a full 256-candidate conflict with response evidence, sub-millisecond history pagination and atomic conflict detail. The database uses synthetic data in fresh per-test schemas, a random loopback port, the cached `postgres:16-alpine` image and no alternate worker database. The new profile-instance checks cover name reuse with identical timestamps, recreation before admission, exact replay after deletion and historical NULL identity. After the reviewed T01 dependency merge, all 43 SQL cases passed, including the four new instance checks. The full manager suite passed 666 tests, the common package passed 269 tests, and all workspace typechecks passed.
+A dedicated disposable local PostgreSQL database was approved on 2026-09-08. All 39 preexisting SQL regressions passed at `960c378`, including the four previously pending checks for unchanged 129-candidate progress, a full 256-candidate conflict with response evidence, sub-millisecond history pagination and atomic conflict detail. The database uses synthetic data in fresh per-test schemas, a random loopback port, the cached `postgres:16-alpine` image and no alternate worker database. The new profile-instance checks cover name reuse with identical timestamps, recreation before admission, exact replay after deletion and historical NULL identity. After the reviewed engine config ownership dependency merge, all 43 SQL cases passed, including the four new instance checks. The full manager suite passed 666 tests, the common package passed 269 tests, and all workspace typechecks passed.
 
 The funded `review-20260907` deployment is preserved. The historical 0.5 BZZ fill remains unverified. This work provides no evidence that it was unsent, settled or safe to retry.
 
@@ -98,7 +98,7 @@ A new intent is refused when the node has an active operation or any historical 
 
 A fresh GET alone cannot guarantee that its evidence stays current until the next POST. The authenticated SQL/API regression holds a terminal GET, commits conflicting direct-response evidence, releases the older response, then attempts a new intent. Admission returns 409 busy with the conflict detail and no new record or Bee dispatch. A separate SQL case covers exact replay and an unaffected node. The older attribution regression now admits B before the late conflict on A, preserving its intended historical-competitor case under the stronger admission rule.
 
-The new regression failed before the fix as `admitted` instead of `busy`, and the HTTP case returned 202 instead of 409. After the fix all 45 T09 PostgreSQL cases, 669 manager unit tests and workspace typechecks passed. The synthetic database was container `dbb1a1d59df09b3d2dd6fe095473437abc2fbab1f380c900e41691db27aa0941`, loopback port 49809. It was stopped after verification and exact-ID inspection confirmed removal. No host, live chain or funded node was used.
+The new regression failed before the fix as `admitted` instead of `busy`, and the HTTP case returned 202 instead of 409. After the fix all 45 chequebook transaction PostgreSQL cases, 669 manager unit tests and workspace typechecks passed. The synthetic database was container `dbb1a1d59df09b3d2dd6fe095473437abc2fbab1f380c900e41691db27aa0941`, loopback port 49809. It was stopped after verification and exact-ID inspection confirmed removal. No host, live chain or funded node was used.
 
 ## Reviewed recovery action preconditions
 
@@ -183,11 +183,11 @@ its own socket inside a directory only this user can read.
 Run it with the disposable database:
 
 ```
-docker run --rm -d --name t09-pg -e POSTGRES_HOST_AUTH_METHOD=trust -p 127.0.0.1:55436:5432 postgres:16-alpine
-docker exec t09-pg psql -U postgres -c 'CREATE DATABASE t09_test'
-cd manager && T09_TEST_PG_PORT=55436 DATABASE_URL=postgres://postgres@127.0.0.1:55436/t09_test \
+docker run --rm -d --name chequebook-pg -e POSTGRES_HOST_AUTH_METHOD=trust -p 127.0.0.1:55436:5432 postgres:16-alpine
+docker exec chequebook-pg psql -U postgres -c 'CREATE DATABASE chequebook_test'
+cd manager && CHEQUEBOOK_TEST_PG_PORT=55436 DATABASE_URL=postgres://postgres@127.0.0.1:55436/chequebook_test \
   ./node_modules/.bin/tsx --conditions=development --test 'test/database/chequebook*.test.ts'
-docker stop t09-pg
+docker stop chequebook-pg
 ```
 
 A file whose variable is unset skips silently, so read `# skipped 0` in the

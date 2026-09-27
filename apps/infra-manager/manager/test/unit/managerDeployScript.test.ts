@@ -103,8 +103,8 @@ describe('deploy/deploy.sh', () => {
    * The rsync is one of the two ways those notes could travel. The other is the
    * image build, whose context is the repository root for both images, and
    * where `.dockerignore` excluded only `*.log`, so the markdown, the JSON and
-   * the screenshots under `.scratch` would still be handed to the daemon. Levi
-   * ruled on 2026-09-11 that the directory stays as the local issue scratch
+   * the screenshots under `.scratch` would still be handed to the daemon. Since
+   * 2026-09-11 the directory stays as the local issue scratch
    * `AGENTS.md` defines and never travels anywhere.
    */
   it('keeps the working notes out of the image build context as well', () => {

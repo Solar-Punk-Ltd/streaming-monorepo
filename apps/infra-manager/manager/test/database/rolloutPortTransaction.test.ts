@@ -6,8 +6,14 @@ import pg, { type Pool } from 'pg';
 import { PostgresPortReservationRepository } from '../../src/domain/ports/PostgresPortReservationRepository.js';
 import * as reservationSql from '../../src/domain/ports/reservationSql.js';
 
-const port = Number(process.env.T01_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't01_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.ENGINE_CONFIG_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'engine_config_test',
+  connectionTimeoutMillis: 10000,
+};
 const oldPort = { protocol: 'tcp' as const, port: 12000, portVar: 'SYNTHETIC_OLD', service: 'srs' };
 const newPort = { protocol: 'tcp' as const, port: 12001, portVar: 'SYNTHETIC_NEW', service: 'srs' };
 
@@ -21,7 +27,7 @@ describe(
     let ports: PostgresPortReservationRepository;
 
     beforeEach(async () => {
-      schema = `t01_port_transaction_${randomBytes(8).toString('hex')}`;
+      schema = `port_transaction_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 5, options: `-c search_path=${schema} -c statement_timeout=10000` });

@@ -6,7 +6,7 @@
  * nothing between it and the database is a mock. What is synthetic is the Bee,
  * the chain and the database.
  *
- * It needs a disposable PostgreSQL on T09_TEST_PG_PORT. Without it every case
+ * It needs a disposable PostgreSQL on CHEQUEBOOK_TEST_PG_PORT. Without it every case
  * skips out loud rather than passing quietly.
  */
 import assert from 'node:assert/strict';
@@ -28,10 +28,10 @@ import {
 import { runEveryStep } from './support/teardown.mjs';
 import { launchViteFor } from './support/transfer-fixture.mjs';
 
-const pgPort = Number(process.env.T09_TEST_PG_PORT);
+const pgPort = Number(process.env.CHEQUEBOOK_TEST_PG_PORT);
 const HAS_DATABASE = Number.isInteger(pgPort) && pgPort > 0 && pgPort < 65536;
 const SKIP_REASON =
-  'T09_TEST_PG_PORT is not set, so no disposable PostgreSQL is available for the connected browser suite';
+  'CHEQUEBOOK_TEST_PG_PORT is not set, so no disposable PostgreSQL is available for the connected browser suite';
 const serverPath = fileURLToPath(new URL('../../manager/test/support/connectedChequebookServer.ts', import.meta.url));
 const managerDirectory = fileURLToPath(new URL('../../manager/', import.meta.url));
 const POLLED_SENTENCE = "The manager checks the chain for this transaction's receipt about every 20 seconds until";
@@ -41,7 +41,7 @@ async function connectedManager(t) {
     cwd: managerDirectory,
     silent: true,
     execArgv: ['--import', 'tsx', '--conditions=development'],
-    env: { ...process.env, T09_TEST_PG_PORT: String(pgPort) },
+    env: { ...process.env, CHEQUEBOOK_TEST_PG_PORT: String(pgPort) },
   });
   let output = '';
   for (const stream of [child.stdout, child.stderr])
@@ -113,7 +113,7 @@ async function signedInBrowser(t, manager, fixture, path) {
     mobile: false,
   });
   // Sign in from a page with no app on it, so the app itself boots with the session already in place.
-  await browser.call('Page.navigate', { url: `${fixture.origin}/dev/t09-intent-tests.html` });
+  await browser.call('Page.navigate', { url: `${fixture.origin}/dev/transfer-intent-tests.html` });
   await waitFor(
     () => browser.evaluate('document.readyState === "complete"'),
     Boolean,
@@ -179,7 +179,7 @@ test(
   async (t) => {
     const manager = await connectedManager(t);
     const fixture = await launchViteFor(t, manager.url);
-    const browser = await signedInBrowser(t, manager, fixture, '/dev/t09-dialog-tests.html');
+    const browser = await signedInBrowser(t, manager, fixture, '/dev/transfer-dialog-tests.html');
     await visible(browser, 'Storage and funding');
     await useSignedInAccount(browser);
     await moveBzz(browser);
@@ -201,7 +201,7 @@ test(
   async (t) => {
     const manager = await connectedManager(t);
     const fixture = await launchViteFor(t, manager.url);
-    const browser = await signedInBrowser(t, manager, fixture, '/dev/t09-dialog-tests.html');
+    const browser = await signedInBrowser(t, manager, fixture, '/dev/transfer-dialog-tests.html');
     await visible(browser, 'Storage and funding');
     const accountId = await useSignedInAccount(browser);
     await manager.dropNextResponse();
@@ -220,7 +220,7 @@ test(
     await visible(pages, 'Submission outcome unknown');
     assert.equal((await manager.counts()).receiptReads, 0, 'recovery asked the chain for no receipt');
 
-    const otherOperator = await signedInBrowser(t, manager, fixture, '/dev/t09-dialog-tests.html');
+    const otherOperator = await signedInBrowser(t, manager, fixture, '/dev/transfer-dialog-tests.html');
     await visible(otherOperator, 'Storage and funding');
     await useSignedInAccount(otherOperator);
     await moveBzz(otherOperator);
@@ -236,7 +236,7 @@ test(
   async (t) => {
     const manager = await connectedManager(t);
     const fixture = await launchViteFor(t, manager.url);
-    const dialog = await signedInBrowser(t, manager, fixture, '/dev/t09-dialog-tests.html');
+    const dialog = await signedInBrowser(t, manager, fixture, '/dev/transfer-dialog-tests.html');
     await visible(dialog, 'Storage and funding');
     const accountId = await useSignedInAccount(dialog);
     await moveBzz(dialog);

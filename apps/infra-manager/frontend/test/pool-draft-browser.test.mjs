@@ -102,7 +102,7 @@ test('pool setup preserves the uploader draft and leaves unrelated creation path
     plugins: [
       react(),
       {
-        name: 't15-offline-fixture',
+        name: 'offline-fixture',
         configureServer(vite) {
           vite.middlewares.use((req, res, next) => {
             const path = req.url?.split('?')[0];
@@ -208,7 +208,7 @@ test('pool setup preserves the uploader draft and leaves unrelated creation path
   const port = server.httpServer.address().port;
   const origin = `http://127.0.0.1:${port}`;
   const browser = await launchChrome(t, origin);
-  const evidence = await evidenceDirectory('t15-browser-evidence-');
+  const evidence = await evidenceDirectory('browser-evidence-');
   const { call, evaluate } = browser;
   await call('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
   const body = () => evaluate(PAGE_TEXT);
@@ -346,7 +346,7 @@ test('pool setup preserves the uploader draft and leaves unrelated creation path
   );
   assert.match(await body(), /the manager probes each rung/);
   assert.equal(writes.length, 1);
-  // rpc_endpoint_source is where every member of the pool reaches the chain, T27. This
+  // rpc_endpoint_source is where every member of the pool reaches the chain. This
   // fixture's /config names no endpoint of the manager's own, so it is the stack's.
   assert.deepEqual(Object.keys(writes[0].body).sort(), [
     'abr_ladder',

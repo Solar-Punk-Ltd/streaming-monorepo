@@ -1,14 +1,14 @@
 /**
  * The whole money path, connected, with nothing real behind it.
  *
- * Every other T09 suite replaces one part: the SQL suite fakes the chain and
+ * Every other money suite replaces one part: the SQL suite fakes the chain and
  * the Bee session, the factory test fakes the journal, the browser suites fake
  * the manager. This one signs in over HTTP, goes through the real router into
  * a real PostgreSQL journal, over the owned Docker transport to a synthetic
  * Bee, and reads the outcome back out. What is synthetic is the Bee, the chain
  * and the database. The composition is the production one.
  *
- * It needs a disposable PostgreSQL on T09_TEST_PG_PORT. Without it the file
+ * It needs a disposable PostgreSQL on CHEQUEBOOK_TEST_PG_PORT. Without it the file
  * skips rather than passing quietly.
  */
 import assert from 'node:assert/strict';
@@ -39,7 +39,7 @@ import {
   type ConnectedChequebookOptions,
 } from '../support/connectedChequebook.js';
 
-const port = Number(process.env.T09_TEST_PG_PORT);
+const port = Number(process.env.CHEQUEBOOK_TEST_PG_PORT);
 
 async function until<T>(
   read: () => Promise<T>,
@@ -395,7 +395,7 @@ describe(
         host: '127.0.0.1',
         port,
         user: 'postgres',
-        database: 't09_test',
+        database: 'chequebook_test',
         connectionTimeoutMillis: 30000,
       });
       t.after(() => admin.end());

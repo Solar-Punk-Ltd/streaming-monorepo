@@ -1,12 +1,12 @@
 /**
- * How the T02 harness judges eight concurrent parser checks, exercised
+ * How the config check isolation harness judges eight concurrent parser checks, exercised
  * against answers recorded from the pinned SRS image on 2026-09-10.
  *
  * The harness itself starts eight containers and cannot run in a unit suite.
  * What can run here is the part that decides: which case each answer belongs
  * to, that an accepted file was accepted, and that a refusal names the
  * directive of its own file and no other file's. That last rule is the whole
- * point of T02, because a check that read another check's copy would refuse
+ * point of the harness, because a check that read another check's copy would refuse
  * with the wrong directive and still look like a refusal.
  */
 import assert from 'node:assert/strict';

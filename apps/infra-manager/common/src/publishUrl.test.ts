@@ -84,7 +84,7 @@ describe('publishUrlReason / publishUrlWarning', () => {
     assert.equal(publishUrlWarning('loopback'), null);
   });
 
-  // A pool string has carried the local address since T06 bound every local bee
+  // A pool string has carried the local address since the manager bound every local bee
   // API to the docker bridge, so PUBLIC_HOST is no longer the host in it and an
   // operator sent to that variable is sent to the wrong one.
   it('sends an operator to the variable a loopback address can come from', () => {

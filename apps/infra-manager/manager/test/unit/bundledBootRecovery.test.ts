@@ -21,7 +21,7 @@ describe('bundled boot never invents shipment publication authority', () => {
   let versions: InMemoryStackVersionRepository;
   let service: StackVersionService;
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), 't04b-boot-authority-'));
+    root = await mkdtemp(join(tmpdir(), 'boot-authority-'));
     versionsRoot = join(root, 'versions');
     legacyRoot = join(root, 'legacy');
     await mkdir(versionsRoot);

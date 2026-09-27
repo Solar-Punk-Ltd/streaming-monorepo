@@ -382,7 +382,7 @@ describe('beePublishersForGroup — rung address and status', () => {
     assert.ok(result.missing.every((m) => m.reason.includes('BEE_LOCAL_HOST')));
   });
 
-  // An uploader is a container on this host and T06 binds every local bee API to
+  // An uploader is a container on this host and the manager binds every local bee API to
   // the docker bridge, so a local rung carries the bridge address and never the
   // manager's public one, which answers on those ports from nowhere at all.
   it('composes a local rung from the address a container here reaches it on', async () => {

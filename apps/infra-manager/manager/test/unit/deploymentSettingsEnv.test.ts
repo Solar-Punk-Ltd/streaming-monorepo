@@ -3,7 +3,7 @@
  *
  * Unit test, no database and no Docker. `pnpm test` in manager/.
  *
- * Every key a deployment's build declares is editable per deployment (Levi,
+ * Every key a deployment's build declares is editable per deployment (since
  * 2026-09-25). What the operator stores is written into `.env.<profile>` over
  * the version's base `.env`, and the keys the manager decides itself are
  * written after it, so a stored value can never take the manager's place. Those

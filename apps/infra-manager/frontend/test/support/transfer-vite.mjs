@@ -9,7 +9,7 @@ const port = probe.address().port;
 await new Promise((resolve) => probe.close(resolve));
 const server = await createServer({
   root,
-  cacheDir: process.env.T09_VITE_CACHE,
+  cacheDir: process.env.TRANSFER_VITE_CACHE,
   server: { host: '127.0.0.1', port, strictPort: true, hmr: false },
   logLevel: 'error',
 });

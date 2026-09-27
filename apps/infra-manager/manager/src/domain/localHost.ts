@@ -53,7 +53,7 @@ export type LocalPublisherHostReader = () => Promise<string>;
  * The address a container on this host reaches a node this manager deployed on.
  *
  * This is what an ABR pool string hands an uploader, and the uploader the manager
- * deploys is a container on this same host. T06 binds every local Bee API to the
+ * deploys is a container on this same host. The stack binds every local Bee API to the
  * Docker bridge address and to nothing else, so the host's public address answers
  * on those ports from nowhere at all, and the bridge address is the one that
  * works. Inside the api container the bridge is what host.docker.internal

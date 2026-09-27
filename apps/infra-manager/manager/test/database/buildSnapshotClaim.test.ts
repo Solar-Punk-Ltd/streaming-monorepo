@@ -25,8 +25,14 @@ import type { StackVersionRecord } from '../../src/domain/versions/StackVersionR
 import { StackVersionService } from '../../src/domain/versions/StackVersionService.js';
 import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
-const port = Number(process.env.T04A_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't04a_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.BUILD_REFERENCES_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'build_references_test',
+  connectionTimeoutMillis: 10000,
+};
 const A = 'a'.repeat(40);
 const B = 'b'.repeat(40);
 const C = 'c'.repeat(40);
@@ -82,8 +88,8 @@ describe(
     let initialOwner: ExpectedDeployOwner;
 
     beforeEach(async () => {
-      schema = `t04a_${randomBytes(8).toString('hex')}`;
-      root = await mkdtemp(join(tmpdir(), 't04a-artifacts-'));
+      schema = `build_snapshot_claim_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'artifacts-'));
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 5, options: `-c search_path=${schema}` });

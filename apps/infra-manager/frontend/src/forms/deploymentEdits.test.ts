@@ -387,7 +387,7 @@ describe('the three sources the Edit drawer offers for an RPC endpoint', () => {
   /**
    * A gateway put on the chain at creation is a light node, and a light node
    * reads an endpoint. The stack ships that node with an empty one, which is
-   * what made the field pointless for every viewer before T27.
+   * what made the field pointless for every viewer before 2026-09-17.
    */
   it('is asked of a light gateway and not of an ultra-light one', () => {
     assert.equal(fieldsFor(viewer({ node_mode: LIGHT_NODE_MODE })).rpcEndpoint, true);
@@ -493,7 +493,7 @@ describe('the three sources the Edit drawer offers for an RPC endpoint', () => {
   });
 
   /**
-   * A deployment made before T27 stores no mode, and the manager writes the
+   * A deployment made before 2026-09-17 stores no mode, and the manager writes the
    * column only for a body that names one. Sending the mode it reads as would
    * fill that column in as a side effect of saving a note.
    */

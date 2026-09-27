@@ -123,7 +123,7 @@ const amount = (browser, value) => fillWhenPresent(browser.evaluate, DIALOG_AMOU
 test('the dialog reaches the settled outcome without a click while the manager polls', async (t) => {
   const h = await dialogFixture(t);
   const browser = await launchChrome(t, h.origin);
-  await browser.call('Page.navigate', { url: `${h.origin}/dev/t09-dialog-tests.html` });
+  await browser.call('Page.navigate', { url: `${h.origin}/dev/transfer-dialog-tests.html` });
   await visible(browser, 'Storage and funding');
   await click(browser, 'Fill chequebook');
   await amount(browser, '0.5');
@@ -282,7 +282,7 @@ test('an automatic re-read never tells the operator the outcome is unknown', asy
   const h = await dialogFixture(t);
   h.slowReads(400);
   const browser = await launchChrome(t, h.origin);
-  await browser.call('Page.navigate', { url: `${h.origin}/dev/t09-dialog-tests.html` });
+  await browser.call('Page.navigate', { url: `${h.origin}/dev/transfer-dialog-tests.html` });
   await visible(browser, 'Storage and funding');
   await click(browser, 'Fill chequebook');
   await amount(browser, '0.5');
@@ -310,7 +310,7 @@ test('an automatic re-read never tells the operator the outcome is unknown', asy
 test('one failed re-read costs the dialog a cycle and not the cadence', async (t) => {
   const h = await dialogFixture(t);
   const browser = await launchChrome(t, h.origin);
-  await browser.call('Page.navigate', { url: `${h.origin}/dev/t09-dialog-tests.html` });
+  await browser.call('Page.navigate', { url: `${h.origin}/dev/transfer-dialog-tests.html` });
   await visible(browser, 'Storage and funding');
   await click(browser, 'Fill chequebook');
   await amount(browser, '0.5');
@@ -360,7 +360,7 @@ test('one failed re-read costs the detail page a cycle and not the cadence', asy
 test('a spent polling budget stops the dialog re-reads and says so', async (t) => {
   const h = await dialogFixture(t);
   const browser = await launchChrome(t, h.origin);
-  await browser.call('Page.navigate', { url: `${h.origin}/dev/t09-dialog-tests.html` });
+  await browser.call('Page.navigate', { url: `${h.origin}/dev/transfer-dialog-tests.html` });
   await visible(browser, 'Storage and funding');
   await click(browser, 'Fill chequebook');
   await amount(browser, '0.5');

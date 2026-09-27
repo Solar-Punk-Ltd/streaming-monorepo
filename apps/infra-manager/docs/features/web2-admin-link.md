@@ -2,7 +2,7 @@
 
 The web2 admin is a separate service where streams are declared and listed. A
 deployment's stream uploader reports to it when the stack gives it
-`ADMIN_API_URL` and `ADMIN_API_TOKEN`. Levi ruled on 2026-09-25 that setting
+`ADMIN_API_URL` and `ADMIN_API_TOKEN`. Since 2026-09-25, setting
 this up has to work out of the box on any host a clone of this repository
 deploys to, documented for whoever clones it. This page is the design. The
 operator's guide, with the routes and what each Test connection outcome means,

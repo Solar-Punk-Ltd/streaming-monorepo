@@ -3,7 +3,7 @@
  * migration 042's record of where a deployment's token goes, against a real
  * PostgreSQL.
  *
- * `pnpm test:database` in manager/, or on its own with T11_TEST_PG_PORT set.
+ * `pnpm test:database` in manager/, or on its own with DEPLOYMENT_SETTINGS_TEST_PG_PORT set.
  *
  * What only the database can show: that the table holds one row and never a
  * second, that a read never selects the token, that a save lands only at the
@@ -28,12 +28,12 @@ import { ManagerAdminLinkRepository } from '../../src/domain/adminLink/ManagerAd
 import { DeploymentGroupRepository, type SharedProfileParams } from '../../src/domain/DeploymentGroupRepository.js';
 import { type InitialStackSettings, ProfileRepository } from '../../src/domain/ProfileRepository.js';
 
-const port = Number(process.env.T11_TEST_PG_PORT);
+const port = Number(process.env.DEPLOYMENT_SETTINGS_TEST_PG_PORT);
 const connection = {
   host: '127.0.0.1',
   port,
   user: 'postgres',
-  database: 't11_test',
+  database: 'deployment_settings_test',
   connectionTimeoutMillis: 10000,
 };
 
@@ -60,7 +60,7 @@ describe(
     }
 
     beforeEach(async () => {
-      schema = `t11_admin_link_${randomBytes(8).toString('hex')}`;
+      schema = `admin_link_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 4, options: `-c search_path=${schema}` });

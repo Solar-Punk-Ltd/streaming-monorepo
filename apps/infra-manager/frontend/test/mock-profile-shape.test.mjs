@@ -97,7 +97,7 @@ describe("what the dev mock says about each deployment's Bee node", () => {
   /**
    * The manager stores nothing for a deployment that never chose, and every
    * page reads such a row through `effectiveNodeMode`. A mock that filled the
-   * column in would hide the one case every deployment made before T27 is in.
+   * column in would hide the one case every deployment made before 2026-09-17 is in.
    */
   it('stores no mode for a deployment that was never asked', () => {
     for (const profile of state.profiles) {
