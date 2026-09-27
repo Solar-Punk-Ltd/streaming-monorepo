@@ -156,7 +156,7 @@ fi
 
 # Read one node's /stamps. Either from the host it runs on, or from a captured file when rehearsing.
 # ⛔⛔⛔ A FAILED TRANSPORT AND AN UNANSWERED SERVICE ARE NOT THE SAME REFUSAL, and they arrive as the
-# same empty string. On 2026-08-31 a wedged 1Password SSH agent made this script report that the
+# same empty string. On 2026-08-31 a wedged ssh agent made this script report that the
 # uploader was not deployed, which was false: the uploader was healthy and the ssh could not sign. A
 # whole measurement arm has already been lost to that confusion, six reds that all read as product
 # faults. ssh exits 255 for connection and authentication failures and passes the remote command's
@@ -241,8 +241,9 @@ for pair in "${RUNG_PORT_VARS[@]}"; do
   if [ "$?" = "${SSH_TRANSPORT_FAILED}" ] && [ "$TARGET" != "localhost" ] && [ -z "$STAMPS_FROM" ]; then
     echo "bee-publishers: REFUSING, could not reach ${TARGET} over ssh."
     echo "  That is the transport and not the node, so this says nothing about what ${rung} holds. On"
-    echo "  this machine it is usually the 1Password SSH agent listing keys and refusing to sign, which"
-    echo "  needs 1Password fully quit and reopened rather than merely unlocked. Check with:"
+    echo "  this machine it is usually the password manager's ssh agent listing keys and refusing to"
+    echo "  sign, which needs the password manager fully quit and reopened rather than merely unlocked."
+    echo "  Check with:"
     echo "    ssh-add -l && ssh ${TARGET} true"
     exit 1
   fi

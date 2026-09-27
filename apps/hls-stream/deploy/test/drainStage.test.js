@@ -1257,7 +1257,7 @@ describe('drain-stage tells a read that failed from a node that answered', () =>
   });
 
   /**
-   * ⛔⛔⛔ THE BRANCH THIS REPO HAS ALREADY PAID FOR. On 2026-08-31 a wedged 1Password SSH agent made
+   * ⛔⛔⛔ THE BRANCH THIS REPO HAS ALREADY PAID FOR. On 2026-08-31 a wedged ssh agent made
    * `bee-publishers.sh` report that the uploader was not deployed, which was false, and a whole
    * measurement arm was lost to reading a failed transport as a silent service. ssh exits 255 for
    * connection and authentication failures and passes the remote command's status through otherwise,
