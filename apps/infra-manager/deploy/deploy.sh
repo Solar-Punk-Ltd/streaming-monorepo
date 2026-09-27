@@ -146,6 +146,24 @@ echo "[deploy] pinned stack commit: $(cat manager/.stack-commit)"
 # covers the manager alone and none of the rest of the repository.
 MANAGER_DIGEST="$(git ls-tree -r HEAD | shasum -a 256 | cut -c1-64)"
 
+# The images build on the host from this folder and read pnpm-lock.yaml and
+# pnpm-workspace.yaml at its root. A checkout of the one workspace holds them
+# only at the repository root, so the manager's own pair is cut out of the
+# root's by tools/app-workspace into a folder under TMPDIR, removed when this
+# script exits however it exits, and given to the one rsync as a second source:
+# the pair lands where the manager's own went, and --delete keeps it. A checkout
+# whose manager keeps its own pair ships it as it always did. The empty second
+# source expands to nothing under set -u in bash 3.2 through the + form.
+CUT_SOURCE=()
+WORKSPACE_ROOT="$(git rev-parse --show-toplevel)"
+if [ ! -f pnpm-lock.yaml ] && [ -f "$WORKSPACE_ROOT/pnpm-lock.yaml" ]; then
+    CUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/manager-cut.XXXXXX")"
+    trap 'rm -rf "$CUT_DIR"' EXIT
+    MANAGER_FOLDER="$(git rev-parse --show-prefix)"
+    node "$WORKSPACE_ROOT/tools/app-workspace/cut.mjs" --root "$WORKSPACE_ROOT" --app "${MANAGER_FOLDER%/}" --out "$CUT_DIR/manager"
+    CUT_SOURCE=("$CUT_DIR/manager/")
+fi
+
 echo "==> rsync → ${SSH_TARGET}:${REMOTE_PATH} (manager/swarm-hls-stream left as it is)"
 rsync -avz --delete \
     --exclude '.git/' \
@@ -155,7 +173,7 @@ rsync -avz --delete \
     --exclude '**/dist/.tsbuildinfo' \
     --exclude '*.tsbuildinfo' \
     --exclude '.DS_Store' \
-    ./ "${SSH_TARGET}:${REMOTE_PATH}/"
+    ./ ${CUT_SOURCE[@]+"${CUT_SOURCE[@]}"} "${SSH_TARGET}:${REMOTE_PATH}/"
 
 echo "==> Remote build + upgrade"
 # Detect the server's primary IP on the host (the manager runs in a container,

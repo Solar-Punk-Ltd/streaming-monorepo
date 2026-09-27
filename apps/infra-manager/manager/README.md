@@ -19,10 +19,19 @@ on the same host can never collide on a port.
 ```bash
 cp manager/.env.sample manager/.env
 cd manager
-docker compose up --build -d
+node ../../../tools/app-workspace/in-copy.mjs --app apps/infra-manager -- docker build --file manager/Dockerfile --tag manager-api .
+node ../../../tools/app-workspace/in-copy.mjs --app apps/infra-manager -- docker build --file frontend/Dockerfile --tag manager-web .
+docker compose up -d
 curl localhost:8080/health                      # {"status":"ok"}
 docker compose exec -it api node dist/cli.js user:add <username>
 ```
+
+The two images build from a copy of `apps/infra-manager` made outside the
+checkout, which `tools/app-workspace/in-copy.mjs` removes afterwards. When the
+repository keeps its one lockfile at its root, the copy carries the manager's
+own, cut out of it, as a deploy gives the host's folder. The copy leaves every
+`.env` and `node_modules` behind. The two tags are the names compose gives the
+`api` and `web` services, so `up` runs them without building again.
 
 That is the web container's port, `WEB_PORT`, 8080 by default, because the api
 container publishes no port of its own and the web container's nginx forwards
@@ -962,7 +971,13 @@ Adding and updating run `manager/scripts/stack-version-build.sh <repo-root>
 <staging-dir> <ref> <repo-url> <attempt-id>`, which clones or fetches, exports
 the fetched commit into the staging tree under the version's builds directory,
 and builds the packages there in a throwaway `node:22-alpine` container shown
-that tree and nothing else. The manager then publishes the built tree as a
+that tree and nothing else. When the commit keeps one lockfile at the
+repository's root, the container first cuts the stack's own pair out of it with
+that commit's `tools/app-workspace`, from a side folder of the staging tree
+that goes once the container is done, and with the whole tree when the build
+fails. The container runs the pnpm the stack's `package.json` names, or the
+script's own pin where it names none, and the build records the one it ran as
+the build's toolchain. The manager then publishes the built tree as a
 numbered build of its own, seeds the version's host-owned root from the build's
 samples, `.env`, each engine's `.env` and `deploy/config.json`, each only where
 the root has no file of its own, and removes the staging tree. One build
