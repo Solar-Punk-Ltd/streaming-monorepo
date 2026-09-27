@@ -70,13 +70,13 @@ describe('the source of each stack version in isolated PostgreSQL', { skip: !Num
     }
   });
 
-  it('refuses a row that names no repository to fetch from', async () => {
+  it('records swarm-hls-stream for a row that names no repository, which only a manager from before the monorepo inserts', async () => {
     await migrate(() => true);
 
-    await assert.rejects(
-      pool.query("INSERT INTO stack_versions (name, git_ref, status) VALUES ('nowhere', 'main', 'building')"),
-      /source_url/,
-    );
+    await pool.query("INSERT INTO stack_versions (name, git_ref, status) VALUES ('rolled-back', 'main', 'building')");
+
+    const row = await pool.query("SELECT source_url, source_folder FROM stack_versions WHERE name = 'rolled-back'");
+    assert.deepEqual(row.rows[0], { source_url: SWARM_HLS_STREAM, source_folder: null });
   });
 
   it('refuses a repository that is not an https GitHub clone address, and a folder that could leave the tree', async () => {
