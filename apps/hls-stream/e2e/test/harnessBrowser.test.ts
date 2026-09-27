@@ -38,7 +38,7 @@ import { armState, crashArmState, GATEWAY_OUTAGE_RECOVERY } from './helpers/brow
 const LAUNCH = {
   image: 'swarm-hls-browser:latest',
   containerName: 'e2e-viewer-browser',
-  repoDir: '/opt/streaming/swarm-hls-bench',
+  repoDir: '/srv/swarm-hls-bench',
   script: 'browser:watch',
   env: { BROWSER_CLIENT_URL: 'http://127.0.0.1:10074', BROWSER_FETCH_BACKEND: WEEB3_BYTES },
 } as const;
@@ -63,7 +63,7 @@ describe('the command that launches a viewer', () => {
     const command = browserArmCommand(LAUNCH);
 
     assert.match(command, /-v \/var\/run\/docker\.sock:\/var\/run\/docker\.sock/);
-    assert.match(command, /-v '\/home\/deploy\/swarm-hls-bench':\/repo/);
+    assert.match(command, /-v '\/srv\/swarm-hls-bench':\/repo/);
     assert.match(command, /-w \/repo/);
   });
 
@@ -188,8 +188,8 @@ describe('finding the artifact a run wrote', () => {
    */
   it('translates the container path onto the host checkout when the reader is the host', () => {
     assert.equal(
-      artifactReadPath('/repo/docs/bench/browser-watch-1.json', '/opt/streaming/swarm-hls-bench', false),
-      '/opt/streaming/swarm-hls-bench/docs/bench/browser-watch-1.json',
+      artifactReadPath('/repo/docs/bench/browser-watch-1.json', '/srv/swarm-hls-bench', false),
+      '/srv/swarm-hls-bench/docs/bench/browser-watch-1.json',
     );
   });
 
@@ -200,14 +200,14 @@ describe('finding the artifact a run wrote', () => {
    */
   it('keeps the container path when the reader shares the container namespace', () => {
     assert.equal(
-      artifactReadPath('/repo/docs/bench/browser-watch-1.json', '/opt/streaming/swarm-hls-bench', true),
+      artifactReadPath('/repo/docs/bench/browser-watch-1.json', '/srv/swarm-hls-bench', true),
       '/repo/docs/bench/browser-watch-1.json',
     );
   });
 
   it('refuses a path outside the mount in either mode, since no reader can reach it', () => {
-    assert.throws(() => artifactReadPath('/tmp/elsewhere.json', '/opt/streaming/swarm-hls-bench', false), /\/repo/);
-    assert.throws(() => artifactReadPath('/tmp/elsewhere.json', '/opt/streaming/swarm-hls-bench', true), /\/repo/);
+    assert.throws(() => artifactReadPath('/tmp/elsewhere.json', '/srv/swarm-hls-bench', false), /\/repo/);
+    assert.throws(() => artifactReadPath('/tmp/elsewhere.json', '/srv/swarm-hls-bench', true), /\/repo/);
   });
 });
 

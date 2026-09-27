@@ -105,7 +105,7 @@ summarize_browser_cpu() {
 # is announced for the same reason as above.
 #
 # ⛔⛔⛔ THE SAMPLER RUNS IN THE BROWSER IMAGE, NOT ON THE HOST, AND THAT IS NOT A STYLE CHOICE.
-# `control-1` has no node at all. The first version of this ran `node main-thread.mjs` on the host
+# `<host>` has no node at all. The first version of this ran `node main-thread.mjs` on the host
 # and would have declined on every arm of every sitting, forever, while its unit tests passed over a
 # stub. That is the 2026-08-11 defect exactly: fourteen passing tests and no real arm, because the
 # thing under test never existed on the machine that would run it. Proven here instead by starting a

@@ -33,8 +33,9 @@
  * `WEEB3_NATIVE_SQUEEZE_KBPS` turns one counted window into three: settle, capped, recovered. Our
  * own client, driving our own pinned weeb-3, could not keep a 360p recording moving once Chrome's
  * emulation capped the tab, and the owner has ruled that weeb-3 is not at fault and must not be
- * changed. the tester's published page is the same node inside a client we did not write, so the same
- * recording under the same cap is the first thing that can tell our harness apart from his node. See
+ * changed. An outside tester's published page is the same node inside a client we did not write, so
+ * the same recording under the same cap is the first thing that can tell our harness apart from the
+ * tester's node. See
  * `docs/bench/in-tab-throttle-probe-result-2026-09-02.md`.
  *
  * ⛔ Unset, the driver behaves exactly as it did before the mode existed. Nothing in the squeeze
