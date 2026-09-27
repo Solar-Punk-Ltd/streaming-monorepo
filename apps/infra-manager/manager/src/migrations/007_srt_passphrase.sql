@@ -3,7 +3,7 @@
 -- SRS reads SRT_PASSPHRASE from the env file the deploy hands compose, and
 -- encrypts its SRT listener with it. That value existed already, but only as a
 -- single key in the submodule's base .env — one passphrase for every deployment
--- on the host, editable only by hand on the box. It belongs next to the other
+-- on the host, editable only by hand on the host. It belongs next to the other
 -- per-deployment parameters instead, so each streamer can carry its own.
 --
 -- NULL means "not set here": the deploy falls back to whatever the base .env

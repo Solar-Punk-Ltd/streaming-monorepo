@@ -148,7 +148,7 @@ function endsRecovery(state: EngineConfigOperationState): boolean {
 /**
  * Lets go of the build holds of rollouts that have just ended.
  *
- * Levi ruled on 2026-09-11, after a walkthrough found what leaving them costs:
+ * Since 2026-09-11, after a walkthrough found what leaving them costs:
  * an applied config file left a hold nothing resolves, `hasRemovalHold` counts
  * it for ever, and the deployment could not be removed at all, with no page
  * offering a way to clear it. A hold outlives its rollout only while a

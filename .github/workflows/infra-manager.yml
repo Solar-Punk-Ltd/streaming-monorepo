@@ -1,4 +1,4 @@
-# The checks main requires before a merge, D06. Four jobs: the build and
+# The checks main requires before a merge. Four jobs: the build and
 # unit suites, the 34 SQL suites against nine disposable databases, the
 # browser suites against a real headless Chrome, and a build of the two images
 # a deploy builds on the host.
