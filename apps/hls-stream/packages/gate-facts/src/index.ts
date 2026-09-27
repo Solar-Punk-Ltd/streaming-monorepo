@@ -3,11 +3,12 @@ import { collectDiff } from './collectDiff.js';
 import { collectProvenance } from './collectProvenance.js';
 import { readCommandLine } from './commandLine.js';
 import { formatFacts, hasFailure } from './formatFacts.js';
+import { resolveBase } from './resolveBase.js';
 import { run } from './run.js';
 import type { GateFacts } from './types.js';
 
 async function main(): Promise<void> {
-  const { base, head: supplied } = readCommandLine(process.argv);
+  const { base: requestedBase, head: supplied } = readCommandLine(process.argv);
   // Resolved rather than echoed, so the artifact names a commit and not a branch that has since moved.
   const resolved = await run('git', ['rev-parse', '--short', supplied ?? 'HEAD']);
   if (resolved.exitCode !== 0) {
@@ -15,14 +16,17 @@ async function main(): Promise<void> {
   }
   const head = resolved.stdout.trim();
 
-  // The diff runs first and alone, so a diff that cannot be collected, such as one against a base that
-  // does not resolve, stops the run before the slow collectors start. Nothing reads it to decide whether
-  // they are owed: both always run, side by side.
+  // Resolved once and handed to both collectors that read it, so the diff and the lockfile come from the
+  // same base, also where it exists only as `origin/<base>`. The base and then the diff run first and
+  // alone, so a base that does not resolve or a diff that cannot be collected stops the run before the
+  // slow collectors start. Nothing reads the diff to decide whether they are owed: both always run, side
+  // by side.
+  const base = await resolveBase(requestedBase);
   const diff = await collectDiff(base, head);
   const [checks, provenance] = await Promise.all([collectChecks(process.cwd()), collectProvenance(base, head)]);
 
   const facts: GateFacts = {
-    base,
+    base: requestedBase,
     head,
     headSupplied: supplied !== undefined,
     groups: [diff, checks, ...(provenance ? [provenance] : [])],
