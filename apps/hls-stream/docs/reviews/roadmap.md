@@ -222,7 +222,7 @@ themselves are the check on it.
 ⛔⛔ **The owner ruled the other way on 2026-09-15 and nothing in this section was rewritten.**
 `deploy/docker-compose.yml` ships the viewer gateway ultra-light and unfunded, with the cost stated
 beside it as LAT-10: such a node has no chequebook, lives on the free bandwidth allowance alone, and a
-viewer polling it sees the feed freeze 30 to 48s at a time. Since 2026-09-17 (T27) the two flags are
+viewer polling it sees the feed freeze 30 to 48s at a time. Since 2026-09-17 the two flags are
 settings, `BEE_GATEWAY_RPC_ENDPOINT` and `BEE_GATEWAY_SWAP_ENABLE`, empty and false by default, so a
 gateway created on the chain is two keys in the env file rather than an edit to the compose file. So
 everything below is the answer as it stood before that ruling, and a reader of this section alone
