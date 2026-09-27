@@ -104,9 +104,7 @@ export function Sidebar({
           >
             <ListItemText
               primary={item.label}
-              slotProps={{
-                primary: { fontWeight: 500 }
-              }}
+              slotProps={{ primary: { sx: { fontWeight: 500 } } }}
             />
             {item.label === 'Deployments' && deploymentCount != null && (
               <Typography variant="caption" sx={{
