@@ -84,7 +84,9 @@ export function PassphraseField({
                   disabled={masked}
                   onChange={(event) => onValueChange(event.target.value)}
                   placeholder="my-stage-passphrase-2026"
-                  inputProps={{ style: { fontFamily: MONO_STACK } }}
+                  slotProps={{
+                    htmlInput: { style: { fontFamily: MONO_STACK } }
+                  }}
                 />
                 <Button
                   size="small"

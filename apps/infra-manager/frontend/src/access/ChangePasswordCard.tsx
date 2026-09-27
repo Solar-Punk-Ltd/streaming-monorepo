@@ -52,7 +52,9 @@ export function ChangePasswordCard({ onChanged }: { onChanged: () => Promise<voi
   return (
     <SectionCard title="Change my password">
       <Stack spacing={2} component="form" onSubmit={submit}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           This browser stays signed in. Every other one is signed out.
         </Typography>
 
@@ -90,7 +92,9 @@ export function ChangePasswordCard({ onChanged }: { onChanged: () => Promise<voi
 
         {error && <Alert severity="error">{error}</Alert>}
 
-        <Stack direction="row" justifyContent="flex-end">
+        <Stack direction="row" sx={{
+          justifyContent: "flex-end"
+        }}>
           <Button type="submit" variant="contained" disabled={pending || !complete}>
             {pending ? 'Changing' : 'Change password'}
           </Button>

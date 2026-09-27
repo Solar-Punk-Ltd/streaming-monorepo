@@ -18,7 +18,9 @@ function History({ accountId }: { accountId: number }) {
   return <Stack spacing={3}>
     <Stack spacing={0.75}>
       <Typography variant="h5">Transfer history</Typography>
-      <Typography color="text.secondary">Chequebook transfers recorded by the manager, including removed deployments. Open a record to read its transaction evidence.</Typography>
+      <Typography sx={{
+        color: "text.secondary"
+      }}>Chequebook transfers recorded by the manager, including removed deployments. Open a record to read its transaction evidence.</Typography>
     </Stack>
     <ManagerHistory accountId={accountId} />
     <BrowserHistory accountId={accountId} />
@@ -39,7 +41,9 @@ function ManagerHistory({ accountId }: { accountId: number }) {
       {state.value.operations.length === 0 && <Typography>{cursors.length === 1 ? 'No transfers have been recorded.' : 'No transfers were returned on this page.'}</Typography>}
       {state.value.operations.map(operation => <TransferSummary key={operation.id} operation={operation} />)}
     </>}
-    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+    <Stack direction="row" spacing={1} useFlexGap sx={{
+      flexWrap: "wrap"
+    }}>
       <Button onClick={refresh} disabled={state.status === 'loading'}>{failed ? 'Retry history' : 'Refresh history'}</Button>
       {cursors.length > 1 && <Button onClick={() => setCursors(value => value.slice(0, -1))}>Newer transfers</Button>}
       {state.status === 'ready' && state.value.nextCursor !== null && <Button onClick={() => setCursors(value => [...value, state.value.nextCursor!])}>Older transfers</Button>}
@@ -54,7 +58,9 @@ function TransferSummary({ operation }: { operation: ChequebookOperation }) {
       <Typography variant="body2">Saved status: {operation.state}</Typography>
       <TransferValue label="Created" value={operation.createdAt} />
       <TransferValue label="Request ID" value={operation.requestId} />
-      <Typography variant="caption" color="text.secondary">This saved status is not a fresh transaction check.</Typography>
+      <Typography variant="caption" sx={{
+        color: "text.secondary"
+      }}>This saved status is not a fresh transaction check.</Typography>
     </Stack>
   </Paper>;
 }
@@ -70,7 +76,9 @@ function BrowserHistory({ accountId }: { accountId: number }) {
   const { state, refresh } = useTransferRead(`${accountId}:browser:${cursor ?? ''}`, load);
   return <Stack spacing={1.5}>
     <Typography variant="h6">Saved on this browser</Typography>
-    <Typography variant="body2" color="text.secondary">Requests saved by your current account on this browser. Their order follows browser storage. Some may have no manager record.</Typography>
+    <Typography variant="body2" sx={{
+      color: "text.secondary"
+    }}>Requests saved by your current account on this browser. Their order follows browser storage. Some may have no manager record.</Typography>
     {state.status === 'loading' && <Typography role="status">Reading saved browser requests…</Typography>}
     {state.status === 'failed' && <Alert severity="warning">Saved browser requests could not be read. Manager history remains available.</Alert>}
     {state.status === 'ready' && <>
@@ -85,7 +93,9 @@ function BrowserHistory({ accountId }: { accountId: number }) {
         </Stack>
       </Paper>)}
     </>}
-    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+    <Stack direction="row" spacing={1} useFlexGap sx={{
+      flexWrap: "wrap"
+    }}>
       <Button onClick={refresh} disabled={state.status === 'loading'}>Refresh browser requests</Button>
       {cursors.length > 1 && <Button onClick={() => setCursors(value => value.slice(0, -1))}>Previous saved requests</Button>}
       {state.status === 'ready' && state.value.nextCursor !== null && <Button onClick={() => setCursors(value => [...value, state.value.nextCursor!])}>More saved requests</Button>}

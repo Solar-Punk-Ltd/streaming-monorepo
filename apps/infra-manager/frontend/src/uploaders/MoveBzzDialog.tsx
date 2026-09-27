@@ -67,7 +67,9 @@ export function MoveBzzDialog({ open, direction, profileName, profileInstanceId,
       <Stack spacing={2} sx={{ pt: 0.5 }}>
         {!signedIn ? <Alert severity="warning">Sign in to continue. Any saved transfer stays in this browser.</Alert> : <>
           {state.issue && <Alert severity={state.issue === 'link_unavailable' ? 'info' : 'warning'}>{transferIssueMessage(state.issue, state.refusal)}</Alert>}
-          {busy && <Stack direction="row" spacing={1} alignItems="center" role="status">
+          {busy && <Stack direction="row" spacing={1} role="status" sx={{
+            alignItems: "center"
+          }}>
             <CircularProgress size={18} /><Typography variant="body2">{state.phase === 'sending' ? 'Sending the saved request' : 'Reading saved transfer status'}</Typography>
           </Stack>}
           {intent && !editingNew && <>
@@ -75,7 +77,9 @@ export function MoveBzzDialog({ open, direction, profileName, profileInstanceId,
             <TransferValue label="Saved direction" value={intent.direction === 'deposit' ? COPY.fill.route : COPY.withdraw.route} />
             <TransferValue label="Saved deployment" value={intent.profileName} />
             <TransferValue label="Request ID" value={intent.requestId} copy />
-            {state.detail ? <TransferEvidencePanel detail={state.detail} /> : <Typography variant="body2" color="text.secondary">
+            {state.detail ? <TransferEvidencePanel detail={state.detail} /> : <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               {state.issue === 'preparation_refused' ? 'The manager refused this request before recording it, so no transaction was made for it.'
                 : 'The manager has not returned a verified record for this request. Its transaction outcome is unknown.'}
             </Typography>}
@@ -86,12 +90,22 @@ export function MoveBzzDialog({ open, direction, profileName, profileInstanceId,
             <TextField label="Amount (BZZ)" size="small" autoFocus value={amount} disabled={!canEdit}
               onChange={event => setAmount(event.target.value)} error={amount.trim() !== '' && !amountValid} helperText={amountHelp}
               slotProps={{ htmlInput: { inputMode: 'decimal' } }} />
-            <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-              <Typography variant="body2" color="text.secondary">{copy.source}: {formatTokenBalance(sourcePlur?.toString() ?? null, BZZ_DECIMALS)} BZZ</Typography>
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{
+                alignItems: "center",
+                justifyContent: "space-between"
+              }}>
+              <Typography variant="body2" sx={{
+                color: "text.secondary"
+              }}>{copy.source}: {formatTokenBalance(sourcePlur?.toString() ?? null, BZZ_DECIMALS)} BZZ</Typography>
               {sourcePlur !== null && sourcePlur > 0n && <Button size="small" disabled={!canEdit} onClick={() => setAmount(plurToBzzExact(sourcePlur))}>Use all</Button>}
             </Stack>
             <Typography variant="body2">{copy.route}. This creates an on-chain transaction and costs gas. Review the amount before confirming.</Typography>
-            {direction === 'fill' && <Typography variant="caption" color="text.secondary">Below {floorBzz} BZZ uploads may stall. This balance does not block an uploader start.</Typography>}
+            {direction === 'fill' && <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>Below {floorBzz} BZZ uploads may stall. This balance does not block an uploader start.</Typography>}
           </>}
           {editingNew && step === 'review' && amountPlur !== null && <>
             <Typography variant="h6">{plurToBzzExact(amountPlur)} BZZ</Typography>

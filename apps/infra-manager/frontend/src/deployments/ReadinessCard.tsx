@@ -48,14 +48,13 @@ export function ReadinessCard({
               component="li"
               direction="row"
               spacing={1.5}
-              alignItems="center"
               sx={{
+                alignItems: "center",
                 px: 2.25,
                 py: 1.5,
                 borderTop: index === 0 ? 0 : 1,
-                borderColor: 'divider',
-              }}
-            >
+                borderColor: 'divider'
+              }}>
               <Box
                 sx={(theme) => ({
                   width: 22,
@@ -74,7 +73,9 @@ export function ReadinessCard({
               </Box>
               <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                 <Typography sx={{ fontWeight: 500 }}>{step.title}</Typography>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>
                   {step.detail}
                 </Typography>
               </Box>

@@ -27,7 +27,7 @@ export function TransferRecoveryActions({ detail, accountId, finished, notice }:
         <Button variant="outlined" onClick={() => void recovery.perform({ kind: 'check' })} disabled={recovery.busy || assertion !== null} sx={{ alignSelf: 'flex-start' }}>{checkLabel}</Button>
         {operation.state !== 'submitted' && <Stack spacing={1}>
           <TextField label="Transaction hash" value={transactionHash} onChange={event => setTransactionHash(event.target.value)}
-            disabled={recovery.busy || assertion !== null} inputProps={{ maxLength: 68 }} fullWidth
+            disabled={recovery.busy || assertion !== null} slotProps={{ htmlInput: { maxLength: 68 } }} fullWidth
             helperText="Supply a known hash to check it against the saved transfer. A matching pending transaction still needs receipt confirmation." />
           <Button onClick={() => void recovery.perform({ kind: 'resolve', transactionHash: suppliedHash })}
             disabled={recovery.busy || assertion !== null || !/^0x[0-9a-f]{64}$/.test(suppliedHash)} sx={{ alignSelf: 'flex-start' }}>Check this transaction hash</Button>
@@ -42,7 +42,7 @@ export function TransferRecoveryActions({ detail, accountId, finished, notice }:
         <Typography variant="body2">This records your acceptance of risk. It does not prove that no transaction was sent and does not settle the transfer.</Typography>
         <TransferValue label="Required statement" value={assertion.detail.assertionConfirmation} />
         <TextField label="Type the exact statement" value={assertion.text} onChange={event => recovery.setAssertionText(event.target.value)}
-          disabled={recovery.busy} fullWidth inputProps={{ maxLength: 200 }} />
+          disabled={recovery.busy} fullWidth slotProps={{ htmlInput: { maxLength: 200 } }} />
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
           <Button color="warning" onClick={recovery.reviewAssertion} disabled={recovery.busy || assertion.text !== assertion.detail.assertionConfirmation}>Review assertion</Button>
           <Button onClick={recovery.cancelAssertion} disabled={recovery.busy}>Cancel assertion</Button>

@@ -128,7 +128,9 @@ export function DeploymentRow({
         <Typography sx={{ fontFamily: MONO_STACK, fontWeight: 600, fontSize: 13 }}>
           {profile.name}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {subParts.join(' · ')}
         </Typography>
       </TableCell>
@@ -136,7 +138,9 @@ export function DeploymentRow({
         <ReadinessPill label={readiness.label} tone={readiness.tone} />
       </TableCell>
       <TableCell onClick={(event) => event.stopPropagation()}>
-        <Stack direction="row" spacing={0.5} alignItems="center">
+        <Stack direction="row" spacing={0.5} sx={{
+          alignItems: "center"
+        }}>
           {copyable && (
             <Button size="small" onClick={() => void publish.copy()}>
               Copy publish URL
@@ -150,7 +154,13 @@ export function DeploymentRow({
         </Stack>
       </TableCell>
       <TableCell align="right" onClick={(event) => event.stopPropagation()}>
-        <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
+        <Stack
+          direction="row"
+          spacing={0.5}
+          sx={{
+            justifyContent: "flex-end",
+            alignItems: "center"
+          }}>
           <PrimaryAction profile={profile} />
           <RowMenu items={menuItems} ariaLabel={`more actions for ${profile.name}`} />
         </Stack>

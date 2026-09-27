@@ -79,9 +79,11 @@ export function RpcEndpointChoice(props: WizardStepProps) {
           value={state.rpcEndpoint}
           onChange={(event) => update({ rpcEndpoint: event.target.value })}
           placeholder="https://rpc.example.org"
-          inputProps={{
-            style: { fontFamily: MONO_STACK },
-            'aria-label': 'Custom RPC endpoint',
+          slotProps={{
+            htmlInput: {
+              style: { fontFamily: MONO_STACK },
+              'aria-label': 'Custom RPC endpoint',
+            }
           }}
         />
       ),

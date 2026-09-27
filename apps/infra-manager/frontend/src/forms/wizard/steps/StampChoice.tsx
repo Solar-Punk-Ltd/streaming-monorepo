@@ -34,7 +34,9 @@ export function StampChoice({ state, update }: WizardStepProps) {
                 value={state.stampId}
                 onChange={(event) => update({ stampId: event.target.value })}
                 placeholder="64 hex characters"
-                inputProps={{ style: { fontFamily: MONO_STACK } }}
+                slotProps={{
+                  htmlInput: { style: { fontFamily: MONO_STACK } }
+                }}
               />
             ),
           },
