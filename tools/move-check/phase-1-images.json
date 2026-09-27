@@ -1,19 +1,35 @@
 {
-  "note": "Phase 1 of the monorepo moved three projects in without changing them. Each image here is built from its project's last commit before the move and from the merge that brought the project in, and the two must match apart from pnpm's record of when it installed. The after side is the importing merge rather than main-v3, because later pull requests changed each folder on purpose. The build contexts are the ones each project's compose file or script uses.",
+  "note": "Phase 1 of the monorepo moved three projects in without changing them. Each image here is built from its project's last commit before the move and from the merge that brought the project in, and the two must match apart from what each image allows, with the reason in its note. The after side is the importing merge rather than main-v3, because later pull requests changed each folder on purpose. The build contexts are the ones each project's compose file or script uses.",
   "images": [
     {
       "name": "web2-admin-backend",
-      "note": "The admin at main-v2, its last commit at the root of this repository, against #19, which moved it into apps/web2-admin with its own workspace.",
+      "note": "The admin at main-v2, its last commit at the root of this repository, against #19, which moved it into apps/web2-admin with its own workspace. pnpm deploy packs the whole backend folder into /app, so the nine files #19 edited for the new paths are allowed by name, each the same in the image as in its commit: .env.sample, Dockerfile, Dockerfile.dockerignore, README.md, docker-compose.yml and four files of test/integration. The move also took the common package from web2-admin/common to common in the workspace, and pnpm writes that path into its lock record, into the name of the package's folder and into three links. The folder is compared entry by entry under its new name through map, and the lock record and the links are allowed by name. The backend's own link points into the build stage's /repo, so it dangles in both images.",
       "before": { "commit": "f969a4230c0f4e5b259c861fe035193625d9f850", "context": ".", "dockerfile": "web2-admin/backend/Dockerfile" },
       "after": { "commit": "2ed9b8d553faca35be3ebe09d5da75a6b2378914", "context": "apps/web2-admin", "dockerfile": "apps/web2-admin/backend/Dockerfile" },
-      "allow": ["/app/node_modules/.modules.yaml"]
+      "map": ["/app/node_modules/.pnpm/@streaming-monorepo+web2-admin-common@file+web2-admin+common=/app/node_modules/.pnpm/@streaming-monorepo+web2-admin-common@file+common"],
+      "allow": [
+        "/app/node_modules/.modules.yaml",
+        "/app/.env.sample",
+        "/app/Dockerfile",
+        "/app/Dockerfile.dockerignore",
+        "/app/README.md",
+        "/app/docker-compose.yml",
+        "/app/test/integration/README.md",
+        "/app/test/integration/api.test.ts",
+        "/app/test/integration/instance.ts",
+        "/app/test/integration/internalApi.test.ts",
+        "/app/node_modules/.pnpm/lock.yaml",
+        "/app/node_modules/.pnpm/node_modules/@streaming-monorepo/web2-admin-backend",
+        "/app/node_modules/.pnpm/node_modules/@streaming-monorepo/web2-admin-common",
+        "/app/node_modules/@streaming-monorepo/web2-admin-common"
+      ]
     },
     {
       "name": "web2-admin-frontend",
-      "note": "As web2-admin-backend. The image is nginx serving the built bundle, so nothing is allowed.",
+      "note": "As web2-admin-backend. The image is nginx serving the built bundle. Its one allowed file is nginx.conf, copied in as default.conf, whose comment #19 edited for the new paths.",
       "before": { "commit": "f969a4230c0f4e5b259c861fe035193625d9f850", "context": ".", "dockerfile": "web2-admin/frontend/Dockerfile" },
       "after": { "commit": "2ed9b8d553faca35be3ebe09d5da75a6b2378914", "context": "apps/web2-admin", "dockerfile": "apps/web2-admin/frontend/Dockerfile" },
-      "allow": []
+      "allow": ["/etc/nginx/conf.d/default.conf"]
     },
     {
       "name": "hls-stream-uploader",
