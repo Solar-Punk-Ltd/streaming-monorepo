@@ -59,11 +59,12 @@ export function Sidebar({
         direction="row"
         spacing={1.25}
         sx={{
-          alignItems: "center",
+          alignItems: 'center',
           px: 2.25,
           pt: 2.25,
-          pb: 1.75
-        }}>
+          pb: 1.75,
+        }}
+      >
         <Box
           sx={{
             width: 30,
@@ -80,12 +81,13 @@ export function Sidebar({
           SI
         </Box>
         <Box>
-          <Typography sx={{ fontWeight: 600, lineHeight: 1.2 }}>
-            Streaming Infra
-          </Typography>
-          <Typography variant="caption" sx={{
-            color: "text.secondary"
-          }}>
+          <Typography sx={{ fontWeight: 600, lineHeight: 1.2 }}>Streaming Infra</Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
             manager · {serverHost}
           </Typography>
         </Box>
@@ -102,14 +104,14 @@ export function Sidebar({
             }}
             sx={{ borderRadius: 2, mb: 0.25 }}
           >
-            <ListItemText
-              primary={item.label}
-              slotProps={{ primary: { sx: { fontWeight: 500 } } }}
-            />
+            <ListItemText primary={item.label} slotProps={{ primary: { sx: { fontWeight: 500 } } }} />
             {item.label === 'Deployments' && deploymentCount != null && (
-              <Typography variant="caption" sx={{
-                color: "text.secondary"
-              }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                }}
+              >
                 {deploymentCount}
               </Typography>
             )}
@@ -123,9 +125,10 @@ export function Sidebar({
         <Typography
           variant="caption"
           sx={{
-            color: "text.secondary",
-            fontFamily: MONO_STACK
-          }}>
+            color: 'text.secondary',
+            fontFamily: MONO_STACK,
+          }}
+        >
           {serverHost}
         </Typography>
         <ThemeSwitch />
@@ -157,20 +160,22 @@ function SignedInAs() {
       direction="row"
       spacing={1}
       sx={{
-        alignItems: "center",
+        alignItems: 'center',
         pt: 0.5,
-        minWidth: 0
-      }}>
+        minWidth: 0,
+      }}
+    >
       <Typography
         variant="caption"
         title={`Signed in as ${session.state.username}`}
         sx={{
-          color: "text.secondary",
+          color: 'text.secondary',
           flex: 1,
           minWidth: 0,
           overflow: 'hidden',
-          textOverflow: 'ellipsis'
-        }}>
+          textOverflow: 'ellipsis',
+        }}
+      >
         {session.state.username}
       </Typography>
       <Button size="small" onClick={() => void signOut()} disabled={leaving}>
@@ -185,9 +190,12 @@ function ThemeSwitch() {
 
   return (
     <Box>
-      <Typography variant="caption" sx={{
-        color: "text.secondary"
-      }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
         Theme
       </Typography>
       <ToggleButtonGroup

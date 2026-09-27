@@ -23,9 +23,20 @@ export function srsOverviewOf(profile, { hostEnv = {}, without = [] } = {}) {
   const fields = engineSettingsFieldsFor('srs', { abr: false }).filter((field) => !without.includes(field.key));
   const defaults = effectiveEngineDefaults('srs', hostEnv, {});
   return {
-    identity: engineOverviewIdentity(profile), engine: 'srs', abr: false, fields,
-    settings: profile.engine_settings, defaults: defaults.values, defaultSources: defaults.sources,
-    ...assembleEngineSettingObservations({ fields, settings: profile.engine_settings, defaults, readings: environmentSettingReadings(fields) }),
-    live: null, liveUnavailableReason: 'Live engine status is not observed in this offline fixture.',
+    identity: engineOverviewIdentity(profile),
+    engine: 'srs',
+    abr: false,
+    fields,
+    settings: profile.engine_settings,
+    defaults: defaults.values,
+    defaultSources: defaults.sources,
+    ...assembleEngineSettingObservations({
+      fields,
+      settings: profile.engine_settings,
+      defaults,
+      readings: environmentSettingReadings(fields),
+    }),
+    live: null,
+    liveUnavailableReason: 'Live engine status is not observed in this offline fixture.',
   };
 }

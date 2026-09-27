@@ -1,8 +1,4 @@
-import type {
-  FeedStreamEntry,
-  Rendition,
-  StreamStatus,
-} from '@streaming-monorepo/web2-admin-common';
+import type { FeedStreamEntry, Rendition, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
 import {
   PUBLISHABLE_STATUSES,
@@ -20,13 +16,7 @@ import {
   StreamLiveError,
   StreamNotFoundError,
 } from './errors/index.js';
-import {
-  buildFeedEntry,
-  ladderOnFeed,
-  planReconcile,
-  removeEntry,
-  upsertEntry,
-} from './feedEntries.js';
+import { buildFeedEntry, ladderOnFeed, planReconcile, removeEntry, upsertEntry } from './feedEntries.js';
 import type { FeedGateway, FeedSnapshot } from './FeedGateway.js';
 import type { FeedIdentity } from './feedIdentity.js';
 import { Logger } from './Logger.js';
@@ -41,16 +31,8 @@ const logger = Logger.getInstance();
 export interface PublishStreamStore {
   findById(id: string, userId: string): Promise<StreamRow | null>;
   findThumbnail(id: string, userId: string): Promise<ThumbnailRow | null>;
-  recordThumbnailRef(
-    id: string,
-    userId: string,
-    thumbnailRef: string,
-  ): Promise<void>;
-  claimForPublish(
-    id: string,
-    userId: string,
-    allowedFrom: readonly StreamStatus[],
-  ): Promise<StreamRow | null>;
+  recordThumbnailRef(id: string, userId: string, thumbnailRef: string): Promise<void>;
+  claimForPublish(id: string, userId: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null>;
   /**
    * `entryContentEditedAt` here and on `recordRepublish` is the
    * `content_edited_at` of the row the entry was built from: which edit the
@@ -81,30 +63,18 @@ export interface PublishStreamStore {
    * Records which edit a stream's entry carries after a write that rebuilt it
    * without being a publish of that stream: a reconcile. Touches nothing else.
    */
-  recordEntryRebuilt(
-    id: string,
-    entryContentEditedAt: Date | null,
-  ): Promise<void>;
+  recordEntryRebuilt(id: string, entryContentEditedAt: Date | null): Promise<void>;
   /**
    * Releases a `publishing` claim back to `previousStatus` with the reason. For
    * the first publish and the unpublish, which took the claim; nothing else.
    */
-  failPublish(
-    id: string,
-    userId: string,
-    previousStatus: StreamStatus,
-    message: string,
-  ): Promise<void>;
+  failPublish(id: string, userId: string, previousStatus: StreamStatus, message: string): Promise<void>;
   /**
    * Records why a feed write failed and touches nothing else. For the republish
    * path, which takes no claim: the status is whatever the row says, and it is
    * not this method's to put back.
    */
-  recordPublishError(
-    id: string,
-    userId: string,
-    message: string,
-  ): Promise<void>;
+  recordPublishError(id: string, userId: string, message: string): Promise<void>;
   /**
    * Every row that should be on the catalogue right now — status `published`,
    * `live` or `vod`, every user. Only `reconcile` uses it, and it has to see
@@ -137,10 +107,7 @@ export interface FeedWriteLog {
     payload: unknown[],
     reference: string | null,
   ): Promise<void>;
-  lastWrite(
-    owner: string,
-    topic: string,
-  ): Promise<{ index: number; entries: unknown[] } | null>;
+  lastWrite(owner: string, topic: string): Promise<{ index: number; entries: unknown[] } | null>;
 }
 
 export interface PublishOutcome {
@@ -248,9 +215,7 @@ export class PublishService {
       // operator fixed a title mid-broadcast, and the entry must go back on
       // the feed still saying `live` (or `vod`, with its index and duration).
       // The `publishing` claim the first publish uses would lose that.
-      return hasReportedState(before)
-        ? this.doRepublishWithState(before)
-        : this.doPublish(before, userId);
+      return hasReportedState(before) ? this.doRepublishWithState(before) : this.doPublish(before, userId);
     });
   }
 
@@ -270,9 +235,7 @@ export class PublishService {
    * what the row says at write time, not what the caller saw.
    */
   async republishWithState(stream: StreamRow): Promise<PublishOutcome> {
-    return this.mutex.run(async () =>
-      this.doRepublishWithState(await this.read(stream.id, stream.user_id)),
-    );
+    return this.mutex.run(async () => this.doRepublishWithState(await this.read(stream.id, stream.user_id)));
   }
 
   /**
@@ -294,14 +257,7 @@ export class PublishService {
     return this.mutex.run(async () => {
       const base = await this.baseSnapshot();
       const rows = await this.streams.listOnFeed();
-      const plan = planReconcile(
-        base.entries,
-        rows,
-        this.feed.owner,
-        userId,
-        Date.now(),
-        await this.laddersOf(rows),
-      );
+      const plan = planReconcile(base.entries, rows, this.feed.owner, userId, Date.now(), await this.laddersOf(rows));
 
       if (!plan.changed) {
         logger.info(
@@ -347,18 +303,13 @@ export class PublishService {
    */
   async checkFeedOnBoot(): Promise<FeedBootCheck> {
     return this.mutex.run(async () => {
-      const last = await this.feedWrites.lastWrite(
-        this.feed.owner,
-        this.feed.topicHex,
-      );
+      const last = await this.feedWrites.lastWrite(this.feed.owner, this.feed.topicHex);
 
       let network: FeedSnapshot | null = null;
       try {
         network = await this.gateway.readLatest();
       } catch (error) {
-        logger.warn(
-          `[Boot] could not read the feed head to cross-check it: ${getErrorMessage(error)}`,
-        );
+        logger.warn(`[Boot] could not read the feed head to cross-check it: ${getErrorMessage(error)}`);
       }
 
       let base: FeedSnapshot = last
@@ -415,10 +366,7 @@ export class PublishService {
     });
   }
 
-  private async doPublish(
-    before: StreamRow,
-    userId: string,
-  ): Promise<PublishOutcome> {
+  private async doPublish(before: StreamRow, userId: string): Promise<PublishOutcome> {
     const id = before.id;
     // The entry carries the row's `owner`, while the gateway signs with the
     // configured key. If those have drifted apart — the feed key was rotated
@@ -435,10 +383,7 @@ export class PublishService {
 
     try {
       const thumbnailRef = await this.ensureThumbnailUploaded(claimed, userId);
-      const { entry, renditions } = await this.entryFor(
-        { ...claimed, status },
-        thumbnailRef,
-      );
+      const { entry, renditions } = await this.entryFor({ ...claimed, status }, thumbnailRef);
       const snapshot = await this.baseSnapshot();
       const previous = ladderOnFeed(snapshot.entries, entry.owner, entry.topic);
       const entries = upsertEntry(snapshot.entries, entry);
@@ -465,34 +410,19 @@ export class PublishService {
     }
   }
 
-  private async doUnpublish(
-    id: string,
-    userId: string,
-  ): Promise<PublishOutcome> {
+  private async doUnpublish(id: string, userId: string): Promise<PublishOutcome> {
     // No owner check: an entry written under an older feed key is removed by
     // the owner stored on the row, and refusing here would strand it.
     const before = await this.read(id, userId);
     // A recording can come off the catalogue; a live broadcast cannot, because
     // nothing here can stop the encoder that is still pushing to it.
     if (before.status === 'live') throw new StreamLiveError(id);
-    const { claimed, previousStatus } = await this.claim(
-      before,
-      userId,
-      UNPUBLISHABLE_STATUSES,
-    );
+    const { claimed, previousStatus } = await this.claim(before, userId, UNPUBLISHABLE_STATUSES);
 
     try {
       const snapshot = await this.baseSnapshot();
-      const previous = ladderOnFeed(
-        snapshot.entries,
-        claimed.owner,
-        claimed.topic,
-      );
-      const { entries, removed } = removeEntry(
-        snapshot.entries,
-        claimed.owner,
-        claimed.topic,
-      );
+      const previous = ladderOnFeed(snapshot.entries, claimed.owner, claimed.topic);
+      const { entries, removed } = removeEntry(snapshot.entries, claimed.owner, claimed.topic);
 
       // Nothing to take off the feed — a draft that was never published, or
       // one already removed. Skip the write rather than spend a stamp on an
@@ -504,17 +434,13 @@ export class PublishService {
       // up" and the entry stayed on the catalogue with the row back in
       // `draft`. The base is now the payload this backend last wrote, so the
       // absence is real.
-      const index = removed
-        ? await this.writeFeed(entries, snapshot.index)
-        : (snapshot.index ?? 0);
+      const index = removed ? await this.writeFeed(entries, snapshot.index) : (snapshot.index ?? 0);
 
       const stream = await this.streams.finishUnpublish(id, userId);
       if (!stream) throw new StreamNotFoundError(id);
 
       logger.info(
-        `[Publish] ${claimed.topic} unpublished${
-          removed ? ` at feed index ${index}` : ' (was not on the feed)'
-        }`,
+        `[Publish] ${claimed.topic} unpublished${removed ? ` at feed index ${index}` : ' (was not on the feed)'}`,
       );
       return this.outcome(stream, index, entries.length, [], previous);
     } catch (error) {
@@ -533,9 +459,7 @@ export class PublishService {
    * — the owner check, the entry, the log line, what a failure records — is
    * about that row, never about whatever the caller read before queueing.
    */
-  private async doRepublishWithState(
-    current: StreamRow,
-  ): Promise<PublishOutcome> {
+  private async doRepublishWithState(current: StreamRow): Promise<PublishOutcome> {
     const { id, user_id: userId } = current;
     if (!sameOwner(current.owner, this.feed.owner)) {
       throw new FeedOwnerMismatchError(id, current.owner, this.feed.owner);
@@ -552,13 +476,7 @@ export class PublishService {
       // `current`'s edit, not whatever the row holds now: no claim is taken
       // here, so the console can save an edit while this write is on its way,
       // and that edit is not on the entry.
-      const updated = await this.streams.recordRepublish(
-        id,
-        userId,
-        index,
-        thumbnailRef,
-        current.content_edited_at,
-      );
+      const updated = await this.streams.recordRepublish(id, userId, index, thumbnailRef, current.content_edited_at);
       if (!updated) throw new StreamNotFoundError(id);
 
       logger.info(
@@ -588,9 +506,7 @@ export class PublishService {
    * taking the ladder off the catalogue until its next rung report. One query
    * per row, and a reconcile is rare and already reads every row.
    */
-  private async laddersOf(
-    rows: readonly StreamRow[],
-  ): Promise<Map<string, Rendition[]>> {
+  private async laddersOf(rows: readonly StreamRow[]): Promise<Map<string, Rendition[]>> {
     const ladders = new Map<string, Rendition[]>();
     for (const row of rows) {
       const rungs = await this.renditions.listByStream(row.id);
@@ -610,19 +526,10 @@ export class PublishService {
    * uploads nothing, so its entry went out without that image, and the
    * console has to keep asking for the republish that uploads it.
    */
-  private async recordRebuiltEntries(
-    rows: readonly StreamRow[],
-    topics: readonly string[],
-  ): Promise<void> {
+  private async recordRebuiltEntries(rows: readonly StreamRow[], topics: readonly string[]): Promise<void> {
     const rebuilt = new Set(topics.map((topic) => topic.toLowerCase()));
-    const recorded = rows.filter(
-      (row) => rebuilt.has(row.topic.toLowerCase()) && !hasPendingThumbnail(row),
-    );
-    await Promise.all(
-      recorded.map((row) =>
-        this.streams.recordEntryRebuilt(row.id, row.content_edited_at),
-      ),
-    );
+    const recorded = rows.filter((row) => rebuilt.has(row.topic.toLowerCase()) && !hasPendingThumbnail(row));
+    await Promise.all(recorded.map((row) => this.streams.recordEntryRebuilt(row.id, row.content_edited_at)));
   }
 
   /**
@@ -642,9 +549,7 @@ export class PublishService {
     stream: StreamRow,
     thumbnailRef: string | null,
   ): Promise<{ entry: FeedStreamEntry; renditions: Rendition[] }> {
-    const renditions = (await this.renditions.listByStream(stream.id)).map(
-      toRendition,
-    );
+    const renditions = (await this.renditions.listByStream(stream.id)).map(toRendition);
     const entry = buildFeedEntry(stream, thumbnailRef, Date.now(), renditions);
     return { entry, renditions };
   }
@@ -658,11 +563,7 @@ export class PublishService {
     userId: string,
     allowedFrom: readonly StreamStatus[] = PUBLISHABLE_STATUSES,
   ): Promise<{ claimed: StreamRow; previousStatus: StreamStatus }> {
-    const claimed = await this.streams.claimForPublish(
-      before.id,
-      userId,
-      allowedFrom,
-    );
+    const claimed = await this.streams.claimForPublish(before.id, userId, allowedFrom);
     if (!claimed) {
       // Re-read rather than trusting `before`: the row may have been deleted
       // between the two statements, which is a 404, not a 409.
@@ -687,15 +588,9 @@ export class PublishService {
    * cannot answer throws instead, and the publish fails rather than paying to
    * re-upload an image that is probably fine.
    */
-  private async ensureThumbnailUploaded(
-    stream: StreamRow,
-    userId: string,
-  ): Promise<string | null> {
+  private async ensureThumbnailUploaded(stream: StreamRow, userId: string): Promise<string | null> {
     if (!stream.has_thumbnail) return stream.thumbnail_ref;
-    if (
-      stream.thumbnail_ref &&
-      (await this.gateway.hasReference(stream.thumbnail_ref))
-    ) {
+    if (stream.thumbnail_ref && (await this.gateway.hasReference(stream.thumbnail_ref))) {
       return stream.thumbnail_ref;
     }
 
@@ -703,18 +598,12 @@ export class PublishService {
     if (!stored) return null;
 
     if (stream.thumbnail_ref) {
-      logger.warn(
-        `[Publish] ${stream.topic} thumbnail ${stream.thumbnail_ref} is not on the gateway; re-uploading`,
-      );
+      logger.warn(`[Publish] ${stream.topic} thumbnail ${stream.thumbnail_ref} is not on the gateway; re-uploading`);
     }
 
     const mime = stored.thumbnail_mime ?? 'image/png';
     const extension = THUMBNAIL_FILE_EXTENSIONS[mime] ?? 'bin';
-    const reference = await this.gateway.uploadThumbnail(
-      stored.thumbnail,
-      `${stream.topic}.${extension}`,
-      mime,
-    );
+    const reference = await this.gateway.uploadThumbnail(stored.thumbnail, `${stream.topic}.${extension}`, mime);
     // Written now, not with the rest of the publish: the chunk is paid for
     // already, and a feed write that fails after this must not make the next
     // attempt upload the same image again.
@@ -731,10 +620,7 @@ export class PublishService {
    * logged, because it is the one moment the old failure mode can still bite.
    */
   private async baseSnapshot(): Promise<FeedSnapshot> {
-    const last = await this.feedWrites.lastWrite(
-      this.feed.owner,
-      this.feed.topicHex,
-    );
+    const last = await this.feedWrites.lastWrite(this.feed.owner, this.feed.topicHex);
     if (last) return { index: last.index, entries: last.entries };
 
     const snapshot = await this.gateway.readLatest();
@@ -745,51 +631,24 @@ export class PublishService {
   }
 
   /** Writes at the index after the base; index 0 when the feed is empty. */
-  private async writeFeed(
-    entries: unknown[],
-    head: number | null,
-  ): Promise<number> {
+  private async writeFeed(entries: unknown[], head: number | null): Promise<number> {
     const index = head === null ? 0 : head + 1;
     const reference = await this.gateway.write(entries, index);
-    await this.feedWrites.record(
-      this.feed.owner,
-      this.feed.topicHex,
-      index,
-      entries.length,
-      entries,
-      reference,
-    );
+    await this.feedWrites.record(this.feed.owner, this.feed.topicHex, index, entries.length, entries, reference);
     return index;
   }
 
   /** A publish or unpublish failed: release the claim, and record why. */
-  private fail(
-    id: string,
-    userId: string,
-    previousStatus: StreamStatus,
-    error: unknown,
-  ): Promise<Error> {
-    return this.failed(id, error, (message) =>
-      this.streams.failPublish(id, userId, previousStatus, message),
-    );
+  private fail(id: string, userId: string, previousStatus: StreamStatus, error: unknown): Promise<Error> {
+    return this.failed(id, error, (message) => this.streams.failPublish(id, userId, previousStatus, message));
   }
 
   /** A republish failed: there is no claim to release, so only record why. */
-  private failRepublish(
-    id: string,
-    userId: string,
-    error: unknown,
-  ): Promise<Error> {
-    return this.failed(id, error, (message) =>
-      this.streams.recordPublishError(id, userId, message),
-    );
+  private failRepublish(id: string, userId: string, error: unknown): Promise<Error> {
+    return this.failed(id, error, (message) => this.streams.recordPublishError(id, userId, message));
   }
 
-  private async failed(
-    id: string,
-    error: unknown,
-    record: (message: string) => Promise<void>,
-  ): Promise<Error> {
+  private async failed(id: string, error: unknown, record: (message: string) => Promise<void>): Promise<Error> {
     const message = getErrorMessage(error);
     try {
       await record(message);
@@ -797,9 +656,7 @@ export class PublishService {
       // After a publish the row is stuck in `publishing` and boot clears it;
       // after a republish only the reason is lost. Log both, and still report
       // the original failure to the caller.
-      logger.error(
-        `[Publish] Could not record the failure of ${id}: ${getErrorMessage(recordError)}`,
-      );
+      logger.error(`[Publish] Could not record the failure of ${id}: ${getErrorMessage(recordError)}`);
     }
     logger.error(`[Publish] ${id} failed: ${message}`);
     return new PublishFailedError(id, message);

@@ -57,10 +57,7 @@ describe('parseTransportStatsLine', () => {
   });
 
   it('reads the older level word SRS used for the same line', () => {
-    assert.equal(
-      parseTransportStatsLine(FIRST.replace('[INFO]', '[Trace]'))?.connection,
-      '4ek6chsn',
-    );
+    assert.equal(parseTransportStatsLine(FIRST.replace('[INFO]', '[Trace]'))?.connection, '4ek6chsn');
   });
 
   it('refuses a line cut in half anywhere before its last count', () => {
@@ -93,10 +90,7 @@ describe('parseTransportStatsLine', () => {
   });
 
   it('refuses a count too long to be a number exactly, or a negative one', () => {
-    assert.equal(
-      parseTransportStatsLine(FIRST.replace('pktRecv=6500', 'pktRecv=12345678901234567')),
-      null,
-    );
+    assert.equal(parseTransportStatsLine(FIRST.replace('pktRecv=6500', 'pktRecv=12345678901234567')), null);
     assert.equal(parseTransportStatsLine(FIRST.replace('pktRcvDrop=397', 'pktRcvDrop=-1')), null);
   });
 
@@ -114,9 +108,7 @@ describe('parseTransportStatsLine', () => {
 
   it('refuses a whole report line quoted at the end of another line', () => {
     assert.equal(
-      parseTransportStatsLine(
-        `[2026-09-22 17:33:40.123][INFO][1][4ek6chsn] srt: streamid=#!::r=live/${FIRST}`,
-      ),
+      parseTransportStatsLine(`[2026-09-22 17:33:40.123][INFO][1][4ek6chsn] srt: streamid=#!::r=live/${FIRST}`),
       null,
     );
   });

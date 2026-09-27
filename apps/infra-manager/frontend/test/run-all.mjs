@@ -109,8 +109,11 @@ export function chromeProblem(path, canExecute = isExecutable) {
  */
 function endTree(child, signal) {
   if (!child.pid) return;
-  try { process.kill(-child.pid, signal); }
-  catch { child.kill(signal); }
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    child.kill(signal);
+  }
 }
 
 function runSuite(file, env) {

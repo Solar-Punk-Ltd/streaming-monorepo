@@ -34,11 +34,7 @@ export function ReadinessCard({
   const done = steps.filter((step) => step.state === 'ok').length;
 
   return (
-    <SectionCard
-      title="Readiness"
-      sub={`${done} of ${steps.length} steps done`}
-      flush
-    >
+    <SectionCard title="Readiness" sub={`${done} of ${steps.length} steps done`} flush>
       <Box component="ol" sx={{ listStyle: 'none', m: 0, p: 0 }}>
         {steps.map((step, index) => {
           const action = step.action;
@@ -49,12 +45,13 @@ export function ReadinessCard({
               direction="row"
               spacing={1.5}
               sx={{
-                alignItems: "center",
+                alignItems: 'center',
                 px: 2.25,
                 py: 1.5,
                 borderTop: index === 0 ? 0 : 1,
-                borderColor: 'divider'
-              }}>
+                borderColor: 'divider',
+              }}
+            >
               <Box
                 sx={(theme) => ({
                   width: 22,
@@ -73,9 +70,12 @@ export function ReadinessCard({
               </Box>
               <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                 <Typography sx={{ fontWeight: 500 }}>{step.title}</Typography>
-                <Typography variant="caption" sx={{
-                  color: "text.secondary"
-                }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: 'text.secondary',
+                  }}
+                >
                   {step.detail}
                 </Typography>
               </Box>
@@ -104,12 +104,7 @@ export function ReadinessCard({
         })}
       >
         <Typography sx={{ fontWeight: 600 }}>{summary.title}</Typography>
-        {summary.url && (
-          <CopyBox
-            value={summary.url}
-            href={summary.isLink ? summary.url : undefined}
-          />
-        )}
+        {summary.url && <CopyBox value={summary.url} href={summary.isLink ? summary.url : undefined} />}
       </Stack>
     </SectionCard>
   );

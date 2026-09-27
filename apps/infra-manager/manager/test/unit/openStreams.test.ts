@@ -19,11 +19,7 @@ interface FakeStream {
   unregister(): void;
 }
 
-function open(
-  streams: OpenStreams,
-  tokenHash: string,
-  userId: number,
-): FakeStream {
+function open(streams: OpenStreams, tokenHash: string, userId: number): FakeStream {
   let closes = 0;
   const unregister = streams.open(tokenHash, userId, () => {
     closes += 1;
@@ -105,10 +101,7 @@ describe('the open streams registry', () => {
     open(streams, 'ann-phone', ANN);
     open(streams, 'bob-laptop', BOB);
 
-    assert.deepEqual(streams.openTokenHashes().sort(), [
-      'ann-phone',
-      'bob-laptop',
-    ]);
+    assert.deepEqual(streams.openTokenHashes().sort(), ['ann-phone', 'bob-laptop']);
 
     assert.equal(streams.closeAll(), 3);
     assert.deepEqual(streams.openTokenHashes(), []);

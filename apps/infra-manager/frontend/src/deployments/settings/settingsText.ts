@@ -183,7 +183,10 @@ export function driftNotice(catalog: DeploymentSettingsCatalog): DriftNotice | n
   const count = keys.length;
   if (count === 0) return null;
   if (!catalog.running) {
-    return { text: `Start will use ${count} changed ${count === 1 ? 'setting' : 'settings'}: ${wordList(keys)}.`, offersApply: false };
+    return {
+      text: `Start will use ${count} changed ${count === 1 ? 'setting' : 'settings'}: ${wordList(keys)}.`,
+      offersApply: false,
+    };
   }
   const what = fullRedeploy
     ? 'Apply redeploys every service of this deployment.'
@@ -234,7 +237,11 @@ const REFUSED_WORDS: Readonly<Record<SettingsEditTarget, string>> = {
 };
 
 /** The line under a section's title. */
-export function sectionSummary(total: number, counts: SectionCounts, target: SettingsEditTarget = 'deployment'): string {
+export function sectionSummary(
+  total: number,
+  counts: SectionCounts,
+  target: SettingsEditTarget = 'deployment',
+): string {
   const parts = [total === 1 ? '1 setting' : `${total} settings`];
   if (counts.unsaved > 0) parts.push(`${counts.unsaved} ${pendingChipLabel(target)}`);
   if (counts.refused > 0) parts.push(`${counts.refused} ${REFUSED_WORDS[target]}`);
@@ -315,7 +322,8 @@ export function fieldHint(field: StackSettingField | null): string | null {
   if (field?.kind === 'integer') return `A whole number${boundsText(field.min, field.max)}.`;
   if (field?.kind === 'number') return `A number${boundsText(field.min, field.max)}. Use a period for decimals.`;
   if (field?.kind === 'url') return 'An http or https address, or empty.';
-  if (field?.kind === 'text' && field.minLength !== undefined) return `At least ${field.minLength} characters, or empty.`;
+  if (field?.kind === 'text' && field.minLength !== undefined)
+    return `At least ${field.minLength} characters, or empty.`;
   return null;
 }
 

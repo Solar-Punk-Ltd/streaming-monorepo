@@ -23,11 +23,7 @@ import type { StackVersion } from '@streaming-infra-manager/common';
 
 import { writeProfileEnv } from '../../src/utils/envUtils.js';
 import { leaveBuildMarkers, scratchVersionsRoot, V3_FIXTURE } from '../support/stackFixtures.js';
-import {
-  nextVersionChange,
-  startVersionsTestApp,
-  type VersionsTestApp,
-} from '../support/versionsTestApp.js';
+import { nextVersionChange, startVersionsTestApp, type VersionsTestApp } from '../support/versionsTestApp.js';
 
 const APPLY_COMMIT = 'be440d65e0e82bcf9000a8a0dde905dc215255d6';
 
@@ -121,7 +117,9 @@ async function saveAndApply(id: number, generation: number): Promise<JsonAnswer>
 function treeHash(root: string): string {
   const digest = createHash('sha256');
   const walk = (relative: string): void => {
-    for (const entry of readdirSync(join(root, relative), { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const entry of readdirSync(join(root, relative), { withFileTypes: true }).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    )) {
       const path = relative === '' ? entry.name : `${relative}/${entry.name}`;
       if (entry.isDirectory()) {
         walk(path);
@@ -175,8 +173,7 @@ describe('POST /versions/:id/settings/apply', () => {
 
     await saveAndApply(id, 2);
 
-    const inode = (build: string, relative: string): number =>
-      statSync(join(buildsRoot, build, relative)).ino;
+    const inode = (build: string, relative: string): number => statSync(join(buildsRoot, build, relative)).ino;
     const applied = `${APPLY_COMMIT}-r1`;
     for (const shared of ['deploy/scripts/deploy.sh', 'deploy/docker-compose.yml', '.env.sample']) {
       assert.equal(inode(applied, shared), inode(APPLY_COMMIT, shared), shared);
@@ -280,10 +277,7 @@ describe('POST /versions/:id/settings/apply', () => {
     await saveAndApply(id, 2);
     await saveAndApply(id, 3);
 
-    assert.deepEqual(readdirSync(buildsRoot).sort(), [
-      `${APPLY_COMMIT}-r1`,
-      `${APPLY_COMMIT}-r2`,
-    ]);
+    assert.deepEqual(readdirSync(buildsRoot).sort(), [`${APPLY_COMMIT}-r1`, `${APPLY_COMMIT}-r2`]);
   });
 
   it('answers the build that already carries the settings rather than publishing another', async () => {
@@ -399,6 +393,9 @@ describe('POST /versions/:id/settings/apply', () => {
 
     await saveAndApply(id, 2);
 
-    assert.deepEqual(readdirSync(buildsRoot).filter((entry) => entry.startsWith('tmp-')), []);
+    assert.deepEqual(
+      readdirSync(buildsRoot).filter((entry) => entry.startsWith('tmp-')),
+      [],
+    );
   });
 });

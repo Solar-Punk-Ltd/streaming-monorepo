@@ -86,17 +86,30 @@ async function test(req, res, readBody) {
   if (!body) return;
   const problems = adminLinkTestProblems(body);
   if (problems.length > 0) return send(res, 400, { error: 'validation_error', errors: problems });
-  if (body.token.source === 'stored' && managerAdminLink.tokenStored && !sameAdminOrigin(body.url, managerAdminLink.url ?? '')) {
+  if (
+    body.token.source === 'stored' &&
+    managerAdminLink.tokenStored &&
+    !sameAdminOrigin(body.url, managerAdminLink.url ?? '')
+  ) {
     return send(res, 200, { outcome: 'stored-token-elsewhere' }, { 'cache-control': 'no-store' });
   }
   const hasToken = body.token.source === 'typed' || managerAdminLink.tokenStored;
-  return send(res, 200, { outcome: mockTestOutcome({ url: body.url, hasToken, feedOwner: body.feedOwner ?? null }) }, { 'cache-control': 'no-store' });
+  return send(
+    res,
+    200,
+    { outcome: mockTestOutcome({ url: body.url, hasToken, feedOwner: body.feedOwner ?? null }) },
+    { 'cache-control': 'no-store' },
+  );
 }
 
 /** @param deps.readBody reads a JSON request body */
 export function adminLinkRoutes({ readBody }) {
   return [
-    ['GET', /^\/manager-settings\/admin-link$/, (_req, res) => send(res, 200, answer(), { 'cache-control': 'no-store' })],
+    [
+      'GET',
+      /^\/manager-settings\/admin-link$/,
+      (_req, res) => send(res, 200, answer(), { 'cache-control': 'no-store' }),
+    ],
     ['PUT', /^\/manager-settings\/admin-link$/, (req, res) => save(req, res, readBody)],
     ['POST', /^\/manager-settings\/admin-link\/test$/, (req, res) => test(req, res, readBody)],
   ];

@@ -39,7 +39,7 @@ function runProbe(apiPort) {
       process.execPath,
       ['-e', readHealthcheckProbe()],
       { env: { ...process.env, API_PORT: String(apiPort) } },
-      (error) => resolve(error ? error.code ?? -1 : 0),
+      (error) => resolve(error ? (error.code ?? -1) : 0),
     );
   });
 }

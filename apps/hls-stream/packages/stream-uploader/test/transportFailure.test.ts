@@ -31,8 +31,7 @@ const FAILURES: readonly Failure[] = ['refused', 'silent', 'reset before answer'
 /** Short, since the silent node spends all of it. */
 const TIMEOUT_MS = 300;
 
-const PARTIAL_ANSWER =
-  'HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 1000\r\n\r\n{"status":';
+const PARTIAL_ANSWER = 'HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 1000\r\n\r\n{"status":';
 
 const servers: net.Server[] = [];
 

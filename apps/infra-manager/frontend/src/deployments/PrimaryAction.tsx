@@ -8,13 +8,7 @@ import { isRunning, isTransitional, statusLabelOf } from './shape';
  * The one button a deployment always has: Stop while it runs, Start or Retry
  * while it does not, and a disabled spinner naming the change in between.
  */
-export function PrimaryAction({
-  profile,
-  size = 'small',
-}: {
-  profile: Profile;
-  size?: 'small' | 'medium';
-}) {
+export function PrimaryAction({ profile, size = 'small' }: { profile: Profile; size?: 'small' | 'medium' }) {
   const actions = useActions();
   const busy = isTransitional(profile) || actions.isBusy(profile.name);
 
@@ -37,11 +31,7 @@ export function PrimaryAction({
   }
 
   return (
-    <Button
-      size={size}
-      variant="contained"
-      onClick={() => actions.start(profile.name)}
-    >
+    <Button size={size} variant="contained" onClick={() => actions.start(profile.name)}>
       {profile.status === 'ERROR' ? 'Retry' : 'Start'}
     </Button>
   );

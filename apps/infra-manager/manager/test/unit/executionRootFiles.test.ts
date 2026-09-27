@@ -28,10 +28,22 @@ beforeEach(async () => {
   await writeFile(join(source, 'deploy', 'config.sample.json'), '{}\n');
   await writeFile(join(source, 'engines', 'srs', '.env.sample'), 'SYNTHETIC=sample\n');
   await symlink('deploy/scripts/deploy.sh', join(source, 'entry'));
-  await writeFile(join(source, '.stack-manifest.json'), JSON.stringify({ buildId: commit, commit, builtAt: '2026-09-09T00:00:00.000Z', toolchain: 'synthetic', inputGeneration: 1, inputHashes: {} }));
+  await writeFile(
+    join(source, '.stack-manifest.json'),
+    JSON.stringify({
+      buildId: commit,
+      commit,
+      builtAt: '2026-09-09T00:00:00.000Z',
+      toolchain: 'synthetic',
+      inputGeneration: 1,
+      inputHashes: {},
+    }),
+  );
   await writeFile(join(source, '.complete'), '');
 });
-afterEach(async () => { await rm(root, { recursive: true, force: true }); });
+afterEach(async () => {
+  await rm(root, { recursive: true, force: true });
+});
 
 async function treeDigest(path: string) {
   const { rootMode, entries } = await inventoryOwnedTree(path);
@@ -40,10 +52,19 @@ async function treeDigest(path: string) {
 async function record() {
   const executionId = randomUUID();
   return {
-    executionId, source: { root: source, versionId: 1, buildId: commit, commit, artifactDigest: await treeDigest(source) },
+    executionId,
+    source: { root: source, versionId: 1, buildId: commit, commit, artifactDigest: await treeDigest(source) },
     profile: { name: 'owned', instanceId: randomUUID(), intentRevision: 3, status: 'DEPLOYING' as const },
-    jobReferenceId: 7, target: { alias: 'localhost', daemonId: 'synthetic-daemon' }, project: 'owned', action: 'deploy' as const, services: ['srs'],
-    root: join(executions, executionId, 'tree'), state: 'copying' as const, copyToken: randomUUID(), referenceId: 8, createdAt: new Date('2026-09-09T00:00:00.000Z'),
+    jobReferenceId: 7,
+    target: { alias: 'localhost', daemonId: 'synthetic-daemon' },
+    project: 'owned',
+    action: 'deploy' as const,
+    services: ['srs'],
+    root: join(executions, executionId, 'tree'),
+    state: 'copying' as const,
+    copyToken: randomUUID(),
+    referenceId: 8,
+    createdAt: new Date('2026-09-09T00:00:00.000Z'),
   };
 }
 
@@ -52,7 +73,10 @@ it('links the exact source into the copy and records ownership outside the writa
   await copyExecutionRoot(item, executions);
   assert.equal(await treeDigest(item.root), item.source.artifactDigest);
   assert.equal(await treeDigest(source), item.source.artifactDigest, 'the build was written into');
-  assert.equal((await lstat(join(item.root, 'deploy/scripts/deploy.sh'))).ino, (await lstat(join(source, 'deploy/scripts/deploy.sh'))).ino);
+  assert.equal(
+    (await lstat(join(item.root, 'deploy/scripts/deploy.sh'))).ino,
+    (await lstat(join(source, 'deploy/scripts/deploy.sh'))).ino,
+  );
   assert.equal((await lstat(join(item.root, 'deploy/scripts/deploy.sh'))).mode & 0o777, 0o755);
   assert.equal(await readlink(join(item.root, 'entry')), 'deploy/scripts/deploy.sh');
   const owner = JSON.parse(await readFile(join(dirname(item.root), 'owner.json'), 'utf8'));
@@ -65,7 +89,7 @@ it('links the exact source into the copy and records ownership outside the writa
   assert.equal((await lstat(join(dirname(item.root), 'owner.json'))).mode & 0o777, 0o600);
 });
 
-it('accepts a hard link made and removed while reading immutable build metadata', async t => {
+it('accepts a hard link made and removed while reading immutable build metadata', async (t) => {
   const item = await record();
   const sourceInventory = await inventoryOwnedTree(source);
   const manifest = join(source, '.stack-manifest.json');
@@ -82,7 +106,10 @@ it('accepts a hard link made and removed while reading immutable build metadata'
     return handle;
   }) as typeof fsPromises.open);
   syncBuiltinESMExports();
-  t.after(() => { opened.mock.restore(); syncBuiltinESMExports(); });
+  t.after(() => {
+    opened.mock.restore();
+    syncBuiltinESMExports();
+  });
 
   const copied = await copyExecutionRoot(item, executions, { sourceInventory });
 
@@ -90,7 +117,7 @@ it('accepts a hard link made and removed while reading immutable build metadata'
   assert.equal(copied.artifactDigest, item.source.artifactDigest);
 });
 
-it('accepts hard-link churn on a shared file while verifying the linked copy', async t => {
+it('accepts hard-link churn on a shared file while verifying the linked copy', async (t) => {
   const item = await record();
   const destination = join(item.root, '.env.sample');
   const transient = join(root, 'transient-copy-link');
@@ -107,7 +134,10 @@ it('accepts hard-link churn on a shared file while verifying the linked copy', a
     return info;
   }) as typeof fsPromises.lstat);
   syncBuiltinESMExports();
-  t.after(() => { stated.mock.restore(); syncBuiltinESMExports(); });
+  t.after(() => {
+    stated.mock.restore();
+    syncBuiltinESMExports();
+  });
 
   const copied = await copyExecutionRoot(item, executions);
 
@@ -123,7 +153,11 @@ it('shares every regular file with the build, and nothing else', async () => {
 
   for (const entry of entries) {
     const shared = (await lstat(join(item.root, entry.path))).ino === (await lstat(join(source, entry.path))).ino;
-    assert.equal(shared, entry.type === 'file', `${entry.path}, a ${entry.type}, ${shared ? 'shares' : 'does not share'} the build's inode`);
+    assert.equal(
+      shared,
+      entry.type === 'file',
+      `${entry.path}, a ${entry.type}, ${shared ? 'shares' : 'does not share'} the build's inode`,
+    );
   }
 });
 
@@ -141,17 +175,23 @@ it('gives the copy its own inode for every settings file the build carries, and 
     assert.equal(copied.mode & 0o7777, built.mode & 0o7777, `${path} did not keep the mode the build gave it`);
     assert.equal(await readFile(join(item.root, path), 'utf8'), await readFile(join(source, path), 'utf8'));
   }
-  assert.equal((await lstat(join(item.root, 'deploy/scripts/deploy.sh'))).ino, (await lstat(join(source, 'deploy/scripts/deploy.sh'))).ino,
-    'a file that is not a setting stopped being shared');
+  assert.equal(
+    (await lstat(join(item.root, 'deploy/scripts/deploy.sh'))).ino,
+    (await lstat(join(source, 'deploy/scripts/deploy.sh'))).ino,
+    'a file that is not a setting stopped being shared',
+  );
   assert.equal(await treeDigest(item.root), item.source.artifactDigest);
 });
 
-it('copies the bytes of a file the filesystem will not link, so a versions root on another volume still works', async t => {
+it('copies the bytes of a file the filesystem will not link, so a versions root on another volume still works', async (t) => {
   const refused = t.mock.method(fsPromises, 'link', async () => {
     throw Object.assign(new Error('cross-device link'), { code: 'EXDEV' });
   });
   syncBuiltinESMExports();
-  t.after(() => { refused.mock.restore(); syncBuiltinESMExports(); });
+  t.after(() => {
+    refused.mock.restore();
+    syncBuiltinESMExports();
+  });
   const item = await record();
 
   await copyExecutionRoot(item, executions);
@@ -159,7 +199,10 @@ it('copies the bytes of a file the filesystem will not link, so a versions root 
   assert.ok(refused.mock.calls.length > 0, 'nothing tried to link at all, so this test proves nothing');
   assert.equal(await treeDigest(item.root), item.source.artifactDigest);
   assert.equal(await treeDigest(source), item.source.artifactDigest, 'the build was written into');
-  assert.notEqual((await lstat(join(item.root, 'deploy/scripts/deploy.sh'))).ino, (await lstat(join(source, 'deploy/scripts/deploy.sh'))).ino);
+  assert.notEqual(
+    (await lstat(join(item.root, 'deploy/scripts/deploy.sh'))).ino,
+    (await lstat(join(source, 'deploy/scripts/deploy.sh'))).ino,
+  );
   assert.equal((await lstat(join(item.root, 'deploy/scripts/deploy.sh'))).mode & 0o777, 0o755);
 });
 
@@ -173,7 +216,11 @@ it('keeps the bytes a removed build was holding, and leaves the build when a cop
   assert.equal(await treeDigest(source), kept.source.artifactDigest, 'retiring a copy took the build with it');
 
   await rm(source, { recursive: true, force: true });
-  assert.equal(await treeDigest(kept.root), kept.source.artifactDigest, 'the copy lost the bytes the build was holding');
+  assert.equal(
+    await treeDigest(kept.root),
+    kept.source.artifactDigest,
+    'the copy lost the bytes the build was holding',
+  );
 });
 
 it('copies a symbolic link as it stands, without touching the mode the platform gave it', async () => {
@@ -192,7 +239,12 @@ it('copies a symbolic link as it stands, without touching the mode the platform 
 it('contains manager env, engine env, deploy env and generated output writes without restoring absent base inputs', async () => {
   const item = await record();
   await copyExecutionRoot(item, executions);
-  for (const path of ['.env.owned', 'engines/srs/.env.owned', 'deploy/.env.deploy.owned', 'packages/stream-uploader/dist/index.js']) {
+  for (const path of [
+    '.env.owned',
+    'engines/srs/.env.owned',
+    'deploy/.env.deploy.owned',
+    'packages/stream-uploader/dist/index.js',
+  ]) {
     await mkdir(dirname(join(item.root, path)), { recursive: true });
     await writeFile(join(item.root, path), 'synthetic runtime output');
   }
@@ -209,7 +261,10 @@ for (const kind of ['empty-directory', 'nonempty-directory', 'file', 'symlink'] 
     const destination = dirname(item.root);
     if (kind === 'file') await writeFile(destination, 'keep');
     else if (kind === 'symlink') await symlink(source, destination);
-    else { await mkdir(destination); if (kind === 'nonempty-directory') await writeFile(join(destination, 'keep'), 'keep'); }
+    else {
+      await mkdir(destination);
+      if (kind === 'nonempty-directory') await writeFile(join(destination, 'keep'), 'keep');
+    }
     const before = await lstat(destination);
     await assert.rejects(copyExecutionRoot(item, executions));
     assert.equal((await lstat(destination)).ino, before.ino);
@@ -244,7 +299,12 @@ for (const change of ['digest', 'build', 'commit', 'state', 'token'] as const) {
     if (change === 'digest') item.source.artifactDigest = 'e'.repeat(64);
     if (change === 'build') item.source.buildId = `${commit}-r1`;
     if (change === 'commit') item.source.commit = 'b'.repeat(40);
-    const input = change === 'state' ? { ...item, state: 'ready' as const } : change === 'token' ? { ...item, copyToken: null } : item;
+    const input =
+      change === 'state'
+        ? { ...item, state: 'ready' as const }
+        : change === 'token'
+          ? { ...item, copyToken: null }
+          : item;
     await assert.rejects(copyExecutionRoot(input, executions));
     assert.equal(existsSync(dirname(item.root)), false);
   });
@@ -256,9 +316,17 @@ it('refuses source bytes changing during copy and removes only its own partial d
   await mkdir(unrelated);
   await writeFile(join(unrelated, 'keep'), 'keep');
   let changed = false;
-  await assert.rejects(copyExecutionRoot(item, executions, { onProgress: async () => {
-    if (!changed) { changed = true; await writeFile(join(source, 'deploy/scripts/deploy.sh'), 'changed'); }
-  } }), /changed|digest|inventory/i);
+  await assert.rejects(
+    copyExecutionRoot(item, executions, {
+      onProgress: async () => {
+        if (!changed) {
+          changed = true;
+          await writeFile(join(source, 'deploy/scripts/deploy.sh'), 'changed');
+        }
+      },
+    }),
+    /changed|digest|inventory/i,
+  );
   assert.equal(existsSync(dirname(item.root)), false);
   assert.equal(await readFile(join(unrelated, 'keep'), 'utf8'), 'keep');
 });
@@ -266,7 +334,11 @@ it('refuses source bytes changing during copy and removes only its own partial d
 it('captures descriptor values before copying so a caller mutation cannot change the selected source', async () => {
   const item = await record();
   const expected = structuredClone(item);
-  await copyExecutionRoot(item, executions, { onProgress: async () => { item.source.artifactDigest = 'e'.repeat(64); } });
+  await copyExecutionRoot(item, executions, {
+    onProgress: async () => {
+      item.source.artifactDigest = 'e'.repeat(64);
+    },
+  });
   assert.equal(await treeDigest(expected.root), expected.source.artifactDigest);
 });
 
@@ -327,18 +399,23 @@ it('refuses to remove an owner root that names another execution', async () => {
 it('refuses a copy whose linked file was replaced by another inode holding the same bytes', async () => {
   const item = await record();
   const { entries } = await inventoryOwnedTree(source);
-  const linked = entries.find(entry => entry.type === 'file')!;
+  const linked = entries.find((entry) => entry.type === 'file')!;
   let swapped = false;
 
-  await assert.rejects(copyExecutionRoot(item, executions, { onProgress: async () => {
-    const path = join(item.root, linked.path);
-    if (swapped || !existsSync(path)) return;
-    swapped = true;
-    const bytes = await readFile(path);
-    await rm(path);
-    await writeFile(path, bytes);
-    await chmod(path, linked.mode);
-  } }), /differs from its source/);
+  await assert.rejects(
+    copyExecutionRoot(item, executions, {
+      onProgress: async () => {
+        const path = join(item.root, linked.path);
+        if (swapped || !existsSync(path)) return;
+        swapped = true;
+        const bytes = await readFile(path);
+        await rm(path);
+        await writeFile(path, bytes);
+        await chmod(path, linked.mode);
+      },
+    }),
+    /differs from its source/,
+  );
 
   assert.equal(swapped, true, 'the linked file was never replaced, so this test proves nothing');
   assert.equal(existsSync(dirname(item.root)), false);
@@ -349,32 +426,45 @@ it('reads the bytes of a settings file the copy owns, so a change of the same le
   const item = await record();
   let changed = false;
 
-  await assert.rejects(copyExecutionRoot(item, executions, { onProgress: async () => {
-    const path = join(item.root, '.env');
-    if (changed || !existsSync(path)) return;
-    changed = true;
-    await writeFile(path, 'SYNTHETIC=owner\n');
-    await chmod(path, 0o640);
-  } }), /differs from its source/);
+  await assert.rejects(
+    copyExecutionRoot(item, executions, {
+      onProgress: async () => {
+        const path = join(item.root, '.env');
+        if (changed || !existsSync(path)) return;
+        changed = true;
+        await writeFile(path, 'SYNTHETIC=owner\n');
+        await chmod(path, 0o640);
+      },
+    }),
+    /differs from its source/,
+  );
 
   assert.equal(changed, true, 'the settings file was never copied, so this test proves nothing');
 });
 
-it('reads the bytes of a file the filesystem would not link, so a change of the same length is refused', async t => {
+it('reads the bytes of a file the filesystem would not link, so a change of the same length is refused', async (t) => {
   const refused = t.mock.method(fsPromises, 'link', async () => {
     throw Object.assign(new Error('cross-device link'), { code: 'EXDEV' });
   });
   syncBuiltinESMExports();
-  t.after(() => { refused.mock.restore(); syncBuiltinESMExports(); });
+  t.after(() => {
+    refused.mock.restore();
+    syncBuiltinESMExports();
+  });
   const item = await record();
   let changed = false;
 
-  await assert.rejects(copyExecutionRoot(item, executions, { onProgress: async () => {
-    const path = join(item.root, '.env.sample');
-    if (changed || !existsSync(path)) return;
-    changed = true;
-    await writeFile(path, 'ENGINE=syntheti!\n');
-  } }), /differs from its source/);
+  await assert.rejects(
+    copyExecutionRoot(item, executions, {
+      onProgress: async () => {
+        const path = join(item.root, '.env.sample');
+        if (changed || !existsSync(path)) return;
+        changed = true;
+        await writeFile(path, 'ENGINE=syntheti!\n');
+      },
+    }),
+    /differs from its source/,
+  );
 
   assert.equal(changed, true, 'the copied file was never reached, so this test proves nothing');
 });

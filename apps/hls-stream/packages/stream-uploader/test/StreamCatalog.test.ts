@@ -96,14 +96,7 @@ function makeCatalogBee(writes: CapturedWrite[], opts: CatalogBeeOptions = {}): 
             throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
           }
           if (opts.lookupFails503) {
-            throw new BeeResponseError(
-              'GET',
-              '/feeds',
-              'Service Unavailable.',
-              undefined,
-              503,
-              'Service Unavailable',
-            );
+            throw new BeeResponseError('GET', '/feeds', 'Service Unavailable.', undefined, 503, 'Service Unavailable');
           }
           if (opts.lookupDropsBody) {
             throw droppedBody();

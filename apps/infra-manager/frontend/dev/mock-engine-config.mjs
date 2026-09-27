@@ -37,8 +37,7 @@ const VERIFY_MS = 3000;
 
 const OPEN_STATES = ['applying', 'watching', 'reverting', 'interrupted'];
 
-const INTERRUPTED_REASON =
-  'Apply interrupted by a manager restart. The file is stored, the engine was not verified.';
+const INTERRUPTED_REASON = 'Apply interrupted by a manager restart. The file is stored, the engine was not verified.';
 
 const NO_INTERRUPTED_ROLLOUT = 'There is no interrupted rollout to go back from.';
 
@@ -254,11 +253,7 @@ export function engineConfigRoutes({ readBody, withProfile, deploy, publish }) {
       if (retiredProfiles.has(profile)) return;
       if (profile.engine_config_state !== 'watching') return;
       if (!/crash/.test(config)) {
-        setRolloutState(
-          profile,
-          'applied',
-          engine === OME_SERVICE && /note/.test(config) ? portNote(engine) : null,
-        );
+        setRolloutState(profile, 'applied', engine === OME_SERVICE && /note/.test(config) ? portNote(engine) : null);
         changed(profile);
         return;
       }

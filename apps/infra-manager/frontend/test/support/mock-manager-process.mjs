@@ -24,8 +24,12 @@ export async function startMockManager(t) {
   const child = spawn(
     process.execPath,
     [
-      '--import', 'tsx', '--conditions=development', '--input-type=module',
-      '-e', "import { state } from './dev/mock-seed.mjs'; await import('./dev/mock-manager.mjs'); state.attempts = []; process.send({ ready: true });",
+      '--import',
+      'tsx',
+      '--conditions=development',
+      '--input-type=module',
+      '-e',
+      "import { state } from './dev/mock-seed.mjs'; await import('./dev/mock-manager.mjs'); state.attempts = []; process.send({ ready: true });",
     ],
     { cwd: frontend, env: { ...process.env, PORT: String(port) }, stdio: ['ignore', 'ignore', 'inherit', 'ipc'] },
   );
@@ -34,17 +38,27 @@ export async function startMockManager(t) {
     const exited = once(child, 'exit');
     const bound = setTimeout(() => child.kill('SIGKILL'), 2_000);
     child.kill('SIGTERM');
-    try { await exited; } finally { clearTimeout(bound); }
+    try {
+      await exited;
+    } finally {
+      clearTimeout(bound);
+    }
   });
   await new Promise((done, fail) => {
     const bound = setTimeout(() => finish(new Error('the mock manager did not start')), 20_000);
-    const onMessage = (message) => { if (message?.ready) finish(); };
+    const onMessage = (message) => {
+      if (message?.ready) finish();
+    };
     const onExit = () => finish(new Error('the mock manager exited before it was ready'));
     const finish = (error) => {
       clearTimeout(bound);
       child.off('message', onMessage);
       child.off('exit', onExit);
-      error ? fail(error) : done();
+      if (error) {
+        fail(error);
+      } else {
+        done();
+      }
     };
     child.on('message', onMessage);
     child.once('exit', onExit);

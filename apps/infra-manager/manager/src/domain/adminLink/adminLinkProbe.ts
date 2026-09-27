@@ -15,7 +15,10 @@ export interface AdminLinkProbeOptions {
   maxBodyBytes?: number;
 }
 
-export type AdminLinkProbe = (target: AdminLinkProbeTarget, options?: AdminLinkProbeOptions) => Promise<AdminLinkTestOutcome>;
+export type AdminLinkProbe = (
+  target: AdminLinkProbeTarget,
+  options?: AdminLinkProbeOptions,
+) => Promise<AdminLinkTestOutcome>;
 
 /** The stream uploader's own lookup timeout, `DEFAULT_LOOKUP_TIMEOUT_MS`, so an admin the uploader would give up on reads as unreachable here too. */
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -132,7 +135,12 @@ export const probeAdminLink: AdminLinkProbe = async (target, options = {}) => {
   const maxBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
   const base = target.url.replace(/\/+$/, '');
 
-  const lookup = await ask(`${base}${UNUSED_STREAM_PATH}`, { authorization: `Bearer ${target.token}` }, timeoutMs, maxBytes);
+  const lookup = await ask(
+    `${base}${UNUSED_STREAM_PATH}`,
+    { authorization: `Bearer ${target.token}` },
+    timeoutMs,
+    maxBytes,
+  );
   if (lookup.kind === 'none') return 'unreachable';
   if (lookup.kind === 'redirect') return 'redirected';
   if (lookup.status === 401 && errorCodeOf(lookup) === UNAUTHENTICATED) return 'token-refused';

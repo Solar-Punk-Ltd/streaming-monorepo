@@ -9,10 +9,32 @@ name: infra-manager
 on:
   pull_request:
     branches: [main, main-v3]
-    paths: ['apps/infra-manager/**', 'apps/hls-stream/**', 'tools/app-workspace/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.github/workflows/infra-manager.yml']
+    paths:
+      [
+        'apps/infra-manager/**',
+        'apps/hls-stream/**',
+        'tools/app-workspace/**',
+        'package.json',
+        'pnpm-lock.yaml',
+        'pnpm-workspace.yaml',
+        '.oxlintrc.json',
+        '.oxfmtrc.json',
+        '.github/workflows/infra-manager.yml',
+      ]
   push:
     branches: [main, main-v3]
-    paths: ['apps/infra-manager/**', 'apps/hls-stream/**', 'tools/app-workspace/**', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.github/workflows/infra-manager.yml']
+    paths:
+      [
+        'apps/infra-manager/**',
+        'apps/hls-stream/**',
+        'tools/app-workspace/**',
+        'package.json',
+        'pnpm-lock.yaml',
+        'pnpm-workspace.yaml',
+        '.oxlintrc.json',
+        '.oxfmtrc.json',
+        '.github/workflows/infra-manager.yml',
+      ]
 
 permissions:
   contents: read
@@ -54,6 +76,12 @@ jobs:
 
       - name: Type checks, every package, tests included
         run: pnpm typecheck
+
+      - name: Lint, every package, with oxlint and the root .oxlintrc.json
+        run: pnpm lint
+
+      - name: Formatting, with oxfmt and the root .oxfmtrc.json
+        run: pnpm format:check
 
       - name: Unit tests, common
         run: pnpm --filter @streaming-infra-manager/common test

@@ -59,13 +59,19 @@ export async function endViteServer(t, server, options = {}) {
   let timer;
   const late = Symbol('late');
   try {
-    const closed = Promise.resolve(server.close()).then(() => null, error => error);
+    const closed = Promise.resolve(server.close()).then(
+      () => null,
+      (error) => error,
+    );
     server.httpServer?.closeAllConnections?.();
     const outcome = await Promise.race([
       closed,
-      new Promise(resolve => { timer = setTimeout(() => resolve(late), budget); }),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(late), budget);
+      }),
     ]);
-    if (outcome === late) t.diagnostic(`the Vite server did not close within ${budget} ms, and the suite went on without it`);
+    if (outcome === late)
+      t.diagnostic(`the Vite server did not close within ${budget} ms, and the suite went on without it`);
     else if (outcome !== null) t.diagnostic(`the Vite server did not close cleanly: ${outcome}`);
   } catch (error) {
     t.diagnostic(`the Vite server could not be asked to close: ${error}`);

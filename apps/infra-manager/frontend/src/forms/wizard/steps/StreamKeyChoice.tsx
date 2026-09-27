@@ -18,10 +18,7 @@ export function StreamKeyChoice({ state, update }: WizardStepProps) {
   const generatedAddress = addressOfStreamKey(state.generatedKey);
 
   return (
-    <FormField
-      label="Stream key"
-      aside="the Ethereum private key that signs this feed"
-    >
+    <FormField label="Stream key" aside="the Ethereum private key that signs this feed">
       <ChoiceGroup
         name="wizard-key"
         value={state.keyMode}
@@ -36,16 +33,14 @@ export function StreamKeyChoice({ state, update }: WizardStepProps) {
                 direction="row"
                 spacing={1}
                 sx={{
-                  alignItems: "center",
-                  flexWrap: "wrap"
-                }}>
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                }}
+              >
                 <Typography variant="caption" sx={{ fontFamily: MONO_STACK, flex: 1 }}>
                   address {generatedAddress ? shortHex(generatedAddress) : 'not derived'}
                 </Typography>
-                <Button
-                  size="small"
-                  onClick={() => update({ generatedKey: generatePrivateKey() })}
-                >
+                <Button size="small" onClick={() => update({ generatedKey: generatePrivateKey() })}>
                   Regenerate
                 </Button>
               </Stack>
@@ -63,7 +58,7 @@ export function StreamKeyChoice({ state, update }: WizardStepProps) {
                 onChange={(event) => update({ pastedKey: event.target.value })}
                 placeholder="0x plus 64 hex characters"
                 slotProps={{
-                  htmlInput: { style: { fontFamily: MONO_STACK } }
+                  htmlInput: { style: { fontFamily: MONO_STACK } },
                 }}
               />
             ),

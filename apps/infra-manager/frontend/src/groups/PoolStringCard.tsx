@@ -38,22 +38,13 @@ export function PoolStringCard({
       title="Pool string"
       sub="what an ABR uploader needs to publish here"
       actions={
-        <Button
-          size="small"
-          startIcon={<RefreshIcon />}
-          disabled={loading}
-          onClick={onReload}
-        >
+        <Button size="small" startIcon={<RefreshIcon />} disabled={loading} onClick={onReload}>
           Refresh
         </Button>
       }
     >
       <Stack spacing={1.5}>
-        {error && (
-          <Alert severity="warning">
-            Could not ask the manager to assemble the pool string. {error}
-          </Alert>
-        )}
+        {error && <Alert severity="warning">Could not ask the manager to assemble the pool string. {error}</Alert>}
 
         {result?.ready && result.value ? (
           <>
@@ -62,7 +53,7 @@ export function PoolStringCard({
               direction={{ xs: 'column', sm: 'row' }}
               spacing={1.5}
               sx={{
-                alignItems: { sm: 'center' }
+                alignItems: { sm: 'center' },
               }}
             >
               <Button
@@ -78,36 +69,34 @@ export function PoolStringCard({
               >
                 Create an ABR uploader using this pool
               </Button>
-              <Typography variant="caption" sx={{
-                color: "text.secondary"
-              }}>
-                For an uploader on another manager, paste the copied string into
-                its form. The addresses in it are local to this host, the Docker
-                bridge address a container here reaches, so an uploader on
-                another machine needs BEE_LOCAL_HOST set to an address it can
-                reach and a bind that admits it.
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'text.secondary',
+                }}
+              >
+                For an uploader on another manager, paste the copied string into its form. The addresses in it are local
+                to this host, the Docker bridge address a container here reaches, so an uploader on another machine
+                needs BEE_LOCAL_HOST set to an address it can reach and a bind that admits it.
               </Typography>
             </Stack>
             {problems.length > 0 && (
               <Alert severity="warning">
-                Usable, but a rung cannot pay for what it is sent:{' '}
-                {problems.join(', ')}. Fill it, or an uploader publishing here
-                lands nothing on that rung.
+                Usable, but a rung cannot pay for what it is sent: {problems.join(', ')}. Fill it, or an uploader
+                publishing here lands nothing on that rung.
               </Alert>
             )}
             {result.warnings.length > 0 && (
               <Alert severity="warning">
                 Usable, but not everything could be confirmed.{' '}
-                {result.warnings
-                  .map((note) => `${note.rung}: ${note.reason}`)
-                  .join('. ')}
+                {result.warnings.map((note) => `${note.rung}: ${note.reason}`).join('. ')}
               </Alert>
             )}
           </>
         ) : (
           <Alert severity="warning">
-            <strong>Not ready yet.</strong> Every rung needs a running node with
-            a usable stamp before this can be copied.
+            <strong>Not ready yet.</strong> Every rung needs a running node with a usable stamp before this can be
+            copied.
             {problems.length > 0 && ` Holding it up: ${problems.join(', ')}.`}
           </Alert>
         )}

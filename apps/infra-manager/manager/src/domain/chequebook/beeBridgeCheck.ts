@@ -46,7 +46,9 @@ export interface BeeBridgeCheckVerdict {
 }
 
 const UNREADABLE: BeeBridgeCheckVerdict = Object.freeze({
-  binaries: Object.freeze({ env: false, timeout: false, bash: false, cat: false }), devTcp: 'not_run', failed: 'answer',
+  binaries: Object.freeze({ env: false, timeout: false, bash: false, cat: false }),
+  devTcp: 'not_run',
+  failed: 'answer',
 });
 
 /** What the check's answer says. Any line out of place, missing or unknown makes the whole answer unreadable. */
@@ -55,7 +57,9 @@ export function beeBridgeCheckVerdict(output: string): BeeBridgeCheckVerdict {
   if (lines.at(-1) === '') lines.pop();
   const binaries = {} as Record<BeeBridgeBinaryCheck, boolean>;
   for (const [index, check] of BINARY_ORDER.entries()) {
-    const found = new RegExp(`^${BEE_BRIDGE_CHECK_MARK} binary ${BEE_BRIDGE_BINARIES[check]} (present|missing)$`).exec(lines[index] ?? '');
+    const found = new RegExp(`^${BEE_BRIDGE_CHECK_MARK} binary ${BEE_BRIDGE_BINARIES[check]} (present|missing)$`).exec(
+      lines[index] ?? '',
+    );
     if (!found) return UNREADABLE;
     binaries[check] = found[1] === 'present';
   }
@@ -68,7 +72,7 @@ export function beeBridgeCheckVerdict(output: string): BeeBridgeCheckVerdict {
     next++;
   }
   if (lines[next] !== `${BEE_BRIDGE_CHECK_MARK} done` || lines.length !== next + 1) return UNREADABLE;
-  const failed = BINARY_ORDER.find(check => !binaries[check]) ?? (devTcp === 'refused' ? null : 'dev_tcp');
+  const failed = BINARY_ORDER.find((check) => !binaries[check]) ?? (devTcp === 'refused' ? null : 'dev_tcp');
   return Object.freeze({ binaries: Object.freeze(binaries), devTcp, failed });
 }
 
@@ -79,13 +83,19 @@ export interface BeeBridgeCheckEvidence {
 }
 
 export function beeBridgeCheckEvidence(tuple: BeeBridgeTuple, verdict: BeeBridgeCheckVerdict): BeeBridgeCheckEvidence {
-  const found = (check: BeeBridgeBinaryCheck) => verdict.failed === 'answer' ? 'unknown' : verdict.binaries[check] ? 'present' : 'missing';
+  const found = (check: BeeBridgeBinaryCheck) =>
+    verdict.failed === 'answer' ? 'unknown' : verdict.binaries[check] ? 'present' : 'missing';
   const evidence = Object.freeze({
-    imageId: tuple.imageId, engineVersion: tuple.engineVersion,
+    imageId: tuple.imageId,
+    engineVersion: tuple.engineVersion,
     platform: { os: tuple.platform.os, architecture: tuple.platform.architecture, variant: tuple.platform.variant },
-    bridgeRevision: tuple.bridgeRevision, harnessRevision: BEE_BRIDGE_CHECK_REVISION,
-    binaries: Object.fromEntries(BINARY_ORDER.map(check => [BEE_BRIDGE_BINARIES[check], found(check)])),
+    bridgeRevision: tuple.bridgeRevision,
+    harnessRevision: BEE_BRIDGE_CHECK_REVISION,
+    binaries: Object.fromEntries(BINARY_ORDER.map((check) => [BEE_BRIDGE_BINARIES[check], found(check)])),
     devTcp: verdict.devTcp,
   });
-  return Object.freeze({ evidence, digest: `sha256:${createHash('sha256').update(JSON.stringify(evidence)).digest('hex')}` });
+  return Object.freeze({
+    evidence,
+    digest: `sha256:${createHash('sha256').update(JSON.stringify(evidence)).digest('hex')}`,
+  });
 }

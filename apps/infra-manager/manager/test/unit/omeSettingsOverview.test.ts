@@ -30,10 +30,14 @@ after(() => {
 
 async function overviewFor(config: string | null, template = OME_TEMPLATE): Promise<EngineOverview> {
   writeFileSync(join(root, 'engines', 'ome', 'Server.xml.template'), template);
-  const harness = profileServiceHarness([profileRow({
-    kind: 'custom', components: ['ome', 'bee-uploader', 'stream-uploader'], has_engine_config: true,
-    engine_settings: { HLS_SEGMENT_DURATION: '7', HLS_SEGMENT_COUNT: '11', OME_HLS_POLL_INTERVAL_MS: '750' },
-  })]);
+  const harness = profileServiceHarness([
+    profileRow({
+      kind: 'custom',
+      components: ['ome', 'bee-uploader', 'stream-uploader'],
+      has_engine_config: true,
+      engine_settings: { HLS_SEGMENT_DURATION: '7', HLS_SEGMENT_COUNT: '11', OME_HLS_POLL_INTERVAL_MS: '750' },
+    }),
+  ]);
   if (config !== null) harness.profiles.engineConfigs.set('stream1', config);
   const app = await startEngineTestApp(harness.service, new ContainerControl(new EventBus(), fakeDocker([])));
   try {
@@ -46,12 +50,15 @@ async function overviewFor(config: string | null, template = OME_TEMPLATE): Prom
   }
 }
 
-const literal = () => OME_TEMPLATE.replaceAll('SEGMENT_DURATION_PLACEHOLDER', '4').replaceAll('SEGMENT_COUNT_PLACEHOLDER', '8');
+const literal = () =>
+  OME_TEMPLATE.replaceAll('SEGMENT_DURATION_PLACEHOLDER', '4').replaceAll('SEGMENT_COUNT_PLACEHOLDER', '8');
 const duration = '<SegmentDuration>SEGMENT_DURATION_PLACEHOLDER</SegmentDuration>';
 
 function withExtraApplication(publishers: string): string {
-  const file = literal().replace('</Applications>',
-    `<Application><Name>extra</Name><Type>live</Type><Publishers>${publishers}</Publishers></Application></Applications>`);
+  const file = literal().replace(
+    '</Applications>',
+    `<Application><Name>extra</Name><Type>live</Type><Publishers>${publishers}</Publishers></Application></Applications>`,
+  );
   assert.equal(omeContractProblem(OME_TEMPLATE, file), null, 'T03 admits the additional application');
   return file;
 }
@@ -59,8 +66,17 @@ function withExtraApplication(publishers: string): string {
 describe('OME overview observations through the real HTTP route', () => {
   it('reads matching literals at both template-derived HLS paths over conflicting stored and host values', async () => {
     const overview = await overviewFor(literal());
-    assert.deepEqual(overview.effective, { HLS_SEGMENT_DURATION: '4', HLS_SEGMENT_COUNT: '8', OME_HLS_POLL_INTERVAL_MS: '750' });
-    assert.deepEqual(overview.observations.HLS_SEGMENT_DURATION, { status: 'known', source: 'config-file', value: '4', environment: 'none' });
+    assert.deepEqual(overview.effective, {
+      HLS_SEGMENT_DURATION: '4',
+      HLS_SEGMENT_COUNT: '8',
+      OME_HLS_POLL_INTERVAL_MS: '750',
+    });
+    assert.deepEqual(overview.observations.HLS_SEGMENT_DURATION, {
+      status: 'known',
+      source: 'config-file',
+      value: '4',
+      environment: 'none',
+    });
     assert.equal(overview.observations.HLS_SEGMENT_COUNT.source, 'config-file');
     assert.deepEqual(overview.notInConfig, ['HLS_SEGMENT_DURATION', 'HLS_SEGMENT_COUNT']);
   });
@@ -76,44 +92,77 @@ describe('OME overview observations through the real HTTP route', () => {
   it('reports a mapped directive missing from one application instead of using the other occurrence', async () => {
     const overview = await overviewFor(OME_TEMPLATE.replace(duration, ''));
     assert.equal(overview.effective.HLS_SEGMENT_DURATION, undefined);
-    assert.deepEqual(overview.observations.HLS_SEGMENT_DURATION, { status: 'unknown', source: 'omitted', value: null, reason: 'missing-directive', environment: 'partial' });
+    assert.deepEqual(overview.observations.HLS_SEGMENT_DURATION, {
+      status: 'unknown',
+      source: 'omitted',
+      value: null,
+      reason: 'missing-directive',
+      environment: 'partial',
+    });
     assert.equal(overview.effective.HLS_SEGMENT_COUNT, '11');
   });
 
   it('leaves differing values and mixed sources unverified per field', async () => {
-    const conflicting = await overviewFor(literal().replace('<SegmentDuration>4</SegmentDuration>', '<SegmentDuration>5</SegmentDuration>'));
+    const conflicting = await overviewFor(
+      literal().replace('<SegmentDuration>4</SegmentDuration>', '<SegmentDuration>5</SegmentDuration>'),
+    );
     assert.equal(conflicting.effective.HLS_SEGMENT_DURATION, undefined);
-    assert.equal(conflicting.observations.HLS_SEGMENT_DURATION.status === 'unknown' && conflicting.observations.HLS_SEGMENT_DURATION.reason, 'conflicting-values');
+    assert.equal(
+      conflicting.observations.HLS_SEGMENT_DURATION.status === 'unknown' &&
+        conflicting.observations.HLS_SEGMENT_DURATION.reason,
+      'conflicting-values',
+    );
     const mixed = await overviewFor(OME_TEMPLATE.replace(duration, '<SegmentDuration>7</SegmentDuration>'));
     assert.equal(mixed.effective.HLS_SEGMENT_DURATION, undefined);
-    assert.equal(mixed.observations.HLS_SEGMENT_DURATION.status === 'unknown' && mixed.observations.HLS_SEGMENT_DURATION.reason, 'mixed-sources');
+    assert.equal(
+      mixed.observations.HLS_SEGMENT_DURATION.status === 'unknown' && mixed.observations.HLS_SEGMENT_DURATION.reason,
+      'mixed-sources',
+    );
   });
 
   it('treats a duplicate path as ambiguous without hiding an unrelated setting', async () => {
     const overview = await overviewFor(OME_TEMPLATE.replace(duration, duration + duration));
     assert.equal(overview.effective.HLS_SEGMENT_DURATION, undefined);
-    assert.equal(overview.observations.HLS_SEGMENT_DURATION.status === 'unknown' && overview.observations.HLS_SEGMENT_DURATION.reason, 'ambiguous-path');
+    assert.equal(
+      overview.observations.HLS_SEGMENT_DURATION.status === 'unknown' &&
+        overview.observations.HLS_SEGMENT_DURATION.reason,
+      'ambiguous-path',
+    );
     assert.equal(overview.effective.HLS_SEGMENT_COUNT, '11');
   });
 
   it('ignores tokens in comments and unrelated branches when observing literal HLS values', async () => {
-    const file = literal().replace('</Server>', '<!-- SEGMENT_DURATION_PLACEHOLDER --><Unrelated>SEGMENT_DURATION_PLACEHOLDER</Unrelated></Server>');
+    const file = literal().replace(
+      '</Server>',
+      '<!-- SEGMENT_DURATION_PLACEHOLDER --><Unrelated>SEGMENT_DURATION_PLACEHOLDER</Unrelated></Server>',
+    );
     assert.equal((await overviewFor(file)).effective.HLS_SEGMENT_DURATION, '4');
   });
 
   it('preserves the independent uploader750 reading when XML, config or template is unavailable', async () => {
-    for (const [config, template] of [['<Server><broken></Server>', OME_TEMPLATE], [null, OME_TEMPLATE], [literal(), '<Server>']] as const) {
+    for (const [config, template] of [
+      ['<Server><broken></Server>', OME_TEMPLATE],
+      [null, OME_TEMPLATE],
+      [literal(), '<Server>'],
+    ] as const) {
       const overview = await overviewFor(config, template);
       assert.deepEqual(overview.effective, { OME_HLS_POLL_INTERVAL_MS: '750' });
       assert.equal(overview.observations.HLS_SEGMENT_DURATION.status, 'unknown');
-      assert.deepEqual(overview.observations.OME_HLS_POLL_INTERVAL_MS, { status: 'known', source: 'deployment', value: '750', environment: 'all' });
+      assert.deepEqual(overview.observations.OME_HLS_POLL_INTERVAL_MS, {
+        status: 'known',
+        source: 'deployment',
+        value: '750',
+        environment: 'all',
+      });
     }
   });
 
   it('rejects nested or invalid scalar content and repeated application identity', async () => {
-    for (const file of [OME_TEMPLATE.replace(duration, '<SegmentDuration>4<Nested/></SegmentDuration>'),
+    for (const file of [
+      OME_TEMPLATE.replace(duration, '<SegmentDuration>4<Nested/></SegmentDuration>'),
       OME_TEMPLATE.replaceAll('SEGMENT_DURATION_PLACEHOLDER', 'invalid'),
-      OME_TEMPLATE.replace('<Name>audio</Name>', '<Name>video</Name>')]) {
+      OME_TEMPLATE.replace('<Name>audio</Name>', '<Name>video</Name>'),
+    ]) {
       const overview = await overviewFor(file);
       assert.equal(overview.effective.HLS_SEGMENT_DURATION, undefined);
       assert.equal(overview.observations.HLS_SEGMENT_DURATION.status, 'unknown');
@@ -122,9 +171,15 @@ describe('OME overview observations through the real HTTP route', () => {
   });
 
   it('includes conflicting values in an additional admitted HLS application', async () => {
-    const overview = await overviewFor(withExtraApplication('<HLS><SegmentDuration>5</SegmentDuration><SegmentCount>8</SegmentCount></HLS>'));
+    const overview = await overviewFor(
+      withExtraApplication('<HLS><SegmentDuration>5</SegmentDuration><SegmentCount>8</SegmentCount></HLS>'),
+    );
     assert.equal(overview.effective.HLS_SEGMENT_DURATION, undefined);
-    assert.equal(overview.observations.HLS_SEGMENT_DURATION.status === 'unknown' && overview.observations.HLS_SEGMENT_DURATION.reason, 'conflicting-values');
+    assert.equal(
+      overview.observations.HLS_SEGMENT_DURATION.status === 'unknown' &&
+        overview.observations.HLS_SEGMENT_DURATION.reason,
+      'conflicting-values',
+    );
     assert.equal(overview.effective.HLS_SEGMENT_COUNT, '8');
     assert.equal(overview.effective.OME_HLS_POLL_INTERVAL_MS, '750');
   });
@@ -138,7 +193,9 @@ describe('OME overview observations through the real HTTP route', () => {
   });
 
   it('keeps a scalar known when an additional admitted HLS application has the same values', async () => {
-    const overview = await overviewFor(withExtraApplication('<HLS><SegmentDuration>4</SegmentDuration><SegmentCount>8</SegmentCount></HLS>'));
+    const overview = await overviewFor(
+      withExtraApplication('<HLS><SegmentDuration>4</SegmentDuration><SegmentCount>8</SegmentCount></HLS>'),
+    );
     assert.equal(overview.effective.HLS_SEGMENT_DURATION, '4');
     assert.equal(overview.observations.HLS_SEGMENT_DURATION.source, 'config-file');
     assert.equal(overview.effective.HLS_SEGMENT_COUNT, '8');

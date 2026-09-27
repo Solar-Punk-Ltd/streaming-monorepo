@@ -11,11 +11,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  attemptReleaseProblem,
-  describeAttemptHold,
-  type DeployAttemptView,
-} from './deployAttempts.js';
+import { attemptReleaseProblem, describeAttemptHold, type DeployAttemptView } from './deployAttempts.js';
 
 const BLOCKED: DeployAttemptView = {
   id: 7,

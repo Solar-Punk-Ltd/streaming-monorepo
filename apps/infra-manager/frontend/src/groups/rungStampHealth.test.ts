@@ -18,13 +18,29 @@ const rung = (overrides: Partial<LadderRungState> = {}): LadderRungState => ({
 });
 
 const member = (name: string): Profile => ({
-  name, kind: 'streamer', port_slot: 1, notes: null, notes_revision: 0,
-  status: 'RUNNING', last_error: null, last_error_at: null, last_full_deploy_commit: null,
-  created_at: '2026-09-15T00:00:00Z', updated_at: '2026-09-15T00:00:00Z',
-  engine_settings: {}, has_private_key: false, has_rpc_endpoint: false, has_srt_passphrase: false, has_engine_config: false,
-  engine_config_error: null, engine_config_state: null, group_id: 1,
+  name,
+  kind: 'streamer',
+  port_slot: 1,
+  notes: null,
+  notes_revision: 0,
+  status: 'RUNNING',
+  last_error: null,
+  last_error_at: null,
+  last_full_deploy_commit: null,
+  created_at: '2026-09-15T00:00:00Z',
+  updated_at: '2026-09-15T00:00:00Z',
+  engine_settings: {},
+  has_private_key: false,
+  has_rpc_endpoint: false,
+  has_srt_passphrase: false,
+  has_engine_config: false,
+  engine_config_error: null,
+  engine_config_state: null,
+  group_id: 1,
   instance_id: '00000000-0000-4000-8000-000000000004',
-  engine_config_revision: 0, intent_revision: 0, stamp_id: BATCH,
+  engine_config_revision: 0,
+  intent_revision: 0,
+  stamp_id: BATCH,
   components: ['bee-uploader'],
   containers: [{ service: 'bee-uploader', ports: {}, buildId: null, buildCommit: null }],
 });
@@ -109,11 +125,14 @@ describe('the stamp reading a pool result already carries', () => {
   it('keys every pool a page holds by the member the rung runs on', () => {
     const healths = poolStampHealths(
       new Map([
-        [1, poolResult([
-          rung({ stampState: 'active', stampTtl: 9 }),
-          rung({ rung: '480p', name: 'abr-pool-1-480p', stampState: 'expired', stampTtl: 0 }),
-          rung({ rung: '720p', name: 'abr-pool-1-720p', stampState: 'unknown' }),
-        ])],
+        [
+          1,
+          poolResult([
+            rung({ stampState: 'active', stampTtl: 9 }),
+            rung({ rung: '480p', name: 'abr-pool-1-480p', stampState: 'expired', stampTtl: 0 }),
+            rung({ rung: '720p', name: 'abr-pool-1-720p', stampState: 'unknown' }),
+          ]),
+        ],
         [2, null],
       ]),
       ['abr-pool-1-360p', 'abr-pool-1-480p', 'abr-pool-1-720p'].map(member),
@@ -132,7 +151,10 @@ describe('two sources of the same reading', () => {
   it('keeps what the manager read of a rung over what a page polled', () => {
     const merged = mergedStampHealths(
       new Map([['abr-pool-1-360p', live]]),
-      new Map([['abr-pool-1-360p', expired], ['bee-1', expired]]),
+      new Map([
+        ['abr-pool-1-360p', expired],
+        ['bee-1', expired],
+      ]),
     );
 
     assert.equal(merged.get('abr-pool-1-360p')?.state, 'active');

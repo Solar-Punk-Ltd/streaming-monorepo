@@ -17,7 +17,11 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { ComposeUpgradeOperations, httpHealthProbe } from '../../../src/cli/ComposeUpgradeOperations.js';
 import type { CommandResult, CommandRunner } from '../../../src/cli/commandRunner.js';
 import type { BundledVersionState, ManagerUpgradeDatabase } from '../../../src/cli/managerUpgradeDatabase.js';
-import { runManagerUpgrade, type ManagerPublication, type ManagerUpgradeRequest } from '../../../src/domain/versions/ManagerUpgrade.js';
+import {
+  runManagerUpgrade,
+  type ManagerPublication,
+  type ManagerUpgradeRequest,
+} from '../../../src/domain/versions/ManagerUpgrade.js';
 import { MANAGER_POSTGRES_VOLUME } from '../../../src/domain/versions/managerProject.js';
 import { BUILD_COMPLETE_MARKER, BUILD_MANIFEST_FILE } from '../../../src/domain/versions/buildManifest.js';
 import { buildDirFor, managerUpgradeGuardRootFor } from '../../../src/domain/versions/stackPaths.js';
@@ -44,7 +48,10 @@ class ScriptedRunner {
   private readonly answers = new Map<string, CommandResult[]>();
 
   answer(call: string, ...results: Partial<CommandResult>[]): this {
-    this.answers.set(call, results.map((result) => ({ code: 0, stdout: '', stderr: '', killed: false, signal: null, ...result })));
+    this.answers.set(
+      call,
+      results.map((result) => ({ code: 0, stdout: '', stderr: '', killed: false, signal: null, ...result })),
+    );
     return this;
   }
 
@@ -64,8 +71,13 @@ class ScriptedRunner {
 
 /** What `docker compose ps -a --format json postgres` prints, one line per container. */
 function containerList(...states: readonly (readonly [string, string])[]): string {
-  return states.map(([state, health], index) =>
-    JSON.stringify({ Name: `manager-postgres-${index + 1}`, Service: 'postgres', State: state, Health: health })).join('\n') + '\n';
+  return (
+    states
+      .map(([state, health], index) =>
+        JSON.stringify({ Name: `manager-postgres-${index + 1}`, Service: 'postgres', State: state, Health: health }),
+      )
+      .join('\n') + '\n'
+  );
 }
 function containers(state: string, health: string): string {
   return containerList([state, health]);
@@ -73,8 +85,17 @@ function containers(state: string, health: string): string {
 
 /** How the upgrade asks whether one service of the project has a container of its own. */
 function serviceProbe(service: string): string {
-  return ['docker', 'ps', '-aq', '--filter', `label=com.docker.compose.project=${PROJECT}`,
-    '--filter', `label=com.docker.compose.service=${service}`, '--filter', 'label=com.docker.compose.oneoff=False'].join(' ');
+  return [
+    'docker',
+    'ps',
+    '-aq',
+    '--filter',
+    `label=com.docker.compose.project=${PROJECT}`,
+    '--filter',
+    `label=com.docker.compose.service=${service}`,
+    '--filter',
+    'label=com.docker.compose.oneoff=False',
+  ].join(' ');
 }
 const API_CONTAINERS = serviceProbe('api');
 /** How the upgrade asks whether the project's database volume is there at all. */
@@ -83,9 +104,12 @@ const VOLUME_PROBE = `docker volume ls -q --filter name=^${POSTGRES_VOLUME}$`;
 /** Fails a probe that never returns, instead of leaving the suite to time out. */
 function bounded<T>(work: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
-  return Promise.race([work, new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error('the probe is still reading the answer body')), 500);
-  })]).finally(() => clearTimeout(timer));
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('the probe is still reading the answer body')), 500);
+    }),
+  ]).finally(() => clearTimeout(timer));
 }
 
 const CURRENT: ManagerPublication = { schema: 'current' };
@@ -93,13 +117,27 @@ const FRESH: ManagerPublication = { schema: 'fresh' };
 
 /** The bundled row as the api's boot leaves it while it builds, and once it is done. */
 function bundledRow(over: Partial<BundledVersionState> = {}): BundledVersionState {
-  return { id: 1, status: 'ready', layout: 'builds', gitRef: PIN, commitSha: PIN, buildId: PIN, rootPath: null, lastError: null, ...over };
+  return {
+    id: 1,
+    status: 'ready',
+    layout: 'builds',
+    gitRef: PIN,
+    commitSha: PIN,
+    buildId: PIN,
+    rootPath: null,
+    lastError: null,
+    ...over,
+  };
 }
 
 describe('the manager upgrade against one Compose project', () => {
-  let root: string; let versionsRoot: string; let bundledStackRoot: string;
-  let request: ManagerUpgradeRequest; let runner: ScriptedRunner;
-  let publication: ManagerPublication; let migrated: number;
+  let root: string;
+  let versionsRoot: string;
+  let bundledStackRoot: string;
+  let request: ManagerUpgradeRequest;
+  let runner: ScriptedRunner;
+  let publication: ManagerPublication;
+  let migrated: number;
   let readPublication: () => Promise<ManagerPublication>;
   let bundledStates: BundledVersionState[];
   let readyBundled: BundledVersionState;
@@ -125,23 +163,34 @@ describe('the manager upgrade against one Compose project', () => {
     bundledStates = [readyBundled];
     steps = [];
   });
-  afterEach(async () => { await rm(root, { recursive: true, force: true }); });
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
 
   /** A complete build of the pin on disk, and the row that deploys from it. */
   async function publishedBundledBuild(): Promise<BundledVersionState> {
     const build = buildDirFor(versionsRoot, 'bundled', PIN);
     await mkdir(build, { recursive: true });
     await writeFile(join(build, BUILD_COMPLETE_MARKER), '');
-    await writeFile(join(build, BUILD_MANIFEST_FILE), JSON.stringify({
-      buildId: PIN, commit: PIN, builtAt: '2026-09-09T00:00:00.000Z', toolchain: 'synthetic',
-    }));
+    await writeFile(
+      join(build, BUILD_MANIFEST_FILE),
+      JSON.stringify({
+        buildId: PIN,
+        commit: PIN,
+        builtAt: '2026-09-09T00:00:00.000Z',
+        toolchain: 'synthetic',
+      }),
+    );
     return bundledRow({ rootPath: join(versionsRoot, 'bundled') });
   }
 
   function database(): ManagerUpgradeDatabase {
     return {
       readPublication: async () => readPublication(),
-      migrate: async () => { migrated += 1; steps.push('migrate'); },
+      migrate: async () => {
+        migrated += 1;
+        steps.push('migrate');
+      },
       readBundledVersion: async () => {
         steps.push('read-bundled');
         return bundledStates.length > 1 ? bundledStates.shift()! : bundledStates[0]!;
@@ -150,11 +199,21 @@ describe('the manager upgrade against one Compose project', () => {
     };
   }
 
-  function operations(options: { publicEdge?: boolean; firstUse?: boolean; health?: number[] } = {}): ComposeUpgradeOperations {
+  function operations(
+    options: { publicEdge?: boolean; firstUse?: boolean; health?: number[] } = {},
+  ): ComposeUpgradeOperations {
     const statuses = [...(options.health ?? [200])];
     return new ComposeUpgradeOperations(
-      { versionsRoot, composeFile: COMPOSE_FILE, bundledStackRoot, publicEdge: options.publicEdge ?? false,
-        firstUse: options.firstUse ?? false, postgresVolume: MANAGER_POSTGRES_VOLUME, apiHealthUrl: HEALTH_URL, timeouts: TIMEOUTS },
+      {
+        versionsRoot,
+        composeFile: COMPOSE_FILE,
+        bundledStackRoot,
+        publicEdge: options.publicEdge ?? false,
+        firstUse: options.firstUse ?? false,
+        postgresVolume: MANAGER_POSTGRES_VOLUME,
+        apiHealthUrl: HEALTH_URL,
+        timeouts: TIMEOUTS,
+      },
       database(),
       runner.run,
       async () => ({ status: statuses.length > 1 ? statuses.shift()! : statuses[0]! }),
@@ -173,12 +232,17 @@ describe('the manager upgrade against one Compose project', () => {
       runner.answer('ps -a --format json postgres', { stdout: containerList(['exited', ''], ['running', 'healthy']) });
 
       assert.deepEqual(await operations().readPublication(request), CURRENT);
-      assert.deepEqual(runner.seen, ['ps -a --format json postgres'], 'nothing is started for a database that is already up');
+      assert.deepEqual(
+        runner.seen,
+        ['ps -a --format json postgres'],
+        'nothing is started for a database that is already up',
+      );
     });
 
     it('reads a container listing an older Compose printed as one JSON array', async () => {
-      runner.answer('ps -a --format json postgres',
-        { stdout: '[{"Name":"manager-postgres-1","Service":"postgres","State":"running","Health":"healthy"}]' });
+      runner.answer('ps -a --format json postgres', {
+        stdout: '[{"Name":"manager-postgres-1","Service":"postgres","State":"running","Health":"healthy"}]',
+      });
 
       assert.deepEqual(await operations().readPublication(request), CURRENT);
       assert.deepEqual(runner.seen, ['ps -a --format json postgres']);
@@ -191,13 +255,22 @@ describe('the manager upgrade against one Compose project', () => {
     });
 
     it('starts a Postgres whose container exists but is stopped, and waits for it to become healthy', async () => {
-      runner.answer('ps -a --format json postgres',
-        { stdout: containers('exited', '') }, { stdout: containers('running', 'starting') }, { stdout: containers('running', 'healthy') });
+      runner.answer(
+        'ps -a --format json postgres',
+        { stdout: containers('exited', '') },
+        { stdout: containers('running', 'starting') },
+        { stdout: containers('running', 'healthy') },
+      );
       runner.answer(VOLUME_PROBE, { stdout: `${POSTGRES_VOLUME}\n` });
 
       assert.deepEqual(await operations().readPublication(request), CURRENT);
-      assert.deepEqual(runner.seen, ['ps -a --format json postgres', VOLUME_PROBE, 'up -d --no-build postgres',
-        'ps -a --format json postgres', 'ps -a --format json postgres']);
+      assert.deepEqual(runner.seen, [
+        'ps -a --format json postgres',
+        VOLUME_PROBE,
+        'up -d --no-build postgres',
+        'ps -a --format json postgres',
+        'ps -a --format json postgres',
+      ]);
     });
 
     it('refuses a stopped Postgres whose data volume went missing under an installed api', async () => {
@@ -223,8 +296,13 @@ describe('the manager upgrade against one Compose project', () => {
       publication = FRESH;
 
       assert.deepEqual(await operations().readPublication(request), FRESH);
-      assert.deepEqual(runner.seen, ['ps -a --format json postgres', VOLUME_PROBE, API_CONTAINERS,
-        'up -d --no-build postgres', 'ps -a --format json postgres']);
+      assert.deepEqual(runner.seen, [
+        'ps -a --format json postgres',
+        VOLUME_PROBE,
+        API_CONTAINERS,
+        'up -d --no-build postgres',
+        'ps -a --format json postgres',
+      ]);
     });
 
     it('lets a volume listing that failed through, rather than reading it as a host with no database', async () => {
@@ -242,7 +320,11 @@ describe('the manager upgrade against one Compose project', () => {
       publication = FRESH;
 
       assert.deepEqual(await operations().readPublication(request), FRESH);
-      assert.equal(runner.seen.includes('ps -aq api'), false, 'a Compose listing with -a counts this upgrade own container');
+      assert.equal(
+        runner.seen.includes('ps -aq api'),
+        false,
+        'a Compose listing with -a counts this upgrade own container',
+      );
     });
 
     it('refuses a first use whose database turns out not to be empty', async () => {
@@ -257,8 +339,12 @@ describe('the manager upgrade against one Compose project', () => {
       runner.answer(VOLUME_PROBE, { stdout: `${POSTGRES_VOLUME}\n` });
 
       assert.deepEqual(await operations().readPublication(request), CURRENT);
-      assert.deepEqual(runner.seen, ['ps -a --format json postgres', VOLUME_PROBE,
-        'up -d --no-build postgres', 'ps -a --format json postgres']);
+      assert.deepEqual(runner.seen, [
+        'ps -a --format json postgres',
+        VOLUME_PROBE,
+        'up -d --no-build postgres',
+        'ps -a --format json postgres',
+      ]);
     });
 
     it('refuses a host that has an api container but no data volume, and says what it found', async () => {
@@ -300,7 +386,9 @@ describe('the manager upgrade against one Compose project', () => {
 
     it('lets a failed schema read through instead of reporting an empty database', async () => {
       runner.answer('ps -a --format json postgres', { stdout: containers('running', 'healthy') });
-      readPublication = async () => { throw new Error('synthetic connection reset'); };
+      readPublication = async () => {
+        throw new Error('synthetic connection reset');
+      };
 
       await assert.rejects(operations().readPublication(request), /connection reset/);
     });
@@ -339,7 +427,10 @@ describe('the manager upgrade against one Compose project', () => {
     });
 
     it('waits through the build the api is still running', async () => {
-      bundledStates = [bundledRow({ status: 'building', layout: 'legacy', commitSha: null, buildId: null }), readyBundled];
+      bundledStates = [
+        bundledRow({ status: 'building', layout: 'legacy', commitSha: null, buildId: null }),
+        readyBundled,
+      ];
 
       const outcome = await operations().awaitBundledBuild();
 
@@ -348,7 +439,15 @@ describe('the manager upgrade against one Compose project', () => {
     });
 
     it('answers a build that failed with what the row says went wrong', async () => {
-      bundledStates = [bundledRow({ status: 'failed', layout: 'legacy', commitSha: null, buildId: null, lastError: 'could not reach github' })];
+      bundledStates = [
+        bundledRow({
+          status: 'failed',
+          layout: 'legacy',
+          commitSha: null,
+          buildId: null,
+          lastError: 'could not reach github',
+        }),
+      ];
 
       const outcome = await operations().awaitBundledBuild();
 
@@ -356,7 +455,9 @@ describe('the manager upgrade against one Compose project', () => {
     });
 
     it('answers a rebuild that failed over a build the version keeps', async () => {
-      bundledStates = [bundledRow({ commitSha: 'b'.repeat(40), buildId: 'b'.repeat(40), lastError: 'the build exited with code 1' })];
+      bundledStates = [
+        bundledRow({ commitSha: 'b'.repeat(40), buildId: 'b'.repeat(40), lastError: 'the build exited with code 1' }),
+      ];
 
       const outcome = await operations().awaitBundledBuild();
 
@@ -373,7 +474,14 @@ describe('the manager upgrade against one Compose project', () => {
     });
 
     it('does not report an error the row already carried before this upgrade started the api', async () => {
-      const stale = bundledRow({ status: 'failed', layout: 'legacy', commitSha: null, buildId: null, rootPath: null, lastError: 'an earlier boot could not reach github' });
+      const stale = bundledRow({
+        status: 'failed',
+        layout: 'legacy',
+        commitSha: null,
+        buildId: null,
+        rootPath: null,
+        lastError: 'an earlier boot could not reach github',
+      });
       bundledStates = [stale];
       const upgrade = operations();
       await upgrade.startProject(request);
@@ -385,8 +493,17 @@ describe('the manager upgrade against one Compose project', () => {
     });
 
     it('reports a boot that could not start the build at all, without waiting out the bound', async () => {
-      const before = bundledRow({ status: 'failed', layout: 'legacy', gitRef: 'main-v2', commitSha: null, buildId: null, rootPath: null, lastError: 'an earlier boot could not reach github' });
-      const recorded = 'The pinned stack commit was not built: review-stack is building. Wait for it to finish, then try again.';
+      const before = bundledRow({
+        status: 'failed',
+        layout: 'legacy',
+        gitRef: 'main-v2',
+        commitSha: null,
+        buildId: null,
+        rootPath: null,
+        lastError: 'an earlier boot could not reach github',
+      });
+      const recorded =
+        'The pinned stack commit was not built: review-stack is building. Wait for it to finish, then try again.';
       bundledStates = [before, bundledRow({ ...before, gitRef: PIN, lastError: recorded })];
       const upgrade = operations();
       await upgrade.startProject(request);
@@ -395,7 +512,11 @@ describe('the manager upgrade against one Compose project', () => {
 
       assert.equal(outcome.state, 'failed');
       assert.equal(outcome.problem, recorded);
-      assert.equal(steps.filter((step) => step === 'read-bundled').length, 2, 'the row it read before the api started, and one poll');
+      assert.equal(
+        steps.filter((step) => step === 'read-bundled').length,
+        2,
+        'the row it read before the api started, and one poll',
+      );
     });
 
     it('gives up after its own bound, saying which commit it waited for', async () => {
@@ -428,7 +549,11 @@ describe('the manager upgrade against one Compose project', () => {
         assert.match(error.message, /up -d --no-build --remove-orphans/);
         assert.match(error.message, new RegExp(`\\b${PROJECT}\\b`));
         assert.match(error.message, /17/);
-        assert.equal(error.message.includes('synthetic-password'), false, 'what Compose printed never reaches the deploy log');
+        assert.equal(
+          error.message.includes('synthetic-password'),
+          false,
+          'what Compose printed never reaches the deploy log',
+        );
         assert.match(error.message, /Run the same docker compose command on the host to see its output\./);
         return true;
       });
@@ -457,7 +582,11 @@ describe('the manager upgrade against one Compose project', () => {
 
       await operations().startProject(request);
 
-      assert.deepEqual(runner.seen, ['up -d --no-build --remove-orphans', '--profile public rm -sf edge', '--profile public ps -q edge']);
+      assert.deepEqual(runner.seen, [
+        'up -d --no-build --remove-orphans',
+        '--profile public rm -sf edge',
+        '--profile public ps -q edge',
+      ]);
     });
 
     it('refuses when the edge is still running with no domain set, because the host answers on 80 and 443', async () => {
@@ -533,7 +662,9 @@ describe('the manager upgrade against one Compose project', () => {
         controller.enqueue(new TextEncoder().encode('{"status":"ok"}'));
         close = () => controller.close();
       },
-      cancel: () => { cancelled = true; },
+      cancel: () => {
+        cancelled = true;
+      },
     });
     const original = globalThis.fetch;
     globalThis.fetch = (async () => new Response(body, { status: 200 })) as typeof fetch;
@@ -565,7 +696,9 @@ describe('the manager upgrade against one Compose project', () => {
       const mutableRoot = join(root, 'manager');
 
       const result = await runManagerUpgrade(
-        { guardRoot: managerUpgradeGuardRootFor(versionsRoot), mutableRoot }, request, operations({ firstUse: true }),
+        { guardRoot: managerUpgradeGuardRootFor(versionsRoot), mutableRoot },
+        request,
+        operations({ firstUse: true }),
       );
 
       assert.equal(result.state, 'completed');
@@ -580,8 +713,16 @@ describe('the manager upgrade against one Compose project', () => {
     await operations().stopApi(request);
 
     for (const argv of runner.calls) {
-      assert.deepEqual(argv.slice(0, 8),
-        ['docker', 'compose', '-p', PROJECT, '-f', COMPOSE_FILE, '--project-directory', COMPOSE_DIRECTORY]);
+      assert.deepEqual(argv.slice(0, 8), [
+        'docker',
+        'compose',
+        '-p',
+        PROJECT,
+        '-f',
+        COMPOSE_FILE,
+        '--project-directory',
+        COMPOSE_DIRECTORY,
+      ]);
     }
   });
 });

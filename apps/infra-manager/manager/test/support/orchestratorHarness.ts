@@ -1,10 +1,7 @@
 import { defaultServicesFor } from '@streaming-infra-manager/common';
 
 import { DeploymentGroupRepository } from '../../src/domain/DeploymentGroupRepository.js';
-import {
-  DeploymentOrchestrator,
-  UploaderGate,
-} from '../../src/domain/DeploymentOrchestrator.js';
+import { DeploymentOrchestrator, UploaderGate } from '../../src/domain/DeploymentOrchestrator.js';
 import { EventBus } from '../../src/domain/EventBus.js';
 import type { ExecutionRoots } from '../../src/domain/versions/ExecutionRootService.js';
 import type { DeployTargets } from '../../src/domain/ports/DeployTargets.js';
@@ -24,10 +21,7 @@ import { FakeContainers, InMemoryProfiles } from './profileFixtures.js';
  * RUNNING again. A fixed pause was long enough on an idle laptop and not on
  * one running the whole suite.
  */
-export async function untilRunning(
-  profiles: InMemoryProfiles,
-  name: string,
-): Promise<void> {
+export async function untilRunning(profiles: InMemoryProfiles, name: string): Promise<void> {
   for (let tick = 0; tick < 300; tick += 1) {
     if (profiles.statusOf(name) === 'RUNNING') return;
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -81,20 +75,27 @@ export function orchestratorHarness(
   const operations = new InMemoryEngineConfigOperations(profiles);
   const ledger = new InMemoryBuildLedger(profiles, versions, versionsRoot, operations);
   const attempts = new InMemoryDeployAttempts();
-  profiles.onDeleted = name => {
+  profiles.onDeleted = (name) => {
     for (const reference of ledger.references) {
-      if ((reference.holderKind === 'job' && reference.holderId === name)
-        || (reference.holderKind === 'snapshot' && reference.holderId.startsWith(`${name}/`))) reference.resolvedAt ??= new Date();
+      if (
+        (reference.holderKind === 'job' && reference.holderId === name) ||
+        (reference.holderKind === 'snapshot' && reference.holderId.startsWith(`${name}/`))
+      )
+        reference.resolvedAt ??= new Date();
     }
   };
   const daemon = new FakeDaemon();
   operations.deployments = { versions, versionsRoot, ledger, attempts, daemonId: daemon.id };
   const published: PublishedPortsSnapshot = { daemonId: daemon.id, bindings: [] };
-  profiles.reservations.removalBlocked = name => ledger.references.some(reference => reference.resolvedAt === null && reference.holderKind === 'operation')
-    || attempts.rows.some(attempt => attempt.project === name && attempt.state !== 'released');
-  profiles.reservations.releaseBlocked = name => ledger.references.some(reference => reference.resolvedAt === null
-    && ((reference.holderKind === 'job' && reference.holderId === name) || reference.holderKind === 'operation'))
-    || attempts.rows.some(attempt => attempt.project === name && attempt.state !== 'released');
+  profiles.reservations.removalBlocked = (name) =>
+    ledger.references.some((reference) => reference.resolvedAt === null && reference.holderKind === 'operation') ||
+    attempts.rows.some((attempt) => attempt.project === name && attempt.state !== 'released');
+  profiles.reservations.releaseBlocked = (name) =>
+    ledger.references.some(
+      (reference) =>
+        reference.resolvedAt === null &&
+        ((reference.holderKind === 'job' && reference.holderId === name) || reference.holderKind === 'operation'),
+    ) || attempts.rows.some((attempt) => attempt.project === name && attempt.state !== 'released');
   // Every stored deployment starts with a container per service, and a
   // finished deploy script leaves new ones, the way compose does.
   for (const profile of stored) {
@@ -132,5 +133,17 @@ export function orchestratorHarness(
     managerRpcEndpoint,
   );
 
-  return { orchestrator, profiles, runner, events, versions, containers, ledger, attempts, daemon, published, operations };
+  return {
+    orchestrator,
+    profiles,
+    runner,
+    events,
+    versions,
+    containers,
+    ledger,
+    attempts,
+    daemon,
+    published,
+    operations,
+  };
 }

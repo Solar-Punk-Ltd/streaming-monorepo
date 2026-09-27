@@ -1,19 +1,11 @@
-import type {
-  Rendition,
-  RenditionReport,
-} from '@streaming-monorepo/web2-admin-common';
+import type { Rendition, RenditionReport } from '@streaming-monorepo/web2-admin-common';
 
 import type { StreamRenditionRow, StreamRow } from '../types/index.js';
 
 import { InvalidStateError, StreamNotFoundError } from './errors/index.js';
 import { Logger } from './Logger.js';
 import type { PublishOutcome, PublishService } from './PublishService.js';
-import {
-  mergeRendition,
-  isLadderFinished,
-  ladderDuration,
-  toRendition,
-} from './renditions.js';
+import { mergeRendition, isLadderFinished, ladderDuration, toRendition } from './renditions.js';
 
 const logger = Logger.getInstance();
 
@@ -89,10 +81,7 @@ export class LadderService {
    * write failed flips on its retry: the row already held the finished ladder,
    * but the catalogue did not yet say so.
    */
-  async report(
-    id: string,
-    report: RenditionReport,
-  ): Promise<RenditionReportOutcome> {
+  async report(id: string, report: RenditionReport): Promise<RenditionReportOutcome> {
     const stream = await this.streams.findByIdUnscoped(id);
     if (!stream) throw new StreamNotFoundError(id);
     // Nothing has been announced (`draft`), or a feed write is already in
@@ -112,16 +101,13 @@ export class LadderService {
     const finished = isLadderFinished(renditions);
     const ladder: LadderState = {
       finished,
-      flippedToFinished:
-        finished && !isLadderFinished(publish.previousRenditions),
+      flippedToFinished: finished && !isLadderFinished(publish.previousRenditions),
       duration: ladderDuration(renditions),
     };
 
     logger.info(
       `[Ladder] ${publish.stream.topic} rung ${report.name} reported${
-        report.index === undefined
-          ? ''
-          : ` final (index ${String(report.index)}, ${String(report.duration)}s)`
+        report.index === undefined ? '' : ` final (index ${String(report.index)}, ${String(report.duration)}s)`
       }; ${renditions.length} rung(s) on the catalogue, ${
         finished ? 'finished' : 'still running'
       }${ladder.flippedToFinished ? ' as of this report' : ''}`,

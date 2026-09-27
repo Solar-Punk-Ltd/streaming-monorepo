@@ -57,11 +57,14 @@ export async function main(argv) {
   if (options.help) return showHelp(USAGE);
   const graphPath = requireOption(options, 'graph');
   const graph = readGraph(readText(graphPath), graphPath);
-  const exceptions = options.exceptions === undefined ? [] : readExceptions(readText(options.exceptions), options.exceptions);
+  const exceptions =
+    options.exceptions === undefined ? [] : readExceptions(readText(options.exceptions), options.exceptions);
 
   const problems = findProblems(graph, exceptions);
   if (problems.length > 0) {
-    console.log([...problems.map(describeProblem), `boundaries: broken, ${countOf(problems.length, 'problem')}`].join('\n'));
+    console.log(
+      [...problems.map(describeProblem), `boundaries: broken, ${countOf(problems.length, 'problem')}`].join('\n'),
+    );
     return EXIT.BROKEN;
   }
   const parts = [

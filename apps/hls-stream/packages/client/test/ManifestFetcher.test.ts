@@ -501,7 +501,7 @@ describe('keeping up with a publisher that writes faster than hls.js reloads', (
         return new Response('not found', { status: 404 });
       }
       const lines = [manifestForIndex(index!)];
-      if (index! === finalSlot) {
+      if (index === finalSlot) {
         lines.push('#EXT-X-ENDLIST');
       }
       return new Response(lines.join('\n'));
@@ -1866,7 +1866,8 @@ describe('ManifestFetcher keeping its requests off the instant every other viewe
       return new Response('not found', { status: 404 });
     };
 
-    fetcher.fetch(`${OWNER}/${TOPIC_NAME}`);
+    // Left pending: the stagger holds it until the test releases it.
+    void fetcher.fetch(`${OWNER}/${TOPIC_NAME}`);
     await settle(5);
 
     assert.equal(requests, 0, 'the walk went straight to the gateway, unstaggered');
@@ -1905,9 +1906,10 @@ describe('ManifestFetcher keeping its requests off the instant every other viewe
     fetcher.beeUrl = BEE_URL;
     globalThis.fetch = async () => new Response('not found', { status: 404 });
 
-    fetcher.fetch(`${OWNER}/${TOPIC_NAME}`);
-    fetcher.fetch(`${OWNER}/${TOPIC_NAME}`);
-    fetcher.fetch(`${OWNER}/${TOPIC_NAME}`);
+    // Left pending: the question is how many walks three fetches in flight queue.
+    void fetcher.fetch(`${OWNER}/${TOPIC_NAME}`);
+    void fetcher.fetch(`${OWNER}/${TOPIC_NAME}`);
+    void fetcher.fetch(`${OWNER}/${TOPIC_NAME}`);
 
     assert.equal(staggered.length, 1, `${staggered.length} walks were queued for one topic`);
   });

@@ -30,9 +30,7 @@ process.env.SHLS_ROOT = root;
 writeFileSync(join(root, '.env'), 'ENGINE=srs\n', 'utf8');
 
 const { createEngineRouter } = await import('../../src/api/routes/engine.js');
-const { harnessFor, profileRow } = await import(
-  '../support/profileServiceHarness.js'
-);
+const { harnessFor, profileRow } = await import('../support/profileServiceHarness.js');
 const { call, startRouterTestApp } = await import('../support/routerTestApp.js');
 
 const CONFIG = 'listen 1935;\nsrt_passphrase stage-passphrase-1;\n';
@@ -97,10 +95,7 @@ describe('GET /profiles/:name/engine/config', () => {
 
       assert.equal(refused.status, 401, JSON.stringify(refused.body));
       assert.deepEqual(reads, [], 'a refusal must not have read the config');
-      assert.ok(
-        !JSON.stringify(refused.body).includes('passphrase'),
-        'a refusal must not carry what it refused',
-      );
+      assert.ok(!JSON.stringify(refused.body).includes('passphrase'), 'a refusal must not carry what it refused');
     } finally {
       await app.close();
     }

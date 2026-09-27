@@ -35,7 +35,11 @@ test('a timeout names the thing that never happened', async () => {
 });
 
 test('a described wait answers with the value it accepted', async () => {
-  const value = await waitFor(() => 'ready', (text) => text === 'ready', 'the page to say ready');
+  const value = await waitFor(
+    () => 'ready',
+    (text) => text === 'ready',
+    'the page to say ready',
+  );
   assert.equal(value, 'ready');
 });
 
@@ -51,30 +55,58 @@ test('a described wait answers with the value it accepted', async () => {
  * cannot tell those apart.
  */
 test('a wait that runs out says what it last saw, not only what it wanted', async () => {
-  const failure = await waitFor(() => 'the manager did not answer', () => false, 'the deployment page', 60)
-    .then(() => null, (error) => error);
+  const failure = await waitFor(
+    () => 'the manager did not answer',
+    () => false,
+    'the deployment page',
+    60,
+  ).then(
+    () => null,
+    (error) => error,
+  );
 
   assert.match(failure.message, /the deployment page/);
   assert.match(failure.message, /the manager did not answer/, `the last reading is missing: ${failure.message}`);
 });
 
 test('a wait whose budget was already spent says it never looked', async () => {
-  const failure = await waitFor(() => 'anything', () => false, 'a thing', 0)
-    .then(() => null, (error) => error);
+  const failure = await waitFor(
+    () => 'anything',
+    () => false,
+    'a thing',
+    0,
+  ).then(
+    () => null,
+    (error) => error,
+  );
 
   assert.match(failure.message, /never read anything/, failure.message);
 });
 
 test('a reading of undefined is reported as that, since it is a reading', async () => {
-  const failure = await waitFor(() => undefined, () => false, 'a thing', 60)
-    .then(() => null, (error) => error);
+  const failure = await waitFor(
+    () => undefined,
+    () => false,
+    'a thing',
+    60,
+  ).then(
+    () => null,
+    (error) => error,
+  );
 
   assert.match(failure.message, /undefined/, failure.message);
 });
 
 test('a long last reading is cut rather than pasted whole into a log', async () => {
-  const failure = await waitFor(() => 'x'.repeat(5000), () => false, 'a thing', 60)
-    .then(() => null, (error) => error);
+  const failure = await waitFor(
+    () => 'x'.repeat(5000),
+    () => false,
+    'a thing',
+    60,
+  ).then(
+    () => null,
+    (error) => error,
+  );
 
   assert.ok(failure.message.length < 500, `the whole page went into the message: ${failure.message.length} characters`);
 });

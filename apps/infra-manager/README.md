@@ -49,7 +49,7 @@ See [docs/features/abr-ladder.md](docs/features/abr-ladder.md).
   deploy, removed with the deployment. See
   [docs/features/engine-config.md](docs/features/engine-config.md).
 - `/opt/streaming/manager-ssh/` on the deploy host (`MANAGER_SSH_DIR`): the ssh
-  identity the manager deploys to *other* hosts with (the deploy key, an
+  identity the manager deploys to _other_ hosts with (the deploy key, an
   `ssh_config` with a `Host` block per target alias, and `known_hosts`),
   bind-mounted into the api container at `/root/.ssh`. Another sibling outside
   the tree `deploy/deploy.sh` rsyncs, and only needed when a deployment's host
@@ -63,8 +63,7 @@ disposable databases, the browser suites against a real headless Chrome, and a
 build of the web and api images the way a deploy builds them on the host. A
 second workflow, started by hand, runs the container-backed regressions and the
 signed-in integration suite. Its five runs on push events of 2026-09-10 and
-2026-09-11 all failed. Dispatched by hand, it first passed on 2026-09-19 (run
-35447516491) and has passed on every stack pin move since, most recently run
+2026-09-11 all failed. Dispatched by hand, it first passed on 2026-09-19 (run 35447516491) and has passed on every stack pin move since, most recently run
 36099132624 on 2026-09-25 for `v3.4`, read on GitHub that day. What each job proves, what it does not, and how to
 run any of it on a laptop: [docs/ci.md](docs/ci.md).
 

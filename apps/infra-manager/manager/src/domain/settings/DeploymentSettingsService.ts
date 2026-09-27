@@ -260,7 +260,9 @@ function changeOf(save: DeploymentSettingsSave, adminLink: AdminLinkBefore): Sta
   const change: StackSettingsChange = { plain: {}, secret: {}, remove: [], engine: { set: {}, remove: [] } };
   const token = save.entries.find(({ key }) => key === ADMIN_API_TOKEN_KEY);
   if (token) {
-    change.adminTokenOrigin = token.value ? (adminOriginOf(adminLinkAfterEdits(save.entries, adminLink).url) ?? '') : null;
+    change.adminTokenOrigin = token.value
+      ? (adminOriginOf(adminLinkAfterEdits(save.entries, adminLink).url) ?? '')
+      : null;
   }
   for (const { key, value } of save.entries) {
     if (engineSettingFieldOf(key)) {

@@ -2,18 +2,29 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { describe, it } from 'node:test';
 import { chequebookRefusalSentence } from '@streaming-infra-manager/common';
-import { ChequebookSubmission, type PreparedChequebookTransfer } from '../../src/domain/chequebook/ChequebookSubmission.js';
-import { InMemoryChequebookOperations, operationCandidate, transactionHash, transferContext, transferIntent } from '../support/chequebookOperations.js';
+import {
+  ChequebookSubmission,
+  type PreparedChequebookTransfer,
+} from '../../src/domain/chequebook/ChequebookSubmission.js';
+import {
+  InMemoryChequebookOperations,
+  operationCandidate,
+  transactionHash,
+  transferContext,
+  transferIntent,
+} from '../support/chequebookOperations.js';
 
 function harness() {
   const repository = new InMemoryChequebookOperations();
   let submissions = 0;
   let disposals = 0;
   const prepared: PreparedChequebookTransfer = {
-    dispose: () => { disposals++; },
+    dispose: () => {
+      disposals++;
+    },
     context: { ...transferContext },
     preflight: async () => {},
-    send: async operation => {
+    send: async (operation) => {
       submissions++;
       const persisted = await repository.findById(operation.id);
       assert.equal(persisted?.state, 'submitting');
@@ -31,24 +42,48 @@ describe('durable chequebook submission', () => {
     const h = harness();
     const candidate = operationCandidate();
     const first = await h.repository.admit(candidate);
-    h.repository.rows.set(first.operation.id, { ...first.operation, state: 'settled', transactionHash, failureReason: 'hash_conflict' });
+    h.repository.rows.set(first.operation.id, {
+      ...first.operation,
+      state: 'settled',
+      transactionHash,
+      failureReason: 'hash_conflict',
+    });
     assert.equal((await h.service().submit(transferIntent())).kind, 'busy');
     assert.equal(h.submissions(), 0);
     assert.equal(h.repository.rows.size, 1);
     assert.equal((await h.service().submit(candidate)).kind, 'replayed');
-    assert.equal((await h.repository.admit(operationCandidate({ nodeAddress: `0x${'98'.repeat(20)}` }))).kind, 'admitted');
+    assert.equal(
+      (await h.repository.admit(operationCandidate({ nodeAddress: `0x${'98'.repeat(20)}` }))).kind,
+      'admitted',
+    );
   });
 
   it('disposes prepared sessions after success, busy admission, and every failure after preparation', async () => {
     for (const failure of ['none', 'context', 'admission', 'preflight', 'claim', 'send', 'record'] as const) {
       const h = harness();
       if (failure === 'context') h.prepared.context = { ...transferContext, chainId: 0 };
-      if (failure === 'admission') h.repository.admit = async () => { throw new Error('storage failed'); };
-      if (failure === 'preflight') h.prepared.preflight = async () => { throw new Error('failed check'); };
-      if (failure === 'claim') h.repository.claimDispatch = async () => { throw new Error('storage failed'); };
-      if (failure === 'send') h.prepared.send = async () => { throw new Error('response lost'); };
-      if (failure === 'record') h.repository.recordSubmission = async () => { throw new Error('storage failed'); };
-      if (['context', 'admission', 'claim', 'record'].includes(failure)) await assert.rejects(h.service().submit(transferIntent()));
+      if (failure === 'admission')
+        h.repository.admit = async () => {
+          throw new Error('storage failed');
+        };
+      if (failure === 'preflight')
+        h.prepared.preflight = async () => {
+          throw new Error('failed check');
+        };
+      if (failure === 'claim')
+        h.repository.claimDispatch = async () => {
+          throw new Error('storage failed');
+        };
+      if (failure === 'send')
+        h.prepared.send = async () => {
+          throw new Error('response lost');
+        };
+      if (failure === 'record')
+        h.repository.recordSubmission = async () => {
+          throw new Error('storage failed');
+        };
+      if (['context', 'admission', 'claim', 'record'].includes(failure))
+        await assert.rejects(h.service().submit(transferIntent()));
       else await h.service().submit(transferIntent());
       assert.equal(h.disposals(), 1, failure);
     }
@@ -62,7 +97,9 @@ describe('durable chequebook submission', () => {
     const h = harness();
     const candidate = operationCandidate();
     await h.repository.admit(candidate);
-    const replay = new ChequebookSubmission(h.repository, async () => { assert.fail('A replay must not look up the deleted profile or open a Bee connection'); });
+    const replay = new ChequebookSubmission(h.repository, async () => {
+      assert.fail('A replay must not look up the deleted profile or open a Bee connection');
+    });
     assert.equal((await replay.submit(candidate)).kind, 'replayed');
     assert.equal(h.disposals(), 0);
   });
@@ -82,7 +119,11 @@ describe('durable chequebook submission', () => {
 
   it('normalizes the node and contract addresses before admission', async () => {
     const h = harness();
-    h.prepared.context = { ...transferContext, nodeAddress: `0x${'AB'.repeat(20)}`, chequebookAddress: `0x${'CD'.repeat(20)}` };
+    h.prepared.context = {
+      ...transferContext,
+      nodeAddress: `0x${'AB'.repeat(20)}`,
+      chequebookAddress: `0x${'CD'.repeat(20)}`,
+    };
     const result = await h.service().submit(transferIntent());
     assert.equal(result.operation.nodeAddress, transferContext.nodeAddress);
     assert.equal(result.operation.chequebookAddress, `0x${'cd'.repeat(20)}`);
@@ -90,14 +131,18 @@ describe('durable chequebook submission', () => {
 
   it('does not call Bee if the journal cannot persist admission', async () => {
     const h = harness();
-    h.repository.admit = async () => { throw new Error('database unavailable'); };
+    h.repository.admit = async () => {
+      throw new Error('database unavailable');
+    };
     await assert.rejects(h.service().submit(transferIntent()), /journal/i);
     assert.equal(h.submissions(), 0);
   });
 
   it('does not expose raw preparation failures or admit an incomplete observation', async () => {
     const h = harness();
-    const service = new ChequebookSubmission(h.repository, async () => { throw new Error('synthetic sensitive upstream diagnostic'); });
+    const service = new ChequebookSubmission(h.repository, async () => {
+      throw new Error('synthetic sensitive upstream diagnostic');
+    });
     await assert.rejects(service.submit(transferIntent()), (error: unknown) => {
       assert.ok(error instanceof Error);
       assert.equal(error.name, 'ChequebookPreparationError');
@@ -113,7 +158,10 @@ describe('durable chequebook submission', () => {
     const h = harness();
     const intent = transferIntent();
     let received = 0;
-    h.prepared.send = async () => { received++; throw new Error('response lost'); };
+    h.prepared.send = async () => {
+      received++;
+      throw new Error('response lost');
+    };
     const first = await h.service().submit(intent);
     assert.equal(first.operation.state, 'unknown');
     const retry = await h.service().submit(intent);
@@ -138,7 +186,9 @@ describe('durable chequebook submission', () => {
   it('retains the durable guard when Bee returns a hash but saving it fails', async () => {
     const h = harness();
     const intent = transferIntent();
-    h.repository.recordSubmission = async () => { throw new Error('connection lost'); };
+    h.repository.recordSubmission = async () => {
+      throw new Error('connection lost');
+    };
     await assert.rejects(h.service().submit(intent), /journal/i);
     assert.equal(h.submissions(), 1);
     const retry = await h.service().submit(intent);
@@ -152,9 +202,16 @@ describe('durable chequebook submission', () => {
     const intent = transferIntent();
     const first = await h.service().submit(intent);
     h.repository.rows.set(first.operation.id, { ...first.operation, state: 'settled' });
-    const restarted = new ChequebookSubmission(h.repository, async () => { throw new Error('profile removed'); });
+    const restarted = new ChequebookSubmission(h.repository, async () => {
+      throw new Error('profile removed');
+    });
     assert.equal((await restarted.submit(intent)).operation.state, 'settled');
-    for (const changed of [{ amountPlur: '1' }, { direction: 'withdraw' as const }, { profileName: 'different' }, { requestedBy: 'another-operator' }]) {
+    for (const changed of [
+      { amountPlur: '1' },
+      { direction: 'withdraw' as const },
+      { profileName: 'different' },
+      { requestedBy: 'another-operator' },
+    ]) {
       assert.equal((await restarted.submit({ ...intent, ...changed })).kind, 'conflict');
     }
     assert.equal(h.submissions(), 1);
@@ -163,13 +220,23 @@ describe('durable chequebook submission', () => {
   it('reserves the node before checking funds and holds it until the outcome is known', async () => {
     const h = harness();
     let finish!: () => void;
-    const gate = new Promise<void>(resolve => { finish = resolve; });
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
     let entered!: () => void;
-    const started = new Promise<void>(resolve => { entered = resolve; });
-    h.prepared.preflight = async () => { entered(); await gate; };
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    h.prepared.preflight = async () => {
+      entered();
+      await gate;
+    };
     const first = h.service().submit(transferIntent());
     await started;
-    assert.equal((await h.service().submit(transferIntent({ direction: 'withdraw', profileName: 'alias' }))).kind, 'busy');
+    assert.equal(
+      (await h.service().submit(transferIntent({ direction: 'withdraw', profileName: 'alias' }))).kind,
+      'busy',
+    );
     finish();
     assert.equal((await first).operation.state, 'submitted');
     assert.equal(h.submissions(), 1);
@@ -178,7 +245,9 @@ describe('durable chequebook submission', () => {
   it('closes only a proven pre-POST failure as rejected without copying raw errors', async () => {
     const h = harness();
     const intent = transferIntent();
-    h.prepared.preflight = async () => { throw new Error('sensitive upstream details'); };
+    h.prepared.preflight = async () => {
+      throw new Error('sensitive upstream details');
+    };
     const result = await h.service().submit(intent);
     assert.equal(result.operation.state, 'rejected');
     assert.equal(result.operation.failureReason, 'preflight_failed');
@@ -201,7 +270,7 @@ describe('durable chequebook submission', () => {
 
   it('does not downgrade an operation resolved while the POST response was delayed', async () => {
     const h = harness();
-    h.prepared.send = async operation => {
+    h.prepared.send = async (operation) => {
       h.repository.rows.set(operation.id, { ...operation, state: 'settled', transactionHash });
       throw new Error('late response failure');
     };
@@ -211,7 +280,7 @@ describe('durable chequebook submission', () => {
   it('does not dispatch after closure while preflight was paused', async () => {
     const h = harness();
     let oldId = '';
-    h.prepared.preflight = async operation => {
+    h.prepared.preflight = async (operation) => {
       oldId = operation.id;
       h.repository.rows.set(operation.id, { ...operation, state: 'asserted' });
       const replacement = await h.repository.admit(operationCandidate());
@@ -227,7 +296,10 @@ describe('durable chequebook submission', () => {
     const h = harness();
     const intent = transferIntent();
     const claim = h.repository.claimDispatch.bind(h.repository);
-    h.repository.claimDispatch = async id => { await claim(id); throw new Error('lost dispatch acknowledgement'); };
+    h.repository.claimDispatch = async (id) => {
+      await claim(id);
+      throw new Error('lost dispatch acknowledgement');
+    };
     await assert.rejects(h.service().submit(intent), /journal/i);
     const retry = await h.service().submit(intent);
     assert.equal(retry.operation.state, 'submitting');
@@ -238,8 +310,19 @@ describe('durable chequebook submission', () => {
   it('rejects invalid request identities and amounts before prepare or admission', async () => {
     const h = harness();
     let prepared = 0;
-    const service = new ChequebookSubmission(h.repository, async () => { prepared++; return h.prepared; });
-    for (const changed of [{ requestId: 'missing' }, { amountPlur: '0' }, { amountPlur: '-1' }, { amountPlur: '1e3' }, { amountPlur: '1'.repeat(31) }, { profileName: '' }, { requestedBy: '' }]) {
+    const service = new ChequebookSubmission(h.repository, async () => {
+      prepared++;
+      return h.prepared;
+    });
+    for (const changed of [
+      { requestId: 'missing' },
+      { amountPlur: '0' },
+      { amountPlur: '-1' },
+      { amountPlur: '1e3' },
+      { amountPlur: '1'.repeat(31) },
+      { profileName: '' },
+      { requestedBy: '' },
+    ]) {
       await assert.rejects(service.submit(transferIntent(changed)), /invalid/i);
     }
     assert.equal(prepared, 0);
@@ -248,7 +331,16 @@ describe('durable chequebook submission', () => {
 
   it('refuses incomplete chain identity and bounds before reserving or sending', async () => {
     const h = harness();
-    for (const changed of [{ chainId: 0 }, { nodeAddress: '' }, { chequebookAddress: '0x12' }, { tokenAddress: '' }, { startBlockNumber: '-1' }, { startBlockHash: '' }, { nonceLowerBound: '0x8' }, { nonceQueryTag: '' }]) {
+    for (const changed of [
+      { chainId: 0 },
+      { nodeAddress: '' },
+      { chequebookAddress: '0x12' },
+      { tokenAddress: '' },
+      { startBlockNumber: '-1' },
+      { startBlockHash: '' },
+      { nonceLowerBound: '0x8' },
+      { nonceQueryTag: '' },
+    ]) {
       h.prepared.context = { ...transferContext, ...changed };
       await assert.rejects(h.service().submit(transferIntent()), /invalid/i);
     }

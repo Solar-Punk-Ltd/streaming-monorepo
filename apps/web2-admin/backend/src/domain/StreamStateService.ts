@@ -1,15 +1,8 @@
-import type {
-  MediaType,
-  StreamStateReport,
-  StreamStatus,
-} from '@streaming-monorepo/web2-admin-common';
+import type { MediaType, StreamStateReport, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
 import type { StreamRow } from '../types/index.js';
 
-import {
-  InvalidStateTransitionError,
-  StreamNotFoundError,
-} from './errors/index.js';
+import { InvalidStateTransitionError, StreamNotFoundError } from './errors/index.js';
 import { Logger } from './Logger.js';
 import type { PublishOutcome, PublishService } from './PublishService.js';
 import { allowedFromFor, isStateTransitionAllowed } from './streamState.js';
@@ -20,10 +13,7 @@ const logger = Logger.getInstance();
 export interface StateStreamStore {
   findByTopic(topic: string): Promise<StreamRow | null>;
   findByIdUnscoped(id: string): Promise<StreamRow | null>;
-  markLive(
-    id: string,
-    allowedFrom: readonly StreamStatus[],
-  ): Promise<StreamRow | null>;
+  markLive(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null>;
   markVod(
     id: string,
     allowedFrom: readonly StreamStatus[],
@@ -79,10 +69,7 @@ export class StreamStateService {
    * way the row is already right, the response is a 502, and the retry redoes
    * nothing but the write.
    */
-  async report(
-    id: string,
-    report: StreamStateReport,
-  ): Promise<PublishOutcome> {
+  async report(id: string, report: StreamStateReport): Promise<PublishOutcome> {
     const existing = await this.streams.findByIdUnscoped(id);
     if (!existing) throw new StreamNotFoundError(id);
     if (!isStateTransitionAllowed(existing.status, report.state)) {
@@ -100,18 +87,13 @@ export class StreamStateService {
 
     logger.info(
       `[State] ${updated.topic} reported ${report.state}${
-        report.state === 'vod'
-          ? ` (index ${String(report.index)}, ${String(report.duration)}s)`
-          : ''
+        report.state === 'vod' ? ` (index ${String(report.index)}, ${String(report.duration)}s)` : ''
       }`,
     );
     return this.publishService.republishWithState(updated);
   }
 
-  private async apply(
-    existing: StreamRow,
-    report: StreamStateReport,
-  ): Promise<StreamRow | null> {
+  private async apply(existing: StreamRow, report: StreamStateReport): Promise<StreamRow | null> {
     const allowedFrom = allowedFromFor(report.state);
     if (report.state === 'live') {
       // A row coming back from `vod` is un-finished by this one statement —
@@ -121,11 +103,6 @@ export class StreamStateService {
       return this.streams.markLive(existing.id, allowedFrom);
     }
     // The schema has already established that a `vod` report carries both.
-    return this.streams.markVod(
-      existing.id,
-      allowedFrom,
-      report.index ?? 0,
-      report.duration ?? 0,
-    );
+    return this.streams.markVod(existing.id, allowedFrom, report.index ?? 0, report.duration ?? 0);
   }
 }

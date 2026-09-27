@@ -17,16 +17,35 @@ export async function publishEngineConfigFixture(versions: InMemoryStackVersionR
   await mkdir(artifact, { recursive: true });
   await cp(join(root, 'engines'), join(artifact, 'engines'), { recursive: true });
   await writeFile(join(artifact, '.env'), await readFile(join(root, '.env'), 'utf8').catch(() => 'ENGINE=srs\n'));
-  await writeFile(join(artifact, BUILD_MANIFEST_FILE), JSON.stringify({ buildId, commit: buildId, builtAt: '2026-01-01T00:00:00Z', toolchain: 'synthetic' }));
+  await writeFile(
+    join(artifact, BUILD_MANIFEST_FILE),
+    JSON.stringify({ buildId, commit: buildId, builtAt: '2026-01-01T00:00:00Z', toolchain: 'synthetic' }),
+  );
   await writeFile(join(artifact, BUILD_COMPLETE_MARKER), '');
-  return (await versions.publish(version.id, { rootPath: join(root, version.name), buildId, commitSha: buildId, contract: version.contract! }))!;
+  return (await versions.publish(version.id, {
+    rootPath: join(root, version.name),
+    buildId,
+    commitSha: buildId,
+    contract: version.contract!,
+  }))!;
 }
 
-export async function configureEngineConfigAdmission(harness: ProfileServiceHarness, operations: InMemoryEngineConfigOperations, root: string) {
+export async function configureEngineConfigAdmission(
+  harness: ProfileServiceHarness,
+  operations: InMemoryEngineConfigOperations,
+  root: string,
+) {
   const attempts = new InMemoryDeployAttempts();
-  operations.deployments = { versions: harness.versions, versionsRoot: root,
-    ledger: new InMemoryBuildLedger(harness.profiles, harness.versions, root, operations), attempts,
-    daemonId: 'daemon-1', onClaim: profile => { harness.orchestrator.reserved.push(profile.name); } };
+  operations.deployments = {
+    versions: harness.versions,
+    versionsRoot: root,
+    ledger: new InMemoryBuildLedger(harness.profiles, harness.versions, root, operations),
+    attempts,
+    daemonId: 'daemon-1',
+    onClaim: (profile) => {
+      harness.orchestrator.reserved.push(profile.name);
+    },
+  };
   harness.orchestrator.rolloutAttempts = attempts;
   return publishEngineConfigFixture(harness.versions, root);
 }

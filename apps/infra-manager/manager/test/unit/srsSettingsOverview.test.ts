@@ -11,8 +11,10 @@ const previousRoot = process.env.SHLS_ROOT;
 process.env.SHLS_ROOT = root;
 process.env.DATABASE_URL = 'postgresql://127.0.0.1:1/t11_unused';
 mkdirSync(join(root, 'engines', 'srs'), { recursive: true });
-writeFileSync(join(root, 'engines', 'srs', 'srs.conf.template'),
-  'vhost __defaultVhost__ { hls { hls_fragment HLS_FRAGMENT_PLACEHOLDER; hls_window HLS_WINDOW_PLACEHOLDER; }\nTRANSCODE_PLACEHOLDER\n}\nABR_VHOST_PLACEHOLDER\n');
+writeFileSync(
+  join(root, 'engines', 'srs', 'srs.conf.template'),
+  'vhost __defaultVhost__ { hls { hls_fragment HLS_FRAGMENT_PLACEHOLDER; hls_window HLS_WINDOW_PLACEHOLDER; }\nTRANSCODE_PLACEHOLDER\n}\nABR_VHOST_PLACEHOLDER\n',
+);
 writeFileSync(join(root, '.env'), 'ENGINE=srs\nHLS_FRAGMENT=0.5\nHLS_WINDOW=15\n');
 
 const { ContainerControl } = await import('../../src/domain/ContainerControl.js');
@@ -28,11 +30,14 @@ after(() => {
 });
 
 async function overviewFor(config: string, abr = true): Promise<EngineOverview> {
-  const harness = profileServiceHarness([profileRow({
-    kind: abr ? 'abr-uploader' : 'streamer',
-    bee_publishers: abr ? `1080p@http://127.0.0.1:1<${'a'.repeat(64)}>` : null,
-    has_engine_config: true, engine_settings: { HLS_FRAGMENT: '7', HLS_WINDOW: '45', ABR_FPS: '30' },
-  })]);
+  const harness = profileServiceHarness([
+    profileRow({
+      kind: abr ? 'abr-uploader' : 'streamer',
+      bee_publishers: abr ? `1080p@http://127.0.0.1:1<${'a'.repeat(64)}>` : null,
+      has_engine_config: true,
+      engine_settings: { HLS_FRAGMENT: '7', HLS_WINDOW: '45', ABR_FPS: '30' },
+    }),
+  ]);
   harness.profiles.engineConfigs.set('stream1', config);
   const app = await startEngineTestApp(harness.service, new ContainerControl(new EventBus(), fakeDocker([])));
   try {
@@ -45,7 +50,8 @@ async function overviewFor(config: string, abr = true): Promise<EngineOverview> 
   }
 }
 
-const literal = 'vhost main { hls { hls_fragment 4; hls_window 30; } transcode { engine low { vfps 25; vpreset fast; vprofile main; vthreads 2; acodec aac; abitrate 128; } } }';
+const literal =
+  'vhost main { hls { hls_fragment 4; hls_window 30; } transcode { engine low { vfps 25; vpreset fast; vprofile main; vthreads 2; acodec aac; abitrate 128; } } }';
 
 describe('SRS settings observations over the actual engine HTTP route', () => {
   it('shows reliable custom-file literals over stored and host values', async () => {
@@ -95,8 +101,9 @@ describe('SRS settings observations over the actual engine HTTP route', () => {
   });
 
   it('keeps a later same-line HLS placeholder unverified while preserving explicit encoder values', async () => {
-    const file = literal.replace('hls_fragment 4;', 'hls_fragment HLS_FRAGMENT_PLACEHOLDER;')
-      + ' vhost extra { hls { hls_fragment HLS_FRAGMENT_PLACEHOLDER; hls_window 30; } }';
+    const file =
+      literal.replace('hls_fragment 4;', 'hls_fragment HLS_FRAGMENT_PLACEHOLDER;') +
+      ' vhost extra { hls { hls_fragment HLS_FRAGMENT_PLACEHOLDER; hls_window 30; } }';
     const overview = await overviewFor(file);
     assert.equal(overview.effective.HLS_FRAGMENT, undefined);
     assert.equal(overview.effective.HLS_WINDOW, '30');

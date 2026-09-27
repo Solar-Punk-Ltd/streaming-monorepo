@@ -1,13 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Stack,
-  TextField,
-  Tooltip,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Stack, TextField, Tooltip, Typography } from '@mui/material';
 
 import {
   getErrorMessage,
@@ -25,8 +17,7 @@ import { addVersion, type BuildLine } from './versionsApi';
 const REF_HELP =
   'A branch, a tag or a commit of streaming-monorepo, for example main-v3. The stack is taken from its apps/hls-stream folder, or the whole tree of a commit from before it moved there. The version stays on the commit that branch points at today, and moves only when you press Update.';
 
-const NAME_HELP =
-  'Lower case letters, digits and dashes. Taken from the branch until you type your own.';
+const NAME_HELP = 'Lower case letters, digits and dashes. Taken from the branch until you type your own.';
 
 const NO_NAME_FROM_REF = 'The branch gave no usable name. Type one.';
 
@@ -37,11 +28,7 @@ const NO_NAME_FROM_REF = 'The branch gave no usable name. Type one.';
  * used to disable the button with no word about why, so the operator was left
  * looking at a filled in form and a button that would not move.
  */
-function nameProblemFor(
-  ref: string,
-  name: string,
-  typed: boolean,
-): string | null {
+function nameProblemFor(ref: string, name: string, typed: boolean): string | null {
   if (name !== '') return stackVersionNameProblem(name);
   if (ref !== '' && !typed) return NO_NAME_FROM_REF;
   return null;
@@ -70,12 +57,12 @@ export function AddVersionForm({ onBuilt }: { onBuilt: () => void }) {
 
   const refProblem = ref === '' ? null : stackRefProblem(ref);
   const nameProblem = nameProblemFor(ref, effectiveName, nameTouched);
-  const ready =
-    ref !== '' && effectiveName !== '' && !refProblem && !nameProblem;
+  const ready = ref !== '' && effectiveName !== '' && !refProblem && !nameProblem;
   // The manager builds one version at a time, so an Update running in the
   // table is a build this form cannot start beside.
   const elsewhere = buildingName !== null && buildingName !== effectiveName;
 
+  // Catches every failure into the form's error line, so the form calls it without awaiting.
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!ready || running || elsewhere) return;
@@ -99,9 +86,7 @@ export function AddVersionForm({ onBuilt }: { onBuilt: () => void }) {
         setName('');
         setNameTouched(false);
       } else {
-        setError(
-          'The build failed. The last lines above say why. Fix the branch or the host and try again.',
-        );
+        setError('The build failed. The last lines above say why. Fix the branch or the host and try again.');
       }
       onBuilt();
     } catch (caught) {
@@ -120,13 +105,15 @@ export function AddVersionForm({ onBuilt }: { onBuilt: () => void }) {
 
   return (
     <SectionCard title="Add version">
-      <Stack spacing={2} component="form" onSubmit={submit}>
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>
-          A version is a branch or tag of the streaming stack, checked out and
-          built once on this host. Adding one takes a few minutes and changes
-          nothing about the deployments already running.
+      <Stack spacing={2} component="form" onSubmit={(event) => void submit(event)}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
+          A version is a branch or tag of the streaming stack, checked out and built once on this host. Adding one takes
+          a few minutes and changes nothing about the deployments already running.
         </Typography>
 
         <TextField
@@ -160,16 +147,18 @@ export function AddVersionForm({ onBuilt }: { onBuilt: () => void }) {
           fullWidth
         />
 
-        {(running || lines.length > 0) && (
-          <BuildLogPane lines={lines} running={running} />
-        )}
+        {(running || lines.length > 0) && <BuildLogPane lines={lines} running={running} />}
 
         {error && <Alert severity="error">{error}</Alert>}
         {done && <Alert severity="success">{done}</Alert>}
 
-        <Stack direction="row" spacing={1} sx={{
-          justifyContent: "flex-end"
-        }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{
+            justifyContent: 'flex-end',
+          }}
+        >
           {!running && lines.length > 0 && (
             <Button
               onClick={() => {
@@ -183,11 +172,7 @@ export function AddVersionForm({ onBuilt }: { onBuilt: () => void }) {
           )}
           <Tooltip title={elsewhere ? ANOTHER_BUILDING : ''}>
             <Box component="span">
-              <Button
-                type="submit"
-                variant="contained"
-                disabled={!ready || running || elsewhere}
-              >
+              <Button type="submit" variant="contained" disabled={!ready || running || elsewhere}>
                 {running ? 'Building' : 'Add version'}
               </Button>
             </Box>

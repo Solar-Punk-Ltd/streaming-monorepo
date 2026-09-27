@@ -54,7 +54,11 @@ export class ManagerAdminLinkRepository implements ManagerAdminLinkStore {
     return linkOf(row);
   }
 
-  async write(change: ManagerAdminLinkWrite, expectedRevision: number, username: string): Promise<ManagerAdminLink | null> {
+  async write(
+    change: ManagerAdminLinkWrite,
+    expectedRevision: number,
+    username: string,
+  ): Promise<ManagerAdminLink | null> {
     const result = await this.pool.query<LinkRow>(
       `UPDATE manager_admin_link
           SET url = $1::text,

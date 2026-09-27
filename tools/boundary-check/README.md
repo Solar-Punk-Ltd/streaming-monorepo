@@ -17,14 +17,14 @@ Every package carries one scope tag and one type tag in the `nx` field of its ow
 "nx": { "tags": ["scope:admin", "type:app"] }
 ```
 
-| Tag | Means |
-|---|---|
-| `scope:admin`, `scope:manager`, `scope:stack` | a package of that app, under `apps/` |
-| `scope:shared` | a package under `packages/`, shared by two or more apps |
-| `scope:infra` | a package under `infra/` |
-| `scope:tools` | a package under `tools/` |
-| `type:app` | something that runs: a service, a UI, a command-line tool, a test harness |
-| `type:lib` | code other projects import |
+| Tag                                           | Means                                                                     |
+| --------------------------------------------- | ------------------------------------------------------------------------- |
+| `scope:admin`, `scope:manager`, `scope:stack` | a package of that app, under `apps/`                                      |
+| `scope:shared`                                | a package under `packages/`, shared by two or more apps                   |
+| `scope:infra`                                 | a package under `infra/`                                                  |
+| `scope:tools`                                 | a package under `tools/`                                                  |
+| `type:app`                                    | something that runs: a service, a UI, a command-line tool, a test harness |
+| `type:lib`                                    | code other projects import                                                |
 
 Nx adds tags of its own, such as `npm:private`. The check reads only `scope:` and `type:`.
 

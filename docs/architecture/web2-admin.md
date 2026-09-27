@@ -19,13 +19,13 @@ Tech tags from the model: Postgres, REST.
 
 ## Components (five)
 
-| Component | Role | Tech | On loss |
-|---|---|---|---|
-| Brand console | The only surface a customer touches. Streams, stamps, cheque balances and branding, scoped to the logged-in brand. | web UI | API unaffected, brand cannot reach it. |
-| Authentication and ownership | OPEN. Who may create and manage a brand's streams. Candidates: OIDC against something the brand already has, wallet signature, magic link. | OIDC / wallet | Anyone reaching the API can act as any brand. Blocks the second brand, not the first. |
-| Admin API | Every state change a brand can make, in one place. The only writer, so ownership is enforced in exactly one place. Calls the manager to provision and fund a stream. | REST | Nothing can be created, funded or changed. Running streams carry on. |
-| Postgres | Brands, users, streams, batches and branding. The one row set that has to be right about which brand owns what. Small enough that a nightly dump is a real backup. | Postgres | Console and API stop answering. Published streams stay published (Swarm holds them). |
-| Branding | Logo, colours and domain, turned into the config the Viewer SPA bootstrap reads: theme, logo, stream list, serving domain. | theme, domain | Player falls back to unbranded default, a visible failure for a white-label product. |
+| Component                    | Role                                                                                                                                                                 | Tech          | On loss                                                                               |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------- |
+| Brand console                | The only surface a customer touches. Streams, stamps, cheque balances and branding, scoped to the logged-in brand.                                                   | web UI        | API unaffected, brand cannot reach it.                                                |
+| Authentication and ownership | OPEN. Who may create and manage a brand's streams. Candidates: OIDC against something the brand already has, wallet signature, magic link.                           | OIDC / wallet | Anyone reaching the API can act as any brand. Blocks the second brand, not the first. |
+| Admin API                    | Every state change a brand can make, in one place. The only writer, so ownership is enforced in exactly one place. Calls the manager to provision and fund a stream. | REST          | Nothing can be created, funded or changed. Running streams carry on.                  |
+| Postgres                     | Brands, users, streams, batches and branding. The one row set that has to be right about which brand owns what. Small enough that a nightly dump is a real backup.   | Postgres      | Console and API stop answering. Published streams stay published (Swarm holds them).  |
+| Branding                     | Logo, colours and domain, turned into the config the Viewer SPA bootstrap reads: theme, logo, stream list, serving domain.                                           | theme, domain | Player falls back to unbranded default, a visible failure for a white-label product.  |
 
 ## Connections
 

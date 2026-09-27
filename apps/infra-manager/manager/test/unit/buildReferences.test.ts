@@ -23,7 +23,9 @@ import {
 
 const at = (seconds: number) => new Date(seconds * 1000);
 
-function reference(over: Partial<BuildReference> & Pick<BuildReference, 'id' | 'holderKind' | 'buildId'>): BuildReference {
+function reference(
+  over: Partial<BuildReference> & Pick<BuildReference, 'id' | 'holderKind' | 'buildId'>,
+): BuildReference {
   return {
     versionId: 1,
     holderId: 'stage',
@@ -38,8 +40,22 @@ describe('coveredJobReferences', () => {
   it('resolves a job once a newer snapshot covers every service it named', () => {
     const references = [
       reference({ id: 1, holderKind: 'job', buildId: 'B', services: ['srs', 'stream-uploader'], createdAt: at(10) }),
-      reference({ id: 2, holderKind: 'snapshot', buildId: 'B', holderId: 'stage/srs', services: ['srs'], createdAt: at(20) }),
-      reference({ id: 3, holderKind: 'snapshot', buildId: 'B', holderId: 'stage/stream-uploader', services: ['stream-uploader'], createdAt: at(20) }),
+      reference({
+        id: 2,
+        holderKind: 'snapshot',
+        buildId: 'B',
+        holderId: 'stage/srs',
+        services: ['srs'],
+        createdAt: at(20),
+      }),
+      reference({
+        id: 3,
+        holderKind: 'snapshot',
+        buildId: 'B',
+        holderId: 'stage/stream-uploader',
+        services: ['stream-uploader'],
+        createdAt: at(20),
+      }),
     ];
 
     assert.deepEqual(coveredJobReferences(references), [1]);
@@ -48,7 +64,14 @@ describe('coveredJobReferences', () => {
   it('leaves a job unresolved while one of its services has no newer snapshot', () => {
     const references = [
       reference({ id: 1, holderKind: 'job', buildId: 'B', services: ['srs', 'stream-uploader'], createdAt: at(10) }),
-      reference({ id: 2, holderKind: 'snapshot', buildId: 'B', holderId: 'stage/srs', services: ['srs'], createdAt: at(20) }),
+      reference({
+        id: 2,
+        holderKind: 'snapshot',
+        buildId: 'B',
+        holderId: 'stage/srs',
+        services: ['srs'],
+        createdAt: at(20),
+      }),
     ];
 
     assert.deepEqual(coveredJobReferences(references), []);
@@ -56,7 +79,14 @@ describe('coveredJobReferences', () => {
 
   it('does not count a snapshot older than the job, which describes the deployment before it', () => {
     const references = [
-      reference({ id: 1, holderKind: 'snapshot', buildId: 'A', holderId: 'stage/srs', services: ['srs'], createdAt: at(5) }),
+      reference({
+        id: 1,
+        holderKind: 'snapshot',
+        buildId: 'A',
+        holderId: 'stage/srs',
+        services: ['srs'],
+        createdAt: at(5),
+      }),
       reference({ id: 2, holderKind: 'job', buildId: 'B', services: ['srs'], createdAt: at(10) }),
     ];
 
@@ -69,7 +99,14 @@ describe('coveredJobReferences', () => {
     // since the job, so the job's own reference is no longer the only record.
     const references = [
       reference({ id: 1, holderKind: 'job', buildId: 'B', services: ['srs'], createdAt: at(10) }),
-      reference({ id: 2, holderKind: 'snapshot', buildId: 'A', holderId: 'stage/srs', services: ['srs'], createdAt: at(20) }),
+      reference({
+        id: 2,
+        holderKind: 'snapshot',
+        buildId: 'A',
+        holderId: 'stage/srs',
+        services: ['srs'],
+        createdAt: at(20),
+      }),
     ];
 
     assert.deepEqual(coveredJobReferences(references), [1]);
@@ -79,7 +116,14 @@ describe('coveredJobReferences', () => {
     const references = [
       reference({ id: 1, holderKind: 'job', buildId: 'B', services: ['stream-uploader'], createdAt: at(10) }),
       reference({ id: 2, holderKind: 'job', buildId: 'C', services: ['srs'], createdAt: at(30) }),
-      reference({ id: 3, holderKind: 'snapshot', buildId: 'C', holderId: 'stage/srs', services: ['srs'], createdAt: at(40) }),
+      reference({
+        id: 3,
+        holderKind: 'snapshot',
+        buildId: 'C',
+        holderId: 'stage/srs',
+        services: ['srs'],
+        createdAt: at(40),
+      }),
     ];
 
     assert.deepEqual(coveredJobReferences(references), [2]);
@@ -88,7 +132,14 @@ describe('coveredJobReferences', () => {
   it('ignores references already resolved', () => {
     const references = [
       reference({ id: 1, holderKind: 'job', buildId: 'B', services: ['srs'], createdAt: at(10), resolvedAt: at(15) }),
-      reference({ id: 2, holderKind: 'snapshot', buildId: 'B', holderId: 'stage/srs', services: ['srs'], createdAt: at(20) }),
+      reference({
+        id: 2,
+        holderKind: 'snapshot',
+        buildId: 'B',
+        holderId: 'stage/srs',
+        services: ['srs'],
+        createdAt: at(20),
+      }),
     ];
 
     assert.deepEqual(coveredJobReferences(references), []);
@@ -100,7 +151,14 @@ describe('protectedBuildIds', () => {
     const references = [
       reference({ id: 1, holderKind: 'job', buildId: 'B', services: ['srs'], createdAt: at(10) }),
       reference({ id: 2, holderKind: 'job', buildId: 'X', services: ['srs'], createdAt: at(10), resolvedAt: at(12) }),
-      reference({ id: 3, holderKind: 'snapshot', buildId: 'A', holderId: 'old/srs', services: ['srs'], createdAt: at(1) }),
+      reference({
+        id: 3,
+        holderKind: 'snapshot',
+        buildId: 'A',
+        holderId: 'old/srs',
+        services: ['srs'],
+        createdAt: at(1),
+      }),
       reference({ id: 4, holderKind: 'operation', buildId: 'O', holderId: '7', createdAt: at(1) }),
     ];
 

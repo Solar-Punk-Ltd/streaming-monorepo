@@ -11,10 +11,7 @@ export class RestartInProgressError extends Error {
     public readonly profileName: string,
     public readonly service: string,
   ) {
-    super(
-      `${service} on ${profileName} was restarted a moment ago. ` +
-        'Wait a few seconds, then try again.',
-    );
+    super(`${service} on ${profileName} was restarted a moment ago. ` + 'Wait a few seconds, then try again.');
     this.name = 'RestartInProgressError';
   }
 }

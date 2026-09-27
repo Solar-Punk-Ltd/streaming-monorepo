@@ -5,9 +5,14 @@ import { publishedBindings } from '../../src/domain/ports/publishedPorts.js';
 import { TargetDocker } from '../../src/domain/ports/TargetDocker.js';
 
 const container = {
-  id: 'a'.repeat(64), project: 'stage', service: 'srs',
+  id: 'a'.repeat(64),
+  project: 'stage',
+  service: 'srs',
   ports: {
-    '1935/tcp': [{ HostIp: '0.0.0.0', HostPort: '10012' }, { HostIp: '::', HostPort: '10012' }],
+    '1935/tcp': [
+      { HostIp: '0.0.0.0', HostPort: '10012' },
+      { HostIp: '::', HostPort: '10012' },
+    ],
     '10080/udp': [{ HostIp: '0.0.0.0', HostPort: '10011' }],
     '80/tcp': null,
   },

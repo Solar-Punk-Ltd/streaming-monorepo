@@ -8,11 +8,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  type ChequebookHealth,
-  DEFAULT_ABR_RUNGS,
-  type UploaderHealthReading,
-} from '@streaming-infra-manager/common';
+import { type ChequebookHealth, DEFAULT_ABR_RUNGS, type UploaderHealthReading } from '@streaming-infra-manager/common';
 
 import {
   CHEQUEBOOK_EMPTY,
@@ -30,13 +26,28 @@ import type { Profile } from '../types';
 import { attentionText } from './attentionText';
 
 const base: Profile = {
-  name: 'abr-pool-1-1080p', kind: 'custom', port_slot: 4, notes: null, notes_revision: 0,
-  status: 'RUNNING', last_error: null, last_error_at: null, last_full_deploy_commit: null,
-  created_at: '2026-09-25T00:00:00Z', updated_at: '2026-09-25T00:00:00Z',
-  engine_settings: {}, has_private_key: false, has_rpc_endpoint: false, has_srt_passphrase: false, has_engine_config: false,
-  engine_config_error: null, engine_config_state: null,
+  name: 'abr-pool-1-1080p',
+  kind: 'custom',
+  port_slot: 4,
+  notes: null,
+  notes_revision: 0,
+  status: 'RUNNING',
+  last_error: null,
+  last_error_at: null,
+  last_full_deploy_commit: null,
+  created_at: '2026-09-25T00:00:00Z',
+  updated_at: '2026-09-25T00:00:00Z',
+  engine_settings: {},
+  has_private_key: false,
+  has_rpc_endpoint: false,
+  has_srt_passphrase: false,
+  has_engine_config: false,
+  engine_config_error: null,
+  engine_config_state: null,
   instance_id: '00000000-0000-4000-8000-000000000007',
-  engine_config_revision: 0, intent_revision: 0, stamp_id: `0x${'a'.repeat(64)}`,
+  engine_config_revision: 0,
+  intent_revision: 0,
+  stamp_id: `0x${'a'.repeat(64)}`,
   components: ['bee-uploader'],
   containers: [{ service: 'bee-uploader', ports: {}, buildId: null, buildCommit: null }],
 };
@@ -95,7 +106,10 @@ describe('a row for an uploader, in the words its readiness step uses', () => {
     const row = attentionText(UPLOADER_REPORTS_A_PROBLEM, abrUploader, null, refused);
 
     assert.match(row.text, /The uploader reports postage refused\./);
-    assert.match(row.text, /a rung’s Bee node refused that rung’s postage batch, usually because it is full or has expired, so that rung’s uploads fail/);
+    assert.match(
+      row.text,
+      /a rung’s Bee node refused that rung’s postage batch, usually because it is full or has expired, so that rung’s uploads fail/,
+    );
     assert.equal(row.action, null);
   });
 
@@ -152,7 +166,10 @@ describe('the rows the list already had', () => {
   it('keeps its words for a missing, an expired and an unpaid batch', () => {
     const drained: ChequebookHealth = { state: 'empty', availablePlur: 0n, floorPlur: 5_000_000_000_000_000n };
 
-    assert.equal(attentionText(NEEDS_A_STAMP, base, null).text, 'No stamp yet, so its pool cannot publish to this rung.');
+    assert.equal(
+      attentionText(NEEDS_A_STAMP, base, null).text,
+      'No stamp yet, so its pool cannot publish to this rung.',
+    );
     assert.equal(attentionText(STAMP_EXPIRED, base, null).action, 'buy-stamp');
     assert.equal(attentionText(CHEQUEBOOK_EMPTY, base, drained).action, 'fill-chequebook');
   });

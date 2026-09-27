@@ -41,7 +41,10 @@ export interface CatalogSnapshot {
 
 /** A response that arrived and was refused, as opposed to a transport failure or a timeout. */
 class CatalogFetchError extends Error {
-  constructor(url: string, readonly status: number) {
+  constructor(
+    url: string,
+    readonly status: number,
+  ) {
     super(`Catalog feed request to ${url} was refused with ${status}`);
     this.name = 'CatalogFetchError';
   }

@@ -46,11 +46,7 @@ export function useSessionStore(): SessionStore {
 
   const refresh = useCallback(async () => {
     const probe = await probeSession();
-    setState(
-      probe.signedIn
-        ? { status: 'signedIn', ...probe.session }
-        : { status: 'signedOut', reason: probe.reason },
-    );
+    setState(probe.signedIn ? { status: 'signedIn', ...probe.session } : { status: 'signedOut', reason: probe.reason });
   }, []);
 
   useEffect(() => {
@@ -58,9 +54,7 @@ export function useSessionStore(): SessionStore {
   }, [refresh]);
 
   useEffect(() => {
-    setSessionEndedHandler(() =>
-      setState({ status: 'signedOut', reason: 'ended' }),
-    );
+    setSessionEndedHandler(() => setState({ status: 'signedOut', reason: 'ended' }));
     return () => setSessionEndedHandler(null);
   }, []);
 

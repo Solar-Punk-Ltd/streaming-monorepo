@@ -29,9 +29,7 @@ export type LoginBody = InferType<typeof loginSchema>;
  * operator is told what is wrong rather than that a regex did not match.
  */
 export const createUserSchema = object({
-  username: string()
-    .required('username is required')
-    .matches(USERNAME_RE, USERNAME_MESSAGE),
+  username: string().required('username is required').matches(USERNAME_RE, USERNAME_MESSAGE),
   password: string().required('password is required').max(PASSWORD_MAX_LENGTH),
   /** Let the new user manage users too. Left out means no. */
   admin: boolean().optional(),
@@ -40,12 +38,8 @@ export const createUserSchema = object({
 export type CreateUserBody = InferType<typeof createUserSchema>;
 
 export const changePasswordSchema = object({
-  currentPassword: string()
-    .required('currentPassword is required')
-    .max(PASSWORD_MAX_LENGTH),
-  newPassword: string()
-    .required('newPassword is required')
-    .max(PASSWORD_MAX_LENGTH),
+  currentPassword: string().required('currentPassword is required').max(PASSWORD_MAX_LENGTH),
+  newPassword: string().required('newPassword is required').max(PASSWORD_MAX_LENGTH),
 }).noUnknown(true);
 
 export type ChangePasswordBody = InferType<typeof changePasswordSchema>;

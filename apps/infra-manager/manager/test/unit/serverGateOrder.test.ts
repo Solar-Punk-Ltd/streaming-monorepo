@@ -61,8 +61,7 @@ describe('server.ts mount order', () => {
     const lines = mountLines(serverSource());
 
     assert.ok(
-      lines.indexOf('app.use(requireSameSite);') <
-        lines.findIndex((line) => line.includes("'/")),
+      lines.indexOf('app.use(requireSameSite);') < lines.findIndex((line) => line.includes("'/")),
       'requireSameSite must run before the first router',
     );
   });

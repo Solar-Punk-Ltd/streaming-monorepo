@@ -10,8 +10,7 @@ import { createContext, useContext, useEffect, useRef } from 'react';
  * after typing a branch and pressing the button.
  */
 /** Why an action on another version has to wait, in the table and in the form. */
-export const ANOTHER_BUILDING =
-  'Another version is building. Wait for it to finish.';
+export const ANOTHER_BUILDING = 'Another version is building. Wait for it to finish.';
 
 export interface BuildSlot {
   /** The version building right now, or null when nothing is. */

@@ -1,13 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { BeeNodeObservation } from '@streaming-infra-manager/common';
-import {
-  beeReadinessView,
-  NODE_REFRESH_INTERVAL_MS,
-  OBSERVATION_MAX_AGE_MS,
-} from './beeReadiness';
+import { beeReadinessView, NODE_REFRESH_INTERVAL_MS, OBSERVATION_MAX_AGE_MS } from './beeReadiness';
 
-const observation: BeeNodeObservation = { state: 'ready', observedAt: '2026-09-08T00:00:00.000Z', healthStatus: 'ok', readinessStatus: 'ready', version: '2.8.2', apiVersion: '8.1.0', chainProgress: null };
+const observation: BeeNodeObservation = {
+  state: 'ready',
+  observedAt: '2026-09-08T00:00:00.000Z',
+  healthStatus: 'ok',
+  readinessStatus: 'ready',
+  version: '2.8.2',
+  apiVersion: '8.1.0',
+  chainProgress: null,
+};
 const observedAt = Date.parse(observation.observedAt);
 
 describe('fresh Bee evidence on screen', () => {
@@ -49,7 +53,12 @@ describe('fresh Bee evidence on screen', () => {
     const unreadable = beeReadinessView({ ...observation, state: 'unreadable' }, observedAt, false, observedAt);
     assert.doesNotMatch(unreadable.label, /unreachable/i);
     assert.match(unreadable.detail, /answered/i);
-    const withProgress = beeReadinessView({ ...observation, state: 'initializing', chainProgress: { block: 12, chainTip: 20 } }, observedAt, false, observedAt);
+    const withProgress = beeReadinessView(
+      { ...observation, state: 'initializing', chainProgress: { block: 12, chainTip: 20 } },
+      observedAt,
+      false,
+      observedAt,
+    );
     assert.match(withProgress.detail, /12.*20/);
   });
 

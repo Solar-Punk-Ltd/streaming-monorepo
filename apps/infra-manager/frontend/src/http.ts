@@ -1,7 +1,4 @@
-import {
-  REQUESTED_WITH_HEADER,
-  REQUESTED_WITH_VALUE,
-} from '@streaming-infra-manager/common';
+import { REQUESTED_WITH_HEADER, REQUESTED_WITH_VALUE } from '@streaming-infra-manager/common';
 
 import { SIGN_IN_MESSAGES } from './auth/messages';
 
@@ -33,9 +30,7 @@ let onSessionEnded: SessionEndedHandler | null = null;
  * Registered by useSession. It is a single handler rather than a subscription
  * because there is one session and one place that renders it.
  */
-export function setSessionEndedHandler(
-  handler: SessionEndedHandler | null,
-): void {
+export function setSessionEndedHandler(handler: SessionEndedHandler | null): void {
   onSessionEnded = handler;
 }
 
@@ -52,10 +47,7 @@ export interface ApiRequest {
   cache?: RequestCache;
 }
 
-export async function apiFetch(
-  path: string,
-  request: ApiRequest = {},
-): Promise<Response> {
+export async function apiFetch(path: string, request: ApiRequest = {}): Promise<Response> {
   const method = request.method ?? 'GET';
   const headers: Record<string, string> = {};
 
@@ -134,10 +126,7 @@ interface ApiFailure {
   code: string | null;
 }
 
-async function extractApiError(
-  res: Response,
-  fallback: string,
-): Promise<ApiFailure> {
+async function extractApiError(res: Response, fallback: string): Promise<ApiFailure> {
   try {
     const err = (await res.json()) as {
       error?: string;
@@ -159,10 +148,7 @@ async function extractApiError(
 }
 
 /** Throws with whatever the manager said went wrong. */
-export async function failWith(
-  res: Response,
-  fallback: string,
-): Promise<never> {
+export async function failWith(res: Response, fallback: string): Promise<never> {
   const failure = await extractApiError(res, fallback);
   throw new ApiError(failure.message, failure.code, res.status);
 }
@@ -174,24 +160,14 @@ export async function getJson<T>(path: string, request: Pick<ApiRequest, 'cache'
 }
 
 /** A write that answers with JSON. */
-export async function sendJson<T>(
-  method: string,
-  path: string,
-  body?: unknown,
-  signal?: AbortSignal,
-): Promise<T> {
+export async function sendJson<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const res = await apiFetch(path, { method, body: body ?? {}, signal });
   if (!res.ok) await failWith(res, `request failed (${res.status})`);
   return (await res.json()) as T;
 }
 
 /** A write that answers with nothing. */
-export async function send(
-  method: string,
-  path: string,
-  body?: unknown,
-  signal?: AbortSignal,
-): Promise<void> {
+export async function send(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<void> {
   const res = await apiFetch(path, { method, body, signal });
   if (!res.ok) await failWith(res, `request failed (${res.status})`);
   await res.text().catch(() => undefined);

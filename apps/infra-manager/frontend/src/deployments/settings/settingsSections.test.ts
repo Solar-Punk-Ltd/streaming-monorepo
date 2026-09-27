@@ -63,8 +63,7 @@ const ENTRIES: DeploymentSettingEntry[] = [
 ];
 
 const titles = (sections: ReturnType<typeof sectionsOf>) => sections.map(({ title }) => title);
-const keys = (sections: ReturnType<typeof sectionsOf>) =>
-  sections.map(({ entries }) => entries.map(({ key }) => key));
+const keys = (sections: ReturnType<typeof sectionsOf>) => sections.map(({ entries }) => entries.map(({ key }) => key));
 
 describe('sectionsOf', () => {
   it('groups the keys under their sections in the order the sections first appear', () => {
@@ -82,7 +81,10 @@ describe('sectionsOf', () => {
   it('keeps one section for a title met twice, the keys in list order', () => {
     const abr = sectionsOf(ENTRIES).find(({ title }) => title === 'ABR ladder');
 
-    assert.deepEqual(abr?.entries.map(({ key }) => key), ['ABR_ENABLED', 'ABR_VHOST']);
+    assert.deepEqual(
+      abr?.entries.map(({ key }) => key),
+      ['ABR_ENABLED', 'ABR_VHOST'],
+    );
   });
 
   it('lists a key the version no longer declares apart from the declared keys with no section', () => {
@@ -163,7 +165,11 @@ describe('the engine settings of a deployment', () => {
 
     assert.equal(sections[0]?.title, ENGINE_SECTION_TITLE);
     assert.deepEqual(keys(sections)[0], ['HLS_FRAGMENT', 'HLS_SEGMENT_MAX', 'HLS_WINDOW', 'SRT_LATENCY']);
-    assert.equal(titles(sections).includes('SRS Media Server'), false, 'no key is left in the sample section they came from');
+    assert.equal(
+      titles(sections).includes('SRS Media Server'),
+      false,
+      'no key is left in the sample section they came from',
+    );
     assert.deepEqual(keys(sections).at(-2), ['LOOSE_KEY']);
   });
 

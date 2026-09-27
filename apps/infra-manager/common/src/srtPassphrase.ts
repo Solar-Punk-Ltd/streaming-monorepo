@@ -27,13 +27,10 @@ import { ENV_SAFE_CHARS } from './envSafeValue.js';
 export const SRT_PASSPHRASE_MIN = 10;
 export const SRT_PASSPHRASE_MAX = 79;
 
-export const SRT_PASSPHRASE_RE = new RegExp(
-  `^[${ENV_SAFE_CHARS}]{${SRT_PASSPHRASE_MIN},${SRT_PASSPHRASE_MAX}}$`,
-);
+export const SRT_PASSPHRASE_RE = new RegExp(`^[${ENV_SAFE_CHARS}]{${SRT_PASSPHRASE_MIN},${SRT_PASSPHRASE_MAX}}$`);
 
 export const SRT_PASSPHRASE_MESSAGE =
-  `must be ${SRT_PASSPHRASE_MIN}-${SRT_PASSPHRASE_MAX} characters, ` +
-  'using only letters, digits and . _ ~ -';
+  `must be ${SRT_PASSPHRASE_MIN}-${SRT_PASSPHRASE_MAX} characters, ` + 'using only letters, digits and . _ ~ -';
 
 export function isValidSrtPassphrase(value: string): boolean {
   return SRT_PASSPHRASE_RE.test(value);
@@ -47,8 +44,7 @@ export function isValidSrtPassphrase(value: string): boolean {
  * alphabet, the obvious alphanumeric one, would make its first two letters
  * marginally likelier than the rest.
  */
-const PASSPHRASE_ALPHABET =
-  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+const PASSPHRASE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
 /**
  * A random passphrase this module's own rules accept.
@@ -60,13 +56,8 @@ const PASSPHRASE_ALPHABET =
  */
 export function generateSrtPassphrase(length = 32): string {
   if (length < SRT_PASSPHRASE_MIN || length > SRT_PASSPHRASE_MAX) {
-    throw new Error(
-      `generateSrtPassphrase: length ${SRT_PASSPHRASE_MESSAGE}`,
-    );
+    throw new Error(`generateSrtPassphrase: length ${SRT_PASSPHRASE_MESSAGE}`);
   }
   const bytes = crypto.getRandomValues(new Uint8Array(length));
-  return Array.from(
-    bytes,
-    (b) => PASSPHRASE_ALPHABET[b % PASSPHRASE_ALPHABET.length],
-  ).join('');
+  return Array.from(bytes, (b) => PASSPHRASE_ALPHABET[b % PASSPHRASE_ALPHABET.length]).join('');
 }

@@ -29,7 +29,11 @@ export function createAdminLinkTestRouter(tester: AdminLinkTester): Router {
       const { username } = signedInUser(req);
       const body = req.body as TestAdminLinkBody;
       const answer = await tester.testTyped(
-        { url: body.url as string, token: body.token as NonNullable<TestAdminLinkBody['token']>, feedOwner: body.feedOwner ?? null },
+        {
+          url: body.url as string,
+          token: body.token as NonNullable<TestAdminLinkBody['token']>,
+          feedOwner: body.feedOwner ?? null,
+        },
         username,
       );
       res.setHeader('Cache-Control', 'no-store');

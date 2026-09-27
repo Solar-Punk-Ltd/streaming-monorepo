@@ -53,6 +53,7 @@ export function DomainSelector() {
     setIsOpen(false);
   };
 
+  // probeGateway answers every failure as an outcome, so the button calls this without awaiting.
   const handleConfirm = async () => {
     if (status.kind === 'checking') {
       return;
@@ -141,7 +142,11 @@ export function DomainSelector() {
               <button className="gateway-modal-cancel" onClick={close}>
                 Cancel
               </button>
-              <button className="gateway-modal-confirm" onClick={handleConfirm} disabled={status.kind === 'checking'}>
+              <button
+                className="gateway-modal-confirm"
+                onClick={() => void handleConfirm()}
+                disabled={status.kind === 'checking'}
+              >
                 {status.kind === 'checking' ? 'Checking...' : 'Check and use'}
               </button>
             </div>

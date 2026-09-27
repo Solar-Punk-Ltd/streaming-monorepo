@@ -57,7 +57,10 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
   };
 
   return (
-    <Box component="section" sx={{ border: 1, borderColor: 'divider', borderRadius: 2, px: 1.5, py: 1.25, minWidth: 0 }}>
+    <Box
+      component="section"
+      sx={{ border: 1, borderColor: 'divider', borderRadius: 2, px: 1.5, py: 1.25, minWidth: 0 }}
+    >
       <Typography variant="subtitle2" component="h4" sx={{ m: 0, fontWeight: 600 }}>
         Web2 admin
       </Typography>
@@ -65,11 +68,12 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
         variant="caption"
         component="p"
         sx={{
-          color: "text.secondary",
+          color: 'text.secondary',
           mt: 0.25,
           mb: 1,
-          overflowWrap: 'anywhere'
-        }}>
+          overflowWrap: 'anywhere',
+        }}
+      >
         {ADMIN_LINK_GROUP_LEAD}
       </Typography>
 
@@ -77,17 +81,22 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
         <Typography
           variant="body2"
           sx={{
-            color: "text.secondary",
-            overflowWrap: 'anywhere'
-          }}>
+            color: 'text.secondary',
+            overflowWrap: 'anywhere',
+          }}
+        >
           {availability === 'absent' ? ADMIN_LINK_ABSENT : ADMIN_LINK_UNREAD}
         </Typography>
       ) : (
         <Stack spacing={1.5} sx={{ minWidth: 0 }}>
           {pending === 'reading' && (
-            <Typography variant="caption" role="status" sx={{
-              color: "text.secondary"
-            }}>
+            <Typography
+              variant="caption"
+              role="status"
+              sx={{
+                color: 'text.secondary',
+              }}
+            >
               {ADMIN_LINK_MANAGER_READING}
             </Typography>
           )}
@@ -108,7 +117,9 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
           )}
           <FormControlLabel
             disabled={pending === 'reading'}
-            control={<Switch size="small" checked={choice.on} onChange={(event) => set({ on: event.target.checked })} />}
+            control={
+              <Switch size="small" checked={choice.on} onChange={(event) => set({ on: event.target.checked })} />
+            }
             label={<Typography variant="body2">{ADMIN_LINK_SWITCH_LABEL}</Typography>}
           />
 
@@ -124,7 +135,7 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
                 helperText={urlProblem ?? 'Where the uploader reaches the web2 admin.'}
                 onChange={(event) => set({ url: event.target.value })}
                 slotProps={{
-                  htmlInput: { ...PLAIN_TEXT_INPUT, inputMode: 'url', 'aria-label': 'Web2 admin address' }
+                  htmlInput: { ...PLAIN_TEXT_INPUT, inputMode: 'url', 'aria-label': 'Web2 admin address' },
                 }}
               />
               <ChoiceGroup
@@ -154,7 +165,11 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
                         onChange={(event) => set({ token: event.target.value })}
                         inputRef={tokenField}
                         slotProps={{
-                          htmlInput: { ...PLAIN_TEXT_INPUT, autoComplete: NEW_PASSWORD, 'aria-label': 'Web2 admin token' }
+                          htmlInput: {
+                            ...PLAIN_TEXT_INPUT,
+                            autoComplete: NEW_PASSWORD,
+                            'aria-label': 'Web2 admin token',
+                          },
                         }}
                       />
                     ),
@@ -177,17 +192,27 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
               )}
               <AdminLinkTest
                 run={testRequest ? () => testAdminLink(testRequest) : null}
-                blockedReason={elsewhere ? 'Type the token for this address to test it.' : 'Give the address and a token to test the link.'}
-                resetKey={JSON.stringify([choice.url, choice.tokenSource, choice.token, testRequest?.feedOwner ?? null])}
+                blockedReason={
+                  elsewhere
+                    ? 'Type the token for this address to test it.'
+                    : 'Give the address and a token to test the link.'
+                }
+                resetKey={JSON.stringify([
+                  choice.url,
+                  choice.tokenSource,
+                  choice.token,
+                  testRequest?.feedOwner ?? null,
+                ])}
               />
             </>
           ) : pending === null ? (
             <Typography
               variant="caption"
               sx={{
-                color: "text.secondary",
-                overflowWrap: 'anywhere'
-              }}>
+                color: 'text.secondary',
+                overflowWrap: 'anywhere',
+              }}
+            >
               {ADMIN_LINK_OFF_NOTE}
             </Typography>
           ) : null}

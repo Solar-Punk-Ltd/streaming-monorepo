@@ -17,11 +17,7 @@ import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { after, before, describe, it } from 'node:test';
 
-import {
-  minimumStampAmountPlur,
-  REQUESTED_WITH_HEADER,
-  REQUESTED_WITH_VALUE,
-} from '@streaming-infra-manager/common';
+import { minimumStampAmountPlur, REQUESTED_WITH_HEADER, REQUESTED_WITH_VALUE } from '@streaming-infra-manager/common';
 import { DEV_PASSWORD, DEV_USERNAME } from '../dev/mock-auth.mjs';
 
 const bootstrap = `
@@ -46,7 +42,7 @@ async function request(path, method = 'GET', body) {
       ...(cookie ? { cookie } : {}),
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal: AbortSignal.timeout(5000),
   });
   return {
@@ -106,7 +102,11 @@ before(async () => {
       child.off('message', onMessage);
       child.off('exit', onExit);
       child.off('error', finish);
-      error ? reject(error) : resolve();
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
     };
     child.on('message', onMessage);
     child.once('exit', onExit);
@@ -147,7 +147,10 @@ describe('the offline mock changing a batch its node holds', { concurrency: fals
   it('answers a dilute the same way, and raises the depth and halves the life once it lands', async () => {
     const [batch] = await batches();
 
-    const res = await request(`/profiles/${NODE}/stamp/dilute`, 'POST', { batch_id: `0x${batch.batchID}`, depth: batch.depth + 1 });
+    const res = await request(`/profiles/${NODE}/stamp/dilute`, 'POST', {
+      batch_id: `0x${batch.batchID}`,
+      depth: batch.depth + 1,
+    });
 
     assert.equal(res.status, 202);
     assert.equal(res.body.batchID, batch.batchID);
@@ -168,7 +171,10 @@ describe('the offline mock changing a batch its node holds', { concurrency: fals
   it('refuses a depth that is not deeper than the batch’s own, in the manager’s words', async () => {
     const [batch] = await batches();
 
-    const res = await request(`/profiles/${NODE}/stamp/dilute`, 'POST', { batch_id: batch.batchID, depth: batch.depth });
+    const res = await request(`/profiles/${NODE}/stamp/dilute`, 'POST', {
+      batch_id: batch.batchID,
+      depth: batch.depth,
+    });
 
     assert.equal(res.status, 400);
     assert.equal(res.body.error, 'validation_error');
@@ -179,11 +185,17 @@ describe('the offline mock changing a batch its node holds', { concurrency: fals
     const [batch] = await batches();
     const stepsUnderADay = Math.floor(Math.log2(batch.batchTTL / DAY)) + 1;
 
-    const res = await request(`/profiles/${NODE}/stamp/dilute`, 'POST', { batch_id: batch.batchID, depth: batch.depth + stepsUnderADay });
+    const res = await request(`/profiles/${NODE}/stamp/dilute`, 'POST', {
+      batch_id: batch.batchID,
+      depth: batch.depth + stepsUnderADay,
+    });
 
     assert.equal(res.status, 400);
     assert.equal(res.body.error, 'validation_error');
-    assert.match(res.body.errors[0], /of life, under a day, and the postage contract refuses a dilution that leaves less than a day/);
+    assert.match(
+      res.body.errors[0],
+      /of life, under a day, and the postage contract refuses a dilution that leaves less than a day/,
+    );
     const [unchanged] = await batches();
     assert.equal(unchanged.depth, batch.depth);
   });
@@ -197,7 +209,10 @@ describe('the offline mock changing a batch its node holds', { concurrency: fals
     assert.match(before?.reason ?? '', /full, so its node refuses uploads/);
 
     const [batch] = (await request('/profiles/abr-pool-1-720p/stamp/stamps')).body.stamps;
-    const res = await request('/profiles/abr-pool-1-720p/stamp/dilute', 'POST', { batch_id: batch.batchID, depth: batch.depth + 1 });
+    const res = await request('/profiles/abr-pool-1-720p/stamp/dilute', 'POST', {
+      batch_id: batch.batchID,
+      depth: batch.depth + 1,
+    });
     assert.equal(res.status, 202);
 
     const deadline = Date.now() + SETTLE_BUDGET_MS;

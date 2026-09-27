@@ -58,17 +58,17 @@ describe('an edit is judged on the state it proposes', () => {
 
     assert.equal(harness.orchestrator.judged[0]?.stamp_id, LIVE, 'the gate saw the stamp the edit proposes');
     assert.equal(harness.profiles.rows.get('stage')?.stamp_id, LIVE);
-    assert.deepEqual(harness.orchestrator.deploys.map((deploy) => deploy.profileName), ['stage']);
+    assert.deepEqual(
+      harness.orchestrator.deploys.map((deploy) => deploy.profileName),
+      ['stage'],
+    );
   });
 
   it('refuses a dead stamp in place of a live one, and changes nothing', async () => {
     const harness = profileServiceHarness([streamer()]);
     harness.orchestrator.gate = nodeRefusing(DEAD);
 
-    await assert.rejects(
-      harness.service.update('stage', { stamp_id: DEAD, notes: 'after' }),
-      StampNotUsableError,
-    );
+    await assert.rejects(harness.service.update('stage', { stamp_id: DEAD, notes: 'after' }), StampNotUsableError);
 
     assert.deepEqual(harness.orchestrator.reserved, [], 'no claim was taken');
     assert.deepEqual(harness.profiles.updateEditableCalls, [], 'nothing was written');
@@ -122,7 +122,10 @@ describe('a group edit is judged on the state it proposes, member by member', ()
 
     assert.deepEqual(
       harness.orchestrator.judged.map((row) => [row.name, row.stamp_id]),
-      [['pool-1', DEAD], ['pool-2', DEAD]],
+      [
+        ['pool-1', DEAD],
+        ['pool-2', DEAD],
+      ],
     );
   });
 
@@ -130,10 +133,7 @@ describe('a group edit is judged on the state it proposes, member by member', ()
     const harness = withGroup();
     harness.orchestrator.gate = nodeRefusing(DEAD, 'pool-2');
 
-    await assert.rejects(
-      harness.service.updateGroupConfig(1, { stamp_id: DEAD }),
-      StampNotUsableError,
-    );
+    await assert.rejects(harness.service.updateGroupConfig(1, { stamp_id: DEAD }), StampNotUsableError);
 
     assert.deepEqual(harness.groups.configWrites, []);
     assert.deepEqual(harness.orchestrator.deploys, []);

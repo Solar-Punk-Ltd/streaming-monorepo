@@ -60,7 +60,7 @@ const SEGMENT = 'http://gw.test:1633/bytes/abc';
 
 /** Runs the page function against this process's own globals, which is all the arm setup touches. */
 const fakePage = (): Page =>
-  ({ evaluate: (fn: (arg: unknown) => unknown, arg: unknown) => Promise.resolve(fn(arg)) } as unknown as Page);
+  ({ evaluate: (fn: (arg: unknown) => unknown, arg: unknown) => Promise.resolve(fn(arg)) }) as unknown as Page;
 
 function installSwitch({ prewarms = true, lands = 'weeb3' }: { prewarms?: boolean; lands?: string } = {}): void {
   (globalThis as Record<string, unknown>)[HANDLE] = {

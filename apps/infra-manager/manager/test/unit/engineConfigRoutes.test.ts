@@ -57,19 +57,17 @@ describe('POST /profiles/:name/engine-config/verify', () => {
 });
 
 describe('POST /profiles/:name/engine-config/restore-previous', () => {
-  it('puts the interrupted rollout\'s previous file back and answers 202 with the row', async () => {
+  it("puts the interrupted rollout's previous file back and answers 202 with the row", async () => {
     const res = await call(app, 'POST', '/profiles/stream1/engine-config/restore-previous');
 
     assert.equal(res.status, 202);
     assert.ok(calls.includes('previous:stream1'));
   });
 
-  it('answers 400 in the service\'s words when no rollout is interrupted', async () => {
+  it("answers 400 in the service's words when no rollout is interrupted", async () => {
     const res = await call(app, 'POST', '/profiles/settled/engine-config/restore-previous');
 
     assert.equal(res.status, 400);
-    assert.deepEqual((res.body as { errors: string[] }).errors, [
-      'There is no interrupted rollout to go back from.',
-    ]);
+    assert.deepEqual((res.body as { errors: string[] }).errors, ['There is no interrupted rollout to go back from.']);
   });
 });

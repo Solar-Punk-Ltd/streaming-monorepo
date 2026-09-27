@@ -113,7 +113,14 @@ export function sampleCatalogOf(text: string): SampleCatalogEntry[] {
         return;
       }
       const example = COMMENTED_ASSIGNMENT_RE.exec(comment);
-      if (example) addExample(entries, example[1]!, comment.slice(example[1]!.length + 1), section, descriptionAbove(lines, index, example[1]!));
+      if (example)
+        addExample(
+          entries,
+          example[1]!,
+          comment.slice(example[1]!.length + 1),
+          section,
+          descriptionAbove(lines, index, example[1]!),
+        );
       return;
     }
     const key = envKeyIn(line);

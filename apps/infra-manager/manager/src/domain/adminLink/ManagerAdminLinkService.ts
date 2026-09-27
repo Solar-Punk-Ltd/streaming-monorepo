@@ -1,4 +1,8 @@
-import { type ManagerAdminLink, type ManagerAdminLinkSave, managerAdminLinkProblems } from '@streaming-infra-manager/common';
+import {
+  type ManagerAdminLink,
+  type ManagerAdminLinkSave,
+  managerAdminLinkProblems,
+} from '@streaming-infra-manager/common';
 
 import { AdminLinkInputError, ManagerSettingsChangedError } from '../errors/index.js';
 import { Logger } from '../Logger.js';
@@ -16,7 +20,8 @@ function writeOf(save: ManagerAdminLinkSave): ManagerAdminLinkWrite {
 /** What the log says a save did, which never names the address or the token. */
 function describeSave(save: ManagerAdminLinkSave): string {
   if (save.url === '') return 'removed the web2 admin link for new deployments';
-  const token = save.token === undefined ? 'kept its token' : save.token === null ? 'cleared its token' : 'replaced its token';
+  const token =
+    save.token === undefined ? 'kept its token' : save.token === null ? 'cleared its token' : 'replaced its token';
   return `set the web2 admin link for new deployments and ${token}`;
 }
 

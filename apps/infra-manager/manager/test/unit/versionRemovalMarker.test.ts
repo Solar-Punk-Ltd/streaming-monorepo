@@ -20,9 +20,14 @@ describe('persistent removal markers at deployment admission', () => {
     const artifact = join(root, 'test-stack.builds', BUILD);
     await mkdir(artifact, { recursive: true });
     await writeFile(join(artifact, '.complete'), '');
-    await writeFile(join(artifact, '.stack-manifest.json'), JSON.stringify({ buildId: BUILD, commit: BUILD, builtAt: '2026-09-09T00:00:00Z', toolchain: 'synthetic' }));
+    await writeFile(
+      join(artifact, '.stack-manifest.json'),
+      JSON.stringify({ buildId: BUILD, commit: BUILD, builtAt: '2026-09-09T00:00:00Z', toolchain: 'synthetic' }),
+    );
   });
-  afterEach(async () => { await rm(root, { recursive: true, force: true }); });
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
   const identity = () => ({ schema: 1, versionId: 2, name: 'test-stack', rootPath: anchor, removalId: randomUUID() });
   it('accepts normal temporary roots and verified macOS system aliases', async () => {
     assert.equal(assertOwnedVersionParent(root), true);
@@ -34,7 +39,9 @@ describe('persistent removal markers at deployment admission', () => {
         const selected = { id: 2, name: 'test-stack', rootPath: join(temporary, 'test-stack') };
         await persistVersionRemoval(selected);
         assert.match(deployRootProblem(selected) ?? '', /removal/i);
-      } finally { await rm(temporary, { recursive: true, force: true }); }
+      } finally {
+        await rm(temporary, { recursive: true, force: true });
+      }
     }
   });
   it('persists one retryable removal identity and leaves no temporary marker behind', async () => {
@@ -43,7 +50,10 @@ describe('persistent removal markers at deployment admission', () => {
     const first = JSON.parse(await readFile(path, 'utf8'));
     await persistVersionRemoval(selected);
     assert.deepEqual(JSON.parse(await readFile(path, 'utf8')), first);
-    assert.deepEqual((await readdir(root)).filter(name => name.includes('.removal.')), ['test-stack.removal.json']);
+    assert.deepEqual(
+      (await readdir(root)).filter((name) => name.includes('.removal.')),
+      ['test-stack.removal.json'],
+    );
     await persistVersionRemoval({ ...selected, id: 3 });
     const next = JSON.parse(await readFile(path, 'utf8'));
     assert.equal(next.versionId, 3);
@@ -53,11 +63,14 @@ describe('persistent removal markers at deployment admission', () => {
     await writeFile(path, '{');
     await assert.rejects(persistVersionRemoval({ id: 2, name: 'test-stack', rootPath: anchor }));
     assert.equal(await readFile(path, 'utf8'), '{');
-    assert.deepEqual((await readdir(root)).filter(name => name.includes('.removal.')), ['test-stack.removal.json']);
+    assert.deepEqual(
+      (await readdir(root)).filter((name) => name.includes('.removal.')),
+      ['test-stack.removal.json'],
+    );
   });
   it('reports malformed marker text with a closed diagnostic', async () => {
     await writeFile(path, 'synthetic malformed marker contents');
-    await assert.rejects(persistVersionRemoval({ id: 2, name: 'test-stack', rootPath: anchor }), error => {
+    await assert.rejects(persistVersionRemoval({ id: 2, name: 'test-stack', rootPath: anchor }), (error) => {
       assert.ok(error instanceof Error);
       assert.match(error.message, /version removal marker cannot be verified/i);
       assert.equal(error.message.includes('synthetic malformed'), false);
@@ -76,7 +89,11 @@ describe('persistent removal markers at deployment admission', () => {
       await mkdir(join(root, 'physical', 'versions'), { recursive: true });
       await symlink(join(root, 'physical'), join(root, 'alias'));
       const aliasedAnchor = join(root, 'alias', 'versions', 'test-stack');
-      if (existing) await writeFile(`${aliasedAnchor}.removal.json`, JSON.stringify({ ...identity(), versionId: 1, rootPath: aliasedAnchor }));
+      if (existing)
+        await writeFile(
+          `${aliasedAnchor}.removal.json`,
+          JSON.stringify({ ...identity(), versionId: 1, rootPath: aliasedAnchor }),
+        );
       assert.match(deployRootProblem({ id: 2, rootPath: aliasedAnchor }) ?? '', /removal/i);
       await assert.rejects(persistVersionRemoval({ id: 2, name: 'test-stack', rootPath: aliasedAnchor }));
       assert.deepEqual(await readdir(join(root, 'physical', 'versions')), existing ? ['test-stack.removal.json'] : []);
@@ -96,7 +113,16 @@ describe('persistent removal markers at deployment admission', () => {
     for (const bad of ['schema', 'name', 'anchor', 'id', 'uuid', 'extra', 'json', 'oversize']) {
       it(`${layout} refuses ${bad} marker evidence rather than treating it as a retired ID`, async () => {
         const value = { ...identity(), versionId: 1 };
-        const wrong = { schema: { ...value, schema: 2 }, name: { ...value, name: 'other' }, anchor: { ...value, rootPath: join(root, 'other') }, id: { ...value, versionId: -1 }, uuid: { ...value, removalId: 'bad' }, extra: { ...value, ignored: true }, json: null, oversize: null }[bad];
+        const wrong = {
+          schema: { ...value, schema: 2 },
+          name: { ...value, name: 'other' },
+          anchor: { ...value, rootPath: join(root, 'other') },
+          id: { ...value, versionId: -1 },
+          uuid: { ...value, removalId: 'bad' },
+          extra: { ...value, ignored: true },
+          json: null,
+          oversize: null,
+        }[bad];
         await writeFile(path, bad === 'json' ? '{' : bad === 'oversize' ? ' '.repeat(5000) : JSON.stringify(wrong));
         assert.match(deployRootProblem(version()) ?? '', /removal/i);
       });

@@ -1,8 +1,4 @@
-import {
-  settingValueProblem,
-  type StackSettings,
-  type StackSettingsFileEdit,
-} from '@streaming-infra-manager/common';
+import { settingValueProblem, type StackSettings, type StackSettingsFileEdit } from '@streaming-infra-manager/common';
 
 /**
  * The edit in progress on the settings page, and what of it is sent.
@@ -39,12 +35,7 @@ export function draftOf(settings: StackSettings): SettingsDraft {
   return draft;
 }
 
-export function withEntry(
-  draft: SettingsDraft,
-  path: string,
-  key: string,
-  value: string,
-): SettingsDraft {
+export function withEntry(draft: SettingsDraft, path: string, key: string, value: string): SettingsDraft {
   const file = draft[path];
   if (file?.kind !== 'env') return draft;
   return { ...draft, [path]: { ...file, values: { ...file.values, [key]: value } } };
@@ -64,10 +55,7 @@ export function withText(draft: SettingsDraft, path: string, text: string): Sett
 }
 
 /** The files the operator moved, in the order the manager answered them. */
-export function editedFiles(
-  settings: StackSettings,
-  draft: SettingsDraft,
-): StackSettingsFileEdit[] {
+export function editedFiles(settings: StackSettings, draft: SettingsDraft): StackSettingsFileEdit[] {
   const edits: StackSettingsFileEdit[] = [];
   for (const file of settings.files) {
     const edited = draft[file.path];
@@ -79,9 +67,7 @@ export function editedFiles(
     if (file.kind !== 'env' || edited.kind !== 'env') continue;
     const entries = file.entries
       .filter(
-        (entry) =>
-          edited.removed.includes(entry.key) ||
-          (edited.values[entry.key] ?? entry.value) !== entry.value,
+        (entry) => edited.removed.includes(entry.key) || (edited.values[entry.key] ?? entry.value) !== entry.value,
       )
       .map((entry) =>
         edited.removed.includes(entry.key)

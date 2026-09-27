@@ -29,9 +29,7 @@ const root = join(mkdtempSync(join(tmpdir(), 'stack-secrets-')), 'main-v3');
 mkdirSync(root);
 process.env.SHLS_ROOT = root;
 
-const { orchestratorHarness, untilRunning } = await import(
-  '../support/orchestratorHarness.js'
-);
+const { orchestratorHarness, untilRunning } = await import('../support/orchestratorHarness.js');
 
 const REQUIRED = ['API_AUTH_TOKEN', 'SRS_WEBHOOK_TOKEN'];
 
@@ -112,10 +110,7 @@ describe('a deploy on a version that requires secrets', () => {
     };
     assert.match(first.api ?? '', /^API_AUTH_TOKEN=[0-9a-f]{64}$/);
     assert.match(first.webhook ?? '', /^SRS_WEBHOOK_TOKEN=[0-9a-f]{64}$/);
-    assert.deepEqual(
-      Object.keys(harness.profiles.secrets.get('stage') ?? {}),
-      REQUIRED,
-    );
+    assert.deepEqual(Object.keys(harness.profiles.secrets.get('stage') ?? {}), REQUIRED);
 
     harness.runner.finish(0);
     await untilRunning(harness.profiles, 'stage');
@@ -164,9 +159,14 @@ async function deployOn(
   secrets: { privateKey?: string; srtPassphrase?: string } = {},
 ) {
   const v3 = await versionRequiringSecrets(harness);
-  const stored = makeProfile({ name: 'stage', stamp_id: 'a'.repeat(64), stack_version_id: v3,
+  const stored = makeProfile({
+    name: 'stage',
+    stamp_id: 'a'.repeat(64),
+    stack_version_id: v3,
     has_private_key: secrets.privateKey !== undefined,
-    has_srt_passphrase: secrets.srtPassphrase !== undefined, ...profile });
+    has_srt_passphrase: secrets.srtPassphrase !== undefined,
+    ...profile,
+  });
   harness.profiles.rows.set('stage', stored);
   if (secrets.privateKey) harness.profiles.privateKeys.set('stage', secrets.privateKey);
   if (secrets.srtPassphrase) harness.profiles.passphrases.set('stage', secrets.srtPassphrase);
@@ -210,10 +210,7 @@ describe('a required secret the version already sets', () => {
     // The root env wins in the stack's deploy script, so an empty line there
     // beats the engine's value. Counting the engine's as supplied would leave
     // the containers with the empty one and nothing generated.
-    writeVersionEnv(
-      'ENGINE=srs\nAPI_AUTH_TOKEN=\nSRS_WEBHOOK_TOKEN=\n',
-      `SRS_WEBHOOK_TOKEN=${VERSION_TOKEN}\n`,
-    );
+    writeVersionEnv('ENGINE=srs\nAPI_AUTH_TOKEN=\nSRS_WEBHOOK_TOKEN=\n', `SRS_WEBHOOK_TOKEN=${VERSION_TOKEN}\n`);
     const harness = orchestratorHarness([]);
 
     await deployOn(harness);

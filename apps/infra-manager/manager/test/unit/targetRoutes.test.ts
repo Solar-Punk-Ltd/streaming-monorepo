@@ -13,13 +13,40 @@ describe('deploy targets API', () => {
   afterEach(async () => app?.close());
 
   it('exports the requested firewall inventory without running inventory recovery', async () => {
-    const targets = new VerifiedDeployTargets(new InMemoryDeployTargets(), { daemonId: async () => { throw new Error('unexpected probe'); } });
+    const targets = new VerifiedDeployTargets(new InMemoryDeployTargets(), {
+      daemonId: async () => {
+        throw new Error('unexpected probe');
+      },
+    });
     const aliases: string[] = [];
-    const evidence = { schemaVersion: 1 as const, policyVersion: 1, daemonId: 'remote', capturedAt: '2026-09-08T00:00:00Z',
-      fingerprint: 'a'.repeat(64), profiles: [], claims: [], reservations: [], bindings: [] };
-    const inventory = { seed: async () => { throw new Error('must not seed'); }, daemonIdFor: async () => { throw new Error('must not seed'); } };
-    app = await startRouterTestApp(createTargetsRouter(targets, new InMemoryPortReservations(), inventory,
-      { export: async alias => { aliases.push(alias); return evidence; } }), '/targets');
+    const evidence = {
+      schemaVersion: 1 as const,
+      policyVersion: 1,
+      daemonId: 'remote',
+      capturedAt: '2026-09-08T00:00:00Z',
+      fingerprint: 'a'.repeat(64),
+      profiles: [],
+      claims: [],
+      reservations: [],
+      bindings: [],
+    };
+    const inventory = {
+      seed: async () => {
+        throw new Error('must not seed');
+      },
+      daemonIdFor: async () => {
+        throw new Error('must not seed');
+      },
+    };
+    app = await startRouterTestApp(
+      createTargetsRouter(targets, new InMemoryPortReservations(), inventory, {
+        export: async (alias) => {
+          aliases.push(alias);
+          return evidence;
+        },
+      }),
+      '/targets',
+    );
     const response = await call(app, 'GET', '/targets/firewall?alias=admin%40edge');
     assert.equal(response.status, 200);
     assert.deepEqual(response.body, evidence);
@@ -38,8 +65,14 @@ describe('deploy targets API', () => {
 
   it('returns a refusal instead of partial firewall evidence', async () => {
     const targets = new VerifiedDeployTargets(new InMemoryDeployTargets(), { daemonId: async () => 'daemon-1' });
-    app = await startRouterTestApp(createTargetsRouter(targets, new InMemoryPortReservations(), undefined,
-      { export: async () => { throw new InvalidStackVersionError('Firewall inventory: unknown binding'); } }), '/targets');
+    app = await startRouterTestApp(
+      createTargetsRouter(targets, new InMemoryPortReservations(), undefined, {
+        export: async () => {
+          throw new InvalidStackVersionError('Firewall inventory: unknown binding');
+        },
+      }),
+      '/targets',
+    );
     const response = await call(app, 'GET', '/targets/firewall?alias=localhost');
     assert.equal(response.status, 400);
     assert.match(JSON.stringify(response.body), /unknown binding/);
@@ -50,10 +83,13 @@ describe('deploy targets API', () => {
     const ports = new InMemoryPortReservations();
     const targets = new VerifiedDeployTargets(new InMemoryDeployTargets(), { daemonId: async () => 'daemon-1' });
     let fails = true;
-    const inventory = { seed: async () => {
-      if (fails) throw new Error('scan unavailable');
-      await ports.markInventorySeeded();
-    }, daemonIdFor: async () => 'daemon-1' };
+    const inventory = {
+      seed: async () => {
+        if (fails) throw new Error('scan unavailable');
+        await ports.markInventorySeeded();
+      },
+      daemonIdFor: async () => 'daemon-1',
+    };
     app = await startRouterTestApp(createTargetsRouter(targets, ports, inventory), '/targets');
     assert.equal((await call(app, 'POST', '/targets/inventory', {})).status, 500);
     assert.equal(await ports.inventorySeededAt(), null);
@@ -66,11 +102,16 @@ describe('deploy targets API', () => {
     const ports = new InMemoryPortReservations();
     const targets = new VerifiedDeployTargets(new InMemoryDeployTargets(), { daemonId: async () => 'remote' });
     const calls: string[] = [];
-    const inventory = { seed: async () => { calls.push('seed'); }, daemonIdFor: async (alias: string | null) => {
-      calls.push(alias!);
-      await ports.markInventorySeeded('remote');
-      return 'remote';
-    } };
+    const inventory = {
+      seed: async () => {
+        calls.push('seed');
+      },
+      daemonIdFor: async (alias: string | null) => {
+        calls.push(alias!);
+        await ports.markInventorySeeded('remote');
+        return 'remote';
+      },
+    };
     app = await startRouterTestApp(createTargetsRouter(targets, ports, inventory), '/targets');
     assert.equal((await call(app, 'POST', '/targets/verify', { alias: 'edge' })).status, 200);
     assert.deepEqual(calls, ['edge', 'seed']);
@@ -81,12 +122,19 @@ describe('deploy targets API', () => {
   it('lists the mapping and inventory state without performing a probe', async () => {
     const repo = new InMemoryDeployTargets();
     await repo.verified('edge', 'daemon-1');
-    const targets = new VerifiedDeployTargets(repo, { daemonId: async () => { throw new Error('must not probe on GET'); } });
+    const targets = new VerifiedDeployTargets(repo, {
+      daemonId: async () => {
+        throw new Error('must not probe on GET');
+      },
+    });
     app = await startRouterTestApp(createTargetsRouter(targets, new InMemoryPortReservations()), '/targets');
 
     const response = await call(app, 'GET', '/targets');
     assert.equal(response.status, 200);
-    const body = response.body as { targets: { alias: string; daemonId: string; verifiedAt: string }[]; inventorySeededAt: string | null };
+    const body = response.body as {
+      targets: { alias: string; daemonId: string; verifiedAt: string }[];
+      inventorySeededAt: string | null;
+    };
     assert.equal(body.inventorySeededAt, null);
     assert.equal(body.targets[0]!.alias, 'edge');
     assert.equal(body.targets[0]!.daemonId, 'daemon-1');
@@ -102,7 +150,11 @@ describe('deploy targets API', () => {
   });
 
   it('reports a failed check as a refusal, and the following list shows it unverified', async () => {
-    const targets = new VerifiedDeployTargets(new InMemoryDeployTargets(), { daemonId: async () => { throw new Error('raw diagnostic'); } });
+    const targets = new VerifiedDeployTargets(new InMemoryDeployTargets(), {
+      daemonId: async () => {
+        throw new Error('raw diagnostic');
+      },
+    });
     app = await startRouterTestApp(createTargetsRouter(targets, new InMemoryPortReservations()), '/targets');
     const response = await call(app, 'POST', '/targets/verify', { alias: 'edge' });
     assert.equal(response.status, 409);
@@ -113,7 +165,12 @@ describe('deploy targets API', () => {
 
   it('rejects an absent or non-string alias without probing', async () => {
     let probes = 0;
-    const targets = new VerifiedDeployTargets(new InMemoryDeployTargets(), { daemonId: async () => { probes += 1; return 'daemon-1'; } });
+    const targets = new VerifiedDeployTargets(new InMemoryDeployTargets(), {
+      daemonId: async () => {
+        probes += 1;
+        return 'daemon-1';
+      },
+    });
     app = await startRouterTestApp(createTargetsRouter(targets, new InMemoryPortReservations()), '/targets');
     for (const body of [{}, { alias: 7 }, { alias: '' }]) {
       assert.equal((await call(app, 'POST', '/targets/verify', body)).status, 400);

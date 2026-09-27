@@ -1,11 +1,6 @@
 import { Box } from '@mui/material';
 
-function toPolylinePoints(
-  values: number[],
-  width: number,
-  height: number,
-  floor: number,
-): string {
+function toPolylinePoints(values: number[], width: number, height: number, floor: number): string {
   const max = Math.max(...values, floor);
   return values
     .map((value, i) => {
@@ -41,8 +36,9 @@ export function Sparkline({
       sx={{
         width: width,
         height: height,
-        display: 'block'
-      }}>
+        display: 'block',
+      }}
+    >
       <polyline
         points={points}
         fill="none"

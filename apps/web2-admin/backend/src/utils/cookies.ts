@@ -18,10 +18,7 @@ export function parseCookies(header: string | undefined): Map<string, string> {
     if (name === '') continue;
 
     const raw = pair.slice(separator + 1).trim();
-    const unquoted =
-      raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')
-        ? raw.slice(1, -1)
-        : raw;
+    const unquoted = raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
 
     cookies.set(name, decodeValue(unquoted));
   }

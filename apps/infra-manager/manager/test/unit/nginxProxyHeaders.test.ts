@@ -86,9 +86,7 @@ describe('nginx.conf client address', () => {
   });
 
   it('reads the client address out of X-Forwarded-For', () => {
-    assert.deepEqual(proxyLines('real_ip_header'), [
-      'real_ip_header X-Forwarded-For;',
-    ]);
+    assert.deepEqual(proxyLines('real_ip_header'), ['real_ip_header X-Forwarded-For;']);
   });
 
   it('walks back past every address it trusts', () => {
@@ -112,19 +110,12 @@ describe('nginx.conf sign-in rate limit', () => {
   it('limits the sign-in and nothing else', () => {
     const lines = confLines();
     const signIn = lines.indexOf(SIGN_IN_LOCATION);
-    const jsonApi = lines.findIndex((line) =>
-      line.startsWith(JSON_API_LOCATION),
-    );
+    const jsonApi = lines.findIndex((line) => line.startsWith(JSON_API_LOCATION));
 
     assert.notEqual(signIn, -1, `no "${SIGN_IN_LOCATION}" in nginx.conf`);
     assert.notEqual(jsonApi, -1, `no "${JSON_API_LOCATION}" in nginx.conf`);
-    assert.ok(
-      signIn < jsonApi,
-      'the exact sign-in match belongs above the regex that also matches /auth',
-    );
-    assert.deepEqual(proxyLines('limit_req zone='), [
-      'limit_req zone=login burst=5 nodelay;',
-    ]);
+    assert.ok(signIn < jsonApi, 'the exact sign-in match belongs above the regex that also matches /auth');
+    assert.deepEqual(proxyLines('limit_req zone='), ['limit_req zone=login burst=5 nodelay;']);
   });
 
   it('says the caller was too fast rather than that the manager is down', () => {

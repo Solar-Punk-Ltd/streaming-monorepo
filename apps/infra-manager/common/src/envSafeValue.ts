@@ -19,8 +19,7 @@ export const ENV_SAFE_CHARS = 'A-Za-z0-9._~-';
 
 export const ENV_SAFE_VALUE_RE = new RegExp(`^[${ENV_SAFE_CHARS}]+$`);
 
-export const ENV_SAFE_VALUE_MESSAGE =
-  'may only contain letters, digits and . _ ~ -';
+export const ENV_SAFE_VALUE_MESSAGE = 'may only contain letters, digits and . _ ~ -';
 
 export function isEnvSafeValue(value: string): boolean {
   return ENV_SAFE_VALUE_RE.test(value);

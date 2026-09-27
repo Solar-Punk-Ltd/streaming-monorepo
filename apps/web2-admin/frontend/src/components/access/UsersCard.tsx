@@ -30,8 +30,7 @@ const CANNOT_REMOVE = {
   forbidden: 'Only an admin can remove a user.',
   self: 'You cannot remove your own account. Ask another admin to remove it.',
   last: 'This is the last user. Removing it would lock everyone out.',
-  lastAdmin:
-    'This is the last admin. Removing it would leave nobody who can manage users.',
+  lastAdmin: 'This is the last admin. Removing it would leave nobody who can manage users.',
   none: '',
 } as const;
 
@@ -95,11 +94,7 @@ export function UsersCard({
   const [pending, setPending] = useState<Pending | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const run = async (
-    user: UserSummary,
-    done: string,
-    action: (id: string) => Promise<void>,
-  ) => {
+  const run = async (user: UserSummary, done: string, action: (id: string) => Promise<void>) => {
     setBusyId(user.id);
     try {
       await action(user.id);
@@ -115,9 +110,7 @@ export function UsersCard({
   const askRemove = (user: UserSummary) =>
     setPending({
       title: `Remove ${user.username}?`,
-      message:
-        'They will be signed out everywhere and will not be able to log in ' +
-        'again. This cannot be undone.',
+      message: 'They will be signed out everywhere and will not be able to log in ' + 'again. This cannot be undone.',
       confirmText: 'Remove',
       run: () => run(user, `Removed ${user.username}`, api.removeUser),
     });
@@ -130,8 +123,7 @@ export function UsersCard({
           ? 'Every browser you are logged in with is asked for the password again, this one included.'
           : 'Every browser they are logged in with is asked for the password again.',
       confirmText: 'Sign out everywhere',
-      run: () =>
-        run(user, `Signed ${user.username} out everywhere`, api.revokeSessions),
+      run: () => run(user, `Signed ${user.username} out everywhere`, api.revokeSessions),
     });
 
   return (
@@ -176,70 +168,40 @@ export function UsersCard({
             </TableHead>
             <TableBody>
               {users.map((user) => {
-                const blocked = removalBlockedBecause(
-                  user,
-                  currentUsername,
-                  users,
-                  canManage,
-                );
+                const blocked = removalBlockedBecause(user, currentUsername, users, canManage);
                 const busy = busyId === user.id;
                 const isSelf = user.username === currentUsername;
                 const revokeBlocked =
-                  user.sessions === 0
-                    ? NO_SESSIONS
-                    : !canManage && !isSelf
-                      ? CANNOT_REVOKE_OTHERS
-                      : '';
+                  user.sessions === 0 ? NO_SESSIONS : !canManage && !isSelf ? CANNOT_REVOKE_OTHERS : '';
 
                 return (
                   <TableRow key={user.id} hover>
                     <TableCell>
-                      <Stack
-                        direction="row"
-                        spacing={0.75}
-                        sx={{ alignItems: 'center', flexWrap: 'wrap' }}
-                      >
+                      <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
                         <Typography variant="body2" sx={{ fontWeight: 500 }}>
                           {user.username}
                         </Typography>
-                        {user.isAdmin ? (
-                          <Chip label="admin" size="small" color="primary" />
-                        ) : null}
+                        {user.isAdmin ? <Chip label="admin" size="small" color="primary" /> : null}
                         {isSelf ? (
-                          <Typography
-                            variant="caption"
-                            sx={{ color: 'text.secondary' }}
-                          >
+                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                             you
                           </Typography>
                         ) : null}
                       </Stack>
                     </TableCell>
                     <TableCell>
-                      <Typography
-                        variant="body2"
-                        sx={{ color: 'text.secondary' }}
-                      >
+                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                         {formatDateTime(user.createdAt)}
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography
-                        variant="body2"
-                        sx={{ color: 'text.secondary' }}
-                      >
-                        {user.lastLoginAt
-                          ? formatDateTime(user.lastLoginAt)
-                          : NEVER_SIGNED_IN}
+                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                        {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : NEVER_SIGNED_IN}
                       </Typography>
                     </TableCell>
                     <TableCell align="right">{user.sessions}</TableCell>
                     <TableCell align="right">
-                      <Stack
-                        direction="row"
-                        spacing={0.5}
-                        sx={{ justifyContent: 'flex-end' }}
-                      >
+                      <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
                         <Tooltip title={revokeBlocked}>
                           <Box component="span">
                             <Button

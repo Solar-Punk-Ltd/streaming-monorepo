@@ -1,7 +1,4 @@
-import {
-  MEDIA_TYPES,
-  type MediaType,
-} from '@streaming-monorepo/web2-admin-common';
+import { MEDIA_TYPES, type MediaType } from '@streaming-monorepo/web2-admin-common';
 import { InferType, NumberSchema, number, object, string } from 'yup';
 
 import { UUID_RE } from './stream.js';
@@ -26,24 +23,15 @@ export const ingestLookupParamSchema = object({
  * the next time one is written.
  */
 function vodOnly(name: string, schema: NumberSchema): NumberSchema {
-  return schema
-    .min(0, `${name} must not be negative`)
-    .when('state', {
-      is: 'vod',
-      then: (s) => s.required(`${name} is required when state is vod`),
-      otherwise: (s) =>
-        s.test(
-          'vod-only',
-          `${name} is only sent with state vod`,
-          (value) => value === undefined,
-        ),
-    });
+  return schema.min(0, `${name} must not be negative`).when('state', {
+    is: 'vod',
+    then: (s) => s.required(`${name} is required when state is vod`),
+    otherwise: (s) => s.test('vod-only', `${name} is only sent with state vod`, (value) => value === undefined),
+  });
 }
 
 export const streamStateSchema = object({
-  state: string<'live' | 'vod'>()
-    .required()
-    .oneOf(['live', 'vod'], 'state must be one of live, vod'),
+  state: string<'live' | 'vod'>().required().oneOf(['live', 'vod'], 'state must be one of live, vod'),
   index: vodOnly('index', number().integer('index must be a whole number')),
   duration: vodOnly('duration', number()),
 }).noUnknown(true);
@@ -69,32 +57,16 @@ const RENDITION_NAME_RE = /^[A-Za-z0-9.-]{1,32}$/;
  * on the entry's seek bar.
  */
 export const renditionReportSchema = object({
-  name: string()
-    .required()
-    .matches(
-      RENDITION_NAME_RE,
-      'name must be 1-32 characters of letters, digits, . or -',
-    ),
-  width: number()
-    .required()
-    .integer('width must be a whole number')
-    .positive('width must be positive'),
-  height: number()
-    .required()
-    .integer('height must be a whole number')
-    .positive('height must be positive'),
+  name: string().required().matches(RENDITION_NAME_RE, 'name must be 1-32 characters of letters, digits, . or -'),
+  width: number().required().integer('width must be a whole number').positive('width must be positive'),
+  height: number().required().integer('height must be a whole number').positive('height must be positive'),
   topic: string().required().matches(UUID_RE, 'topic must be a UUID'),
-  bandwidth: number()
-    .required()
-    .integer('bandwidth must be a whole number')
-    .min(0, 'bandwidth must not be negative'),
+  bandwidth: number().required().integer('bandwidth must be a whole number').min(0, 'bandwidth must not be negative'),
   avgBandwidth: number()
     .required()
     .integer('avgBandwidth must be a whole number')
     .min(0, 'avgBandwidth must not be negative'),
-  index: number()
-    .integer('index must be a whole number')
-    .min(0, 'index must not be negative'),
+  index: number().integer('index must be a whole number').min(0, 'index must not be negative'),
   duration: number().min(0, 'duration must not be negative'),
 })
   .test(

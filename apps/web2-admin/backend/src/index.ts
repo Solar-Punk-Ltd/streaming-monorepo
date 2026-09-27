@@ -1,7 +1,4 @@
-import {
-  SESSION_ABSOLUTE_TIMEOUT_MS,
-  SESSION_IDLE_TIMEOUT_MS,
-} from '@streaming-monorepo/web2-admin-common';
+import { SESSION_ABSOLUTE_TIMEOUT_MS, SESSION_IDLE_TIMEOUT_MS } from '@streaming-monorepo/web2-admin-common';
 
 import { ApiServerHandle, startApiServer } from './api/server.js';
 import { AuthService } from './domain/auth/AuthService.js';
@@ -58,15 +55,9 @@ function logStartupConfig(owner: string, topicHex: string): void {
   logger.info(`[Boot]   bee: ${config.beeUrl}`);
   logger.info(`[Boot]   postage batch: ${redactSecret(config.postageBatchId)}`);
   logger.info(`[Boot]   feed key: ${redactSecret(config.feedPrivateKey)}`);
-  logger.info(
-    `[Boot]   feed: owner ${owner} topic "${config.feedTopic}" (${topicHex})`,
-  );
-  logger.info(
-    `[Boot]   viewer: ${config.viewerBaseUrl || '(unset → no player links)'}`,
-  );
-  logger.info(
-    `[Boot]   internal API token: ${redactSecret(config.internalApiToken)}`,
-  );
+  logger.info(`[Boot]   feed: owner ${owner} topic "${config.feedTopic}" (${topicHex})`);
+  logger.info(`[Boot]   viewer: ${config.viewerBaseUrl || '(unset → no player links)'}`);
+  logger.info(`[Boot]   internal API token: ${redactSecret(config.internalApiToken)}`);
   logger.info(
     `[Boot]   ingest: ${config.ingest.host} srt ${config.ingest.srtPort} rtmp ${config.ingest.rtmpPort}, passphrase ${
       config.ingest.srtPassphrase ? redactSecret(config.ingest.srtPassphrase) : '(unset)'
@@ -76,9 +67,7 @@ function logStartupConfig(owner: string, topicHex: string): void {
 
 function createFeedGateway(): FeedGateway {
   if (config.feedGateway === 'fake') {
-    logger.warn(
-      '[Boot] FEED_GATEWAY=fake: feed writes and thumbnail uploads stay in memory, nothing reaches Swarm',
-    );
+    logger.warn('[Boot] FEED_GATEWAY=fake: feed writes and thumbnail uploads stay in memory, nothing reaches Swarm');
     return new FakeFeedGateway();
   }
   return new BeeFeedGateway({
@@ -140,11 +129,7 @@ async function main(): Promise<void> {
 
   const orphans = await streamRepository.resetOrphanedPublishing();
   if (orphans.length > 0) {
-    logger.warn(
-      `[Boot] reset streams stuck in publishing: ${orphans
-        .map((s) => s.topic)
-        .join(', ')}`,
-    );
+    logger.warn(`[Boot] reset streams stuck in publishing: ${orphans.map((s) => s.topic).join(', ')}`);
   }
 
   const authService = new AuthService(
@@ -184,15 +169,8 @@ async function main(): Promise<void> {
   }
 
   const ingestService = new IngestService(streamRepository, config.ingest);
-  const streamStateService = new StreamStateService(
-    streamRepository,
-    publishService,
-  );
-  const ladderService = new LadderService(
-    streamRepository,
-    renditionRepository,
-    publishService,
-  );
+  const streamStateService = new StreamStateService(streamRepository, publishService);
+  const ladderService = new LadderService(streamRepository, renditionRepository, publishService);
 
   apiServer = startApiServer(
     {
@@ -216,8 +194,9 @@ function stop() {
   setTimeout(() => process.exit(1), 1000).unref();
 }
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+// gracefulShutdown catches every failure and exits with its status, so the signal need not await it.
+process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
 
 process.on('uncaughtException', (error) => {
   logger.error('Uncaught Exception:', error);

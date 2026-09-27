@@ -25,15 +25,7 @@ const VALUE_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/;
 export function parseDateTimeLocalValue(value: string): Date | null {
   const m = VALUE_RE.exec(value);
   if (!m) return null;
-  const date = new Date(
-    Number(m[1]),
-    Number(m[2]) - 1,
-    Number(m[3]),
-    Number(m[4]),
-    Number(m[5]),
-    0,
-    0,
-  );
+  const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), 0, 0);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
@@ -44,15 +36,7 @@ export function parseDateTimeLocalValue(value: string): Date | null {
  * real hour boundary, so the caller needs no special case.
  */
 export function nextFullHour(now: Date): Date {
-  return new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    now.getHours() + 1,
-    0,
-    0,
-    0,
-  );
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 1, 0, 0, 0);
 }
 
 /** What a fresh create form starts with. */
@@ -121,7 +105,7 @@ export function quickPicks(now: Date): QuickPick[] {
 
   // ((6 - dow + 7) % 7) || 7: the coming Saturday, and a full week away when
   // today is already Saturday — "next Saturday" is never today.
-  const toSaturday = ((SATURDAY - now.getDay() + 7) % 7) || 7;
+  const toSaturday = (SATURDAY - now.getDay() + 7) % 7 || 7;
 
   const candidates: { key: string; label: string; date: Date }[] = [
     {

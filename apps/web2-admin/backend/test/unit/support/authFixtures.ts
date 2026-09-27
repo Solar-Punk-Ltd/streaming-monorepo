@@ -7,15 +7,8 @@
  * statement that enforces them.
  */
 import type { CredentialRepository } from '../../../src/domain/auth/CredentialRepository.js';
-import type {
-  NewSession,
-  SessionRepository,
-  StoredSession,
-} from '../../../src/domain/auth/SessionRepository.js';
-import type {
-  UserDeletion,
-  UserRepository,
-} from '../../../src/domain/auth/UserRepository.js';
+import type { NewSession, SessionRepository, StoredSession } from '../../../src/domain/auth/SessionRepository.js';
+import type { UserDeletion, UserRepository } from '../../../src/domain/auth/UserRepository.js';
 import type { UserRow } from '../../../src/types/index.js';
 
 let sequence = 0;
@@ -64,11 +57,7 @@ export class InMemoryUserRepository implements UserRepository {
     return row ? { ...row } : null;
   }
 
-  async insert(
-    username: string,
-    passwordHash: string,
-    isAdmin: boolean,
-  ): Promise<UserRow | null> {
+  async insert(username: string, passwordHash: string, isAdmin: boolean): Promise<UserRow | null> {
     if (this.rows.some((row) => row.username === username)) return null;
 
     const now = new Date();
@@ -86,16 +75,12 @@ export class InMemoryUserRepository implements UserRepository {
   /** Half of a password change, which InMemoryCredentialRepository pairs up. */
   setPasswordHash(id: string, passwordHash: string): void {
     this.rows = this.rows.map((row) =>
-      row.id === id
-        ? { ...row, password_hash: passwordHash, password_changed_at: new Date() }
-        : row,
+      row.id === id ? { ...row, password_hash: passwordHash, password_changed_at: new Date() } : row,
     );
   }
 
   async markSignedIn(id: string, at: Date): Promise<void> {
-    this.rows = this.rows.map((row) =>
-      row.id === id ? { ...row, last_login_at: at } : row,
-    );
+    this.rows = this.rows.map((row) => (row.id === id ? { ...row, last_login_at: at } : row));
   }
 
   async deleteUnlessLast(id: string): Promise<UserDeletion> {
@@ -180,21 +165,14 @@ export class InMemorySessionRepository implements SessionRepository {
 
   /** The other half of a password change, paired with the hash write. */
   deleteForUserExcept(userId: string, keepTokenHash: string): void {
-    this.removeWhere(
-      (row) => row.userId === userId && row.tokenHash !== keepTokenHash,
-    );
+    this.removeWhere((row) => row.userId === userId && row.tokenHash !== keepTokenHash);
   }
 
   async deleteExpired(now: Date, idleSince: Date): Promise<number> {
-    return this.removeWhere(
-      (row) => row.expiresAt <= now || row.lastSeenAt <= idleSince,
-    );
+    return this.removeWhere((row) => row.expiresAt <= now || row.lastSeenAt <= idleSince);
   }
 
-  async countActiveByUser(
-    now: Date,
-    idleSince: Date,
-  ): Promise<Map<string, number>> {
+  async countActiveByUser(now: Date, idleSince: Date): Promise<Map<string, number>> {
     const counts = new Map<string, number>();
     for (const row of this.rows.values()) {
       if (row.expiresAt <= now || row.lastSeenAt <= idleSince) continue;
@@ -231,11 +209,7 @@ export class InMemoryCredentialRepository implements CredentialRepository {
     private readonly sessions: InMemorySessionRepository,
   ) {}
 
-  async changePassword(
-    userId: string,
-    passwordHash: string,
-    keepSessionTokenHash: string,
-  ): Promise<void> {
+  async changePassword(userId: string, passwordHash: string, keepSessionTokenHash: string): Promise<void> {
     this.users.setPasswordHash(userId, passwordHash);
     this.sessions.deleteForUserExcept(userId, keepSessionTokenHash);
   }

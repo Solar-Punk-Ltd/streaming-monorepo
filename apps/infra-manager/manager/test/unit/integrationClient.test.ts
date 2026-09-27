@@ -14,12 +14,7 @@ import { describe, it } from 'node:test';
 
 import { requestTimeoutMs } from '../integration/requestTimeout.js';
 import { requestHeaders, sessionCookieFrom } from '../integration/session.js';
-import {
-  belongsToRun,
-  runIdFrom,
-  runName,
-  targetProblem,
-} from '../integration/target.js';
+import { belongsToRun, runIdFrom, runName, targetProblem } from '../integration/target.js';
 
 /** What `op run --env-file` puts in the environment, with dummies for the pair. */
 const DECLARED = {
@@ -56,20 +51,14 @@ describe('whether the suite may start', () => {
   });
 
   it('reads a trailing slash and letter case as the same manager', () => {
-    assert.equal(
-      targetProblem({ ...DECLARED, MANAGER_TEST_TARGET: 'HTTP://localhost:9876/' }),
-      null,
-    );
+    assert.equal(targetProblem({ ...DECLARED, MANAGER_TEST_TARGET: 'HTTP://localhost:9876/' }), null);
   });
 
   it('checks the declaration against the default URL when MANAGER_URL is unset', () => {
     const { MANAGER_URL: _dropped, ...env } = DECLARED;
 
     assert.equal(targetProblem(env), null);
-    assert.match(
-      targetProblem({ ...env, MANAGER_TEST_TARGET: 'http://localhost:1' }) ?? '',
-      /different manager/,
-    );
+    assert.match(targetProblem({ ...env, MANAGER_TEST_TARGET: 'http://localhost:1' }) ?? '', /different manager/);
   });
 
   it('refuses without both halves of the sign-in, naming the variables and never a value', () => {
@@ -122,33 +111,21 @@ describe('the names a run makes', () => {
 
 describe('the session cookie', () => {
   it('is picked out of the sign-in answer, ready for the Cookie header', () => {
-    const cookie = sessionCookieFrom([
-      'other=1; Path=/',
-      'sim_session=tok3n; Path=/; HttpOnly; SameSite=Lax',
-    ]);
+    const cookie = sessionCookieFrom(['other=1; Path=/', 'sim_session=tok3n; Path=/; HttpOnly; SameSite=Lax']);
 
     assert.equal(cookie, 'sim_session=tok3n');
   });
 
   it('keeps the last one when the answer sets it more than once, the way a browser does', () => {
+    assert.equal(sessionCookieFrom(['sim_session=first; Path=/', 'sim_session=second; Path=/']), 'sim_session=second');
     assert.equal(
-      sessionCookieFrom(['sim_session=first; Path=/', 'sim_session=second; Path=/']),
-      'sim_session=second',
-    );
-    assert.equal(
-      sessionCookieFrom([
-        'sim_session=first; Path=/',
-        'sim_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
-      ]),
+      sessionCookieFrom(['sim_session=first; Path=/', 'sim_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT']),
       null,
     );
   });
 
   it('is null when the answer cleared it, or set none', () => {
-    assert.equal(
-      sessionCookieFrom(['sim_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT']),
-      null,
-    );
+    assert.equal(sessionCookieFrom(['sim_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT']), null);
     assert.equal(sessionCookieFrom([]), null);
   });
 });

@@ -21,7 +21,11 @@ import { dirname, join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { EventBus } from '../../src/domain/EventBus.js';
-import { BUILD_COMPLETE_MARKER, BUILD_MANIFEST_FILE, readBuildManifest } from '../../src/domain/versions/buildManifest.js';
+import {
+  BUILD_COMPLETE_MARKER,
+  BUILD_MANIFEST_FILE,
+  readBuildManifest,
+} from '../../src/domain/versions/buildManifest.js';
 import { holdHostConfigLock, readHostConfigRevision } from '../../src/domain/versions/hostConfigCapture.js';
 import { readStackContract } from '../../src/domain/versions/stackContract.js';
 import {
@@ -31,10 +35,7 @@ import {
   stackRootOf,
   stagingDirFor,
 } from '../../src/domain/versions/stackPaths.js';
-import {
-  BUILD_SCRIPT,
-  StackVersionService,
-} from '../../src/domain/versions/StackVersionService.js';
+import { BUILD_SCRIPT, StackVersionService } from '../../src/domain/versions/StackVersionService.js';
 import { BUNDLED_STACK_ROOT } from '../../src/utils/envUtils.js';
 import type { ScriptSpawner } from '../../src/domain/ScriptRunner.js';
 import { FakeScriptSpawner } from '../support/FakeScriptSpawner.js';
@@ -101,12 +102,21 @@ async function publishBuild(commit: string, env: string): Promise<string> {
   cpSync(V3_FIXTURE, build, { recursive: true });
   writeFileSync(join(build, '.env'), env);
   writeFileSync(join(build, BUILD_COMPLETE_MARKER), '');
-  writeFileSync(join(build, BUILD_MANIFEST_FILE), JSON.stringify({
-    buildId: commit, commit, builtAt: '2026-09-09T00:00:00.000Z', toolchain: 'synthetic',
-  }));
+  writeFileSync(
+    join(build, BUILD_MANIFEST_FILE),
+    JSON.stringify({
+      buildId: commit,
+      commit,
+      builtAt: '2026-09-09T00:00:00.000Z',
+      toolchain: 'synthetic',
+    }),
+  );
   const bundled = (await repository.findByName('bundled'))!;
   await repository.publish(bundled.id, {
-    buildId: commit, commitSha: commit, rootPath: configRootFor(versionsRoot, 'bundled'), contract: readStackContract(build),
+    buildId: commit,
+    commitSha: commit,
+    rootPath: configRootFor(versionsRoot, 'bundled'),
+    contract: readStackContract(build),
   });
   return build;
 }
@@ -118,7 +128,9 @@ async function bundled() {
 }
 
 function legacyBytes(): string {
-  return readFileSync(join(legacyRoot, '.env'), 'utf8') + readFileSync(join(legacyRoot, 'engines', 'srs', 'marker'), 'utf8');
+  return (
+    readFileSync(join(legacyRoot, '.env'), 'utf8') + readFileSync(join(legacyRoot, 'engines', 'srs', 'marker'), 'utf8')
+  );
 }
 
 const settle = (ms = 5) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -193,10 +205,18 @@ describe('what boot does about the pinned stack commit', () => {
 
   it('moves the bundled row onto the monorepo when the pinned build publishes, and not before', async () => {
     pinned(PIN);
-    assert.deepEqual((await bundled()).source, { url: SWARM_HLS_STREAM_URL, folder: '.' }, 'every row that existed says swarm-hls-stream');
+    assert.deepEqual(
+      (await bundled()).source,
+      { url: SWARM_HLS_STREAM_URL, folder: '.' },
+      'every row that existed says swarm-hls-stream',
+    );
 
     await service.ensureBundledBuild();
-    assert.equal((await bundled()).source.url, SWARM_HLS_STREAM_URL, 'the row keeps the source of the build it deploys while the next one runs');
+    assert.equal(
+      (await bundled()).source.url,
+      SWARM_HLS_STREAM_URL,
+      'the row keeps the source of the build it deploys while the next one runs',
+    );
 
     await buildSucceeds(PIN);
 
@@ -237,7 +257,14 @@ describe('what boot does about the pinned stack commit', () => {
 describe('what boot records when it cannot build the pin', () => {
   /** The service again, over the same table, with a runner that cannot start anything. */
   function serviceWith(runner: ScriptSpawner): StackVersionService {
-    return new StackVersionService(repository, runner, new EventBus(), versionsRoot, { openReferences: async () => [] }, legacyRoot);
+    return new StackVersionService(
+      repository,
+      runner,
+      new EventBus(),
+      versionsRoot,
+      { openReferences: async () => [] },
+      legacyRoot,
+    );
   }
 
   it('moves the row onto the pin and says which version is building', async () => {
@@ -279,7 +306,11 @@ describe('what boot records when it cannot build the pin', () => {
 
   it('records a build whose script could not be started at all', async () => {
     pinned(PIN);
-    const refusing = serviceWith({ run: () => { throw new Error('spawn ENOENT'); } });
+    const refusing = serviceWith({
+      run: () => {
+        throw new Error('spawn ENOENT');
+      },
+    });
 
     assert.equal(await refusing.ensureBundledBuild(), null, 'the api starts either way');
 
@@ -354,7 +385,10 @@ describe("where the bundled version's settings come from", () => {
   it('takes them from the legacy tree the first time, byte for byte', async () => {
     const configRoot = await buildBundled();
 
-    assert.ok(readFileSync(join(configRoot, '.env'), 'utf8').startsWith(LEGACY_ENV), 'the operator lines, unchanged and first');
+    assert.ok(
+      readFileSync(join(configRoot, '.env'), 'utf8').startsWith(LEGACY_ENV),
+      'the operator lines, unchanged and first',
+    );
     assert.equal(readFileSync(join(configRoot, 'deploy', 'config.json'), 'utf8'), '{"slots":3}\n');
   });
 
@@ -396,13 +430,20 @@ describe("where the bundled version's settings come from", () => {
     await service.update((await bundled()).id);
     await buildSucceeds(PIN);
 
-    assert.ok(readFileSync(join(configRoot, '.env'), 'utf8').startsWith(LEGACY_ENV), 'the settings the host already had');
+    assert.ok(
+      readFileSync(join(configRoot, '.env'), 'utf8').startsWith(LEGACY_ENV),
+      'the settings the host already had',
+    );
   });
 
   describe('the modes those files keep', () => {
     let umask: number;
-    before(() => { umask = process.umask(0o022); });
-    after(() => { process.umask(umask); });
+    before(() => {
+      umask = process.umask(0o022);
+    });
+    after(() => {
+      process.umask(umask);
+    });
 
     it('leaves every file of the set owner only, whatever the legacy tree allowed', async () => {
       chmodSync(join(legacyRoot, '.env'), 0o644);
@@ -410,7 +451,11 @@ describe("where the bundled version's settings come from", () => {
 
       const configRoot = await buildBundled();
 
-      assert.equal(statSync(join(configRoot, '.env')).mode & 0o777, 0o600, 'only the owner reads the passphrase and the stream key');
+      assert.equal(
+        statSync(join(configRoot, '.env')).mode & 0o777,
+        0o600,
+        'only the owner reads the passphrase and the stream key',
+      );
       assert.equal(statSync(join(configRoot, 'deploy', 'config.json')).mode & 0o777, 0o600);
     });
   });
@@ -420,7 +465,11 @@ describe("where the bundled version's settings come from", () => {
     await buildSucceeds(COMMIT_A, 'review-stack');
 
     const env = readFileSync(join(configRootFor(versionsRoot, 'review-stack'), '.env'), 'utf8');
-    assert.equal(env, readFileSync(join(V3_FIXTURE, '.env.sample'), 'utf8'), 'seeded from the sample the version ships');
+    assert.equal(
+      env,
+      readFileSync(join(V3_FIXTURE, '.env.sample'), 'utf8'),
+      'seeded from the sample the version ships',
+    );
     assert.equal(env.includes('paid-for'), false, 'and never from the tree the bundled version came with');
   });
 });
@@ -440,7 +489,10 @@ describe('seeding a version that is being edited at the same time', () => {
     await settle(50);
     writeFileSync(join(configRoot, '.env'), edited);
     await release();
-    await until('the review-stack row to settle', async () => (await repository.findByName('review-stack'))?.status !== 'building');
+    await until(
+      'the review-stack row to settle',
+      async () => (await repository.findByName('review-stack'))?.status !== 'building',
+    );
 
     assert.ok(
       readFileSync(join(configRoot, '.env'), 'utf8').startsWith(edited),

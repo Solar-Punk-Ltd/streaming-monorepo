@@ -1,8 +1,4 @@
-import {
-  settingValueProblem,
-  stackRefProblem,
-  stackVersionNameProblem,
-} from '@streaming-infra-manager/common';
+import { settingValueProblem, stackRefProblem, stackVersionNameProblem } from '@streaming-infra-manager/common';
 import { array, boolean, number, object, string, InferType } from 'yup';
 
 import { DEPLOY_CONFIG } from '../domain/versions/hostConfigCapture.js';
@@ -15,9 +11,7 @@ import { DEPLOY_CONFIG } from '../domain/versions/hostConfigCapture.js';
 const VERSION_ID_RE = /^[1-9][0-9]{0,8}$/;
 
 export const versionIdSchema = object({
-  id: string()
-    .required()
-    .matches(VERSION_ID_RE, 'version id must be a positive whole number'),
+  id: string().required().matches(VERSION_ID_RE, 'version id must be a positive whole number'),
 }).noUnknown(true);
 
 export const createVersionSchema = object({
@@ -43,8 +37,7 @@ export const patchVersionSchema = object({
     .notRequired()
     .when('tested', {
       is: true,
-      then: (schema) =>
-        schema.required('commitSha names the build being marked as tested'),
+      then: (schema) => schema.required('commitSha names the build being marked as tested'),
     }),
   /** Null only for an explicitly legacy row. The service checks its layout. */
   buildId: string().nullable().notRequired(),
@@ -122,21 +115,16 @@ function parsesAsJson(text: string): boolean {
 }
 
 const settingsFileSchema = object({
-  path: string()
-    .required()
-    .matches(SETTINGS_PATH_RE, 'that is not a settings file of a stack version'),
+  path: string().required().matches(SETTINGS_PATH_RE, 'that is not a settings file of a stack version'),
   entries: array().of(settingsEntrySchema).typeError(ENTRIES_SHAPE_MESSAGE).max(MAX_SETTINGS_ENTRIES).notRequired(),
   text: string().typeError(`${DEPLOY_CONFIG} is text`).notRequired(),
 })
   .noUnknown(true)
   .typeError(FILE_SHAPE_MESSAGE)
-  .test(
-    'file-kind',
-    `an env file is saved as keys and ${DEPLOY_CONFIG} as text`,
-    (file) =>
-      file.path === DEPLOY_CONFIG
-        ? typeof file.text === 'string' && file.entries === undefined
-        : Array.isArray(file.entries) && file.text === undefined,
+  .test('file-kind', `an env file is saved as keys and ${DEPLOY_CONFIG} as text`, (file) =>
+    file.path === DEPLOY_CONFIG
+      ? typeof file.text === 'string' && file.entries === undefined
+      : Array.isArray(file.entries) && file.text === undefined,
   )
   .test(
     'json-parses',

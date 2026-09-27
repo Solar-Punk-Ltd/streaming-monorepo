@@ -7,8 +7,7 @@ import { MONO_STACK } from '../app/theme';
 
 import { isAtSampleValue } from './settingsDraft';
 
-const GENERATED_NOTE =
-  'Set per deployment by the manager unless you set a value here.';
+const GENERATED_NOTE = 'Set per deployment by the manager unless you set a value here.';
 
 const REMOVED_NOTE = 'This line goes out of the file when you save. Discard brings it back.';
 
@@ -54,10 +53,11 @@ export function SettingsEntryField({
         spacing={1}
         useFlexGap
         sx={{
-          alignItems: "center",
-          flexWrap: "wrap",
-          mb: 0.5
-        }}>
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          mb: 0.5,
+        }}
+      >
         <Typography variant="body2" sx={{ fontFamily: MONO_STACK, fontWeight: 600, wordBreak: 'break-all' }}>
           {entry.key}
         </Typography>
@@ -69,10 +69,11 @@ export function SettingsEntryField({
         <Typography
           variant="caption"
           sx={{
-            color: "text.secondary",
+            color: 'text.secondary',
             display: 'block',
-            mb: 1
-          }}>
+            mb: 1,
+          }}
+        >
           {entry.description}
         </Typography>
       )}
@@ -80,10 +81,11 @@ export function SettingsEntryField({
         <Typography
           variant="caption"
           sx={{
-            color: "text.secondary",
+            color: 'text.secondary',
             display: 'block',
-            mb: 1
-          }}>
+            mb: 1,
+          }}
+        >
           {GENERATED_NOTE}
         </Typography>
       )}
@@ -91,10 +93,11 @@ export function SettingsEntryField({
         <Typography
           variant="caption"
           sx={{
-            color: "warning.main",
+            color: 'warning.main',
             display: 'block',
-            mb: 1
-          }}>
+            mb: 1,
+          }}
+        >
           {REMOVED_NOTE}
         </Typography>
       )}
@@ -103,9 +106,10 @@ export function SettingsEntryField({
         direction="row"
         spacing={1}
         sx={{
-          alignItems: "flex-start",
-          minWidth: 0
-        }}>
+          alignItems: 'flex-start',
+          minWidth: 0,
+        }}
+      >
         <TextField
           size="small"
           fullWidth
@@ -128,7 +132,7 @@ export function SettingsEntryField({
               autoCapitalize: 'off',
               autoCorrect: 'off',
               style: { fontFamily: MONO_STACK, fontSize: 13 },
-            }
+            },
           }}
         />
         {entry.secret && (

@@ -37,7 +37,15 @@ const CONTRACT: StackContract = {
   ...structuredClone(ALLOCATION_CONTRACT),
   requiredSecrets: ['API_AUTH_TOKEN'],
   serviceEnvKeys: {
-    'stream-uploader': ['API_AUTH_TOKEN', 'API_PORT', 'LOG_LEVEL', 'STAMP', 'STREAM_KEY', 'STREAM_LIST_TOPIC', 'UPLOADER_START_GATES'],
+    'stream-uploader': [
+      'API_AUTH_TOKEN',
+      'API_PORT',
+      'LOG_LEVEL',
+      'STAMP',
+      'STREAM_KEY',
+      'STREAM_LIST_TOPIC',
+      'UPLOADER_START_GATES',
+    ],
     srs: ['SRS_ADAPTER_PORT', 'SRS_MEDIA_PATH', 'SRS_SRT_PORT', 'SRT_LATENCY', 'SRT_PASSPHRASE'],
     'bee-uploader': ['BEE_UPLOADER_DATA_DIR', 'RPC_ENDPOINT'],
   },
@@ -46,7 +54,11 @@ const CONTRACT: StackContract = {
 function writeVersion(): void {
   writeFileSync(join(root, '.env'), 'ENGINE=srs\nLOG_LEVEL=info\nCOMPOSE_NETWORK=\nAPI_AUTH_TOKEN=\n', 'utf8');
   writeFileSync(join(root, '.env.sample'), 'LOG_LEVEL=debug\nCOMPOSE_NETWORK=\nAPI_AUTH_TOKEN=\n', 'utf8');
-  writeFileSync(join(root, 'engines', 'srs', '.env'), 'SRT_LATENCY=\nSRS_MEDIA_PATH=../../engines/srs/media\nSRS_WEBHOOK_TOKEN=version-token\n', 'utf8');
+  writeFileSync(
+    join(root, 'engines', 'srs', '.env'),
+    'SRT_LATENCY=\nSRS_MEDIA_PATH=../../engines/srs/media\nSRS_WEBHOOK_TOKEN=version-token\n',
+    'utf8',
+  );
 }
 
 async function deployed() {
@@ -106,7 +118,9 @@ describe('the environment the next deploy gives', () => {
     const { env } = await harness.orchestrator.nextEnvFor(harness.profiles.rows.get('stage')!);
     const uploader = harness.containers.snapshots.find((snapshot) => snapshot.service === 'stream-uploader')!;
     const record = { env_salt: uploader.envSalt, env_digests: uploader.envDigests };
-    const differing = Object.keys(uploader.envDigests).filter((key) => recordedStateOf(record, key, env[key]) === 'differs');
+    const differing = Object.keys(uploader.envDigests).filter(
+      (key) => recordedStateOf(record, key, env[key]) === 'differs',
+    );
 
     assert.deepEqual(differing, ['LOG_LEVEL']);
   });

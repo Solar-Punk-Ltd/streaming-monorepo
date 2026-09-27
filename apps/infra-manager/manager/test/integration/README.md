@@ -41,13 +41,13 @@ These are **not** unit tests. They start real containers through the deploy scri
 
 3. The environment, filled by `op run` so the pair is never typed, printed or written to a file:
 
-   | Variable | What it is |
-   | --- | --- |
-   | `MANAGER_URL` | Development API URL, default `http://localhost:9876`, or the configured Docker web-proxy URL, default `http://127.0.0.1:8080`. |
-   | `MANAGER_TEST_TARGET` | The same URL, written again. It says this manager is a test target the suite may create and remove deployments on. The suite refuses to start when it is missing or names a different manager. |
-   | `MANAGER_TEST_USERNAME` | The user to sign in as. |
-   | `MANAGER_TEST_PASSWORD` | Its password, as an `op://` reference. |
-   | `MANAGER_TEST_RUN` | Optional, one to eight lowercase letters or digits. Gives every suite file the same run id. Without it each file is a run of its own, which is fine. |
+   | Variable                | What it is                                                                                                                                                                                     |
+   | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | `MANAGER_URL`           | Development API URL, default `http://localhost:9876`, or the configured Docker web-proxy URL, default `http://127.0.0.1:8080`.                                                                 |
+   | `MANAGER_TEST_TARGET`   | The same URL, written again. It says this manager is a test target the suite may create and remove deployments on. The suite refuses to start when it is missing or names a different manager. |
+   | `MANAGER_TEST_USERNAME` | The user to sign in as.                                                                                                                                                                        |
+   | `MANAGER_TEST_PASSWORD` | Its password, as an `op://` reference.                                                                                                                                                         |
+   | `MANAGER_TEST_RUN`      | Optional, one to eight lowercase letters or digits. Gives every suite file the same run id. Without it each file is a run of its own, which is fine.                                           |
 
    Copy `env.example` to `env.itest` in this directory, which git ignores. It already names the vault item, so nothing in it needs filling in.
 
@@ -97,16 +97,16 @@ is never a disposable target.
 
 ## What it covers
 
-| Test | Asserts |
-| --- | --- |
-| signed in (`auth.test.ts`) | a read with the cookie is answered, a read without it is refused with 401, a write without the request header is refused with 403 before the body is read, the cookie of a session that was signed out is refused with 401 |
-| viewer lifecycle (`profiles.test.ts`) | deploys exactly `client + bee-gateway`, modify changes `feed_owner` and `notes` and redeploys, stop gives `STOPPED`, remove leaves nothing |
-| streamer lifecycle | deploys `srs + bee-uploader` with `stream-uploader` held back (`pendingStamp`), modify, stop, remove |
-| custom lifecycle | deploys exactly the chosen `components`, stop, remove |
-| group config edit (`groups.test.ts`) | 2-viewer group, edit `feed_owner` for the whole group in one call, every member picks up the new feed and stays up, removing the members deletes the empty group |
-| group resize (`group-resize.test.ts`) | grow a group by one member, deploy the grown group, remove a member, remove the rest, the group deletes itself |
-| ABR pool and uploader (`abr-node-pool.test.ts`, `abr-uploader.test.ts`) | the pool's publisher assembly and the uploader's Bee target rules, see each file's header |
-| engine config startup failure (`engine-startup-failure.test.ts`) | a stored SRS file the manager's own check accepts and the engine exits on ends the rollout in `reverted`, the deployment comes back `RUNNING` on the previous file, and the card's notice offers nothing to press |
+| Test                                                                    | Asserts                                                                                                                                                                                                                    |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| signed in (`auth.test.ts`)                                              | a read with the cookie is answered, a read without it is refused with 401, a write without the request header is refused with 403 before the body is read, the cookie of a session that was signed out is refused with 401 |
+| viewer lifecycle (`profiles.test.ts`)                                   | deploys exactly `client + bee-gateway`, modify changes `feed_owner` and `notes` and redeploys, stop gives `STOPPED`, remove leaves nothing                                                                                 |
+| streamer lifecycle                                                      | deploys `srs + bee-uploader` with `stream-uploader` held back (`pendingStamp`), modify, stop, remove                                                                                                                       |
+| custom lifecycle                                                        | deploys exactly the chosen `components`, stop, remove                                                                                                                                                                      |
+| group config edit (`groups.test.ts`)                                    | 2-viewer group, edit `feed_owner` for the whole group in one call, every member picks up the new feed and stays up, removing the members deletes the empty group                                                           |
+| group resize (`group-resize.test.ts`)                                   | grow a group by one member, deploy the grown group, remove a member, remove the rest, the group deletes itself                                                                                                             |
+| ABR pool and uploader (`abr-node-pool.test.ts`, `abr-uploader.test.ts`) | the pool's publisher assembly and the uploader's Bee target rules, see each file's header                                                                                                                                  |
+| engine config startup failure (`engine-startup-failure.test.ts`)        | a stored SRS file the manager's own check accepts and the engine exits on ends the rollout in `reverted`, the deployment comes back `RUNNING` on the previous file, and the card's notice offers nothing to press          |
 
 This whole suite also has a job of its own, `integration`, in the monorepo's root
 workflow `.github/workflows/infra-manager-docker.yml`. It starts by hand, with Run

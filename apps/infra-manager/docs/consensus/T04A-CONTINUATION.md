@@ -24,8 +24,6 @@ Root found that an update waiting behind deletion used `building ?? version` aft
 
 The repository callback design is approved, including refusal of terminal shipment receipts before files because their existing FK would otherwise reject the eventual DELETE. Expected identity must be copied before lock waits. No receipt deletion is introduced. Both build/removal lock orders join the previously recorded reference/FK races.
 
-
-
 ## Current next slice, 2026-09-09
 
 Cross-provider review, OpenAI-hosted. `implement_t12_readiness` now owns `/private/tmp/t04a-codex` exclusively. T11 was left clean and accepted atb9fb144. The worker must verify T04a5577c94, merge exact accepted helper dependencya7d4145, and validate before new work. Moving T04b HEAD is not the dependency target.
@@ -38,12 +36,12 @@ Tests must prove every hold blocks before the callback, reader failure leaves fi
 
 Cross-provider review, OpenAI-hosted. Clean `fix/t04a-immutable-builds` at `5577c94` in `/private/tmp/t04a-codex`. Root reviewed the final code from `/private/tmp/t08-review-codex` and checked the execution logs. The four bounded corrections are accepted. Aggregate integration is still in progress.
 
-| Regression | RED | GREEN | Evidence |
-| --- | --- | --- | --- |
-| Snapshot selected before row lock becomes stale after publication/pruning | a427da9 | e6e409b | 28 intended SQL failures and four controls, then32 pass |
-| Initial preparation failure leaves DEPLOYING | 54d5398 | 6a4e5f7 | Three intended failures, then17 relevant pass |
-| Missing version silently falls back to bundled | 7df0db4 | 77c0344 | Eight intended failures, then29 relevant pass |
-| Malformed builds layout with missing root/id falls back to legacy | 92fed27 | 5577c94 | Three unit and four SQL failures, then53 focused unit and36 SQL pass |
+| Regression                                                                | RED     | GREEN   | Evidence                                                             |
+| ------------------------------------------------------------------------- | ------- | ------- | -------------------------------------------------------------------- |
+| Snapshot selected before row lock becomes stale after publication/pruning | a427da9 | e6e409b | 28 intended SQL failures and four controls, then32 pass              |
+| Initial preparation failure leaves DEPLOYING                              | 54d5398 | 6a4e5f7 | Three intended failures, then17 relevant pass                        |
+| Missing version silently falls back to bundled                            | 7df0db4 | 77c0344 | Eight intended failures, then29 relevant pass                        |
+| Malformed builds layout with missing root/id falls back to legacy         | 92fed27 | 5577c94 | Three unit and four SQL failures, then53 focused unit and36 SQL pass |
 
 Final logs: `/private/tmp/t04a-manager-full-with-env.log` (585 pass), `/private/tmp/t04a-common-full.log` (265 pass), `/private/tmp/t04a-malformed-root-sql-green.log` (36 pass), and `/private/tmp/t04a-{manager-final,common,frontend}-types.log`. No failed or skipped cases. The first manager run lacked the inert DATABASE_URL import precondition and was not green. The explicit inert-variable rerun passed all585.
 

@@ -78,7 +78,10 @@ function copyAppFiles(root, app, paths, copy) {
       if (error.code === 'ENOENT') continue;
       throw error;
     }
-    if (entry.isDirectory()) throw new Refusal(`${path} is a folder git records as one entry, such as a submodule, which in-copy.mjs does not copy.`);
+    if (entry.isDirectory())
+      throw new Refusal(
+        `${path} is a folder git records as one entry, such as a submodule, which in-copy.mjs does not copy.`,
+      );
     mkdirSync(dirname(target), { recursive: true });
     if (entry.isSymbolicLink()) {
       symlinkSync(readlinkSync(source), target);
@@ -120,7 +123,8 @@ function copyAlsoPaths(root, app, paths, copy) {
   const appDir = join(root, app);
   for (const path of paths) {
     const source = join(appDir, path);
-    if (!existsSync(source)) throw new Refusal(`--also names ${path}, and ${app} holds no ${path} to copy. Build it first.`);
+    if (!existsSync(source))
+      throw new Refusal(`--also names ${path}, and ${app} holds no ${path} to copy. Build it first.`);
     const envFile = envFileAt(source);
     if (envFile !== null) {
       throw new Refusal(
@@ -141,7 +145,11 @@ const STOP_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
  */
 function runCommand(command, cwd) {
   return new Promise((settle, fail) => {
-    const child = spawn(command[0], command.slice(1), { cwd, stdio: 'inherit', env: { ...process.env, [COPY_VARIABLE]: cwd } });
+    const child = spawn(command[0], command.slice(1), {
+      cwd,
+      stdio: 'inherit',
+      env: { ...process.env, [COPY_VARIABLE]: cwd },
+    });
     const passOn = (signal) => child.kill(signal);
     for (const signal of STOP_SIGNALS) process.on(signal, passOn);
     const stopListening = () => {

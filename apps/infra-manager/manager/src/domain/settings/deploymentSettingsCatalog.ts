@@ -102,7 +102,10 @@ interface ListedSetting {
 }
 
 /** What every entry says of a key, whoever sets it. */
-type EntryBase = Pick<DeploymentSettingEntry, 'key' | 'section' | 'description' | 'sampleValue' | 'services' | 'running'>;
+type EntryBase = Pick<
+  DeploymentSettingEntry,
+  'key' | 'section' | 'description' | 'sampleValue' | 'services' | 'running'
+>;
 
 /** What the deployment stores for a key: in its engine settings for an engine setting, in the stack columns for any other. */
 interface StoredKey {
@@ -174,9 +177,10 @@ function listedSettingsOf(input: ListInput, running: boolean): ListedSetting[] {
       running: runningStateOf(running, differing),
     };
     const stored = storedKeyOf(key, input);
-    const entry = input.engineSettings && engineFields.has(key)
-      ? engineSettingEntryOf(base, stored, input.engineSettings, input.nextEnv)
-      : settingEntryOf(base, { stored, isDeclared, owner: settingOwnerOf(key, ownerContext), version, input });
+    const entry =
+      input.engineSettings && engineFields.has(key)
+        ? engineSettingEntryOf(base, stored, input.engineSettings, input.nextEnv)
+        : settingEntryOf(base, { stored, isDeclared, owner: settingOwnerOf(key, ownerContext), version, input });
     return { entry, differing: differing === 'unknown' ? [] : differing };
   });
 }
@@ -193,7 +197,11 @@ function engineSettingEntryOf(
   nextEnv: Readonly<Record<string, string>>,
 ): DeploymentSettingEntry {
   const defaultSource = engineSettings.defaults.sources[base.key] ?? 'stack';
-  const source: DeploymentSettingSource = stored.stored ? 'deployment' : defaultSource === 'manager' ? 'manager-default' : 'version';
+  const source: DeploymentSettingSource = stored.stored
+    ? 'deployment'
+    : defaultSource === 'manager'
+      ? 'manager-default'
+      : 'version';
   return {
     ...base,
     declared: true,
@@ -335,13 +343,13 @@ function shown(key: string, value: string): string {
  * container's block reads reached the deploy scripts alone, and every record
  * covers it, because it decided how each container of that deploy started.
  */
-function differingServices(
-  key: string,
-  services: readonly string[] | null,
-  input: ListInput,
-): string[] | 'unknown' {
-  const records = services === null ? input.records : input.records.filter((record) => services.includes(record.service));
-  const states = records.map((record) => ({ service: record.service, state: recordedStateOf(record, key, input.nextEnv[key]) }));
+function differingServices(key: string, services: readonly string[] | null, input: ListInput): string[] | 'unknown' {
+  const records =
+    services === null ? input.records : input.records.filter((record) => services.includes(record.service));
+  const states = records.map((record) => ({
+    service: record.service,
+    state: recordedStateOf(record, key, input.nextEnv[key]),
+  }));
   const known = states.filter(({ state }) => state !== 'unknown');
   if (known.length === 0) return 'unknown';
   return known.filter(({ state }) => state === 'differs').map(({ service }) => service);

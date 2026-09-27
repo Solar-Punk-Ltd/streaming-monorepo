@@ -1,10 +1,11 @@
 # streaming-infra-manager research (agent report, 2026-09-11). Repo: scratchpad/repos/streaming-infra-manager (master b94caf3). {ROOT}=that path.
 
 ## Conventions to copy
+
 - pnpm workspace: common / manager(@…/api) / frontend(@…/frontend-prototype); all private, "type":"module"; exact-pinned deps: typescript 5.6.3, tsx 4.19.2, @types/node 22.9.0, express 5.2.1, pg 8.13.1, yup 1.7.0, dotenv 16.4.7, react 18.3.1, react-dom 18.3.1, @mui/material 6.1.10, @mui/icons-material 6.1.10, @emotion/react+styled 11.13.5, vite 5.4.11, @vitejs/plugin-react 4.3.4, @types/react 18.3.12, @types/react-dom 18.3.1.
 - tsconfig: common/tsconfig.json (ES2022, NodeNext, outDir dist, rootDir src, strict, declaration) + tsconfig.build.json excluding tests; manager/tsconfig.json (build) + manager/tsconfig.typecheck.json (extends, noEmit, rootDir ".", include src+test — because tsx --test doesn't typecheck); frontend/tsconfig.json bundler mode (ESNext, moduleResolution bundler, jsx react-jsx, noEmit, noUnusedLocals/Parameters, types vite/client).
 - ESM: every intra-package import has .js extension in .ts source. pg CJS interop: `import pg from 'pg'; const { Pool } = pg;`.
-- Scripts: dev "tsx watch --conditions=development src/index.ts"; test "tsx --conditions=development --test 'test/unit/**/*.test.ts'"; test:integration "tsx --test 'test/integration/**/*.test.ts'"; typecheck "tsc -p tsconfig.typecheck.json"; build "pnpm --filter common build && tsc && rm -rf dist/migrations && cp -r src/migrations dist/migrations"; database:start "docker compose -p <proj> -f ./docker-compose.yml up -d postgres".
+- Scripts: dev "tsx watch --conditions=development src/index.ts"; test "tsx --conditions=development --test 'test/unit/**/\*.test.ts'"; test:integration "tsx --test 'test/integration/**/*.test.ts'"; typecheck "tsc -p tsconfig.typecheck.json"; build "pnpm --filter common build && tsc && rm -rf dist/migrations && cp -r src/migrations dist/migrations"; database:start "docker compose -p <proj> -f ./docker-compose.yml up -d postgres".
 - common package.json exports: {".": {"types":"./src/index.ts","development":"./src/index.ts","default":"./dist/index.js"}}, main dist/index.js, files [dist]; consumers "workspace:*"; barrel src/index.ts.
 - Tests: node:test + node:assert/strict, no mocks lib; DI via constructor params/factory options; integration tests hit running API over HTTP only (MANAGER_URL env, requireStack on /health, cleanup set). No in-process DB test harness.
 - No lint/prettier/CI. Style: single quotes, semicolons, trailing commas, 2 spaces. Import order: node builtins → external → common → local.
@@ -23,6 +24,7 @@
 - Frontend: main.tsx createTheme({palette:{mode:'dark'}}) + CssBaseline; flat src/ feature files, no router (useState<AppView> + MUI Tabs), Snackbar+Alert for errors, Dialog for destructive; icons imported individually; types/{index,interfaces,types}.ts barrel.
 
 ## Manager API (port 9876; NO AUTH as of this 2026-09-11 snapshot of `master` — the `main-v2` line has since grown sessions, roles and a cross-site check, which web2-admin ported; firewall/ssh-tunnel scoped; api container publishes no port; web nginx 127.0.0.1:8080)
+
 GET /health {status:"ok"} | GET /config {host, srtPassphrase|null} | GET /services | GET /metrics, /metrics/stream (SSE), /metrics/disk/:project | GET /events (SSE profile.changed / profile.deleted)
 POST /profiles (202, allocates port_slot 1..999, inserts DEPLOYING, kicks deploy) | GET /profiles {profiles:[…]} | GET /profiles/:name | PUT /profiles/:name (202, full replace; omitted clears) | DELETE /profiles/:name (202, REMOVING → clean.sh → row deleted)
 POST /profiles/:name/deploy {services?} SSE | POST /profiles/:name/deploy-uploader SSE | POST /profiles/:name/stop SSE | GET /profiles/:name/health SSE
@@ -31,21 +33,26 @@ GET /profiles/:name/stamp/{address,wallet,chainstate,stamps} (proxy bee) | POST 
 No cheque endpoints. No idempotency, pagination, webhooks.
 
 ### POST /profiles body
+
 name /^[a-z0-9][a-z0-9-]{0,30}$/ | kind streamer|viewer|custom|abr-uploader | notes ≤500 | host (localhost|ssh alias|user@host) | components ⊂ {bee-uploader,bee-gateway,stream-uploader,srs,ome,client} max one engine | feed_owner 0x40hex | feed_topic ≤128 | private_key 0x64hex (→ STREAM_KEY, required for abr-uploader) | public_key | stamp_id (0x)?64hex | bee_publishers "360p@http://h:p<batch> 480p@… 720p@… 1080p@…" | bee_url | srt_passphrase /^[A-Za-z0-9._~-]{10,79}$/.
 Ports = base + port_slot*10: API 10000, SRS_SRT 10001, SRS_RTMP 10002, SRS_HTTP 10003, CLIENT 10004, BEE_UPLOADER_API 10005, BEE_UPLOADER_P2P 10006, BEE_GATEWAY_API 10007, BEE_GATEWAY_P2P 10008. Slot 6 → client 10074, SRT 10061, RTMP 10062, uploader API 10060, bee 10065 (the test host runs slot 6).
 Status: DEPLOYING|RUNNING|STOPPING|STOPPED|REMOVING|ERROR. Deploy = write .env.<name> (upsert ENGINE, STAMP, BEE_PUBLISHERS, ABR_*, BEE_URL, SRT_PASSPHRASE…) then bash deploy.sh --profile --portSlot … streamed as SSE; on success snapshot containers {ports, env}.
 
 ### SRT passphrase & ingest URL
+
 generateSrtPassphrase(32) in common/src/srtPassphrase.ts (alphabet A-Za-z0-9-_, min 10 max 79; SRT_PASSPHRASE_RE). Precedence: profiles.srt_passphrase → host-wide SRT_PASSPHRASE (GET /config). SRS only.
 Ingest URL is computed in the frontend (frontend/src/urls.ts:51-83):
-  SRS: `srt://${host}:${10001+slot*10}?streamid=#!::r=live/stream,m=publish` + `&passphrase=${p}`; OME: `srt://${host}:${port}?streamid=srt://${host}:${port}/video/stream`. App/stream path hardcoded 'live/stream'; UI says "Change live/stream to your app/stream". SRS RTMP port 10002+slot*10 also exists.
+SRS: `srt://${host}:${10001+slot*10}?streamid=#!::r=live/stream,m=publish` + `&passphrase=${p}`; OME: `srt://${host}:${port}?streamid=srt://${host}:${port}/video/stream`. App/stream path hardcoded 'live/stream'; UI says "Change live/stream to your app/stream". SRS RTMP port 10002+slot*10 also exists.
 Nothing server-side knows a stream name; no per-stream key distinct from the signing private_key.
 
 ## Data model
+
 profiles(name PK, port_slot SMALLINT UNIQUE 1..999, kind, notes, components TEXT[], host, feed_owner, feed_topic, private_key(plaintext), public_key, stamp_id, bee_publishers, bee_url, srt_passphrase, status, last_error, last_error_at, created_at, updated_at, group_id FK) ; containers(profile_name FK cascade, service, ports JSONB, env JSONB, PK(profile_name,service)) snapshot ; deployment_groups(id SERIAL, name UNIQUE, size, kind standard|abr-node-pool, created_at).
 
 ## Docs/deploy
+
 docs/features/{abr-ladder.md, streamer-stamp-flow.md, group-deployment.md}; docs/agents/{domain,issue-tracker,triage-labels}.md. deploy/deploy.sh rsyncs to /opt/streaming/streaming-infra-manager on ssh target, docker compose up -d --build, PUBLIC_HOST detected. Test host Ubuntu 22.04, reached over ssh. UI via ssh LocalForward 8080.
 
 ## Consequence for web2-admin
+
 Must own "stream" (id, key, owner, OBS URL, state) itself and map to a manager profile by name. Manager gives: profile CRUD, SSE logs/events, container port snapshots, stamps, /config host+passphrase. Manager lacks: auth, ingest-URL endpoint, stream-name concept, per-stream keys, idempotency, webhooks.

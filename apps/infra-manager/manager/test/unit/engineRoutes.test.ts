@@ -13,17 +13,10 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
-import {
-  COMPOSE_PROJECT_LABEL,
-  COMPOSE_SERVICE_LABEL,
-} from '../../src/domain/composeLabels.js';
+import { COMPOSE_PROJECT_LABEL, COMPOSE_SERVICE_LABEL } from '../../src/domain/composeLabels.js';
 import { ContainerControl } from '../../src/domain/ContainerControl.js';
 import { EventBus } from '../../src/domain/EventBus.js';
-import {
-  callEngine,
-  startEngineTestApp,
-  type EngineTestApp,
-} from '../support/engineTestApp.js';
+import { callEngine, startEngineTestApp, type EngineTestApp } from '../support/engineTestApp.js';
 import { fakeDocker } from '../support/fakeDocker.js';
 import { harnessFor, profileRow } from '../support/profileServiceHarness.js';
 import type { ProfileStatus } from '../../src/types/index.js';
@@ -44,10 +37,7 @@ async function appFor(status: ProfileStatus): Promise<{
 }> {
   const { service } = harnessFor(profileRow({ status }));
   const docker = fakeDocker(RUNNING_SRS);
-  const app = await startEngineTestApp(
-    service,
-    new ContainerControl(new EventBus(), docker),
-  );
+  const app = await startEngineTestApp(service, new ContainerControl(new EventBus(), docker));
   return { app, docker };
 }
 
@@ -66,11 +56,7 @@ describe('POST /profiles/:name/containers/:service/restart', () => {
   });
 
   it('refuses while the deployment is mid deploy, and touches nothing', async () => {
-    const res = await callEngine(
-      deploying,
-      'POST',
-      '/profiles/stream1/containers/srs/restart',
-    );
+    const res = await callEngine(deploying, 'POST', '/profiles/stream1/containers/srs/restart');
 
     assert.equal(res.status, 409);
     assert.deepEqual(res.body, {
@@ -82,11 +68,7 @@ describe('POST /profiles/:name/containers/:service/restart', () => {
   });
 
   it('accepts it once the deployment is settled', async () => {
-    const res = await callEngine(
-      running,
-      'POST',
-      '/profiles/stream1/containers/srs/restart',
-    );
+    const res = await callEngine(running, 'POST', '/profiles/stream1/containers/srs/restart');
 
     assert.equal(res.status, 202);
     assert.deepEqual(res.body, {
@@ -97,19 +79,14 @@ describe('POST /profiles/:name/containers/:service/restart', () => {
   });
 
   it('answers 409 to a second restart a moment later', async () => {
-    const res = await callEngine(
-      running,
-      'POST',
-      '/profiles/stream1/containers/srs/restart',
-    );
+    const res = await callEngine(running, 'POST', '/profiles/stream1/containers/srs/restart');
 
     assert.equal(res.status, 409);
     assert.deepEqual(res.body, {
       error: 'restart_in_progress',
       name: 'stream1',
       service: 'srs',
-      message:
-        'srs on stream1 was restarted a moment ago. Wait a few seconds, then try again.',
+      message: 'srs on stream1 was restarted a moment ago. Wait a few seconds, then try again.',
     });
   });
 });
@@ -123,10 +100,7 @@ describe('PUT /profiles/:name/engine-settings with a key no engine reads', () =>
 
   async function appWithSaved() {
     const harness = harnessFor(profileRow({ engine_settings: { ...SAVED } }));
-    const app = await startEngineTestApp(
-      harness.service,
-      new ContainerControl(new EventBus(), fakeDocker([])),
-    );
+    const app = await startEngineTestApp(harness.service, new ContainerControl(new EventBus(), fakeDocker([])));
     return { app, harness };
   }
 

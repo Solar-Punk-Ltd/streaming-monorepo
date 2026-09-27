@@ -101,15 +101,15 @@ again automatically after a restart.
 
 ## Reading the outcome
 
-| Stored state | Meaning |
-| --- | --- |
-| `submitting` | The operation was durably admitted. This state alone does not prove whether Bee received the POST. |
-| `submitted` | A transaction hash was recorded. Mining and finality are not yet established. The manager checks the chain for its receipt about every 20 seconds while the operation's `receiptPollUntil` deadline is ahead. Three kinds of `submitted` row are never checked automatically: one with no deadline, which is every operation recorded before this behaviour existed, one whose deadline has passed, and one whose failure reason is `hash_conflict`. |
-| `unknown` | Submission or later evidence could not establish an outcome. Keep the original request and inspect recovery evidence. |
-| `settled` | A matching successful receipt and the required canonical, finalized history were verified. |
-| `reverted` | A matching reverted receipt and the required canonical, finalized history were verified. |
-| `rejected` | A positive preflight refusal prevented dispatch. `failureReason` says why: `preflight_no_gas` for a wallet with no xDAI, `preflight_insufficient_balance` for less BZZ than the amount in the wallet, or in the chequebook for a withdrawal, and `preflight_failed` for anything else the last check found, which is also every row written before 2026-09-26. The page shows one sentence for each. This state is never inferred from a timeout during submission. |
-| `asserted` | An operator recorded the explicit duplicate-risk assertion. It is not verified settlement or proof that submission never happened. |
+| Stored state | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `submitting` | The operation was durably admitted. This state alone does not prove whether Bee received the POST.                                                                                                                                                                                                                                                                                                                                                                  |
+| `submitted`  | A transaction hash was recorded. Mining and finality are not yet established. The manager checks the chain for its receipt about every 20 seconds while the operation's `receiptPollUntil` deadline is ahead. Three kinds of `submitted` row are never checked automatically: one with no deadline, which is every operation recorded before this behaviour existed, one whose deadline has passed, and one whose failure reason is `hash_conflict`.                |
+| `unknown`    | Submission or later evidence could not establish an outcome. Keep the original request and inspect recovery evidence.                                                                                                                                                                                                                                                                                                                                               |
+| `settled`    | A matching successful receipt and the required canonical, finalized history were verified.                                                                                                                                                                                                                                                                                                                                                                          |
+| `reverted`   | A matching reverted receipt and the required canonical, finalized history were verified.                                                                                                                                                                                                                                                                                                                                                                            |
+| `rejected`   | A positive preflight refusal prevented dispatch. `failureReason` says why: `preflight_no_gas` for a wallet with no xDAI, `preflight_insufficient_balance` for less BZZ than the amount in the wallet, or in the chequebook for a withdrawal, and `preflight_failed` for anything else the last check found, which is also every row written before 2026-09-26. The page shows one sentence for each. This state is never inferred from a timeout during submission. |
+| `asserted`   | An operator recorded the explicit duplicate-risk assertion. It is not verified settlement or proof that submission never happened.                                                                                                                                                                                                                                                                                                                                  |
 
 Conflicting attribution or direct-response evidence takes precedence over an
 older terminal label. The detail view must show the saved identity, hashes,
@@ -187,16 +187,16 @@ deployment, so deletion does not break recovery. Recovery writes also require
 `expectedAccountId`. An assertion additionally requires the reviewed journal
 revision as a decimal string. A later journal change invalidates that assertion.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/profiles/:name/chequebook` | Read node balances and chequebook summary. |
-| POST | `/profiles/:name/chequebook/deposit` or `/withdraw` | Submit `{ requestId, profileInstanceId, amount, expectedAccountId }`. An accepted or replayed result returns 202. Busy or conflicting identity returns 409 with the relevant operation. |
-| GET | `/chequebook/operations` | Bounded history with optional profile filter and cursor. |
-| GET | `/chequebook/operations/by-request/:requestId` | Recover the exact original request. |
-| GET | `/chequebook/operations/:id` | Read the operation and its response evidence together. |
-| POST | `/chequebook/operations/:id/check` | Request another evidence check with `{ expectedAccountId }`. |
-| POST | `/chequebook/operations/:id/resolve` | Supply `{ transactionHash, expectedAccountId }` for verification. |
-| POST | `/chequebook/operations/:id/assert` | Submit `{ amountPlur, confirmation, expectedAccountId, expectedRevision }` using the recorded amount, exact duplicate-risk confirmation and reviewed revision under D10. |
+| Method | Path                                                | Purpose                                                                                                                                                                                 |
+| ------ | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/profiles/:name/chequebook`                        | Read node balances and chequebook summary.                                                                                                                                              |
+| POST   | `/profiles/:name/chequebook/deposit` or `/withdraw` | Submit `{ requestId, profileInstanceId, amount, expectedAccountId }`. An accepted or replayed result returns 202. Busy or conflicting identity returns 409 with the relevant operation. |
+| GET    | `/chequebook/operations`                            | Bounded history with optional profile filter and cursor.                                                                                                                                |
+| GET    | `/chequebook/operations/by-request/:requestId`      | Recover the exact original request.                                                                                                                                                     |
+| GET    | `/chequebook/operations/:id`                        | Read the operation and its response evidence together.                                                                                                                                  |
+| POST   | `/chequebook/operations/:id/check`                  | Request another evidence check with `{ expectedAccountId }`.                                                                                                                            |
+| POST   | `/chequebook/operations/:id/resolve`                | Supply `{ transactionHash, expectedAccountId }` for verification.                                                                                                                       |
+| POST   | `/chequebook/operations/:id/assert`                 | Submit `{ amountPlur, confirmation, expectedAccountId, expectedRevision }` using the recorded amount, exact duplicate-risk confirmation and reviewed revision under D10.                |
 
 A busy response can name another operation. The browser must not attach that
 operation to its own saved intent as though its submission succeeded. History

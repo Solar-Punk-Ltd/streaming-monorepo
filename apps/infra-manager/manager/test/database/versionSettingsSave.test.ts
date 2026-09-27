@@ -52,171 +52,175 @@ const HOST_ENV = ['# The token this host was given.', 'API_AUTH_TOKEN=first', ''
 /** Long enough for a request that has reached the router to reach the lock it waits on. */
 const SETTLE_MS = 100;
 
-describe('settings saves in isolated PostgreSQL schemas', {
-  skip: !Number.isInteger(port) || port < 1 || port > 65535,
-}, () => {
-  let admin: Pool;
-  let pool: Pool;
-  let schema: string;
-  let server: http.Server;
-  let url: string;
-  let configRoot: string;
-  let id: number;
-  /** Resolves once a save has reached the router, so the interleave below is not a guess. */
-  let saveArrived: Promise<void>;
+describe(
+  'settings saves in isolated PostgreSQL schemas',
+  {
+    skip: !Number.isInteger(port) || port < 1 || port > 65535,
+  },
+  () => {
+    let admin: Pool;
+    let pool: Pool;
+    let schema: string;
+    let server: http.Server;
+    let url: string;
+    let configRoot: string;
+    let id: number;
+    /** Resolves once a save has reached the router, so the interleave below is not a guess. */
+    let saveArrived: Promise<void>;
 
-  beforeEach(async () => {
-    schema = `t04b_${randomBytes(8).toString('hex')}`;
-    admin = new pg.Pool(connection);
-    await admin.query(`CREATE SCHEMA ${schema}`);
-    pool = new pg.Pool({ ...connection, application_name: schema, options: `-c search_path=${schema}` });
-    const migrations = new URL('../../src/migrations/', import.meta.url);
-    for (const name of (await readdir(migrations)).filter((file) => file.endsWith('.sql')).sort()) {
-      await pool.query(await readFile(new URL(name, migrations), 'utf8'));
+    beforeEach(async () => {
+      schema = `t04b_${randomBytes(8).toString('hex')}`;
+      admin = new pg.Pool(connection);
+      await admin.query(`CREATE SCHEMA ${schema}`);
+      pool = new pg.Pool({ ...connection, application_name: schema, options: `-c search_path=${schema}` });
+      const migrations = new URL('../../src/migrations/', import.meta.url);
+      for (const name of (await readdir(migrations)).filter((file) => file.endsWith('.sql')).sort()) {
+        await pool.query(await readFile(new URL(name, migrations), 'utf8'));
+      }
+
+      const versionsRoot = mkdtempSync(join(tmpdir(), 'settings-save-'));
+      configRoot = join(versionsRoot, 'bundled');
+      mkdirSync(configRoot, { recursive: true });
+      await commitHostConfig(configRoot, { '.env': Buffer.from(HOST_ENV, 'utf8') });
+
+      const repository = new PostgresStackVersionRepository(pool);
+      id = (await repository.findByName('bundled'))!.id;
+      await pool.query(
+        "UPDATE stack_versions SET commit_sha = $2, layout = 'builds', build_id = $2, root_path = $3 WHERE id = $1",
+        [id, COMMIT, configRoot],
+      );
+
+      const service = new StackVersionService(
+        repository,
+        new FakeScriptSpawner(),
+        new EventBus(),
+        versionsRoot,
+        { openReferences: async () => [] },
+        join(versionsRoot, 'bundled-tree'),
+      );
+      const app = express();
+      app.use(express.json({ limit: '256kb' }));
+      let sawSave = (): void => undefined;
+      saveArrived = new Promise<void>((resolve) => {
+        sawSave = resolve;
+      });
+      app.use('/versions', (req, _res, next) => {
+        if (req.method === 'PUT') sawSave();
+        next();
+      });
+      app.use('/versions', createVersionsRouter(service, new OpenStreams()));
+      app.use(notFound);
+      app.use(errorHandler);
+      server = http.createServer(app);
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const address = server.address();
+      if (address === null || typeof address === 'string') throw new Error('no port');
+      url = `http://127.0.0.1:${address.port}`;
+    });
+
+    afterEach(async () => {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await pool?.end();
+      if (admin) {
+        await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+        await admin.end();
+      }
+    });
+
+    /** What an ssh commit leaves behind: the file, then the manifest naming its hash. */
+    function commitByHand(env: string, generation: number): void {
+      writeFileSync(join(configRoot, '.env'), env);
+      const revision = {
+        generation,
+        files: { '.env': createHash('sha256').update(Buffer.from(env, 'utf8')).digest('hex') },
+      };
+      writeFileSync(join(configRoot, CONFIG_REVISION_FILE), `${JSON.stringify(revision, null, 2)}\n`);
     }
 
-    const versionsRoot = mkdtempSync(join(tmpdir(), 'settings-save-'));
-    configRoot = join(versionsRoot, 'bundled');
-    mkdirSync(configRoot, { recursive: true });
-    await commitHostConfig(configRoot, { '.env': Buffer.from(HOST_ENV, 'utf8') });
-
-    const repository = new PostgresStackVersionRepository(pool);
-    id = (await repository.findByName('bundled'))!.id;
-    await pool.query(
-      "UPDATE stack_versions SET commit_sha = $2, layout = 'builds', build_id = $2, root_path = $3 WHERE id = $1",
-      [id, COMMIT, configRoot],
-    );
-
-    const service = new StackVersionService(
-      repository,
-      new FakeScriptSpawner(),
-      new EventBus(),
-      versionsRoot,
-      { openReferences: async () => [] },
-      join(versionsRoot, 'bundled-tree'),
-    );
-    const app = express();
-    app.use(express.json({ limit: '256kb' }));
-    let sawSave = (): void => undefined;
-    saveArrived = new Promise<void>((resolve) => {
-      sawSave = resolve;
-    });
-    app.use('/versions', (req, _res, next) => {
-      if (req.method === 'PUT') sawSave();
-      next();
-    });
-    app.use('/versions', createVersionsRouter(service, new OpenStreams()));
-    app.use(notFound);
-    app.use(errorHandler);
-    server = http.createServer(app);
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-    const address = server.address();
-    if (address === null || typeof address === 'string') throw new Error('no port');
-    url = `http://127.0.0.1:${address.port}`;
-  });
-
-  afterEach(async () => {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-    await pool?.end();
-    if (admin) {
-      await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
-      await admin.end();
+    function save(value: string): Promise<Response> {
+      return fetch(`${url}/versions/${id}/settings`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          expectedGeneration: 1,
+          files: [{ path: '.env', entries: [{ key: 'API_AUTH_TOKEN', value }] }],
+        }),
+      });
     }
-  });
 
-  /** What an ssh commit leaves behind: the file, then the manifest naming its hash. */
-  function commitByHand(env: string, generation: number): void {
-    writeFileSync(join(configRoot, '.env'), env);
-    const revision = {
-      generation,
-      files: { '.env': createHash('sha256').update(Buffer.from(env, 'utf8')).digest('hex') },
-    };
-    writeFileSync(join(configRoot, CONFIG_REVISION_FILE), `${JSON.stringify(revision, null, 2)}\n`);
-  }
+    it('lands the first of two saves and refuses the second with the revision it has to reload', async () => {
+      const answers = await Promise.all([save('from-one'), save('from-two')]);
+      const bodies = await Promise.all(answers.map((answer) => answer.json()));
 
-  function save(value: string): Promise<Response> {
-    return fetch(`${url}/versions/${id}/settings`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        expectedGeneration: 1,
-        files: [{ path: '.env', entries: [{ key: 'API_AUTH_TOKEN', value }] }],
-      }),
-    });
-  }
+      const statuses = answers.map((answer) => answer.status).sort();
+      assert.deepEqual(statuses, [200, 409]);
 
-  it('lands the first of two saves and refuses the second with the revision it has to reload', async () => {
-    const answers = await Promise.all([save('from-one'), save('from-two')]);
-    const bodies = await Promise.all(answers.map((answer) => answer.json()));
-
-    const statuses = answers.map((answer) => answer.status).sort();
-    assert.deepEqual(statuses, [200, 409]);
-
-    const landed = bodies[answers.findIndex((answer) => answer.status === 200)] as { generation: number };
-    const refused = bodies[answers.findIndex((answer) => answer.status === 409)] as {
-      error: string;
-      generation: number;
-    };
-    assert.deepEqual(landed, { generation: 2 });
-    assert.equal(refused.error, 'settings_changed');
-    assert.equal(refused.generation, 2);
-  });
-
-  it('leaves the file holding one of the two values and the comment above it', async () => {
-    await Promise.all([save('from-one'), save('from-two')]);
-
-    const written = readFileSync(join(configRoot, '.env'), 'utf8');
-    const values = ['from-one', 'from-two'].filter((value) => written.includes(value));
-    assert.deepEqual(values.length, 1, written.replace(/from-\w+/g, 'value'));
-    assert.equal(written.startsWith('# The token this host was given.\n'), true);
-  });
-
-  it('moves the revision on by one, never by two', async () => {
-    await Promise.all([save('from-one'), save('from-two')]);
-
-    const manifest = JSON.parse(readFileSync(join(configRoot, '.config-revision.json'), 'utf8'));
-    assert.equal(manifest.generation, 2);
-  });
-
-  it('reads the revision it checks against under the lock, not before waiting for it', async () => {
-    // The interleave, made to happen rather than raced for: this test holds the
-    // edit lock the way an ssh session does, sends the save, commits a newer
-    // revision by hand while the save waits, and only then lets go. A save that
-    // read the generation before waiting read the one that is already gone, and
-    // would write over an edit it never saw.
-    const lock = join(configRoot, CONFIG_LOCK_DIR);
-    mkdirSync(lock);
-
-    const answer = save('from-the-page');
-    await saveArrived;
-    await sleep(SETTLE_MS);
-    commitByHand('API_AUTH_TOKEN=from-the-ssh-session\n', 2);
-    rmdirSync(lock);
-
-    const refused = await answer;
-    const body = (await refused.json()) as { error: string; generation: number };
-    assert.equal(refused.status, 409);
-    assert.deepEqual(
-      { error: body.error, generation: body.generation },
-      { error: 'settings_changed', generation: 2 },
-    );
-    assert.match(readFileSync(join(configRoot, '.env'), 'utf8'), /from-the-ssh-session/);
-  });
-
-  it('takes the next save once the page has reloaded onto the new revision', async () => {
-    await Promise.all([save('from-one'), save('from-two')]);
-
-    const again = await fetch(`${url}/versions/${id}/settings`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        expectedGeneration: 2,
-        files: [{ path: '.env', entries: [{ key: 'API_AUTH_TOKEN', value: 'from-three' }] }],
-      }),
+      const landed = bodies[answers.findIndex((answer) => answer.status === 200)] as { generation: number };
+      const refused = bodies[answers.findIndex((answer) => answer.status === 409)] as {
+        error: string;
+        generation: number;
+      };
+      assert.deepEqual(landed, { generation: 2 });
+      assert.equal(refused.error, 'settings_changed');
+      assert.equal(refused.generation, 2);
     });
 
-    assert.equal(again.status, 200);
-    assert.deepEqual(await again.json(), { generation: 3 });
-    assert.match(readFileSync(join(configRoot, '.env'), 'utf8'), /^API_AUTH_TOKEN=from-three$/m);
-  });
-});
+    it('leaves the file holding one of the two values and the comment above it', async () => {
+      await Promise.all([save('from-one'), save('from-two')]);
+
+      const written = readFileSync(join(configRoot, '.env'), 'utf8');
+      const values = ['from-one', 'from-two'].filter((value) => written.includes(value));
+      assert.deepEqual(values.length, 1, written.replace(/from-\w+/g, 'value'));
+      assert.equal(written.startsWith('# The token this host was given.\n'), true);
+    });
+
+    it('moves the revision on by one, never by two', async () => {
+      await Promise.all([save('from-one'), save('from-two')]);
+
+      const manifest = JSON.parse(readFileSync(join(configRoot, '.config-revision.json'), 'utf8'));
+      assert.equal(manifest.generation, 2);
+    });
+
+    it('reads the revision it checks against under the lock, not before waiting for it', async () => {
+      // The interleave, made to happen rather than raced for: this test holds the
+      // edit lock the way an ssh session does, sends the save, commits a newer
+      // revision by hand while the save waits, and only then lets go. A save that
+      // read the generation before waiting read the one that is already gone, and
+      // would write over an edit it never saw.
+      const lock = join(configRoot, CONFIG_LOCK_DIR);
+      mkdirSync(lock);
+
+      const answer = save('from-the-page');
+      await saveArrived;
+      await sleep(SETTLE_MS);
+      commitByHand('API_AUTH_TOKEN=from-the-ssh-session\n', 2);
+      rmdirSync(lock);
+
+      const refused = await answer;
+      const body = (await refused.json()) as { error: string; generation: number };
+      assert.equal(refused.status, 409);
+      assert.deepEqual(
+        { error: body.error, generation: body.generation },
+        { error: 'settings_changed', generation: 2 },
+      );
+      assert.match(readFileSync(join(configRoot, '.env'), 'utf8'), /from-the-ssh-session/);
+    });
+
+    it('takes the next save once the page has reloaded onto the new revision', async () => {
+      await Promise.all([save('from-one'), save('from-two')]);
+
+      const again = await fetch(`${url}/versions/${id}/settings`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          expectedGeneration: 2,
+          files: [{ path: '.env', entries: [{ key: 'API_AUTH_TOKEN', value: 'from-three' }] }],
+        }),
+      });
+
+      assert.equal(again.status, 200);
+      assert.deepEqual(await again.json(), { generation: 3 });
+      assert.match(readFileSync(join(configRoot, '.env'), 'utf8'), /^API_AUTH_TOKEN=from-three$/m);
+    });
+  },
+);

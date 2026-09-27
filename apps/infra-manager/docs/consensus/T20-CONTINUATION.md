@@ -44,10 +44,10 @@ T11 adds a mock-observation entrypoint that runs Node with tsx and development c
 
 The three existing pins match their official release pages. As read on2026-09-09, all release dates are more than two weeks old. GitHub displays verified commit signatures for each, and also a verified tag signature for pnpm/action-setup. This is release/commit identity evidence, not a completed audit of their bundled dependencies.
 
-| Existing pin | Official release evidence |
-| --- | --- |
-| actions/checkout `3d3c42e5aac5ba805825da76410c181273ba90b1` | [v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1),20 July, matching commit and GitHub verified signature |
-| pnpm/action-setup `0977fd99725f1db4007ccb2928dbb4e90d06cc86` | [v6.0.10](https://github.com/pnpm/action-setup/releases/tag/v6.0.10),3 August, matching commit, verified commit/tag signatures and immutable-release indicator |
-| actions/setup-node `820762786026740c76f36085b0efc47a31fe5020` | [v7.0.0](https://github.com/actions/setup-node/releases/tag/v7.0.0),14 July, matching commit, verified signature and immutable-release indicator |
+| Existing pin                                                  | Official release evidence                                                                                                                                      |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| actions/checkout `3d3c42e5aac5ba805825da76410c181273ba90b1`   | [v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1),20 July, matching commit and GitHub verified signature                                       |
+| pnpm/action-setup `0977fd99725f1db4007ccb2928dbb4e90d06cc86`  | [v6.0.10](https://github.com/pnpm/action-setup/releases/tag/v6.0.10),3 August, matching commit, verified commit/tag signatures and immutable-release indicator |
+| actions/setup-node `820762786026740c76f36085b0efc47a31fe5020` | [v7.0.0](https://github.com/actions/setup-node/releases/tag/v7.0.0),14 July, matching commit, verified signature and immutable-release indicator               |
 
 No action version, package or lockfile changed during this review. Installed-tree signatures, registry provenance and malware checks are not established by the release pages and remain unverified here. Any introduced package or action version still requires the repository's applicable provenance checks. Do not describe the current workflow as ready on the strength of SHA pins alone.

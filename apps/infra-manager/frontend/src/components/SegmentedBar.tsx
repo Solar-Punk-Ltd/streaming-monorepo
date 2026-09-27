@@ -1,8 +1,4 @@
-import {
-  INFRA_COLOR,
-  OTHER_COLOR,
-  UsageBar,
-} from '../resources/UsageBar';
+import { INFRA_COLOR, OTHER_COLOR, UsageBar } from '../resources/UsageBar';
 
 /**
  * The one bar shape used for host resources: what this manager's stacks use,
@@ -12,15 +8,7 @@ import {
  * than a used total and a subtraction, and the "everything else" segment can
  * never render negative.
  */
-export function SegmentedBar({
-  ours,
-  other,
-  height,
-}: {
-  ours: number;
-  other: number;
-  height?: number;
-}) {
+export function SegmentedBar({ ours, other, height }: { ours: number; other: number; height?: number }) {
   return (
     <UsageBar
       segments={[

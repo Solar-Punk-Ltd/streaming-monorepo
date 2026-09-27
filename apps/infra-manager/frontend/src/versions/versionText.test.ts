@@ -90,7 +90,8 @@ describe('why a version can place no deployment', () => {
     version({ contract: { allocationProblem } as StackContract });
 
   it('hands over the contract sentence, so the card and the wizard say the same thing', () => {
-    const problem = 'No port slot from 1 to 99 passes this version\'s port policy, so no deployment can be created from it.';
+    const problem =
+      "No port slot from 1 to 99 passes this version's port policy, so no deployment can be created from it.";
     assert.equal(versionPlacementProblem(withContract(problem)), problem);
   });
 

@@ -10,7 +10,12 @@ import { Pool } from 'pg';
 import { Profile, ProfileKind, ProfileStatus } from '../types/index.js';
 import { copyManagerAdminToken } from './adminLink/adminTokenCopy.js';
 import { reserveSlotFor } from './ports/reservationSql.js';
-import { DEPLOYMENT_PHASE_FROM_PRIOR_STATUS_SQL, OPERATION_HOLD_FOR_OWNER_SQL, PROFILE_COLUMNS, PROFILE_SLOT_LOCK_KEY } from './profileSql.js';
+import {
+  DEPLOYMENT_PHASE_FROM_PRIOR_STATUS_SQL,
+  OPERATION_HOLD_FOR_OWNER_SQL,
+  PROFILE_COLUMNS,
+  PROFILE_SLOT_LOCK_KEY,
+} from './profileSql.js';
 import { ProfileConfigError } from './errors/index.js';
 import type { StackSecrets } from './versions/stackSecrets.js';
 import type { ExpectedDeployOwner } from './versions/buildLedger.js';
@@ -146,7 +151,8 @@ export class ProfileRepository {
       `UPDATE profiles SET status = 'REMOVING', intent_revision = intent_revision + 1,
          last_error = NULL, last_error_at = NULL, updated_at = NOW()
        WHERE name = $1 AND instance_id = $2 AND status IN ('RUNNING', 'STOPPED', 'ERROR')
-       RETURNING ${PROFILE_COLUMNS}`, [name, expectedInstanceId],
+       RETURNING ${PROFILE_COLUMNS}`,
+      [name, expectedInstanceId],
     );
     return result.rows[0] ?? null;
   }
@@ -155,19 +161,24 @@ export class ProfileRepository {
     const result = await this.pool.query<Profile>(
       `UPDATE profiles SET status = 'ERROR', last_error = $4, last_error_at = NOW(), updated_at = NOW()
        WHERE name = $1 AND instance_id = $2 AND intent_revision = $3 AND status = 'REMOVING'
-       RETURNING ${PROFILE_COLUMNS}`, [claim.name, claim.instance_id, claim.intent_revision, message],
+       RETURNING ${PROFILE_COLUMNS}`,
+      [claim.name, claim.instance_id, claim.intent_revision, message],
     );
     return result.rows[0] ?? null;
   }
 
-  async completeRemoval(claim: ProfileRemovalClaim, cleanFiles: () => Promise<void>): Promise<{ port_slot: number } | null> {
+  async completeRemoval(
+    claim: ProfileRemovalClaim,
+    cleanFiles: () => Promise<void>,
+  ): Promise<{ port_slot: number } | null> {
     return this.deleteProfile(claim.name, claim, cleanFiles);
   }
 
   /** One statement keeps revision identity, settings and the config in the same database snapshot. */
   async engineOverviewSnapshot(name: string): Promise<EngineOverviewSnapshot | null> {
     const result = await this.pool.query<Profile & { engine_config: string | null }>(
-      `SELECT ${PROFILE_COLUMNS}, engine_config FROM profiles WHERE name = $1`, [name],
+      `SELECT ${PROFILE_COLUMNS}, engine_config FROM profiles WHERE name = $1`,
+      [name],
     );
     const row = result.rows[0];
     if (!row) return null;
@@ -176,17 +187,12 @@ export class ProfileRepository {
   }
 
   async findByName(name: string): Promise<Profile | null> {
-    const r = await this.pool.query<Profile>(
-      `SELECT ${PROFILE_COLUMNS} FROM profiles WHERE name = $1`,
-      [name],
-    );
+    const r = await this.pool.query<Profile>(`SELECT ${PROFILE_COLUMNS} FROM profiles WHERE name = $1`, [name]);
     return r.rowCount && r.rowCount > 0 ? r.rows[0]! : null;
   }
 
   async list(): Promise<Profile[]> {
-    const result = await this.pool.query<Profile>(
-      `SELECT ${PROFILE_COLUMNS} FROM profiles ORDER BY port_slot ASC`,
-    );
+    const result = await this.pool.query<Profile>(`SELECT ${PROFILE_COLUMNS} FROM profiles ORDER BY port_slot ASC`);
     return result.rows;
   }
 
@@ -212,9 +218,7 @@ export class ProfileRepository {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock($1)', [
-        PROFILE_SLOT_LOCK_KEY,
-      ]);
+      await client.query('SELECT pg_advisory_xact_lock($1)', [PROFILE_SLOT_LOCK_KEY]);
       // The slot and its reservations, in this transaction, so a deployment
       // record and the ports it will bind appear together or not at all.
       const slot = await reserveSlotFor(client, name, placement);
@@ -261,7 +265,8 @@ export class ProfileRepository {
           stackSettings.adminTokenOrigin ?? null,
         ],
       );
-      if (stackSettings.copyManagerAdminToken) await copyManagerAdminToken(client, name, stackSettings.copyManagerAdminToken);
+      if (stackSettings.copyManagerAdminToken)
+        await copyManagerAdminToken(client, name, stackSettings.copyManagerAdminToken);
       await client.query('COMMIT');
       return result.rowCount && result.rowCount > 0 ? result.rows[0]! : null;
     } catch (err) {
@@ -316,11 +321,7 @@ export class ProfileRepository {
     keptEngineSettingKeys?: readonly string[],
     expectedNotesRevision?: number,
   ): Promise<Profile | null> {
-    const {
-      srt_passphrase: passphrase,
-      rpc_endpoint: rpcEndpoint,
-      ...named
-    } = dataWithOptionalValues;
+    const { srt_passphrase: passphrase, rpc_endpoint: rpcEndpoint, ...named } = dataWithOptionalValues;
     const data = nullify(named);
     const result = await this.pool.query<Profile>(
       `UPDATE profiles
@@ -378,11 +379,7 @@ export class ProfileRepository {
    * current one. Null when the row is gone or the revision moved, which the
    * caller tells apart with a read.
    */
-  async updateNotes(
-    name: string,
-    notes: string | null,
-    expectedRevision: number,
-  ): Promise<Profile | null> {
+  async updateNotes(name: string, notes: string | null, expectedRevision: number): Promise<Profile | null> {
     const result = await this.pool.query<Profile>(
       `UPDATE profiles
          SET notes = $2,
@@ -424,8 +421,16 @@ export class ProfileRepository {
          AND status = 'DEPLOYING' AND deploy_job_reference_id = $7
          AND settings_revision = $8
        RETURNING ${PROFILE_COLUMNS}`,
-      [name, JSON.stringify(settings), owner.instanceId, owner.intentRevision,
-        owner.configRevision, owner.stackVersionId, owner.jobReferenceId, owner.settingsRevision],
+      [
+        name,
+        JSON.stringify(settings),
+        owner.instanceId,
+        owner.intentRevision,
+        owner.configRevision,
+        owner.stackVersionId,
+        owner.jobReferenceId,
+        owner.settingsRevision,
+      ],
     );
     return result.rowCount && result.rowCount > 0 ? result.rows[0]! : null;
   }
@@ -444,11 +449,7 @@ export class ProfileRepository {
    * revert that puts the previous file back cannot leave the error of the
    * attempt behind on a row that no longer runs it, or the other way round.
    */
-  async setEngineConfig(
-    name: string,
-    config: string | null,
-    error: string | null,
-  ): Promise<Profile | null> {
+  async setEngineConfig(name: string, config: string | null, error: string | null): Promise<Profile | null> {
     const result = await this.pool.query<Profile>(
       `UPDATE profiles
          SET engine_config = $2,
@@ -479,10 +480,7 @@ export class ProfileRepository {
    * and events. The optional owner binds an edit's read to the profile version
    * that will be claimed before any write can land.
    */
-  async rpcEndpointOf(
-    name: string,
-    owner?: ExpectedDeployOwner,
-  ): Promise<RpcEndpointSnapshot | null> {
+  async rpcEndpointOf(name: string, owner?: ExpectedDeployOwner): Promise<RpcEndpointSnapshot | null> {
     const result = await this.pool.query<{ rpc_endpoint: string | null }>(
       `SELECT rpc_endpoint FROM profiles
        WHERE name = $1
@@ -517,14 +515,7 @@ export class ProfileRepository {
          AND engine_config_revision = $4 AND stack_version_id = $5
          AND status = 'DEPLOYING'
          AND deploy_job_reference_id IS NOT DISTINCT FROM $6::integer`,
-      [
-        name,
-        owner.instanceId,
-        owner.intentRevision,
-        owner.configRevision,
-        owner.stackVersionId,
-        jobReferenceId,
-      ],
+      [name, owner.instanceId, owner.intentRevision, owner.configRevision, owner.stackVersionId, jobReferenceId],
     );
     const row = result.rows[0];
     return row ? { rpcEndpoint: row.rpc_endpoint } : null;
@@ -595,13 +586,22 @@ export class ProfileRepository {
     );
     const row = result.rows[0];
     return row
-      ? { plain: row.plain, secretKeys: row.secret_keys, engine: row.engine, revision: row.revision, adminTokenOrigin: row.admin_token_origin }
+      ? {
+          plain: row.plain,
+          secretKeys: row.secret_keys,
+          engine: row.engine,
+          revision: row.revision,
+          adminTokenOrigin: row.admin_token_origin,
+        }
       : null;
   }
 
   /** Records the origin a stored web2 admin token is for, where nothing is recorded yet. */
   async bindAdminTokenOrigin(name: string, origin: string): Promise<void> {
-    await this.pool.query('UPDATE profiles SET admin_token_origin = $2 WHERE name = $1 AND admin_token_origin IS NULL', [name, origin]);
+    await this.pool.query(
+      'UPDATE profiles SET admin_token_origin = $2 WHERE name = $1 AND admin_token_origin IS NULL',
+      [name, origin],
+    );
   }
 
   /**
@@ -627,9 +627,16 @@ export class ProfileRepository {
         WHERE name = $1 AND instance_id = $2 AND settings_revision = $3
         RETURNING settings_revision`,
       [
-        name, guard.instanceId, guard.expectedRevision, change.remove, JSON.stringify(change.plain),
-        JSON.stringify(change.secret), change.engine.remove, JSON.stringify(change.engine.set),
-        change.adminTokenOrigin !== undefined, change.adminTokenOrigin ?? null,
+        name,
+        guard.instanceId,
+        guard.expectedRevision,
+        change.remove,
+        JSON.stringify(change.plain),
+        JSON.stringify(change.secret),
+        change.engine.remove,
+        JSON.stringify(change.engine.set),
+        change.adminTokenOrigin !== undefined,
+        change.adminTokenOrigin ?? null,
       ],
     );
     return result.rows[0]?.settings_revision ?? null;
@@ -646,10 +653,7 @@ export class ProfileRepository {
     );
   }
 
-  async updateStampId(
-    name: string,
-    stampId: string,
-  ): Promise<Profile | null> {
+  async updateStampId(name: string, stampId: string): Promise<Profile | null> {
     const result = await this.pool.query<Profile>(
       `UPDATE profiles
          SET stamp_id = $2,
@@ -671,10 +675,16 @@ export class ProfileRepository {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock($1)', [PROFILE_SLOT_LOCK_KEY]);
       const selected = await client.query<Pick<Profile, 'status' | 'instance_id' | 'intent_revision'>>(
-        'SELECT status, instance_id, intent_revision FROM profiles WHERE name = $1 FOR UPDATE', [name],
+        'SELECT status, instance_id, intent_revision FROM profiles WHERE name = $1 FOR UPDATE',
+        [name],
       );
       const row = selected.rows[0];
-      if (!row || row.instance_id !== claim.instance_id || row.intent_revision !== claim.intent_revision || row.status !== 'REMOVING') {
+      if (
+        !row ||
+        row.instance_id !== claim.instance_id ||
+        row.intent_revision !== claim.intent_revision ||
+        row.status !== 'REMOVING'
+      ) {
         await client.query('COMMIT');
         return null;
       }
@@ -682,31 +692,42 @@ export class ProfileRepository {
       const held = await client.query<{ blocked: boolean }>(
         `SELECT EXISTS (SELECT 1 FROM deploy_attempts WHERE project = $1 AND state <> 'released')
           OR EXISTS (SELECT 1 FROM build_references WHERE ${OPERATION_HOLD_FOR_OWNER_SQL}) AS blocked
-          FROM profiles owner WHERE owner.name = $1`, [name],
+          FROM profiles owner WHERE owner.name = $1`,
+        [name],
       );
-      if (held.rows[0]?.blocked) throw new ProfileConfigError(name, 'An unresolved deploy attempt or rollback operation still holds this deployment.');
+      if (held.rows[0]?.blocked)
+        throw new ProfileConfigError(
+          name,
+          'An unresolved deploy attempt or rollback operation still holds this deployment.',
+        );
       // Keep the row locked and its name occupied until all name-owned files are gone.
       await cleanFiles();
       await client.query('DELETE FROM port_reservations WHERE profile_name = $1', [name]);
       await client.query(
         `UPDATE build_references SET resolved_at = NOW() WHERE resolved_at IS NULL
-         AND ((holder_kind = 'job' AND holder_id = $1) OR (holder_kind = 'snapshot' AND split_part(holder_id, '/', 1) = $1))`, [name],
+         AND ((holder_kind = 'job' AND holder_id = $1) OR (holder_kind = 'snapshot' AND split_part(holder_id, '/', 1) = $1))`,
+        [name],
       );
-      const result = await client.query<{ port_slot: number }>('DELETE FROM profiles WHERE name = $1 RETURNING port_slot', [name]);
+      const result = await client.query<{ port_slot: number }>(
+        'DELETE FROM profiles WHERE name = $1 RETURNING port_slot',
+        [name],
+      );
       await client.query('COMMIT');
       return result.rows[0] ?? null;
     } catch (err) {
       await client.query('ROLLBACK').catch(() => {});
       throw err;
-    } finally { client.release(); }
+    } finally {
+      client.release();
+    }
   }
 
   /** The commit of a deploy that touched every service and found them all on it. */
   async setLastFullDeployCommit(name: string, commit: string): Promise<void> {
-    await this.pool.query(
-      'UPDATE profiles SET last_full_deploy_commit = $2, updated_at = NOW() WHERE name = $1',
-      [name, commit],
-    );
+    await this.pool.query('UPDATE profiles SET last_full_deploy_commit = $2, updated_at = NOW() WHERE name = $1', [
+      name,
+      commit,
+    ]);
   }
 
   /**
@@ -777,8 +798,15 @@ export class ProfileRepository {
           AND engine_config_revision = $4 AND stack_version_id = $5
           AND deploy_job_reference_id IS NOT DISTINCT FROM $6::integer
         RETURNING ${PROFILE_COLUMNS}`,
-      [name, owner.instanceId, owner.intentRevision, owner.configRevision,
-        owner.stackVersionId, jobReferenceId, message],
+      [
+        name,
+        owner.instanceId,
+        owner.intentRevision,
+        owner.configRevision,
+        owner.stackVersionId,
+        jobReferenceId,
+        message,
+      ],
     );
     return result.rows[0] ?? null;
   }
@@ -816,11 +844,7 @@ export class ProfileRepository {
     return result.rows[0] ?? null;
   }
 
-  async markTerminal(
-    name: string,
-    status: ProfileStatus,
-    expectedInstanceId?: string,
-  ): Promise<Profile | null> {
+  async markTerminal(name: string, status: ProfileStatus, expectedInstanceId?: string): Promise<Profile | null> {
     const result = await this.pool.query<Profile>(
       `UPDATE profiles
          SET status = $2,
@@ -852,11 +876,7 @@ export class ProfileRepository {
   }
 
   /** What boot judged one of those rows to be. Null when it has moved on since. */
-  async settleOrphanedTransition(
-    name: string,
-    status: ProfileStatus,
-    message: string | null,
-  ): Promise<Profile | null> {
+  async settleOrphanedTransition(name: string, status: ProfileStatus, message: string | null): Promise<Profile | null> {
     const result = await this.pool.query<Profile>(
       `UPDATE profiles
          SET status = $2,

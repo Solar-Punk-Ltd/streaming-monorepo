@@ -16,11 +16,7 @@ import { SectionCard } from '../components/SectionCard';
 import { ApiError } from '../http';
 
 import { SettingsFileCard } from './SettingsFileCard';
-import {
-  applyVersionSettings,
-  fetchVersionSettings,
-  saveVersionSettings,
-} from './settingsApi';
+import { applyVersionSettings, fetchVersionSettings, saveVersionSettings } from './settingsApi';
 import {
   draftOf,
   editedFiles,
@@ -168,24 +164,29 @@ export function VersionSettingsPage({ id }: { id: number }) {
         spacing={1}
         useFlexGap
         sx={{
-          alignItems: "center",
-          flexWrap: "wrap"
-        }}>
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}
+      >
         <Button size="small" onClick={() => navigate(routes.versions)}>
           Back to versions
         </Button>
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+          }}
+        >
           Settings for {version?.name ?? `version ${id}`}
         </Typography>
         {settings && (
           <Typography
             variant="caption"
             sx={{
-              color: "text.secondary",
-              fontFamily: MONO_STACK
-            }}>
+              color: 'text.secondary',
+              fontFamily: MONO_STACK,
+            }}
+          >
             revision {settings.generation}
             {settings.buildId ? `, build ${settings.buildId.slice(0, 7)}` : ''}
           </Typography>
@@ -195,9 +196,12 @@ export function VersionSettingsPage({ id }: { id: number }) {
         )}
       </Stack>
 
-      <Typography variant="body2" sx={{
-        color: "text.secondary"
-      }}>
+      <Typography
+        variant="body2"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
         {WHAT_APPLIES_WHEN}
       </Typography>
 
@@ -218,15 +222,12 @@ export function VersionSettingsPage({ id }: { id: number }) {
 
       {settings && settings.leftAlone.length > 0 && (
         <Alert severity="warning">
-          Nothing here reads {settings.leftAlone.join(', ')}: there is a link or a directory at each
-          of those paths rather than a file. Put a regular file there on the host if it is meant to
-          be a setting of this version.
+          Nothing here reads {settings.leftAlone.join(', ')}: there is a link or a directory at each of those paths
+          rather than a file. Put a regular file there on the host if it is meant to be a setting of this version.
         </Alert>
       )}
 
-      {settings && unappliedRevisionNote(settings) && (
-        <Alert severity="info">{unappliedRevisionNote(settings)}</Alert>
-      )}
+      {settings && unappliedRevisionNote(settings) && <Alert severity="info">{unappliedRevisionNote(settings)}</Alert>}
 
       {applied && (
         <Alert severity="success">
@@ -239,9 +240,10 @@ export function VersionSettingsPage({ id }: { id: number }) {
       {loading && (
         <Stack
           sx={{
-            alignItems: "center",
-            py: 5
-          }}>
+            alignItems: 'center',
+            py: 5,
+          }}
+        >
           <CircularProgress size={24} />
         </Stack>
       )}
@@ -265,9 +267,10 @@ export function VersionSettingsPage({ id }: { id: number }) {
             spacing={1}
             useFlexGap
             sx={{
-              flexWrap: "wrap",
-              alignItems: "center"
-            }}>
+              flexWrap: 'wrap',
+              alignItems: 'center',
+            }}
+          >
             <Button
               variant="contained"
               size="small"
@@ -284,18 +287,11 @@ export function VersionSettingsPage({ id }: { id: number }) {
             >
               Save and apply
             </Button>
-            <Button
-              size="small"
-              disabled={disabled || edits.length === 0}
-              onClick={() => setDraft(draftOf(settings))}
-            >
+            <Button size="small" disabled={disabled || edits.length === 0} onClick={() => setDraft(draftOf(settings))}>
               Discard
             </Button>
             <Box sx={{ flex: '1 1 auto' }} />
-            <Typography
-              variant="caption"
-              sx={{ color: refusedKeys.length > 0 ? 'error.main' : 'text.secondary' }}
-            >
+            <Typography variant="caption" sx={{ color: refusedKeys.length > 0 ? 'error.main' : 'text.secondary' }}>
               {footerNote(edits, refusedKeys)}
             </Typography>
           </Stack>

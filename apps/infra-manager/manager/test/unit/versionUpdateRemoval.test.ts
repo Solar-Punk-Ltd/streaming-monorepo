@@ -10,24 +10,45 @@ import { FakeScriptSpawner } from '../support/FakeScriptSpawner.js';
 import { InMemoryStackVersionRepository } from '../support/InMemoryStackVersionRepository.js';
 import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
-it('an update whose version disappears during markBuilding refuses before filesystem or script work', { timeout: 5000 }, async () => {
-  const root = await mkdtemp(join(tmpdir(), 't04a-removed-update-'));
-  const versions = new InMemoryStackVersionRepository();
-  versions.seedBundled();
-  const selected = await versions.insert({ name: 'review-stack', gitRef: 'review', rootPath: join(root, 'review-stack'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
-  const runner = new FakeScriptSpawner();
-  const service = new StackVersionService(versions, runner, new EventBus(), root, { openReferences: async () => [] });
-  let entered!: () => void;
-  let release!: () => void;
-  const arrived = new Promise<void>(resolve => { entered = resolve; });
-  const resume = new Promise<void>(resolve => { release = resolve; });
-  versions.markBuilding = async () => { entered(); await resume; return null; };
-  const pending = service.update(selected.id);
-  try {
-    await arrived;
-    release();
-    await assert.rejects(pending, { name: 'StackVersionNotFoundError' });
-    assert.equal(runner.spawned.length, 0);
-    assert.deepEqual(await readdir(root), []);
-  } finally { release(); await pending.catch(() => {}); await rm(root, { recursive: true, force: true }); }
-});
+it(
+  'an update whose version disappears during markBuilding refuses before filesystem or script work',
+  { timeout: 5000 },
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), 't04a-removed-update-'));
+    const versions = new InMemoryStackVersionRepository();
+    versions.seedBundled();
+    const selected = await versions.insert({
+      name: 'review-stack',
+      gitRef: 'review',
+      rootPath: join(root, 'review-stack'),
+      sourceUrl: SWARM_HLS_STREAM_SOURCE.url,
+    });
+    const runner = new FakeScriptSpawner();
+    const service = new StackVersionService(versions, runner, new EventBus(), root, { openReferences: async () => [] });
+    let entered!: () => void;
+    let release!: () => void;
+    const arrived = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const resume = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    versions.markBuilding = async () => {
+      entered();
+      await resume;
+      return null;
+    };
+    const pending = service.update(selected.id);
+    try {
+      await arrived;
+      release();
+      await assert.rejects(pending, { name: 'StackVersionNotFoundError' });
+      assert.equal(runner.spawned.length, 0);
+      assert.deepEqual(await readdir(root), []);
+    } finally {
+      release();
+      await pending.catch(() => {});
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

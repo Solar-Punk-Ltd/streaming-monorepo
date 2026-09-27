@@ -2,7 +2,7 @@ import type { OmeElement } from './omeXml.js';
 
 /** Named applications, virtual hosts and output profiles keep their identity when reordered. */
 function segmentOf(element: OmeElement): string {
-  const name = element.children.find(child => child.name === 'Name');
+  const name = element.children.find((child) => child.name === 'Name');
   if (!name || element.children.length < 2) return element.name;
   return `${element.name}[${name.text}]`;
 }

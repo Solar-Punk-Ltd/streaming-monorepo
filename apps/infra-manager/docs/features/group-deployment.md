@@ -14,12 +14,14 @@ The single-profile `New deployment` flow is fine for one-off setups, but exercis
 ## Scope (prototype)
 
 In scope:
+
 - A "group mode" choice in the new deployment flow.
 - A new `deployment_groups` table, and profiles get a nullable `group_id`.
 - A `POST /groups` endpoint that transactionally persists the group + N member profiles, then kicks off deployments for each.
 - Collapsible group rows on the deployments table.
 
 Out of scope (deferred):
+
 - Bulk start, stop, destroy and redeploy. Members are operated on individually after creation.
 - Distributing members across multiple hosts.
 - Per-member overrides of shared parameters.
@@ -113,7 +115,7 @@ As designed in 2026-05. The drawer is now a wizard, see the module table below.
 - When enabled:
   - `Name` label becomes `Group name` (same regex as profile name).
   - New input: `How many` (default 2).
-  - Above a size of 20 an inline warning appears: *"Large group, double check before deploying."*
+  - Above a size of 20 an inline warning appears: _"Large group, double check before deploying."_
     (`LARGE_GROUP` in `frontend/src/forms/wizard/steps/BasicsStep.tsx`.)
   - The submit button label becomes `Deploy group (N)`, with the size as N.
   - All other fields keep their existing semantics.
@@ -131,26 +133,26 @@ As designed in 2026-05. The drawer is now a wizard, see the module table below.
 
 ## Backend changes
 
-| File | Change |
-|---|---|
-| `manager/src/migrations/002_deployment_groups.sql` | Create `deployment_groups`, add `group_id` to `profiles`. |
-| `manager/src/domain/ProfileRepository.ts` | Read group_id alongside other fields. |
-| `manager/src/domain/DeploymentGroupRepository.ts` (new) | `createGroupWithMembers(...)` in a single transaction. |
-| `manager/src/domain/ProfileService.ts` | `createGroup(...)` orchestration: validate, transact, dispatch deploys. |
-| `manager/src/schemas/profile.ts` | Add `createGroupSchema` (yup) for `POST /groups`. |
-| `manager/src/api/routes/groups.ts` | `POST /groups`, `GET /groups`. |
-| `manager/src/api/server.ts` | Mount `/groups` router. |
-| `manager/src/api/middleware/errorHandler.ts` | Map `GroupExistsError` → 409. |
+| File                                                    | Change                                                                  |
+| ------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `manager/src/migrations/002_deployment_groups.sql`      | Create `deployment_groups`, add `group_id` to `profiles`.               |
+| `manager/src/domain/ProfileRepository.ts`               | Read group_id alongside other fields.                                   |
+| `manager/src/domain/DeploymentGroupRepository.ts` (new) | `createGroupWithMembers(...)` in a single transaction.                  |
+| `manager/src/domain/ProfileService.ts`                  | `createGroup(...)` orchestration: validate, transact, dispatch deploys. |
+| `manager/src/schemas/profile.ts`                        | Add `createGroupSchema` (yup) for `POST /groups`.                       |
+| `manager/src/api/routes/groups.ts`                      | `POST /groups`, `GET /groups`.                                          |
+| `manager/src/api/server.ts`                             | Mount `/groups` router.                                                 |
+| `manager/src/api/middleware/errorHandler.ts`            | Map `GroupExistsError` → 409.                                           |
 
 ## Frontend module touches
 
-| File | Change |
-|---|---|
-| `frontend/src/types/interfaces.ts` | `DeploymentGroup` type, `group_id?: number \| null` on `Profile`. |
-| `frontend/src/data.ts` | `createDeploymentGroup`, `fetchGroups`. |
-| `frontend/src/forms/wizard/` | Group size and the branching submit, as steps of the new deployment wizard. |
-| `frontend/src/deployments/GroupBlockRows.tsx` | Collapsible group row rendering on the deployments page. |
-| `frontend/src/groups/GroupPage.tsx` | A group's own page, with its shared settings and members. |
+| File                                          | Change                                                                      |
+| --------------------------------------------- | --------------------------------------------------------------------------- |
+| `frontend/src/types/interfaces.ts`            | `DeploymentGroup` type, `group_id?: number \| null` on `Profile`.           |
+| `frontend/src/data.ts`                        | `createDeploymentGroup`, `fetchGroups`.                                     |
+| `frontend/src/forms/wizard/`                  | Group size and the branching submit, as steps of the new deployment wizard. |
+| `frontend/src/deployments/GroupBlockRows.tsx` | Collapsible group row rendering on the deployments page.                    |
+| `frontend/src/groups/GroupPage.tsx`           | A group's own page, with its shared settings and members.                   |
 
 The first four rows named `frontend/src/types.ts`, `NewDeploymentDrawer.tsx` and
 `DeploymentsTable.tsx` when this page was written. The UX rework (PR #39) replaced

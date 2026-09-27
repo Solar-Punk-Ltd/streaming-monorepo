@@ -1,4 +1,8 @@
-import { ADMIN_API_URL_KEY, type DeploymentSettingEntry, type NewDeploymentSetting } from '@streaming-infra-manager/common';
+import {
+  ADMIN_API_URL_KEY,
+  type DeploymentSettingEntry,
+  type NewDeploymentSetting,
+} from '@streaming-infra-manager/common';
 
 import { newDeploymentSettingsPath } from '../../deployments/settings/deploymentSettingsApi';
 import {

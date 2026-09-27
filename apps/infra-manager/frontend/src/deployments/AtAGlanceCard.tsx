@@ -1,10 +1,7 @@
 import type { ReactNode } from 'react';
 import { Box, Link } from '@mui/material';
 
-import type {
-  StackVersion,
-  StampHealth,
-} from '@streaming-infra-manager/common';
+import type { StackVersion, StampHealth } from '@streaming-infra-manager/common';
 
 import { routes } from '../app/router';
 import { MONO_STACK } from '../app/theme';
@@ -82,10 +79,7 @@ export function AtAGlanceCard({
   if (profile.stamp_id) {
     entries.push({
       key: 'Stamp',
-      value:
-        stampHealth.state === 'active'
-          ? `${formatTtl(stampHealth.ttl)} left`
-          : stampHealth.state,
+      value: stampHealth.state === 'active' ? `${formatTtl(stampHealth.ttl)} left` : stampHealth.state,
     });
   }
 

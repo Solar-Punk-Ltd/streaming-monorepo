@@ -7,27 +7,13 @@
  * row that is already `publishing` returns null here too, and `markLive`
  * un-finishes the stream's rungs the way the CTE in the real statement does.
  */
-import type {
-  Rendition,
-  StreamStatus,
-} from '@streaming-monorepo/web2-admin-common';
+import type { Rendition, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
-import type {
-  LadderRenditionStore,
-  LadderStreamStore,
-} from '../../../src/domain/LadderService.js';
-import type {
-  FeedWriteLog,
-  PublishRenditionStore,
-  PublishStreamStore,
-} from '../../../src/domain/PublishService.js';
+import type { LadderRenditionStore, LadderStreamStore } from '../../../src/domain/LadderService.js';
+import type { FeedWriteLog, PublishRenditionStore, PublishStreamStore } from '../../../src/domain/PublishService.js';
 import type { StateStreamStore } from '../../../src/domain/StreamStateService.js';
 import type { PublishedStatus } from '../../../src/domain/streamState.js';
-import type {
-  StreamRenditionRow,
-  StreamRow,
-  ThumbnailRow,
-} from '../../../src/types/index.js';
+import type { StreamRenditionRow, StreamRow, ThumbnailRow } from '../../../src/types/index.js';
 
 export const TEST_OWNER = '19e7e376e7c213b7e7e7e46cc70a5dd086daff2a';
 export const TEST_USER_ID = '00000000-0000-4000-8000-000000000001';
@@ -73,21 +59,14 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
  * way out, like the SQL, so a test that stores 720p after 1080p still sees the
  * order the master playlist and the catalogue entry use.
  */
-export class FakeRenditionStore
-  implements PublishRenditionStore, LadderRenditionStore
-{
+export class FakeRenditionStore implements PublishRenditionStore, LadderRenditionStore {
   readonly rows = new Map<string, StreamRenditionRow[]>();
 
   async listByStream(streamId: string): Promise<StreamRenditionRow[]> {
-    return [...(this.rows.get(streamId) ?? [])].sort(
-      (a, b) => a.height - b.height || a.name.localeCompare(b.name),
-    );
+    return [...(this.rows.get(streamId) ?? [])].sort((a, b) => a.height - b.height || a.name.localeCompare(b.name));
   }
 
-  async upsert(
-    streamId: string,
-    rendition: Rendition,
-  ): Promise<StreamRenditionRow> {
+  async upsert(streamId: string, rendition: Rendition): Promise<StreamRenditionRow> {
     const row: StreamRenditionRow = {
       stream_id: streamId,
       name: rendition.name,
@@ -100,9 +79,7 @@ export class FakeRenditionStore
       duration_seconds: rendition.duration ?? null,
       updated_at: new Date('2026-09-11T11:00:00.000Z'),
     };
-    const kept = (this.rows.get(streamId) ?? []).filter(
-      (existing) => existing.name !== row.name,
-    );
+    const kept = (this.rows.get(streamId) ?? []).filter((existing) => existing.name !== row.name);
     this.rows.set(streamId, [...kept, row]);
     return row;
   }
@@ -126,9 +103,7 @@ export class FakeRenditionStore
   }
 }
 
-export class FakeStreamStore
-  implements PublishStreamStore, LadderStreamStore, StateStreamStore
-{
+export class FakeStreamStore implements PublishStreamStore, LadderStreamStore, StateStreamStore {
   readonly rows = new Map<string, StreamRow>();
   readonly thumbnails = new Map<string, ThumbnailRow>();
   /** Set to make the status write fail, as a lost connection would. */
@@ -179,19 +154,14 @@ export class FakeStreamStore
    * tests here say what the service does with the answer, not that the answer
    * is right.
    */
-  async markLive(
-    id: string,
-    allowedFrom: readonly StreamStatus[],
-  ): Promise<StreamRow | null> {
+  async markLive(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
     const row = this.rows.get(id);
     if (!row || !allowedFrom.includes(row.status)) return null;
     if (row.status === 'vod') this.renditions?.clearLadderIndexes(id);
     return this.patch(id, {
       status: 'live',
       live_since:
-        row.status === 'live' && row.live_since !== null
-          ? row.live_since
-          : new Date('2026-09-11T11:00:00.000Z'),
+        row.status === 'live' && row.live_since !== null ? row.live_since : new Date('2026-09-11T11:00:00.000Z'),
       manifest_index: null,
       duration_seconds: null,
       ended_at: null,
@@ -224,28 +194,17 @@ export class FakeStreamStore
       .map((row) => ({ ...row }));
   }
 
-  async findThumbnail(
-    id: string,
-    userId: string,
-  ): Promise<ThumbnailRow | null> {
+  async findThumbnail(id: string, userId: string): Promise<ThumbnailRow | null> {
     if (!(await this.findById(id, userId))) return null;
     return this.thumbnails.get(id) ?? null;
   }
 
-  async recordThumbnailRef(
-    id: string,
-    userId: string,
-    thumbnailRef: string,
-  ): Promise<void> {
+  async recordThumbnailRef(id: string, userId: string, thumbnailRef: string): Promise<void> {
     if (!(await this.findById(id, userId))) return;
     this.patch(id, { thumbnail_ref: thumbnailRef });
   }
 
-  async claimForPublish(
-    id: string,
-    userId: string,
-    allowedFrom: readonly StreamStatus[],
-  ): Promise<StreamRow | null> {
+  async claimForPublish(id: string, userId: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
     const row = this.rows.get(id);
     if (!row || row.user_id !== userId || !allowedFrom.includes(row.status)) {
       return null;
@@ -273,10 +232,7 @@ export class FakeStreamStore
   }
 
   /** Keeps the recording and the rungs, as the SQL does. */
-  async finishUnpublish(
-    id: string,
-    userId: string,
-  ): Promise<StreamRow | null> {
+  async finishUnpublish(id: string, userId: string): Promise<StreamRow | null> {
     if (!(await this.findById(id, userId))) return null;
     return this.patch(id, {
       status: 'draft',
@@ -308,20 +264,12 @@ export class FakeStreamStore
   }
 
   /** Unscoped, as the SQL is: a reconcile rebuilds every user's entries. */
-  async recordEntryRebuilt(
-    id: string,
-    entryContentEditedAt: Date | null,
-  ): Promise<void> {
+  async recordEntryRebuilt(id: string, entryContentEditedAt: Date | null): Promise<void> {
     if (!this.rows.has(id)) return;
     this.patch(id, { entry_content_edited_at: entryContentEditedAt });
   }
 
-  async failPublish(
-    id: string,
-    userId: string,
-    previousStatus: StreamStatus,
-    message: string,
-  ): Promise<void> {
+  async failPublish(id: string, userId: string, previousStatus: StreamStatus, message: string): Promise<void> {
     if (this.failNextFailPublish) {
       const failure = this.failNextFailPublish;
       this.failNextFailPublish = null;
@@ -332,11 +280,7 @@ export class FakeStreamStore
   }
 
   /** Only the reason, as the SQL is: a republish has no claim to undo. */
-  async recordPublishError(
-    id: string,
-    userId: string,
-    message: string,
-  ): Promise<void> {
+  async recordPublishError(id: string, userId: string, message: string): Promise<void> {
     if (!(await this.findById(id, userId))) return;
     this.patch(id, { publish_error: message });
   }
@@ -387,13 +331,8 @@ export class FakeFeedWriteLog implements FeedWriteLog {
     });
   }
 
-  async lastWrite(
-    owner: string,
-    topic: string,
-  ): Promise<{ index: number; entries: unknown[] } | null> {
-    const mine = this.records.filter(
-      (r) => r.owner === owner && r.topic === topic,
-    );
+  async lastWrite(owner: string, topic: string): Promise<{ index: number; entries: unknown[] } | null> {
+    const mine = this.records.filter((r) => r.owner === owner && r.topic === topic);
     if (mine.length === 0) return null;
     const last = mine.reduce((a, b) => (b.feedIndex > a.feedIndex ? b : a));
     return { index: last.feedIndex, entries: last.payload };

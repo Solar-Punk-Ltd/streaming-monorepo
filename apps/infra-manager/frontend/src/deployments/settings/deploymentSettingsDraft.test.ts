@@ -12,10 +12,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type {
-  DeploymentSettingEntry,
-  DeploymentSettingsCatalog,
-} from '@streaming-infra-manager/common';
+import type { DeploymentSettingEntry, DeploymentSettingsCatalog } from '@streaming-infra-manager/common';
 
 import {
   EMPTY_DRAFT,
@@ -340,7 +337,11 @@ describe('valueProblem and draftProblems', () => {
 });
 
 /** A deployment's own engine setting, as its list answers it, with the default an unset one falls back to on its host. */
-function engineEntry(key: string, defaultValue: string, overrides: Partial<DeploymentSettingEntry> = {}): DeploymentSettingEntry {
+function engineEntry(
+  key: string,
+  defaultValue: string,
+  overrides: Partial<DeploymentSettingEntry> = {},
+): DeploymentSettingEntry {
   return entry({
     key,
     section: '',
@@ -360,20 +361,31 @@ const ENGINE_CATALOG: DeploymentSettingsCatalog = {
     engineEntry('HLS_FRAGMENT', '0.5', { services: ['srs', 'stream-uploader'] }),
     engineEntry('HLS_SEGMENT_MAX', '2.5', { stored: true, storedValue: '4', source: 'deployment' }),
     engineEntry('HLS_WINDOW', '15'),
-    engineEntry('SRT_LATENCY', '2000', { source: 'manager-default', engineSetting: { defaultSource: 'manager', notInConfig: false } }),
+    engineEntry('SRT_LATENCY', '2000', {
+      source: 'manager-default',
+      engineSetting: { defaultSource: 'manager', notInConfig: false },
+    }),
   ],
 };
 
 describe('the engine settings a draft leaves', () => {
   it('are what is stored, with each value typed set and each reset taken out', () => {
-    const draft = withReset(withValue(EMPTY_DRAFT, ENGINE_CATALOG, 'HLS_FRAGMENT', '3'), ENGINE_CATALOG, 'HLS_SEGMENT_MAX');
+    const draft = withReset(
+      withValue(EMPTY_DRAFT, ENGINE_CATALOG, 'HLS_FRAGMENT', '3'),
+      ENGINE_CATALOG,
+      'HLS_SEGMENT_MAX',
+    );
 
     assert.deepEqual(engineSettingsOfDraft(ENGINE_CATALOG, EMPTY_DRAFT), { HLS_SEGMENT_MAX: '4' });
     assert.deepEqual(engineSettingsOfDraft(ENGINE_CATALOG, draft), { HLS_FRAGMENT: '3' });
   });
 
   it('go to the save beside the other keys, a reset as null', () => {
-    const draft = withReset(withValue(EMPTY_DRAFT, ENGINE_CATALOG, 'LOG_LEVEL', 'warn'), ENGINE_CATALOG, 'HLS_SEGMENT_MAX');
+    const draft = withReset(
+      withValue(EMPTY_DRAFT, ENGINE_CATALOG, 'LOG_LEVEL', 'warn'),
+      ENGINE_CATALOG,
+      'HLS_SEGMENT_MAX',
+    );
 
     assert.deepEqual(saveOf(ENGINE_CATALOG, draft).entries, [
       { key: 'LOG_LEVEL', value: 'warn' },
@@ -384,7 +396,11 @@ describe('the engine settings a draft leaves', () => {
 
 describe('engineDraftProblem', () => {
   it('names a pair the engine would refuse, in the words the manager would', () => {
-    const draft = withReset(withValue(EMPTY_DRAFT, ENGINE_CATALOG, 'HLS_FRAGMENT', '3'), ENGINE_CATALOG, 'HLS_SEGMENT_MAX');
+    const draft = withReset(
+      withValue(EMPTY_DRAFT, ENGINE_CATALOG, 'HLS_FRAGMENT', '3'),
+      ENGINE_CATALOG,
+      'HLS_SEGMENT_MAX',
+    );
 
     assert.equal(
       engineDraftProblem(ENGINE_CATALOG, draft),
@@ -408,14 +424,19 @@ describe('engineDraftProblem', () => {
     };
 
     assert.equal(engineDraftProblem(broken, withValue(EMPTY_DRAFT, broken, 'LOG_LEVEL', 'warn')), null);
-    assert.match(engineDraftProblem(broken, withValue(EMPTY_DRAFT, broken, 'HLS_WINDOW', '20')) ?? '', /force-close ceiling of 1 seconds/);
+    assert.match(
+      engineDraftProblem(broken, withValue(EMPTY_DRAFT, broken, 'HLS_WINDOW', '20')) ?? '',
+      /force-close ceiling of 1 seconds/,
+    );
   });
 
   it('leaves a value refused on its own field to the field, which says it there', () => {
     const draft = withValue(EMPTY_DRAFT, ENGINE_CATALOG, 'HLS_FRAGMENT', '0.1');
 
     assert.equal(engineDraftProblem(ENGINE_CATALOG, draft), null);
-    assert.deepEqual(draftProblems(ENGINE_CATALOG, draft), { HLS_FRAGMENT: 'Segment length must be at least 0.5. Got 0.1.' });
+    assert.deepEqual(draftProblems(ENGINE_CATALOG, draft), {
+      HLS_FRAGMENT: 'Segment length must be at least 0.5. Got 0.1.',
+    });
   });
 });
 
@@ -463,6 +484,9 @@ describe('valueProblem for an engine setting', () => {
   });
 
   it('refuses an empty one, which only a reset takes back to its default', () => {
-    assert.equal(valueProblem('HLS_FRAGMENT', ''), 'Segment length cannot be empty. Leave it unset to use the default instead.');
+    assert.equal(
+      valueProblem('HLS_FRAGMENT', ''),
+      'Segment length cannot be empty. Leave it unset to use the default instead.',
+    );
   });
 });

@@ -10,7 +10,7 @@
 
 const ADMIN_URL_DESCRIPTION = [
   'Where the admin service lives. Setting ADMIN_API_URL by itself turns admin mode ON. Leaving it empty keeps this',
-  'deployment exactly as it has always been. The uploader mints each stream\'s feed topic and the stream catalog on',
+  "deployment exactly as it has always been. The uploader mints each stream's feed topic and the stream catalog on",
   'Swarm is its own to write. With it set, a stream has to be DECLARED in the admin before anything may publish to',
   'it, and the admin mints the feed topic and the publish key.',
 ].join(' ');
@@ -42,7 +42,11 @@ function entry(overrides) {
  * here, its default what an unset one falls back to on the host, and read by
  * the engine, unless the services say otherwise.
  */
-function engineEntry(key, defaultValue, { section = '', services = ['srs'], defaultSource = 'stack', notInConfig = false } = {}) {
+function engineEntry(
+  key,
+  defaultValue,
+  { section = '', services = ['srs'], defaultSource = 'stack', notInConfig = false } = {},
+) {
   return entry({
     key,
     section,
@@ -143,7 +147,11 @@ function entries() {
       value: '30',
       services: ['srs'],
     }),
-    engineEntry('HLS_FRAGMENT', '2', { section: 'SRS Media Server', services: ['srs', 'stream-uploader'], defaultSource: 'host' }),
+    engineEntry('HLS_FRAGMENT', '2', {
+      section: 'SRS Media Server',
+      services: ['srs', 'stream-uploader'],
+      defaultSource: 'host',
+    }),
     engineEntry('HLS_SEGMENT_MAX', '2.5'),
     engineEntry('HLS_WINDOW', '15', { notInConfig: true }),
     engineEntry('SRT_LATENCY', '2000', { defaultSource: 'manager' }),

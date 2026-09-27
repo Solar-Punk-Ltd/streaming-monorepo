@@ -5,7 +5,7 @@ import { ENGINE_NONE, loadEngines } from '../src/engines/load.js';
 import { engineRegistry } from '../src/engines/registry.js';
 import { EnginePlugin } from '../src/engines/types.js';
 
-const plugin = (name: string): EnginePlugin => ({ name } as unknown as EnginePlugin);
+const plugin = (name: string): EnginePlugin => ({ name }) as unknown as EnginePlugin;
 
 /** A loader wired to a registry of two, recording what it built and in which order. */
 function loaderUnderTest(): {

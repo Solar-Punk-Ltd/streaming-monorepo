@@ -28,10 +28,8 @@ export const routes = {
   transfers: '#/transfers',
   transfer: (id: string): string => `#/transfers/${encodeURIComponent(id)}`,
   transferRequest: (requestId: string): string => `#/transfers/request/${encodeURIComponent(requestId)}`,
-  deployment: (name: string): string =>
-    `#/deployments/${encodeURIComponent(name)}`,
-  deploymentStorage: (name: string): string =>
-    `#/deployments/${encodeURIComponent(name)}/storage`,
+  deployment: (name: string): string => `#/deployments/${encodeURIComponent(name)}`,
+  deploymentStorage: (name: string): string => `#/deployments/${encodeURIComponent(name)}/storage`,
   group: (id: number): string => `#/groups/${id}`,
 };
 
@@ -41,11 +39,7 @@ export function navigate(hash: string): void {
 }
 
 function parse(hash: string): Route {
-  const segments = hash
-    .replace(/^#\/?/, '')
-    .split('/')
-    .filter(Boolean)
-    .map(decodeURIComponent);
+  const segments = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
 
   if (segments.length === 0) return { page: 'overview' };
   if (segments[0] === 'host') return { page: 'host' };
@@ -83,9 +77,7 @@ function parse(hash: string): Route {
 }
 
 export function useRoute(): Route {
-  const [route, setRoute] = useState<Route>(() =>
-    parse(window.location.hash),
-  );
+  const [route, setRoute] = useState<Route>(() => parse(window.location.hash));
 
   const sync = useCallback(() => {
     setRoute(parse(window.location.hash));

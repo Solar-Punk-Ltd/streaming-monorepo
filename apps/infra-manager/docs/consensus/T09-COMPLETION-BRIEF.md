@@ -57,9 +57,11 @@ Postgres: `state = 'submitted' AND transaction_hash IS NOT NULL AND failure_reas
 
 ```ts
 export class ChequebookReceiptPoller {
-  constructor(repository: Pick<ChequebookOperationRepository, 'listAwaitingReceipt'>,
+  constructor(
+    repository: Pick<ChequebookOperationRepository, 'listAwaitingReceipt'>,
     receipts: Pick<ChequebookReceiptCheck, 'check'>,
-    options?: { intervalMs?: number; batchLimit?: number; log?: (line: string) => void });
+    options?: { intervalMs?: number; batchLimit?: number; log?: (line: string) => void },
+  );
   start(): void;
   /** Resolves once no tick is scheduled and no batch is running. Safe to call twice. */
   stop(): Promise<void>;

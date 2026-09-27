@@ -40,7 +40,6 @@ const NINE = {
   T12_TEST_PG_PORT: '55432',
 };
 
-
 describe('the table of task databases', () => {
   it('names the nine databases the SQL suites open, each with its own variable', () => {
     assert.deepEqual(
@@ -49,8 +48,17 @@ describe('the table of task databases', () => {
     );
     assert.deepEqual(
       TASK_DATABASES.map((entry) => entry.variable),
-      ['T01_TEST_PG_PORT', 'T04A_TEST_PG_PORT', 'T04B_TEST_PG_PORT', 'T06_TEST_PG_PORT', 'T08_TEST_PG_PORT',
-        'T09_TEST_PG_PORT', 'T10_TEST_PG_PORT', 'T11_TEST_PG_PORT', 'T12_TEST_PG_PORT'],
+      [
+        'T01_TEST_PG_PORT',
+        'T04A_TEST_PG_PORT',
+        'T04B_TEST_PG_PORT',
+        'T06_TEST_PG_PORT',
+        'T08_TEST_PG_PORT',
+        'T09_TEST_PG_PORT',
+        'T10_TEST_PG_PORT',
+        'T11_TEST_PG_PORT',
+        'T12_TEST_PG_PORT',
+      ],
     );
   });
 
@@ -72,7 +80,10 @@ describe('the table of task databases', () => {
   it('hands the child a DATABASE_URL that names a database the run created', () => {
     const url = databaseUrlFor(55432);
     assert.ok(url.includes('127.0.0.1:55432'), url);
-    assert.ok(TASK_DATABASES.some((entry) => url.endsWith(`/${entry.database}`)), url);
+    assert.ok(
+      TASK_DATABASES.some((entry) => url.endsWith(`/${entry.database}`)),
+      url,
+    );
   });
 });
 

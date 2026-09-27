@@ -9,9 +9,7 @@
  */
 export class ChequebookBusyError extends Error {
   constructor(public readonly profileName: string) {
-    super(
-      'A transfer for this node is already in flight. Wait for it to confirm, then try again.',
-    );
+    super('A transfer for this node is already in flight. Wait for it to confirm, then try again.');
     this.name = 'ChequebookBusyError';
   }
 }

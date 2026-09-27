@@ -5,23 +5,66 @@ import type { DeploymentGroup, Profile } from '../../types';
 import { beginPoolSetup, finishPoolSetup, overlayCreatedPool } from './poolDraft';
 import { initialWizardState, poolValueIn, type WizardContext } from './wizardState';
 
-const context: WizardContext = { profiles: [], groups: [], serverHost: 'fixture.test', hostPassphrase: null,
-  beeRpcEndpoint: { configured: false, host: null }, poolResults: new Map(), versions: [] };
+const context: WizardContext = {
+  profiles: [],
+  groups: [],
+  serverHost: 'fixture.test',
+  hostPassphrase: null,
+  beeRpcEndpoint: { configured: false, host: null },
+  poolResults: new Map(),
+  versions: [],
+};
 const uploader = {
   ...initialWizardState({ goal: 'abr-uploader' }, context),
-  step: 3, name: 'test-uploader', host: 'custom' as const, hostCustom: 'fixture-host',
-  notes: 'uploader-only note', versionId: 7, keyMode: 'paste' as const,
-  pastedKey: 'synthetic-uploader-key', ownPassphrase: 'synthetic-uploader-passphrase',
-  passMode: 'custom' as const, poolString: 'retained-external-choice',
+  step: 3,
+  name: 'test-uploader',
+  host: 'custom' as const,
+  hostCustom: 'fixture-host',
+  notes: 'uploader-only note',
+  versionId: 7,
+  keyMode: 'paste' as const,
+  pastedKey: 'synthetic-uploader-key',
+  ownPassphrase: 'synthetic-uploader-passphrase',
+  passMode: 'custom' as const,
+  poolString: 'retained-external-choice',
   stackSettings: { LOG_LEVEL: 'debug' },
 };
-const group: DeploymentGroup = { id: 79, name: 'chosen-pool', size: ABR_LADDER_SIZE, kind: ABR_NODE_POOL_GROUP_KIND, created_at: '2026-09-08T00:00:00Z' };
-const profiles = ladderMemberNames(group.name).map(name => ({ name, group_id: group.id, kind: 'custom', status: 'RUNNING',
-  port_slot: 1, notes: null, engine_settings: {}, has_private_key: false, has_rpc_endpoint: false, has_srt_passphrase: false, has_engine_config: false, engine_config_error: null,
-  notes_revision: 0, engine_config_state: null, instance_id: '00000000-0000-4000-8000-000000000001',
-  engine_config_revision: 0, intent_revision: 0,
-  last_error: null, last_error_at: null, last_full_deploy_commit: null,
-  components: ['bee-uploader'], containers: [], created_at: group.created_at, updated_at: group.created_at } as Profile));
+const group: DeploymentGroup = {
+  id: 79,
+  name: 'chosen-pool',
+  size: ABR_LADDER_SIZE,
+  kind: ABR_NODE_POOL_GROUP_KIND,
+  created_at: '2026-09-08T00:00:00Z',
+};
+const profiles = ladderMemberNames(group.name).map(
+  (name) =>
+    ({
+      name,
+      group_id: group.id,
+      kind: 'custom',
+      status: 'RUNNING',
+      port_slot: 1,
+      notes: null,
+      engine_settings: {},
+      has_private_key: false,
+      has_rpc_endpoint: false,
+      has_srt_passphrase: false,
+      has_engine_config: false,
+      engine_config_error: null,
+      notes_revision: 0,
+      engine_config_state: null,
+      instance_id: '00000000-0000-4000-8000-000000000001',
+      engine_config_revision: 0,
+      intent_revision: 0,
+      last_error: null,
+      last_error_at: null,
+      last_full_deploy_commit: null,
+      components: ['bee-uploader'],
+      containers: [],
+      created_at: group.created_at,
+      updated_at: group.created_at,
+    }) as Profile,
+);
 
 describe('uploader draft round trip through pool creation', () => {
   it('starts an independent pool form with only the intended host and version carried over', () => {
@@ -42,7 +85,11 @@ describe('uploader draft round trip through pool creation', () => {
 
   it('restores cancellation unchanged and selects only the exact successful compatible pool id', () => {
     assert.deepEqual(finishPoolSetup(uploader, { kind: 'cancelled' }).state, uploader);
-    const result = finishPoolSetup(uploader, { kind: 'accepted', expectedName: group.name, value: { group, profiles } });
+    const result = finishPoolSetup(uploader, {
+      kind: 'accepted',
+      expectedName: group.name,
+      value: { group, profiles },
+    });
     assert.equal(result.state.poolId, group.id);
     assert.equal(result.state.poolMode, 'pick');
     assert.equal(result.state.step, 3);
@@ -59,7 +106,7 @@ describe('uploader draft round trip through pool creation', () => {
       { group: { ...group, name: 'different-pool' }, profiles },
       { group, profiles: profiles.slice(1) },
       { group, profiles: [profiles[0], ...profiles.slice(0, -1)] },
-      { group, profiles: profiles.map(profile => ({ ...profile, group_id: 80 })) },
+      { group, profiles: profiles.map((profile) => ({ ...profile, group_id: 80 })) },
     ];
     for (const result of badResults) {
       const restored = finishPoolSetup(uploader, { kind: 'accepted', expectedName: group.name, value: result });
@@ -70,10 +117,22 @@ describe('uploader draft round trip through pool creation', () => {
   });
 
   it('treats malformed accepted JSON as unselectable, including null rather than cancellation', () => {
-    const malformed: unknown[] = [null, undefined, [], {}, { group: null, profiles }, { group },
-      { group, profiles: null }, { group, profiles: {} }, { group, profiles: [null, ...profiles.slice(1)] },
-      ...['components', 'containers'].map(field => ({ group, profiles: [{ ...profiles[0], [field]: null }, ...profiles.slice(1)] })),
-      { group, profiles: [{ ...profiles[0], containers: [null] }, ...profiles.slice(1)] }];
+    const malformed: unknown[] = [
+      null,
+      undefined,
+      [],
+      {},
+      { group: null, profiles },
+      { group },
+      { group, profiles: null },
+      { group, profiles: {} },
+      { group, profiles: [null, ...profiles.slice(1)] },
+      ...['components', 'containers'].map((field) => ({
+        group,
+        profiles: [{ ...profiles[0], [field]: null }, ...profiles.slice(1)],
+      })),
+      { group, profiles: [{ ...profiles[0], containers: [null] }, ...profiles.slice(1)] },
+    ];
     for (const value of malformed) {
       const result = finishPoolSetup(uploader, { kind: 'accepted', expectedName: group.name, value });
       assert.deepEqual(result.state, uploader);
@@ -101,9 +160,15 @@ describe('uploader draft round trip through pool creation', () => {
     assert.equal(overlay.groups[0].id, 79);
     assert.equal(overlay.profiles.length, ABR_LADDER_SIZE);
     const fresh = { ...profiles[0], status: 'RUNNING' as const };
-    assert.equal(overlayCreatedPool([group], [fresh], created).profiles.find(profile => profile.name === fresh.name)?.status, 'RUNNING');
+    assert.equal(
+      overlayCreatedPool([group], [fresh], created).profiles.find((profile) => profile.name === fresh.name)?.status,
+      'RUNNING',
+    );
     const unrelated = { ...group, id: 88, name: 'other-pool' };
-    assert.deepEqual(overlayCreatedPool([unrelated], [], created).groups.map(pool => pool.id), [88, 79]);
+    assert.deepEqual(
+      overlayCreatedPool([unrelated], [], created).groups.map((pool) => pool.id),
+      [88, 79],
+    );
   });
 
   it('retires the overlay after compatible store catch-up so later deletion stays deleted', () => {
@@ -132,7 +197,9 @@ describe('uploader draft round trip through pool creation', () => {
   });
 
   it('ignores an old pool string when the selected group or compatible members disappear', () => {
-    const poolResults = new Map([[group.id, { ready: true, value: 'fixture-pool', rungs: [], missing: [], warnings: [] }]]);
+    const poolResults = new Map([
+      [group.id, { ready: true, value: 'fixture-pool', rungs: [], missing: [], warnings: [] }],
+    ]);
     const current = { ...context, groups: [group], profiles, poolResults };
     assert.equal(poolValueIn(current, group.id), 'fixture-pool');
     assert.equal(poolValueIn({ ...current, groups: [] }, group.id), null);

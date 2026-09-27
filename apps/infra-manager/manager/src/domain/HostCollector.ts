@@ -46,7 +46,11 @@ function parseNetDevTotals(text: string): NetTotals {
     if (colon < 0) continue;
     const iface = line.slice(0, colon).trim();
     if (!iface || VIRTUAL_IFACE_RE.test(iface)) continue;
-    const columns = line.slice(colon + 1).trim().split(/\s+/).map(Number);
+    const columns = line
+      .slice(colon + 1)
+      .trim()
+      .split(/\s+/)
+      .map(Number);
     if (columns.length < 16) continue;
     rxBytes += columns[NET_RX_BYTES_COLUMN] || 0;
     txBytes += columns[NET_TX_BYTES_COLUMN] || 0;
@@ -66,10 +70,8 @@ function parseDiskstatsTotals(text: string): DiskIoTotals {
     const columns = line.trim().split(/\s+/);
     if (columns.length < 10) continue;
     if (!PHYSICAL_DISK_RE.test(columns[DISK_NAME_COLUMN] ?? '')) continue;
-    readBytes +=
-      (Number(columns[DISK_SECTORS_READ_COLUMN]) || 0) * SECTOR_SIZE;
-    writeBytes +=
-      (Number(columns[DISK_SECTORS_WRITTEN_COLUMN]) || 0) * SECTOR_SIZE;
+    readBytes += (Number(columns[DISK_SECTORS_READ_COLUMN]) || 0) * SECTOR_SIZE;
+    writeBytes += (Number(columns[DISK_SECTORS_WRITTEN_COLUMN]) || 0) * SECTOR_SIZE;
   }
   return { readBytes, writeBytes };
 }
@@ -80,16 +82,11 @@ function parseCpuTimes(text: string): CpuTimes | null {
   if (!line) return null;
   const parts = line.trim().split(/\s+/).slice(1).map(Number);
   const idle = (parts[3] ?? 0) + (parts[4] ?? 0);
-  const total = parts.reduce(
-    (sum, n) => sum + (Number.isFinite(n) ? n : 0),
-    0,
-  );
+  const total = parts.reduce((sum, n) => sum + (Number.isFinite(n) ? n : 0), 0);
   return { total, idle };
 }
 
-function parseMeminfo(
-  text: string,
-): { usedBytes: number; totalBytes: number } | null {
+function parseMeminfo(text: string): { usedBytes: number; totalBytes: number } | null {
   const values = new Map<string, number>();
   for (const line of text.split('\n')) {
     const match = line.match(/^(\w+):\s+(\d+)\s*kB$/);
@@ -106,11 +103,7 @@ function elapsedSeconds(nowTs: number, previousTs: number): number | null {
   return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
 }
 
-function perSecond(
-  current: number,
-  previous: number,
-  seconds: number,
-): number {
+function perSecond(current: number, previous: number, seconds: number): number {
   return Math.max(0, (current - previous) / seconds);
 }
 
@@ -127,16 +120,12 @@ export class HostCollector {
   private cachedNcpu = 0;
 
   constructor(
-    procPath: string = process.env.HOST_PROC ??
-      (existsSync('/host/proc') ? '/host/proc' : '/proc'),
-    rootfsPath: string = process.env.HOST_ROOTFS ??
-      (existsSync('/host/rootfs') ? '/host/rootfs' : '/'),
+    procPath: string = process.env.HOST_PROC ?? (existsSync('/host/proc') ? '/host/proc' : '/proc'),
+    rootfsPath: string = process.env.HOST_ROOTFS ?? (existsSync('/host/rootfs') ? '/host/rootfs' : '/'),
   ) {
     this.procPath = procPath;
     this.rootfsPath = rootfsPath;
-    logger.info(
-      `[HostCollector] proc=${this.procPath} rootfs=${this.rootfsPath}`,
-    );
+    logger.info(`[HostCollector] proc=${this.procPath} rootfs=${this.rootfsPath}`);
   }
 
   async sample(): Promise<HostMetrics> {
@@ -190,9 +179,7 @@ export class HostCollector {
     }
   }
 
-  private async readNet(): Promise<
-    (NetTotals & { rxRate: number; txRate: number }) | null
-  > {
+  private async readNet(): Promise<(NetTotals & { rxRate: number; txRate: number }) | null> {
     try {
       const text = await readFile(join(this.procPath, '1/net/dev'), 'utf8');
       const totals = parseNetDevTotals(text);
@@ -203,14 +190,8 @@ export class HostCollector {
       const seconds = prev ? elapsedSeconds(now, prev.ts) : null;
       return {
         ...totals,
-        rxRate:
-          prev && seconds
-            ? perSecond(totals.rxBytes, prev.rxBytes, seconds)
-            : 0,
-        txRate:
-          prev && seconds
-            ? perSecond(totals.txBytes, prev.txBytes, seconds)
-            : 0,
+        rxRate: prev && seconds ? perSecond(totals.rxBytes, prev.rxBytes, seconds) : 0,
+        txRate: prev && seconds ? perSecond(totals.txBytes, prev.txBytes, seconds) : 0,
       };
     } catch (err) {
       this.prevNet = null;
@@ -219,9 +200,7 @@ export class HostCollector {
     }
   }
 
-  private async readDiskIo(): Promise<
-    (DiskIoTotals & { readRate: number; writeRate: number }) | null
-  > {
+  private async readDiskIo(): Promise<(DiskIoTotals & { readRate: number; writeRate: number }) | null> {
     try {
       const text = await readFile(join(this.procPath, 'diskstats'), 'utf8');
       const totals = parseDiskstatsTotals(text);
@@ -232,20 +211,12 @@ export class HostCollector {
       const seconds = prev ? elapsedSeconds(now, prev.ts) : null;
       return {
         ...totals,
-        readRate:
-          prev && seconds
-            ? perSecond(totals.readBytes, prev.readBytes, seconds)
-            : 0,
-        writeRate:
-          prev && seconds
-            ? perSecond(totals.writeBytes, prev.writeBytes, seconds)
-            : 0,
+        readRate: prev && seconds ? perSecond(totals.readBytes, prev.readBytes, seconds) : 0,
+        writeRate: prev && seconds ? perSecond(totals.writeBytes, prev.writeBytes, seconds) : 0,
       };
     } catch (err) {
       this.prevDiskIo = null;
-      logger.debug(
-        `[HostCollector] readDiskIo failed: ${getErrorMessage(err)}`,
-      );
+      logger.debug(`[HostCollector] readDiskIo failed: ${getErrorMessage(err)}`);
       return null;
     }
   }

@@ -29,10 +29,7 @@ export interface LiveStreamHandlers {
  *
  * Returns the function that stops it, for the effect's cleanup.
  */
-export function openLiveStream(
-  url: string,
-  handlers: LiveStreamHandlers,
-): () => void {
+export function openLiveStream(url: string, handlers: LiveStreamHandlers): () => void {
   let source: EventSource | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let attempt = 0;

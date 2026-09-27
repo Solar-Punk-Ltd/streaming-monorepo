@@ -1,10 +1,7 @@
 import { Request, Response, Router } from 'express';
 
 import { EngineConfigService } from '../../domain/engineConfig/EngineConfigService.js';
-import {
-  type EngineConfigBody,
-  engineConfigBodySchema,
-} from '../../schemas/engineConfig.js';
+import { type EngineConfigBody, engineConfigBodySchema } from '../../schemas/engineConfig.js';
 import { profileNameSchema } from '../../schemas/profile.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validateBody, validateParams } from '../middleware/validate.js';
@@ -16,9 +13,7 @@ import { validateBody, validateParams } from '../middleware/validate.js';
  * are marked no-store: the template carries nothing secret, but a file the
  * operator is editing has no business in a proxy cache either.
  */
-export function createEngineConfigRouter(
-  engineConfig: EngineConfigService,
-): Router {
+export function createEngineConfigRouter(engineConfig: EngineConfigService): Router {
   const router = Router();
 
   router.get(
@@ -36,10 +31,7 @@ export function createEngineConfigRouter(
     validateBody(engineConfigBodySchema),
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as EngineConfigBody;
-      const profile = await engineConfig.apply(
-        req.params.name as string,
-        body.config,
-      );
+      const profile = await engineConfig.apply(req.params.name as string, body.config);
       res.status(202).json(profile);
     }),
   );

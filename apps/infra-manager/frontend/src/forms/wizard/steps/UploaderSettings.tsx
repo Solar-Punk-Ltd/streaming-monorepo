@@ -10,19 +10,26 @@ import { SegmentLength } from './SegmentLength';
 import { StreamKeyChoice } from './StreamKeyChoice';
 import { PoolPrerequisites } from './PoolPrerequisites';
 
-const POOL_PLACEHOLDER =
-  '360p@http://host:10015<batch> 480p@… 720p@… 1080p@…';
+const POOL_PLACEHOLDER = '360p@http://host:10015<batch> 480p@… 720p@… 1080p@…';
 
 export function UploaderSettings(props: WizardStepProps) {
   const { state, context, update, onCreatePool } = props;
   const pools = poolsIn(context);
-  const poolFieldError =
-    state.poolMode === 'paste' ? poolStringError(state.poolString) : null;
+  const poolFieldError = state.poolMode === 'paste' ? poolStringError(state.poolString) : null;
 
   return (
     <Stack spacing={2.5}>
-      {pools.length === 0 && <Alert severity="info">An ABR uploader needs one Bee storage node for each quality level. Create a storage pool here, or use a pool from another manager. Your uploader draft stays here while you create a pool.</Alert>}
-      {onCreatePool && <Button variant="outlined" onClick={onCreatePool}>Create a storage pool</Button>}
+      {pools.length === 0 && (
+        <Alert severity="info">
+          An ABR uploader needs one Bee storage node for each quality level. Create a storage pool here, or use a pool
+          from another manager. Your uploader draft stays here while you create a pool.
+        </Alert>
+      )}
+      {onCreatePool && (
+        <Button variant="outlined" onClick={onCreatePool}>
+          Create a storage pool
+        </Button>
+      )}
       <FormField
         label="Node pool to publish to"
         labelId="wizard-pool-label"
@@ -50,7 +57,7 @@ export function UploaderSettings(props: WizardStepProps) {
                   value={state.poolId == null ? '' : String(state.poolId)}
                   onChange={(event) => update({ poolId: Number(event.target.value) })}
                   slotProps={{
-                    select: { SelectDisplayProps: { 'aria-label': 'Storage pool' } }
+                    select: { SelectDisplayProps: { 'aria-label': 'Storage pool' } },
                   }}
                 >
                   {pools.map((pool) => {
@@ -85,7 +92,7 @@ export function UploaderSettings(props: WizardStepProps) {
                       style: { fontFamily: MONO_STACK },
                       'aria-label': 'Pool string',
                       'aria-describedby': messageIdFor('wizard-pool-string'),
-                    }
+                    },
                   }}
                 />
               ),
@@ -94,7 +101,9 @@ export function UploaderSettings(props: WizardStepProps) {
         />
       </FormField>
 
-      {state.poolMode === 'pick' && state.poolId !== null && <PoolPrerequisites key={state.poolId} poolId={state.poolId} context={context} />}
+      {state.poolMode === 'pick' && state.poolId !== null && (
+        <PoolPrerequisites key={state.poolId} poolId={state.poolId} context={context} />
+      )}
 
       <SegmentLength {...props} />
       <PassphraseChoice {...props} />

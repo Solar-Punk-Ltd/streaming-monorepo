@@ -27,19 +27,19 @@ All actual integration after hooks and explicit profile removals use the confirm
 
 Selected RED to GREEN trail:
 
-| Correction | RED | GREEN |
-| --- | --- | --- |
-| Owned profile removal | `6e5c347` | `1223565` |
-| Single terminal callback | `2ba41f0` | `fc69e40` |
-| Profile HTTP/script ownership | `162eb29` | `0387091` |
-| Atomic empty-group removal | `dc6be68` | `a81f007` |
-| Empty-group HTTP guard | `df48253` | `327e7b7` |
-| Canonical created-instance responses | `a8da0a0` | `5bf9ee0` |
-| Cleanup HTTP adapter | `40a5f2e` | `95ea24b` |
-| Confirmed-resource client | `bf6dace` | `a82a005` |
-| Actual helper wiring | `fdfaba4` | `5bd730b` |
-| Effective serialized request | `12670b8` | `67f5cc0` |
-| Unknown and invalid count coverage | `b6b53fc`, `b87063a` | `f8c43f7`, `1b53f09` |
+| Correction                           | RED                  | GREEN                |
+| ------------------------------------ | -------------------- | -------------------- |
+| Owned profile removal                | `6e5c347`            | `1223565`            |
+| Single terminal callback             | `2ba41f0`            | `fc69e40`            |
+| Profile HTTP/script ownership        | `162eb29`            | `0387091`            |
+| Atomic empty-group removal           | `dc6be68`            | `a81f007`            |
+| Empty-group HTTP guard               | `df48253`            | `327e7b7`            |
+| Canonical created-instance responses | `a8da0a0`            | `5bf9ee0`            |
+| Cleanup HTTP adapter                 | `40a5f2e`            | `95ea24b`            |
+| Confirmed-resource client            | `bf6dace`            | `a82a005`            |
+| Actual helper wiring                 | `fdfaba4`            | `5bd730b`            |
+| Effective serialized request         | `12670b8`            | `67f5cc0`            |
+| Unknown and invalid count coverage   | `b6b53fc`, `b87063a` | `f8c43f7`, `1b53f09` |
 
 Encoded parameter RED `47fe1f6` included the real `%37` case and three overbroad synthetic expectations for numeric forms that the strict API refuses. `b96a4c3` corrected those fixtures to valid encoded/case/query/trailing variants and restored strict canonical-digit validation after decoding. Do not describe07,7.0 or7e0 as accepted group IDs. Earlier fixture failures from missing DATABASE_URL, invalid group size or missing optional dependencies were corrected setup errors, not behavioral RED evidence.
 

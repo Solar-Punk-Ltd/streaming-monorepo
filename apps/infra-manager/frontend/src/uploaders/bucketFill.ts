@@ -43,10 +43,7 @@ export function bucketFill(stamp: FillFields): BucketFill {
   };
 }
 
-function fillWarning(
-  ratio: number,
-  immutable: boolean | undefined,
-): BucketFillWarning | null {
+function fillWarning(ratio: number, immutable: boolean | undefined): BucketFillWarning | null {
   if (isStampFull(ratio, immutable)) return 'full';
   if (isStampNearlyFull(ratio, immutable)) return 'nearly-full';
   return null;

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
-import { commitAll, makeTempDir, runScript, writeFiles } from './support/fixtures.mjs';
+import { makeTempDir, runScript, writeFiles } from './support/fixtures.mjs';
 import { PACKAGE_MANAGER, expectedCut, manifest, manifestOf, realAppFiles } from './support/workspace.mjs';
 
 const CUT = 'cut.mjs';
@@ -125,7 +125,7 @@ describe('cut.mjs', () => {
     assert.match(result.stderr, /no pnpm-lock\.yaml/);
   });
 
-  it('exits 2 with its usage when --app or --out is missing', (t) => {
+  it('exits 2 with its usage when --app or --out is missing', () => {
     const result = runScript(CUT, ['--app', 'apps/web2-admin']);
 
     assert.equal(result.status, 2);

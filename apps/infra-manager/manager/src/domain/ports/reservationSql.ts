@@ -1,9 +1,20 @@
-import { MANAGER_SLOT_CAP, PORT_SLOT_STRIDE, portExposureProblem, type StackPortVar } from '@streaming-infra-manager/common';
+import {
+  MANAGER_SLOT_CAP,
+  PORT_SLOT_STRIDE,
+  portExposureProblem,
+  type StackPortVar,
+} from '@streaming-infra-manager/common';
 import type { PoolClient } from 'pg';
 import { PortReservedError } from '../errors/index.js';
 import { PROFILE_SLOT_LOCK_KEY } from '../profileSql.js';
 
-import { type PortPlanEntry, type PortReservation, type ReservationState, portKeyOf, portPlanFor } from './portReservations.js';
+import {
+  type PortPlanEntry,
+  type PortReservation,
+  type ReservationState,
+  portKeyOf,
+  portPlanFor,
+} from './portReservations.js';
 
 export const RESERVATION_COLUMNS = `
   id, daemon_id, protocol, port, profile_name, service, held_services, port_var, state, reason, created_at, updated_at
@@ -58,23 +69,38 @@ export async function planPortReservations(
        JOIN unnest($2::text[], $3::int[]) AS t(protocol, port) ON r.protocol = t.protocol AND r.port = t.port
       WHERE r.daemon_id = $1
       FOR UPDATE`,
-    [daemonId, planned.map(entry => entry.protocol), planned.map(entry => entry.port)],
+    [daemonId, planned.map((entry) => entry.protocol), planned.map((entry) => entry.port)],
   );
-  const other = held.rows.find(row => row.profile_name !== profileName);
+  const other = held.rows.find((row) => row.profile_name !== profileName);
   if (other) throw new PortReservedError(profileName, toReservation(other));
-  const mine = new Set(held.rows.map(row => portKeyOf(row)));
+  const mine = new Set(held.rows.map((row) => portKeyOf(row)));
   for (const row of held.rows) {
-    const owners = [...new Set([...row.held_services, ...planned.filter(entry => portKeyOf(entry) === portKeyOf(row)).map(entry => entry.service)])];
-    await client.query('UPDATE port_reservations SET held_services = $2::text[], updated_at = NOW() WHERE id = $1', [row.id, owners]);
+    const owners = [
+      ...new Set([
+        ...row.held_services,
+        ...planned.filter((entry) => portKeyOf(entry) === portKeyOf(row)).map((entry) => entry.service),
+      ]),
+    ];
+    await client.query('UPDATE port_reservations SET held_services = $2::text[], updated_at = NOW() WHERE id = $1', [
+      row.id,
+      owners,
+    ]);
   }
-  const missing = planned.filter(entry => !mine.has(portKeyOf(entry)));
+  const missing = planned.filter((entry) => !mine.has(portKeyOf(entry)));
   const inserted = await client.query<ReservationRow>(
     `INSERT INTO port_reservations (daemon_id, profile_name, protocol, port, port_var, service, held_services, state, reason)
      SELECT $1, $2, t.protocol, t.port, t.port_var, t.service, ARRAY[t.service], 'planned', $7
        FROM unnest($3::text[], $4::int[], $5::text[], $6::text[]) AS t(protocol, port, port_var, service)
      RETURNING ${RESERVATION_COLUMNS}`,
-    [daemonId, profileName, missing.map(entry => entry.protocol), missing.map(entry => entry.port),
-      missing.map(entry => entry.portVar), missing.map(entry => entry.service), reason],
+    [
+      daemonId,
+      profileName,
+      missing.map((entry) => entry.protocol),
+      missing.map((entry) => entry.port),
+      missing.map((entry) => entry.portVar),
+      missing.map((entry) => entry.service),
+      reason,
+    ],
   );
   return inserted.rows.map(toReservation);
 }
@@ -94,8 +120,10 @@ export interface SlotPlacement {
  * slot lock, inside the transaction that inserts the deployment.
  */
 export async function freeSlotFor(client: PoolClient, placement: SlotPlacement): Promise<number | null> {
-  const candidates = Array.from({ length: Math.min(placement.slotCap, MANAGER_SLOT_CAP) }, (_, index) => index + 1)
-    .filter(slot => portPlanFor(placement.table, slot).every(entry => portExposureProblem(entry) === null));
+  const candidates = Array.from(
+    { length: Math.min(placement.slotCap, MANAGER_SLOT_CAP) },
+    (_, index) => index + 1,
+  ).filter((slot) => portPlanFor(placement.table, slot).every((entry) => portExposureProblem(entry) === null));
   const result = await client.query<{ n: number }>(
     `SELECT s.n
        FROM unnest($1::int[]) AS s(n)

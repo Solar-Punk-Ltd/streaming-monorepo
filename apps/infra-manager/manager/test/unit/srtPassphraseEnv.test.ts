@@ -32,10 +32,7 @@ function withBaseEnv(contents: string): void {
 }
 
 function envFor(name: string, srtPassphrase?: string | null): string {
-  return readFileSync(
-    writeProfileEnv(root, name, { engine: 'srs', srtPassphrase }),
-    'utf8',
-  );
+  return readFileSync(writeProfileEnv(root, name, { engine: 'srs', srtPassphrase }), 'utf8');
 }
 
 describe('writeProfileEnv — SRT_PASSPHRASE', () => {
@@ -64,10 +61,7 @@ describe('writeProfileEnv — SRT_PASSPHRASE', () => {
 
   it('adds the key to a base .env that has none', () => {
     withBaseEnv('API_PORT=10000\n');
-    assert.match(
-      envFor('added', 'added-secret'),
-      /^SRT_PASSPHRASE=added-secret$/m,
-    );
+    assert.match(envFor('added', 'added-secret'), /^SRT_PASSPHRASE=added-secret$/m);
   });
 
   it('refuses a passphrase that would corrupt the sed in entrypoint.sh', () => {
@@ -75,11 +69,7 @@ describe('writeProfileEnv — SRT_PASSPHRASE', () => {
 
     const bads = ['pass/phrase1', 'pass&phrase1', 'short', 'a'.repeat(80)];
     for (const bad of bads) {
-      assert.throws(
-        () => envFor('bad', bad),
-        /refusing to write SRT_PASSPHRASE/,
-        `should refuse ${bad}`,
-      );
+      assert.throws(() => envFor('bad', bad), /refusing to write SRT_PASSPHRASE/, `should refuse ${bad}`);
     }
   });
 });

@@ -84,7 +84,11 @@ export interface CaptureWindow {
  * from "the run failed", and report the first as a result instead of a crash.
  */
 export class UnusableTimestampsError extends Error {
-  constructor(message: string, readonly impliedLatencyMs: number, readonly window: CaptureWindow) {
+  constructor(
+    message: string,
+    readonly impliedLatencyMs: number,
+    readonly window: CaptureWindow,
+  ) {
     super(message);
     this.name = 'UnusableTimestampsError';
   }

@@ -41,10 +41,7 @@ const MAX_WARNINGS = 12;
 const MAX_TEXT = 500;
 
 /** Takes the request, so a test can answer without a listening socket. */
-export type UploaderHealthFetch = (
-  url: string,
-  init: { signal: AbortSignal },
-) => Promise<Response>;
+export type UploaderHealthFetch = (url: string, init: { signal: AbortSignal }) => Promise<Response>;
 
 const NOTHING_REPORTED: string[] = [];
 
@@ -67,8 +64,7 @@ export class UploaderHealthService {
     private readonly profiles: ProfileRepository,
     private readonly containers: ContainerRepository,
     private readonly versions: StackVersionRepository,
-    private readonly fetchHealth: UploaderHealthFetch = (url, init) =>
-      fetch(url, init),
+    private readonly fetchHealth: UploaderHealthFetch = (url, init) => fetch(url, init),
   ) {}
 
   async read(name: string): Promise<UploaderHealthReading> {
@@ -76,9 +72,7 @@ export class UploaderHealthService {
     if (!profile) throw new ProfileNotFoundError(name);
 
     const containers = await this.containers.listApiContainers(name);
-    const deployed = containers.some(
-      (container) => container.service === STREAM_UPLOADER_SERVICE,
-    );
+    const deployed = containers.some((container) => container.service === STREAM_UPLOADER_SERVICE);
     if (!deployed) {
       return { state: UPLOADER_HEALTH_NOT_DEPLOYED, reasons: NOTHING_REPORTED };
     }
@@ -93,9 +87,7 @@ export class UploaderHealthService {
       const body: unknown = await response.json();
       return readingFrom(response.ok, body);
     } catch (err) {
-      logger.debug(
-        `[UploaderHealthService] ${name}: ${url} did not answer (${getErrorMessage(err)})`,
-      );
+      logger.debug(`[UploaderHealthService] ${name}: ${url} did not answer (${getErrorMessage(err)})`);
       return { state: UPLOADER_HEALTH_UNREACHABLE, reasons: NOTHING_REPORTED };
     }
   }
@@ -111,9 +103,7 @@ export class UploaderHealthService {
    */
   private async healthUrlFor(profile: Profile): Promise<string | null> {
     const version = await this.versions.findById(profile.stack_version_id);
-    const port = portTableOf(version?.contract).find(
-      (entry) => entry.name === UPLOADER_API_PORT_VAR,
-    );
+    const port = portTableOf(version?.contract).find((entry) => entry.name === UPLOADER_API_PORT_VAR);
     if (!port) {
       logger.warn(
         `[UploaderHealthService] ${profile.name}: its stack version declares no ${UPLOADER_API_PORT_VAR}, ` +
@@ -157,8 +147,7 @@ function readingFrom(ok: boolean, body: unknown): UploaderHealthReading {
 
   if (ok) return { state: UPLOADER_HEALTH_OK, reasons };
 
-  const warnedOnly =
-    reasons.length > 0 && reasons.every((reason) => reason === 'start_gate_warned');
+  const warnedOnly = reasons.length > 0 && reasons.every((reason) => reason === 'start_gate_warned');
   return {
     state: warnedOnly ? UPLOADER_HEALTH_WARNED : UPLOADER_HEALTH_UNHEALTHY,
     reasons,
@@ -174,9 +163,7 @@ function nodeWaitOf(raw: unknown): UploaderNodeWait | null {
   const lastError = textOf(node.lastError);
   return {
     url,
-    attempts: typeof node.attempts === 'number' && Number.isFinite(node.attempts)
-      ? node.attempts
-      : 0,
+    attempts: typeof node.attempts === 'number' && Number.isFinite(node.attempts) ? node.attempts : 0,
     ...(lastError === null ? {} : { lastError }),
   };
 }

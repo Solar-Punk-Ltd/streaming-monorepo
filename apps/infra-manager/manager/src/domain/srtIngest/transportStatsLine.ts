@@ -75,9 +75,7 @@ export function parseTransportStatsLine(line: string): TransportStatsReport | nu
 }
 
 /** Every statistics line among `lines`, in order. Any other line is skipped without a trace. */
-export function parseTransportStatsLines(
-  lines: readonly string[],
-): TransportStatsReport[] {
+export function parseTransportStatsLines(lines: readonly string[]): TransportStatsReport[] {
   return lines.flatMap((line) => {
     const report = parseTransportStatsLine(line);
     return report ? [report] : [];

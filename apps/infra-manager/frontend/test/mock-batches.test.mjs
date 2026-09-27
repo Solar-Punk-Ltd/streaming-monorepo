@@ -39,7 +39,9 @@ describe('the batches the dev mock’s nodes hold', () => {
    */
   it('hold one full immutable batch, recorded on the pool’s 720p rung', () => {
     const full = state.profiles
-      .filter((profile) => stampHealthFrom(profile.stamp_id, state.nodes.get(profile.name)?.stamps ?? []).state === 'full')
+      .filter(
+        (profile) => stampHealthFrom(profile.stamp_id, state.nodes.get(profile.name)?.stamps ?? []).state === 'full',
+      )
       .map((profile) => profile.name);
 
     assert.deepEqual(full, ['abr-pool-1-720p']);

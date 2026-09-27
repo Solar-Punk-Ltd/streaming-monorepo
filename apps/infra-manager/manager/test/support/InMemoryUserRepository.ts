@@ -1,8 +1,4 @@
-import type {
-  UserDeletion,
-  UserRepository,
-  UserRow,
-} from '../../src/domain/auth/UserRepository.js';
+import type { UserDeletion, UserRepository, UserRow } from '../../src/domain/auth/UserRepository.js';
 
 /**
  * The users table without Postgres, for the tests.
@@ -34,11 +30,7 @@ export class InMemoryUserRepository implements UserRepository {
     return row ? { ...row } : null;
   }
 
-  async insert(
-    username: string,
-    passwordHash: string,
-    isAdmin: boolean,
-  ): Promise<UserRow | null> {
+  async insert(username: string, passwordHash: string, isAdmin: boolean): Promise<UserRow | null> {
     if (this.rows.some((row) => row.username === username)) return null;
 
     const row: UserRow = {
@@ -55,9 +47,7 @@ export class InMemoryUserRepository implements UserRepository {
 
   /** Half of a password change, which InMemoryCredentialRepository pairs up. */
   setPasswordHash(id: number, passwordHash: string): void {
-    this.rows = this.rows.map((row) =>
-      row.id === id ? { ...row, password_hash: passwordHash } : row,
-    );
+    this.rows = this.rows.map((row) => (row.id === id ? { ...row, password_hash: passwordHash } : row));
   }
 
   /** The row-lock comparison used by the in-memory credential transaction. */
@@ -66,9 +56,7 @@ export class InMemoryUserRepository implements UserRepository {
   }
 
   async markSignedIn(id: number, at: Date): Promise<void> {
-    this.rows = this.rows.map((row) =>
-      row.id === id ? { ...row, last_login_at: at } : row,
-    );
+    this.rows = this.rows.map((row) => (row.id === id ? { ...row, last_login_at: at } : row));
   }
 
   async deleteUnlessLast(id: number): Promise<UserDeletion> {

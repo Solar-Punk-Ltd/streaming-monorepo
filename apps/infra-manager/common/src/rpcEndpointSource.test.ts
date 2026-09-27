@@ -223,14 +223,14 @@ describe('configuredBeeRpcEndpoint', () => {
     // An endpoint may carry a key in its path, and this answer goes to every
     // signed-in browser. Userinfo is refused before an endpoint is stored, and
     // is taken off here too, because this helper is also given text.
-    assert.deepEqual(
-      configuredBeeRpcEndpoint('https://rpc.example.org:8545/v1/secret-key'),
-      { configured: true, host: 'rpc.example.org:8545' },
-    );
-    assert.deepEqual(
-      configuredBeeRpcEndpoint('https://user:pass@rpc.example.org/key'),
-      { configured: true, host: 'rpc.example.org' },
-    );
+    assert.deepEqual(configuredBeeRpcEndpoint('https://rpc.example.org:8545/v1/secret-key'), {
+      configured: true,
+      host: 'rpc.example.org:8545',
+    });
+    assert.deepEqual(configuredBeeRpcEndpoint('https://user:pass@rpc.example.org/key'), {
+      configured: true,
+      host: 'rpc.example.org',
+    });
   });
 
   it('says it is configured even when the address will not parse', () => {

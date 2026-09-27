@@ -1,7 +1,7 @@
 {
   "name": "@streaming-infra-manager/api",
-  "private": true,
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "lint": "oxlint --type-aware .",
@@ -37,6 +37,9 @@
     "typescript": "7.0.2"
   },
   "nx": {
-    "tags": ["scope:manager", "type:app"]
+    "tags": [
+      "scope:manager",
+      "type:app"
+    ]
   }
 }

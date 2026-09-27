@@ -3,7 +3,20 @@ import { MIGRATION_LOCK_KEY } from '../Database.js';
 import type { ManagerPublication } from './ManagerUpgrade.js';
 
 const UNVERIFIED = 'Manager publication schema or identity cannot be verified.';
-const VERSION_FIELDS = ['id', 'name', 'git_ref', 'commit_sha', 'status', 'root_path', 'contract', 'is_default', 'tested', 'built_at', 'last_error', 'created_at'];
+const VERSION_FIELDS = [
+  'id',
+  'name',
+  'git_ref',
+  'commit_sha',
+  'status',
+  'root_path',
+  'contract',
+  'is_default',
+  'tested',
+  'built_at',
+  'last_error',
+  'created_at',
+];
 
 /**
  * How much of the manager's schema this database has, decided from the tables
@@ -18,8 +31,8 @@ async function readUnderSchemaGuard(client: PoolClient): Promise<ManagerPublicat
      WHERE n.nspname=current_schema() AND c.relkind IN ('r','p') GROUP BY c.relname`,
   );
   if (tables.rows.length === 0) return { schema: 'fresh' };
-  const versions = tables.rows.find(table => table.name === 'stack_versions');
-  if (!versions || !VERSION_FIELDS.every(field => versions.columns.includes(field))) throw new Error(UNVERIFIED);
+  const versions = tables.rows.find((table) => table.name === 'stack_versions');
+  if (!versions || !VERSION_FIELDS.every((field) => versions.columns.includes(field))) throw new Error(UNVERIFIED);
   if (!versions.columns.includes('publication_revision')) return { schema: 'pre-journal' };
   if (!versions.columns.includes('build_id')) throw new Error(UNVERIFIED);
   return { schema: 'current' };
@@ -36,6 +49,10 @@ export async function readManagerPublication(pool: Pool): Promise<ManagerPublica
     const result = await readUnderSchemaGuard(client);
     await client.query('COMMIT');
     return result;
-  } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
-  finally { client.release(); }
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }

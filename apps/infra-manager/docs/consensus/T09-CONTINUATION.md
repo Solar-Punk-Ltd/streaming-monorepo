@@ -96,11 +96,9 @@ Cross-provider review, OpenAI-hosted. `8577fd0` is accepted after root source/te
 
 The next approved slice adapts PinnedBeeSession to an already acquired owned stream using Node HTTP, with no network locator or fallback in that entrypoint. Its interface must be reviewed before GREEN. Existing URL constructor remains for existing callers until later production integration. Synthetic paired streams only. No Docker connection, SSH, bridge execution or runtime caller wiring.
 
-
 ## Newest acceptance
 
 Cross-provider review, OpenAI-hosted. `16fd7b3` closes the max1 pool refusal regression. Root reviewed its same-client post-rollback read. All 78 SQL cases and workspace types pass. Both T09 database fixtures are removed and ports52363/57250 closed. The next approved slice is only a strict binary Docker exec duplex over injected synthetic streams. Physical connection acquisition, the bridge, preparation integration and runtime activation are still open.
-
 
 ## Current target SQL checkpoint
 

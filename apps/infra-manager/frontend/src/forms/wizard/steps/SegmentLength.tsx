@@ -35,7 +35,7 @@ export function SegmentLength({ state, update }: WizardStepProps) {
           htmlInput: {
             inputMode: 'decimal',
             'aria-describedby': messageIdFor(FIELD_ID),
-          }
+          },
         }}
       />
     </FormField>

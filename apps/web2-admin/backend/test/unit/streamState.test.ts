@@ -25,13 +25,7 @@ import {
 
 import { streamRow } from './support/fakes.js';
 
-const STATUSES: StreamStatus[] = [
-  'draft',
-  'publishing',
-  'published',
-  'live',
-  'vod',
-];
+const STATUSES: StreamStatus[] = ['draft', 'publishing', 'published', 'live', 'vod'];
 
 describe('isStateTransitionAllowed', () => {
   it('accepts the reports a normal broadcast makes', () => {
@@ -92,10 +86,7 @@ describe('isStateTransitionAllowed', () => {
 
 describe('hasGoneLive', () => {
   it('is the two states an encoder has already reached', () => {
-    assert.deepEqual(
-      STATUSES.filter(hasGoneLive),
-      ['live', 'vod'],
-    );
+    assert.deepEqual(STATUSES.filter(hasGoneLive), ['live', 'vod']);
   });
 });
 
@@ -105,22 +96,14 @@ describe('isScheduleLocked', () => {
   it('lets a draft and a published stream be rescheduled', () => {
     for (const status of ['draft', 'published'] as StreamStatus[]) {
       const stream = streamRow({ status, scheduled_start_time: scheduled });
-      assert.equal(
-        isScheduleLocked(stream, '2026-11-02T09:00:00.000Z'),
-        false,
-        status,
-      );
+      assert.equal(isScheduleLocked(stream, '2026-11-02T09:00:00.000Z'), false, status);
     }
   });
 
   it('locks a stream that has gone live or been recorded', () => {
     for (const status of ['live', 'vod'] as StreamStatus[]) {
       const stream = streamRow({ status, scheduled_start_time: scheduled });
-      assert.equal(
-        isScheduleLocked(stream, '2026-11-02T09:00:00.000Z'),
-        true,
-        status,
-      );
+      assert.equal(isScheduleLocked(stream, '2026-11-02T09:00:00.000Z'), true, status);
     }
   });
 

@@ -13,26 +13,21 @@ export function RemoveCard({ profile }: { profile: Profile }) {
         direction={{ xs: 'column', sm: 'row' }}
         spacing={2}
         sx={{
-          alignItems: { sm: 'center' }
+          alignItems: { sm: 'center' },
         }}
       >
         <Box sx={{ flexGrow: 1 }}>
-          <Typography sx={{ fontWeight: 600 }}>
-            Remove this deployment
-          </Typography>
-          <Typography variant="caption" sx={{
-            color: "text.secondary"
-          }}>
-            Stops the containers, deletes the record and wipes its data directory
-            on the host. This cannot be undone.
+          <Typography sx={{ fontWeight: 600 }}>Remove this deployment</Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
+            Stops the containers, deletes the record and wipes its data directory on the host. This cannot be undone.
           </Typography>
         </Box>
-        <Button
-          color="error"
-          variant="outlined"
-          onClick={() => actions.requestRemove(profile)}
-          sx={{ flex: 'none' }}
-        >
+        <Button color="error" variant="outlined" onClick={() => actions.requestRemove(profile)} sx={{ flex: 'none' }}>
           Remove
         </Button>
       </Stack>

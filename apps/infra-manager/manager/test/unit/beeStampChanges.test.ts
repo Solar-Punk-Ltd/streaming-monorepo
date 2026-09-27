@@ -24,11 +24,7 @@ interface SentRequest {
 }
 
 /** A node that answers every request with `status` and `body`, and remembers what it was sent. */
-function fakeNode(
-  t: TestContext,
-  status = 202,
-  body: unknown = { batchID: BATCH, txHash: TX },
-) {
+function fakeNode(t: TestContext, status = 202, body: unknown = { batchID: BATCH, txHash: TX }) {
   const sent: SentRequest[] = [];
   t.mock.method(globalThis, 'fetch', async (url: string | URL, init?: RequestInit) => {
     sent.push({ url: String(url), method: init?.method });
@@ -50,9 +46,7 @@ describe('changing a batch on its node', () => {
 
     const answer = await new BeeClient(NODE).topUpStamp(BATCH, '1571927040');
 
-    assert.deepEqual(node.sent, [
-      { url: `${NODE}/stamps/topup/${BATCH}/1571927040`, method: 'PATCH' },
-    ]);
+    assert.deepEqual(node.sent, [{ url: `${NODE}/stamps/topup/${BATCH}/1571927040`, method: 'PATCH' }]);
     assert.deepEqual(node.budgets(), [ON_CHAIN_TIMEOUT_MS]);
     assert.deepEqual(answer, { batchID: BATCH, txHash: TX });
   });
@@ -62,9 +56,7 @@ describe('changing a batch on its node', () => {
 
     const answer = await new BeeClient(NODE).diluteStamp(BATCH, 24);
 
-    assert.deepEqual(node.sent, [
-      { url: `${NODE}/stamps/dilute/${BATCH}/24`, method: 'PATCH' },
-    ]);
+    assert.deepEqual(node.sent, [{ url: `${NODE}/stamps/dilute/${BATCH}/24`, method: 'PATCH' }]);
     assert.deepEqual(node.budgets(), [ON_CHAIN_TIMEOUT_MS]);
     assert.deepEqual(answer, { batchID: BATCH, txHash: TX });
   });
@@ -74,8 +66,7 @@ describe('changing a batch on its node', () => {
 
     await assert.rejects(
       () => new BeeClient(NODE).topUpStamp(BATCH, '1571927040'),
-      (err: unknown) =>
-        err instanceof BeeHttpError && err.status === 402 && /out of funds/.test(err.message),
+      (err: unknown) => err instanceof BeeHttpError && err.status === 402 && /out of funds/.test(err.message),
     );
   });
 });

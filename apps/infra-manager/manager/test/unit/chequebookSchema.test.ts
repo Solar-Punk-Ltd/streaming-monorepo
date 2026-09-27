@@ -63,10 +63,7 @@ describe('moveBzzSchema', () => {
   });
 
   it('drops anything else in the body rather than passing it to bee', async () => {
-    const validated = await moveBzzSchema.validate(
-      { amount: '1', to: '0xsomewhere-else' },
-      { stripUnknown: true },
-    );
+    const validated = await moveBzzSchema.validate({ amount: '1', to: '0xsomewhere-else' }, { stripUnknown: true });
     assert.deepEqual(validated, { amount: '1' });
   });
 });

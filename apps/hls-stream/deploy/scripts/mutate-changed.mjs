@@ -106,15 +106,22 @@ function mergeBase() {
 function main() {
   const base = mergeBase();
   const diffText = git('diff', '--unified=0', '--diff-filter=ACMR', base, '--', 'packages');
-  const workers = workerCount(existsSync(CGROUP_CPU_MAX) ? readFileSync(CGROUP_CPU_MAX, 'utf8') : undefined, availableParallelism());
+  const workers = workerCount(
+    existsSync(CGROUP_CPU_MAX) ? readFileSync(CGROUP_CPU_MAX, 'utf8') : undefined,
+    availableParallelism(),
+  );
   let ran = 0;
   for (const target of MUTATION_TARGETS) {
     const ranges = changedRanges(diffText, target);
     if (ranges.size === 0) {
-      console.log(`mutate:changed: ${target.config}: no file it mutates changed against ${BASE_REF} (${base.slice(0, SHORT_SHA)})`);
+      console.log(
+        `mutate:changed: ${target.config}: no file it mutates changed against ${BASE_REF} (${base.slice(0, SHORT_SHA)})`,
+      );
       continue;
     }
-    console.log(`mutate:changed: ${target.config}: ${ranges.size} file(s) against ${base.slice(0, SHORT_SHA)}, ${workers} worker(s)`);
+    console.log(
+      `mutate:changed: ${target.config}: ${ranges.size} file(s) against ${base.slice(0, SHORT_SHA)}, ${workers} worker(s)`,
+    );
     for (const file of ranges.keys()) console.log(`  ${file}`);
     execFileSync(
       path.join(STACK_ROOT, 'node_modules/.bin/stryker'),

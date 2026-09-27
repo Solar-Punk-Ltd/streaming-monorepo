@@ -52,24 +52,11 @@ export interface PublishUrlHealth {
   invalid: boolean;
 }
 
-const LOOPBACK_HOSTS = new Set([
-  'localhost',
-  '127.0.0.1',
-  '::1',
-  '[::1]',
-  '0.0.0.0',
-  '',
-]);
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0', '']);
 
-const INVALID_STATES: readonly PublishUrlState[] = [
-  'loopback',
-  'ssh-target',
-  'malformed',
-];
+const INVALID_STATES: readonly PublishUrlState[] = ['loopback', 'ssh-target', 'malformed'];
 
-export function isInvalidUrlState(
-  state: PublishUrlState | null | undefined,
-): boolean {
+export function isInvalidUrlState(state: PublishUrlState | null | undefined): boolean {
   return state != null && INVALID_STATES.includes(state);
 }
 
@@ -77,9 +64,7 @@ export function isInvalidUrlState(
  * The structural verdict on a published rung URL: `'ok'` here means only "worth
  * probing", never "reachable".
  */
-export function classifyPublishUrl(
-  url: string | null | undefined,
-): PublishUrlState {
+export function classifyPublishUrl(url: string | null | undefined): PublishUrlState {
   if (!url || !url.trim()) return 'malformed';
 
   let parsed: URL;
@@ -190,9 +175,7 @@ function addressShapeProblem(value: string): string | null {
  * is not an http(s) URL, an ssh target pasted where a network address goes, and
  * a value that would not survive the env file it is written into.
  */
-export function beeUrlProblem(
-  value: string | null | undefined,
-): string | null {
+export function beeUrlProblem(value: string | null | undefined): string | null {
   if (!value || !value.trim()) return null;
   const address = value.trim();
   switch (classifyPublishUrl(address)) {
@@ -214,9 +197,7 @@ export function beeUrlProblem(
  * takes the endpoint its stack version carries, which is how every deployment
  * worked before this was settable per node.
  */
-export function rpcEndpointProblem(
-  value: string | null | undefined,
-): string | null {
+export function rpcEndpointProblem(value: string | null | undefined): string | null {
   if (!value || !value.trim()) return null;
   const address = value.trim();
   switch (classifyPublishUrl(address)) {

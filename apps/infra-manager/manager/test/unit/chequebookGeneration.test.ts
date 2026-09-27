@@ -17,9 +17,15 @@ describe('immutable profile generation in transfer intent', () => {
   it('replays the original generation before profile lookup and refuses changing it under the same request UUID', async () => {
     const repository = new InMemoryChequebookOperations();
     const intent = transferIntent();
-    const submitted = await new ChequebookSubmission(repository, async () => ({ context: transferContext, dispose() {}, preflight: async () => {},
-      send: async () => ({ transactionHash: `0x${'cd'.repeat(32)}` }) })).submit(intent);
-    const afterDeletion = new ChequebookSubmission(repository, async () => { assert.fail('Replay must not prepare a deleted or replacement profile'); });
+    const submitted = await new ChequebookSubmission(repository, async () => ({
+      context: transferContext,
+      dispose() {},
+      preflight: async () => {},
+      send: async () => ({ transactionHash: `0x${'cd'.repeat(32)}` }),
+    })).submit(intent);
+    const afterDeletion = new ChequebookSubmission(repository, async () => {
+      assert.fail('Replay must not prepare a deleted or replacement profile');
+    });
     assert.deepEqual((await afterDeletion.submit(intent)).operation, submitted.operation);
     const conflict = await afterDeletion.submit({ ...intent, profileInstanceId: replacement });
     assert.equal(conflict.kind, 'conflict');

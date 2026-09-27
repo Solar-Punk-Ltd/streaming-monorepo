@@ -41,11 +41,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
-import {
-  type EngineConfigState,
-  type EngineConfigView,
-  rolloutNotice,
-} from '@streaming-infra-manager/common';
+import { type EngineConfigState, type EngineConfigView, rolloutNotice } from '@streaming-infra-manager/common';
 
 import { redactEngineOutput } from '../../src/domain/redactEngineOutput.js';
 import { assertMatchesRedacted, assertNull } from '../support/redactedAssertions.js';
@@ -107,7 +103,10 @@ describe('a config file the manager check accepts and the stack startup gate ref
     const onTemplate = await engineConfig(name);
     assert.equal(onTemplate.engine, SRS, 'a streamer runs SRS, which is the engine with a parser to ask');
     assert.ok(onTemplate.supported, onTemplate.unsupportedReason ?? 'this version does not run a file of its own');
-    assertNull(onTemplate.config, 'a fresh deployment runs the template, which is the file the revert has to bring back');
+    assertNull(
+      onTemplate.config,
+      'a fresh deployment runs the template, which is the file the revert has to bring back',
+    );
 
     // Accepted by the check, because the parse never changes directory.
     await api('PUT', `/profiles/${encodeURIComponent(name)}/engine-config`, {
@@ -129,11 +128,7 @@ describe('a config file the manager check accepts and the stack startup gate ref
       /so the previous one is back/,
       'the reason does not say the previous file is back',
     );
-    assertMatchesRedacted(
-      ended.error,
-      /no\/such\/directory/,
-      "the reason does not carry the engine's own last lines",
-    );
+    assertMatchesRedacted(ended.error, /no\/such\/directory/, "the reason does not carry the engine's own last lines");
     assertNull(ended.config, 'the template is back, so the stored file is gone');
 
     const notice = rolloutNotice(ended.state, { engine: ended.engine, hasConfig: ended.config !== null }, ended.error);

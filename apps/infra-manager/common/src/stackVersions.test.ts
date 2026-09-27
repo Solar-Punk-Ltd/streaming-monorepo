@@ -142,10 +142,7 @@ describe('describeStackContract', () => {
   });
 
   it('leaves out what a version does not have', () => {
-    assert.equal(
-      describeStackContract(V2_CONTRACT),
-      '9 ports, slots 1 to 999, no generated secrets',
-    );
+    assert.equal(describeStackContract(V2_CONTRACT), '9 ports, slots 1 to 999, no generated secrets');
   });
 
   it('counts the port lines the reader could not make sense of', () => {
@@ -189,14 +186,19 @@ describe('parseStackContract', () => {
 
   it('reads a port stored without a protocol as tcp, and a contract stored without an allocation problem as having none', () => {
     const stored = JSON.parse(JSON.stringify(V3_CONTRACT)) as Record<string, unknown>;
-    stored.ports = (stored.ports as Record<string, unknown>[]).map(({ protocol: _protocol, service: _service, ...rest }) => rest);
+    stored.ports = (stored.ports as Record<string, unknown>[]).map(
+      ({ protocol: _protocol, service: _service, ...rest }) => rest,
+    );
     delete stored.allocationProblem;
 
     const parsed = parseStackContract(stored);
 
     assert.ok(parsed);
     assert.ok(parsed.ports.every((port) => port.protocol === 'tcp'));
-    assert.ok(parsed.ports.every((port) => port.service === null), 'a port stored without a service is unmapped');
+    assert.ok(
+      parsed.ports.every((port) => port.service === null),
+      'a port stored without a service is unmapped',
+    );
     assert.equal(parsed.allocationProblem, null);
   });
 

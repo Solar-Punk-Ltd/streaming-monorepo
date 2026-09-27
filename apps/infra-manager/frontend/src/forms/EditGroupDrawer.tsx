@@ -1,22 +1,12 @@
 import { useState } from 'react';
 import { Box, Button, Stack, TextField, Typography } from '@mui/material';
 
-import {
-  CLIENT_SERVICE,
-  getErrorMessage,
-  SRS_SERVICE,
-} from '@streaming-infra-manager/common';
+import { CLIENT_SERVICE, getErrorMessage, SRS_SERVICE } from '@streaming-infra-manager/common';
 
 import { MONO_STACK } from '../app/theme';
 import { useToast } from '../app/ToastProvider';
 import { useDeployments } from '../app/useDeploymentsStore';
-import {
-  hasService,
-  servicesOf,
-  SHAPE_LABEL,
-  shapeOf,
-  streamersOf,
-} from '../deployments/shape';
+import { hasService, servicesOf, SHAPE_LABEL, shapeOf, streamersOf } from '../deployments/shape';
 import { updateGroupConfig, type UpdateGroupConfigBody } from '../data';
 import type { Profile } from '../types';
 import { hostFor } from '../urls';
@@ -37,13 +27,7 @@ interface GroupEdits {
 const savedMessage = (groupName: string, memberCount: number): string =>
   `Saved. Redeploying ${groupName}, ${memberCount} ${memberCount === 1 ? 'member' : 'members'}…`;
 
-export function EditGroupDrawer({
-  id,
-  onClose,
-}: {
-  id: number;
-  onClose: () => void;
-}) {
+export function EditGroupDrawer({ id, onClose }: { id: number; onClose: () => void }) {
   const { profiles, groups, serverHost, mergeProfiles } = useDeployments();
   const toast = useToast();
 
@@ -60,8 +44,7 @@ export function EditGroupDrawer({
 
   if (!group || !first) return null;
 
-  const update = (patch: Partial<GroupEdits>) =>
-    setEdits((prev) => ({ ...prev, ...patch }));
+  const update = (patch: Partial<GroupEdits>) => setEdits((prev) => ({ ...prev, ...patch }));
 
   const showsPassphrase = hasService(first, SRS_SERVICE);
   const showsFeedOwner = hasService(first, CLIENT_SERVICE);
@@ -72,10 +55,7 @@ export function EditGroupDrawer({
     setSaving(true);
     setError(null);
     try {
-      const result = await updateGroupConfig(
-        group.id,
-        bodyFor(initial, edits, showsPassphrase, showsFeedOwner),
-      );
+      const result = await updateGroupConfig(group.id, bodyFor(initial, edits, showsPassphrase, showsFeedOwner));
       mergeProfiles(result.profiles);
       onClose();
       toast(savedMessage(group.name, result.profiles.length));
@@ -112,8 +92,7 @@ export function EditGroupDrawer({
         }}
       >
         <Typography variant="body2">
-          Changes apply to all {members.length} members and redeploy them. Keys and
-          stamps stay per member.
+          Changes apply to all {members.length} members and redeploy them. Keys and stamps stay per member.
         </Typography>
       </Box>
 
@@ -139,16 +118,13 @@ export function EditGroupDrawer({
                 direction="row"
                 spacing={0.5}
                 sx={{
-                  flexWrap: "wrap",
-                  alignItems: "center"
-                }}>
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                }}
+              >
                 <span>On this manager:</span>
                 {streams.map((stream) => (
-                  <Button
-                    key={stream.name}
-                    size="small"
-                    onClick={() => update({ feedOwner: stream.public_key ?? '' })}
-                  >
+                  <Button key={stream.name} size="small" onClick={() => update({ feedOwner: stream.public_key ?? '' })}>
                     {stream.name}
                   </Button>
                 ))}
@@ -165,7 +141,7 @@ export function EditGroupDrawer({
             onChange={(event) => update({ feedOwner: event.target.value })}
             placeholder="0x plus 40 hex characters"
             slotProps={{
-              htmlInput: { style: { fontFamily: MONO_STACK } }
+              htmlInput: { style: { fontFamily: MONO_STACK } },
             }}
           />
         </FormField>
@@ -235,12 +211,8 @@ function bodyFor(
   showsFeedOwner: boolean,
 ): UpdateGroupConfigBody {
   return {
-    notes:
-      edits.notes !== initial.notes ? edits.notes.trim() || null : undefined,
-    feed_owner:
-      showsFeedOwner && edits.feedOwner !== initial.feedOwner
-        ? edits.feedOwner.trim()
-        : undefined,
+    notes: edits.notes !== initial.notes ? edits.notes.trim() || null : undefined,
+    feed_owner: showsFeedOwner && edits.feedOwner !== initial.feedOwner ? edits.feedOwner.trim() : undefined,
     srt_passphrase: passphraseFor(initial, edits, showsPassphrase),
   };
 }
@@ -250,11 +222,7 @@ function bodyFor(
  * empty box under the own-passphrase mode means too, because that box stands
  * for the stored value rather than holding it.
  */
-function passphraseFor(
-  initial: GroupEdits,
-  edits: GroupEdits,
-  showsPassphrase: boolean,
-): string | null | undefined {
+function passphraseFor(initial: GroupEdits, edits: GroupEdits, showsPassphrase: boolean): string | null | undefined {
   if (!showsPassphrase) return undefined;
   if (edits.passMode === 'host') {
     return edits.passMode === initial.passMode ? undefined : null;

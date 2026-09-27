@@ -40,7 +40,8 @@ export const saveManagerAdminLinkSchema = object({
 export type SaveManagerAdminLinkBody = InferType<typeof saveManagerAdminLinkSchema>;
 
 const TEST_URL_MESSAGE = 'url is text, the admin address to test';
-const TOKEN_CHOICE_MESSAGE = 'token is either the stored one, { "source": "stored" }, or one typed, { "source": "typed", "value": "..." }';
+const TOKEN_CHOICE_MESSAGE =
+  'token is either the stored one, { "source": "stored" }, or one typed, { "source": "typed", "value": "..." }';
 const FEED_OWNER_MESSAGE = 'feedOwner is a stream address, 40 hex characters with or without 0x';
 const FEED_OWNER_RE = /^(0x)?[0-9a-fA-F]{40}$/;
 
@@ -67,7 +68,11 @@ export const testAdminLinkSchema = object({
   token: mixed<AdminLinkTokenChoice>()
     .defined(TOKEN_CHOICE_MESSAGE)
     .test('choice', TOKEN_CHOICE_MESSAGE, isTokenChoice)
-    .test('length', LENGTH_MESSAGE, (value) => !isTokenChoice(value) || value.source === 'stored' || withinLength(value.value)),
+    .test(
+      'length',
+      LENGTH_MESSAGE,
+      (value) => !isTokenChoice(value) || value.source === 'stored' || withinLength(value.value),
+    ),
   feedOwner: string().typeError(FEED_OWNER_MESSAGE).nullable().notRequired().matches(FEED_OWNER_RE, FEED_OWNER_MESSAGE),
 }).noUnknown(true);
 

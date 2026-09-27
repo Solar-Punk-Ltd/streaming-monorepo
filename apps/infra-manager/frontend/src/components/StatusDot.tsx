@@ -5,13 +5,7 @@ import { toneMainColor, type Tone } from './tone';
 const SIZE = 9;
 
 /** A coloured dot. Pulsing means the deployment is mid-change. */
-export function StatusDot({
-  tone,
-  pulsing = false,
-}: {
-  tone: Tone;
-  pulsing?: boolean;
-}) {
+export function StatusDot({ tone, pulsing = false }: { tone: Tone; pulsing?: boolean }) {
   return (
     <Box
       component="span"

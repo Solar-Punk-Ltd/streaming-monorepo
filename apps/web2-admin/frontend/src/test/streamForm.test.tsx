@@ -4,22 +4,12 @@ import { Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STREAM_LIMITS } from '@streaming-monorepo/web2-admin-common';
 
-import {
-  MEDIA_TYPE_LOCKED,
-  SCHEDULE_LOCKED,
-  UNSUPPORTED_IMAGE_TYPE,
-} from '../errors';
+import { MEDIA_TYPE_LOCKED, SCHEDULE_LOCKED, UNSUPPORTED_IMAGE_TYPE } from '../errors';
 import { ScheduleField } from '../components/schedule/ScheduleField';
 import { formatHumanDateTime } from '../dateUtil';
 import { nextFullHour } from '../components/schedule/scheduleTime';
 import { ERROR_MESSAGES, StreamFormPage } from '../pages/StreamFormPage';
-import {
-  jsonError,
-  jsonOk,
-  makeStream,
-  mockFetch,
-  renderWithProviders,
-} from './helpers';
+import { jsonError, jsonOk, makeStream, mockFetch, renderWithProviders } from './helpers';
 
 function renderCreateForm() {
   return renderWithProviders(
@@ -40,8 +30,7 @@ function renderEditForm(id: string) {
   );
 }
 
-const submit = () =>
-  fireEvent.click(screen.getByRole('button', { name: 'Create Stream' }));
+const submit = () => fireEvent.click(screen.getByRole('button', { name: 'Create Stream' }));
 
 /**
  * The date picker's label names both its group of day, month and year sections
@@ -79,9 +68,7 @@ describe('StreamFormPage validation', () => {
     typeIn('Stream Name *', 'Pilot keynote');
     submit();
 
-    expect(
-      screen.getByText(ERROR_MESSAGES.DESCRIPTION_REQUIRED),
-    ).toBeInTheDocument();
+    expect(screen.getByText(ERROR_MESSAGES.DESCRIPTION_REQUIRED)).toBeInTheDocument();
   });
 
   it('requires a scheduled start time', () => {
@@ -95,9 +82,7 @@ describe('StreamFormPage validation', () => {
     typeIn('Scheduled Date *', '');
     submit();
 
-    expect(
-      screen.getByText(ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED),
-    ).toBeInTheDocument();
+    expect(screen.getByText(ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED)).toBeInTheDocument();
   });
 
   it('rejects whitespace-only values', () => {
@@ -115,27 +100,17 @@ describe('StreamFormPage validation', () => {
     renderCreateForm();
 
     expect(screen.getByText(`0/${STREAM_LIMITS.TITLE_MAX}`)).toBeInTheDocument();
-    expect(
-      screen.getByText(`0/${STREAM_LIMITS.DESCRIPTION_MAX}`),
-    ).toBeInTheDocument();
+    expect(screen.getByText(`0/${STREAM_LIMITS.DESCRIPTION_MAX}`)).toBeInTheDocument();
 
     typeIn('Stream Name *', 'abcde');
     typeIn('Description *', 'abc');
 
     expect(screen.getByText(`5/${STREAM_LIMITS.TITLE_MAX}`)).toBeInTheDocument();
-    expect(
-      screen.getByText(`3/${STREAM_LIMITS.DESCRIPTION_MAX}`),
-    ).toBeInTheDocument();
+    expect(screen.getByText(`3/${STREAM_LIMITS.DESCRIPTION_MAX}`)).toBeInTheDocument();
 
     // The inputs also stop the operator at the limit rather than failing later.
-    expect(screen.getByLabelText('Stream Name *')).toHaveAttribute(
-      'maxlength',
-      String(STREAM_LIMITS.TITLE_MAX),
-    );
-    expect(screen.getByLabelText('Description *')).toHaveAttribute(
-      'maxlength',
-      String(STREAM_LIMITS.DESCRIPTION_MAX),
-    );
+    expect(screen.getByLabelText('Stream Name *')).toHaveAttribute('maxlength', String(STREAM_LIMITS.TITLE_MAX));
+    expect(screen.getByLabelText('Description *')).toHaveAttribute('maxlength', String(STREAM_LIMITS.DESCRIPTION_MAX));
   });
 
   it('submits the trimmed values and then the picked thumbnail', async () => {
@@ -161,9 +136,7 @@ describe('StreamFormPage validation', () => {
         path: '/api/streams/new-id/thumbnail',
         respond: (init) => {
           calls.push({ url: '/api/streams/new-id/thumbnail', method: 'PUT' });
-          expect(
-            (init?.headers as Record<string, string>)['content-type'],
-          ).toBe('image/png');
+          expect((init?.headers as Record<string, string> | undefined)?.['content-type']).toBe('image/png');
           return jsonOk({ ...created, hasThumbnail: true });
         },
       },
@@ -216,9 +189,7 @@ describe('StreamFormPage validation', () => {
     // The row exists, so the operator must land on it rather than be sent
     // back to a form that would create a second stream.
     expect(await screen.findByText('details page')).toBeInTheDocument();
-    expect(
-      screen.getByText(/Stream saved, but the thumbnail did not/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Stream saved, but the thumbnail did not/)).toBeInTheDocument();
   });
 
   it('locks the media type once the stream is published', async () => {
@@ -267,9 +238,7 @@ describe('StreamFormPage validation', () => {
 
     renderEditForm('live-id');
 
-    expect(
-      await screen.findByLabelText('Scheduled Date *', FORM_CONTROL),
-    ).toBeDisabled();
+    expect(await screen.findByLabelText('Scheduled Date *', FORM_CONTROL)).toBeDisabled();
     expect(screen.getByLabelText('Scheduled Time *')).toBeDisabled();
     expect(screen.getByText(SCHEDULE_LOCKED)).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Audio Only' })).toBeDisabled();
@@ -300,9 +269,7 @@ describe('StreamFormPage validation', () => {
 
     renderEditForm('live-blank');
 
-    expect(
-      await screen.findByLabelText('Scheduled Date *', FORM_CONTROL),
-    ).toBeEnabled();
+    expect(await screen.findByLabelText('Scheduled Date *', FORM_CONTROL)).toBeEnabled();
     expect(screen.getByLabelText('Scheduled Time *')).toBeEnabled();
     expect(screen.queryByText(SCHEDULE_LOCKED)).not.toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Audio Only' })).toBeDisabled();
@@ -312,16 +279,13 @@ describe('StreamFormPage validation', () => {
     mockFetch([
       {
         path: '/api/streams/pub-2',
-        respond: () =>
-          jsonOk(makeStream({ id: 'pub-2', status: 'published' })),
+        respond: () => jsonOk(makeStream({ id: 'pub-2', status: 'published' })),
       },
     ]);
 
     renderEditForm('pub-2');
 
-    expect(
-      await screen.findByLabelText('Scheduled Date *', FORM_CONTROL),
-    ).toBeEnabled();
+    expect(await screen.findByLabelText('Scheduled Date *', FORM_CONTROL)).toBeEnabled();
     expect(screen.getByLabelText('Scheduled Time *')).toBeEnabled();
     expect(screen.queryByText(SCHEDULE_LOCKED)).not.toBeInTheDocument();
   });
@@ -330,16 +294,13 @@ describe('StreamFormPage validation', () => {
     mockFetch([
       {
         path: '/api/streams/draft-id',
-        respond: () =>
-          jsonOk(makeStream({ id: 'draft-id', status: 'draft' })),
+        respond: () => jsonOk(makeStream({ id: 'draft-id', status: 'draft' })),
       },
     ]);
 
     renderEditForm('draft-id');
 
-    expect(
-      await screen.findByRole('radio', { name: 'Audio Only' }),
-    ).toBeEnabled();
+    expect(await screen.findByRole('radio', { name: 'Audio Only' })).toBeEnabled();
     expect(screen.queryByText(MEDIA_TYPE_LOCKED)).not.toBeInTheDocument();
   });
 
@@ -352,9 +313,7 @@ describe('StreamFormPage validation', () => {
       mediaType: 'audio',
       hasThumbnail: true,
     });
-    mockFetch([
-      { path: '/api/streams/edit-id', respond: () => jsonOk(stream) },
-    ]);
+    mockFetch([{ path: '/api/streams/edit-id', respond: () => jsonOk(stream) }]);
 
     renderEditForm('edit-id');
 
@@ -363,13 +322,9 @@ describe('StreamFormPage validation', () => {
     expect(screen.getByText('a')).toBeInTheDocument();
     expect(screen.getByText('b')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Audio Only' })).toBeChecked();
-    expect(
-      screen.getByRole('button', { name: 'Update Stream' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Update Stream' })).toBeInTheDocument();
     // The stored image is served by the API, cache-busted with updatedAt.
-    expect(
-      screen.getByAltText('Thumbnail preview').getAttribute('src'),
-    ).toContain('/api/streams/edit-id/thumbnail?v=');
+    expect(screen.getByAltText('Thumbnail preview').getAttribute('src')).toContain('/api/streams/edit-id/thumbnail?v=');
   });
 });
 
@@ -398,10 +353,7 @@ describe('StreamFormPage tags', () => {
     mockFetch([]);
     renderCreateForm();
 
-    expect(screen.getByLabelText('Tags')).toHaveAttribute(
-      'maxlength',
-      String(STREAM_LIMITS.TAG_MAX_LENGTH),
-    );
+    expect(screen.getByLabelText('Tags')).toHaveAttribute('maxlength', String(STREAM_LIMITS.TAG_MAX_LENGTH));
   });
 
   it('stops at ten tags', () => {
@@ -414,14 +366,9 @@ describe('StreamFormPage tags', () => {
       fireEvent.keyDown(input, { key: 'Enter' });
     }
 
-    expect(
-      screen.getByText(`${STREAM_LIMITS.TAGS_MAX}/${STREAM_LIMITS.TAGS_MAX} tags`),
-    ).toBeInTheDocument();
+    expect(screen.getByText(`${STREAM_LIMITS.TAGS_MAX}/${STREAM_LIMITS.TAGS_MAX} tags`)).toBeInTheDocument();
     expect(input).toBeDisabled();
-    expect(input).toHaveAttribute(
-      'placeholder',
-      `Maximum ${STREAM_LIMITS.TAGS_MAX} tags reached`,
-    );
+    expect(input).toHaveAttribute('placeholder', `Maximum ${STREAM_LIMITS.TAGS_MAX} tags reached`);
     expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled();
   });
 
@@ -448,19 +395,13 @@ describe('StreamFormPage thumbnail', () => {
     const input = screen.getByLabelText('Upload Thumbnail (Max 5MB)');
     fireEvent.change(input, {
       target: {
-        files: [
-          fakeImage('huge.png', STREAM_LIMITS.THUMBNAIL_MAX_BYTES + 1),
-        ],
+        files: [fakeImage('huge.png', STREAM_LIMITS.THUMBNAIL_MAX_BYTES + 1)],
       },
     });
 
-    expect(
-      screen.getByText(ERROR_MESSAGES.THUMBNAIL_TOO_LARGE),
-    ).toBeInTheDocument();
+    expect(screen.getByText(ERROR_MESSAGES.THUMBNAIL_TOO_LARGE)).toBeInTheDocument();
     expect(screen.queryByText('huge.png')).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Remove' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
   });
 
   it('offers only the types the backend accepts', () => {
@@ -469,9 +410,10 @@ describe('StreamFormPage thumbnail', () => {
 
     // image/* would let the picker offer SVG and HEIC, which the thumbnail
     // endpoint answers with a 415 after the row has already been saved.
-    expect(
-      screen.getByLabelText('Upload Thumbnail (Max 5MB)'),
-    ).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp,image/gif');
+    expect(screen.getByLabelText('Upload Thumbnail (Max 5MB)')).toHaveAttribute(
+      'accept',
+      'image/png,image/jpeg,image/webp,image/gif',
+    );
   });
 
   it('rejects a type the backend would answer with a 415', () => {
@@ -485,9 +427,7 @@ describe('StreamFormPage thumbnail', () => {
     });
 
     expect(screen.getByText(UNSUPPORTED_IMAGE_TYPE)).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Remove' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
   });
 
   it('accepts an image exactly at the limit', () => {
@@ -500,14 +440,11 @@ describe('StreamFormPage thumbnail', () => {
       },
     });
 
-    expect(
-      screen.queryByText(ERROR_MESSAGES.THUMBNAIL_TOO_LARGE),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(ERROR_MESSAGES.THUMBNAIL_TOO_LARGE)).not.toBeInTheDocument();
     expect(screen.getByText('exact.png')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
   });
 });
-
 
 /**
  * The schedule field is one control with three parts: the picker field, the
@@ -558,10 +495,8 @@ describe('ScheduleField', () => {
     return onChange;
   };
 
-  const dateField = () =>
-    screen.getByLabelText<HTMLInputElement>('Scheduled Date *', FORM_CONTROL);
-  const timeField = () =>
-    screen.getByLabelText<HTMLInputElement>('Scheduled Time *');
+  const dateField = () => screen.getByLabelText<HTMLInputElement>('Scheduled Date *', FORM_CONTROL);
+  const timeField = () => screen.getByLabelText<HTMLInputElement>('Scheduled Time *');
 
   /** Opens the time menu the way a mouse does, and hands back its options. */
   const openTimeMenu = () => {
@@ -569,17 +504,14 @@ describe('ScheduleField', () => {
     return screen.getAllByRole('option');
   };
 
-  const typeTime = (text: string) =>
-    fireEvent.change(timeField(), { target: { value: text } });
+  const typeTime = (text: string) => fireEvent.change(timeField(), { target: { value: text } });
 
   it('shows the day and the time in their own fields, and both in the caption', () => {
     renderField();
 
     expect(dateField()).toHaveValue('14/09/2026');
     expect(timeField()).toHaveValue('15:00');
-    expect(
-      screen.getByText('14/09/2026 15:00 · in 37 minutes'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('14/09/2026 15:00 · in 37 minutes')).toBeInTheDocument();
   });
 
   it('shows the date as DD/MM/YYYY, with no weekday section', () => {
@@ -596,9 +528,7 @@ describe('ScheduleField', () => {
     const onChange = renderField();
 
     // 14:23 on a Monday: all four are in the future.
-    expect(
-      screen.getByRole('button', { name: 'Tonight 20:00' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tonight 20:00' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Tomorrow same time' }));
 
     expect(onChange).toHaveBeenLastCalledWith('2026-09-15T14:23');
@@ -611,12 +541,7 @@ describe('ScheduleField', () => {
 
     typeTime('18');
 
-    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
-      '18:00',
-      '18:15',
-      '18:30',
-      '18:45',
-    ]);
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['18:00', '18:15', '18:30', '18:45']);
   });
 
   it('takes a time off the menu without touching the day', () => {
@@ -661,9 +586,7 @@ describe('ScheduleField', () => {
 
     const options = openTimeMenu();
 
-    expect(
-      options.filter((o) => o.getAttribute('aria-disabled') === 'true'),
-    ).toHaveLength(0);
+    expect(options.filter((o) => o.getAttribute('aria-disabled') === 'true')).toHaveLength(0);
   });
 
   it('picks a day out of the popover calendar', async () => {
@@ -709,9 +632,7 @@ describe('ScheduleField', () => {
     expect(screen.getByRole('button', { name: /choose date/i })).toBeDisabled();
     expect(screen.getByText(SCHEDULE_LOCKED)).toBeInTheDocument();
     // No shortcuts on a field nobody can change.
-    expect(
-      screen.queryByRole('button', { name: 'Tomorrow same time' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tomorrow same time' })).not.toBeInTheDocument();
   });
 });
 
@@ -724,9 +645,7 @@ describe('StreamFormPage schedule prefill', () => {
     renderCreateForm();
 
     const [day, time] = halves(nextFullHour(new Date()));
-    expect(
-      screen.getByLabelText('Scheduled Date *', FORM_CONTROL),
-    ).toHaveValue(day);
+    expect(screen.getByLabelText('Scheduled Date *', FORM_CONTROL)).toHaveValue(day);
     expect(screen.getByLabelText('Scheduled Time *')).toHaveValue(time);
   });
 
@@ -735,8 +654,7 @@ describe('StreamFormPage schedule prefill', () => {
     mockFetch([
       {
         path: '/api/streams/edit-time',
-        respond: () =>
-          jsonOk(makeStream({ id: 'edit-time', scheduledStartTime: iso })),
+        respond: () => jsonOk(makeStream({ id: 'edit-time', scheduledStartTime: iso })),
       },
     ]);
 
@@ -745,9 +663,7 @@ describe('StreamFormPage schedule prefill', () => {
     // Whatever the machine's zone, the field shows that instant in it — the
     // prefill must not have overwritten a stored time.
     const [day, time] = halves(new Date(iso));
-    expect(
-      await screen.findByLabelText('Scheduled Date *', FORM_CONTROL),
-    ).toHaveValue(day);
+    expect(await screen.findByLabelText('Scheduled Date *', FORM_CONTROL)).toHaveValue(day);
     expect(screen.getByLabelText('Scheduled Time *')).toHaveValue(time);
   });
 });
@@ -760,23 +676,15 @@ describe('StreamFormPage error clearing', () => {
     submit();
 
     expect(screen.getByText(ERROR_MESSAGES.NAME_REQUIRED)).toBeInTheDocument();
-    expect(screen.getByLabelText('Stream Name *')).toHaveAttribute(
-      'aria-invalid',
-      'true',
-    );
+    expect(screen.getByLabelText('Stream Name *')).toHaveAttribute('aria-invalid', 'true');
 
     typeIn('Stream Name *', 'Alps 2');
 
     // The message was about the form as it was when Create was pressed;
     // leaving it up paints a filled field red and contradicts what the
     // operator is looking at.
-    expect(
-      screen.queryByText(ERROR_MESSAGES.NAME_REQUIRED),
-    ).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Stream Name *')).toHaveAttribute(
-      'aria-invalid',
-      'false',
-    );
+    expect(screen.queryByText(ERROR_MESSAGES.NAME_REQUIRED)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Stream Name *')).toHaveAttribute('aria-invalid', 'false');
   });
 
   it('does not clear a message a different field still owns', () => {
@@ -786,22 +694,16 @@ describe('StreamFormPage error clearing', () => {
     typeIn('Stream Name *', 'Alps 2');
     submit();
 
-    expect(
-      screen.getByText(ERROR_MESSAGES.DESCRIPTION_REQUIRED),
-    ).toBeInTheDocument();
+    expect(screen.getByText(ERROR_MESSAGES.DESCRIPTION_REQUIRED)).toBeInTheDocument();
 
     // Editing the tags does not answer the description.
     typeIn('Tags', 'alps');
 
-    expect(
-      screen.getByText(ERROR_MESSAGES.DESCRIPTION_REQUIRED),
-    ).toBeInTheDocument();
+    expect(screen.getByText(ERROR_MESSAGES.DESCRIPTION_REQUIRED)).toBeInTheDocument();
 
     typeIn('Description *', 'Two nights on the Aletsch');
 
-    expect(
-      screen.queryByText(ERROR_MESSAGES.DESCRIPTION_REQUIRED),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(ERROR_MESSAGES.DESCRIPTION_REQUIRED)).not.toBeInTheDocument();
   });
 
   it('validates again on the next submit', () => {
@@ -811,9 +713,7 @@ describe('StreamFormPage error clearing', () => {
     typeIn('Stream Name *', 'Alps 2');
     submit();
 
-    expect(
-      screen.getByText(ERROR_MESSAGES.DESCRIPTION_REQUIRED),
-    ).toBeInTheDocument();
+    expect(screen.getByText(ERROR_MESSAGES.DESCRIPTION_REQUIRED)).toBeInTheDocument();
 
     // Emptying the name again must bring its own error back, not the stale one.
     typeIn('Stream Name *', '');

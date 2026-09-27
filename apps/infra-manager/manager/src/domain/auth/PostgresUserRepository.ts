@@ -1,53 +1,34 @@
 import { Pool } from 'pg';
 
 import { USER_REMOVAL_LOCK_KEY } from './authSql.js';
-import type {
-  UserDeletion,
-  UserRepository,
-  UserRow,
-} from './UserRepository.js';
+import type { UserDeletion, UserRepository, UserRow } from './UserRepository.js';
 
-const USER_COLUMNS =
-  'id, username, password_hash, created_at, last_login_at, is_admin';
+const USER_COLUMNS = 'id, username, password_hash, created_at, last_login_at, is_admin';
 
 export class PostgresUserRepository implements UserRepository {
   constructor(private readonly pool: Pool) {}
 
   async count(): Promise<number> {
-    const result = await this.pool.query<{ count: number }>(
-      'SELECT COUNT(*)::int AS count FROM users',
-    );
+    const result = await this.pool.query<{ count: number }>('SELECT COUNT(*)::int AS count FROM users');
     return result.rows[0]?.count ?? 0;
   }
 
   async list(): Promise<UserRow[]> {
-    const result = await this.pool.query<UserRow>(
-      `SELECT ${USER_COLUMNS} FROM users ORDER BY created_at ASC, id ASC`,
-    );
+    const result = await this.pool.query<UserRow>(`SELECT ${USER_COLUMNS} FROM users ORDER BY created_at ASC, id ASC`);
     return result.rows;
   }
 
   async findById(id: number): Promise<UserRow | null> {
-    const result = await this.pool.query<UserRow>(
-      `SELECT ${USER_COLUMNS} FROM users WHERE id = $1`,
-      [id],
-    );
+    const result = await this.pool.query<UserRow>(`SELECT ${USER_COLUMNS} FROM users WHERE id = $1`, [id]);
     return result.rows[0] ?? null;
   }
 
   async findByUsername(username: string): Promise<UserRow | null> {
-    const result = await this.pool.query<UserRow>(
-      `SELECT ${USER_COLUMNS} FROM users WHERE username = $1`,
-      [username],
-    );
+    const result = await this.pool.query<UserRow>(`SELECT ${USER_COLUMNS} FROM users WHERE username = $1`, [username]);
     return result.rows[0] ?? null;
   }
 
-  async insert(
-    username: string,
-    passwordHash: string,
-    isAdmin: boolean,
-  ): Promise<UserRow | null> {
+  async insert(username: string, passwordHash: string, isAdmin: boolean): Promise<UserRow | null> {
     const result = await this.pool.query<UserRow>(
       `INSERT INTO users (username, password_hash, is_admin)
        VALUES ($1, $2, $3)
@@ -59,19 +40,14 @@ export class PostgresUserRepository implements UserRepository {
   }
 
   async markSignedIn(id: number, at: Date): Promise<void> {
-    await this.pool.query('UPDATE users SET last_login_at = $2 WHERE id = $1', [
-      id,
-      at,
-    ]);
+    await this.pool.query('UPDATE users SET last_login_at = $2 WHERE id = $1', [id, at]);
   }
 
   async deleteUnlessLast(id: number): Promise<UserDeletion> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock($1)', [
-        USER_REMOVAL_LOCK_KEY,
-      ]);
+      await client.query('SELECT pg_advisory_xact_lock($1)', [USER_REMOVAL_LOCK_KEY]);
 
       const counted = await client.query<{
         total: number;

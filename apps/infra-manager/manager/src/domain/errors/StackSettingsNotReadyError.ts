@@ -4,7 +4,10 @@
  * finished one has no files and no descriptions to put on a page.
  */
 export class StackSettingsNotReadyError extends Error {
-  constructor(public readonly versionName: string, public readonly reason: string) {
+  constructor(
+    public readonly versionName: string,
+    public readonly reason: string,
+  ) {
     super(`${versionName} has no settings yet. ${reason}`);
     this.name = 'StackSettingsNotReadyError';
   }

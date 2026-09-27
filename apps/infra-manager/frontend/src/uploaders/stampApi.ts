@@ -46,75 +46,38 @@ export interface BeeChainState {
 }
 
 export function fetchStampAddress(name: string, signal?: AbortSignal): Promise<BeeAddress> {
-  return getJson<BeeAddress>(
-    `/profiles/${encodeURIComponent(name)}/stamp/address`,
-    { signal },
-  );
+  return getJson<BeeAddress>(`/profiles/${encodeURIComponent(name)}/stamp/address`, { signal });
 }
 
 export function fetchStampWallet(name: string, signal?: AbortSignal): Promise<BeeWallet> {
-  return getJson<BeeWallet>(
-    `/profiles/${encodeURIComponent(name)}/stamp/wallet`,
-    { signal },
-  );
+  return getJson<BeeWallet>(`/profiles/${encodeURIComponent(name)}/stamp/wallet`, { signal });
 }
 
 export function fetchChainState(name: string, signal?: AbortSignal): Promise<BeeChainState> {
-  return getJson<BeeChainState>(
-    `/profiles/${encodeURIComponent(name)}/stamp/chainstate`,
-    { signal },
-  );
+  return getJson<BeeChainState>(`/profiles/${encodeURIComponent(name)}/stamp/chainstate`, { signal });
 }
 
 export async function fetchStamps(name: string, signal?: AbortSignal): Promise<BeeStamp[]> {
-  const body = await getJson<{ stamps: BeeStamp[] }>(
-    `/profiles/${encodeURIComponent(name)}/stamp/stamps`,
-    { signal },
-  );
+  const body = await getJson<{ stamps: BeeStamp[] }>(`/profiles/${encodeURIComponent(name)}/stamp/stamps`, { signal });
   return body.stamps;
 }
 
-export function buyStamp(
-  name: string,
-  input: BuyStampInput,
-): Promise<{ batchID: string }> {
-  return sendJson<{ batchID: string }>(
-    'POST',
-    `/profiles/${encodeURIComponent(name)}/stamp/buy`,
-    input,
-  );
+export function buyStamp(name: string, input: BuyStampInput): Promise<{ batchID: string }> {
+  return sendJson<{ batchID: string }>('POST', `/profiles/${encodeURIComponent(name)}/stamp/buy`, input);
 }
 
 /** Tops up a batch the deployment's own node holds, paid from that node's wallet. */
-export function topUpStamp(
-  name: string,
-  request: TopUpStampRequest,
-): Promise<BeeStampTransaction> {
-  return sendJson<BeeStampTransaction>(
-    'POST',
-    `/profiles/${encodeURIComponent(name)}/stamp/topup`,
-    request,
-  );
+export function topUpStamp(name: string, request: TopUpStampRequest): Promise<BeeStampTransaction> {
+  return sendJson<BeeStampTransaction>('POST', `/profiles/${encodeURIComponent(name)}/stamp/topup`, request);
 }
 
 /** Dilutes a batch the deployment's own node holds to a deeper depth. */
-export function diluteStamp(
-  name: string,
-  request: DiluteStampRequest,
-): Promise<BeeStampTransaction> {
-  return sendJson<BeeStampTransaction>(
-    'POST',
-    `/profiles/${encodeURIComponent(name)}/stamp/dilute`,
-    request,
-  );
+export function diluteStamp(name: string, request: DiluteStampRequest): Promise<BeeStampTransaction> {
+  return sendJson<BeeStampTransaction>('POST', `/profiles/${encodeURIComponent(name)}/stamp/dilute`, request);
 }
 
 export function setStamp(name: string, stampId: string): Promise<Profile> {
-  return sendJson<Profile>(
-    'POST',
-    `/profiles/${encodeURIComponent(name)}/stamp/set`,
-    { stamp_id: stampId },
-  );
+  return sendJson<Profile>('POST', `/profiles/${encodeURIComponent(name)}/stamp/set`, { stamp_id: stampId });
 }
 
 export function fetchBeeNodeObservation(name: string, signal?: AbortSignal): Promise<BeeNodeObservation> {

@@ -1,7 +1,4 @@
-import {
-  LOGIN_MAX_LOCKOUT_MS,
-  lockoutMsFor,
-} from '@streaming-infra-manager/common';
+import { LOGIN_MAX_LOCKOUT_MS, lockoutMsFor } from '@streaming-infra-manager/common';
 
 /**
  * A key with no failures for this long starts again from zero. Twice the
@@ -107,9 +104,7 @@ export class LoginLimiter {
     const all = [keys.account, ...(keys.shared ?? [])];
     const now = this.now();
 
-    const lockedForSeconds = Math.max(
-      ...all.map((key) => this.waitSeconds(key, now)),
-    );
+    const lockedForSeconds = Math.max(...all.map((key) => this.waitSeconds(key, now)));
     if (lockedForSeconds > 0) return { lockedForSeconds, ...NOTHING_TO_SETTLE };
 
     if (this.attempts.size >= MAX_TRACKED_KEYS) this.makeRoom(now);
@@ -144,8 +139,7 @@ export class LoginLimiter {
     // Reserved attempts count towards the lockout even though none of them has
     // come back yet. Without that, twenty guesses sent at once would all pass
     // this check before the first of them had failed.
-    const withPending =
-      entry.pending > 0 ? now + lockoutMsFor(entry.failures + entry.pending) : 0;
+    const withPending = entry.pending > 0 ? now + lockoutMsFor(entry.failures + entry.pending) : 0;
     const until = Math.max(entry.lockedUntil, withPending);
     return until <= now ? 0 : Math.ceil((until - now) / 1000);
   }
@@ -224,9 +218,5 @@ export class LoginLimiter {
 }
 
 function isForgettable(entry: Attempts, now: number): boolean {
-  return (
-    entry.pending === 0 &&
-    entry.lockedUntil <= now &&
-    now - entry.lastFailureAt >= FORGET_MS
-  );
+  return entry.pending === 0 && entry.lockedUntil <= now && now - entry.lastFailureAt >= FORGET_MS;
 }

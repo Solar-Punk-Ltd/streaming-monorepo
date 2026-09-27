@@ -87,7 +87,7 @@ export function pipeRunHandleToSSE(
     if (clientGone || res.writableEnded) {
       return;
     }
-        
+
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 

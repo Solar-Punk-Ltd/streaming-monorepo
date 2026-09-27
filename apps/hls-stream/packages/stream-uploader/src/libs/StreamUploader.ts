@@ -510,7 +510,8 @@ export class StreamUploader {
     this.queuedSeconds += duration;
     this.segmentsOffered += 1;
     recordSegment(this.bitrate, data.length, duration);
-    this.segmentQueue.add(async () => {
+    // uploadSegment answers a failed upload as a gap entry rather than rejecting.
+    void this.segmentQueue.add(async () => {
       try {
         await this.uploadSegment(segmentIndex, duration, data);
       } finally {
@@ -661,7 +662,8 @@ export class StreamUploader {
    * log window bounded by the fault would charge it to the wrong moment.
    */
   private queueAnnouncement(announce: () => void): void {
-    this.segmentQueue.add(() => {
+    // Announcements only log, and persistState catches its own failure.
+    void this.segmentQueue.add(() => {
       announce();
       this.persistState();
     });
@@ -1172,6 +1174,7 @@ export class StreamUploader {
         `Cannot tell ${question.asked} for stream ${this.streamId}, because its ` +
           `manifest feed head did not read within ${FEED_HEAD_READ_WINDOW_MS}ms: ${getErrorMessage(error)}. ` +
           question.consequence,
+        { cause: error },
       );
     }
   }

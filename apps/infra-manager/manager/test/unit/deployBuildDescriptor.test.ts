@@ -20,10 +20,7 @@ import { describe, it } from 'node:test';
 import type { StackContract } from '@streaming-infra-manager/common';
 
 import { ProfileBusyError, ProfileConfigError } from '../../src/domain/errors/index.js';
-import {
-  BUILD_COMPLETE_MARKER,
-  BUILD_MANIFEST_FILE,
-} from '../../src/domain/versions/buildManifest.js';
+import { BUILD_COMPLETE_MARKER, BUILD_MANIFEST_FILE } from '../../src/domain/versions/buildManifest.js';
 import { portPlanFor } from '../../src/domain/ports/portReservations.js';
 import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
@@ -59,7 +56,10 @@ function buildOnDisk(versionsRoot: string, buildId: string, name = 'v3'): string
   const dir = buildDirFor(versionsRoot, name, buildId);
   mkdirSync(join(dir, 'deploy', 'scripts'), { recursive: true });
   writeFileSync(join(dir, '.env'), 'ENGINE=srs\n');
-  writeFileSync(join(dir, BUILD_MANIFEST_FILE), JSON.stringify({ commit: buildId.slice(0, 40), buildId, builtAt: new Date().toISOString(), toolchain: 't' }));
+  writeFileSync(
+    join(dir, BUILD_MANIFEST_FILE),
+    JSON.stringify({ commit: buildId.slice(0, 40), buildId, builtAt: new Date().toISOString(), toolchain: 't' }),
+  );
   writeFileSync(join(dir, BUILD_COMPLETE_MARKER), '');
   return dir;
 }
@@ -72,7 +72,12 @@ async function setup(buildId: string | null = COMMIT_A) {
     undefined,
     versionsRoot,
   );
-  const v3 = await harness.versions.insert({ name: 'v3', gitRef: 'main-v3', rootPath: join(versionsRoot, 'v3'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
+  const v3 = await harness.versions.insert({
+    name: 'v3',
+    gitRef: 'main-v3',
+    rootPath: join(versionsRoot, 'v3'),
+    sourceUrl: SWARM_HLS_STREAM_SOURCE.url,
+  });
   if (buildId) {
     buildOnDisk(versionsRoot, buildId);
     await harness.versions.publish(v3.id, { buildId, commitSha: buildId.slice(0, 40), contract: CONTRACT });
@@ -93,7 +98,10 @@ describe('the build a deploy runs', () => {
     const reservation = await harness.orchestrator.reserveDeploy(harness.profiles.rows.get('stage')!, undefined);
     assert.equal(reservation.build?.root, buildA);
     assert.equal(reservation.build?.buildId, COMMIT_A);
-    assert.deepEqual(harness.ledger.openJobReferences('stage').map((r) => [r.buildId, [...r.services]]), [[COMMIT_A, reservation.services]]);
+    assert.deepEqual(
+      harness.ledger.openJobReferences('stage').map((r) => [r.buildId, [...r.services]]),
+      [[COMMIT_A, reservation.services]],
+    );
 
     buildOnDisk(versionsRoot, COMMIT_B);
     await harness.versions.publish(v3.id, { buildId: COMMIT_B, commitSha: COMMIT_B, contract: CONTRACT });
@@ -159,7 +167,11 @@ describe('a deployment on the bundled version', () => {
       contract: CONTRACT,
       rootPath: join(versionsRoot, 'bundled'),
     });
-    assert.equal(harness.ledger.openJobReferences('stage').length, 1, 'the deploy on the legacy tree keeps its reference');
+    assert.equal(
+      harness.ledger.openJobReferences('stage').length,
+      1,
+      'the deploy on the legacy tree keeps its reference',
+    );
 
     await harness.orchestrator.startDeploy(row(), undefined);
     harness.runner.finish(1, 0);
@@ -167,7 +179,13 @@ describe('a deployment on the bundled version', () => {
 
     assert.equal(harness.runner.runs[1]?.options.cwd, buildDirFor(versionsRoot, 'bundled', COMMIT_B));
     const job = harness.ledger.references.filter((r) => r.holderKind === 'job' && r.holderId === 'stage');
-    assert.deepEqual(job.map((r) => [r.versionId, r.buildId]), [[1, 'bundled'], [1, COMMIT_B]]);
+    assert.deepEqual(
+      job.map((r) => [r.versionId, r.buildId]),
+      [
+        [1, 'bundled'],
+        [1, COMMIT_B],
+      ],
+    );
   });
 
   it('refuses a missing version without taking a bundled reference or starting a script', async () => {
@@ -189,7 +207,9 @@ describe('what the success hook records', () => {
     h.runner.finish(0);
     await untilRunning(h.profiles, 'bundled-stage');
     assert.deepEqual(h.ledger.openJobReferences('bundled-stage'), []);
-    assert.ok(h.ledger.references.some(reference => reference.holderId === 'bundled-stage/srs' && reference.versionId === 1));
+    assert.ok(
+      h.ledger.references.some((reference) => reference.holderId === 'bundled-stage/srs' && reference.versionId === 1),
+    );
   });
 
   it('hands over engine ports after the captured build is observed and preserves untouched uploader ports', async () => {
@@ -202,20 +222,30 @@ describe('what the success hook records', () => {
     await harness.orchestrator.startDeploy(row(), undefined);
     harness.runner.finish(0);
     await untilRunning(harness.profiles, 'stage');
-    const next = { ...CONTRACT, ports: CONTRACT.ports.map(port => port.service === 'srs'
-      ? { ...port, slotBase: port.slotBase + 3000 } : port) };
+    const next = {
+      ...CONTRACT,
+      ports: CONTRACT.ports.map((port) =>
+        port.service === 'srs' ? { ...port, slotBase: port.slotBase + 3000 } : port,
+      ),
+    };
     buildOnDisk(versionsRoot, COMMIT_B);
     await harness.versions.publish(v3.id, { buildId: COMMIT_B, commitSha: COMMIT_B, contract: next });
     harness.ledger.mounted.set('stage/srs', buildDirFor(versionsRoot, 'v3', COMMIT_B));
-    harness.published.bindings = portPlanFor(next.ports, row().port_slot).map(port => ({ ...port, project: 'stage' }));
+    harness.published.bindings = portPlanFor(next.ports, row().port_slot).map((port) => ({
+      ...port,
+      project: 'stage',
+    }));
     await harness.orchestrator.startDeploy(row(), ['srs']);
     harness.runner.finish(1);
     await untilRunning(harness.profiles, 'stage');
     const held = await harness.profiles.reservations.listByProfile('stage');
     for (const port of old) {
-      assert.equal(held.some(row => row.port === port.port && row.protocol === port.protocol), port.service !== 'srs');
+      assert.equal(
+        held.some((row) => row.port === port.port && row.protocol === port.protocol),
+        port.service !== 'srs',
+      );
     }
-    assert.ok(held.some(port => port.service === 'srs' && port.state === 'active'));
+    assert.ok(held.some((port) => port.service === 'srs' && port.state === 'active'));
   });
 
   it('observes what each service mounts, and resolves the job reference the observation covers', async () => {
@@ -231,14 +261,19 @@ describe('what the success hook records', () => {
 
     assert.deepEqual(harness.ledger.openJobReferences('stage'), []);
     const snapshots = harness.ledger.references.filter((r) => r.holderKind === 'snapshot');
-    assert.deepEqual(snapshots.map((r) => r.holderId).sort(), ['stage/bee-uploader', 'stage/srs', 'stage/stream-uploader']);
+    assert.deepEqual(snapshots.map((r) => r.holderId).sort(), [
+      'stage/bee-uploader',
+      'stage/srs',
+      'stage/stream-uploader',
+    ]);
     assert.ok(snapshots.every((r) => r.buildId === COMMIT_A));
   });
 
   it('resolves the older snapshot of a service when a newer observation replaces it', async () => {
     const { harness, row, versionsRoot } = await setup();
     const buildA = buildDirFor(versionsRoot, 'v3', COMMIT_A);
-    for (const service of ['srs', 'stream-uploader', 'bee-uploader']) harness.ledger.mounted.set(`stage/${service}`, buildA);
+    for (const service of ['srs', 'stream-uploader', 'bee-uploader'])
+      harness.ledger.mounted.set(`stage/${service}`, buildA);
 
     await harness.orchestrator.startDeploy(row(), undefined);
     harness.runner.finish(0);
@@ -268,7 +303,8 @@ describe('what the success hook records', () => {
   it('brings the deployment up when recording what its containers run fails, and records no full deploy past it', async () => {
     const { harness, row, versionsRoot } = await setup();
     const buildA = buildDirFor(versionsRoot, 'v3', COMMIT_A);
-    for (const service of ['srs', 'stream-uploader', 'bee-uploader']) harness.ledger.mounted.set(`stage/${service}`, buildA);
+    for (const service of ['srs', 'stream-uploader', 'bee-uploader'])
+      harness.ledger.mounted.set(`stage/${service}`, buildA);
     harness.containers.failSetBuild = true;
 
     await harness.orchestrator.startDeploy(row(), undefined);
@@ -282,17 +318,24 @@ describe('what the success hook records', () => {
   it('names the version whose build a container mounts, not the version of an earlier job', async () => {
     const { harness, row, versionsRoot } = await setup();
     const buildA = buildDirFor(versionsRoot, 'v3', COMMIT_A);
-    for (const service of ['srs', 'stream-uploader', 'bee-uploader']) harness.ledger.mounted.set(`stage/${service}`, buildA);
+    for (const service of ['srs', 'stream-uploader', 'bee-uploader'])
+      harness.ledger.mounted.set(`stage/${service}`, buildA);
     await harness.orchestrator.startDeploy(row(), undefined);
     harness.runner.finish(0);
     await untilRunning(harness.profiles, 'stage');
 
-    const v4 = await harness.versions.insert({ name: 'v4', gitRef: 'main-v4', rootPath: join(versionsRoot, 'v4'), sourceUrl: SWARM_HLS_STREAM_SOURCE.url });
+    const v4 = await harness.versions.insert({
+      name: 'v4',
+      gitRef: 'main-v4',
+      rootPath: join(versionsRoot, 'v4'),
+      sourceUrl: SWARM_HLS_STREAM_SOURCE.url,
+    });
     buildOnDisk(versionsRoot, COMMIT_B, 'v4');
     await harness.versions.publish(v4.id, { buildId: COMMIT_B, commitSha: COMMIT_B, contract: CONTRACT });
     harness.profiles.write('stage', { stack_version_id: v4.id });
     const buildB = buildDirFor(versionsRoot, 'v4', COMMIT_B);
-    for (const service of ['srs', 'stream-uploader', 'bee-uploader']) harness.ledger.mounted.set(`stage/${service}`, buildB);
+    for (const service of ['srs', 'stream-uploader', 'bee-uploader'])
+      harness.ledger.mounted.set(`stage/${service}`, buildB);
     await harness.orchestrator.startDeploy(row(), undefined);
     harness.runner.finish(1, 0);
     await untilRunning(harness.profiles, 'stage');
@@ -300,7 +343,10 @@ describe('what the success hook records', () => {
     const standing = harness.ledger.references.filter(
       (r) => r.holderKind === 'snapshot' && r.holderId === 'stage/srs' && r.resolvedAt === null,
     );
-    assert.deepEqual(standing.map((r) => [r.versionId, r.buildId]), [[v4.id, COMMIT_B]]);
+    assert.deepEqual(
+      standing.map((r) => [r.versionId, r.buildId]),
+      [[v4.id, COMMIT_B]],
+    );
   });
 
   it('keeps the job reference when the script fails', async () => {
@@ -332,30 +378,29 @@ describe('what the success hook records', () => {
 });
 
 describe('what the row says runs', () => {
-  it('records each service\'s build and commit from observation, and the profile\'s last full deploy commit when every service agrees', async () => {
+  it("records each service's build and commit from observation, and the profile's last full deploy commit when every service agrees", async () => {
     const { harness, row, versionsRoot } = await setup();
     const buildA = buildDirFor(versionsRoot, 'v3', COMMIT_A);
-    for (const service of ['srs', 'stream-uploader', 'bee-uploader']) harness.ledger.mounted.set(`stage/${service}`, buildA);
+    for (const service of ['srs', 'stream-uploader', 'bee-uploader'])
+      harness.ledger.mounted.set(`stage/${service}`, buildA);
 
     await harness.orchestrator.startDeploy(row(), undefined);
     harness.runner.finish(0);
     await untilRunning(harness.profiles, 'stage');
 
-    assert.deepEqual(
-      [...harness.containers.builds.entries()].sort(),
-      [
-        ['stage/bee-uploader', { buildId: COMMIT_A, commit: COMMIT_A }],
-        ['stage/srs', { buildId: COMMIT_A, commit: COMMIT_A }],
-        ['stage/stream-uploader', { buildId: COMMIT_A, commit: COMMIT_A }],
-      ],
-    );
+    assert.deepEqual([...harness.containers.builds.entries()].sort(), [
+      ['stage/bee-uploader', { buildId: COMMIT_A, commit: COMMIT_A }],
+      ['stage/srs', { buildId: COMMIT_A, commit: COMMIT_A }],
+      ['stage/stream-uploader', { buildId: COMMIT_A, commit: COMMIT_A }],
+    ]);
     assert.equal(row().last_full_deploy_commit, COMMIT_A);
   });
 
   it('does not advance untouched services or the full deploy commit on an engine-only deploy', async () => {
     const { harness, row, versionsRoot, v3 } = await setup();
     const buildA = buildDirFor(versionsRoot, 'v3', COMMIT_A);
-    for (const service of ['srs', 'stream-uploader', 'bee-uploader']) harness.ledger.mounted.set(`stage/${service}`, buildA);
+    for (const service of ['srs', 'stream-uploader', 'bee-uploader'])
+      harness.ledger.mounted.set(`stage/${service}`, buildA);
     await harness.orchestrator.startDeploy(row(), undefined);
     harness.runner.finish(0);
     await untilRunning(harness.profiles, 'stage');

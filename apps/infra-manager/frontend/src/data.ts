@@ -14,22 +14,9 @@ import {
 } from '@streaming-infra-manager/common';
 
 import { ACTION_TIMEOUT_MS, actionTimedOutMessage } from './deployments/actionLimit';
-import {
-  apiFetch,
-  checkSessionAfterStreamClosed,
-  failWith,
-  getJson,
-  isTimeout,
-  send,
-  sendJson,
-} from './http';
+import { apiFetch, checkSessionAfterStreamClosed, failWith, getJson, isTimeout, send, sendJson } from './http';
 import { readScriptOutcome, ScriptStreamEndedError } from './scriptStream';
-import type {
-  CreateProfileBody,
-  DeploymentGroup,
-  Profile,
-  ProfileKind,
-} from './types';
+import type { CreateProfileBody, DeploymentGroup, Profile, ProfileKind } from './types';
 
 export interface ServerConfig {
   host: string;
@@ -68,8 +55,7 @@ export async function fetchServerConfig(): Promise<ServerConfig> {
     return {
       host: body.host,
       srtPassphrase: body.srtPassphrase ?? null,
-      chequebookFloorBzz:
-        body.chequebookFloorBzz ?? DEFAULT_CHEQUEBOOK_FLOOR_BZZ,
+      chequebookFloorBzz: body.chequebookFloorBzz ?? DEFAULT_CHEQUEBOOK_FLOOR_BZZ,
       beeRpcEndpoint: body.beeRpcEndpoint ?? NO_BEE_RPC_ENDPOINT,
     };
   } catch {
@@ -97,16 +83,12 @@ export async function fetchProfiles(): Promise<Profile[]> {
  * merged into the deployments store, where every page would hold it.
  */
 export async function fetchSrtPassphrase(name: string): Promise<string | null> {
-  const body = await getJson<{ srt_passphrase: string | null }>(
-    `/profiles/${encodeURIComponent(name)}/srt-passphrase`,
-  );
+  const body = await getJson<{ srt_passphrase: string | null }>(`/profiles/${encodeURIComponent(name)}/srt-passphrase`);
   return body.srt_passphrase;
 }
 
 function uploaderDeployed(profile: Profile): boolean {
-  return profile.containers.some(
-    (c) => c.service === STREAM_UPLOADER_SERVICE,
-  );
+  return profile.containers.some((c) => c.service === STREAM_UPLOADER_SERVICE);
 }
 
 // A pool-backed uploader carries the pool's batches in BEE_PUBLISHERS, so it
@@ -130,17 +112,18 @@ type ProfileAction = 'deploy' | 'stop' | 'deploy-uploader';
  */
 async function postAction(name: string, action: ProfileAction): Promise<void> {
   try {
-    const res = await apiFetch(
-      `/profiles/${encodeURIComponent(name)}/${action}`,
-      { method: 'POST', body: {}, signal: AbortSignal.timeout(ACTION_TIMEOUT_MS) },
-    );
+    const res = await apiFetch(`/profiles/${encodeURIComponent(name)}/${action}`, {
+      method: 'POST',
+      body: {},
+      signal: AbortSignal.timeout(ACTION_TIMEOUT_MS),
+    });
     if (!res.ok) await failWith(res, `request failed (${res.status})`);
     if (!res.body) {
       throw new Error('The manager answered the action with no stream to read.');
     }
     await readScriptOutcome(res.body);
   } catch (caught) {
-    if (isTimeout(caught)) throw new Error(actionTimedOutMessage());
+    if (isTimeout(caught)) throw new Error(actionTimedOutMessage(), { cause: caught });
     // Nothing else on the page is fetching while a deploy runs, so a session
     // that ended under it surfaces here and nowhere else. Asked before the
     // message travels, so the operator lands on the sign-in page rather than
@@ -166,10 +149,7 @@ export function deleteProfile(name: string): Promise<void> {
   return send('DELETE', `/profiles/${encodeURIComponent(name)}`);
 }
 
-export function createProfile(
-  body: CreateProfileBody,
-  signal?: AbortSignal,
-): Promise<Profile> {
+export function createProfile(body: CreateProfileBody, signal?: AbortSignal): Promise<Profile> {
   return sendJson<Profile>('POST', '/profiles', body, signal);
 }
 
@@ -221,10 +201,7 @@ export interface CreateGroupBody {
   use_manager_admin_token?: boolean;
 }
 
-export function createDeploymentGroup(
-  body: CreateGroupBody,
-  signal?: AbortSignal,
-): Promise<GroupWithMembers> {
+export function createDeploymentGroup(body: CreateGroupBody, signal?: AbortSignal): Promise<GroupWithMembers> {
   return sendJson<GroupWithMembers>('POST', '/groups', body, signal);
 }
 
@@ -243,17 +220,11 @@ export interface UpdateGroupConfigBody {
   srt_passphrase?: string | null;
 }
 
-export function updateGroupConfig(
-  id: number,
-  body: UpdateGroupConfigBody,
-): Promise<GroupWithMembers> {
+export function updateGroupConfig(id: number, body: UpdateGroupConfigBody): Promise<GroupWithMembers> {
   return sendJson<GroupWithMembers>('PATCH', `/groups/${id}/config`, body);
 }
 
-export function addGroupMembers(
-  id: number,
-  count: number,
-): Promise<GroupWithMembers> {
+export function addGroupMembers(id: number, count: number): Promise<GroupWithMembers> {
   return sendJson<GroupWithMembers>('POST', `/groups/${id}/members`, { count });
 }
 
@@ -261,20 +232,14 @@ export function addGroupMembers(
 // a local copy silently loses whatever the server adds. It already had: the
 // per-rung verification fields were arriving in the JSON and were invisible to the
 // compiler, so nothing would have caught a rename.
-export type {
-  BeePublishersResult,
-  LadderRungState,
-  RungNote,
-} from '@streaming-infra-manager/common';
+export type { BeePublishersResult, LadderRungState, RungNote } from '@streaming-infra-manager/common';
 
 /**
  * The assembled BEE_PUBLISHERS for a ladder group, or which rungs are holding it
  * up. Returns null for a group that is not a ladder, so callers can probe cheaply
  * without knowing in advance.
  */
-export async function fetchBeePublishers(
-  groupId: number,
-): Promise<BeePublishersResult | null> {
+export async function fetchBeePublishers(groupId: number): Promise<BeePublishersResult | null> {
   const res = await apiFetch(`/groups/${groupId}/bee-publishers`);
   if (res.status === 409) return null;
   if (!res.ok) await failWith(res, `request failed (${res.status})`);
@@ -289,29 +254,17 @@ export async function fetchGroups(): Promise<DeploymentGroup[]> {
   }
 }
 
-export function updateProfile(
-  name: string,
-  body: UpdateProfileBody,
-): Promise<Profile> {
-  return sendJson<Profile>(
-    'PUT',
-    `/profiles/${encodeURIComponent(name)}`,
-    body,
-  );
+export function updateProfile(name: string, body: UpdateProfileBody): Promise<Profile> {
+  return sendJson<Profile>('PUT', `/profiles/${encodeURIComponent(name)}`, body);
 }
 
 /**
  * Saves the notes alone: no claim on the deployment, no deploy. A note saved
  * elsewhere since `loadedRevision` was read is answered with 409.
  */
-export function updateNotes(
-  name: string,
-  notes: string | null,
-  loadedRevision: number,
-): Promise<Profile> {
-  return sendJson<Profile>(
-    'PATCH',
-    `/profiles/${encodeURIComponent(name)}/notes`,
-    { notes, notes_revision: loadedRevision },
-  );
+export function updateNotes(name: string, notes: string | null, loadedRevision: number): Promise<Profile> {
+  return sendJson<Profile>('PATCH', `/profiles/${encodeURIComponent(name)}/notes`, {
+    notes,
+    notes_revision: loadedRevision,
+  });
 }

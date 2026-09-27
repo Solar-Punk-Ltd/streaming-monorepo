@@ -28,10 +28,7 @@ describe('srtLinkVerdict', () => {
 
   // Loss that retransmission recovered in time never reached the picture.
   it('stays healthy through loss that was recovered in time', () => {
-    assert.equal(
-      srtLinkVerdict(counts({ lost: 900, retransmitted: 900, dropped: 0 })),
-      SRT_LINK_HEALTHY,
-    );
+    assert.equal(srtLinkVerdict(counts({ lost: 900, retransmitted: 900, dropped: 0 })), SRT_LINK_HEALTHY);
   });
 
   it('calls a single dropped packet degraded', () => {
@@ -49,10 +46,7 @@ describe('srtLinkVerdict', () => {
 
   // The two reports the tester's broadcast printed on 2026-09-22, summed.
   it('calls the broadcast that broke up for five hours bad', () => {
-    assert.equal(
-      srtLinkVerdict({ received: 12_957, lost: 761, retransmitted: 731, dropped: 763 }),
-      SRT_LINK_BAD,
-    );
+    assert.equal(srtLinkVerdict({ received: 12_957, lost: 761, retransmitted: 731, dropped: 763 }), SRT_LINK_BAD);
   });
 
   it('calls a link that received nothing and dropped nothing healthy', () => {
@@ -67,10 +61,11 @@ describe('srtLinkVerdict', () => {
 
 describe('srtLinkPercentages', () => {
   it('gives each count as a share of the packets received', () => {
-    assert.deepEqual(
-      srtLinkPercentages(counts({ lost: 250, retransmitted: 200, dropped: 50 })),
-      { lost: 2.5, retransmitted: 2, dropped: 0.5 },
-    );
+    assert.deepEqual(srtLinkPercentages(counts({ lost: 250, retransmitted: 200, dropped: 50 })), {
+      lost: 2.5,
+      retransmitted: 2,
+      dropped: 0.5,
+    });
   });
 
   it('answers null rather than dividing by zero packets', () => {

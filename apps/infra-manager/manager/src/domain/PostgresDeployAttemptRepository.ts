@@ -1,11 +1,14 @@
 import type { Pool, PoolClient } from 'pg';
 
-import {
-  type AttemptOutcome,
-  type DeployAttempt,
-} from './deployAttempts.js';
+import { type AttemptOutcome, type DeployAttempt } from './deployAttempts.js';
 import type { AttemptSnapshotToken, DeployAttemptRepository, NewDeployAttempt } from './DeployAttemptRepository.js';
-import { ATTEMPT_COLUMNS as COLUMNS, type AttemptRow, captureAttemptSnapshotToken, openDeployAttempt, toAttempt } from './deployAttemptSql.js';
+import {
+  ATTEMPT_COLUMNS as COLUMNS,
+  type AttemptRow,
+  captureAttemptSnapshotToken,
+  openDeployAttempt,
+  toAttempt,
+} from './deployAttemptSql.js';
 
 /**
  * The attempts table. `open` takes an advisory lock keyed by the daemon for
@@ -18,11 +21,11 @@ export class PostgresDeployAttemptRepository implements DeployAttemptRepository 
 
   async open(attempt: NewDeployAttempt): Promise<DeployAttempt> {
     const captured = structuredClone(attempt);
-    return this.transaction(client => openDeployAttempt(client, captured));
+    return this.transaction((client) => openDeployAttempt(client, captured));
   }
 
   async captureSnapshotToken(daemonId: string, project: string): Promise<AttemptSnapshotToken> {
-    return this.transaction(client => captureAttemptSnapshotToken(client, daemonId, project));
+    return this.transaction((client) => captureAttemptSnapshotToken(client, daemonId, project));
   }
 
   private async transaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -41,10 +44,9 @@ export class PostgresDeployAttemptRepository implements DeployAttemptRepository 
   }
 
   async findByJob(jobId: string): Promise<DeployAttempt | null> {
-    const result = await this.pool.query<AttemptRow>(
-      `SELECT ${COLUMNS} FROM deploy_attempts WHERE job_id = $1`,
-      [jobId],
-    );
+    const result = await this.pool.query<AttemptRow>(`SELECT ${COLUMNS} FROM deploy_attempts WHERE job_id = $1`, [
+      jobId,
+    ]);
     return result.rows[0] ? toAttempt(result.rows[0]) : null;
   }
 
