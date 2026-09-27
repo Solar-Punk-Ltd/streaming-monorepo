@@ -1,9 +1,10 @@
-import { BeeResponseError, FeedIndex, PrivateKey, Topic } from '@ethersphere/bee-js';
+import { FeedIndex, PrivateKey, Topic } from '@ethersphere/bee-js';
 import { catalogStateLost, ladderFinalized } from '@swarm-hls-stream/shared';
 import PQueue from 'p-queue';
 
 import { MediaType, Rendition, STREAM_STATUS_LIVE, STREAM_STATUS_VOD, StreamStatus } from '../types.js';
 import { extractHttpStatus, getErrorMessage, isFeedAbsent, retryUntilDeadlineAsync } from '../utils/common.js';
+import { isTransferLost } from '../utils/transportFailure.js';
 
 import { BeePublisher, BeePublisherPool, safeUrl } from './BeePublisherPool.js';
 import { CatalogIndexStore } from './CatalogIndexStore.js';
@@ -30,16 +31,6 @@ export type { LadderIdentity } from './LadderRegistry.js';
  * this is tens of seconds of trying rather than an instant.
  */
 export const TREAT_STATE_AS_LOST_AFTER = 3;
-
-/**
- * Node's error codes for a request that reached bee and then lost the transfer, as opposed to one
- * that never arrived. bee-js is built on axios and passes its `code` through as `statusText`,
- * leaving `status` unset when no response completed — which is what separates these from an HTTP
- * error that came back with a status of its own.
- *
- * ECONNREFUSED, ENOTFOUND and the rest deliberately stay out: those say the node was never there.
- */
-const TRANSFER_LOST_CODES = new Set(['ECONNABORTED', 'ECONNRESET']);
 
 export interface StreamEntry {
   title: string;
@@ -375,11 +366,11 @@ export class StreamCatalog implements LadderRegistry {
    * problem. One that does not answer makes this false, so `init` rethrows instead of resuming from
    * the persisted index.
    *
-   * That rethrow is waited on like any other. Until 2026-09-17 this one was not: a dropped body
-   * arrives as `ECONNABORTED` on `statusText` with the message "response stream aborted", and the
-   * wait read neither of those, so the boot ended here while every other rethrow was retried. See
-   * `transportCodeOf` in `NodeWait.ts` for what bee-js does with a transport code and why a fixture
-   * of our own hid it for so long.
+   * That rethrow is waited on like any other. Until 2026-09-17 this one was not: under bee-js 9 a
+   * dropped body arrived as `ECONNABORTED` on `statusText` with the message "response stream aborted",
+   * and the wait read neither of those, so the boot ended here while every other rethrow was retried.
+   * Under bee-js 13 the same body arrives as fetch's `TypeError: terminated`. See `transportCodeOf` in
+   * `utils/transportFailure.ts` for where each client leaves a transport code.
    */
   private async payloadUnreadableOnLiveNode(error: unknown): Promise<boolean> {
     if (!isTransferLost(error)) {
@@ -750,13 +741,6 @@ export function withMaster(entry: StreamEntry, master: PublishedMaster): StreamE
   }
 
   return repointed;
-}
-
-/** A request that reached the node and lost the response on the way back. */
-function isTransferLost(error: unknown): boolean {
-  return (
-    error instanceof BeeResponseError && error.status === undefined && TRANSFER_LOST_CODES.has(error.statusText ?? '')
-  );
 }
 
 function withoutTopic(entries: StreamEntry[], owner: string, topic: string): StreamEntry[] {

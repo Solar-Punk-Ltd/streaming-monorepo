@@ -1,3 +1,5 @@
+import { describeFailure } from '../utils/transportFailure.js';
+
 import { safeUrl } from './BeePublisherPool.js';
 import { gateReadingOfError } from './gateReadingOfError.js';
 import { GateRefusalError } from './GateRefusalError.js';
@@ -220,10 +222,6 @@ function parseAvailablePlur(body: unknown): bigint | null {
   } catch {
     return null;
   }
-}
-
-function describeFailure(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function distinctByUrl(nodes: readonly ChequebookNode[]): ChequebookNode[] {
