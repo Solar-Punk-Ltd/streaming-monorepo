@@ -145,8 +145,7 @@ export function NewDeploymentSettingsEditor({
         <Box sx={{ flex: '1 1 auto' }} />
         <Typography
           variant="caption"
-          color={refused.length > 0 ? 'error.main' : 'text.secondary'}
-          sx={{ overflowWrap: 'anywhere' }}
+          sx={{ color: refused.length > 0 ? 'error.main' : 'text.secondary', overflowWrap: 'anywhere' }}
         >
           {newDeploymentSettingsNote(sent.length, refused)}
         </Typography>

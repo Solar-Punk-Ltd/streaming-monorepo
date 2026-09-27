@@ -79,9 +79,8 @@ export function FormField({
         <Typography
           id={messageId}
           variant="caption"
-          color={error ? 'warning.main' : 'text.secondary'}
           aria-live="polite"
-          sx={{ mt: message === null ? 0 : 0.75, display: 'block' }}
+          sx={{ color: error ? 'warning.main' : 'text.secondary', mt: message === null ? 0 : 0.75, display: 'block' }}
         >
           {message}
         </Typography>

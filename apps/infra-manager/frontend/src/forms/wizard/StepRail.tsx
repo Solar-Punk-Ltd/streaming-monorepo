@@ -41,8 +41,8 @@ export function StepRail({ step }: { step: number }) {
             </Box>
             <Typography
               variant="body2"
-              color={current ? 'text.primary' : 'text.secondary'}
               sx={{
+                color: current ? 'text.primary' : 'text.secondary',
                 fontWeight: current ? 600 : 400
               }}
             >

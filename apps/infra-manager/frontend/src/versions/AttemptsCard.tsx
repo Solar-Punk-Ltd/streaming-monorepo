@@ -128,8 +128,7 @@ function AttemptRow({
         </Typography>
         <Typography
           variant="caption"
-          color={attempt.reason ? 'error.main' : 'text.secondary'}
-          sx={{ display: 'block', fontFamily: MONO_STACK, whiteSpace: 'pre-wrap' }}
+          sx={{ color: attempt.reason ? 'error.main' : 'text.secondary', display: 'block', fontFamily: MONO_STACK, whiteSpace: 'pre-wrap' }}
         >
           {attempt.reason ?? (releasable ? NEVER_JUDGED : RUNNING_RESOLVES_ITSELF)}
         </Typography>

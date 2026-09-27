@@ -87,13 +87,13 @@ export function DeployTargetsCard() {
                 }}>
                 Docker daemon: {target.daemonId ?? 'not established'}
               </Typography>
-              <Typography variant="caption" color={target.verifiedAt ? 'text.secondary' : 'error.main'}>
+              <Typography variant="caption" sx={{ color: target.verifiedAt ? 'text.secondary' : 'error.main' }}>
                 {target.verifiedAt ? `Verified ${formatDateTime(target.verifiedAt)}` : 'Not verified'}
               </Typography>
               {target.lastError && <Typography variant="body2" sx={{
                 color: "error.main"
               }}>{target.lastError}</Typography>}
-              <Typography variant="caption" color={target.inventorySeededAt ? 'text.secondary' : 'warning.main'}>
+              <Typography variant="caption" sx={{ color: target.inventorySeededAt ? 'text.secondary' : 'warning.main' }}>
                 {target.inventorySeededAt ? `Ports inventoried ${formatDateTime(target.inventorySeededAt)}` : 'Port inventory incomplete. Verify this target to scan it.'}
               </Typography>
             </Stack>

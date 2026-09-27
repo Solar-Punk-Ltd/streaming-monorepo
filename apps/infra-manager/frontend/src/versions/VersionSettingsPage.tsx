@@ -294,7 +294,7 @@ export function VersionSettingsPage({ id }: { id: number }) {
             <Box sx={{ flex: '1 1 auto' }} />
             <Typography
               variant="caption"
-              color={refusedKeys.length > 0 ? 'error.main' : 'text.secondary'}
+              sx={{ color: refusedKeys.length > 0 ? 'error.main' : 'text.secondary' }}
             >
               {footerNote(edits, refusedKeys)}
             </Typography>
