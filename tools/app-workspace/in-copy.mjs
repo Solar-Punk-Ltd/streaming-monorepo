@@ -7,13 +7,14 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readlinkSync,
   realpathSync,
   rmSync,
   symlinkSync,
 } from 'node:fs';
 import { constants as osConstants, tmpdir } from 'node:os';
-import { dirname, join, posix, resolve } from 'node:path';
+import { basename, dirname, join, posix, relative, resolve } from 'node:path';
 
 import { DEFAULT_ROOT, cutApp, normalizeApp } from './cut.mjs';
 import { UsageError, parseOptions, requireOption, runWhenStarted } from './lib/cli.mjs';
@@ -28,8 +29,8 @@ does not ignore. Ignored files, such as node_modules, dist and every .env, stay 
 lockfile, the apps keep their own, and the copy gets no cut.
 
 --also copies one more path of the app, from the app's folder, whether git ignores it or not, for a build output an
-image copies in, such as the stack uploader's dist. The command finds the copy's folder in APP_WORKSPACE_COPY as well
-as in its working directory.
+image copies in, such as the stack uploader's dist. It refuses a path that is or holds an env file, .env or
+.env.<anything>. The command finds the copy's folder in APP_WORKSPACE_COPY as well as in its working directory.
 
 It is how an image builds from a working checkout, for example from apps/infra-manager:
   node ../../tools/app-workspace/in-copy.mjs --app apps/infra-manager -- docker build --file manager/Dockerfile --tag manager-api .
@@ -97,13 +98,37 @@ function alsoPath(path) {
   return normalized;
 }
 
-/** Copies each path --also names from the app's folder into the copy, links kept as links. */
-function copyAlsoPaths(root, app, paths, copy) {
-  for (const path of paths) {
-    const source = join(root, app, path);
-    if (!existsSync(source)) throw new Refusal(`--also names ${path}, and ${app} holds no ${path} to copy. Build it first.`);
-    cpSync(source, join(copy, path), { recursive: true, verbatimSymlinks: true });
+/** An env file's name: .env itself, or .env, a dot and anything after it, such as .env.local. */
+const ENV_FILE_NAME = /^\.env(\..+)?$/;
+
+/** The first env file at or under `path`, found by its name, with links looked at and never followed, or null. */
+function envFileAt(path) {
+  if (ENV_FILE_NAME.test(basename(path))) return path;
+  if (!lstatSync(path).isDirectory()) return null;
+  for (const name of readdirSync(path).sort()) {
+    const found = envFileAt(join(path, name));
+    if (found !== null) return found;
   }
+  return null;
+}
+
+/**
+ * Copies each path --also names from the app's folder into the copy, links kept as links. Every path is checked before
+ * any is copied, so an env file never reaches the copy at all.
+ */
+function copyAlsoPaths(root, app, paths, copy) {
+  const appDir = join(root, app);
+  for (const path of paths) {
+    const source = join(appDir, path);
+    if (!existsSync(source)) throw new Refusal(`--also names ${path}, and ${app} holds no ${path} to copy. Build it first.`);
+    const envFile = envFileAt(source);
+    if (envFile !== null) {
+      throw new Refusal(
+        `--also names ${path}, and ${relative(appDir, envFile)} is an env file. A build context must never carry a local env file into an image, so --also copies no path that is or holds one.`,
+      );
+    }
+  }
+  for (const path of paths) cpSync(join(appDir, path), join(copy, path), { recursive: true, verbatimSymlinks: true });
 }
 
 /** Signals that stop in-copy.mjs, from a terminal or a cancelled job. Each is passed on, and the copy goes after. */
