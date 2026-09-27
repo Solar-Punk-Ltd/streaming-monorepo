@@ -53,6 +53,10 @@ Make one from the sample and fill it in, from `apps/web2-admin`:
 cp backend/.env.sample backend/.env.brand-a
 ```
 
+A checkout that deployed before the admin moved into `apps/web2-admin` still
+keeps its env files in `web2-admin/backend/`. Move them rather than making new
+ones: see "Upgrading from before the move into apps/web2-admin" below.
+
 The script refuses to deploy, before anything leaves your machine, when a key
 the API cannot start without is missing or malformed: `POSTGRES_PASSWORD`,
 `FEED_PRIVATE_KEY`, `INTERNAL_API_TOKEN` (32 characters or more), `BEE_URL`,
@@ -235,6 +239,65 @@ export WEB2_ADMIN_ENV_FILE=../backend/.env.brand-a
 docker compose -p web2-admin-brand-a -f deploy/docker-compose.yml --env-file backend/.env.brand-a logs -f api
 ```
 
+On a host deployed to before the move, a profile that has not been deployed
+since keeps its env file at the old path, and these commands name that path
+instead: see "A profile not yet redeployed" below.
+
+## Upgrading from before the move into apps/web2-admin
+
+Until the admin moved into `apps/web2-admin` it sat at the repository root: a
+profile's env file was `web2-admin/backend/.env.<profile>`, and the edge's was
+`deploy/edge/.env`. Git moves the files it tracks and leaves ignored ones where
+they are, so a checkout that deployed before the move still holds its env files
+at the old paths, and so does every host it deployed to.
+
+### On your machine
+
+Move each env file, from the repository root, rather than making a new one from
+the sample. A new `POSTGRES_PASSWORD` locks the API out of the profile's
+existing database, and a new `FEED_PRIVATE_KEY` makes every publish fail.
+
+```sh
+mv web2-admin/backend/.env.brand-a apps/web2-admin/backend/.env.brand-a   # each profile
+mv web2-admin/backend/.env apps/web2-admin/backend/.env                   # the default profile, if you use it
+mv deploy/edge/.env infra/edge/.env                                       # the edge, if you run it
+```
+
+`deploy.sh` and `edge.sh` refuse while a file is only at its old path, and
+print the `mv` for it.
+
+### On the host
+
+The host folder is the same, but a profile's env file now lands at
+`backend/.env.<profile>`, where it used to land at
+`web2-admin/backend/.env.<profile>`. The old copy stays, because every env file
+is excluded from rsync's `--delete`, and it keeps a second copy of the
+profile's signing key and token. Every deploy of a profile warns, once the
+profile is up, while its old copy is still there, and prints the command that
+removes it, such as:
+
+```sh
+ssh admin-host 'rm /opt/streaming/streaming-monorepo/web2-admin/backend/.env.brand-a'
+```
+
+Nothing removes it for you. Whether and when to remove it is the host owner's
+call.
+
+### A profile not yet redeployed
+
+Its env file is still only at the old path on the host, so the commands in "The
+first user" and "Running compose by hand" do not find it. Until the profile's
+next deploy, name the old path in them:
+
+```sh
+cd /opt/streaming/streaming-monorepo
+export WEB2_ADMIN_ENV_FILE=../web2-admin/backend/.env.brand-b
+docker compose -p web2-admin-brand-b -f deploy/docker-compose.yml --env-file web2-admin/backend/.env.brand-b logs -f api
+```
+
+Its containers keep running meanwhile. Compose read the env file when it
+created them, and nothing reads it again until the profile is deployed.
+
 ## When a loopback port connects but nothing answers
 
 `ssh -L` accepts the connection and the browser waits forever, while `docker ps`
@@ -262,7 +325,8 @@ for the manager's bridge.
 One Caddy per host serves the consoles that host publishes on its loopback,
 each under its own name with its own Let's Encrypt certificate: this repo's
 console, and streaming-infra-manager's when the host runs that too. It is a
-compose project of its own, `edge`, in `infra/edge/`, on the host's network:
+compose project of its own, `edge`, kept in `infra/edge/` in this repository
+and run from `deploy/edge/` in the host's checkout, on the host's network:
 Caddy binds ports 80 and 443 itself and reaches `127.0.0.1:9090` and
 `127.0.0.1:8080` as the host does, so the consoles stay published on loopback
 only and neither console's compose file changes. For two names on one host it
@@ -346,8 +410,14 @@ the same checkout, default `/opt/streaming/streaming-monorepo`. On a host that
 has no checkout yet, `edge.sh` creates just `deploy/edge/` there, and a later
 `deploy.sh` accepts that directory. `--host=localhost` runs it on the machine
 it is started on, which must be the server itself: Docker Desktop's host
-network is its VM's, not a laptop's. `PROBE_TIMEOUT` in the environment sets
-how long the certificate probe waits, default 90 seconds, 0 to skip it.
+network is its VM's, not a laptop's. Such a run serves from the `infra/edge/`
+of the checkout it was started from, and Caddy mounts the Caddyfile rendered
+there rather than one sent to `deploy/edge/`. The folder `deploy.sh` keeps on
+a host holds `apps/web2-admin` alone, with no `infra/edge/`, so a local run on
+the host needs its own clone of this repository, and the live edge then
+mounts that clone's files: remove the clone and the edge fails at its next
+restart. `PROBE_TIMEOUT` in the environment sets how long the certificate
+probe waits, default 90 seconds, 0 to skip it.
 
 A run:
 
@@ -456,6 +526,18 @@ stack's env file at that checkout's root today); whether it passes the
 hls-only flags `--feed-owner`, `--feed-topic` and `--stamp-id`, which this
 script refuses; and the `stop.sh`, `health.sh` and `clean.sh` it expects
 beside `deploy.sh`, which this repo does not have.
+
+## The scripts' own tests
+
+`test/` runs `deploy.sh` and `edge.sh` in a throwaway checkout, beside a
+folder that stands in for the host. Stubs for ssh, rsync, docker, curl, dig
+and git come first on `PATH`, so nothing leaves the machine, and the ssh stub
+runs commands only in that stand-in host. No package script runs these tests
+yet. From the repository root:
+
+```sh
+node --test 'apps/web2-admin/deploy/test/*.test.mjs'
+```
 
 ## Deliberately not here
 
