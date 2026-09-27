@@ -3,7 +3,9 @@
 # every pull request that changes how an image builds, so a defect in it could
 # report a false match on every later proof. The boundary check judges how the
 # projects depend on each other, so a defect in it could let a dependency
-# between apps through. A script that lands under tools/ adds its own job here.
+# between apps through. The app-workspace cut decides which packages each
+# app's images install, so a defect in it could build an image from a lockfile
+# that is not the root's. A script that lands under tools/ adds its own job here.
 name: tools
 
 on:
@@ -56,4 +58,21 @@ jobs:
       # tests read a graph file Nx 23.2.1 wrote, kept as a fixture, so Nx is
       # not needed here either.
       - name: The boundary check's own tests
+        run: node --test
+
+  app-workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tools/app-workspace
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      # Node's standard library alone, so there is nothing to install. The
+      # tests build small workspaces and git repositories of their own, which
+      # in-copy.mjs reads through the runner's git.
+      - name: The cut's own tests
         run: node --test
