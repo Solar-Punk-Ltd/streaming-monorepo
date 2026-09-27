@@ -1,7 +1,7 @@
 # Builds the React SPA and serves it (plus reverse-proxies API calls) via nginx.
 # Used on the deploy server — devs reach it through an SSH tunnel to port 8080.
 
-FROM node:22-alpine AS build
+FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 WORKDIR /repo
 # The pnpm the root package.json names in packageManager, as manager/Dockerfile
 # takes it. A pnpm of another major reads the lockfile's settings from another

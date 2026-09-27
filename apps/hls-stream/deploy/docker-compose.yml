@@ -343,7 +343,7 @@ services:
     # yet. Reporting without acting is what that state needs: the process is up and retrying, and
     # restarting it would only start the same wait again.
     #
-    # node rather than curl or wget, because the image is node:22-alpine and has neither. `r.ok` is
+    # node rather than curl or wget, because the image is node:24-alpine and has neither. `r.ok` is
     # false for the 503 a degraded service answers, which is the point.
     #
     # Concatenation rather than a template literal because compose interpolates `$` in this file
