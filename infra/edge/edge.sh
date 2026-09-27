@@ -19,7 +19,8 @@
 #      machine.
 #   3. Sends the Caddyfile and the compose file to <remote-path>/deploy/edge/
 #      on the host: the checkout apps/web2-admin/deploy/deploy.sh maintains,
-#      whose rsync leaves that directory alone.
+#      whose rsync leaves that directory alone. On a host that runs the
+#      manager alone there is no such checkout, and the folder is made.
 #   4. Over one ssh session, refuses when something else holds port 80 or 443,
 #      recreates the edge so Caddy reads the new Caddyfile, waits for it to
 #      stay running, and asks each console behind it for an answer on the
@@ -61,7 +62,7 @@ readonly PROJECT="edge"
 readonly SERVICE="caddy"
 readonly DEFAULT_ADMIN_PORT=9090
 readonly DEFAULT_MANAGER_PORT=8080
-# The manager's rule for MANAGER_DOMAIN: dotted labels of lower-case letters,
+# A console's name: dotted labels of lower-case letters,
 # digits and inner hyphens. It keeps out a scheme, a port, a path, spaces and
 # anything that could end the quotes a name is written into on the host.
 readonly HOSTNAME_PATTERN='^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
@@ -214,10 +215,10 @@ fi
 
 # The value of KEY as deploy.sh reads its env file: the last assignment wins,
 # carriage returns and surrounding whitespace are not part of it, one pair of
-# quotes is stripped, and an unquoted value ends at a " #" comment. That is
-# also how the manager reads MANAGER_DOMAIN, whose deploy once reported
-# success on a name with a trailing carriage return that Caddy then could not
-# serve. Here the name that is checked is the name that is rendered.
+# quotes is stripped, and an unquoted value ends at a " #" comment. A deploy
+# once reported success on a name with a trailing carriage return that Caddy
+# then could not serve. Here the name that is checked is the name that is
+# rendered.
 env_value() {
     local line value
     line="$(grep -E "^[[:space:]]*$1=" "$ENV_FILE" | tail -n 1 || true)"
@@ -491,7 +492,6 @@ while IFS='|' read -r name project; do
 done <<<"\$HOLDERS"
 if [ -n "\$OTHERS" ]; then
     echo "[edge] ERROR: port 80 or 443 of this host is already published by \$OTHERS, and only one thing per host can hold them. Nothing was started." >&2
-    echo "[edge] If that is the manager's own edge (compose project manager, container manager-edge-1), empty MANAGER_DOMAIN in the manager's manager/.env and deploy the manager again, which removes it, then run edge.sh again. Put the manager's name in MANAGER_DOMAIN of infra/edge/.env instead." >&2
     exit 1
 fi
 
