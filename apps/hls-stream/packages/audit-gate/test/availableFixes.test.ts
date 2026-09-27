@@ -21,6 +21,7 @@ const ELLIPTIC_ENTRY: AllowedAdvisory = {
   packageName: 'elliptic',
   reviewedSeverity: 'low',
   reviewedPatchedVersions: '>=6.6.2',
+  reviewedFixReleases: [],
   reason: 'No release fixes it anywhere.',
 };
 
@@ -66,6 +67,24 @@ describe('findAvailableFixes', () => {
     const [failure] = await findAvailableFixes([ELLIPTIC], [ELLIPTIC_ENTRY], lookUp);
 
     assert.match(failure.detail, /6\.6\.2, 6\.7\.0/);
+  });
+
+  it('lets through a fixing release the exception already knew of when it was written', async () => {
+    const knownFix = { ...ELLIPTIC_ENTRY, reviewedFixReleases: ['7.0.0'], reason: 'The fix is a major the chain cannot take.' };
+    const { lookUp } = registry({ 'elliptic@>=6.6.2': ['7.0.0'] });
+
+    assert.deepEqual(await findAvailableFixes([ELLIPTIC], [knownFix], lookUp), []);
+  });
+
+  it('fails on a fixing release that appeared since the exception was written, and names only that one', async () => {
+    const knownFix = { ...ELLIPTIC_ENTRY, reviewedFixReleases: ['7.0.0'], reason: 'The fix is a major the chain cannot take.' };
+    const { lookUp } = registry({ 'elliptic@>=6.6.2': ['6.6.3', '7.0.0'] });
+
+    const [failure, ...rest] = await findAvailableFixes([ELLIPTIC], [knownFix], lookUp);
+
+    assert.deepEqual(rest, []);
+    assert.equal(failure.kind, 'fix-available');
+    assert.match(failure.detail, /did not know of: 6\.6\.3\. /);
   });
 
   it('finds no fix for the "<0.0.0" pnpm 9 reported, which no release can satisfy', async () => {
