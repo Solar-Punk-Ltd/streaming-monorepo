@@ -4,7 +4,7 @@ React application for browsing and playing HLS streams delivered via the Swarm d
 
 ## Prerequisites
 
-- Node.js 22+
+- Node.js 24+
 - pnpm
 - A running Swarm Bee node (for reading streams)
 - A running [stream-uploader](../stream-uploader/) (for producing streams)
