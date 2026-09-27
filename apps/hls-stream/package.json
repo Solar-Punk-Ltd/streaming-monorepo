@@ -80,7 +80,10 @@
     "tsx": "^4.23.1"
   },
   "nx": {
-    "tags": ["scope:stack", "type:app"],
+    "tags": [
+      "scope:stack",
+      "type:app"
+    ],
     "includedScripts": []
   }
 }

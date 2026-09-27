@@ -36,6 +36,9 @@
     "typescript": "^6.0.2"
   },
   "nx": {
-    "tags": ["scope:stack", "type:lib"]
+    "tags": [
+      "scope:stack",
+      "type:lib"
+    ]
   }
 }

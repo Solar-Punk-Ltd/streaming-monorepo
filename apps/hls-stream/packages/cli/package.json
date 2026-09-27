@@ -24,6 +24,9 @@
     "typescript": "^6.0.2"
   },
   "nx": {
-    "tags": ["scope:stack", "type:app"]
+    "tags": [
+      "scope:stack",
+      "type:app"
+    ]
   }
 }

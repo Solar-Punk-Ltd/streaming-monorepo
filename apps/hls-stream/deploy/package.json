@@ -14,12 +14,17 @@
     "eslint-plugin-simple-import-sort": "^10.0.0"
   },
   "nx": {
-    "tags": ["scope:stack", "type:app"],
+    "tags": [
+      "scope:stack",
+      "type:app"
+    ],
     "targets": {
       "test": {
         "dependsOn": [
           {
-            "projects": ["@swarm-hls-stream/stream-uploader"],
+            "projects": [
+              "@swarm-hls-stream/stream-uploader"
+            ],
             "target": "build"
           }
         ]
