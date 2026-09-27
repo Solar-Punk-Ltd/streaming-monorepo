@@ -4,6 +4,7 @@
 # a deploy builds on the host.
 # Counts drift as suites are added. Re-measure rather than trusting them. What they prove and what they
 # do not: docs/ci.md.
+# A change under packages/ starts it too: the manager imports the shared packages and its images carry them.
 name: infra-manager
 
 on:
@@ -14,6 +15,7 @@ on:
         'apps/infra-manager/**',
         'apps/hls-stream/**',
         'tools/app-workspace/**',
+        'packages/**',
         'package.json',
         'pnpm-lock.yaml',
         'pnpm-workspace.yaml',
@@ -28,6 +30,7 @@ on:
         'apps/infra-manager/**',
         'apps/hls-stream/**',
         'tools/app-workspace/**',
+        'packages/**',
         'package.json',
         'pnpm-lock.yaml',
         'pnpm-workspace.yaml',
