@@ -11,7 +11,7 @@
 > experiment with his setup as it is"*, and this is not that.
 >
 > ⛔ **So any residual gateway load reported below is a floor THIS CLIENT imposes, not one weeb-3
-> imposes.** the tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
+> imposes.** The tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
 > here is a **lower bound** on what an in-tab node can do.
 >
 > ✅ **The arithmetic and the arm-to-arm contrasts are unaffected.** Both conditions read the
@@ -78,7 +78,7 @@ pinned to the number you configured.
   restarted at any point in either sitting.
 - Postage `00000003`, depth 25, **274 → 285 of 512 buckets**, TTL 244.6h at the end.
 - **Host load 3.90 to 15.00** across sitting 1 and **2.95 to 21.27** across sitting 2, on 48 cores.
-  The box carries some forty other bee nodes plus other tenants' stacks. See the note on sitting 2's
+  The bench host carries some forty other bee nodes plus other tenants' stacks. See the note on sitting 2's
   load below.
 - The free checks ran before either sitting published: `browser:selfcheck` SOUND, and
   `browser:fetch-backend-check` moved the switch both ways, refused an unknown byte source, and
@@ -247,10 +247,10 @@ and at or below 1.0 in five of six gateway arms. Magnitudes are 0.04% to 0.3%.
 for an in-tab node does not depend on the latency target, and no viewer stalled in any arm of any
 condition at any target.
 
-### ⚠️ Sitting 2 ran on a noisier box
+### ⚠️ Sitting 2 ran on a noisier host
 
 Host load per arm reached **21.27** (a discarded warm-up arm) and **12.71 and 11.81** in counted arms,
-against sitting 1's 3.90 to 15.00. The box carries some forty other bee nodes and other tenants'
+against sitting 1's 3.90 to 15.00. The bench host carries some forty other bee nodes and other tenants'
 stacks. The counterbalanced order puts one arm of each condition in every round, which is what carries
 a drifting neighbour, but a bracket controls for time and never for co-tenancy.
 

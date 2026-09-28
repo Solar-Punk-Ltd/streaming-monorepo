@@ -1,4 +1,4 @@
-# the tester's live path is gateway-less, ours is not, and nobody asked for the difference
+# A tester's live path is gateway-less, ours is not, and nobody asked for the difference
 
 **2026-08-16, free. No broadcast, no BZZ.** One Chromium tab on
 `lat-murmeldjur.github.io/weeb-3/#/live/stream/0000a004…/83de1c3f-…`, his own live broadcast, read
@@ -23,7 +23,7 @@ through the page's own resource timing and service-worker accounting.
 | | reads the feed and manifest from | reads segment bytes from |
 | --- | --- | --- |
 | **our `weeb3` build** | **the bee gateway**, [ManifestManagement.ts:692](../../packages/client/src/components/SwarmHlsPlayer/ManifestManagement.ts) | weeb-3, [CustomManifestLoader.ts:193](../../packages/client/src/components/SwarmHlsPlayer/CustomManifestLoader.ts) |
-| **the tester's page** | **the in-tab node** | the in-tab node |
+| **The tester's page** | **the in-tab node** | the in-tab node |
 
 `ManifestManagement` contains no weeb-3 path at all. Every feed walk and every playlist read resolves
 against `${beeUrl}`.
@@ -84,7 +84,7 @@ retrievals** and states honestly, at line 87, that the residual ~1,640 reads per
 feed and manifest still going through the gateway. The arithmetic is right and the caveat was there
 from the first day.
 
-⛔ **What was never said is that the residual is a property of my design and not of weeb-3.** the tester's
+⛔ **What was never said is that the residual is a property of my design and not of weeb-3.** The tester's
 page drives that residual to **zero**. Our 24.4x is not a measurement of what an in-tab node can
 save. It is a measurement of what an in-tab node saves **given a client that keeps a gateway in the
 loop for the feed**, and the ceiling is higher than any of our documents suggest.
@@ -129,7 +129,7 @@ verdict on his stack. It is a reason not to treat "gateway-less" and "works" as 
 
 Read off his own segment log:
 
-| | the tester's broadcast | what we ship |
+| | The tester's broadcast | what we ship |
 | --- | ---: | ---: |
 | segment duration | **4.167 s** | 0.5 s |
 | segment size | **4.32 to 4.40 MB** | ~0.8 MB |

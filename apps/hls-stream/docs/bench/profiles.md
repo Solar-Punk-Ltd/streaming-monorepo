@@ -1,6 +1,6 @@
 # Operating profiles: what this deployment can actually do
 
-Measured 2026-08-03 on `control-1`, profile `latbench`, engine SRS, 86 runs and 430 samples.
+Measured 2026-08-03 on the bench host, profile `latbench`, engine SRS, 86 runs and 430 samples.
 Everything below is `pnpm bench:sweep-report` over the artifacts in this directory, which anyone can
 re-derive without spending anything.
 

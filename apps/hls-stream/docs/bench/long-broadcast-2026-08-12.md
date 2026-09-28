@@ -155,10 +155,10 @@ mistake wearing different arithmetic. See `interleaved-gop-arms-2026-08-12.md`.
 - ⛔ **The viewer-side half is not in this document.** `#EXT-X-TARGETDURATION`, the stall count, the
   latency and the advance ratio come from the browser report in the same run directory and are read
   separately; nothing here should be quoted as a viewer's experience.
-- **n=1.** One sitting, one box, one gateway, one browser. The four windows replicate the rate within
+- **n=1.** One sitting, one host, one gateway, one browser. The four windows replicate the rate within
   the sitting, which is not the same as replicating the sitting.
 - ⚠️ **Host load ran 7 to 11 of 48 cores** and roughly four of those were ours. A quiet night on a
-  shared box, and the interleaving that usually defends against neighbours does not exist in a soak.
+  shared host, and the interleaving that usually defends against neighbours does not exist in a soak.
 
 ## Ledger
 

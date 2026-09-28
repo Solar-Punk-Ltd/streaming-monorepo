@@ -90,7 +90,7 @@ viewer ends up.** Deriving the second from the first assumes the walk is read-bo
 reasonable and it is stated rather than hidden: a walk is a sequence of reads and a poll interval, and
 only the reads were measured.
 
-⛔ **128 is the ceiling reached, not a ceiling found.** The box carries forty other bee nodes, the
+⛔ **128 is the ceiling reached, not a ceiling found.** The bench host carries forty other bee nodes, the
 runnable count at 128 readers averaged 28 with peaks of 47 against a ceiling of 48, and going higher
 would be measuring the host rather than the feed.
 

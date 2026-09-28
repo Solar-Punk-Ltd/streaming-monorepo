@@ -96,7 +96,7 @@ planning.
 
 ## Artifacts
 
-`/opt/streaming/retrieval-probe/BURN1/`. Probe:
+`~/retrieval-probe/BURN1/`. Probe:
 [`deploy/scripts/retrieval-debt-probe.sh`](../../deploy/scripts/retrieval-debt-probe.sh), with per-arm
 spend attribution and the CPU idle window doubling as its control. Reference lists built from
 `docs/bench/*.requests.json` by segment size.

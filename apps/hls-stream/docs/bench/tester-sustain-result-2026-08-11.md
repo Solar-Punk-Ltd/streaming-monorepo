@@ -67,7 +67,7 @@ Every in-browser number this project holds was taken at 4.5% occupancy of the re
 
 - **Content replication is not controlled and is now the leading open question.** tester-1 is a stream
   people watch; our 3.5 MB references were bench fixtures uploaded once and fetched 0/5. Size and
-  replication are perfectly confounded here. **Timing one of the tester's segments against one of ours on
+  replication are perfectly confounded here. **Timing one of a tester's segments against one of ours on
   the same node in the same minute would separate them, and costs nothing.**
 - **n=1.** `tester-2` is in the harness for a replicate, though its segment shape is assumed.
 - **The byte figure is derived**, not observed: `demanded x ratio`, where `demanded` comes from the

@@ -60,7 +60,7 @@ informative part of the run.
 
 ⛔ **tester-1 carries the same defect and its figure moves too.** Its 1,014 KB/s was `ratio x demand`
 from a run that also reached a steady lead. Recomputed off its own fill phase: **1,135 and 1,160 KB/s**,
-so **~1,148**. ⚠️ Note how much closer to its demand that sits: tester needs 1,018 and can do 1,148, a
+so **~1,148**. ⚠️ Note how much closer to its demand that sits: tester-1 needs 1,018 and can do 1,148, a
 13% margin, while this profile needs 411 and can do 767, an **87%** margin.
 
 ⚠️ 767 is what the node **and hls.js together** achieve when the player wants more than realtime. It

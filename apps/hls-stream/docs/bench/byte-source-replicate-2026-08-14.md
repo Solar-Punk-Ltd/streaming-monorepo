@@ -11,7 +11,7 @@
 > experiment with his setup as it is"*, and this is not that.
 >
 > ⛔ **So any residual gateway load reported below is a floor THIS CLIENT imposes, not one weeb-3
-> imposes.** the tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
+> imposes.** The tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
 > here is a **lower bound** on what an in-tab node can do.
 >
 > ✅ **The arithmetic and the arm-to-arm contrasts are unaffected.** Both conditions read the
@@ -190,7 +190,7 @@ Both directions of the control, on a paid broadcast, for less than a fiftieth of
 
 ⛔ **Saturation.** `docker stats` reads the container's whole cgroup, which is the right total for
 what a viewer costs a machine. It cannot say whether weeb-3 is *out* of CPU, because the node is one
-JS thread by construction and a 3.8-core peak on a 48-core box says nothing about one thread. That
+JS thread by construction and a 3.8-core peak on a 48-core host says nothing about one thread. That
 needs `Performance.getMetrics` over CDP against the page target, which `chrome-cpu.mjs` already does
 and this sitting does not use.
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Reading the box this sitting shares with forty other bee nodes and several tenants' stacks.
+# Reading the bench host this sitting shares with forty other bee nodes and several tenants' stacks.
 #
 # ⛔ Load is the one instrument here that measures something we do not control. A result sitting on a
 # busy host is "did not complete" rather than a measurement, which is why the drivers that use these
-# order their plans by ascending cost and stop at the first arm that pushes the box too far.
+# order their plans by ascending cost and stop at the first arm that pushes the bench host too far.
 #
 # Sourced, never executed. The caller supplies:
 #   host_load          a function of its own, because its two callers disagree on how to read it

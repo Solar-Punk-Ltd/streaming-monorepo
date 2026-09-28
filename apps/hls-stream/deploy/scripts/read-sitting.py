@@ -595,7 +595,7 @@ def correlation(xs, ys):
 def cmd_load(root, creep_per_hour=None):
     """Whether the shared host, rather than the session ageing, could account for a within-arm creep.
 
-    ⭐ THE OBJECTION THIS ANSWERS. A single long arm on a box carrying other people's work can read a
+    ⭐ THE OBJECTION THIS ANSWERS. A single long arm on a host carrying other people's work can read a
     rising thread because the session is ageing or because the neighbours got busier, and those look
     identical in one column. The sampler has been recording `/proc/loadavg` beside every arm all
     along, so the question is answerable from the same files rather than by assurance.

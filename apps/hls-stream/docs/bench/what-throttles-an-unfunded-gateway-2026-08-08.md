@@ -146,5 +146,5 @@ and confirmed on the node afterwards.
 ## Artifacts
 
 `deploy/scripts/retrieval-debt-probe.sh`, and on the host
-`/opt/streaming/retrieval-probe/run1/` holding `probe.log`, `probe-state.tsv`, `probe-series.tsv` and
-the per-arm timing files. References in `/opt/streaming/phase06/refs.txt`.
+`~/retrieval-probe/run1/` holding `probe.log`, `probe-state.tsv`, `probe-series.tsv` and
+the per-arm timing files. References in `~/phase06/refs.txt`.

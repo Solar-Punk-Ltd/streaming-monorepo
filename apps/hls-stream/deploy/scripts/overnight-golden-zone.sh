@@ -26,7 +26,7 @@
 # tell them apart.
 #
 # ⛔ Bounded by a host that carries forty other bee nodes. One viewer per arm, and the probe's own load
-# ceiling stops the run if the box gets busy.
+# ceiling stops the run if the bench host gets busy.
 set -u
 
 STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-latbench}"

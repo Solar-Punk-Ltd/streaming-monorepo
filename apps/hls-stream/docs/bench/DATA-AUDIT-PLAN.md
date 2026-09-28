@@ -99,7 +99,7 @@ missing experiment.
 
 | # | measurement | why | cost |
 | ---: | --- | --- | --- |
-| **1** | **A2 sustain on the tester's 4.17s stream** | a **positive control** we have never had. If it sustains, the harness and node are sound and the profile is the variable | free, needs a human tab |
+| **1** | **A2 sustain on a tester's 4.17s stream** | a **positive control** we have never had. If it sustains, the harness and node are sound and the profile is the variable | free, needs a human tab |
 | **2** | **A2 sustain at the shipping 1.0s profile** | the number we should have had from the start | free if a 1.0s recording exists, else an upload |
 | **3** | **A2 segment-duration sweep scored on playback ratio** | the controllable axis, never swept on the right metric | free per arm once content exists |
 | **4** | **the player's achieved concurrency** | still inferred from source, never observed. Analyser half already written and tested | free |

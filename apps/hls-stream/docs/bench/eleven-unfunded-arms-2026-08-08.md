@@ -86,7 +86,7 @@ own retrieval metrics would separate them, and the run they need is one already 
 
 ## Artifacts
 
-`/opt/streaming/retrieval-probe/{run1,refill1,idle-isolated}/` on the host, each holding `probe.log`,
+`~/retrieval-probe/{run1,refill1,idle-isolated}/` on the host, each holding `probe.log`,
 `probe-state.tsv`, `probe-series.tsv` and per-arm timing files. Probe:
 `deploy/scripts/retrieval-debt-probe.sh`. The gateway was restored to `--swap-enable=true` and
 confirmed on the node after every sitting.

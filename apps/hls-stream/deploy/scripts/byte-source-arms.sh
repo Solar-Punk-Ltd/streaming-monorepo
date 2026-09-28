@@ -257,7 +257,7 @@ can_afford() {
 }
 
 # ⛔⛔ Only removes publishers this run created. The names present beforehand are recorded once and
-# excluded from every teardown, because this runs on a box carrying other people's sittings and a
+# excluded from every teardown, because this runs on a host carrying other people's sittings and a
 # teardown keyed on a name pattern killed a live paid broadcast on 2026-08-12.
 PUBLISHERS_NOT_OURS="$(docker ps -aq --filter 'name=^swarm-hls-publish-' 2>/dev/null | tr '\n' ' ')"
 
