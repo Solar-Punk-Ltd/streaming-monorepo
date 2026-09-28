@@ -81,6 +81,10 @@ function childEnvironment(databaseUrl: string, port: number): NodeJS.ProcessEnv 
     INTERNAL_API_TOKEN: ITEST_INTERNAL_TOKEN,
     INGEST_HOST: 'ingest.itest.invalid',
     INGEST_SRT_PASSPHRASE: '',
+    // Empty rather than absent, so an `.env` beside the package cannot turn
+    // RTMP on: dotenv never overrides a variable that is already set, and the
+    // API reads an empty one as unset, which is SRT only.
+    INGEST_RTMP_PUBLIC: '',
   };
 }
 

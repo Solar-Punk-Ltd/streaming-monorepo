@@ -206,7 +206,7 @@ describe('the unfunded gateway stands up beside the funded one', () => {
   });
 
   /**
-   * ⛔ The funded gateway is on 10077 and forty other bee nodes share this box. Starting on a port
+   * ⛔ The funded gateway is on 10077 and forty other bee nodes share this bench host. Starting on a port
    * something else holds would either fail obscurely or, worse, look like it worked while the arm
    * measured a node that is not ours.
    */

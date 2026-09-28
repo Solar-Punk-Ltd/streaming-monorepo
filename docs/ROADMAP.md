@@ -18,8 +18,10 @@ scope `@streaming-monorepo/`.
 - Authentication with a seeded admin user and password change in the UI.
 - Stream drafts in Postgres with the msrs-client form fields.
 - Publish a draft to a stream list feed the backend owns (single writer).
-- OBS connection details per stream: SRT URL and RTMP server plus stream key
-  carrying a per-stream `key=`, the server-wide SRT passphrase shown alongside.
+- OBS connection details per stream: SRT URL carrying a per-stream `key=`, the
+  server-wide SRT passphrase shown alongside. The RTMP server and stream key are
+  shown only where the deployment opens RTMP ingest (`INGEST_RTMP_PUBLIC`), which
+  is off by default, since ingest is SRT only for now.
 - A real stream for a draft: the uploader (swarm-hls-stream `main-v3`) resolves
   the draft by ingest stream id through the admin's internal API, checks the
   key, publishes under the draft's topic and reports live and vod; the admin
@@ -197,8 +199,8 @@ Decided by the owner after a tester could not go live on the test host on
 because the panel sent OBS users to an "OBS Passphrase field" that OBS does
 not have.
 
-- The OBS panel says, for SRT and for RTMP separately, what goes in OBS's
-  Server box and its Stream Key box. For SRT the passphrase rides on the Server
+- The OBS panel says, for SRT and, where it is offered, for RTMP, what goes
+  in OBS's Server box and its Stream Key box. For SRT the passphrase rides on the Server
   line as `&passphrase=`, which OBS reads after its Use authentication Password
   and so wins, and the Stream Key stays empty, because OBS hands that box to
   SRT as the stream id and the URL's own `streamid=` replaces it. OBS ends a

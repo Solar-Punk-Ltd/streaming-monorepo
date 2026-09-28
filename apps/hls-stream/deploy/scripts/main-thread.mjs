@@ -7,7 +7,7 @@
  * right instrument for the question it answers: the container cgroup is the whole process tree, so
  * 1.85 cores mean and 3.89 peak is genuinely what a viewer costs a machine. It cannot answer the
  * next question. weeb-3 is **one JS thread** by construction, nineteen runtime loops cooperatively
- * interleaved in a single `join!` with no workers, so a 3.8-core peak on a 48-core box says nothing
+ * interleaved in a single `join!` with no workers, so a 3.8-core peak on a 48-core host says nothing
  * about whether that one thread is pegged. A viewer whose thread is at 0.98 and a viewer whose thread
  * is at 0.35 look identical from outside and are completely different products.
  *

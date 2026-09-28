@@ -6,10 +6,10 @@ status, which is the second pull request of feature 3 and is not started. Pull r
 `feat/ai-remediation` landed, and `main-v2` has moved a long way past it since, so read the
 sections below as the plan rather than as the current state. The stacked branches this page names
 are gone. Its decisions are this page's own and are not the review's
-decisions in `../consensus/`. One of them has since been reversed: the start gate, which chose to
+decisions. One of them has since been reversed: the start gate, which chose to
 refuse an uploader whose node cannot pay, was undone on 2026-09-17, and both the
-stack's uploader and the manager's own check now warn and start. That ruling is recorded in
-`../consensus/issues/t25-uploader-start-gates.md`.
+stack's uploader and the manager's own check now warn and start. That ruling was recorded in the
+review's start gates row, which the repository's history keeps.
 
 Status: decided 2026-09-05 late evening. Every decision but the upstream scope was taken as recommended and
 the upstream scope was put on hold, so nothing in swarm-hls-stream changes for now. Building started the same night on stacked

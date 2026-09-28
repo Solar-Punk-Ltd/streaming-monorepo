@@ -110,7 +110,7 @@ and every capped figure here is void.
 
 ## The design
 
-One driver, `pnpm browser:in-tab-throttle-probe`, run in the browser image on control-1 through
+One driver, `pnpm browser:in-tab-throttle-probe`, run in the browser image on the bench host through
 `deploy/scripts/browser-on-host.sh --script browser:in-tab-throttle-probe`, against the deployed
 client root. No broadcast. The node in the tab is booted through the client's own instrumentation
 switch (`prewarm`), and every retrieval goes through the client's own `Weeb3FetchBackend`, so it is
@@ -169,7 +169,7 @@ Nothing is asserted. This is a measurement, not a suite.
 - **The live edge.** These are VOD references. The retrieval path for a reference does not know or
   care whether the playlist was live, so the mechanism transfers, but the live viewer's overlapping
   requests are only approximated by Part C.
-- **The Mac.** It runs on control-1's browser image, which is where V2 ran. A home connection is a
+- **The Mac.** It runs on the bench host's browser image, which is where V2 ran. A home connection is a
   different instrument.
 
 ## Cost

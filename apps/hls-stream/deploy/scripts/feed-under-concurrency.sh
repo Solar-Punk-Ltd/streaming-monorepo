@@ -57,8 +57,8 @@ HOST_LOAD="${HERE}/host-load.sh"
 }
 
 GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-10077}"
-OUT_DIR="${OUT_DIR:-/opt/streaming/feed-concurrency}"
-HITS_FILE="${HITS_FILE:-/opt/streaming/soc-miss/hits.txt}"
+OUT_DIR="${OUT_DIR:-${HOME}/feed-concurrency}"
+HITS_FILE="${HITS_FILE:-${HOME}/soc-miss/hits.txt}"
 
 # Reads per reader, held CONSTANT across arms. The work one viewer does must not change with how many
 # viewers there are, or the arms measure two things at once.
@@ -87,9 +87,9 @@ OWNER="$(head -1 "${HITS_FILE}" | cut -d/ -f1)"
 HIT_COUNT="$(wc -l <"${HITS_FILE}")"
 
 host_load() { awk '{print $1}' /proc/loadavg; }
-# One runnable task per core, which is where the box stops having spare capacity and starts making
+# One runnable task per core, which is where the bench host stops having spare capacity and starts making
 # everything queue. ⛔ This host carries forty other bee nodes and eight unrelated stacks and they are
-# not ours to slow down, so the plan is ordered by ascending viewers and the first arm to push the box
+# not ours to slow down, so the plan is ordered by ascending viewers and the first arm to push the bench host
 # too far is the last one that runs.
 LOAD_CEILING="${LOAD_CEILING:-$(nproc)}"
 
@@ -100,18 +100,18 @@ settle_host() {
   while [ "${waited}" -lt "${LOAD_SETTLE_MAX_S}" ]; do
     now="$(host_runnable)"
     if [ "${now}" -le "${target}" ]; then
-      [ "${waited}" -gt 0 ] && say "  box settled to ${now} runnable after ${waited}s"
+      [ "${waited}" -gt 0 ] && say "  bench host settled to ${now} runnable after ${waited}s"
       return 0
     fi
     sleep 5
     waited=$((waited + 5))
   done
-  say "  ⚠️ box did not settle to ${target} runnable within ${LOAD_SETTLE_MAX_S}s, now $(host_runnable)"
+  say "  ⚠️ bench host did not settle to ${target} runnable within ${LOAD_SETTLE_MAX_S}s, now $(host_runnable)"
 }
 
 # The mean of an arm's runnable samples, for the reason the retrieval probe gives: readers fire
 # together and then all block, so the queue is bimodal and neither its median nor its peak describes
-# the box. Field 2 is the runnable count; field 1 is the one-minute average, which lags by about a
+# the bench host. Field 2 is the runnable count; field 1 is the one-minute average, which lags by about a
 # minute and cannot follow arms this short.
 mean_runnable() { awk '{n++; s += $2} END {if (n == 0) print 0; else printf "%d", s / n}' "$1"; }
 
@@ -130,8 +130,8 @@ read_one() {
 # One reader's whole arm: alternating miss, hit, miss, hit.
 #
 # ⭐ Alternating INSIDE the arm rather than running the two conditions as separate arms. Concurrency is
-# the variable, and a hit block at 128 followed by a miss block at 128 could differ because the box
-# moved between them. Alternating makes both conditions share whatever the box was doing.
+# the variable, and a hit block at 128 followed by a miss block at 128 could differ because the bench host
+# moved between them. Alternating makes both conditions share whatever the bench host was doing.
 #
 # ⚠️ 50/50 is a controlled model, not the live-edge mix. A viewer at the edge misses about 45% of the
 # time, so the report weights these rather than quoting the raw ratio as a walk rate.
@@ -165,14 +165,14 @@ run_arm() {
   local r pids=() before after started elapsed
 
   settle_host
-  # ⛔ Median of three rather than one instantaneous read. The proving pass read 52 runnable on a box
+  # ⛔ Median of three rather than one instantaneous read. The proving pass read 52 runnable on a host
   # whose settled baseline is 21, so a single sample would stop the sitting on noise and report a
   # ceiling that was never reached. The existing retrieval probe learned the same thing: two reads
-  # seconds apart on an idle box gave 47 and 30.
+  # seconds apart on an idle host gave 47 and 30.
   local runnable
   runnable="$(baseline_runnable)"
   if [ "${runnable}" -gt "${LOAD_CEILING}" ]; then
-    say "⛔ stopping before arm ${arm}: ${runnable} runnable is over the ${LOAD_CEILING} ceiling, and the box has neighbours"
+    say "⛔ stopping before arm ${arm}: ${runnable} runnable is over the ${LOAD_CEILING} ceiling, and the bench host has neighbours"
     return 1
   fi
 

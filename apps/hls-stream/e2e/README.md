@@ -449,7 +449,7 @@ three idle windows come first, which is where the cap is shown to reach the tran
 every capped figure is void if it does not. Nothing is asserted, the pre-registered predictions in
 `docs/bench/in-tab-throttle-probe-prediction-2026-09-02.md` are restated in the report beside what
 was observed, and it costs **0 BZZ**, so it needs no sitting and no gate. Run it on the host with
-`deploy/scripts/browser-on-host.sh --script browser:in-tab-throttle-probe`. `PROBE_OWNER`,
+`deploy/scripts/browser-on-host.sh --target <host> --script browser:in-tab-throttle-probe`. `PROBE_OWNER`,
 `PROBE_TOPIC_360_HEX` and `PROBE_TOPIC_1080_HEX` choose the recording, and `PROBE_CAP_KBPS`,
 `PROBE_LOW_CAP_KBPS`, `PROBE_IDLE_SECONDS`, `PROBE_RETRIEVALS_PER_ARM`, `PROBE_BUDGET_SECONDS`,
 `PROBE_TAIL_SECONDS` and `PROBE_GAP_SECONDS` size the run, the last being the quiet time after every
@@ -575,7 +575,7 @@ of `docs/bench/in-tab-throttle-probe-result-2026-09-02.md` before quoting any fi
 **Arm 2 repeats the probe under a real shaped link.** Run it on the deployment host with:
 
 ```bash
-deploy/scripts/browser-on-host.sh --own-network --shape-kbps 2800 \
+deploy/scripts/browser-on-host.sh --target <host> --own-network --shape-kbps 2800 \
   --script browser:in-tab-throttle-probe \
   -- PROBE_CAP_MODE=external PROBE_CAP_KBPS=2800
 ```
@@ -642,7 +642,7 @@ looked exactly like runs configured for the gateway.
 From a workstation, which is the supported way and the one `bench/longrun.ts` already names:
 
 ```bash
-deploy/scripts/bench-on-host.sh --script bench:latency
+deploy/scripts/bench-on-host.sh --target <host> --script bench:latency
 ```
 
 On the deployment host itself, where the publisher and the gateway are already the same machine:

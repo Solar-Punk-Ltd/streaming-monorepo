@@ -21,7 +21,7 @@
  *   > 3 nodes 0, with no error surfaced anywhere.
  *
  * Six separate Chrome processes on one laptop each reached 200, then twelve did, then twelve penned
- * pens on a lab box each held all 40 nodes they were given, with per-pen CPU and memory flat from 1
+ * pens on a lab host each held all 40 nodes they were given, with per-pen CPU and memory flat from 1
  * to 12. There is no starvation between nodes on one machine.
  *
  * ⭐ What almost certainly produced the original numbers: the FIRST weeb-3 node started on a machine

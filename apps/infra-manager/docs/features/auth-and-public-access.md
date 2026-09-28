@@ -4,7 +4,7 @@ Status, 2026-09-16. The login gate and the HTTPS edge are merged to `main-v2`. T
 at `6dc33d1` on `feat/ai-remediation`, the head of pull request #40, which landed. Both have since
 run on a host: the manager was deployed on 2026-09-11 and a second pass on 2026-09-13 reached it
 over its own public domain with a certificate, rather than through the ssh tunnel. That pass is
-recorded in [../handover/main-v2-remediation.md](../handover/main-v2-remediation.md).
+recorded in the remediation's handover record, which the repository's history keeps.
 Corrected 2026-09-23 against the code at `87673c99`: what reads `GET /health`, the Endpoints
 table, and the Access page under "What the operator sees". The last two predated the admin role
 added in `7346d880` on 2026-09-07, which now has a paragraph under Endpoints.

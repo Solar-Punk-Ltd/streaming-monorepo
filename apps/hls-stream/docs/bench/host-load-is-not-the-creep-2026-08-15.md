@@ -11,7 +11,7 @@
 > experiment with his setup as it is"*, and this is not that.
 >
 > ⛔ **So any residual gateway load reported below is a floor THIS CLIENT imposes, not one weeb-3
-> imposes.** the tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
+> imposes.** The tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
 > here is a **lower bound** on what an in-tab node can do.
 >
 > ✅ **The arithmetic and the arm-to-arm contrasts are unaffected.** Both conditions read the
@@ -24,7 +24,7 @@ No broadcast, no BZZ. Every number here comes from the eight arms of
 `thread-scaling-shape-2026-08-15.md`.
 
 Written because the next drift sitting is **one** three-hour in-tab arm, and a single long arm on
-this box invites an obvious objection: forty neighbour bee nodes share the host, so a thread that
+this bench host invites an obvious objection: forty neighbour bee nodes share the host, so a thread that
 rises over three hours could be the session ageing or it could be the neighbours waking up. Those
 are the same column.
 
@@ -63,7 +63,7 @@ between-arm difference survives.
 | in-tab (weeb3) | +0.00000 ± 0.00036 | +0.01 | 0.00073 |
 | gateway | +0.00029 ± 0.00025 | +1.15 | 0.00080 |
 
-⭐ **Neither is distinguishable from zero, across a load range of 4.7 to 56.1 on a 48-core box.**
+⭐ **Neither is distinguishable from zero, across a load range of 4.7 to 56.1 on a 48-core host.**
 
 The number that matters for the three-hour arm: to manufacture the **+0.034 cores/hr** in-tab creep,
 host load would have to rise **47 units every hour, monotonically, even at the two-standard-error

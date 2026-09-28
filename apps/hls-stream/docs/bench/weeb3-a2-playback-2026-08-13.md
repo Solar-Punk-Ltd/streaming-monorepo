@@ -11,7 +11,7 @@
 > experiment with his setup as it is"*, and this is not that.
 >
 > ⛔ **So any residual gateway load reported below is a floor THIS CLIENT imposes, not one weeb-3
-> imposes.** the tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
+> imposes.** The tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
 > here is a **lower bound** on what an in-tab node can do.
 >
 > ✅ **The arithmetic and the arm-to-arm contrasts are unaffected.** Both conditions read the
@@ -117,7 +117,7 @@ something is broken.
   hold, and suggesting is all it does. Live is a paid arm and has not been run.
 - **The 4.5 MB wasm and the peer wait are a real join cost** that these numbers include but do not
   isolate. A viewer opening the page pays it once.
-- **One machine, one recording, one profile**, and the box carries about forty other bee nodes whose
+- **One machine, one recording, one profile**, and the bench host carries about forty other bee nodes whose
   load is in every arm including the controls.
 - **Buffer lead is a throughput proxy, not a throughput measurement.** Both gateway arms were sampled
   against a 60s cap that one of them hit.

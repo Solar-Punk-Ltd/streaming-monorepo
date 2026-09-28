@@ -11,7 +11,7 @@
 > experiment with his setup as it is"*, and this is not that.
 >
 > ⛔ **So any residual gateway load reported below is a floor THIS CLIENT imposes, not one weeb-3
-> imposes.** the tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
+> imposes.** The tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
 > here is a **lower bound** on what an in-tab node can do.
 >
 > ✅ **The arithmetic and the arm-to-arm contrasts are unaffected.** Both conditions read the

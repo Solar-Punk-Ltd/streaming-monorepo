@@ -101,13 +101,6 @@ run any of it on a laptop: [docs/ci.md](docs/ci.md).
   to run any suite on a laptop.
 - [docs/testing/](docs/testing/): what particular suites cover and, as
   importantly, what they do not model.
-- [docs/handover/](docs/handover/): the narrative of the main-v2 remediation,
-  one dated section per slice, including what the first real deploy found.
-- [docs/consensus/](docs/consensus/): the record of the cross-provider review
-  that produced that remediation. The PRD, its 25 rows, the five rows added on
-  2026-09-17, the briefs and the acceptance trail. These are records of finished
-  work and not instructions, apart from the parts of the execution copy cost and
-  Bee node mode rows that its README names as open. Its README is the index.
 - [docs/ux/](docs/ux/): the UX rework brief and the clickable mockup it was
   decided from. Merged 2026-09-05.
 

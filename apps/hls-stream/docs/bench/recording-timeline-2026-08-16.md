@@ -4,7 +4,7 @@
 as a counterbalanced pass, its reverse, and a third shuffled pass, so **n = 3 per condition** and
 position in the sweep cannot stand in for any factor. Driver
 `deploy/scripts/recording-timeline-arms.sh`, artefacts at
-`/opt/streaming/recording-timeline/sweep2-20260816-155526` and `sweep3-20260816-170231`.
+`~/recording-timeline/sweep2-20260816-155526` and `sweep3-20260816-170231`.
 
 **Cost: nothing.** Read off both nodes' own counters, bracketing every arm.
 
@@ -144,7 +144,7 @@ still costs a third less than a 720p live broadcast pulling 2.77.**
 ⚠️ Three 1080p arms is three points on one recording. The direction is unambiguous; no slope is
 fitted to them.
 
-## ⛔⛔ What else was running on the box, and why it does not rescue the live figures
+## ⛔⛔ What else was running on the bench host, and why it does not rescue the live figures
 
 **The comparison in Result 1 crosses two sittings, so co-tenancy is not controlled by anything in
 the design.** A bracket controls for drift over time and never for the neighbours, who are in every
@@ -152,12 +152,12 @@ arm including the controls. So it is read directly.
 
 | | live sitting, 09:50-11:45Z | this sweep, from 15:55Z |
 | --- | --- | --- |
-| `loadtest-control-1-srs-1` | **zero log lines** | **2,302 lines** |
-| `loadtest-control-1-stream-uploader-1` | **zero log lines** | **2,488 lines** |
+| `loadtest-<bench host>-srs-1` | **zero log lines** | **2,302 lines** |
+| `loadtest-<bench host>-stream-uploader-1` | **zero log lines** | **2,488 lines** |
 | host load, 1-minute, per arm | 8.54, 15.36, 15.90, 9.18 | **6.23 to 19.37 over 21 arms, median 9.28** |
 
 ⭐ **The loud neighbour was broadcasting during THIS sweep and idle during the live one.** That is a
-real difference between the two sittings and it runs **against** the result: a busier box should
+real difference between the two sittings and it runs **against** the result: a busier host should
 raise these thread readings, and they came in three times lower anyway. Result 1 is therefore a
 conservative bound on the gap, not a flattering one.
 
@@ -166,7 +166,7 @@ across twenty-one arms whose thread column does not move, which independently re
 `host-load-is-not-the-creep-2026-08-15` (dU/dLoad = +0.00000 ± 0.00036 over a 4.7 to 56.1 range).
 
 ⚠️ **What is still not controlled** is everything else that differs between 10:00Z and 16:00Z on a
-shared box carrying forty other bee nodes. The two sittings are four hours apart and nothing here
+shared host carrying forty other bee nodes. The two sittings are four hours apart and nothing here
 brackets that.
 
 ## Result 5: ⭐⭐⭐ THE LIVE PREMIUM IS MANIFEST RE-FETCHING, AND IT IS 1,110 TO 1

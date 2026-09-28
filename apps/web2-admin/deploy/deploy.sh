@@ -385,11 +385,13 @@ for key in INGEST_SRT_PORT INGEST_RTMP_PORT; do
         problem "$key must be a port number (got: $value)."
     fi
 done
-INGEST_KEY_VERIFIED="$(lower "$(env_value INGEST_KEY_VERIFIED)")"
-case "$INGEST_KEY_VERIFIED" in
-    '' | true | false | 1 | 0 | yes | no) ;;
-    *) problem "INGEST_KEY_VERIFIED must be true or false (got: $INGEST_KEY_VERIFIED)." ;;
-esac
+for key in INGEST_KEY_VERIFIED INGEST_RTMP_PUBLIC; do
+    value="$(lower "$(env_value "$key")")"
+    case "$value" in
+        '' | true | false | 1 | 0 | yes | no) ;;
+        *) problem "$key must be true or false (got: $value)." ;;
+    esac
+done
 
 ENV_WEB_PORT="$(env_value WEB2_ADMIN_WEB_PORT)"
 if [ -n "$ENV_WEB_PORT" ]; then

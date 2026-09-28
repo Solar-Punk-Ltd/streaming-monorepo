@@ -23,7 +23,7 @@
 # broadcaster on a real network and this instrument is the wrong one for it.
 #
 # Usage:
-#   deploy/scripts/bench-profiles.sh [--runs 5] [--profile latbench] [--portSlot 7] [--only NAME]
+#   deploy/scripts/bench-profiles.sh --target <host> [--runs 5] [--profile latbench] [--portSlot 7] [--only NAME]
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -32,6 +32,7 @@ RUNS=5
 PROFILE="latbench"
 PORT_SLOT="7"
 ONLY=""
+TARGET=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -39,9 +40,15 @@ while [ $# -gt 0 ]; do
     --profile) PROFILE="$2"; shift 2 ;;
     --portSlot) PORT_SLOT="$2"; shift 2 ;;
     --only) ONLY="$2"; shift 2 ;;
+    --target) TARGET="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+
+if [ -z "${TARGET}" ]; then
+  echo "bench-profiles: --target <host> is required, the bench host every run goes to" >&2
+  exit 2
+fi
 
 ENGINE_ENV="${REPO_ROOT}/engines/srs/.env.${PROFILE}"
 [ -f "${ENGINE_ENV}" ] || { echo "no engine env file at ${ENGINE_ENV}" >&2; exit 1; }
@@ -136,7 +143,7 @@ for row in "${PROFILES[@]}"; do
     echo "--- ${name} run ${run}/${RUNS} ---" | tee -a "${SWEEP_LOG}"
     # A failed run loses that run and nothing else. Each one is a real broadcast, so aborting would
     # throw away every profile already measured.
-    if ! "${REPO_ROOT}/deploy/scripts/bench-on-host.sh" \
+    if ! "${REPO_ROOT}/deploy/scripts/bench-on-host.sh" --target "${TARGET}" \
       --profile "${PROFILE}" --portSlot "${PORT_SLOT}" ${setup_flag} \
       -- "BENCH_GOP_SECONDS=${gop}" "BENCH_SIZE=${size}" "BENCH_BITRATE_KBPS=${kbps}" "BENCH_FPS=${fps}" \
       >> "${SWEEP_LOG}" 2>&1; then

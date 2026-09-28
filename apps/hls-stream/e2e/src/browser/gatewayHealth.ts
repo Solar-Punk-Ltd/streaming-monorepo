@@ -17,7 +17,7 @@
  * - **`/health` service time.** That endpoint touches no chunks, so a slow one is a slow node where a
  *   slow `/bytes/` could be a slow node, a slow peer or a slow disk. This is the sharpest single
  *   signal available for the price of one request.
- * - **The host's load average.** Separates a busy node from a busy box. The deployment shares a host
+ * - **The host's load average.** Separates a busy node from a busy host. The deployment shares a host
  *   with five other compose projects, so a neighbour is a live hypothesis and an untestable one today.
  * - **Connected peers and reachability.** Retrieval goes through peers, and losing them is a way for
  *   retrieval to get slower with the node itself perfectly healthy.
@@ -113,7 +113,7 @@ export interface GatewaySample {
   isReachable: boolean | null;
   /** A node still warming up is slow for a reason that is neither a fault nor worth chasing. */
   isWarmingUp: boolean | null;
-  /** The host's own one-minute load average, which is about the box rather than about bee. */
+  /** The host's own one-minute load average, which is about the bench host rather than about bee. */
   hostLoad1: number | null;
   /**
    * What the node has left to pay for reads with, in BZZ.

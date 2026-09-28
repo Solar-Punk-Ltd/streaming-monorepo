@@ -94,7 +94,7 @@ so this is a cost and latency lever rather than a capacity one. See
 
 ## Artifacts
 
-`/opt/streaming/retrieval-probe/CLIFF3/`. Probe: `deploy/scripts/retrieval-debt-probe.sh`, capacity is
+`~/retrieval-probe/CLIFF3/`. Probe: `deploy/scripts/retrieval-debt-probe.sh`, capacity is
 the 4th arm field. Retrieval operations are the delta on bee's own `req` counter across the arm rather
 than anything the probe counts for itself.
 

@@ -26,13 +26,13 @@
 # tell them apart.
 #
 # ⛔ Bounded by a host that carries forty other bee nodes. One viewer per arm, and the probe's own load
-# ceiling stops the run if the box gets busy.
+# ceiling stops the run if the bench host gets busy.
 set -u
 
-STACK_DIR="${STACK_DIR:-/opt/streaming/swarm-hls-stream-latbench}"
+STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-latbench}"
 ENV_FILE="${STACK_DIR}/.env"
-PROBE="${PROBE:-/opt/streaming/phase06/retrieval-debt-probe.sh}"
-RUN_DIR="${RUN_DIR:-/opt/streaming/retrieval-probe/goldenzone2-$(date -u +%Y%m%d-%H%M%S)}"
+PROBE="${PROBE:-${HOME}/phase06/retrieval-debt-probe.sh}"
+RUN_DIR="${RUN_DIR:-${HOME}/retrieval-probe/goldenzone2-$(date -u +%Y%m%d-%H%M%S)}"
 LOG="${RUN_DIR}/overnight.log"
 CONTAINER="${CONTAINER:-latbench-bee-gateway-1}"
 GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-10077}"

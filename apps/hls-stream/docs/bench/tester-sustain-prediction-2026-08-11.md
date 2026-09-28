@@ -117,12 +117,12 @@ informative rather than less, because almost nothing in our own corpus predicts 
 references were bench fixtures uploaded once. tester-1 is a working stream someone actually watches. If
 it sustains where our 3.5 MB fixtures returned 0/5, the difference is far more likely to be how well
 the chunks are spread through the network than anything about size or the node. That is a question we
-have never asked and could answer cheaply, by timing retrieval of one of the tester's segments against one
+have never asked and could answer cheaply, by timing retrieval of one of a tester's segments against one
 of ours, same node, same minute.
 
 ## ⚠️ Confounds this run does not control
 
-- **Content replication.** the tester's segments may simply be better seeded than references we uploaded for
+- **Content replication.** The tester's segments may simply be better seeded than references we uploaded for
   a bench. Nothing in this design separates that from a size effect, and if the answer lands between
   the two models this is the first thing to suspect.
 - **tester-1 is a different recording, not just a different size.** Codec, resolution and how it was
