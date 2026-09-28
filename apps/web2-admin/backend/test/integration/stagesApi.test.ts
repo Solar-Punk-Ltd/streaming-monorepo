@@ -92,6 +92,8 @@ describe('the manager’s stage routes', () => {
     const unset = {
       catalogueStamp: null,
       catalogueWrite: { batch: null, refusal: null, moveWaitingTo: null, unrecordedHistory: null },
+      // CATALOGUE_MOVE_ENABLED is not set for the instance: the move is off by default.
+      catalogueMove: { enabled: false, waiting: null, refusal: null, latest: null },
     };
     assert.deepEqual((await raw('GET', '/api/catalogue-stamp')).body, unset);
 

@@ -54,7 +54,7 @@ export function expiredByClock(record: CatalogueStampRecord, now: number): boole
 }
 
 /** Why a write with this record is refused, or null when it can go. */
-function refusalFor(record: CatalogueStampRecord, now: number): CatalogueWriteProblem | null {
+export function refusalFor(record: CatalogueStampRecord, now: number): CatalogueWriteProblem | null {
   if (record.state === 'expired' || record.state === 'gone') return record.state;
   if (expiredByClock(record, now)) return 'expired';
   // The manager refuses to designate a mutable batch; this holds the rule on the admin's side as well.

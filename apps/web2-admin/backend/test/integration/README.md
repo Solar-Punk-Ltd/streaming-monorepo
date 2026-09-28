@@ -7,9 +7,10 @@ End-to-end tests against a **live** backend — but one the suite starts itself.
 spawns `src/index.ts` under tsx on a free port with `FEED_GATEWAY=fake`, and
 drops the database again in `after`. Every API suite drives that instance over
 HTTP — the requests the console makes, cross-site header and all, or the
-uploader's and the manager's, on the bearer token. Six suites use its database
+uploader's and the manager's, on the bearer token. Seven suites use its database
 directly instead, because Postgres is exactly what a fake cannot stand in for:
-the three repository suites, `catalogueWrites.test.ts`, `auditLog.test.ts` and
+the three repository suites, `catalogueWrites.test.ts`, `catalogueMoves.test.ts`
+(which also moves a history through the fake Bee of the unit tests), `auditLog.test.ts` and
 `authCredentialConcurrency.test.ts`. Two of the
 API suites read it as well, for what no response shows: `api.test.ts` reads
 `audit_log`, and `internalApi.test.ts` reads `feed_writes` and

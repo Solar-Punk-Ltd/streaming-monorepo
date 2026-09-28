@@ -237,7 +237,7 @@ interface WrittenAt {
   index: number | null;
 }
 
-const THUMBNAIL_FILE_EXTENSIONS: Record<string, string> = {
+export const THUMBNAIL_FILE_EXTENSIONS: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
   'image/webp': 'webp',

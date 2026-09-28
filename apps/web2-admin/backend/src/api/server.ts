@@ -4,6 +4,7 @@ import express from 'express';
 
 import { AuthService } from '../domain/auth/AuthService.js';
 import type { CatalogueBatchService } from '../domain/CatalogueBatch.js';
+import type { CatalogueMoveService } from '../domain/CatalogueMove.js';
 import { Database } from '../domain/Database.js';
 import type { FeedIdentity } from '../domain/feedIdentity.js';
 import { IngestService } from '../domain/IngestService.js';
@@ -43,6 +44,8 @@ export interface ApiDeps {
   ingestService: IngestService;
   stageService: StageService;
   catalogueBatch: CatalogueBatchService;
+  /** Moving the catalogue's history onto another batch, started from the Stages page. */
+  catalogueMove: CatalogueMoveService;
   /**
    * The registrar token: the only one the manager's routes under /api/internal take, and, while the stages move
    * over to tokens of their own, still taken from an uploader as an unattributed caller. Never accepted anywhere
@@ -124,7 +127,12 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
   app.use('/api/stages', createStagesRouter({ stageService: deps.stageService, requireAuth }));
   app.use(
     '/api/catalogue-stamp',
-    createCatalogueStampRouter({ stageService: deps.stageService, catalogueBatch: deps.catalogueBatch, requireAuth }),
+    createCatalogueStampRouter({
+      stageService: deps.stageService,
+      catalogueBatch: deps.catalogueBatch,
+      catalogueMove: deps.catalogueMove,
+      requireAuth,
+    }),
   );
 
   app.use(notFound);

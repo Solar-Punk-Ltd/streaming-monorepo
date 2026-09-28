@@ -228,6 +228,22 @@ export class StreamRepository {
   }
 
   /**
+   * The stored image whose upload `reference` is, with the stream's topic its file was named by, or null when no
+   * stream holds it: moving the catalogue uploads it again from these bytes. A row whose image changed since has
+   * cleared its reference, so it is never answered for the old one.
+   */
+  async findThumbnailByRef(reference: string): Promise<(ThumbnailRow & { topic: string }) | null> {
+    const result = await this.pool.query<ThumbnailRow & { topic: string }>(
+      `SELECT thumbnail, thumbnail_mime, topic FROM streams
+        WHERE thumbnail_ref = $1 AND thumbnail IS NOT NULL
+        ORDER BY updated_at DESC
+        LIMIT 1`,
+      [reference],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /**
    * Stores new image bytes and clears `thumbnail_ref`: the reference now
    * belongs to a different image, and a null ref is what tells the next
    * publish to upload the new one. Always an edit, for the same reason: the
