@@ -907,20 +907,23 @@ nobody wrote, while every report answers 200 and nothing says so. Nothing on the
 the address is what is compared, once at boot and again on every publish, against the declaration's
 `owner`. At boot:
 
-| The admin answers `GET /api/internal/stages/self`, with `ADMIN_API_TOKEN`   | The uploader                                                                           |
-| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| 200 with `{ stageId, owner }`                                               | Compares `owner` with its signer. A mismatch refuses to start, naming both addresses   |
-| 404: the shared token, which belongs to no stage, or an admin before stages | Compares the catalog owner of the public `/api/config`, as before stages, the same way |
-| Anything else, or nothing                                                   | Warns and starts. The publish gate compares each declaration's owner                   |
+| The admin answers `GET /api/internal/stages/self`, with `ADMIN_API_TOKEN`                          | The uploader                                                                           |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| 200 with `{ stageId, owner }`                                                                      | Compares `owner` with its signer. A mismatch refuses to start, naming both addresses   |
+| 404: an admin before stages, or one of stages phases 5 to 8 on the admin's shared token            | Compares the catalog owner of the public `/api/config`, as before stages, the same way |
+| 401: an admin of stages phase 9 or later on any token but the stage's own, the shared one included | Warns and starts, and every lookup and report it makes is refused the same way         |
+| Anything else, or nothing                                                                          | Warns and starts. The publish gate compares each declaration's owner                   |
 
 A refusal says to fix the deployment's `STREAM_KEY` in the manager, or the stage the admin holds for
 it. On the shared token it says to give the deployment a token of its own, so the admin can name its
-stage.
+stage. An admin of stages phase 9 or later takes only a stage's own token, which the manager
+generates for a deployment linked to that admin and tells the admin about: an uploader the manager
+did not deploy linked to the admin cannot report to it.
 
-| Variable          | Description                                                                        |
-| ----------------- | ---------------------------------------------------------------------------------- |
-| `ADMIN_API_URL`   | Base URL of the admin service. Empty (the default) is the standalone deployment    |
-| `ADMIN_API_TOKEN` | Bearer token for the admin's internal routes. Required when the URL is set, min 32 |
+| Variable          | Description                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `ADMIN_API_URL`   | Base URL of the admin service. Empty (the default) is the standalone deployment                                                 |
+| `ADMIN_API_TOKEN` | Bearer token for the admin's internal routes, the stage's own token the manager generates. Required when the URL is set, min 32 |
 
 ### The ABR ladder in admin mode
 
@@ -1016,7 +1019,7 @@ STATE_DIR=./state
 ENGINE=srs
 API_PORT=3000
 ADMIN_API_URL=http://localhost:9877
-ADMIN_API_TOKEN=<min 32 chars, the admin's internal token>
+ADMIN_API_TOKEN=<min 32 chars: the stage's own token the manager generates, or an older admin's internal token>
 ```
 
 `SRS_WEBHOOK_TOKEN` is read from `engines/srs/.env`, which the uploader loads because `ENGINE=srs`.
