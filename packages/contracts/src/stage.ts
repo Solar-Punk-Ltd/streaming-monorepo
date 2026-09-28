@@ -234,9 +234,32 @@ export type CatalogueStampRecord = z.infer<typeof catalogueStampRecordSchema>;
 export const stageStoreAnswerSchema = z.object({ stored: z.boolean() });
 export type StageStoreAnswer = z.infer<typeof stageStoreAnswerSchema>;
 
-/** What `DELETE /api/internal/stages/:stageId` answers: false when there was no such stage to retire. */
+/**
+ * `DELETE /api/internal/stages/:stageId`: the moment the manager saw the deployment gone. A record observed before it
+ * does not bring the stage back, and a stage the admin never stored is kept out until one observed after it arrives.
+ */
+export const stageRetireRequestSchema = z.object({ observedAt: isoMoment });
+export type StageRetireRequest = z.infer<typeof stageRetireRequestSchema>;
+
+/**
+ * What `DELETE /api/internal/stages/:stageId` answers: true when this call retired a stored stage. False when there
+ * was no such stage (the retirement is still kept), when it was retired already, or when the admin holds a record
+ * observed after the moment the call names.
+ */
 export const stageRetireAnswerSchema = z.object({ retired: z.boolean() });
 export type StageRetireAnswer = z.infer<typeof stageRetireAnswerSchema>;
+
+/** `DELETE /api/internal/catalogue-stamp`: the moment the manager saw the designation gone, under the same rule. */
+export const catalogueStampClearRequestSchema = z.object({ observedAt: isoMoment });
+export type CatalogueStampClearRequest = z.infer<typeof catalogueStampClearRequestSchema>;
+
+/**
+ * What `DELETE /api/internal/catalogue-stamp` answers: true when this call cleared a designation the admin held.
+ * False when there was none (the clear is still kept), when it was cleared already, or when the admin holds a record
+ * observed after the moment the call names.
+ */
+export const catalogueStampClearAnswerSchema = z.object({ cleared: z.boolean() });
+export type CatalogueStampClearAnswer = z.infer<typeof catalogueStampClearAnswerSchema>;
 
 /** What `GET /api/internal/stages/self` answers: the caller's stage and the owner it signs as. */
 export const stageSelfAnswerSchema = z.object({ stageId: uuid, owner: ownerAddress });

@@ -5,6 +5,8 @@ import { sameFeedOwner } from './adminAnswers.js';
 import {
   ADMIN_TOKEN_KINDS,
   CATALOGUE_STAMP_PATH,
+  catalogueStampClearAnswerSchema,
+  catalogueStampClearRequestSchema,
   catalogueStampRecordSchema,
   isOlderStageRecord,
   STAGE_CHEQUEBOOK_HEALTHS,
@@ -18,6 +20,7 @@ import {
   stageRecordPath,
   stageRecordSchema,
   stageRetireAnswerSchema,
+  stageRetireRequestSchema,
   stageRungSchema,
   stageSelfAnswerSchema,
   stageStampSchema,
@@ -375,6 +378,33 @@ describe("the admin's answers", () => {
     assert.deepEqual(stageRetireAnswerSchema.parse({ retired: true }), { retired: true });
     assert.equal(stageStoreAnswerSchema.safeParse({ stored: 'yes' }).success, false);
     assert.equal(stageRetireAnswerSchema.safeParse({}).success, false);
+  });
+
+  it('reads whether the catalogue stamp was cleared', () => {
+    assert.deepEqual(catalogueStampClearAnswerSchema.parse({ cleared: true, extra: 1 }), { cleared: true });
+    assert.equal(catalogueStampClearAnswerSchema.safeParse({ cleared: 'no' }).success, false);
+    assert.equal(catalogueStampClearAnswerSchema.safeParse({}).success, false);
+  });
+});
+
+describe("the manager's retirements", () => {
+  it('carry the moment the manager saw the stage or the designation gone', () => {
+    for (const schema of [stageRetireRequestSchema, catalogueStampClearRequestSchema]) {
+      assert.deepEqual(schema.parse({ observedAt: '2026-09-28T10:00:00.000Z', reason: 'deleted' }), {
+        observedAt: '2026-09-28T10:00:00.000Z',
+      });
+      assert.deepEqual(schema.parse({ observedAt: '2026-09-28T12:00:00+02:00' }), {
+        observedAt: '2026-09-28T12:00:00+02:00',
+      });
+    }
+  });
+
+  it('refuse a retirement without its moment, or with one that is not ISO with an offset', () => {
+    for (const schema of [stageRetireRequestSchema, catalogueStampClearRequestSchema]) {
+      for (const body of [{}, { observedAt: null }, { observedAt: 'now' }, { observedAt: '2026-09-28T10:00:00' }]) {
+        assert.equal(schema.safeParse(body).success, false, JSON.stringify(body));
+      }
+    }
   });
 
   it("reads the caller's stage and owner, in lower case", () => {
