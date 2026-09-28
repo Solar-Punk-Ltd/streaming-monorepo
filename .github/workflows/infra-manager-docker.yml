@@ -1,6 +1,7 @@
 # The Docker-backed run: the container-backed regressions and the signed-in
 # integration suite, real containers built and started here and nowhere else.
-# By hand, since it takes minutes and builds images. Not a required check.
+# By hand, or on a pull request labelled docker-checks, since it takes minutes
+# and builds images. Not a required check.
 #
 # Five jobs, so one failure never hides another and each shows by name in the
 # run: the SRS parser on eight files at once, the OvenMediaEngine admission
@@ -14,11 +15,11 @@ name: infra-manager docker-backed checks
 
 on:
   workflow_dispatch:
-  # GitHub starts a by-hand workflow only when its file is on the default
-  # branch, which is still main. Until this file reaches main, adding the
-  # label docker-checks to a pull request starts the same run.
+  # On a pull request that carries the label docker-checks: when the label is
+  # added, and again on every push to it, so a later commit is never left with
+  # these checks missing from its list.
   pull_request:
-    types: [labeled]
+    types: [labeled, synchronize]
 
 permissions:
   contents: read
@@ -35,7 +36,10 @@ defaults:
 
 jobs:
   srs-parser:
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'docker-checks'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'docker-checks') ||
+      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'docker-checks'))
     # The parallel parser check. Eight concurrent checks through the manager's
     # own checker, on the engine image the stack runs. Every refusal has to name the directive of
     # its own file, which is what a shared scratch copy would break.
@@ -63,7 +67,10 @@ jobs:
         run: bash manager/test/docker/srs-check-isolation.sh
 
   ome-gate:
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'docker-checks'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'docker-checks') ||
+      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'docker-checks'))
     # The admission gate. SRT in, signed admission out, HLS playlist served, all
     # in throwaway containers on a private network. No funds, no Swarm, no host.
     runs-on: ubuntu-latest
@@ -78,7 +85,10 @@ jobs:
         run: bash manager/test/docker/ome-admission-gate.sh
 
   image-race:
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'docker-checks'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'docker-checks') ||
+      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'docker-checks'))
     # The shared image race. The shared image tag reproduced and closed on
     # throwaway projects.
     # The versions this ran on are in the harness output, and they are not the
@@ -100,7 +110,10 @@ jobs:
         run: bash manager/test/docker/shared-image-race.sh
 
   version-build:
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'docker-checks'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'docker-checks') ||
+      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'docker-checks'))
     # The stack version builder on the commit under test, for real: the cut of
     # the stack's lockfile, the install with the pnpm the stack names and the
     # build, all in its node:24-alpine container, then a check of what it left
@@ -126,7 +139,10 @@ jobs:
         run: bash manager/test/docker/stack-version-build.sh "$GITHUB_SHA" "https://github.com/$REPOSITORY.git"
 
   integration:
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'docker-checks'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'docker-checks') ||
+      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'docker-checks'))
     # The signed-in integration suite, and now the container-backed engine
     # startup failure. The manager on the runner with Postgres beside it, real
     # deployments created and removed.
