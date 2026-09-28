@@ -269,6 +269,26 @@ describe('which instant an arm is proved from', () => {
     assert.ok(session.arm!.settledForMs >= TEST_SETTLE_MS);
   });
 
+  /**
+   * Node's timers can fire up to a millisecond before `Date.now()` says they should, which is how the
+   * case above once saw a settle a millisecond short of what it asked for. This clock fires early the
+   * same way, and a settle is still not over until the clock agrees it is.
+   */
+  it('waits again when its timer fires before the settle has passed', async () => {
+    installSwitch();
+    let atMs = 0;
+    const firesEarly = {
+      now: () => atMs,
+      wait: async (ms: number) => {
+        atMs += Math.max(1, ms - 1);
+      },
+    };
+
+    const session = await openArm('weeb3', { settleMs: WINDOW_SETTLE_MS, clock: firesEarly });
+
+    assert.equal(session.arm!.settledForMs, WINDOW_SETTLE_MS);
+  });
+
   /** The whole point: the segments a player pulled in its first seconds now prove the arm. */
   it('accepts a gateway arm whose only segments were fetched before the settle ended', async () => {
     installSwitch({ lands: 'gateway' });

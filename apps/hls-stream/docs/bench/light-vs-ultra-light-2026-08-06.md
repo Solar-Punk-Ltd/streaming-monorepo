@@ -6,7 +6,7 @@
 > ultra-light was a light node with swap off: chain enabled, no chequebook, `beeMode: light`. The
 > measurements stand as a comparison of a funded against an unfunded LIGHT node. A true ultra-light
 > gateway, with no chain at all, has not been measured by this project. The compose gateway's chain
-> endpoint is hard-coded empty since 2026-09-15, under Levi's ruling that a viewer node is always
+> endpoint is hard-coded empty since 2026-09-15, under the owner's ruling that a viewer node is always
 > ultra-light, and the readiness check now reads `/status` `beeMode`. Found in Nándor Komlódi's fix
 > branch, verified against bee's source.
 
