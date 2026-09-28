@@ -33,7 +33,6 @@ import { scopeOf } from '../../domain/uploaderScope.js';
 import { stageIdParamSchema } from '../../schemas/stage.js';
 import { streamIdParamSchema } from '../../schemas/stream.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { notFound } from '../middleware/notFound.js';
 import { uploaderCallerOf } from '../middleware/requireUploaderToken.js';
 import { validateContractBody, validateContractParams, validateParams } from '../middleware/validate.js';
 import { toIngestLookup, toPublishResult, toRenditionReportResponse } from '../presenters.js';
@@ -44,8 +43,24 @@ export interface InternalRoutesDeps {
   stageService: StageService;
   /** The manager's door: the registrar token, `INTERNAL_API_TOKEN`, alone. */
   requireRegistrarToken: RequestHandler;
-  /** The uploader's door: a stage's own token, or the shared one as an unattributed caller. */
+  /** The uploader's door: a stage's own token, alone. */
   requireUploaderToken: RequestHandler;
+}
+
+/**
+ * Either door, for a path no route names: the registrar token first, then a stage's own token. Only a caller neither
+ * takes is 401; either one gets the 404 every unknown path gets.
+ */
+function eitherDoor(registrar: RequestHandler, uploader: RequestHandler): RequestHandler {
+  return (req, res, next) => {
+    void registrar(req, res, (refused?: unknown) => {
+      if (refused === undefined) {
+        next();
+        return;
+      }
+      void uploader(req, res, next);
+    });
+  };
 }
 
 /** The `:stageId` of the request in lower case, as the contract keeps a stage id. The param schema checked it. */
@@ -65,17 +80,20 @@ function stageIdOf(req: Request): string {
  * manifest. `POST /state` and `POST /renditions` are how the one tells the
  * other what to say.
  *
- * The manager has four: it pushes each stage's record and the brand's
- * catalogue stamp record, and takes them back (docs/architecture/stages.md).
+ * The manager has five: it pushes each stage's record and the brand's
+ * catalogue stamp record, takes them back (docs/architecture/stages.md), and
+ * checks that its stored token is the registrar's.
  *
  * Each route names its door. The manager's take the registrar token,
  * `INTERNAL_API_TOKEN`, and nothing else: a stage's own token is refused
- * there. The uploader's take a stage's own token, and are then answered only
- * about that stage's streams, or the shared `INTERNAL_API_TOKEN` while the
- * stages move over, unattributed and answered about every stream as before.
- * A path
- * or method no route names answers 401 without either token and 404 with
- * one, as it did when one token opened the whole router.
+ * there. The uploader's take a stage's own token alone, and are then answered
+ * only about that stage's streams. Since phase 9 of the stages brief the
+ * registrar token is refused on them with the same 401 as any other token, so
+ * a stage whose uploader presents no token of its own is told so plainly; its
+ * token is rotated in the manager. `GET /registrar` is the manager's proof
+ * that its stored token is the registrar's. A path or method no route names
+ * answers 401 without either token and 404 with one, as it did when one token
+ * opened the whole router.
  */
 export function createInternalRouter(deps: InternalRoutesDeps): Router {
   const { streamStateService, ladderService, stageService, requireRegistrarToken, requireUploaderToken } = deps;
@@ -85,14 +103,13 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
   // a stage id.
   router.get('/stages/self', requireUploaderToken, (req: Request, res: Response) => {
     const caller = uploaderCallerOf(req);
-    if (caller.kind !== 'stage') {
-      // A caller on the shared token belongs to no stage. It is answered as an admin without this route answers,
-      // so the uploader falls back to the same check either way.
-      notFound(req, res);
-      return;
-    }
     const response: StageSelfAnswer = { stageId: caller.stageId, owner: caller.owner };
     res.json(response);
+  });
+
+  // The manager's Test connection on its link: whether the stored token is the registrar's, and nothing else.
+  router.get('/registrar', requireRegistrarToken, (_req: Request, res: Response) => {
+    res.status(204).end();
   });
 
   router.put(
@@ -191,8 +208,8 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
   );
 
   // Anything else under /api/internal: 401 without a token either door takes, and then on to the 404 every
-  // unknown path gets. The uploader's door takes both the shared token and a stage's own.
-  router.use(requireUploaderToken);
+  // unknown path gets.
+  router.use(eitherDoor(requireRegistrarToken, requireUploaderToken));
 
   return router;
 }

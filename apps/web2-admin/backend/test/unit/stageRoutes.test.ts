@@ -117,7 +117,7 @@ before(async () => {
       ladderService: new LadderService(streams, renditions, publishService, audit),
       stageService,
       requireRegistrarToken: createRequireInternalToken(TOKEN),
-      requireUploaderToken: createRequireUploaderToken({ sharedToken: TOKEN, stages }),
+      requireUploaderToken: createRequireUploaderToken({ stages }),
     }),
   );
   app.use(express.json());

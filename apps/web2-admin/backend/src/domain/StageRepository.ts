@@ -86,8 +86,8 @@ export class StageRepository {
 
   /**
    * The active stages whose uploader presents a token of its own with this sha256: what an uploader's call is
-   * attributed by (migration 012). Only `own` rows: a `shared` row's hash is the shared token's, which is checked
-   * apart, and a retired stage's token is taken no more. Two rows at most, since two already mean the token cannot
+   * attributed by (migration 012). Only `own` rows: a `shared` row's hash is a token the manager did not generate,
+   * which the uploader's routes refuse, and a retired stage's token is taken no more. Two rows at most, since two already mean the token cannot
    * say which stage it is. The hash itself is not selected.
    */
   async findActiveByOwnTokenSha256(sha256: string): Promise<StageRow[]> {

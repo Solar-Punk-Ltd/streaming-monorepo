@@ -116,14 +116,16 @@ describe('cross-site writes', () => {
     assert.equal(response.status, 200);
   });
 
-  it('leaves the uploader reachable on its bearer token alone', async () => {
+  it('leaves the internal API reachable on a bearer token alone', async () => {
     // No cookie, no Origin, no x-requested-with: exactly what swarm-hls-stream
-    // sends, and exactly what the cross-site check would refuse. /api/internal
-    // is mounted ahead of it for that reason, and this is the test that says so.
-    const response = await raw('GET', '/api/internal/streams/by-ingest/video/not-a-uuid', internalCall());
+    // and the manager send, and exactly what the cross-site check would refuse.
+    // /api/internal is mounted ahead of it for that reason, and this is the
+    // test that says so. The registrar check is the one route this suite's
+    // registrar token alone reaches.
+    const response = await raw('GET', '/api/internal/registrar', internalCall());
 
     assert.notEqual(response.status, 403);
-    assert.equal(response.status, 400, response.text);
+    assert.equal(response.status, 204, response.text);
   });
 
   it('still refuses an internal call with no token', async () => {

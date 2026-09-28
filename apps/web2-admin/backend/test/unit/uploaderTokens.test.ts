@@ -1,17 +1,18 @@
 /**
- * A token per uploader (docs/architecture/stages.md, phase 5). Unit test: the real internal router, both doors and
- * the real services on a random port, mounted the way `src/api/server.ts` mounts them, with the stores, the feed log
- * and the audit log in memory. `pnpm test`.
+ * A token per uploader (docs/architecture/stages.md, phases 5 and 9). Unit test: the real internal router, both
+ * doors and the real services on a random port, mounted the way `src/api/server.ts` mounts them, with the stores, the
+ * feed log and the audit log in memory. `pnpm test`.
  *
  * Pinned here:
- * - the manager's routes take the registrar token alone, and refuse a stage's own token;
- * - the uploader's routes take the shared token, unattributed and unscoped as before, and an active stage's own
- *   token, and refuse a retired stage's token, the hash a `shared` row carries when it is not the shared token, a
- *   token no stage names, one several stages name, a missing or malformed header and a session cookie;
+ * - the manager's routes and `GET /registrar` take the registrar token alone, and refuse a stage's own token;
+ * - the uploader's routes take an active stage's own token alone. They refuse the registrar token, on every route and
+ *   whether or not a `shared` stage record names its hash, with the same 401 `unauthenticated` as any other token,
+ *   and write nothing for it. They refuse a retired stage's token, the hash a `shared` row carries, a token no stage
+ *   names, one several stages name, a missing or malformed header and a session cookie;
  * - a stage's token is answered only about its stage's streams: another stage's stream, and a stream with no stage,
  *   are the same 404 as a stream that does not exist, with nothing written;
- * - `GET /stages/self` names the caller's stage and owner, and is 404 on the shared token;
- * - no token and no token hash reaches a log line, and the unattributed caller is logged once, then once an hour.
+ * - `GET /stages/self` names the caller's stage and owner, and is 401 on the registrar token;
+ * - no token and no token hash reaches a log line, and a refused registrar token logs nothing.
  */
 import { createHash } from 'node:crypto';
 import http from 'node:http';
@@ -25,11 +26,7 @@ import express from 'express';
 import { errorHandler } from '../../src/api/middleware/errorHandler.js';
 import { notFound } from '../../src/api/middleware/notFound.js';
 import { createRequireInternalToken } from '../../src/api/middleware/requireInternalToken.js';
-import {
-  createRequireUploaderToken,
-  UNATTRIBUTED_LOG_PERIOD_MS,
-  UnattributedCallLog,
-} from '../../src/api/middleware/requireUploaderToken.js';
+import { createRequireUploaderToken } from '../../src/api/middleware/requireUploaderToken.js';
 import { createInternalRouter } from '../../src/api/routes/internal.js';
 import { UnauthenticatedError } from '../../src/domain/errors/index.js';
 import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
@@ -53,27 +50,32 @@ import { FakeCatalogueStampStore, FakeStageStore, STAGE_ID, STAGE_OWNER, stageRe
 
 const sha256 = (token: string) => createHash('sha256').update(token, 'utf8').digest('hex');
 
-/** The shared `INTERNAL_API_TOKEN`: the registrar token, and still taken from an uploader. */
-const SHARED = 'test-shared-internal-token-000000000000';
+/**
+ * `INTERNAL_API_TOKEN`, the registrar token: 64 hex characters, as the env file's sample generates one, so it has the
+ * shape of a stage's own token and the uploader's door does ask the database for it, and still refuses it.
+ */
+const REGISTRAR = 'ab'.repeat(32);
 /** The own token of `STAGE_ID`, the main stage: 64 hex characters, as the manager generates one. */
 const MAIN_TOKEN = 'a1'.repeat(32);
 const OTHER_TOKEN = 'b2'.repeat(32);
 const RETIRED_TOKEN = 'c3'.repeat(32);
 /**
  * A registrar token the admin no longer holds, which a `shared` row still names by its hash: a deployment still on
- * an old copy after the link's token changed. Hex, so the admin does ask for it, and still refuses it.
+ * an old copy after the link's token changed. Hex, so the admin does ask for it, and refuses it.
  */
 const OLD_SHARED = 'd4'.repeat(32);
 /** One own token two stages were pushed with. */
 const TWICE_TOKEN = 'e5'.repeat(32);
 const UNKNOWN_TOKEN = 'f6'.repeat(32);
 
-const EVERY_TOKEN = [SHARED, MAIN_TOKEN, OTHER_TOKEN, RETIRED_TOKEN, OLD_SHARED, TWICE_TOKEN, UNKNOWN_TOKEN];
+const EVERY_TOKEN = [REGISTRAR, MAIN_TOKEN, OTHER_TOKEN, RETIRED_TOKEN, OLD_SHARED, TWICE_TOKEN, UNKNOWN_TOKEN];
 
 const OTHER_ID = '6a1d3b9f-2c3d-4e5f-8a51-1b2c3d4e5f60';
 const OTHER_OWNER = '0x' + '4b'.repeat(20);
 const RETIRED_ID = '7b2e4c0a-3d4e-4f60-9b62-2c3d4e5f6071';
 const SHARED_ROW_ID = '8c3f5d1b-4e5f-4071-8c73-3d4e5f607182';
+/** A stage still on a copy of the current registrar token, which an older manager copied into it: it must rotate. */
+const COPIED_ROW_ID = 'bf628a4e-7182-43a4-9fa6-60718293a4b5';
 const TWICE_IDS = ['9d406e2c-5f60-4182-9d84-4e5f60718293', 'ae517f3d-6071-4293-8e95-5f60718293a4'];
 
 let server: http.Server;
@@ -83,7 +85,6 @@ let streams: FakeStreamStore;
 let renditions: FakeRenditionStore;
 let feedWrites: FakeFeedWriteLog;
 let audit: InMemoryAuditLog;
-let clock: number;
 
 let onMain: StreamRow;
 let onOther: StreamRow;
@@ -107,6 +108,11 @@ before(async () => {
       stageId: SHARED_ROW_ID,
       name: 'Shared stage',
       adminToken: { sha256: sha256(OLD_SHARED), kind: 'shared' },
+    }),
+    stageRecord({
+      stageId: COPIED_ROW_ID,
+      name: 'Copied stage',
+      adminToken: { sha256: sha256(REGISTRAR), kind: 'shared' },
     }),
     ownStage(TWICE_IDS[0]!, 'Twice stage A', TWICE_TOKEN),
     ownStage(TWICE_IDS[1]!, 'Twice stage B', TWICE_TOKEN),
@@ -138,7 +144,6 @@ before(async () => {
   // A stream published before stages existed: on the catalogue, with no stage.
   streams.rows.set(noStage.id, { ...streams.get(noStage.id), stage_id: null });
 
-  clock = Date.parse('2026-09-28T12:00:00.000Z');
   const app = express();
   app.use(
     '/api/internal',
@@ -147,12 +152,8 @@ before(async () => {
       streamStateService: new StreamStateService(streams, publishService, audit),
       ladderService: new LadderService(streams, renditions, publishService, audit),
       stageService: new StageService(stages, new FakeCatalogueStampStore(), audit),
-      requireRegistrarToken: createRequireInternalToken(SHARED),
-      requireUploaderToken: createRequireUploaderToken({
-        sharedToken: SHARED,
-        stages,
-        unattributed: new UnattributedCallLog(() => clock),
-      }),
+      requireRegistrarToken: createRequireInternalToken(REGISTRAR),
+      requireUploaderToken: createRequireUploaderToken({ stages }),
     }),
   );
   app.use(notFound);
@@ -201,7 +202,7 @@ async function call(
   options: { body?: unknown; token?: string | null; authorization?: string; cookie?: string } = {},
 ): Promise<Answer> {
   const headers: Record<string, string> = {};
-  const token = options.token === undefined ? SHARED : options.token;
+  const token = options.token === undefined ? REGISTRAR : options.token;
   if (options.authorization !== undefined) headers.authorization = options.authorization;
   else if (token !== null) headers.authorization = `Bearer ${token}`;
   if (options.cookie) headers.cookie = options.cookie;
@@ -271,15 +272,34 @@ describe('the manager’s routes', () => {
     assert.equal(stored.status, 200, stored.text);
     assert.deepEqual(stored.body, { stored: true });
   });
+
+  it('answer the registrar check 204 on the registrar token, with no body, and 401 on any other', async () => {
+    const checked = await call('GET', '/registrar', { token: REGISTRAR });
+    assert.equal(checked.status, 204);
+    assert.equal(checked.text, '');
+
+    for (const token of [MAIN_TOKEN, OTHER_TOKEN, OLD_SHARED, UNKNOWN_TOKEN, null]) {
+      const answer = await call('GET', '/registrar', { token });
+      assert.equal(answer.status, 401, `the registrar check took ${token === null ? 'no token' : 'a wrong one'}`);
+      assert.deepEqual(answer.body, { error: 'unauthenticated' });
+    }
+    // Only GET: another method is an unknown path, which the registrar token reads as a 404.
+    assert.equal((await call('POST', '/registrar', { token: REGISTRAR })).status, 404);
+  });
 });
 
 describe('the uploader’s routes', () => {
-  it('take the shared token as an unattributed caller, answered about every stream', async () => {
+  it('refuse the registrar token on every route, for every stream, and write nothing', async () => {
+    const before = written();
     for (const stream of [onMain, onOther, noStage]) {
-      const answer = await lookup(stream, SHARED);
-      assert.equal(answer.status, 200, answer.text);
-      assert.equal((answer.body as { id: string }).id, stream.id);
+      for (const [method, path, body] of uploaderCalls(stream)) {
+        const answer = await call(method, path, { body, token: REGISTRAR });
+        assert.equal(answer.status, 401, `${method} ${path} took the registrar token`);
+        assert.deepEqual(answer.body, { error: 'unauthenticated' });
+      }
     }
+    assert.equal(written(), before, 'a call on the registrar token wrote something');
+    assert.deepEqual(lines, [], 'a refused registrar token is not logged');
   });
 
   it('take an active stage’s own token, answered about its own streams', async () => {
@@ -344,7 +364,7 @@ describe('the uploader’s routes', () => {
   it('answer an unknown path 401 without a token, and 404 with either', async () => {
     assert.equal((await call('GET', '/nothing-here', { token: null })).status, 401);
     assert.equal((await call('GET', `/stages/${STAGE_ID}`, { token: null })).status, 401);
-    for (const token of [SHARED, MAIN_TOKEN]) {
+    for (const token of [REGISTRAR, MAIN_TOKEN]) {
       const answer = await call('GET', '/nothing-here', { token });
       assert.equal(answer.status, 404);
       assert.deepEqual(answer.body, { error: 'not_found', path: '/api/internal/nothing-here' });
@@ -393,13 +413,6 @@ describe('a stage’s token is scoped to its stage', () => {
     assert.equal(rung.status, 200, rung.text);
     assert.equal(renditions.rows.get(onMain.id)?.length, 1);
   });
-
-  it('leaves the shared token unscoped: it reports for a stream with no stage', async () => {
-    const [, state] = uploaderCalls(noStage);
-    const live = await call(state![0], state![1], { body: state![2], token: SHARED });
-    assert.equal(live.status, 200, live.text);
-    assert.equal(streams.get(noStage.id).status, 'live');
-  });
 });
 
 describe('GET /stages/self', () => {
@@ -412,10 +425,10 @@ describe('GET /stages/self', () => {
     assert.deepEqual(other.body, { stageId: OTHER_ID, owner: OTHER_OWNER });
   });
 
-  it('is 404 on the shared token, as on an admin without the route, so the uploader falls back', async () => {
-    const answer = await call('GET', '/stages/self', { token: SHARED });
-    assert.equal(answer.status, 404);
-    assert.deepEqual(answer.body, { error: 'not_found', path: '/api/internal/stages/self' });
+  it('is 401 on the registrar token, which belongs to no stage and is the manager’s alone', async () => {
+    const answer = await call('GET', '/stages/self', { token: REGISTRAR });
+    assert.equal(answer.status, 401);
+    assert.deepEqual(answer.body, { error: 'unauthenticated' });
   });
 
   it('is 401 on a retired stage’s token and without one', async () => {
@@ -424,59 +437,9 @@ describe('GET /stages/self', () => {
   });
 });
 
-describe('the unattributed caller in the log', () => {
-  const unattributed = () => lines.filter((line) => line.includes('unattributed uploader'));
-
-  it('is said once, then at most once an hour with how many calls there were', async () => {
-    // Earlier tests made the first line already; an hour on, the next call makes the second.
-    clock += UNATTRIBUTED_LOG_PERIOD_MS;
-    for (let i = 0; i < 5; i += 1) await lookup(onMain, SHARED);
-    assert.equal(unattributed().length, 1);
-    assert.match(unattributed()[0]!, /\[INFO\]/);
-    assert.match(unattributed()[0]!, / calls? on the shared INTERNAL_API_TOKEN since /);
-
-    clock += UNATTRIBUTED_LOG_PERIOD_MS - 1;
-    await lookup(onMain, SHARED);
-    assert.equal(unattributed().length, 1, 'a line before the hour is up');
-
-    clock += 1;
-    await lookup(onMain, SHARED);
-    await lookup(onMain, SHARED);
-    assert.equal(unattributed().length, 2);
-    assert.match(unattributed()[1]!, /: 6 calls on the shared INTERNAL_API_TOKEN since 2026-09-28T/);
-  });
-
-  it('is never said for a stage’s own token', async () => {
-    clock += 10 * UNATTRIBUTED_LOG_PERIOD_MS;
-    await lookup(onMain, MAIN_TOKEN);
-    await call('GET', '/stages/self', { token: MAIN_TOKEN });
-    assert.equal(unattributed().length, 0);
-  });
-});
-
-describe('UnattributedCallLog', () => {
-  it('answers a line for the first call, then one per period with the calls since the last', () => {
-    let now = 0;
-    const log = new UnattributedCallLog(() => now, 1000);
-
-    assert.match(log.note() ?? '', /unattributed uploader: a call on the shared INTERNAL_API_TOKEN/);
-    now = 999;
-    assert.equal(log.note(), null);
-    assert.equal(log.note(), null);
-    now = 1000;
-    assert.match(log.note() ?? '', /: 3 calls on the shared INTERNAL_API_TOKEN since 1970-01-01T00:00:00.000Z\./);
-    now = 1500;
-    assert.equal(log.note(), null);
-    now = 2000;
-    assert.match(log.note() ?? '', /: 2 calls on the shared INTERNAL_API_TOKEN since 1970-01-01T00:00:01.000Z\./);
-    now = 5000;
-    assert.match(log.note() ?? '', /: 1 call on the shared INTERNAL_API_TOKEN since/);
-  });
-});
-
 describe('requireUploaderToken on its own', () => {
   function run(store: { findActiveByOwnTokenSha256(sha256: string): Promise<never[]> }): Promise<unknown> {
-    const door = createRequireUploaderToken({ sharedToken: SHARED, stages: store });
+    const door = createRequireUploaderToken({ stages: store });
     const req = {
       get: (name: string) => (name.toLowerCase() === 'authorization' ? `Bearer ${MAIN_TOKEN}` : undefined),
     } as unknown as Request;
@@ -500,7 +463,7 @@ describe('requireUploaderToken on its own', () => {
         return [] as never[];
       },
     };
-    const door = createRequireUploaderToken({ sharedToken: SHARED, stages: store });
+    const door = createRequireUploaderToken({ stages: store });
     const ask = (token: string) =>
       new Promise((resolve) =>
         door(

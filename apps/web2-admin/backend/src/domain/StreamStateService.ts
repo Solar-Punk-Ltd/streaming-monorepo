@@ -37,11 +37,10 @@ export interface StateStreamStore {
  * stream belongs to the installation, and ownership is which brand a call may
  * act for.
  *
- * There is a stage scope. An uploader on a token of its own is answered only
- * about the streams on its stage (`UploaderScope`): any other stream, a stream
- * with no stage included, is the same 404 as a stream that does not exist, and
- * nothing is written for it. An uploader still on the shared token passes a
- * null scope and is answered as before.
+ * There is a stage scope. Every uploader calls on a token of its own and is
+ * answered only about the streams on its stage (`UploaderScope`): any other
+ * stream, a stream with no stage included, is the same 404 as a stream that
+ * does not exist, and nothing is written for it.
  *
  * Every report is the uploader's, so this service names it as the actor
  * itself: the internal route has no session to name anyone else by, and is
@@ -66,7 +65,7 @@ export class StreamStateService {
    * probes ingest addresses learns nothing from the difference. A stream on
    * another stage than the caller's is one more of them.
    */
-  async lookupByIngest(app: MediaType, topic: string, scope: UploaderScope = null): Promise<StreamRow> {
+  async lookupByIngest(app: MediaType, topic: string, scope: UploaderScope): Promise<StreamRow> {
     const notFound = () => new StreamNotFoundError(`${app}/${topic}`);
     const stream = await this.streams.findByTopic(topic);
     if (!stream) throw notFound();
@@ -99,7 +98,7 @@ export class StreamStateService {
    * A stream outside the caller's scope is refused as not found before
    * anything is written: no status, no feed write, no audit row.
    */
-  async report(id: string, report: StreamStateReport, scope: UploaderScope = null): Promise<PublishOutcome> {
+  async report(id: string, report: StreamStateReport, scope: UploaderScope): Promise<PublishOutcome> {
     const existing = await this.streams.findById(id);
     if (!existing || !inScope(existing, scope)) throw new StreamNotFoundError(id);
     if (!isStateTransitionAllowed(existing.status, report.state)) {
