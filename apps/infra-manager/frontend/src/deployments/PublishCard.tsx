@@ -1,6 +1,6 @@
 import { Alert, Stack, Typography } from '@mui/material';
 
-import { OME_SERVICE } from '@streaming-infra-manager/common';
+import { OBS_SRT_PASSPHRASE_FIELD_HELP, OME_SERVICE } from '@streaming-infra-manager/common';
 
 import { CopyBox } from '../components/CopyBox';
 import { SectionCard } from '../components/SectionCard';
@@ -28,9 +28,6 @@ function passphraseNote(profile: Profile, hostPassphrase: string | null, inTheUr
     : 'This host has no shared passphrase, so the ingest is unencrypted. Set one for this deployment under Edit.';
 }
 
-/** The admin console's words for the same case, so both consoles say it alike. */
-const OBS_PASSPHRASE_FIELD_HELP =
-  'This passphrase has characters the Server line cannot carry. In OBS, tick Use authentication, leave Username empty and paste this into Password.';
 
 export function PublishCard({
   profile,
@@ -69,7 +66,7 @@ export function PublishCard({
           <>
             <CopyBox value={fieldPassphrase} />
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              {OBS_PASSPHRASE_FIELD_HELP}
+              {OBS_SRT_PASSPHRASE_FIELD_HELP}
             </Typography>
           </>
         )}
