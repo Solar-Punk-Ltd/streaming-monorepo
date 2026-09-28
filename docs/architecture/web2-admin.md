@@ -53,7 +53,8 @@ At the platform level the admin layer also:
 
 ## The manager it talks to
 
-The manager, [`apps/infra-manager`](../../apps/infra-manager/README.md), exposes a Manager API: provision, stop, and read back what a stage is running.
+The manager, [`apps/infra-manager`](../../apps/infra-manager/README.md),
+exposes a Manager API: provision, stop, and read back what a stage is running.
 Inputs to provision: media profile (four-rung ABR ladder or single rendition),
 port slot, publisher list, signing key, postage batch, SRT passphrase. Output: a
 running media stack. Today it has no authentication and listens on loopback of

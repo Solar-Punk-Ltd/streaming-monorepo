@@ -211,7 +211,11 @@ advertising one after the switch, giving every viewer a 404. The same applies
 when `BEE_URL` is repointed at a node that never saw the chunks. A gateway that
 cannot answer (node unreachable, timeout, an unexpected status) fails the
 publish with `502 publish_failed` instead of re-uploading: "unreachable" is not
-"missing", and guessing would spend a stamp on every hiccup. A check that times out (30 s; a missing reference makes Bee try the network first, 5-10 s on the test node) is treated as missing and the image is re-uploaded, which is content-addressed and so costs no new chunks; a node that cannot be reached at all fails the publish with `publish_failed`.
+"missing", and guessing would spend a stamp on every hiccup. A check that
+times out (30 s; a missing reference makes Bee try the network first, 5-10 s
+on the test node) is treated as missing and the image is re-uploaded, which is
+content-addressed and so costs no new chunks; a node that cannot be reached at
+all fails the publish with `publish_failed`.
 
 A restart that interrupts a publish leaves the row claimed; boot repairs it
 (`resetOrphanedPublishing`), sending a first-time publish back to `draft` and

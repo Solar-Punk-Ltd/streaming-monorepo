@@ -43,7 +43,8 @@ and being wrong about a different half of it.
   `last_seen_at`, absolute 14 days in `expires_at`, and the session ends at
   `min(expires_at, last_seen_at + idle)`. `last_seen_at` is written at most once
   a minute, or an open console would be a database write per request.
-- **The cookie** (`src/api/cookies.ts`, over `packages/web-auth/src/cookies.ts`). httpOnly, SameSite=Lax, Path=/, and no
+- **The cookie** (`src/api/cookies.ts`, over
+  `packages/web-auth/src/cookies.ts`). httpOnly, SameSite=Lax, Path=/, and no
   `Max-Age` or `Expires` at all: the sessions row is the only clock, and a
   cookie with a deadline of its own would be a second one to keep in step.
   `Secure` is computed **per request** from the first `X-Forwarded-Proto` hop or
