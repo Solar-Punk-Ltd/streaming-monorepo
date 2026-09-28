@@ -11,6 +11,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { PUBLIC_PORT_ROLES } from '@streaming-infra-manager/common';
+
 import { endpointAddress, endpointKindOf } from './endpoints';
 
 describe('what a port is, by its key', () => {
@@ -73,6 +75,36 @@ describe('what a port is, by its key', () => {
 
     assert.equal(kind.audience, 'internal');
     assert.match(kind.label, /the firewall does not open it/);
+  });
+
+  it('offers no RTMP address to copy while the firewall does not open RTMP', () => {
+    // An address the ingest cannot serve sends a streamer to a port that turns them away.
+    const kind = endpointKindOf('SRS_RTMP_PORT');
+
+    assert.equal(kind.offersAddress, false);
+    assert.equal(
+      PUBLIC_PORT_ROLES.some((role) => role.portVar === 'SRS_RTMP_PORT'),
+      false,
+      'the policy opens no RTMP port today',
+    );
+  });
+
+  it('offers the RTMP address once the firewall policy opens RTMP', () => {
+    const opened = [
+      ...PUBLIC_PORT_ROLES,
+      { group: 'rtmp_ingest', protocol: 'tcp', base: 10002, maxSlot: 100, portVar: 'SRS_RTMP_PORT', service: 'srs' },
+    ] as const;
+    const kind = endpointKindOf('SRS_RTMP_PORT', opened);
+
+    assert.equal(kind.offersAddress, true);
+    assert.equal(kind.audience, 'public');
+    assert.equal(kind.label, 'RTMP ingest, TCP, public');
+  });
+
+  it('keeps offering every other address, as before', () => {
+    for (const key of ['SRS_SRT_PORT', 'CLIENT_PORT', 'API_PORT', 'SRS_HTTP_PORT', 'BEE_UPLOADER_P2P_PORT', 'X_PORT']) {
+      assert.equal(endpointKindOf(key).offersAddress, true, key);
+    }
   });
 
   it('claims nothing about a key it does not know', () => {

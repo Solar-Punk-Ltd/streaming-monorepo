@@ -53,6 +53,7 @@ export {
   publicPortRole,
   portExposureProblem,
 } from './portPolicy.js';
+export type { PublicPortRole } from './portPolicy.js';
 export { addressOfStreamKey } from './streamKey.js';
 // The SRT line a broadcaster sends to, built as every app builds it.
 export {
