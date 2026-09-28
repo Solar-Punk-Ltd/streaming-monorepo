@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { OME_SERVICE } from '@streaming-infra-manager/common';
 
+import { navigate, routes } from '../app/router';
 import { useDeployments } from '../app/useDeploymentsStore';
 import { fetchSrtPassphrase } from '../data';
 import { useServerHost } from '../ServerHostContext';
 import type { Profile } from '../types';
-import { srtPublishSettings, srtPublishUrl } from '../urls';
+import { srtPublishSettings } from '../urls';
 import { publishPassphrase } from './publishPassphrase';
 import { engineOf } from './shape';
 
@@ -23,7 +24,11 @@ export interface PublishUrl {
    * URL cannot carry. Null whenever the URL carries it or there is none.
    */
   fieldPassphrase: string | null;
-  /** Puts the whole URL on the clipboard, asking for the passphrase first. */
+  /**
+   * Puts the whole URL on the clipboard, asking for the passphrase first. A
+   * passphrase the URL cannot carry opens the deployment page instead, where
+   * OBS's own passphrase field is shown, since the URL alone would be refused.
+   */
   copy: () => Promise<void>;
 }
 
@@ -122,9 +127,13 @@ export function usePublishUrl(profile: Profile, shown = false): PublishUrl {
     copy: async () => {
       const answer = await readPassphrase();
       if (!answer) return;
-      const whole = srtPublishUrl(profile, serverHost, answer.passphrase);
+      const whole = srtPublishSettings(profile, serverHost, answer.passphrase);
       if (!whole) return;
-      await navigator.clipboard.writeText(whole).catch(() => undefined);
+      if (whole.passphraseRoute === 'authentication') {
+        navigate(routes.deployment(name));
+        return;
+      }
+      await navigator.clipboard.writeText(whole.server).catch(() => undefined);
     },
   };
 }
