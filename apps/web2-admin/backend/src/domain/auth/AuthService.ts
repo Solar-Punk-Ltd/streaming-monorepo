@@ -18,6 +18,8 @@ import {
 } from '@streaming-monorepo/web-auth';
 
 import type { UserRow } from '../../types/index.js';
+import { describeActor, operatorActor, type Actor, type OperatorActor } from '../actor.js';
+import { recordAudit, type AuditLog } from '../AuditLog.js';
 import {
   AdminRequiredError,
   CannotRemoveUserError,
@@ -77,6 +79,11 @@ export interface SignInResult {
  * backend has no SSE — nothing outlives the request that opened it — so that
  * collaborator is deliberately absent rather than forgotten. See
  * docs/architecture/web2-admin-auth.md.
+ *
+ * Adding and removing a user, revoking sessions and changing a password are
+ * audited (migration 007), with the acting user and the one acted on. Signing
+ * in and out are not audited. A sign-in has a log line of its own; a sign-out
+ * deletes its session row and logs nothing beyond the `[HTTP]` request line.
  */
 export class AuthService {
   /**
@@ -91,6 +98,7 @@ export class AuthService {
     private readonly users: UserRepository,
     private readonly sessions: SessionRepository,
     private readonly credentials: CredentialRepository,
+    private readonly audit: AuditLog,
     private readonly limiter: LoginLimiter = new LoginLimiter(),
   ) {
     this.decoyHash = hashPassword(randomBytes(32).toString('base64')).catch(() => '');
@@ -203,9 +211,10 @@ export class AuthService {
 
   /**
    * The first user ever added can manage users whatever the caller asked,
-   * because somebody has to be able to add the second.
+   * because somebody has to be able to add the second. `actor` is the
+   * operator adding them, or `system (cli)` for the `user:add` CLI.
    */
-  async addUser(username: string, password: string, options: AddUserOptions = {}): Promise<UserSummary> {
+  async addUser(actor: Actor, username: string, password: string, options: AddUserOptions = {}): Promise<UserSummary> {
     const badName = usernameProblem(username);
     if (badName) throw new InvalidUsernameError(badName);
 
@@ -216,7 +225,12 @@ export class AuthService {
     const row = await this.users.insert(username, await hashPassword(password), isAdmin);
     if (!row) throw new UserExistsError(username);
 
-    logger.info(`[Auth] user added: ${username}${isAdmin ? ' (can manage users)' : ''}`);
+    logger.info(`[Auth] ${describeActor(actor)} added user ${username}${isAdmin ? ' (can manage users)' : ''}`);
+    await recordAudit(this.audit, {
+      actor,
+      action: 'user.add',
+      details: { userId: row.id, username: row.username, isAdmin: row.is_admin },
+    });
     return {
       id: row.id,
       username: row.username,
@@ -227,11 +241,13 @@ export class AuthService {
     };
   }
 
-  async removeUser(userId: string, actingUserId: string): Promise<void> {
-    if (userId === actingUserId) {
+  async removeUser(actor: OperatorActor, userId: string): Promise<void> {
+    if (userId === actor.userId) {
       throw new CannotRemoveUserError('You cannot remove your own account. Ask another user to remove it.');
     }
 
+    // Read first, so the log and the audit row can name who is gone.
+    const target = await this.users.findById(userId);
     const outcome = await this.users.deleteUnlessLast(userId);
     if (outcome === 'missing') throw new UserNotFoundError(userId);
     if (outcome === 'last') {
@@ -242,7 +258,13 @@ export class AuthService {
         'This is the only user who can manage users. Removing it would leave nobody able to add or remove one.',
       );
     }
-    logger.info(`[Auth] user removed: id=${userId}`);
+    const username = target?.username ?? null;
+    logger.info(`[Auth] ${describeActor(actor)} removed user ${username ?? `id=${userId}`}`);
+    await recordAudit(this.audit, {
+      actor,
+      action: 'user.remove',
+      details: { userId, username },
+    });
   }
 
   /**
@@ -253,11 +275,18 @@ export class AuthService {
     if (!actingUser.is_admin && actingUser.id !== userId) {
       throw new AdminRequiredError();
     }
-    if (!(await this.users.findById(userId))) {
-      throw new UserNotFoundError(userId);
-    }
+    const target = await this.users.findById(userId);
+    if (!target) throw new UserNotFoundError(userId);
+
     await this.sessions.deleteForUser(userId);
-    logger.info(`[Auth] sessions revoked for user id=${userId}`);
+    const actor = operatorActor(actingUser);
+    const whose = target.id === actingUser.id ? 'their own sessions' : `the sessions of ${target.username}`;
+    logger.info(`[Auth] ${describeActor(actor)} revoked ${whose}`);
+    await recordAudit(this.audit, {
+      actor,
+      action: 'user.sessions.revoke',
+      details: { userId, username: target.username },
+    });
   }
 
   /**
@@ -302,7 +331,13 @@ export class AuthService {
       logger.warn(`[Auth] password change refused, the password changed while it was checked: ${user.username}`);
       throw new InvalidCredentialsError();
     }
-    logger.info(`[Auth] password changed: ${user.username}`);
+    const actor = operatorActor(user);
+    logger.info(`[Auth] ${describeActor(actor)} changed their password`);
+    await recordAudit(this.audit, {
+      actor,
+      action: 'user.password.change',
+      details: { userId: user.id, username: user.username },
+    });
     return { ...user, password_changed_at: changedAt, updated_at: changedAt };
   }
 

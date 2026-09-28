@@ -10,7 +10,7 @@ a feed entry second.
 
 - **Express 5** + ESM + **TypeScript**, conventions shared with
   streaming-infra-manager (`.js` import suffixes, exact-pinned versions)
-- **PostgreSQL 16** — users, sessions, stream drafts, feed-write log
+- **PostgreSQL 16** — users, sessions, stream drafts, feed-write log, audit log
 - **Yup** — body and params validation at the API edge, limits from
   `@streaming-monorepo/web2-admin-common`
 - **@ethersphere/bee-js** — the only Swarm dependency, behind a `FeedGateway`
@@ -130,10 +130,11 @@ normal and not a divergence.
   look cross-site, or it is `403 cross_site_request` before its body is read.
   **`/api/internal` is exempt** — it is a machine caller with a bearer token,
   and it is mounted ahead of the check for that reason.
-- `GET /api/auth/users`, `POST /api/auth/users` (admin), `DELETE
-/api/auth/users/:id` (admin, never yourself, never the last user or the last
-  admin) and `POST /api/auth/users/:id/revoke` (admin, or anyone for
-  themselves) are the Access page.
+- `GET /api/auth/users`, `POST /api/auth/users` (admin),
+  `DELETE /api/auth/users/:id` (admin, never yourself, never the last user or
+  the last admin; the user's streams stay, with `user_id` set to null) and
+  `POST /api/auth/users/:id/revoke` (admin, or anyone for themselves) are the
+  Access page.
 
 ## Publishing
 
@@ -347,14 +348,90 @@ the stream takes them with it through the foreign key.
 `src/migrations/NNN_name.sql`, applied in order inside a transaction at every
 boot and recorded in `_migrations` (`src/domain/Database.ts`). Add a file, never
 edit an applied one; `001_init.sql` carries the rationale for each table in its
-header. `pnpm build` copies the directory into `dist`.
+header. `pnpm build` copies the directory into `dist`. The latest two are
+`007_audit_log.sql`, the audit log below, and `008_streams_user_id_set_null.sql`,
+which stops removing a user from deleting the streams they drafted.
+
+## Audit log
+
+Every signed-in user can act on every stream, so each mutation leaves a row in
+`audit_log` (migration 007) saying who did it, and the same fact as a line in
+the log, actor first (`[Publish] alice published "Opening keynote" (topic …):
+draft → published at feed index 12 (3 entries)`). A state or rendition report
+logs two lines, its own and the republish it caused (`[Publish] the uploader
+republished …`); a rendition report whose write failed logs only the failure.
+The line is at info, except a reconcile that wrote and the boot repair, which
+are at warn, and failures, which are at error. Titles are written as JSON
+strings, so one cannot carry a newline into the log.
+
+| Column                          | What it holds                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `at`                            | when the row was written, just after the mutation                                                                                                                                                                                                                                                                                              |
+| `actor_kind`                    | `operator` (a signed-in user), `uploader` (the internal API) or `system` (the boot repair, the CLI)                                                                                                                                                                                                                                            |
+| `actor_user_id`, `actor_name`   | the operator's id and username at the time; the id goes null if the user is removed, the name stays. For `system`, `actor_name` is the reason (`boot`, `cli`); for the uploader it is null                                                                                                                                                     |
+| `action`                        | see below                                                                                                                                                                                                                                                                                                                                      |
+| `stream_id`, `topic`            | the stream, with no foreign key so a deleted stream's history stays                                                                                                                                                                                                                                                                            |
+| `status_before`, `status_after` | the stream's status before and after the action. Every stream action fills both, with the same status on both sides when nothing moved (an edit, a thumbnail, a key rotation, a republish, a rendition report), except that `stream.create` has no before and `stream.delete` no after. `feed.reconcile` and the `user.*` rows leave both null |
+| `details`                       | JSON: changed fields, feed index, rung, error message, target username. Never a key, hash or token                                                                                                                                                                                                                                             |
+
+The actions: `stream.create`, `stream.update` (only when a field actually
+changed; a save of an unchanged form is logged, not audited),
+`stream.delete`, `stream.thumbnail.set`, `stream.thumbnail.clear` (only when
+there was an image to remove), `stream.key.rotate`, `stream.publish`,
+`stream.republish` (only a publish of a live or recorded stream; publishing one
+that is already `published` records `stream.publish` with
+`published → published`), `stream.unpublish`, `stream.publish.failed`,
+`stream.unpublish.failed`, `stream.state.live`, `stream.state.vod`,
+`stream.rendition.report`, `feed.reconcile` (only when it wrote),
+`stream.publishing.reset` (boot), `user.add`, `user.remove`,
+`user.sessions.revoke`, `user.password.change`. A state or rendition report
+is one row, carrying the feed index of the republish it caused, or the
+publish error when that write failed; the republish adds none of its own. A
+rendition report never moves the status, so its row names one status on both
+sides. A repeated `live` report (the uploader retries) writes one row per
+report, deliberately: each is a report the row accepted. A failed publish or
+unpublish carries the error, and `feedIndex` when the gateway had already taken
+the write, which means the entry is on the catalogue although the row says it
+is not. A failed hand republish of a live or recorded stream is recorded as
+`stream.publish.failed` with `{ error, republish: true }` and the status it
+stayed in on both sides, and never carries a `feedIndex`. Refusals (404, 409)
+are not recorded: nothing moved.
+
+**A failed audit write never fails the operation.** The row is written after
+the mutation it describes, which has already happened by then; the failure is
+logged as `[Audit] could not record …` and the request answers as it would
+have.
+
+Nothing in the API reads it yet. With `psql`:
+
+```sql
+-- the last fifty things anyone did
+SELECT at, actor_kind, actor_name, action, topic, status_before, status_after, details
+  FROM audit_log ORDER BY at DESC LIMIT 50;
+
+-- the history of one stream, deleted or not
+SELECT at, actor_name, action, status_before, status_after, details
+  FROM audit_log WHERE stream_id = '<stream id>' ORDER BY at;
+```
+
+`feed.reconcile` rows are not about one stream and have no `stream_id`; the
+topics they removed, added and updated are in `details`.
 
 ## Limitations (intentional, checkpoint 3 step 1)
 
-- **Every user sees every stream they own, and only those.** `streams.user_id`
-  scopes every query, so a second user added on the Access page starts with an
-  empty list rather than sharing the first one's drafts. There is no way to
-  hand a stream over.
+- **A stream belongs to the installation.** Every signed-in user sees and can
+  edit, publish, unpublish and delete every stream. `streams.user_id` records
+  who drafted a row and scopes no query; the audit log records who acted on it
+  since. Removing a user keeps their streams and sets `user_id` to null
+  (migration 008). For a stream created since migration 007 its `stream.create`
+  audit row still names them. For an older one nothing in the database does:
+  the audit log started empty and nothing backfills it. There is no separation
+  between brands yet.
+- **The audit log is never pruned.** Nothing deletes from `audit_log`, so it
+  grows for the life of the database.
+- **The fields an edit changed are read, not locked.** `stream.update` compares
+  the row read before the UPDATE with the one it returns, so two edits racing
+  can each be recorded against the other's starting point.
 - **Nothing polls.** A state report is the only thing that moves a stream to
   `live` or `vod`; an uploader that dies without reporting leaves the stream
   live on the catalogue until someone republishes or unpublishes it by hand.

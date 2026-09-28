@@ -2,7 +2,11 @@ import type { MediaType, StreamStateReport, StreamStatus } from '@streaming-mono
 
 import type { StreamRow } from '../types/index.js';
 
-import { InvalidStateTransitionError, StreamNotFoundError } from './errors/index.js';
+import { getErrorMessage } from '../utils/errorUtils.js';
+
+import { describeActor, describeStream, UPLOADER } from './actor.js';
+import { recordAudit, type AuditLog } from './AuditLog.js';
+import { InvalidStateTransitionError, PublishFailedError, StreamNotFoundError } from './errors/index.js';
 import { Logger } from './Logger.js';
 import type { PublishOutcome, PublishService } from './PublishService.js';
 import { allowedFromFor, isStateTransitionAllowed } from './streamState.js';
@@ -12,7 +16,7 @@ const logger = Logger.getInstance();
 /** The slice of StreamRepository a state report needs; a fake stands in. */
 export interface StateStreamStore {
   findByTopic(topic: string): Promise<StreamRow | null>;
-  findByIdUnscoped(id: string): Promise<StreamRow | null>;
+  findById(id: string): Promise<StreamRow | null>;
   markLive(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null>;
   markVod(
     id: string,
@@ -28,13 +32,19 @@ export interface StateStreamStore {
  *
  * No user scope anywhere here. The internal API is authenticated by one shared
  * token rather than a session, and the uploader knows a stream by its ingest
- * address, not by who drafted it. Ownership stays what it is on the session
- * side: which brand a *console* call may act for.
+ * address, not by who drafted it. Nor is there one on the session side: a
+ * stream belongs to the installation, and ownership is which brand a call may
+ * act for.
+ *
+ * Every report is the uploader's, so this service names it as the actor
+ * itself: the internal route has no session to name anyone else by, and is
+ * not asked to.
  */
 export class StreamStateService {
   constructor(
     private readonly streams: StateStreamStore,
     private readonly publishService: PublishService,
+    private readonly audit: AuditLog,
   ) {}
 
   /**
@@ -68,9 +78,13 @@ export class StreamStateService {
    * first, a failure would lose the fact that the stream is live at all. This
    * way the row is already right, the response is a 502, and the retry redoes
    * nothing but the write.
+   *
+   * The audit entry is written either way, once the write has been tried: the
+   * status did move, and the entry says whether the catalogue caught up (the
+   * feed index) or not (the error).
    */
   async report(id: string, report: StreamStateReport): Promise<PublishOutcome> {
-    const existing = await this.streams.findByIdUnscoped(id);
+    const existing = await this.streams.findById(id);
     if (!existing) throw new StreamNotFoundError(id);
     if (!isStateTransitionAllowed(existing.status, report.state)) {
       throw new InvalidStateTransitionError(id, existing.status, report.state);
@@ -80,17 +94,37 @@ export class StreamStateService {
     if (!updated) {
       // The conditional UPDATE matched nothing: something moved the row
       // between the read and the write. Re-read to say which of the two it is.
-      const current = await this.streams.findByIdUnscoped(id);
+      const current = await this.streams.findById(id);
       if (!current) throw new StreamNotFoundError(id);
       throw new InvalidStateTransitionError(id, current.status, report.state);
     }
 
     logger.info(
-      `[State] ${updated.topic} reported ${report.state}${
-        report.state === 'vod' ? ` (index ${String(report.index)}, ${String(report.duration)}s)` : ''
-      }`,
+      `[State] ${describeActor(UPLOADER)} reported ${report.state} for ${describeStream(updated)}: ${existing.status} → ${
+        updated.status
+      }${report.state === 'vod' ? ` (index ${String(report.index)}, ${String(report.duration)}s)` : ''}`,
     );
-    return this.publishService.republishWithState(updated);
+
+    const recording = report.state === 'vod' ? { index: report.index ?? 0, duration: report.duration ?? 0 } : {};
+    const entry = {
+      actor: UPLOADER,
+      action: report.state === 'live' ? 'stream.state.live' : 'stream.state.vod',
+      streamId: updated.id,
+      topic: updated.topic,
+      statusBefore: existing.status,
+      statusAfter: updated.status,
+    } as const;
+
+    let outcome: PublishOutcome;
+    try {
+      outcome = await this.publishService.republishWithState(UPLOADER, updated);
+    } catch (error) {
+      const message = error instanceof PublishFailedError ? error.reason : getErrorMessage(error);
+      await recordAudit(this.audit, { ...entry, details: { ...recording, feedIndex: null, publishError: message } });
+      throw error;
+    }
+    await recordAudit(this.audit, { ...entry, details: { ...recording, feedIndex: outcome.feed.index } });
+    return outcome;
   }
 
   private async apply(existing: StreamRow, report: StreamStateReport): Promise<StreamRow | null> {

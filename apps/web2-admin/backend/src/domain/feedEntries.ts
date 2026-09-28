@@ -177,10 +177,6 @@ function entryOwner(value: unknown): string | null {
  * skipped: its entry would advertise an owner this feed is not published
  * under, which is the same thing publishing refuses with `feed_owner_mismatch`.
  *
- * `userId`, when given, narrows which rows may be added or rewritten to that
- * user's. Ghost removal ignores it on purpose: an entry with no row behind it
- * belongs to nobody, and scoping would make it unremovable all over again.
- *
  * `ladders` is each row's stored ABR rungs, by stream id, and it has to be
  * given for the rebuild to mean anything on a ladder stream: an entry rebuilt
  * from the row alone carries no `renditions`, so without it every ladder reads
@@ -190,7 +186,6 @@ export function planReconcile(
   base: unknown[],
   rows: StreamRow[],
   feedOwner: string,
-  userId?: string,
   now: number = Date.now(),
   ladders: ReadonlyMap<string, readonly Rendition[]> = new Map(),
 ): ReconcilePlan {
@@ -219,10 +214,6 @@ export function planReconcile(
       removed.push(topic);
       continue;
     }
-    if (userId && row.user_id !== userId) {
-      entries.push(element);
-      continue;
-    }
 
     const timestamp = (element as FeedStreamEntry).timestamp;
     const rebuilt = buildFeedEntry(
@@ -241,7 +232,6 @@ export function planReconcile(
 
   for (const row of rows) {
     if (seen.has(row.topic.toLowerCase())) continue;
-    if (userId && row.user_id !== userId) continue;
     if (row.owner.toLowerCase() !== owner) continue;
     added.push(row.topic);
     entries.push(buildFeedEntry(row, row.thumbnail_ref, now, ladders.get(row.id) ?? []));

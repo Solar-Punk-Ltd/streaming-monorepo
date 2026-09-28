@@ -26,7 +26,11 @@ export interface UserRow {
  */
 export interface StreamRow {
   id: string;
-  user_id: string;
+  /**
+   * Who drafted the row; null once that user has been removed (migration
+   * 008). Never used to scope anything.
+   */
+  user_id: string | null;
   topic: string;
   owner: string;
   title: string;

@@ -26,9 +26,10 @@ import {
   FakeFeedWriteLog,
   FakeRenditionStore,
   FakeStreamStore,
+  InMemoryAuditLog,
   streamRow,
+  TEST_OPERATOR,
   TEST_OWNER,
-  TEST_USER_ID,
 } from './support/fakes.js';
 
 const feed: FeedIdentity = {
@@ -60,12 +61,13 @@ async function setup() {
   const renditions = new FakeRenditionStore();
   const store = new FakeStreamStore(renditions);
   const gateway = new FakeFeedGateway();
-  const publishService = new PublishService(store, renditions, new FakeFeedWriteLog(), gateway, feed);
-  const service = new LadderService(store, renditions, publishService);
-  const state = new StreamStateService(store, publishService);
+  const audit = new InMemoryAuditLog();
+  const publishService = new PublishService(store, renditions, new FakeFeedWriteLog(), gateway, feed, audit);
+  const service = new LadderService(store, renditions, publishService, audit);
+  const state = new StreamStateService(store, publishService, audit);
   const stream = store.add(streamRow());
-  await publishService.publish(stream.id, TEST_USER_ID);
-  return { store, renditions, gateway, service, state, stream };
+  await publishService.publish(TEST_OPERATOR, stream.id);
+  return { store, renditions, gateway, audit, service, state, stream };
 }
 
 /** The stream's entry as the write at `index` left it on the feed. */
@@ -254,6 +256,80 @@ describe('LadderService.report', () => {
     assert.deepEqual(
       later!.renditions.map((r) => r.name),
       ['360p', '720p'],
+    );
+  });
+});
+
+/**
+ * A rung report is the uploader's, so the entry names the uploader whatever
+ * route it came through, and it carries the rung and the feed index of the
+ * write that put it on the catalogue.
+ */
+describe('LadderService audit', () => {
+  it('records a rung report as the uploader, with the rung and the feed index', async () => {
+    const { audit, service, stream } = await setup();
+    audit.entries.length = 0;
+
+    const outcome = await service.report(stream.id, FINAL_720);
+
+    assert.deepEqual(audit.entries, [
+      {
+        actor: { kind: 'uploader' },
+        action: 'stream.rendition.report',
+        streamId: stream.id,
+        topic: stream.topic,
+        statusBefore: 'published',
+        statusAfter: 'published',
+        details: {
+          rung: '720p',
+          index: 12,
+          duration: 62.5,
+          feedIndex: outcome.publish.feed.index,
+          finished: true,
+          flippedToFinished: true,
+        },
+      },
+    ]);
+  });
+
+  it('claims no transition when a live report lands between its read and its write', async () => {
+    // At the start of an ABR broadcast the first rung and the `live` report
+    // race. The ladder reads the row as `published`, the state report moves
+    // it to `live`, and the ladder's write sees `live`. The transition is the
+    // state report's to record; the rung's entry names the one status its
+    // write saw, on both sides.
+    const { store, renditions, audit, service, stream } = await setup();
+    const upsert = renditions.upsert.bind(renditions);
+    renditions.upsert = async (streamId, rendition) => {
+      const row = await upsert(streamId, rendition);
+      await store.markLive(streamId, ['published']);
+      return row;
+    };
+    audit.entries.length = 0;
+
+    await service.report(stream.id, LIVE_360);
+
+    const [entry] = audit.withAction('stream.rendition.report');
+    assert.equal(entry?.statusBefore, 'live');
+    assert.equal(entry?.statusAfter, 'live');
+  });
+
+  it('records a rung that was stored but whose catalogue write failed, with the reason', async () => {
+    const { gateway, audit, service, stream } = await setup();
+    audit.entries.length = 0;
+    gateway.failNextWrite = new Error('bee unreachable');
+
+    await assert.rejects(() => service.report(stream.id, LIVE_360), PublishFailedError);
+
+    assert.deepEqual(
+      audit.entries.map(({ actor, action, details }) => ({ actor, action, details })),
+      [
+        {
+          actor: { kind: 'uploader' },
+          action: 'stream.rendition.report',
+          details: { rung: '360p', index: null, duration: null, feedIndex: null, publishError: 'bee unreachable' },
+        },
+      ],
     );
   });
 });

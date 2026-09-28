@@ -19,7 +19,9 @@ import {
   InMemoryCredentialRepository,
   InMemorySessionRepository,
   InMemoryUserRepository,
+  TEST_SETUP,
 } from './support/authFixtures.js';
+import { InMemoryAuditLog } from './support/fakes.js';
 
 const OLD_PASSWORD = 'a-long-current-password';
 const FIRST_PASSWORD = 'a-long-winning-password';
@@ -69,8 +71,8 @@ function fixtures() {
 describe('password verification and credential writes', () => {
   it('does not admit a sign-in with a password replaced after it was verified', async () => {
     const { users, sessions, credentials } = fixtures();
-    const auth = new AuthService(users, sessions, credentials);
-    await auth.addUser('owner', OLD_PASSWORD);
+    const auth = new AuthService(users, sessions, credentials, new InMemoryAuditLog());
+    await auth.addUser(TEST_SETUP, 'owner', OLD_PASSWORD);
     const owner = (await users.findByUsername('owner'))!;
 
     const verified = signal();
@@ -94,8 +96,8 @@ describe('password verification and credential writes', () => {
   it('does not let a second password change, verified against the old one, overwrite the first', async () => {
     const { users, sessions, credentials: inner } = fixtures();
     const credentials = new OrderedCredentialRepository(inner);
-    const auth = new AuthService(users, sessions, credentials);
-    await auth.addUser('owner', OLD_PASSWORD);
+    const auth = new AuthService(users, sessions, credentials, new InMemoryAuditLog());
+    await auth.addUser(TEST_SETUP, 'owner', OLD_PASSWORD);
     const owner = sessionOf((await users.findByUsername('owner'))!);
 
     const winner = auth.changePassword(owner, OLD_PASSWORD, FIRST_PASSWORD);

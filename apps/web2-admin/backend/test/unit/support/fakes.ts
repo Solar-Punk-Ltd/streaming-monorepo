@@ -1,22 +1,58 @@
 /**
- * In-memory stand-ins for the ports PublishService depends on, next to
+ * In-memory stand-ins for the ports the stream services depend on, next to
  * FakeFeedGateway (which is production code, selected by FEED_GATEWAY=fake).
  *
  * FakeStreamStore copies the semantics that matter from StreamRepository: the
  * status transitions are conditional, exactly as the SQL is, so a claim on a
  * row that is already `publishing` returns null here too, and `markLive`
  * un-finishes the stream's rungs the way the CTE in the real statement does.
+ *
+ * InMemoryAuditLog keeps what the services record, and can be told to fail
+ * its next write, which is how the tests prove a failed audit write never
+ * fails the operation it describes.
  */
 import type { Rendition, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
+import type { OperatorActor } from '../../../src/domain/actor.js';
+import type { AuditAction, AuditEntry, AuditLog } from '../../../src/domain/AuditLog.js';
+import type { IngestStreamStore } from '../../../src/domain/IngestService.js';
 import type { LadderRenditionStore, LadderStreamStore } from '../../../src/domain/LadderService.js';
 import type { FeedWriteLog, PublishRenditionStore, PublishStreamStore } from '../../../src/domain/PublishService.js';
+import type { OrphanedPublishingStore } from '../../../src/domain/resetOrphanedPublishing.js';
+import type { StreamInsertData, StreamUpdateData } from '../../../src/domain/StreamRepository.js';
+import type { StreamServiceStore } from '../../../src/domain/StreamService.js';
 import type { StateStreamStore } from '../../../src/domain/StreamStateService.js';
 import type { PublishedStatus } from '../../../src/domain/streamState.js';
 import type { StreamRenditionRow, StreamRow, ThumbnailRow } from '../../../src/types/index.js';
 
 export const TEST_OWNER = '19e7e376e7c213b7e7e7e46cc70a5dd086daff2a';
 export const TEST_USER_ID = '00000000-0000-4000-8000-000000000001';
+
+/** The signed-in operator the stream tests act as. */
+export const TEST_OPERATOR: OperatorActor = { kind: 'operator', userId: TEST_USER_ID, username: 'test-operator' };
+
+/**
+ * The audit log in memory. `failNextWrite` makes the next `record` throw, as a
+ * lost connection would, and nothing is kept for that one.
+ */
+export class InMemoryAuditLog implements AuditLog {
+  readonly entries: AuditEntry[] = [];
+  failNextWrite: Error | null = null;
+
+  async record(entry: AuditEntry): Promise<void> {
+    if (this.failNextWrite) {
+      const failure = this.failNextWrite;
+      this.failNextWrite = null;
+      throw failure;
+    }
+    this.entries.push(entry);
+  }
+
+  /** The entries with one action, in the order they were recorded. */
+  withAction(action: AuditAction): AuditEntry[] {
+    return this.entries.filter((entry) => entry.action === action);
+  }
+}
 
 let sequence = 0;
 
@@ -103,7 +139,15 @@ export class FakeRenditionStore implements PublishRenditionStore, LadderRenditio
   }
 }
 
-export class FakeStreamStore implements PublishStreamStore, LadderStreamStore, StateStreamStore {
+export class FakeStreamStore
+  implements
+    PublishStreamStore,
+    LadderStreamStore,
+    StateStreamStore,
+    StreamServiceStore,
+    IngestStreamStore,
+    OrphanedPublishingStore
+{
   readonly rows = new Map<string, StreamRow>();
   readonly thumbnails = new Map<string, ThumbnailRow>();
   /** Set to make the status write fail, as a lost connection would. */
@@ -124,13 +168,94 @@ export class FakeStreamStore implements PublishStreamStore, LadderStreamStore, S
     return row;
   }
 
-  async findById(id: string, userId: string): Promise<StreamRow | null> {
-    const row = this.rows.get(id);
-    return row && row.user_id === userId ? { ...row } : null;
+  /** Unscoped, as the SQL is: a stream belongs to the installation. */
+  async list(): Promise<StreamRow[]> {
+    return [...this.rows.values()].map((row) => ({ ...row }));
   }
 
-  /** Unscoped, as the SQL is: the internal API has no session to scope by. */
-  async findByIdUnscoped(id: string): Promise<StreamRow | null> {
+  async insert(data: StreamInsertData): Promise<StreamRow> {
+    return { ...this.add(streamRow({ ...data, scheduled_start_time: toDate(data.scheduled_start_time) })) };
+  }
+
+  /**
+   * Conditional on `allowedFrom`, and `content_edited_at` moves only when a
+   * value changes, as the SQL has it.
+   */
+  async update(id: string, data: StreamUpdateData, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
+    const row = this.rows.get(id);
+    if (!row || !allowedFrom.includes(row.status)) return null;
+    const scheduled = toDate(data.scheduled_start_time);
+    const changed =
+      row.title !== data.title ||
+      row.description !== data.description ||
+      row.tags.join('\n') !== data.tags.join('\n') ||
+      row.media_type !== data.media_type ||
+      (row.scheduled_start_time?.getTime() ?? null) !== (scheduled?.getTime() ?? null);
+    return this.patch(id, {
+      title: data.title,
+      description: data.description,
+      tags: [...data.tags],
+      media_type: data.media_type,
+      scheduled_start_time: scheduled,
+      ...(changed ? { content_edited_at: new Date('2026-09-11T11:00:00.000Z') } : {}),
+    });
+  }
+
+  async deleteById(id: string, allowedFrom: readonly StreamStatus[]): Promise<boolean> {
+    const row = this.rows.get(id);
+    if (!row || !allowedFrom.includes(row.status)) return false;
+    this.rows.delete(id);
+    this.thumbnails.delete(id);
+    return true;
+  }
+
+  async setThumbnail(
+    id: string,
+    bytes: Buffer,
+    mime: string,
+    allowedFrom: readonly StreamStatus[],
+  ): Promise<StreamRow | null> {
+    const row = this.rows.get(id);
+    if (!row || !allowedFrom.includes(row.status)) return null;
+    this.thumbnails.set(id, { thumbnail: bytes, thumbnail_mime: mime });
+    return this.patch(id, {
+      has_thumbnail: true,
+      thumbnail_mime: mime,
+      thumbnail_ref: null,
+      content_edited_at: new Date('2026-09-11T11:00:00.000Z'),
+    });
+  }
+
+  async clearThumbnail(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
+    const row = this.rows.get(id);
+    if (!row || !allowedFrom.includes(row.status)) return null;
+    this.thumbnails.delete(id);
+    return this.patch(id, {
+      has_thumbnail: false,
+      thumbnail_mime: null,
+      thumbnail_ref: null,
+      ...(row.has_thumbnail ? { content_edited_at: new Date('2026-09-11T11:00:00.000Z') } : {}),
+    });
+  }
+
+  async rotatePublishKey(id: string, publishKey: string): Promise<StreamRow | null> {
+    if (!this.rows.has(id)) return null;
+    return this.patch(id, { publish_key: publishKey, publish_key_rotated_at: new Date('2026-09-11T11:00:00.000Z') });
+  }
+
+  /** As the SQL is: back to `published` when the row was on the feed before. */
+  async resetOrphanedPublishing(): Promise<StreamRow[]> {
+    const orphans = [...this.rows.values()].filter((row) => row.status === 'publishing');
+    return orphans.map((row) =>
+      this.patch(row.id, {
+        status: row.published_feed_index === null ? 'draft' : 'published',
+        publish_error: 'backend restarted while publishing',
+      }),
+    );
+  }
+
+  /** Unscoped, as the SQL is: a stream belongs to the installation. */
+  async findById(id: string): Promise<StreamRow | null> {
     const row = this.rows.get(id);
     return row ? { ...row } : null;
   }
@@ -187,40 +312,37 @@ export class FakeStreamStore implements PublishStreamStore, LadderStreamStore, S
     });
   }
 
-  /** Unscoped, as the SQL is: reconcile has to see every user's rows. */
+  /** As the SQL is: reconcile has to see every row that should be on the feed. */
   async listOnFeed(): Promise<StreamRow[]> {
     return [...this.rows.values()]
       .filter((row) => ['published', 'live', 'vod'].includes(row.status))
       .map((row) => ({ ...row }));
   }
 
-  async findThumbnail(id: string, userId: string): Promise<ThumbnailRow | null> {
-    if (!(await this.findById(id, userId))) return null;
+  async findThumbnail(id: string): Promise<ThumbnailRow | null> {
+    if (!(await this.findById(id))) return null;
     return this.thumbnails.get(id) ?? null;
   }
 
-  async recordThumbnailRef(id: string, userId: string, thumbnailRef: string): Promise<void> {
-    if (!(await this.findById(id, userId))) return;
+  async recordThumbnailRef(id: string, thumbnailRef: string): Promise<void> {
+    if (!(await this.findById(id))) return;
     this.patch(id, { thumbnail_ref: thumbnailRef });
   }
 
-  async claimForPublish(id: string, userId: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
+  async claimForPublish(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
     const row = this.rows.get(id);
-    if (!row || row.user_id !== userId || !allowedFrom.includes(row.status)) {
-      return null;
-    }
+    if (!row || !allowedFrom.includes(row.status)) return null;
     return this.patch(id, { status: 'publishing' });
   }
 
   async finishPublish(
     id: string,
-    userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
     entryContentEditedAt: Date | null,
     status: PublishedStatus,
   ): Promise<StreamRow | null> {
-    if (!(await this.findById(id, userId))) return null;
+    if (!(await this.findById(id))) return null;
     return this.patch(id, {
       status,
       published_at: new Date('2026-09-11T11:00:00.000Z'),
@@ -232,8 +354,8 @@ export class FakeStreamStore implements PublishStreamStore, LadderStreamStore, S
   }
 
   /** Keeps the recording and the rungs, as the SQL does. */
-  async finishUnpublish(id: string, userId: string): Promise<StreamRow | null> {
-    if (!(await this.findById(id, userId))) return null;
+  async finishUnpublish(id: string): Promise<StreamRow | null> {
+    if (!(await this.findById(id))) return null;
     return this.patch(id, {
       status: 'draft',
       published_at: null,
@@ -249,12 +371,11 @@ export class FakeStreamStore implements PublishStreamStore, LadderStreamStore, S
    */
   async recordRepublish(
     id: string,
-    userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
     entryContentEditedAt: Date | null,
   ): Promise<StreamRow | null> {
-    if (!(await this.findById(id, userId))) return null;
+    if (!(await this.findById(id))) return null;
     return this.patch(id, {
       published_feed_index: feedIndex,
       publish_error: null,
@@ -263,25 +384,25 @@ export class FakeStreamStore implements PublishStreamStore, LadderStreamStore, S
     });
   }
 
-  /** Unscoped, as the SQL is: a reconcile rebuilds every user's entries. */
+  /** Only which edit the entry carries, as the SQL is. */
   async recordEntryRebuilt(id: string, entryContentEditedAt: Date | null): Promise<void> {
     if (!this.rows.has(id)) return;
     this.patch(id, { entry_content_edited_at: entryContentEditedAt });
   }
 
-  async failPublish(id: string, userId: string, previousStatus: StreamStatus, message: string): Promise<void> {
+  async failPublish(id: string, previousStatus: StreamStatus, message: string): Promise<void> {
     if (this.failNextFailPublish) {
       const failure = this.failNextFailPublish;
       this.failNextFailPublish = null;
       throw failure;
     }
-    if (!(await this.findById(id, userId))) return;
+    if (!(await this.findById(id))) return;
     this.patch(id, { status: previousStatus, publish_error: message });
   }
 
   /** Only the reason, as the SQL is: a republish has no claim to undo. */
-  async recordPublishError(id: string, userId: string, message: string): Promise<void> {
-    if (!(await this.findById(id, userId))) return;
+  async recordPublishError(id: string, message: string): Promise<void> {
+    if (!(await this.findById(id))) return;
     this.patch(id, { publish_error: message });
   }
 
@@ -294,6 +415,10 @@ export class FakeStreamStore implements PublishStreamStore, LadderStreamStore, S
     this.rows.set(id, updated);
     return { ...updated };
   }
+}
+
+function toDate(value: string | null): Date | null {
+  return value === null ? null : new Date(value);
 }
 
 interface FakeFeedWriteRecord {

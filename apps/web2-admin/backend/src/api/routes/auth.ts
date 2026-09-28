@@ -15,7 +15,7 @@ import {
 import { USER_AGENT_MAX_LENGTH } from '../../types/index.js';
 import { clearSessionCookie, readSessionToken, setSessionCookie } from '../cookies.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { requireAdmin, requireUser, signedInSession } from '../middleware/requireAuth.js';
+import { actorOf, requireAdmin, requireUser, signedInSession } from '../middleware/requireAuth.js';
 import { validateBody, validateParams } from '../middleware/validate.js';
 import { toUser } from '../presenters.js';
 
@@ -124,7 +124,7 @@ export function createAuthRouter(authService: AuthService, requireAuth: RequestH
     validateBody(createUserSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as CreateUserBody;
-      const created: UserSummary = await authService.addUser(body.username, body.password, {
+      const created: UserSummary = await authService.addUser(actorOf(req), body.username, body.password, {
         admin: body.admin === true,
       });
       res.status(201).json(created);
@@ -137,7 +137,7 @@ export function createAuthRouter(authService: AuthService, requireAuth: RequestH
     requireAdmin,
     validateParams(userIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      await authService.removeUser(userIdOf(req), requireUser(req).user.id);
+      await authService.removeUser(actorOf(req), userIdOf(req));
       res.status(204).end();
     }),
   );

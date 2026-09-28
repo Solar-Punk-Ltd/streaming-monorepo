@@ -10,9 +10,19 @@ import {
 import type { StreamRow } from '../types/index.js';
 import type { IngestConfig } from '../utils/config.js';
 
+import { describeActor, describeStream, type Actor } from './actor.js';
+import { recordAudit, type AuditLog } from './AuditLog.js';
 import { StreamNotFoundError } from './errors/index.js';
+import { Logger } from './Logger.js';
 import { newPublishKey } from './StreamService.js';
-import { StreamRepository } from './StreamRepository.js';
+
+const logger = Logger.getInstance();
+
+/** The slice of StreamRepository the ingest details need; a fake stands in. */
+export interface IngestStreamStore {
+  findById(id: string): Promise<StreamRow | null>;
+  rotatePublishKey(id: string, publishKey: string): Promise<StreamRow | null>;
+}
 
 /**
  * What the operator types into OBS, derived from the row and the configured
@@ -54,12 +64,13 @@ function rtmpDetailsFor(stream: StreamRow, endpoint: IngestConfig): IngestRtmpDe
 
 export class IngestService {
   constructor(
-    private readonly streams: StreamRepository,
+    private readonly streams: IngestStreamStore,
     private readonly endpoint: IngestConfig,
+    private readonly audit: AuditLog,
   ) {}
 
-  async detailsFor(id: string, userId: string): Promise<IngestDetails> {
-    const stream = await this.streams.findById(id, userId);
+  async detailsFor(id: string): Promise<IngestDetails> {
+    const stream = await this.streams.findById(id);
     if (!stream) throw new StreamNotFoundError(id);
     return ingestDetailsFor(stream, this.endpoint);
   }
@@ -67,10 +78,22 @@ export class IngestService {
   /**
    * A new key invalidates whatever the streamer was given. Allowed in any
    * status: the point of rotating is that the old one leaked.
+   *
+   * Neither key reaches the log or the audit row, for the same reason.
    */
-  async rotateKey(id: string, userId: string): Promise<IngestDetails> {
-    const rotated = await this.streams.rotatePublishKey(id, userId, newPublishKey());
+  async rotateKey(actor: Actor, id: string): Promise<IngestDetails> {
+    const rotated = await this.streams.rotatePublishKey(id, newPublishKey());
     if (!rotated) throw new StreamNotFoundError(id);
+
+    logger.info(`[Ingest] ${describeActor(actor)} rotated the publish key of ${describeStream(rotated)}`);
+    await recordAudit(this.audit, {
+      actor,
+      action: 'stream.key.rotate',
+      streamId: rotated.id,
+      topic: rotated.topic,
+      statusBefore: rotated.status,
+      statusAfter: rotated.status,
+    });
     return ingestDetailsFor(rotated, this.endpoint);
   }
 }

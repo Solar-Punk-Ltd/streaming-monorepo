@@ -2,13 +2,15 @@
  * The internal API against the RUNNING backend: what the swarm-hls-stream
  * uploader does when an encoder connects, and what it reports afterwards.
  *
- * Prerequisites (from apps/web2-admin/backend/), on a port of your own so this
- * never reports state through an instance pointed at a real Bee node:
+ * Prerequisites (from apps/web2-admin/backend/):
  *
- *   pnpm database:start
- *   WEB2_ADMIN_PORT=9879 FEED_GATEWAY=fake \
- *     INTERNAL_API_TOKEN=web2-admin-integration-internal-token-000000 pnpm dev
- *   WEB2_ADMIN_URL=http://localhost:9879 pnpm test:integration
+ *   pnpm database:start                     # Postgres on 127.0.0.1:5433
+ *   pnpm test:integration
+ *
+ * The suite starts a backend of its own on a free port, against a throwaway
+ * database, with FEED_GATEWAY=fake and the suite's own INTERNAL_API_TOKEN —
+ * see instance.ts — so it never reports state through an instance pointed at
+ * a real Bee node. It reads that database directly as well.
  *
  * The catalogue entry is read back from `feed_writes`, the log of what the
  * backend believes it wrote: the assertion that matters here is not that the

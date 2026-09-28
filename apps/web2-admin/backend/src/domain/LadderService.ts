@@ -2,7 +2,11 @@ import type { Rendition, RenditionReport } from '@streaming-monorepo/web2-admin-
 
 import type { StreamRenditionRow, StreamRow } from '../types/index.js';
 
-import { InvalidStateError, StreamNotFoundError } from './errors/index.js';
+import { getErrorMessage } from '../utils/errorUtils.js';
+
+import { describeActor, describeStream, UPLOADER } from './actor.js';
+import { recordAudit, type AuditEntry, type AuditLog } from './AuditLog.js';
+import { InvalidStateError, PublishFailedError, StreamNotFoundError } from './errors/index.js';
 import { Logger } from './Logger.js';
 import type { PublishOutcome, PublishService } from './PublishService.js';
 import { mergeRendition, isLadderFinished, ladderDuration, toRendition } from './renditions.js';
@@ -11,7 +15,7 @@ const logger = Logger.getInstance();
 
 /** The slice of StreamRepository a report needs; a fake stands in for tests. */
 export interface LadderStreamStore {
-  findByIdUnscoped(id: string): Promise<StreamRow | null>;
+  findById(id: string): Promise<StreamRow | null>;
 }
 
 /** The slice of StreamRenditionRepository the merge needs; a fake stands in. */
@@ -56,13 +60,15 @@ export interface RenditionReportOutcome {
  * what tells the uploader to send the `vod` one.
  *
  * No user scope, like StreamStateService: the caller is the uploader, holding
- * the shared internal token and the stream id this API handed it.
+ * the shared internal token and the stream id this API handed it, and this
+ * service names it as the actor itself.
  */
 export class LadderService {
   constructor(
     private readonly streams: LadderStreamStore,
     private readonly renditions: LadderRenditionStore,
     private readonly publishService: PublishService,
+    private readonly audit: AuditLog,
   ) {}
 
   /**
@@ -80,9 +86,12 @@ export class LadderService {
    * against the entry the write replaced, which is also why a report whose
    * write failed flips on its retry: the row already held the finished ladder,
    * but the catalogue did not yet say so.
+   *
+   * Audited once the write has been tried, whichever way it went: the rung is
+   * stored either way, and the entry says whether the catalogue has it.
    */
   async report(id: string, report: RenditionReport): Promise<RenditionReportOutcome> {
-    const stream = await this.streams.findByIdUnscoped(id);
+    const stream = await this.streams.findById(id);
     if (!stream) throw new StreamNotFoundError(id);
     // Nothing has been announced (`draft`), or a feed write is already in
     // flight for this stream (`publishing`) and would be raced. `published`,
@@ -96,7 +105,32 @@ export class LadderService {
     const previous = stored.find((rung) => rung.name === report.name) ?? null;
     await this.renditions.upsert(id, mergeRendition(previous, report));
 
-    const publish = await this.publishService.republishWithState(stream);
+    // A rung never moves the status, so the entry names one status on both
+    // sides. `stream` was read before the mutex, and a `live` report can land
+    // between that read and the write; the status the write saw is the one
+    // on `publish.stream`, and a transition belongs to `stream.state.*`.
+    const entry: AuditEntry = {
+      actor: UPLOADER,
+      action: 'stream.rendition.report',
+      streamId: stream.id,
+      topic: stream.topic,
+      statusBefore: stream.status,
+      statusAfter: stream.status,
+    };
+    const rung = {
+      rung: report.name,
+      index: report.index ?? null,
+      duration: report.duration ?? null,
+    };
+
+    let publish: PublishOutcome;
+    try {
+      publish = await this.publishService.republishWithState(UPLOADER, stream);
+    } catch (error) {
+      const message = error instanceof PublishFailedError ? error.reason : getErrorMessage(error);
+      await recordAudit(this.audit, { ...entry, details: { ...rung, feedIndex: null, publishError: message } });
+      throw error;
+    }
     const { renditions } = publish;
     const finished = isLadderFinished(renditions);
     const ladder: LadderState = {
@@ -106,12 +140,18 @@ export class LadderService {
     };
 
     logger.info(
-      `[Ladder] ${publish.stream.topic} rung ${report.name} reported${
+      `[Ladder] ${describeActor(UPLOADER)} reported rung ${report.name}${
         report.index === undefined ? '' : ` final (index ${String(report.index)}, ${String(report.duration)}s)`
-      }; ${renditions.length} rung(s) on the catalogue, ${
+      } for ${describeStream(publish.stream)}; ${renditions.length} rung(s) on the catalogue, ${
         finished ? 'finished' : 'still running'
       }${ladder.flippedToFinished ? ' as of this report' : ''}`,
     );
+    await recordAudit(this.audit, {
+      ...entry,
+      statusBefore: publish.stream.status,
+      statusAfter: publish.stream.status,
+      details: { ...rung, feedIndex: publish.feed.index, finished, flippedToFinished: ladder.flippedToFinished },
+    });
     return { publish, renditions, ladder };
   }
 }

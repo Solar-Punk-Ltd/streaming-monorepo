@@ -14,7 +14,7 @@ import { describe, it } from 'node:test';
 
 import type { FeedStreamEntry, Rendition } from '@streaming-monorepo/web2-admin-common';
 
-import { InvalidStateTransitionError } from '../../src/domain/errors/index.js';
+import { InvalidStateTransitionError, PublishFailedError } from '../../src/domain/errors/index.js';
 import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
 import { LadderService } from '../../src/domain/LadderService.js';
@@ -25,9 +25,10 @@ import {
   FakeFeedWriteLog,
   FakeRenditionStore,
   FakeStreamStore,
+  InMemoryAuditLog,
   streamRow,
+  TEST_OPERATOR,
   TEST_OWNER,
-  TEST_USER_ID,
 } from './support/fakes.js';
 
 const feed: FeedIdentity = {
@@ -62,12 +63,13 @@ async function setup() {
   const renditions = new FakeRenditionStore();
   const store = new FakeStreamStore(renditions);
   const gateway = new FakeFeedGateway();
-  const publishService = new PublishService(store, renditions, new FakeFeedWriteLog(), gateway, feed);
-  const state = new StreamStateService(store, publishService);
-  const ladder = new LadderService(store, renditions, publishService);
+  const audit = new InMemoryAuditLog();
+  const publishService = new PublishService(store, renditions, new FakeFeedWriteLog(), gateway, feed, audit);
+  const state = new StreamStateService(store, publishService, audit);
+  const ladder = new LadderService(store, renditions, publishService, audit);
   const stream = store.add(streamRow());
-  await publishService.publish(stream.id, TEST_USER_ID);
-  return { store, renditions, gateway, state, ladder, stream };
+  await publishService.publish(TEST_OPERATOR, stream.id);
+  return { store, renditions, gateway, audit, state, ladder, stream };
 }
 
 /** The stream's entry as the write at `index` left it on the feed. */
@@ -185,6 +187,81 @@ describe('StreamStateService.report', () => {
     assert.deepEqual(
       (await renditions.listByStream(stream.id)).map((r) => r.manifest_index),
       [10, 12],
+    );
+  });
+});
+
+/**
+ * A state report is the uploader's: the internal route has no session, and
+ * the service names the uploader itself. One entry per report, with the
+ * transition it made and the feed index of the republish that followed it —
+ * the republish adds no entry of its own.
+ */
+describe('StreamStateService audit', () => {
+  it('records a live report as the uploader, published → live, and nothing for the republish', async () => {
+    const { audit, state, stream } = await setup();
+    audit.entries.length = 0;
+
+    const outcome = await state.report(stream.id, { state: 'live' });
+
+    assert.deepEqual(audit.entries, [
+      {
+        actor: { kind: 'uploader' },
+        action: 'stream.state.live',
+        streamId: stream.id,
+        topic: stream.topic,
+        statusBefore: 'published',
+        statusAfter: 'live',
+        details: { feedIndex: outcome.feed.index },
+      },
+    ]);
+  });
+
+  it('records a vod report with where the recording is', async () => {
+    const { audit, state, stream } = await setup();
+    await state.report(stream.id, { state: 'live' });
+    audit.entries.length = 0;
+
+    const outcome = await state.report(stream.id, { state: 'vod', index: 7, duration: 62.5 });
+
+    assert.deepEqual(audit.entries, [
+      {
+        actor: { kind: 'uploader' },
+        action: 'stream.state.vod',
+        streamId: stream.id,
+        topic: stream.topic,
+        statusBefore: 'live',
+        statusAfter: 'vod',
+        details: { index: 7, duration: 62.5, feedIndex: outcome.feed.index },
+      },
+    ]);
+  });
+
+  it('records the transition when the republish after it failed, with the reason', async () => {
+    // The state is persisted before the feed write, so it did move; the entry
+    // says so, and that the catalogue has not caught up.
+    const { store, gateway, audit, state, stream } = await setup();
+    audit.entries.length = 0;
+    gateway.failNextWrite = new Error('bee unreachable');
+
+    await assert.rejects(() => state.report(stream.id, { state: 'live' }), PublishFailedError);
+
+    assert.equal(store.get(stream.id).status, 'live');
+    assert.deepEqual(
+      audit.entries.map(({ action, statusBefore, statusAfter, details }) => ({
+        action,
+        statusBefore,
+        statusAfter,
+        details,
+      })),
+      [
+        {
+          action: 'stream.state.live',
+          statusBefore: 'published',
+          statusAfter: 'live',
+          details: { feedIndex: null, publishError: 'bee unreachable' },
+        },
+      ],
     );
   });
 });

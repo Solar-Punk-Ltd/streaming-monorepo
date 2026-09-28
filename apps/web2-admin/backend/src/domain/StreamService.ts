@@ -1,8 +1,11 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
-import type { MediaType } from '@streaming-monorepo/web2-admin-common';
+import type { MediaType, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
 import { EDITABLE_STATUSES, THUMBNAIL_MIME_TYPES, type StreamRow, type ThumbnailRow } from '../types/index.js';
+
+import { describeActor, describeStream, type Actor, type OperatorActor } from './actor.js';
+import { recordAudit, type AuditLog } from './AuditLog.js';
 
 import {
   MediaTypeLockedError,
@@ -14,9 +17,29 @@ import {
   ThumbnailNotFoundError,
   UnsupportedMediaTypeError,
 } from './errors/index.js';
-import { isScheduleLocked } from './streamState.js';
 import type { FeedIdentity } from './feedIdentity.js';
-import { StreamRepository } from './StreamRepository.js';
+import { Logger } from './Logger.js';
+import { isScheduleLocked } from './streamState.js';
+import type { StreamInsertData, StreamUpdateData } from './StreamRepository.js';
+
+const logger = Logger.getInstance();
+
+/** The slice of StreamRepository the console's stream edits need; a fake stands in. */
+export interface StreamServiceStore {
+  list(): Promise<StreamRow[]>;
+  findById(id: string): Promise<StreamRow | null>;
+  findThumbnail(id: string): Promise<ThumbnailRow | null>;
+  insert(data: StreamInsertData): Promise<StreamRow>;
+  update(id: string, data: StreamUpdateData, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null>;
+  deleteById(id: string, allowedFrom: readonly StreamStatus[]): Promise<boolean>;
+  setThumbnail(
+    id: string,
+    bytes: Buffer,
+    mime: string,
+    allowedFrom: readonly StreamStatus[],
+  ): Promise<StreamRow | null>;
+  clearThumbnail(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null>;
+}
 
 /** A validated StreamInput, with tags and scheduledStartTime settled. */
 export interface StreamInputValues {
@@ -39,6 +62,28 @@ export function isMediaTypeLocked(stream: StreamRow, mediaType: MediaType): bool
   return stream.status === 'published' || stream.status === 'live' || stream.status === 'vod';
 }
 
+/** The console's names for the fields an edit can change, as the form has them. */
+export type EditableField = 'title' | 'description' | 'tags' | 'mediaType' | 'scheduledStartTime';
+
+/**
+ * Which of the form's fields differ between two versions of a row: what an
+ * edit actually changed. The console PUTs the whole form on every save, so
+ * this is usually shorter than what it sent, and often empty.
+ */
+export function changedFields(before: StreamRow, after: StreamRow): EditableField[] {
+  const changed: EditableField[] = [];
+  if (before.title !== after.title) changed.push('title');
+  if (before.description !== after.description) changed.push('description');
+  if (before.tags.length !== after.tags.length || before.tags.some((tag, i) => tag !== after.tags[i])) {
+    changed.push('tags');
+  }
+  if (before.media_type !== after.media_type) changed.push('mediaType');
+  if ((before.scheduled_start_time?.getTime() ?? null) !== (after.scheduled_start_time?.getTime() ?? null)) {
+    changed.push('scheduledStartTime');
+  }
+  return changed;
+}
+
 /** 16 random bytes hex: the `key=` credential in an ingest URL. */
 export function newPublishKey(): string {
   return randomBytes(16).toString('hex');
@@ -46,23 +91,29 @@ export function newPublishKey(): string {
 
 export class StreamService {
   constructor(
-    private readonly streams: StreamRepository,
+    private readonly streams: StreamServiceStore,
     private readonly feed: FeedIdentity,
+    private readonly audit: AuditLog,
   ) {}
 
-  async list(userId: string): Promise<StreamRow[]> {
-    return this.streams.list(userId);
+  async list(): Promise<StreamRow[]> {
+    return this.streams.list();
   }
 
-  async get(id: string, userId: string): Promise<StreamRow> {
-    const stream = await this.streams.findById(id, userId);
+  async get(id: string): Promise<StreamRow> {
+    const stream = await this.streams.findById(id);
     if (!stream) throw new StreamNotFoundError(id);
     return stream;
   }
 
-  async create(userId: string, input: StreamInputValues): Promise<StreamRow> {
-    return this.streams.insert({
-      user_id: userId,
+  /**
+   * The actor's user id is recorded on the row and never read back to scope
+   * anything: it says who drafted the stream, not who may act on it. Only an
+   * operator drafts one.
+   */
+  async create(actor: OperatorActor, input: StreamInputValues): Promise<StreamRow> {
+    const created = await this.streams.insert({
+      user_id: actor.userId,
       // The stream id viewers see. Minted here, not in the browser as
       // msrs-client did, so it is unique and owned by a row from the start.
       topic: randomUUID(),
@@ -74,6 +125,18 @@ export class StreamService {
       scheduled_start_time: input.scheduledStartTime,
       publish_key: newPublishKey(),
     });
+
+    logger.info(`[Stream] ${describeActor(actor)} created ${describeStream(created)}`);
+    await recordAudit(this.audit, {
+      actor,
+      action: 'stream.create',
+      streamId: created.id,
+      topic: created.topic,
+      statusBefore: null,
+      statusAfter: created.status,
+      details: { title: created.title, mediaType: created.media_type },
+    });
+    return created;
   }
 
   /**
@@ -82,9 +145,13 @@ export class StreamService {
    * republishes explicitly. The same holds once the stream is live or
    * recorded — a title fixed mid-broadcast reaches viewers on the next
    * republish, which keeps the state it is in.
+   *
+   * A save that changed nothing is logged but not audited: nothing moved, in
+   * the row or in `content_edited_at`, and the console saves the whole form
+   * every time.
    */
-  async update(id: string, userId: string, input: StreamInputValues): Promise<StreamRow> {
-    const existing = await this.streams.findById(id, userId);
+  async update(actor: Actor, id: string, input: StreamInputValues): Promise<StreamRow> {
+    const existing = await this.streams.findById(id);
     if (!existing) throw new StreamNotFoundError(id);
     if (isMediaTypeLocked(existing, input.mediaType)) {
       throw new MediaTypeLockedError(id, existing.media_type);
@@ -95,7 +162,6 @@ export class StreamService {
 
     const updated = await this.streams.update(
       id,
-      userId,
       {
         title: input.title,
         description: input.description,
@@ -105,14 +171,51 @@ export class StreamService {
       },
       EDITABLE_STATUSES,
     );
-    return updated ?? (await this.refuse(id, userId));
+    if (!updated) return this.refuse(id);
+
+    const changed = changedFields(existing, updated);
+    if (changed.length === 0) {
+      logger.info(`[Stream] ${describeActor(actor)} saved ${describeStream(updated)} with no changes`);
+      return updated;
+    }
+
+    logger.info(`[Stream] ${describeActor(actor)} updated ${describeStream(updated)}: ${changed.join(', ')}`);
+    await recordAudit(this.audit, {
+      actor,
+      action: 'stream.update',
+      streamId: updated.id,
+      topic: updated.topic,
+      statusBefore: existing.status,
+      statusAfter: updated.status,
+      details: { changed },
+    });
+    return updated;
   }
 
-  async remove(id: string, userId: string): Promise<void> {
-    const deleted = await this.streams.deleteById(id, userId, ['draft']);
-    if (deleted) return;
+  /**
+   * Read first so the log line and the audit row can still name the stream
+   * once it is gone. The DELETE is conditional on its own, so a row that moves
+   * out of `draft` between the two is refused, not deleted.
+   */
+  async remove(actor: Actor, id: string): Promise<void> {
+    const before = await this.streams.findById(id);
+    const deleted = await this.streams.deleteById(id, ['draft']);
+    if (deleted) {
+      const name = before ? describeStream(before) : id;
+      logger.info(`[Stream] ${describeActor(actor)} deleted ${name}`);
+      await recordAudit(this.audit, {
+        actor,
+        action: 'stream.delete',
+        streamId: id,
+        topic: before?.topic ?? null,
+        statusBefore: 'draft',
+        statusAfter: null,
+        details: before ? { title: before.title } : null,
+      });
+      return;
+    }
 
-    const existing = await this.streams.findById(id, userId);
+    const existing = await this.streams.findById(id);
     if (!existing) throw new StreamNotFoundError(id);
     if (existing.status === 'publishing') {
       throw new StreamBusyError(id, existing.status);
@@ -123,37 +226,69 @@ export class StreamService {
     throw new StreamPublishedError(id, existing.status);
   }
 
-  async setThumbnail(id: string, userId: string, contentType: string, bytes: Buffer): Promise<StreamRow> {
+  async setThumbnail(actor: Actor, id: string, contentType: string, bytes: Buffer): Promise<StreamRow> {
     const mime = normaliseThumbnailMime(contentType);
     if (!THUMBNAIL_MIME_TYPES.includes(mime)) {
       throw new UnsupportedMediaTypeError(contentType, THUMBNAIL_MIME_TYPES);
     }
-    const updated = await this.streams.setThumbnail(id, userId, bytes, mime, EDITABLE_STATUSES);
-    return updated ?? (await this.refuse(id, userId));
+    const updated = await this.streams.setThumbnail(id, bytes, mime, EDITABLE_STATUSES);
+    if (!updated) return this.refuse(id);
+
+    logger.info(
+      `[Stream] ${describeActor(actor)} set the thumbnail of ${describeStream(updated)}: ${mime}, ${bytes.length} bytes`,
+    );
+    await recordAudit(this.audit, {
+      actor,
+      action: 'stream.thumbnail.set',
+      streamId: updated.id,
+      topic: updated.topic,
+      statusBefore: updated.status,
+      statusAfter: updated.status,
+      details: { mime, bytes: bytes.length },
+    });
+    return updated;
   }
 
-  async getThumbnail(id: string, userId: string): Promise<ThumbnailRow> {
-    const found = await this.streams.findThumbnail(id, userId);
+  async getThumbnail(id: string): Promise<ThumbnailRow> {
+    const found = await this.streams.findThumbnail(id);
     if (found) return found;
 
     // Distinguish "no such stream" from "stream without a thumbnail": both are
     // 404s, but not the same one.
-    const stream = await this.streams.findById(id, userId);
+    const stream = await this.streams.findById(id);
     if (!stream) throw new StreamNotFoundError(id);
     throw new ThumbnailNotFoundError(id);
   }
 
-  async removeThumbnail(id: string, userId: string): Promise<StreamRow> {
-    const updated = await this.streams.clearThumbnail(id, userId, EDITABLE_STATUSES);
-    return updated ?? (await this.refuse(id, userId));
+  /**
+   * Logged and audited only when there was an image to remove. The read comes
+   * first because the statement cannot say what it cleared; a clear that
+   * races another one records at most one extra entry, never a missing one.
+   */
+  async removeThumbnail(actor: Actor, id: string): Promise<StreamRow> {
+    const before = await this.streams.findById(id);
+    const updated = await this.streams.clearThumbnail(id, EDITABLE_STATUSES);
+    if (!updated) return this.refuse(id);
+    if (!before?.has_thumbnail) return updated;
+
+    logger.info(`[Stream] ${describeActor(actor)} cleared the thumbnail of ${describeStream(updated)}`);
+    await recordAudit(this.audit, {
+      actor,
+      action: 'stream.thumbnail.clear',
+      streamId: updated.id,
+      topic: updated.topic,
+      statusBefore: updated.status,
+      statusAfter: updated.status,
+    });
+    return updated;
   }
 
   /**
    * A conditional UPDATE returned nothing: say which of the two reasons it
    * was. Always throws.
    */
-  private async refuse(id: string, userId: string): Promise<never> {
-    const existing = await this.streams.findById(id, userId);
+  private async refuse(id: string): Promise<never> {
+    const existing = await this.streams.findById(id);
     if (!existing) throw new StreamNotFoundError(id);
     throw new StreamBusyError(id, existing.status);
   }

@@ -8,7 +8,7 @@ import { normaliseThumbnailMime, StreamService } from '../../domain/StreamServic
 import { StreamInputBody, streamIdParamSchema, streamInputSchema } from '../../schemas/stream.js';
 import { THUMBNAIL_MIME_TYPES } from '../../types/index.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { requireUser } from '../middleware/requireAuth.js';
+import { actorOf } from '../middleware/requireAuth.js';
 import { validateBody, validateParams } from '../middleware/validate.js';
 import { toPublishResult, toStream } from '../presenters.js';
 
@@ -48,9 +48,8 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
 
   router.get(
     '/',
-    asyncHandler(async (req: Request, res: Response) => {
-      const { user } = requireUser(req);
-      const streams = await streamService.list(user.id);
+    asyncHandler(async (_req: Request, res: Response) => {
+      const streams = await streamService.list();
       const response: StreamListResponse = { streams: streams.map(toStream) };
       res.json(response);
     }),
@@ -60,8 +59,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     '/',
     validateBody(streamInputSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const { user } = requireUser(req);
-      const created = await streamService.create(user.id, req.body as StreamInputBody);
+      const created = await streamService.create(actorOf(req), req.body as StreamInputBody);
       const response: Stream = toStream(created);
       res.status(201).json(response);
     }),
@@ -71,8 +69,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     '/:id',
     validateParams(streamIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const { user } = requireUser(req);
-      const stream = await streamService.get(streamId(req), user.id);
+      const stream = await streamService.get(streamId(req));
       res.json(toStream(stream));
     }),
   );
@@ -82,8 +79,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     validateParams(streamIdParamSchema),
     validateBody(streamInputSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const { user } = requireUser(req);
-      const updated = await streamService.update(streamId(req), user.id, req.body as StreamInputBody);
+      const updated = await streamService.update(actorOf(req), streamId(req), req.body as StreamInputBody);
       res.json(toStream(updated));
     }),
   );
@@ -92,8 +88,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     '/:id',
     validateParams(streamIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const { user } = requireUser(req);
-      await streamService.remove(streamId(req), user.id);
+      await streamService.remove(actorOf(req), streamId(req));
       res.status(204).end();
     }),
   );
@@ -103,7 +98,6 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     validateParams(streamIdParamSchema),
     rawImage,
     asyncHandler(async (req: Request, res: Response) => {
-      const { user } = requireUser(req);
       const contentType = req.headers['content-type'] ?? '';
       const mime = normaliseThumbnailMime(contentType);
       if (!THUMBNAIL_MIME_TYPES.includes(mime)) {
@@ -119,7 +113,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
         });
         return;
       }
-      const updated = await streamService.setThumbnail(streamId(req), user.id, contentType, body);
+      const updated = await streamService.setThumbnail(actorOf(req), streamId(req), contentType, body);
       res.json(toStream(updated));
     }),
   );
@@ -128,8 +122,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     '/:id/thumbnail',
     validateParams(streamIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const { user } = requireUser(req);
-      const thumbnail = await streamService.getThumbnail(streamId(req), user.id);
+      const thumbnail = await streamService.getThumbnail(streamId(req));
       res.type(thumbnail.thumbnail_mime ?? 'application/octet-stream');
       res.send(thumbnail.thumbnail);
     }),
@@ -139,8 +132,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     '/:id/thumbnail',
     validateParams(streamIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const { user } = requireUser(req);
-      const updated = await streamService.removeThumbnail(streamId(req), user.id);
+      const updated = await streamService.removeThumbnail(actorOf(req), streamId(req));
       res.json(toStream(updated));
     }),
   );
@@ -149,8 +141,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     '/:id/publish',
     validateParams(streamIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const { user } = requireUser(req);
-      const outcome = await publishService.publish(streamId(req), user.id);
+      const outcome = await publishService.publish(actorOf(req), streamId(req));
       res.json(toPublishResult(outcome));
     }),
   );
@@ -159,8 +150,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     '/:id/unpublish',
     validateParams(streamIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const { user } = requireUser(req);
-      const outcome = await publishService.unpublish(streamId(req), user.id);
+      const outcome = await publishService.unpublish(actorOf(req), streamId(req));
       res.json(toPublishResult(outcome));
     }),
   );
@@ -169,8 +159,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     '/:id/ingest',
     validateParams(streamIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const { user } = requireUser(req);
-      res.json(await ingestService.detailsFor(streamId(req), user.id));
+      res.json(await ingestService.detailsFor(streamId(req)));
     }),
   );
 
@@ -178,8 +167,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     '/:id/ingest/rotate-key',
     validateParams(streamIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const { user } = requireUser(req);
-      res.json(await ingestService.rotateKey(streamId(req), user.id));
+      res.json(await ingestService.rotateKey(actorOf(req), streamId(req)));
     }),
   );
 
