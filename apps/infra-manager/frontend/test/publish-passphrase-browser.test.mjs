@@ -44,6 +44,8 @@ function stage(name, portSlot) {
     stamp_id: null,
     public_key: '1'.repeat(40),
     pendingStamp: false,
+    // The ingest alone, so the only readiness step is its container running and the list offers Copy.
+    components: ['srs'],
     containers: [{ service: 'srs', ports: { SRS_SRT_PORT: 10001 + portSlot * 10 } }],
   };
 }
@@ -128,4 +130,39 @@ test('a deployment page puts an SRT passphrase on the line only when the line ca
     assert.ok(!values.some((value) => value.includes('passphrase=')), 'no line carries a cut passphrase');
     assert.ok(!text.includes('already in the URL'), 'the page does not claim the line carries it');
   });
+
+  // The list's Copy button asks for the passphrase on the click. A line copied
+  // without it connects in OBS and is refused by the ingest with nothing on
+  // either screen, so for that passphrase the click opens the deployment page.
+  // The overview's Copy is the same `usePublishUrl` copy, and it lists only
+  // stream deployments, whose readiness needs an uploader this fixture has not.
+  const stubClipboard = `window.copiedPublishUrl = null; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async value => { window.copiedPublishUrl = value; } } })`;
+  const copyIn = (name) =>
+    `[...document.querySelectorAll('tr')].find(row => row.innerText.includes(${JSON.stringify(name)}))?.querySelector('button') && [...[...document.querySelectorAll('tr')].find(row => row.innerText.includes(${JSON.stringify(name)})).querySelectorAll('button')].find(button => button.textContent.trim() === 'Copy publish URL')`;
+
+  for (const [page, hash] of [['deployments list', '#/deployments']]) {
+    await t.test(`the ${page} copies a line that carries its passphrase`, async () => {
+      await call('Page.navigate', { url: `${origin}/${hash}` });
+      await waitFor(() => evaluate(`!!(${copyIn('plain-stage')})`), Boolean, `the plain stage Copy on the ${page}`);
+      await evaluate(stubClipboard);
+      await evaluate(`(${copyIn('plain-stage')}).click()`);
+      const copied = await waitFor(
+        () => evaluate('window.copiedPublishUrl ?? null'),
+        Boolean,
+        'the copied plain stage line',
+      );
+      assert.equal(copied, 'srt://offline.example:10011?streamid=#!::r=live/stream,m=publish&passphrase=plain.pass_word~-1');
+      assert.equal(await evaluate('location.hash'), hash);
+    });
+
+    await t.test(`the ${page} opens the deployment page for a passphrase the line cannot carry`, async () => {
+      await call('Page.navigate', { url: `${origin}/${hash}` });
+      await waitFor(() => evaluate(`!!(${copyIn('awkward-stage')})`), Boolean, `the awkward stage Copy on the ${page}`);
+      await evaluate(stubClipboard);
+      await evaluate(`(${copyIn('awkward-stage')}).click()`);
+      await waitFor(() => evaluate('location.hash'), (value) => value === '#/deployments/awkward-stage', 'the deployment page');
+      await waitFor(() => evaluate(PAGE_TEXT), (body) => body.includes(OBS_FIELD_WORDS), 'the passphrase field wording');
+      assert.equal(await evaluate('window.copiedPublishUrl ?? null'), null, 'no line without its passphrase was copied');
+    });
+  }
 });
