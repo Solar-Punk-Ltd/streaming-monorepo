@@ -532,6 +532,49 @@ describe('the admin API client, reading the feed owner', () => {
   });
 });
 
+/**
+ * The boot-time read of the stage this service's token belongs to. Each stage signs with a key of its
+ * own, so the owner the admin names here is the one to compare with. A 404 is the shared token or an
+ * admin older than stages, which the caller tells from a read that failed.
+ */
+describe('the admin API client, reading its own stage', () => {
+  const SELF = { stageId: '5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f', owner: '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3' };
+
+  it('asks the contract path with the token, and reads the stage and its owner', async () => {
+    await withAdmin(always(200, SELF), async ({ client, received }) => {
+      assert.deepEqual(await client.fetchStageSelf(), { kind: 'stage', ...SELF });
+      assert.equal(received[0].method, 'GET');
+      assert.equal(received[0].url, '/api/internal/stages/self');
+      assert.equal(received[0].authorization, `Bearer ${TOKEN}`);
+    });
+  });
+
+  it('answers no stage on a 404, the shared token or an admin older than stages', async () => {
+    await withAdmin(always(404, { error: 'not_found' }), async ({ client }) => {
+      assert.deepEqual(await client.fetchStageSelf(), { kind: 'no-stage' });
+    });
+  });
+
+  for (const [name, handle] of [
+    ['the admin answers 5xx', always(503)],
+    ['the admin refuses the token', always(401, { error: 'unauthenticated' })],
+    ['the body names no owner', always(200, { stageId: SELF.stageId })],
+    ['the owner is not an address', always(200, { ...SELF, owner: 'nope' })],
+    ['the body is not an object', always(200, 'nope')],
+  ] as const) {
+    it(`answers unconfirmed, and does not throw, when ${name}`, async () => {
+      await withAdmin(handle, async ({ client }) => {
+        assert.equal((await client.fetchStageSelf()).kind, 'unconfirmed');
+      });
+    });
+  }
+
+  it('answers unconfirmed when the admin cannot be reached at all', async () => {
+    const client = new AdminApiClient({ baseUrl: 'http://127.0.0.1:1', token: TOKEN, lookupTimeoutMs: 200 });
+    assert.equal((await client.fetchStageSelf()).kind, 'unconfirmed');
+  });
+});
+
 describe('the admin API token', () => {
   /**
    * Refused where the client is built rather than where it is used, so a deployment configured with
