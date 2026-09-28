@@ -379,7 +379,7 @@ into the log for any reader, nor reorder what its line appears to say.
 | `action`                        | see below                                                                                                                                                                                                                                                                                                                                      |
 | `stream_id`, `topic`            | the stream, with no foreign key so a deleted stream's history stays                                                                                                                                                                                                                                                                            |
 | `status_before`, `status_after` | the stream's status before and after the action. Every stream action fills both, with the same status on both sides when nothing moved (an edit, a thumbnail, a key rotation, a republish, a rendition report), except that `stream.create` has no before and `stream.delete` no after. `feed.reconcile` and the `user.*` rows leave both null |
-| `details`                       | JSON: changed fields, feed index, rung, error message, target username. Never a key, hash or token                                                                                                                                                                                                                                             |
+| `details`                       | JSON: changed fields, feed index and what that write published, rung, error message, target username. Never a key, hash or token                                                                                                                                                                                                               |
 
 The actions: `stream.create`, `stream.update` (only when a field actually
 changed; a save of an unchanged form is logged, not audited),
@@ -393,9 +393,17 @@ that is already `published` records `stream.publish` with
 `stream.publishing.reset` (boot), `user.add`, `user.remove`,
 `user.sessions.revoke`, `user.password.change`. A state or rendition report
 is one row, carrying the feed index of the republish it caused, or the
-publish error when that write failed; the republish adds none of its own. A
-rendition report never moves the status, so its row names one status on both
-sides. A repeated `live` report (the uploader retries) writes one row per
+publish error when that write failed; the republish adds none of its own.
+That republish reads the row and the ladder again when its turn at the
+publish mutex comes, so a later report stored in the meantime is what it
+publishes, as it should be. Beside `feedIndex` the row therefore says what
+the write published: `entryStatus`, the status the entry was written with, on
+a state report, and `entryRung`, the report's rung as the write carried it, on
+a rendition report. Where they differ from what the report itself carried
+(`status_after`, or `index` and `duration`), the write published something
+that landed after this report, usually a later one. A rendition report never
+moves the status, so its row names one status on both sides, the one its
+write saw. A repeated `live` report (the uploader retries) writes one row per
 report, deliberately: each is a report the row accepted. A failed publish or
 unpublish carries the error, and `feedIndex` when the gateway had already taken
 the write, which means the entry is on the catalogue although the row says it

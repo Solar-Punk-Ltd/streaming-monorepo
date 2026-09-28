@@ -27,8 +27,9 @@
 --                  stream.create has no before and stream.delete no after.
 --                  feed.reconcile and the user.* rows leave both null.
 --   details        what else the action has to say: changed fields, feed
---                  index, rung, error message, target username. Never a
---                  secret — no publish key, password hash or session token.
+--                  index and what that write published, rung, error
+--                  message, target username. Never a secret — no publish
+--                  key, password hash or session token.
 --
 -- A failed write here never fails the operation it records: the mutation has
 -- already happened by then. The service logs the failure instead.

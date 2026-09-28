@@ -112,6 +112,15 @@ export interface FeedWriteLog {
 
 export interface PublishOutcome {
   stream: StreamRow;
+  /**
+   * The status the stream's entry was written with, or null after an
+   * unpublish, which takes the entry off the feed. A republish builds the
+   * entry from the row as it reads it inside the mutex, while `stream` is
+   * the row as the write left it, read after the write: a report that lands
+   * while the write is on its way is on `stream` and not on the entry. This,
+   * not `stream.status`, is the status the catalogue was told.
+   */
+  entryStatus: StreamStatus | null;
   feed: {
     owner: string;
     topic: string;
@@ -241,8 +250,10 @@ export class PublishService {
    * what the row says at write time, not what the caller saw.
    *
    * Nothing is audited here. The caller's own action — a state report, a
-   * rendition report — is the entry, and it carries this write's feed index;
-   * `actor` is only for the log line.
+   * rendition report — is the entry, and it carries this write's feed index
+   * and what the write published, `entryStatus` and `renditions`. Both come
+   * from the read in here, so they can be a later report's than the
+   * caller's. `actor` is only for the log line.
    */
   async republishWithState(actor: Actor, stream: StreamRow): Promise<PublishOutcome> {
     return this.mutex.run(async () => this.doRepublishWithState(actor, await this.read(stream.id)));
@@ -425,7 +436,7 @@ export class PublishService {
         statusAfter: stream.status,
         details: { feedIndex: index, entryCount: entries.length },
       });
-      return this.outcome(stream, index, entries.length, renditions, previous);
+      return this.outcome(stream, status, index, entries.length, renditions, previous);
     } catch (error) {
       throw await this.fail(actor, 'stream.publish.failed', claimed, previousStatus, written, error);
     }
@@ -475,7 +486,7 @@ export class PublishService {
         statusAfter: stream.status,
         details: { feedIndex: removed ? index : null, wasOnFeed: removed },
       });
-      return this.outcome(stream, index, entries.length, [], previous);
+      return this.outcome(stream, null, index, entries.length, [], previous);
     } catch (error) {
       throw await this.fail(actor, 'stream.unpublish.failed', claimed, previousStatus, written, error);
     }
@@ -554,7 +565,7 @@ export class PublishService {
       logger.info(
         `[Publish] ${describeActor(actor)} republished ${describeStream(current)} at feed index ${index} (${entries.length} entries): stays ${current.status}`,
       );
-      return this.outcome(updated, index, entries.length, renditions, previous);
+      return this.outcome(updated, current.status, index, entries.length, renditions, previous);
     } catch (error) {
       // No claim was taken, so there is no status to put back — and none may
       // be: the row's status is the uploader's last report, which can be newer
@@ -781,6 +792,7 @@ export class PublishService {
 
   private outcome(
     stream: StreamRow,
+    entryStatus: StreamStatus | null,
     index: number,
     entryCount: number,
     renditions: Rendition[],
@@ -788,6 +800,7 @@ export class PublishService {
   ): PublishOutcome {
     return {
       stream,
+      entryStatus,
       feed: {
         owner: this.feed.owner,
         topic: this.feed.topic,

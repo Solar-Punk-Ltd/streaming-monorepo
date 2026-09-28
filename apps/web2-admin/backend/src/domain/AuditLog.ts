@@ -34,9 +34,9 @@ export type AuditAction =
  * One row of `audit_log`: who did what to which stream, and what it moved.
  *
  * `details` is whatever the action has to say beyond that — the fields an
- * edit changed, the feed index a write landed at, the error a publish failed
- * with, the user a user action was done to. Never a secret: no publish key, no
- * password or hash, no session token.
+ * edit changed, the feed index a write landed at and what it published, the
+ * error a publish failed with, the user a user action was done to. Never a
+ * secret: no publish key, no password or hash, no session token.
  */
 export interface AuditEntry {
   actor: Actor;

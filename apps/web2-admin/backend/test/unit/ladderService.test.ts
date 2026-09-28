@@ -262,11 +262,11 @@ describe('LadderService.report', () => {
 
 /**
  * A rung report is the uploader's, so the entry names the uploader whatever
- * route it came through, and it carries the rung and the feed index of the
- * write that put it on the catalogue.
+ * route it came through, and it carries the rung, the feed index of the
+ * write that put it on the catalogue, and that rung as the write carried it.
  */
 describe('LadderService audit', () => {
-  it('records a rung report as the uploader, with the rung and the feed index', async () => {
+  it('records a rung report as the uploader, with the rung, the feed index and the rung the write carried', async () => {
     const { audit, service, stream } = await setup();
     audit.entries.length = 0;
 
@@ -285,6 +285,7 @@ describe('LadderService audit', () => {
           index: 12,
           duration: 62.5,
           feedIndex: outcome.publish.feed.index,
+          entryRung: FINAL_720,
           finished: true,
           flippedToFinished: true,
         },

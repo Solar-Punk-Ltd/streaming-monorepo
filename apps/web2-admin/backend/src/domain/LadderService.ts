@@ -88,7 +88,11 @@ export class LadderService {
    * but the catalogue did not yet say so.
    *
    * Audited once the write has been tried, whichever way it went: the rung is
-   * stored either way, and the entry says whether the catalogue has it.
+   * stored either way, and the entry says whether the catalogue has it, and
+   * as what. The write reads the ladder again under the mutex, so a later
+   * report for the same rung stored in the meantime is what it carries, and
+   * `entryRung` is that rung as the write carried it; `index` and `duration`
+   * beside it are only what this report said.
    */
   async report(id: string, report: RenditionReport): Promise<RenditionReportOutcome> {
     const stream = await this.streams.findById(id);
@@ -106,9 +110,12 @@ export class LadderService {
     await this.renditions.upsert(id, mergeRendition(previous, report));
 
     // A rung never moves the status, so the entry names one status on both
-    // sides. `stream` was read before the mutex, and a `live` report can land
-    // between that read and the write; the status the write saw is the one
-    // on `publish.stream`, and a transition belongs to `stream.state.*`.
+    // sides: the one the write saw, `publish.entryStatus`, and a transition
+    // belongs to `stream.state.*`. `stream` was read before the mutex and
+    // `publish.stream` after the write, and a `live` report can land between
+    // either of those reads and the write's own. A write that failed hands
+    // back nothing to read that from, so its entry names the status as
+    // `stream` has it.
     const entry: AuditEntry = {
       actor: UPLOADER,
       action: 'stream.rendition.report',
@@ -148,9 +155,15 @@ export class LadderService {
     );
     await recordAudit(this.audit, {
       ...entry,
-      statusBefore: publish.stream.status,
-      statusAfter: publish.stream.status,
-      details: { ...rung, feedIndex: publish.feed.index, finished, flippedToFinished: ladder.flippedToFinished },
+      statusBefore: publish.entryStatus,
+      statusAfter: publish.entryStatus,
+      details: {
+        ...rung,
+        feedIndex: publish.feed.index,
+        entryRung: renditions.find((rendition) => rendition.name === report.name) ?? null,
+        finished,
+        flippedToFinished: ladder.flippedToFinished,
+      },
     });
     return { publish, renditions, ladder };
   }

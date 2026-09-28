@@ -194,8 +194,9 @@ describe('StreamStateService.report', () => {
 /**
  * A state report is the uploader's: the internal route has no session, and
  * the service names the uploader itself. One entry per report, with the
- * transition it made and the feed index of the republish that followed it —
- * the republish adds no entry of its own.
+ * transition it made, the feed index of the republish that followed it and
+ * the status that republish published — the republish adds no entry of its
+ * own.
  */
 describe('StreamStateService audit', () => {
   it('records a live report as the uploader, published → live, and nothing for the republish', async () => {
@@ -212,7 +213,7 @@ describe('StreamStateService audit', () => {
         topic: stream.topic,
         statusBefore: 'published',
         statusAfter: 'live',
-        details: { feedIndex: outcome.feed.index },
+        details: { feedIndex: outcome.feed.index, entryStatus: 'live' },
       },
     ]);
   });
@@ -232,7 +233,7 @@ describe('StreamStateService audit', () => {
         topic: stream.topic,
         statusBefore: 'live',
         statusAfter: 'vod',
-        details: { index: 7, duration: 62.5, feedIndex: outcome.feed.index },
+        details: { index: 7, duration: 62.5, feedIndex: outcome.feed.index, entryStatus: 'vod' },
       },
     ]);
   });
