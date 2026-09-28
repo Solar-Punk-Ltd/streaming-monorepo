@@ -44,6 +44,9 @@ import { isLocalTarget, targetAlias } from '../ports/DeployTargets.js';
 import type { ProfileRepository, StackSettingsChange, StoredStackSettings } from '../ProfileRepository.js';
 import type { StackVersionRepository } from '../versions/StackVersionRepository.js';
 
+import type { ManagerAdminLinkStore } from '../adminLink/ManagerAdminLinkRepository.js';
+import { ownAdminTokenFor } from '../adminLink/ownAdminToken.js';
+
 import { adminLinkBeforeOf } from './adminLinkBefore.js';
 import { type DeploymentEngineSettings, deploymentSettingsCatalogOf } from './deploymentSettingsCatalog.js';
 import { engineDefaultsAt } from './engineHostDefaults.js';
@@ -80,6 +83,8 @@ export class DeploymentSettingsService {
     private readonly containers: ContainerRepository,
     private readonly orchestrator: DeploymentOrchestrator,
     private readonly versions: Pick<StackVersionRepository, 'findById'>,
+    /** The manager's web2 admin link, whose address the manager generates a token of the deployment's own for. */
+    private readonly managerAdminLink?: Pick<ManagerAdminLinkStore, 'read'>,
   ) {}
 
   async catalog(name: string): Promise<DeploymentSettingsCatalog> {
@@ -199,6 +204,8 @@ export class DeploymentSettingsService {
       current: next.env,
       version: versionValuesOf(files),
       requiredSecrets: next.version.contract?.requiredSecrets ?? [],
+      ownTokenFor: this.managerAdminLink ? ownAdminTokenFor(await this.managerAdminLink.read(), profile) : null,
+      currentIsOwnToken: next.generatedKeys.includes(ADMIN_API_TOKEN_KEY),
     });
     return { catalog, stored, engineSettings, adminLink };
   }

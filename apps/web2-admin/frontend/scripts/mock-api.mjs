@@ -66,6 +66,8 @@ const stages =
           rungs: [],
           uploader: { state: 'ready', reasons: [] },
           readiness: { tone: 'ready', reasons: [] },
+          // Still on the shared token, so the page shows its warning.
+          adminTokenKind: 'shared',
           observedAt: new Date().toISOString(),
           receivedAt: new Date().toISOString(),
           retiredAt: null,

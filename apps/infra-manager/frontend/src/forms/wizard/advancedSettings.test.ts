@@ -181,7 +181,7 @@ describe('the segment length on the key it decides', () => {
 });
 
 describe('the web2 admin address on the key the Web2 admin group decides', () => {
-  const adminLink = { on: true, url: 'https://admin.example.com', tokenSource: 'stored' as const, token: '' };
+  const adminLink = { on: true, url: 'https://admin.example.com', tokenSource: 'own' as const, token: '' };
 
   it('shows the address on ADMIN_API_URL while the link is on', () => {
     assert.deepEqual(controlValuesOf(stateFor('stream', { segmentSeconds: '', adminLink }), contextWith()), {

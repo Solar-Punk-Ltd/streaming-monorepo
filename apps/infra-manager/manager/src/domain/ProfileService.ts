@@ -85,6 +85,7 @@ import {
   type NewDeploymentShape,
 } from './settings/newDeploymentSettings.js';
 import type { ManagerAdminLinkStore } from './adminLink/ManagerAdminLinkRepository.js';
+import { ownAdminTokenFor, runsStreamUploader } from './adminLink/ownAdminToken.js';
 import { beePublisherUrlFor } from './StampService.js';
 import { isPendingStamp } from './stampLogic.js';
 import { stackRootOf } from './versions/stackPaths.js';
@@ -179,18 +180,11 @@ function adminTokenOriginOf(stored: StoredStackSettings | null): Pick<InitialSta
   return origin === null ? {} : { adminTokenOrigin: origin };
 }
 
-/** Whether a deployment of this shape runs a stream uploader, which is what reports to the web2 admin. */
-function runsStreamUploader({ kind, components }: NewDeploymentShape): boolean {
-  return defaultServicesFor({ kind, components: components ? [...components] : null }).includes(
-    STREAM_UPLOADER_SERVICE,
-  );
-}
-
 /** What the create log says of the stack settings a deployment was given: their keys, never a value. */
 function stackSettingsNote(settings: InitialStackSettings): string {
   const keys = [...Object.keys(settings.plain), ...Object.keys(settings.secret)];
   const named = keys.length > 0 ? ` with stack settings ${keys.join(', ')}` : '';
-  return settings.copyManagerAdminToken ? `${named} and the manager's web2 admin token` : named;
+  return named;
 }
 
 /**
@@ -242,23 +236,23 @@ export class ProfileService {
 
   /**
    * What a create is given of its stack settings: what it names, and the
-   * manager's own web2 admin link for a deployment that runs a stream
-   * uploader when the create names neither key and asks for no token, with the
-   * stored token copied in for that address.
+   * manager's own web2 admin address for a deployment that runs a stream
+   * uploader when the create names neither key. A token is never copied in:
+   * the first deploy of a deployment linked to the manager's admin generates
+   * one of its own (`adminLink/ownAdminToken.ts`), which the web2 admin rule
+   * counts for that address. `use_manager_admin_token` is not read.
    */
   private async createdStackSettings(
     name: string,
     version: StackVersionRecord,
     shape: NewDeploymentShape,
-    input: { stack_settings?: readonly NewDeploymentSetting[] | null; use_manager_admin_token?: boolean | null },
+    input: { stack_settings?: readonly NewDeploymentSetting[] | null },
   ): Promise<InitialStackSettings> {
     const named = input.stack_settings ?? [];
-    const asked = input.use_manager_admin_token === true;
-    const linked =
-      this.managerAdminLink && leavesAdminLinkToManager(named, asked) && runsStreamUploader(shape)
-        ? managerLinkSettingsFor(await this.managerAdminLink.read(), version, shape)
-        : [];
-    return initialStackSettingsFor(name, version, shape, [...named, ...linked], asked || linked.length > 0);
+    const uploader = runsStreamUploader(shape);
+    const link = this.managerAdminLink && uploader ? await this.managerAdminLink.read() : null;
+    const linked = link && leavesAdminLinkToManager(named) ? managerLinkSettingsFor(link, version, shape) : [];
+    return initialStackSettingsFor(name, version, shape, [...named, ...linked], ownAdminTokenFor(link, shape));
   }
 
   /**
@@ -375,7 +369,10 @@ export class ProfileService {
     engine_settings?: EngineSettings | null;
     /** Absent stores none, so the version's values stand. Checked against the list its version gives this deployment. */
     stack_settings?: readonly NewDeploymentSetting[] | null;
-    /** True copies the manager's stored web2 admin token into the deployment at its insert. */
+    /**
+     * Taken and ignored, for a client older than the token of a deployment's own: it asked for the manager's stored
+     * token to be copied in, which no create does any more. Such a create is judged as one that sends no token.
+     */
     use_manager_admin_token?: boolean | null;
   }): Promise<ProfileWithContainers> {
     const existing = await this.repo.findByName(input.name);
@@ -990,7 +987,7 @@ export class ProfileService {
     engine_settings?: EngineSettings | null;
     /** What every member is created with, checked against the list its version gives such a member. Absent stores none. */
     stack_settings?: readonly NewDeploymentSetting[] | null;
-    /** True copies the manager's stored web2 admin token into every member at its insert. */
+    /** Taken and ignored, as a single create takes it. */
     use_manager_admin_token?: boolean | null;
   }): Promise<{ group: DeploymentGroup; profiles: ProfileWithContainers[] }> {
     // The same invariant updateGroupConfig enforces, at the other door. A pool's

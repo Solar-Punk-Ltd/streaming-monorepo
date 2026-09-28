@@ -110,6 +110,8 @@ import {
 } from './versions/stackPaths.js';
 import type { ExecutionRoots, PreparedExecution } from './versions/ExecutionRootService.js';
 import { missingStackSecrets, type StackSecrets } from './versions/stackSecrets.js';
+import type { ManagerAdminLinkStore } from './adminLink/ManagerAdminLinkRepository.js';
+import { ownAdminTokenFor, takesOwnAdminToken } from './adminLink/ownAdminToken.js';
 import { versionSuppliedSecrets } from './versions/versionSuppliedSecrets.js';
 import type {
   DeployVersionSnapshot,
@@ -159,6 +161,18 @@ function settingOwnerContextFor(
     ports: [...portTableOf(contract), ...(contract?.portAliases ?? [])],
     isLocalTarget: isLocalTarget(targetAlias(host ?? profile.host)),
   };
+}
+
+/**
+ * The web2 admin address the deployment's uploader is given: what the deployment stores, or what its version's
+ * env files set, the engine's under the base one, or empty.
+ */
+function adminUrlFor(stored: Readonly<Record<string, string>>, root: string, engine: EngineName): string {
+  const files = {
+    ...parseEnvText(readIfPresent(engineEnvPath(root, engine))),
+    ...parseEnvText(readIfPresent(baseEnvPath(root))),
+  };
+  return stored[ADMIN_API_URL_KEY] ?? files[ADMIN_API_URL_KEY] ?? '';
 }
 
 function withoutKeys<T extends Record<string, string>>(record: T, keys: readonly string[]): T {
@@ -409,6 +423,12 @@ export interface NextDeployEnv {
   env: Record<string, string>;
   /** Keys whose value is a secret the manager generated for this deployment. */
   generatedKeys: string[];
+  /**
+   * Whether the `ADMIN_API_TOKEN` the uploader is given is the one the manager generated for this deployment, its
+   * token of its own. False for a token the deployment stores, typed or copied from the link, one its version's env
+   * files set, and none. The stage record's `adminToken.kind` is `own` on this alone.
+   */
+  ownAdminToken: boolean;
   /** The build tree the next deploy copies. */
   root: string;
   version: StackVersionRecord;
@@ -436,6 +456,8 @@ export type BeforeUploaderStart = (profile: Profile) => Promise<void>;
 
 export class DeploymentOrchestrator {
   private beforeUploaderStart: BeforeUploaderStart | null = null;
+  /** The manager's web2 admin link, whose address a token of a deployment's own is generated for. */
+  private managerAdminLink: Pick<ManagerAdminLinkStore, 'read'> | null = null;
 
   constructor(
     private readonly profiles: ProfileRepository,
@@ -469,6 +491,14 @@ export class DeploymentOrchestrator {
    */
   setBeforeUploaderStart(hook: BeforeUploaderStart | null): void {
     this.beforeUploaderStart = hook;
+  }
+
+  /**
+   * Sets the manager's web2 admin link, which a deploy reads to tell whether the deployment's uploader is given a
+   * token of its own (`adminLink/ownAdminToken.ts`). Left unset, none is generated.
+   */
+  setManagerAdminLink(link: Pick<ManagerAdminLinkStore, 'read'> | null): void {
+    this.managerAdminLink = link;
   }
 
   /** The hook, where this deploy starts an uploader. A failure is a warning and never holds the deploy. */
@@ -640,12 +670,35 @@ export class DeploymentOrchestrator {
   }
 
   /**
-   * The secrets this version's containers refuse to start without, generated
-   * the first time the deployment runs on it and kept from then on.
+   * The secrets this deployment's containers refuse to start without: the ones its version requires, and
+   * `ADMIN_API_TOKEN` for an uploader given the address of the manager's web2 admin link and no token the
+   * deployment stores, which is the token of its own (`adminLink/ownAdminToken.ts`).
+   */
+  private async requiredSecretsOf(
+    profile: Profile,
+    version: DeployVersionSnapshot | null,
+    stored: Readonly<Record<string, string>>,
+    root: string,
+    engine: EngineName,
+  ): Promise<string[]> {
+    const required = [...(version?.contract?.requiredSecrets ?? [])];
+    if (required.includes(ADMIN_API_TOKEN_KEY) || ADMIN_API_TOKEN_KEY in stored || !this.managerAdminLink) {
+      return required;
+    }
+    const ownTokenFor = ownAdminTokenFor(await this.managerAdminLink.read(), profile);
+    if (takesOwnAdminToken(adminUrlFor(stored, root, engine), ownTokenFor)) required.push(ADMIN_API_TOKEN_KEY);
+    return required;
+  }
+
+  /**
+   * The secrets this deployment's containers refuse to start without, generated
+   * the first time the deployment runs on its version and kept from then on.
    *
    * Generated at deploy rather than at creation, so a version whose contract
    * grows a secret on Update is covered by the next deploy of every deployment
-   * on it, with nothing to migrate.
+   * on it, with nothing to migrate. The uploader's token of its own is
+   * generated the same way, at the first deploy that links it to the
+   * manager's web2 admin, and only written while it is linked there.
    *
    * A key the version's own settings answer is neither generated nor written,
    * so the version's line stands. A value already stored against this
@@ -657,8 +710,9 @@ export class DeploymentOrchestrator {
     version: DeployVersionSnapshot | null,
     root: string,
     engine: EngineName,
+    operator: Readonly<Record<string, string>>,
   ): Promise<StackSecrets> {
-    const required = version?.contract?.requiredSecrets ?? [];
+    const required = await this.requiredSecretsOf(profile, version, operator, root, engine);
     if (required.length === 0) return {};
 
     const stored = await this.profiles.stackSecretsOf(profile.name);
@@ -688,8 +742,14 @@ export class DeploymentOrchestrator {
    * key the version answers and nothing stored is left to the version, as the
    * deploy leaves it.
    */
-  private async storedStackSecretsFor(profile: Profile, version: DeployVersionSnapshot | null): Promise<StackSecrets> {
-    const required = version?.contract?.requiredSecrets ?? [];
+  private async storedStackSecretsFor(
+    profile: Profile,
+    version: DeployVersionSnapshot | null,
+    operator: Readonly<Record<string, string>>,
+    root: string,
+    engine: EngineName,
+  ): Promise<StackSecrets> {
+    const required = await this.requiredSecretsOf(profile, version, operator, root, engine);
     if (required.length === 0) return {};
     const stored = await this.profiles.stackSecretsOf(profile.name);
     const secrets: StackSecrets = {};
@@ -738,11 +798,7 @@ export class DeploymentOrchestrator {
     engine: EngineName,
   ): Promise<void> {
     if (!stored[ADMIN_API_TOKEN_KEY]) return;
-    const files = {
-      ...parseEnvText(readIfPresent(engineEnvPath(root, engine))),
-      ...parseEnvText(readIfPresent(baseEnvPath(root))),
-    };
-    const url = stored[ADMIN_API_URL_KEY] ?? files[ADMIN_API_URL_KEY] ?? '';
+    const url = adminUrlFor(stored, root, engine);
     const storedWith = (await this.profiles.stackSettingsOf(profile.name))?.adminTokenOrigin ?? null;
     if (storedWith === null) {
       await this.profiles.bindAdminTokenOrigin(profile.name, adminOriginOf(url) ?? '');
@@ -815,7 +871,7 @@ export class DeploymentOrchestrator {
       await this.profiles.stackSettingsForDeploy(profile.name),
       settingOwnerContextFor(profile, version, profile.host),
     );
-    const stackSecrets = await this.storedStackSecretsFor(profile, version);
+    const stackSecrets = await this.storedStackSecretsFor(profile, version, stored, root, engine);
     const values = this.profileEnvValuesOf(profile, version, engine, {
       secrets: {
         streamKey: await this.profiles.privateKeyOf(profile.name),
@@ -834,9 +890,11 @@ export class DeploymentOrchestrator {
       rootEnvText: renderProfileEnv(baseText, managed, stored),
       engineEnvText: readIfPresent(engineEnvPath(root, engine)),
     });
+    const generatedToken = ADMIN_API_TOKEN_KEY in stored ? '' : (stackSecrets[ADMIN_API_TOKEN_KEY] ?? '');
     return {
       env,
       generatedKeys: Object.keys(withoutKeys(stackSecrets, Object.keys(stored))),
+      ownAdminToken: generatedToken !== '' && env[ADMIN_API_TOKEN_KEY] === generatedToken,
       root,
       version,
       engineSettingsProblem: engineSettingsLinesOf(values, baseText).problem,
@@ -1347,7 +1405,7 @@ export class DeploymentOrchestrator {
         profile.name,
         this.profileEnvValuesOf(profile, version, engine, {
           secrets,
-          stackSecrets: await this.stackSecretsFor(profile, version, paths.root, engine),
+          stackSecrets: await this.stackSecretsFor(profile, version, paths.root, engine, stored),
           engineConfigFile,
           stored,
         }),

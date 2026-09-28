@@ -107,6 +107,26 @@ test('the stage card shows the ingest address, saves one, refuses a port and say
     'the resolved host again',
   );
 
+  // Rotate the uploader's admin token: asked first, then the sentence that says a redeploy gives the new one.
+  assert.match(await card(), /The next deploy gives the uploader a new token of its own/);
+  await clickWhenEnabled(evaluate, cardButton("Rotate the uploader's admin token"), 'the rotate action');
+  const dialog = `document.querySelector('[role=dialog]')`;
+  await waitFor(
+    () => evaluate(`${dialog}?.innerText ?? ''`),
+    (text) => text.includes('stops taking it once the manager next pushes this stage'),
+    'the rotate confirmation',
+  );
+  await clickWhenEnabled(
+    evaluate,
+    `[...(${dialog}?.querySelectorAll('button') ?? [])].find(button => button.textContent.trim() === 'Rotate')`,
+    'the confirmation’s Rotate button',
+  );
+  await waitFor(
+    body,
+    (text) => text.includes("The uploader's admin token is cleared. Redeploy"),
+    'the rotated sentence',
+  );
+
   await call('Page.navigate', { url: `${origin}/#/deployments/viewer-eu` });
   await waitFor(body, (text) => text.includes('viewer-eu'), 'a viewer’s page', COLD_OPTIMIZE_BUDGET_MS);
   assert.equal(await evaluate(`Boolean(${CARD})`), false, 'a viewer is no stage');

@@ -18,6 +18,27 @@ export interface ManagerAdminLink {
   revision: number;
 }
 
+/**
+ * The address the manager generates a deployment's own `ADMIN_API_TOKEN` for: its link's, when the link has an
+ * address and a token to register the deployment's stage with, which is how the admin learns the new token's
+ * sha256. Null otherwise. Only a deployment that runs a stream uploader, and whose uploader is given an address on
+ * this one's origin, is given a token of its own.
+ */
+export function ownAdminTokenAddressOf(
+  link: Pick<ManagerAdminLink, 'url' | 'tokenStored'> | null | undefined,
+): string | null {
+  return link?.url && link.tokenStored ? link.url : null;
+}
+
+/** What `POST /profiles/:name/admin-token/rotate` answers: the sentence the deployment page shows. */
+export interface AdminTokenRotateAnswer {
+  message: string;
+}
+
+/** The sentence a rotation answers with. */
+export const ADMIN_TOKEN_ROTATED_MESSAGE =
+  "The uploader's admin token is cleared. Redeploy to give the uploader a new one: the deploy generates it and tells the web2 admin its sha256 before the uploader starts. Until then the web2 admin stops taking the old token once the manager next pushes the stage, and an uploader still on the shared token keeps it.";
+
 /** What `PUT /manager-settings/admin-link` takes. */
 export interface ManagerAdminLinkSave {
   expectedRevision: number;

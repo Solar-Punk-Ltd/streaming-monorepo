@@ -18,6 +18,7 @@ import {
   STAGE_PUSH_DEBOUNCE_MS,
   STAGE_PUSH_INTERVAL_MS,
   StagePublisher,
+  consoleRecordOf,
   type StageClock,
 } from '../../src/domain/stages/StagePublisher.js';
 import type { StageRequest } from '../../src/domain/stages/stageRequest.js';
@@ -130,7 +131,7 @@ function publisherFor(setup: Setup = {}) {
       find: async (name) => profiles.get(name) ?? null,
     },
     builder: {
-      async build(profile, _link, readAt): Promise<BuiltStage> {
+      async build(profile, readAt = new Date()): Promise<BuiltStage> {
         builds.push(profile.name);
         await setup.duringBuild?.();
         const problem = setup.problems?.[profile.name];
@@ -497,6 +498,17 @@ describe('the console’s read', () => {
     assert.equal(broken!.record, null);
     assert.equal(broken!.problem, 'The version has no build yet.');
     assert.equal(broken!.lastPush, null);
+  });
+
+  it('answers the admin token by its kind alone, never its sha256', () => {
+    const sha256 = 'ab'.repeat(32);
+    const pushed = consoleRecordOf({
+      ...recordOf(stage('stage-one', 1)),
+      adminToken: { sha256, kind: 'own' },
+    });
+    assert.deepEqual(pushed.adminToken, { kind: 'own' });
+    assert.ok(!JSON.stringify(pushed).includes(sha256));
+    assert.equal(consoleRecordOf(recordOf(stage('stage-one', 1))).adminToken, null);
   });
 });
 

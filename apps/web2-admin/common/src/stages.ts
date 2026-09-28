@@ -5,6 +5,7 @@
  */
 
 import type {
+  AdminTokenKind,
   StageChequebookHealth,
   StageEngine,
   StageKind,
@@ -13,12 +14,14 @@ import type {
 } from '@streaming-monorepo/contracts';
 
 export {
+  ADMIN_TOKEN_KINDS,
   STAGE_CHEQUEBOOK_HEALTHS,
   STAGE_ENGINES,
   STAGE_KINDS,
   STAGE_READINESS_TONES,
   STAGE_STAMP_STATES,
   STAMP_EXPIRY_WARNING_SECONDS,
+  type AdminTokenKind,
   type StageChequebookHealth,
   type StageEngine,
   type StageKind,
@@ -69,6 +72,12 @@ export interface StageSummary {
   uploader: { state: string; reasons: string[] } | null;
   /** The manager's verdict on the stage, shown as it is. */
   readiness: { tone: StageReadinessTone; reasons: string[] };
+  /**
+   * Which token the stage's uploader presents to the admin: a token of its `own`, which the admin answers only about
+   * the stage's streams, or the `shared` `INTERNAL_API_TOKEN`, still taken while the stages move over. Null when the
+   * manager pushed no token. Never the token or its hash.
+   */
+  adminTokenKind: AdminTokenKind | null;
   /** When the manager read what this says. */
   observedAt: string;
   /** When the admin last stored a record for the stage. */

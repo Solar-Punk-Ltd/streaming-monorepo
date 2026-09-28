@@ -614,24 +614,14 @@ const ROUTES = [
       const { problem } = nodeChoicesFor(body);
       if (problem) return refuse(res, problem);
       // Kept off the profile, which every page and event carries.
-      const { stack_settings: namedSettings, use_manager_admin_token: askedToken, ...profileBody } = body;
+      // `use_manager_admin_token` is taken and ignored, as the manager ignores it.
+      const { stack_settings: namedSettings, use_manager_admin_token: _ignored, ...profileBody } = body;
       const shape = { kind: body.kind ?? 'custom', components: body.components ?? null, host: body.host ?? null };
-      const { stackSettings, useManagerToken } = withManagerLink(
-        namedSettings,
-        askedToken === true,
-        versionForCreate(body),
-        shape,
-      );
-      const refusal = await createdSettingsRefusal(
-        stackSettings,
-        versionForCreate(body),
-        shape,
-        body.name,
-        useManagerToken === true,
-      );
+      const stackSettings = withManagerLink(namedSettings, versionForCreate(body), shape);
+      const refusal = await createdSettingsRefusal(stackSettings, versionForCreate(body), shape, body.name);
       if (refusal) return send(res, refusal.status, refusal.body);
       const profile = createFromBody(profileBody);
-      storeCreatedSettings(profile, stackSettings, useManagerToken === true);
+      storeCreatedSettings(profile, stackSettings);
       send(res, 202, profile);
     },
   ],
@@ -803,24 +793,18 @@ const ROUTES = [
       const memberShape = isPool ? { kind: 'custom', components: ['bee-uploader'] } : {};
       const { problem } = nodeChoicesFor(body, memberShape);
       if (problem) return refuse(res, problem);
-      const { stack_settings: namedSettings, use_manager_admin_token: askedToken, ...groupBody } = body;
+      const { stack_settings: namedSettings, use_manager_admin_token: _ignored, ...groupBody } = body;
       const settingsShape = {
         kind: memberShape.kind ?? body.kind ?? 'custom',
         components: memberShape.components ?? body.components ?? null,
         host: body.host ?? null,
       };
-      const { stackSettings, useManagerToken } = withManagerLink(
-        namedSettings,
-        askedToken === true,
-        versionForCreate(body),
-        settingsShape,
-      );
+      const stackSettings = withManagerLink(namedSettings, versionForCreate(body), settingsShape);
       const refusal = await createdSettingsRefusal(
         stackSettings,
         versionForCreate(body),
         settingsShape,
         body.group_name,
-        useManagerToken === true,
       );
       if (refusal) return send(res, refusal.status, refusal.body);
       const group = {
@@ -842,7 +826,7 @@ const ROUTES = [
         : Array.from({ length: group.size }, (_value, index) =>
             createFromBody({ ...groupBody, name: `${group.name}-profile-${index + 1}` }, { group_id: group.id }),
           );
-      for (const profile of profiles) storeCreatedSettings(profile, stackSettings, useManagerToken === true);
+      for (const profile of profiles) storeCreatedSettings(profile, stackSettings);
 
       send(res, 202, { group, profiles });
     },

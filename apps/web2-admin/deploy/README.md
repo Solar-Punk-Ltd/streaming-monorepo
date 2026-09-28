@@ -561,9 +561,11 @@ node --test 'apps/web2-admin/deploy/test/*.test.mjs'
 - **The uploader reaching `/api/internal`.** swarm-hls-stream's uploader calls
   the admin's internal API. Without the edge nothing outside the host reaches
   it. With the edge, nginx passes all of `/api/` through, so
-  `https://<ADMIN_DOMAIN>/api/internal` answers from anywhere, guarded by
-  `INTERNAL_API_TOKEN` alone (32 characters or more, compared in constant
-  time). Whether the uploader should use that route, or the edge should refuse
+  `https://<ADMIN_DOMAIN>/api/internal` answers from anywhere, guarded by a
+  bearer token alone: `INTERNAL_API_TOKEN` (32 characters or more, compared in
+  constant time) on the manager's routes, and on the uploader's a stage's own
+  token, known by its sha256, or, while the stages move over, that same
+  `INTERNAL_API_TOKEN`. Whether the uploader should use that route, or the edge should refuse
   it, belongs with the manager integration.
 - **Stop, health and clean scripts, and database backups.** Use compose by hand
   (above) until they exist. `down -v` deletes the profile's database.

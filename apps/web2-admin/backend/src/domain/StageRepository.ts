@@ -74,6 +74,23 @@ export class StageRepository {
     return result.rows[0] ?? null;
   }
 
+  /**
+   * The active stages whose uploader presents a token of its own with this sha256: what an uploader's call is
+   * attributed by (migration 012). Only `own` rows: a `shared` row's hash is the shared token's, which is checked
+   * apart, and a retired stage's token is taken no more. Two rows at most, since two already mean the token cannot
+   * say which stage it is. The hash itself is not selected.
+   */
+  async findActiveByOwnTokenSha256(sha256: string): Promise<StageRow[]> {
+    const result = await this.pool.query<StageRow>(
+      `SELECT ${STAGE_COLUMNS} FROM stages
+        WHERE admin_token_sha256 = $1 AND admin_token_kind = 'own' AND retired_observed_at IS NULL
+        ORDER BY stage_id
+        LIMIT 2`,
+      [sha256],
+    );
+    return result.rows;
+  }
+
   /** One stage with its passphrase and token hash, for the service to tell what a push changed. */
   async find(stageId: string): Promise<StageSecretsRow | null> {
     const result = await this.pool.query<StageSecretsRow>(

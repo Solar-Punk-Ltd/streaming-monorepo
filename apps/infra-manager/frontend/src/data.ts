@@ -1,4 +1,5 @@
 import {
+  type AdminTokenRotateAnswer,
   type BeePublishersResult,
   type ConfiguredBeeRpcEndpoint,
   DEFAULT_CHEQUEBOOK_FLOOR_BZZ,
@@ -180,8 +181,6 @@ export interface CreateGroupBody {
   engine_settings?: EngineSettings;
   /** The stack settings every member is created with. Absent keeps the version's values. */
   stack_settings?: NewDeploymentSetting[];
-  /** True has the manager copy its stored web2 admin token into every member as it is inserted. */
-  use_manager_admin_token?: boolean;
 }
 
 export function createDeploymentGroup(body: CreateGroupBody, signal?: AbortSignal): Promise<GroupWithMembers> {
@@ -256,6 +255,11 @@ export async function fetchStageRegistration(name: string, signal?: AbortSignal)
     signal,
   });
   return answer.registration;
+}
+
+/** Takes the deployment's web2 admin token out so its next deploy generates a new one, and answers what to say. */
+export function rotateAdminToken(name: string): Promise<AdminTokenRotateAnswer> {
+  return sendJson<AdminTokenRotateAnswer>('POST', `/profiles/${encodeURIComponent(name)}/admin-token/rotate`, {});
 }
 
 export function updateNotes(name: string, notes: string | null, loadedRevision: number): Promise<Profile> {

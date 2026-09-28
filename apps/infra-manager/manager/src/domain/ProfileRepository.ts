@@ -1,4 +1,5 @@
 import {
+  ADMIN_API_TOKEN_KEY,
   type EngineSettings,
   type NodeMode,
   nullify,
@@ -7,8 +8,7 @@ import {
 } from '@streaming-infra-manager/common';
 import { Pool } from 'pg';
 
-import { Profile, ProfileKind, ProfileStatus } from '../types/index.js';
-import { copyManagerAdminToken } from './adminLink/adminTokenCopy.js';
+import { Profile, ProfileKind, ProfileStatus, TRANSITIONAL_STATUSES } from '../types/index.js';
 import { reserveSlotFor } from './ports/reservationSql.js';
 import {
   DEPLOYMENT_PHASE_FROM_PRIOR_STATUS_SQL,
@@ -110,21 +110,8 @@ export interface EngineSettingsChange {
 export interface InitialStackSettings {
   plain: Readonly<Record<string, string>>;
   secret: Readonly<Record<string, string>>;
-  /**
-   * Asks the insert to copy the manager's stored web2 admin token into the
-   * secret settings as `ADMIN_API_TOKEN`, which refuses the whole insert when
-   * none is stored or when it was saved for another origin. Left out, nothing
-   * is copied.
-   */
-  copyManagerAdminToken?: ManagerAdminTokenCopy;
   /** The origin the stored `ADMIN_API_TOKEN` is for, empty for a token stored with no address. Left out where none is stored. */
   adminTokenOrigin?: string;
-}
-
-/** A copy of the manager's stored token into a new deployment. */
-export interface ManagerAdminTokenCopy {
-  /** The address the new deployment gives its uploader, whose origin has to be the stored link's. */
-  url: string;
 }
 
 /** What a create that names no stack settings stores, so its version's values stand. */
@@ -265,8 +252,6 @@ export class ProfileRepository {
           stackSettings.adminTokenOrigin ?? null,
         ],
       );
-      if (stackSettings.copyManagerAdminToken)
-        await copyManagerAdminToken(client, name, stackSettings.copyManagerAdminToken);
       await client.query('COMMIT');
       return result.rowCount && result.rowCount > 0 ? result.rows[0]! : null;
     } catch (err) {
@@ -656,6 +641,29 @@ export class ProfileRepository {
       ],
     );
     return result.rows[0]?.settings_revision ?? null;
+  }
+
+  /**
+   * Takes the uploader's web2 admin token out, so the next deploy generates one of the deployment's own: the one
+   * the manager generated, and one stored in its settings, typed or copied from the manager's link by a manager
+   * older than the token of its own, with the origin recorded for it. The settings revision moves when a stored one
+   * goes, since the settings page lists it. Only while the row is the instance the caller read and is not in the
+   * middle of a deploy, stop or removal, which the statement checks itself, so a deploy that started after the
+   * caller's read cannot have its token taken out under it. Answers the row, or null when nothing was taken out.
+   */
+  async clearAdminToken(name: string, instanceId: string): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles
+          SET stack_secrets = stack_secrets - $3::text,
+              stack_settings_secret = stack_settings_secret - $3::text,
+              admin_token_origin = CASE WHEN stack_settings_secret ? $3::text THEN NULL ELSE admin_token_origin END,
+              settings_revision = settings_revision + CASE WHEN stack_settings_secret ? $3::text THEN 1 ELSE 0 END,
+              updated_at = NOW()
+        WHERE name = $1 AND instance_id = $2 AND status <> ALL($4::text[])
+        RETURNING ${PROFILE_COLUMNS}`,
+      [name, instanceId, ADMIN_API_TOKEN_KEY, [...TRANSITIONAL_STATUSES]],
+    );
+    return result.rows[0] ?? null;
   }
 
   /** Adds to what is stored. A key already held keeps its value. */

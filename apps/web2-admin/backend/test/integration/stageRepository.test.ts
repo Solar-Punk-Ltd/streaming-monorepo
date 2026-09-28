@@ -196,6 +196,58 @@ describe('StageRepository', () => {
     await assert.rejects(insert(stored, null, 'own'), { code: '23514' }, 'a kind without its hash');
     await assert.rejects(insert(stored, null, null, at('10:00:00')), { code: '23514' }, 'a moment without arrival');
   });
+  it('finds a stage by its own token’s sha256: active, own-kind rows only, and two at most', async () => {
+    const own = 'ab'.repeat(32);
+    const twice = 'cd'.repeat(32);
+    const ids = {
+      own: STAGE_ID,
+      shared: '6a1d3b9f-2c3d-4e5f-8a51-1b2c3d4e5f60',
+      retired: '7b2e4c0a-3d4e-4f60-9b62-2c3d4e5f6071',
+      twiceA: '9d406e2c-5f60-4182-9d84-4e5f60718293',
+      twiceB: 'ae517f3d-6071-4293-8e95-5f60718293a4',
+      twiceC: 'bf6280e4-7182-43a4-9fa6-60718293a4b5',
+    };
+    const push = (stageId: string, name: string, sha256: string, kind: 'own' | 'shared') =>
+      stages.upsert(splitStageRecord(stageRecord({ stageId, name, adminToken: { sha256, kind } })));
+    await push(ids.own, 'Own stage', own, 'own');
+    // The same hash on a `shared` row, and on a retired stage: neither is found by it.
+    await push(ids.shared, 'Shared stage', own, 'shared');
+    await push(ids.retired, 'Retired stage', own, 'own');
+    await stages.retire(ids.retired, at('10:05:00'));
+    await push(ids.twiceA, 'Twice A', twice, 'own');
+    await push(ids.twiceB, 'Twice B', twice, 'own');
+    await push(ids.twiceC, 'Twice C', twice, 'own');
+
+    const found = await stages.findActiveByOwnTokenSha256(own);
+    assert.deepEqual(
+      found.map((row) => [row.stage_id, row.name, row.owner, row.admin_token_kind]),
+      [[ids.own, 'Own stage', stageRecord().owner, 'own']],
+    );
+    assert.equal('admin_token_sha256' in found[0]!, false, 'the hash is not selected');
+    assert.doesNotMatch(JSON.stringify(found), new RegExp(own));
+
+    assert.deepEqual(
+      (await stages.findActiveByOwnTokenSha256(twice)).map((row) => row.stage_id),
+      [ids.twiceA, ids.twiceB],
+      'several stages on one token come back, two at most',
+    );
+    assert.deepEqual(await stages.findActiveByOwnTokenSha256('ef'.repeat(32)), []);
+
+    // A stage's own token is taken no more once the stage is retired.
+    await stages.retire(ids.own, at('10:05:00'));
+    assert.deepEqual(await stages.findActiveByOwnTokenSha256(own), []);
+  });
+
+  it('reads the lookup through a partial index on own-kind, active rows (migration 012)', async () => {
+    const index = await database.pool.query<{ indexdef: string }>(
+      `SELECT indexdef FROM pg_indexes WHERE tablename = 'stages' AND indexname = 'stages_own_admin_token_idx'`,
+    );
+    const definition = index.rows[0]?.indexdef ?? '';
+    assert.match(definition, /\(admin_token_sha256\)/);
+    assert.match(definition, /admin_token_kind = 'own'/);
+    assert.match(definition, /retired_observed_at IS NULL/);
+    assert.doesNotMatch(definition, /UNIQUE/);
+  });
 });
 
 describe('CatalogueStampRepository', () => {

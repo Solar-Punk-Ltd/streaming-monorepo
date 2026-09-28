@@ -44,8 +44,6 @@ import {
   InvalidUsernameError,
   LadderGroupError,
   LockedOutError,
-  ManagerAdminTokenElsewhereError,
-  ManagerAdminTokenMissingError,
   ManagerSettingsChangedError,
   NotSignedInError,
   NotesConflictError,
@@ -180,14 +178,6 @@ export function errorHandler(
   }
   if (err instanceof ManagerSettingsChangedError) {
     res.status(409).json({ error: 'manager_settings_changed', message: err.message });
-    return;
-  }
-  if (err instanceof ManagerAdminTokenMissingError) {
-    res.status(409).json({ error: 'admin_token_missing', message: err.message });
-    return;
-  }
-  if (err instanceof ManagerAdminTokenElsewhereError) {
-    res.status(409).json({ error: 'admin_token_elsewhere', message: err.message });
     return;
   }
   if (isPayloadTooLarge(err)) {

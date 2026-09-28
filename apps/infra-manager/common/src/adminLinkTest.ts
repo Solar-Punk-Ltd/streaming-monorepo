@@ -19,6 +19,11 @@ export const ADMIN_LINK_TEST_OUTCOMES = [
   'stored-token-elsewhere',
   /** The admin answered and refused the token. */
   'token-refused',
+  /**
+   * The admin refused the deployment's own token, and the manager has not registered the deployment's stage with it
+   * yet, which is how the admin learns that token. A deploy registers it before the uploader starts.
+   */
+  'token-not-registered',
   /** Something answered at the address, but not as a web2 admin answers. */
   'not-admin',
   /** The address answered with a redirect, which the test does not follow. */

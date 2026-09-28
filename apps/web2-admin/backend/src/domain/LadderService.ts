@@ -10,6 +10,7 @@ import { InvalidStateError, PublishFailedError, StreamNotFoundError } from './er
 import { Logger } from './Logger.js';
 import type { PublishOutcome, PublishService } from './PublishService.js';
 import { mergeRendition, isLadderFinished, ladderDuration, toRendition } from './renditions.js';
+import { inScope, type UploaderScope } from './uploaderScope.js';
 
 const logger = Logger.getInstance();
 
@@ -60,8 +61,9 @@ export interface RenditionReportOutcome {
  * what tells the uploader to send the `vod` one.
  *
  * No user scope, like StreamStateService: the caller is the uploader, holding
- * the shared internal token and the stream id this API handed it, and this
- * service names it as the actor itself.
+ * an internal token and the stream id this API handed it, and this service
+ * names it as the actor itself. The stage scope is StreamStateService's: an
+ * uploader on a token of its own reports only for the streams on its stage.
  */
 export class LadderService {
   constructor(
@@ -93,10 +95,13 @@ export class LadderService {
    * report for the same rung stored in the meantime is what it carries, and
    * `entryRung` is that rung as the write carried it; `index` and `duration`
    * beside it are only what this report said.
+   *
+   * A stream outside the caller's scope is refused as not found before
+   * anything is written: no rung, no feed write, no audit row.
    */
-  async report(id: string, report: RenditionReport): Promise<RenditionReportOutcome> {
+  async report(id: string, report: RenditionReport, scope: UploaderScope = null): Promise<RenditionReportOutcome> {
     const stream = await this.streams.findById(id);
-    if (!stream) throw new StreamNotFoundError(id);
+    if (!stream || !inScope(stream, scope)) throw new StreamNotFoundError(id);
     // Nothing has been announced (`draft`), or a feed write is already in
     // flight for this stream (`publishing`) and would be raced. `published`,
     // `live` and `vod` all take a rung: a ladder can start reporting before

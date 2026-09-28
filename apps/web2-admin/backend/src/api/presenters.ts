@@ -137,6 +137,7 @@ export function toStageSummary(row: StageRow): StageSummary {
     })),
     uploader: record.uploader ? { state: record.uploader.state, reasons: [...record.uploader.reasons] } : null,
     readiness: { tone: record.readiness.tone, reasons: [...record.readiness.reasons] },
+    adminTokenKind: row.admin_token_kind,
     observedAt: row.observed_at.toISOString(),
     receivedAt: row.received_at.toISOString(),
     retiredAt: iso(row.retired_observed_at),

@@ -194,6 +194,7 @@ async function main(): Promise<void> {
       ingestService,
       stageService,
       internalApiToken: config.internalApiToken,
+      uploaderTokens: stageRepository,
       feed,
       viewerBaseUrl: config.viewerBaseUrl,
     },

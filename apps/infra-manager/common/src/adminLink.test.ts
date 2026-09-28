@@ -101,6 +101,36 @@ describe('the two keys once edits land', () => {
     assert.equal(adminLinkAfterEdits([{ key: ADMIN_API_TOKEN_KEY, value: '' }], before).hasToken, false);
   });
 
+  it("counts the token of the deployment's own for the manager's link address alone", () => {
+    const generated: AdminLinkBefore = {
+      url: { current: '', afterReset: '' },
+      token: { current: false, afterReset: false, generatedFor: ADMIN_URL },
+    };
+    assert.equal(
+      adminLinkAfterEdits([{ key: ADMIN_API_URL_KEY, value: `${ADMIN_URL}/some/path` }], generated).hasToken,
+      true,
+    );
+    assert.equal(
+      adminLinkAfterEdits([{ key: ADMIN_API_URL_KEY, value: 'https://elsewhere.example.org' }], generated).hasToken,
+      false,
+    );
+    assert.equal(adminLinkAfterEdits([{ key: ADMIN_API_URL_KEY, value: '' }], generated).hasToken, false);
+    assert.match(
+      adminLinkEditProblem([{ key: ADMIN_API_URL_KEY, value: 'https://elsewhere.example.org' }], generated) ?? '',
+      /ADMIN_API_URL is set and ADMIN_API_TOKEN is not/,
+    );
+    assert.equal(adminLinkEditProblem([{ key: ADMIN_API_URL_KEY, value: ADMIN_URL }], generated), null);
+  });
+
+  it('counts it after a reset of the token too, and never over an empty token typed in its place', () => {
+    const generated: AdminLinkBefore = {
+      url: { current: ADMIN_URL, afterReset: ADMIN_URL },
+      token: { current: true, afterReset: false, generatedFor: ADMIN_URL },
+    };
+    assert.equal(adminLinkAfterEdits([{ key: ADMIN_API_TOKEN_KEY, value: null }], generated).hasToken, true);
+    assert.equal(adminLinkAfterEdits([{ key: ADMIN_API_TOKEN_KEY, value: '' }], generated).hasToken, false);
+  });
+
   it('judges only edits that name either key', () => {
     const broken: AdminLinkBefore = {
       url: { current: ADMIN_URL, afterReset: ADMIN_URL },
@@ -281,6 +311,7 @@ describe('a request to test a web2 admin link typed on a page', () => {
       'redirected',
       'stored-token-elsewhere',
       'token-accepted',
+      'token-not-registered',
       'token-refused',
       'unreachable',
     ]);
