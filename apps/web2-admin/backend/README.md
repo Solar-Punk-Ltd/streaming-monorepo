@@ -363,23 +363,42 @@ link stores. Nothing reads the records yet but the console's Stages page: the
 stream form, the OBS panel and the catalogue writes still use the `INGEST_*`,
 `BEE_URL` and `POSTAGE_BATCH_ID` settings.
 
+Every moment these routes order things by is the manager's: a record's
+`observedAt`, and the `observedAt` a `DELETE` carries, the moment the manager
+saw the deployment or the designation gone. The admin's clock only records
+when something arrived, so the two hosts' clocks never need to agree.
+
 - **`PUT /stages/:stageId`** takes a `stageRecordSchema` record and answers
   `{ stored }`. The path id must be the record's `stageId` (either case), or
   it is `400`. A record observed before the stored one is kept out and answers
   `{ stored: false }`; one observed at the same moment is a repeat and stores.
   The manager pushes every 30 seconds per stage, so this is mostly repeats.
-- **`DELETE /stages/:stageId`** retires the stage and answers `{ retired }`,
-  false when it is unknown or retired already. The row is never deleted:
-  streams and old catalogue entries name its owner. A later `PUT` brings it
-  back when its record was observed after the retirement arrived, and leaves it
-  retired otherwise, so a push already on its way when the deployment was
-  deleted does not undo the delete. The record's `observedAt` is the manager's
-  clock and the retirement's the admin's; on one control host they agree.
+  The last manager to push a stage wins: `managerId` is taken from each stored
+  record, so a manager reinstalled with a new id takes its stages back, and
+  the move is audited as a `stage.change`.
+- **`DELETE /stages/:stageId`** takes `stageRetireRequestSchema`,
+  `{ observedAt }` (`400` without it), retires the stage as of that moment and
+  answers `{ retired }` (`stageRetireAnswerSchema`). The row is never deleted:
+  streams and old catalogue entries name its owner. A later `PUT` brings the
+  stage back only when its record was observed after the retirement's moment,
+  and otherwise stores it and leaves the stage retired, so a push already on
+  its way when the deployment was deleted does not undo the delete. The answer
+  is `true` only when this call retired an active stage, and `false` when:
+  - the stage was retired already (the later of the two moments is kept);
+  - the admin holds a record observed after the retirement's moment, so the
+    manager has seen the deployment since and the retirement is not taken;
+  - the admin never stored the stage. The retirement is still kept, in
+    `stage_retirements`, and a `PUT` for that id is stored only when its
+    record was observed after it, so a first push that arrives late does not
+    register a deployment that is gone.
 - **`PUT /catalogue-stamp`** takes a `catalogueStampRecordSchema` record and
   answers `{ stored }`, with the same ordering rule.
-- **`DELETE /catalogue-stamp`** clears it and answers `{ cleared }`, false when
-  nothing was set. The row stays, and a later `PUT` sets it again under the
-  rule a retired stage comes back by.
+- **`DELETE /catalogue-stamp`** takes `catalogueStampClearRequestSchema`,
+  `{ observedAt }`, and answers `{ cleared }`
+  (`catalogueStampClearAnswerSchema`) under the same rules as a retirement:
+  the row stays, a later `PUT` sets the stamp again only when observed after
+  the clear, and a clear that arrives before any record is kept on the row, so
+  a late first record does not set a stamp that is gone.
 
 A body the contract refuses is `400 validation_error` with the reasons, never
 the values it refused. The SRT passphrase and the sha256 of the uploader's
@@ -419,7 +438,9 @@ curl -sS -X PUT http://127.0.0.1:9877/api/internal/stages/5f0c2a8e-1b2c-4d3e-8f4
 # {"stored":true}
 
 curl -sS -X DELETE http://127.0.0.1:9877/api/internal/stages/5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f \
-  -H "Authorization: Bearer $INTERNAL_API_TOKEN"
+  -H "Authorization: Bearer $INTERNAL_API_TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{ "observedAt": "2026-09-28T10:05:00.000Z" }'
 # {"retired":true}
 ```
 
@@ -433,9 +454,10 @@ the audit log below, and `008_streams_user_id_set_null.sql` stops removing a
 user from deleting the streams they drafted. The latest two are
 `009_stages.sql`, the `stages` table (the record without the passphrase and
 the token, the passphrase and the token hash in columns of their own, when the
-record was observed and received and when the stage was retired), which also
-lets the audit log name the manager, and `010_catalogue_stamp.sql`, the
-single-row `catalogue_stamp`.
+record was observed and received, and the retirement's moment and arrival) and
+`stage_retirements` (retirements of stages never stored), which also lets the
+audit log name the manager, and `010_catalogue_stamp.sql`, the single-row
+`catalogue_stamp`.
 
 ## Audit log
 
@@ -509,10 +531,13 @@ passphrase and the token, never their values), `stage.retire`,
 `catalogue.stamp.set`, `catalogue.stamp.change` (another batch, node, Bee API
 address or manager; the address only as `"changed"`) and
 `catalogue.stamp.clear`. Each is also a line at info (`[Stages] the manager
-registered stage "Main stage" (stage 5f0c…): …`). A push that changes nothing
-else, a record kept out as older and a retire or clear with nothing to do log
-at debug and write no row. The stage is in `details.stageId`; the rows have no
-`stream_id`.
+registered stage "Main stage" (stage 5f0c…): …`). `stage.retire` and
+`catalogue.stamp.clear` carry the manager's `observedAt`. A push that changes
+nothing else, a record kept out as older and a second retirement or clear log
+at debug and write no row. A retirement or clear the admin does not take
+because it holds a newer record, and one kept for a stage or stamp it never
+stored, log at info and write no row either: nothing it held moved. The stage
+is in `details.stageId`; the rows have no `stream_id`.
 
 **A failed audit write never fails the operation.** The row is written after
 the mutation it describes, which has already happened by then; the failure is
