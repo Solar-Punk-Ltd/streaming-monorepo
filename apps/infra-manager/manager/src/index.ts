@@ -33,6 +33,7 @@ import { readBundledCommit } from './domain/versions/bundledCommit.js';
 import { EngineConfigChecker } from './domain/engineConfig/engineConfigCheck.js';
 import { EngineConfigService } from './domain/engineConfig/EngineConfigService.js';
 import { DeploymentSettingsService } from './domain/settings/DeploymentSettingsService.js';
+import { AdminTokenRotation } from './domain/adminLink/AdminTokenRotation.js';
 import { AdminLinkTester } from './domain/adminLink/AdminLinkTester.js';
 import { ManagerAdminLinkRepository } from './domain/adminLink/ManagerAdminLinkRepository.js';
 import { ManagerAdminLinkService } from './domain/adminLink/ManagerAdminLinkService.js';
@@ -349,6 +350,8 @@ async function main(): Promise<void> {
     logger.warn(`[Boot] the interrupted deployments were not judged: ${getErrorMessage(err)}. They stay as they are.`);
   }
   const managerAdminLink = new ManagerAdminLinkRepository(database.pool);
+  // A deploy gives an uploader linked to this admin a token of its own. adminLink/ownAdminToken.ts.
+  orchestrator.setManagerAdminLink(managerAdminLink);
   const profileService = new ProfileService(
     profileRepository,
     containerRepository,
@@ -435,9 +438,17 @@ async function main(): Promise<void> {
         containerRepository,
         orchestrator,
         stackVersionRepository,
+        managerAdminLink,
       ),
       managerAdminLinkService: new ManagerAdminLinkService(managerAdminLink),
-      adminLinkTester: new AdminLinkTester(managerAdminLink, profileRepository, orchestrator),
+      adminLinkTester: new AdminLinkTester(managerAdminLink, profileRepository, orchestrator, undefined, publisher),
+      adminTokenRotation: new AdminTokenRotation(
+        profileRepository,
+        orchestrator,
+        managerAdminLink,
+        containerRepository,
+        eventBus,
+      ),
       stagePublisher: publisher,
       stackVersionService,
       orchestrator,

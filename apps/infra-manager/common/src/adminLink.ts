@@ -27,8 +27,13 @@ export interface AdminLinkState {
  */
 export interface AdminLinkBefore {
   url: { current: string; afterReset: string };
-  /** Whether a token that is not empty is there now, and whether one still is once a value stored for it is reset. */
-  token: { current: boolean; afterReset: boolean };
+  /**
+   * Whether a token that is not empty is there now, and whether one still is once a value stored for it is reset,
+   * neither counting the token of its own the manager generates for the deployment. `generatedFor` is the address
+   * that one is generated for, the manager's own web2 admin link, or null or left out where the manager generates
+   * none: the deployment runs no stream uploader, or the manager has no link with a token to register it with.
+   */
+  token: { current: boolean; afterReset: boolean; generatedFor?: string | null };
 }
 
 /** One key of a save or a create: a value, or null to go back to what the version gives. */
@@ -57,11 +62,14 @@ export function adminLinkAfterEdits(edits: readonly AdminLinkEdit[], before: Adm
   const urlEdit = edited(ADMIN_API_URL_KEY);
   const tokenEdit = edited(ADMIN_API_TOKEN_KEY);
   const url = urlEdit === undefined ? before.url.current : (urlEdit.value ?? before.url.afterReset);
+  // The manager generates a token of the deployment's own for its link's address alone, and a typed value, empty
+  // included, is written in its place.
+  const generated = Boolean(before.token.generatedFor) && sameAdminOrigin(url, before.token.generatedFor ?? '');
   const hasToken =
     tokenEdit === undefined
-      ? before.token.current
+      ? before.token.current || generated
       : tokenEdit.value === null
-        ? before.token.afterReset
+        ? before.token.afterReset || generated
         : tokenEdit.value !== '';
   return { url, hasToken };
 }

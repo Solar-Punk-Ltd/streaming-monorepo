@@ -14,6 +14,7 @@ import type { DeploymentOrchestrator } from '../DeploymentOrchestrator.js';
 import { AdminLinkInputError, ProfileNotFoundError } from '../errors/index.js';
 import { Logger } from '../Logger.js';
 import type { ProfileRepository } from '../ProfileRepository.js';
+import type { StagePublisher } from '../stages/StagePublisher.js';
 
 import { type AdminLinkProbe, type AdminLinkProbeTarget, probeAdminLink } from './adminLinkProbe.js';
 import type { ManagerAdminLinkStore } from './ManagerAdminLinkRepository.js';
@@ -33,6 +34,8 @@ export class AdminLinkTester {
     private readonly profiles: Pick<ProfileRepository, 'findByName' | 'stackSettingsOf'>,
     private readonly orchestrator: Pick<DeploymentOrchestrator, 'nextEnvFor'>,
     private readonly probe: AdminLinkProbe = probeAdminLink,
+    /** The stage publisher's last push per deployment, which tells a token not registered yet from one refused. */
+    private readonly pushes?: Pick<StagePublisher, 'lastPush'>,
   ) {}
 
   /** Tests an address typed on the Manager settings page or in the new-deployment wizard. */
@@ -67,17 +70,30 @@ export class AdminLinkTester {
     if (!profile) throw new ProfileNotFoundError(name);
     const { env } = await this.orchestrator.nextEnvFor(profile);
     const url = env[ADMIN_API_URL_KEY] ?? '';
+    const token = env[ADMIN_API_TOKEN_KEY] ?? '';
     const storedWith = (await this.profiles.stackSettingsOf(name))?.adminTokenOrigin ?? null;
-    const outcome =
+    let outcome =
       storedWith !== null && url !== '' && !sameAdminOrigin(url, storedWith)
         ? 'stored-token-elsewhere'
-        : await this.outcomeFor({
-            url,
-            token: env[ADMIN_API_TOKEN_KEY] ?? '',
-            feedOwner: addressOfStreamKey(env.STREAM_KEY ?? ''),
-          });
+        : await this.outcomeFor({ url, token, feedOwner: addressOfStreamKey(env.STREAM_KEY ?? '') });
+    if (outcome === 'token-refused' && (await this.notRegisteredYet(name, url, token)))
+      outcome = 'token-not-registered';
     logger.info(`[AdminLink] ${username} tested the web2 admin link of ${name}: ${outcome}`);
     return { outcome };
+  }
+
+  /**
+   * Whether a refused token is the deployment's own, which the admin learns from the stage record, at an address on
+   * the manager's link, while no push of the record has been stored there yet. The admin knows an uploader's own
+   * token by its sha256 on the record alone, so until then it refuses it as any unknown token. A token that is the
+   * link's is the shared one, which the admin takes without a record.
+   */
+  private async notRegisteredYet(name: string, url: string, token: string): Promise<boolean> {
+    if (!this.pushes) return false;
+    const link = await this.store.storedLink();
+    if (link.token === null || link.token === token || !sameAdminOrigin(url, link.url ?? '')) return false;
+    const last = this.pushes.lastPush(name);
+    return last === null || (last.outcome !== 'stored' && last.outcome !== 'older-ignored');
   }
 
   /** Answers without asking anything when there is no address to ask, one the uploader could not use, or no token. */

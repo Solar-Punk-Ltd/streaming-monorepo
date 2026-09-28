@@ -11,6 +11,7 @@ import { Database } from '../domain/Database.js';
 import { DeployService } from '../domain/DeployService.js';
 import { EngineConfigService } from '../domain/engineConfig/EngineConfigService.js';
 import type { AdminLinkTester } from '../domain/adminLink/AdminLinkTester.js';
+import type { AdminTokenRotation } from '../domain/adminLink/AdminTokenRotation.js';
 import type { ManagerAdminLinkService } from '../domain/adminLink/ManagerAdminLinkService.js';
 import type { DeploymentSettingsService } from '../domain/settings/DeploymentSettingsService.js';
 import { EventBus } from '../domain/EventBus.js';
@@ -34,6 +35,7 @@ import { requireSameSite } from './middleware/requireSameSite.js';
 import { createRequireSession } from './middleware/requireSession.js';
 import { createActionsRouter } from './routes/actions.js';
 import { createAdminLinkTestRouter } from './routes/adminLinkTest.js';
+import { createAdminTokenRouter } from './routes/adminToken.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createChequebookRouter } from './routes/chequebook.js';
 import { createConfigRouter } from './routes/config.js';
@@ -78,6 +80,8 @@ export interface ApiDeps {
   managerAdminLinkService: ManagerAdminLinkService;
   /** Test connection, for an address typed on a page and for what a deployment's next deploy gives its uploader. */
   adminLinkTester: AdminLinkTester;
+  /** Rotate the uploader's admin token, on the deployment page. */
+  adminTokenRotation: Pick<AdminTokenRotation, 'rotate'>;
   /** The stage records the manager pushes into the web2 admin, which `GET /stages` reads. */
   stagePublisher: Pick<StagePublisher, 'consoleStages' | 'lastPush'>;
   stackVersionService: StackVersionService;
@@ -151,6 +155,7 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
   app.use('/', createDeploymentSettingsRouter(deps.deploymentSettingsService));
   app.use('/', createManagerSettingsRouter(deps.managerAdminLinkService));
   app.use('/', createAdminLinkTestRouter(deps.adminLinkTester));
+  app.use('/', createAdminTokenRouter(deps.adminTokenRotation));
   app.use('/stages', createStagesRouter(deps.stagePublisher));
 
   app.use(notFound);
