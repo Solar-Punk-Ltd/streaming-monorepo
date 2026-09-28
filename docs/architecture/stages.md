@@ -328,10 +328,12 @@ As built (phase 8), on the manager's side (`CatalogueDesignationService`, migrat
 As built (phase 8), on the admin's side (`apps/web2-admin/backend/src/domain/CatalogueMove.ts`,
 migration 014; the admin backend's README has the detail):
 
-- A move waits whenever some slot from 0 to the head is not under the designated batch by the
-  admin's record: another batch designated (`moveWaitingTo`), or writes a batch the admin never
-  recorded stamped (`unrecordedHistory`, the env file's). The second case needs no release in
-  the manager.
+- A move waits when the feed has history and the pinned batch is not the designated one (another
+  designated, or a move back to one that still holds every slot, which needs the switch alone),
+  some slot is not under the designated batch by the admin's record (written with another batch,
+  or with one the admin never recorded, the env file's: that case needs no release in the
+  manager), or the latest move to it has not finished. Nothing waits only when the pinned batch is
+  the designated one and every slot is under it.
 - For slots 0 to the head, in order, the job uploads each slot's single-owner chunk again under
   the new batch through the catalogue node. From `payload_text` where there is one: the chunk
   is built as `updateFeedWithPayload` built it, and signed again with the brand key. secp256k1
@@ -342,9 +344,12 @@ migration 014; the admin backend's README has the detail):
   its address, and uploaded with its own signature. A payload over 4096 bytes has its
   content-addressed data uploaded again first. A slot already under the new batch by the record
   is left as it is.
-- Then the thumbnails the latest entry names, from `streams.thumbnail` where a stream still
-  names the reference and otherwise from the network, each checked to come out at the same
-  reference. Then the admin pins the new batch and writes with it.
+- Then every thumbnail a stream names, published or not, and every one the latest entry names,
+  from `streams.thumbnail` where the row holds the bytes and otherwise from the network; one an
+  entry names has to come out at the same reference. Each is recorded on its streams as under the
+  new batch (`streams.thumbnail_batch_id`), and a publish uploads a thumbnail again whenever that
+  batch is not the one it writes with, so a draft published after the move names an image the
+  new batch holds. Then the admin pins the new batch and writes with it.
 - It goes in slices of 20 slots outside the publish mutex, so publishing goes on with the
   pinned batch, and checks the designation between slices. The last step holds the mutex: the
   slots written meanwhile, the thumbnails of the entry written last, and the switch, so no slot
