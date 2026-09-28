@@ -50,7 +50,7 @@ describe('the manager session cookie', () => {
     assert.equal(readSessionToken(requestWith()), null);
   });
 
-  it('hands an empty value on as an empty token, which every caller treats as none', () => {
-    assert.equal(readSessionToken(requestWith('sim_session=')), '');
+  it('reads an empty value as no token, as the admin does', () => {
+    assert.equal(readSessionToken(requestWith('sim_session=')), null);
   });
 });

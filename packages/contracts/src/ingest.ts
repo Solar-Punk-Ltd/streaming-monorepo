@@ -57,6 +57,13 @@ export interface ObsSrtServer {
 const SERVER_LINE_SAFE_PASSPHRASE = /^[A-Za-z0-9._~-]+$/;
 
 /**
+ * What a console says beside a passphrase that `buildObsSrtServer` routes to OBS's "Use authentication" Password,
+ * so every console tells a broadcaster the same thing.
+ */
+export const OBS_SRT_PASSPHRASE_FIELD_HELP =
+  'This passphrase has characters the Server line cannot carry. In OBS, tick Use authentication, leave Username empty and paste this into Password.';
+
+/**
  * OBS's Custom service set up for SRT, as OBS 31 reads it: the "Stream Key" box becomes the SRT stream id and a
  * `streamid=` on the Server line replaces it, so that box stays empty. A `passphrase=` on the Server line is read
  * after the "Use authentication" Password and wins, so the passphrase rides there whenever it can.
