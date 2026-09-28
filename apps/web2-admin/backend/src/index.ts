@@ -18,6 +18,8 @@ import { Logger } from './domain/Logger.js';
 import { PostgresAuditLog } from './domain/PostgresAuditLog.js';
 import { PublishService } from './domain/PublishService.js';
 import { resetOrphanedPublishing } from './domain/resetOrphanedPublishing.js';
+import { CatalogueStampRepository, StageRepository } from './domain/StageRepository.js';
+import { StageService } from './domain/StageService.js';
 import { StreamRenditionRepository } from './domain/StreamRenditionRepository.js';
 import { StreamRepository } from './domain/StreamRepository.js';
 import { StreamService } from './domain/StreamService.js';
@@ -178,6 +180,11 @@ async function main(): Promise<void> {
   const ingestService = new IngestService(streamRepository, config.ingest, auditLog);
   const streamStateService = new StreamStateService(streamRepository, publishService, auditLog);
   const ladderService = new LadderService(streamRepository, renditionRepository, publishService, auditLog);
+  const stageService = new StageService(
+    new StageRepository(database.pool),
+    new CatalogueStampRepository(database.pool),
+    auditLog,
+  );
 
   apiServer = startApiServer(
     {
@@ -188,6 +195,7 @@ async function main(): Promise<void> {
       ladderService,
       publishService,
       ingestService,
+      stageService,
       internalApiToken: config.internalApiToken,
       feed,
       viewerBaseUrl: config.viewerBaseUrl,

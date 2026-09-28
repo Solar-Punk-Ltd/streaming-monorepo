@@ -3,9 +3,11 @@
  * camelCase, ISO-8601 shapes web2-admin-common declares.
  */
 import type {
+  CatalogueStampSummary,
   IngestLookupResponse,
   PublishResult,
   RenditionReportResponse,
+  StageSummary,
   Stream,
   User,
 } from '@streaming-monorepo/web2-admin-common';
@@ -13,7 +15,7 @@ import type {
 import type { RenditionReportOutcome } from '../domain/LadderService.js';
 import type { PublishOutcome } from '../domain/PublishService.js';
 import { hasUnpublishedEdits } from '../domain/unpublishedEdits.js';
-import type { StreamRow, UserRow } from '../types/index.js';
+import type { DesignatedCatalogueStamp, StageRow, StreamRow, UserRow } from '../types/index.js';
 
 function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
@@ -91,5 +93,67 @@ export function toIngestLookup(row: StreamRow): IngestLookupResponse {
     title: row.title,
     status: row.status,
     publishKey: row.publish_key,
+  };
+}
+
+/**
+ * A stage as the console lists it. Built field by field from the row, which carries neither the passphrase nor the
+ * token hash, so a field a newer record adds reaches the console only once it is named here.
+ */
+export function toStageSummary(row: StageRow): StageSummary {
+  const { record } = row;
+  return {
+    stageId: row.stage_id,
+    name: row.name,
+    kind: row.kind,
+    engine: row.engine,
+    supported: row.engine === 'srs',
+    stackVersion: record.stackVersion,
+    status: record.status,
+    owner: row.owner,
+    ingest: {
+      host: record.ingest.host,
+      srtPort: record.ingest.srtPort,
+      rtmpPort: record.ingest.rtmpPort,
+      rtmpPublic: record.ingest.rtmpPublic,
+      hasSrtPassphrase: row.has_srt_passphrase,
+    },
+    rungs: record.rungs.map((rung) => ({
+      name: rung.name,
+      stamp: rung.stamp
+        ? {
+            batchId: rung.stamp.batchId,
+            state: rung.stamp.state,
+            ttlSeconds: rung.stamp.ttlSeconds,
+            fillRatio: rung.stamp.fillRatio,
+            immutable: rung.stamp.immutable,
+          }
+        : null,
+      chequebook: rung.chequebook
+        ? { health: rung.chequebook.health, availableBzz: rung.chequebook.availableBzz }
+        : null,
+    })),
+    uploader: record.uploader ? { state: record.uploader.state, reasons: [...record.uploader.reasons] } : null,
+    readiness: { tone: record.readiness.tone, reasons: [...record.readiness.reasons] },
+    observedAt: row.observed_at.toISOString(),
+    receivedAt: row.received_at.toISOString(),
+    retiredAt: iso(row.retired_observed_at),
+  };
+}
+
+/** The catalogue stamp as the console shows it: everything but the Bee API address the admin dials. */
+export function toCatalogueStampSummary(row: DesignatedCatalogueStamp): CatalogueStampSummary {
+  const { record } = row;
+  return {
+    nodeName: record.nodeName,
+    batchId: row.batch_id,
+    immutable: record.immutable,
+    depth: record.depth,
+    state: record.state,
+    ttlSeconds: record.ttlSeconds,
+    fillRatio: record.fillRatio,
+    designatedAt: record.designatedAt,
+    observedAt: row.observed_at.toISOString(),
+    receivedAt: row.received_at.toISOString(),
   };
 }

@@ -5,6 +5,7 @@ import { RequireAuth } from './components/RequireAuth';
 import { SnackbarProvider } from './components/Snackbar';
 import { AccessPage } from './pages/AccessPage';
 import { LoginPage } from './pages/LoginPage';
+import { StagesPage } from './pages/StagesPage';
 import { StreamDetailsPage } from './pages/StreamDetailsPage';
 import { StreamFormPage } from './pages/StreamFormPage';
 import { StreamsPage } from './pages/StreamsPage';
@@ -21,6 +22,7 @@ export function App() {
               <Route path="/create" element={<StreamFormPage />} />
               <Route path="/edit/:id" element={<StreamFormPage />} />
               <Route path="/streams/:id" element={<StreamDetailsPage />} />
+              <Route path="/stages" element={<StagesPage />} />
               <Route path="/access" element={<AccessPage />} />
               {/* The account page folded into Access, which is the one page
                   about logging in. The old hash is kept so a bookmark of it

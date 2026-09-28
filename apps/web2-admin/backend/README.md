@@ -232,17 +232,23 @@ Checkpoint 3 turns this around and has the uploader report into this API.
 
 ## The internal API
 
-`/api/internal` is what the swarm-hls-stream uploader calls, and nothing else.
-It is authenticated by `Authorization: Bearer <INTERNAL_API_TOKEN>` — never by
-a session cookie — and it is mounted before the console's routes on a path of
-its own, so the two authentications cover disjoint surfaces. A wrong or missing
-token is `401 unauthenticated`, the same answer the console's routes give.
+`/api/internal` is what the swarm-hls-stream uploader and the manager call, and
+nothing else. It is authenticated by `Authorization: Bearer <INTERNAL_API_TOKEN>`
+— never by a session cookie — and it is mounted before the console's routes on
+a path of its own, so the two authentications cover disjoint surfaces. A wrong
+or missing token is `401 unauthenticated`, the same answer the console's routes
+give. The manager's four stage routes are described in
+[The manager's stage routes](#the-managers-stage-routes) below.
 
 | Method | Path                              | Answer                                                                                                            |
 | ------ | --------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | GET    | `/streams/by-ingest/:app/:stream` | `IngestLookupResponse` — id, topic, owner, mediaType, title, status and the `publishKey` the encoder must present |
 | POST   | `/streams/:id/state`              | `StreamStateReport` in, `PublishResult` out (200)                                                                 |
 | POST   | `/streams/:id/renditions`         | `RenditionReport` in, `RenditionReportResponse` out (200) — one rung of an ABR ladder                             |
+| PUT    | `/stages/:stageId`                | the manager: a stage record in, `{ stored }` out                                                                  |
+| DELETE | `/stages/:stageId`                | the manager: retires the stage, `{ retired }` out                                                                 |
+| PUT    | `/catalogue-stamp`                | the manager: the catalogue stamp record in, `{ stored }` out                                                      |
+| DELETE | `/catalogue-stamp`                | the manager: clears the catalogue stamp, `{ cleared }` out                                                        |
 
 **The lookup** resolves the ingest stream id `<mediaType>/<topic>` to a stream.
 Both halves must match, and only `published`, `live` and `vod` resolve: a
@@ -347,14 +353,111 @@ the stream takes them with it through the foreign key.
   ladder. `POST /streams/:id/publish` on a draft that holds a recording lists
   it as that recording again (`vod`), never as a stream that has not started.
 
+### The manager's stage routes
+
+The manager pushes every stage it runs for the brand into the admin, and the
+brand's catalogue stamp (`docs/architecture/stages.md` at the repository root
+is the design, `packages/contracts/src/stage.ts` the records). It calls with
+the registrar token, which is `INTERNAL_API_TOKEN`, the one the manager's admin
+link stores. Nothing reads the records yet but the console's Stages page: the
+stream form, the OBS panel and the catalogue writes still use the `INGEST_*`,
+`BEE_URL` and `POSTAGE_BATCH_ID` settings.
+
+Every moment these routes order things by is the manager's: a record's
+`observedAt`, and the `observedAt` a `DELETE` carries, the moment the manager
+saw the deployment or the designation gone. The admin's clock only records
+when something arrived, so the two hosts' clocks never need to agree.
+
+- **`PUT /stages/:stageId`** takes a `stageRecordSchema` record and answers
+  `{ stored }`. The path id must be the record's `stageId` (either case), or
+  it is `400`. A record observed before the stored one is kept out and answers
+  `{ stored: false }`; one observed at the same moment is a repeat and stores.
+  The manager pushes every 30 seconds per stage, so this is mostly repeats.
+  The last manager to push a stage wins: `managerId` is taken from each stored
+  record, so a manager reinstalled with a new id takes its stages back, and
+  the move is audited as a `stage.change`.
+- **`DELETE /stages/:stageId`** takes `stageRetireRequestSchema`,
+  `{ observedAt }` (`400` without it), retires the stage as of that moment and
+  answers `{ retired }` (`stageRetireAnswerSchema`). The row is never deleted:
+  streams and old catalogue entries name its owner. A later `PUT` brings the
+  stage back only when its record was observed after the retirement's moment,
+  and otherwise stores it and leaves the stage retired, so a push already on
+  its way when the deployment was deleted does not undo the delete. The answer
+  is `true` only when this call retired an active stage, and `false` when:
+  - the stage was retired already (the later of the two moments is kept);
+  - the admin holds a record observed after the retirement's moment, so the
+    manager has seen the deployment since and the retirement is not taken;
+  - the admin never stored the stage. The retirement is still kept, in
+    `stage_retirements`, and a `PUT` for that id is stored only when its
+    record was observed after it, so a first push that arrives late does not
+    register a deployment that is gone.
+- **`PUT /catalogue-stamp`** takes a `catalogueStampRecordSchema` record and
+  answers `{ stored }`, with the same ordering rule.
+- **`DELETE /catalogue-stamp`** takes `catalogueStampClearRequestSchema`,
+  `{ observedAt }`, and answers `{ cleared }`
+  (`catalogueStampClearAnswerSchema`) under the same rules as a retirement:
+  the row stays, a later `PUT` sets the stamp again only when observed after
+  the clear, and a clear that arrives before any record is kept on the row, so
+  a late first record does not set a stamp that is gone.
+
+A body the contract refuses is `400 validation_error` with the reasons, never
+the values it refused. The SRT passphrase and the sha256 of the uploader's
+token are kept in columns of their own (migration 009) that no list selects;
+neither is logged, audited or answered to anyone. The console reads the
+records back behind the session:
+
+| Method | Path                   | Answer                                                                                                                                                                                                                                    |
+| ------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/stages`          | `StageListResponse`: every stage, retired ones last, with `supported` (the engine is SRS), its status, owner, ingest host and ports, `hasSrtPassphrase`, rung stamp and chequebook readings, uploader, readiness and when it was observed |
+| GET    | `/api/catalogue-stamp` | `CatalogueStampResponse`: node name, batch id, immutable, depth, state, time to live and fill, or `{ catalogueStamp: null }`. Never the Bee API address                                                                                   |
+
+To register a stage by hand in local development, with `INTERNAL_API_TOKEN`
+exported from your `.env` and example values:
+
+```bash
+curl -sS -X PUT http://127.0.0.1:9877/api/internal/stages/5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f \
+  -H "Authorization: Bearer $INTERNAL_API_TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{
+    "schemaVersion": 1,
+    "stageId": "5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f",
+    "managerId": "0d9e8f7a-6b5c-4d3e-9f21-a0b1c2d3e4f5",
+    "name": "Main stage",
+    "kind": "abr-uploader",
+    "engine": "srs",
+    "stackVersion": null,
+    "status": "running",
+    "observedAt": "2026-09-28T10:00:00.000Z",
+    "ingest": { "host": "ingest.example.org", "srtPort": 10061, "rtmpPort": 10062, "rtmpPublic": false, "srtPassphrase": null },
+    "owner": "0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3",
+    "rungs": [],
+    "uploader": null,
+    "readiness": { "tone": "unknown", "reasons": ["registered by hand"] },
+    "adminToken": null
+  }'
+# {"stored":true}
+
+curl -sS -X DELETE http://127.0.0.1:9877/api/internal/stages/5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f \
+  -H "Authorization: Bearer $INTERNAL_API_TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{ "observedAt": "2026-09-28T10:05:00.000Z" }'
+# {"retired":true}
+```
+
 ## Migrations
 
 `src/migrations/NNN_name.sql`, applied in order inside a transaction at every
 boot and recorded in `_migrations` (`src/domain/Database.ts`). Add a file, never
 edit an applied one; `001_init.sql` carries the rationale for each table in its
-header. `pnpm build` copies the directory into `dist`. The latest two are
-`007_audit_log.sql`, the audit log below, and `008_streams_user_id_set_null.sql`,
-which stops removing a user from deleting the streams they drafted.
+header. `pnpm build` copies the directory into `dist`. `007_audit_log.sql` is
+the audit log below, and `008_streams_user_id_set_null.sql` stops removing a
+user from deleting the streams they drafted. The latest two are
+`009_stages.sql`, the `stages` table (the record without the passphrase and
+the token, the passphrase and the token hash in columns of their own, when the
+record was observed and received, and the retirement's moment and arrival) and
+`stage_retirements` (retirements of stages never stored), which also lets the
+audit log name the manager, and `010_catalogue_stamp.sql`, the single-row
+`catalogue_stamp`.
 
 ## Audit log
 
@@ -374,8 +477,8 @@ into the log for any reader, nor reorder what its line appears to say.
 | Column                          | What it holds                                                                                                                                                                                                                                                                                                                                  |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `at`                            | when the row was written, just after the mutation                                                                                                                                                                                                                                                                                              |
-| `actor_kind`                    | `operator` (a signed-in user), `uploader` (the internal API) or `system` (the boot repair, the CLI)                                                                                                                                                                                                                                            |
-| `actor_user_id`, `actor_name`   | the operator's id and username at the time; the id goes null if the user is removed, the name stays. For `system`, `actor_name` is the reason (`boot`, `cli`); for the uploader it is null                                                                                                                                                     |
+| `actor_kind`                    | `operator` (a signed-in user), `uploader` (the uploader's internal routes), `manager` (the manager's stage routes, since migration 009) or `system` (the boot repair, the CLI)                                                                                                                                                                 |
+| `actor_user_id`, `actor_name`   | the operator's id and username at the time; the id goes null if the user is removed, the name stays. For `system`, `actor_name` is the reason (`boot`, `cli`); for the uploader and the manager it is null                                                                                                                                     |
 | `action`                        | see below                                                                                                                                                                                                                                                                                                                                      |
 | `stream_id`, `topic`            | the stream, with no foreign key so a deleted stream's history stays                                                                                                                                                                                                                                                                            |
 | `status_before`, `status_after` | the stream's status before and after the action. Every stream action fills both, with the same status on both sides when nothing moved (an edit, a thumbnail, a key rotation, a republish, a rendition report), except that `stream.create` has no before and `stream.delete` no after. `feed.reconcile` and the `user.*` rows leave both null |
@@ -418,6 +521,24 @@ hand republish of a live or recorded stream is recorded as
 stayed in on both sides, and never carries a `feedIndex`. Refusals (404, 409)
 are not recorded: nothing moved.
 
+The manager's pushes are audited only when something that matters moved,
+since one arrives every 30 seconds per stage: `stage.register` (a stage first
+stored), `stage.change` (its manager, owner, ingest host, ports or RTMP flag,
+SRT passphrase, uploader token or token kind changed; `details.changes` has
+`{ from, to }` for each, and `"set"`, `"removed"` or `"changed"` for the
+passphrase and the token, never their values), `stage.retire`,
+`stage.unretire` (a retired stage pushed again after its retirement),
+`catalogue.stamp.set`, `catalogue.stamp.change` (another batch, node, Bee API
+address or manager; the address only as `"changed"`) and
+`catalogue.stamp.clear`. Each is also a line at info (`[Stages] the manager
+registered stage "Main stage" (stage 5f0c…): …`). `stage.retire` and
+`catalogue.stamp.clear` carry the manager's `observedAt`. A push that changes
+nothing else, a record kept out as older and a second retirement or clear log
+at debug and write no row. A retirement or clear the admin does not take
+because it holds a newer record, and one kept for a stage or stamp it never
+stored, log at info and write no row either: nothing it held moved. The stage
+is in `details.stageId`; the rows have no `stream_id`.
+
 **A failed audit write never fails the operation.** The row is written after
 the mutation it describes, which has already happened by then; the failure is
 logged as `[Audit] could not record …` and the request answers as it would
@@ -436,7 +557,13 @@ SELECT at, actor_name, action, status_before, status_after, details
 ```
 
 `feed.reconcile` rows are not about one stream and have no `stream_id`; the
-topics they removed, added and updated are in `details`.
+topics they removed, added and updated are in `details`. Nor are the manager's:
+
+```sql
+-- the history of one stage
+SELECT at, action, details FROM audit_log
+ WHERE actor_kind = 'manager' AND details ->> 'stageId' = '<stage id>' ORDER BY at;
+```
 
 ## Limitations (intentional, checkpoint 3 step 1)
 
@@ -458,5 +585,10 @@ topics they removed, added and updated are in `details`.
   live on the catalogue until someone republishes or unpublishes it by hand.
 - **The ingest does not verify `key=`** until the deployed uploader carries
   publisher auth, which is what `INGEST_KEY_VERIFIED` admits to the UI.
+- **Stage records are only listed.** The stream form, the OBS panel and the
+  catalogue writes do not read them yet, and the manager's routes and the
+  uploader's share the one `INTERNAL_API_TOKEN`. The access log still writes
+  one `[HTTP]` line at info for every push, although the stage service logs an
+  unchanged one at debug.
 - **Sessions are unbounded per user** and pruned on sign-in and by a daily
   sweep.

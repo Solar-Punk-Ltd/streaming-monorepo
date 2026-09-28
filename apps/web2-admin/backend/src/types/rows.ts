@@ -4,6 +4,14 @@
  * int8 type parser in Database.ts). The API contract in web2-admin-common is
  * camelCase; src/api/presenters.ts is the only place that converts.
  */
+import type {
+  AdminTokenKind,
+  CatalogueStampRecord,
+  StageEngine,
+  StageIngest,
+  StageKind,
+  StageRecord,
+} from '@streaming-monorepo/contracts';
 import type { MediaType, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
 export interface UserRow {
@@ -91,4 +99,70 @@ export interface StreamRenditionRow {
   manifest_index: number | null;
   duration_seconds: number | null;
   updated_at: Date;
+}
+
+/**
+ * A stage record as `stages.record` holds it (migration 009): all of it but the SRT passphrase and the uploader's
+ * token, which have columns of their own.
+ */
+export type StoredStageRecord = Omit<StageRecord, 'adminToken' | 'ingest'> & {
+  ingest: Omit<StageIngest, 'srtPassphrase'>;
+};
+
+/**
+ * A stage as every list reads it: no passphrase and no token hash, only whether there is a passphrase and which
+ * kind of token the uploader presents.
+ */
+export interface StageRow {
+  stage_id: string;
+  manager_id: string;
+  name: string;
+  kind: StageKind;
+  engine: StageEngine;
+  owner: string;
+  record: StoredStageRecord;
+  has_srt_passphrase: boolean;
+  admin_token_kind: AdminTokenKind | null;
+  observed_at: Date;
+  received_at: Date;
+  /** When the manager saw the deployment gone, by its clock, or null while the stage is active. */
+  retired_observed_at: Date | null;
+  /** When that retirement arrived. */
+  retired_at: Date | null;
+}
+
+/** One stage with the two values no list selects, read only for the stage it is about. */
+export interface StageSecretsRow extends StageRow {
+  srt_passphrase: string | null;
+  admin_token_sha256: string | null;
+}
+
+/**
+ * The one row of `catalogue_stamp` (migration 010), cleared or not. The record and the two values copied out of it
+ * are null only on a row a clear made before any record arrived.
+ */
+export interface CatalogueStampRow {
+  manager_id: string | null;
+  batch_id: string | null;
+  record: CatalogueStampRecord | null;
+  observed_at: Date;
+  received_at: Date;
+  /** When the manager saw the designation gone, by its clock, or null while one is designated. */
+  cleared_observed_at: Date | null;
+  /** When that clear arrived. */
+  cleared_at: Date | null;
+}
+
+/** The row while a catalogue batch is designated: it has a record, and no clear stands. */
+export interface DesignatedCatalogueStamp extends CatalogueStampRow {
+  manager_id: string;
+  batch_id: string;
+  record: CatalogueStampRecord;
+  cleared_observed_at: null;
+  cleared_at: null;
+}
+
+/** Whether the row says a catalogue batch is designated. */
+export function isDesignated(row: CatalogueStampRow | null): row is DesignatedCatalogueStamp {
+  return row !== null && row.record !== null && row.cleared_observed_at === null;
 }

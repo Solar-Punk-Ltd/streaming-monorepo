@@ -85,25 +85,51 @@ node address.
 New routes under `/api/internal`, which is mounted ahead of the cross-site check and takes a
 bearer token and no session:
 
-| Route                                  | Who calls it | What it does                                                                                                            |
-| -------------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `PUT /api/internal/stages/:stageId`    | the manager  | stores a stage record, unless the stored one is newer; answers whether it stored it                                     |
-| `DELETE /api/internal/stages/:stageId` | the manager  | retires the stage: its row stays, because streams and old catalogue entries name its owner, and it takes no new streams |
-| `PUT /api/internal/catalogue-stamp`    | the manager  | stores the catalogue stamp record                                                                                       |
-| `DELETE /api/internal/catalogue-stamp` | the manager  | clears it; the admin then refuses to publish, with a sentence saying why                                                |
-| `GET /api/internal/stages/self`        | an uploader  | answers the stage its token belongs to, and the owner that stage signs as                                               |
+| Route                                  | Who calls it | What it does                                                                                                                                                    |
+| -------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PUT /api/internal/stages/:stageId`    | the manager  | stores a stage record, unless the stored one is newer; answers whether it stored it                                                                             |
+| `DELETE /api/internal/stages/:stageId` | the manager  | retires the stage as of the `observedAt` its body carries: its row stays, because streams and old catalogue entries name its owner, and it takes no new streams |
+| `PUT /api/internal/catalogue-stamp`    | the manager  | stores the catalogue stamp record                                                                                                                               |
+| `DELETE /api/internal/catalogue-stamp` | the manager  | clears it as of the `observedAt` its body carries; the admin then refuses to publish, with a sentence saying why                                                |
+| `GET /api/internal/stages/self`        | an uploader  | answers the stage its token belongs to, and the owner that stage signs as                                                                                       |
 
 The manager's routes take the **registrar token**: the admin's `INTERNAL_API_TOKEN`, which the
 manager's admin link already stores. An uploader's routes take that uploader's own token, known
 to the admin by its sha256 on the stage record. While the stages move over, the shared token is
 still taken on an uploader's routes, as an unattributed caller; the last phase stops that.
 
+**Every moment the admin orders by is the manager's.** A record carries `observedAt`, and each
+`DELETE` carries a body `{ observedAt }` (`stageRetireRequestSchema`,
+`catalogueStampClearRequestSchema`): the moment the manager saw the deployment, or the catalogue
+designation, gone. The admin compares only these with each other, never with its own clock, which
+records only when something arrived. So the two hosts' clocks never need to agree.
+
+- An older record never replaces a newer one. Two records observed at one moment are a repeat,
+  and the second is stored.
+- A retirement is taken unless the admin holds a record observed after it: the manager has seen
+  the deployment since. A second retirement keeps the later moment.
+- A `PUT` for a retired stage stores its record and brings the stage back only when the record
+  was observed after the retirement's moment, so a push already on its way when the deployment
+  was deleted does not undo the `DELETE`.
+- A retirement of a stage the admin never stored is kept as a tombstone, and a record for that id
+  is stored only when it was observed after it, so a first push that arrives late does not
+  register a deployment that is gone.
+- The catalogue stamp's clear follows the same rules, the tombstone included.
+- The `PUT`s answer `{ stored }`. The `DELETE`s answer `{ retired }` and `{ cleared }`
+  (`stageRetireAnswerSchema`, `catalogueStampClearAnswerSchema`), true only when the call
+  retired or cleared something the admin held, and false otherwise, a kept tombstone included.
+- The last manager to push a stage wins. A stage record's `managerId` replaces the stored one, so
+  a manager reinstalled with a new id takes its stages back. The move is audited as a
+  `stage.change`.
+
 The console gets `GET /api/stages`: every stage with its readiness and stamp readings and when
-the manager last confirmed them, without the passphrase or the token hash.
+the manager last confirmed them, without the passphrase or the token hash, and
+`GET /api/catalogue-stamp`: the catalogue batch without the Bee API address.
 
 In the database: a `stages` table (the record, the passphrase in a column no list selects, the
-token hash, the owner, when it was observed and received, when it was retired), a single-row
-`catalogue_stamp`, and `streams.stage_id`.
+token hash, the owner, when it was observed and received, when it was retired by the manager's
+clock and when that arrived), `stage_retirements` for retirements of stages never stored, a
+single-row `catalogue_stamp`, and `streams.stage_id`.
 
 A stream's stage is picked in the stream form, is required before publish, and shows as a column
 and a filter in My Streams. It can change while the stream is a draft. Publishing fixes it,
@@ -128,6 +154,17 @@ also records the exact bytes it uploaded, so the history can be stamped again un
   deployment is retired the same way. The client is bounded like the Test connection probe:
   http and https alone, no redirects, five seconds, a small answer read, and an outcome code, never
   what the far end said, in the log and on the deployment page.
+- **The moments it stamps.** The admin orders everything by these, so they must be true:
+  - A record's `observedAt` is the moment the manager read the deployment row. It is stamped
+    before the slower readings (stamps, chequebooks, the uploader's health), not after them. A
+    record that takes seconds to build then never claims a moment later than a deletion that
+    happened while it was being built.
+  - A `DELETE /api/internal/stages/:stageId` carries `{ observedAt }`: the moment the manager
+    saw the deployment gone, which is when its row was deleted, not when the call is sent or
+    retried. A `DELETE /api/internal/catalogue-stamp` carries the moment the designation was
+    removed, by the same rule.
+  - A retry resends the same moments. The admin keeps the latest of each and answers a repeat as
+    a repeat.
 - **The public ingest address.** A setting per deployment, defaulting to the host address the
   manager resolved for it. The address ssh dials can be a private one, and an encoder has to
   reach this one.
