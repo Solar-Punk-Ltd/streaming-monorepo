@@ -66,7 +66,7 @@ const stages =
           rungs: [],
           uploader: { state: 'ready', reasons: [] },
           readiness: { tone: 'ready', reasons: [] },
-          // Still on the shared token, so the page shows its warning.
+          // A token the manager did not generate, so the page says it is refused until it is rotated.
           adminTokenKind: 'shared',
           observedAt: new Date().toISOString(),
           receivedAt: new Date().toISOString(),
