@@ -6,7 +6,7 @@
  * change catch a change in its behaviour, or do they only run its lines. Stryker's `--mutate` takes a range per
  * file, `path:startLine-endLine`, so a zero-context diff maps onto it and nothing outside the change is mutated.
  *
- * Run it from `apps/hls-stream` with `pnpm mutate:changed`. The base is `origin/main-v3`, or `MUTATION_BASE`.
+ * Run it from `apps/hls-stream` with `pnpm mutate:changed`. The base is `origin/main`, or `MUTATION_BASE`.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -16,7 +16,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 const STACK_ROOT = path.resolve(import.meta.dirname, '../..');
-const BASE_REF = process.env.MUTATION_BASE ?? 'origin/main-v3';
+const BASE_REF = process.env.MUTATION_BASE ?? 'origin/main';
 
 /** Absolute paths rather than a bare name, so the call never takes a `git` from a writable PATH entry. */
 const GIT = ['/usr/bin/git', '/opt/homebrew/bin/git', '/usr/local/bin/git'].find((candidate) => existsSync(candidate));
