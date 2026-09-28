@@ -275,6 +275,15 @@ manager.
 Built in nine phases, each a pull request into `feat/stages`; the list is in
 the spec. The feature branch goes to `main` once the owner has tried it whole.
 
+- Phase 4, a stage per stream: a stream's stage is picked in the stream form
+  from the stages that are not retired and run SRS, fixed at publish and kept
+  by a stream that holds a recording, and a draft with none is refused at
+  publish. My Streams has a Stage column and filter, the OBS panel is built
+  from the stage, and `INGEST_HOST`, the ingest ports, `INGEST_RTMP_PUBLIC`,
+  `INGEST_SRT_PASSPHRASE` and `INGEST_KEY_VERIFIED` leave the admin's env:
+  every uploader that takes streams from the admin verifies the per-stream
+  `key=`, so the console no longer warns that it might not.
+
 ## Checkpoint 3: manager integration
 
 - Manager deploys swarm-hls-stream from `main-v3`.

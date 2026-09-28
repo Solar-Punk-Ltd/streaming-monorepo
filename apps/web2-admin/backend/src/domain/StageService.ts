@@ -2,6 +2,7 @@ import {
   isOlderStageRecord,
   type CatalogueStampClearAnswer,
   type CatalogueStampRecord,
+  type StageEngine,
   type StageRecord,
   type StageRetireAnswer,
   type StageStoreAnswer,
@@ -37,6 +38,14 @@ export interface CatalogueStampStore {
   get(): Promise<CatalogueStampRow | null>;
   upsert(record: CatalogueStampRecord): Promise<CatalogueStampRow | null>;
   clear(observedAt: string): Promise<RetireOutcome<CatalogueStampRow>>;
+}
+
+/** The engines the admin takes streams on in this round. An OvenMediaEngine stage is listed and takes none. */
+export const SUPPORTED_STAGE_ENGINES: readonly StageEngine[] = ['srs'];
+
+/** Whether a stage on this engine can take streams. */
+export function stageTakesStreams(engine: StageEngine): boolean {
+  return SUPPORTED_STAGE_ENGINES.includes(engine);
 }
 
 /** A stage record split the way migration 009 keeps it: the passphrase and the token apart from the rest. */

@@ -13,6 +13,16 @@ export const MEDIA_TYPE_LOCKED = 'Unpublish the stream to change the media type;
 export const SCHEDULE_LOCKED = 'The schedule cannot change once the stream has gone live.';
 
 /**
+ * The stage field's helper text once the stage is fixed: the same sentences
+ * the backend's `stage_locked` carries for its two reasons, which the console
+ * shows as they come.
+ */
+export const STAGE_LOCKED = {
+  published: 'Unpublish the stream to change its stage; publishing fixed it.',
+  recording: 'This stream holds a recording made on its stage, so it keeps that stage.',
+} as const;
+
+/**
  * The same sentence for the backend's `unsupported_media_type` and for the
  * form's own check, which rejects the file before it is ever sent.
  */

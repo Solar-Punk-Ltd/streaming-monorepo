@@ -10,7 +10,7 @@
 import type { CatalogueStampRecord, StageRecord } from '@streaming-monorepo/contracts';
 
 import type { RetireOutcome, StageWrite } from '../../../src/domain/StageRepository.js';
-import type { CatalogueStampStore, StageStore } from '../../../src/domain/StageService.js';
+import { splitStageRecord, type CatalogueStampStore, type StageStore } from '../../../src/domain/StageService.js';
 import type { CatalogueStampRow, StageRow, StageSecretsRow } from '../../../src/types/index.js';
 
 export const STAGE_ID = '5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f';
@@ -117,6 +117,21 @@ export class FakeStageStore implements StageStore {
     return row ? structuredClone(row) : null;
   }
 
+  /** As the SQL is: the columns a list reads, never the passphrase or the token hash. */
+  async findSummary(stageId: string): Promise<StageRow | null> {
+    const row = this.rows.get(stageId);
+    return row ? listed(row) : null;
+  }
+
+  /**
+   * Whether the stage can take a stream, as the stream UPDATE's move branch
+   * asks the stages table: stored, not retired, on SRS.
+   */
+  takesStreams(stageId: string): boolean {
+    const row = this.rows.get(stageId);
+    return row !== undefined && row.retired_observed_at === null && row.engine === 'srs';
+  }
+
   async upsert(write: StageWrite): Promise<StageRow | null> {
     if (this.failNextUpsert) {
       const failure = this.failNextUpsert;
@@ -171,6 +186,18 @@ export class FakeStageStore implements StageStore {
     row.retired_at = this.clock.now();
     return { outcome: 'done', row: listed(row) };
   }
+}
+
+/**
+ * A stage store holding the stage `stageRecord()` pushes, `STAGE_ID`, which
+ * `streamRow()` puts every stream on. Filled synchronously, for the setups
+ * that are not async.
+ */
+export function stagesWithMain(clock: TestClock = new TestClock()): FakeStageStore {
+  const stages = new FakeStageStore(clock);
+  // `upsert` reaches no `await`, so the row is in place when this returns.
+  void stages.upsert(splitStageRecord(stageRecord()));
+  return stages;
 }
 
 export class FakeCatalogueStampStore implements CatalogueStampStore {

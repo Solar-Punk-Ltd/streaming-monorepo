@@ -88,6 +88,7 @@ before(async () => {
   const publishService = new PublishService(
     streams,
     renditions,
+    stages,
     new FakeFeedWriteLog(),
     new FakeFeedGateway(),
     feed,

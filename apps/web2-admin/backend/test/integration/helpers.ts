@@ -13,7 +13,10 @@
  */
 import assert from 'node:assert/strict';
 
+import { stageRecordPath } from '@streaming-monorepo/contracts';
 import { REQUESTED_WITH_HEADER, REQUESTED_WITH_VALUE } from '@streaming-monorepo/web2-admin-common';
+
+import { STAGE_ID, stageRecord } from '../unit/support/stageFakes.js';
 
 import { ITEST_INTERNAL_TOKEN, ITEST_PASSWORD, ITEST_USERNAME, startInstance, type Instance } from './instance.js';
 
@@ -165,4 +168,16 @@ export async function cleanup(streamIds: Iterable<string>): Promise<void> {
     await raw('POST', `/api/streams/${id}/unpublish`);
     await raw('DELETE', `/api/streams/${id}`);
   }
+}
+
+/**
+ * Registers a stage the way the manager does, on the registrar token, so a
+ * stream can be put on it and published: a draft with no stage is refused at
+ * publish. Answers its id, `STAGE_ID` unless the record says otherwise.
+ */
+export async function registerStage(over: Parameters<typeof stageRecord>[0] = {}): Promise<string> {
+  const record = stageRecord({ stageId: STAGE_ID, ...over });
+  const stored = await raw('PUT', stageRecordPath(record.stageId), { ...internalCall(), body: record });
+  assert.equal(stored.status, 200, stored.text);
+  return record.stageId;
 }

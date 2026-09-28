@@ -181,7 +181,6 @@ export function fakeAdminEnv(marker) {
     'INTERNAL_API_TOKEN=fixture-token-of-more-than-thirty-two-characters',
     'BEE_URL=http://bee.fixture.invalid:1633',
     `POSTAGE_BATCH_ID=${'2'.repeat(64)}`,
-    'INGEST_HOST=ingest.fixture.invalid',
     '',
   ].join('\n');
 }

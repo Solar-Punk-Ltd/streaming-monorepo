@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 
 import type { StreamRow, ThumbnailRow } from '../types/index.js';
 
+import { SUPPORTED_STAGE_ENGINES } from './StageService.js';
 import type { PublishedStatus } from './streamState.js';
 import { CONTENT_EDITED_NOW, STREAM_COLUMNS } from './streamSql.js';
 
@@ -23,6 +24,8 @@ export interface StreamInsertData {
   /** ISO 8601, or null. Postgres casts it to TIMESTAMPTZ. */
   scheduled_start_time: string | null;
   publish_key: string;
+  /** The stage picked in the form, or null. The service has checked it takes streams. */
+  stage_id: string | null;
 }
 
 export interface StreamUpdateData {
@@ -31,6 +34,11 @@ export interface StreamUpdateData {
   tags: string[];
   media_type: MediaType;
   scheduled_start_time: string | null;
+  /**
+   * The stage to set, null to clear it, or absent to leave it as it is. A
+   * change is written only while the row may take one; see `update`.
+   */
+  stage_id?: string | null;
 }
 
 /** What a thumbnail clear left on the row, and whether it removed an image. */
@@ -90,9 +98,9 @@ export class StreamRepository {
     const result = await this.pool.query<StreamRow>(
       `INSERT INTO streams (
          user_id, topic, owner, title, description, tags, media_type,
-         scheduled_start_time, publish_key
+         scheduled_start_time, publish_key, stage_id
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING ${STREAM_COLUMNS}`,
       [
         data.user_id,
@@ -104,6 +112,7 @@ export class StreamRepository {
         data.media_type,
         data.scheduled_start_time,
         data.publish_key,
+        data.stage_id,
       ],
     );
     return result.rows[0]!;
@@ -115,7 +124,15 @@ export class StreamRepository {
    * `content_edited_at` moves only when a value actually changes. The console
    * PUTs the whole form back on every save, so a save that changed nothing
    * would otherwise ask the operator to republish an entry that is already
-   * right. The comparisons read the row as it was, before this SET.
+   * right. The comparisons read the row as it was, before this SET. A stage
+   * is not on the catalogue entry, so it never moves `content_edited_at`.
+   *
+   * A stage change is refused here as well as in the service, so an edit and
+   * a publish racing cannot leave a published stream on another stage: the
+   * row takes one only while it is a draft, and never while it holds both a
+   * recording and a stage, and only a stage that can take streams: one the
+   * stages table holds, not retired, on a supported engine. A save that leaves
+   * the stage alone, or names the one it has, is not a change.
    */
   async update(id: string, data: StreamUpdateData, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
@@ -134,10 +151,39 @@ export class StreamRepository {
                 THEN ${CONTENT_EDITED_NOW}
                 ELSE content_edited_at
               END,
+              stage_id = CASE WHEN $9 THEN $8::uuid ELSE stage_id END,
               updated_at = NOW()
         WHERE id = $1 AND status = ANY($2::text[])
+          AND (
+            NOT $9
+            OR stage_id IS NOT DISTINCT FROM $8::uuid
+            OR (
+              status = 'draft'
+              AND (manifest_index IS NULL OR stage_id IS NULL)
+              AND (
+                $8::uuid IS NULL
+                OR EXISTS (
+                  SELECT 1 FROM stages
+                   WHERE stages.stage_id = $8::uuid
+                     AND stages.retired_observed_at IS NULL
+                     AND stages.engine = ANY($10::text[])
+                )
+              )
+            )
+          )
         RETURNING ${STREAM_COLUMNS}`,
-      [id, allowedFrom, data.title, data.description, data.tags, data.media_type, data.scheduled_start_time],
+      [
+        id,
+        allowedFrom,
+        data.title,
+        data.description,
+        data.tags,
+        data.media_type,
+        data.scheduled_start_time,
+        data.stage_id ?? null,
+        data.stage_id !== undefined,
+        SUPPORTED_STAGE_ENGINES,
+      ],
     );
     return this.one(result.rows, result.rowCount);
   }
@@ -393,16 +439,24 @@ export class StreamRepository {
 
   /**
    * Takes the stream into `publishing`, which is the lock the whole publish
-   * runs under. Null means someone else holds it (or the row is gone).
+   * runs under. Null means someone else holds it, the row is gone, or, with
+   * `draftNeedsStage`, it is a draft with no stage: a publish checks that
+   * before it claims, and this holds it against an edit that clears the stage
+   * in between.
    */
-  async claimForPublish(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
+  async claimForPublish(
+    id: string,
+    allowedFrom: readonly StreamStatus[],
+    draftNeedsStage = false,
+  ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
           SET status = 'publishing',
               updated_at = NOW()
         WHERE id = $1 AND status = ANY($2::text[])
+          AND (NOT $3 OR status <> 'draft' OR stage_id IS NOT NULL)
         RETURNING ${STREAM_COLUMNS}`,
-      [id, allowedFrom],
+      [id, allowedFrom, draftNeedsStage],
     );
     return this.one(result.rows, result.rowCount);
   }

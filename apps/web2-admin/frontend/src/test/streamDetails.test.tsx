@@ -3,8 +3,10 @@ import { Route, Routes } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import type { Stream } from '@streaming-monorepo/web2-admin-common';
 
-import { StreamDetailsPage } from '../pages/StreamDetailsPage';
+import { NO_STAGE_NOTE } from '../components/IngestPanel';
+import { NEEDS_STAGE_HINT, StreamDetailsPage } from '../pages/StreamDetailsPage';
 import {
+  MAIN_STAGE_ID,
   jsonError,
   jsonOk,
   makeIngest,
@@ -44,6 +46,47 @@ function renderDetails() {
 }
 
 describe('StreamDetailsPage', () => {
+  it('names the stage the stream is on, from its OBS details', async () => {
+    mockFetch(routesFor(makeStream({ id: ID, stageId: 'stage-1' })));
+
+    renderDetails();
+
+    const field = (await screen.findByText('Stage')).parentElement as HTMLElement;
+    await waitFor(() => expect(within(field).getByText('Main stage')).toBeInTheDocument());
+  });
+
+  it('says a stream has no stage, and the OBS panel says to pick one', async () => {
+    mockFetch([
+      { path: `/api/streams/${ID}/ingest`, respond: () => jsonOk(makeIngest({ stage: null, srt: null })) },
+      ...routesFor(makeStream({ id: ID, stageId: null })),
+    ]);
+
+    renderDetails();
+
+    const field = (await screen.findByText('Stage')).parentElement as HTMLElement;
+    expect(within(field).getByText('No stage')).toBeInTheDocument();
+    expect(await screen.findByText(NO_STAGE_NOTE)).toBeInTheDocument();
+  });
+
+  it('keeps Publish disabled on a draft with no stage, and says why', async () => {
+    mockFetch(routesFor(makeStream({ id: ID, status: 'draft', stageId: null })));
+
+    renderDetails();
+
+    expect(await screen.findByRole('button', { name: 'Publish' })).toBeDisabled();
+    expect(screen.getByText(NEEDS_STAGE_HINT)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Edit the stream' })).toHaveAttribute('href', `/edit/${ID}`);
+  });
+
+  it('offers Publish on a draft on a stage', async () => {
+    mockFetch(routesFor(makeStream({ id: ID, status: 'draft', stageId: MAIN_STAGE_ID })));
+
+    renderDetails();
+
+    expect(await screen.findByRole('button', { name: 'Publish' })).toBeEnabled();
+    expect(screen.queryByText(NEEDS_STAGE_HINT)).not.toBeInTheDocument();
+  });
+
   it('warns when the API reports edits the catalogue entry does not carry', async () => {
     // The timestamps are equal on purpose: the notice is the API's answer, not
     // a comparison the page makes of its own.
@@ -361,6 +404,7 @@ function recordingStream(): Stream {
     endedAt: '2026-09-11T11:00:00.000Z',
     durationSeconds: 3540,
     manifestIndex: 412,
+    stageId: MAIN_STAGE_ID,
   });
 }
 

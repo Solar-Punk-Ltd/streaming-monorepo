@@ -31,7 +31,19 @@ import type {
 } from '@streaming-monorepo/web2-admin-common';
 import pg from 'pg';
 
-import { api, internalCall, login, raw, releaseStack, requireStack, stack, type RawResponse } from './helpers.js';
+import { STAGE_ID } from '../unit/support/stageFakes.js';
+
+import {
+  api,
+  internalCall,
+  login,
+  raw,
+  registerStage,
+  releaseStack,
+  requireStack,
+  stack,
+  type RawResponse,
+} from './helpers.js';
 
 const draft = {
   title: 'itest internal',
@@ -39,6 +51,8 @@ const draft = {
   tags: ['itest'],
   mediaType: 'video' as const,
   scheduledStartTime: '2026-10-01T09:00:00.000Z',
+  // Registered in `before`: a draft with no stage is refused at publish.
+  stageId: STAGE_ID,
 };
 
 const created = new Set<string>();
@@ -46,6 +60,7 @@ let pool: pg.Pool;
 
 before(async () => {
   await requireStack();
+  await registerStage();
   await login();
   pool = new pg.Pool({ connectionString: stack().databaseUrl, max: 2 });
 });

@@ -19,6 +19,11 @@
  * the only way to see the recording's details and to unpublish and publish it
  * again, since nothing here can broadcast.
  *
+ * The mock holds one stage, as if a manager had pushed it, so the stream
+ * form's picker and the OBS panel have something to show. MOCK_NO_STAGES=true
+ * starts with none, which is the Stages page's empty state and a picker with
+ * nothing to pick.
+ *
  * No dependencies: plain node:http, plain node:crypto.
  */
 
@@ -31,12 +36,46 @@ const COOKIE = 'web2_admin_session';
 const SEED_USERNAME = process.env.SEED_ADMIN_USERNAME ?? 'admin';
 let seedPassword = process.env.SEED_ADMIN_PASSWORD ?? 'admin1234';
 
-// Flip to true to exercise the "ingest verifies the key" branch of the OBS panel.
-const KEY_VERIFIED = process.env.INGEST_KEY_VERIFIED === 'true';
+// Flip to true to see the OBS panel of a stage that opened RTMP ingest. Off,
+// as on a stage the manager pushes by default, the panel offers SRT only.
+const RTMP_PUBLIC = process.env.MOCK_RTMP_PUBLIC === 'true';
 
-// Flip to true to see the OBS panel of a deployment that opened RTMP ingest.
-// Off, as on the API, the panel offers SRT only.
-const RTMP_PUBLIC = process.env.INGEST_RTMP_PUBLIC === 'true';
+const MOCK_STAGE_ID = '5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f';
+
+/** The stages a manager would have pushed, as `GET /api/stages` lists them. */
+const stages =
+  process.env.MOCK_NO_STAGES === 'true'
+    ? []
+    : [
+        {
+          stageId: MOCK_STAGE_ID,
+          name: 'Mock stage',
+          kind: 'abr-uploader',
+          engine: 'srs',
+          supported: true,
+          stackVersion: '0.0.0-mock',
+          status: 'running',
+          owner: '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3',
+          ingest: {
+            host: 'ingest.example.test',
+            srtPort: 10061,
+            rtmpPort: 10062,
+            rtmpPublic: RTMP_PUBLIC,
+            hasSrtPassphrase: true,
+          },
+          rungs: [],
+          uploader: { state: 'ready', reasons: [] },
+          readiness: { tone: 'ready', reasons: [] },
+          observedAt: new Date().toISOString(),
+          receivedAt: new Date().toISOString(),
+          retiredAt: null,
+        },
+      ];
+
+/** A stage a stream may be put on, as the API decides it: known, not retired, supported. */
+function assignable(stageId) {
+  return stages.some((stage) => stage.stageId === stageId && stage.retiredAt === null && stage.supported);
+}
 
 const OWNER = '1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c';
 const FEED_TOPIC = 'swarm-stream';
@@ -159,23 +198,29 @@ function publicStream(row) {
 
 function ingestDetails(row) {
   const streamId = `${row.mediaType}/${row.topic}`;
-  return {
+  const stage = stages.find((candidate) => candidate.stageId === row.stageId);
+  const own = {
     streamId,
     app: row.mediaType,
     stream: row.topic,
     publishKey: row.publishKey,
     publishKeyRotatedAt: row.publishKeyRotatedAt,
+  };
+  if (!stage) return { ...own, stage: null, srt: null, rtmp: null };
+  const { host, srtPort, rtmpPort, rtmpPublic } = stage.ingest;
+  return {
+    ...own,
+    stage: { stageId: stage.stageId, name: stage.name, retiredAt: stage.retiredAt },
     srt: {
-      url: `srt://ingest.example.test:10061?streamid=#!::r=${streamId}?key=${row.publishKey},m=publish`,
+      url: `srt://${host}:${srtPort}?streamid=#!::r=${streamId}?key=${row.publishKey},m=publish`,
       passphrase: 'mock-srt-passphrase-value',
     },
-    rtmp: RTMP_PUBLIC
+    rtmp: rtmpPublic
       ? {
-          server: `rtmp://ingest.example.test:10062/${row.mediaType}`,
+          server: `rtmp://${host}:${rtmpPort}/${row.mediaType}`,
           streamKey: `${row.topic}?key=${row.publishKey}`,
         }
       : null,
-    keyVerified: KEY_VERIFIED,
   };
 }
 
@@ -195,6 +240,7 @@ function applyInput(row, input) {
   row.tags = Array.isArray(input.tags) ? input.tags.map(String) : [];
   row.mediaType = input.mediaType === 'audio' ? 'audio' : 'video';
   row.scheduledStartTime = input.scheduledStartTime ?? null;
+  if (input.stageId !== undefined) row.stageId = input.stageId;
   row.updatedAt = new Date().toISOString();
   if (entryContent(row) !== before) row.editsNotOnFeed = true;
 }
@@ -227,6 +273,7 @@ function newStream(input) {
     // Stands in for the API's two timestamps: an edit the catalogue entry
     // does not carry yet. Cleared by a publish, which rebuilds the entry.
     editsNotOnFeed: false,
+    stageId: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -266,8 +313,18 @@ if (process.env.MOCK_RECORDING === 'true') {
     durationSeconds: 3540,
     liveSince: '2026-09-11T10:01:00.000Z',
     endedAt: '2026-09-11T11:00:00.000Z',
+    stageId: stages[0]?.stageId ?? null,
   });
   streams.set(row.id, row);
+}
+
+function stageUnavailable(res, stageId) {
+  return send(res, 409, {
+    error: 'stage_unavailable',
+    stageId,
+    reason: 'unknown',
+    message: 'The admin knows no stage with that id. Pick one of the stages listed.',
+  });
 }
 
 const server = createServer((req, res) => {
@@ -420,9 +477,9 @@ async function handle(req, res) {
     return send(res, 200, { user });
   }
 
-  // No manager pushes into the mock, so it has no stages and no catalogue
-  // stamp: the Stages page shows its empty state.
-  if (path === '/api/stages' && method === 'GET') return send(res, 200, { stages: [] });
+  // No manager pushes into the mock, so its stages are fixed and it has no
+  // catalogue stamp.
+  if (path === '/api/stages' && method === 'GET') return send(res, 200, { stages });
   if (path === '/api/catalogue-stamp' && method === 'GET') return send(res, 200, { catalogueStamp: null });
 
   if (path === '/api/streams' && method === 'GET') {
@@ -431,7 +488,9 @@ async function handle(req, res) {
   }
 
   if (path === '/api/streams' && method === 'POST') {
-    const row = newStream(await readJson(req));
+    const input = await readJson(req);
+    if (input.stageId && !assignable(input.stageId)) return stageUnavailable(res, input.stageId);
+    const row = newStream(input);
     streams.set(row.id, row);
     return send(res, 201, publicStream(row));
   }
@@ -447,7 +506,26 @@ async function handle(req, res) {
 
   if (sub === '' && method === 'PUT') {
     if (row.status === 'publishing') return send(res, 409, { error: 'stream_busy' });
-    applyInput(row, await readJson(req));
+    const input = await readJson(req);
+    // The API's stage rules, without the race it also guards against.
+    if (input.stageId !== undefined && input.stageId !== row.stageId) {
+      if (row.status !== 'draft') {
+        return send(res, 409, {
+          error: 'stage_locked',
+          reason: 'published',
+          message: 'Unpublish the stream to change its stage; publishing fixed it.',
+        });
+      }
+      if (row.manifestIndex !== null && row.stageId !== null) {
+        return send(res, 409, {
+          error: 'stage_locked',
+          reason: 'recording',
+          message: 'This stream holds a recording made on its stage, so it keeps that stage.',
+        });
+      }
+      if (input.stageId && !assignable(input.stageId)) return stageUnavailable(res, input.stageId);
+    }
+    applyInput(row, input);
     return send(res, 200, publicStream(row));
   }
 
@@ -502,6 +580,13 @@ async function handle(req, res) {
     if (row.status === 'publishing') {
       return send(res, 409, { error: 'stream_busy' });
     }
+    if (row.status === 'draft' && !row.stageId) {
+      return send(res, 409, {
+        error: 'stage_required',
+        id: row.id,
+        message: 'Pick the stage this stream is broadcast on before publishing.',
+      });
+    }
     if (!ON_FEED_STATUSES.includes(row.status)) feedEntries += 1;
     feedIndex += 1;
     if (row.thumbnail && !row.thumbnailRef) row.thumbnailRef = hex(32);
@@ -550,8 +635,10 @@ async function handle(req, res) {
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[mock-api] listening on http://127.0.0.1:${PORT}`);
   console.log(`[mock-api] log in as ${SEED_USERNAME} / ${seedPassword}`);
-  console.log(`[mock-api] INGEST_KEY_VERIFIED=${KEY_VERIFIED}`);
-  console.log(`[mock-api] INGEST_RTMP_PUBLIC=${RTMP_PUBLIC}`);
+  console.log(`[mock-api] MOCK_RTMP_PUBLIC=${RTMP_PUBLIC}`);
+  console.log(
+    `[mock-api] stages: ${stages.length === 0 ? 'none (MOCK_NO_STAGES)' : stages.map((stage) => stage.name).join(', ')}`,
+  );
 });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

@@ -15,23 +15,14 @@ import { describeStream } from '../../src/domain/actor.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
 import { IngestService } from '../../src/domain/IngestService.js';
 import { changedFields, StreamService, type StreamInputValues } from '../../src/domain/StreamService.js';
-import type { IngestConfig } from '../../src/utils/config.js';
 
 import { FakeStreamStore, InMemoryAuditLog, streamRow, TEST_OPERATOR, TEST_OWNER } from './support/fakes.js';
+import { FakeStageStore } from './support/stageFakes.js';
 
 const feed: FeedIdentity = {
   owner: TEST_OWNER,
   topic: 'swarm-stream',
   topicHex: 'cfbbc155d709547b198638d0fb11d733359561538d8bd606a9ab257354d13bcc',
-};
-
-const endpoint: IngestConfig = {
-  host: 'ingest.example.com',
-  srtPort: 10061,
-  rtmpPort: 10062,
-  rtmpPublic: false,
-  srtPassphrase: null,
-  keyVerified: true,
 };
 
 /** Another operator of the same installation, not the one who drafted the row. */
@@ -49,7 +40,7 @@ const UNCHANGED: StreamInputValues = {
 function setup() {
   const store = new FakeStreamStore();
   const audit = new InMemoryAuditLog();
-  const service = new StreamService(store, feed, audit);
+  const service = new StreamService(store, new FakeStageStore(), feed, audit);
   return { store, audit, service };
 }
 
@@ -68,7 +59,7 @@ describe('StreamService audit', () => {
         topic: created.topic,
         statusBefore: null,
         statusAfter: 'draft',
-        details: { title: 'Opening keynote', mediaType: 'video' },
+        details: { title: 'Opening keynote', mediaType: 'video', stageId: null },
       },
     ]);
   });
@@ -221,7 +212,7 @@ describe('IngestService.rotateKey audit', () => {
   it('records who rotated the key, and never the key itself', async () => {
     const store = new FakeStreamStore();
     const audit = new InMemoryAuditLog();
-    const ingest = new IngestService(store, endpoint, audit);
+    const ingest = new IngestService(store, new FakeStageStore(), audit);
     const row = store.add(streamRow({ status: 'live' }));
 
     const details = await ingest.rotateKey(MATE, row.id);

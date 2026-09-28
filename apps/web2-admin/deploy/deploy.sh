@@ -371,26 +371,13 @@ elif [ "$FEED_GATEWAY" = "bee" ] && [[ "$POSTAGE_BATCH_ID" =~ ^(0x)?0{64}$ ]]; t
     warn "POSTAGE_BATCH_ID is the all-zero placeholder from .env.sample. No node has it, so every publish will fail."
 fi
 
-INGEST_HOST="$(env_value INGEST_HOST)"
-if [ -z "$INGEST_HOST" ]; then
-    problem "INGEST_HOST is missing or empty."
-elif [ "$INGEST_HOST" = "ingest.example.com" ]; then
-    warn "INGEST_HOST is the example value from .env.sample, so the OBS details the console shows point nowhere."
-fi
-
-# Optional keys the API parses at boot and refuses when malformed.
-for key in INGEST_SRT_PORT INGEST_RTMP_PORT; do
-    value="$(env_value "$key")"
-    if [ -n "$value" ] && ! [[ "$value" =~ ^[0-9]+$ ]]; then
-        problem "$key must be a port number (got: $value)."
+# The INGEST_* keys are no longer read: each stream's OBS details come from its
+# stage, as the manager pushes it. An env file that still sets them deploys as
+# it did, and the API's boot log names them.
+for key in INGEST_HOST INGEST_SRT_PORT INGEST_RTMP_PORT INGEST_RTMP_PUBLIC INGEST_SRT_PASSPHRASE INGEST_KEY_VERIFIED; do
+    if [ -n "$(env_value "$key")" ]; then
+        warn "$key is no longer read: each stream's OBS details come from its stage. Remove it from $ENV_FILE_FROM_ROOT."
     fi
-done
-for key in INGEST_KEY_VERIFIED INGEST_RTMP_PUBLIC; do
-    value="$(lower "$(env_value "$key")")"
-    case "$value" in
-        '' | true | false | 1 | 0 | yes | no) ;;
-        *) problem "$key must be true or false (got: $value)." ;;
-    esac
 done
 
 ENV_WEB_PORT="$(env_value WEB2_ADMIN_WEB_PORT)"

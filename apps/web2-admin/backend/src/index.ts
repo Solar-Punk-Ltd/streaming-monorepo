@@ -26,6 +26,7 @@ import { StreamService } from './domain/StreamService.js';
 import { StreamStateService } from './domain/StreamStateService.js';
 import { config } from './utils/config.js';
 import { getErrorMessage, getErrorStack } from './utils/errorUtils.js';
+import { retiredEnvKeysSet } from './utils/retiredEnv.js';
 
 const logger = Logger.getInstance();
 
@@ -62,15 +63,13 @@ function logStartupConfig(owner: string, topicHex: string): void {
   logger.info(`[Boot]   feed: owner ${owner} topic "${config.feedTopic}" (${topicHex})`);
   logger.info(`[Boot]   viewer: ${config.viewerBaseUrl || '(unset → no player links)'}`);
   logger.info(`[Boot]   internal API token: ${redactSecret(config.internalApiToken)}`);
-  logger.info(
-    `[Boot]   ingest: ${config.ingest.host} srt ${config.ingest.srtPort} rtmp ${
-      config.ingest.rtmpPublic
-        ? `${config.ingest.rtmpPort} (offered to the console)`
-        : 'not offered (INGEST_RTMP_PUBLIC is off)'
-    }, passphrase ${
-      config.ingest.srtPassphrase ? redactSecret(config.ingest.srtPassphrase) : '(unset)'
-    }, key verified ${config.ingest.keyVerified}`,
-  );
+  logger.info("[Boot]   ingest: from each stream's stage, as the manager pushed it");
+  const retired = retiredEnvKeysSet();
+  if (retired.length > 0) {
+    logger.warn(
+      `[Boot] ${retired.join(', ')} ${retired.length === 1 ? 'is' : 'are'} set but no longer read: each stream's OBS details come from its stage. Remove ${retired.length === 1 ? 'it' : 'them'} from the env file.`,
+    );
+  }
 }
 
 function createFeedGateway(): FeedGateway {
@@ -156,10 +155,12 @@ async function main(): Promise<void> {
     );
   }
 
-  const streamService = new StreamService(streamRepository, feed, auditLog);
+  const stageRepository = new StageRepository(database.pool);
+  const streamService = new StreamService(streamRepository, stageRepository, feed, auditLog);
   const publishService = new PublishService(
     streamRepository,
     renditionRepository,
+    stageRepository,
     feedWriteRepository,
     createFeedGateway(),
     feed,
@@ -177,14 +178,10 @@ async function main(): Promise<void> {
     logger.warn(`[Boot] feed check failed: ${getErrorMessage(error)}`);
   }
 
-  const ingestService = new IngestService(streamRepository, config.ingest, auditLog);
+  const ingestService = new IngestService(streamRepository, stageRepository, auditLog);
   const streamStateService = new StreamStateService(streamRepository, publishService, auditLog);
   const ladderService = new LadderService(streamRepository, renditionRepository, publishService, auditLog);
-  const stageService = new StageService(
-    new StageRepository(database.pool),
-    new CatalogueStampRepository(database.pool),
-    auditLog,
-  );
+  const stageService = new StageService(stageRepository, new CatalogueStampRepository(database.pool), auditLog);
 
   apiServer = startApiServer(
     {

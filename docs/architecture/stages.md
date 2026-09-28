@@ -139,6 +139,16 @@ since the recording lives under that stage's owner. The OBS panel shows the stre
 ingest details. The admin warns before a stream is scheduled on a stage whose readiness is not
 `ready`, and says when the manager last confirmed it.
 
+Two rows older than stages are let through, since each has no stage to keep: a draft that holds a
+recording may be given its first stage, and a stream already on the catalogue is republished as it
+is, with no stage until it is unpublished. Only a draft is refused at publish for having none, and
+a draft without a recording is refused as well when its stage no longer takes streams. The console
+warns that the first stage of such a recorded draft is final and asks before saving it. Phase 6 must
+revisit these rows, whose recordings are signed by the brand key: for example by offering them only
+stages whose owner matches the recording's. The
+admin no longer asks whether the ingest verifies the per-stream `key=`: every uploader that takes
+streams from it does, so `INGEST_KEY_VERIFIED` leaves the env with the other `INGEST_*` keys.
+
 The catalogue is written through the catalogue stamp record's node and batch, read from the
 admin's own database on every write. The admin warns on My Streams when that batch has less than
 48 hours left, and refuses to publish with a clear error when it is expired or gone. Every write

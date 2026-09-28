@@ -35,13 +35,18 @@ import {
   login,
   PNG_1X1,
   raw,
+  registerStage,
   releaseStack,
   requireStack,
   sessionCookie,
   stack,
 } from './helpers.js';
+import { SRT_PASSPHRASE, STAGE_ID } from '../unit/support/stageFakes.js';
 
 const created = new Set<string>();
+
+/** A second stage, registered where a test moves a stream to it. */
+const SECOND_STAGE = '8c3f5d1b-4e5f-4061-9c73-3d4e5f607182';
 
 const draft = {
   title: 'itest keynote',
@@ -49,9 +54,14 @@ const draft = {
   tags: ['itest', 'swarm'],
   mediaType: 'video' as const,
   scheduledStartTime: '2026-10-01T09:00:00.000Z',
+  // Registered in `before`: a draft with no stage is refused at publish.
+  stageId: STAGE_ID,
 };
 
-before(requireStack);
+before(async () => {
+  await requireStack();
+  await registerStage();
+});
 after(async () => {
   await login();
   await cleanup(created);
@@ -191,6 +201,10 @@ describe('stream lifecycle', () => {
     assert.equal(stream.owner, config.feed.owner, 'owner is the feed key');
   });
 
+  it('puts the draft on the stage the form named', () => {
+    assert.equal(stream.stageId, STAGE_ID);
+  });
+
   it('rejects a body over the msrs-client limits', async () => {
     const response = await raw('POST', '/api/streams', {
       body: { ...draft, title: 'x'.repeat(101) },
@@ -218,6 +232,29 @@ describe('stream lifecycle', () => {
   it('lists it, newest first', async () => {
     const list = await api<StreamListResponse>('GET', '/api/streams');
     assert.equal(list.streams[0]?.id, stream.id);
+  });
+
+  it('refuses to publish a draft with no stage, and publishes it once it has one', async () => {
+    const stageless = await api<Stream>('POST', '/api/streams', { body: { ...draft, stageId: null } });
+    created.add(stageless.id);
+
+    const refused = await raw('POST', `/api/streams/${stageless.id}/publish`);
+    assert.equal(refused.status, 409);
+    assert.deepEqual(refused.body, {
+      error: 'stage_required',
+      id: stageless.id,
+      message: 'Pick the stage this stream is broadcast on before publishing.',
+    });
+    const details = await api<IngestDetails>('GET', `/api/streams/${stageless.id}/ingest`);
+    assert.equal(details.stage, null);
+    assert.equal(details.srt, null);
+
+    await api<Stream>('PUT', `/api/streams/${stageless.id}`, { body: draft });
+    const published = await api<PublishResult>('POST', `/api/streams/${stageless.id}/publish`);
+    assert.equal(published.stream.status, 'published');
+    await api<PublishResult>('POST', `/api/streams/${stageless.id}/unpublish`);
+    assert.equal((await raw('DELETE', `/api/streams/${stageless.id}`)).status, 204);
+    created.delete(stageless.id);
   });
 
   it('updates the draft', async () => {
@@ -287,9 +324,12 @@ describe('stream lifecycle', () => {
     assert.equal(details.stream, stream.topic);
     assert.equal(details.streamId, `video/${stream.topic}`);
     assert.match(details.publishKey, /^[0-9a-f]{32}$/);
-    assert.ok(details.srt.url.includes(`r=video/${stream.topic}`));
-    assert.ok(details.srt.url.includes(`key=${details.publishKey}`));
-    assert.equal(details.rtmp, null, 'RTMP is offered only where the deployment opens it');
+    assert.equal(details.stage?.stageId, STAGE_ID, 'from the stage the stream is on');
+    assert.ok(details.srt?.url.startsWith('srt://ingest.example.org:10061?'), 'at the address the manager pushed');
+    assert.ok(details.srt?.url.includes(`r=video/${stream.topic}`));
+    assert.ok(details.srt?.url.includes(`key=${details.publishKey}`));
+    assert.equal(details.srt?.passphrase, SRT_PASSPHRASE, "the stage's own passphrase");
+    assert.equal(details.rtmp, null, 'RTMP is offered only where the stage opens it');
 
     const rotated = await api<IngestDetails>('POST', `/api/streams/${stream.id}/ingest/rotate-key`);
     assert.notEqual(rotated.publishKey, details.publishKey);
@@ -326,6 +366,15 @@ describe('stream lifecycle', () => {
     const unchanged = await api<Stream>('GET', `/api/streams/${stream.id}`);
     assert.equal(unchanged.mediaType, 'video');
     assert.equal(unchanged.status, 'published');
+  });
+
+  it('refuses a stage change while published, and takes the stage it has', async () => {
+    const second = await registerStage({ stageId: SECOND_STAGE, name: 'Second stage' });
+    const response = await raw('PUT', `/api/streams/${stream.id}`, { body: { ...draft, stageId: second } });
+    assert.equal(response.status, 409);
+    assert.equal((response.body as { error: string; reason: string }).error, 'stage_locked');
+    assert.equal((response.body as { error: string; reason: string }).reason, 'published');
+    assert.equal((await api<Stream>('GET', `/api/streams/${stream.id}`)).stageId, STAGE_ID);
   });
 
   it('unpublishes: entry removed, stream back to draft', async () => {

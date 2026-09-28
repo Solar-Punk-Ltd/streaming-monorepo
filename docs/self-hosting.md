@@ -63,7 +63,7 @@ own archive names the Compose plugin `docker-compose-v2` and Docker's apt reposi
 The control host runs the manager, the web2 admin and the edge. Each is brought up by its own script,
 run from a checkout of this repository on your own machine, in this order: the manager first,
 because it puts the stack and the Bee nodes on the other hosts, then the admin, which needs a Bee
-node and an ingest address from them, and the edge last, because it checks that each console answers
+node from them and learns each stage's ingest address from the manager, and the edge last, because it checks that each console answers
 before it serves it.
 
 1. **An ssh alias on your machine**, in `~/.ssh/config`. The forward is the way into the manager
@@ -109,13 +109,14 @@ before it serves it.
    shows how to make it. The one line of `deploy_key.pub` is what the stage and Bee hosts authorize.
 
 6. **The stage and Bee hosts**, by their recipes below, as far as a running ABR Uploader
-   deployment. The admin needs its ingest address and a Bee node with a usable postage batch.
+   deployment. The admin needs a Bee node with a usable postage batch. It needs no ingest address:
+   the manager pushes each stage's, and a stream's OBS details come from the stage it is on.
 
 7. **The web2 admin.** From `apps/web2-admin`, make the profile's env file from the sample and fill
-   in what it asks for: `POSTGRES_PASSWORD`, `FEED_PRIVATE_KEY`, `INTERNAL_API_TOKEN`, `BEE_URL` and
-   `POSTAGE_BATCH_ID` of the Bee node it writes through, and `INGEST_HOST`, the stage host encoders
-   send to. Generate your own feed key and token. The sample's values are public and the deploy
-   script refuses them.
+   in what it asks for: `POSTGRES_PASSWORD`, `FEED_PRIVATE_KEY`, `INTERNAL_API_TOKEN`, and `BEE_URL`
+   and `POSTAGE_BATCH_ID` of the Bee node it writes through. Generate your own feed key and token.
+   The sample's values are public and the deploy script refuses them. The `INGEST_*` keys an older
+   env file carries are no longer read, and the deploy names each one it finds.
 
    ```sh
    cp backend/.env.sample backend/.env.brand-a

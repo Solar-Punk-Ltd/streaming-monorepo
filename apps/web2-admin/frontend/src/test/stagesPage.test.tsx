@@ -6,39 +6,10 @@ import { formatAgo } from '../dateUtil';
 import { formatTimeLeft } from '../format';
 import { stampConcern } from '../components/stages/stamps';
 import { StagesPage } from '../pages/StagesPage';
-import { jsonError, jsonOk, mockFetch, pendingFetch, renderWithProviders } from './helpers';
+import { jsonError, jsonOk, makeStage, minutesAgo, mockFetch, pendingFetch, renderWithProviders } from './helpers';
 
 const STAGES = '/api/stages';
 const STAMP = '/api/catalogue-stamp';
-
-const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
-
-function makeStage(overrides: Partial<StageSummary> = {}): StageSummary {
-  return {
-    stageId: '5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f',
-    name: 'Main stage',
-    kind: 'abr-uploader',
-    engine: 'srs',
-    supported: true,
-    stackVersion: '1.4.0',
-    status: 'running',
-    owner: '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3',
-    ingest: { host: 'ingest.example.org', srtPort: 10061, rtmpPort: 10062, rtmpPublic: false, hasSrtPassphrase: true },
-    rungs: [
-      {
-        name: '720p',
-        stamp: { batchId: 'b1'.repeat(32), state: 'active', ttlSeconds: 5 * 86_400, fillRatio: 0.25, immutable: false },
-        chequebook: { health: 'ok', availableBzz: '12.5' },
-      },
-    ],
-    uploader: { state: 'ready', reasons: [] },
-    readiness: { tone: 'ready', reasons: [] },
-    observedAt: minutesAgo(5),
-    receivedAt: minutesAgo(5),
-    retiredAt: null,
-    ...overrides,
-  };
-}
 
 function makeStamp(overrides: Partial<CatalogueStampSummary> = {}): CatalogueStampSummary {
   return {

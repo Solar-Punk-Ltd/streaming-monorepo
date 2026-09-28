@@ -129,6 +129,13 @@ export interface Stream {
    * the console's own responses.
    */
   renditions?: Rendition[];
+  /**
+   * The stage the stream is broadcast on (`GET /api/stages` names it), or
+   * null until one is picked. A draft needs one to be published. It changes
+   * only while the stream is a draft, and a stream that holds a recording
+   * keeps the one it has.
+   */
+  stageId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -140,6 +147,14 @@ export interface StreamInput {
   mediaType: MediaType;
   /** Required: a stream is a promise to viewers about when it starts. */
   scheduledStartTime: string;
+  /**
+   * The stage to broadcast on: one that is not retired and is supported, or
+   * null for none. Absent leaves the stream's stage as it is. A change is
+   * refused with 409 `stage_locked` once the stream is not a draft, or while
+   * it holds a recording and a stage, and a stage that cannot take streams
+   * with 409 `stage_unavailable`.
+   */
+  stageId?: string | null;
 }
 
 /** GET /api/streams */

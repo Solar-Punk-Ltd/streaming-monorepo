@@ -98,6 +98,9 @@ const UNPUBLISH_PROMPTS = {
   },
 } as const;
 
+/** Beside a Publish that is disabled because the draft has no stage. The API's `stage_required` sentence. */
+export const NEEDS_STAGE_HINT = 'Pick the stage this stream is broadcast on before publishing.';
+
 type UnpublishPrompt = (typeof UNPUBLISH_PROMPTS)[keyof typeof UNPUBLISH_PROMPTS];
 
 /**
@@ -237,7 +240,10 @@ export function StreamDetailsPage() {
   // A live or recorded stream can be republished — that is how an edit made
   // mid-broadcast reaches viewers — and it keeps the state it is in. Only a
   // live one cannot be taken off the feed: nothing here can stop the encoder.
-  const canPublish = stream.status !== 'publishing';
+  // A draft goes on the catalogue only once it has a stage; the API refuses
+  // it with stage_required otherwise, and the button says so first.
+  const needsStage = stream.status === 'draft' && stream.stageId === null;
+  const canPublish = stream.status !== 'publishing' && !needsStage;
   // `publishing` keeps saying Publish: a first publish is in flight, and the
   // button is disabled anyway.
   const publishLabel = stream.status === 'draft' || stream.status === 'publishing' ? 'Publish' : 'Republish';
@@ -344,6 +350,14 @@ export function StreamDetailsPage() {
                 <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Media type">
                     <Typography variant="body2">{MEDIA_TYPE_LABEL[stream.mediaType]}</Typography>
+                  </Field>
+                </Grid>
+                <Grid size={{ xs: 6, sm: 4 }}>
+                  <Field label="Stage">
+                    {/* Named by the OBS details, which are read from the stage. */}
+                    <Typography variant="body2">
+                      {ingest?.stage ? ingest.stage.name : stream.stageId ? '—' : 'No stage'}
+                    </Typography>
                   </Field>
                 </Grid>
                 <Grid size={{ xs: 6, sm: 4 }}>
@@ -456,6 +470,14 @@ export function StreamDetailsPage() {
             </Link>
           ) : null}
         </Stack>
+        {needsStage ? (
+          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1 }}>
+            {NEEDS_STAGE_HINT}{' '}
+            <Link component={RouterLink} to={`/edit/${stream.id}`}>
+              Edit the stream
+            </Link>
+          </Typography>
+        ) : null}
 
         <Stack direction="row" spacing={0.5} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap', mt: 1 }}>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
