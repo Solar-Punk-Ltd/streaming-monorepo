@@ -275,6 +275,52 @@ describe('CatalogueBatchService', () => {
     assert.equal(catalogue.row?.active_record?.observedAt, '2026-09-28T10:30:00.000Z');
   });
 
+  it('keeps the pinned batch fresh from the previous batch a move pushes, so a top-up of it ends a refusal', async () => {
+    const { catalogue, feedWrites, batches } = setup();
+    await catalogue.upsert(catalogueStampRecord());
+    await batches.forWrite(TEST_OPERATOR);
+    await feedWrites.record({
+      owner: feed.owner,
+      topic: feed.topicHex,
+      feedIndex: 0,
+      entryCount: 0,
+      payload: [],
+      payloadText: '[]',
+      reference: 'a'.repeat(64),
+      batchId: CATALOGUE_BATCH_ID,
+    });
+    // The pinned batch's last reading gave it a minute, which has run out by the admin's clock.
+    await catalogue.upsert(catalogueStampRecord({ ttlSeconds: 60, observedAt: '2026-09-28T10:01:00.000Z' }));
+    await catalogue.upsert(next({ observedAt: '2026-09-28T10:02:00.000Z' }));
+    await refusedWith(batches.forWrite(TEST_OPERATOR), 'expired', EXPIRED);
+
+    // The manager's move: the record is the batch moved to, and carries the pinned one, topped up, as previous.
+    const { nodeName, beeApiUrl, batchId, immutable, depth, state, fillRatio } = catalogueStampRecord();
+    const previous = { nodeName, beeApiUrl, batchId, immutable, depth, state, ttlSeconds: 90 * 86_400, fillRatio };
+    await catalogue.upsert(next({ observedAt: '2026-09-28T10:03:00.000Z', previous }));
+
+    assert.equal(catalogue.row?.active_batch_id, CATALOGUE_BATCH_ID);
+    assert.equal(catalogue.row?.active_record?.ttlSeconds, 90 * 86_400);
+    assert.equal(catalogue.row?.active_record?.observedAt, '2026-09-28T10:03:00.000Z');
+    assert.equal(catalogue.row?.active_record?.designatedAt, catalogueStampRecord().designatedAt);
+    assert.deepEqual(await batches.forWrite(TEST_OPERATOR), {
+      beeApiUrl: 'http://192.0.2.10:1633',
+      batchId: CATALOGUE_BATCH_ID,
+    });
+    assert.equal((await batches.status()).moveWaitingTo, NEXT_BATCH_ID, 'the move still waits');
+
+    // A previous that names a batch the admin does not write with changes nothing, and nor does a record without one.
+    await catalogue.upsert(
+      next({
+        observedAt: '2026-09-28T10:04:00.000Z',
+        previous: { ...previous, batchId: 'e4'.repeat(32), ttlSeconds: 1 },
+      }),
+    );
+    await catalogue.upsert(next({ observedAt: '2026-09-28T10:04:30.000Z', previous: null }));
+    assert.equal(catalogue.row?.active_record?.ttlSeconds, 90 * 86_400);
+    assert.equal(catalogue.row?.active_record?.observedAt, '2026-09-28T10:03:00.000Z');
+  });
+
   it('tells the console the batch it writes with and a waiting move, without the Bee API address', async () => {
     const { catalogue, feedWrites, batches } = setup();
     await catalogue.upsert(catalogueStampRecord());

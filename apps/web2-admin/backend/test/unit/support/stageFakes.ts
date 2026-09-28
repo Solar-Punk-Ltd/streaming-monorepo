@@ -224,6 +224,25 @@ export function stagesWithMain(clock: TestClock = new TestClock(), over: Partial
   return stages;
 }
 
+/** As the SQL: what `active_record` becomes once `record` is stored over `existing`. */
+function activeRecordAfter(
+  existing: CatalogueStampRow | null,
+  record: CatalogueStampRecord,
+): CatalogueStampRecord | null {
+  const active = existing?.active_record ?? null;
+  if (existing?.active_batch_id === record.batchId) return structuredClone(record);
+  const previous = record.previous;
+  if (
+    active &&
+    previous &&
+    existing?.active_batch_id === previous.batchId &&
+    Date.parse(active.observedAt) <= Date.parse(record.observedAt)
+  ) {
+    return { ...structuredClone(active), ...structuredClone(previous), observedAt: record.observedAt };
+  }
+  return active && structuredClone(active);
+}
+
 export class FakeCatalogueStampStore implements CatalogueStampStore {
   row: CatalogueStampRow | null = null;
   /** Every batch `pin` was asked to pin, in order, whether it changed anything or not. */
@@ -251,8 +270,7 @@ export class FakeCatalogueStampStore implements CatalogueStampStore {
       cleared_observed_at: afterClear ? null : existing!.cleared_observed_at,
       cleared_at: afterClear ? null : existing!.cleared_at,
       active_batch_id: existing?.active_batch_id ?? null,
-      active_record:
-        existing?.active_batch_id === record.batchId ? structuredClone(record) : (existing?.active_record ?? null),
+      active_record: activeRecordAfter(existing, record),
       active_pinned_at: existing?.active_pinned_at ?? null,
     };
     return structuredClone(this.row);
