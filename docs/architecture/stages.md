@@ -98,6 +98,23 @@ manager's admin link already stores. An uploader's routes take that uploader's o
 to the admin by its sha256 on the stage record. While the stages move over, the shared token is
 still taken on an uploader's routes, as an unattributed caller; the last phase stops that.
 
+As built in phase 5:
+
+- Only a record whose `adminToken.kind` is `own` attributes a call. A `shared` record's hash is the
+  shared token's, and the shared token is compared with the admin's current `INTERNAL_API_TOKEN`
+  itself, so an old shared token is refused once that changes, whatever a record still names.
+- A retired stage's token is refused. A token that is the own token of more than one active stage
+  is refused as well, since it cannot say which stage calls, and the admin logs a warning naming
+  the stages.
+- A stage's token is answered only about its stage's streams. A stream on another stage, or with no
+  stage, is the same 404 as a stream that does not exist, and nothing is written for it.
+- An unattributed call is logged at info on the first one after boot, then at most once an hour
+  with the number of calls since the last line. Neither token nor its hash is logged.
+- `GET /api/internal/stages/self` on the shared token answers the 404 an unknown path gets, which
+  is what an admin without the route answers.
+- The console's Stages page says per stage whether its uploader is on its own token, still on the
+  shared one, or on none the manager pushed.
+
 **Every moment the admin orders by is the manager's.** A record carries `observedAt`, and each
 `DELETE` carries a body `{ observedAt }` (`stageRetireRequestSchema`,
 `catalogueStampClearRequestSchema`): the moment the manager saw the deployment, or the catalogue
