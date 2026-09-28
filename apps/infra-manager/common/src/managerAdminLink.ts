@@ -1,4 +1,5 @@
 import { ADMIN_API_TOKEN_KEY, ADMIN_API_URL_KEY, sameAdminOrigin } from './adminLink.js';
+import { isLoopbackIngestHost } from './ingestHost.js';
 import { settingValueProblem } from './settingValues.js';
 import { stackSettingFieldProblem } from './stackSettingFields.js';
 
@@ -57,6 +58,30 @@ function keyValueProblem(key: string, value: string): string | null {
 /** Why a new deployment's `ADMIN_API_URL` could not be this address, or null. */
 export function adminUrlProblem(url: string): string | null {
   return keyValueProblem(ADMIN_API_URL_KEY, url);
+}
+
+/**
+ * What the Manager settings card says under an admin link address in plain http to another host than the manager's
+ * own. The manager takes it, since a test setup may need it, but every push to it carries the registrar token and
+ * each stage's SRT passphrase and token hash in clear.
+ */
+export const PLAIN_HTTP_ADMIN_LINK_WARNING =
+  "This address is plain http. Every push to it carries the stored token and each stage's SRT passphrase in clear, so in production give the https address the edge serves the web2 admin on.";
+
+/**
+ * The warning for a link address in plain http to a host that is not the manager's own (`localhost`, `127.0.0.0/8`,
+ * `0.0.0.0`, `[::1]`), or null: for https, for a loopback host, and for an address that is no URL, which the
+ * address rules refuse on their own.
+ */
+export function plainHttpAdminLinkWarning(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'http:' || isLoopbackIngestHost(parsed.host)) return null;
+  return PLAIN_HTTP_ADMIN_LINK_WARNING;
 }
 
 /** Why a new deployment's `ADMIN_API_TOKEN` could not be this token, or null. */

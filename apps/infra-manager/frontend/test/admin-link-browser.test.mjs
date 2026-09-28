@@ -34,7 +34,7 @@ import { fileURLToPath } from 'node:url';
 
 import { createServer } from 'vite';
 
-import { ADMIN_LINK_TEST_OUTCOMES } from '@streaming-infra-manager/common';
+import { ADMIN_LINK_TEST_OUTCOMES, PLAIN_HTTP_ADMIN_LINK_WARNING } from '@streaming-infra-manager/common';
 
 import { DEV_PASSWORD, DEV_USERNAME } from '../dev/mock-auth.mjs';
 import { adminLinkTestText, TYPED_TOKEN_AT_LINK } from '../src/adminLink/adminLinkText.ts';
@@ -194,6 +194,30 @@ test(
         assert.equal(await evaluate(`(${inCard('Save')}).disabled`), true);
         assert.equal((await body()).includes('offline-password'), false);
         assert.equal(await noSidewaysScroll(), true);
+      },
+    );
+
+    await t.test(
+      'warns about a plain http address to another host, and not about a loopback or an https one',
+      async () => {
+        const warning = `(${card})?.querySelector('[data-plain-http-warning] .MuiAlert-message')?.innerText ?? null`;
+        await fillWhenPresent(evaluate, urlField, 'http://admin.offline.example', 'the address field');
+        await waitFor(
+          () => evaluate(warning),
+          (text) => text === PLAIN_HTTP_ADMIN_LINK_WARNING,
+          'the plain http warning',
+        );
+        assert.equal(await noSidewaysScroll(), true);
+        await screenshot('manager-link-plain-http-phone.png');
+
+        for (const url of ['http://127.0.0.1:9877', ADMIN_URL]) {
+          await fillWhenPresent(evaluate, urlField, url, 'the address field');
+          await waitFor(
+            () => evaluate(warning),
+            (text) => text === null,
+            `no plain http warning for ${url}`,
+          );
+        }
       },
     );
 
