@@ -25,7 +25,7 @@ import { array, boolean, number, object, string, InferType } from 'yup';
 
 import { ALL_SERVICES, PROFILE_KINDS } from '../types/index.js';
 
-import { managerAdminTokenField, newDeploymentSettingsField } from './deploymentSettings.js';
+import { newDeploymentSettingsField } from './deploymentSettings.js';
 import { ENGINE_SETTING_VALUE_FIELDS } from './engineSettingValues.js';
 
 const ONE_ENGINE_MESSAGE = 'components may include at most one engine (srs or ome, not both)';
@@ -324,7 +324,6 @@ export const createProfileSchema = object({
   stack_version_id: stackVersionIdField(),
   engine_settings: engineSettingsField(),
   stack_settings: newDeploymentSettingsField(),
-  use_manager_admin_token: managerAdminTokenField(),
 }).noUnknown(true);
 
 export type CreateProfileInput = InferType<typeof createProfileSchema>;
@@ -473,8 +472,6 @@ export const createGroupSchema = object({
   engine_settings: engineSettingsField(),
   // One list for every member, as the engine settings are.
   stack_settings: newDeploymentSettingsField(),
-  // Each member gets its own copy of the one stored token.
-  use_manager_admin_token: managerAdminTokenField(),
 }).noUnknown(true);
 
 export type CreateGroupInput = InferType<typeof createGroupSchema>;

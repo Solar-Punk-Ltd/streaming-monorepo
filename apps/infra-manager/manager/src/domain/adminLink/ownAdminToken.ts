@@ -12,7 +12,8 @@ import {
  * hex characters like every other generated secret, keeps it with them, writes it into the deployment's env file,
  * and pushes its sha256 on the stage record, so the admin knows it before the uploader's first call. A value the
  * deployment stores for `ADMIN_API_TOKEN`, typed or copied from the link by a manager older than this, is written
- * in its place and never replaced; `docs/features/web2-admin-link.md` says how one is rotated.
+ * in its place and never replaced. The admin refuses such a token from an uploader since stages phase 9, so the
+ * deployment's token is rotated, which takes it out; `docs/features/web2-admin-link.md` says how.
  */
 
 /** The deployment as these rules need it. */

@@ -55,8 +55,8 @@ export const ROTATE_ADMIN_TOKEN_LABEL = "Rotate the uploader's admin token";
 
 /** Said under the action. */
 export const ROTATE_ADMIN_TOKEN_NOTE =
-  'The next deploy gives the uploader a new token of its own and registers it with the web2 admin before the uploader starts. An uploader still on the shared token moves to one of its own this way.';
+  'The next deploy gives the uploader a new token of its own and registers it with the web2 admin before the uploader starts. An uploader on a token the manager did not generate, which the web2 admin refuses, gets one of its own this way and no other.';
 
 /** What the confirmation says before anything is taken out. */
 export const ROTATE_ADMIN_TOKEN_BODY =
-  "The uploader's current token is taken out, and the web2 admin stops taking it once the manager next pushes this stage. The running uploader then cannot report until the deployment is redeployed, which generates the new token. An uploader still on the shared token keeps being taken until then.";
+  "The uploader's current token is taken out, and the web2 admin stops taking it once the manager next pushes this stage. The running uploader then cannot report until the deployment is redeployed, which generates the new token.";

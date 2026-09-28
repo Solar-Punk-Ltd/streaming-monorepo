@@ -259,7 +259,7 @@ export class ProfileService {
    * uploader when the create names neither key. A token is never copied in:
    * the first deploy of a deployment linked to the manager's admin generates
    * one of its own (`adminLink/ownAdminToken.ts`), which the web2 admin rule
-   * counts for that address. `use_manager_admin_token` is not read.
+   * counts for that address.
    */
   private async createdStackSettings(
     name: string,
@@ -388,11 +388,6 @@ export class ProfileService {
     engine_settings?: EngineSettings | null;
     /** Absent stores none, so the version's values stand. Checked against the list its version gives this deployment. */
     stack_settings?: readonly NewDeploymentSetting[] | null;
-    /**
-     * Taken and ignored, for a client older than the token of a deployment's own: it asked for the manager's stored
-     * token to be copied in, which no create does any more. Such a create is judged as one that sends no token.
-     */
-    use_manager_admin_token?: boolean | null;
   }): Promise<ProfileWithContainers> {
     const existing = await this.repo.findByName(input.name);
     if (existing) {
@@ -1008,8 +1003,6 @@ export class ProfileService {
     engine_settings?: EngineSettings | null;
     /** What every member is created with, checked against the list its version gives such a member. Absent stores none. */
     stack_settings?: readonly NewDeploymentSetting[] | null;
-    /** Taken and ignored, as a single create takes it. */
-    use_manager_admin_token?: boolean | null;
   }): Promise<{ group: DeploymentGroup; profiles: ProfileWithContainers[] }> {
     // The same invariant updateGroupConfig enforces, at the other door. A pool's
     // rungs each pay with their own batch, sized for that rung's bitrate, so one

@@ -7,9 +7,9 @@
  * link's address gets a token of its own at its first deploy, which
  * `ownAdminToken.test.ts` proves. This proves the create stores the address
  * alone, counts that token for the link's address and no other when it holds
- * the web2 admin rule, takes the retired `use_manager_admin_token` and ignores
- * it, and gives a create for an uploader that names neither key the manager's
- * own address.
+ * the web2 admin rule, drops `use_manager_admin_token`, which is gone, as any
+ * key a create does not name, and gives a create for an uploader that names
+ * neither key the manager's own address.
  */
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -177,12 +177,15 @@ describe("a create for an uploader at the manager's web2 admin address", () => {
   });
 });
 
-describe('the retired use_manager_admin_token', () => {
-  it('is taken and ignored: nothing is copied, and the create is judged as one that sends no token', async () => {
+describe('use_manager_admin_token, which is gone', () => {
+  // Taken and ignored from 2026-09-28 until stages phase 9. A create drops a key its schema does not name, so an
+  // older script that still sends it is not refused, and nothing is copied whatever it says.
+  it('is dropped as any key a create does not name, and the create stores the address alone', async () => {
     const app = await appFor();
     try {
-      const created = await app.create({ ...LINKED, use_manager_admin_token: true });
+      const created = await app.create({ ...LINKED, use_manager_admin_token: 'please' });
       assert.equal(created.status, 202, JSON.stringify(created.body));
+      assert.equal('use_manager_admin_token' in (created.body as object), false);
       assert.deepEqual(await app.harness.profiles.stackSettingsForDeploy('stage'), { ADMIN_API_URL: ADMIN_URL });
 
       const group = await app.createGroup({ ...LINKED, use_manager_admin_token: true });
@@ -190,47 +193,6 @@ describe('the retired use_manager_admin_token', () => {
       assert.deepEqual(await app.harness.profiles.stackSettingsForDeploy('fleet-profile-1'), {
         ADMIN_API_URL: ADMIN_URL,
       });
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('lets a typed token stand beside it', async () => {
-    const app = await appFor();
-    try {
-      const created = await app.create({
-        stack_settings: [
-          { key: 'ADMIN_API_URL', value: ADMIN_URL },
-          { key: 'ADMIN_API_TOKEN', value: TYPED_TOKEN },
-        ],
-        use_manager_admin_token: true,
-      });
-
-      assert.equal(created.status, 202, JSON.stringify(created.body));
-      assert.equal((await app.harness.profiles.stackSettingsForDeploy('stage')).ADMIN_API_TOKEN, TYPED_TOKEN);
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('with no key named, starts the deployment at the manager address as a create without it does', async () => {
-    const app = await appFor();
-    try {
-      const created = await app.create({ use_manager_admin_token: true });
-      assert.equal(created.status, 202, JSON.stringify(created.body));
-      assert.deepEqual(await app.harness.profiles.stackSettingsForDeploy('stage'), { ADMIN_API_URL: ADMIN_URL });
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('is still refused when it is not true or false', async () => {
-    const app = await appFor();
-    try {
-      const refused = await app.create({ ...LINKED, use_manager_admin_token: 'please' });
-
-      assert.equal(refused.status, 400, JSON.stringify(refused.body));
-      assert.equal(app.harness.profiles.rows.has('stage'), false);
     } finally {
       await app.close();
     }

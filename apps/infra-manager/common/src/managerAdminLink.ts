@@ -37,7 +37,7 @@ export interface AdminTokenRotateAnswer {
 
 /** The sentence a rotation answers with. */
 export const ADMIN_TOKEN_ROTATED_MESSAGE =
-  "The uploader's admin token is cleared. Redeploy to give the uploader a new one: the deploy generates it and tells the web2 admin its sha256 before the uploader starts. Until then the web2 admin stops taking the old token once the manager next pushes the stage, and an uploader still on the shared token keeps it.";
+  "The uploader's admin token is cleared. Redeploy to give the uploader a new one: the deploy generates it and tells the web2 admin its sha256 before the uploader starts. Until then the web2 admin stops taking the old token once the manager next pushes the stage.";
 
 /** What `PUT /manager-settings/admin-link` takes. */
 export interface ManagerAdminLinkSave {

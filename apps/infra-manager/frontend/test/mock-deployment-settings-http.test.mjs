@@ -648,12 +648,10 @@ describe(
         stack_version_id: 2,
         stamp_id: 'ab'.repeat(32),
         stack_settings: [{ key: 'ADMIN_API_URL', value: ADMIN_URL }],
-        use_manager_admin_token: true,
       });
       const catalog = await settingsOf(name);
 
       assert.equal(created.status, 202, JSON.stringify(created.body));
-      assert.equal('use_manager_admin_token' in created.body, false, 'the request is kept off the row');
       assert.equal(entryOf(catalog, 'ADMIN_API_TOKEN').stored, false);
       assert.equal(entryOf(catalog, 'ADMIN_API_URL').storedValue, ADMIN_URL);
       assert.equal(JSON.stringify(catalog).includes(token), false);

@@ -230,8 +230,9 @@ export class StageRecordBuilder {
         token === ''
           ? null
           : // By where the token came from, never by comparing it with the link's: only the token the manager
-            // generated for this deployment is its own. A copied or typed token, or a version's, is shared, so an old
-            // copy of the registrar token never becomes a stage's own after the link's token changes.
+            // generated for this deployment is its own. A copied or typed token, or a version's, is shared, which the
+            // admin refuses and reports as one to rotate, so an old copy of the registrar token never becomes a
+            // stage's own after the link's token changes.
             { sha256: sha256Hex(token), kind: next.ownAdminToken ? 'own' : 'shared' },
     };
 
