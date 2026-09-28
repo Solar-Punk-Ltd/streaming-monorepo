@@ -91,6 +91,8 @@ interface Setup {
   answer?: (request: CatalogueRequest) => Promise<CataloguePushOutcome> | CataloguePushOutcome;
   designated?: boolean;
   beeApiUrl?: string;
+  /** A Bee API per deployment name, over `beeApiUrl`. */
+  beeApiUrls?: Record<string, string>;
   profiles?: Profile[];
 }
 
@@ -104,17 +106,23 @@ async function publisherFor(setup: Setup = {}) {
   const profiles = setup.profiles ?? [makeProfile({ name: 'catalogue', kind: 'custom', components: ['bee-uploader'] })];
   const link = { ...(setup.link ?? { url: LINK_URL, token: LINK_TOKEN }) };
   const sent: CatalogueRequest[] = [];
-  const state = { reading: readingOf(), readingDelayMs: 0, readings: 0 };
+  const state: {
+    reading: Reading;
+    /** A reading per batch, where a test sets one; `reading` for any other. */
+    byBatch: Map<string, Reading>;
+    readingDelayMs: number;
+    readings: number;
+  } = { reading: readingOf(), byBatch: new Map(), readingDelayMs: 0, readings: 0 };
   const publisher = new CataloguePublisher({
     designation: store,
     profiles: { findByName: async (name) => profiles.find((profile) => profile.name === name) ?? null },
-    reading: async () => {
+    reading: async (_profile, batchId) => {
       // A slow node: the record still says the moment its row was read.
       clock.time += state.readingDelayMs;
       state.readings += 1;
-      return state.reading;
+      return state.byBatch.get(batchId) ?? state.reading;
     },
-    beeApiUrl: () => setup.beeApiUrl ?? BEE_API,
+    beeApiUrl: (profile) => setup.beeApiUrls?.[profile.name] ?? setup.beeApiUrl ?? BEE_API,
     link: { storedLink: async () => ({ ...link }) },
     events,
     managerId: MANAGER_ID,
@@ -158,6 +166,7 @@ describe('the catalogue stamp record', () => {
       designatedAt: DESIGNATED_AT.toISOString(),
       // The moment the row was read, before the node took its two and a half seconds.
       observedAt: new Date(startedAt).toISOString(),
+      previous: null,
     });
     assert.equal(t.publisher.status().lastPush?.outcome, 'stored');
     assert.equal(t.publisher.status().reading?.batchId, BATCH);
@@ -365,8 +374,12 @@ describe('a cleared designation', () => {
 describe('while the catalogue is moving to another batch', () => {
   const NEXT_BATCH = 'cd'.repeat(32);
 
-  async function moving() {
+  const NEXT_BEE_API = 'http://192.0.2.31:10025';
+
+  async function moving(setup: Setup = {}) {
     const t = await publisherFor({
+      beeApiUrls: { 'catalogue-two': NEXT_BEE_API },
+      ...setup,
       profiles: [
         makeProfile({ name: 'catalogue', kind: 'custom', components: ['bee-uploader'] }),
         makeProfile({ name: 'catalogue-two', kind: 'custom', components: ['bee-uploader'] }),
@@ -380,7 +393,7 @@ describe('while the catalogue is moving to another batch', () => {
     return t;
   }
 
-  it('pushes the batch moved to, and reads the batch moved from for the card alone', async () => {
+  it('pushes the batch moved to, and carries the batch moved from as previous, which the card reads too', async () => {
     const t = await moving();
     t.publisher.start();
     await settle();
@@ -390,18 +403,79 @@ describe('while the catalogue is moving to another batch', () => {
     for (const request of stores(t.sent)) {
       assert.equal(request.record.batchId, NEXT_BATCH);
       assert.equal(request.record.nodeName, 'catalogue-two');
+      assert.equal(request.record.beeApiUrl, NEXT_BEE_API);
+      assert.deepEqual(request.record.previous, {
+        nodeName: 'catalogue',
+        beeApiUrl: BEE_API,
+        batchId: BATCH,
+        immutable: true,
+        depth: 20,
+        state: 'active',
+        ttlSeconds: 90 * 86_400,
+        fillRatio: 2 / 16,
+      });
+      assert.ok(catalogueStampRecordSchema.safeParse(request.record).success);
     }
-    assert.equal(
-      t.sent.some((request) => JSON.stringify(request).includes(BATCH)),
-      false,
-      'nothing of the batch moved from goes to the admin',
-    );
     const { reading, previousReading } = t.publisher.status();
     assert.equal(reading?.batchId, NEXT_BATCH);
     assert.equal(previousReading?.batchId, BATCH);
     assert.equal(previousReading?.state, 'active');
     assert.equal(previousReading?.depth, 20);
     assert.equal(t.state.readings % 2, 0, 'both batches are read on each round');
+    t.publisher.stop();
+  });
+
+  it('pushes at the next check when the batch moved from is topped up, and not for its clock’s wear', async () => {
+    const t = await moving();
+    t.publisher.start();
+    await settle();
+    assert.equal(stores(t.sent).length, 1);
+
+    t.state.byBatch.set(BATCH, readingOf({ ttl: 90 * 86_400 - 10 }));
+    await t.clock.advance(CATALOGUE_CHECK_MS);
+    assert.equal(stores(t.sent).length, 1, 'ten seconds of wear is no change');
+
+    t.state.byBatch.set(BATCH, readingOf({ ttl: 200 * 86_400 }));
+    await t.clock.advance(CATALOGUE_CHECK_MS);
+    const sent = stores(t.sent);
+    assert.equal(sent.length, 2, 'a top-up of the batch moved from is a change');
+    assert.equal(sent[1]!.record.previous?.ttlSeconds, 200 * 86_400);
+    assert.equal(sent[1]!.record.ttlSeconds, 90 * 86_400, 'the batch moved to reads as it did');
+
+    t.state.byBatch.set(BATCH, readingOf({ ttl: 200 * 86_400, utilization: 9 }));
+    await t.clock.advance(CATALOGUE_CHECK_MS);
+    assert.equal(stores(t.sent).length, 3, 'a fill of the batch moved from is a change');
+    t.publisher.stop();
+  });
+
+  it('leaves the batch moved from out when its node did not answer or reaches the dialling host alone', async () => {
+    const t = await moving();
+    t.state.byBatch.set(BATCH, { health: stampHealthFrom(BATCH, null), depth: null });
+    t.publisher.start();
+    await settle();
+    assert.equal(stores(t.sent)[0]!.record.previous, null, 'a node that did not answer says nothing new');
+    assert.equal(t.publisher.status().previousReading?.state, 'unknown', 'the card still says it');
+
+    const loopback = await moving({
+      beeApiUrls: { catalogue: 'http://127.0.0.1:1633', 'catalogue-two': NEXT_BEE_API },
+    });
+    loopback.publisher.start();
+    await settle();
+    assert.equal(stores(loopback.sent)[0]!.record.previous, null);
+    t.publisher.stop();
+    loopback.publisher.stop();
+  });
+
+  it('carries no previous once the move is released', async () => {
+    const t = await moving();
+    t.publisher.start();
+    await settle();
+    assert.ok(stores(t.sent)[0]!.record.previous);
+    await t.store.release(new Date(t.clock.now()), 2, 'op');
+    await t.publisher.pushNow();
+    const last = stores(t.sent).at(-1)!;
+    assert.equal(last.record.previous, null);
+    assert.equal(last.record.batchId, NEXT_BATCH);
     t.publisher.stop();
   });
 
