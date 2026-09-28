@@ -165,9 +165,9 @@ Two rows older than stages are let through, since each has no stage to keep: a d
 recording may be given its first stage, and a stream already on the catalogue is republished as it
 is, with no stage until it is unpublished. Only a draft is refused at publish for having none, and
 a draft without a recording is refused as well when its stage no longer takes streams. The console
-warns that the first stage of such a recorded draft is final and asks before saving it. Phase 6 must
-revisit these rows, whose recordings are signed by the brand key: for example by offering them only
-stages whose owner matches the recording's. The
+warns that the first stage of such a recorded draft is final and asks before saving it. Their
+recordings are signed by the brand key, so since phase 6 the picker offers them only stages whose
+owner is the recording's, and the admin refuses any other with `409 stage_locked`, reason `owner`. The
 admin no longer asks whether the ingest verifies the per-stream `key=`: every uploader that takes
 streams from it does, so `INGEST_KEY_VERIFIED` leaves the env with the other `INGEST_*` keys.
 
@@ -250,6 +250,36 @@ with its own token and compares its signer with the owner the admin names. An ad
 404 there, or a caller still on the shared token, falls back to today's comparison with the
 admin's public `/api/config`. The per-declaration owner check is unchanged: the declaration names
 the stage's owner, and a stream of another stage is refused at the gate.
+
+## A key per stage, as built in phase 6
+
+- **The admin.** A stream's `owner` is its stage's, kept as the brand key's is, lower case and
+  without `0x`. It is set when the stream is created on a stage and whenever its stage is set or
+  changed, which only a draft allows, and a stream with no stage has the brand key's. The publish
+  claim of a draft that holds no recording reads it from the stage again in the same statement, so
+  a key rotated in the manager, which is pushed as a new `owner`, is what the entry names. A row
+  that holds a recording never changes owner: a publish of one whose stage now signs as another
+  address is refused, `409 feed_owner_mismatch`, "the recording was made under another key". A
+  stream already on the catalogue keeps the owner publishing fixed, and so does a state report's
+  write; the check that every row's owner is the brand key's is gone from both. The catalogue is
+  still signed by `FEED_PRIVATE_KEY`, and `/api/config` still names that address for the viewer
+  build. A reconcile, and the boot's dry run of it, count as ours every entry whose owner is the
+  brand key's or any stage's the admin holds, retired stages included.
+- **The uploader.** `assertAdminSignsAsThisService`, now in
+  `apps/hls-stream/packages/stream-uploader/src/libs/AdminOwnerCheck.ts`, asks `stages/self` first.
+  A mismatch refuses to start with both addresses and says to fix the deployment's `STREAM_KEY` in
+  the manager, or the stage the admin holds. A 404 falls back to `/api/config`, where a refusal
+  says to give the deployment a token of its own. A stage read that fails otherwise only warns,
+  and is not followed by the config, whose owner is not a stage's.
+- **The manager.** Test connection on a deployment asks `stages/self` with the deployment's token
+  wherever there is a stream address to compare, and asks `/api/config` only on its 404. The
+  wizard's test compares no owner, since the new stage's key is generated in the wizard and the
+  admin learns its address at the first deploy. Nothing tells an operator to give a stage the
+  admin's key.
+- **Left as it was.** An entry under a key a stage signed with before the manager rotated it is no
+  longer counted as ours by a reconcile, and is copied through as it is. A stream that was
+  published, and not yet live, when its stage's key was rotated keeps the old owner until it is
+  unpublished and published again, and its broadcast is refused at the gate until then.
 
 ## Moving the catalogue to another batch
 
