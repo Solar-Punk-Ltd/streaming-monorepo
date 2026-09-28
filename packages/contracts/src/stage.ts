@@ -34,7 +34,12 @@ export type StageChequebookHealth = (typeof STAGE_CHEQUEBOOK_HEALTHS)[number];
 export const STAGE_READINESS_TONES = ['ready', 'warning', 'blocked', 'unknown'] as const;
 export type StageReadinessTone = (typeof STAGE_READINESS_TONES)[number];
 
-/** Whether a stage's uploader presents a token of its deployment's `own`, or the admin link's `shared` one. */
+/**
+ * Where the token a stage's uploader presents came from: `own`, the one the manager generated for the deployment, or
+ * `shared`, any other (one copied from the admin link by an older manager, typed, or set by the version). Only an
+ * `own` token is taken on the uploader's routes; since phase 9 a `shared` one is refused there, and the stage must
+ * have its token rotated in the manager, whose next deploy generates one of its own.
+ */
 export const ADMIN_TOKEN_KINDS = ['own', 'shared'] as const;
 export type AdminTokenKind = (typeof ADMIN_TOKEN_KINDS)[number];
 
@@ -58,6 +63,12 @@ export const CATALOGUE_STAMP_PATH = '/api/internal/catalogue-stamp';
  * taken for a stage id.
  */
 export const STAGE_SELF_PATH = '/api/internal/stages/self';
+
+/**
+ * `GET`, on the registrar token alone: answers 204 and does nothing else. The manager's Test connection on its link
+ * proves the stored token with it, since the uploader's routes no longer take that token.
+ */
+export const REGISTRAR_CHECK_PATH = '/api/internal/registrar';
 
 const someText = z.string().min(1);
 
