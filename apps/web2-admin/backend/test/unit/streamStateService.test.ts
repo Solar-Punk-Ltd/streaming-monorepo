@@ -289,6 +289,44 @@ describe('StreamStateService audit', () => {
     assert.deepEqual(entry?.details, { feedIndex: outcome.feed.index, entryStatus: 'live' });
   });
 
+  it('records the recording its write published when a later vod report lands before the write reads the row', async () => {
+    // A re-broadcast ends twice in quick succession: recording 7 is stored,
+    // then recording 9, and only then does the first report's republish read
+    // the row. Its write lists recording 9, as the catalogue should; the
+    // first report's entry names that write, beside its own 7.
+    const { store, gateway, audit, state, stream } = await setup();
+    await state.report(stream.id, { state: 'live' });
+    const markVod = store.markVod.bind(store);
+    store.markVod = async (id, allowedFrom, manifestIndex, durationSeconds) => {
+      const row = await markVod(id, allowedFrom, manifestIndex, durationSeconds);
+      await markVod(id, ['vod'], 9, 70);
+      return row;
+    };
+    audit.entries.length = 0;
+
+    const outcome = await state.report(stream.id, { state: 'vod', index: 7, duration: 62.5 });
+
+    const written = entryAt(gateway, outcome.feed.index, stream.topic);
+    assert.deepEqual([written.index, written.duration], [9, 70], 'the catalogue lists the later recording');
+    assert.deepEqual(audit.entries, [
+      {
+        actor: { kind: 'uploader' },
+        action: 'stream.state.vod',
+        streamId: stream.id,
+        topic: stream.topic,
+        statusBefore: 'live',
+        statusAfter: 'vod',
+        details: {
+          index: 7,
+          duration: 62.5,
+          feedIndex: outcome.feed.index,
+          entryStatus: 'vod',
+          entryRecording: { index: 9, duration: 70 },
+        },
+      },
+    ]);
+  });
+
   it('records the transition when the republish after it failed, with the reason', async () => {
     // The state is persisted before the feed write, so it did move; the entry
     // says so, and that the catalogue has not caught up.
