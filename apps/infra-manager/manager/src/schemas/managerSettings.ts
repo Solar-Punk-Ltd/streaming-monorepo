@@ -1,5 +1,5 @@
 import type { AdminLinkTokenChoice } from '@streaming-infra-manager/common';
-import { InferType, mixed, number, object, string } from 'yup';
+import { boolean, InferType, mixed, number, object, string } from 'yup';
 
 /** Far past any real address or token, while keeping a save a small request. */
 const MAX_TEXT_LENGTH = 8192;
@@ -81,6 +81,7 @@ export type TestAdminLinkBody = InferType<typeof testAdminLinkSchema>;
 const CATALOGUE_REVISION_MESSAGE = 'expectedRevision is the revision the page read, a whole number';
 const CATALOGUE_PROFILE_MESSAGE = 'profileName is the name of the deployment whose Bee node holds the batch';
 const CATALOGUE_BATCH_MESSAGE = 'batchId is a batch id, 64 hex digits with or without 0x';
+const CATALOGUE_MOVE_MESSAGE = 'move is true to move the catalogue to this batch, false or left out otherwise';
 
 const catalogueRevision = number()
   .typeError(CATALOGUE_REVISION_MESSAGE)
@@ -90,7 +91,8 @@ const catalogueRevision = number()
 
 /**
  * What `PUT /manager-settings/catalogue-node` takes: the deployment and the batch its node holds, at the revision the
- * page read. Only the shape here: whether that node and that batch can hold the catalogue is the service's to answer.
+ * page read, and `move: true` when the page confirmed moving the catalogue to that batch. Only the shape here: whether
+ * that node and that batch can hold the catalogue is the service's to answer.
  */
 export const saveCatalogueNodeSchema = object({
   expectedRevision: catalogueRevision,
@@ -102,6 +104,8 @@ export const saveCatalogueNodeSchema = object({
     .typeError(CATALOGUE_BATCH_MESSAGE)
     .required(CATALOGUE_BATCH_MESSAGE)
     .matches(/^(0x)?[0-9a-fA-F]{64}$/, CATALOGUE_BATCH_MESSAGE),
+  // strict: yup would otherwise read the text "true" as the boolean, and a move is confirmed by the page alone.
+  move: boolean().strict().typeError(CATALOGUE_MOVE_MESSAGE).notRequired(),
 }).noUnknown(true);
 
 export type SaveCatalogueNodeBody = InferType<typeof saveCatalogueNodeSchema>;
@@ -110,3 +114,8 @@ export type SaveCatalogueNodeBody = InferType<typeof saveCatalogueNodeSchema>;
 export const clearCatalogueNodeSchema = object({ expectedRevision: catalogueRevision }).noUnknown(true);
 
 export type ClearCatalogueNodeBody = InferType<typeof clearCatalogueNodeSchema>;
+
+/** What `POST /manager-settings/catalogue-node/release` takes: the revision the page read. */
+export const releaseCatalogueNodeSchema = object({ expectedRevision: catalogueRevision }).noUnknown(true);
+
+export type ReleaseCatalogueNodeBody = InferType<typeof releaseCatalogueNodeSchema>;

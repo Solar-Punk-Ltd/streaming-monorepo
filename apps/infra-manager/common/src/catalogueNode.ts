@@ -92,17 +92,39 @@ export interface CataloguePushState {
   at: string;
 }
 
-/** What `GET /manager-settings/catalogue-node` answers, and what a save or a clear answers. */
+/**
+ * The batch the catalogue is moving from, while a move is pending: the one pinned before the move, which holds the
+ * catalogue's history until the web2 admin has stamped every slot again under the pinned batch, and which a release
+ * takes out.
+ */
+export interface CatalogueMove {
+  /** The deployment whose Bee node holds that batch. */
+  profileName: string;
+  /** The batch, 64 hex digits without `0x`, in lower case. */
+  batchId: string;
+  /** When the move was made, ISO 8601. */
+  startedAt: string;
+  /** Who made it. */
+  startedBy: string | null;
+  /** The manager's last reading of that batch, or null before any. It is read, never pushed to the admin. */
+  reading: CatalogueReading | null;
+}
+
+/** What `GET /manager-settings/catalogue-node` answers, and what a save, a clear or a release answers. */
 export interface CatalogueNodeAnswer {
   /** Null when no catalogue node is designated, never or since a clear. */
   designation: CatalogueDesignation | null;
   /**
    * The deployment and the batch the catalogue is pinned to, which stay recorded after a clear, or null before the
-   * first designation. Only this batch can be designated again until moving the catalogue exists, and this deployment
-   * is not removed.
+   * first designation. This batch can be designated again at any time, another one only as a move, and while a move
+   * is pending none but the one moved from. This deployment is not removed.
    */
   pinned: { profileName: string; batchId: string } | null;
-  /** The revision a save or a clear names. A save is refused once another one has moved past it. */
+  /** The batch the catalogue is moving from, or null while no move is pending. Its deployment is not removed either. */
+  movingFrom: CatalogueMove | null;
+  /** The last release of a batch moved from, kept after it, or null before any. */
+  lastRelease: { at: string; by: string | null } | null;
+  /** The revision a save, a clear or a release names. One is refused once another has moved past it. */
   revision: number;
   /** The manager's last reading of the pinned batch, or null before any. */
   reading: CatalogueReading | null;
@@ -115,10 +137,20 @@ export interface CatalogueNodeSave {
   expectedRevision: number;
   profileName: string;
   batchId: string;
+  /**
+   * True to move the catalogue to this batch while another one is pinned: without it a batch other than the pinned
+   * one is refused. For the pinned batch itself, or before any designation, it changes nothing.
+   */
+  move?: boolean;
 }
 
 /** What `DELETE /manager-settings/catalogue-node` takes. */
 export interface CatalogueNodeClear {
+  expectedRevision: number;
+}
+
+/** What `POST /manager-settings/catalogue-node/release` takes. */
+export interface CatalogueNodeRelease {
   expectedRevision: number;
 }
 
@@ -147,12 +179,25 @@ export const CATALOGUE_SEGMENT_BATCH_REFUSAL =
   'The brand’s catalogue and an ABR uploader’s segments cannot share a batch or a node, since segments fill the batch the catalogue’s slots live in. Give each a batch and a node of its own.';
 
 /**
- * Why a designation of another batch than the pinned one is refused. The catalogue's slots are stamped by the pinned
- * batch, and moving them to another is an action of its own, which comes with the move.
+ * Why a designation of another batch than the pinned one is refused when it is not confirmed as a move. The
+ * catalogue's slots are stamped by the pinned batch, and moving them to another is an action of its own, which the
+ * web2 admin carries out.
  */
-export function catalogueMoveRefusal(pinnedBatchId: string): string {
-  return `Moving the catalogue to another batch is its own action, coming with the move; until then the catalogue stays on batch ${shortHex(pinnedBatchId)}.`;
+export function catalogueMoveRefusal(pinnedBatchId: string, batchId: string): string {
+  return `Batch ${shortHex(batchId)} would move the catalogue off batch ${shortHex(pinnedBatchId)}, whose slots the web2 admin then stamps again under the new batch, so it is saved only when confirmed as a move.`;
 }
+
+/**
+ * Why a third batch is refused while a move is pending: the batch moved from still holds the catalogue's history
+ * until the admin reports the move done, and a release takes it out first.
+ */
+export function catalogueReleaseFirstRefusal(movingFromBatchId: string): string {
+  return `The catalogue is still moving off batch ${shortHex(movingFromBatchId)}, so release the previous batch first, once the web2 admin reports the move done, before moving it to another.`;
+}
+
+/** Why a release is refused when no move is pending. */
+export const CATALOGUE_NO_MOVE_REFUSAL =
+  'No move of the catalogue is pending, so there is no previous batch to release.';
 
 /**
  * Why this deployment cannot be the catalogue node, one sentence, or null. It has to be nothing but a Bee node, and

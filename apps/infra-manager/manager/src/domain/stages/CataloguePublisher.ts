@@ -13,7 +13,8 @@ import type { StoredAdminLinkSecret } from '../adminLink/ManagerAdminLinkReposit
 import type { ManagerEvent } from '../EventBus.js';
 import { Logger } from '../Logger.js';
 
-import { type CatalogueDesignationRow, isDesignated } from './CatalogueDesignationRepository.js';
+import { type CatalogueDesignationRow, isDesignated, isMoving } from './CatalogueDesignationRepository.js';
+import type { CatalogueStatus } from './CatalogueDesignationService.js';
 import { type CatalogueSender, sendCatalogueRequest } from './catalogueRequest.js';
 import { STAGE_PUSH_INTERVAL_MS, type StageClock, SYSTEM_CLOCK } from './StagePublisher.js';
 
@@ -73,7 +74,10 @@ const ANSWERED_CLEAR: readonly CataloguePushOutcome[] = ['cleared', 'not-cleared
  * with `DELETE`, carrying the moment it was taken out. One call at a time: a trigger that comes while one is in flight
  * makes one more after it, so a clear never overtakes the push before it.
  *
- * The last outcome and the last reading are kept in memory for the Manager settings card. The log says the outcome
+ * While a move is pending, the batch the catalogue moved from is read on the same cadence, for the card alone: the
+ * record stays the pinned batch's, and nothing of the old one goes to the admin.
+ *
+ * The last outcome and the last readings are kept in memory for the Manager settings card. The log says the outcome
  * when it changes, and never what the admin answered, its address or a token.
  */
 export class CataloguePublisher {
@@ -85,6 +89,8 @@ export class CataloguePublisher {
   private again: Urge | null = null;
   private last: CataloguePushState | null = null;
   private reading: CatalogueReading | null = null;
+  /** The last reading of the batch the catalogue is moving from, while a move is pending. */
+  private previousReading: CatalogueReading | null = null;
   private sent: Sent | null = null;
   /** The clear moment the admin answered, so a clear is sent until it is answered and not after. */
   private clearAnswered: string | null = null;
@@ -122,9 +128,9 @@ export class CataloguePublisher {
     this.again = null;
   }
 
-  /** The last reading of the pinned batch and the last call, for the Manager settings card. */
-  status(): { reading: CatalogueReading | null; lastPush: CataloguePushState | null } {
-    return { reading: this.reading, lastPush: this.last };
+  /** The last readings of the pinned batch and of the one moved from, and the last call, for the Manager settings card. */
+  status(): CatalogueStatus {
+    return { reading: this.reading, previousReading: this.previousReading, lastPush: this.last };
   }
 
   /** Pushes or clears now, after a call in flight: what the designation service calls once it saved a change. */
@@ -156,7 +162,46 @@ export class CataloguePublisher {
     // Taken as the row is read, before the node is asked: the moment the record says it was observed.
     const readAt = this.clock.now();
     const row = await this.deps.designation.read();
+    // Read beside the push, so a node of the batch moved from that does not answer never holds the push back.
+    const previous = this.readPrevious(row, readAt);
+    try {
+      await this.pushFor(row, urge, readAt);
+    } finally {
+      await previous;
+    }
+  }
 
+  /**
+   * Reads the batch the catalogue is moving from, while a move is pending, for the card alone: the admin is sent the
+   * pinned batch's record and nothing of this one. Never throws.
+   */
+  private async readPrevious(row: CatalogueDesignationRow, readAt: number): Promise<void> {
+    if (!isMoving(row)) {
+      this.previousReading = null;
+      return;
+    }
+    try {
+      const profile = await this.deps.profiles.findByName(row.movingFromProfileName);
+      if (!profile) {
+        this.previousReading = null;
+        return;
+      }
+      const { health, depth } = await this.deps.reading(profile, row.movingFromBatchId);
+      this.previousReading = {
+        batchId: row.movingFromBatchId,
+        state: health.state,
+        ttlSeconds: health.ttl,
+        fillRatio: health.fillRatio,
+        immutable: health.immutable,
+        depth: depth ?? row.movingFromBatchDepth,
+        readAt: new Date(readAt).toISOString(),
+      };
+    } catch (err) {
+      logger.warn(`[Catalogue] reading the batch the catalogue is moving from failed (${getErrorMessage(err)})`);
+    }
+  }
+
+  private async pushFor(row: CatalogueDesignationRow, urge: Urge, readAt: number): Promise<void> {
     if (!isDesignated(row)) {
       this.designatedName = null;
       this.reading = null;

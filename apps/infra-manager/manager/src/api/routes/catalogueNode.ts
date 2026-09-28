@@ -4,6 +4,8 @@ import type { CatalogueDesignationService } from '../../domain/stages/CatalogueD
 import {
   type ClearCatalogueNodeBody,
   clearCatalogueNodeSchema,
+  type ReleaseCatalogueNodeBody,
+  releaseCatalogueNodeSchema,
   type SaveCatalogueNodeBody,
   saveCatalogueNodeSchema,
 } from '../../schemas/managerSettings.js';
@@ -13,8 +15,9 @@ import { validateBodyRefusingUnknown } from '../middleware/validate.js';
 
 /**
  * The brand's catalogue node, which the Manager settings page designates: `GET` the designation with the last
- * reading of its batch and how the last push went, `PUT` a deployment and a batch, `DELETE` it. A save and a clear
- * name the revision they read.
+ * reading of its batch and how the last push went, `PUT` a deployment and a batch, with `move: true` to move the
+ * catalogue to another batch, `DELETE` it, and `POST .../release` to release the batch a move went off. A save, a
+ * clear and a release name the revision they read.
  *
  * Mounted after the session gate like every other router here, and behind the same-site check every write passes.
  * The answer is never cached, because another operator's save, and every reading, changes it.
@@ -37,11 +40,28 @@ export function createCatalogueNodeRouter(catalogue: CatalogueDesignationService
       const { username } = signedInUser(req);
       const body = req.body as SaveCatalogueNodeBody;
       const saved = await catalogue.designate(
-        { expectedRevision: body.expectedRevision, profileName: body.profileName, batchId: body.batchId },
+        {
+          expectedRevision: body.expectedRevision,
+          profileName: body.profileName,
+          batchId: body.batchId,
+          move: body.move === true,
+        },
         username,
       );
       res.setHeader('Cache-Control', 'no-store');
       res.json(saved);
+    }),
+  );
+
+  router.post(
+    '/manager-settings/catalogue-node/release',
+    validateBodyRefusingUnknown(releaseCatalogueNodeSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const { username } = signedInUser(req);
+      const body = req.body as ReleaseCatalogueNodeBody;
+      const released = await catalogue.release({ expectedRevision: body.expectedRevision }, username);
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(released);
     }),
   );
 
