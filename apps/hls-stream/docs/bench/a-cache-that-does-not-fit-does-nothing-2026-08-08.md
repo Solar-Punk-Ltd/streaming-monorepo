@@ -84,7 +84,7 @@ separate mechanism measured elsewhere. The two were shown to compose.
 
 ## Artifacts
 
-`/home/solarpunk/retrieval-probe/evict1/`. Probe: `deploy/scripts/retrieval-debt-probe.sh`, capacity is
+`~/retrieval-probe/evict1/`. Probe: `deploy/scripts/retrieval-debt-probe.sh`, capacity is
 the 4th arm field. Cache-off arms were interleaved between every cache arm so a warm store could not
 carry into the next one, and the pass-1 medians confirm it worked: 97-117ms in every arm including the
 one that then hit 3ms on pass 2. Gateway restored to `--swap-enable=true` and `--cache-capacity=0` and

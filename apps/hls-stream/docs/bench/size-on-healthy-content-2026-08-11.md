@@ -2,11 +2,11 @@
 
 **2026-08-11.** Four fragment lengths broadcast within hours of each other, so every arm is content of
 known health and age is held constant across sizes. One weeb-3 node at 191 peers, one fetch at a time,
-arm order rotated between rounds. Control is abel-1. Rows in `size-on-healthy-content-rows-2026-08-11.json`.
+arm order rotated between rounds. Control is tester-1. Rows in `size-on-healthy-content-rows-2026-08-11.json`.
 
 | arm | segment | **delivered** | mean KB/s |
 | --- | ---: | ---: | ---: |
-| `his` abel-1 | 4,262 KB | **8/8** | 967 |
+| `his` tester-1 | 4,262 KB | **8/8** | 967 |
 | ours, fragment 0.5 | 407 KB | **8/8** | 244 |
 | ours, fragment 1.0 | 801 KB | **8/8** | 335 |
 | ours, fragment 2.0 | 1,683 KB | **8/8** | 593 |

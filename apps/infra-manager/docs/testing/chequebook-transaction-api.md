@@ -1,6 +1,6 @@
 # Chequebook transaction API integration contract
 
-**Status.** This work is on `main`. It was written at `6dc33d1` on `feat/ai-remediation`, the head of pull request #40, which was merged. The sections below are in the order they were built and each is the checkpoint it says it is. Target ownership integration is done: `createChequebookOperationsService` builds the production preparation from `PostgresChequebookTargetOwnership.capture`, so an admission on a real database gets the proof rather than failing closed. The last section, "Bounded receipt polling and connected acceptance", is the current state. It was deployed twice, on 2026-09-11 and 2026-09-13, recorded in [../handover/main-v2-remediation.md](../handover/main-v2-remediation.md).
+**Status.** This work is on `main`. It was written at `6dc33d1` on `feat/ai-remediation`, the head of pull request #40, which was merged. The sections below are in the order they were built and each is the checkpoint it says it is. Target ownership integration is done: `createChequebookOperationsService` builds the production preparation from `PostgresChequebookTargetOwnership.capture`, so an admission on a real database gets the proof rather than failing closed. The last section, "Bounded receipt polling and connected acceptance", is the current state. It was deployed twice, on 2026-09-11 and 2026-09-13, recorded in the remediation's handover record, which the repository's history keeps.
 
 The durable transaction journal is connected to authenticated routes and to the saved-intent, history and recovery UI.
 

@@ -9,7 +9,7 @@
  * directions, neither visible from outside a browser.
  *
  * Usage, on the deployment host, against a broadcast that is already running:
- *   deploy/scripts/browser-on-host.sh -- BROWSER_WATCH_SECONDS=180
+ *   deploy/scripts/browser-on-host.sh --target <host> -- BROWSER_WATCH_SECONDS=180
  */
 
 import { type Page } from 'playwright-core';

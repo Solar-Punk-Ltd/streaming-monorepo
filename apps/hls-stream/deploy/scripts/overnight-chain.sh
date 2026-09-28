@@ -53,13 +53,13 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLAN="${1:?usage: overnight-chain.sh <plan.tsv>}"
 
-CHAIN_DIR="${CHAIN_DIR:-/home/solarpunk/overnight/$(date -u +%Y%m%d-%H%M%S)}"
+CHAIN_DIR="${CHAIN_DIR:-${HOME}/overnight/$(date -u +%Y%m%d-%H%M%S)}"
 LOG="${CHAIN_DIR}/chain.log"
 STATE="${CHAIN_DIR}/chain-state.tsv"
 # One file for the whole night. A floor crossed in sitting two is still crossed in sitting three.
 STOP_FILE="${STOP_FILE:-${CHAIN_DIR}/STOP}"
 
-# The box carries roughly forty other bee nodes and eight unrelated stacks, and "existing resources
+# The bench host carries roughly forty other bee nodes and eight unrelated stacks, and "existing resources
 # must not be touched" covers starving them as much as stopping them. Checked before each sitting
 # rather than during, because a sitting that stops halfway leaves rows nothing can be read against.
 LOAD_CEILING="${LOAD_CEILING:-32}"
@@ -89,7 +89,7 @@ host_load() {
   cut -d' ' -f1 "${LOADAVG_FILE}" 2>/dev/null | cut -d. -f1
 }
 
-# Returns 0 once the box is quiet enough, or 1 if it never becomes quiet within the budget.
+# Returns 0 once the bench host is quiet enough, or 1 if it never becomes quiet within the budget.
 wait_for_quiet_host() {
   local waited=0 load
   while :; do

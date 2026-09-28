@@ -204,12 +204,6 @@ file. The edge makes its own folder on the host, `deploy/edge/` under
 
 It worked when `https://manager.example.org` shows the manager's sign-in page.
 
-### One command for all three
-
-**Not written yet.** There is no single command that brings up the manager, the admin and the
-edge together. Each keeps its own compose project, its own database and its own folder on the
-host, so the three scripts above, run in that order, are the way to set up a control host.
-
 ### A control host built by the Terraform
 
 The GCP root in `infra/terraform` builds its monitoring host as the control host: steps 1 and 2

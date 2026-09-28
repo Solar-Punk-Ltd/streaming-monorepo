@@ -6,7 +6,7 @@
  * Every "in-tab node" figure this project has published came from a **hybrid** client: segment bytes
  * from weeb-3, feed and manifest still from a bee gateway. That split was never authorised, and the
  * owner had asked, two days before it was built, to measure weeb-3's own setup as it is. See
- * `docs/bench/abel-gateway-less-live-2026-08-16.md`.
+ * `docs/bench/tester-gateway-less-live-2026-08-16.md`.
  *
  * ⭐ The thing that makes this cheap was in our own uploader the whole time: `streamRawTopic` is a
  * `crypto.randomUUID()`, and weeb-3's page route is `#/live/stream/<owner>/<uuid>`. Our identifiers
@@ -523,7 +523,8 @@ async function main(): Promise<void> {
   const broadcastStartMs = envNumberOrNull('WEEB3_NATIVE_BROADCAST_START_MS');
 
   const metricsHost = process.env.WEEB3_NATIVE_METRICS_SSH ?? '';
-  const metricsRoot = process.env.WEEB3_NATIVE_METRICS_DIR ?? '/home/solarpunk/node-metrics-weeb3native';
+  // A folder on the metrics host, in the home of the account ssh logs in as. The remote shell expands the `~`.
+  const metricsRoot = process.env.WEEB3_NATIVE_METRICS_DIR ?? '~/node-metrics-weeb3native';
   // ⭐ A caller that brackets the arm itself names itself here, and the name is written into the
   // artefact. Without it an arms wrapper would have to pass ALLOW_NO_NODE_METRICS=1, and the run
   // would then carry "this run has no node-side evidence" while its wrapper was holding exactly that

@@ -7,17 +7,17 @@
 > has no weeb-3 path, only `CustomManifestLoader` does.
 >
 > That split was my design decision in PR #183 and **nobody authorised it**. The owner's instruction
-> of **2026-08-11T07:07Z** was *"Abel optimized the player as much as possible let's measure and
+> of **2026-08-11T07:07Z** was *"the tester optimized the player as much as possible let's measure and
 > experiment with his setup as it is"*, and this is not that.
 >
 > ⛔ **So any residual gateway load reported below is a floor THIS CLIENT imposes, not one weeb-3
-> imposes.** Abel's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
+> imposes.** The tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
 > here is a **lower bound** on what an in-tab node can do.
 >
 > ✅ **The arithmetic and the arm-to-arm contrasts are unaffected.** Both conditions read the
 > manifest the same way, so the comparison is clean. What is limited is the **subject**, not the sums.
 >
-> See [`abel-gateway-less-live-2026-08-16.md`](abel-gateway-less-live-2026-08-16.md).
+> See [`tester-gateway-less-live-2026-08-16.md`](tester-gateway-less-live-2026-08-16.md).
 
 **Six counted arms on one live broadcast at a 0.5s GOP and a 2.0s target, 1.109 BZZ.** The retrieval
 saving replicates for the third time and the CPU price is measured for the first time. Both separate
@@ -190,7 +190,7 @@ Both directions of the control, on a paid broadcast, for less than a fiftieth of
 
 ⛔ **Saturation.** `docker stats` reads the container's whole cgroup, which is the right total for
 what a viewer costs a machine. It cannot say whether weeb-3 is *out* of CPU, because the node is one
-JS thread by construction and a 3.8-core peak on a 48-core box says nothing about one thread. That
+JS thread by construction and a 3.8-core peak on a 48-core host says nothing about one thread. That
 needs `Performance.getMetrics` over CDP against the page target, which `chrome-cpu.mjs` already does
 and this sitting does not use.
 

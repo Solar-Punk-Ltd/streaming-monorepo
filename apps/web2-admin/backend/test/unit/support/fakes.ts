@@ -28,7 +28,7 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
     user_id: TEST_USER_ID,
     topic: `1867808f-7b1c-4e46-b437-f7423b4660${String(sequence).padStart(2, '0')}`,
     owner: TEST_OWNER,
-    title: 'Devcon keynote',
+    title: 'Opening keynote',
     description: 'The opening talk.',
     tags: ['swarm'],
     media_type: 'video',

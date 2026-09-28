@@ -48,7 +48,7 @@ the sitting and not the axis. It is not explained here. ⛔ Do not quote an abso
 sitting without saying which round it came from.
 
 **Host load moved 4x during the run**, from 5.8 to 24.2 of 48 cores, roughly 4 cores of which were
-ours and the rest a neighbour's forty bee nodes. That is the normal condition for this box and the
+ours and the rest a neighbour's forty bee nodes. That is the normal condition for this bench host and the
 interleaving is the defence against it.
 
 ## Scope, and one thing that cannot be answered from the artefact

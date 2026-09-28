@@ -28,8 +28,8 @@
 #             recency, and the sitting could not say which.
 set -u
 
-SRC="${SRC:-/home/solarpunk/phase06/refs.txt}"
-OUT_DIR="${OUT_DIR:-/home/solarpunk/phase06}"
+SRC="${SRC:-${HOME}/phase06/refs.txt}"
+OUT_DIR="${OUT_DIR:-${HOME}/phase06}"
 
 # 400 references at 26.2 chunks each is a 10,489 chunk working set, which is the one the cliff was
 # located against. Keeping it identical is what makes the 76.3% capacity mean the same thing here.

@@ -34,8 +34,8 @@
 # There is no flag to switch it off. See that script's header for the two sittings it cost.
 #
 # Usage, against a broadcast that is already running:
-#   deploy/scripts/browser-on-host.sh
-#   deploy/scripts/browser-on-host.sh -- BROWSER_WATCH_SECONDS=300
+#   deploy/scripts/browser-on-host.sh --target <host>
+#   deploy/scripts/browser-on-host.sh --target <host> -- BROWSER_WATCH_SECONDS=300
 #
 # Anything after `--` is passed to the container as environment, exactly as `bench-on-host.sh` does.
 #
@@ -43,7 +43,7 @@
 # `host.docker.internal` along with every other address the container dials. See `bench-on-host.sh`
 # for what they are for. Arm 2 of the throttle probe, which repeats it over a real shaped link
 # instead of Chrome's emulation:
-#   deploy/scripts/browser-on-host.sh --own-network --shape-kbps 2800 \
+#   deploy/scripts/browser-on-host.sh --target <host> --own-network --shape-kbps 2800 \
 #     --script browser:in-tab-throttle-probe -- PROBE_CAP_MODE=external PROBE_CAP_KBPS=2800
 set -euo pipefail
 
@@ -54,7 +54,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # and the run went looking for the client on the unshifted default port instead of this profile's.
 WANT_PROFILE="latbench"
 WANT_PORT_SLOT="7"
-TARGET="manager-host"
+TARGET=""
 PASSTHROUGH=()
 FORWARDED=()
 # `browser:selfcheck` answers whether the browser is a usable instrument and needs no broadcast, so
@@ -79,6 +79,11 @@ while [ $# -gt 0 ]; do
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+
+if [ -z "${TARGET}" ]; then
+  echo "browser-on-host: --target <host> is required, the bench host as an ssh alias or user@host" >&2
+  exit 2
+fi
 
 # shellcheck source=_lib.sh
 source "$(cd "$(dirname "$0")" && pwd)/_lib.sh"

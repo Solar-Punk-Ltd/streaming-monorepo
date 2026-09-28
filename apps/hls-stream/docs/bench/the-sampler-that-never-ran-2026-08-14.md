@@ -90,7 +90,7 @@ during the gateway arm and 169.2 ms during the weeb-3 arm, and that is compositi
 quality: what remains in a weeb-3 arm is feed lookups, about 45% of which are not-founds by design.
 Same trap as the failure-rate column flagged on 2026-08-13.
 
-⚠️ **Host load peaked at 11.65 of 48 cores** and the box carries some forty other bee nodes plus other
+⚠️ **Host load peaked at 11.65 of 48 cores** and the bench host carries some forty other bee nodes plus other
 tenants' stacks. No bound the harness or host imposes was binding.
 
 ## ⛔⛔⛔ What the sitting found on its way past: a second setpoint defect

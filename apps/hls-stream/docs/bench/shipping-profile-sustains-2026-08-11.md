@@ -58,9 +58,9 @@ informative part of the run.
 
 **~767 KB/s, n=2, agreeing within 0.8%** — not the 461 first reported.
 
-⛔ **abel-1 carries the same defect and its figure moves too.** Its 1,014 KB/s was `ratio x demand`
+⛔ **tester-1 carries the same defect and its figure moves too.** Its 1,014 KB/s was `ratio x demand`
 from a run that also reached a steady lead. Recomputed off its own fill phase: **1,135 and 1,160 KB/s**,
-so **~1,148**. ⚠️ Note how much closer to its demand that sits: abel needs 1,018 and can do 1,148, a
+so **~1,148**. ⚠️ Note how much closer to its demand that sits: tester-1 needs 1,018 and can do 1,148, a
 13% margin, while this profile needs 411 and can do 767, an **87%** margin.
 
 ⚠️ 767 is what the node **and hls.js together** achieve when the player wants more than realtime. It
@@ -72,7 +72,7 @@ is a floor on the node alone.
 | --- | ---: | ---: | ---: | ---: |
 | bench 0.25s | 90 KB / 0.266s | **4.5%** | 338 KB/s | **228** |
 | **ours, as shipped** | **787 KB / 1.917s** | **38.5%** | **411 KB/s** | **767** |
-| abel-1 | 4,241 KB / 4.167s | saturated | 1,018 KB/s | **1,148** |
+| tester-1 | 4,241 KB / 4.167s | saturated | 1,018 KB/s | **1,148** |
 
 ⭐ The 4.5% point survives unchanged, and for an instructive reason: **that run never filled a buffer**,
 so its playback rate really was its capability. A failure measures the node; a success measures the
@@ -96,7 +96,7 @@ semaphore that binds** no matter how many are in flight.
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | latbench bench profile | 90 KB / 0.266s | 92 | **4.5%** | 338 KB/s | ~229 | 0.6734 |
 | **ours, as shipped** | **787 KB / 1.917s** | **788** | **38.5%** | **411 KB/s** | **461** | **0.9996** |
-| abel-1 | 4,241 KB / 4.167s | 4,240 | saturated | 1,018 KB/s | ~1,014 | 0.9962 |
+| tester-1 | 4,241 KB / 4.167s | 4,240 | saturated | 1,018 KB/s | ~1,014 | 0.9962 |
 
 A line through the two outer points predicts **508 KB/s** at 38.5%. Measured **461**, which is 10%
 under. ⭐ The prediction was written down before the run and the middle point had never been measured.
@@ -130,5 +130,5 @@ seen here. Startup to first frame was 25.1s at 0.222 cores.
 - **n=1.** ⚠️ Worth a replicate now that a sitting costs only wall clock.
 - **The ceiling at this segment size is unmeasured**, because the player stopped asking. It needs a
   fetch-as-fast-as-possible arm at 787 KB, not a playback arm.
-- **Live edge, rather than VOD.** This played a finished recording, like abel-1. A viewer joining a
+- **Live edge, rather than VOD.** This played a finished recording, like tester-1. A viewer joining a
   live broadcast has the push-sync race as well.

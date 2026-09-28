@@ -107,7 +107,7 @@ stall rate**, and n=3 per condition is far too small to look for one.
 ## ⚠️ What was not controlled
 
 - **n=3 per condition** counted, n=4 including warm-ups.
-- **Co-tenancy.** The box carries some forty other bee nodes. Host load ran 5.63 to 11.77 across the
+- **Co-tenancy.** The bench host carries some forty other bee nodes. Host load ran 5.63 to 11.77 across the
   arms. A bracket controls for drift over time and never for the neighbours, who are in every arm.
 - **One profile only**: 720p, 2500 kbps, 0.5s GOP, one viewer at a time.
 - ⛔ The per-arm **"What the gateway node was doing"** section of an unfunded arm's report describes
@@ -119,7 +119,7 @@ stall rate**, and n=3 per condition is far too small to look for one.
 ## Provenance
 
 - Harness `deploy/scripts/gateway-funding-arms.sh`, run
-  `/home/solarpunk/gateway-funding-arms/sitting-2026-08-13`.
+  `~/gateway-funding-arms/sitting-2026-08-13`.
 - Every arm passed the request-log gate: `armWasServedByItsGateway` counts an arm's fetches by host
   and refuses on a single foreign one. **All eight logged "fetched only from" their own gateway.**
   On 2026-08-13 an earlier smoke had both arms fetching all 253 video segments from one node while

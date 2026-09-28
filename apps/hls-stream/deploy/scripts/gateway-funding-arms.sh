@@ -40,7 +40,7 @@
 #   ROUNDS=4 ARM_MINUTES=6 bash deploy/scripts/gateway-funding-arms.sh
 set -u
 
-BENCH_REPO="${BENCH_REPO:-/home/solarpunk/swarm-hls-bench}"
+BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
 PROFILE="${PROFILE:-latbench}"
 PORT_SLOT="${PORT_SLOT:-7}"
 
@@ -105,7 +105,7 @@ RATES="${HERE}/burn-rates.sh"
   exit 1
 }
 
-OUT_DIR="${OUT_DIR:-/home/solarpunk/gateway-funding-arms/$(date -u +%Y%m%d-%H%M%S)}"
+OUT_DIR="${OUT_DIR:-${HOME}/gateway-funding-arms/$(date -u +%Y%m%d-%H%M%S)}"
 LOG="${OUT_DIR}/gateway-funding-arms.log"
 STATE="${OUT_DIR}/gateway-funding-arms-state.tsv"
 mkdir -p "${OUT_DIR}"
@@ -228,7 +228,7 @@ can_afford() {
 }
 
 # ⛔⛔ Only removes publishers this run created. The names present beforehand are recorded once and
-# excluded from every teardown, because this runs on a box carrying other people's sittings and a
+# excluded from every teardown, because this runs on a host carrying other people's sittings and a
 # teardown keyed on a name pattern killed a live paid broadcast on 2026-08-12.
 PUBLISHERS_NOT_OURS="$(docker ps -aq --filter 'name=^swarm-hls-publish-' 2>/dev/null | tr '\n' ' ')"
 
@@ -320,7 +320,7 @@ run_browser_arm() {
 # Both nodes either side of every arm, not only the one this arm reads.
 #
 # ⭐ The idle gateway is the control for anything that is not the treatment. If its retrieval counters
-# move during an arm it is not serving, then something else on this box is using it, and a difference
+# move during an arm it is not serving, then something else on this bench host is using it, and a difference
 # between the arms would be partly that. Reading only the arm's own node is how a sitting ends up with
 # a number and no way to rule the neighbours out.
 #

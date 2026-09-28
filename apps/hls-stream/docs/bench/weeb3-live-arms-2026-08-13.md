@@ -7,17 +7,17 @@
 > has no weeb-3 path, only `CustomManifestLoader` does.
 >
 > That split was my design decision in PR #183 and **nobody authorised it**. The owner's instruction
-> of **2026-08-11T07:07Z** was *"Abel optimized the player as much as possible let's measure and
+> of **2026-08-11T07:07Z** was *"the tester optimized the player as much as possible let's measure and
 > experiment with his setup as it is"*, and this is not that.
 >
 > ⛔ **So any residual gateway load reported below is a floor THIS CLIENT imposes, not one weeb-3
-> imposes.** Abel's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
+> imposes.** The tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
 > here is a **lower bound** on what an in-tab node can do.
 >
 > ✅ **The arithmetic and the arm-to-arm contrasts are unaffected.** Both conditions read the
 > manifest the same way, so the comparison is clean. What is limited is the **subject**, not the sums.
 >
-> See [`abel-gateway-less-live-2026-08-16.md`](abel-gateway-less-live-2026-08-16.md).
+> See [`tester-gateway-less-live-2026-08-16.md`](tester-gateway-less-live-2026-08-16.md).
 
 **2026-08-13.** One live broadcast, eight arms, counterbalanced, 0.8188 BZZ.
 
@@ -127,7 +127,7 @@ buffer. This sitting is consistent with that and does not settle who pays the se
 - Gateway warm and funded throughout: **134 peers**, 38h uptime, chequebook 2.388 to 2.061 BZZ. No bee
   container was restarted at any point.
 - Uploader 4.355 to 3.536 BZZ. Postage `7849851f` 265 of 512 used, 250 hours left.
-- **Host load 5.64 to 11.20** across arms, and the box carries some forty other bee nodes plus other
+- **Host load 5.64 to 11.20** across arms, and the bench host carries some forty other bee nodes plus other
   tenants' stacks. Round 4 ran at the highest load of the sitting (10.93 and 11.20) and its two arms
   are one of each condition, so the counterbalancing carried it.
 - The arms took 3,738s of a 4,520s broadcast, 782s to spare.

@@ -214,16 +214,16 @@ describe('a night of paid sittings runs in order and stops itself', () => {
   });
 
   /**
-   * The box carries roughly forty other bee nodes and eight unrelated stacks. "Existing resources
+   * The bench host carries roughly forty other bee nodes and eight unrelated stacks. "Existing resources
    * must not be touched" covers starving them as much as stopping them.
    */
-  it('skips a sitting rather than starting it on a box the neighbours are already using', async () => {
+  it('skips a sitting rather than starting it on a host the neighbours are already using', async () => {
     const { record, state, log } = await runChain(['heavy\t5\t{driver}\tSITTING_NAME=heavy'], {
       loadavg: '96.00 90.00 88.00 1/1 1',
       extraEnv: { LOAD_CEILING: '32' },
     });
 
-    assert.deepEqual(record, [], 'a sitting started on an already-loaded box');
+    assert.deepEqual(record, [], 'a sitting started on an already-loaded host');
     assert.ok(state.some((row) => row.includes('SKIPPED-LOAD')));
     assert.match(log, /host load 96 is over the ceiling/);
   });

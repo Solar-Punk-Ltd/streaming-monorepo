@@ -16,7 +16,7 @@ implemented, and acquisition uses a transport only with a matching qualified
 record, from the seed catalog or from the manager's own check of the image.
 The live host was first deployed on 2026-09-11, and what that pass and the
 later ones found is in
-[../handover/main-v2-remediation.md](../handover/main-v2-remediation.md). A
+the remediation's handover record, which the repository's history keeps. A
 postage batch was bought with real money on 2026-09-13. No chequebook transfer
 has been made with real money. Corrected twice on 2026-09-17: the paragraph on
 new uploader starts, first against the code at `0c0354c` for the ruling that a node that does not answer no longer refuses a start, then
@@ -297,7 +297,7 @@ image check, the default Docker routes, the node's own chain endpoint and the
 answer for every refusal cause. All of them pass on a laptop, and all of them
 are in the jobs the checks workflow declares for a pull request. A full run
 taken at `e857994` is recorded in
-[../handover/main-v2-remediation.md](../handover/main-v2-remediation.md).
+the remediation's handover record, which the repository's history keeps.
 
 **What the tests cannot establish.** They exercise protocol and ownership code
 against a synthetic Bee. They do not check a real Bee image, they do not open

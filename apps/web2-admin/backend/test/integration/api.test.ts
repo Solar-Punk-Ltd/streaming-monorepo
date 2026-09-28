@@ -286,8 +286,7 @@ describe('stream lifecycle', () => {
     assert.match(details.publishKey, /^[0-9a-f]{32}$/);
     assert.ok(details.srt.url.includes(`r=video/${stream.topic}`));
     assert.ok(details.srt.url.includes(`key=${details.publishKey}`));
-    assert.ok(details.rtmp.server.endsWith('/video'));
-    assert.equal(details.rtmp.streamKey, `${stream.topic}?key=${details.publishKey}`);
+    assert.equal(details.rtmp, null, 'RTMP is offered only where the deployment opens it');
 
     const rotated = await api<IngestDetails>('POST', `/api/streams/${stream.id}/ingest/rotate-key`);
     assert.notEqual(rotated.publishKey, details.publishKey);

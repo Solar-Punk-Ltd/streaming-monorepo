@@ -40,7 +40,7 @@ set -u
 CONTAINER="${UNFUNDED_CONTAINER:-swarm-hls-unfunded-gateway}"
 
 # 10087/10088 are free: 10020-10038, 10060-10066 and 10070-10078 are taken on this host, and the
-# funded gateway is 10077. Checked again at start, because a shared box does not stay still.
+# funded gateway is 10077. Checked again at start, because a shared host does not stay still.
 API_PORT="${UNFUNDED_API_PORT:-10087}"
 P2P_PORT="${UNFUNDED_P2P_PORT:-10088}"
 
@@ -87,7 +87,7 @@ MATCHED_FLAGS=(
 PASSWORD_FILE_IN_CONTAINER=/home/bee/.bee/password
 
 # Outside every rsync target, which are synced with --delete.
-DATA_DIR="${UNFUNDED_DATA_DIR:-/home/solarpunk/unfunded-gateway/data}"
+DATA_DIR="${UNFUNDED_DATA_DIR:-${HOME}/unfunded-gateway/data}"
 
 # The funded gateway advertises `BEE_NAT_ADDR=<public ip>:10078` so peers can dial it back. Without
 # one this node is reachable only outbound, which changes how many peers keep it, and peer count is a
@@ -135,7 +135,7 @@ start_node() {
   for port in "${API_PORT}" "${P2P_PORT}"; do
     if port_held "${port}"; then
       say "REFUSING: port ${port} is already held on this host, and it is not ours to take."
-      say "  Forty other bee nodes share this box. Pick another with UNFUNDED_API_PORT/UNFUNDED_P2P_PORT."
+      say "  Forty other bee nodes share this bench host. Pick another with UNFUNDED_API_PORT/UNFUNDED_P2P_PORT."
       return 1
     fi
   done

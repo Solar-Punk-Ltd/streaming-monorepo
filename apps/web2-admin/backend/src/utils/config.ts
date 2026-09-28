@@ -60,6 +60,12 @@ export interface IngestConfig {
   host: string;
   srtPort: number;
   rtmpPort: number;
+  /**
+   * Whether RTMP ingest is open to encoders on this deployment, and so shown
+   * to the operator. Off by default: ingest is SRT only, the deployments
+   * close RTMP's port, and RTMP carries no passphrase.
+   */
+  rtmpPublic: boolean;
   /** One value for the whole SRS server, or null when SRT is unencrypted. */
   srtPassphrase: string | null;
   keyVerified: boolean;
@@ -123,6 +129,7 @@ export const config: AppConfig = {
     host: required('INGEST_HOST'),
     srtPort: optionalNumber('INGEST_SRT_PORT', 10061),
     rtmpPort: optionalNumber('INGEST_RTMP_PORT', 10062),
+    rtmpPublic: optionalBoolean('INGEST_RTMP_PUBLIC', false),
     srtPassphrase: optional('INGEST_SRT_PASSPHRASE', '') || null,
     keyVerified: optionalBoolean('INGEST_KEY_VERIFIED', false),
   },

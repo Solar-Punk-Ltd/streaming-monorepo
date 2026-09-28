@@ -32,7 +32,7 @@ Exact by-request reads and fresh profile reads use `cache: 'no-store'` through t
 
 Run `node --test frontend/test/transfer-api-browser.test.mjs` from the worktree root. These adapter tests own their synthetic API, Vite and Chrome processes. API and Vite bind dynamic loopback ports, and Vite uses a separate cache. `RUNNER_TEMP` selects the evidence parent directory, otherwise the operating system temporary directory is used. Each run reports its evidence path. The intent-browser suite owns its listeners the same way.
 
-This checkpoint did not wire the money dialog or global history, and current target ownership integration from the port and firewall work was still required. Both landed in the sections below. The historical 0.5 BZZ fill on the funded `review-20260907` deployment remains unverified. The 2026-09-11 pass found why no record exists, the operations table arrived with migration 020 that same day, and the 2026-09-13 pass funded the node and bought a batch. Both are in [../handover/main-v2-remediation.md](../handover/main-v2-remediation.md).
+This checkpoint did not wire the money dialog or global history, and current target ownership integration from the port and firewall work was still required. Both landed in the sections below. The historical 0.5 BZZ fill on the funded `review-20260907` deployment remains unverified. The 2026-09-11 pass found why no record exists, the operations table arrived with migration 020 that same day, and the 2026-09-13 pass funded the node and bought a batch. Both are in the remediation's handover record, which the repository's history keeps.
 
 ## Offline journal mock
 

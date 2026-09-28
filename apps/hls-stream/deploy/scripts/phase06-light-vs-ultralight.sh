@@ -63,13 +63,13 @@
 # running out is a clean stop with a named reason rather than a slide into measuring starvation.
 set -u
 
-OUT_DIR="${OUT_DIR:-/home/solarpunk/phase06}"
+OUT_DIR="${OUT_DIR:-${HOME}/phase06}"
 # Deliberately outside both rsync targets. `~/swarm-hls-bench` is synced with `--delete` by
 # `bench-on-host.sh` and `~/swarm-hls-stream-latbench` is owned by `deploy.sh`, so anything written in
 # either is removed the next time a laptop syncs, which is exactly when someone would be checking on a
 # sitting still running.
-BENCH_REPO="${BENCH_REPO:-/home/solarpunk/swarm-hls-bench}"
-STACK_DIR="${STACK_DIR:-/home/solarpunk/swarm-hls-stream-latbench}"
+BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
+STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-latbench}"
 COMPOSE_DIR="${STACK_DIR}/deploy"
 ENV_FILE="${STACK_DIR}/.env"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-latbench}"

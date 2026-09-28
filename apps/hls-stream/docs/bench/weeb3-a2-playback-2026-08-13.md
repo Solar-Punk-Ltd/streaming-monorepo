@@ -7,17 +7,17 @@
 > has no weeb-3 path, only `CustomManifestLoader` does.
 >
 > That split was my design decision in PR #183 and **nobody authorised it**. The owner's instruction
-> of **2026-08-11T07:07Z** was *"Abel optimized the player as much as possible let's measure and
+> of **2026-08-11T07:07Z** was *"the tester optimized the player as much as possible let's measure and
 > experiment with his setup as it is"*, and this is not that.
 >
 > ⛔ **So any residual gateway load reported below is a floor THIS CLIENT imposes, not one weeb-3
-> imposes.** Abel's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
+> imposes.** The tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
 > here is a **lower bound** on what an in-tab node can do.
 >
 > ✅ **The arithmetic and the arm-to-arm contrasts are unaffected.** Both conditions read the
 > manifest the same way, so the comparison is clean. What is limited is the **subject**, not the sums.
 >
-> See [`abel-gateway-less-live-2026-08-16.md`](abel-gateway-less-live-2026-08-16.md).
+> See [`tester-gateway-less-live-2026-08-16.md`](tester-gateway-less-live-2026-08-16.md).
 
 **2026-08-13. Three arms, `gateway → weeb-3 → gateway`, one recording, free.** No broadcast, no
 postage, 0 BZZ. Phase A2 of the in-tab fetch backend, on the code merged in PR #183.
@@ -117,7 +117,7 @@ something is broken.
   hold, and suggesting is all it does. Live is a paid arm and has not been run.
 - **The 4.5 MB wasm and the peer wait are a real join cost** that these numbers include but do not
   isolate. A viewer opening the page pays it once.
-- **One machine, one recording, one profile**, and the box carries about forty other bee nodes whose
+- **One machine, one recording, one profile**, and the bench host carries about forty other bee nodes whose
   load is in every arm including the controls.
 - **Buffer lead is a throughput proxy, not a throughput measurement.** Both gateway arms were sampled
   against a 60s cap that one of them hit.

@@ -65,7 +65,7 @@ describe('StreamFormPage validation', () => {
     mockFetch([]);
     renderCreateForm();
 
-    typeIn('Stream Name *', 'Devcon keynote');
+    typeIn('Stream Name *', 'Opening keynote');
     submit();
 
     expect(screen.getByText(ERROR_MESSAGES.DESCRIPTION_REQUIRED)).toBeInTheDocument();
@@ -75,7 +75,7 @@ describe('StreamFormPage validation', () => {
     mockFetch([]);
     renderCreateForm();
 
-    typeIn('Stream Name *', 'Devcon keynote');
+    typeIn('Stream Name *', 'Opening keynote');
     typeIn('Description *', 'The opening talk');
     // The form arrives prefilled, so the only way to reach this error is to
     // empty the field by hand — which the operator can still do.
@@ -114,7 +114,7 @@ describe('StreamFormPage validation', () => {
   });
 
   it('submits the trimmed values and then the picked thumbnail', async () => {
-    const created = makeStream({ id: 'new-id', title: 'Devcon keynote' });
+    const created = makeStream({ id: 'new-id', title: 'Opening keynote' });
     const calls: { url: string; method: string }[] = [];
     mockFetch([
       {
@@ -123,7 +123,7 @@ describe('StreamFormPage validation', () => {
         respond: (init) => {
           calls.push({ url: '/api/streams', method: 'POST' });
           const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-          expect(body.title).toBe('Devcon keynote');
+          expect(body.title).toBe('Opening keynote');
           expect(body.description).toBe('The opening talk');
           expect(body.mediaType).toBe('audio');
           expect(body.tags).toEqual(['eth']);
@@ -144,7 +144,7 @@ describe('StreamFormPage validation', () => {
 
     renderCreateForm();
 
-    typeIn('Stream Name *', '  Devcon keynote  ');
+    typeIn('Stream Name *', '  Opening keynote  ');
     typeIn('Description *', 'The opening talk');
     typeIn('Tags', 'eth');
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
@@ -162,7 +162,7 @@ describe('StreamFormPage validation', () => {
   });
 
   it('keeps going when the stream saves but the thumbnail does not', async () => {
-    const created = makeStream({ id: 'new-id', title: 'Devcon keynote' });
+    const created = makeStream({ id: 'new-id', title: 'Opening keynote' });
     mockFetch([
       {
         method: 'POST',
@@ -178,7 +178,7 @@ describe('StreamFormPage validation', () => {
 
     renderCreateForm();
 
-    typeIn('Stream Name *', 'Devcon keynote');
+    typeIn('Stream Name *', 'Opening keynote');
     typeIn('Description *', 'The opening talk');
     fireEvent.change(screen.getByLabelText('Upload Thumbnail (Max 5MB)'), {
       target: { files: [fakeImage('cover.png', 1024)] },
@@ -334,17 +334,17 @@ describe('StreamFormPage tags', () => {
     renderCreateForm();
 
     const input = screen.getByLabelText('Tags');
-    fireEvent.change(input, { target: { value: 'devcon' } });
+    fireEvent.change(input, { target: { value: 'music' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
-    expect(screen.getByText('devcon')).toBeInTheDocument();
+    expect(screen.getByText('music')).toBeInTheDocument();
     expect(screen.getByText(`1/${STREAM_LIMITS.TAGS_MAX} tags`)).toBeInTheDocument();
 
     // Same tag again: the box clears, the chip count does not move.
-    fireEvent.change(input, { target: { value: 'devcon' } });
+    fireEvent.change(input, { target: { value: 'music' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
-    expect(screen.getAllByText('devcon')).toHaveLength(1);
+    expect(screen.getAllByText('music')).toHaveLength(1);
     expect(screen.getByText(`1/${STREAM_LIMITS.TAGS_MAX} tags`)).toBeInTheDocument();
     expect(input).toHaveValue('');
   });
@@ -377,12 +377,12 @@ describe('StreamFormPage tags', () => {
     renderCreateForm();
 
     const input = screen.getByLabelText('Tags');
-    fireEvent.change(input, { target: { value: 'devcon' } });
+    fireEvent.change(input, { target: { value: 'music' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
-    fireEvent.click(screen.getByLabelText('Remove tag devcon'));
+    fireEvent.click(screen.getByLabelText('Remove tag music'));
 
-    expect(screen.queryByText('devcon')).not.toBeInTheDocument();
+    expect(screen.queryByText('music')).not.toBeInTheDocument();
     expect(screen.getByText(`0/${STREAM_LIMITS.TAGS_MAX} tags`)).toBeInTheDocument();
   });
 });

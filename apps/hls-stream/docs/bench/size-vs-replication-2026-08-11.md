@@ -8,7 +8,7 @@ Order is flipped between rounds so position cannot stand in for arm.
 
 | arm | what it is | delivered | mean KB | mean KB/s |
 | --- | --- | ---: | ---: | ---: |
-| **his** | abel-1 segments, a stream people watch | **10/10** | 4,242 | **1,264** |
+| **his** | tester-1 segments, a stream people watch | **10/10** | 4,242 | **1,264** |
 | **ours-aug03** | GOP sweep of 2026-08-03, uploaded once, read rarely | **2/10** | 3,409 | 459 |
 | **ours-today** | latbench recording, read successfully this morning | **4/4** | 95 | 96 |
 | **canary** | ours, 2026-08-03, **225 KB** | **0/5** | - | - |

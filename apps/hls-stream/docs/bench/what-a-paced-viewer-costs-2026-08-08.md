@@ -179,6 +179,6 @@ broadcast's working set is the entire window and nothing has measured eviction.
 
 ## Artifacts
 
-`/home/solarpunk/retrieval-probe/{paceproving,pace1,pace2}/`. Probe:
+`~/retrieval-probe/{paceproving,pace1,pace2}/`. Probe:
 `deploy/scripts/retrieval-debt-probe.sh`, pace is the 6th arm field. Gateway restored to
 `--swap-enable=true` and `--cache-capacity=0` and confirmed on the node after every sitting.

@@ -1,7 +1,7 @@
 {
  "state": "done",
  "stream": {
-  "name": "abel-1",
+  "name": "tester-1",
   "owner": "47535bf0835ff9cb1c7c7cb4f44fa514f58e703d",
   "topic": "d1e6072ffe54287de3f43dd74eeb8319e0186259a307b37af9b28aacb9f21a7a",
   "segmentSeconds": 4.166667,
@@ -5144,7 +5144,7 @@
  "gateReason": "full table",
  "firstAdvanceAt": 2008,
  "summary": {
-  "stream": "abel-1",
+  "stream": "tester-1",
   "what": "Third party VOD reported to play fine in this node. 8.34 Mbps, 1,591 segments.",
   "demandedKBps": 1018,
   "derivedDeliveredKBps": 1003,

@@ -59,7 +59,11 @@ function logStartupConfig(owner: string, topicHex: string): void {
   logger.info(`[Boot]   viewer: ${config.viewerBaseUrl || '(unset → no player links)'}`);
   logger.info(`[Boot]   internal API token: ${redactSecret(config.internalApiToken)}`);
   logger.info(
-    `[Boot]   ingest: ${config.ingest.host} srt ${config.ingest.srtPort} rtmp ${config.ingest.rtmpPort}, passphrase ${
+    `[Boot]   ingest: ${config.ingest.host} srt ${config.ingest.srtPort} rtmp ${
+      config.ingest.rtmpPublic
+        ? `${config.ingest.rtmpPort} (offered to the console)`
+        : 'not offered (INGEST_RTMP_PUBLIC is off)'
+    }, passphrase ${
       config.ingest.srtPassphrase ? redactSecret(config.ingest.srtPassphrase) : '(unset)'
     }, key verified ${config.ingest.keyVerified}`,
   );

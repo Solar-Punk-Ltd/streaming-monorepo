@@ -124,6 +124,6 @@ of 48 cores.
 
 ## Artifacts
 
-`/home/solarpunk/retrieval-probe/coldidle/`. Instrument:
+`~/retrieval-probe/coldidle/`. Instrument:
 [`deploy/scripts/cold-gateway-idle-cpu.sh`](../../deploy/scripts/cold-gateway-idle-cpu.sh). Gateway
 restored to `--swap-enable=true` and `--cache-capacity=0`.
