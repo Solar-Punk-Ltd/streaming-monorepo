@@ -168,7 +168,7 @@ describe('the floors that stop a sitting mid-flight', () => {
    * ⛔⛔ This stopped a night seventeen seconds after it launched, on 2026-08-12.
    *
    * `/stamps` lists every batch the node has ever bought, and this deployment carries four of which
-   * three are dead. `00000002` is a mutable depth-22 batch abandoned on 2026-08-04 at 50 of 64
+   * three are dead. `b92d92d8` is a mutable depth-22 batch abandoned on 2026-08-04 at 50 of 64
    * buckets, which is 78% and will never come down. The batch actually in use was at 39%.
    *
    * A floor that reads every row is not stricter, it is wrong: it stops on a number that describes

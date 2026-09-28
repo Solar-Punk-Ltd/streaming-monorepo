@@ -365,7 +365,7 @@ export interface TimedRequest {
 }
 
 /** Segment bodies come from the gateway's `/bytes/` route. Feed and manifest reads do not, and in a
- * weeb-3 arm they still go through the gateway by design: PR #183 moved segment bytes and nothing else. */
+ * weeb-3 arm they still go through the gateway by design: the in-tab fetch backend change moved segment bytes and nothing else. */
 const SEGMENT_ROUTE = '/bytes/';
 
 /**
@@ -391,7 +391,7 @@ const WEEB3_WASM = /weeb_3[^/]*\.wasm(?:\?|$)/;
  *
  * A weeb-3 arm's headline is that it made **no** `/bytes/` requests. That is also precisely what an
  * arm that fetched nothing at all produces, and a broken arm and a perfect arm would file the same
- * number. `#41` cost this project the same confusion in another module: "I could not find X" and
+ * number. The picture-less opening defect cost this project the same confusion in another module: "I could not find X" and
  * "there is no X" are the same return value. So a zero is only accepted alongside evidence that the
  * node loaded at all, which is the wasm chunk.
  *

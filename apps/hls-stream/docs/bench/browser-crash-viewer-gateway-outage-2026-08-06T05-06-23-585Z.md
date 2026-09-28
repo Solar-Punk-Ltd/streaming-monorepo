@@ -2,7 +2,7 @@
 
 **2026-08-06T05:06:23.585Z.** Chrome 151.0.7922.75, headed against an X display on the deployment host, watching a 0.25s-GOP broadcast through the shipped client while `latbench-bee-gateway-1` was stopped.
 
-`http://127.0.0.1:10074/#/watch/video/0000a00500000000000000000000000000000000/ac77ea6d-f7f5-4475-b701-43ca49d363a5?qoe=1`
+`http://127.0.0.1:10074/#/watch/video/00000000000000000000000000000000000fa4e1/ac77ea6d-f7f5-4475-b701-43ca49d363a5?qoe=1`
 
 The fault landed 46.1s into the run and was lifted at 66.6s.
 

@@ -4,14 +4,14 @@
 sweeping per-request jitter against positional spread. **Cost: nothing.** The chequebook was
 byte-identical before and after.
 
-⛔ **This measures a default this repository shipped an hour earlier, in #108, and finds it does not
+⛔ **This measures a default this repository shipped an hour earlier, in the gateway request jitter change, and finds it does not
 work.** It also corrects how the finding that motivated it was framed.
 
 ## What was being checked
 
 [The cohort finding](a-synchronised-audience-is-the-failure-2026-08-08.md) was measured with `spread`,
 which gives each viewer one fixed offset held for the whole walk. At `spread=16` on a 267ms segment
-that is **4.3 seconds** of separation. What #108 shipped to the client is a different thing: a bounded
+that is **4.3 seconds** of separation. What the gateway request jitter change shipped to the client is a different thing: a bounded
 uniform delay **re-drawn in front of every request**, bounded at **60ms**.
 
 Seventy times apart, and the smaller one had never been tested. The docblock justifying 60ms reasoned
@@ -70,7 +70,7 @@ Both were measured earlier the same day and neither is a client change:
 ## ⛔ What was changed in response
 
 The stagger in front of every gateway request now **defaults to 0**, which runs it synchronously and
-restores exactly the behaviour before #108. The mechanism, its configurability and its tests all stay,
+restores exactly the behaviour before the gateway request jitter change. The mechanism, its configurability and its tests all stay,
 so it can be turned on where an operator has evidence for it. This one has none, and it was costing up
 to 60ms per fragment for it.
 

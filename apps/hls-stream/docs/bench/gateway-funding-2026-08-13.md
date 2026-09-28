@@ -124,11 +124,11 @@ stall rate**, and n=3 per condition is far too small to look for one.
   and refuses on a single foreign one. **All eight logged "fetched only from" their own gateway.**
   On 2026-08-13 an earlier smoke had both arms fetching all 253 video segments from one node while
   the client honestly reported two, so this gate is the reason the numbers above mean anything.
-- That defect was the publisher's `MANIFEST_ACCESS_URL`, removed in PR #182 and unset on the
+- That defect was the publisher's `MANIFEST_ACCESS_URL`, removed in the host-free manifest change and unset on the
   deployment before this sitting. Segment lines are now bare Swarm references and each viewer's
   client prefixes its own gateway.
 - Uploader spent 0.7321 BZZ (0.79/broadcast hour), gateway 0.2672 BZZ (0.29/broadcast hour).
-- Batch `00000003` 257 to 264 of 512 buckets. `segmentsSkipped` 0, `segmentsNeverNamed` 0,
+- Batch `0cd0eff9` 257 to 264 of 512 buckets. `segmentsSkipped` 0, `segmentsNeverNamed` 0,
   `maxConsecutiveSegmentFailures` 0 throughout.
 
 ⚠️ The publisher wrapper prints **"publish FAILED (exit 127). Nothing usable was broadcast, so do not

@@ -2,7 +2,7 @@
 
 **2026-08-30T02:28:52.286Z.** Chrome 151.0.7922.75, headed against an X display on the deployment host, watching a broadcast at an unrecorded GOP through the shipped client while the 360p transcode in `latbench-srs-1` was stopped from 45.9s to 136.1s.
 
-Watching `http://127.0.0.1:10074/#/watch/video/0000a00500000000000000000000000000000000/cb5854d1-dc09-4a3a-be58-d5cefd6445f8?qoe=1`.
+Watching `http://127.0.0.1:10074/#/watch/video/00000000000000000000000000000000000fa4e1/cb5854d1-dc09-4a3a-be58-d5cefd6445f8?qoe=1`.
 
 ## What was silenced
 

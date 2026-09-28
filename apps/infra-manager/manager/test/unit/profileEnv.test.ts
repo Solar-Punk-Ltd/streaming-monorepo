@@ -41,7 +41,7 @@ const { bootstrapStackDefaults, writeProfileEnv } = await import('../../src/util
 
 const BATCH = (rung: string) => rung.replace(/\D/g, '').padEnd(64, '0');
 const PUBLISHERS = ['360p', '480p', '720p', '1080p']
-  .map((rung, i) => `${rung}@http://192.0.2.58:${10015 + i * 10}<${BATCH(rung)}>`)
+  .map((rung, i) => `${rung}@http://192.0.2.20:${10015 + i * 10}<${BATCH(rung)}>`)
   .join(' ');
 
 const modeOf = (path: string): string => (statSync(path).mode & 0o777).toString(8);

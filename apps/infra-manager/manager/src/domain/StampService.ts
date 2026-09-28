@@ -76,10 +76,10 @@ export type BeeClientFactory = (baseUrl: string, timeoutMs?: number) => BeeClien
  * `/^[a-zA-Z0-9][a-zA-Z0-9._@-]{0,127}$/` and documents it as "localhost, an ssh
  * alias, or user@host". Neither of the two non-trivial forms is an address. The
  * user half addresses an ssh account and never the bee API, and left in place it
- * composes to `http://deploy@1.2.3.4:10055`, not a bee base URL, and a stray `@`
+ * composes to `http://deploy@203.0.113.4:10055`, not a bee base URL, and a stray `@`
  * inside a BEE_PUBLISHERS entry format that already separates the rung from the
  * URL on `@`. An alias is a key into an ssh config and resolves nowhere else, so
- * `http://bee-1:10055` times out on every probe.
+ * `http://bee-host-1:10055` times out on every probe.
  *
  * resolveNetworkHost undoes both, reading the same ssh config deploy.sh reads.
  * See manager/src/utils/deployHost.ts.
@@ -109,7 +109,7 @@ export function beeApiUrlFor(profile: Profile): string {
  * A member on a declared remote host keeps that host's own address, and that is
  * the caveat of that binding: the remote node's API has to be bound somewhere this host can
  * reach. A Bee host opens it to named addresses with a wider bind and the firewall
- * generator's --bee-api-source, as the Bee host recipe in docs/hosts.md says.
+ * generator's --bee-api-source, as the Bee host recipe in docs/self-hosting.md says.
  */
 export function beePublisherUrlFor(profile: Profile, localPublisherHost: string): string {
   const port = BEE_UPLOADER_API_BASE_PORT + profile.port_slot * 10;

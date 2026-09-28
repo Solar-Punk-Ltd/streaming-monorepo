@@ -1,4 +1,3 @@
 * @LevilkTheReal
-/infra/terraform/ @nandibaa @LevilkTheReal
 # The files under .github define what a green pull request means, so they need an owner's review even when nothing else in the pull request does.
 /.github/ @LevilkTheReal @nandibaa

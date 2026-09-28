@@ -82,7 +82,7 @@ export interface LatencySplit {
    * A run costs a real broadcast and real postage, so a question asked of it afterwards should not
    * need another one. Without this the JSON holds durations only, every absolute instant is gone, and
    * even the run's own elapsed span has to be back-computed out of a derived figure. That is how the
-   * PR #64 gate's question about the drift estimate had to be answered, which is the argument for
+   * the glass-to-glass latency instrument change gate's question about the drift estimate had to be answered, which is the argument for
    * this field.
    */
   instants: SegmentInstants;

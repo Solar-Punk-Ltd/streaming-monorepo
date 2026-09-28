@@ -1,6 +1,6 @@
 {
   "measuredAt": "2026-09-03T01:52:47.117Z",
-  "watchUrl": "http://127.0.0.1:10074/#/watch/video/0000a00500000000000000000000000000000000/f0534fec-9885-4dd9-8a2a-b9cb2590c10a?qoe=1",
+  "watchUrl": "http://127.0.0.1:10074/#/watch/video/00000000000000000000000000000000000fa4e1/f0534fec-9885-4dd9-8a2a-b9cb2590c10a?qoe=1",
   "chromeVersion": "Chrome 151.0.7922.75",
   "openError": null,
   "startedPlaying": {
@@ -62,34 +62,34 @@
     "rungs": [
       {
         "height": 360,
-        "uri": "swarm://0000a00500000000000000000000000000000000/67b0b226-369a-41b3-903b-0c286279a46a",
+        "uri": "swarm://00000000000000000000000000000000000fa4e1/67b0b226-369a-41b3-903b-0c286279a46a",
         "segments": 61,
         "durationS": 120.8,
-        "lastSegmentRef": "fd83644f68aedc8c3d0d89ae624fb71a4522398388fed23ef7910ef0cd987422",
+        "lastSegmentRef": "d5e23e23e70639574c003010ad89b5e95a7d0028c885c46f415569d7e64facb2",
         "readFrom": "feed"
       },
       {
         "height": 480,
-        "uri": "swarm://0000a00500000000000000000000000000000000/7da27285-c00c-4f3d-9852-e63dd93fa895",
+        "uri": "swarm://00000000000000000000000000000000000fa4e1/7da27285-c00c-4f3d-9852-e63dd93fa895",
         "segments": 61,
         "durationS": 120.766,
-        "lastSegmentRef": "e4df334ed4e675356a61ecb9fff70ff3cfcf2ee5732612d8a858e2242db37e99",
+        "lastSegmentRef": "cd2ca013fa7d24a4d97755d63a0531789907c21ed2a78e33c3c09fc838cc47e4",
         "readFrom": "feed"
       },
       {
         "height": 720,
-        "uri": "swarm://0000a00500000000000000000000000000000000/6bd9f52c-8820-45af-bdb3-c817e05cf28d",
+        "uri": "swarm://00000000000000000000000000000000000fa4e1/6bd9f52c-8820-45af-bdb3-c817e05cf28d",
         "segments": 61,
         "durationS": 120.266,
-        "lastSegmentRef": "afadad4cb59681c98674e44364b5e10a59f2169c7d1f11b3efdaeef0d4bc22f2",
+        "lastSegmentRef": "178b5445449b3dd2bc4f289071da9733090d640150f64b73f8908346f3a0a4e6",
         "readFrom": "feed"
       },
       {
         "height": 1080,
-        "uri": "swarm://0000a00500000000000000000000000000000000/0d8c23f5-15c7-4f92-b6cf-5fbf424ceabe",
+        "uri": "swarm://00000000000000000000000000000000000fa4e1/0d8c23f5-15c7-4f92-b6cf-5fbf424ceabe",
         "segments": 61,
         "durationS": 120.167,
-        "lastSegmentRef": "8f90a1575813ba9a3fe8bb511e2d53bb28491fed10d5349daeaa488543011543",
+        "lastSegmentRef": "81dc8d4af956ada1fcf09af8225f3e0075d6a35d117dd4dd2e60b79429605d7c",
         "readFrom": "player"
       }
     ]

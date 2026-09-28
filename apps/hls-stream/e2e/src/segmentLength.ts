@@ -3,7 +3,7 @@
  *
  * ⭐⭐⭐ **The two viewer types this project ships want opposite numbers, and that is a product trade
  * rather than a defect to reconcile.** Measured 2026-08-16 by the sibling repo
- * `load-test-lab`, in `docs/measurements/2026-08-16-a-stock-tab-holds-realtime-on-two-second-segments.md`
+ * a separate load-testing repository, in `docs/measurements/2026-08-16-a-stock-tab-holds-realtime-on-two-second-segments.md`
  * and recorded as the open question Q23 in its `docs/spec/product-spec.md`:
  *
  *  - A stock weeb-3 tab, the in-tab node this project exists to measure, sustains **1.000x of

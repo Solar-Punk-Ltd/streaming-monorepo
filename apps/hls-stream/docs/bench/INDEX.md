@@ -4,7 +4,7 @@
 >
 > Every in-tab result in this index measured a **hybrid client**: segment bytes from the node, **feed
 > and manifest still from a bee gateway**. That split was an unauthorised design decision of mine in
-> PR #183, taken two days after an instruction to measure a tester's setup as it is.
+> The in-tab fetch backend change, taken two days after an instruction to measure a tester's setup as it is.
 >
 > The arm-to-arm contrasts are clean, because both conditions read the manifest the same way. The
 > **saving figures are lower bounds**, because a genuinely gateway-less client removes the residual
@@ -179,7 +179,7 @@ What happens when many viewers share one node.
 | 2026-08-08 | [A cache at 76% of the working set is byte-identical to no cache, and 100.1% buys the whole benefit: no partial credit under a cyclic scan → `the-cache-cliff-belongs-to-the-access-pattern-2026-08-09.md`](the-cache-cliff-is-at-one-hundred-percent-2026-08-08.md) | ⚠️ superseded |
 | 2026-08-08 | [Sixteen viewers behind one gateway cost the network what one costs: peer contacts move 3.7% while retrieval operations move 15x](sixteen-viewers-cost-what-one-costs-2026-08-08.md) |  |
 | 2026-08-08 | [Pooling and caching collapse different things (across viewers vs across time), so they compose: 19x cheaper CPU per MB together](pooling-and-caching-are-orthogonal-2026-08-08.md) |  |
-| 2026-08-08 | [60ms of per-request jitter, the default #108 shipped, does nothing against a 128-viewer herd; only positional spread (chunk diversity) works](jitter-is-not-what-breaks-a-herd-2026-08-08.md) |  |
+| 2026-08-08 | [60ms of per-request jitter, the default the gateway request jitter change shipped, does nothing against a 128-viewer herd; only positional spread (chunk diversity) works](jitter-is-not-what-breaks-a-herd-2026-08-08.md) |  |
 | 2026-08-08 | [Jitter improves the median transfer twenty-fold, 250ms to 12ms, and viewers still end seconds behind, while positional spread is 0ms every round.](a-twenty-fold-better-median-that-fixes-nothing-2026-08-08.md) |  |
 | 2026-08-08 | [128 scattered viewers end zero behind where the same 128 synchronised drain 25.6s, so synchronisation is a failure mode and not a baseline.](a-synchronised-audience-is-the-failure-2026-08-08.md) |  |
 | 2026-08-08 | [The first arm after a recreate costs 2.06-2.16x per MB with 32-40% of segments over budget, and CPU settles in four arms where the viewer settles in one.](a-cold-gateway-needs-a-minute-2026-08-08.md) |  |

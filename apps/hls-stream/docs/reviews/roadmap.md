@@ -94,7 +94,7 @@ ever bought, they are bought **last**, when the balance is nearly gone anyway.
 remaining work needs 1080p: a crash scenario asks whether a viewer recovers, not how the picture looks.
 At 720p the same balance covers the whole remaining list. **Price a run in bytes, then convert.**
 
-Postage `00000003…` is at **151 of 256 buckets with 26.4 days left**, against a stop-and-ask threshold
+Postage `0cd0eff9…` is at **151 of 256 buckets with 26.4 days left**, against a stop-and-ask threshold
 of 192, so it is not binding either. The gateway chequebook holds 6.155 BZZ and has never bound on this
 topology, at 0.0002 BZZ/min.
 
@@ -202,7 +202,7 @@ and the off-loop watcher drew a run with nothing to watch.
 
 ## Phase 0.5 — the long-run campaign, now that it is funded
 
-**Funded 2026-08-06.** Postage batch `00000003…` at depth 24 is 256 buckets and 30 days, immutable,
+**Funded 2026-08-06.** Postage batch `0cd0eff9…` at depth 24 is 256 buckets and 30 days, immutable,
 which is about **1100 broadcast-minutes** at the 0.22 buckets a minute measured on 10-minute runs.
 Uploader chequebook 9.98 BZZ against a measured **0.0214 BZZ/min**, so about 460 minutes. Neither
 binds the plan below, which is roughly 260.
@@ -749,7 +749,7 @@ resolve anything under ~2x.
 
 ### 0.9d ✅ DONE 2026-08-08, free — the CPU model, halved by pacing
 
-The probe now samples host load every two seconds during every arm (#112), so a starved probe client
+The probe now samples host load every two seconds during every arm (the host load sampler), so a starved probe client
 can no longer be mistaken for a slow gateway, and the same sampler is the neighbour-safety ceiling that
 keeps an unattended sweep off the other forty bee nodes on the host.
 

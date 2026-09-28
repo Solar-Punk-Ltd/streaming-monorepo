@@ -4,7 +4,7 @@
 # deliver? Every throughput figure before this was ARITHMETIC over a sequential p50, never measured.
 #
 # Node: weeb-3 0.0.327001, public deployment, app shell only (no stream attached, nothing prefetched).
-# Content: our own recording 0000a005... / 7fd811aa..., 3444 segments of 0.266s, mean 92 KB.
+# Content: our own recording 00000000... / 7fd811aa..., 3444 segments of 0.266s, mean 92 KB.
 # Concurrency 3 = HLS_PREFETCH_BODY_MAX_PARALLEL, the value weeb-3's own player uses.
 #
 # ⛔ PEER TABLE WAS 146 CONNECTED / 54 CONNECTING, not the 200/0 of the n=500 sitting. Buildup

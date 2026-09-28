@@ -221,7 +221,7 @@ one, and this branch's own README correction says exactly that. **Both shipped e
 transport streams, so the counter should sit at zero on either, and any rise means the measurement
 has stopped working and `#EXTINF` is back on the engine's word.** As written, an operator on OME who
 watched the counter climb would have read the failure as the expected behaviour, which is the one
-reading that makes the signal useless. Found by the pre-merge review of PR #74.
+reading that makes the signal useless. Found by the pre-merge review of the latency measurement fix.
 
 The cost accepted is a parse of every segment on the upload path. It is a scan of roughly 550 packet
 headers per segment, and no fallback fired across 17 real segments.

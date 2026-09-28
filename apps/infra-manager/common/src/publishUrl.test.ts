@@ -13,7 +13,7 @@ import {
 
 describe('classifyPublishUrl', () => {
   it('accepts the address a deployed rung actually publishes on', () => {
-    assert.equal(classifyPublishUrl('http://192.0.2.58:10055'), 'ok');
+    assert.equal(classifyPublishUrl('http://192.0.2.20:10055'), 'ok');
     assert.equal(classifyPublishUrl('https://bee-1.example.com:10055'), 'ok');
     // A bare internal hostname is legitimate: it may well resolve for the
     // uploader, and refusing it would be a guess dressed as a verdict.
@@ -32,18 +32,18 @@ describe('classifyPublishUrl', () => {
   // profiles.host holds a deploy target, "localhost, an ssh alias, or
   // user@host", and the user@ form is not a network address.
   it('rejects an ssh target used as an address', () => {
-    assert.equal(classifyPublishUrl('http://deploy@192.0.2.58:10055'), 'ssh-target');
-    assert.equal(classifyPublishUrl('http://deploy:pw@192.0.2.58:10055'), 'ssh-target');
+    assert.equal(classifyPublishUrl('http://deploy@192.0.2.20:10055'), 'ssh-target');
+    assert.equal(classifyPublishUrl('http://deploy:pw@192.0.2.20:10055'), 'ssh-target');
   });
 
   it('rejects what is not a URL at all', () => {
-    for (const bad of ['', '   ', null, undefined, 'not a url', '192.0.2.58:10055']) {
+    for (const bad of ['', '   ', null, undefined, 'not a url', '192.0.2.20:10055']) {
       assert.equal(classifyPublishUrl(bad), 'malformed');
     }
   });
 
   it('rejects a scheme bee does not speak', () => {
-    assert.equal(classifyPublishUrl('ssh://192.0.2.58:10055'), 'malformed');
+    assert.equal(classifyPublishUrl('ssh://192.0.2.20:10055'), 'malformed');
     assert.equal(classifyPublishUrl('file:///etc/passwd'), 'malformed');
   });
 

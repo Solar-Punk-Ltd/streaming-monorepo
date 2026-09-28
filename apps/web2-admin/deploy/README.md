@@ -13,14 +13,16 @@ call" below.
 
 ## One-time host setup
 
-The host runs as user `deploy` and keeps the checkout at
-`/opt/streaming/streaming-monorepo`, next to the manager's.
+The examples run as a user named `deploy` and keep the checkout at
+`/opt/streaming/streaming-monorepo`, next to the manager's. Any user in the
+`docker` group works, and `--remote-path` puts the checkout anywhere else.
 
 ```sh
 # As deploy@host
 sudo apt-get update
 sudo apt-get install -y docker.io docker-compose-plugin rsync curl
 sudo usermod -aG docker deploy
+sudo install -d -o deploy -g deploy /opt/streaming
 # log out and back in so the group takes effect
 ```
 

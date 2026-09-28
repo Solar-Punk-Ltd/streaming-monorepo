@@ -202,7 +202,7 @@ describe('the SRS latency knobs', () => {
    *
    * A segment overruns its settled length by a constant before settling back, so a ceiling set to the
    * GOP itself force-closes the overshooting ones: SRS cuts without a keyframe, and the segment after
-   * the cut cannot begin on one. Both the pre-#155 pair (1.0 x 2.1) and #155's own (0.5 x 4.2) gave
+   * the cut cannot begin on one. Both the pre-#155 pair (1.0 x 2.1) and the 0.5s fragment change's own (0.5 x 4.2) gave
    * exactly 2.1s, which is 35ms under what a 2.0s GOP needs, and a 2.0s GOP measured mode 2.117 with
    * a 1.861-2.219 spread against a clean 2.000 when the ceiling was out of the way.
    */

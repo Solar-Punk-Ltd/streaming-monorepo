@@ -155,7 +155,7 @@ As designed in 2026-05. The drawer is now a wizard, see the module table below.
 | `frontend/src/groups/GroupPage.tsx`           | A group's own page, with its shared settings and members.                   |
 
 The first four rows named `frontend/src/types.ts`, `NewDeploymentDrawer.tsx` and
-`DeploymentsTable.tsx` when this page was written. The UX rework (PR #39) replaced
+`DeploymentsTable.tsx` when this page was written. The UX rework replaced
 the drawer with a wizard and split the table, so the files above are where that
 behaviour lives now.
 

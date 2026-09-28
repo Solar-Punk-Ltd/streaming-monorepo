@@ -1,6 +1,6 @@
 # Frontend UX rework
 
-Status: merged into `main-v2` on 2026-09-05 as squash `007f558` (PR #39). Decided 2026-09-05 from the
+Status: merged into `main-v2` on 2026-09-05 as squash `007f558`, the UX rework. Decided 2026-09-05 from the
 clickable mockup in [redesign-mockup.html](redesign-mockup.html) (open it in a browser, it runs
 on fake data and every button works).
 
@@ -388,7 +388,7 @@ PUT stores as null. A changed key sends the new `public_key` as well.
 Streamer to follow (when they run `client`), Notes. A note at the top: "Changes apply to all n
 members and redeploy them. Keys and stamps stay per member." Calls
 `updateGroupConfig(id, { notes, feed_owner?, srt_passphrase })` where **choosing the host
-passphrase sends `srt_passphrase: null`**. This is the fix for the finding in the PR #38
+passphrase sends `srt_passphrase: null`**. This is the fix for the finding in the per-deployment SRT passphrase change
 review: the PATCH treats `undefined` as "keep" and the old drawer sent `undefined`, so a group
 could never go back to the host passphrase. Change `UpdateGroupConfigBody.srt_passphrase` to
 `string | null` in `data.ts`. The yup schema (`string().notRequired()`) already accepts null.
@@ -444,7 +444,7 @@ REMOVING then gone (and the group row when it was the last member). A bought sta
 `usable: false` for 4 s, then usable. `deploy-uploader` adds the `stream-uploader` container
 and clears `pendingStamp`. `bee-publishers` assembles the string from the rungs' stamps and
 lists what is missing, in the `BeePublishersResult` shape. Seed data is the mockup's dataset:
-`main-stage` (ready), `backup-stage` (needs a stamp, has BZZ), `viewer-eu`, `abr-gcp`
+`main-stage` (ready), `backup-stage` (needs a stamp, has BZZ), `viewer-eu`, `abr-cloud`
 (pool-backed), `edge-test` (ERROR with a port message), `old-demo` (stopped, expired stamp),
 group `loadtest` with three viewers, pool `abr-pool-1` with three stamped rungs and `1080p`
 unstamped with no BZZ. Every address, key and batch id is random at startup.

@@ -1,6 +1,6 @@
 {
   "measuredAt": "2026-08-28T15:35:20.729Z",
-  "watchUrl": "http://127.0.0.1:10074/#/watch/video/0000a00500000000000000000000000000000000/a851126b-e226-4d6f-a505-df5bd9acb462?qoe=1",
+  "watchUrl": "http://127.0.0.1:10074/#/watch/video/00000000000000000000000000000000000fa4e1/a851126b-e226-4d6f-a505-df5bd9acb462?qoe=1",
   "chromeVersion": "Chrome 151.0.7922.75",
   "gopSeconds": null,
   "summary": {
@@ -4597,7 +4597,7 @@
   "cost": {
     "before": {
       "atMs": 1787931320819,
-      "batchId": "0000000100000000000000000000000000000000000000000000000000000000",
+      "batchId": "1412677d8ebc5cd627c19a9a3034a345f5741a2ab97dc2ce6d63c5b02e24d612",
       "postageUtilization": 77,
       "postageCapacity": 256,
       "postageTtlDays": 12.557638888888889,
@@ -4606,7 +4606,7 @@
     },
     "after": {
       "atMs": 1787931630172,
-      "batchId": "0000000100000000000000000000000000000000000000000000000000000000",
+      "batchId": "1412677d8ebc5cd627c19a9a3034a345f5741a2ab97dc2ce6d63c5b02e24d612",
       "postageUtilization": 78,
       "postageCapacity": 256,
       "postageTtlDays": 12.554166666666667,

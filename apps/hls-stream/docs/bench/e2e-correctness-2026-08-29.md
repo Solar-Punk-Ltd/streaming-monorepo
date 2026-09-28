@@ -35,7 +35,7 @@ armed. That is a fact about the product, and it holds or it does not.
 `suites/preflight/segment-length.test.ts` reads the config SRS was actually exec'd on and refuses a
 mismatch before the first frame. It costs no broadcast and no BZZ.
 
-The law comes from the sibling repo `load-test-lab`, measured 2026-08-16:
+The law comes from a separate load-testing repository, measured 2026-08-16:
 
 | segment length | 0.5s | 2s |
 | --- | --- | --- |

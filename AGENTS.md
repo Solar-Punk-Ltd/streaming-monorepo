@@ -21,8 +21,8 @@ and how the pieces fit under `docs/`. Read it before moving anything.
 - `docs/ROADMAP.md` is the plan and the checkpoint log. Update it when a checkpoint closes or a
   decision lands.
 - `docs/architecture/` holds the design briefs.
-- `docs/hosts.md` holds the host roles, the edge, the recipe for each kind of fresh host, and the
-  names on the hosts that never change.
+- `docs/self-hosting.md` holds the host roles, the edge, the recipe for each kind of fresh host,
+  and the names on the hosts that never change.
 - `docs/research/` holds condensed reports on the neighbouring systems. Read the relevant one
   before touching anything that talks to those systems.
 
@@ -32,17 +32,18 @@ and how the pieces fit under `docs/`. Read it before moving anything.
   meet through shared packages under `packages/` and through their published interfaces: HTTP
   APIs, the Swarm catalog feed, the stack's deploy script arguments.
 - In the repository files move. On the hosts nothing that holds state moves: host folders,
-  compose project names, volumes and env file names stay what `docs/hosts.md` lists.
+  compose project names, volumes and env file names stay what `docs/self-hosting.md` lists.
 - A pull request that moves files only moves them. Renames first, each in its own commit, then
   the smallest path edits they need. No logic change and no upgrade rides along.
 - A bug gets its own pull request, with a test that fails before the fix, never inside a move.
-- `apps/hls-stream`, `apps/infra-manager` and `infra/terraform` are developed here like
-  everything else, since 2026-09-27. The repositories they came from get nothing new, and
+- `apps/hls-stream` and `apps/infra-manager` are developed here like everything else, since
+  2026-09-27. The repositories they came from get nothing new, and
   nothing more is pulled from them.
 - Nothing is deployed to a host without the owner's word. Every check that can be made without
   a host is made first.
 - Real host names, addresses and domains stay out of the repository. Name a host by its role and
   an address by a placeholder.
+- What differs between hosts is a setting, never a literal.
 
 ## Conventions
 
@@ -59,6 +60,6 @@ and how the pieces fit under `docs/`. Read it before moving anything.
 
 ## Working model
 
-One orchestrating session owns docs, roadmap, memory and verification.
-Implementation and other heavy work is delegated to high-effort agents with a
-self-contained brief. Every delegated change is reviewed before it lands.
+Work arrives with a self-contained brief, and every change is reviewed before it
+lands. The docs, the roadmap and the verification move with the code they
+describe.

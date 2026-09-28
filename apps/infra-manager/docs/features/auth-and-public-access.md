@@ -1,7 +1,7 @@
 # Sign in, and opening the manager to the internet
 
 Status, 2026-09-16. The login gate and the HTTPS edge are merged to `main-v2`. They were written
-at `6dc33d1` on `feat/ai-remediation`, the head of pull request #40, which landed. Both have since
+at `6dc33d1` on `feat/ai-remediation`, the head of the remediation set, which landed. Both have since
 run on a host: the manager was deployed on 2026-09-11 and a second pass on 2026-09-13 reached it
 over its own public domain with a certificate, rather than through the ssh tunnel. That pass is
 recorded in the remediation's handover record, which the repository's history keeps.

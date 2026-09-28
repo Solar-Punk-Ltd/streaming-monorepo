@@ -364,7 +364,7 @@ export function networkSection(run: BrowserRun): string[] {
  *
  * ⛔ Says "an unrecorded GOP" rather than filling in a plausible one. This existed as a 0.25 default
  * that reached nothing but the opening sentence, so a run nobody parameterised published a headline
- * naming a segment length the deployment had not produced since #155. The numbers under it were
+ * naming a segment length the deployment had not produced since the 0.5s fragment change. The numbers under it were
  * fine, which is exactly why it lasted: a mislabelled artefact reads as a finding about the
  * configuration it names, and the archive keeps it that way.
  *

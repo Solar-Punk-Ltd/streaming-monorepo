@@ -62,7 +62,7 @@ describe('whether the run was measured against the target it was configured with
   /**
    * ⛔⛔⛔ The regression this file existed to prevent, reintroduced one level up and shipped.
    *
-   * `BROWSER_TARGET_LATENCY_S` has moved arms to 6, 2 and 1.5 since PR #186, and until 2026-08-14
+   * `BROWSER_TARGET_LATENCY_S` has moved arms to 6, 2 and 1.5 since the live weeb-3 arm change, and until 2026-08-14
    * this verdict compared every one of them against the compile-time `LIVE_SYNC_DURATION_S`. The
    * 2026-08-14 sitting ran four arms at 2s that each reported `worstS: 3`, a full second of raise,
    * beside a verdict reading `raisedByS: 0, held: true`.

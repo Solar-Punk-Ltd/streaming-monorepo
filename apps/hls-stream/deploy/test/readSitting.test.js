@@ -270,7 +270,7 @@ describe('an arm not delivered at the requested profile voids the headline', () 
   });
 
   // ⛔⛔ "I could not find it" and "there is nothing wrong with it" are the same return value, and
-  // treating them alike is how #41 shipped. An arm whose watch summary never landed has an UNKNOWN
+  // treating them alike is how the picture-less opening defect shipped. An arm whose watch summary never landed has an UNKNOWN
   // frame rate, and unknown is refused here for the same reason a shortfall is.
   it('refuses an arm whose watch summary is missing rather than reading it as healthy', async () => {
     const arms = healthyArms();
@@ -510,7 +510,7 @@ describe('whether host load could account for a creep', () => {
  * its `finally`, writes `complete: true` beside a short `wallS`, and leaves a well-formed series.
  *
  * ⚠️ Worth a gate only because of arm LENGTH. Every arm this had ever run on was six minutes, where a
- * truncation is a small error. #106 is a three-hour arm whose whole output is a slope, and forty
+ * truncation is a small error. The three-hour drift arm is one whose whole output is a slope, and forty
  * minutes of it fitted and published as three hours is a wrong number with nothing marking it.
  */
 describe('a thread series that does not span its arm', () => {

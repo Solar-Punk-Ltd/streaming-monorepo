@@ -276,7 +276,7 @@ if (process.argv[2] === 'run') {
  * That stays true right down to an empty chequebook, so it authorises the entire balance, and it
  * cannot see what an earlier sitting the same night already spent, so two sweeps that each pass it
  * land past the owner's total together. Every other publishing driver has called `within_ceiling`
- * since PR #179 and this one was left out, which is the same shape as the postage gap the tests
+ * since the capacity gate fix and this one was left out, which is the same shape as the postage gap the tests
  * above were written for, one gate over.
  *
  * ⭐ `SKIP_FUNDS_CHECK` does not reach it, and that is the point of the last case here. That switch

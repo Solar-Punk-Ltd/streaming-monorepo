@@ -4,11 +4,11 @@ Status: decided 2026-09-05 (SRS API port backport wanted, SRS before OME, both i
 [next-features-2026-09.md](next-features-2026-09.md)). PR 1 (settings, restart, logs, effective
 config) is merged and PR 2 (live status) is not built.
 
-PR 1 was built on `feat/engine-control`, went in with pull request #40, and is merged to
+PR 1 was built on `feat/engine-control`, went in with the remediation set, and is merged to
 `main-v2`. It was written against the stack as pinned at the time, `main-v2` `ee99c36`. The
 submodule tracked `main-v3` from 2026-09-09, then `feat/manager-line`, the manager's own line of
 the stack, from 2026-09-17, and has tracked `main` since 2026-09-19, when that line reached the
-stack's `main` as PR #241. Its pin has moved several times since, which the update below explains.
+stack's `main` as the manager and admin publishing integration. Its pin has moved several times since, which the update below explains.
 `SRT_LATENCY` was left out with the rest of what a later stack reads, until it became a setting on
 2026-09-23, see the update of that date below. PR 2 is not started.
 
@@ -29,7 +29,7 @@ defaults to 2000.
 
 That default is the manager's own and not the stack's. `v3.1`, which the manager pinned from
 2026-09-19 to 2026-09-24, falls back to 200, as does every version cut before the decision that reads the key at
-all (`main-v2` does not). The stack's `main` has fallen back to 2000 itself since its PR #244, which
+all (`main-v2` does not). The stack's `main` has fallen back to 2000 itself since the SRT 2000 ms latency change, which
 its releases `v3.2`, `v3.3` and `v3.4` carry, and the manager has pinned it since 2026-09-24. On every version the manager writes
 `SRT_LATENCY=2000` into `.env.<profile>` for every SRS deployment that stores no value. The Engine
 card calls it **Manager default**, and the Stack settings card names it as the manager's own

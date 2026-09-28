@@ -4,6 +4,10 @@
 # an import anywhere can cross a line. What the check proves and what it does
 # not: tools/boundary-check/README.md. The check's own tests run in the tools
 # workflow.
+#
+# The public leak gate runs here too, for the same reason: a real address, a
+# wallet or a host name can land in any file. What it refuses and how to add to
+# its lists: scripts/public-leaks/README.md.
 name: boundaries
 
 on:
@@ -68,3 +72,17 @@ jobs:
             echo "The planted import from the admin backend into the manager API was not refused (exit $status)." >&2
             exit 1
           fi
+
+  public-leaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      # Node's standard library alone, so there is nothing to install.
+      - name: The gate's own tests
+        run: node --test scripts/public-leaks/test/gate.test.mjs
+      - name: Nothing in the tree points at a real deployment
+        run: node scripts/public-leaks/gate.mjs

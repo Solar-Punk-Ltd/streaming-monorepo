@@ -457,7 +457,7 @@ describe('taking over a stream id that is already being published', () => {
    * neither engine calls `startStream` again. Nothing therefore records who owns it, and reading an
    * absent record as "nobody owns this" left the guard off for the whole remaining broadcast.
    *
-   * Three separate lenses of the PR #65 gate found this, each from a different question.
+   * Three separate lenses of the broadcast takeover fix gate found this, each from a different question.
    */
   it('refuses a stranger against a recovered stream that resumed by segments', async () => {
     const clock = new FakeClock();

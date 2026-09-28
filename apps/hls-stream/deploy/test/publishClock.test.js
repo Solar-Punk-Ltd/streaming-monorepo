@@ -156,9 +156,9 @@ describe('publish-clock.sh waiting on a detached publisher', () => {
 });
 
 /**
- * ⛔⛔⛔ THE ALARM PR #188 REMOVED IS STILL FIRING, THROUGH A SECOND PATH.
+ * ⛔⛔⛔ THE ALARM the stopped-publisher fix REMOVED IS STILL FIRING, THROUGH A SECOND PATH.
  *
- * #188 taught this script that a container removed by its own harness is a requested stop rather than
+ * the stopped-publisher fix taught this script that a container removed by its own harness is a requested stop rather than
  * a failed broadcast, and it decides that by comparing the inspect result against the literal string
  * `missing`. A real `docker inspect` of a container that is gone writes an EMPTY LINE to stdout and
  * then exits non-zero, so the `|| echo missing` guarding it appends a second line and the value that
@@ -271,7 +271,7 @@ describe('a publisher container that was removed while this script watched it', 
  * Its own usage block documents a standalone invocation, and `--seconds=3600` is an hour of 720p
  * published through the live uploader into Swarm. Nothing asked whether the chequebooks could pay,
  * whether the postage batch had room, or whether tonight's authorisation had anything left. Every
- * sitting driver has asked all three since PR #179, and the one command an operator runs by hand
+ * sitting driver has asked all three since the capacity gate fix, and the one command an operator runs by hand
  * asked none of them. The test written to catch a driver without a capacity gate could not see it
  * either, because it discovers drivers by which scripts source the burn rates and this one sourced
  * nothing.

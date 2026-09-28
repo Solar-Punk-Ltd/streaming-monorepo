@@ -47,7 +47,7 @@ group responses and a source-only switch.
 ## Limits
 
 No database test ran locally because this checkout has no configured disposable
-PostgreSQL mapping. On 2026-09-19, [run 35440997869](https://github.com/Solar-Punk-Ltd/streaming-monorepo/actions/runs/35440997869)
+PostgreSQL mapping. On 2026-09-19, a CI run
 tested `e88581a42483e8caf7fa6a3ca41b5492a8b74f1e` in the PR workflow's disposable
 databases. All 547 database tests passed, including the public projection,
 omission preservation, replacement and group cases in
@@ -78,7 +78,7 @@ userinfo as public host metadata. The database accepts this URL shape, so
 request validation alone cannot protect existing rows. A small projection
 correction is preferable to exposing stored credentials to profile readers.
 
-The repository regression failed in [run 35442940317](https://github.com/Solar-Punk-Ltd/streaming-monorepo/actions/runs/35442940317)
+The repository regression failed in a CI run
 at `b4edc3c824245f2b251f564155b55b69d9bdadec`. PostgreSQL returned
 `synthetic-user:synthetic-secret` instead of `rpc.example.org`. This was the only
 failure among 548 database tests, with zero skips.

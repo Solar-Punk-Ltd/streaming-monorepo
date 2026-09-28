@@ -2,18 +2,18 @@
   "measuredAt": "2026-09-02T11:41:33.865Z",
   "clientUrl": "http://host.docker.internal:10074",
   "chromeVersion": "Chrome 151.0.7922.75",
-  "owner": "0000a00500000000000000000000000000000000",
+  "owner": "00000000000000000000000000000000000fa4e1",
   "manifests": [
     {
       "rung": "360p",
-      "topicHex": "0000001100000000000000000000000000000000000000000000000000000000",
+      "topicHex": "216a8d60b6017aa54e1bb494b3e0b96c995dcde6317017473a3510b01e5d9aa5",
       "segmentCount": 127,
       "targetDurationS": 2,
       "medianSegmentSeconds": 2
     },
     {
       "rung": "1080p",
-      "topicHex": "0000001e00000000000000000000000000000000000000000000000000000000",
+      "topicHex": "7d1fe981e82ee3e48d2002c91b054cdf8549e7423c78675cc3799bfb120fedc2",
       "segmentCount": 127,
       "targetDurationS": 2,
       "medianSegmentSeconds": 2
@@ -473,7 +473,7 @@
     {
       "arm": "canary",
       "kbpsCap": 2800,
-      "ref": "afd0706d9000cc7cd0f876e5fcd94f75b485311a77947569bffc545bbb3c2901",
+      "ref": "c9f0e5c2434259e2d32f90548428a82716b519d9e82060c2fd3ff23bcddaec81",
       "roundIndex": 0,
       "roundDegraded": false,
       "capSource": "external",
@@ -492,7 +492,7 @@
     {
       "arm": "360p",
       "kbpsCap": 2800,
-      "ref": "fd547a30dd98386ba4786aa5d9fa1abb78dbe1238ac34ea111fcea825b4435c7",
+      "ref": "1ccef1115baa0a77d8d7670d09fb671074f810c217f860e566ad1fe6efc57ae7",
       "roundIndex": 0,
       "roundDegraded": false,
       "capSource": "external",
@@ -511,7 +511,7 @@
     {
       "arm": "1080p",
       "kbpsCap": 2800,
-      "ref": "ce4a28d1c4c5d7f524ec377d63ff5404eefde8301ffb5b104e1c3204ef00b2be",
+      "ref": "de64446c21e6352cc7693b7dec856a87cf4b39e2daed70cd98af160c70dc551f",
       "roundIndex": 0,
       "roundDegraded": false,
       "capSource": "external",
@@ -530,7 +530,7 @@
     {
       "arm": "canary",
       "kbpsCap": 2800,
-      "ref": "4ef5d372972f068b5bdb56d0a0aa9c9305eb13abaacb50f07dd9fad7113ae3ef",
+      "ref": "80e504380ea35f6d6c669573ea10edf22344881904784f02e326aa7ffb76fca6",
       "roundIndex": 1,
       "roundDegraded": false,
       "capSource": "external",
@@ -549,7 +549,7 @@
     {
       "arm": "1080p",
       "kbpsCap": 2800,
-      "ref": "ab920cf224fb135c3df6c772ca950f200f28ff6fe2e27c485458a08cb5c8365f",
+      "ref": "2d3aea3e96a5c56eb8b0a30d271a39a1505c193f44e78ca038da34ebb3ad82c2",
       "roundIndex": 1,
       "roundDegraded": false,
       "capSource": "external",
@@ -568,7 +568,7 @@
     {
       "arm": "360p",
       "kbpsCap": 2800,
-      "ref": "9d0ed6b5b6cf0c7e43b0a1a8dc459032eba81b9187383787beabcc463dd29144",
+      "ref": "27beff4461e20e472ab55237c6982d662164dbfe5122ff48303d3e34807cb7bf",
       "roundIndex": 1,
       "roundDegraded": false,
       "capSource": "external",
@@ -587,7 +587,7 @@
     {
       "arm": "canary",
       "kbpsCap": 2800,
-      "ref": "bc96b411c648fef81e244933b89f31269e14e02d74a4cdcd9694562ab426e1a7",
+      "ref": "18b1f3fee78345b4a6aa12777f28a2b75002023a08db85e66da609e555f9d6d7",
       "roundIndex": 2,
       "roundDegraded": false,
       "capSource": "external",
@@ -606,7 +606,7 @@
     {
       "arm": "360p",
       "kbpsCap": 2800,
-      "ref": "69e957283b36ddf4ddc1dc52537b748de7b011fc95bda3eeebb226f6c92654b7",
+      "ref": "97c9bdadd92259ddc6dc3928c0eabd6253b700ef36a789d9fac9d03036014222",
       "roundIndex": 2,
       "roundDegraded": false,
       "capSource": "external",
@@ -625,7 +625,7 @@
     {
       "arm": "1080p",
       "kbpsCap": 2800,
-      "ref": "afab98c64ac2c9c6ee3fc58e024589c8e0e0ae5c1d93638eef3007741b5889a4",
+      "ref": "7891e35e64e030c9c20b083f5eff6201c8ee11d643063f49561227352ba810a3",
       "roundIndex": 2,
       "roundDegraded": false,
       "capSource": "external",
@@ -650,7 +650,7 @@
       "arm": "pair",
       "kbpsCap": 2800,
       "capSource": "external",
-      "ref": "0c3f072a69466d4c411b7cda0c0832e1b5c61d5f2ef57fcf521078244fc74dc3",
+      "ref": "c3db1b954bfb23a10417bb5ce44f48c8bf580fbe4a9eb904750c68891f5ce29d",
       "roundIndex": 0,
       "roundDegraded": false,
       "budgetMs": 90000,
@@ -669,7 +669,7 @@
       "arm": "pair",
       "kbpsCap": 2800,
       "capSource": "external",
-      "ref": "c94211dd014ec8a307beaf700746eff896c2f4f22d5fc8f5daf10b8bf79da44c",
+      "ref": "b736711fec693d1e91bc3d20057f213221435da1c0bb8c0d2e8dfbd554e572bc",
       "roundIndex": 0,
       "roundDegraded": false,
       "budgetMs": 90000,
@@ -688,7 +688,7 @@
       "arm": "pair",
       "kbpsCap": 2800,
       "capSource": "external",
-      "ref": "9873ccef47add528295fc7ab9c0567948faf077d6afbc96081a34292ec2e3f1b",
+      "ref": "6cc48f43efd3400d08dd8fb02691aacf5e53580a1782657447479bc71468623c",
       "roundIndex": 1,
       "roundDegraded": false,
       "budgetMs": 90000,
@@ -707,7 +707,7 @@
       "arm": "pair",
       "kbpsCap": 2800,
       "capSource": "external",
-      "ref": "2ebd27f52fbe001cf8925cd8e9910f4c8dff18119d6e396b7da41506dd1c2d10",
+      "ref": "2c49d1d4ab7b33510d28aea0819725ea7e7bd91ade7ccedf5bdba58461d1e97a",
       "roundIndex": 1,
       "roundDegraded": false,
       "budgetMs": 90000,

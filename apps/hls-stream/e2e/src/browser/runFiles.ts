@@ -132,7 +132,7 @@ export function envFiniteNumber(name: string, fallback: number): number {
  *
  * ⛔ A fallback is the wrong shape for those. `BROWSER_GOP_SECONDS` defaulted to 0.25 and only ever
  * reached the report's opening sentence, so a run nobody parameterised published a headline naming a
- * GOP that had not shipped since #155 and that no part of the run had measured. Nothing was wrong
+ * GOP that had not shipped since the 0.5s fragment change and that no part of the run had measured. Nothing was wrong
  * with the numbers underneath, which is what made it survive: a mislabelled artefact reads as a
  * finding about the configuration it names.
  *

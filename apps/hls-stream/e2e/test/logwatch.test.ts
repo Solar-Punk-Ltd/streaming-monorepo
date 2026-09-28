@@ -518,7 +518,7 @@ describe('announcedLiveStreams', () => {
    * The bench resolves a feed location from this before it publishes anything, and it reads that feed
    * through a gateway rather than asking the uploader, so it needs the owner as well as the topic.
    * That is the whole reason it exists beside `announcedLiveTopics`, and it had no test of its own
-   * until the PR #64 gate said so.
+   * until the glass-to-glass latency instrument change gate said so.
    */
   it('returns the owner alongside the topic', () => {
     const [stream, ...rest] = announcedLiveStreams(textLine('log', announcement('topic-a', 'live')));

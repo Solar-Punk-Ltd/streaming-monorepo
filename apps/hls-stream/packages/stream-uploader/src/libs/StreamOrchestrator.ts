@@ -851,7 +851,7 @@ export class StreamOrchestrator {
    * own restart has no claimant and cannot get one from an announce: both engines resume it by
    * delivering segments, OME because `resumeRecoveredStream` restarts the puller with no admission
    * behind it and SRS because its publish session never closed, so no `startStream` call ever
-   * follows. Three lenses of the PR #65 gate reached this independently. So an absent record means
+   * follows. Three lenses of the broadcast takeover fix gate reached this independently. So an absent record means
    * the owner is *unknown*, and an unknown owner is protected by the stall window rather than
    * yielded to anyone who asks. `POST /stream/start` is the other case and it is genuinely different:
    * it records `ANONYMOUS_CLAIMANT`, which is a positive statement that the caller named nobody.

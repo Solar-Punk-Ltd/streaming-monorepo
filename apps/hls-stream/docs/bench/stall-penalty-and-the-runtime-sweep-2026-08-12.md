@@ -34,7 +34,7 @@ Taking the longest segment actually produced, measured today in
 | 1.0s | 1.136 | 2 | 2.0s |
 | 2.0s | 2.133 | 3 | 3.0s |
 
-⭐⭐ **So #155 halved it, 2.0s to 1.0s**, and at the profile we now ship **one stall reaches the cap
+⭐⭐ **So the 0.5s fragment change halved it, 2.0s to 1.0s**, and at the profile we now ship **one stall reaches the cap
 immediately and a second costs nothing more.** That is the opposite direction from
 [the growth cost](manifest-growth-2026-08-12.md) the same change carried, and it is the larger of the
 two effects on what a viewer feels.
@@ -128,7 +128,7 @@ Two things found by reading `docs/bench/one-stall-costs-a-second-2026-08-07.md` 
 above, which is the wrong order.
 
 **The cap being `targetduration` is not new.** That document derived it on 2026-08-07 and states it
-plainly. What is new here is only the arithmetic against #155's segment lengths, and it should have
+plainly. What is new here is only the arithmetic against the 0.5s fragment change's segment lengths, and it should have
 been presented that way. **Read the corpus before claiming a mechanism.**
 
 ⛔⛔ **And the cap RATCHETS.** `ManifestManager.addSegment` keeps `targetDuration` as a running maximum
@@ -144,7 +144,7 @@ the worst a stall can cost is:
 | a 2.0s GOP, OBS's default | 2.0s, peaks 2.133 | 3.0s |
 | **any GOP, after one force-close** | 2.5s once | **3.0s, permanently** |
 
-**"#155 halved it" is therefore scoped to a broadcaster publishing the GOP we recommend**, which is
+**"the 0.5s fragment change halved it" is therefore scoped to a broadcaster publishing the GOP we recommend**, which is
 the case the row above measures and the one the shipping profile describes. It says nothing about a
 2.0s publisher, whose cap was 3 before and is 3 now.
 

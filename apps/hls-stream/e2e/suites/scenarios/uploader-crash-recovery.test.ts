@@ -17,7 +17,7 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
 /**
  * Scenario F — uploader hard crash mid-stream; the same live stream must recover AND keep running.
  *
- * REQUIRES the PR #10 recovery fix deployed: StreamOrchestrator.handleSegment now cancels the
+ * REQUIRES the catalog-wipe fix recovery fix deployed: StreamOrchestrator.handleSegment now cancels the
  * recovery finalize timer when segments resume. WITHOUT the fix a hard-crash-recovered stream
  * resumes uploading but the 60s recovery timer still VODs it (SRS never re-sends on_publish), so
  * the final assertion fails — that is the pre-fix behaviour, not a flake.

@@ -7,7 +7,7 @@ in the path.** Prediction pre-registered in `tester-sustain-prediction-2026-08-1
 
 | | |
 | --- | --- |
-| stream | `tester-1`, owner `0000a004…703d`, topic `00000016…1a7a` |
+| stream | `tester-1`, owner `00000000…a4e2`, topic `d1eb4905…4408` |
 | shape | 4.167s segments, 4.14 MB each, **8.34 Mbps** |
 | peers at start | ✅ **200 connected / 0 connecting**, gate reported `full table` |
 | samples | 698 over **719.4s** |

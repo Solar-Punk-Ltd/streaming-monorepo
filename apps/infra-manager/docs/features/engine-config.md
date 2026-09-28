@@ -7,7 +7,7 @@ Recovery can fail. Saving a file is not proof that publishing or playback works.
 
 Status, 2026-09-16. What this page described on that day is merged to
 `main-v2`, and the paragraphs dated after it describe `main`. It was
-written at `6dc33d1` on `feat/ai-remediation`, the head of pull request #40,
+written at `6dc33d1` on `feat/ai-remediation`, the head of the remediation set,
 which landed. It carries the engine config ownership work's service caller integration, the isolated SRS
 checks, the OvenMediaEngine validation and the effective engine settings. The branch
 has since been deployed twice, on 2026-09-11 and 2026-09-13, recorded in

@@ -6,7 +6,7 @@
 # ssh-target defaults to `viewer` (configure in ~/.ssh/config). Example:
 #   Host viewer
 #     HostName <ip>
-#     User deploy
+#     User <deploy user>
 #     LocalForward 8080 localhost:8080
 #
 # What it does:
@@ -18,7 +18,8 @@
 #      the streaming stack a deploy carries. The host fetches that commit from
 #      GitHub and builds its apps/hls-stream there if it has no complete build
 #      of it, through the same path a version added in the UI takes.
-#   2. rsyncs the repo to /opt/streaming/streaming-infra-manager, without
+#   2. rsyncs the repo to the manager's folder on the host, MANAGER_ROOT in
+#      manager/.env or /opt/streaming/streaming-infra-manager, without
 #      manager/swarm-hls-stream: the tree the engines of existing deployments
 #      mount is never written over again, so a container restart keeps the
 #      files it was started with. Excludes node_modules, build caches and
@@ -49,7 +50,10 @@ if [[ "$SSH_TARGET" == -* ]]; then
     echo "ERROR: the ssh target must not start with a dash (got: $SSH_TARGET)" >&2
     exit 1
 fi
-REMOTE_PATH="/opt/streaming/streaming-infra-manager"
+# Where the manager lives on the host when manager/.env names no MANAGER_ROOT.
+# The data, the stack versions and the ssh identity sit beside it, in the same
+# parent folder, unless manager/.env names them too.
+readonly DEFAULT_REMOTE_PATH="/opt/streaming/streaming-infra-manager"
 # How long the upgrade waits for the host to fetch and build the pinned stack
 # commit before it reports a failure. A first build on a cold host pulls the
 # node image and installs the whole workspace.
@@ -74,6 +78,18 @@ if ! grep -q "POSTGRES_PASSWORD=.\+" "$ENV_FILE"; then
     echo "ERROR: POSTGRES_PASSWORD is missing or empty in $ENV_FILE." >&2
     exit 1
 fi
+# Read the way compose reads the env file, which interpolates the same key into
+# the compose file on the host: the last assignment wins, and a carriage return
+# and surrounding quotes are not part of the value.
+MANAGER_ROOT_SETTING="$(sed -n 's/^MANAGER_ROOT=//p' "$ENV_FILE" | tail -n 1 | tr -d '\r"' | tr -d "'")"
+REMOTE_PATH="${MANAGER_ROOT_SETTING:-$DEFAULT_REMOTE_PATH}"
+# It is interpolated into the remote heredoc, so it is held to an absolute path
+# of plain characters.
+if ! [[ "$REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$REMOTE_PATH" == */ ]]; then
+    echo "ERROR: MANAGER_ROOT must be an absolute path of letters, digits, dots, dashes, underscores and slashes, with no trailing slash (got: $REMOTE_PATH)" >&2
+    exit 1
+fi
+HOST_ROOT="$(dirname "$REMOTE_PATH")"
 
 echo "==> Recording the stack commit this manager pins"
 # The commit being deployed is what the upgrade records as the manager it
@@ -164,24 +180,30 @@ if [ -z "\${PUBLIC_HOST}" ]; then
 fi
 
 export PUBLIC_HOST
-export BEE_DATA_ROOT="\${HOME}/streaming-infra-manager-data"
+export MANAGER_ROOT="${REMOTE_PATH}"
+# Each root is read from manager/.env the way compose reads it, and otherwise
+# sits beside the manager's folder.
+env_setting() {
+    sed -n "s/^\$1=//p" .env | tail -n 1 | tr -d '\r"' | tr -d "'"
+}
+export BEE_DATA_ROOT="\$(env_setting BEE_DATA_ROOT)"
+export BEE_DATA_ROOT="\${BEE_DATA_ROOT:-${HOST_ROOT}/streaming-infra-manager-data}"
 
 # Added stack versions live here, a sibling of the data root and outside the
 # tree the rsync above deletes into, so a manager deploy cannot wipe them. The
 # bundled version's own build and its settings live here too.
-export STACK_VERSIONS_ROOT="\${HOME}/streaming-infra-manager-versions"
+export STACK_VERSIONS_ROOT="\$(env_setting STACK_VERSIONS_ROOT)"
+export STACK_VERSIONS_ROOT="\${STACK_VERSIONS_ROOT:-${HOST_ROOT}/streaming-infra-manager-versions}"
 mkdir -p "\${STACK_VERSIONS_ROOT}"
 echo "[deploy] stack versions root: \${STACK_VERSIONS_ROOT}"
 
 # The ssh identity the api container mounts for deployments on other hosts,
 # empty on a manager that deploys only to itself. Made here, as this user, with
-# the path manager/.env names or the compose default under this home, because a
+# the path manager/.env names or the folder beside the manager's, because a
 # bind mount whose source is missing is created by Docker as a root-owned
 # directory that nobody can put a key or a config into afterwards.
-# Read the way compose reads the env file: the last assignment wins, a carriage
-# return and surrounding quotes are not part of the value.
-export MANAGER_SSH_DIR="\$(sed -n 's/^MANAGER_SSH_DIR=//p' .env | tail -n 1 | tr -d '\r"' | tr -d "'")"
-export MANAGER_SSH_DIR="\${MANAGER_SSH_DIR:-\${HOME}/manager-ssh}"
+export MANAGER_SSH_DIR="\$(env_setting MANAGER_SSH_DIR)"
+export MANAGER_SSH_DIR="\${MANAGER_SSH_DIR:-${HOST_ROOT}/manager-ssh}"
 mkdir -p -m 700 "\${MANAGER_SSH_DIR}"
 echo "[deploy] ssh identity for other hosts: \${MANAGER_SSH_DIR}"
 

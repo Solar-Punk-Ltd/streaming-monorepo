@@ -2,9 +2,9 @@
 
 Status: the store, the record of what each container got, the API, the page that edits them, the
 new-deployment wizard that creates a deployment with them already set, and the engine settings in
-the same list in place of the Engine card's drawer are on `main`, merged in pull requests #55 to
-#58 and #62. The web2 admin keys are typed fields with a rule of their own, with a group of their
-own in the wizard and Test connection on the card, merged in #64 and #65. All of it as of
+the same list in place of the Engine card's drawer are on `main`, merged in the per-deployment stack settings change, the Stack settings card change, the fully
+configured wizard change and the engine settings card change. The web2 admin keys are typed fields with a rule of their own, with a group of their
+own in the wizard and Test connection on the card, merged in the web2 admin link change and the Test connection feed owner change. All of it as of
 2026-09-26 at `04c4165`.
 
 ## What this is

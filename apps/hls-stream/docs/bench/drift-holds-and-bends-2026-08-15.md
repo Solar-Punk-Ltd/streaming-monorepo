@@ -6,7 +6,7 @@
 > manifest still come from a **bee gateway**, in both conditions. Verified in source: `ManifestManagement`
 > has no weeb-3 path, only `CustomManifestLoader` does.
 >
-> That split was my design decision in PR #183 and **nobody authorised it**. The owner's instruction
+> That split was my design decision in the in-tab fetch backend change and **nobody authorised it**. The owner's instruction
 > of **2026-08-11T07:07Z** was *"the tester optimized the player as much as possible let's measure and
 > experiment with his setup as it is"*, and this is not that.
 >
@@ -22,7 +22,7 @@
 One live broadcast of 195 min at 720p/2500kbps, 0.5s GOP. **One in-tab arm of 180 minutes** behind a
 6-minute warm-up, no gateway arm. **2.477 BZZ.** `~/sittings/drift-3h-2026-08-15`.
 
-#203 and #204 measured the in-tab main thread creeping **+0.034/hr within a session** across
+The whole-distribution reading change and the three-hour drift sitting measured the in-tab main thread creeping **+0.034/hr within a session** across
 41-minute arms and
 could not say whether that holds, decays, or bends. Three hours is 4.4 times the lever arm, and it
 contains its own first 41 minutes, so the arm replicates the known result before extending it.
@@ -51,13 +51,13 @@ is the conservative one and it is the one quoted.
 
 | | slope | estimator |
 | --- | ---: | --- |
-| #203 arm A, #204 arm A, 41 min | +0.034 /hr | q50 per window, fitted on windows |
+| The whole-distribution reading change arm A, the three-hour drift sitting arm A, 41 min | +0.034 /hr | q50 per window, fitted on windows |
 | **this arm's own first 40.9 minutes** (n=491) | **+0.0362 /hr** | the same |
 | ⚠️ the long-arm sitting's published headline | +0.026 /hr | pooled over **three** weeb3 arms |
 
 ⛔ **This table once attributed +0.034 to [the long-arm sitting](long-arm-drift-2026-08-14.md), which
 published +0.026.** They are not the same estimator over the same arms: the long-arm sitting pooled
-three weeb3 arms, #203 and #204 fitted the two 41-minute ones per window. The replicate above is
+three weeb3 arms, the whole-distribution reading change and the three-hour drift sitting fitted the two 41-minute ones per window. The replicate above is
 against the window-level family, which is what this arm uses, and **I have not settled which
 estimator is right** because the long-arm sitting's raw arms are no longer on disk. ⚠️ Treat +0.026
 and +0.034 as two readings of one effect, not as a contradiction and not as agreement.
@@ -115,7 +115,7 @@ that load did not act as a confounder *here*.
 `heapFloor`, the post-collection baseline of the JS heap, grew **7.4 MB to 31.8 MB** across the arm.
 Against the thread series that correlates at **+0.942**, and growing retained memory driving more
 collection would explain a creep sitting in the median rather than the tail, which is exactly the
-shape #203 found.
+shape the whole-distribution reading change found.
 
 ⛔ **Both series rise monotonically in time, so they must correlate.** Partialling out elapsed time:
 

@@ -2,7 +2,7 @@
 
 **2026-08-06T05:33:36.816Z.** Chrome 151.0.7922.75, headed against an X display on the deployment host, watching a 0.25s-GOP broadcast through the shipped client while `latbench-bee-uploader-1` was paused.
 
-`http://127.0.0.1:10074/#/watch/video/0000a00500000000000000000000000000000000/20f7df2b-001a-488a-af04-cb355d801e73?qoe=1`
+`http://127.0.0.1:10074/#/watch/video/00000000000000000000000000000000000fa4e1/20f7df2b-001a-488a-af04-cb355d801e73?qoe=1`
 
 The fault landed 45.7s into the run and was lifted at 53.9s.
 

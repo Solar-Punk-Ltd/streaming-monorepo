@@ -49,12 +49,11 @@ At the platform level the admin layer also:
 - It never touches a wallet or a host directly. Postage, cheques, ssh and
   docker compose all live in streaming-infra-manager.
 - It does not serve media. Ingest, the ABR ladder, packaging and upload live on
-  the GCP stage host; publishers and gateways live on the Vps Bee host.
+  a stage host. Publishers and gateways live on a Bee host.
 
 ## The manager it talks to
 
-streaming-infra-manager (https://github.com/Solar-Punk-Ltd/streaming-monorepo)
-exposes a Manager API: provision, stop, and read back what a stage is running.
+The manager, [`apps/infra-manager`](../../apps/infra-manager/README.md), exposes a Manager API: provision, stop, and read back what a stage is running.
 Inputs to provision: media profile (four-rung ABR ladder or single rendition),
 port slot, publisher list, signing key, postage batch, SRT passphrase. Output: a
 running media stack. Today it has no authentication and listens on loopback of

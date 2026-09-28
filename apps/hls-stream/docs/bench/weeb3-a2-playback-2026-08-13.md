@@ -6,7 +6,7 @@
 > manifest still come from a **bee gateway**, in both conditions. Verified in source: `ManifestManagement`
 > has no weeb-3 path, only `CustomManifestLoader` does.
 >
-> That split was my design decision in PR #183 and **nobody authorised it**. The owner's instruction
+> That split was my design decision in the in-tab fetch backend change and **nobody authorised it**. The owner's instruction
 > of **2026-08-11T07:07Z** was *"the tester optimized the player as much as possible let's measure and
 > experiment with his setup as it is"*, and this is not that.
 >
@@ -20,7 +20,7 @@
 > See [`tester-gateway-less-live-2026-08-16.md`](tester-gateway-less-live-2026-08-16.md).
 
 **2026-08-13. Three arms, `gateway → weeb-3 → gateway`, one recording, free.** No broadcast, no
-postage, 0 BZZ. Phase A2 of the in-tab fetch backend, on the code merged in PR #183.
+postage, 0 BZZ. Phase A2 of the in-tab fetch backend, on the code merged in the in-tab fetch backend change.
 
 ## The answer
 
@@ -73,8 +73,8 @@ some other feed that happened to be polled:
 
 | observed | `Topic.fromString(…)` of | |
 | --- | --- | ---: |
-| `00000015…` | `swarm-stream-latbench` | 82,158 |
-| `0000000f…` | `e8950c8b-33d4-49d3-8e3f-ddac5d9c47ca` | 512,420 |
+| `ccb0680eb15241aeeda6eb94ac264ba587e85f…` | `swarm-stream-latbench` | 82,158 |
+| `92625c26dbec3e6356050bbcdb5ca075143d02…` | `e8950c8b-33d4-49d3-8e3f-ddac5d9c47ca` | 512,420 |
 
 512 kB is also the right size for the manifest of a 3283.77s recording at the 0.5s profile: about
 6,570 segments at a 79-byte bare-reference line.
@@ -102,7 +102,7 @@ The page logged, twice:
 > SecurityError: Failed to register a ServiceWorker for scope `/weeb-3/` … unsupported MIME type
 
 Our nginx serves the SPA's `index.html` for that path, so registration cannot succeed. **It played
-anyway.** That confirms on the running deployment what PR #183 argued from reading the package: the
+anyway.** That confirms on the running deployment what the in-tab fetch backend change argued from reading the package: the
 `/weeb-3/` worker exists to intercept `/bzz/` fetches for `attachStream` and `renderInterface`, and a
 direct `retrieveBytes` needs none of it.
 
@@ -124,7 +124,7 @@ something is broken.
 
 ## Provenance
 
-- Recording: owner `0000a005…feb0`, topic `e8950c8b-33d4-49d3-8e3f-ddac5d9c47ca`, 3283.77s,
+- Recording: owner `00000000…a4e1`, topic `e8950c8b-33d4-49d3-8e3f-ddac5d9c47ca`, 3283.77s,
   published earlier the same day by the [unfunded-gateway sitting](gateway-funding-2026-08-13.md),
   so its manifest carries bare references and its content is known healthy.
 - Reports `browser-vod-2026-08-13T09-55-22-502Z`, `…T10-02-21-787Z`, `…T10-06-40-691Z`.

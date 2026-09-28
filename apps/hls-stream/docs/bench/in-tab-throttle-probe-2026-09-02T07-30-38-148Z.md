@@ -2,12 +2,12 @@
 
 **2026-09-02T07:30:38.148Z.** Chrome 151.0.7922.75, headed against an X display on the deployment host, driving the shipped client at `http://127.0.0.1:10074`. No broadcast: the node in the tab is booted through the client's own switch and every retrieval goes through the client's own fetch backend, so this is the product path rather than a stand-in.
 
-The node joined the network in 1.0 s. Owner `0000a00500000000000000000000000000000000`.
+The node joined the network in 1.0 s. Owner `00000000000000000000000000000000000fa4e1`.
 
 | rung | topic | segments | `EXT-X-TARGETDURATION` | typical `#EXTINF` |
 | --- | --- | ---: | ---: | ---: |
-| 360p | `0000001100000000000000000000000000000000000000000000000000000000` | 127 | 2 | 2.000s |
-| 1080p | `0000001e00000000000000000000000000000000000000000000000000000000` | 127 | 2 | 2.000s |
+| 360p | `216a8d60b6017aa54e1bb494b3e0b96c995dcde6317017473a3510b01e5d9aa5` | 127 | 2 | 2.000s |
+| 1080p | `7d1fe981e82ee3e48d2002c91b054cdf8549e7423c78675cc3799bfb120fedc2` | 127 | 2 | 2.000s |
 
 ⚠️ Segment **bytes** are not in a manifest and are not read from one. They are the payload each retrieval below returned. What a manifest declares is a duration, and that is what this table carries.
 

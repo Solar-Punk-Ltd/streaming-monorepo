@@ -7,16 +7,21 @@ port, until the host's edge, `infra/edge`, gives it a name and HTTPS. See
 
 ## One-time server bootstrap
 
-Server runs as user `deploy`, code lives at `/opt/streaming/streaming-infra-manager`.
+The examples run as a user named `deploy` and keep the code at
+`/opt/streaming/streaming-infra-manager`. Any user in the `docker` group works,
+and `MANAGER_ROOT` in `manager/.env` puts the code anywhere else. The data, the
+stack versions and the ssh identity default to folders beside it, and
+`BEE_DATA_ROOT`, `STACK_VERSIONS_ROOT` and `MANAGER_SSH_DIR` move each of them.
 
 ```sh
 # As deploy@server
 sudo apt-get update
 sudo apt-get install -y docker.io docker-compose-plugin rsync
 sudo usermod -aG docker deploy
+sudo install -d -o deploy -g deploy /opt/streaming
 # log out + back in so the group takes effect
 
-mkdir -p ~/streaming-infra-manager/manager
+mkdir -p /opt/streaming/streaming-infra-manager/manager
 ```
 
 Make sure `manager/.env` exists in your local checkout. It gets rsynced to
@@ -97,7 +102,7 @@ version added from `v3.4` keeps running it.
 
 **Build, on the server.** When the API starts it reads that pin. If the bundled
 version is not already on a complete build of that commit, it fetches the commit
-from the monorepo on GitHub into `~/streaming-infra-manager-versions/bundled.repo`
+from the monorepo on GitHub into `/opt/streaming/streaming-infra-manager-versions/bundled.repo`
 and builds its `apps/hls-stream`
 in a throwaway `node:24-alpine` container, exactly as it does for a version you
 add in the UI. The build log is on the Versions page. A build that fails leaves
@@ -107,7 +112,7 @@ the manager coming up.
 
 **Upgrade.** The server builds its images, then runs `manager:upgrade` in a
 one-off container of the image it has just built. That command creates
-`~/streaming-infra-manager-versions/.manager-upgrade` and holds it for the whole
+`/opt/streaming/streaming-infra-manager-versions/.manager-upgrade` and holds it for the whole
 run, so a second deploy started beside this one refuses instead of interleaving
 with it. Inside the guard it decides whether Postgres may be started, reads the
 schema, stops the old API, migrates the database with no old API running, starts
@@ -122,7 +127,7 @@ manager is already up, so the fix is Update on the Versions page rather than
 another deploy.
 
 **Where builds live.** Each published build is one immutable directory at
-`~/streaming-infra-manager-versions/bundled.builds/<build id>`. Nothing is ever
+`/opt/streaming/streaming-infra-manager-versions/bundled.builds/<build id>`. Nothing is ever
 written into a build again, and the previous one is kept. The tree the engines
 mount, `manager/swarm-hls-stream` on the server, is never written over by a
 deploy any more.
@@ -133,7 +138,7 @@ does not move a deployment onto the new build.
 
 ## Where the streaming stack's settings live
 
-On the server, in `~/streaming-infra-manager-versions/bundled/`: the base `.env`,
+On the server, in `/opt/streaming/streaming-infra-manager-versions/bundled/`: the base `.env`,
 `deploy/config.json` and `engines/<engine>/.env`. They are the operator's files
 and no deploy reads or writes them.
 
@@ -159,9 +164,9 @@ readable by its owner alone.
 
 ```sh
 ssh control-1
-cd ~/streaming-infra-manager/manager
-sudo scripts/stack-config-edit.sh ~/streaming-infra-manager-versions/bundled set .env /tmp/new-env
-sudo scripts/stack-config-edit.sh ~/streaming-infra-manager-versions/bundled commit
+cd /opt/streaming/streaming-infra-manager/manager
+sudo scripts/stack-config-edit.sh /opt/streaming/streaming-infra-manager-versions/bundled set .env /tmp/new-env
+sudo scripts/stack-config-edit.sh /opt/streaming/streaming-infra-manager-versions/bundled commit
 ```
 
 Both take the same lock, so a save from the page and an edit over ssh cannot
@@ -184,12 +189,12 @@ key pair, an `ssh_config` and a `known_hosts`:
 
 ```sh
 # As deploy@control-1
-mkdir -p ~/manager-ssh
-ssh-keygen -t ed25519 -N '' -f ~/manager-ssh/deploy_key
-ssh-copy-id -i ~/manager-ssh/deploy_key.pub deploy@203.0.113.7
+mkdir -p /opt/streaming/manager-ssh
+ssh-keygen -t ed25519 -N '' -f /opt/streaming/manager-ssh/deploy_key
+ssh-copy-id -i /opt/streaming/manager-ssh/deploy_key.pub deploy@203.0.113.7
 ```
 
-One `Host` block per target in `~/manager-ssh/ssh_config`. `IdentityFile` is the
+One `Host` block per target in `/opt/streaming/manager-ssh/ssh_config`. `IdentityFile` is the
 path _inside the container_, where the directory is mounted at `/root/.ssh`:
 
 ```
@@ -210,13 +215,13 @@ the file itself was bind-mounted too, and a host without it could not start the
 upgrade container: Docker made a root-owned directory at the missing path and
 refused to mount it onto a file.
 
-Put the target's host key in `~/manager-ssh/known_hosts` before the first
+Put the target's host key in `/opt/streaming/manager-ssh/known_hosts` before the first
 deploy. The manager's own ssh calls pass `StrictHostKeyChecking=yes` on the
 command line, which overrides an `accept-new` in the config file and refuses a
 host it does not already know:
 
 ```sh
-ssh-keyscan -H 203.0.113.7 >> ~/manager-ssh/known_hosts
+ssh-keyscan -H 203.0.113.7 >> /opt/streaming/manager-ssh/known_hosts
 ```
 
 The manager verifies a target by running `docker info` over that same ssh path
@@ -244,8 +249,8 @@ there:
 
 ```sh
 ssh control-1
-ls ~/streaming-infra-manager-versions/.manager-upgrade
-cat ~/streaming-infra-manager-versions/.manager-upgrade/owner.json
+ls /opt/streaming/streaming-infra-manager-versions/.manager-upgrade
+cat /opt/streaming/streaming-infra-manager-versions/.manager-upgrade/owner.json
 ```
 
 `owner.json` names the phase it stopped in: `checking`, `stopping`, `migrating`,
@@ -257,8 +262,8 @@ whether the host is in a state worth keeping.
 What to look at before removing it:
 
 ```sh
-cd ~/streaming-infra-manager-versions/.manager-upgrade   # read the phase
-cd ~/streaming-infra-manager/manager
+cd /opt/streaming/streaming-infra-manager-versions/.manager-upgrade   # read the phase
+cd /opt/streaming/streaming-infra-manager/manager
 docker compose ps                 # is the api up, is postgres healthy
 docker compose logs --tail 200 api
 ```
@@ -270,7 +275,7 @@ or left a staging directory the next boot removes.
 When the host looks sound, remove the directory by hand and deploy again:
 
 ```sh
-rm -r ~/streaming-infra-manager-versions/.manager-upgrade
+rm -r /opt/streaming/streaming-infra-manager-versions/.manager-upgrade
 ```
 
 ### What a stopped deploy leaves behind
@@ -284,12 +289,12 @@ that shipped one, so remove it once no deploy is running.
 
 ```sh
 ssh control-1
-ls ~/streaming-infra-manager-versions/bundled.packages    # if it is still there
-rm -r ~/streaming-infra-manager-versions/bundled.packages
+ls /opt/streaming/streaming-infra-manager-versions/bundled.packages    # if it is still there
+rm -r /opt/streaming/streaming-infra-manager-versions/bundled.packages
 ```
 
 What a build that was interrupted leaves is a `tmp-<attempt>` directory under
-`~/streaming-infra-manager-versions/bundled.builds/`. The next boot removes it,
+`/opt/streaming/streaming-infra-manager-versions/bundled.builds/`. The next boot removes it,
 unless its build container is still running, and never removes a published build.
 Never remove anything else under `bundled.builds/`, which is where the published
 builds live.
@@ -301,7 +306,7 @@ create a user on the server:
 
 ```sh
 ssh control-1
-cd ~/streaming-infra-manager/manager
+cd /opt/streaming/streaming-infra-manager/manager
 docker compose exec -it api node dist/cli.js user:add <username>
 ```
 
@@ -356,7 +361,7 @@ rules never see it at all, and the forward rules of step 3 filter it one way in
 rather than closing it. The binding is the control.
 
 The five settings live on the server, in
-`~/streaming-infra-manager-versions/bundled/.env`, and no deploy reads or writes
+`/opt/streaming/streaming-infra-manager-versions/bundled/.env`, and no deploy reads or writes
 that file. Edit it there with the editing script, as under "Where the streaming
 stack's settings live" above. Find the bridge address with
 `ip -4 addr show docker0` on the server, usually `172.17.0.1`:
@@ -409,7 +414,7 @@ host's public one, and that is what an uploader container on this host can
 actually reach when these ports are bound here and nowhere else. `BEE_LOCAL_HOST`
 overrides that too. An uploader on another machine is the Bee host's case
 instead: its rungs are named at that host's own address, and "A Bee host, made
-by hand" in `docs/hosts.md` at the repository root opens their API to the
+by hand" in `docs/self-hosting.md` at the repository root opens their API to the
 uploader's address alone, with a wider bind and the `--bee-api-source` flag of
 step 3. An uploader created before
 2026-09-17 still holds a string in the public form, which answers nowhere at
@@ -472,12 +477,11 @@ A Bee host whose rungs serve uploaders on other hosts needs one more door, and
 it is opened only on request. `--bee-api-source <address>/32`, repeated once
 per uploader host and once for the manager's host, opens each slot's Bee API
 port, `10005 + 10 × slot` over TCP, to those IPv4 blocks and to nobody else, in
-both the input and the forward chain. A block wider than `/24` is refused, as
-the Terraform's Vps root refuses it, because anyone inside it can spend the
-node's postage. Without the flag nothing about the draft changes and the API
+both the input and the forward chain. A block wider than `/24` is refused,
+because anyone inside it can spend the node's postage. Without the flag nothing about the draft changes and the API
 ports stay closed. The draft names the admitted blocks in its header. Such a
 host binds its rungs' API wider as well, and "A Bee host, made by hand" in
-`docs/hosts.md` has both halves.
+`docs/self-hosting.md` has both halves.
 
 An endpoint that lands on a tuple one of those bands opens causes generation to
 refuse, whatever its own port variable is. It is not treated as a closed port
@@ -559,7 +563,7 @@ wrong, so leave it there.
 
 ## Operations
 
-All run on the server (`ssh control-1`, then `cd ~/streaming-infra-manager/manager`):
+All run on the server (`ssh control-1`, then `cd /opt/streaming/streaming-infra-manager/manager`):
 
 ```sh
 docker compose ps                 # status

@@ -6,7 +6,7 @@ manager presents these transfers as recorded operations whose outcome must be
 checked from transaction evidence. A balance change cannot confirm a transfer.
 
 Status, 2026-09-16. Everything on this page is on `main`. It was
-written at `6dc33d1` on `feat/ai-remediation`, the head of pull request #40,
+written at `6dc33d1` on `feat/ai-remediation`, the head of the remediation set,
 which landed, and `main` has moved a long way past it since. It carries the
 journal, receipt recovery, the durable browser workflow, history, the account
 and instance guards, the owned transport factory and the automatic receipt
@@ -23,7 +23,7 @@ new uploader starts, first against the code at `0c0354c` for the ruling that a n
 in `50363c5` for the further ruling that the chequebook check never refuses a
 start, which `667aee5` built.
 
-Updated 2026-09-26 at `9e4e8c8f` (pull request #61), for the ruling of
+Updated 2026-09-26 at `9e4e8c8f` (the chequebook funding change), for the ruling of
 2026-09-25 that funding must work on any host a clone deploys to. A transfer no
 longer needs `CHEQUEBOOK_RPC_ENDPOINTS` or `CHEQUEBOOK_DOCKER_TRANSPORTS`: it
 reads the chain through the node's own endpoint, reaches Docker the way the

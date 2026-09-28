@@ -61,7 +61,7 @@ wrote **9 samples**. No floor was crossed, so no stop file was written.
 **2.04s against a 2.00s target**, which is the pinning that makes the latency column unable to rank
 them. Node side: **23,360 retrievals for the gateway arm against 1,138 for the weeb-3 arm, 20.5x**,
 against last night's 20.3x. Browser side, **494 `/bytes/` against 7, 70.6x**, and the weeb-3 arm's
-seven are the manifest and init reads PR #183 keeps on the gateway by design.
+seven are the manifest and init reads the in-tab fetch backend change keeps on the gateway by design.
 
 ⚠️ **n=1 per condition counted.** This sitting was sized to validate the harness, not to replicate.
 Read the ratios as a third agreeing observation, not as new evidence.
@@ -81,7 +81,7 @@ UPLOADER   chunks push-synced 126,791   mean 11.3 ms   push errors retried 3,702
 GATEWAY    retrieval requests 50,107    mean 42.5 ms   peers asked per request 2.21
            failed outright 3,123 (6.2%) invalid chunks 0
 BUDGET     uploader 0.2427 BZZ (0.66/broadcast hour)   gateway 0.0956 BZZ (0.26/hour)
-CAPACITY   batch 00000003 285 -> 287 of 512 (56%), TTL 9.8d
+CAPACITY   batch 0cd0eff9 285 -> 287 of 512 (56%), TTL 9.8d
            segmentsSkipped 0   segmentsNeverNamed 0   maxConsecutiveSegmentFailures 0
 ```
 
@@ -100,7 +100,7 @@ Every arm reported `latencyTarget: {configuredS: 6, raisedByS: 0, held: true}` w
 
 `judgeLatencyTarget` read the compile-time constant `LIVE_SYNC_DURATION_S` for `configuredS`,
 `raisedByS` and `held`, while `BROWSER_TARGET_LATENCY_S` has been moving the real target since
-PR #186. **Arms have run at 6, 2 and 1.5 and every one had its target verdict scored against 6.** At a
+The live weeb-3 arm change. **Arms have run at 6, 2 and 1.5 and every one had its target verdict scored against 6.** At a
 2s target with the player raised to 3, the honest verdict is a full second of raise and `held: false`,
 and what those reports printed was zero and true.
 

@@ -12,7 +12,7 @@ fixes are what this sitting exercised.
 - Trunk `cb333ca`, `pnpm verify` green, the uploader redeployed at it 10:22Z and the browser client
   10:27Z (build stamp naming the trunk's trees). Every other container kept its uptime, gateway peers 134.
 - Ten preflight gates green at 10:57Z, the client-shape gate included.
-- The drain batch: `e6d8d79f6486060013a8423fa2350403c8a3da5c907006ec9e98d5cf79394f3e`, depth 17,
+- The drain batch: `6e8d0d345bbac4d44e85a55fc0065cfc5fca86a07783c77699c47c855aba52bd`, depth 17,
   immutable, bought by the owner at 10:50Z on the 1080p node for 0.0383 BZZ, read at arm time as
   0 of 2 chunks in the fullest bucket, 48.0 hours left, usable. The batch of the night before could not be
   armed: bee counted two chunks in its fullest bucket from the orphaned broadcast, and the armed-stage

@@ -338,7 +338,7 @@ export function seed() {
   });
 
   const abrGcp = makeProfile({
-    name: 'abr-gcp',
+    name: 'abr-cloud',
     kind: 'abr-uploader',
     notes: 'Encodes the ladder and publishes to the bare-metal pool.',
     private_key: key(),

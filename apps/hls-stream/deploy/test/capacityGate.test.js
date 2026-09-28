@@ -323,8 +323,8 @@ if (process.argv[2] === 'inspect') process.stdout.write(${JSON.stringify(uploade
  * anybody looked at.
  */
 describe('the shared gate reads every batch a split deployment publishes with', () => {
-  const BATCH_360 = 'aa49851f404265dd2bea17e4229b45be23e245210ea17ac0af3a2a2b13faa2fd';
-  const BATCH_1080 = 'bb49851f404265dd2bea17e4229b45be23e245210ea17ac0af3a2a2b13faa2fd';
+  const BATCH_360 = '60cbf7ffaac4caf886d8ec3f06dc370449be5fa333b5e64380e4f3c315beb3ae';
+  const BATCH_1080 = '39003423e04ab1ecb0ed498ad147198f553c5c587eccdc251fbbb587e8f12966';
   const HEALTHY = { utilization: 254, ttlSeconds: 941760 };
 
   /** One stub node per port, so a gate that reads only one of them is visibly reading only one. */

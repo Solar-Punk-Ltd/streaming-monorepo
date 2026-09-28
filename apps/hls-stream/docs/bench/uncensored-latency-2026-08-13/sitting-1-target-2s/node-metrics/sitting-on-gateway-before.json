@@ -482,7 +482,7 @@
   "stamps": {
     "stamps": [
       {
-        "batchID": "0000000200000000000000000000000000000000000000000000000000000000",
+        "batchID": "b92d92d82199b4e41a8d01977360ad85c182db87c77c8da93cf8dae3c2665a33",
         "utilization": 50,
         "utilizationRatio": 0.78125,
         "usable": true,
@@ -496,7 +496,7 @@
         "batchTTL": 385659
       },
       {
-        "batchID": "0000000300000000000000000000000000000000000000000000000000000000",
+        "batchID": "0cd0eff9bbaf41a1ecea87a0dc789bbdb8331f30b4db7b0f4f44b1ae11e5aaec",
         "utilization": 274,
         "utilizationRatio": 0.53515625,
         "usable": true,

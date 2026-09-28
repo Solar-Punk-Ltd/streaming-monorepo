@@ -335,7 +335,7 @@ describe('the arms this driver flips', () => {
 });
 
 /**
- * ⛔⛔⛔ PR #179 PUT THE CAPACITY GATE IN ALL THREE DRIVERS AND THE SPEND CEILING IN ONE OF THEM.
+ * ⛔⛔⛔ the capacity gate fix PUT THE CAPACITY GATE IN ALL THREE DRIVERS AND THE SPEND CEILING IN ONE OF THEM.
  *
  * `funds_cover_minutes` asks whether the nodes hold enough to pay, which stays true right down to an
  * empty chequebook, so a driver carrying only that authorises the entire balance. It also cannot see

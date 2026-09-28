@@ -6,7 +6,7 @@
 > manifest still come from a **bee gateway**, in both conditions. Verified in source: `ManifestManagement`
 > has no weeb-3 path, only `CustomManifestLoader` does.
 >
-> That split was my design decision in PR #183 and **nobody authorised it**. The owner's instruction
+> That split was my design decision in the in-tab fetch backend change and **nobody authorised it**. The owner's instruction
 > of **2026-08-11T07:07Z** was *"the tester optimized the player as much as possible let's measure and
 > experiment with his setup as it is"*, and this is not that.
 >
@@ -38,7 +38,7 @@ Order `gateway weeb3 gateway weeb3 weeb3 gateway weeb3 gateway`, which is positi
 one seam. Round 1 is warm-up and is discarded, leaving **n=3 per condition** of six minutes each.
 
 Only **segment bytes** move between conditions. The catalog, the feed and the manifest come from the
-gateway in both arms, by the design of PR #183. ⚠️ **A weeb-3 arm is not a gateway-less viewer**, it
+gateway in both arms, by the design of the in-tab fetch backend change. ⚠️ **A weeb-3 arm is not a gateway-less viewer**, it
 is a viewer whose video comes from its own node. The earlier VOD run of weeb-3's player was
 withdrawn for blurring exactly that line.
 
@@ -126,7 +126,7 @@ buffer. This sitting is consistent with that and does not settle who pays the se
 
 - Gateway warm and funded throughout: **134 peers**, 38h uptime, chequebook 2.388 to 2.061 BZZ. No bee
   container was restarted at any point.
-- Uploader 4.355 to 3.536 BZZ. Postage `00000003` 265 of 512 used, 250 hours left.
+- Uploader 4.355 to 3.536 BZZ. Postage `0cd0eff9` 265 of 512 used, 250 hours left.
 - **Host load 5.64 to 11.20** across arms, and the bench host carries some forty other bee nodes plus other
   tenants' stacks. Round 4 ran at the highest load of the sitting (10.93 and 11.20) and its two arms
   are one of each condition, so the counterbalancing carried it.
@@ -157,7 +157,7 @@ gitignored, and they stay on the deployment host at `swarm-hls-bench/docs/bench/
 
 ## The harness
 
-`deploy/scripts/byte-source-arms.sh`, PR #186. `browser:fetch-backend-check` is the free gate that
+`deploy/scripts/byte-source-arms.sh`, the live weeb-3 arm change. `browser:fetch-backend-check` is the free gate that
 stands between this sitting and its most attractive wrong answer: a dead switch would leave every arm
 reading the gateway, both columns would agree, and the report would say an in-tab node holds a live
 edge exactly as well as a gateway does. It boots a real node as part of the check, because a host

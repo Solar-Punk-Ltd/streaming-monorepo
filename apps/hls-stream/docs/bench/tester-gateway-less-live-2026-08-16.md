@@ -1,7 +1,7 @@
 # A tester's live path is gateway-less, ours is not, and nobody asked for the difference
 
 **2026-08-16, free. No broadcast, no BZZ.** One Chromium tab on
-`lat-murmeldjur.github.io/weeb-3/#/live/stream/0000a004…/83de1c3f-…`, his own live broadcast, read
+`lat-murmeldjur.github.io/weeb-3/#/live/stream/00000000…/83de1c3f-…`, his own live broadcast, read
 through the page's own resource timing and service-worker accounting.
 
 > ## ⛔⛔⛔ WHY THIS FILE EXISTS
@@ -9,7 +9,7 @@ through the page's own resource timing and service-worker accounting.
 > On **2026-08-11T07:07Z** the owner wrote: *"the tester optimized the player as much as possible let's
 > measure and experiment with his setup as it is."*
 >
-> On **2026-08-13** PR #183 built something else: our player, our loader, weeb-3 supplying **segment
+> On **2026-08-13** The in-tab fetch backend change built something else: our player, our loader, weeb-3 supplying **segment
 > bytes only**, with the feed and every manifest still fetched from a bee gateway. The PR states the
 > choice in its own words, *"Deliberately not `attachStream`"*, and the reason given was that his path
 > *"would measure weeb-3's player instead of ours"*.
@@ -67,7 +67,7 @@ writes bee-js sequential feeds. His page resolves **his own** feed, published by
 hybrid was not merely a preference, and I am not going to pretend the alternative was one line of
 code.
 
-⛔⛔⛔ **But that is not the reason I gave, and the reason I gave was false.** PR #183 and the source
+⛔⛔⛔ **But that is not the reason I gave, and the reason I gave was false.** The in-tab fetch backend change and the source
 comment both justify the split as *"it would measure weeb-3's player instead of ours"*. His player is
 hls.js, the same library. Had I written *"weeb-3 cannot read our feed format, so the manifest stays on
 the gateway until either he adds bee-js sequential feeds or we change our encoding"*, that is an
@@ -175,7 +175,7 @@ An hour after the above, the obvious test that nobody had run. His route is
 identifiers go straight into his URL**. No change to his code, no change to ours, no broadcast, no
 BZZ.
 
-Target: our 2026-08-11 shipping-profile broadcast, owner `0000a005…`, topic
+Target: our 2026-08-11 shipping-profile broadcast, owner `00000000…`, topic
 `7e87a2d9-82fe-422f-a66a-5b1e42281636`.
 
 ## ⛔⛔⛔ "weeb-3 cannot read bee-js sequential feeds" IS DEAD
@@ -186,7 +186,7 @@ was when written.
 
 | step | result |
 | --- | --- |
-| topic derivation | ⭐ `0000000a…4ed4bdec` from weeb-3, **byte-identical** to bee-js `Topic.fromString` on our UUID |
+| topic derivation | ⭐ `8ef57efff3e2e92f…785023a5` from weeb-3, **byte-identical** to bee-js `Topic.fromString` on our UUID |
 | feed frontier | ✅ `resolved bounded candidate index 255` |
 | our manifest | ✅ `HLS manifest ready through weeb-3` |
 | **our segments** | ✅ **23 of 23 delivered, ZERO failures**, mean **0.809 MB / 1.842 s** |

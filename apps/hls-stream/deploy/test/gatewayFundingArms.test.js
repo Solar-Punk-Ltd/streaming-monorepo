@@ -630,7 +630,7 @@ describe('every arm is filed with the condition it ran under', () => {
 });
 
 /**
- * ⛔⛔⛔ PR #179 PUT THE CAPACITY GATE IN ALL THREE DRIVERS AND THE SPEND CEILING IN ONE OF THEM.
+ * ⛔⛔⛔ the capacity gate fix PUT THE CAPACITY GATE IN ALL THREE DRIVERS AND THE SPEND CEILING IN ONE OF THEM.
  *
  * The gate this sitting did carry, `can_afford`, asks whether the node holds enough to pay. That
  * stays true right down to an empty chequebook, so a driver carrying only that authorises the entire

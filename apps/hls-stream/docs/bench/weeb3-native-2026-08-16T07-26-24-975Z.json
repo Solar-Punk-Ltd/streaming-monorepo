@@ -1,7 +1,7 @@
 {
   "measuredAt": "2026-08-16T07:26:24.975Z",
-  "watchUrl": "https://lat-murmeldjur.github.io/weeb-3/#/live/stream/0000a00500000000000000000000000000000000/7e87a2d9-82fe-422f-a66a-5b1e42281636",
-  "owner": "0000a00500000000000000000000000000000000",
+  "watchUrl": "https://lat-murmeldjur.github.io/weeb-3/#/live/stream/00000000000000000000000000000000000fa4e1/7e87a2d9-82fe-422f-a66a-5b1e42281636",
+  "owner": "00000000000000000000000000000000000fa4e1",
   "topic": "7e87a2d9-82fe-422f-a66a-5b1e42281636",
   "countedSeconds": 239.2,
   "realtimeRatio": 0.8798,
@@ -1949,5 +1949,5 @@
       "peers": 200
     }
   ],
-  "nodeMetricsDiff": "window 267s   host load 6.87 8.82 8.37 -> 5.04 6.39 7.47\n\nUPLOADER, the write path\n  chunks push-synced                         0\n  mean push-sync time                        —\n  mean per-peer push                         —\n  push errors, retried                       0\n  unsynced backlog                           0 -> 0\n  invalid stamps                             0\n\nGATEWAY, the read path\n  retrieval requests                         0\n  mean retrieval time                        —\n  peers asked per request                    —\n  failed outright                            0\n  invalid chunks retrieved                   0\n\nBUDGET AND CAPACITY\n  uploader spent                             0.0000 BZZ   0.00 BZZ per broadcast hour\n  gateway spent                              0.0000 BZZ   0.00 BZZ per broadcast hour\n  batch 00000002                             50 -> 50 of 64 (78%), TTL 1.9d\n  batch 00000003                             357 -> 357 of 512 (70%), TTL 7.6d\n  uploader segmentsSkipped                   0 -> 0\n  uploader segmentsNeverNamed                0 -> 0\n  uploader maxConsecutiveSegmentFailures     0 -> 0\n"
+  "nodeMetricsDiff": "window 267s   host load 6.87 8.82 8.37 -> 5.04 6.39 7.47\n\nUPLOADER, the write path\n  chunks push-synced                         0\n  mean push-sync time                        —\n  mean per-peer push                         —\n  push errors, retried                       0\n  unsynced backlog                           0 -> 0\n  invalid stamps                             0\n\nGATEWAY, the read path\n  retrieval requests                         0\n  mean retrieval time                        —\n  peers asked per request                    —\n  failed outright                            0\n  invalid chunks retrieved                   0\n\nBUDGET AND CAPACITY\n  uploader spent                             0.0000 BZZ   0.00 BZZ per broadcast hour\n  gateway spent                              0.0000 BZZ   0.00 BZZ per broadcast hour\n  batch b92d92d8                             50 -> 50 of 64 (78%), TTL 1.9d\n  batch 0cd0eff9                             357 -> 357 of 512 (70%), TTL 7.6d\n  uploader segmentsSkipped                   0 -> 0\n  uploader segmentsNeverNamed                0 -> 0\n  uploader maxConsecutiveSegmentFailures     0 -> 0\n"
 }

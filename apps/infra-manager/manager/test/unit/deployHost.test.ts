@@ -6,7 +6,7 @@
  *
  * `profiles.host` is a deploy target, and deploy.sh only ever hands it to `ssh`.
  * The manager also composes HTTP URLs from it, and an ssh alias is not an
- * address: `http://bee-1:10055` resolves nowhere, so the probes time out
+ * address: `http://bee-host-1:10055` resolves nowhere, so the probes time out
  * and a BEE_PUBLISHERS entry built from it is unusable on the host that gets it.
  * These pin the same semantics deploy/scripts/_lib.sh's `host_from_target` has,
  * plus the two things a shell function does not have to care about: an exec
@@ -38,17 +38,17 @@ function withExec(exec: (name: string) => string, ttlMs = 60_000, clock = { now:
 
 describe('resolveNetworkHost', () => {
   it('resolves an ssh alias through the ssh config, as deploy.sh does', () => {
-    const { resolve, calls } = withExec(() => dump('198.51.100.132'));
-    assert.equal(resolve('bee-1'), '198.51.100.132');
-    assert.deepEqual(calls, ['bee-1']);
+    const { resolve, calls } = withExec(() => dump('198.51.100.21'));
+    assert.equal(resolve('bee-host-1'), '198.51.100.21');
+    assert.deepEqual(calls, ['bee-host-1']);
   });
 
   it('drops ssh user info and resolves what is left', () => {
     // The account half addresses a login, never the bee API, and a stray `@`
     // lands inside the BEE_PUBLISHERS entry format, which splits on `@`.
-    const { resolve, calls } = withExec(() => dump('198.51.100.132'));
-    assert.equal(resolve('deploy@bee-1'), '198.51.100.132');
-    assert.deepEqual(calls, ['bee-1']);
+    const { resolve, calls } = withExec(() => dump('198.51.100.21'));
+    assert.equal(resolve('deploy@bee-host-1'), '198.51.100.21');
+    assert.deepEqual(calls, ['bee-host-1']);
   });
 
   it('keeps an unknown name, which ssh echoes straight back', () => {
@@ -62,21 +62,21 @@ describe('resolveNetworkHost', () => {
     const { resolve } = withExec(() => {
       throw new Error('ssh: command not found');
     });
-    assert.equal(resolve('bee-1'), 'bee-1');
+    assert.equal(resolve('bee-host-1'), 'bee-host-1');
   });
 
   it('keeps the name when the dump carries no hostname line', () => {
     const { resolve } = withExec(() => 'user deploy\nport 22\n');
-    assert.equal(resolve('bee-1'), 'bee-1');
+    assert.equal(resolve('bee-host-1'), 'bee-host-1');
   });
 
   it('takes literals and dotted names as given, without running ssh', () => {
     const { resolve, calls } = withExec(() => dump('should-not-be-used'));
-    assert.equal(resolve('198.51.100.132'), '198.51.100.132');
+    assert.equal(resolve('198.51.100.21'), '198.51.100.21');
     assert.equal(resolve('bee1.example.org'), 'bee1.example.org');
     assert.equal(resolve('::1'), '::1');
     assert.equal(resolve('fe80::1'), 'fe80::1');
-    assert.equal(resolve('deploy@198.51.100.132'), '198.51.100.132');
+    assert.equal(resolve('deploy@198.51.100.21'), '198.51.100.21');
     assert.deepEqual(calls, []);
   });
 
@@ -104,42 +104,42 @@ describe('resolveNetworkHost', () => {
     // The ssh config is a bind mount an operator can edit without restarting
     // the api, so the entry has to go stale on its own.
     const clock = { now: 1_000 };
-    const { resolve, calls } = withExec(() => dump('198.51.100.132'), 60_000, clock);
+    const { resolve, calls } = withExec(() => dump('198.51.100.21'), 60_000, clock);
 
-    assert.equal(resolve('bee-1'), '198.51.100.132');
+    assert.equal(resolve('bee-host-1'), '198.51.100.21');
     clock.now += 59_000;
-    assert.equal(resolve('bee-1'), '198.51.100.132');
-    assert.deepEqual(calls, ['bee-1']);
+    assert.equal(resolve('bee-host-1'), '198.51.100.21');
+    assert.deepEqual(calls, ['bee-host-1']);
 
     clock.now += 2_000;
-    assert.equal(resolve('bee-1'), '198.51.100.132');
-    assert.deepEqual(calls, ['bee-1', 'bee-1']);
+    assert.equal(resolve('bee-host-1'), '198.51.100.21');
+    assert.deepEqual(calls, ['bee-host-1', 'bee-host-1']);
   });
 
   it('caches a failed lookup too, so a bad name costs one fork per TTL', () => {
     const { resolve, calls } = withExec(() => {
       throw new Error('nope');
     });
-    assert.equal(resolve('bee-1'), 'bee-1');
-    assert.equal(resolve('bee-1'), 'bee-1');
-    assert.deepEqual(calls, ['bee-1']);
+    assert.equal(resolve('bee-host-1'), 'bee-host-1');
+    assert.equal(resolve('bee-host-1'), 'bee-host-1');
+    assert.deepEqual(calls, ['bee-host-1']);
   });
 
   it('caches per name, not across them', () => {
     const hosts: Record<string, string> = {
-      'bee-1': '198.51.100.132',
-      'bee-2': '198.51.100.133',
+      'bee-host-1': '198.51.100.21',
+      'bee-host-2': '198.51.100.22',
     };
     const { resolve } = withExec((name) => dump(hosts[name] ?? name));
-    assert.equal(resolve('bee-1'), '198.51.100.132');
-    assert.equal(resolve('bee-2'), '198.51.100.133');
-    assert.equal(resolve('bee-1'), '198.51.100.132');
+    assert.equal(resolve('bee-host-1'), '198.51.100.21');
+    assert.equal(resolve('bee-host-2'), '198.51.100.22');
+    assert.equal(resolve('bee-host-1'), '198.51.100.21');
   });
 
   it('answers on the shared resolver without consulting ssh for these', () => {
     // The default export runs real ssh, so only the cases that provably stay
     // off it are asserted here. The resolution itself is covered above.
-    assert.equal(resolveNetworkHost(' 198.51.100.132 '), '198.51.100.132');
+    assert.equal(resolveNetworkHost(' 198.51.100.21 '), '198.51.100.21');
     assert.equal(resolveNetworkHost('deploy@bee1.example.org'), 'bee1.example.org');
     assert.equal(resolveNetworkHost(''), '');
   });

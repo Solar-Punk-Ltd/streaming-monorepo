@@ -2,7 +2,7 @@
 #
 # Node: weeb-3 0.0.327001 on the public deployment, app shell only (NO stream attached, so nothing
 # is prefetched). Connected: 200 peers, Connecting: 0, observed rising 143 -> 200 before the run.
-# Content: our own recording 0000a005... / 38699de1-..., 3444 segments of 0.266s, mean ~92.9 KB.
+# Content: our own recording 00000000... / 38699de1-..., 3444 segments of 0.266s, mean ~92.9 KB.
 # Segments were fetched SEQUENTIALLY (concurrency 1) through /weeb-3/hls/bytes/<ref>, cache no-store.
 # Corpus index refers to the segment's position in the VOD playlist read from the feed head.
 #

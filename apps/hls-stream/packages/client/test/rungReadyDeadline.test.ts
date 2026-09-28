@@ -18,7 +18,7 @@ import { RequestJitter } from '../src/utils/requestJitter';
  * player, no message, and the rungs that were fine never reached.
  */
 
-const OWNER = '0000a00500000000000000000000000000000000';
+const OWNER = '00000000000000000000000000000000000fa4e1';
 const GROUP_ID = 'deadline-group';
 const RUNG_ID = 'deadline-rung';
 const SOURCE_URL = `swarm://${OWNER}/${GROUP_ID}`;

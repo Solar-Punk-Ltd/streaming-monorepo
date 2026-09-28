@@ -28,7 +28,7 @@ function profile(over: Partial<Profile>): Profile {
 
 describe('the host a deployment is dialled at', () => {
   it('prefers the resolved network_host over the deploy target', () => {
-    const host = hostFor(profile({ host: 'bee-1', network_host: '203.0.113.7' }), SERVER_HOST);
+    const host = hostFor(profile({ host: 'bee-host-1', network_host: '203.0.113.7' }), SERVER_HOST);
 
     assert.equal(host, '203.0.113.7');
   });
@@ -51,7 +51,7 @@ describe('the host a deployment is dialled at', () => {
       // A target that resolved to a local address overrides a remote-looking
       // deploy target. An *empty* network_host does not, and defers to host.
       assert.equal(
-        hostFor(profile({ host: 'bee-1', network_host: local }), SERVER_HOST),
+        hostFor(profile({ host: 'bee-host-1', network_host: local }), SERVER_HOST),
         SERVER_HOST,
         `network_host ${JSON.stringify(local)}`,
       );
@@ -62,7 +62,7 @@ describe('the host a deployment is dialled at', () => {
   it('keeps a deploy target that resolved to nothing, rather than losing the address', () => {
     // resolveNetworkHost echoes a name no Host block matches straight back, so
     // an unresolvable alias still reaches the browser as network_host.
-    assert.equal(hostFor(profile({ host: 'bee-1', network_host: 'bee-1' }), SERVER_HOST), 'bee-1');
+    assert.equal(hostFor(profile({ host: 'bee-host-1', network_host: 'bee-host-1' }), SERVER_HOST), 'bee-host-1');
   });
 
   it('has no host of its own to offer when the profile carries neither', () => {

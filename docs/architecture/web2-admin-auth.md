@@ -133,7 +133,7 @@ that is easy to get wrong.
 Also left out, with less to say about them: the manager's nginx security
 headers and its host firewall generator. Those are deployment, this is the API,
 and web2-admin's own deployment story is `apps/web2-admin/deploy/README.md`,
-with the host it runs on set up by `docs/hosts.md`.
+with the host it runs on set up by `docs/self-hosting.md`.
 
 ## The surface
 

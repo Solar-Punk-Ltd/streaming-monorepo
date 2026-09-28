@@ -38,12 +38,15 @@ services:
       DATABASE_URL: postgres://manager:${POSTGRES_PASSWORD:-manager}@postgres:5432/manager
       MANAGER_PORT: '9876'
       PUBLIC_HOST: ${PUBLIC_HOST:-}
-      SHLS_ROOT: /opt/streaming/streaming-infra-manager/manager/swarm-hls-stream
+      # The host folders, each at the same absolute path inside and out. Set them
+      # in .env when the host keeps them anywhere but under /opt/streaming.
+      MANAGER_ROOT: ${MANAGER_ROOT:-/opt/streaming/streaming-infra-manager}
+      SHLS_ROOT: ${MANAGER_ROOT:-/opt/streaming/streaming-infra-manager}/manager/swarm-hls-stream
       BEE_DATA_ROOT: ${BEE_DATA_ROOT:-/opt/streaming/streaming-infra-manager-data}
       STACK_VERSIONS_ROOT: ${STACK_VERSIONS_ROOT:-/opt/streaming/streaming-infra-manager-versions}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /opt/streaming/streaming-infra-manager:/opt/streaming/streaming-infra-manager
+      - ${MANAGER_ROOT:-/opt/streaming/streaming-infra-manager}:${MANAGER_ROOT:-/opt/streaming/streaming-infra-manager}
       - ${BEE_DATA_ROOT:-/opt/streaming/streaming-infra-manager-data}:${BEE_DATA_ROOT:-/opt/streaming/streaming-infra-manager-data}
       # Added stack versions, at the same absolute path on both sides. Each
       # checkout carries compose files with relative volumes, which the host

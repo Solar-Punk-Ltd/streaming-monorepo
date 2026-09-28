@@ -18,7 +18,7 @@ branch, and on a push to it, whenever `apps/infra-manager`,
 manager's tests read it. Its steps run in `apps/infra-manager`.
 
 **Where this stands.** This page was first written at `6dc33d1` on
-`feat/ai-remediation`, the head of pull request #40, which was merged.
+`feat/ai-remediation`, the head of the remediation set, which was merged.
 Every number below says where it was measured, on this laptop, in a Debian
 container or on a runner. Everything else here describes what the workflow files
 declare, which is a different thing from what a runner has done.
@@ -307,7 +307,7 @@ runner, and so does the Docker-backed workflow's integration job, so until
 2026-09-25 nothing built these two images before a deploy did. That day `v2.2`
 passed every check and its deploy stopped at the web image,
 `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`: `frontend/Dockerfile` installed pnpm 9,
-which never reads the overrides #46 put in `pnpm-workspace.yaml`. #53 fixed the
+which never reads the overrides the API image advisory fix put in `pnpm-workspace.yaml`. The web image pnpm fix fixed the
 Dockerfile, and `manager/test/unit/imagePnpm.test.ts` names that one cause in
 the unit suite. This job catches the rest.
 

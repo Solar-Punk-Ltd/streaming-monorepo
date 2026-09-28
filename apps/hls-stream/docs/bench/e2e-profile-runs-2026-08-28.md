@@ -103,7 +103,7 @@ Booked off chequebook `availableBalance` deltas against the ledger's recorded st
 | **Spent total** | **2.779** |
 | Remaining | 1.221 |
 
-Batch `00000001` after the owner's 20 BZZ topup: TTL ~12.5 days at the last read (dies ~Sep 10),
+Batch `1412677d` after the owner's 20 BZZ topup: TTL ~12.5 days at the last read (dies ~Sep 10),
 utilization 80/256. Proving the promoted crash-matrix suites live (six browser scenarios) will cost
 roughly 1.0 BZZ and therefore needs a fresh authorization or a scoped decision when it lands.
 

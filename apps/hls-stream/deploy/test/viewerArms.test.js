@@ -589,7 +589,7 @@ describe('a sitting refuses what it cannot finish, and records what the nodes di
 });
 
 /**
- * ⛔⛔⛔ PR #179 PUT THE CAPACITY GATE IN ALL THREE DRIVERS AND THE SPEND CEILING IN ONE OF THEM.
+ * ⛔⛔⛔ the capacity gate fix PUT THE CAPACITY GATE IN ALL THREE DRIVERS AND THE SPEND CEILING IN ONE OF THEM.
  *
  * `can_afford` asks whether the nodes hold enough to pay, which stays true right down to an empty
  * chequebook, so a driver carrying only that authorises the entire balance. It also cannot see what

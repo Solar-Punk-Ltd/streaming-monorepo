@@ -37,7 +37,7 @@ with zero segments lost on any rung. `in-browser` at 2.0s asks 2.0/s and was nev
 announced.** See the block above `HLS_FRAGMENT` in `engines/srs/entrypoint.sh`.
 
 The byte-source trade below still stands on its own terms. Measured
-2026-08-16 by the sibling repo `load-test-lab`, in
+2026-08-16 by a separate load-testing repository, in
 `docs/measurements/2026-08-16-a-stock-tab-holds-realtime-on-two-second-segments.md`, and carried
 unresolved as Q23 of its `docs/spec/product-spec.md`: a stock in-tab weeb-3 node holds **1.000x of
 realtime on 2s segments** with about 90s of buffer and **0.426x on 0.5s** with 0.5 to 3.5s, because
@@ -278,11 +278,11 @@ than two files.
 
 ⚠️ **V7 and V9 tolerate the overlay saying nothing.** Both pass `mustSpeak: false`, so they refuse
 only what is untrue and let silence through, and each prints whether the client explained the freeze
-as an observation rather than an assertion. That is issue #100: this client may genuinely not know
+as an observation rather than an assertion. That is an open question: this client may genuinely not know
 what happened, so the day it starts explaining the fault both cases stay green.
 
 ⛔ **This paragraph said the opposite until 2026-09-01**, claiming both asserted the defect and would
-turn red when #100 was fixed. They were changed to the tolerant form and the doc was not. Read the
+turn red once the client explained the fault. They were changed to the tolerant form and the doc was not. Read the
 `frozenOverlayRefusal` call in the suite, not this table, before predicting what a run will do.
 
 **What made V9 red on 2026-08-31 was `resumeRefusal`, not the overlay**: one rung's node stopped,

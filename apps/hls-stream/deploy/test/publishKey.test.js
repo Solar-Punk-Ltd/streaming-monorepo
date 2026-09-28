@@ -226,7 +226,7 @@ describe('the publish URLs publish-key.sh hands an operator', () => {
 });
 
 /**
- * OPS-29 and TEST-54. Two LOW rows filed by PR #67's config lens, both about this script being run
+ * OPS-29 and TEST-54. Two LOW rows filed by the per-stream publish key change's config lens, both about this script being run
  * somewhere other than a developer's checkout.
  *
  * A remote deploy target has `deploy/scripts/`, the compose files, the Dockerfiles and `.env`, and

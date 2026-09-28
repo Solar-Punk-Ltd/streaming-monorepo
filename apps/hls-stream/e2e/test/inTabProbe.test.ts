@@ -357,10 +357,10 @@ function probeRun(
     measuredAt: '2026-09-02T20:00:00.000Z',
     clientUrl: 'http://stage.invalid:8080',
     chromeVersion: 'Chrome 149.0.7827.55',
-    owner: '0000a00500000000000000000000000000000000',
+    owner: '00000000000000000000000000000000000fa4e1',
     manifests: [
-      { rung: '360p', topicHex: '00000011', segmentCount: 127, targetDurationS: 3, medianSegmentSeconds: 2.068 },
-      { rung: '1080p', topicHex: '0000001e', segmentCount: 127, targetDurationS: 3, medianSegmentSeconds: 2.068 },
+      { rung: '360p', topicHex: '216a8d60', segmentCount: 127, targetDurationS: 3, medianSegmentSeconds: 2.068 },
+      { rung: '1080p', topicHex: '7d1fe981', segmentCount: 127, targetDurationS: 3, medianSegmentSeconds: 2.068 },
     ],
     joinedInMs: 10_400,
     budgetMs: BUDGET_MS,
@@ -401,7 +401,7 @@ describe('the report the probe leaves behind', () => {
     assert.match(markdown, /observations, none of them asserted/);
     assert.match(markdown, /http:\/\/stage\.invalid:8080/);
     assert.match(markdown, /Chrome 149\.0\.7827\.55/);
-    assert.match(markdown, /0000a00500000000000000000000000000000000/);
+    assert.match(markdown, /00000000000000000000000000000000000fa4e1/);
     assert.match(markdown, /127/);
     assert.match(markdown, /## What this run consumed/);
   });

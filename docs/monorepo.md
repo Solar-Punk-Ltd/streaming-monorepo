@@ -29,10 +29,10 @@ streaming-monorepo/
 │       ├── deploy/          its deploy script and what it sets up on a host
 │       └── docs/            its feature pages, its issue and decision record, its test notes
 ├── infra/                   what hosts need, shared by every project
-│   ├── edge/                the front door of a host
-│   └── terraform/           the pilot's GCP and Vps hosts, and the monitoring stack
+│   └── edge/                the front door of a host
 ├── packages/                code shared by two or more apps: contracts, db-migrate, web-auth
 ├── tools/                   scripts that serve the whole repository: the boundary check and the app cut
+├── scripts/public-leaks/    the gate that refuses a real address, wallet or host name in the tree
 ├── docs/                    how the pieces fit
 ├── .github/                 CODEOWNERS and every workflow
 ├── package.json             the one workspace: the pnpm it runs, Nx, and the commands over every app
@@ -57,8 +57,7 @@ says how to work in one.
 ### A project owns its folder
 
 Everything a project owns lives under its folder: code, tests, Dockerfiles, compose files, deploy
-script, docs and its `AGENTS.md`. Everything one cloud vendor needs lives in that vendor's
-Terraform root. The edge and the monitoring stack each do one job.
+script, docs and its `AGENTS.md`. The edge does one job.
 
 ### Projects never import each other's code
 
@@ -87,7 +86,7 @@ A shape that crosses between two projects is a contract, and a contract is check
 
 A move in the repository changes paths in the tree and nothing else. Every deploy keeps its host
 folder, its compose project name, its volumes and its env file names, whatever the files are
-called in the repository. Those names are listed in [hosts.md](hosts.md), so that a rename here
+called in the repository. Those names are listed in [self-hosting.md](self-hosting.md), so that a rename here
 cannot quietly rename a database or a certificate store there.
 
 ### A pull request that moves files only moves them
@@ -110,7 +109,7 @@ deployment's env files, which are not committed.
 
 ## The imported projects
 
-`apps/hls-stream`, `apps/infra-manager` and `infra/terraform` were imported whole from their own
+`apps/hls-stream` and `apps/infra-manager` were imported whole from their own
 repositories. Since 2026-09-27 all work on them happens here, like the rest of the repository. The
 repositories they came from are left as they are and get nothing new, and nothing more is pulled
 from them.
@@ -127,7 +126,7 @@ and the boundary check (`boundaries.yml`). The root `.github` also holds `CODEOW
 
 ## How the history came along
 
-The stack, the manager and the Terraform came in with `git subtree add`, which merges a
+The stack and the manager came in with `git subtree add`, which merges a
 repository's whole history in under a folder. Nothing was rewritten: every original commit is here
 under its own id, so a commit id quoted in a note, a bench record or an issue resolves in this
 repository. What that means when reading history:
@@ -143,8 +142,7 @@ repository. What that means when reading history:
   `git log --format='%h %P %s' -n 1 -- apps/infra-manager` prints the manager's. A log from that
   id, with the path as the source repository had it, walks the file's whole history, for example
   `git log <source commit> -- packages/stream-uploader/src/index.ts` for a file of the stack. The
-  Terraform's source commit is a split of the `terraform/` folder alone, so its paths start at
-  that folder's root, as they do under `infra/terraform/`. The source repositories, left as they
+  source repositories, left as they
   were on 2026-09-27, answer the same question.
 - **`git subtree split` rebuilds a folder's own history** as a separate line of commits, when a
   whole history rather than one file's is wanted.

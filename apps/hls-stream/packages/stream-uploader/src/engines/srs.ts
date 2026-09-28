@@ -517,7 +517,7 @@ async function handleStreams(
       // the transcoder publishing from loopback has a reason to send one, a misconfigured rendition.
       // Accepted from anywhere, SRS held an unauthenticated stream for whoever reached the ingest,
       // and transcoded it when it landed on the ingest vhost, with no passphrase in front of RTMP.
-      // Measured on the dev-host stage on 2026-09-25: an RTMP publish of an undeclared topic with `_720p`
+      // Measured on a test stage on 2026-09-25: an RTMP publish of an undeclared topic with `_720p`
       // on the end and no key ran until it was stopped.
       if (!isLoopbackPublisher(payload)) {
         logger.warn(

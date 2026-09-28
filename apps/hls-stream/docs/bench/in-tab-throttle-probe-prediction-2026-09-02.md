@@ -91,8 +91,7 @@ Prediction if H2 is the cause: inbound bytes while idle are **at least 30% of th
 more at 2800 kbps). My own expectation is under 10%, and I am writing that down so it can be wrong.
 
 **H3, accounting exhaustion.** Bee grants an unfunded reader a fixed allowance per peer per second
-(450,000 units, measured in the SolarPunk fleet notes `free-bandwidth-is-450k-per-second-per-peer`
-and `the-ceiling-is-a-600ms-sleep-with-no-counter`, and the same number weeb-3 carries as
+(450,000 units, measured on a fleet of Bee nodes, and the same number weeb-3 carries as
 `REFRESH_RATE`). Every attempt reserves the chunk's price at its peer before asking, the closest
 peer is asked first, and a peer whose balance plus reserve would pass its threshold refuses, so
 hedges that pile up under a cap can exhaust the closest peers and leave the node cycling its
@@ -117,7 +116,7 @@ switch (`prewarm`), and every retrieval goes through the client's own `Weeb3Fetc
 the product path and not a stand-in.
 
 **The content** is sitting five's recording, still resolvable through the gateway on 2026-09-02:
-owner `0000a00500000000000000000000000000000000`, 127 segments of 2.0 s per rung, media sequence
+owner `00000000000000000000000000000000000fa4e1`, 127 segments of 2.0 s per rung, media sequence
 580 onward.
 
 | rung | session topic (raw) | segment bytes, three samples |

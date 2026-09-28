@@ -51,7 +51,7 @@ describe('splitting one segment across the pipeline', () => {
    * A run costs a real broadcast and real postage, so a question asked of its artifact afterwards
    * should not need another one. Everything else on the split is a duration, and durations alone
    * cannot say when the run happened, how long it lasted, or where a segment sat in the uploader's
-   * log. The PR #64 gate's question about the drift estimate needed exactly that and could only be
+   * log. The the glass-to-glass latency instrument change gate's question about the drift estimate needed exactly that and could only be
    * answered by back-computing the run span out of a derived figure.
    */
   it('carries the instants it was derived from, so the artifact keeps its own inputs', () => {

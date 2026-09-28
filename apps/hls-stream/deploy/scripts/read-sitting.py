@@ -105,7 +105,7 @@ def delivered_fps(watch):
 
     ⛔⛔⛔ NOT `summary.deliveredFps`, WHICH READ 35.0 WHERE THE ENCODER WAS DELIVERING 30.0.
     `decodedFrames` counts from the start of playback and every arm plays a 60s settle before its
-    window opens, so until the fix in PR #200 that field carried the settle's frames over the
+    window opens, so until the settle frames fix that field carried the settle's frames over the
     window's media alone. Recomputing from the samples means a sitting recorded before that fix reads
     correctly, and one recorded after it agrees.
 
@@ -131,7 +131,7 @@ def axis_verdict(watch, requested_size):
     """Whether this arm was delivered at the profile the sitting says it was measuring.
 
     ⛔⛔ A MISSING READING IS `unknown`, NEVER `ok`. "I could not find it" and "there is nothing wrong
-    with it" are the same return value only if you write them that way, which is how #41 shipped. An
+    with it" are the same return value only if you write them that way, which is how the picture-less opening defect shipped. An
     arm whose frame rate nobody can read cannot vouch for itself.
     """
     fps = delivered_fps(watch)

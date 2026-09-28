@@ -232,7 +232,7 @@ describe('the two profiles this repo ships', () => {
    * a reader comparing the pair carries a difference nobody chose.
    *
    * ⛔⛔⛔ This assertion used to read `['BROWSER_FETCH_BACKEND']` alone, and widening it is the whole
-   * point rather than a concession. Measured 2026-08-16 by the sibling repo load-test-lab: an
+   * point rather than a concession. Measured 2026-08-16 by a separate load-testing repository: an
    * in-tab weeb-3 node holds 1.000x of realtime on 2s segments and 0.426x on 0.5s, because it admits
    * about one segment per second whatever its peer count, while the gateway measures the opposite
    * optimum over 21 funded arms at 1.55s against 3.88s. One number therefore cannot serve both
@@ -353,7 +353,7 @@ describe('refusing a run that contradicts the profile it named', () => {
   });
 
   /**
-   * ⭐⭐⭐ The gap the 2026-08-16 loadtest measurement opened. An in-tab weeb-3 node sustains 1.000x of
+   * ⭐⭐⭐ The gap the 2026-08-16 load-test measurement opened. An in-tab weeb-3 node sustains 1.000x of
    * realtime on 2s segments and 0.426x on 0.5s, and the gateway measures the opposite optimum, so a
    * run that did not say which it needs produces a number nobody can attribute to a viewer type.
    * Refused here, with no network touched, rather than by the live gate after the stack is dialed.

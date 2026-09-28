@@ -14,7 +14,7 @@ import { ABR_UPLOADER_KIND, beeTargetProblem, isUploader, managesOwnStamp, usesN
 
 const batch = (rung: string) => rung.replace(/\D/g, '').padEnd(64, '0');
 const PUBLISHERS = ['360p', '480p', '720p', '1080p']
-  .map((rung, i) => `${rung}@http://192.0.2.58:${10015 + i * 10}<${batch(rung)}>`)
+  .map((rung, i) => `${rung}@http://192.0.2.20:${10015 + i * 10}<${batch(rung)}>`)
   .join(' ');
 
 const EXTERNAL = 'http://10.0.0.7:1633';

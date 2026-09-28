@@ -153,7 +153,7 @@ export class StreamCatalog implements LadderRegistry {
    * exhausts its own retry window, the catch only logged, and nothing ever tried again. The reasoning
    * written here leaned on the next transition or the next announce to put it right, and a steady
    * broadcast produces neither, so one failed write left a viewer joining that broadcast offered a
-   * dead rung for the rest of it. Now `advertised`, kept in {@link MasterRewriteSchedule} since #235,
+   * dead rung for the rest of it. Now `advertised`, kept in {@link MasterRewriteSchedule} since the web2 admin link change,
    * records only what the feed took, and a failure holds the group off for
    * {@link MASTER_REWRITE_RETRY_MS} rather than for good.
    */

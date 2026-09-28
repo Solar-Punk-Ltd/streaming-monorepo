@@ -1,4 +1,4 @@
-# A viewer keeps the whole broadcast, and #155 doubled how fast that pile grows
+# A viewer keeps the whole broadcast, and the 0.5s fragment change doubled how fast that pile grows
 
 **2026-08-12, free.** Pure CPU on this laptop, no network, no bee, no browser, no postage. Three runs
 of a synthetic fill against the real `ManifestStateManager`, n=6 per point.
@@ -9,7 +9,7 @@ incoming playlist rather than over the accumulated `state.segments`. `serialize`
 manifest string whenever the state is dirty, and a poll that finds a new segment sets dirty, so a
 viewer at the live edge pays the rebuild on nearly every poll.
 
-This morning #155 shipped `HLS_FRAGMENT 0.5`, so the profile we recommend produces 0.5s segments
+This morning the 0.5s fragment change shipped `HLS_FRAGMENT 0.5`, so the profile we recommend produces 0.5s segments
 where it used to produce 1.0s ones. That halves nothing on this side. It **doubles the segment count
 a broadcast of any given length produces**, and the rebuild is priced by the count.
 
@@ -48,14 +48,14 @@ the arms' spread is this probe's noise floor rather than a result. That is where
 range at 7,200 comes from: whichever arm ran second inherited a heap already holding the first arm's
 7.6 MB.
 
-## What #155 changed, at equal wall clock
+## What the 0.5s fragment change changed, at equal wall clock
 
 | broadcast | at 1.0s segments | at 0.5s segments | |
 | --- | ---: | ---: | ---: |
 | 1 hour | 3,600 held, 0.31 ms, 387 KB | **7,200 held, 0.76 ms, 774 KB** | 2.5x the cost |
 | 4 hours | 14,400 held, 1.91 ms, 1.5 MB | **28,800 held, 3.72 ms, 3.0 MB** | 1.9x |
 
-⛔ **My own prediction was half wrong and it is worth writing down why.** I registered that #155 would
+⛔ **My own prediction was half wrong and it is worth writing down why.** I registered that the 0.5s fragment change would
 cost about fourfold: twice the work per rebuild and twice as many rebuilds. The first half holds. The
 second does not follow from anything measured here, because **the number of rebuilds is set by the
 poll cadence, not by the segment rate** — a poll that finds three new segments rebuilds once, exactly

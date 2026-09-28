@@ -13,7 +13,7 @@ position in the sweep cannot stand in for any factor. Driver
 | uploader spent | **0.0000 BZZ** |
 | gateway spent | **0.0000 BZZ** |
 | gateway retrieval requests | **0** |
-| postage batch `00000003` | **369 → 369 of 512 buckets, unchanged** |
+| postage batch `0cd0eff9` | **369 → 369 of 512 buckets, unchanged** |
 
 ## The question this answers
 
@@ -152,8 +152,8 @@ arm including the controls. So it is read directly.
 
 | | live sitting, 09:50-11:45Z | this sweep, from 15:55Z |
 | --- | --- | --- |
-| `loadtest-<bench host>-srs-1` | **zero log lines** | **2,302 lines** |
-| `loadtest-<bench host>-stream-uploader-1` | **zero log lines** | **2,488 lines** |
+| `<load-test stack>-srs-1` | **zero log lines** | **2,302 lines** |
+| `<load-test stack>-stream-uploader-1` | **zero log lines** | **2,488 lines** |
 | host load, 1-minute, per arm | 8.54, 15.36, 15.90, 9.18 | **6.23 to 19.37 over 21 arms, median 9.28** |
 
 ⭐ **The loud neighbour was broadcasting during THIS sweep and idle during the live one.** That is a

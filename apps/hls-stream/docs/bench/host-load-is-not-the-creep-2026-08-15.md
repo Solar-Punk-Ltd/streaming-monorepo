@@ -6,7 +6,7 @@
 > manifest still come from a **bee gateway**, in both conditions. Verified in source: `ManifestManagement`
 > has no weeb-3 path, only `CustomManifestLoader` does.
 >
-> That split was my design decision in PR #183 and **nobody authorised it**. The owner's instruction
+> That split was my design decision in the in-tab fetch backend change and **nobody authorised it**. The owner's instruction
 > of **2026-08-11T07:07Z** was *"the tester optimized the player as much as possible let's measure and
 > experiment with his setup as it is"*, and this is not that.
 >

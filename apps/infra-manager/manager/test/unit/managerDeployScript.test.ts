@@ -452,7 +452,7 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
   const REAL_RSYNC = execFileSync('sh', ['-c', 'command -v rsync'], { encoding: 'utf8' }).trim();
 
   /** Where deploy.sh sends the manager's folder on the host, read from the script itself. */
-  const HOST_PATH = /^REMOTE_PATH="(\/[^"]+)"$/m.exec(script)?.[1] ?? '';
+  const HOST_PATH = /^readonly DEFAULT_REMOTE_PATH="(\/[^"]+)"$/m.exec(script)?.[1] ?? '';
 
   /**
    * An rsync that runs the real one, a host:/path destination landing at the same path under

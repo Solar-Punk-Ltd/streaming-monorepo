@@ -98,7 +98,7 @@ export interface LatencyTrend {
    * earlier ones.
    *
    * This was called `paceDriftMsPerMinute` and described as the publisher's media clock running
-   * against wall clock. It cannot be that, and the name was the defect the PR #64 gate found. The
+   * against wall clock. It cannot be that, and the name was the defect the glass-to-glass latency instrument change gate found. The
    * bench recovers each capture instant from the media timestamp, so the only thing separating the
    * span of capture instants from the span of fetch instants is how much the latency itself changed
    * between the first sample and the last. Pace drift would produce exactly this signal, and so would

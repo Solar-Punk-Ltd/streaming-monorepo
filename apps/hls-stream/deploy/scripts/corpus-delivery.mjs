@@ -27,8 +27,8 @@
  *     "perArmPerRound": 2,
  *     "control": "his",
  *     "arms": [
- *       { "name": "his",        "feed": { "owner": "0000a004...", "topic": "00000016..." } },
- *       { "name": "ours-live",  "feed": { "owner": "0000a005...", "topic": "7fd811aa..." } },
+ *       { "name": "his",        "feed": { "owner": "00000000...", "topic": "d1eb4905..." } },
+ *       { "name": "ours-live",  "feed": { "owner": "00000000...", "topic": "7fd811aa..." } },
  *       { "name": "ours-aug03", "refs": ["3f2a...", "9c11..."] }
  *     ]
  *   }

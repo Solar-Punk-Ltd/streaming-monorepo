@@ -24,11 +24,11 @@ describe('clientIpOf', () => {
   });
 
   it('ignores the hops a client wrote itself', () => {
-    assert.equal(clientIpOf(requestFrom('1.2.3.4, 5.6.7.8, 198.51.100.9')), '198.51.100.9');
+    assert.equal(clientIpOf(requestFrom('203.0.113.4, 198.51.100.8, 198.51.100.9')), '198.51.100.9');
   });
 
   it('reads a header sent more than once as one list', () => {
-    assert.equal(clientIpOf(requestFrom(['1.2.3.4', '198.51.100.9'])), '198.51.100.9');
+    assert.equal(clientIpOf(requestFrom(['203.0.113.4', '198.51.100.9'])), '198.51.100.9');
   });
 
   it('skips empty hops and surrounding space', () => {

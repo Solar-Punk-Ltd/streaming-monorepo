@@ -2,8 +2,8 @@
  "state": "done",
  "stream": {
   "name": "tester-1",
-  "owner": "0000a00400000000000000000000000000000000",
-  "topic": "0000001600000000000000000000000000000000000000000000000000000000",
+  "owner": "00000000000000000000000000000000000fa4e2",
+  "topic": "d1eb4905b3d03c3d97b4babbb6a3bc652a4e67e367292c90389c73d4b48a4408",
   "segmentSeconds": 4.166667,
   "segmentKB": 4241,
   "what": "Third party VOD reported to play fine in this node. 8.34 Mbps, 1,591 segments."

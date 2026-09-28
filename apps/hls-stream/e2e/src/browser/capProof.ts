@@ -207,7 +207,7 @@ type RecorderVerdict = 'saw the delivery' | 'blind' | 'no reading';
  *
  * `readings` is how many retrievals the comparison is over, and it is the field that keeps a run
  * with nothing to compare from reading as a pass. "I could not look" and "I looked and saw nothing"
- * are the same zero, and this project has already paid for that once (`#41`).
+ * are the same zero, and this project has already paid for that once, with the picture-less opening defect.
  */
 export interface RecorderProof {
   payloadBytes: number;

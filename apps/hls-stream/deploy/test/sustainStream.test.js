@@ -74,7 +74,7 @@ describe('in-browser sustain probe, choosing a stream', () => {
     const { sustain } = arm({ __sustainStream: 'tester-2' });
 
     assert.equal(sustain.stream.name, 'tester-2');
-    assert.equal(sustain.stream.owner, '0000a00400000000000000000000000000000000');
+    assert.equal(sustain.stream.owner, '00000000000000000000000000000000000fa4e2');
     assert.equal(sustain.stream.segmentSeconds, 4.166667);
   });
 

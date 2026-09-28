@@ -1,13 +1,8 @@
 # Integration tests
 
-This setup describes the authenticated integration test harness. It was written on 2026-09-10
-on `feat/ai-remediation`, which has since merged into `main-v2`, so it is on
-`main-v2` now. These instructions are not authorization for a deployment run.
-The manual Docker workflow ran this suite twice on 2026-09-19. Runs
-[`35444459944`](https://github.com/Solar-Punk-Ltd/streaming-monorepo/actions/runs/35444459944)
-and
-[`35445301149`](https://github.com/Solar-Punk-Ltd/streaming-monorepo/actions/runs/35445301149)
-both failed before the deployment cases could complete.
+This setup describes the authenticated integration test harness. These instructions are not
+authorization for a deployment run. The first runs of the manual Docker workflow failed before
+the deployment cases could complete, and the fixes they led to are described below.
 
 End-to-end tests that drive a **running** manager over HTTP, the way the browser does: signed in, with the session cookie on every request and the write header on every write. They create real deployments through the API, wait for them to come up, exercise modify, stop and remove, and the group features.
 
@@ -30,11 +25,11 @@ These are **not** unit tests. They start real containers through the deploy scri
    `WEB_PORT`. Set both target URL variables to that proxy URL when using it.
    Do not use the development API URL for an unpublished container port.
 
-2. A user to sign in as. The manager has no sign-up. The pair is in 1Password as `example-itest` in the SolarPunk vault, username `itest`, and the same password is the repository secret `ITEST_PASSWORD` the Docker-backed workflow signs in with (see [Authentication and public access](../../../docs/features/auth-and-public-access.md)). The user itself is per manager, so create it on whichever manager you are testing. In the api container:
+2. A user to sign in as. The manager has no sign-up. Keep the pair in your password manager, for example a 1Password item with the username `itest`, and put the same password in the repository secret `ITEST_PASSWORD` the Docker-backed workflow signs in with (see [Authentication and public access](../../../docs/features/auth-and-public-access.md)). The user itself is per manager, so create it on whichever manager you are testing. In the api container:
 
    ```sh
    # from manager/, for the configured Docker stack
-   op read "op://Vault/example-itest/password" | docker compose -p streaming-infra-manager -f ./docker-compose.yml exec -T api node dist/cli.js user:add itest --password-stdin
+   op read "op://<vault>/<item>/password" | docker compose -p streaming-infra-manager -f ./docker-compose.yml exec -T api node dist/cli.js user:add itest --password-stdin
    ```
 
    Against a manager started with `pnpm dev`, the same CLI runs from `manager/` as `pnpm exec tsx --conditions=development src/cli.ts user:add itest --password-stdin`.
@@ -49,7 +44,7 @@ These are **not** unit tests. They start real containers through the deploy scri
    | `MANAGER_TEST_PASSWORD` | Its password, as an `op://` reference.                                                                                                                                                         |
    | `MANAGER_TEST_RUN`      | Optional, one to eight lowercase letters or digits. Gives every suite file the same run id. Without it each file is a run of its own, which is fine.                                           |
 
-   Copy `env.example` to `env.itest` in this directory, which git ignores. It already names the vault item, so nothing in it needs filling in.
+   Copy `env.example` to `env.itest` in this directory, which git ignores. Put your own vault and item names in its two `op://` references, and nothing else.
 
 ## Run
 
@@ -78,10 +73,8 @@ identity and empty membership together and never cascades to new members.
 An accepted creation response confirms identity and starts deployment work. It
 does not mean the returned profile has left `DEPLOYING`. Tests that finish or
 remove a newly created profile first wait for that exact instance to reach the
-state their assertions require. Run
-[`35446479777`](https://github.com/Solar-Punk-Ltd/streaming-monorepo/actions/runs/35446479777)
-on 2026-09-19 exposed two missing waits when cleanup reached the profiles before
-their deploys completed. Cleanup does not retry a refused write.
+state their assertions require. An early run exposed two missing waits when
+cleanup reached the profiles before their deploys completed. Cleanup does not retry a refused write.
 
 Cleanup continues across independent resources and reports all failures in an
 aggregate error. Cleanup requests carry an explicit five-second signal, and

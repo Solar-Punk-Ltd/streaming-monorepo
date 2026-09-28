@@ -2,18 +2,18 @@
   "measuredAt": "2026-09-02T07:30:38.148Z",
   "clientUrl": "http://127.0.0.1:10074",
   "chromeVersion": "Chrome 151.0.7922.75",
-  "owner": "0000a00500000000000000000000000000000000",
+  "owner": "00000000000000000000000000000000000fa4e1",
   "manifests": [
     {
       "rung": "360p",
-      "topicHex": "0000001100000000000000000000000000000000000000000000000000000000",
+      "topicHex": "216a8d60b6017aa54e1bb494b3e0b96c995dcde6317017473a3510b01e5d9aa5",
       "segmentCount": 127,
       "targetDurationS": 2,
       "medianSegmentSeconds": 2
     },
     {
       "rung": "1080p",
-      "topicHex": "0000001e00000000000000000000000000000000000000000000000000000000",
+      "topicHex": "7d1fe981e82ee3e48d2002c91b054cdf8549e7423c78675cc3799bfb120fedc2",
       "segmentCount": 127,
       "targetDurationS": 2,
       "medianSegmentSeconds": 2
@@ -1334,7 +1334,7 @@
     {
       "arm": "canary",
       "kbpsCap": null,
-      "ref": "afd0706d9000cc7cd0f876e5fcd94f75b485311a77947569bffc545bbb3c2901",
+      "ref": "c9f0e5c2434259e2d32f90548428a82716b519d9e82060c2fd3ff23bcddaec81",
       "roundIndex": 0,
       "roundDegraded": false,
       "startedAtMs": 1788334422653,
@@ -1352,7 +1352,7 @@
     {
       "arm": "360p",
       "kbpsCap": 2800,
-      "ref": "f514ccaeb1d934887a2e02b898037cf058f8e8d882c9f37348c3319ee31024c8",
+      "ref": "96f687853dd4a1e975690823b8f46b4b6e750d6f524c6d5ebe8c04b04488543b",
       "roundIndex": 0,
       "roundDegraded": false,
       "startedAtMs": 1788334447793,
@@ -1370,7 +1370,7 @@
     {
       "arm": "1080p",
       "kbpsCap": 2800,
-      "ref": "ce4a28d1c4c5d7f524ec377d63ff5404eefde8301ffb5b104e1c3204ef00b2be",
+      "ref": "de64446c21e6352cc7693b7dec856a87cf4b39e2daed70cd98af160c70dc551f",
       "roundIndex": 0,
       "roundDegraded": false,
       "startedAtMs": 1788334476173,
@@ -1388,7 +1388,7 @@
     {
       "arm": "360p",
       "kbpsCap": null,
-      "ref": "74aacae461fc095fc252c4465e0033d541c4e1058208ea398bd347eb90d6e7d4",
+      "ref": "2ac362a15e7e939c80ba8bf8bcb844efd5a7b6acba5a47e96aa205b79a929d5e",
       "roundIndex": 0,
       "roundDegraded": false,
       "startedAtMs": 1788334517655,
@@ -1406,7 +1406,7 @@
     {
       "arm": "1080p",
       "kbpsCap": null,
-      "ref": "0aa9d944e27cc1a3912bf32ae0db09597111d5e183930d5be2eb10e7cd1d987f",
+      "ref": "a1113a4b57a1c46bea7fd51e5e393df645a6453745d6c882cf18264f28ac4d55",
       "roundIndex": 0,
       "roundDegraded": false,
       "startedAtMs": 1788334542792,
@@ -1424,7 +1424,7 @@
     {
       "arm": "canary",
       "kbpsCap": null,
-      "ref": "541a26c78e47fe325ca3f8b3b6c2a7b0b8316b78185ad45f25f043c1601056fd",
+      "ref": "fe3df13a7c93c84a8763a98a95256e67a15a1fdc49f68fea0106bfb5d79e2a49",
       "roundIndex": 1,
       "roundDegraded": false,
       "startedAtMs": 1788334568226,
@@ -1442,7 +1442,7 @@
     {
       "arm": "1080p",
       "kbpsCap": null,
-      "ref": "ab920cf224fb135c3df6c772ca950f200f28ff6fe2e27c485458a08cb5c8365f",
+      "ref": "2d3aea3e96a5c56eb8b0a30d271a39a1505c193f44e78ca038da34ebb3ad82c2",
       "roundIndex": 1,
       "roundDegraded": false,
       "startedAtMs": 1788334593351,
@@ -1460,7 +1460,7 @@
     {
       "arm": "360p",
       "kbpsCap": null,
-      "ref": "acf08892b19a04ce4c960ab09e933622c35903288c48cb2dcf4bc6be1f1df700",
+      "ref": "9b3777274bd72ced61cb25a2dd324a64350c2d850229e7cf5dcd3eebfc966a4d",
       "roundIndex": 1,
       "roundDegraded": false,
       "startedAtMs": 1788334618784,
@@ -1478,7 +1478,7 @@
     {
       "arm": "1080p",
       "kbpsCap": 2800,
-      "ref": "fb49651e6e902fea439853a982daaebf77d1ec44a9424716013f5b0b791867a7",
+      "ref": "a0dc2005e7fca2408e0cc08bb7f99b571f1ee0d863a252ae2c97db226aed9454",
       "roundIndex": 1,
       "roundDegraded": false,
       "startedAtMs": 1788334643934,
@@ -1496,7 +1496,7 @@
     {
       "arm": "360p",
       "kbpsCap": 2800,
-      "ref": "43a62f43b0440a771380b72d1d194ca8e6960d90111d4b65c514bbe3af1513b8",
+      "ref": "f4344e7090202ef8a5f27dcdf76cf18486822aac2257af5e969f5db38ae62cff",
       "roundIndex": 1,
       "roundDegraded": false,
       "startedAtMs": 1788334687124,
@@ -1514,7 +1514,7 @@
     {
       "arm": "canary",
       "kbpsCap": null,
-      "ref": "f4c715d1fab7a79d024317535282b117976081a007ba464d2e4c8824c00c2e99",
+      "ref": "a0ed92d26000cc524cac259581455bb46b671e1a6c691016a634e1acf2c01ed1",
       "roundIndex": 2,
       "roundDegraded": false,
       "startedAtMs": 1788334716342,
@@ -1532,7 +1532,7 @@
     {
       "arm": "360p",
       "kbpsCap": 2800,
-      "ref": "e60adaf73f9ecbb935d3983d0bd84569f52e90624e26d626df2628b82d0faa8e",
+      "ref": "a53c10918371a75368bd852c1b60ed81f38b553243cb56a39e297db1e5ebf692",
       "roundIndex": 2,
       "roundDegraded": false,
       "startedAtMs": 1788334741638,
@@ -1550,7 +1550,7 @@
     {
       "arm": "1080p",
       "kbpsCap": 2800,
-      "ref": "afab98c64ac2c9c6ee3fc58e024589c8e0e0ae5c1d93638eef3007741b5889a4",
+      "ref": "7891e35e64e030c9c20b083f5eff6201c8ee11d643063f49561227352ba810a3",
       "roundIndex": 2,
       "roundDegraded": false,
       "startedAtMs": 1788334770701,
@@ -1568,7 +1568,7 @@
     {
       "arm": "360p",
       "kbpsCap": null,
-      "ref": "47aae5636d0e34be01ebfada2cc847ae916d04ab31b66bcb653caeda5ca9cc3b",
+      "ref": "18ea6ba9c58d853db0e74720f2770bd248598816510c26a8e9c53c812897d33a",
       "roundIndex": 2,
       "roundDegraded": false,
       "startedAtMs": 1788334815320,
@@ -1586,7 +1586,7 @@
     {
       "arm": "1080p",
       "kbpsCap": null,
-      "ref": "dea4074580dede3258b2914057bd7bcb9d3b3ae434972473cb317e0aa062cf2e",
+      "ref": "af81b05fcd6f73a19471488da3dc539f9ca74c104d9b532d19a72b962a417a5f",
       "roundIndex": 2,
       "roundDegraded": false,
       "startedAtMs": 1788334840476,
@@ -1609,7 +1609,7 @@
       "elapsedMs": 9060.399997711182,
       "arm": "pair",
       "kbpsCap": 2800,
-      "ref": "952d6b84df542a03382a7e0f8716806322a5bb2255fc7f940fe0551397dbed11",
+      "ref": "2d03458d98610508425d7657529e5209d08b131c4a35ed9b5484405dabff6668",
       "roundIndex": 0,
       "roundDegraded": false,
       "budgetMs": 90000,
@@ -1627,7 +1627,7 @@
       "elapsedMs": 6436.699996948242,
       "arm": "pair",
       "kbpsCap": 2800,
-      "ref": "bcb3a1a07347259d7adc7f20fa6c87eaa0b6cea92686f7ee258ad90aaba8dfc6",
+      "ref": "5ec62be60e11cce8e0d2adb310fe412185e92397c12562de79ca293e656d8e1a",
       "roundIndex": 0,
       "roundDegraded": false,
       "budgetMs": 90000,
@@ -1645,7 +1645,7 @@
       "elapsedMs": 6411.799999237061,
       "arm": "pair",
       "kbpsCap": 2800,
-      "ref": "d2c2b00e3c7ca69ed6ba84acef695263badcb5b2e4ca66acd0fed2c26fdfb56d",
+      "ref": "aaf5ddf26e66aa48d907b43d4ce6530a2073e01d26d81b6bb2c141006fe3c814",
       "roundIndex": 1,
       "roundDegraded": false,
       "budgetMs": 90000,
@@ -1663,7 +1663,7 @@
       "elapsedMs": 8815.400001525879,
       "arm": "pair",
       "kbpsCap": 2800,
-      "ref": "0945a3db5ac3cc2e2df10a046e827cc7eaeebd6c8e52e729a62654dba77fc03b",
+      "ref": "8ceb3fba83729c5b6e887a0f99e9a9a0c7f789466350a880d5fdc1d65e23a684",
       "roundIndex": 1,
       "roundDegraded": false,
       "budgetMs": 90000,

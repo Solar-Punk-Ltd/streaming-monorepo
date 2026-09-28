@@ -15,7 +15,7 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
  * whichever engine E2E_ENGINE selects (SRS or OME); only the restarted container and the reconnect
  * grace differ — the recovery behaviour under test is engine-agnostic.
  *
- * REQUIRES the PR #10 recovery fix deployed: StreamOrchestrator.startStream now finalizes a stale
+ * REQUIRES the catalog-wipe fix recovery fix deployed: StreamOrchestrator.startStream now finalizes a stale
  * re-announced session and starts a fresh one, instead of rejecting it. Against an uploader WITHOUT
  * the fix the reconnect is rejected ("already active") and no new stream ever appears, so this test
  * times out — that is the pre-fix behaviour, not a flake.

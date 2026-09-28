@@ -163,7 +163,7 @@ describe('judgeRecorderProof', () => {
   });
 
   it('reads a run with nothing to compare as no reading rather than as a pass', () => {
-    // "I could not look" and "I looked and saw nothing" are the same zero, and #41 already cost this
+    // "I could not look" and "I looked and saw nothing" are the same zero, and the picture-less opening defect already cost this
     // project that confusion once.
     assert.equal(judgeRecorderProof(0, 0, 0).verdict, 'no reading');
     assert.equal(judgeRecorderProof(0, 500_000, 3).verdict, 'no reading');

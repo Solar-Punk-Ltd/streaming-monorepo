@@ -131,7 +131,7 @@ import { type Host, makeHost } from '../src/harness/host.js';
  * reader in this harness does and what keeps a hand-copied digest from ever naming the wrong
  * recording.
  */
-const DEFAULT_OWNER = '0000a00500000000000000000000000000000000';
+const DEFAULT_OWNER = '00000000000000000000000000000000000fa4e1';
 const RAW_TOPIC_360 = '8949d4e4-d705-4829-8bce-9484a3390885';
 const RAW_TOPIC_1080 = '6e01b80f-47ef-41fa-9449-a64e2478cf6f';
 

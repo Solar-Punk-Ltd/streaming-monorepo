@@ -282,17 +282,16 @@ one that carries the argument.
 
 ## What else was running on the bench host, read after the fact
 
-⚠️ **Filed 2026-08-16 evening, not captured by the harness at the time.** A peer session measuring
-from Frankfurt through the `loadtest` stack on this same host got in touch, which is what prompted
-the check.
+⚠️ **Filed 2026-08-16 evening, not captured by the harness at the time.** Another measurement running
+through a load-test stack on this same host was noticed, which is what prompted the check.
 
-`loadtest-<bench host>-srs-1` and `loadtest-<bench host>-stream-uploader-1` emitted **zero log lines
+`<load-test stack>-srs-1` and `<load-test stack>-stream-uploader-1` emitted **zero log lines
 between 09:50Z and 11:45Z**, which brackets the whole sitting. They were restarted at 13:50Z, after
 it ended. So the loudest co-tenant on the host was not streaming during any arm.
 
 ⛔ **Zero log lines is not zero CPU**, and this is a reading taken afterwards rather than a snapshot
 either side of each arm, which is what the standing rule asks for. The other compose projects on the
-bench host (`bench-tool-*`, `bee-1` through `bee-40`, `test-profile-1-*`, `test-profile-2-*`) were not read at
+bench host (another benchmark stack, a fleet of Bee nodes and two test stacks) were not read at
 all. Treat this as ruling out one specific neighbour, not as a clean co-tenancy record.
 
 ⭐ It also does not carry the argument. **The flat hybrid control does**, because a neighbour heavy

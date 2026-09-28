@@ -22,12 +22,12 @@ const holder = globalThis as unknown as Record<string, unknown>;
  *
  * ## Why this exists
  *
- * A2 (PR #184) measured weeb-3 against the gateway by **rebuilding and redeploying the client between
+ * A2 (the gateway-less recording playback change) measured weeb-3 against the gateway by **rebuilding and redeploying the client between
  * arms**, because `VITE_BROWSER_FETCH_BACKEND` is baked in at build time. That puts two differences in
  * one comparison, the backend and the build, and it makes a counterbalanced live sitting impossible:
  * `AB/AB/BA/BA` inside one broadcast would need eight rebuilds.
  *
- * The gateway switch of #180 solved the same problem for gateways and the unfunded-gateway arms
+ * The gateway switch of the gateway switch solved the same problem for gateways and the unfunded-gateway arms
  * were run on it. This is that, for the byte source.
  */
 describe('moving the fetch backend at runtime', () => {

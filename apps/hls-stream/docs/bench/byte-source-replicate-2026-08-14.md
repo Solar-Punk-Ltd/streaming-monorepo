@@ -6,7 +6,7 @@
 > manifest still come from a **bee gateway**, in both conditions. Verified in source: `ManifestManagement`
 > has no weeb-3 path, only `CustomManifestLoader` does.
 >
-> That split was my design decision in PR #183 and **nobody authorised it**. The owner's instruction
+> That split was my design decision in the in-tab fetch backend change and **nobody authorised it**. The owner's instruction
 > of **2026-08-11T07:07Z** was *"the tester optimized the player as much as possible let's measure and
 > experiment with his setup as it is"*, and this is not that.
 >
@@ -86,7 +86,7 @@ and almost nothing else.
 | gateway | 168,117 retrieval requests, mean 42.4 ms, 2.22 peers, 5.8% failed outright |
 | uploader spent | 0.8115 BZZ, **0.75 BZZ per broadcast hour** |
 | gateway spent | 0.2975 BZZ, **0.27 BZZ per broadcast hour** |
-| postage | batch `00000003` 287 → 293 of 512 buckets, **6 buckets for 65 minutes** |
+| postage | batch `0cd0eff9` 287 → 293 of 512 buckets, **6 buckets for 65 minutes** |
 | health | 0 segments skipped, 0 never named, 0 max consecutive failures |
 | host load | 0.83 → 5.31 of 48 cores |
 | byte-source gate | all 8 arms `fetched only from http://127.0.0.1:10077` |
@@ -158,7 +158,7 @@ it was topped up. After the uploader was topped up too it would have printed **`
 spent`** against a ceiling 1.98 of which was gone. `availableBalance` has no way up except a deposit,
 and a deposit means the baselines predate it, so it now refuses rather than under-counting.
 
-**2. Three of the four drivers that spend had no spend ceiling at all.** PR #179 put the *capacity*
+**2. Three of the four drivers that spend had no spend ceiling at all.** The capacity gate fix put the *capacity*
 gate in all three; the spend ceiling only ever landed in `byte-source-arms.sh`.
 `gateway-funding-arms.sh`, `viewer-arms.sh` and `phase06-light-vs-ultralight.sh` all publish and all
 carried only `can_afford`, which asks whether the node **can** pay and so authorises the whole
@@ -168,7 +168,7 @@ sitting.
 **3. A broadcast the harness stops still reported itself failed.** `docker inspect` on a removed
 container writes a blank line to stdout *and* exits non-zero, so the `|| echo missing` guard appends a
 second line and the value is `"\nmissing"`. The equality against `missing` missed, and a stop the
-harness asked for printed `Nothing usable was broadcast, so do not measure against this`. PR #188
+harness asked for printed `Nothing usable was broadcast, so do not measure against this`. The stopped-publisher fix
 removed that alarm from one path; this was the other. This sitting ended with `✓ publish stopped on
 request after 3746s`, which is the fix confirmed on a real broadcast.
 

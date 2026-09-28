@@ -39,7 +39,7 @@
 # ## ⛔ What this cannot say
 #
 # A recording is not a live edge. There is no rebase here and no publisher racing the player, so this
-# does not reproduce Result 2 and must never be quoted as a live-edge figure. `#108` published both a
+# does not reproduce Result 2 and must never be quoted as a live-edge figure. The gateway request jitter change published both a
 # steady and a whole-window realtime ratio for the same reason.
 #
 # Usage, on the deployment host:
@@ -48,7 +48,7 @@
 set -u
 
 BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
-OWNER="${OWNER:-0000a00500000000000000000000000000000000}"
+OWNER="${OWNER:-00000000000000000000000000000000000fa4e1}"
 
 # `label:topic:start_seconds`, space separated. Labels carry into the state file and the artefact
 # names, so they are what a write-up joins on.

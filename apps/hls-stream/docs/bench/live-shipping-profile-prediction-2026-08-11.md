@@ -66,7 +66,7 @@ and comparable to each other. Against tester-1 they are across sittings, and tes
 ## What is being bought
 
 Uploader chequebook holds **2.1237 BZZ available** (not the 26.55 total; `availableBalance` only
-recovers on a deposit). Postage `00000003…`, depth 24, immutable, 152/256, 24.05 days.
+recovers on a deposit). Postage `0cd0eff9…`, depth 24, immutable, 152/256, 24.05 days.
 
 | arm | minutes | MB published | **BZZ** | buckets |
 | --- | ---: | ---: | ---: | ---: |

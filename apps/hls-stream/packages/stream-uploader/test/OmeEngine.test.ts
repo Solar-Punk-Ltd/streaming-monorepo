@@ -1039,7 +1039,7 @@ describe('createOmeEngine reconnect inside the origin idle window (CON-20)', () 
  * admissions for one stream are independent HTTP requests against a 3000ms admission timeout, so a
  * slow `closing` for a dropped session can be processed after an `opening` that OME did admit.
  *
- * The reachability reported by the PR #43 concurrency lens is refuted in the register: OME rejects a
+ * The reachability reported by the outgoing broadcast session fix concurrency lens is refuted in the register: OME rejects a
  * reconnect admitted while the dropped session is still up, 4 of 4, so the ordinary timeline lands
  * both closings first. What remains is the reordered webhook, which is what this drives.
  *

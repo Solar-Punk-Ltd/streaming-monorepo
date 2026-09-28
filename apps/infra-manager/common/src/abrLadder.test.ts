@@ -340,7 +340,7 @@ describe('assembleBeePublishers — rung address and status', () => {
     rung: name,
     name: `abr1-${name}`,
     status: 'RUNNING',
-    url: `http://192.0.2.58:100${DEFAULT_ABR_RUNGS.indexOf(name)}5`,
+    url: `http://192.0.2.20:100${DEFAULT_ABR_RUNGS.indexOf(name)}5`,
     stampId: batch('a'),
     stampState: 'active' as const,
     stampTtl: 30 * 24 * 3_600,
@@ -528,7 +528,7 @@ describe('a pasted BEE_PUBLISHERS', () => {
   const batch = (rung: string) => rung.replace(/\D/g, '').padEnd(64, '0');
   const full = () =>
     DEFAULT_ABR_RUNGS.map((rung, i) =>
-      beePublisherEntry(rung, `http://192.0.2.58:${10015 + i * 10}`, batch(rung)),
+      beePublisherEntry(rung, `http://192.0.2.20:${10015 + i * 10}`, batch(rung)),
     ).join(' ');
 
   it('round-trips what the pool card emits', () => {
@@ -538,7 +538,7 @@ describe('a pasted BEE_PUBLISHERS', () => {
       entries.map((e) => e.rung),
       [...DEFAULT_ABR_RUNGS],
     );
-    assert.equal(entries[0]!.url, 'http://192.0.2.58:10015');
+    assert.equal(entries[0]!.url, 'http://192.0.2.20:10015');
     assert.equal(entries[0]!.batchId, batch('360p'));
     assert.equal(beePublishersProblem(full()), null);
   });
@@ -585,9 +585,9 @@ describe('a pasted BEE_PUBLISHERS', () => {
         .split(' ')
         .map((e) => (e.startsWith(`${rung}@`) ? beePublisherEntry(rung, url, batch(rung)) : e))
         .join(' ');
-    assert.match(beePublishersProblem(swap('360p', 'http://deploy@1.2.3.4:10015'))!, /ssh user info/);
+    assert.match(beePublishersProblem(swap('360p', 'http://deploy@203.0.113.4:10015'))!, /ssh user info/);
     assert.match(beePublishersProblem(swap('720p', 'http://localhost:10035'))!, /points at localhost/);
-    assert.match(beePublishersProblem(swap('480p', 'ftp://1.2.3.4:10025'))!, /not an http\(s\) URL/);
+    assert.match(beePublishersProblem(swap('480p', 'ftp://203.0.113.4:10025'))!, /not an http\(s\) URL/);
   });
 
   it('writes ABR_LADDER exactly as the engine sample does, highest rung first', () => {
@@ -602,7 +602,7 @@ describe('a pasted BEE_PUBLISHERS', () => {
 
 describe('normalizeBeePublishers', () => {
   const batch = (rung: string) => rung.replace(/\D/g, '').padEnd(64, '0');
-  const entries = DEFAULT_ABR_RUNGS.map((rung, i) => `${rung}@http://192.0.2.58:${10015 + i * 10}<${batch(rung)}>`);
+  const entries = DEFAULT_ABR_RUNGS.map((rung, i) => `${rung}@http://192.0.2.20:${10015 + i * 10}<${batch(rung)}>`);
   const canonical = entries.join(' ');
 
   it('collapses a newline-separated paste to single spaces', () => {
@@ -625,7 +625,7 @@ describe('normalizeBeePublishers', () => {
     // got 66`. Every other batch-id write path in the manager strips it, and
     // stamp_id is routinely 0x-prefixed, so this form is easy to hand-assemble.
     const prefixed = DEFAULT_ABR_RUNGS.map(
-      (rung, i) => `${rung}@http://192.0.2.58:${10015 + i * 10}<0x${batch(rung).toUpperCase()}>`,
+      (rung, i) => `${rung}@http://192.0.2.20:${10015 + i * 10}<0x${batch(rung).toUpperCase()}>`,
     ).join(' ');
     assert.equal(normalizeBeePublishers(prefixed), canonical);
   });

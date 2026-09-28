@@ -2,7 +2,7 @@
 
 Status, 2026-09-16. This is the plan as written on 2026-09-05, kept as the record of what was
 asked for and why. All four features are built and merged to `main-v2`, apart from the live engine
-status, which is the second pull request of feature 3 and is not started. Pull request #40 from
+status, which is the second pull request of feature 3 and is not started. The remediation set from
 `feat/ai-remediation` landed, and `main-v2` has moved a long way past it since, so read the
 sections below as the plan rather than as the current state. The stacked branches this page names
 are gone. Its decisions are this page's own and are not the review's
@@ -15,7 +15,7 @@ Status: decided 2026-09-05 late evening. Every decision but the upstream scope w
 the upstream scope was put on hold, so nothing in swarm-hls-stream changes for now. Building started the same night on stacked
 branches, in the order below.
 
-Four features were asked for on 2026-09-05, after the UX rework (PR #39) landed on `main-v2`.
+Four features were asked for on 2026-09-05, after the UX rework landed on `main-v2`.
 Each has its own brief in this folder. This page is the overview: what each feature is in one
 paragraph, the order to build them in, how they become pull requests, and the decisions that
 were open. Every PR targets `main-v2` and is squash merged, the branch model set on 2026-09-05.

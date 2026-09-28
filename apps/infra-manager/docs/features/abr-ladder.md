@@ -22,7 +22,7 @@ shape and still works with the string pasted across, see The address.
 
 ## Motivation
 
-[PR #174](https://github.com/Solar-Punk-Ltd/swarm-hls-stream/pull/174) gives the
+The multi-feed ABR merge in the stack gives the
 uploader a `BeePublisherPool`: one funded Bee node per ladder rung, configured as
 
 ```
@@ -323,7 +323,7 @@ request or block the value.
 
 The components this table named when it was written, `LadderCard`, `UploaderCard`,
 `UploadersView`, `AbrPoolForm` and `NewDeploymentDrawer`, were replaced by the UX
-rework the day after (PR #39) and no longer exist. The rows above are the files
+rework the day after and no longer exist. The rows above are the files
 that carry the same behaviour now.
 
 ## Why the pool form is a separate component
@@ -423,7 +423,7 @@ there, while uploads still work. A mutable batch warns there too, full or not,
 for two reasons. Once full it overwrites the oldest recordings' chunks. And the
 uploader of stack v3.3 and earlier holds a mutable batch to the same ceiling, so
 a restart on it past 90% is refused as well. The stack's fix for that, which
-holds only immutable batches to the ceiling, is swarm-hls-stream #253, released
+holds only immutable batches to the ceiling, is the stack's postage gate change, released
 in `v3.4`, the version this manager bundles since 2026-09-25. A deployment runs
 the build it was last deployed from, so one still on a `v3.3` build refuses such
 a restart until it is deployed again on `v3.4`. The wording of both warnings is
@@ -444,7 +444,7 @@ The frontend holds the same distinction in its own state: `useBeeUtils` exposes
 failed fetch clears it rather than leaving the last answer standing. A list nobody
 can currently confirm is not evidence, and a stale one shown under a "bee node
 unreachable" banner contradicts it. Both halves of that were got wrong first time
-(see PR #33 review): a `stampsLoaded` flag latched true, so a node that stopped
+(see the ladder rung verification fix review): a `stampsLoaded` flag latched true, so a node that stopped
 answering kept reading as verified, and the stamps table treated its initial empty
 array as an answer, so it claimed a dropped batch before any request had been made.
 
@@ -499,7 +499,7 @@ otherwise silent:
 - **An ssh target used as a network address.** `profiles.host` holds a _deploy_
   target: the schema validates it against `[a-zA-Z0-9._@-]` and documents it as
   "localhost, an ssh alias, or user@host". `user@host` composed to
-  `http://deploy@1.2.3.4:10055`, not a bee base URL, and a stray `@` inside an
+  `http://deploy@203.0.113.4:10055`, not a bee base URL, and a stray `@` inside an
   entry format that already separates the rung from the URL on `@`.
 
 The second is now _fixed_ rather than merely detected: `resolveNetworkHost`

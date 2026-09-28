@@ -7,7 +7,7 @@
  *  - the lifecycle log markers the uploader emits (published/unpublished vs opening/closing).
  *
  * Everything downstream of the uploader (the catalog, the VOD finalize, the /health shape) is
- * engine-agnostic, so it stays in the shared scenarios untouched, with one exception since #245: what
+ * engine-agnostic, so it stays in the shared scenarios untouched, with one exception since the reconnect window change: what
  * an encoder dropping does to the broadcast. On SRS the unpublish ends nothing: `noteDisconnect` in
  * `packages/stream-uploader/src/engines/srs.ts` holds the session, the orphan reaper finalizes it
  * once no media has arrived for `ORPHAN_REAP_MS`, and an encoder back inside that window resumes the

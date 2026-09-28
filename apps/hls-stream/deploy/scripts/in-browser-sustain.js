@@ -77,28 +77,28 @@
   /** @type {Record<string, StreamUnderTest>} */
   const STREAMS = {
     latbench: {
-      owner: '0000a00500000000000000000000000000000000',
-      topic: '7fd811aa6aedbced02d010f5e7987039e3a6033dc59bbce668b8515890ed5efd',
+      owner: '00000000000000000000000000000000000fa4e1',
+      topic: 'cb72ced1de2e86bd48312531c8a1dfb5343f0a57590aa0fdf244398834774514',
       segmentSeconds: 0.266,
       segmentKB: 90,
       what: '⛔ OUR BENCH PROFILE, HLS_FRAGMENT=0.25, which we do not ship. 2.77 Mbps.',
     },
     'tester-1': {
-      owner: '0000a00400000000000000000000000000000000',
-      topic: '0000001600000000000000000000000000000000000000000000000000000000',
+      owner: '00000000000000000000000000000000000fa4e2',
+      topic: 'd1eb4905b3d03c3d97b4babbb6a3bc652a4e67e367292c90389c73d4b48a4408',
       segmentSeconds: 4.166667,
       segmentKB: 4241,
       what: 'Third party VOD reported to play fine in this node. 8.34 Mbps, 1,591 segments.',
     },
     'tester-2': {
-      owner: '0000a00400000000000000000000000000000000',
-      topic: '12924ca6bec1f291ba5467119fa99261e88c2475ae05e69e6b4da1102008042f',
+      owner: '00000000000000000000000000000000000fa4e2',
+      topic: '95383534d899dba7a63ac080bc07d7c3de73be3844967e8090f251d3e7ee48d7',
       segmentSeconds: 4.166667,
       segmentKB: 4241,
       what: '⚠️ Replicate of tester-1, shape ASSUMED from it and not read. 8.34 Mbps if that holds.',
     },
     'ours-shipping-2026-08-11': {
-      owner: '0000a00500000000000000000000000000000000',
+      owner: '00000000000000000000000000000000000fa4e1',
       topic: '7e87a2d9-82fe-422f-a66a-5b1e42281636',
       // ⛔ Measured off the run, not read off the knobs. `HLS_FRAGMENT=1.0` against a 1.0s GOP
       // delivered 1.917s segments and the 6000kbps asked for arrived as 3.37. Why 1.0 doubles is not

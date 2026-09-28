@@ -9,7 +9,7 @@ import { envNumberOrNull } from '../src/browser/runFiles.js';
  *
  * `BROWSER_GOP_SECONDS` carried a 0.25 fallback and reached nothing but the report's opening
  * sentence. Every browser run started without it published a headline naming a segment length the
- * deployment stopped producing at #155, while the numbers underneath stayed correct. That is the
+ * deployment stopped producing at the 0.5s fragment change, while the numbers underneath stayed correct. That is the
  * shape that survives review: nothing looks wrong, and the artefact is filed against a configuration
  * it never ran.
  */

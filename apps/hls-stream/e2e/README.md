@@ -87,7 +87,7 @@ it.
 ### Saying how long a segment the run needs
 
 **The two viewer types want opposite segment lengths, so there is no setting that is simply right.**
-Measured 2026-08-16 by the sibling repo `load-test-lab`, in
+Measured 2026-08-16 by a separate load-testing repository, in
 `docs/measurements/2026-08-16-a-stock-tab-holds-realtime-on-two-second-segments.md`, and carried
 unresolved as Q23 of its `docs/spec/product-spec.md`:
 
@@ -397,7 +397,7 @@ applies the run profile, and the default profile `in-browser` sets `BROWSER_FETC
 Reaching the unset row now takes blanking it on purpose with `BROWSER_FETCH_BACKEND=` in the
 environment, which beats the profile by design. See `docs/e2e-coverage.md`.
 
-`weeb3` is a **hybrid**, not gateway-less: PR #183 moved segment bytes and nothing else. Fully
+`weeb3` is a **hybrid**, not gateway-less: the in-tab fetch backend change moved segment bytes and nothing else. Fully
 gateway-less is weeb-3's own page, run by `pnpm browser:weeb3-native` and swept against the hybrid by
 `pnpm browser:viewer-order`. See `src/browser/viewerConditions.ts`.
 

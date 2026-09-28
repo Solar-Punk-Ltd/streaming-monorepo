@@ -1,10 +1,10 @@
-# Validating the fragment #155 shipped, which had never been measured
+# Validating the fragment the 0.5s fragment change shipped, which had never been measured
 
 **2026-08-12, free.** Five arms on the local segment-duration probe, own container, own ports, no bee
 and no postage. Predictions registered before the run.
 
 `gop-vs-fragment-2026-08-12` established `segment = ceil(fragment / GOP) * GOP` over 20 arms at
-fragments **0.25, 1.0 and 2.0**. #155 then shipped **0.5**, a value that sweep never tested. This
+fragments **0.25, 1.0 and 2.0**. The 0.5s fragment change then shipped **0.5**, a value that sweep never tested. This
 checks the shipped pair against a running SRS rather than against the rule.
 
 | fragment | GOP | aof | ceiling | predicted | settled at | verdict |
@@ -15,7 +15,7 @@ checks the shipped pair against a running SRS rather than against the rule.
 | 0.5 | 2.0 | **4.2** | **2.10s** | 2.000 | **2.117** | ⛔ **differs, see below** |
 | 0.5 | 3.0 | 4.2 | 2.10s | ~2.100 | 2.117 | ✅ force-closed as predicted |
 
-✅ **The shipped pair produces exactly what #155 claimed.** The rule holds at a fragment it was never
+✅ **The shipped pair produces exactly what the 0.5s fragment change claimed.** The rule holds at a fragment it was never
 fitted on.
 
 ## ⭐⭐ The overshoot, which no previous sweep could see
@@ -50,8 +50,8 @@ That is the fourth arm above. At `aof 10` a 2.0s GOP settles cleanly on 2.000. A
 `aof 4.2` the ceiling is 2.1, the natural overshoot crosses it, and SRS force-closes: the mode moves
 to **2.117** and the spread opens to **1.861-2.219**.
 
-⚠️ **This is pre-existing and #155 did not introduce it.** The old config was `fragment 1.0 * aof 2.1`,
-which is the **same 2.1s ceiling**. #155 held the product constant on purpose, and it held this with
+⚠️ **This is pre-existing and the 0.5s fragment change did not introduce it.** The old config was `fragment 1.0 * aof 2.1`,
+which is the **same 2.1s ceiling**. The 0.5s fragment change held the product constant on purpose, and it held this with
 it. What is new is that the ceiling has now been measured against the overshoot rather than against
 the GOP alone.
 
@@ -84,4 +84,4 @@ clears a 2.0s GOP plus its overshoot with margin, and it is the ceiling `latbenc
 all along (0.25 * 10), so it is not a new operating point.
 
 **Strictly more permissive than either the old or the current value**, so no broadcaster's GOP leaves
-the range: [1.0, 2.1] before #155, [0.5, 2.1] after it, **[0.5, 2.5]** now.
+the range: [1.0, 2.1] before the 0.5s fragment change, [0.5, 2.1] after it, **[0.5, 2.5]** now.

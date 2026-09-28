@@ -127,12 +127,11 @@ Manager-driven deploy is next.
 Verified 2026-09-23 with `--host=localhost` on a laptop: build, migrations,
 health through nginx, `user:add`, sign-in through nginx on the slot port, a
 service-scoped redeploy, and a crash-looping API caught by the health timeout.
-Deployed to a team server on 2026-09-24 at the first try. On the dev host the
-tunnel connected but nothing answered: that host's persisted firewall accepts
-Docker's original 172.x bridges and not the 10.200.x pool its daemon.json has
-handed out since June, and the manager works there only because its network
-predates the pool. A host matter, written up in the README; nothing in this
-repo changes for it. The 2026-09-23 run found two defects that had never
+Deployed to a server on 2026-09-24 at the first try. On another host the
+tunnel connected but nothing answered: a persisted firewall there accepted
+Docker's default bridge range and not the custom address pool its daemon hands
+out. A host matter, written up in the README. Nothing in this repo changes for
+it. The 2026-09-23 run found two defects that had never
 been hit because the images had never been built: the backend image's
 `pnpm deploy` fails under pnpm 10 (now `--legacy`), and nginx forwarded `Host`
 without the port, so the API's cross-site check refused every write, sign-in
@@ -175,22 +174,20 @@ and 443 already belong to a production nginx, so the console goes behind that
 server as one more name; the README's "A host that already has a web server"
 section is the recipe, and edge.sh stays for hosts with no front door yet.
 
-First real run, 2026-09-25, on the GCP QA control host (the monitoring VM): both
-consoles deployed to loopback (manager 8080, web2-admin profile `qa` on 9091,
-because Prometheus has 9090 there), then `edge.sh --host=<control host>` twice,
-first with the manager's name alone while the admin name still pointed
-elsewhere, then with both. Each run validated the Caddyfile, recreated Caddy,
-proved both upstreams from the host, and saw valid certificates from outside
-within the probe window; the certificate obtained in the first run survived the
-second in the volume, as designed. What it took in Terraform: one firewall rule
-(tcp 80 and 443 from the internet to the host's tag), the manager's address and
-deploy key in both roots' tfvars in place of the previous manager host's, and a
-re-run of the Bee host's provisioning so the new key landed there.
+First real run on a control host: both consoles deployed to loopback (the
+manager on 8080, the admin on another port because something else already held
+9090 there), then `edge.sh --host=<control host>` twice, first with the
+manager's name alone, then with both. Each run validated the Caddyfile,
+recreated Caddy, proved both upstreams from the host, and saw valid
+certificates from outside within the probe window. The certificate obtained in
+the first run survived the second in the volume, as designed. What the host
+needed besides: tcp 80 and 443 open from the internet, and the manager's
+address and deploy key admitted on the stage and Bee hosts.
 
 Since then the edge's sources live in `infra/edge/`, and the manager's own
 edge is gone: `infra/edge` is the one edge on every host, a host that runs the
 manager alone included, and the manager's domain goes in its env file like the
-admin's. [hosts.md](hosts.md) has the recipe.
+admin's. [self-hosting.md](self-hosting.md) has the recipe.
 
 ## Ingest panel and unpublish (2026-09-26)
 

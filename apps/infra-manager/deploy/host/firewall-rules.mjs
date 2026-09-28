@@ -25,8 +25,8 @@ function number(value, flag, max) {
   return Number(value);
 }
 /**
- * An IPv4 block no wider than /24, the same bound the Terraform's Vps root
- * puts on its Bee API sources: anyone inside it can spend the node's postage.
+ * An IPv4 block no wider than /24, because anyone inside a Bee API source
+ * can spend the node's postage.
  */
 function beeApiSource(value) {
   const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(value);

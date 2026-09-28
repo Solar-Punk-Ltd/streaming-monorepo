@@ -119,7 +119,7 @@ describe('whether a viewer actually watched the broadcast', () => {
 
   /**
    * ⛔ A run that decoded nothing reports zero rebuffers, zero fatal errors and no resolution at all,
-   * which is the same shape as a flawless one on every field but this. `#41` cost this project the
+   * which is the same shape as a flawless one on every field but this. The picture-less opening defect cost this project the
    * same confusion elsewhere: "I could not find X" and "there is no X" are the same return value.
    */
   it('refuses a run that named no resolution, whose silence looks exactly like a clean run', () => {

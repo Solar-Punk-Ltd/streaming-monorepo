@@ -13,7 +13,7 @@ import { RequestJitter } from '../src/utils/requestJitter';
  */
 
 /** Verbatim from the live group feed, 2026-08-28, minus only the trailing newline. */
-const OWNER = '0000a00500000000000000000000000000000000';
+const OWNER = '00000000000000000000000000000000000fa4e1';
 const GROUP_ID = '76c7bb63-39dc-4159-ba85-a085e4431a54';
 const RUNG_IDS = [
   '4ebfe43a-82f6-4d61-97e5-5d77513a15a4',

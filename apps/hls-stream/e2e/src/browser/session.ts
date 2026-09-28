@@ -189,7 +189,7 @@ export interface LatencyTargetVerdict {
 /**
  * ⛔⛔⛔ `configuredS` IS A PARAMETER BECAUSE THE TARGET MOVES AT RUNTIME, AND THIS READ THE COMPILE-
  * TIME CONSTANT UNTIL 2026-08-14. `BROWSER_TARGET_LATENCY_S` has steered arms at 6, 2 and 1.5 since
- * PR #186, and every one of those runs had `raisedByS` and `held` judged against 6.
+ * the live weeb-3 arm change, and every one of those runs had `raisedByS` and `held` judged against 6.
  *
  * The 2026-08-14 sitting is what exposed it: arms configured at 2s reported `worstS: 3`, so the
  * player had been raised a full second past its target, and the verdict beside it read

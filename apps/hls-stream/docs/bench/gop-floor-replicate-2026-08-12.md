@@ -115,7 +115,7 @@ retries a refused fragment, and every refusal here was retrievable within 140ms.
 ✅ **UNCHANGED: 0.5 remains the operating point**, on evidence that never rested on 404s:
 
 - 2026-08-11, funded: latency 1.55s against 3.88s and confirmed stalls 0-of-3 against 3-of-3 at 2.0.
-- #155 ships `HLS_FRAGMENT 0.5`, so `ceil(0.5 / 0.25) * 0.25 = 0.5s`: **a broadcaster asking for a
+- the 0.5s fragment change ships `HLS_FRAGMENT 0.5`, so `ceil(0.5 / 0.25) * 0.25 = 0.5s`: **a broadcaster asking for a
   0.25s GOP on shipped config gets 0.5s segments.** Reaching sub-0.5 needs a second deliberate change
   no default leads to.
 

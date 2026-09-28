@@ -2,7 +2,7 @@
 
 **2026-08-16, free. No broadcast, no BZZ.** Driver `e2e/browser/weeb3-native.ts`
 (`pnpm browser:weeb3-native`), headful Chrome on the Mac, weeb-3's published deployment. Target is
-our own 2026-08-11 shipping-profile recording, owner `0000a005…`, topic
+our own 2026-08-11 shipping-profile recording, owner `00000000…`, topic
 `7e87a2d9-82fe-422f-a66a-5b1e42281636`. Artefacts `weeb3-native-2026-08-16T06-33-22-925Z.*`.
 
 This is what the owner asked for on **2026-08-11T07:07Z** and did not get. See
@@ -47,8 +47,8 @@ the arm:
 | uploader, chunks push-synced | 0 |
 | **uploader spent** | **0.0000 BZZ** |
 | **gateway spent** | **0.0000 BZZ** |
-| postage `00000003` | 357 → 357 of 512, unchanged |
-| postage `00000002` | 50 → 50 of 64, unchanged |
+| postage `0cd0eff9` | 357 → 357 of 512, unchanged |
+| postage `b92d92d8` | 50 → 50 of 64, unchanged |
 | host load | 6.87 → 5.04 |
 
 ⭐⭐⭐ **Gateway-less is now proved from the other side of the wire.** Our gateway served zero

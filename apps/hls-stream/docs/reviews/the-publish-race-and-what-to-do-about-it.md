@@ -71,4 +71,4 @@ broadcast with the flag flipped and the queue depth watched, and is worth roughl
 three arms against three controls.
 
 ⛔ **Nothing here is a reason to move the 0.5s GOP recommendation.** That rests on stalls and latency
-against 2.0, and on #155 making sub-0.5 unreachable from shipped config.
+against 2.0, and on the 0.5s fragment change making sub-0.5 unreachable from shipped config.

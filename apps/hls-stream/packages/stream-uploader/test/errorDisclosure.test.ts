@@ -218,7 +218,7 @@ describe('responses do not carry internals (S1.7)', () => {
   });
 
   /**
-   * The SEC-12 residue. PR #35 moved the gate ahead of the parsers for `/stream/*`, which left the
+   * The SEC-12 residue. The control route token change moved the gate ahead of the parsers for `/stream/*`, which left the
    * engine prefixes: OME signs its own request body, so it has no app-level gate to sit behind, and
    * a malformed body there reached `express.json` from an anonymous caller and answered 500 with an
    * ERROR log line per request. That put the 5xx rate and the error channel operators alert on under

@@ -2,7 +2,7 @@
 
 **Free, no broadcast, no BZZ.** Read off the two running nodes and bee's own source.
 
-The whole-surface metrics diff added in PR #193 found `bee_localstore_cache_size` **negative on the
+The whole-surface metrics diff added in the metrics surface change found `bee_localstore_cache_size` **negative on the
 gateway in all eight arms** of the same sitting that introduced it. Chasing it down says the counter is
 bee's, the pathological corner it sits in is ours, and the setting this repository has used since the
 beginning is the worst of the three available.

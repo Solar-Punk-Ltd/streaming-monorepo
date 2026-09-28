@@ -676,7 +676,7 @@ describe('the admin publish gate with the ABR ladder on', () => {
   /**
    * ⛔ Off the host a stray is refused, because nothing checks a key or a declaration for it. Accepted,
    * it was an unauthenticated stream SRS held for anyone who could reach the ingest, and on the ingest
-   * vhost SRS transcoded it as well. RTMP has no passphrase in front of that. Measured on the dev-host stage
+   * vhost SRS transcoded it as well. RTMP has no passphrase in front of that. Measured on a test stage
    * on 2026-09-25: an RTMP publish of an undeclared topic with `_720p` on the end and no key ran until
    * it was stopped.
    */

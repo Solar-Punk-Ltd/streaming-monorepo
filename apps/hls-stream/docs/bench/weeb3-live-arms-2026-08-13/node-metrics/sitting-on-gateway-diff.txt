@@ -18,8 +18,8 @@ GATEWAY, the read path
 BUDGET AND CAPACITY
   uploader spent                             0.8198 BZZ   0.76 BZZ per broadcast hour
   gateway spent                              0.3270 BZZ   0.30 BZZ per broadcast hour
-  batch 00000002                             50 -> 50 of 64 (78%), TTL 4.6d
-  batch 00000003                             265 -> 274 of 512 (54%), TTL 10.4d
+  batch b92d92d8                             50 -> 50 of 64 (78%), TTL 4.6d
+  batch 0cd0eff9                             265 -> 274 of 512 (54%), TTL 10.4d
   uploader segmentsSkipped                   0 -> 0
   uploader segmentsNeverNamed                0 -> 0
   uploader maxConsecutiveSegmentFailures     0 -> 0

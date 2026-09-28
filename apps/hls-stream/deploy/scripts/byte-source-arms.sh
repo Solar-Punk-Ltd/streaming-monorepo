@@ -23,13 +23,13 @@
 #
 # A2 compared the two paths by rebuilding and redeploying the client between arms, because the byte
 # source was a build-time flag. That put two differences into one comparison and made a counterbalanced
-# order impractical. PR #185 moved the switch to runtime, so the whole sitting runs on one build and
+# order impractical. The runtime byte source switch moved the switch to runtime, so the whole sitting runs on one build and
 # the arms differ in one thing.
 #
 # ## ⛔ What differs between the arms, stated rather than implied
 #
 # Only SEGMENT bytes move. The catalog, the feed and the manifest still come from the gateway in both
-# arms, by the design of PR #183. A weeb-3 arm is not a gateway-less viewer, it is a viewer whose video
+# arms, by the design of the in-tab fetch backend change. A weeb-3 arm is not a gateway-less viewer, it is a viewer whose video
 # comes from its own node. The headline of an earlier VOD run of weeb-3's player was withdrawn for
 # blurring exactly that line.
 #
@@ -92,7 +92,7 @@ TARGET_LATENCY_S="${TARGET_LATENCY_S:-2}"
 # which is every byte-source sitting run so far.
 #
 # `gateway-less` swaps the gateway condition for weeb-3's OWN PAGE, which is what the owner asked for
-# on 2026-08-11 and what the split of PR #183 never measured.
+# on 2026-08-11 and what the split of the in-tab fetch backend change never measured.
 #
 # ⚠️ That contrast moves TWO things, whose page and player, and whether a gateway serves the
 # manifest. It bounds the cost of going fully gateway-less rather than isolating either one.

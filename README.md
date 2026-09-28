@@ -19,7 +19,6 @@ How the folders relate and the rules that keep them apart are in
 | [`apps/infra-manager`](apps/infra-manager/README.md)                         | The manager: an API and a console that deploy stack versions onto hosts and handle profiles, port slots, stamps and chequebooks.                                                   |
 | [`packages`](docs/monorepo.md)                                               | Code two apps share, once: the shapes they send each other (`contracts`), the sign-in and session code of the two backends (`web-auth`) and their migration runner (`db-migrate`). |
 | [`infra/edge`](apps/web2-admin/deploy/README.md#public-https-the-hosts-edge) | The front door of a host: one Caddy that holds ports 80 and 443, gets the HTTPS certificates and sends each domain to the console behind it.                                       |
-| [`infra/terraform`](infra/terraform/README.md)                               | The pilot's cloud hosts: the GCP stage and monitoring hosts, the Vps Bee hosts, and the monitoring stack.                                                                        |
 | [`docs`](docs/)                                                              | How the pieces fit: the layout and its rules, the host roles, the roadmap, the design briefs, and notes on the neighbouring systems.                                               |
 
 Scripts that serve the whole repository go under `tools/`: the boundary check, which keeps the apps
@@ -61,8 +60,7 @@ Each app's README says what its commands are and what a development setup needs:
 ## Where the work happens
 
 All work on the platform happens here, since 2026-09-27. The stack and the manager came in whole
-from their own repositories, swarm-hls-stream and streaming-infra-manager, and `infra/terraform`
-from an earlier repository of the organisation. Those repositories are left as they are: they get
+from their own repositories, swarm-hls-stream and streaming-infra-manager. Those repositories are left as they are: they get
 nothing new, and nothing more is pulled from them.
 
 The manager builds the stack it bundles from `apps/hls-stream` of the same commit it is deployed
@@ -76,11 +74,12 @@ Every original commit of the imported repositories is in this one under its own 
 ## Documents
 
 - [docs/monorepo.md](docs/monorepo.md): the layout, the rules between projects, and how the history came along.
-- [docs/hosts.md](docs/hosts.md): the three kinds of host, the edge, a recipe for each kind of fresh host, and the names on the hosts that never change.
+- [docs/architecture/overview.md](docs/architecture/overview.md): how the pieces fit, the ports each one listens on, and what must never be public.
+- [docs/self-hosting.md](docs/self-hosting.md): running your own deployment, the three kinds of host, the edge, a recipe for each kind of fresh host, and the names on the hosts that never change.
 - [docs/ROADMAP.md](docs/ROADMAP.md): the roadmap and the checkpoint log.
 - [docs/architecture/](docs/architecture/): the design briefs, starting with the [admin layer](docs/architecture/web2-admin.md).
 - [docs/research/](docs/research/README.md): condensed notes on the systems the admin talks to.
-- Deploying: [the admin](apps/web2-admin/deploy/README.md), [the stack](apps/hls-stream/deploy/README.md), [the manager](apps/infra-manager/deploy/README.md), and [the pilot's hosts](infra/terraform/README.md).
+- Deploying: [the admin](apps/web2-admin/deploy/README.md), [the stack](apps/hls-stream/deploy/README.md), and [the manager](apps/infra-manager/deploy/README.md).
 
 ## Licence
 

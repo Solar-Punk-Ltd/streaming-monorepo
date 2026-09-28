@@ -209,12 +209,12 @@ describe('the manager reading an uploader health route', () => {
     const { service, asked } = serviceAnswering(
       { status: 200, body: { status: 'ok', reasons: [] } },
       [STREAM_UPLOADER_SERVICE],
-      'deploy@192.0.2.58',
+      'deploy@192.0.2.20',
     );
 
     await service.read('stage');
 
-    assert.deepEqual(asked, ['http://192.0.2.58:10010/health']);
+    assert.deepEqual(asked, ['http://192.0.2.20:10010/health']);
   });
 
   it('asks nothing of a deployment that runs no uploader', async () => {

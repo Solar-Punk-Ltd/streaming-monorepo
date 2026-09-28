@@ -37,16 +37,16 @@ function manifestText(refs: readonly string[]): string {
 
 describe('what a rung manifest says', () => {
   it('takes the segment references and leaves the tags behind', () => {
-    const parsed = parseRungManifest('360p', '00000011', manifestText([REF_A, REF_B, REF_C]));
+    const parsed = parseRungManifest('360p', '216a8d60', manifestText([REF_A, REF_B, REF_C]));
 
     assert.deepEqual(parsed.refs, [REF_A, REF_B, REF_C]);
     assert.equal(parsed.manifest.segmentCount, 3);
     assert.equal(parsed.manifest.rung, '360p');
-    assert.equal(parsed.manifest.topicHex, '00000011');
+    assert.equal(parsed.manifest.topicHex, '216a8d60');
   });
 
   it('reads the target duration and the typical segment length', () => {
-    const parsed = parseRungManifest('1080p', '0000001e', manifestText([REF_A, REF_B]));
+    const parsed = parseRungManifest('1080p', '7d1fe981', manifestText([REF_A, REF_B]));
 
     assert.equal(parsed.manifest.targetDurationS, 3);
     assert.equal(parsed.manifest.medianSegmentSeconds, 2.068);

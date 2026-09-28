@@ -6,7 +6,7 @@
 > manifest still come from a **bee gateway**, in both conditions. Verified in source: `ManifestManagement`
 > has no weeb-3 path, only `CustomManifestLoader` does.
 >
-> That split was my design decision in PR #183 and **nobody authorised it**. The owner's instruction
+> That split was my design decision in the in-tab fetch backend change and **nobody authorised it**. The owner's instruction
 > of **2026-08-11T07:07Z** was *"the tester optimized the player as much as possible let's measure and
 > experiment with his setup as it is"*, and this is not that.
 >
@@ -40,7 +40,7 @@ A reading at a cap says both conditions reached the cap. It says nothing about w
 have gone lower, and the whole economic case for an in-tab node would be undermined if it turned out
 to cost latency that the 6s target was hiding.
 
-So these sittings change exactly one thing: **the target**. Everything else is the design that PR #186
+So these sittings change exactly one thing: **the target**. Everything else is the design that the live weeb-3 arm change
 already validated. Sitting 1 runs at 2s. Sitting 2 went to 1.5s rather than repeating 2s, because by
 then the 2s arms had shown the same pinning and a repeat would only have re-confirmed it.
 
@@ -76,7 +76,7 @@ pinned to the number you configured.
   carried the first sitting's cost into the second's decision. **Whole night: 1.6390 BZZ.**
 - Gateway warm and funded throughout: **134 peers at the start and at the end**, no bee container
   restarted at any point in either sitting.
-- Postage `00000003`, depth 25, **274 → 285 of 512 buckets**, TTL 244.6h at the end.
+- Postage `0cd0eff9`, depth 25, **274 → 285 of 512 buckets**, TTL 244.6h at the end.
 - **Host load 3.90 to 15.00** across sitting 1 and **2.95 to 21.27** across sitting 2, on 48 cores.
   The bench host carries some forty other bee nodes plus other tenants' stacks. See the note on sitting 2's
   load below.

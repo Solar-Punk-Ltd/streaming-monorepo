@@ -136,7 +136,7 @@ const defaultResolver = createNetworkHostResolver();
  * `user@host`), and deploy.sh only ever hands it to `ssh`. The manager also
  * composes HTTP URLs from it (a rung's bee API, the address written into
  * BEE_PUBLISHERS, the links the UI shows), and for those an alias is not an
- * address: `http://bee-1:10055` resolves nowhere, so every probe times out
+ * address: `http://bee-host-1:10055` resolves nowhere, so every probe times out
  * and the pasted value is unusable on the host that receives it.
  *
  * So the alias is resolved the same way deploy.sh resolves it, through the same

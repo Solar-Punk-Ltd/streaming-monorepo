@@ -56,7 +56,7 @@ Falls back to the previous behaviour: the bee-uploader URL, auto-detected from
 | Config target             | Resolved URL                                                                |
 | ------------------------- | --------------------------------------------------------------------------- |
 | `"localhost"`             | `http://localhost:1633`                                                     |
-| `"root@1.2.3.4"`          | `http://1.2.3.4:1633`                                                       |
+| `"root@203.0.113.4"`      | `http://203.0.113.4:1633`                                                   |
 | no entry, or `"disabled"` | `BEE_URL` from .env, else `http://localhost:1633`                           |
 | `false`                   | `http://localhost:1633`, whatever `BEE_URL` and `BEE_UPLOADER_API_PORT` say |
 

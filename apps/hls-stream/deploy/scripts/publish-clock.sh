@@ -286,7 +286,7 @@ run_remote() {
 #   missing). Nothing usable was broadcast, so do not measure against this.
 #
 # ⭐⭐⭐ Gate lesson AHL, again: an alarm that fires on every successful stop is one the operator
-# learns to skip, and the next time it is real nobody reads it. PR #188 removed this alarm from one
+# learns to skip, and the next time it is real nobody reads it. The stopped-publisher fix removed this alarm from one
 # path and this is the other.
 last_line() {
   printf '%s\n' "$1" | grep -v '^[[:space:]]*$' | tail -1

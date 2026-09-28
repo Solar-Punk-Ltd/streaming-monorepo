@@ -32,8 +32,8 @@ Checked on the uploader while the runs were going, all three batches `usable=tru
 
 | batch | TTL | depth |
 | --- | ---: | ---: |
-| `00000002` | 6.7 days | 22 |
-| `00000003` | 24.1 days | 24 |
+| `b92d92d82199` | 6.7 days | 22 |
+| `0cd0eff9bbaf` | 24.1 days | 24 |
 | `b4b44086b77c` | **0.7 days** | 23 |
 
 The chunks are still paid for. ⚠️ `b4b44086b77c` expires within a day, which is worth knowing

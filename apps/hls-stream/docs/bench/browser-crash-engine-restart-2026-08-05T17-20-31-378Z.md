@@ -2,7 +2,7 @@
 
 **2026-08-05T17:20:31.378Z.** Chrome 151.0.7922.75, headed against an X display on the deployment host, watching a 0.25s-GOP broadcast through the shipped client while `latbench-srs-1` was restarted.
 
-`http://127.0.0.1:10074/#/watch/video/0000a00500000000000000000000000000000000/06b0ad3f-e380-4e02-b697-7ae90a88a19e?qoe=1`
+`http://127.0.0.1:10074/#/watch/video/00000000000000000000000000000000000fa4e1/06b0ad3f-e380-4e02-b697-7ae90a88a19e?qoe=1`
 
 The fault landed 46.7s into the run and was lifted at 77.2s.
 

@@ -264,7 +264,7 @@ describe('sampling the gateway alongside the browser', () => {
    */
   it('records an ssh that threw as a sample rather than raising it', async () => {
     const sample = await sampleGatewayWith(async () => {
-      throw new Error('ssh: connect to host 1.2.3.4 port 22: Connection refused');
+      throw new Error('ssh: connect to host 203.0.113.4 port 22: Connection refused');
     }, 5);
 
     assert.equal(sample.answered, false);

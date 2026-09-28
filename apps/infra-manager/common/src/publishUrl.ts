@@ -18,7 +18,7 @@
  *    work anywhere but this machine.
  *  - **An ssh target used as a network address.** `profiles.host` holds a *deploy*
  *    target, the schema documents it as "localhost, an ssh alias, or user@host".
- *    A `user@host` target composes to `http://deploy@1.2.3.4:10055`, which is not
+ *    A `user@host` target composes to `http://deploy@203.0.113.4:10055`, which is not
  *    a bee base URL, and whose stray `@` sits inside a format that already uses
  *    `@` to separate the rung from the URL.
  *

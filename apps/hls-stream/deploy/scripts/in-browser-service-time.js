@@ -19,8 +19,8 @@
  *   null    20 references that do not exist, which prices a miss
  */
 (() => {
-  const OWNER = '0000a00500000000000000000000000000000000';
-  const TOPIC = '7fd811aa6aedbced02d010f5e7987039e3a6033dc59bbce668b8515890ed5efd';
+  const OWNER = '00000000000000000000000000000000000fa4e1';
+  const TOPIC = 'cb72ced1de2e86bd48312531c8a1dfb5343f0a57590aa0fdf244398834774514';
   const FIRST = 1010;
 
   const randRef = () => Array.from({ length: 64 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');

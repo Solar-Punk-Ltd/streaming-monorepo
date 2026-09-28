@@ -11,7 +11,7 @@ import { waitFor } from '../../src/harness/wait.js';
 
 /**
  * Service — the /health endpoint reflects the live-stream lifecycle. Exercises the operational
- * surface PR #10 leans on: activeStreams count, the engines list, and staleManifestStreams (0 for a
+ * surface the catalog-wipe fix leans on: activeStreams count, the engines list, and staleManifestStreams (0 for a
  * healthy stream whose manifest is publishing fine). A clean broadcaster stop returns it to idle.
  */
 

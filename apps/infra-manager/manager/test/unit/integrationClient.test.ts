@@ -44,7 +44,7 @@ describe('whether the suite may start', () => {
   it('refuses when the declaration names a different manager', () => {
     const problem = targetProblem({
       ...DECLARED,
-      MANAGER_URL: 'http://203.0.113.105:9876',
+      MANAGER_URL: 'http://203.0.113.30:9876',
     });
 
     assert.match(problem ?? '', /MANAGER_TEST_TARGET names a different manager/);
