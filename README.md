@@ -4,8 +4,7 @@ Solar Punk's multi-brand live streaming platform on [Swarm](https://www.ethswarm
 signs in to a console, creates a stream and gets its OBS settings. The streaming stack takes the
 broadcast in, puts the video on Swarm as it happens and serves a viewer that plays it back without
 a CDN. A manager deploys stack versions onto hosts and looks after the Bee nodes, postage stamps
-and chequebooks they need. The interactive design of the whole is at
-https://solar-punk-ltd.github.io/devcon-streaming-partnership/?model=mvp.
+and chequebooks they need.
 
 Every project of the platform lives here, each in its own folder with only its own dependencies.
 How the folders relate and the rules that keep them apart are in
@@ -63,8 +62,8 @@ Each app's README says what its commands are and what a development setup needs:
 
 All work on the platform happens here, since 2026-09-27. The stack and the manager came in whole
 from their own repositories, swarm-hls-stream and streaming-infra-manager, and `infra/terraform`
-from the `terraform/` folder of devcon-streaming-partnership. Those repositories are left as they
-are: they get nothing new, and nothing more is pulled from them.
+from an earlier repository of the organisation. Those repositories are left as they are: they get
+nothing new, and nothing more is pulled from them.
 
 The manager builds the stack it bundles from `apps/hls-stream` of the same commit it is deployed
 from, and builds every version added on its Versions page from this repository too, so a plain

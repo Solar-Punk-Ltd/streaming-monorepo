@@ -1,9 +1,7 @@
 # Web2 admin layer
 
-Source of truth for the design is the interactive model at
-https://solar-punk-ltd.github.io/devcon-streaming-partnership/?model=mvp&selected=admin&opened=platform
-(MVP model, container `admin`). This page is the text version of that box so
-agents working in the repo do not have to open it.
+This page is the design of the admin layer, written down so that everyone
+working in the repository has it in one place.
 
 ## What it is
 
