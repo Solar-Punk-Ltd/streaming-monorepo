@@ -2,15 +2,10 @@ import {
   type BeePublishersResult,
   type ConfiguredBeeRpcEndpoint,
   DEFAULT_CHEQUEBOOK_FLOOR_BZZ,
-  defaultServicesFor,
   type EngineSettings,
-  hasBeePublishers,
   type NewDeploymentSetting,
-  hasStampId,
   type NodeMode,
   type RpcEndpointSource,
-  servicesNeedStamp,
-  STREAM_UPLOADER_SERVICE,
 } from '@streaming-infra-manager/common';
 
 import { ACTION_TIMEOUT_MS, actionTimedOutMessage } from './deployments/actionLimit';
@@ -85,20 +80,6 @@ export async function fetchProfiles(): Promise<Profile[]> {
 export async function fetchSrtPassphrase(name: string): Promise<string | null> {
   const body = await getJson<{ srt_passphrase: string | null }>(`/profiles/${encodeURIComponent(name)}/srt-passphrase`);
   return body.srt_passphrase;
-}
-
-function uploaderDeployed(profile: Profile): boolean {
-  return profile.containers.some((c) => c.service === STREAM_UPLOADER_SERVICE);
-}
-
-// A pool-backed uploader carries the pool's batches in BEE_PUBLISHERS, so it
-// needs no stamp of its own to be deployable.
-export function canDeployUploader(profile: Profile): boolean {
-  return (
-    servicesNeedStamp(defaultServicesFor(profile)) &&
-    (hasStampId(profile) || hasBeePublishers(profile)) &&
-    !uploaderDeployed(profile)
-  );
 }
 
 type ProfileAction = 'deploy' | 'stop' | 'deploy-uploader';

@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 
-import { type ChequebookHealth, chequebookHealthFromPayload } from '@streaming-infra-manager/common';
+import { type ChequebookHealth, chequebookHealthFromPayload, ownsBeeNode } from '@streaming-infra-manager/common';
 
-import { ownsBeeNode } from '../deployments/readiness';
 import { isRunning } from '../deployments/shape';
 import type { Profile } from '../types';
 import { fetchChequebook } from './chequebookApi';

@@ -4,6 +4,7 @@ import { Box, Button, Stack, Typography } from '@mui/material';
 import {
   type BeePublishersResult,
   type ChequebookHealth,
+  readinessOf,
   type StampHealth,
   type UploaderHealthReading,
 } from '@streaming-infra-manager/common';
@@ -18,7 +19,6 @@ import { StatusDot } from '../components/StatusDot';
 import type { Tone } from '../components/tone';
 import { poolProblems } from '../groups/groupReadiness';
 import type { StampHealths } from '../uploaders/useStampHealths';
-import { readinessOf } from '../deployments/readiness';
 import type { UploaderHealths } from '../deployments/useUploaderHealths';
 import type { DeploymentGroup, Profile } from '../types';
 import type { ChequebookHealths } from '../uploaders/useChequebookHealths';

@@ -2,13 +2,20 @@ import { useCallback, useEffect, useState } from 'react';
 import { Box, Button, CircularProgress, Paper, Stack } from '@mui/material';
 
 import {
+  buildChecklist,
+  type ChecklistInput,
   type ChequebookHealth,
   chequebookHealthFromPayload,
   engineSettingsFields,
+  ownsBeeNode,
+  readinessFor,
+  readySummary,
   rungFromMemberName,
   sameBatchId,
   stampHealthFrom,
+  type StepAction,
   STREAM_UPLOADER_SERVICE,
+  streamerFor,
   suggestedRungDepth,
 } from '@streaming-infra-manager/common';
 
@@ -27,8 +34,6 @@ import { attemptHolding } from '../versions/attemptHold';
 import { ReleaseAttemptDialog } from '../versions/ReleaseAttemptDialog';
 import { useAttemptRelease } from '../versions/useAttemptRelease';
 import { AtAGlanceCard } from './AtAGlanceCard';
-import { buildChecklist, streamerFor, type ChecklistInput, type StepAction } from './checklist';
-import { readySummary } from './readySummary';
 import { ConfigurationCard } from './ConfigurationCard';
 import { ContainersCard } from './ContainersCard';
 import { DeploymentHeader } from './DeploymentHeader';
@@ -46,7 +51,6 @@ import { PoolTargetCard } from './PoolTargetCard';
 import { PublishCard } from './PublishCard';
 import { ReadinessCard } from './ReadinessCard';
 import { RemoveCard } from './RemoveCard';
-import { ownsBeeNode, readinessFor } from './readiness';
 import type { SettingReveal } from './settings/SettingsList';
 import { useDeploymentSettings } from './settings/useDeploymentSettings';
 import { SrtIngestCard } from './SrtIngestCard';

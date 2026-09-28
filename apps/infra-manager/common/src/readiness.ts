@@ -1,32 +1,27 @@
+import type { ChequebookHealth } from './chequebook.js';
+import { type ReadinessProfile, shapeOf } from './deploymentShape.js';
 import {
-  type ChequebookHealth,
-  stampHealthFrom,
-  type StampHealth,
-  type UploaderHealthReading,
-} from '@streaming-infra-manager/common';
+  buildChecklist,
+  type ChecklistInput,
+  firstBlocker,
+  type ReadinessWallet,
+  type StepState,
+} from './readinessChecklist.js';
+import { stampHealthFrom, type StampHealth } from './stampHealth.js';
+import type { UploaderHealthReading } from './uploaderHealth.js';
 
-import type { Tone } from '../components/tone';
-import type { Profile } from '../types';
-import type { BeeWallet } from '../uploaders/stampApi';
-import { buildChecklist, firstBlocker, type ChecklistInput, type StepState } from './checklist';
-import { shapeOf } from './shape';
+/**
+ * A deployment's readiness in one line: the first step of its list that is not
+ * ok, or what it is once every step is. The console shows it on every row and
+ * page, and the manager hands it to the web2 admin on each stage's record.
+ */
 
-export { ownsBeeNode } from '@streaming-infra-manager/common';
-export { isStreamLike } from './shape';
-// Declared in checklist.ts, which says them, because declaring them here would
-// make the two modules import each other.
-export {
-  STAMP_FULL,
-  STAMP_NEARLY_FULL,
-  UPLOADER_NOT_ANSWERING,
-  UPLOADER_REPORTS_A_PROBLEM,
-  UPLOADER_WAITING_FOR_NODE,
-  UPLOADER_WARNED,
-} from './checklist';
+/** How urgent a readiness is, in the five levels every pill, dot and banner of the console uses. */
+export type ReadinessTone = 'ok' | 'warn' | 'err' | 'info' | 'gray';
 
 export interface Readiness {
   label: string;
-  tone: Tone;
+  tone: ReadinessTone;
 }
 
 export const NEEDS_A_STAMP = 'Needs a stamp';
@@ -37,7 +32,7 @@ export const POOL_STRING_INVALID = 'Pool string invalid';
 export const CHEQUEBOOK_EMPTY = 'Chequebook empty';
 export const CHEQUEBOOK_LOW = 'Chequebook low';
 
-const STEP_TONES: Record<StepState, Tone> = { ok: 'ok', warn: 'warn', err: 'err', busy: 'info', off: 'gray' };
+const STEP_TONES: Record<StepState, ReadinessTone> = { ok: 'ok', warn: 'warn', err: 'err', busy: 'info', off: 'gray' };
 
 export function readinessFor(input: ChecklistInput): Readiness {
   const blocker = firstBlocker(buildChecklist(input));
@@ -58,7 +53,7 @@ export function readinessFor(input: ChecklistInput): Readiness {
  * that never looked at it is how this was noticed.
  */
 export function readinessOf(
-  profile: Profile,
+  profile: ReadinessProfile,
   health?: StampHealth,
   chequebook?: ChequebookHealth | null,
   { wallet, uploaderHealth }: OtherReadings = {},
@@ -80,13 +75,13 @@ export function readinessOf(
 /** The readings some views take beside a batch and a chequebook, each absent where the view did not. */
 export interface OtherReadings {
   /** Undefined while the view has not read it, null where the node was asked and said nothing. */
-  wallet?: BeeWallet | null;
+  wallet?: ReadinessWallet | null;
   /** What the deployment's uploader said about itself, undefined where nobody asked it. */
   uploaderHealth?: UploaderHealthReading;
 }
 
 export function needsAttention(
-  profile: Profile,
+  profile: ReadinessProfile,
   health?: StampHealth,
   chequebook?: ChequebookHealth | null,
   uploaderHealth?: UploaderHealthReading,

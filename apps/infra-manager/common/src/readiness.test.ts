@@ -10,12 +10,13 @@ import {
   stampHealthFrom,
   ULTRA_LIGHT_NODE_MODE,
   type UploaderHealthReading,
-} from '@streaming-infra-manager/common';
+} from './index.js';
 
-import { rungStampHealth } from '../groups/rungStampHealth';
-import type { Profile } from '../types';
-import { buildChecklist, firstBlocker, type ChecklistInput } from './checklist';
 import {
+  buildChecklist,
+  type ChecklistInput,
+  firstBlocker,
+  type ReadinessProfile,
   CHEQUEBOOK_EMPTY,
   NEEDS_A_STAMP,
   needsAttention,
@@ -25,8 +26,13 @@ import {
   UPLOADER_NOT_ANSWERING,
   UPLOADER_REPORTS_A_PROBLEM,
   UPLOADER_WAITING_FOR_NODE,
-} from './readiness';
-import { readySummary } from './readySummary';
+  readySummary,
+} from './index.js';
+
+/** A console profile as the tests wrote it; the readiness composition reads the fields `ReadinessProfile` names. */
+type Profile = Omit<ReadinessProfile, 'containers'> & {
+  containers: ({ service: string } & Record<string, unknown>)[];
+} & Record<string, unknown>;
 
 export const runningProfile: Profile = {
   name: 'test-stream',
@@ -475,7 +481,9 @@ describe('the overview’s Needs attention, from the readings it holds', () => {
     assert.equal(needsAttention(abrUploader, undefined, null), false);
   });
 
-  it('lists a rung whose node reports its batch full, from either reading the page holds', () => {
+  // The reading a pool's result gives, `rungStampHealth`, is the console's, and its half of this is in
+  // frontend/src/groups/rungStampHealth.test.ts.
+  it('lists a rung whose node reports its batch full', () => {
     const fromNode = stampHealthFrom(rung.stamp_id, [
       {
         batchID: 'a'.repeat(64),
@@ -487,24 +495,8 @@ describe('the overview’s Needs attention, from the readings it holds', () => {
         immutableFlag: true,
       },
     ]);
-    const fromPool = rungStampHealth(
-      {
-        rung: '1080p',
-        name: rung.name,
-        status: 'RUNNING',
-        url: 'http://10.200.0.1:10045',
-        stampId: rung.stamp_id!,
-        stampState: 'full',
-        stampTtl: 184_320,
-        stampFillRatio: 1,
-        stampImmutable: true,
-      },
-      rung.stamp_id,
-    );
 
-    for (const health of [fromNode, fromPool]) {
-      assert.equal(readinessOf(rung, health, paying).label, STAMP_FULL);
-      assert.equal(needsAttention(rung, health, paying), true);
-    }
+    assert.equal(readinessOf(rung, fromNode, paying).label, STAMP_FULL);
+    assert.equal(needsAttention(rung, fromNode, paying), true);
   });
 });

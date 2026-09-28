@@ -9,9 +9,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { stampHealthFrom } from '@streaming-infra-manager/common';
+import { buildChecklist, type ChecklistInput, stampHealthFrom } from '@streaming-infra-manager/common';
 
-import { buildChecklist, type ChecklistInput } from '../deployments/checklist';
 import type { Profile } from '../types';
 import { ApiError } from '../http';
 import { readFailureFrom } from './readFailure';
