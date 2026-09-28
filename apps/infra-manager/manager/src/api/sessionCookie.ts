@@ -4,12 +4,9 @@ import { Request, Response } from 'express';
 
 const cookie = sessionCookie(SESSION_COOKIE_NAME);
 
-/**
- * The session token the browser sent, or null when it sent none. An empty
- * value comes back as an empty string, which every caller treats as none.
- */
+/** The session token the browser sent, or null when it sent none or an empty one. */
 export function readSessionToken(req: Request): string | null {
-  return cookie.valueOn(req) ?? null;
+  return cookie.valueOn(req) || null;
 }
 
 export function setSessionCookie(req: Request, res: Response, token: string): void {
