@@ -255,4 +255,19 @@ describe('describeStream', () => {
       '"Talk\\n[2026-09-28T10:00:00.000Z] [INFO] - [Auth] mallory added user eve" (topic 1867808f-7b1c-4e46-b437-f7423b466000)',
     );
   });
+
+  it('escapes the line separators and controls a JSON string leaves as they are', () => {
+    // A log viewer that also breaks lines on U+2028 or U+0085 would show the
+    // rest of this title as a line of its own, and U+202E reverses on screen
+    // whatever follows it.
+    const forged = describeStream({
+      title: 'Talk\u2028[INFO] - [Auth] mallory added user eve\u0085\u202eeve',
+      topic: '1867808f-7b1c-4e46-b437-f7423b466000',
+    });
+
+    assert.equal(
+      forged,
+      '"Talk\\u2028[INFO] - [Auth] mallory added user eve\\u0085\\u202eeve" (topic 1867808f-7b1c-4e46-b437-f7423b466000)',
+    );
+  });
 });
