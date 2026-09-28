@@ -192,7 +192,7 @@ function validationError(res, message) {
 function unsupportedReason(profile, engine) {
   return (
     `bundled renders the ${ENGINE_DISPLAY_NAMES[engine]} config from its template and cannot run a file of its own. ` +
-    'Deploy on main-v3 or a later version to edit it.'
+    'Deploy on a stack version that runs a file of its own to edit it.'
   );
 }
 
