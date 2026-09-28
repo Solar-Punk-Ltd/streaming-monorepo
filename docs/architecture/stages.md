@@ -173,8 +173,31 @@ streams from it does, so `INGEST_KEY_VERIFIED` leaves the env with the other `IN
 
 The catalogue is written through the catalogue stamp record's node and batch, read from the
 admin's own database on every write. The admin warns on My Streams when that batch has less than
-48 hours left, and refuses to publish with a clear error when it is expired or gone. Every write
-also records the exact bytes it uploaded, so the history can be stamped again under a new batch.
+48 hours left or is 90% full, and refuses to publish with a clear error when it is expired or gone.
+Every write also records the exact bytes it uploaded, so the history can be stamped again under a
+new batch.
+
+As built (phase 7), in `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
+
+- The admin pins the batch its first write goes through (`catalogue_stamp.active_batch_id`, with
+  the last record pushed for it), and keeps writing with it. When the manager designates another
+  batch and the feed has a recorded write, the admin keeps the pinned one, at its node, and My
+  Streams says a move is waiting. With no recorded write (the feed key changed) the designated batch
+  is pinned in its place. The first write after the upgrade from `POSTAGE_BATCH_ID` pins the
+  designated batch; the writes before it keep a null batch in `feed_writes`, which is how the move
+  finds them.
+- The pinned batch's readings, once the manager designates another, are the last ones pushed while
+  it was the designated batch, kept with the moment they were read. An expired or gone among them
+  is a refusal.
+- A publish, an unpublish or a reconcile is refused before it moves anything, as `503` with the
+  reason: no designation, a cleared one, or the pinned batch expired or gone. A clear leaves the
+  pin, so a designation that comes back finds the history where it was. The uploader's reports
+  store their state first and are refused the same way when their rewrite comes; `503` is a
+  failure it retries.
+- `feed_writes.payload_text` holds the exact string uploaded and `feed_writes.batch_id` the batch
+  that stamped it (migration 011).
+- The boot's feed check reads the head through the catalogue node, so an admin started with no
+  designation skips it and runs it once the first designation arrives.
 
 ## The manager's side
 

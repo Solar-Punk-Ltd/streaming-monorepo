@@ -61,10 +61,15 @@ ones: see "Upgrading from before the move into apps/web2-admin" below.
 
 The script refuses to deploy, before anything leaves your machine, when a key
 the API cannot start without is missing or malformed: `POSTGRES_PASSWORD`,
-`FEED_PRIVATE_KEY`, `INTERNAL_API_TOKEN` (32 characters or more), `BEE_URL`
-and `POSTAGE_BATCH_ID`, plus the optional keys the API refuses when they are
-set wrong. It warns, and carries on, when a value is still the sample's: the
-public Hardhat key, the placeholder token, the all-zero batch.
+`FEED_PRIVATE_KEY` and `INTERNAL_API_TOKEN` (32 characters or more), plus the
+optional keys the API refuses when they are set wrong. It warns, and carries
+on, when a value is still the sample's: the public Hardhat key, the placeholder
+token.
+
+No Bee node or batch is set here either: the catalogue is written through the
+catalogue node and batch the manager designates and pushes. An env file that
+still sets `BEE_URL` or `POSTAGE_BATCH_ID` deploys as it did, with a warning
+naming each one.
 
 No ingest key is needed: each stream's OBS details come from its stage, as the
 manager pushes it. An env file that still sets `INGEST_HOST`,
@@ -80,8 +85,10 @@ Things that differ from running the API on your laptop:
   only hold letters, digits and `. _ ~ -`. It is fixed when the profile's
   database volume is first created; changing it later needs an `ALTER USER`
   in the database as well.
-- `BEE_URL=http://localhost:1633` points at the API container itself. A Bee
-  node on the same host is `http://host.docker.internal:1633`.
+- The api container dials the catalogue node at the Bee API address the
+  manager pushes with the catalogue stamp. A loopback address there is the
+  container itself, so the manager has to name one the control host's
+  containers reach.
 - `WEB2_ADMIN_WEB_PORT` sets the console's port when there is no port slot.
 
 The dev compose file (`backend/docker-compose.yml`, project `web2-admin`) is

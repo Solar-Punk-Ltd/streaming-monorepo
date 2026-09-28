@@ -240,3 +240,26 @@ describe('deploy.sh and the INGEST_* keys the stream stage replaced', () => {
     assert.doesNotMatch(deployed.stderr, /INGEST_SRT_PORT/);
   });
 });
+
+describe('deploy.sh and the keys the catalogue stamp replaced', () => {
+  it('deploys an env file with no Bee node and no batch in it', () => {
+    const sandbox = makeSandbox({ checkout: { [ENV_FILES.qa.now]: fakeAdminEnv('no-bee') } });
+
+    const deployed = sandbox.runScript(DEPLOY, LOCAL_QA);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.doesNotMatch(deployed.stderr, /BEE_URL|POSTAGE_BATCH_ID/);
+  });
+
+  it('deploys an env file that still sets BEE_URL and POSTAGE_BATCH_ID, checks neither, and names each as no longer read', () => {
+    const stale = `${fakeAdminEnv('stale')}BEE_URL=not-a-url\nPOSTAGE_BATCH_ID=not-a-batch\n`;
+    const sandbox = makeSandbox({ checkout: { [ENV_FILES.qa.now]: stale } });
+
+    const deployed = sandbox.runScript(DEPLOY, LOCAL_QA);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.match(deployed.stderr, /WARNING: BEE_URL is no longer read/);
+    assert.match(deployed.stderr, /WARNING: POSTAGE_BATCH_ID is no longer read/);
+    assert.doesNotMatch(deployed.stderr, /must be|missing or empty/);
+  });
+});

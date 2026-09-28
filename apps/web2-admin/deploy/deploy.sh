@@ -330,7 +330,6 @@ case "${FEED_GATEWAY:-bee}" in
     bee | fake) ;;
     *) problem "FEED_GATEWAY must be bee or fake (got: $FEED_GATEWAY)." ;;
 esac
-FEED_GATEWAY="${FEED_GATEWAY:-bee}"
 
 # The API also derives the address from the key and refuses one that is not a
 # usable secp256k1 key. Bash cannot, so only the shape and the all-zero key,
@@ -353,30 +352,22 @@ elif [ "$INTERNAL_API_TOKEN" = "$SAMPLE_INTERNAL_API_TOKEN" ]; then
     warn "INTERNAL_API_TOKEN is the placeholder from .env.sample. It can flip streams live, so generate a real one."
 fi
 
-BEE_URL="$(env_value BEE_URL)"
-if [ -z "$BEE_URL" ]; then
-    problem "BEE_URL is missing or empty."
-elif ! [[ "$BEE_URL" =~ ^https?://[^[:space:]]+$ ]]; then
-    problem "BEE_URL must be an http:// or https:// URL (got: $BEE_URL)."
-elif [ "$FEED_GATEWAY" = "bee" ] && [[ "$BEE_URL" =~ ^https?://(localhost|127\.0\.0\.1|\[::1\])(:|/|$) ]]; then
-    warn "BEE_URL is $BEE_URL, but inside the api container that is the container itself. A Bee node on the host is http://host.docker.internal:<port>."
-fi
-
-POSTAGE_BATCH_ID="$(env_value POSTAGE_BATCH_ID)"
-if [ -z "$POSTAGE_BATCH_ID" ]; then
-    problem "POSTAGE_BATCH_ID is missing or empty."
-elif ! [[ "$POSTAGE_BATCH_ID" =~ ^(0x)?[0-9a-fA-F]{64}$ ]]; then
-    problem "POSTAGE_BATCH_ID must be 64 hex characters, 0x optional."
-elif [ "$FEED_GATEWAY" = "bee" ] && [[ "$POSTAGE_BATCH_ID" =~ ^(0x)?0{64}$ ]]; then
-    warn "POSTAGE_BATCH_ID is the all-zero placeholder from .env.sample. No node has it, so every publish will fail."
-fi
-
 # The INGEST_* keys are no longer read: each stream's OBS details come from its
 # stage, as the manager pushes it. An env file that still sets them deploys as
 # it did, and the API's boot log names them.
 for key in INGEST_HOST INGEST_SRT_PORT INGEST_RTMP_PORT INGEST_RTMP_PUBLIC INGEST_SRT_PASSPHRASE INGEST_KEY_VERIFIED; do
     if [ -n "$(env_value "$key")" ]; then
         warn "$key is no longer read: each stream's OBS details come from its stage. Remove it from $ENV_FILE_FROM_ROOT."
+    fi
+done
+
+# BEE_URL and POSTAGE_BATCH_ID are no longer read either: the catalogue is
+# written through the catalogue node and batch the manager designates and
+# pushes. An env file that still sets them deploys, and the API's boot log
+# names them too.
+for key in BEE_URL POSTAGE_BATCH_ID; do
+    if [ -n "$(env_value "$key")" ]; then
+        warn "$key is no longer read: the catalogue is written through the catalogue stamp the manager pushes. Remove it from $ENV_FILE_FROM_ROOT."
     fi
 done
 

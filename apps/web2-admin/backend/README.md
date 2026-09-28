@@ -83,7 +83,6 @@ reference; the summary:
 | `WEB2_ADMIN_PORT` / `WEB2_ADMIN_HOST` | `9877` / `0.0.0.0` | where to listen (the manager API uses 9876)                                                                                            |
 | `DATABASE_URL`                        | required           | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin`                                                                              |
 | `FEED_GATEWAY`                        | `bee`              | `fake` swaps in an in-memory gateway (see below)                                                                                       |
-| `BEE_URL` / `POSTAGE_BATCH_ID`        | required           | node and batch used for feed writes and thumbnails                                                                                     |
 | `FEED_PRIVATE_KEY`                    | required           | 0x + 64 hex. Signs the stream list feed; its address is `owner` on every stream                                                        |
 | `FEED_TOPIC`                          | `swarm-stream`     | raw topic of that feed                                                                                                                 |
 | `VIEWER_BASE_URL`                     | empty              | branded viewer built for this feed, for "open player catalogue" links                                                                  |
@@ -96,8 +95,14 @@ is broadcast on, as the manager pushed it: see [A stream's stage](#a-streams-sta
 file that still sets them starts as it did, and the boot log names each one it
 sets.
 
-Startup logs the resolved configuration with the feed key, the batch id and
-the internal API token redacted.
+There is no Bee node and no postage batch among these either. The catalogue
+is written through the catalogue node and batch the manager pushes (see
+[Where the catalogue is written](#where-the-catalogue-is-written)). `BEE_URL`
+and `POSTAGE_BATCH_ID` are no longer read; an env file that still sets them
+starts as it did, and the boot log names them with the ingest keys.
+
+Startup logs the resolved configuration with the feed key and the internal API
+token redacted.
 
 ### FEED_GATEWAY=fake
 
@@ -105,6 +110,11 @@ the internal API token redacted.
 Swarm, no Bee node or usable postage batch is needed, and references look like
 references. It is how to work on the console, and what
 `pnpm test:integration` expects. Startup warns when it is on.
+
+It needs no catalogue stamp either: with none designated it writes with no
+target, and records the write with no batch. A designation the manager does
+push is followed as under `bee`, the pin, a waiting move and the refusal of an
+expired or gone batch included.
 
 It forgets every write on restart while `feed_writes` — which decides the next
 index — does not, so the first write after a restart continues from whatever
@@ -199,6 +209,69 @@ into the admin (`docs/architecture/stages.md` at the repository root).
   beside the `stream.update` row of any field the same save changed, and the
   `stream.create` row carries the stage the stream was created on.
 
+### Where the catalogue is written
+
+Every write, the feed and every thumbnail it uploads, goes through the Bee API
+address and the batch of the catalogue stamp the manager pushed
+(`PUT /api/internal/catalogue-stamp`), read from the database on every write
+(`src/domain/CatalogueBatch.ts`). Nothing about the node or the batch is in the
+env file or held in memory, so a new designation or a moved node takes effect on
+the next write.
+
+The admin keeps the batch it actually writes with, since a batch stamps the
+chunks it wrote and the feed's history is those chunks. Migration `011` adds
+`active_batch_id`, `active_record` and `active_pinned_at` to `catalogue_stamp`:
+
+- The first write under a designation pins its batch, and `active_record`
+  keeps the last record the manager pushed for it: its node address and its
+  readings, refreshed by every push for that batch. The pin is audited as
+  `catalogue.batch.pin`, with the writer as the actor.
+- When the manager designates another batch and this feed has a write in
+  `feed_writes`, the admin keeps writing with the pinned one, at its node, and
+  says a move to the designated one is waiting. Moving the catalogue, stamping
+  the history again under the new batch, is its own job. With no write
+  recorded for the feed (the feed key changed) there is nothing to move, and
+  the designated batch is pinned in its place.
+- The pinned batch's readings are then the last ones the manager pushed while
+  it was the designated batch. They are kept and shown with the moment they
+  were read, not treated as unknown: an expired or gone among them is still a
+  refusal worth making, and they only age.
+- The first write after an upgrade from `POSTAGE_BATCH_ID` pins the designated
+  batch; the feed's earlier writes were stamped by the env file's batch, which
+  the admin never recorded, and the log says so. Their rows keep a null
+  `batch_id`, which is how the move finds them.
+- A clear of the designation leaves the pin as it is: the history is still
+  stamped by that batch, and a designation that comes back finds it.
+
+A publish, an unpublish or a reconcile is refused before it claims a row or
+writes anything, with `503 catalogue_stamp_unavailable`, `problem` and the
+sentence in `message`, when there is nothing to write with:
+
+| `problem` | `message`                                                                                                               |
+| --------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `none`    | The manager has not designated a catalogue batch yet. Nothing is written to the catalogue until it does.                |
+| `cleared` | The manager cleared the catalogue batch designation. Nothing is written to the catalogue until it designates one again. |
+| `expired` | The catalogue batch `ab12cd34…` is expired. Nothing can be written to the catalogue with it.                            |
+| `gone`    | The catalogue batch `ab12cd34…` is gone. Nothing can be written to the catalogue with it.                               |
+
+`expired` and `gone` name the batch the admin writes with, by the last reading
+it holds. The uploader's state and rendition reports store their state first
+and are refused the same way when their rewrite of the catalogue comes, with
+the sentence recorded as the stream's `publish_error`; 503 is a 5xx, so the
+uploader retries them. `GET /api/catalogue-stamp` tells the console the same:
+`catalogueWrite` holds the batch the catalogue is written with, the refusal and
+a waiting move, and My Streams shows them as a banner, with a warning under 48
+hours left (`STAMP_EXPIRY_WARNING_SECONDS`) or at 90% full
+(`CATALOGUE_FILL_WARNING_RATIO`).
+
+Every write records the exact string it uploaded as the payload in
+`feed_writes.payload_text`, next to `payload`, which holds it parsed, and the
+batch that stamped it in `feed_writes.batch_id` (migration `011`). bee-js puts
+a payload straight into the feed's chunk with no timestamp, so the same bytes at
+the same index make the same chunk: these are what moving the catalogue uploads
+again. Rows from before the migration have neither; a head adopted at boot has
+the text the node gave and no batch.
+
 ### Where the next index comes from
 
 **`feed_writes` is the source of truth for the next index and the base payload;
@@ -233,7 +306,10 @@ things only:
   is a WARN — another writer under this key, or the wrong database — and the
   network head and its payload are adopted as the base by recording them, so
   the next write goes _after_ what is out there rather than over it. Bee being
-  unreachable here is a warning, not a failed boot.
+  unreachable here is a warning, not a failed boot. The head is read through
+  the catalogue node; an admin that starts before the manager designated a
+  batch has none, so the check is skipped with a warning and runs once, as
+  soon as a push stores a designation (`src/domain/feedBootCheck.ts`).
 
 Boot also dry-runs the reconcile diff and WARNs with the topics of any
 catalogue entry that has no stream row behind it.
@@ -258,7 +334,7 @@ persisted, with a warning naming the stream and the stale reference. This is
 what makes the `fake`/`bee` switch safe — `fake` mints references that exist
 nowhere, and without the check a stream published under `fake` would keep
 advertising one after the switch, giving every viewer a 404. The same applies
-when `BEE_URL` is repointed at a node that never saw the chunks. A gateway that
+when the catalogue stamp names a node that never saw the chunks. A gateway that
 cannot answer (node unreachable, timeout, an unexpected status) fails the
 publish with `502 publish_failed` instead of re-uploading: "unreachable" is not
 "missing", and guessing would spend a stamp on every hiccup. A check that
@@ -458,8 +534,9 @@ brand's catalogue stamp (`docs/architecture/stages.md` at the repository root
 is the design, `packages/contracts/src/stage.ts` the records). It calls with
 the registrar token, which is `INTERNAL_API_TOKEN`, the one the manager's admin
 link stores; a stage's own uploader token is refused here. The console's Stages page lists the records, and the stream form
-and the OBS panel read them ([A stream's stage](#a-streams-stage)). The
-catalogue writes still use the `BEE_URL` and `POSTAGE_BATCH_ID` settings.
+and the OBS panel read them ([A stream's stage](#a-streams-stage)), and the
+catalogue is written through the catalogue stamp
+([Where the catalogue is written](#where-the-catalogue-is-written)).
 
 Every moment these routes order things by is the manager's: a record's
 `observedAt`, and the `observedAt` a `DELETE` carries, the moment the manager
@@ -507,7 +584,7 @@ records back behind the session:
 | Method | Path                   | Answer                                                                                                                                                                                                                                                                                                                    |
 | ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/api/stages`          | `StageListResponse`: every stage, retired ones last, with `supported` (the engine is SRS), its status, owner, ingest host and ports, `hasSrtPassphrase`, rung stamp and chequebook readings, uploader, readiness, `adminTokenKind` (`own`, `shared`, or `null` when the manager pushed no token) and when it was observed |
-| GET    | `/api/catalogue-stamp` | `CatalogueStampResponse`: node name, batch id, immutable, depth, state, time to live and fill, or `{ catalogueStamp: null }`. Never the Bee API address                                                                                                                                                                   |
+| GET    | `/api/catalogue-stamp` | `CatalogueStampResponse`: `catalogueStamp`, the designated batch's node name, batch id, immutable, depth, state, time to live and fill, or null; and `catalogueWrite`, the batch the catalogue is written with, the refusal and a waiting move. Never the Bee API address                                                 |
 
 To register a stage by hand in local development, with `INTERNAL_API_TOKEN`
 exported from your `.env` and example values:
@@ -685,10 +762,10 @@ SELECT at, action, details FROM audit_log
 - **Nothing polls.** A state report is the only thing that moves a stream to
   `live` or `vod`; an uploader that dies without reporting leaves the stream
   live on the catalogue until someone republishes or unpublishes it by hand.
-- **The catalogue does not read stage records yet.** Its writes still go
-  through `BEE_URL` and `POSTAGE_BATCH_ID`, every stream's `owner` is still the
-  admin's feed key, and an uploader without a token of its own still calls on
-  the registrar's `INTERNAL_API_TOKEN`. The access log still writes
+- **Every stream's `owner` is still the admin's feed key**, and an uploader
+  without a token of its own still calls on the registrar's
+  `INTERNAL_API_TOKEN`. Moving the catalogue to another batch waits for its own
+  job. The access log still writes
   one `[HTTP]` line at info for every push, although the stage service logs an
   unchanged one at debug.
 - **Sessions are unbounded per user** and pruned on sign-in and by a daily

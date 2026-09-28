@@ -109,14 +109,15 @@ before it serves it.
    shows how to make it. The one line of `deploy_key.pub` is what the stage and Bee hosts authorize.
 
 6. **The stage and Bee hosts**, by their recipes below, as far as a running ABR Uploader
-   deployment. The admin needs a Bee node with a usable postage batch. It needs no ingest address:
-   the manager pushes each stage's, and a stream's OBS details come from the stage it is on.
+   deployment. The admin needs no Bee node, batch or ingest address of its own: it writes the
+   catalogue through the catalogue node and batch the manager designates and pushes, refusing to
+   publish, saying why, until the manager has, and a stream's OBS details come from its stage.
 
 7. **The web2 admin.** From `apps/web2-admin`, make the profile's env file from the sample and fill
-   in what it asks for: `POSTGRES_PASSWORD`, `FEED_PRIVATE_KEY`, `INTERNAL_API_TOKEN`, and `BEE_URL`
-   and `POSTAGE_BATCH_ID` of the Bee node it writes through. Generate your own feed key and token.
-   The sample's values are public and the deploy script refuses them. The `INGEST_*` keys an older
-   env file carries are no longer read, and the deploy names each one it finds.
+   in what it asks for: `POSTGRES_PASSWORD`, `FEED_PRIVATE_KEY` and `INTERNAL_API_TOKEN`. Generate
+   your own feed key and token. The sample's values are public and the deploy script refuses them.
+   The `INGEST_*` keys, `BEE_URL` and `POSTAGE_BATCH_ID` an older env file carries are no longer
+   read, and the deploy names each one it finds.
 
    ```sh
    cp backend/.env.sample backend/.env.brand-a
