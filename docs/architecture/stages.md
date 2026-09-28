@@ -236,9 +236,11 @@ As built (phase 7), in `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
   a mutable batch or one whose kind the node did not report. Buying or using another batch on that
   node leaves the catalogue on the pinned one, and the page says so; moving the catalogue is its
   own action. As built (phase 7): once a batch has been designated the manager refuses any other,
-  through a clear as well, until the move exists, and the same batch can be designated again. A
-  clear keeps the node and the batch recorded; that node is not removed, and a pool string that
-  names its batch or its Bee API is refused on create and update.
+  through a clear as well, and the same batch can be designated again. A clear keeps the node and
+  the batch recorded; that node is not removed, and a pool string that names its batch or its Bee
+  API is refused on create and update. Since phase 8 another batch is designated as a move, which
+  keeps the previous one guarded until it is released ([Moving the catalogue to another
+  batch](#moving-the-catalogue-to-another-batch)).
 - **A read of the stages** for the manager's own console, `GET /stages`, behind the session like
   every other route, and `GET /stages/:name/registration`, the last push of one deployment, which
   the deployment page reads.
@@ -298,8 +300,100 @@ the history again: the admin rewrites every slot of the feed, in order, with the
 it recorded, under the new batch, re-uploads the thumbnails the latest entry names, then writes
 with the new batch. bee-js puts a payload straight into the feed's chunk with no timestamp, so
 the same bytes make the same chunks at the same addresses. The job is resumable and runs while
-the old batch still has days of life. Until it exists, the manager designates no other batch
-(phase 7), and the admin keeps writing with the batch it has and says a move is waiting.
+the old batch still has days of life.
+
+**The move is off by default.** `CATALOGUE_MOVE_ENABLED` in the admin's env file turns it on,
+and it stays off on every installation until the owner has tried it on a real node, by
+[Trying the move on a real node](#trying-the-move-on-a-real-node) below. Until then the Stages
+page says the move is not yet enabled on this installation, and the manager's move and release
+work as built: they only change which batch is pinned and which is guarded.
+
+As built (phase 8), on the manager's side (`CatalogueDesignationService`, migration 048;
+`apps/infra-manager/docs/features/stages.md` is the page):
+
+- Designating another batch than the pinned one is a move, saved only when the request says
+  `move: true` (the card's "Move the catalogue to batch …", confirmed). The new batch passes
+  every check a designation does. The row keeps the previous node and batch as "moving from",
+  and the catalogue stamp record pushed is the new batch's: the contract is unchanged.
+- While a move is pending, both nodes are guarded against removal, no pool string may name
+  either batch or node, the previous batch is still read every ten seconds for the card, a third
+  batch is refused (release the previous one first), and moving back to the previous batch
+  swaps the two.
+- **Release the previous batch**, `POST /manager-settings/catalogue-node/release`, revisioned,
+  behind the session and the same-site check, takes the previous batch out once the admin
+  reports the move done; only then does the guard lift. It is logged with the user and
+  recorded in the row, like a designation. The manager cannot see the admin's progress, so the
+  card says the steps and asks before it releases.
+
+As built (phase 8), on the admin's side (`apps/web2-admin/backend/src/domain/CatalogueMove.ts`,
+migration 014; the admin backend's README has the detail):
+
+- A move waits whenever some slot from 0 to the head is not under the designated batch by the
+  admin's record: another batch designated (`moveWaitingTo`), or writes a batch the admin never
+  recorded stamped (`unrecordedHistory`, the env file's). The second case needs no release in
+  the manager.
+- For slots 0 to the head, in order, the job uploads each slot's single-owner chunk again under
+  the new batch through the catalogue node. From `payload_text` where there is one: the chunk
+  is built as `updateFeedWithPayload` built it, and signed again with the brand key. secp256k1
+  signing with RFC 6979 nonces is deterministic, so the chunk is the one first uploaded, byte for
+  byte; `test/unit/catalogueRestamp.test.ts` holds the job to the bytes bee-js's own write
+  produced. A slot with no recorded bytes, a row from before migration 013 or a slot with no
+  row at all (before 003), is read from the network through the catalogue node, checked against
+  its address, and uploaded with its own signature. A payload over 4096 bytes has its
+  content-addressed data uploaded again first. A slot already under the new batch by the record
+  is left as it is.
+- Then the thumbnails the latest entry names, from `streams.thumbnail` where a stream still
+  names the reference and otherwise from the network, each checked to come out at the same
+  reference. Then the admin pins the new batch and writes with it.
+- It goes in slices of 20 slots outside the publish mutex, so publishing goes on with the
+  pinned batch, and checks the designation between slices. The last step holds the mutex: the
+  slots written meanwhile, the thumbnails of the entry written last, and the switch, so no slot
+  is left under the old batch alone.
+- Progress is recorded after every slot (`catalogue_moves.next_index`, and
+  `feed_writes.restamped_batch_id` and `restamped_at`), so a restart resumes a running move at
+  boot and a shutdown pauses it. A failure stops with its reason, without the node's address,
+  and the same start retries it from there.
+- A start is refused when the move is off, there is no batch to move to or nothing to move, the
+  designated batch is expired, gone or mutable, or the batch the catalogue is written with has
+  lapsed while some slot has no recorded bytes: the network drops a chunk once its batch lapses,
+  so those slots cannot be read any more, and the page says so.
+- The start, the end and a failure are audited (`catalogue.move.start`, `.done`, `.failed`) and
+  logged with batch ids shortened. The Stages page shows N of M slots while it runs, the reason
+  when it failed, and, once done, that the previous batch can now be released in the manager.
+
+### Trying the move on a real node
+
+For the owner, once, before `CATALOGUE_MOVE_ENABLED` is turned on anywhere. Nothing in the
+repository runs this; every unit and integration test uses a fake Bee.
+
+1. **Set up a scratch installation.** A testnet or scratch Bee node as a Bee-only deployment of
+   a scratch manager, and a scratch admin with its own `FEED_PRIVATE_KEY` and `FEED_TOPIC`, so no
+   brand's catalogue is touched. Buy two small immutable batches on the node, A and B (depth 17
+   or 18 is plenty: a catalogue slot is one chunk, or a few for a long list). Link the admin
+   and designate the node with batch A.
+2. **Make history.** Create a few streams, give some a thumbnail, publish and unpublish them
+   until the feed has a dozen slots or more. Make at least one catalogue longer than 4096 bytes
+   (a long description on several published streams does it), so a wrapped slot is in the
+   history. Open the viewer built for the scratch feed and note what it lists.
+3. **Move.** In the manager, choose batch B on the catalogue node's card and confirm the move.
+   In the admin's env file set `CATALOGUE_MOVE_ENABLED=true` and restart the admin. On the
+   Stages page, "Move the catalogue to batch B…", confirm, and publish a stream while it runs.
+   Wait for "The catalogue was moved to batch B".
+4. **Check each slot under B.** For every index 0 to the head, `GET /chunks/<slot address>` on
+   the node answers the same bytes as before the move, and `GET /stamps/<B>` shows its
+   utilisation grown by about the number of slots and data chunks. The admin's log has one
+   `Restamped feed index=` line per slot, and none failed. A slot's address is
+   keccak256(identifier, owner); the `ref=` of each `Wrote feed index=` line in the log is it.
+5. **Check the viewer.** Dilute or let batch A lapse (on a testnet, a batch bought with the
+   smallest amount lapses in hours), or point the viewer at a node that never held A's chunks.
+   The viewer still lists every entry it listed in step 2, with its thumbnail, and the stream
+   published during the move.
+6. **Release.** Press "Release the previous batch" in the manager, and remove batch A's node
+   if it was another deployment.
+
+If every step holds, record the date in the roadmap and turn the move on where it is needed. If
+a slot or a thumbnail came out at another reference, the move stops before the switch, the
+admin keeps writing with A, and the log and the Stages page say which.
 
 ## The flow for a brand
 
@@ -331,7 +425,7 @@ nothing reaches a host without the owner's word.
 | 5   | A token per uploader, the shared one still taken while the stages move over                                                  | manager, admin             | M    |
 | 6   | A key per stage: owners come from the stage; the boot check, publish, reconcile and Test connection follow                   | hls-stream, manager, admin | M    |
 | 7   | The catalogue node: designation, the immutable-only rule and the exact bytes; `BEE_URL` and `POSTAGE_BATCH_ID` leave the env | manager, admin             | M    |
-| 8   | Moving the catalogue to another batch                                                                                        | admin                      | M    |
+| 8   | Moving the catalogue to another batch                                                                                        | manager, admin             | M    |
 | 9   | The shared token stops on an uploader's routes; the pages close checkpoint 3                                                 | manager, admin, docs       | S    |
 
 Phases 2 to 5 reach a host together, because until phase 5 every uploader holds the token that
