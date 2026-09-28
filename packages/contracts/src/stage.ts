@@ -222,8 +222,27 @@ export const stageRecordSchema = z.object({
 export type StageRecord = z.infer<typeof stageRecordSchema>;
 
 /**
+ * The batch the catalogue is moving from, while a move is pending in the manager, as the manager read it at the
+ * record's `observedAt`. The admin keeps writing with that batch until its own move runs, so this is how its readings
+ * stay fresh there: a top-up of it reaches the admin, and a time to live that only ages does not refuse writes.
+ */
+export const catalogueStampPreviousSchema = z.object({
+  nodeName: someText,
+  beeApiUrl,
+  batchId,
+  immutable: z.boolean(),
+  depth: z.number().int().min(17).max(64),
+  state: z.enum(STAGE_STAMP_STATES),
+  ttlSeconds: z.number().nullable(),
+  fillRatio: z.number().nullable(),
+});
+export type CatalogueStampPrevious = z.infer<typeof catalogueStampPreviousSchema>;
+
+/**
  * `PUT /api/internal/catalogue-stamp`: the brand's catalogue batch on its dedicated node, as the manager read it at
- * `observedAt`. The Bee API address is the one the admin dials to write the catalogue.
+ * `observedAt`. The Bee API address is the one the admin dials to write the catalogue. `previous` is the batch the
+ * catalogue is moving from, null or absent when no move is pending or the manager could not read it; a manager older
+ * than the field sends none.
  */
 export const catalogueStampRecordSchema = z.object({
   schemaVersion: z.literal(STAGE_RECORD_SCHEMA_VERSION),
@@ -238,6 +257,7 @@ export const catalogueStampRecordSchema = z.object({
   fillRatio: z.number().nullable(),
   designatedAt: isoMoment,
   observedAt: isoMoment,
+  previous: catalogueStampPreviousSchema.nullish(),
 });
 export type CatalogueStampRecord = z.infer<typeof catalogueStampRecordSchema>;
 
