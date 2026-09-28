@@ -25,6 +25,7 @@ import type { DeploymentOrchestrator } from '../domain/DeploymentOrchestrator.js
 import type { VerifiedDeployTargets } from '../domain/ports/VerifiedDeployTargets.js';
 import type { FirewallInventoryExporter } from '../domain/ports/FirewallInventoryExporter.js';
 import type { PortReservationRepository } from '../domain/ports/PortReservationRepository.js';
+import type { StagePublisher } from '../domain/stages/StagePublisher.js';
 
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFound } from './middleware/notFound.js';
@@ -47,6 +48,7 @@ import { createMetricsRouter } from './routes/metrics.js';
 import { createProfilesRouter } from './routes/profiles.js';
 import { createSrtIngestRouter } from './routes/srtIngest.js';
 import { createSrtPassphraseRouter } from './routes/srtPassphrase.js';
+import { createStagesRouter } from './routes/stages.js';
 import { createStampRouter } from './routes/stamp.js';
 import { createAttemptsRouter } from './routes/attempts.js';
 import { createVersionsRouter } from './routes/versions.js';
@@ -76,6 +78,8 @@ export interface ApiDeps {
   managerAdminLinkService: ManagerAdminLinkService;
   /** Test connection, for an address typed on a page and for what a deployment's next deploy gives its uploader. */
   adminLinkTester: AdminLinkTester;
+  /** The stage records the manager pushes into the web2 admin, which `GET /stages` reads. */
+  stagePublisher: Pick<StagePublisher, 'consoleStages' | 'lastPush'>;
   stackVersionService: StackVersionService;
   /** For the deploy attempts that hold a project or the daemon, and their release. */
   orchestrator: DeploymentOrchestrator;
@@ -147,6 +151,7 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
   app.use('/', createDeploymentSettingsRouter(deps.deploymentSettingsService));
   app.use('/', createManagerSettingsRouter(deps.managerAdminLinkService));
   app.use('/', createAdminLinkTestRouter(deps.adminLinkTester));
+  app.use('/stages', createStagesRouter(deps.stagePublisher));
 
   app.use(notFound);
   app.use(errorHandler);

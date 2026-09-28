@@ -428,7 +428,15 @@ interface DeploySecrets {
   rpcEndpoint: string | null;
 }
 
+/**
+ * What runs right before a deploy starts a stream uploader: the stage publisher's push of the deployment's record
+ * into the web2 admin, so the uploader's first call finds its token known. It never throws, and it is bounded.
+ */
+export type BeforeUploaderStart = (profile: Profile) => Promise<void>;
+
 export class DeploymentOrchestrator {
+  private beforeUploaderStart: BeforeUploaderStart | null = null;
+
   constructor(
     private readonly profiles: ProfileRepository,
     private readonly containers: ContainerRepository,
@@ -454,6 +462,26 @@ export class DeploymentOrchestrator {
      */
     private readonly managerRpcEndpoint?: string | null,
   ) {}
+
+  /**
+   * Sets what runs before a deploy starts a stream uploader. A setter rather than a constructor argument, because
+   * the stage publisher it calls reads the next deploy's environment through this orchestrator.
+   */
+  setBeforeUploaderStart(hook: BeforeUploaderStart | null): void {
+    this.beforeUploaderStart = hook;
+  }
+
+  /** The hook, where this deploy starts an uploader. A failure is a warning and never holds the deploy. */
+  private async runBeforeUploaderStart(profile: Profile, services: readonly string[]): Promise<void> {
+    if (!this.beforeUploaderStart || !services.includes(STREAM_UPLOADER_SERVICE)) return;
+    try {
+      await this.beforeUploaderStart(profile);
+    } catch (err) {
+      logger.warn(
+        `[Orchestrator] ${profile.name}: the step before the uploader starts failed: ${getErrorMessage(err)}`,
+      );
+    }
+  }
 
   /**
    * Whether a deploy of the profile may start now, asked before the claim
@@ -1328,6 +1356,8 @@ export class DeploymentOrchestrator {
       logger.info(`[Orchestrator] ${profile.name}: wrote profile env ${written} (engine=${engine})`);
 
       const services = [...reservation.services];
+      // After the env file is written, so the record carries the token the uploader is about to be given.
+      await this.runBeforeUploaderStart(profile, services);
       return await this.runJob({
         profileName: profile.name,
         target: targetAlias(reservation.host ?? profile.host),
