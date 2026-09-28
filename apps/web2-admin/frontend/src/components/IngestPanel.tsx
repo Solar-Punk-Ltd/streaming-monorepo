@@ -1,7 +1,7 @@
 import { useId, useState, type ReactNode } from 'react';
 import { Alert, Button, Paper, Stack, Typography } from '@mui/material';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
-import { buildObsSrtServer, type IngestDetails } from '@streaming-monorepo/web2-admin-common';
+import { buildObsSrtServer, type IngestDetails, type IngestRtmpDetails } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
 import { errorMessage } from '../errors';
@@ -17,10 +17,10 @@ export const KEY_UNVERIFIED_NOTE =
 
 /**
  * The SRT Server line carries `key=<publishKey>` and, where it can ride there,
- * `passphrase=<passphrase>`. The RTMP stream key carries the same `key=`. Only
- * those values are hidden: the host, port and stream id are what the operator
- * needs to read back. A value ends at a comma because the SRT stream id carries
- * `,m=publish` after the key.
+ * `passphrase=<passphrase>`. The RTMP stream key, where RTMP is offered, carries
+ * the same `key=`. Only those values are hidden: the host, port and stream id
+ * are what the operator needs to read back. A value ends at a comma because the
+ * SRT stream id carries `,m=publish` after the key.
  */
 function maskIngestSecrets(value: string): string {
   return value.replace(/\b(key|passphrase)=[^,&?\s]+/g, '$1=••••••••');
@@ -81,7 +81,7 @@ function SrtSettings({ srt }: { srt: IngestDetails['srt'] }) {
  * OBS's RTMP boxes. OBS publishes the Stream Key box as the RTMP stream name,
  * so the key rides on it as `<topic>?key=<key>`.
  */
-function RtmpSettings({ rtmp }: { rtmp: IngestDetails['rtmp'] }) {
+function RtmpSettings({ rtmp }: { rtmp: IngestRtmpDetails }) {
   return (
     <ProtocolSection title="RTMP">
       <ValueField label="RTMP Server" value={rtmp.server} helperText="Paste into the Server box." />
@@ -138,12 +138,16 @@ export function IngestPanel({
         {!details.keyVerified ? <Alert severity="warning">{KEY_UNVERIFIED_NOTE}</Alert> : null}
 
         <Typography variant="body2">
-          In OBS, open Settings, then Stream, and set Service to Custom. Then pick one of the two protocols below and
-          copy its values into OBS. Each field says which box it goes in.
+          In OBS, open Settings, then Stream, and set Service to Custom.{' '}
+          {details.rtmp
+            ? 'Then pick one of the two protocols below and copy its values into OBS.'
+            : 'Then copy the SRT values below into OBS.'}{' '}
+          Each field says which box it goes in.
         </Typography>
 
         <SrtSettings srt={details.srt} />
-        <RtmpSettings rtmp={details.rtmp} />
+        {/* Sent only where the deployment opens RTMP ingest. Elsewhere its port refuses encoders. */}
+        {details.rtmp ? <RtmpSettings rtmp={details.rtmp} /> : null}
 
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
           Ingest stream id {details.streamId}
