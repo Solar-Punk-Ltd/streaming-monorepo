@@ -691,8 +691,10 @@ with the token, and where there is a stream address to compare, `GET
 <address>/api/internal/stages/self` with the token, for the owner the admin
 knows for the token's stage, and only on its 404, a token of no stage, the
 admin's public `GET <address>/api/config` without it. The wizard's test
-compares no owner, since the new stage's key is its own and the admin learns it
-at the first deploy. The card's test uses what the
+compares the chosen stream key's address with a typed token, as the uploader
+will, and no owner with a token of its own, which does not exist before the
+first deploy. A typed token belongs to no stage, so a stage with a key of its
+own cannot boot on one. The card's test uses what the
 deployment's next deploy would give its uploader, the saved values, and the
 address of the stream key that deploy gives it, the deployment's own or the one
 its version's base `.env` sets, derived in memory and never sent, answered or

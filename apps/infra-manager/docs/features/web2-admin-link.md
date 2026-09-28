@@ -194,13 +194,21 @@ The stream address a deployment's test compares is the address of the
 where it stores none, the one its version's base `.env` sets. The manager
 derives it in memory with `addressOfStreamKey` in `common/src/streamKey.ts`,
 and the key itself goes nowhere: not to the admin, an answer, an error or a
-log line. Only a deployment for which neither sets a key compares no owner. The
-wizard's test compares no owner: the stream key chosen in the step is the new
-stage's own, which the admin learns from the stage's first push at the first
-deploy, so the only owner the admin could name before then is its catalogue's.
-The deployment's own Test connection compares it once the stage exists. This
-holds from phase 6 of the stages brief, 2026-09-28; the comparison with the
-catalogue owner alone held from 2026-09-26, commit 1256076.
+log line. Only a deployment for which neither sets a key compares no owner.
+
+The wizard's test depends on the token choice. With a token typed there, it
+compares the address of the stream key chosen in the step, which the browser
+derives with the same function, and does what the uploader will do at boot: a
+typed token is one the admin ties to no stage, so the comparison is with the
+admin's catalogue owner. **A shared token and a stage's own key cannot boot
+together**: the uploader on such a token compares its key with the catalogue
+owner, finds another address and refuses to start, so a stage with a key of
+its own needs a token of its own. With a token of its own, the wizard's test
+compares no owner, since that token does not exist before the first deploy and
+the admin learns the stage's address from its first push; the deployment's own
+Test connection compares it once the stage exists. This holds from phase 6 of
+the stages brief, 2026-09-28; the comparison with the catalogue owner alone
+held from 2026-09-26, commit 1256076.
 
 ## What it reaches
 

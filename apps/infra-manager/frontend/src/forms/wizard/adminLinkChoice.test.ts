@@ -14,7 +14,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { type DeploymentSettingEntry, type ManagerAdminLink, type StackVersion } from '@streaming-infra-manager/common';
+import {
+  addressOfStreamKey,
+  type DeploymentSettingEntry,
+  type ManagerAdminLink,
+  type StackVersion,
+} from '@streaming-infra-manager/common';
 
 import type { NewDeploymentSettingsLoad } from '../../deployments/settings/useNewDeploymentSettings';
 import {
@@ -241,6 +246,13 @@ describe('what Test connection asks from the group', () => {
       token: { source: 'stored' },
       feedOwner: null,
     });
+  });
+
+  it("compares a typed token with the stream key's address, as the uploader will at boot", () => {
+    const typed = { on: true, url: ADMIN_URL, tokenSource: 'typed' as const, token: TOKEN };
+    const state = stateFor('stream', { adminLink: typed });
+    assert.equal(adminLinkTestOf(state, contextWith(NONE))?.feedOwner, addressOfStreamKey(state.generatedKey));
+    assert.ok(adminLinkTestOf(state, contextWith(NONE))?.feedOwner, 'an address, not null');
   });
 
   it('tests a typed token, and nothing until the address and the token are usable', () => {

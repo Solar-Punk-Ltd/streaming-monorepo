@@ -3,6 +3,7 @@ import {
   ADMIN_API_URL_KEY,
   type AdminLinkTestRequest,
   type AdminLinkTokenChoice,
+  addressOfStreamKey,
   adminTokenProblem,
   adminUrlProblem,
   type DeploymentSettingEntry,
@@ -13,7 +14,7 @@ import {
 } from '@streaming-infra-manager/common';
 
 import { ADMIN_LINK_ABSENT, ADMIN_LINK_MANAGER_UNREAD, ADMIN_LINK_UNREAD } from '../../adminLink/adminLinkText';
-import { needsStreamKey, type WizardContext, type WizardState } from './wizardState';
+import { chosenKey, needsStreamKey, type WizardContext, type WizardState } from './wizardState';
 
 /**
  * The new-deployment wizard's Web2 admin group: whether the deployment's
@@ -187,18 +188,24 @@ export function adminLinkBody(state: WizardState, context: WizardContext): Admin
 
 /**
  * What Test connection asks from the group, or null until the address and the
- * token can be used. No owner is compared: every stage signs with a key of its
- * own, the one chosen here, and the web2 admin learns its address from the
- * stage's first push at the first deploy. Until then the only owner the admin
- * could name is its catalog's, which is not this deployment's. A deployment's
- * own Test connection compares it once the stage exists.
+ * token can be used.
+ *
+ * With a token typed here, the address of the stream key chosen here is the
+ * owner to compare. A typed token is one the admin ties to no stage, so the
+ * probe compares the key with the admin's catalog owner, which is what the
+ * uploader will do at boot: a stage with a key of its own on such a token does
+ * not start. With a token of its own no owner is compared, since the token
+ * does not exist yet and the admin learns the stage's address from its first
+ * push at the first deploy; the deployment's own Test connection compares it
+ * then.
  */
 export function adminLinkTestOf(state: WizardState, context: WizardContext): AdminLinkTestRequest | null {
   const choice = chosenAdminLink(state, context);
   if (!choice.on || urlProblemOf(choice) !== null) return null;
   const token = tokenOf(choice, context);
   if ('problem' in token) return null;
-  return { url: choice.url, token: token.token, feedOwner: null };
+  const feedOwner = choice.tokenSource === 'typed' ? (addressOfStreamKey(chosenKey(state)) ?? null) : null;
+  return { url: choice.url, token: token.token, feedOwner };
 }
 
 /** The review's line for the link, naming the address and where the token comes from, never the token. Null where the group asks nothing. */
