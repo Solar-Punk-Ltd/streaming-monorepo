@@ -38,7 +38,7 @@ The immutable builds and port and firewall work add a separate direct claim in P
 
 ## TDD checkpoints
 
-The source is the agreed readiness issue, `../consensus/issues/t12-readiness-and-diagnostics.md`, and the review it came from in `../consensus/PRD.md`. (This pointed at `.scratch/main-v2-review-consensus/`, which is gitignored and therefore resolves to nothing on any other checkout.) The journeys are finding the next prerequisite, diagnosing Bee initialization, opening the correct container logs, and identifying current versus previous observations during deployment changes.
+The source is the agreed readiness issue of the remediation review, which the repository's history keeps. The journeys are finding the next prerequisite, diagnosing Bee initialization, opening the correct container logs, and identifying current versus previous observations during deployment changes.
 
 | Behavior                                                          | RED commit | GREEN commit | Evidence                                                                         |
 | ----------------------------------------------------------------- | ---------- | ------------ | -------------------------------------------------------------------------------- |

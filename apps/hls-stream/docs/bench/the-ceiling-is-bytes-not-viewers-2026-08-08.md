@@ -78,7 +78,7 @@ same gateway that holds ~123 viewers here would hold roughly half that at 6 Mbps
 
 ⚠️ **1080p at 6000k ships and has never been measured this way.** On this arithmetic alone it would put
 a gateway's capacity near 60 viewers rather than 123, but that is division rather than a measurement,
-and [the scale handover](../scale/running-a-high-scale-event-on-swarm.md) already separates figures
+and the scale handover, which the repository's history keeps, already separated figures
 that were measured from figures that were derived for exactly this reason.
 
 ⭐ **This does not overturn the cohort finding, it bounds it.** Cohort size decides whether a given

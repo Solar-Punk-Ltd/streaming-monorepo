@@ -15,5 +15,5 @@ through `pnpm --filter @streaming-infra-manager/frontend-prototype test:browser`
 That suite is the live record of this behaviour. The run log this page used to carry was reduced
 on 2026-09-16: its test counts had drifted, it recorded a fixed fixture port that the suite no
 longer binds because it takes a kernel-assigned one, and its evidence paths were under `.scratch/`,
-which is gitignored and therefore resolves to nothing on any other checkout. The work's own record
-is `../consensus/issues/t18-narrow-layouts.md` and `../consensus/prs/t18-narrow-layouts.md`.
+which is gitignored and therefore resolves to nothing on any other checkout. The work's own issue
+and pull request record are in the repository's history.

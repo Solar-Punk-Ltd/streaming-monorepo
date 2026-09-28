@@ -7,12 +7,11 @@ node has no chain, no chequebook and no gas, and can only download. In bee's own
 terms ultra-light is a node with no RPC endpoint that is not a full node, and the
 SWAP switch takes no part in that.
 
-Status, 2026-09-17. The Bee node mode row of `docs/consensus/issues/`, decided that
+Status, 2026-09-17. The Bee node mode row of the remediation review, decided that
 day: the mode and the endpoint are chosen when a node is created, the node's
 page shows both, an ultra-light node has no funding or stamp steps, and funding
 stays as it is, by hand, with no wallet held by the manager. The manager and
-frontend halves are on `main`, reviewed and fixed the same day (the brief and
-the fixes file are under `docs/consensus/`). The stack half was merged into the
+frontend halves are on `main`, reviewed and fixed the same day. The stack half was merged into the
 manager's line of the stack, `feat/manager-line`, at 5553652c, and that line is
 in the stack's releases from `v3.1` on, which the bundled `v3.4` builds on. Written at
 `b56ae6f` on `main-v2` with the stack pinned at `55b22bf1`, and re-read on the evening of
