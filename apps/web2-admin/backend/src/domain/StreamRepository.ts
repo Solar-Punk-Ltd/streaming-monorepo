@@ -33,6 +33,13 @@ export interface StreamUpdateData {
   scheduled_start_time: string | null;
 }
 
+/** What a thumbnail clear left on the row, and whether it removed an image. */
+export interface ClearedThumbnail {
+  stream: StreamRow;
+  /** Whether the row held an image when the clear took its lock. */
+  removed: boolean;
+}
+
 export class StreamRepository {
   constructor(private readonly pool: Pool) {}
 
@@ -180,23 +187,45 @@ export class StreamRepository {
     return this.one(result.rows, result.rowCount);
   }
 
-  /** An edit only when there was an image to remove. */
-  async clearThumbnail(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
-    const result = await this.pool.query<StreamRow>(
-      `UPDATE streams
+  /**
+   * An edit only when there was an image to remove, and the answer says
+   * whether there was. The statement finds that out itself, from the row as
+   * it locks it: an image another operator set a moment earlier is one this
+   * clear removes, and a read made before the statement would have missed it.
+   *
+   * `locked` is what the UPDATE joins its row through, so the lock is taken
+   * before anything is written. It waits for a write that already holds the
+   * row and then reads the row as that write committed it, where a plain
+   * read in this same statement would still see the statement's snapshot.
+   * Its columns are named apart from the table's, which RETURNING lists
+   * unqualified.
+   */
+  async clearThumbnail(id: string, allowedFrom: readonly StreamStatus[]): Promise<ClearedThumbnail | null> {
+    const result = await this.pool.query<StreamRow & { had_thumbnail: boolean }>(
+      `WITH locked AS (
+         SELECT id AS locked_id, (thumbnail IS NOT NULL) AS had_thumbnail
+           FROM streams
+          WHERE id = $1 AND status = ANY($2::text[])
+            FOR UPDATE
+       )
+       UPDATE streams
           SET thumbnail = NULL,
               thumbnail_mime = NULL,
               thumbnail_ref = NULL,
               content_edited_at = CASE
-                WHEN thumbnail IS NOT NULL THEN ${CONTENT_EDITED_NOW}
+                WHEN locked.had_thumbnail THEN ${CONTENT_EDITED_NOW}
                 ELSE content_edited_at
               END,
               updated_at = NOW()
-        WHERE id = $1 AND status = ANY($2::text[])
-        RETURNING ${STREAM_COLUMNS}`,
+         FROM locked
+        WHERE streams.id = locked.locked_id
+        RETURNING ${STREAM_COLUMNS}, locked.had_thumbnail`,
       [id, allowedFrom],
     );
-    return this.one(result.rows, result.rowCount);
+    const row = this.one(result.rows, result.rowCount);
+    if (!row) return null;
+    const { had_thumbnail: removed, ...stream } = row;
+    return { stream, removed };
   }
 
   /**

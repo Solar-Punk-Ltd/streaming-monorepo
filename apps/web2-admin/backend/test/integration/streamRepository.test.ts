@@ -8,7 +8,9 @@
  * the un-finishing of an ABR ladder when a broadcast goes live again, an
  * unpublish that keeps the recording and its rungs, which writes count as
  * a console edit for the "Edited since it was published" notice (migration
- * 006), and that no statement is scoped to the user who drafted a row.
+ * 006), a thumbnail clear that says whether it removed an image, one
+ * committed while it waited on the row lock included, and that no statement
+ * is scoped to the user who drafted a row.
  * Getting the first wrong loses streams — a republish interrupted by a restart
  * that came back as `draft` could then be DELETEd, leaving its entry on the
  * feed with no row left to unpublish it. Getting the second wrong is invisible
@@ -364,7 +366,7 @@ describe('which writes count as a console edit (migration 006)', () => {
 
     const nothingRemoved = await streams.clearThumbnail(row.id, EDITABLE_STATUSES);
     assert.ok(nothingRemoved);
-    assert.equal(nothingRemoved.content_edited_at, null);
+    assert.equal(nothingRemoved.stream.content_edited_at, null);
 
     const withImage = await streams.setThumbnail(row.id, Buffer.from([1, 2, 3]), 'image/png', EDITABLE_STATUSES);
     assert.ok(withImage);
@@ -373,9 +375,9 @@ describe('which writes count as a console edit (migration 006)', () => {
     await setEditStamp(row.id, '2000-01-01T00:00:00.000Z');
     const removed = await streams.clearThumbnail(row.id, EDITABLE_STATUSES);
     assert.ok(removed);
-    assert.ok(removed.content_edited_at);
+    assert.ok(removed.stream.content_edited_at);
     assert.ok(
-      removed.content_edited_at.getTime() > Date.parse('2000-01-01T00:00:00.000Z'),
+      removed.stream.content_edited_at.getTime() > Date.parse('2000-01-01T00:00:00.000Z'),
       'removing the image is an edit',
     );
   });
@@ -419,6 +421,73 @@ describe('which writes count as a console edit (migration 006)', () => {
     const reread = await streams.findById(row.id);
     assert.ok(reread);
     assert.equal(hasUnpublishedEdits(reread), false);
+  });
+});
+
+/** Waits until some backend is blocked on a lock that the backend `pid` holds. */
+async function untilBlockedBy(pid: number): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const { rows } = await database.pool.query<{ blocked: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))
+       ) AS blocked`,
+      [pid],
+    );
+    if (rows[0]!.blocked) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error('the clear never waited for the row lock');
+}
+
+/**
+ * The clear reports whether it removed an image, because the console has no
+ * other way to know: another operator can set one between anything it read
+ * and the clear, and a removal nobody recorded is exactly what the audit log
+ * is for.
+ */
+describe('a thumbnail clear says whether it removed an image', () => {
+  it('reports a removal when there was an image, and none when there was not', async () => {
+    const row = await publishedStream();
+
+    const nothing = await streams.clearThumbnail(row.id, EDITABLE_STATUSES);
+    assert.equal(nothing?.removed, false);
+
+    await streams.setThumbnail(row.id, Buffer.from([1, 2, 3]), 'image/png', EDITABLE_STATUSES);
+    const cleared = await streams.clearThumbnail(row.id, EDITABLE_STATUSES);
+    assert.equal(cleared?.removed, true);
+    assert.equal(cleared?.stream.has_thumbnail, false);
+    assert.equal(await streams.findThumbnail(row.id), null, 'the image is gone');
+
+    const again = await streams.clearThumbnail(row.id, EDITABLE_STATUSES);
+    assert.equal(again?.removed, false, 'a second clear has nothing left to remove');
+  });
+
+  it('counts an image committed while it waited on the row lock', async () => {
+    // The upload holds the row when the clear arrives. The clear waits for
+    // it and then removes that image, so it has to say it did: a read made in
+    // the statement's own snapshot still sees the row without one.
+    const row = await publishedStream();
+    const upload = await database.pool.connect();
+    try {
+      await upload.query('BEGIN');
+      await upload.query(
+        `UPDATE streams SET thumbnail = $2, thumbnail_mime = 'image/png', thumbnail_ref = NULL WHERE id = $1`,
+        [row.id, Buffer.from([1, 2, 3])],
+      );
+      const { pid } = (await upload.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!;
+
+      const clearing = streams.clearThumbnail(row.id, EDITABLE_STATUSES);
+      await untilBlockedBy(pid);
+      await upload.query('COMMIT');
+      const cleared = await clearing;
+
+      assert.equal(cleared?.removed, true);
+      assert.equal(cleared?.stream.has_thumbnail, false);
+      assert.ok(cleared?.stream.content_edited_at, 'and removing it is an edit');
+    } finally {
+      await upload.query('ROLLBACK').catch(() => undefined);
+      upload.release();
+    }
   });
 });
 
@@ -510,7 +579,7 @@ describe('a stream belongs to the installation, not to who drafted it', () => {
     assert.deepEqual((await streams.findThumbnail(id))?.thumbnail, Buffer.from([1, 2, 3]));
     await streams.recordThumbnailRef(id, 'a'.repeat(64));
     assert.equal((await streams.findById(id))?.thumbnail_ref, 'a'.repeat(64));
-    assert.equal((await streams.clearThumbnail(id, EDITABLE_STATUSES))?.has_thumbnail, false);
+    assert.equal((await streams.clearThumbnail(id, EDITABLE_STATUSES))?.stream.has_thumbnail, false);
     assert.ok((await streams.rotatePublishKey(id, newPublishKey()))?.publish_key_rotated_at);
 
     assert.equal((await streams.claimForPublish(id, ['draft']))?.status, 'publishing');

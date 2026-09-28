@@ -19,7 +19,7 @@ import type { IngestStreamStore } from '../../../src/domain/IngestService.js';
 import type { LadderRenditionStore, LadderStreamStore } from '../../../src/domain/LadderService.js';
 import type { FeedWriteLog, PublishRenditionStore, PublishStreamStore } from '../../../src/domain/PublishService.js';
 import type { OrphanedPublishingStore } from '../../../src/domain/resetOrphanedPublishing.js';
-import type { StreamInsertData, StreamUpdateData } from '../../../src/domain/StreamRepository.js';
+import type { ClearedThumbnail, StreamInsertData, StreamUpdateData } from '../../../src/domain/StreamRepository.js';
 import type { StreamServiceStore } from '../../../src/domain/StreamService.js';
 import type { StateStreamStore } from '../../../src/domain/StreamStateService.js';
 import type { PublishedStatus } from '../../../src/domain/streamState.js';
@@ -226,16 +226,18 @@ export class FakeStreamStore
     });
   }
 
-  async clearThumbnail(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
+  /** An edit only when there was an image, and says whether there was, as the SQL does. */
+  async clearThumbnail(id: string, allowedFrom: readonly StreamStatus[]): Promise<ClearedThumbnail | null> {
     const row = this.rows.get(id);
     if (!row || !allowedFrom.includes(row.status)) return null;
     this.thumbnails.delete(id);
-    return this.patch(id, {
+    const stream = this.patch(id, {
       has_thumbnail: false,
       thumbnail_mime: null,
       thumbnail_ref: null,
       ...(row.has_thumbnail ? { content_edited_at: new Date('2026-09-11T11:00:00.000Z') } : {}),
     });
+    return { stream, removed: row.has_thumbnail };
   }
 
   async rotatePublishKey(id: string, publishKey: string): Promise<StreamRow | null> {

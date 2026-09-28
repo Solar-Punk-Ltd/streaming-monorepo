@@ -20,7 +20,7 @@ import {
 import type { FeedIdentity } from './feedIdentity.js';
 import { Logger } from './Logger.js';
 import { isScheduleLocked } from './streamState.js';
-import type { StreamInsertData, StreamUpdateData } from './StreamRepository.js';
+import type { ClearedThumbnail, StreamInsertData, StreamUpdateData } from './StreamRepository.js';
 
 const logger = Logger.getInstance();
 
@@ -38,7 +38,7 @@ export interface StreamServiceStore {
     mime: string,
     allowedFrom: readonly StreamStatus[],
   ): Promise<StreamRow | null>;
-  clearThumbnail(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null>;
+  clearThumbnail(id: string, allowedFrom: readonly StreamStatus[]): Promise<ClearedThumbnail | null>;
 }
 
 /** A validated StreamInput, with tags and scheduledStartTime settled. */
@@ -261,26 +261,27 @@ export class StreamService {
   }
 
   /**
-   * Logged and audited only when there was an image to remove. The read comes
-   * first because the statement cannot say what it cleared; a clear that
-   * races another one records at most one extra entry, never a missing one.
+   * Logged and audited only when there was an image to remove, which the
+   * clear itself reports: it reads the row under its own lock, so an image
+   * another operator set a moment earlier counts as removed, and two clears
+   * that race record one entry between them.
    */
   async removeThumbnail(actor: Actor, id: string): Promise<StreamRow> {
-    const before = await this.streams.findById(id);
-    const updated = await this.streams.clearThumbnail(id, EDITABLE_STATUSES);
-    if (!updated) return this.refuse(id);
-    if (!before?.has_thumbnail) return updated;
+    const cleared = await this.streams.clearThumbnail(id, EDITABLE_STATUSES);
+    if (!cleared) return this.refuse(id);
+    const { stream, removed } = cleared;
+    if (!removed) return stream;
 
-    logger.info(`[Stream] ${describeActor(actor)} cleared the thumbnail of ${describeStream(updated)}`);
+    logger.info(`[Stream] ${describeActor(actor)} cleared the thumbnail of ${describeStream(stream)}`);
     await recordAudit(this.audit, {
       actor,
       action: 'stream.thumbnail.clear',
-      streamId: updated.id,
-      topic: updated.topic,
-      statusBefore: updated.status,
-      statusAfter: updated.status,
+      streamId: stream.id,
+      topic: stream.topic,
+      statusBefore: stream.status,
+      statusAfter: stream.status,
     });
-    return updated;
+    return stream;
   }
 
   /**
