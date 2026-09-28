@@ -6,7 +6,11 @@ import {
   isLoopbackIngestHost,
   type StampHealth,
 } from '@streaming-infra-manager/common';
-import { type CatalogueStampRecord, STAGE_RECORD_SCHEMA_VERSION } from '@streaming-monorepo/contracts';
+import {
+  type CatalogueStampPrevious,
+  type CatalogueStampRecord,
+  STAGE_RECORD_SCHEMA_VERSION,
+} from '@streaming-monorepo/contracts';
 
 import type { Profile } from '../../types/index.js';
 import type { StoredAdminLinkSecret } from '../adminLink/ManagerAdminLinkRepository.js';
@@ -52,6 +56,8 @@ type Urge = 'always' | 'if-changed';
 interface Sent {
   key: string;
   ttlSeconds: number | null;
+  /** The time to live of the batch moved from, when the record carried one. */
+  previousTtlSeconds: number | null;
   at: number;
 }
 
@@ -64,6 +70,15 @@ function isLoopbackUrl(url: string): boolean {
   }
 }
 
+/**
+ * Whether a batch's life moved by more than the clock's own wear since it was sent: a top-up or a dilution, and not
+ * Bee's estimate wandering by seconds.
+ */
+function lifeMoved(sent: number | null, now: number | null, elapsedSeconds: number): boolean {
+  if (sent === null || now === null) return sent !== now;
+  return Math.abs(now - (sent - elapsedSeconds)) > CATALOGUE_TTL_DRIFT_SECONDS;
+}
+
 const ANSWERED_STORE: readonly CataloguePushOutcome[] = ['stored', 'older-ignored'];
 const ANSWERED_CLEAR: readonly CataloguePushOutcome[] = ['cleared', 'not-cleared'];
 
@@ -74,8 +89,11 @@ const ANSWERED_CLEAR: readonly CataloguePushOutcome[] = ['cleared', 'not-cleared
  * with `DELETE`, carrying the moment it was taken out. One call at a time: a trigger that comes while one is in flight
  * makes one more after it, so a clear never overtakes the push before it.
  *
- * While a move is pending, the batch the catalogue moved from is read on the same cadence, for the card alone: the
- * record stays the pinned batch's, and nothing of the old one goes to the admin.
+ * While a move is pending, the batch the catalogue moved from is read on the same cadence, for the card and for the
+ * admin: the record stays the pinned batch's, and carries the one moved from as `previous`, because the admin keeps
+ * writing with that batch until its own move runs and would otherwise hold only readings that age. A change in its
+ * readings is pushed as one in the pinned batch's is. A reading the node did not answer, or one with no depth or with
+ * an address that reaches the dialling host alone, is left out, so the admin keeps the last one it had.
  *
  * The last outcome and the last readings are kept in memory for the Manager settings card. The log says the outcome
  * when it changes, and never what the admin answered, its address or a token.
@@ -162,46 +180,68 @@ export class CataloguePublisher {
     // Taken as the row is read, before the node is asked: the moment the record says it was observed.
     const readAt = this.clock.now();
     const row = await this.deps.designation.read();
-    // Read beside the push, so a node of the batch moved from that does not answer never holds the push back.
+    // Both batches are read at once, so the push waits for the slower of the two nodes, whose reads are bounded.
     const previous = this.readPrevious(row, readAt);
     try {
-      await this.pushFor(row, urge, readAt);
+      await this.pushFor(row, urge, readAt, previous);
     } finally {
       await previous;
     }
   }
 
   /**
-   * Reads the batch the catalogue is moving from, while a move is pending, for the card alone: the admin is sent the
-   * pinned batch's record and nothing of this one. Never throws.
+   * Reads the batch the catalogue is moving from, while a move is pending, for the card, and answers what the record
+   * carries of it as `previous`: null when no move is pending, and when the reading is not one to send. Never throws.
    */
-  private async readPrevious(row: CatalogueDesignationRow, readAt: number): Promise<void> {
+  private async readPrevious(row: CatalogueDesignationRow, readAt: number): Promise<CatalogueStampPrevious | null> {
     if (!isMoving(row)) {
       this.previousReading = null;
-      return;
+      return null;
     }
     try {
       const profile = await this.deps.profiles.findByName(row.movingFromProfileName);
       if (!profile) {
         this.previousReading = null;
-        return;
+        return null;
       }
       const { health, depth } = await this.deps.reading(profile, row.movingFromBatchId);
+      const knownDepth = depth ?? row.movingFromBatchDepth;
       this.previousReading = {
         batchId: row.movingFromBatchId,
         state: health.state,
         ttlSeconds: health.ttl,
         fillRatio: health.fillRatio,
         immutable: health.immutable,
-        depth: depth ?? row.movingFromBatchDepth,
+        depth: knownDepth,
         readAt: new Date(readAt).toISOString(),
+      };
+      // A node that did not answer says nothing new about the batch, and the admin keeps the last reading it had.
+      if (health.state === 'unknown' || knownDepth === null) return null;
+      const beeApiUrl = this.deps.beeApiUrl(profile);
+      if (isLoopbackUrl(beeApiUrl)) return null;
+      return {
+        nodeName: profile.name,
+        beeApiUrl,
+        batchId: row.movingFromBatchId,
+        // It was designated before the move, which refused a batch whose kind the node did not report.
+        immutable: health.immutable ?? true,
+        depth: knownDepth,
+        state: health.state,
+        ttlSeconds: health.ttl,
+        fillRatio: health.fillRatio,
       };
     } catch (err) {
       logger.warn(`[Catalogue] reading the batch the catalogue is moving from failed (${getErrorMessage(err)})`);
+      return null;
     }
   }
 
-  private async pushFor(row: CatalogueDesignationRow, urge: Urge, readAt: number): Promise<void> {
+  private async pushFor(
+    row: CatalogueDesignationRow,
+    urge: Urge,
+    readAt: number,
+    previousRead: Promise<CatalogueStampPrevious | null>,
+  ): Promise<void> {
     if (!isDesignated(row)) {
       this.designatedName = null;
       this.reading = null;
@@ -253,6 +293,7 @@ export class CataloguePublisher {
     }
     this.loggedProblem = null;
 
+    const previous = await previousRead;
     const record: CatalogueStampRecord = {
       schemaVersion: STAGE_RECORD_SCHEMA_VERSION,
       managerId: this.deps.managerId,
@@ -267,6 +308,7 @@ export class CataloguePublisher {
       fillRatio: health.fillRatio,
       designatedAt: row.designatedAt.toISOString(),
       observedAt: new Date(readAt).toISOString(),
+      previous,
     };
     const key = JSON.stringify([
       link.url,
@@ -278,21 +320,38 @@ export class CataloguePublisher {
       record.state,
       record.fillRatio,
       record.designatedAt,
+      previous && [
+        previous.nodeName,
+        previous.beeApiUrl,
+        previous.batchId,
+        previous.immutable,
+        previous.depth,
+        previous.state,
+        previous.fillRatio,
+      ],
     ]);
-    if (urge === 'if-changed' && !this.due(key, record.ttlSeconds, readAt)) return;
+    const previousTtlSeconds = previous?.ttlSeconds ?? null;
+    if (urge === 'if-changed' && !this.due(key, record.ttlSeconds, previousTtlSeconds, readAt)) return;
 
     const outcome = await this.send({ kind: 'store', baseUrl: link.url, token: link.token, record });
-    this.sent = ANSWERED_STORE.includes(outcome) ? { key, ttlSeconds: record.ttlSeconds, at: readAt } : null;
+    this.sent = ANSWERED_STORE.includes(outcome)
+      ? { key, ttlSeconds: record.ttlSeconds, previousTtlSeconds, at: readAt }
+      : null;
     return this.record('store', outcome);
   }
 
-  /** Whether a push is owed: 30 seconds since the last one the admin answered, or a reading that moved. */
-  private due(key: string, ttlSeconds: number | null, at: number): boolean {
+  /**
+   * Whether a push is owed: 30 seconds since the last one the admin answered, or a reading that moved, of the pinned
+   * batch or of the one moved from.
+   */
+  private due(key: string, ttlSeconds: number | null, previousTtlSeconds: number | null, at: number): boolean {
     const sent = this.sent;
     if (!sent || sent.key !== key || at - sent.at >= this.intervalMs) return true;
-    if (sent.ttlSeconds === null || ttlSeconds === null) return sent.ttlSeconds !== ttlSeconds;
-    const expected = sent.ttlSeconds - (at - sent.at) / 1000;
-    return Math.abs(ttlSeconds - expected) > CATALOGUE_TTL_DRIFT_SECONDS;
+    const elapsedSeconds = (at - sent.at) / 1000;
+    return (
+      lifeMoved(sent.ttlSeconds, ttlSeconds, elapsedSeconds) ||
+      lifeMoved(sent.previousTtlSeconds, previousTtlSeconds, elapsedSeconds)
+    );
   }
 
   private logProblem(problem: string): void {

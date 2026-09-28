@@ -1604,9 +1604,17 @@ export class DeploymentOrchestrator {
             deleteProfileEnv(paths.root, claimed.name);
           });
           if (!removed) return;
+          // The moment the row was gone, before anything slower: a stage's retirement is ordered by it.
+          const deletedAt = new Date().toISOString();
           // Nothing runs from them any more and no profile row claims them.
           await this.executions?.retireSuperseded(claimed.name, { keep: 0 });
-          this.eventBus.publish({ type: 'profile.deleted', name: claimed.name });
+          this.eventBus.publish({
+            type: 'profile.deleted',
+            name: claimed.name,
+            instanceId: claimed.instance_id,
+            kind: claimed.kind,
+            deletedAt,
+          });
           logger.info(`[Orchestrator] Removed profile ${claimed.name} (released slot ${removed.port_slot})`);
           await this.cleanupGroup(claimed.group_id);
         },

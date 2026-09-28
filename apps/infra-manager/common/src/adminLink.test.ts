@@ -26,7 +26,12 @@ import {
   adminLinkTestProblems,
   STORED_TOKEN_NOT_AN_UPLOADER,
 } from './adminLinkTest.js';
-import { adminTokenProblem, managerAdminLinkProblems } from './managerAdminLink.js';
+import {
+  adminTokenProblem,
+  managerAdminLinkProblems,
+  PLAIN_HTTP_ADMIN_LINK_WARNING,
+  plainHttpAdminLinkWarning,
+} from './managerAdminLink.js';
 
 const ADMIN_URL = 'https://admin.example.com';
 
@@ -277,6 +282,37 @@ describe("a save of the manager's own web2 admin link", () => {
     assert.deepEqual(managerAdminLinkProblems({ expectedRevision: 0, url: ADMIN_URL, token: '' }), [
       'The token cannot be empty. Leave it out to keep the stored one, or clear it.',
     ]);
+  });
+});
+
+describe("a plain http address for the manager's own web2 admin link", () => {
+  it('is warned about for any host but the manager’s own', () => {
+    for (const url of [
+      'http://admin.example.org',
+      'http://203.0.113.7:9877',
+      'HTTP://Admin.Example.org/api',
+      ' http://[2001:db8::1]:80 ',
+    ]) {
+      assert.equal(plainHttpAdminLinkWarning(url), PLAIN_HTTP_ADMIN_LINK_WARNING, url);
+    }
+  });
+
+  it('is not for https, a loopback host or what is no address at all', () => {
+    for (const url of [
+      'https://admin.example.org',
+      'http://localhost:9877',
+      'http://127.0.0.1:9877',
+      'http://[::1]:9877',
+      'http://0.0.0.0:9877',
+      '',
+      'admin.example.org',
+    ]) {
+      assert.equal(plainHttpAdminLinkWarning(url), null, url);
+    }
+  });
+
+  it('names no address and no token', () => {
+    assert.doesNotMatch(PLAIN_HTTP_ADMIN_LINK_WARNING, /example|:\/\//);
   });
 });
 

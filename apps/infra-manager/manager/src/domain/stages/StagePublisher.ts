@@ -246,7 +246,7 @@ export class StagePublisher {
       this.entryOf(event.profile.name).seenStageId = event.profile.instance_id;
       this.schedule(event.profile.name);
     } else if (event.type === 'profile.deleted') {
-      void this.retire(event.name, new Date(this.clock.now()));
+      void this.retire(event);
     }
   }
 
@@ -305,27 +305,32 @@ export class StagePublisher {
   }
 
   /**
-   * Retires a deleted deployment's stage at the link its records went to, with the moment the manager saw it gone,
-   * so a record read before that and arriving after it cannot bring the stage back. One removed before its first
-   * push is retired at the link too. One this manager has not seen since it started, one it skipped, or one whose
-   * link has moved to another origin since, is left as it is, and the last of these says so in the log.
+   * Retires a deleted deployment's stage at the link its records went to, with the moment its row was deleted, so a
+   * record read before that and arriving after it cannot bring the stage back. One removed before its first push is
+   * retired at the current link too, by the instance id the removal carries, whether or not this manager has seen it
+   * since it started: the admin keeps a retirement of a stage it never stored as a tombstone, and may hold one pushed
+   * before a restart. One it skipped since it started, or one whose link has moved to another origin since its last
+   * push, is left as it is, and the last of these says so in the log.
    */
-  private async retire(name: string, goneAt: Date): Promise<void> {
+  private async retire(gone: Extract<ManagerEvent, { type: 'profile.deleted' }>): Promise<void> {
+    const { name } = gone;
     const entry = this.entries.get(name);
     if (entry?.timer !== undefined) this.clock.clearTimeout(entry.timer);
     if (entry) entry.again = false;
     this.entries.delete(name);
-    if (!entry) return;
+    if (!entry && !isStageKind(gone.kind)) return;
     try {
       // A push in flight may be the first to reach the admin, so its answer decides whether there is a stage to retire.
-      await entry.inFlight;
+      await entry?.inFlight;
       // One removed before its first push is retired all the same, which the admin keeps as a tombstone, so a
       // record of it that arrives late does not register a deployment that is gone.
-      const stageId = entry.pushed?.stageId ?? (entry.last === null ? entry.seenStageId : null);
+      const stageId = entry
+        ? (entry.pushed?.stageId ?? (entry.last === null ? (entry.seenStageId ?? gone.instanceId) : null))
+        : gone.instanceId;
       if (!stageId) return;
       const link = await this.deps.link.storedLink();
       if (!link.url || !link.token) return;
-      if (entry.pushed && adminOriginOf(link.url) !== entry.pushed.origin) {
+      if (entry?.pushed && adminOriginOf(link.url) !== entry.pushed.origin) {
         logger.warn(`[Stages] ${name}: removed, and its stage was not retired: the web2 admin link has changed since`);
         return;
       }
@@ -334,7 +339,7 @@ export class StagePublisher {
         baseUrl: link.url,
         token: link.token,
         stageId,
-        observedAt: goneAt.toISOString(),
+        observedAt: gone.deletedAt,
       });
       const line = `[Stages] ${name}: removed, and retiring its stage came to ${outcome}`;
       if (outcome === 'retired' || outcome === 'not-retired') logger.info(line);

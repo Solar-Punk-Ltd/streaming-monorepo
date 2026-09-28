@@ -373,6 +373,53 @@ describe('a catalogue stamp record', () => {
   });
 });
 
+describe('the batch a catalogue stamp record says the catalogue is moving from', () => {
+  const OLD_BATCH = 'CD'.repeat(32);
+  const previous = () => ({
+    nodeName: 'catalogue-old',
+    beeApiUrl: 'http://bee-old.example.org:1633',
+    batchId: OLD_BATCH,
+    immutable: true,
+    depth: 20,
+    state: 'active',
+    ttlSeconds: 86_400,
+    fillRatio: 0.2,
+  });
+
+  it('is absent or null when no move is pending, and either reads as it was sent', () => {
+    assert.equal('previous' in catalogueStampRecordSchema.parse(catalogueStamp()), false);
+    assert.equal(catalogueStampRecordSchema.parse({ ...catalogueStamp(), previous: null }).previous, null);
+  });
+
+  it('carries the node, the address and the readings of the batch moved from, the batch in lower case', () => {
+    const parsed = catalogueStampRecordSchema.parse({ ...catalogueStamp(), previous: previous() });
+    assert.deepEqual(parsed.previous, { ...previous(), batchId: OLD_BATCH.toLowerCase() });
+  });
+
+  it('holds it to the rules of the record: an address, a depth, a said mutability and a known state', () => {
+    for (const over of [
+      { beeApiUrl: 'http://alice:secret@bee-old.example.org:1633' },
+      { beeApiUrl: 'bee-old.example.org' },
+      { depth: 16 },
+      { immutable: null },
+      { state: 'fine' },
+      { nodeName: '' },
+      { batchId: '0x' + 'cd'.repeat(32) },
+    ]) {
+      const record = { ...catalogueStamp(), previous: { ...previous(), ...over } };
+      assert.equal(catalogueStampRecordSchema.safeParse(record).success, false, JSON.stringify(over));
+    }
+  });
+
+  it('drops what a newer sender adds to it', () => {
+    const parsed = catalogueStampRecordSchema.parse({
+      ...catalogueStamp(),
+      previous: { ...previous(), walletKey: `0x${'a'.repeat(64)}`, observedAt: '2026-09-28T10:00:00Z' },
+    });
+    assert.deepEqual(parsed.previous, { ...previous(), batchId: OLD_BATCH.toLowerCase() });
+  });
+});
+
 describe("the admin's answers", () => {
   it('reads whether a record was stored or a stage retired', () => {
     assert.deepEqual(stageStoreAnswerSchema.parse({ stored: false, reason: 'newer' }), { stored: false });

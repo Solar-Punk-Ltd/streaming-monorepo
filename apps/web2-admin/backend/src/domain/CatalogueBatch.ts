@@ -45,7 +45,8 @@ export function catalogueRefusal(problem: CatalogueWriteProblem, batchId: string
  * before `now`, whatever `state` says. Only for a positive time to live; Bee reports a negative one when it cannot
  * tell. This compares the manager's moment with the admin's clock, which nothing else here does: a time to live is
  * measured in hours and days, so two hosts' clocks a few seconds apart cannot change the answer. It matters most for
- * a pinned batch the manager no longer reads, whose last reading only ages.
+ * a pinned batch the manager no longer reports, whose last reading only ages: a manager that is down, one older than
+ * the `previous` of a catalogue stamp record, or a move the manager has released.
  */
 export function expiredByClock(record: CatalogueStampRecord, now: number): boolean {
   if (record.ttlSeconds === null || !(record.ttlSeconds > 0)) return false;
@@ -82,10 +83,12 @@ export function refusalFor(record: CatalogueStampRecord, now: number): Catalogue
  * - The batch it would write with is expired or gone, by the last reading the admin holds or by the time to live that
  *   reading gave it (`expiredByClock`), or it is mutable: refuse.
  *
- * The pinned batch's readings, once the manager designates another, are the last ones it pushed while that batch was
- * the designated one. They are kept and shown with the moment they were read, rather than treated as unknown: they
- * are the best the admin has, and an expired or gone among them is a refusal worth making before the node refuses.
- * They only age, so a waiting move is itself a warning.
+ * The pinned batch's readings, once the manager designates another, are the ones the manager pushes of it as the
+ * record's `previous` while its move is pending, and otherwise the last ones it pushed while that batch was the
+ * designated one. They are kept and shown with the moment they were read, rather than treated as unknown: they are
+ * the best the admin has, and an expired or gone among them is a refusal worth making before the node refuses. Once
+ * the manager releases the batch, or when it sends no `previous`, they only age, so a waiting move is itself a
+ * warning.
  */
 export interface CatalogueWritePlan {
   /** The record whose node and batch a write goes through, or null when nothing is designated. */

@@ -197,7 +197,13 @@ function remove(profile) {
     state.profiles = state.profiles.filter((entry) => entry.name !== profile.name);
     state.nodes.delete(profile.name);
     state.srtPassphrases.delete(profile.name);
-    publish({ type: 'profile.deleted', name: profile.name });
+    publish({
+      type: 'profile.deleted',
+      name: profile.name,
+      instanceId: profile.instance_id,
+      kind: profile.kind,
+      deletedAt: new Date().toISOString(),
+    });
     if (profile.group_id != null && membersOf(profile.group_id).length === 0) {
       state.groups = state.groups.filter((group) => group.id !== profile.group_id);
     }

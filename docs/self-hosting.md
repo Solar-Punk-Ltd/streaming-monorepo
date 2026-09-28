@@ -151,7 +151,9 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
    deployments**: the address `https://admin.example.org` and the admin's `INTERNAL_API_TOKEN`,
    then **Test connection** and **Save**. The test proves the token on the admin's registrar check.
    It worked when it says "The web2 admin answered and took the token." The manager pushes every
-   stage and the catalogue stamp with this token, and gives it to no uploader.
+   stage and the catalogue stamp with this token, and gives it to no uploader. The address is the
+   edge's https one: every push carries this token and each stage's SRT passphrase and token hash,
+   and the card warns under a plain http address to another host.
    `apps/infra-manager/docs/features/web2-admin-link.md` has the details.
 
 9. **The Bee host and the catalogue node**, by the Bee host recipe below: the ABR node pool, and a
@@ -172,20 +174,52 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
     and publish. The OBS panel shows that stage's ingest details.
 
 **Upgrading a host that runs the admin and manager from before stages.** A fresh installation
-needs none of this. On a running one, in this order:
+needs none of this. On a running one, in this order, and only with the owner's word:
 
-1. **Deploy the admin at the phase 8 tip**, commit `d29616851` on `feat/stages`. It takes both the
-   shared token and a stage's own.
-2. **Deploy the phase 9 manager.** It works in front of the phase 8 admin: its Manager settings
-   Test connection falls back from the registrar check's 404 to the lookup, and each deployment's
-   Test connection answers `token-not-own` for every stage still to rotate.
-3. **Rotate and redeploy every stage** (**Rotate the uploader's admin token** on its deployment
+0. **Create the catalogue node**, by step 6 of the Bee host recipe below: a Bee-only deployment,
+   funded, with one immutable batch bought on it. It must be ready before step 2.
+1. **Deploy the phase 9 manager**, and designate the catalogue node and its batch on **Manager
+   settings** at once. The admin from before stages has no `/api/internal/stages` or
+   `/api/internal/catalogue-stamp` route, so every stage's push and the catalogue stamp come to
+   `not-admin` ("not a web2 admin") until step 2. That is harmless: that admin stores nothing and
+   keeps writing with its env file's batch, and Test connection on Manager settings still takes the
+   token there. Create no stage and rotate nothing until step 2 is done: an admin from before
+   stages refuses a token of its own.
+2. **Deploy the phase 8 admin**: the phase 8 state of `feat/stages` (commit `d29616851`; tag it,
+   e.g. `web2-admin/stages-phase-8`, before `feat/stages` is merged to `main`, because a squash or
+   rebase merge leaves that commit unreachable). It takes both the shared token and a stage's own.
+   It refuses every catalogue write, `503`, until it holds a catalogue stamp, so publishing and the
+   uploaders' state reports (which retry) wait from its start until the manager's next push, at
+   most ten seconds after it answers. Note the env file's `POSTAGE_BATCH_ID` and `BEE_URL` before
+   they go: the batch is needed, below.
+3. **Before any rotation, give every stream a stage.** Unpublish every scheduled stream, pick its
+   stage and publish it again, and pick a stage for every draft. A stage on a token of its own is
+   answered only about its own streams, so a stream with no stage is reached by no uploader once
+   its stage is rotated. A stream live at rotation keeps its live state on the catalogue until an
+   operator unpublishes it.
+4. **Rotate and redeploy every stage** (**Rotate the uploader's admin token** on its deployment
    page, then deploy) until the admin's Stages page reads "Its own token" for all of them.
-4. **Deploy the phase 9 admin.**
+5. **Deploy the phase 9 admin.**
 
-Skipping steps 1 to 3 means every running uploader gets 401 from the phase 9 admin until its stage
+Skipping steps 2 to 4 means every running uploader gets 401 from the phase 9 admin until its stage
 is rotated and redeployed. A fresh installation needs none of this: every stage it creates has a
 token of its own from its first deploy.
+
+After the upgrade, give each stage a `STREAM_KEY` of its own in the manager and redeploy it right
+after. A stage from before stages signs with the brand key, which its `STREAM_KEY` had to equal, so
+until then a compromised stage host leaks the brand key. A scheduled stream keeps the owner it was
+published with and is refused at the gate until it is unpublished and published again; a recording
+keeps the key it was made under.
+
+**Until the catalogue is moved, keep the batch from before stages.** On an upgraded host every
+catalogue slot written before step 2 is stamped by the env file's `POSTAGE_BATCH_ID` batch, which
+the admin records as `batch_id NULL`, and the viewer stops at the first slot it cannot find. Until
+the move has been tried on a real node
+([architecture/stages.md](architecture/stages.md#trying-the-move-on-a-real-node)) and run here:
+keep that batch topped up and its node running; never dilute it, replace it or name it in a pool
+string, since the manager does not know it and guards only the catalogue node's batches; and run
+the move as the first thing after the trial. This is the one remaining way the catalogue can go
+dark.
 
 [architecture/stages.md](architecture/stages.md) has the reasons.
 

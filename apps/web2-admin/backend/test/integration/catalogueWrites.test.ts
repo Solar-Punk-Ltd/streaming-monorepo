@@ -96,6 +96,54 @@ describe('catalogue_stamp, the pinned batch', () => {
     assert.equal(cleared?.active_batch_id, CATALOGUE_BATCH_ID, 'a clear leaves the pin');
   });
 
+  it('refreshes the pinned record from the previous batch a move pushes, and only from a reading not older than it', async () => {
+    await catalogue.upsert(catalogueStampRecord({ observedAt: at('10:00:00') }));
+    await catalogue.pin(catalogueStampRecord({ observedAt: at('10:00:00') }));
+    const { nodeName, beeApiUrl, batchId, immutable, depth, state, fillRatio } = catalogueStampRecord();
+    const previous = { nodeName, beeApiUrl, batchId, immutable, depth, state, ttlSeconds: 90 * 86_400, fillRatio };
+
+    await catalogue.upsert(
+      catalogueStampRecord({ observedAt: at('10:01:00'), batchId: NEXT_BATCH_ID, nodeName: 'next', previous }),
+    );
+    const refreshed = await catalogue.get();
+    assert.equal(refreshed?.batch_id, NEXT_BATCH_ID);
+    assert.equal(refreshed?.active_batch_id, CATALOGUE_BATCH_ID);
+    assert.equal(refreshed?.active_record?.batchId, CATALOGUE_BATCH_ID);
+    assert.equal(refreshed?.active_record?.nodeName, 'catalogue-node');
+    assert.equal(refreshed?.active_record?.ttlSeconds, 90 * 86_400);
+    assert.equal(refreshed?.active_record?.observedAt, at('10:01:00'));
+    assert.equal(refreshed?.active_record?.designatedAt, catalogueStampRecord().designatedAt);
+
+    // A previous of another batch, or none, leaves the pinned record as it was.
+    await catalogue.upsert(
+      catalogueStampRecord({
+        observedAt: at('10:02:00'),
+        batchId: NEXT_BATCH_ID,
+        previous: { ...previous, batchId: 'e4'.repeat(32), ttlSeconds: 1 },
+      }),
+    );
+    await catalogue.upsert(
+      catalogueStampRecord({ observedAt: at('10:03:00'), batchId: NEXT_BATCH_ID, previous: null }),
+    );
+    assert.equal((await catalogue.get())?.active_record?.observedAt, at('10:01:00'));
+
+    // A pinned reading newer than the record is kept, whatever the record's previous says.
+    await database.pool.query(`UPDATE catalogue_stamp SET active_record = active_record || $1::jsonb`, [
+      JSON.stringify({ observedAt: at('10:30:00') }),
+    ]);
+    await catalogue.upsert(
+      catalogueStampRecord({
+        observedAt: at('10:04:00'),
+        batchId: NEXT_BATCH_ID,
+        previous: { ...previous, ttlSeconds: 1 },
+      }),
+    );
+    const kept = await catalogue.get();
+    assert.equal(kept?.batch_id, NEXT_BATCH_ID);
+    assert.equal(kept?.active_record?.ttlSeconds, 90 * 86_400);
+    assert.equal(kept?.active_record?.observedAt, at('10:30:00'));
+  });
+
   it('pins with the stored designated record when it is for that batch, not an older copy the caller read', async () => {
     await catalogue.upsert(catalogueStampRecord({ observedAt: at('10:00:00'), ttlSeconds: 30 * 86_400 }));
     const readEarlier = catalogueStampRecord({ observedAt: at('10:00:00'), ttlSeconds: 30 * 86_400 });

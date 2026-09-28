@@ -2,6 +2,7 @@ import {
   type ManagerAdminLink,
   type ManagerAdminLinkSave,
   managerAdminLinkProblems,
+  plainHttpAdminLinkWarning,
 } from '@streaming-infra-manager/common';
 
 import { AdminLinkInputError, ManagerSettingsChangedError } from '../errors/index.js';
@@ -50,6 +51,11 @@ export class ManagerAdminLinkService {
     const saved = await this.store.write(writeOf(save), save.expectedRevision, username);
     if (!saved) throw new ManagerSettingsChangedError();
     logger.info(`[AdminLink] ${username} ${describeSave(save)}, now at revision ${saved.revision}`);
+    if (save.url !== '' && plainHttpAdminLinkWarning(save.url)) {
+      logger.warn(
+        '[AdminLink] the web2 admin link is plain http to another host: every push to it carries the stored token and each stage’s SRT passphrase in clear, so give it the https address the edge serves in production',
+      );
+    }
     return saved;
   }
 }

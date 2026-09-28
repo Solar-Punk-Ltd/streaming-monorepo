@@ -123,6 +123,29 @@ describe('PUT /manager-settings/admin-link', () => {
     }
   });
 
+  it('saves a plain http address to another host, and warns in the log without naming it or the token', async (t) => {
+    const lines: string[] = [];
+    for (const level of ['info', 'warn', 'error', 'log'] as const) {
+      t.mock.method(console, level, (...args: unknown[]) => lines.push(`${level} ${args.map(String).join(' ')}`));
+    }
+    const api = await testApi();
+    try {
+      const plain = await api.save({ expectedRevision: 0, url: 'http://admin.example.com', token: TOKEN });
+      assert.equal(plain.status, 200, plain.text);
+      const local = await api.save({ expectedRevision: 1, url: 'http://127.0.0.1:9877', token: TOKEN });
+      assert.equal(local.status, 200, local.text);
+      const secure = await api.save({ expectedRevision: 2, url: ADMIN_URL, token: TOKEN });
+      assert.equal(secure.status, 200, secure.text);
+
+      const warnings = lines.filter((line) => line.includes('plain http'));
+      assert.equal(warnings.length, 1, lines.join('\n'));
+      assert.match(warnings[0]!, /^warn .*https address/);
+      for (const line of lines) assert.ok(!line.includes(TOKEN) && !line.includes('admin.example.com'), line);
+    } finally {
+      await api.close();
+    }
+  });
+
   it('keeps the stored token when a save leaves it out, replaces it with a new one, and clears it on null', async () => {
     const api = await testApi();
     try {

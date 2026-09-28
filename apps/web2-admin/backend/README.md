@@ -257,10 +257,17 @@ chunks it wrote and the feed's history is those chunks. Migration `013` adds
   ([Moving the catalogue](#moving-the-catalogue-to-another-batch)). With no write
   recorded for the feed (the feed key changed) there is nothing to move, and
   the designated batch is pinned in its place.
-- The pinned batch's readings are then the last ones the manager pushed while
-  it was the designated batch. They are kept and shown with the moment they
-  were read, not treated as unknown: an expired or gone among them is still a
-  refusal worth making, and they only age.
+- The pinned batch's readings are then the ones the manager pushes of the
+  batch its move is from, as the record's `previous`, while that move is
+  pending in the manager: a record whose `previous.batchId` is the pinned batch
+  replaces `active_record`'s node, address and readings, as of the record's
+  `observedAt`, unless the reading it holds was observed later. So a top-up of
+  the pinned batch reaches the admin. Without one, a manager older than the
+  field, one that could not read the node, or a move already released, they are
+  the last ones the manager pushed while it was the designated batch. They are
+  kept and shown with the moment they were read, not treated as unknown: an
+  expired or gone among them is still a refusal worth making, and so is a time
+  to live that has run out since, and they only age.
 - The first write after an upgrade from `POSTAGE_BATCH_ID` pins the designated
   batch; the feed's earlier writes were stamped by the env file's batch, which
   the admin never recorded, and the log says so. Their rows keep a null

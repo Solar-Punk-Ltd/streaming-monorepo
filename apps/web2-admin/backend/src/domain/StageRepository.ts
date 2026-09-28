@@ -206,6 +206,15 @@ export class StageRepository {
   }
 }
 
+/**
+ * What a record's `previous` puts into `active_record` when the batch it names is the pinned one, as JSON: its node,
+ * address and readings, and the record's moment as theirs. Null when the record carries no `previous`.
+ */
+export function pinnedReadingOf(record: CatalogueStampRecord): string | null {
+  if (!record.previous) return null;
+  return JSON.stringify({ ...record.previous, observedAt: record.observedAt });
+}
+
 /** The one catalogue stamp row (migrations 010 and 011). */
 export class CatalogueStampRepository {
   constructor(private readonly pool: Pool) {}
@@ -222,10 +231,13 @@ export class CatalogueStampRepository {
    * before any record arrived, only such a record is stored at all.
    *
    * A record for the batch the catalogue is written with also refreshes `active_record`, so the pinned batch's node
-   * address and readings stay the manager's latest while it is the designated one. A record for another batch leaves
-   * them as they were.
+   * address and readings stay the manager's latest while it is the designated one. So does a record for another batch
+   * whose `previous`, the batch the manager's move is from, is the pinned one: its node, address and readings, as of
+   * the record's `observedAt`, replace those of `active_record`, and its designation moment stays. Either is taken
+   * only when it was observed at or after the reading it replaces. Any other record leaves them as they were.
    */
   async upsert(record: CatalogueStampRecord): Promise<CatalogueStampRow | null> {
+    const pinnedReading = pinnedReadingOf(record);
     const result = await this.pool.query<CatalogueStampRow>(
       `INSERT INTO catalogue_stamp AS c (id, manager_id, batch_id, record, observed_at, received_at)
        VALUES (TRUE, $1, $2, $3::jsonb, $4, NOW())
@@ -245,12 +257,16 @@ export class CatalogueStampRepository {
               END,
               active_record = CASE
                 WHEN c.active_batch_id = EXCLUDED.batch_id THEN EXCLUDED.record
+                WHEN $5::jsonb IS NOT NULL
+                 AND c.active_batch_id = $5::jsonb->>'batchId'
+                 AND (c.active_record->>'observedAt')::timestamptz <= EXCLUDED.observed_at
+                  THEN c.active_record || $5::jsonb
                 ELSE c.active_record
               END
         WHERE c.observed_at <= EXCLUDED.observed_at
           AND (c.record IS NOT NULL OR EXCLUDED.observed_at > c.cleared_observed_at)
        RETURNING ${CATALOGUE_COLUMNS}`,
-      [record.managerId, record.batchId, JSON.stringify(record), record.observedAt],
+      [record.managerId, record.batchId, JSON.stringify(record), record.observedAt, pinnedReading],
     );
     return result.rows[0] ?? null;
   }

@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { after, beforeEach, it } from 'node:test';
 import { throwawayRoot } from '../support/throwawayRoot.js';
+import type { ManagerEvent } from '../../src/domain/EventBus.js';
 import type { DeploymentGroupRepository } from '../../src/domain/DeploymentGroupRepository.js';
 
 const root = throwawayRoot('removal-ownership-');
@@ -115,17 +116,24 @@ it('removes all name-owned files before releasing the profile name', async () =>
   };
   await h.orchestrator.startRemove(h.original);
   h.daemon.containers.delete('owned');
-  const deleted = new Promise<void>((resolve) => {
+  const before = Date.now();
+  const deleted = new Promise<Extract<ManagerEvent, { type: 'profile.deleted' }>>((resolve) => {
     const unsubscribe = h.events.subscribe((event) => {
       if (event.type === 'profile.deleted') {
         unsubscribe();
-        resolve();
+        resolve(event);
       }
     });
   });
   h.runner.finish(0);
-  await deleted;
+  const event = await deleted;
   assert.equal(filesAtRelease, false);
+  // What a stage's retirement needs when the stage publisher never pushed it: its id, its kind and the moment.
+  assert.equal(event.name, 'owned');
+  assert.equal(event.instanceId, h.original.instance_id);
+  assert.equal(event.kind, h.original.kind);
+  const deletedAt = Date.parse(event.deletedAt);
+  assert.ok(deletedAt >= before && deletedAt <= Date.now(), event.deletedAt);
 });
 
 for (const explicit of [false, true]) {
