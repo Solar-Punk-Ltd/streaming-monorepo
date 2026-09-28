@@ -1,6 +1,8 @@
 /**
- * The `INGEST_*` keys a stream's stage replaced. An env file that still sets
- * them must start, so they are read only to be named at boot. Unit test.
+ * The `INGEST_*` keys a stream's stage replaced, and `BEE_URL` and
+ * `POSTAGE_BATCH_ID`, which the catalogue stamp replaced. An env file that
+ * still sets them must start, so they are read only to be named at boot. Unit
+ * test.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -16,13 +18,14 @@ describe('retiredEnvKeysSet', () => {
       INGEST_SRT_PASSPHRASE: '   ',
       INGEST_KEY_VERIFIED: 'true',
       BEE_URL: 'http://bee.example.org:1633',
+      FEED_TOPIC: 'swarm-stream',
     };
 
-    assert.deepEqual(retiredEnvKeysSet(env), ['INGEST_HOST', 'INGEST_SRT_PORT', 'INGEST_KEY_VERIFIED']);
+    assert.deepEqual(retiredEnvKeysSet(env), ['INGEST_HOST', 'INGEST_SRT_PORT', 'INGEST_KEY_VERIFIED', 'BEE_URL']);
     assert.deepEqual(retiredEnvKeysSet({}), []);
   });
 
-  it('retires the six ingest keys the stage replaced, and nothing the admin still reads', () => {
+  it('retires the six ingest keys the stage replaced and the two the catalogue stamp did, and nothing the admin still reads', () => {
     assert.deepEqual(
       [...RETIRED_ENV_KEYS],
       [
@@ -32,6 +35,8 @@ describe('retiredEnvKeysSet', () => {
         'INGEST_RTMP_PUBLIC',
         'INGEST_SRT_PASSPHRASE',
         'INGEST_KEY_VERIFIED',
+        'BEE_URL',
+        'POSTAGE_BATCH_ID',
       ],
     );
   });

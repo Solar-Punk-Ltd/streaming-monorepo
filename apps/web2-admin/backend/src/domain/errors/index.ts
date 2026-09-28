@@ -7,6 +7,7 @@ export {
   UserExistsError,
   WeakPasswordError,
 } from '@streaming-monorepo/web-auth';
+export { CatalogueStampUnavailableError } from './CatalogueStampUnavailableError.js';
 export { FeedFormatError } from './FeedFormatError.js';
 export { FeedOwnerMismatchError } from './FeedOwnerMismatchError.js';
 export { InvalidStateError } from './InvalidStateError.js';

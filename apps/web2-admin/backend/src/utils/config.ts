@@ -54,8 +54,6 @@ export interface AppConfig {
   host: string;
   databaseUrl: string;
   feedGateway: FeedGatewayKind;
-  beeUrl: string;
-  postageBatchId: string;
   feedPrivateKey: string;
   feedTopic: string;
   viewerBaseUrl: string;
@@ -96,8 +94,6 @@ export const config: AppConfig = {
   host: optional('WEB2_ADMIN_HOST', '0.0.0.0'),
   databaseUrl: required('DATABASE_URL'),
   feedGateway: feedGateway(),
-  beeUrl: required('BEE_URL'),
-  postageBatchId: required('POSTAGE_BATCH_ID'),
   feedPrivateKey: feedPrivateKey(),
   feedTopic: optional('FEED_TOPIC', 'swarm-stream'),
   viewerBaseUrl: optional('VIEWER_BASE_URL', ''),

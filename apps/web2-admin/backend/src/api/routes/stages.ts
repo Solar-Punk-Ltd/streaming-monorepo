@@ -1,6 +1,7 @@
 import type { CatalogueStampResponse, StageListResponse } from '@streaming-monorepo/web2-admin-common';
 import { Request, RequestHandler, Response, Router } from 'express';
 
+import type { CatalogueBatchService } from '../../domain/CatalogueBatch.js';
 import { StageService } from '../../domain/StageService.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { toCatalogueStampSummary, toStageSummary } from '../presenters.js';
@@ -32,9 +33,17 @@ export function createStagesRouter(deps: StageRoutesDeps): Router {
   return router;
 }
 
-/** `GET /api/catalogue-stamp`: the brand's catalogue batch, or null while none is designated. Behind the session. */
-export function createCatalogueStampRouter(deps: StageRoutesDeps): Router {
-  const { stageService, requireAuth } = deps;
+export interface CatalogueStampRoutesDeps extends StageRoutesDeps {
+  catalogueBatch: Pick<CatalogueBatchService, 'status'>;
+}
+
+/**
+ * `GET /api/catalogue-stamp`: the brand's catalogue batch, or null while none is designated, and what the next
+ * catalogue write does: the batch it is written with, why it is refused, and a move that is waiting. Behind the
+ * session. My Streams warns from the second, the Stages page shows the first.
+ */
+export function createCatalogueStampRouter(deps: CatalogueStampRoutesDeps): Router {
+  const { stageService, catalogueBatch, requireAuth } = deps;
   const router = Router();
 
   router.use(requireAuth);
@@ -42,8 +51,11 @@ export function createCatalogueStampRouter(deps: StageRoutesDeps): Router {
   router.get(
     '/',
     asyncHandler(async (_req: Request, res: Response) => {
-      const stamp = await stageService.catalogueStamp();
-      const response: CatalogueStampResponse = { catalogueStamp: stamp ? toCatalogueStampSummary(stamp) : null };
+      const [stamp, catalogueWrite] = await Promise.all([stageService.catalogueStamp(), catalogueBatch.status()]);
+      const response: CatalogueStampResponse = {
+        catalogueStamp: stamp ? toCatalogueStampSummary(stamp) : null,
+        catalogueWrite,
+      };
       res.json(response);
     }),
   );

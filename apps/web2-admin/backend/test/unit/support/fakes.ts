@@ -17,7 +17,13 @@ import type { OperatorActor } from '../../../src/domain/actor.js';
 import type { AuditAction, AuditEntry, AuditLog } from '../../../src/domain/AuditLog.js';
 import type { IngestStreamStore } from '../../../src/domain/IngestService.js';
 import type { LadderRenditionStore, LadderStreamStore } from '../../../src/domain/LadderService.js';
-import type { FeedWriteLog, PublishRenditionStore, PublishStreamStore } from '../../../src/domain/PublishService.js';
+import type { FeedWriteRecord } from '../../../src/domain/FeedWriteRepository.js';
+import type {
+  CatalogueTargets,
+  FeedWriteLog,
+  PublishRenditionStore,
+  PublishStreamStore,
+} from '../../../src/domain/PublishService.js';
 import type { OrphanedPublishingStore } from '../../../src/domain/resetOrphanedPublishing.js';
 import type { ClearedThumbnail, StreamInsertData, StreamUpdateData } from '../../../src/domain/StreamRepository.js';
 import type { StreamServiceStore } from '../../../src/domain/StreamService.js';
@@ -448,39 +454,16 @@ function toDate(value: string | null): Date | null {
   return value === null ? null : new Date(value);
 }
 
-interface FakeFeedWriteRecord {
-  owner: string;
-  topic: string;
-  feedIndex: number;
-  entryCount: number;
-  payload: unknown[];
-  reference: string | null;
-}
-
 /**
  * The log, and — as in production since migration 003 — the authority on the
  * next index. Keyed by `(owner, topic)` exactly as the partial unique index
  * is, so a test that rotates the feed key gets its own sequence.
  */
 export class FakeFeedWriteLog implements FeedWriteLog {
-  readonly records: FakeFeedWriteRecord[] = [];
+  readonly records: FeedWriteRecord[] = [];
 
-  async record(
-    owner: string,
-    topic: string,
-    feedIndex: number,
-    entryCount: number,
-    payload: unknown[],
-    reference: string | null,
-  ): Promise<void> {
-    this.records.push({
-      owner,
-      topic,
-      feedIndex,
-      entryCount,
-      payload,
-      reference,
-    });
+  async record(write: FeedWriteRecord): Promise<void> {
+    this.records.push(structuredClone(write));
   }
 
   async lastWrite(owner: string, topic: string): Promise<{ index: number; entries: unknown[] } | null> {
@@ -489,4 +472,15 @@ export class FakeFeedWriteLog implements FeedWriteLog {
     const last = mine.reduce((a, b) => (b.feedIndex > a.feedIndex ? b : a));
     return { index: last.feedIndex, entries: last.payload };
   }
+}
+
+/**
+ * No catalogue stamp, and none needed: what the in-memory gateway gets in a local run with no manager. The suites
+ * about publishing itself use it; the catalogue batch rules have suites of their own over CatalogueBatchService.
+ */
+export function noCatalogueStamp(): CatalogueTargets {
+  return {
+    forWrite: async () => null,
+    forRead: async () => ({ target: null }),
+  };
 }

@@ -480,9 +480,15 @@ async function handle(req, res) {
   }
 
   // No manager pushes into the mock, so its stages are fixed and it has no
-  // catalogue stamp.
+  // catalogue stamp. It publishes anyway, as the API does with
+  // FEED_GATEWAY=fake, so My Streams shows no refusal.
   if (path === '/api/stages' && method === 'GET') return send(res, 200, { stages });
-  if (path === '/api/catalogue-stamp' && method === 'GET') return send(res, 200, { catalogueStamp: null });
+  if (path === '/api/catalogue-stamp' && method === 'GET') {
+    return send(res, 200, {
+      catalogueStamp: null,
+      catalogueWrite: { batch: null, refusal: null, moveWaitingTo: null },
+    });
+  }
 
   if (path === '/api/streams' && method === 'GET') {
     const list = [...streams.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(publicStream);

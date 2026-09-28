@@ -2,6 +2,7 @@ import type {
   AddUserRequest,
   CatalogueStampResponse,
   CatalogueStampSummary,
+  CatalogueWriteStatus,
   ChangePasswordRequest,
   IngestDetails,
   MeResponse,
@@ -256,6 +257,12 @@ export async function fetchStages(): Promise<StageSummary[]> {
 export async function fetchCatalogueStamp(): Promise<CatalogueStampSummary | null> {
   const body = await getJson<CatalogueStampResponse>(`${API}/catalogue-stamp`);
   return body.catalogueStamp;
+}
+
+/** What the next catalogue write does: the batch it goes through, why it is refused, and a move that is waiting. */
+export async function fetchCatalogueWrite(): Promise<CatalogueWriteStatus> {
+  const body = await getJson<CatalogueStampResponse>(`${API}/catalogue-stamp`);
+  return body.catalogueWrite;
 }
 
 // --- public config ----------------------------------------------------------

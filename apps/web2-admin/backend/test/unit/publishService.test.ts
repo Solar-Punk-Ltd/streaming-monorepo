@@ -42,6 +42,7 @@ import {
   FakeRenditionStore,
   FakeStreamStore,
   InMemoryAuditLog,
+  noCatalogueStamp,
   streamRow,
   TEST_OPERATOR,
   TEST_OWNER,
@@ -76,7 +77,7 @@ function setup(gateway = new FakeFeedGateway()) {
   const store = new FakeStreamStore(renditions);
   const writes = new FakeFeedWriteLog();
   const audit = new InMemoryAuditLog();
-  const service = new PublishService(store, renditions, stagesWithMain(), writes, gateway, feed, audit);
+  const service = new PublishService(store, renditions, stagesWithMain(), writes, gateway, noCatalogueStamp(), feed, audit);
   return { store, renditions, writes, gateway, audit, service };
 }
 
@@ -125,9 +126,15 @@ describe('PublishService.publish', () => {
         feedIndex: 0,
         entryCount: 1,
         payload: gateway.writes[0]!.entries,
+        // The exact string the gateway was handed, byte for byte: what moving
+        // the catalogue to another batch uploads again.
+        payloadText: gateway.writes[0]!.payloadText,
         reference: gateway.writes[0]!.reference,
+        // No catalogue stamp in this suite: the in-memory gateway's local run.
+        batchId: null,
       },
     ]);
+    assert.equal(writes.records[0]!.payloadText, JSON.stringify(writes.records[0]!.payload));
   });
 
   it('replaces its own entry in place on a republish, and advances the index', async () => {
@@ -210,6 +217,7 @@ describe('PublishService.publish', () => {
       filename: `${row.topic}.png`,
       contentType: 'image/png',
       size: bytes.length,
+      target: null,
     });
     assert.match(first.stream.thumbnail_ref ?? '', /^[0-9a-f]{64}$/);
     assert.equal(entriesOf(gateway)[0]!.thumbnail, first.stream.thumbnail_ref);
@@ -865,11 +873,11 @@ describe('FakeFeedGateway', () => {
     // where the database says the feed is would break publishing until the
     // table was emptied by hand.
     const gateway = new FakeFeedGateway();
-    await gateway.write([], 41);
+    await gateway.write('[]', 41);
     assert.equal((await gateway.readLatest()).index, 41);
 
-    await gateway.write([], 42);
-    await assert.rejects(() => gateway.write([], 42), /expected 43/, 'within one process the check still stands');
+    await gateway.write('[]', 42);
+    await assert.rejects(() => gateway.write('[]', 42), /expected 43/, 'within one process the check still stands');
   });
 });
 
@@ -960,8 +968,8 @@ describe('PublishService.checkFeedOnBoot', () => {
     await service.publish(TEST_OPERATOR, row.id);
 
     // The network moves on without us: two more updates under our key.
-    await gateway.write([foreign], 1);
-    await gateway.write([foreign], 2);
+    await gateway.write(JSON.stringify([foreign]), 1);
+    await gateway.write(JSON.stringify([foreign]), 2);
 
     const check = await service.checkFeedOnBoot();
 
@@ -970,6 +978,8 @@ describe('PublishService.checkFeedOnBoot', () => {
     assert.equal(check.adopted, true);
     assert.deepEqual(writes.records.at(-1)!.payload, [foreign]);
     assert.equal(writes.records.at(-1)!.reference, null, 'not ours to name');
+    assert.equal(writes.records.at(-1)!.batchId, null, 'nor the batch that stamped it');
+    assert.equal(writes.records.at(-1)!.payloadText, JSON.stringify([foreign]), 'the bytes the node holds');
 
     // The next publish continues after the adopted head and keeps what was
     // found there.
@@ -1256,13 +1266,13 @@ describe('PublishService and the edited-since-published notice', () => {
       }),
     );
     const write = gateway.write.bind(gateway);
-    gateway.write = async (entries: unknown[], index: number) => {
+    gateway.write = async (payloadText: string, index: number) => {
       store.add({
         ...store.get(row.id),
         title: 'Saved mid-write',
         content_edited_at: EDITED_AT,
       });
-      return write(entries, index);
+      return write(payloadText, index);
     };
 
     await service.republishWithState(UPLOADER, store.get(row.id));

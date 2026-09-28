@@ -8,8 +8,9 @@ import { StampNumbers, StampStateChip, stampConcern } from './stamps';
 export const NO_CATALOGUE_STAMP = 'The manager has not designated a catalogue batch yet.';
 
 /**
- * The brand's catalogue batch, as the manager last read it. The catalogue is not written through it yet; this card
- * says what the manager designated and how much life it has left.
+ * The brand's catalogue batch, as the manager last read it: what the manager designated and how much life it has
+ * left. The catalogue is written through it, or through the batch the admin pinned while a move to it waits; My
+ * Streams says which, and warns.
  */
 export function CatalogueStampCard({ stamp, now }: { stamp: CatalogueStampSummary | null; now: number }) {
   const concern = stampConcern(stamp);

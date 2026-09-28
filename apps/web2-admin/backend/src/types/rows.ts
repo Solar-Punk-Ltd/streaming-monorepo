@@ -157,6 +157,15 @@ export interface CatalogueStampRow {
   cleared_observed_at: Date | null;
   /** When that clear arrived. */
   cleared_at: Date | null;
+  /**
+   * The batch the catalogue is written with (migration 011), or null until a write pins one. It stays what it is when
+   * the manager designates another batch or clears the designation.
+   */
+  active_batch_id: string | null;
+  /** The last record the manager pushed for that batch: its node's Bee API address and its readings. */
+  active_record: CatalogueStampRecord | null;
+  /** When the admin pinned it, by its own clock. */
+  active_pinned_at: Date | null;
 }
 
 /** The row while a catalogue batch is designated: it has a record, and no clear stands. */

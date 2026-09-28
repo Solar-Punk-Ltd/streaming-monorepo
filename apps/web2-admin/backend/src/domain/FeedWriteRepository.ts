@@ -2,6 +2,28 @@ import { Pool } from 'pg';
 
 import { FeedFormatError } from './errors/index.js';
 
+/** One row of `feed_writes`, as a write or the boot check's adoption records it. */
+export interface FeedWriteRecord {
+  owner: string;
+  topic: string;
+  feedIndex: number;
+  entryCount: number;
+  /** The list, element by element. */
+  payload: unknown[];
+  /**
+   * The exact string uploaded as the payload (migration 011), or null for a head adopted from the network when the
+   * gateway could not say what it read.
+   */
+  payloadText: string | null;
+  /** Chunk reference hex, or null for a head adopted from the network at boot. */
+  reference: string | null;
+  /**
+   * The batch that stamped the write, or null when the admin does not know it: a head adopted from the network, or a
+   * write the in-memory gateway took with no catalogue stamp.
+   */
+  batchId: string | null;
+}
+
 /** The newest write this backend recorded for one feed. */
 export interface LastFeedWrite {
   index: number;
@@ -29,19 +51,25 @@ export interface LastFeedWrite {
 export class FeedWriteRepository {
   constructor(private readonly pool: Pool) {}
 
-  async record(
-    owner: string,
-    topic: string,
-    feedIndex: number,
-    entryCount: number,
-    payload: unknown[],
-    reference: string | null,
-  ): Promise<void> {
+  /**
+   * `payload` is stored from `payloadText` when there is one, so the parsed column and the exact bytes cannot drift
+   * apart; migration 011's CHECK holds them together as well.
+   */
+  async record(write: FeedWriteRecord): Promise<void> {
     await this.pool.query(
       `INSERT INTO feed_writes
-         (feed_owner, feed_topic, feed_index, entry_count, payload, reference)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
-      [normalise(owner), normalise(topic), feedIndex, entryCount, JSON.stringify(payload), reference],
+         (feed_owner, feed_topic, feed_index, entry_count, payload, reference, payload_text, batch_id)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)`,
+      [
+        normalise(write.owner),
+        normalise(write.topic),
+        write.feedIndex,
+        write.entryCount,
+        write.payloadText ?? JSON.stringify(write.payload),
+        write.reference,
+        write.payloadText,
+        write.batchId,
+      ],
     );
   }
 

@@ -104,10 +104,14 @@ function reportRendition(id: string, body: unknown): Promise<RawResponse> {
   });
 }
 
-/** The entry for this topic in the newest feed write that contains it. */
+/**
+ * The entry for this topic in the newest feed write that contains it. Every such row also carries the exact string
+ * the gateway was handed (migration 011), which must read back as the payload, and no batch: this instance runs the
+ * in-memory gateway with no catalogue stamp.
+ */
 async function catalogueEntry(topic: string): Promise<FeedStreamEntry> {
-  const result = await pool.query<{ payload: unknown[] }>(
-    `SELECT payload FROM feed_writes
+  const result = await pool.query<{ payload: unknown[]; payload_text: string | null; batch_id: string | null }>(
+    `SELECT payload, payload_text, batch_id FROM feed_writes
       WHERE payload @> $1::jsonb
       ORDER BY id DESC
       LIMIT 1`,
@@ -115,6 +119,8 @@ async function catalogueEntry(topic: string): Promise<FeedStreamEntry> {
   );
   const payload = result.rows[0]?.payload;
   assert.ok(payload, `no feed write contains topic ${topic}`);
+  assert.deepEqual(JSON.parse(result.rows[0]!.payload_text ?? 'null'), payload, 'payload_text is not the payload');
+  assert.equal(result.rows[0]!.batch_id, null);
   const entry = payload.find((e) => (e as FeedStreamEntry | null)?.topic === topic);
   assert.ok(entry, `topic ${topic} not in the payload`);
   return entry as FeedStreamEntry;

@@ -19,6 +19,7 @@ import { quoteForLog } from '../utils/logText.js';
 
 import { describeActor, MANAGER } from './actor.js';
 import { recordAudit, type AuditLog } from './AuditLog.js';
+import { shortBatch } from './CatalogueBatch.js';
 import { Logger } from './Logger.js';
 import { Mutex } from './Mutex.js';
 import type { RetireOutcome, StageWrite } from './StageRepository.js';
@@ -62,11 +63,6 @@ export function splitStageRecord(record: StageRecord): StageWrite {
 /** `"Main stage" (stage 5f0c…)`: how a log line names a stage. The name is the manager's free text. */
 export function describeStage(stage: { name: string; stageId: string }): string {
   return `${quoteForLog(stage.name)} (stage ${stage.stageId})`;
-}
-
-/** `ab12cd34…`: enough of a batch id to recognise it in a log. */
-function shortBatch(batchId: string): string {
-  return `${batchId.slice(0, 8)}…`;
 }
 
 /** What a secret did between two records, said without the secret. */
@@ -135,12 +131,23 @@ export function stageChanges(previous: StageSecretsRow, write: StageWrite): Stag
  * not interleaved with another push. The admin is one process; the SQL holds the ordering rule as well.
  */
 export class StageService {
+  private catalogueStampStored: (() => void) | null = null;
+
   constructor(
     private readonly stages: StageStore,
     private readonly catalogue: CatalogueStampStore,
     private readonly audit: AuditLog,
     private readonly mutex: Mutex = new Mutex(),
   ) {}
+
+  /**
+   * Called after a push stores a catalogue stamp record that designates a batch. The boot's feed check, which reads
+   * the feed head through the catalogue node, waits for this when the admin started with none. The listener runs
+   * after the answer is decided and must not throw; what it starts, it runs on its own.
+   */
+  onCatalogueStampStored(listener: () => void): void {
+    this.catalogueStampStored = listener;
+  }
 
   list(): Promise<StageRow[]> {
     return this.stages.list();
@@ -231,6 +238,7 @@ export class StageService {
       }
 
       await this.recordCatalogueStored(previous, record, written);
+      if (isDesignated(written)) this.catalogueStampStored?.();
       return { stored: true };
     });
   }

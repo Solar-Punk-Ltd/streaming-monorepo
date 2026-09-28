@@ -3,7 +3,7 @@ import { Bee, BeeResponseError, FeedIndex, PrivateKey, Topic } from '@etherspher
 import { getErrorMessage } from '../utils/errorUtils.js';
 
 import { FeedFormatError, ThumbnailCheckError } from './errors/index.js';
-import type { FeedGateway, FeedSnapshot } from './FeedGateway.js';
+import type { CatalogueTarget, FeedGateway, FeedSnapshot } from './FeedGateway.js';
 import { Logger } from './Logger.js';
 
 const logger = Logger.getInstance();
@@ -16,8 +16,6 @@ const logger = Logger.getInstance();
 const REFERENCE_CHECK_TIMEOUT_MS = 30_000;
 
 export interface BeeFeedGatewayOptions {
-  beeUrl: string;
-  postageBatchId: string;
   feedPrivateKey: string;
   feedTopic: string;
 }
@@ -25,6 +23,12 @@ export interface BeeFeedGatewayOptions {
 /**
  * The real thing: the stream list feed as swarm-hls-stream's StreamCatalog
  * writes it — one feed, payload is the whole JSON array, one index per update.
+ *
+ * The node and the batch are not this gateway's. Every call is handed the
+ * catalogue target its caller read from the stored catalogue stamp, so a new
+ * designation, a moved node or a pinned batch takes effect on the next call
+ * with nothing restarted. Only the key and the topic, which name the feed, are
+ * fixed here.
  *
  * This gateway holds no index state of its own, and it is no longer asked to.
  * `readLatest` was once the source of the next index — head + 1 — on the
@@ -40,30 +44,25 @@ export interface BeeFeedGatewayOptions {
  * nothing: the index it is given is the caller's decision.
  */
 export class BeeFeedGateway implements FeedGateway {
-  private readonly bee: Bee;
   private readonly signer: PrivateKey;
   private readonly topic: Topic;
-  private readonly postageBatchId: string;
-  /** Kept for `hasReference`, which bee-js has no call for. */
-  private readonly beeUrl: string;
+  /** The client of the last node called, kept while the targets name the same one. */
+  private client: { url: string; bee: Bee } | null = null;
 
   constructor(options: BeeFeedGatewayOptions) {
-    this.bee = new Bee(options.beeUrl);
-    this.beeUrl = options.beeUrl.replace(/\/+$/, '');
     this.signer = new PrivateKey(options.feedPrivateKey);
     this.topic = Topic.fromString(options.feedTopic);
-    this.postageBatchId = options.postageBatchId;
   }
 
-  async readLatest(): Promise<FeedSnapshot> {
+  async readLatest(target: CatalogueTarget | null): Promise<FeedSnapshot> {
     const owner = this.signer.publicKey().address();
     try {
-      const result = await this.bee.feed.makeReader(this.topic, owner).downloadPayload();
+      const result = await this.bee(target).feed.makeReader(this.topic, owner).downloadPayload();
       const payload = result.payload.toJSON();
       if (!Array.isArray(payload)) {
         throw new FeedFormatError(`expected a JSON array, got ${typeof payload}`);
       }
-      return { index: Number(result.feedIndex.toBigInt()), entries: payload };
+      return { index: Number(result.feedIndex.toBigInt()), entries: payload, payloadText: result.payload.toUtf8() };
     } catch (error) {
       // 404 = the topic was never written, 503 = the feed exists but has no
       // update yet. Both mean "start at index 0 with an empty list"; anything
@@ -76,32 +75,39 @@ export class BeeFeedGateway implements FeedGateway {
     }
   }
 
-  async write(entries: unknown[], index: number): Promise<string> {
+  async write(payloadText: string, index: number, target: CatalogueTarget | null): Promise<string> {
+    const { batchId } = required(target);
     // Encoded here rather than handed over as a string: bee-js decides
     // between an inline payload and a wrapped chunk on `.length > 4096`,
     // which counts UTF-16 units for a string. One non-ASCII character in a
     // title is then counted as one unit but takes more than one byte, so a
     // list just under the limit would be rejected by the node.
-    const payload = new TextEncoder().encode(JSON.stringify(entries));
-    const result = await this.bee.feed.makeWriter(this.topic, this.signer).uploadPayload(this.postageBatchId, payload, {
-      index: FeedIndex.fromBigInt(BigInt(index)),
-    });
+    const payload = new TextEncoder().encode(payloadText);
+    const result = await this.bee(target)
+      .feed.makeWriter(this.topic, this.signer)
+      .uploadPayload(batchId, payload, { index: FeedIndex.fromBigInt(BigInt(index)) });
     logger.info(
-      `[BeeFeedGateway] Wrote feed index=${index} entries=${entries.length} bytes=${payload.length} ref=${result.reference.toHex()}`,
+      `[BeeFeedGateway] Wrote feed index=${index} bytes=${payload.length} batch=${batchId.slice(0, 8)}… ref=${result.reference.toHex()}`,
     );
     return result.reference.toHex();
   }
 
-  async uploadThumbnail(bytes: Uint8Array, filename: string, contentType: string): Promise<string> {
-    const result = await this.bee.file.upload(this.postageBatchId, bytes, filename, { contentType });
+  async uploadThumbnail(
+    bytes: Uint8Array,
+    filename: string,
+    contentType: string,
+    target: CatalogueTarget | null,
+  ): Promise<string> {
+    const { batchId } = required(target);
+    const result = await this.bee(target).file.upload(batchId, bytes, filename, { contentType });
     logger.info(
       `[BeeFeedGateway] Uploaded thumbnail ${filename} (${bytes.length} bytes) ref=${result.reference.toHex()}`,
     );
     return result.reference.toHex();
   }
 
-  async hasReference(reference: string): Promise<boolean> {
-    const url = `${this.beeUrl}/bzz/${reference}/`;
+  async hasReference(reference: string, target: CatalogueTarget | null): Promise<boolean> {
+    const url = `${withoutTrailingSlash(required(target).beeApiUrl)}/bzz/${reference}/`;
     let response: Response;
     try {
       response = await fetch(url, {
@@ -138,6 +144,26 @@ export class BeeFeedGateway implements FeedGateway {
     if (response.status === 404) return false;
     throw new ThumbnailCheckError(reference, `the node answered ${response.status}`);
   }
+
+  private bee(target: CatalogueTarget | null): Bee {
+    const { beeApiUrl } = required(target);
+    if (this.client?.url !== beeApiUrl) this.client = { url: beeApiUrl, bee: new Bee(beeApiUrl) };
+    return this.client.bee;
+  }
+}
+
+/**
+ * The real gateway writes somewhere, so it is always handed a catalogue target: the catalogue batch service refuses
+ * before any call when no stamp is stored. Reaching this is a wiring mistake, and it says so rather than calling a
+ * node at `undefined`.
+ */
+function required(target: CatalogueTarget | null): CatalogueTarget {
+  if (!target) throw new Error('BeeFeedGateway was called without a catalogue stamp to write through');
+  return target;
+}
+
+function withoutTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, '');
 }
 
 function isTimeout(error: unknown): boolean {

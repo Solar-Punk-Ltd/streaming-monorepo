@@ -36,7 +36,8 @@ export type AuditAction =
   | 'stage.unretire'
   | 'catalogue.stamp.set'
   | 'catalogue.stamp.change'
-  | 'catalogue.stamp.clear';
+  | 'catalogue.stamp.clear'
+  | 'catalogue.batch.pin';
 
 /**
  * One row of `audit_log`: who did what to which stream, and what it moved.

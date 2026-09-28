@@ -26,6 +26,7 @@ import { createRequireUploaderToken } from '../../src/api/middleware/requireUplo
 import { createInternalRouter } from '../../src/api/routes/internal.js';
 import { createCatalogueStampRouter, createStagesRouter } from '../../src/api/routes/stages.js';
 import { AuthService } from '../../src/domain/auth/AuthService.js';
+import { CatalogueBatchService } from '../../src/domain/CatalogueBatch.js';
 import { LadderService } from '../../src/domain/LadderService.js';
 import { StageService } from '../../src/domain/StageService.js';
 import { StreamStateService } from '../../src/domain/StreamStateService.js';
@@ -43,6 +44,7 @@ import {
   FakeRenditionStore,
   FakeStreamStore,
   InMemoryAuditLog,
+  noCatalogueStamp,
   TEST_OWNER,
 } from './support/fakes.js';
 import {
@@ -92,6 +94,7 @@ before(async () => {
     stages,
     new FakeFeedWriteLog(),
     new FakeFeedGateway(),
+    noCatalogueStamp(),
     feed,
     audit,
   );
@@ -111,7 +114,10 @@ before(async () => {
   );
   app.use(express.json());
   app.use('/api/stages', createStagesRouter({ stageService, requireAuth }));
-  app.use('/api/catalogue-stamp', createCatalogueStampRouter({ stageService, requireAuth }));
+  const catalogueBatch = new CatalogueBatchService(catalogue, new FakeFeedWriteLog(), feed, audit, {
+    stampRequired: true,
+  });
+  app.use('/api/catalogue-stamp', createCatalogueStampRouter({ stageService, catalogueBatch, requireAuth }));
   app.use(notFound);
   app.use(errorHandler);
 
@@ -386,14 +392,37 @@ describe('the console’s stage reads', () => {
 
   it('answer null for the catalogue stamp until it is set, and never the Bee API address', async () => {
     const before = await call('GET', '/api/catalogue-stamp', { token: null, cookie });
-    assert.deepEqual(before.body, { catalogueStamp: null });
+    assert.deepEqual(before.body, {
+      catalogueStamp: null,
+      catalogueWrite: {
+        batch: null,
+        refusal: {
+          problem: 'none',
+          message:
+            'The manager has not designated a catalogue batch yet. Nothing is written to the catalogue until it does.',
+        },
+        moveWaitingTo: null,
+      },
+    });
 
     await call('PUT', '/api/internal/catalogue-stamp', { body: catalogueStampRecord() });
     const after = await call('GET', '/api/catalogue-stamp', { token: null, cookie });
 
-    const { catalogueStamp } = after.body as CatalogueStampResponse;
+    const { catalogueStamp, catalogueWrite } = after.body as CatalogueStampResponse;
     assert.equal(catalogueStamp?.batchId, catalogueStampRecord().batchId);
     assert.equal(catalogueStamp?.depth, 22);
+    assert.deepEqual(catalogueWrite, {
+      batch: {
+        batchId: catalogueStampRecord().batchId,
+        nodeName: 'catalogue-node',
+        state: 'active',
+        ttlSeconds: 30 * 86_400,
+        fillRatio: 0.01,
+        observedAt: catalogueStampRecord().observedAt,
+      },
+      refusal: null,
+      moveWaitingTo: null,
+    });
     assert.equal(after.text.includes('192.0.2.10'), false, 'the Bee API address reached the console');
   });
 });

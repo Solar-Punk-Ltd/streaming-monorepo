@@ -11,7 +11,8 @@ const STAGE_COLUMNS = `stage_id, manager_id, name, kind, engine, owner, record,
   srt_passphrase IS NOT NULL AS has_srt_passphrase, admin_token_kind,
   observed_at, received_at, retired_observed_at, retired_at`;
 
-const CATALOGUE_COLUMNS = `manager_id, batch_id, record, observed_at, received_at, cleared_observed_at, cleared_at`;
+const CATALOGUE_COLUMNS = `manager_id, batch_id, record, observed_at, received_at, cleared_observed_at, cleared_at,
+  active_batch_id, active_record, active_pinned_at`;
 
 /** A stage record split the way migration 009 keeps it. */
 export interface StageWrite {
@@ -196,7 +197,7 @@ export class StageRepository {
   }
 }
 
-/** The one catalogue stamp row (migration 010). */
+/** The one catalogue stamp row (migrations 010 and 011). */
 export class CatalogueStampRepository {
   constructor(private readonly pool: Pool) {}
 
@@ -210,6 +211,10 @@ export class CatalogueStampRepository {
    * Stores the record unless the stored one was observed later, and answers the row as written, or null when it was
    * kept out. A cleared designation is set again only by a record observed after the clear; on a row a clear made
    * before any record arrived, only such a record is stored at all.
+   *
+   * A record for the batch the catalogue is written with also refreshes `active_record`, so the pinned batch's node
+   * address and readings stay the manager's latest while it is the designated one. A record for another batch leaves
+   * them as they were.
    */
   async upsert(record: CatalogueStampRecord): Promise<CatalogueStampRow | null> {
     const result = await this.pool.query<CatalogueStampRow>(
@@ -228,6 +233,10 @@ export class CatalogueStampRepository {
               cleared_at = CASE
                 WHEN EXCLUDED.observed_at > c.cleared_observed_at THEN NULL
                 ELSE c.cleared_at
+              END,
+              active_record = CASE
+                WHEN c.active_batch_id = EXCLUDED.batch_id THEN EXCLUDED.record
+                ELSE c.active_record
               END
         WHERE c.observed_at <= EXCLUDED.observed_at
           AND (c.record IS NOT NULL OR EXCLUDED.observed_at > c.cleared_observed_at)
@@ -235,6 +244,21 @@ export class CatalogueStampRepository {
       [record.managerId, record.batchId, JSON.stringify(record), record.observedAt],
     );
     return result.rows[0] ?? null;
+  }
+
+  /**
+   * Pins `record`'s batch as the one the catalogue is written with, and keeps the record as its node and readings.
+   * Answers whether it changed anything: pinning the batch already pinned is a no-op, so a write that races another
+   * cannot move `active_pinned_at`. The decision to pin is the catalogue batch service's; this only stores it.
+   */
+  async pin(record: CatalogueStampRecord): Promise<boolean> {
+    const result = await this.pool.query(
+      `UPDATE catalogue_stamp
+          SET active_batch_id = $1, active_record = $2::jsonb, active_pinned_at = NOW()
+        WHERE active_batch_id IS DISTINCT FROM $1`,
+      [record.batchId, JSON.stringify(record)],
+    );
+    return (result.rowCount ?? 0) > 0;
   }
 
   /** Clears the designation as of `observedAt`, the manager's moment, under the rules a stage is retired by. */

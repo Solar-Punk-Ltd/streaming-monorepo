@@ -24,7 +24,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import ImageNotSupportedOutlinedIcon from '@mui/icons-material/ImageNotSupportedOutlined';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import type { StageSummary, Stream } from '@streaming-monorepo/web2-admin-common';
+import type { CatalogueWriteStatus, StageSummary, Stream } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
 import { errorMessage } from '../errors';
@@ -32,6 +32,7 @@ import { formatDateTime } from '../dateUtil';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { MediaTypeChip, StatusChip } from '../components/StatusChip';
 import { useSnackbar } from '../components/Snackbar';
+import { CatalogueWriteBanner } from '../components/stages/CatalogueWriteBanner';
 import { unknownStageLabel } from '../components/stages/StageField';
 
 /** The filter's two values that are not a stage id. */
@@ -97,6 +98,8 @@ export function StreamsPage() {
   const [deleting, setDeleting] = useState(false);
   const [stages, setStages] = useState<ReadonlyMap<string, StageSummary>>(new Map());
   const [stageFilter, setStageFilter] = useState(ALL_STAGES);
+  const [catalogueWrite, setCatalogueWrite] = useState<CatalogueWriteStatus | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   const load = useCallback(() => {
     setError(null);
@@ -110,6 +113,15 @@ export function StreamsPage() {
       .fetchStages()
       .then((list) => setStages(new Map(list.map((stage) => [stage.stageId, stage]))))
       .catch(() => undefined);
+    // Apart from the list: a banner that cannot be read is no reason not to show the streams, and a publish that is
+    // refused still says why in its own answer.
+    api
+      .fetchCatalogueWrite()
+      .then((status) => {
+        setCatalogueWrite(status);
+        setNow(Date.now());
+      })
+      .catch(() => setCatalogueWrite(null));
   }, []);
 
   // Every stage the manager pushed, retired ones included, and any stage a
@@ -159,6 +171,8 @@ export function StreamsPage() {
           Create New Stream
         </Button>
       </Stack>
+
+      <CatalogueWriteBanner status={catalogueWrite} now={now} />
 
       {error ? (
         <Alert

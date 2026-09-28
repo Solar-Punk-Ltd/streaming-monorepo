@@ -104,7 +104,46 @@ export interface CatalogueStampSummary {
   receivedAt: string;
 }
 
-/** Null until the manager designates a catalogue batch, and again once it clears the designation. */
+/**
+ * How full the catalogue batch may get before My Streams warns. An immutable batch refuses a write into a full
+ * bucket, and the catalogue's next write would be that one.
+ */
+export const CATALOGUE_FILL_WARNING_RATIO = 0.9;
+
+/**
+ * Why the admin refuses to write the catalogue: the manager has designated no batch (`none`) or cleared the
+ * designation (`cleared`), or the batch the catalogue is written with is `expired` or `gone`.
+ */
+export const CATALOGUE_WRITE_PROBLEMS = ['none', 'cleared', 'expired', 'gone'] as const;
+export type CatalogueWriteProblem = (typeof CATALOGUE_WRITE_PROBLEMS)[number];
+
+/** The batch the catalogue is written with, as the manager last read it. */
+export interface CatalogueBatchReading {
+  batchId: string;
+  nodeName: string;
+  state: StageStampState;
+  ttlSeconds: number | null;
+  fillRatio: number | null;
+  /** When the manager read it. For a batch the manager no longer designates, that reading only ages. */
+  observedAt: string;
+}
+
+/**
+ * What the next catalogue write does. The admin writes with the batch it pinned on its first write, which is the
+ * designated one unless the manager has designated another since the feed got history: then it keeps the pinned one
+ * until the catalogue is moved, and `moveWaitingTo` names the designated batch.
+ */
+export interface CatalogueWriteStatus {
+  /** The batch the catalogue is written with, or null when there is none to write with. */
+  batch: CatalogueBatchReading | null;
+  /** Why the admin refuses to publish, unpublish or reconcile, in the sentence it refuses with; null when it writes. */
+  refusal: { problem: CatalogueWriteProblem; message: string } | null;
+  /** The designated batch the catalogue waits to be moved to, or null when it is written with the designated one. */
+  moveWaitingTo: string | null;
+}
+
 export interface CatalogueStampResponse {
+  /** The designated batch: null until the manager designates one, and again once it clears the designation. */
   catalogueStamp: CatalogueStampSummary | null;
+  catalogueWrite: CatalogueWriteStatus;
 }
