@@ -6,13 +6,15 @@ import {
   PROTECTED_PORT_MIN,
   PROTECTED_PORT_MAX,
   PUBLIC_PORT_ROLES,
+  NAMED_SOURCE_BEE_API,
 } from '../../common/src/portPolicy.js';
 import { validateInventory } from './firewall-inventory.mjs';
 
 const TABLE = 'streaming_infra_manager';
 const usage =
-  'Usage: firewall-rules.sh --iface NAME --inventory FILE [--max-slot N] [--ssh-port N]\n' +
+  'Usage: firewall-rules.sh --iface NAME --inventory FILE [--max-slot N] [--ssh-port N] [--bee-api-source CIDR]...\n' +
   'Prints a draft only. Requires Node.js and an authenticated /targets/firewall export.\n' +
+  '--bee-api-source opens each slot\'s Bee API port to that IPv4 block alone, /24 or narrower. Repeat it per uploader host.\n' +
   'Blocks new direct routing from the selected external interface. Review before using on a router.\n' +
   'Preserves established connections and other firewall tables. Applies nothing.\n';
 
@@ -22,15 +24,30 @@ function number(value, flag, max) {
   }
   return Number(value);
 }
+/**
+ * An IPv4 block no wider than /24, the same bound the Terraform's Vps root
+ * puts on its Bee API sources: anyone inside it can spend the node's postage.
+ */
+function beeApiSource(value) {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(value);
+  const octets = match ? match.slice(1, 5).map(Number) : [];
+  const prefix = match ? Number(match[5]) : -1;
+  if (!match || octets.some((octet) => octet > 255) || prefix < 24 || prefix > 32) {
+    throw new Error('--bee-api-source must be an IPv4 block from /24 to /32, such as 203.0.113.7/32 (got ' + value + ').');
+  }
+  return value;
+}
 function options(argv) {
   const parsed = { '--max-slot': String(MANAGER_SLOT_CAP), '--ssh-port': '22' };
+  const beeApiSources = [];
   for (let i = 0; i < argv.length; i++) {
     const [flag, inline] = argv[i].split(/=(.*)/s);
-    if (!['--iface', '--inventory', '--max-slot', '--ssh-port'].includes(flag))
+    if (!['--iface', '--inventory', '--max-slot', '--ssh-port', '--bee-api-source'].includes(flag))
       throw new Error('Unknown argument ' + flag + '.');
     const value = inline ?? argv[++i];
     if (!value || value.startsWith('--')) throw new Error(flag + ' needs a value.');
-    parsed[flag] = value;
+    if (flag === '--bee-api-source') beeApiSources.push(beeApiSource(value));
+    else parsed[flag] = value;
   }
   if (!parsed['--iface'])
     throw new Error('--iface is required. Find the external interface with ip -4 route get 1.1.1.1.');
@@ -41,7 +58,7 @@ function options(argv) {
     throw new Error('--ssh-port cannot exempt a protected stack port.');
   if (!parsed['--inventory'])
     throw new Error('--inventory is required. Download a fresh /targets/firewall export first.');
-  return { iface: parsed['--iface'], inventory: parsed['--inventory'], maxSlot, sshPort };
+  return { iface: parsed['--iface'], inventory: parsed['--inventory'], maxSlot, sshPort, beeApiSources };
 }
 function groups(maxSlot) {
   const result = new Map();
@@ -53,6 +70,12 @@ function groups(maxSlot) {
   }
   for (const group of result.values()) group.ports = [...new Set(group.ports)].sort((a, b) => a - b);
   return result;
+}
+function beeApiPorts(maxSlot) {
+  const ports = [];
+  for (let slot = 1; slot <= Math.min(maxSlot, NAMED_SOURCE_BEE_API.maxSlot); slot++)
+    ports.push(NAMED_SOURCE_BEE_API.base + slot * PORT_SLOT_STRIDE);
+  return ports;
 }
 function portList(ports) {
   const lines = [];
@@ -70,6 +93,7 @@ function printRules(config, inventory) {
     '# Re-export after changes. File validation does not prove the host is unchanged.',
     '# New direct routing from ' + config.iface + ' is blocked. Review router use before applying.',
     '# Established connections survive. Other tables may still restrict permitted traffic.',
+    ...(config.beeApiSources.length ? ['# Bee API ports open to: ' + config.beeApiSources.join(', ')] : []),
     'table inet ' + TABLE,
     'delete table inet ' + TABLE,
     'table inet ' + TABLE + ' {',
@@ -84,6 +108,22 @@ function printRules(config, inventory) {
       '  }',
     );
   }
+  const beeApi = NAMED_SOURCE_BEE_API.group;
+  const beeApiFrom = beeApi + '_sources';
+  if (config.beeApiSources.length) {
+    lines.push(
+      '  set ' + beeApi + ' {',
+      '    type inet_service',
+      '    elements = {',
+      portList(beeApiPorts(config.maxSlot)),
+      '    }',
+      '  }',
+      '  set ' + beeApiFrom + ' {',
+      '    type ipv4_addr; flags interval;',
+      '    elements = { ' + config.beeApiSources.join(', ') + ' }',
+      '  }',
+    );
+  }
   lines.push(
     '  chain input {',
     '    type filter hook input priority -1; policy drop;',
@@ -94,6 +134,8 @@ function printRules(config, inventory) {
     '    udp dport 443 accept',
   );
   for (const [name, band] of bands) lines.push('    ' + band.protocol + ' dport @' + name + ' accept');
+  if (config.beeApiSources.length)
+    lines.push('    ip saddr @' + beeApiFrom + ' ' + NAMED_SOURCE_BEE_API.protocol + ' dport @' + beeApi + ' accept');
   lines.push(
     '  }',
     '  chain forward {',
@@ -104,6 +146,11 @@ function printRules(config, inventory) {
   );
   for (const [name, band] of bands) {
     lines.push('    meta l4proto ' + band.protocol + ' ct original proto-dst @' + name + ' accept');
+  }
+  if (config.beeApiSources.length) {
+    lines.push(
+      '    ip saddr @' + beeApiFrom + ' meta l4proto ' + NAMED_SOURCE_BEE_API.protocol + ' ct original proto-dst @' + beeApi + ' accept',
+    );
   }
   lines.push(
     '    meta l4proto { tcp, udp } ct original proto-dst ' + PROTECTED_PORT_MIN + '-' + PROTECTED_PORT_MAX + ' drop',
