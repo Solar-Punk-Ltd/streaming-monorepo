@@ -84,8 +84,8 @@ export class StreamStateService {
    * feed index) or not (the error). The write reads the row again when its
    * turn comes, so a later report stored in the meantime is what it
    * publishes, as it should be. The audit entry records that as
-   * `entryStatus`, the status the write published, rather than passing the
-   * write off as this report's own.
+   * `entryStatus` and `entryRecording`, the status and the recording the
+   * write published, rather than passing the write off as this report's own.
    */
   async report(id: string, report: StreamStateReport): Promise<PublishOutcome> {
     const existing = await this.streams.findById(id);
@@ -129,7 +129,12 @@ export class StreamStateService {
     }
     await recordAudit(this.audit, {
       ...entry,
-      details: { ...recording, feedIndex: outcome.feed.index, entryStatus: outcome.entryStatus },
+      details: {
+        ...recording,
+        feedIndex: outcome.feed.index,
+        entryStatus: outcome.entryStatus,
+        entryRecording: outcome.entryRecording,
+      },
     });
     return outcome;
   }

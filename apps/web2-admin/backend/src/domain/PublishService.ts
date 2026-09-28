@@ -110,6 +110,12 @@ export interface FeedWriteLog {
   lastWrite(owner: string, topic: string): Promise<{ index: number; entries: unknown[] } | null>;
 }
 
+/** A recording as a `vod` entry lists it: its final manifest's feed index, and how long it runs. */
+export interface EntryRecording {
+  index: number | null;
+  duration: number | null;
+}
+
 export interface PublishOutcome {
   stream: StreamRow;
   /**
@@ -121,6 +127,13 @@ export interface PublishOutcome {
    * not `stream.status`, is the status the catalogue was told.
    */
   entryStatus: StreamStatus | null;
+  /**
+   * The recording the entry lists, or null when the entry is not `vod`, and
+   * after an unpublish. Read back off the entry as it was written, for the
+   * same reason as `entryStatus`: a report stored after the caller's can be
+   * what the write carried, and `stream` can hold a later one still.
+   */
+  entryRecording: EntryRecording | null;
   feed: {
     owner: string;
     topic: string;
@@ -173,6 +186,16 @@ export interface FeedBootCheck {
  */
 function hasReportedState(stream: StreamRow): boolean {
   return stream.status === 'live' || stream.status === 'vod';
+}
+
+/**
+ * The recording an entry lists: its `index` and `duration` when it is `vod`,
+ * null for any other. Read back off the entry `buildFeedEntry` built, rather
+ * than worked out again from the row.
+ */
+function recordingOn(entry: FeedStreamEntry): EntryRecording | null {
+  if (entry.state !== 'vod') return null;
+  return { index: entry.index ?? null, duration: entry.duration ?? null };
 }
 
 /** Where a feed write landed, once the gateway has taken it; null until then. */
@@ -251,9 +274,9 @@ export class PublishService {
    *
    * Nothing is audited here. The caller's own action — a state report, a
    * rendition report — is the entry, and it carries this write's feed index
-   * and what the write published, `entryStatus` and `renditions`. Both come
-   * from the read in here, so they can be a later report's than the
-   * caller's. `actor` is only for the log line.
+   * and what the write published: `entryStatus`, `entryRecording` and
+   * `renditions`. All three come from the read in here, so they can be a
+   * later report's than the caller's. `actor` is only for the log line.
    */
   async republishWithState(actor: Actor, stream: StreamRow): Promise<PublishOutcome> {
     return this.mutex.run(async () => this.doRepublishWithState(actor, await this.read(stream.id)));
@@ -436,7 +459,7 @@ export class PublishService {
         statusAfter: stream.status,
         details: { feedIndex: index, entryCount: entries.length },
       });
-      return this.outcome(stream, status, index, entries.length, renditions, previous);
+      return this.outcome(stream, { status, entry }, index, entries.length, renditions, previous);
     } catch (error) {
       throw await this.fail(actor, 'stream.publish.failed', claimed, previousStatus, written, error);
     }
@@ -565,7 +588,7 @@ export class PublishService {
       logger.info(
         `[Publish] ${describeActor(actor)} republished ${describeStream(current)} at feed index ${index} (${entries.length} entries): stays ${current.status}`,
       );
-      return this.outcome(updated, current.status, index, entries.length, renditions, previous);
+      return this.outcome(updated, { status: current.status, entry }, index, entries.length, renditions, previous);
     } catch (error) {
       // No claim was taken, so there is no status to put back — and none may
       // be: the row's status is the uploader's last report, which can be newer
@@ -790,9 +813,13 @@ export class PublishService {
     return { failure: new PublishFailedError(stream.id, message), released };
   }
 
+  /**
+   * `written` is the entry the write put on the feed and the status it was
+   * built with, or null for an unpublish, which took the entry off.
+   */
   private outcome(
     stream: StreamRow,
-    entryStatus: StreamStatus | null,
+    written: { status: StreamStatus; entry: FeedStreamEntry } | null,
     index: number,
     entryCount: number,
     renditions: Rendition[],
@@ -800,7 +827,8 @@ export class PublishService {
   ): PublishOutcome {
     return {
       stream,
-      entryStatus,
+      entryStatus: written?.status ?? null,
+      entryRecording: written ? recordingOn(written.entry) : null,
       feed: {
         owner: this.feed.owner,
         topic: this.feed.topic,

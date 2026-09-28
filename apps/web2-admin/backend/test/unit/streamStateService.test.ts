@@ -194,9 +194,9 @@ describe('StreamStateService.report', () => {
 /**
  * A state report is the uploader's: the internal route has no session, and
  * the service names the uploader itself. One entry per report, with the
- * transition it made, the feed index of the republish that followed it and
- * the status that republish published — the republish adds no entry of its
- * own.
+ * transition it made, the feed index of the republish that followed it, and
+ * the status and recording that republish published — the republish adds no
+ * entry of its own.
  */
 describe('StreamStateService audit', () => {
   it('records a live report as the uploader, published → live, and nothing for the republish', async () => {
@@ -213,7 +213,7 @@ describe('StreamStateService audit', () => {
         topic: stream.topic,
         statusBefore: 'published',
         statusAfter: 'live',
-        details: { feedIndex: outcome.feed.index, entryStatus: 'live' },
+        details: { feedIndex: outcome.feed.index, entryStatus: 'live', entryRecording: null },
       },
     ]);
   });
@@ -233,7 +233,13 @@ describe('StreamStateService audit', () => {
         topic: stream.topic,
         statusBefore: 'live',
         statusAfter: 'vod',
-        details: { index: 7, duration: 62.5, feedIndex: outcome.feed.index, entryStatus: 'vod' },
+        details: {
+          index: 7,
+          duration: 62.5,
+          feedIndex: outcome.feed.index,
+          entryStatus: 'vod',
+          entryRecording: { index: 7, duration: 62.5 },
+        },
       },
     ]);
   });
@@ -263,7 +269,7 @@ describe('StreamStateService audit', () => {
         topic: stream.topic,
         statusBefore: 'published',
         statusAfter: 'live',
-        details: { feedIndex: outcome.feed.index, entryStatus: 'vod' },
+        details: { feedIndex: outcome.feed.index, entryStatus: 'vod', entryRecording: { index: 7, duration: 62.5 } },
       },
     ]);
   });
@@ -286,7 +292,7 @@ describe('StreamStateService audit', () => {
     assert.equal(entryAt(gateway, outcome.feed.index, stream.topic).state, 'live');
     assert.equal(outcome.stream.status, 'vod', 'the row moved on while the write was on its way');
     const [entry] = audit.withAction('stream.state.live');
-    assert.deepEqual(entry?.details, { feedIndex: outcome.feed.index, entryStatus: 'live' });
+    assert.deepEqual(entry?.details, { feedIndex: outcome.feed.index, entryStatus: 'live', entryRecording: null });
   });
 
   it('records the recording its write published when a later vod report lands before the write reads the row', async () => {

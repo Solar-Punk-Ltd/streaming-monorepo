@@ -397,17 +397,23 @@ publish error when that write failed; the republish adds none of its own.
 That republish reads the row and the ladder again when its turn at the
 publish mutex comes, so a later report stored in the meantime is what it
 publishes, as it should be. Beside `feedIndex` the row therefore says what
-the write published: `entryStatus`, the status the entry was written with, on
-a state report, and `entryRung`, the report's rung as the write carried it, on
-a rendition report. Where they differ from what the report itself carried
-(`status_after`, or `index` and `duration`), the write published something
-that landed after this report, usually a later one. A rendition report never
-moves the status, so its row names one status on both sides, the one its
-write saw. A repeated `live` report (the uploader retries) writes one row per
-report, deliberately: each is a report the row accepted. A failed publish or
-unpublish carries the error, and `feedIndex` when the gateway had already taken
-the write, which means the entry is on the catalogue although the row says it
-is not. A failed hand republish of a live or recorded stream is recorded as
+the write published. A state report's row has `entryStatus`, the status the
+entry was written with, and `entryRecording`, the `index` and `duration` the
+entry lists, null unless it is `vod`. A rendition report's row has
+`entryRung`, the report's rung as the write carried it. Where these differ
+from what the report itself carried (`status_after`, or `index` and
+`duration`), the write published something stored after the report, with one
+exception: a finished rung that reports again without an index, on the same
+topic, keeps the index and duration it finished with (the merge above), so
+its row shows `index` and `duration` null beside a finished `entryRung`
+although nothing came after it. A rendition report never moves the status,
+so its row names one status on both sides: the one its write saw, or, when
+the write failed, the one the row had when the report arrived. A repeated
+`live` report (the uploader retries) writes one row per report, deliberately:
+each is a report the row accepted. A failed publish or unpublish carries the
+error, and `feedIndex` when the gateway had already taken the write, which
+means the entry is on the catalogue although the row says it is not. A failed
+hand republish of a live or recorded stream is recorded as
 `stream.publish.failed` with `{ error, republish: true }` and the status it
 stayed in on both sides, and never carries a `feedIndex`. Refusals (404, 409)
 are not recorded: nothing moved.
