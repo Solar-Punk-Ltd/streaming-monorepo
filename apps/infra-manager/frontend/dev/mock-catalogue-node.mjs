@@ -4,11 +4,15 @@
  * manager's own schemas, and a deployment and a batch by the shared rules, so the card refuses here what the manager
  * refuses, with the same sentence.
  *
+ * Once a batch has been designated it stays recorded through a clear, as the manager keeps it: only that batch can be
+ * designated again, and its deployment is not removed.
+ *
  * The mock pushes nothing. A designation reads as sent at the last 30-second mark, the cadence the manager pushes
  * on, and a clear as cleared when it was made. The reading is the node's batch as the mock holds it.
  */
 import {
   catalogueBatchProblem,
+  catalogueMoveRefusal,
   catalogueNodeProblem,
   CATALOGUE_NOT_HELD_REFUSAL,
   fullestBucketFillRatio,
@@ -20,7 +24,7 @@ import { send } from './mock-http.mjs';
 
 const INTERVAL_MS = 30_000;
 
-/** The designation, as the manager's single-row table holds it. */
+/** The designation, as the manager's single-row table holds it. `clearedAt` set is a designation taken out. */
 export const catalogueDesignation = {
   profileName: null,
   batchId: null,
@@ -30,9 +34,11 @@ export const catalogueDesignation = {
   revision: 0,
 };
 
+const designated = () => Boolean(catalogueDesignation.profileName) && !catalogueDesignation.clearedAt;
+
 function readingOf(stamps) {
   const { profileName, batchId } = catalogueDesignation;
-  if (!profileName || !batchId) return null;
+  if (!designated()) return null;
   const stamp = stamps(profileName).find((entry) => entry.batchID.replace(/^0x/, '').toLowerCase() === batchId);
   const health = stampHealthFrom(batchId, stamp ? [stamp] : []);
   return {
@@ -47,7 +53,7 @@ function readingOf(stamps) {
 }
 
 function lastPushOf(now = Date.now()) {
-  if (catalogueDesignation.profileName) {
+  if (designated()) {
     return { kind: 'store', outcome: 'stored', at: new Date(now - (now % INTERVAL_MS)).toISOString() };
   }
   if (catalogueDesignation.clearedAt) {
@@ -59,7 +65,8 @@ function lastPushOf(now = Date.now()) {
 function answer(stamps) {
   const { profileName, batchId, designatedAt, designatedBy, revision } = catalogueDesignation;
   return {
-    designation: profileName ? { profileName, batchId, designatedAt, designatedBy } : null,
+    designation: designated() ? { profileName, batchId, designatedAt, designatedBy } : null,
+    pinned: profileName ? { profileName, batchId } : null,
     revision,
     reading: readingOf(stamps),
     lastPush: lastPushOf(),
@@ -104,6 +111,9 @@ export function catalogueNodeRoutes({ readBody, profiles, groups, stamps, userFo
     const nodeProblem = catalogueNodeProblem(profile, groupKind);
     if (nodeProblem) return refuse(res, nodeProblem);
     const batchId = body.batchId.replace(/^0x/, '').toLowerCase();
+    if (catalogueDesignation.batchId && catalogueDesignation.batchId !== batchId) {
+      return refuse(res, catalogueMoveRefusal(catalogueDesignation.batchId));
+    }
     const stamp = stamps(profile.name).find((entry) => entry.batchID.replace(/^0x/, '').toLowerCase() === batchId);
     if (!stamp) return refuse(res, CATALOGUE_NOT_HELD_REFUSAL);
     const batchProblem = catalogueBatchProblem(stamp);
@@ -113,6 +123,7 @@ export function catalogueNodeRoutes({ readBody, profiles, groups, stamps, userFo
       batchId,
       designatedAt: new Date().toISOString(),
       designatedBy: userFor(req)?.username ?? null,
+      clearedAt: null,
       revision: catalogueDesignation.revision + 1,
     });
     return send(res, 200, answer(stamps), noStore);
@@ -122,11 +133,8 @@ export function catalogueNodeRoutes({ readBody, profiles, groups, stamps, userFo
     const body = await validBody(clearCatalogueNodeSchema, req, readBody, res);
     if (!body) return;
     if (body.expectedRevision !== catalogueDesignation.revision) return raced(res);
-    if (!catalogueDesignation.profileName) return refuse(res, 'No catalogue node is designated.');
+    if (!designated()) return refuse(res, 'No catalogue node is designated.');
     Object.assign(catalogueDesignation, {
-      profileName: null,
-      batchId: null,
-      designatedAt: null,
       designatedBy: userFor(req)?.username ?? null,
       clearedAt: new Date().toISOString(),
       revision: catalogueDesignation.revision + 1,
@@ -141,7 +149,7 @@ export function catalogueNodeRoutes({ readBody, profiles, groups, stamps, userFo
   ];
 }
 
-/** The refusal of removing the designated node, as the manager's removal guard answers it, or null. */
+/** The refusal of removing the catalogue node, designated or cleared, as the manager's removal guard answers it. */
 export function catalogueRemovalRefusal(name) {
   if (catalogueDesignation.profileName !== name) return null;
   return {

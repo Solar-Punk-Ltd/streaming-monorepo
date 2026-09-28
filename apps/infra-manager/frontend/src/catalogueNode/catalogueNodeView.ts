@@ -2,6 +2,7 @@ import {
   type CatalogueNodeCandidate,
   type CatalogueReading,
   catalogueBatchProblem,
+  catalogueMoveRefusal,
   catalogueNodeProblem,
   formatFillPercent,
   formatTtl,
@@ -25,8 +26,10 @@ export const CATALOGUE_SAVED = 'Catalogue node saved';
 export const CATALOGUE_CLEARED = 'Catalogue node cleared';
 export const CATALOGUE_SAVE_RACE =
   'Another save changed the catalogue node after this page read it. It is shown as it stands now. Make the change again.';
-export const CATALOGUE_MOVE_NOTE =
-  'Designating another batch does not move what the catalogue has written so far. The web2 admin keeps writing with the batch it has history under, and says a move is waiting.';
+/** What the card says while a designation is cleared: the batch the catalogue stays pinned to. */
+export function cataloguePinnedNote(pinned: { profileName: string; batchId: string }): string {
+  return `The catalogue stays pinned to batch ${shortHex(pinned.batchId)} on ${pinned.profileName}, which stamps its slots. Designate it again to write the catalogue once more; another batch waits for the move.`;
+}
 
 /** One deployment the card offers, and why it cannot be the catalogue node when it cannot. */
 export interface CatalogueCandidateView {
@@ -82,12 +85,25 @@ function fillOf(fillRatio: number | null): string {
   return fillRatio === null ? 'fill unknown' : `${formatFillPercent(fillRatio)} full`;
 }
 
-export function catalogueBatchViews(stamps: readonly CatalogueBatchStamp[]): CatalogueBatchView[] {
-  return stamps.map((stamp) => ({
-    batchId: stamp.batchID.replace(/^0x/, '').toLowerCase(),
-    label: `${shortHex(stamp.batchID)} · depth ${stamp.depth} · ${formatTtl(stamp.batchTTL)} · ${fillOf(fullestBucketFillRatio(stamp))} · ${kindOf(stamp.immutableFlag)}`,
-    problem: catalogueBatchProblem(stamp),
-  }));
+/**
+ * The batches the card offers, each refused as the manager refuses it. Once a batch has been designated, every other
+ * one is refused, since moving the catalogue to another batch is an action of its own.
+ */
+export function catalogueBatchViews(
+  stamps: readonly CatalogueBatchStamp[],
+  pinnedBatchId: string | null = null,
+): CatalogueBatchView[] {
+  return stamps.map((stamp) => {
+    const batchId = stamp.batchID.replace(/^0x/, '').toLowerCase();
+    return {
+      batchId,
+      label: `${shortHex(stamp.batchID)} · depth ${stamp.depth} · ${formatTtl(stamp.batchTTL)} · ${fillOf(fullestBucketFillRatio(stamp))} · ${kindOf(stamp.immutableFlag)}`,
+      problem:
+        pinnedBatchId !== null && batchId !== pinnedBatchId
+          ? catalogueMoveRefusal(pinnedBatchId)
+          : catalogueBatchProblem(stamp),
+    };
+  });
 }
 
 /** The pinned batch's last reading in a line: its state, depth, life left and fill. */

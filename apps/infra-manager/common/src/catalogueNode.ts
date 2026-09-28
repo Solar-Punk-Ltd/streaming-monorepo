@@ -1,4 +1,5 @@
 import { ABR_NODE_POOL_GROUP_KIND } from './abrLadder.js';
+import { shortHex } from './displayFormat.js';
 import { isBeeNodeOnly, type StampGatedProfile } from './stampGating.js';
 import type { StampState } from './stampHealth.js';
 
@@ -93,8 +94,14 @@ export interface CataloguePushState {
 
 /** What `GET /manager-settings/catalogue-node` answers, and what a save or a clear answers. */
 export interface CatalogueNodeAnswer {
-  /** Null when no catalogue node is designated. */
+  /** Null when no catalogue node is designated, never or since a clear. */
   designation: CatalogueDesignation | null;
+  /**
+   * The deployment and the batch the catalogue is pinned to, which stay recorded after a clear, or null before the
+   * first designation. Only this batch can be designated again until moving the catalogue exists, and this deployment
+   * is not removed.
+   */
+  pinned: { profileName: string; batchId: string } | null;
   /** The revision a save or a clear names. A save is refused once another one has moved past it. */
   revision: number;
   /** The manager's last reading of the pinned batch, or null before any. */
@@ -132,8 +139,20 @@ export const CATALOGUE_NOT_HELD_REFUSAL =
   'The node does not hold this batch. Designate one of the batches its Storage and funding card lists.';
 export const CATALOGUE_UNREACHABLE_REFUSAL =
   'The node did not answer, so whether this batch is immutable could not be checked. Try again once the node answers.';
+/**
+ * Why a batch cannot both hold the catalogue and stamp an ABR uploader's segments, which a designation and a pool
+ * string are both refused with: segments fill the batch the catalogue's slots live in.
+ */
 export const CATALOGUE_SEGMENT_BATCH_REFUSAL =
-  'An ABR uploader of this manager stamps its segments with this batch, and segments fill a batch the catalogue has to share. Designate a batch of its own.';
+  'The brand’s catalogue and an ABR uploader’s segments cannot share a batch or a node, since segments fill the batch the catalogue’s slots live in. Give each a batch and a node of its own.';
+
+/**
+ * Why a designation of another batch than the pinned one is refused. The catalogue's slots are stamped by the pinned
+ * batch, and moving them to another is an action of its own, which comes with the move.
+ */
+export function catalogueMoveRefusal(pinnedBatchId: string): string {
+  return `Moving the catalogue to another batch is its own action, coming with the move; until then the catalogue stays on batch ${shortHex(pinnedBatchId)}.`;
+}
 
 /**
  * Why this deployment cannot be the catalogue node, one sentence, or null. It has to be nothing but a Bee node, and

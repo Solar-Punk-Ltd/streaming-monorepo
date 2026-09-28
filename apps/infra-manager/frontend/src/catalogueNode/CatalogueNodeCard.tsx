@@ -18,7 +18,6 @@ import { clearCatalogueNode, saveCatalogueNode } from './catalogueNodeApi';
 import {
   CATALOGUE_CLEARED,
   CATALOGUE_LEAD,
-  CATALOGUE_MOVE_NOTE,
   CATALOGUE_NO_CANDIDATES,
   CATALOGUE_NONE,
   CATALOGUE_SAVE_RACE,
@@ -26,6 +25,7 @@ import {
   type CatalogueBatchView,
   catalogueBatchViews,
   catalogueCandidates,
+  cataloguePinnedNote,
   catalogueReadingLine,
 } from './catalogueNodeView';
 import type { CatalogueNodeLoad } from './useCatalogueNode';
@@ -69,8 +69,8 @@ export function CatalogueNodeCard({ load }: { load: CatalogueNodeLoad }) {
   );
 }
 
-/** The node's batches as the card offers them, read when a node is chosen. */
-function useNodeBatches(name: string) {
+/** The node's batches as the card offers them, read when a node is chosen, all but the pinned one refused once one is. */
+function useNodeBatches(name: string, pinnedBatchId: string | null) {
   const [batches, setBatches] = useState<CatalogueBatchView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -79,12 +79,12 @@ function useNodeBatches(name: string) {
     if (!name) return undefined;
     const controller = new AbortController();
     fetchStamps(name, controller.signal)
-      .then((stamps) => setBatches(catalogueBatchViews(stamps)))
+      .then((stamps) => setBatches(catalogueBatchViews(stamps, pinnedBatchId)))
       .catch((caught: unknown) => {
         if (!controller.signal.aborted) setError(getErrorMessage(caught));
       });
     return () => controller.abort();
-  }, [name]);
+  }, [name, pinnedBatchId]);
   return { batches, error };
 }
 
@@ -101,14 +101,15 @@ function CatalogueEditor({
 }) {
   const toast = useToast();
   const { profiles, groups } = useDeployments();
-  const { designation } = answer;
-  const [editing, setEditing] = useState(designation === null);
-  const [node, setNode] = useState(designation?.profileName ?? '');
-  const [batch, setBatch] = useState(designation?.batchId ?? '');
+  const { designation, pinned } = answer;
+  // Designated, the card offers a clear alone: another batch waits for the move, and the same one is designated.
+  const editing = designation === null;
+  const [node, setNode] = useState(pinned?.profileName ?? '');
+  const [batch, setBatch] = useState(pinned?.batchId ?? '');
   const [saving, setSaving] = useState(false);
   const [saveProblem, setSaveProblem] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const { batches, error: batchesError } = useNodeBatches(editing ? node : '');
+  const { batches, error: batchesError } = useNodeBatches(editing ? node : '', pinned?.batchId ?? null);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1_000);
@@ -119,8 +120,7 @@ function CatalogueEditor({
   const nodeProblem = candidates.find((candidate) => candidate.name === node)?.problem ?? null;
   const chosenBatch = batches?.find((view) => view.batchId === batch) ?? null;
   const batchProblem = chosenBatch?.problem ?? null;
-  const unchanged = designation !== null && designation.profileName === node && designation.batchId === batch;
-  const canSave = !saving && node !== '' && chosenBatch !== null && !nodeProblem && !batchProblem && !unchanged;
+  const canSave = !saving && node !== '' && chosenBatch !== null && !nodeProblem && !batchProblem;
 
   const run = async (action: () => Promise<CatalogueNodeAnswer>, done: string) => {
     setSaving(true);
@@ -170,6 +170,7 @@ function CatalogueEditor({
       ) : (
         <Alert severity="info" sx={WRAPPED_ALERT}>
           {CATALOGUE_NONE}
+          {pinned ? ` ${cataloguePinnedNote(pinned)}` : ''}
         </Alert>
       )}
 
@@ -239,35 +240,16 @@ function CatalogueEditor({
               </TextField>
             )}
 
-            {designation && <Typography variant="caption">{CATALOGUE_MOVE_NOTE}</Typography>}
-
             <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
               <Button variant="contained" size="small" disabled={!canSave} onClick={() => void save()}>
-                {saving ? 'Saving' : 'Save'}
+                {saving ? 'Saving' : pinned ? 'Designate again' : 'Save'}
               </Button>
-              {designation && (
-                <Button
-                  size="small"
-                  disabled={saving}
-                  onClick={() => {
-                    setEditing(false);
-                    setNode(designation.profileName);
-                    setBatch(designation.batchId);
-                    setSaveProblem(null);
-                  }}
-                >
-                  Discard
-                </Button>
-              )}
             </Stack>
           </Stack>
         )
       ) : (
         <Box>
           <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
-            <Button size="small" disabled={saving} onClick={() => setEditing(true)}>
-              Change
-            </Button>
             <Button size="small" color="error" disabled={saving} onClick={() => void clear()}>
               Clear the designation
             </Button>

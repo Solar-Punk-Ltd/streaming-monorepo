@@ -9,6 +9,7 @@ import {
   type CataloguePushState,
   type CatalogueReading,
   catalogueBatchProblem,
+  catalogueMoveRefusal,
   catalogueNodeProblem,
   parseBeePublishers,
 } from '@streaming-infra-manager/common';
@@ -18,9 +19,22 @@ import type { BeeStamp } from '../BeeClient.js';
 import { CatalogueNodeInputError, ManagerSettingsChangedError, StampNotFoundError } from '../errors/index.js';
 import { Logger } from '../Logger.js';
 
-import type { CatalogueDesignationRow, CatalogueDesignationStore } from './CatalogueDesignationRepository.js';
+import {
+  type CatalogueDesignationRow,
+  type CatalogueDesignationStore,
+  isDesignated,
+} from './CatalogueDesignationRepository.js';
 
 const logger = Logger.getInstance();
+
+/** A Bee API address's host and port, in lower case, or null for one that is not an address. */
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
 
 /** A batch id as Bee prints one, with or without `0x`. */
 const BATCH_ID_RE = /^(0x)?[0-9a-fA-F]{64}$/;
@@ -39,12 +53,17 @@ export interface CatalogueDesignationDeps {
   status(): { reading: CatalogueReading | null; lastPush: CataloguePushState | null };
   /** Tells the catalogue publisher the designation changed, so it pushes or clears now. */
   changed(): void;
+  /**
+   * The addresses a pool string could name the catalogue node's Bee API by: the one the control host reaches it on,
+   * and the one a container on this host does. Without it only the batch id is matched.
+   */
+  nodeUrls?(profile: Profile): Promise<string[]>;
   now?: () => number;
 }
 
-/** The designation a row holds, or null when it holds none. */
+/** The designation a row holds in force, or null when it holds none or it was cleared. */
 export function designationOf(row: CatalogueDesignationRow): CatalogueDesignation | null {
-  if (!row.profileName || !row.batchId || !row.designatedAt) return null;
+  if (!isDesignated(row)) return null;
   return {
     profileName: row.profileName,
     batchId: row.batchId,
@@ -59,6 +78,10 @@ export function designationOf(row: CatalogueDesignationRow): CatalogueDesignatio
  * deployment that is more than a Bee node or a rung of a node pool, and for a batch the node does not hold, one it
  * calls mutable, one whose kind it does not report, one that has expired, and one an ABR uploader stamps segments
  * with. A save and a clear name the revision they read, as the admin link's do.
+ *
+ * Once a batch has been designated it stays the catalogue's, through a clear as well: its slots are stamped by it,
+ * so another batch is refused until moving the catalogue exists, and the same one can be designated again. The
+ * deployment it was designated on is not removed.
  */
 export class CatalogueDesignationService {
   private readonly now: () => number;
@@ -78,6 +101,9 @@ export class CatalogueDesignationService {
       throw new CatalogueNodeInputError(['batchId is a batch id, 64 hex digits with or without 0x.']);
     }
     const batchId = save.batchId.replace(/^0x/, '').toLowerCase();
+    if (stored.batchId !== null && stored.batchId !== batchId) {
+      throw new CatalogueNodeInputError([catalogueMoveRefusal(stored.batchId)]);
+    }
 
     const profile = await this.deps.profiles.findByName(save.profileName);
     if (!profile) throw new CatalogueNodeInputError([`There is no deployment called ${save.profileName}.`]);
@@ -121,7 +147,7 @@ export class CatalogueDesignationService {
   async clear(clear: CatalogueNodeClear, username: string): Promise<CatalogueNodeAnswer> {
     const stored = await this.deps.store.read();
     if (stored.revision !== clear.expectedRevision) throw new ManagerSettingsChangedError();
-    if (!designationOf(stored)) throw new CatalogueNodeInputError(['No catalogue node is designated.']);
+    if (!isDesignated(stored)) throw new CatalogueNodeInputError(['No catalogue node is designated.']);
     const saved = await this.deps.store.clear(new Date(this.now()), clear.expectedRevision, username);
     if (!saved) throw new ManagerSettingsChangedError();
     logger.info(`[Catalogue] ${username} cleared the catalogue node, now at revision ${saved.revision}`);
@@ -129,15 +155,37 @@ export class CatalogueDesignationService {
     return this.answerOf(saved);
   }
 
-  /** The deployment the catalogue is designated on, or null. What the removal guard asks. */
+  /**
+   * The deployment the catalogue is pinned to, designated or cleared since, or null before the first designation.
+   * What the removal guard asks: the catalogue's slots are stamped by that node's batch either way.
+   */
   async designatedNode(): Promise<string | null> {
     return (await this.deps.store.read()).profileName;
+  }
+
+  /**
+   * Why a pool string cannot be stored, or null: an entry that names the catalogue's batch, or the catalogue node's
+   * Bee API, would stamp a stream's segments into the batch the catalogue's slots live in. Asked by the profile
+   * create and update paths, for the batch and node the catalogue is pinned to, cleared or not.
+   */
+  async segmentBatchProblem(beePublishers: string): Promise<string | null> {
+    const entries = parseBeePublishers(beePublishers) ?? [];
+    if (entries.length === 0) return null;
+    const row = await this.deps.store.read();
+    if (!row.profileName || !row.batchId) return null;
+    if (entries.some((entry) => entry.batchId === row.batchId)) return CATALOGUE_SEGMENT_BATCH_REFUSAL;
+    const profile = await this.deps.profiles.findByName(row.profileName);
+    if (!profile || !this.deps.nodeUrls) return null;
+    const nodeHosts = new Set((await this.deps.nodeUrls(profile)).map(hostOf));
+    nodeHosts.delete(null);
+    return entries.some((entry) => nodeHosts.has(hostOf(entry.url))) ? CATALOGUE_SEGMENT_BATCH_REFUSAL : null;
   }
 
   private answerOf(row: CatalogueDesignationRow): CatalogueNodeAnswer {
     const designation = designationOf(row);
     const { reading, lastPush } = this.deps.status();
     const current = designation && reading?.batchId === designation.batchId ? reading : null;
-    return { designation, revision: row.revision, reading: current, lastPush };
+    const pinned = row.profileName && row.batchId ? { profileName: row.profileName, batchId: row.batchId } : null;
+    return { designation, pinned, revision: row.revision, reading: current, lastPush };
   }
 }

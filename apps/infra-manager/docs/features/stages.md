@@ -202,8 +202,10 @@ its link names.
 
 One row, `catalogue_designation`, migration 047: the deployment's name, the
 pinned batch id (64 hex digits, lower case, no `0x`), the depth the node
-reported at designation, when and by whom it was designated, when the last one
-was cleared, and a revision. A save and a clear name the revision the page
+reported at designation, when and by whom it was designated, when it was last
+cleared, and a revision. The deployment and the batch stay recorded after a
+clear, which only sets `cleared_at`; a designation is in force while
+`cleared_at` is NULL. A save and a clear name the revision the page
 read, so two operators cannot overwrite each other unseen, as the admin link's
 save does. `CatalogueDesignationService` refuses, with one sentence each
 (`common/src/catalogueNode.ts`):
@@ -217,15 +219,29 @@ save does. `CatalogueDesignationService` refuses, with one sentence each
 | a batch whose kind the node does not report                            | the kind that fails is the one it might be                                                 |
 | an expired batch                                                       | nothing written with it stays                                                              |
 | a batch an ABR uploader of this manager names in its `BEE_PUBLISHERS`  | segments would fill it                                                                     |
+| another batch than the one first designated, cleared since or not      | the catalogue's slots are stamped by that batch, and moving them is its own action         |
 
 The node is asked about the batch fresh, `GET /stamps/{id}` on its own Bee API,
-when the designation is saved. Designating another batch later is allowed: the
-admin keeps writing with the batch its feed has history under and says a move
-is waiting, which phase 8 builds.
+when the designation is saved.
 
-The designated deployment is not removed while it is designated. Its removal,
-from the page or the Clean action, answers 409 `catalogue_node_designated`
-before anything is claimed: clear the designation first.
+Once a batch has been designated, the catalogue stays on it. Another batch is
+refused, through a clear as well, with "Moving the catalogue to another batch
+is its own action, coming with the move; until then the catalogue stays on
+batch …": the admin's feed history is stamped by the first one, and moving it
+is phase 8. The same batch can be designated again after a clear, which puts
+it in force once more.
+
+The deployment the catalogue is pinned to is not removed, designated or
+cleared since. Its removal, from the page or the Clean action, answers 409
+`catalogue_node_designated`, asked before the deployment is claimed and once
+more before the clean script runs, so a designation saved in between is
+caught. Removing the catalogue node waits for the move.
+
+A pool string may not name the catalogue either. A create or an update of a
+deployment whose `BEE_PUBLISHERS` has an entry with the pinned batch, or at the
+catalogue node's Bee API (the address the control host dials, or the one a
+container here does), is refused with the same sentence a designation of a
+segment batch is, `CATALOGUE_SEGMENT_BATCH_REFUSAL`, cleared or not.
 
 ### The record
 
@@ -242,6 +258,10 @@ builds it, and `catalogueRequest.ts` checks it against
 | `state`, `ttlSeconds`, `fillRatio`, `immutable` | `StampService.batchReadingFor`, the node's `GET /stamps/{id}` read as `stampHealthFrom` reads it; a node that does not answer is `unknown` |
 | `depth`                                         | the same reading, or the last one the node gave, or the depth at designation while the node does not answer                                |
 | `observedAt`                                    | the moment the designation row was read, before the node is asked                                                                          |
+
+A node whose Bee API reaches the dialling host alone (`localhost`,
+`127.0.0.0/8`, `0.0.0.0`, `[::1]`) is no address for the admin: the record is
+not sent, the outcome is `skipped-no-record`, and the log says why once.
 
 `immutable` is what the node says, and `true` while it says nothing, since the
 designation refused a batch whose kind was not reported and a batch's kind never
@@ -262,7 +282,8 @@ read. It is pushed:
   moves it;
 - **every 30 seconds** otherwise, and at start.
 
-A clear goes to the same link as `DELETE` with `{ observedAt }`, the moment the
+While a designation is in force its batch is read and pushed; once cleared it
+is read no more. A clear goes to the same link as `DELETE` with `{ observedAt }`, the moment the
 designation was taken out, stored as `cleared_at`, so a retry and a restarted
 manager resend the same moment. It is sent until the admin answers it, and not
 after. One call is in flight at a time: a trigger that comes during one makes
@@ -271,8 +292,8 @@ one more after it, so a clear never overtakes the push before it.
 Each call comes to one of `CATALOGUE_PUSH_OUTCOMES`: `stored`, `older-ignored`,
 `cleared`, `not-cleared`, `refused-token`, `refused-record`, `unreachable`,
 `redirected`, `not-admin`, `skipped-no-link`, `skipped-no-node` (the designated
-deployment is gone) and `skipped-no-record` (a record the contract refuses, or
-no depth known). The card shows the last one, "Web2 admin: stored 12 s ago",
+deployment is gone) and `skipped-no-record` (a record the contract refuses, no
+depth known, or a loopback Bee API address). The card shows the last one, "Web2 admin: stored 12 s ago",
 and the log says it when it changes.
 
 ### The card and the node's page
@@ -280,8 +301,10 @@ and the log says it when it changes.
 The card lists the deployments that are nothing but a Bee node, then the
 batches the chosen one holds, each with its depth, life, fill and kind, and
 refuses before any save, with the manager's own sentence, what the manager
-would refuse. Designated, it shows the node, the batch, its last reading and
-the last push, with Change and Clear the designation.
+would refuse, another batch than the pinned one included. Designated, it shows
+the node, the batch, its last reading and the last push, with Clear the
+designation. Cleared, it says which batch and node the catalogue stays pinned
+to, and offers Designate again for that batch.
 
 On the node's own page the pinned batch carries a **catalogue** chip, and the
 Storage and funding card says that Buy and Use leave the catalogue on the

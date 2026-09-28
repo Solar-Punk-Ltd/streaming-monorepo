@@ -1,15 +1,18 @@
 import type { Pool } from 'pg';
 
-/** The designation row, migration 047, as the manager reads it. */
+/**
+ * The designation row, migration 047, as the manager reads it. The deployment and the batch stay recorded after a
+ * clear, which only sets `clearedAt`: `isDesignated` tells a designation in force from one taken out.
+ */
 export interface CatalogueDesignationRow {
-  /** Null when nothing is designated. */
+  /** Null when nothing was ever designated. */
   profileName: string | null;
   batchId: string | null;
   /** The depth the node reported at designation. */
   batchDepth: number | null;
   designatedAt: Date | null;
   designatedBy: string | null;
-  /** When the last designation was taken out, or null when none was. */
+  /** When the last designation was taken out, or null while it is in force or none was made. */
   clearedAt: Date | null;
   revision: number;
 }
@@ -22,6 +25,13 @@ export interface CatalogueDesignationWrite {
   at: Date;
 }
 
+/** Whether the row holds a designation in force: one made, and not taken out since. */
+export function isDesignated(
+  row: CatalogueDesignationRow,
+): row is CatalogueDesignationRow & { profileName: string; batchId: string; designatedAt: Date; batchDepth: number } {
+  return row.profileName !== null && row.batchId !== null && row.designatedAt !== null && row.clearedAt === null;
+}
+
 /** Where the manager keeps its catalogue designation: the database, or an in-memory one in the unit tests. */
 export interface CatalogueDesignationStore {
   read(): Promise<CatalogueDesignationRow>;
@@ -31,7 +41,7 @@ export interface CatalogueDesignationStore {
     expectedRevision: number,
     username: string,
   ): Promise<CatalogueDesignationRow | null>;
-  /** Takes the designation out as of `at`, under the same revision rule. */
+  /** Takes the designation out as of `at`, under the same revision rule, keeping the deployment and the batch. */
   clear(at: Date, expectedRevision: number, username: string): Promise<CatalogueDesignationRow | null>;
 }
 
@@ -82,6 +92,7 @@ export class CatalogueDesignationRepository implements CatalogueDesignationStore
               batch_depth = $3,
               designated_at = $4,
               designated_by = $5,
+              cleared_at = NULL,
               revision = revision + 1,
               updated_at = NOW()
         WHERE singleton AND revision = $6
@@ -95,15 +106,11 @@ export class CatalogueDesignationRepository implements CatalogueDesignationStore
   async clear(at: Date, expectedRevision: number, username: string): Promise<CatalogueDesignationRow | null> {
     const result = await this.pool.query<Row>(
       `UPDATE catalogue_designation
-          SET profile_name = NULL,
-              batch_id = NULL,
-              batch_depth = NULL,
-              designated_at = NULL,
-              designated_by = $2,
+          SET designated_by = $2,
               cleared_at = $1,
               revision = revision + 1,
               updated_at = NOW()
-        WHERE singleton AND revision = $3
+        WHERE singleton AND revision = $3 AND profile_name IS NOT NULL
         RETURNING ${COLUMNS}`,
       [at, username, expectedRevision],
     );

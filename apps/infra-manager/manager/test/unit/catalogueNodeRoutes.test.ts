@@ -22,6 +22,7 @@ import {
   CATALOGUE_NOT_HELD_REFUSAL,
   CATALOGUE_SEGMENT_BATCH_REFUSAL,
   CATALOGUE_UNREACHABLE_REFUSAL,
+  catalogueMoveRefusal,
   REQUESTED_WITH_HEADER,
   REQUESTED_WITH_VALUE,
   SESSION_COOKIE_NAME,
@@ -170,6 +171,7 @@ describe('GET /manager-settings/catalogue-node', () => {
     assert.equal(answer.cache, 'no-store');
     assert.deepEqual(answer.body, {
       designation: null,
+      pinned: null,
       revision: 0,
       reading: null,
       lastPush: { kind: 'store', outcome: 'stored', at: new Date(DESIGNATED_AT).toISOString() },
@@ -322,6 +324,47 @@ describe('PUT /manager-settings/catalogue-node', () => {
   });
 });
 
+describe('the catalogue stays on the batch first designated', () => {
+  const MOVE = catalogueMoveRefusal(BATCH);
+
+  it('says moving the catalogue is its own action, naming the pinned batch', () => {
+    assert.match(
+      MOVE,
+      /^Moving the catalogue to another batch is its own action, coming with the move; until then the catalogue stays on batch ababab/,
+    );
+  });
+
+  it('refuses another batch while one is designated, before asking the node', async (t) => {
+    const api = await testApi(t);
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    const answer = await api.save({ expectedRevision: 1, profileName: 'catalogue', batchId: OTHER_BATCH });
+    assert.deepEqual(refusalOf(answer), [MOVE]);
+    assert.deepEqual(api.asked, [`catalogue:${BATCH}`]);
+    assert.equal(api.store.row.batchId, BATCH);
+  });
+
+  it('refuses another batch after a clear as well', async (t) => {
+    const api = await testApi(t);
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    await api.clear({ expectedRevision: 1 });
+    const answer = await api.save({ expectedRevision: 2, profileName: 'catalogue', batchId: OTHER_BATCH });
+    assert.deepEqual(refusalOf(answer), [MOVE]);
+    assert.equal(api.store.row.batchId, BATCH);
+    assert.notEqual(api.store.row.clearedAt, null, 'still cleared');
+  });
+
+  it('designates the same batch again after a clear, in force once more', async (t) => {
+    const api = await testApi(t);
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    await api.clear({ expectedRevision: 1 });
+    const again = await api.save({ expectedRevision: 2, profileName: 'catalogue', batchId: `0x${BATCH}` });
+    assert.equal(again.status, 200, JSON.stringify(again.body));
+    assert.equal((again.body?.designation as { batchId: string } | undefined)?.batchId, BATCH);
+    assert.equal(api.store.row.clearedAt, null);
+    assert.equal(api.changes(), 3);
+  });
+});
+
 describe('DELETE /manager-settings/catalogue-node', () => {
   it('clears the designation as of the manager’s own moment, and tells the publisher', async (t) => {
     const api = await testApi(t);
@@ -333,7 +376,15 @@ describe('DELETE /manager-settings/catalogue-node', () => {
     assert.equal(cleared.body?.reading, null);
     assert.deepEqual(api.store.row.clearedAt, new Date(DESIGNATED_AT));
     assert.equal(api.changes(), 2);
-    assert.equal(await api.service.designatedNode(), null);
+  });
+
+  it('keeps the node and the batch recorded after a clear, and the removal guard still names the node', async (t) => {
+    const api = await testApi(t);
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    const cleared = await api.clear({ expectedRevision: 1 });
+    assert.deepEqual(cleared.body?.pinned, { profileName: 'catalogue', batchId: BATCH });
+    assert.equal(api.store.row.batchId, BATCH);
+    assert.equal(await api.service.designatedNode(), 'catalogue');
   });
 
   it('refuses a clear with nothing designated, and one at a stale revision', async (t) => {
@@ -342,6 +393,8 @@ describe('DELETE /manager-settings/catalogue-node', () => {
     await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
     const stale = await api.clear({ expectedRevision: 0 });
     assert.equal(stale.status, 409);
-    assert.equal(await api.service.designatedNode(), 'catalogue');
+    assert.equal(api.store.row.clearedAt, null);
+    assert.equal((await api.clear({ expectedRevision: 1 })).status, 200);
+    assert.deepEqual(refusalOf(await api.clear({ expectedRevision: 2 })), ['No catalogue node is designated.']);
   });
 });

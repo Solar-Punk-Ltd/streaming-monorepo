@@ -27,7 +27,7 @@ const { makeProfile } = await import('../support/profileFixtures.js');
 const { orchestratorHarness } = await import('../support/orchestratorHarness.js');
 const { CatalogueNodeRemovalError } = await import('../../src/domain/errors/index.js');
 
-function setup(designated: string | null) {
+function setup(designated: string | null | (() => string | null)) {
   const node = makeProfile({
     name: 'catalogue',
     kind: 'custom',
@@ -37,7 +37,8 @@ function setup(designated: string | null) {
   });
   const h = orchestratorHarness([node]);
   h.orchestrator.setRemovalGuard(async (name) => {
-    if (name === designated) throw new CatalogueNodeRemovalError(name);
+    const now = typeof designated === 'function' ? designated() : designated;
+    if (name === now) throw new CatalogueNodeRemovalError(name);
   });
   return { ...h, node };
 }
@@ -52,6 +53,15 @@ it('refuses to remove the designated catalogue node, and claims nothing', async 
   );
   assert.equal(h.runner.runs.length, 0);
   assert.equal(h.profiles.rows.get('catalogue')!.status, 'RUNNING');
+});
+
+it('asks again once the deployment is claimed, and runs nothing when a designation came in between', async () => {
+  let asked = 0;
+  // The first ask passes; by the second, the one before the clean script runs, the node has been designated.
+  const h = setup(() => (asked++ === 0 ? null : 'catalogue'));
+  await assert.rejects(h.orchestrator.startRemove(h.node), CatalogueNodeRemovalError);
+  assert.equal(asked, 2);
+  assert.equal(h.runner.runs.length, 0);
 });
 
 it('removes a Bee-only deployment that is not the catalogue node', async () => {

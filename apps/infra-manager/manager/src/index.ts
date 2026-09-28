@@ -26,7 +26,8 @@ import { SrtIngestHealthService } from './domain/srtIngest/SrtIngestHealthServic
 import { readManagerId } from './domain/stages/managerIdentity.js';
 import { StagePublisher } from './domain/stages/StagePublisher.js';
 import { StageRecordBuilder } from './domain/stages/StageRecordBuilder.js';
-import { beeApiUrlFor, StampService } from './domain/StampService.js';
+import { beeApiUrlFor, beePublisherUrlFor, StampService } from './domain/StampService.js';
+import { localPublisherHost } from './domain/localHost.js';
 import { CatalogueDesignationRepository } from './domain/stages/CatalogueDesignationRepository.js';
 import { CatalogueDesignationService } from './domain/stages/CatalogueDesignationService.js';
 import { CataloguePublisher } from './domain/stages/CataloguePublisher.js';
@@ -428,7 +429,9 @@ async function main(): Promise<void> {
     heldBatch: (name, batchId) => stampService.heldBatch(name, batchId),
     status: () => catalogue.status(),
     changed: () => void catalogue.pushNow(),
+    nodeUrls: async (profile) => [beeApiUrlFor(profile), beePublisherUrlFor(profile, await localPublisherHost())],
   });
+  profileService.setPoolStringGuard((beePublishers) => catalogueService.segmentBatchProblem(beePublishers));
   orchestrator.setRemovalGuard(async (name) => {
     if ((await catalogueService.designatedNode()) === name) throw new CatalogueNodeRemovalError(name);
   });

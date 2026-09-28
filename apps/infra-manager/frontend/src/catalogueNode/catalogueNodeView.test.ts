@@ -11,10 +11,17 @@ import {
   CATALOGUE_EXPIRED_REFUSAL,
   CATALOGUE_KIND_UNKNOWN_REFUSAL,
   CATALOGUE_MUTABLE_REFUSAL,
+  catalogueMoveRefusal,
   cataloguePushLine,
 } from '@streaming-infra-manager/common';
 
-import { catalogueBatchViews, catalogueCandidates, catalogueReadingLine, pinnedBatchNote } from './catalogueNodeView';
+import {
+  catalogueBatchViews,
+  catalogueCandidates,
+  cataloguePinnedNote,
+  catalogueReadingLine,
+  pinnedBatchNote,
+} from './catalogueNodeView';
 
 const BATCH = 'ab'.repeat(32);
 
@@ -69,6 +76,20 @@ describe('the batches the card offers', () => {
     assert.equal(views[2]!.problem, CATALOGUE_KIND_UNKNOWN_REFUSAL);
     assert.match(views[2]!.label, /kind not reported$/);
     assert.equal(views[3]!.problem, CATALOGUE_EXPIRED_REFUSAL);
+  });
+});
+
+describe('once a batch has been designated', () => {
+  it('refuses every other batch with the move sentence, and takes the pinned one again', () => {
+    const views = catalogueBatchViews([stamp(), stamp({ batchID: 'ff'.repeat(32) })], BATCH);
+    assert.equal(views[0]!.problem, null);
+    assert.equal(views[1]!.problem, catalogueMoveRefusal(BATCH));
+  });
+
+  it('says, while cleared, which batch and node the catalogue stays pinned to', () => {
+    const note = cataloguePinnedNote({ profileName: 'catalogue-node', batchId: BATCH });
+    assert.match(note, /^The catalogue stays pinned to batch abababab…ababab on catalogue-node/);
+    assert.match(note, /Designate it again/);
   });
 });
 

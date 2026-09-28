@@ -90,6 +90,7 @@ interface Setup {
   link?: { url: string | null; token: string | null };
   answer?: (request: CatalogueRequest) => Promise<CataloguePushOutcome> | CataloguePushOutcome;
   designated?: boolean;
+  beeApiUrl?: string;
   profiles?: Profile[];
 }
 
@@ -103,16 +104,17 @@ async function publisherFor(setup: Setup = {}) {
   const profiles = setup.profiles ?? [makeProfile({ name: 'catalogue', kind: 'custom', components: ['bee-uploader'] })];
   const link = { ...(setup.link ?? { url: LINK_URL, token: LINK_TOKEN }) };
   const sent: CatalogueRequest[] = [];
-  const state = { reading: readingOf(), readingDelayMs: 0 };
+  const state = { reading: readingOf(), readingDelayMs: 0, readings: 0 };
   const publisher = new CataloguePublisher({
     designation: store,
     profiles: { findByName: async (name) => profiles.find((profile) => profile.name === name) ?? null },
     reading: async () => {
       // A slow node: the record still says the moment its row was read.
       clock.time += state.readingDelayMs;
+      state.readings += 1;
       return state.reading;
     },
-    beeApiUrl: () => BEE_API,
+    beeApiUrl: () => setup.beeApiUrl ?? BEE_API,
     link: { storedLink: async () => ({ ...link }) },
     events,
     managerId: MANAGER_ID,
@@ -250,6 +252,15 @@ describe('the catalogue stamp record', () => {
     assert.equal(gone.publisher.status().lastPush?.outcome, 'skipped-no-node');
   });
 
+  it('is not sent for a node whose Bee API reaches the dialling host alone', async () => {
+    for (const url of ['http://127.0.0.1:10025', 'http://localhost:10025', 'http://[::1]:10025']) {
+      const t = await publisherFor({ beeApiUrl: url });
+      await t.publisher.pushNow();
+      assert.equal(t.sent.length, 0, url);
+      assert.equal(t.publisher.status().lastPush?.outcome, 'skipped-no-record', url);
+    }
+  });
+
   it('sends nothing while nothing was ever designated', async () => {
     const t = await publisherFor({ designated: false });
     await t.publisher.pushNow();
@@ -324,6 +335,30 @@ describe('clearing the catalogue stamp', () => {
     await clear;
     await settle();
     assert.deepEqual(order, ['store started', 'store ended', 'clear started', 'clear ended']);
+  });
+});
+
+describe('a cleared designation', () => {
+  it('stops reading the batch and pushing its readings, and a designation of it again pushes once more', async () => {
+    const t = await publisherFor();
+    t.publisher.start();
+    await settle();
+    await t.store.clear(new Date(t.clock.now()), 1, 'op');
+    await t.publisher.pushNow();
+    const readings = t.state.readings;
+    await t.clock.advance(CATALOGUE_CHECK_MS * 4);
+    assert.equal(t.state.readings, readings, 'a cleared batch is not read');
+    assert.equal(stores(t.sent).length, 1);
+
+    await t.store.designate(
+      { profileName: 'catalogue', batchId: BATCH, batchDepth: 20, at: new Date(t.clock.now()) },
+      2,
+      'op',
+    );
+    await t.publisher.pushNow();
+    assert.equal(stores(t.sent).length, 2);
+    assert.equal(t.publisher.status().lastPush?.outcome, 'stored');
+    t.publisher.stop();
   });
 });
 

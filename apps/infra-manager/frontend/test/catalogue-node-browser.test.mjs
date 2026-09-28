@@ -5,8 +5,9 @@
  * The card starts with nothing designated. It offers the deployments that are nothing but a Bee node, refuses a
  * mutable batch with the manager's sentence before any save, designates an immutable one with its reading and the
  * line saying how the last push went, and clears it. On the node's page the pinned batch is marked, the Storage and
- * funding card says that Buy and Use leave the catalogue on it, and Top up stays offered. The node's removal is
- * refused while it is designated.
+ * funding card says that Buy and Use leave the catalogue on it, and Top up stays offered. Cleared, the card says the
+ * catalogue stays pinned to that batch, refuses another one with the move sentence, and designates the same one
+ * again. The node's removal is refused while it is designated and after a clear.
  *
  * A real headless Chrome over a real Vite, proxying to the dev mock manager, which answers the catalogue routes with
  * the manager's own rules. Runs with the other suites under `pnpm test:browser`, or on its own:
@@ -21,6 +22,7 @@ import { createServer } from 'vite';
 
 import {
   CATALOGUE_MUTABLE_REFUSAL,
+  catalogueMoveRefusal,
   REQUESTED_WITH_HEADER,
   REQUESTED_WITH_VALUE,
 } from '@streaming-infra-manager/common';
@@ -96,6 +98,13 @@ test('the catalogue node card designates an immutable batch, refuses a mutable o
     evaluate(`fetch('/profiles/${name}/stamp/stamps', { headers: { '${REQUESTED_WITH_HEADER}': '${REQUESTED_WITH_VALUE}' } })
       .then(response => response.json()).then(answer => answer.stamps)`);
 
+  const removal = () =>
+    evaluate(`fetch('/profiles/catalogue-node', {
+      method: 'DELETE',
+      headers: { '${REQUESTED_WITH_HEADER}': '${REQUESTED_WITH_VALUE}', 'content-type': 'application/json' },
+      body: '{}',
+    }).then(async response => ({ status: response.status, body: await response.json() }))`);
+
   await call('Page.navigate', { url: `${origin}/#/` });
   await waitFor(body, (text) => text.includes('Sign in to the manager'), 'the sign-in page', COLD_OPTIMIZE_BUDGET_MS);
   await fill('username', DEV_USERNAME);
@@ -166,19 +175,47 @@ test('the catalogue node card designates an immutable batch, refuses a mutable o
   });
 
   await t.test('the designated node is not removed while it is designated', async () => {
-    const answer = await evaluate(`fetch('/profiles/catalogue-node', {
-      method: 'DELETE',
-      headers: { '${REQUESTED_WITH_HEADER}': '${REQUESTED_WITH_VALUE}', 'content-type': 'application/json' },
-      body: '{}',
-    }).then(async response => ({ status: response.status, body: await response.json() }))`);
+    const answer = await removal();
     assert.equal(answer.status, 409);
     assert.equal(answer.body.error, 'catalogue_node_designated');
   });
 
-  await t.test('the designation is cleared', async () => {
+  await t.test('the designation is cleared, and the card says the catalogue stays pinned to its batch', async () => {
     await call('Page.navigate', { url: `${origin}/#/manager-settings` });
+    await waitFor(
+      card,
+      (text) => text.includes('Clear the designation'),
+      'the designated card',
+      COLD_OPTIMIZE_BUDGET_MS,
+    );
+    assert.equal(
+      await evaluate(`Boolean(${cardButton('Change')})`),
+      false,
+      'a designation is not changed to another batch',
+    );
     await clickWhenEnabled(evaluate, cardButton('Clear the designation'), 'the clear button', COLD_OPTIMIZE_BUDGET_MS);
     const cleared = await waitFor(card, (text) => text.includes('No catalogue node is designated'), 'the clear');
     assert.match(cleared, /Web2 admin: cleared \d+ s ago/);
+    assert.match(cleared, /The catalogue stays pinned to batch .* on catalogue-node/);
+  });
+
+  await t.test('the cleared node is still not removed', async () => {
+    const answer = await removal();
+    assert.equal(answer.status, 409);
+    assert.equal(answer.body.error, 'catalogue_node_designated');
+  });
+
+  await t.test('another batch is refused with the move sentence, and the same one is designated again', async () => {
+    await waitFor(card, (text) => text.includes('One of the batches the node holds'), 'the pinned node’s batches');
+    await choose(1, shortOf(mutable.batchID), 'another batch');
+    await waitFor(
+      card,
+      (text) => text.includes(catalogueMoveRefusal(immutable.batchID.replace(/^0x/, '').toLowerCase())),
+      'the move refusal',
+    );
+    assert.equal(await evaluate(`${cardButton('Designate again')}?.disabled`), true);
+    await choose(1, shortOf(immutable.batchID), 'the pinned batch');
+    await clickWhenEnabled(evaluate, cardButton('Designate again'), 'an enabled Designate again');
+    await waitFor(card, (text) => text.includes('Clear the designation'), 'the designation again');
   });
 });

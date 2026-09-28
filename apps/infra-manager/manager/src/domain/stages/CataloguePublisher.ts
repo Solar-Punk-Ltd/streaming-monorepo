@@ -3,6 +3,7 @@ import {
   type CataloguePushState,
   type CatalogueReading,
   getErrorMessage,
+  isLoopbackIngestHost,
   type StampHealth,
 } from '@streaming-infra-manager/common';
 import { type CatalogueStampRecord, STAGE_RECORD_SCHEMA_VERSION } from '@streaming-monorepo/contracts';
@@ -12,7 +13,7 @@ import type { StoredAdminLinkSecret } from '../adminLink/ManagerAdminLinkReposit
 import type { ManagerEvent } from '../EventBus.js';
 import { Logger } from '../Logger.js';
 
-import type { CatalogueDesignationRow } from './CatalogueDesignationRepository.js';
+import { type CatalogueDesignationRow, isDesignated } from './CatalogueDesignationRepository.js';
 import { type CatalogueSender, sendCatalogueRequest } from './catalogueRequest.js';
 import { STAGE_PUSH_INTERVAL_MS, type StageClock, SYSTEM_CLOCK } from './StagePublisher.js';
 
@@ -51,6 +52,15 @@ interface Sent {
   key: string;
   ttlSeconds: number | null;
   at: number;
+}
+
+/** Whether an address names the dialling host itself: `localhost`, `127.0.0.0/8`, `0.0.0.0` or `[::1]`. */
+function isLoopbackUrl(url: string): boolean {
+  try {
+    return isLoopbackIngestHost(new URL(url).host);
+  } catch {
+    return true;
+  }
 }
 
 const ANSWERED_STORE: readonly CataloguePushOutcome[] = ['stored', 'older-ignored'];
@@ -146,9 +156,9 @@ export class CataloguePublisher {
     // Taken as the row is read, before the node is asked: the moment the record says it was observed.
     const readAt = this.clock.now();
     const row = await this.deps.designation.read();
-    this.designatedName = row.profileName;
 
-    if (!row.profileName || !row.batchId || !row.designatedAt) {
+    if (!isDesignated(row)) {
+      this.designatedName = null;
       this.reading = null;
       this.sent = null;
       if (!row.clearedAt) return;
@@ -160,6 +170,7 @@ export class CataloguePublisher {
       if (ANSWERED_CLEAR.includes(outcome)) this.clearAnswered = clearedAt;
       return this.record('clear', outcome);
     }
+    this.designatedName = row.profileName;
     this.clearAnswered = null;
 
     const profile = await this.deps.profiles.findByName(row.profileName);
@@ -183,16 +194,25 @@ export class CataloguePublisher {
       this.logProblem('the pinned batch has no depth the node reported');
       return this.record('store', 'skipped-no-record');
     }
-    this.loggedProblem = null;
 
     const link = await this.deps.link.storedLink();
     if (!link.url || !link.token) return this.record('store', 'skipped-no-link');
+
+    // The admin dials this address from another container, so one that reaches only the dialling host is no address.
+    const beeApiUrl = this.deps.beeApiUrl(profile);
+    if (isLoopbackUrl(beeApiUrl)) {
+      this.logProblem(
+        `${profile.name}'s Bee API is ${beeApiUrl}, which reaches the dialling host alone; the web2 admin needs an address it can dial`,
+      );
+      return this.record('store', 'skipped-no-record');
+    }
+    this.loggedProblem = null;
 
     const record: CatalogueStampRecord = {
       schemaVersion: STAGE_RECORD_SCHEMA_VERSION,
       managerId: this.deps.managerId,
       nodeName: profile.name,
-      beeApiUrl: this.deps.beeApiUrl(profile),
+      beeApiUrl,
       batchId: row.batchId,
       // The designation refused a batch whose kind the node did not report, and a batch's kind never changes.
       immutable: health.immutable ?? true,

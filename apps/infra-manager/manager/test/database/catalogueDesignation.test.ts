@@ -4,7 +4,8 @@
  * `pnpm test:database` in manager/, or on its own with DEPLOYMENT_SETTINGS_TEST_PG_PORT set.
  *
  * What only the database can show: that the table holds one row and never a second, that a designation and a clear
- * land only at the revision they read, that a clear keeps the manager's moment it names, and that the rules the
+ * land only at the revision they read, that a clear keeps the manager's moment it names and the node and batch it
+ * cleared, and that the rules the
  * columns carry refuse a half designation, a batch id in another spelling and a depth no batch has, even from a write
  * that skipped the service.
  */
@@ -103,25 +104,28 @@ describe(
       assert.equal((await store.read()).profileName, 'catalogue');
     });
 
-    it('clears as of the moment it names, under the same revision rule', async () => {
+    it('clears as of the moment it names, keeping the node and the batch, under the same revision rule', async () => {
+      assert.equal(await store.clear(CLEARED_AT, 0, 'b'), null, 'nothing designated, nothing to clear');
       await store.designate({ profileName: 'catalogue', batchId: BATCH, batchDepth: 20, at: DESIGNATED_AT }, 0, 'a');
       assert.equal(await store.clear(CLEARED_AT, 0, 'b'), null);
       const cleared = await store.clear(CLEARED_AT, 1, 'b');
       assert.deepEqual(cleared, {
-        profileName: null,
-        batchId: null,
-        batchDepth: null,
-        designatedAt: null,
+        profileName: 'catalogue',
+        batchId: BATCH,
+        batchDepth: 20,
+        designatedAt: DESIGNATED_AT,
         designatedBy: 'b',
         clearedAt: CLEARED_AT,
         revision: 2,
       });
       const again = await store.designate(
-        { profileName: 'catalogue', batchId: BATCH, batchDepth: 20, at: DESIGNATED_AT },
+        { profileName: 'catalogue', batchId: BATCH, batchDepth: 21, at: CLEARED_AT },
         2,
         'a',
       );
-      assert.deepEqual(again?.clearedAt, CLEARED_AT, 'a new designation keeps the moment of the last clear');
+      assert.equal(again?.clearedAt, null, 'a designation is in force again');
+      assert.deepEqual(again?.designatedAt, CLEARED_AT);
+      assert.equal(again?.batchDepth, 21);
     });
 
     it('refuses a half designation, a batch id in another spelling and a depth no batch has', async () => {
@@ -159,6 +163,11 @@ describe(
         ),
         /check/i,
         'a designation with no depth',
+      );
+      await assert.rejects(
+        pool.query('UPDATE catalogue_designation SET cleared_at = NOW()'),
+        /check/i,
+        'a clear of nothing designated',
       );
     });
   },

@@ -206,9 +206,16 @@ function servicesToRecreate(engine: EngineName, before: EngineSettings, after: E
   return uploaderChanged ? [engine, STREAM_UPLOADER_SERVICE] : [engine];
 }
 
+/**
+ * Why a pool string cannot be stored, or null. The catalogue node's guard refuses an entry that names the brand's
+ * catalogue batch or node, whose batch must not fill with a stream's segments.
+ */
+export type PoolStringGuard = (beePublishers: string) => Promise<string | null>;
+
 export class ProfileService {
   /** One spell per probe, so a node that stays down says so once, not per read. */
   private readonly readLog = new NodeReadLog();
+  private poolStringGuard: PoolStringGuard | null = null;
 
   constructor(
     private readonly repo: ProfileRepository,
@@ -233,6 +240,18 @@ export class ProfileService {
     /** The web2 admin link every new uploader deployment starts with, where a create leaves the link to it. */
     private readonly managerAdminLink?: Pick<ManagerAdminLinkStore, 'read'>,
   ) {}
+
+  /** Sets what a create or an update asks of a pool string, a setter because the catalogue service reads profiles. */
+  setPoolStringGuard(guard: PoolStringGuard | null): void {
+    this.poolStringGuard = guard;
+  }
+
+  /** Refuses a pool string the guard refuses, with its sentence, as a rejected body. */
+  private async assertPoolStringHolds(name: string, beePublishers: string | null | undefined): Promise<void> {
+    if (!beePublishers?.trim() || !this.poolStringGuard) return;
+    const problem = await this.poolStringGuard(beePublishers);
+    if (problem) throw new ProfileConfigError(name, problem);
+  }
 
   /**
    * What a create is given of its stack settings: what it names, and the
@@ -394,6 +413,7 @@ export class ProfileService {
     if (configProblem) {
       throw new ProfileConfigError(input.name, configProblem);
     }
+    await this.assertPoolStringHolds(input.name, input.bee_publishers);
 
     // A body that names no source takes the manager's endpoint when there is
     // one and this node runs a chain at all, and an address with no source is
@@ -618,6 +638,7 @@ export class ProfileService {
     if (configProblem) {
       throw new ProfileConfigError(name, configProblem);
     }
+    await this.assertPoolStringHolds(name, proposed.bee_publishers);
 
     // Turning the ladder off in this same write leaves the rung settings behind,
     // where nothing reads them and the settings page offers them only a reset.

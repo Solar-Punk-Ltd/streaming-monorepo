@@ -1590,7 +1590,12 @@ export class DeploymentOrchestrator {
         paths,
         script: paths.clean,
         args,
-        beforeRun: () => this.assertRemovalReady(claimed.name),
+        // The guard again, after the claim: a designation saved between the first check and the claim is caught
+        // here, before the clean script runs. A designation refuses a deployment that is being removed after this.
+        beforeRun: async () => {
+          await this.removalGuard?.(claimed.name);
+          await this.assertRemovalReady(claimed.name);
+        },
         markFailure,
         onSuccess: async () => {
           await this.verifyPortRemoval(claimed);

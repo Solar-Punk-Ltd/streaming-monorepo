@@ -5,22 +5,26 @@
 --
 -- One row, always there, so a save names the revision it read and two
 -- operators editing at once cannot overwrite each other unseen, as the admin
--- link's row does. A row with no deployment is no designation.
+-- link's row does. A row with no deployment was never designated, and one whose
+-- cleared_at is set is designated no longer.
 --
 -- profile_name names the deployment and batch_id the batch on its node, 64 hex
 -- digits in lower case with no 0x, as Bee prints one and the record carries
--- it. They are set and cleared together. The batch is pinned by id: buying or
--- using another batch on that node changes the deployment's stamp_id and never
--- this row. batch_depth is the depth the node reported at designation, which a
--- record carries while the node does not answer.
+-- it. They are set together on the first designation and stay after a clear:
+-- the catalogue's slots are stamped by that batch, so a designation of another
+-- batch is refused until moving the catalogue exists, and the same batch can be
+-- designated again. The batch is pinned by id: buying or using another batch
+-- on that node changes the deployment's stamp_id and never this row.
+-- batch_depth is the depth the node reported at designation, which a record
+-- carries while the node does not answer.
 --
--- designated_at and cleared_at are the manager's own moments, the one a
+-- designated_at and cleared_at are the manager's own moments, the one the last
 -- designation was made and the one it was taken out, which a clear carries to
--- the admin as its observedAt. designated_by is who made the last change, a
--- clear included.
+-- the admin as its observedAt. A designation sets cleared_at back to NULL.
+-- designated_by is who made the last change, a clear included.
 --
--- No foreign key: the manager refuses to remove the designated deployment
--- while it is designated, and a row that names a gone one is shown as such.
+-- No foreign key: the manager refuses to remove the deployment this row names,
+-- cleared or not, and a row that names a gone one is shown as such.
 --
 -- Going back to an older manager needs no step: it never reads the table.
 CREATE TABLE catalogue_designation (
@@ -35,7 +39,8 @@ CREATE TABLE catalogue_designation (
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CHECK ((profile_name IS NULL) = (batch_id IS NULL)),
   CHECK ((profile_name IS NULL) = (designated_at IS NULL)),
-  CHECK (profile_name IS NULL OR batch_depth IS NOT NULL)
+  CHECK (profile_name IS NULL OR batch_depth IS NOT NULL),
+  CHECK (cleared_at IS NULL OR profile_name IS NOT NULL)
 );
 
 INSERT INTO catalogue_designation DEFAULT VALUES;
