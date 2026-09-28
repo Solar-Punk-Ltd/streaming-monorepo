@@ -5,6 +5,7 @@ import { ValidationError as YupValidationError } from 'yup';
 import {
   AdminRequiredError,
   CannotRemoveUserError,
+  CatalogueMoveRefusedError,
   CatalogueStampUnavailableError,
   CrossSiteRequestError,
   FeedOwnerMismatchError,
@@ -199,6 +200,10 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
   }
   if (err instanceof UnsupportedMediaTypeError) {
     res.status(415).json({ error: 'unsupported_media_type', message: err.message });
+    return;
+  }
+  if (err instanceof CatalogueMoveRefusedError) {
+    res.status(409).json({ error: 'catalogue_move_refused', problem: err.problem, message: err.message });
     return;
   }
   if (err instanceof CatalogueStampUnavailableError) {

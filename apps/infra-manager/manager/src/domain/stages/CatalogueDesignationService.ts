@@ -1,28 +1,39 @@
 import {
+  CATALOGUE_NO_MOVE_REFUSAL,
   CATALOGUE_NOT_HELD_REFUSAL,
   CATALOGUE_SEGMENT_BATCH_REFUSAL,
   CATALOGUE_UNREACHABLE_REFUSAL,
   type CatalogueDesignation,
+  type CatalogueMove,
   type CatalogueNodeAnswer,
   type CatalogueNodeClear,
+  type CatalogueNodeRelease,
   type CatalogueNodeSave,
   type CataloguePushState,
   type CatalogueReading,
   catalogueBatchProblem,
   catalogueMoveRefusal,
   catalogueNodeProblem,
+  catalogueReleaseFirstRefusal,
   parseBeePublishers,
+  shortHex,
 } from '@streaming-infra-manager/common';
 
 import type { Profile } from '../../types/index.js';
 import type { BeeStamp } from '../BeeClient.js';
-import { CatalogueNodeInputError, ManagerSettingsChangedError, StampNotFoundError } from '../errors/index.js';
+import {
+  CatalogueNodeInputError,
+  CatalogueNodeRemovalError,
+  ManagerSettingsChangedError,
+  StampNotFoundError,
+} from '../errors/index.js';
 import { Logger } from '../Logger.js';
 
 import {
   type CatalogueDesignationRow,
   type CatalogueDesignationStore,
   isDesignated,
+  isMoving,
 } from './CatalogueDesignationRepository.js';
 
 const logger = Logger.getInstance();
@@ -39,6 +50,15 @@ function hostOf(url: string): string | null {
 /** A batch id as Bee prints one, with or without `0x`. */
 const BATCH_ID_RE = /^(0x)?[0-9a-fA-F]{64}$/;
 
+/** What the catalogue publisher last read and sent, for the answer. */
+export interface CatalogueStatus {
+  /** The last reading of the pinned batch. */
+  reading: CatalogueReading | null;
+  /** The last reading of the batch the catalogue is moving from, while a move is pending. */
+  previousReading: CatalogueReading | null;
+  lastPush: CataloguePushState | null;
+}
+
 export interface CatalogueDesignationDeps {
   store: CatalogueDesignationStore;
   profiles: {
@@ -50,7 +70,7 @@ export interface CatalogueDesignationDeps {
   /** One batch as the deployment's node reports it now, `StampService.heldBatch`. */
   heldBatch(name: string, batchId: string): Promise<BeeStamp>;
   /** What the catalogue publisher last read and sent, for the answer. */
-  status(): { reading: CatalogueReading | null; lastPush: CataloguePushState | null };
+  status(): CatalogueStatus;
   /** Tells the catalogue publisher the designation changed, so it pushes or clears now. */
   changed(): void;
   /**
@@ -72,16 +92,35 @@ export function designationOf(row: CatalogueDesignationRow): CatalogueDesignatio
   };
 }
 
+/** The pending move a row holds, with the last reading of the batch moved from, or null with none pending. */
+function moveOf(row: CatalogueDesignationRow, reading: CatalogueReading | null): CatalogueMove | null {
+  if (!isMoving(row)) return null;
+  return {
+    profileName: row.movingFromProfileName,
+    batchId: row.movingFromBatchId,
+    startedAt: row.moveStartedAt.toISOString(),
+    startedBy: row.moveStartedBy,
+    reading: reading?.batchId === row.movingFromBatchId ? reading : null,
+  };
+}
+
 /**
  * The brand's catalogue node, which the Manager settings page designates: a Bee-only deployment of this manager and
  * one immutable batch its node holds, pinned by id. A designation is refused, with a sentence saying why, for a
  * deployment that is more than a Bee node or a rung of a node pool, and for a batch the node does not hold, one it
  * calls mutable, one whose kind it does not report, one that has expired, and one an ABR uploader stamps segments
- * with. A save and a clear name the revision they read, as the admin link's do.
+ * with. A save, a clear and a release name the revision they read, as the admin link's do.
  *
- * Once a batch has been designated it stays the catalogue's, through a clear as well: its slots are stamped by it,
- * so another batch is refused until moving the catalogue exists, and the same one can be designated again. The
- * deployment it was designated on is not removed.
+ * Once a batch has been designated it stays the catalogue's, through a clear as well: its slots are stamped by it, so
+ * another batch is a move, saved only when the page confirms it as one, and the same batch can be designated again.
+ * A move pins the new batch and records the one it moved off, which holds the catalogue's history until the web2
+ * admin has stamped every slot again under the new one. While it is pending, a third batch is refused, and moving
+ * back to the batch moved from swaps the two. A release takes the batch moved from out, once the admin reports the
+ * move done. The deployments of the pinned batch and of the batch moved from are not removed, and no pool string may
+ * name either.
+ *
+ * The manager keeps no audit table: each change is logged with the user who made it, and the row records who and
+ * when.
  */
 export class CatalogueDesignationService {
   private readonly now: () => number;
@@ -101,8 +140,14 @@ export class CatalogueDesignationService {
       throw new CatalogueNodeInputError(['batchId is a batch id, 64 hex digits with or without 0x.']);
     }
     const batchId = save.batchId.replace(/^0x/, '').toLowerCase();
-    if (stored.batchId !== null && stored.batchId !== batchId) {
-      throw new CatalogueNodeInputError([catalogueMoveRefusal(stored.batchId)]);
+    // Another batch than the pinned one is a move: only the one moved from while a move is pending, and only confirmed.
+    const pinnedBatchId = stored.batchId;
+    const moving = pinnedBatchId !== null && pinnedBatchId !== batchId;
+    if (moving && stored.movingFromBatchId !== null && stored.movingFromBatchId !== batchId) {
+      throw new CatalogueNodeInputError([catalogueReleaseFirstRefusal(stored.movingFromBatchId)]);
+    }
+    if (moving && save.move !== true) {
+      throw new CatalogueNodeInputError([catalogueMoveRefusal(pinnedBatchId, batchId)]);
     }
 
     const profile = await this.deps.profiles.findByName(save.profileName);
@@ -131,15 +176,21 @@ export class CatalogueDesignationService {
       throw new CatalogueNodeInputError(['The node reported no depth for this batch that a batch can have.']);
     }
 
-    const saved = await this.deps.store.designate(
-      { profileName: profile.name, batchId, batchDepth: stamp.depth, at: new Date(this.now()) },
-      save.expectedRevision,
-      username,
-    );
+    const write = { profileName: profile.name, batchId, batchDepth: stamp.depth, at: new Date(this.now()) };
+    const saved = moving
+      ? await this.deps.store.move(write, save.expectedRevision, username)
+      : await this.deps.store.designate(write, save.expectedRevision, username);
     if (!saved) throw new ManagerSettingsChangedError();
-    logger.info(
-      `[Catalogue] ${username} designated ${profile.name} as the catalogue node, batch ${batchId}, now at revision ${saved.revision}`,
-    );
+    if (moving) {
+      const back = stored.movingFromBatchId === batchId ? ' back' : '';
+      logger.info(
+        `[Catalogue] ${username} moved the catalogue${back} from batch ${shortHex(pinnedBatchId)} on ${stored.profileName} to batch ${shortHex(batchId)} on ${profile.name}, now at revision ${saved.revision}`,
+      );
+    } else {
+      logger.info(
+        `[Catalogue] ${username} designated ${profile.name} as the catalogue node, batch ${batchId}, now at revision ${saved.revision}`,
+      );
+    }
     this.deps.changed();
     return this.answerOf(saved);
   }
@@ -156,36 +207,76 @@ export class CatalogueDesignationService {
   }
 
   /**
-   * The deployment the catalogue is pinned to, designated or cleared since, or null before the first designation.
-   * What the removal guard asks: the catalogue's slots are stamped by that node's batch either way.
+   * Takes the batch the catalogue moved from out of the row, which lifts the guards on it and its node: what the
+   * operator does once the web2 admin reports the move done. Refused with no move pending.
    */
-  async designatedNode(): Promise<string | null> {
-    return (await this.deps.store.read()).profileName;
+  async release(release: CatalogueNodeRelease, username: string): Promise<CatalogueNodeAnswer> {
+    const stored = await this.deps.store.read();
+    if (stored.revision !== release.expectedRevision) throw new ManagerSettingsChangedError();
+    if (!isMoving(stored)) throw new CatalogueNodeInputError([CATALOGUE_NO_MOVE_REFUSAL]);
+    const saved = await this.deps.store.release(new Date(this.now()), release.expectedRevision, username);
+    if (!saved) throw new ManagerSettingsChangedError();
+    logger.info(
+      `[Catalogue] ${username} released batch ${shortHex(stored.movingFromBatchId)} on ${stored.movingFromProfileName} after the move to ${shortHex(stored.batchId ?? '')}`,
+    );
+    this.deps.changed();
+    return this.answerOf(saved);
+  }
+
+  /**
+   * The deployments the removal guard keeps: the one the catalogue is pinned to, designated or cleared since, and the
+   * one of the batch it is moving from while a move is pending. Empty before the first designation.
+   */
+  async guardedNodes(): Promise<string[]> {
+    const row = await this.deps.store.read();
+    const names = [row.profileName, row.movingFromProfileName].filter((name): name is string => name !== null);
+    return [...new Set(names)];
+  }
+
+  /** The removal guard: refuses to remove a deployment `guardedNodes` names, saying which batch keeps it. */
+  async assertRemovable(name: string): Promise<void> {
+    const row = await this.deps.store.read();
+    if (row.profileName === name) throw new CatalogueNodeRemovalError(name);
+    if (row.movingFromProfileName === name) throw new CatalogueNodeRemovalError(name, true);
   }
 
   /**
    * Why a pool string cannot be stored, or null: an entry that names the catalogue's batch, or the catalogue node's
    * Bee API, would stamp a stream's segments into the batch the catalogue's slots live in. Asked by the profile
-   * create and update paths, for the batch and node the catalogue is pinned to, cleared or not.
+   * create and update paths, for the batch and node the catalogue is pinned to, cleared or not, and for the batch
+   * and node it is moving from while a move is pending.
    */
   async segmentBatchProblem(beePublishers: string): Promise<string | null> {
     const entries = parseBeePublishers(beePublishers) ?? [];
     if (entries.length === 0) return null;
     const row = await this.deps.store.read();
-    if (!row.profileName || !row.batchId) return null;
-    if (entries.some((entry) => entry.batchId === row.batchId)) return CATALOGUE_SEGMENT_BATCH_REFUSAL;
-    const profile = await this.deps.profiles.findByName(row.profileName);
-    if (!profile || !this.deps.nodeUrls) return null;
-    const nodeHosts = new Set((await this.deps.nodeUrls(profile)).map(hostOf));
+    const batches = new Set([row.batchId, row.movingFromBatchId].filter((id): id is string => id !== null));
+    if (batches.size === 0) return null;
+    if (entries.some((entry) => batches.has(entry.batchId))) return CATALOGUE_SEGMENT_BATCH_REFUSAL;
+    if (!this.deps.nodeUrls) return null;
+    const nodeHosts = new Set<string | null>();
+    for (const name of await this.guardedNodes()) {
+      const profile = await this.deps.profiles.findByName(name);
+      if (profile) for (const url of await this.deps.nodeUrls(profile)) nodeHosts.add(hostOf(url));
+    }
     nodeHosts.delete(null);
     return entries.some((entry) => nodeHosts.has(hostOf(entry.url))) ? CATALOGUE_SEGMENT_BATCH_REFUSAL : null;
   }
 
   private answerOf(row: CatalogueDesignationRow): CatalogueNodeAnswer {
     const designation = designationOf(row);
-    const { reading, lastPush } = this.deps.status();
+    const { reading, previousReading, lastPush } = this.deps.status();
     const current = designation && reading?.batchId === designation.batchId ? reading : null;
     const pinned = row.profileName && row.batchId ? { profileName: row.profileName, batchId: row.batchId } : null;
-    return { designation, pinned, revision: row.revision, reading: current, lastPush };
+    const lastRelease = row.releasedAt ? { at: row.releasedAt.toISOString(), by: row.releasedBy } : null;
+    return {
+      designation,
+      pinned,
+      movingFrom: moveOf(row, previousReading),
+      lastRelease,
+      revision: row.revision,
+      reading: current,
+      lastPush,
+    };
   }
 }

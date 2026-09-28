@@ -1,6 +1,7 @@
 /**
  * The brand's catalogue node, designated on the Manager settings page through `GET`, `PUT` and
- * `DELETE /manager-settings/catalogue-node`.
+ * `DELETE /manager-settings/catalogue-node`, moved to another batch with `PUT` and `move: true`, and the batch moved
+ * from released through `POST /manager-settings/catalogue-node/release`.
  *
  * Unit test, no database, no Docker and no Bee node, over the real service and router, an in-memory store, fake
  * deployments and a fake node, and the real session and same-site gates. `pnpm test` in manager/.
@@ -19,10 +20,12 @@ import {
   CATALOGUE_EXPIRED_REFUSAL,
   CATALOGUE_KIND_UNKNOWN_REFUSAL,
   CATALOGUE_MUTABLE_REFUSAL,
+  CATALOGUE_NO_MOVE_REFUSAL,
   CATALOGUE_NOT_HELD_REFUSAL,
   CATALOGUE_SEGMENT_BATCH_REFUSAL,
   CATALOGUE_UNREACHABLE_REFUSAL,
   catalogueMoveRefusal,
+  catalogueReleaseFirstRefusal,
   REQUESTED_WITH_HEADER,
   REQUESTED_WITH_VALUE,
   SESSION_COOKIE_NAME,
@@ -35,6 +38,7 @@ import { createCatalogueNodeRouter } from '../../src/api/routes/catalogueNode.js
 import type { AuthService } from '../../src/domain/auth/AuthService.js';
 import type { BeeStamp } from '../../src/domain/BeeClient.js';
 import { StampNotFoundError } from '../../src/domain/errors/index.js';
+import { Logger } from '../../src/domain/Logger.js';
 import { CatalogueDesignationService } from '../../src/domain/stages/CatalogueDesignationService.js';
 import type { Profile } from '../../src/types/index.js';
 import { InMemoryCatalogueDesignation } from '../support/InMemoryCatalogueDesignation.js';
@@ -43,7 +47,18 @@ import { makeProfile } from '../support/profileFixtures.js';
 const BATCH = 'ab'.repeat(32);
 const OTHER_BATCH = 'cd'.repeat(32);
 const POOL_GROUP = 4;
+const THIRD_BATCH = 'ef'.repeat(32);
 const DESIGNATED_AT = Date.parse('2026-09-28T09:00:00.000Z');
+/** What the publisher last read of the batch moved from, which is the first one designated in these tests. */
+const PREVIOUS_READING = {
+  batchId: BATCH,
+  state: 'active' as const,
+  ttlSeconds: 50,
+  fillRatio: 0.2,
+  immutable: true,
+  depth: 20,
+  readAt: new Date(DESIGNATED_AT).toISOString(),
+};
 
 const session = {
   async sessionFor(token: string) {
@@ -83,6 +98,7 @@ async function testApi(t: TestContext, setup: Setup = {}) {
   const store = new InMemoryCatalogueDesignation();
   const profiles = setup.profiles ?? [
     makeProfile({ name: 'catalogue', kind: 'custom', components: ['bee-uploader'] }),
+    makeProfile({ name: 'catalogue-two', kind: 'custom', components: ['bee-uploader'] }),
     makeProfile({ name: 'stage-one', kind: 'streamer' }),
     makeProfile({ name: 'pool-360p', kind: 'custom', components: ['bee-uploader'], group_id: POOL_GROUP }),
   ];
@@ -109,6 +125,7 @@ async function testApi(t: TestContext, setup: Setup = {}) {
         depth: 20,
         readAt: new Date(DESIGNATED_AT).toISOString(),
       },
+      previousReading: PREVIOUS_READING,
       lastPush: { kind: 'store', outcome: 'stored', at: new Date(DESIGNATED_AT).toISOString() },
     }),
     changed: () => void (changes += 1),
@@ -128,8 +145,8 @@ async function testApi(t: TestContext, setup: Setup = {}) {
   assert.ok(address && typeof address !== 'string');
   const base = `http://127.0.0.1:${address.port}`;
 
-  async function send(method: string, body?: unknown, { authenticated = true, sameSite = true } = {}) {
-    const response = await fetch(`${base}/manager-settings/catalogue-node`, {
+  async function send(method: string, body?: unknown, { authenticated = true, sameSite = true } = {}, path = '') {
+    const response = await fetch(`${base}/manager-settings/catalogue-node${path}`, {
       method,
       headers: {
         ...(authenticated ? { cookie: `${SESSION_COOKIE_NAME}=test-session` } : {}),
@@ -154,6 +171,8 @@ async function testApi(t: TestContext, setup: Setup = {}) {
     read: (options?: { authenticated?: boolean }) => send('GET', undefined, options),
     save: (body: unknown, options?: { authenticated?: boolean; sameSite?: boolean }) => send('PUT', body, options),
     clear: (body: unknown, options?: { authenticated?: boolean; sameSite?: boolean }) => send('DELETE', body, options),
+    release: (body: unknown, options: { authenticated?: boolean; sameSite?: boolean } = {}) =>
+      send('POST', body, options, '/release'),
   };
 }
 
@@ -172,6 +191,8 @@ describe('GET /manager-settings/catalogue-node', () => {
     assert.deepEqual(answer.body, {
       designation: null,
       pinned: null,
+      movingFrom: null,
+      lastRelease: null,
       revision: 0,
       reading: null,
       lastPush: { kind: 'store', outcome: 'stored', at: new Date(DESIGNATED_AT).toISOString() },
@@ -324,26 +345,34 @@ describe('PUT /manager-settings/catalogue-node', () => {
   });
 });
 
-describe('the catalogue stays on the batch first designated', () => {
-  const MOVE = catalogueMoveRefusal(BATCH);
+describe('another batch than the pinned one is a move, saved only when confirmed', () => {
+  const MOVE = catalogueMoveRefusal(BATCH, OTHER_BATCH);
 
-  it('says moving the catalogue is its own action, naming the pinned batch', () => {
-    assert.match(
+  it('says the batch would move the catalogue and has to be confirmed as a move, naming both batches', () => {
+    assert.equal(
       MOVE,
-      /^Moving the catalogue to another batch is its own action, coming with the move; until then the catalogue stays on batch ababab/,
+      'Batch cdcdcdcd…cdcdcd would move the catalogue off batch abababab…ababab, whose slots the web2 admin then stamps again under the new batch, so it is saved only when confirmed as a move.',
     );
   });
 
-  it('refuses another batch while one is designated, before asking the node', async (t) => {
+  it('refuses another batch without move: true, before asking the node', async (t) => {
     const api = await testApi(t);
     await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
     const answer = await api.save({ expectedRevision: 1, profileName: 'catalogue', batchId: OTHER_BATCH });
     assert.deepEqual(refusalOf(answer), [MOVE]);
+    const unconfirmed = await api.save({
+      expectedRevision: 1,
+      profileName: 'catalogue',
+      batchId: OTHER_BATCH,
+      move: false,
+    });
+    assert.deepEqual(refusalOf(unconfirmed), [MOVE]);
     assert.deepEqual(api.asked, [`catalogue:${BATCH}`]);
     assert.equal(api.store.row.batchId, BATCH);
+    assert.equal(api.store.row.movingFromBatchId, null);
   });
 
-  it('refuses another batch after a clear as well', async (t) => {
+  it('refuses another batch after a clear as well, without move: true', async (t) => {
     const api = await testApi(t);
     await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
     await api.clear({ expectedRevision: 1 });
@@ -351,6 +380,162 @@ describe('the catalogue stays on the batch first designated', () => {
     assert.deepEqual(refusalOf(answer), [MOVE]);
     assert.equal(api.store.row.batchId, BATCH);
     assert.notEqual(api.store.row.clearedAt, null, 'still cleared');
+  });
+
+  it('moves the catalogue to a batch on another Bee-only node, keeping the batch it moved from', async (t) => {
+    const api = await testApi(t);
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    const moved = await api.save({
+      expectedRevision: 1,
+      profileName: 'catalogue-two',
+      batchId: OTHER_BATCH,
+      move: true,
+    });
+    assert.equal(moved.status, 200, JSON.stringify(moved.body));
+    assert.deepEqual(moved.body?.designation, {
+      profileName: 'catalogue-two',
+      batchId: OTHER_BATCH,
+      designatedAt: new Date(DESIGNATED_AT).toISOString(),
+      designatedBy: 'operator',
+    });
+    assert.deepEqual(moved.body?.pinned, { profileName: 'catalogue-two', batchId: OTHER_BATCH });
+    assert.deepEqual(moved.body?.movingFrom, {
+      profileName: 'catalogue',
+      batchId: BATCH,
+      startedAt: new Date(DESIGNATED_AT).toISOString(),
+      startedBy: 'operator',
+      reading: PREVIOUS_READING,
+    });
+    assert.equal(moved.body?.revision, 2);
+    assert.equal(moved.body?.reading, null, 'the publisher has not read the new batch yet');
+    assert.deepEqual(api.asked, [`catalogue:${BATCH}`, `catalogue-two:${OTHER_BATCH}`], 'the new batch is checked');
+    assert.equal(api.store.row.movingFromBatchDepth, 20);
+    assert.equal(api.changes(), 2, 'the publisher pushes the new batch’s record at once');
+    assert.deepEqual(await api.service.guardedNodes(), ['catalogue-two', 'catalogue']);
+  });
+
+  it('moves the catalogue after a clear, putting a designation in force again', async (t) => {
+    const api = await testApi(t);
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    await api.clear({ expectedRevision: 1 });
+    const moved = await api.save({ expectedRevision: 2, profileName: 'catalogue', batchId: OTHER_BATCH, move: true });
+    assert.equal(moved.status, 200, JSON.stringify(moved.body));
+    assert.equal(api.store.row.clearedAt, null);
+    assert.equal((moved.body?.movingFrom as { batchId: string } | undefined)?.batchId, BATCH);
+  });
+
+  it('puts the batch moved to through every check a designation passes', async (t) => {
+    const api = await testApi(t, {
+      held: async (_n, id) => stampOf({ batchID: id, immutableFlag: id === BATCH }),
+    });
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    const mutable = await api.save({ expectedRevision: 1, profileName: 'catalogue', batchId: OTHER_BATCH, move: true });
+    assert.deepEqual(refusalOf(mutable), [CATALOGUE_MUTABLE_REFUSAL]);
+    const stage = await api.save({ expectedRevision: 1, profileName: 'stage-one', batchId: OTHER_BATCH, move: true });
+    assert.match(refusalOf(stage)[0]!, /^stage-one runs more than a Bee node\./);
+    assert.equal(api.store.row.batchId, BATCH);
+    assert.equal(api.store.row.movingFromBatchId, null);
+  });
+
+  it('takes move: true for the pinned batch as a designation, and before any designation as the first one', async (t) => {
+    const api = await testApi(t);
+    const first = await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH, move: true });
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    assert.equal(first.body?.movingFrom, null);
+    await api.clear({ expectedRevision: 1 });
+    const again = await api.save({ expectedRevision: 2, profileName: 'catalogue', batchId: BATCH, move: true });
+    assert.equal(again.status, 200, JSON.stringify(again.body));
+    assert.equal(again.body?.movingFrom, null);
+    assert.equal(api.store.row.moveStartedAt, null);
+  });
+
+  it('designates the batch moved to again after a clear, and keeps the move pending', async (t) => {
+    const api = await testApi(t);
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    await api.save({ expectedRevision: 1, profileName: 'catalogue', batchId: OTHER_BATCH, move: true });
+    const cleared = await api.clear({ expectedRevision: 2 });
+    assert.equal((cleared.body?.movingFrom as { batchId: string } | undefined)?.batchId, BATCH, 'a clear keeps it');
+    const again = await api.save({ expectedRevision: 3, profileName: 'catalogue', batchId: OTHER_BATCH });
+    assert.equal(again.status, 200, JSON.stringify(again.body));
+    assert.equal((again.body?.movingFrom as { batchId: string } | undefined)?.batchId, BATCH);
+    assert.equal(api.store.row.batchId, OTHER_BATCH);
+  });
+
+  it('moves back to the batch moved from, which then holds the move the other way round', async (t) => {
+    const api = await testApi(t);
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    await api.save({ expectedRevision: 1, profileName: 'catalogue-two', batchId: OTHER_BATCH, move: true });
+    const unconfirmed = await api.save({ expectedRevision: 2, profileName: 'catalogue', batchId: BATCH });
+    assert.deepEqual(refusalOf(unconfirmed), [catalogueMoveRefusal(OTHER_BATCH, BATCH)]);
+    const back = await api.save({ expectedRevision: 2, profileName: 'catalogue', batchId: BATCH, move: true });
+    assert.equal(back.status, 200, JSON.stringify(back.body));
+    assert.deepEqual(back.body?.pinned, { profileName: 'catalogue', batchId: BATCH });
+    assert.equal((back.body?.movingFrom as { profileName: string } | undefined)?.profileName, 'catalogue-two');
+    assert.equal((back.body?.movingFrom as { batchId: string } | undefined)?.batchId, OTHER_BATCH);
+    assert.equal(
+      (back.body?.movingFrom as { reading: unknown } | undefined)?.reading,
+      null,
+      'the last reading was of another batch',
+    );
+    assert.deepEqual(await api.service.guardedNodes(), ['catalogue', 'catalogue-two']);
+  });
+
+  it('refuses a third batch while a move is pending, confirmed or not, naming the batch moved from', async (t) => {
+    const api = await testApi(t);
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    await api.save({ expectedRevision: 1, profileName: 'catalogue', batchId: OTHER_BATCH, move: true });
+    const sentence = catalogueReleaseFirstRefusal(BATCH);
+    assert.equal(
+      sentence,
+      'The catalogue is still moving off batch abababab…ababab, so release the previous batch first, once the web2 admin reports the move done, before moving it to another.',
+    );
+    const asked = api.asked.length;
+    for (const move of [true, false]) {
+      const third = await api.save({ expectedRevision: 2, profileName: 'catalogue', batchId: THIRD_BATCH, move });
+      assert.deepEqual(refusalOf(third), [sentence]);
+    }
+    assert.equal(api.asked.length, asked, 'no node is asked');
+    assert.equal(api.store.row.batchId, OTHER_BATCH);
+    assert.equal(api.store.row.movingFromBatchId, BATCH);
+  });
+
+  it('refuses a move at a stale revision, and one that lost the race to the row', async (t) => {
+    const api = await testApi(t);
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    const stale = await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: OTHER_BATCH, move: true });
+    assert.equal(stale.status, 409);
+    const move = api.store.move.bind(api.store);
+    api.store.move = async (write, revision, username) => {
+      api.store.row.revision += 1;
+      return move(write, revision, username);
+    };
+    const raced = await api.save({ expectedRevision: 1, profileName: 'catalogue', batchId: OTHER_BATCH, move: true });
+    assert.equal(raced.status, 409);
+    assert.equal(api.store.row.movingFromBatchId, null);
+    assert.equal(api.changes(), 1);
+  });
+
+  it('logs a move and a move back with the user, the batches shortened and the nodes', async (t) => {
+    const lines: string[] = [];
+    t.mock.method(Logger.prototype, 'info', (...args: unknown[]) => void lines.push(args.map(String).join(' ')));
+    const api = await testApi(t);
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    await api.save({ expectedRevision: 1, profileName: 'catalogue-two', batchId: OTHER_BATCH, move: true });
+    await api.save({ expectedRevision: 2, profileName: 'catalogue', batchId: BATCH, move: true });
+    assert.deepEqual(lines.slice(1), [
+      '[Catalogue] operator moved the catalogue from batch abababab…ababab on catalogue to batch cdcdcdcd…cdcdcd on catalogue-two, now at revision 2',
+      '[Catalogue] operator moved the catalogue back from batch cdcdcdcd…cdcdcd on catalogue-two to batch abababab…ababab on catalogue, now at revision 3',
+    ]);
+  });
+
+  it('refuses a move field that is not a boolean', async (t) => {
+    const api = await testApi(t);
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    const text = await api.save({ expectedRevision: 1, profileName: 'catalogue', batchId: OTHER_BATCH, move: 'true' });
+    assert.deepEqual(refusalOf(text), [
+      'move is true to move the catalogue to this batch, false or left out otherwise',
+    ]);
+    assert.equal(api.store.row.revision, 1);
   });
 
   it('designates the same batch again after a clear, in force once more', async (t) => {
@@ -384,7 +569,7 @@ describe('DELETE /manager-settings/catalogue-node', () => {
     const cleared = await api.clear({ expectedRevision: 1 });
     assert.deepEqual(cleared.body?.pinned, { profileName: 'catalogue', batchId: BATCH });
     assert.equal(api.store.row.batchId, BATCH);
-    assert.equal(await api.service.designatedNode(), 'catalogue');
+    assert.deepEqual(await api.service.guardedNodes(), ['catalogue']);
   });
 
   it('refuses a clear with nothing designated, and one at a stale revision', async (t) => {
@@ -396,5 +581,79 @@ describe('DELETE /manager-settings/catalogue-node', () => {
     assert.equal(api.store.row.clearedAt, null);
     assert.equal((await api.clear({ expectedRevision: 1 })).status, 200);
     assert.deepEqual(refusalOf(await api.clear({ expectedRevision: 2 })), ['No catalogue node is designated.']);
+  });
+});
+
+describe('POST /manager-settings/catalogue-node/release', () => {
+  /** A designation of BATCH on catalogue, moved to OTHER_BATCH on catalogue-two, at revision 2. */
+  async function moved(t: TestContext) {
+    const api = await testApi(t);
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    await api.save({ expectedRevision: 1, profileName: 'catalogue-two', batchId: OTHER_BATCH, move: true });
+    return api;
+  }
+
+  it('releases the batch moved from, records who and when, logs it and tells the publisher', async (t) => {
+    const api = await moved(t);
+    const lines: string[] = [];
+    t.mock.method(Logger.prototype, 'info', (...args: unknown[]) => void lines.push(args.map(String).join(' ')));
+    const released = await api.release({ expectedRevision: 2 });
+    assert.equal(released.status, 200, JSON.stringify(released.body));
+    assert.equal(released.cache, 'no-store');
+    assert.equal(released.body?.movingFrom, null);
+    assert.deepEqual(released.body?.lastRelease, { at: new Date(DESIGNATED_AT).toISOString(), by: 'operator' });
+    assert.deepEqual(released.body?.pinned, { profileName: 'catalogue-two', batchId: OTHER_BATCH });
+    assert.equal(released.body?.revision, 3);
+    assert.equal(api.store.row.movingFromProfileName, null);
+    assert.equal(api.store.row.moveStartedAt, null);
+    assert.equal(api.changes(), 3);
+    assert.deepEqual(lines, [
+      '[Catalogue] operator released batch abababab…ababab on catalogue after the move to cdcdcdcd…cdcdcd',
+    ]);
+    assert.deepEqual(await api.service.guardedNodes(), ['catalogue-two'], 'the previous node is guarded no more');
+  });
+
+  it('lets a third batch be moved to once the previous one is released', async (t) => {
+    const api = await moved(t);
+    await api.release({ expectedRevision: 2 });
+    const third = await api.save({ expectedRevision: 3, profileName: 'catalogue', batchId: THIRD_BATCH, move: true });
+    assert.equal(third.status, 200, JSON.stringify(third.body));
+    assert.equal((third.body?.movingFrom as { batchId: string } | undefined)?.batchId, OTHER_BATCH);
+  });
+
+  it('refuses a release with no move pending, and one at a stale revision', async (t) => {
+    const api = await testApi(t);
+    assert.deepEqual(refusalOf(await api.release({ expectedRevision: 0 })), [CATALOGUE_NO_MOVE_REFUSAL]);
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    assert.deepEqual(refusalOf(await api.release({ expectedRevision: 1 })), [CATALOGUE_NO_MOVE_REFUSAL]);
+    await api.save({ expectedRevision: 1, profileName: 'catalogue', batchId: OTHER_BATCH, move: true });
+    const stale = await api.release({ expectedRevision: 1 });
+    assert.equal(stale.status, 409);
+    assert.equal(stale.body?.error, 'manager_settings_changed');
+    assert.equal(api.store.row.movingFromBatchId, BATCH);
+    assert.equal((await api.release({ expectedRevision: 2 })).status, 200);
+    assert.deepEqual(refusalOf(await api.release({ expectedRevision: 3 })), [CATALOGUE_NO_MOVE_REFUSAL]);
+  });
+
+  it('refuses a release that lost the race to the row between its read and its write', async (t) => {
+    const api = await moved(t);
+    const release = api.store.release.bind(api.store);
+    api.store.release = async (at, revision, username) => {
+      api.store.row.revision += 1;
+      return release(at, revision, username);
+    };
+    assert.equal((await api.release({ expectedRevision: 2 })).status, 409);
+    assert.equal(api.store.row.movingFromBatchId, BATCH);
+    assert.equal(api.changes(), 2);
+  });
+
+  it('is behind the session and the same-site check, and refuses an unknown key', async (t) => {
+    const api = await moved(t);
+    assert.equal((await api.release({ expectedRevision: 2 }, { authenticated: false })).status, 401);
+    assert.equal((await api.release({ expectedRevision: 2 }, { sameSite: false })).status, 403);
+    assert.equal((await api.release({ expectedRevision: 2, batchId: BATCH })).status, 400);
+    assert.equal((await api.release({})).status, 400);
+    assert.equal(api.store.row.movingFromBatchId, BATCH);
+    assert.equal(api.store.row.revision, 2);
   });
 });

@@ -87,6 +87,7 @@ reference; the summary:
 | `FEED_TOPIC`                          | `swarm-stream`     | raw topic of that feed                                                                                                                 |
 | `VIEWER_BASE_URL`                     | empty              | branded viewer built for this feed, for "open player catalogue" links                                                                  |
 | `INTERNAL_API_TOKEN`                  | required           | 32+ chars. The registrar token the manager pushes stages with on `/api/internal`, and during the transition still taken from uploaders |
+| `CATALOGUE_MOVE_ENABLED`              | `false`            | `true` lets an operator move the catalogue's history onto another batch from the Stages page. Off until tried on a real node           |
 
 There is no ingest setting. Each stream's OBS details come from the stage it
 is broadcast on, as the manager pushed it: see [A stream's stage](#a-streams-stage).
@@ -252,7 +253,8 @@ chunks it wrote and the feed's history is those chunks. Migration `013` adds
 - When the manager designates another batch and this feed has a write in
   `feed_writes`, the admin keeps writing with the pinned one, at its node, and
   says a move to the designated one is waiting. Moving the catalogue, stamping
-  the history again under the new batch, is its own job. With no write
+  the history again under the new batch, is its own job
+  ([Moving the catalogue](#moving-the-catalogue-to-another-batch)). With no write
   recorded for the feed (the feed key changed) there is nothing to move, and
   the designated batch is pinned in its place.
 - The pinned batch's readings are then the last ones the manager pushed while
@@ -308,6 +310,85 @@ a payload straight into the feed's chunk with no timestamp, so the same bytes at
 the same index make the same chunk: these are what moving the catalogue uploads
 again. Rows from before the migration have neither; a head adopted at boot has
 the text the node gave and no batch.
+
+### Moving the catalogue to another batch
+
+The viewer walks the catalogue feed's slots from 0 and stops at the first it
+cannot read, so every slot has to stay retrievable. A top-up keeps the batch
+id and needs nothing here. Another batch means stamping every slot again under
+it before the old one lapses: `src/domain/CatalogueMove.ts`, with its progress
+in `catalogue_moves` (migration `014`).
+
+**Off by default.** `CATALOGUE_MOVE_ENABLED=true` turns it on. Until the owner
+has tried it on a real node (`docs/architecture/stages.md`, "Trying the move on
+a real node"), the Stages page says the move is not yet enabled on this
+installation, and a start is refused with `problem: disabled` before anything
+else, a move left running included.
+
+**When a move waits.** When the feed has history and the pinned batch is not the
+designated one (another designated, `moveWaitingTo`, or a move back to one that
+still holds every slot, which needs the switch alone), or some slot from 0 to the
+head is not under the designated batch by the admin's record (written with
+another batch, or with one the admin never recorded: `unrecordedHistory`, the env
+file's; rows a move uploaded again under the pinned batch no longer count there),
+or the latest move to it has not finished (a failure after its last slot, at the
+thumbnails, is retried). Nothing waits only when the pinned batch is the
+designated one and every slot is under it. The Stages page then shows the
+catalogue move card, with "Move the catalogue to batch …" and a confirmation. It
+says the previous batch can be released in the manager only while the finished
+move's batch is both pinned and designated.
+
+**What the job does**, for slots 0 to the head, in order:
+
+- Each slot's single-owner chunk is uploaded again under the new batch through
+  the catalogue node, byte for byte. From `payload_text` where the row has it:
+  the chunk is built as bee-js's `updateFeedWithPayload` built it, and signed
+  again with the feed key, which gives the same signature (secp256k1 with RFC
+  6979 nonces; `test/unit/catalogueRestamp.test.ts` holds both to it). A row
+  without it, or a slot with no row at all (written before migration `003`),
+  is read from the network through the catalogue node, checked against its
+  address, and uploaded with the signature it carries. A payload over 4096
+  bytes is a wrapped chunk: its content-addressed data is uploaded again first,
+  and has to come to the root the slot wraps. A head adopted from the network at
+  boot (no reference, no batch) takes the network path too: its text is what a
+  node answered, not a write of this admin's.
+- A slot already under the new batch by the record (written with it, uploaded
+  again under it, or covered by a move to it that finished) is left as it is.
+- Then every thumbnail a stream names (`streams.thumbnail_ref`, published or
+  not, since a draft published again names the same reference) and every one
+  the latest entry names, from `streams.thumbnail` where the row still holds
+  the bytes, otherwise read from the network. One the entry names has to come
+  out at that reference, and an upload that fails stops the move, to be
+  retried. Each is recorded as under the new batch on its streams
+  (`streams.thumbnail_batch_id`, migration `014`), and a publish uploads a
+  thumbnail again whenever that batch is not the one it writes with.
+- Then the admin writes with the new batch: the pin moves to it.
+
+**Publishing goes on.** The history goes in slices of 20 slots outside the
+publish mutex, with the designation checked again between slices. The last
+step holds the mutex: the slots written meanwhile, the thumbnails of the entry
+written last, and the switch, so no slot is ever left under the old batch alone.
+
+**Resumable.** After every slot `catalogue_moves.next_index` moves on and the
+row's `feed_writes.restamped_batch_id` and `restamped_at` are set, in one
+transaction. A process that stops resumes a running move at boot; a shutdown
+pauses it after the slot it is on. A failure stops with its reason in
+`catalogue_moves.error`, without the catalogue node's address, and the same
+start retries it from there. With the move turned off since, a move left
+running is failed at boot with that reason.
+
+**Refused**, with `409 catalogue_move_refused` and `problem`: `disabled`,
+`none` or `cleared` (no batch to move to), `nothing` (every slot is under it
+already), `target` (the designated batch is expired, gone or mutable), `lapsed`
+(the batch the catalogue is written with has lapsed and some slot has no
+recorded bytes, which only the network could give), and `changed` (the page
+named another batch than the designated one).
+
+**Audited** as `catalogue.move.start`, `catalogue.move.done` and
+`catalogue.move.failed`, with the move's id and both batches; the log lines,
+`[CatalogueMove]`, shorten batch ids. Once the page says the move is done, the
+previous batch is released in the manager's Catalogue node card, which is what
+lets its node be removed and its batch lapse.
 
 ### Where the next index comes from
 
@@ -367,9 +448,12 @@ it on a clean catalogue costs no index and no stamp. The answer is
 `FeedReconcileResult`: the index written (or `null`), and the topics
 `removed` / `added` / `updated`.
 
-A stored `thumbnail_ref` is verified before it is reused: the gateway is asked
-whether it still holds that reference, and only then is it carried onto the
-feed. A reference the gateway does not have is re-uploaded and the new one
+A stored `thumbnail_ref` is reused only when `thumbnail_batch_id` (migration
+`014`) says it was uploaded under the batch the write goes with, and the
+gateway still holds it; otherwise the same bytes are uploaded again under that
+batch, which comes to the same reference, and the batch is recorded. An image
+only an older batch holds would lapse with it. The gateway is asked whether it
+still holds that reference, and only then is it carried onto the feed. A reference the gateway does not have is re-uploaded and the new one
 persisted, with a warning naming the stream and the stale reference. This is
 what makes the `fake`/`bee` switch safe — `fake` mints references that exist
 nowhere, and without the check a stream published under `fake` would keep
@@ -620,10 +704,15 @@ token are kept in columns of their own (migration 009) that no list selects;
 neither is logged, audited or answered to anyone. The console reads the
 records back behind the session:
 
-| Method | Path                   | Answer                                                                                                                                                                                                                                                                                                                    |
-| ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/stages`          | `StageListResponse`: every stage, retired ones last, with `supported` (the engine is SRS), its status, owner, ingest host and ports, `hasSrtPassphrase`, rung stamp and chequebook readings, uploader, readiness, `adminTokenKind` (`own`, `shared`, or `null` when the manager pushed no token) and when it was observed |
-| GET    | `/api/catalogue-stamp` | `CatalogueStampResponse`: `catalogueStamp`, the designated batch's node name, batch id, immutable, depth, state, time to live and fill, or null; and `catalogueWrite`, the batch the catalogue is written with, the refusal and a waiting move. Never the Bee API address                                                 |
+| Method | Path                   | Answer                                                                                                                                                                                                                                                                                                                                                                               |
+| ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/stages`          | `StageListResponse`: every stage, retired ones last, with `supported` (the engine is SRS), its status, owner, ingest host and ports, `hasSrtPassphrase`, rung stamp and chequebook readings, uploader, readiness, `adminTokenKind` (`own`, `shared`, or `null` when the manager pushed no token) and when it was observed                                                            |
+| GET    | `/api/catalogue-stamp` | `CatalogueStampResponse`: `catalogueStamp`, the designated batch's node name, batch id, immutable, depth, state, time to live and fill, or null; `catalogueWrite`, the batch the catalogue is written with, the refusal and a waiting move; and `catalogueMove`, the move of the history ([Moving the catalogue](#moving-the-catalogue-to-another-batch)). Never the Bee API address |
+
+`POST /api/catalogue-stamp/move`, behind the session and the same-site check,
+takes `{ targetBatchId }` and starts the move, or retries a failed one, and
+answers `202` with the move's status; `409 catalogue_move_refused`, with
+`problem` and the sentence, when it cannot start.
 
 To register a stage by hand in local development, with `INTERNAL_API_TOKEN`
 exported from your `.env` and example values:

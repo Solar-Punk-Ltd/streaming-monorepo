@@ -289,6 +289,12 @@ the spec. The feature branch goes to `main` once the owner has tried it whole.
   uploader's boot check and the manager's Test connection compare with the
   owner the admin knows for the token's stage, and fall back to the catalogue
   owner only for a token of no stage.
+- Phase 8, moving the catalogue to another batch: the manager designates
+  another batch as a move and keeps guarding the previous one until the
+  operator releases it; the admin stamps every slot again under the new batch,
+  byte for byte, then every stored thumbnail, then writes with it.
+  Decided: `CATALOGUE_MOVE_ENABLED` stays off on every installation until the
+  owner has tried the move on a real node, by the procedure in the spec.
 
 ## Checkpoint 3: manager integration
 

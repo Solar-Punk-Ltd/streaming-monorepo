@@ -1,5 +1,5 @@
 /**
- * The brand's catalogue node, migration 047's single-row table, against a real PostgreSQL.
+ * The brand's catalogue node, migration 047's single-row table with migration 048's move, against a real PostgreSQL.
  *
  * `pnpm test:database` in manager/, or on its own with DEPLOYMENT_SETTINGS_TEST_PG_PORT set.
  *
@@ -7,7 +7,9 @@
  * land only at the revision they read, that a clear keeps the manager's moment it names and the node and batch it
  * cleared, and that the rules the
  * columns carry refuse a half designation, a batch id in another spelling and a depth no batch has, even from a write
- * that skipped the service.
+ * that skipped the service. And for the move: that a move records the batch pinned before it in the same statement,
+ * refuses a third batch while one is pending, swaps on a move back, and that a release lands only with a move pending
+ * and at the revision it read, and that the columns refuse half a move.
  */
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
@@ -27,8 +29,20 @@ const connection = {
 };
 
 const BATCH = 'ab'.repeat(32);
+const NEXT_BATCH = 'cd'.repeat(32);
+const THIRD_BATCH = 'ef'.repeat(32);
 const DESIGNATED_AT = new Date('2026-09-28T09:00:00.000Z');
 const CLEARED_AT = new Date('2026-09-28T09:30:00.000Z');
+const MOVED_AT = new Date('2026-09-28T10:00:00.000Z');
+const RELEASED_AT = new Date('2026-09-28T11:00:00.000Z');
+/** The migration 048 columns of a row with no move pending. */
+const NO_MOVE = {
+  movingFromProfileName: null,
+  movingFromBatchId: null,
+  movingFromBatchDepth: null,
+  moveStartedAt: null,
+  moveStartedBy: null,
+};
 
 describe(
   'the catalogue designation table, in isolated PostgreSQL',
@@ -74,6 +88,9 @@ describe(
         designatedAt: null,
         designatedBy: null,
         clearedAt: null,
+        ...NO_MOVE,
+        releasedAt: null,
+        releasedBy: null,
         revision: 0,
       });
       await assert.rejects(pool.query('INSERT INTO catalogue_designation DEFAULT VALUES'), /duplicate key/);
@@ -93,6 +110,9 @@ describe(
         designatedAt: DESIGNATED_AT,
         designatedBy: 'operator',
         clearedAt: null,
+        ...NO_MOVE,
+        releasedAt: null,
+        releasedBy: null,
         revision: 1,
       });
       const stale = await store.designate(
@@ -116,6 +136,9 @@ describe(
         designatedAt: DESIGNATED_AT,
         designatedBy: 'b',
         clearedAt: CLEARED_AT,
+        ...NO_MOVE,
+        releasedAt: null,
+        releasedBy: null,
         revision: 2,
       });
       const again = await store.designate(
@@ -168,6 +191,147 @@ describe(
         pool.query('UPDATE catalogue_designation SET cleared_at = NOW()'),
         /check/i,
         'a clear of nothing designated',
+      );
+    });
+
+    it('moves at the revision it read, recording the batch pinned before as the one moved from', async () => {
+      await store.designate({ profileName: 'catalogue', batchId: BATCH, batchDepth: 20, at: DESIGNATED_AT }, 0, 'a');
+      const next = { profileName: 'catalogue-two', batchId: NEXT_BATCH, batchDepth: 22, at: MOVED_AT };
+      assert.equal(await store.move(next, 0, 'b'), null, 'a stale revision');
+      const moved = await store.move(next, 1, 'b');
+      assert.deepEqual(moved, {
+        profileName: 'catalogue-two',
+        batchId: NEXT_BATCH,
+        batchDepth: 22,
+        designatedAt: MOVED_AT,
+        designatedBy: 'b',
+        clearedAt: null,
+        movingFromProfileName: 'catalogue',
+        movingFromBatchId: BATCH,
+        movingFromBatchDepth: 20,
+        moveStartedAt: MOVED_AT,
+        moveStartedBy: 'b',
+        releasedAt: null,
+        releasedBy: null,
+        revision: 2,
+      });
+      assert.deepEqual(await store.read(), moved);
+    });
+
+    it('moves from a cleared designation, and never to the pinned batch, from nothing or to a third batch', async () => {
+      const next = { profileName: 'catalogue-two', batchId: NEXT_BATCH, batchDepth: 22, at: MOVED_AT };
+      assert.equal(await store.move(next, 0, 'b'), null, 'nothing pinned to move from');
+      await store.designate({ profileName: 'catalogue', batchId: BATCH, batchDepth: 20, at: DESIGNATED_AT }, 0, 'a');
+      await store.clear(CLEARED_AT, 1, 'a');
+      assert.equal(await store.move({ ...next, batchId: BATCH }, 2, 'b'), null, 'the pinned batch is no move');
+      const moved = await store.move(next, 2, 'b');
+      assert.equal(moved?.clearedAt, null, 'the batch moved to is designated in force');
+      assert.equal(moved?.movingFromBatchId, BATCH);
+      assert.equal(
+        await store.move({ ...next, batchId: THIRD_BATCH }, 3, 'b'),
+        null,
+        'a third batch while the move is pending',
+      );
+      assert.equal((await store.read()).revision, 3);
+    });
+
+    it('keeps a pending move through a clear and a designation of the batch moved to, and swaps on a move back', async () => {
+      await store.designate({ profileName: 'catalogue', batchId: BATCH, batchDepth: 20, at: DESIGNATED_AT }, 0, 'a');
+      await store.move({ profileName: 'catalogue-two', batchId: NEXT_BATCH, batchDepth: 22, at: MOVED_AT }, 1, 'b');
+      const cleared = await store.clear(CLEARED_AT, 2, 'a');
+      assert.equal(cleared?.movingFromBatchId, BATCH);
+      const again = await store.designate(
+        { profileName: 'catalogue-two', batchId: NEXT_BATCH, batchDepth: 22, at: CLEARED_AT },
+        3,
+        'a',
+      );
+      assert.equal(again?.movingFromBatchId, BATCH);
+      assert.deepEqual(again?.moveStartedAt, MOVED_AT);
+      const back = await store.move(
+        { profileName: 'catalogue', batchId: BATCH, batchDepth: 20, at: RELEASED_AT },
+        4,
+        'c',
+      );
+      assert.equal(back?.batchId, BATCH);
+      assert.equal(back?.profileName, 'catalogue');
+      assert.equal(back?.movingFromProfileName, 'catalogue-two');
+      assert.equal(back?.movingFromBatchId, NEXT_BATCH);
+      assert.equal(back?.movingFromBatchDepth, 22);
+      assert.deepEqual(back?.moveStartedAt, RELEASED_AT);
+      assert.equal(back?.moveStartedBy, 'c');
+    });
+
+    it('releases at the revision it read, keeping who and when, and only with a move pending', async () => {
+      assert.equal(await store.release(RELEASED_AT, 0, 'c'), null, 'nothing to release');
+      await store.designate({ profileName: 'catalogue', batchId: BATCH, batchDepth: 20, at: DESIGNATED_AT }, 0, 'a');
+      assert.equal(await store.release(RELEASED_AT, 1, 'c'), null, 'no move pending');
+      await store.move({ profileName: 'catalogue-two', batchId: NEXT_BATCH, batchDepth: 22, at: MOVED_AT }, 1, 'b');
+      assert.equal(await store.release(RELEASED_AT, 1, 'c'), null, 'a stale revision');
+      const released = await store.release(RELEASED_AT, 2, 'c');
+      assert.deepEqual(released, {
+        profileName: 'catalogue-two',
+        batchId: NEXT_BATCH,
+        batchDepth: 22,
+        designatedAt: MOVED_AT,
+        designatedBy: 'b',
+        clearedAt: null,
+        ...NO_MOVE,
+        releasedAt: RELEASED_AT,
+        releasedBy: 'c',
+        revision: 3,
+      });
+      assert.equal(await store.release(RELEASED_AT, 3, 'c'), null, 'released already');
+      const third = await store.move(
+        { profileName: 'catalogue', batchId: THIRD_BATCH, batchDepth: 20, at: RELEASED_AT },
+        3,
+        'b',
+      );
+      assert.equal(third?.movingFromBatchId, NEXT_BATCH, 'a third batch once the previous one is released');
+      assert.deepEqual(third?.releasedAt, RELEASED_AT, 'the last release stays recorded');
+    });
+
+    it('refuses half a move, a batch moved from in another spelling or the same as the pinned one', async () => {
+      await store.designate({ profileName: 'catalogue', batchId: BATCH, batchDepth: 20, at: DESIGNATED_AT }, 0, 'a');
+      await assert.rejects(
+        pool.query("UPDATE catalogue_designation SET moving_from_profile_name = 'catalogue-two'"),
+        /check/i,
+        'a deployment moved from with no batch',
+      );
+      await assert.rejects(
+        pool.query(
+          'UPDATE catalogue_designation SET moving_from_profile_name = $1, moving_from_batch_id = $2, moving_from_batch_depth = 20',
+          ['catalogue-two', NEXT_BATCH],
+        ),
+        /check/i,
+        'a move with no moment',
+      );
+      await assert.rejects(
+        pool.query(
+          'UPDATE catalogue_designation SET moving_from_profile_name = $1, moving_from_batch_id = $2, move_started_at = NOW()',
+          ['catalogue-two', NEXT_BATCH],
+        ),
+        /check/i,
+        'a batch moved from with no depth',
+      );
+      for (const batchId of [`0x${NEXT_BATCH}`, NEXT_BATCH.toUpperCase(), BATCH]) {
+        await assert.rejects(
+          pool.query(
+            'UPDATE catalogue_designation SET moving_from_profile_name = $1, moving_from_batch_id = $2, moving_from_batch_depth = 20, move_started_at = NOW()',
+            ['catalogue-two', batchId],
+          ),
+          /check/i,
+          batchId,
+        );
+      }
+      await assert.rejects(
+        pool.query("UPDATE catalogue_designation SET move_started_by = 'b'"),
+        /check/i,
+        'a mover with no move',
+      );
+      await assert.rejects(
+        pool.query("UPDATE catalogue_designation SET released_by = 'c'"),
+        /check/i,
+        'a releaser with no release',
       );
     });
   },

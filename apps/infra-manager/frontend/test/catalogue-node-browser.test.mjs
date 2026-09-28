@@ -6,8 +6,10 @@
  * mutable batch with the manager's sentence before any save, designates an immutable one with its reading and the
  * line saying how the last push went, and clears it. On the node's page the pinned batch is marked, the Storage and
  * funding card says that Buy and Use leave the catalogue on it, and Top up stays offered. Cleared, the card says the
- * catalogue stays pinned to that batch, refuses another one with the move sentence, and designates the same one
- * again. The node's removal is refused while it is designated and after a clear.
+ * catalogue stays pinned to that batch, still refuses a mutable one, and designates the same one again. The node's
+ * removal is refused while it is designated and after a clear. Designated, it moves the catalogue to the node's
+ * other immutable batch after a confirm, shows the batch moved from with its reading and the steps, refuses a third
+ * batch while the move is pending, and releases the previous batch after another confirm.
  *
  * A real headless Chrome over a real Vite, proxying to the dev mock manager, which answers the catalogue routes with
  * the manager's own rules. Runs with the other suites under `pnpm test:browser`, or on its own:
@@ -22,12 +24,14 @@ import { createServer } from 'vite';
 
 import {
   CATALOGUE_MUTABLE_REFUSAL,
-  catalogueMoveRefusal,
+  catalogueReleaseFirstRefusal,
   REQUESTED_WITH_HEADER,
   REQUESTED_WITH_VALUE,
+  shortHex,
 } from '@streaming-infra-manager/common';
 
 import { DEV_PASSWORD, DEV_USERNAME } from '../dev/mock-auth.mjs';
+import { catalogueMoveConfirmText, catalogueMoveLabel } from '../src/catalogueNode/catalogueNodeView.ts';
 import {
   buttonWithText,
   clickWhenEnabled,
@@ -122,9 +126,12 @@ test('the catalogue node card designates an immutable batch, refuses a mutable o
   assert.match(await card(), /Web2 admin: not sent yet/);
 
   const stamps = await batchesOf('catalogue-node');
-  const immutable = stamps.find((stamp) => stamp.immutableFlag);
+  const [immutable, next] = stamps.filter((stamp) => stamp.immutableFlag);
   const mutable = stamps.find((stamp) => !stamp.immutableFlag);
-  assert.ok(immutable && mutable, 'the mock seeds the catalogue node with one batch of each kind');
+  assert.ok(
+    immutable && next && mutable,
+    'the mock seeds the catalogue node with two immutable batches and a mutable one',
+  );
   const shortOf = (id) => id.slice(0, 8);
 
   await t.test('only Bee-only deployments are offered, and a pool rung is refused with its reason', async () => {
@@ -205,17 +212,66 @@ test('the catalogue node card designates an immutable batch, refuses a mutable o
     assert.equal(answer.body.error, 'catalogue_node_designated');
   });
 
-  await t.test('another batch is refused with the move sentence, and the same one is designated again', async () => {
+  await t.test('a mutable batch is still refused, and the same one is designated again', async () => {
     await waitFor(card, (text) => text.includes('One of the batches the node holds'), 'the pinned node’s batches');
     await choose(1, shortOf(mutable.batchID), 'another batch');
-    await waitFor(
-      card,
-      (text) => text.includes(catalogueMoveRefusal(immutable.batchID.replace(/^0x/, '').toLowerCase())),
-      'the move refusal',
-    );
-    assert.equal(await evaluate(`${cardButton('Designate again')}?.disabled`), true);
+    await waitFor(card, (text) => text.includes(CATALOGUE_MUTABLE_REFUSAL), 'the mutable refusal');
+    const moveLabel = catalogueMoveLabel(mutable.batchID.replace(/^0x/, '').toLowerCase());
+    assert.equal(await evaluate(`${cardButton(moveLabel)}?.disabled`), true, 'the move it would be is held');
     await choose(1, shortOf(immutable.batchID), 'the pinned batch');
     await clickWhenEnabled(evaluate, cardButton('Designate again'), 'an enabled Designate again');
     await waitFor(card, (text) => text.includes('Clear the designation'), 'the designation again');
+  });
+
+  const dialogButton = (label) =>
+    `[...document.querySelectorAll('[role=dialog] button')].find(button => button.textContent.trim() === ${JSON.stringify(label)})`;
+  const dialogText = () => evaluate(`document.querySelector('[role=dialog]')?.innerText ?? ''`);
+  const normalizedId = (id) => id.replace(/^0x/, '').toLowerCase();
+
+  await t.test('another immutable batch moves the catalogue after a confirm, with the steps', async () => {
+    await clickWhenEnabled(evaluate, cardButton('Move to another batch'), 'the move button');
+    await waitFor(card, (text) => text.includes('One of the batches the node holds'), 'the node’s batches');
+    await choose(1, shortOf(next.batchID), 'the batch to move to');
+    const label = catalogueMoveLabel(normalizedId(next.batchID));
+    await clickWhenEnabled(evaluate, cardButton(label), `an enabled ${label}`);
+    const confirmText = await waitFor(dialogText, (text) => text.includes('Move the catalogue?'), 'the move confirm');
+    assert.ok(
+      confirmText.includes(catalogueMoveConfirmText(normalizedId(immutable.batchID), normalizedId(next.batchID))),
+    );
+    await clickWhenEnabled(evaluate, dialogButton('Move the catalogue'), 'the confirm');
+    const moving = await waitFor(card, (text) => text.includes('Moving from batch'), 'the pending move');
+    assert.ok(moving.includes(`Moving from batch ${shortHex(normalizedId(immutable.batchID))} on catalogue-node`));
+    assert.match(moving, /Stages page, start “Move the catalogue to batch/);
+    assert.match(moving, /CATALOGUE_MOVE_ENABLED/);
+    assert.match(moving, /Wait until it says the move is done\./);
+    assert.match(moving, /active · depth 20 · \d+d \d+h left/, 'the batch moved from is still read');
+    assert.ok(moving.includes(`catalogue-node, batch ${shortHex(normalizedId(next.batchID))}`));
+    assert.ok(await evaluate(`Boolean(${cardButton('Release the previous batch')})`));
+  });
+
+  await t.test('a third batch is refused while the move is pending', async () => {
+    await clickWhenEnabled(evaluate, cardButton('Move to another batch'), 'the move button');
+    await waitFor(card, (text) => text.includes('One of the batches the node holds'), 'the node’s batches');
+    await choose(1, shortOf(mutable.batchID), 'a third batch');
+    await waitFor(
+      card,
+      (text) => text.includes(catalogueReleaseFirstRefusal(normalizedId(immutable.batchID))),
+      'the release-first refusal',
+    );
+    await clickWhenEnabled(evaluate, cardButton('Cancel'), 'the cancel of the move');
+  });
+
+  await t.test('the previous batch is released after a confirm, and the move ends', async () => {
+    await clickWhenEnabled(evaluate, cardButton('Release the previous batch'), 'the release button');
+    const confirmText = await waitFor(
+      dialogText,
+      (text) => text.includes('Release the previous batch?'),
+      'the release confirm',
+    );
+    assert.match(confirmText, /catalogue-node can then be removed, and the batch may lapse/);
+    await clickWhenEnabled(evaluate, dialogButton('Release'), 'the confirm');
+    const released = await waitFor(card, (text) => text.includes('Previous batch released'), 'the release');
+    assert.equal(released.includes('Moving from batch'), false);
+    assert.equal(await evaluate(`Boolean(${cardButton('Release the previous batch')})`), false);
   });
 });

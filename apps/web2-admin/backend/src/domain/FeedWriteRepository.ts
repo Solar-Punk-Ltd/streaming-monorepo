@@ -75,14 +75,16 @@ export class FeedWriteRepository {
 
   /**
    * How many writes of this feed have no batch recorded: those from before migration 013, stamped by the env file's
-   * batch, and heads adopted from the network at boot. None of them is known to be under the catalogue batch.
+   * batch, and heads adopted from the network at boot. None of them is known to be under the catalogue batch, unless
+   * a move uploaded it again under `pinnedBatchId` (migration 014), and those are not counted.
    */
-  async countUnrecordedBatch(owner: string, topic: string): Promise<number> {
+  async countUnrecordedBatch(owner: string, topic: string, pinnedBatchId: string | null = null): Promise<number> {
     const result = await this.pool.query<{ writes: number }>(
       `SELECT COUNT(*)::int AS writes
          FROM feed_writes
-        WHERE feed_owner = $1 AND feed_topic = $2 AND batch_id IS NULL`,
-      [normalise(owner), normalise(topic)],
+        WHERE feed_owner = $1 AND feed_topic = $2 AND batch_id IS NULL
+          AND ($3::text IS NULL OR restamped_batch_id IS DISTINCT FROM $3)`,
+      [normalise(owner), normalise(topic), pinnedBatchId],
     );
     return result.rows[0]?.writes ?? 0;
   }

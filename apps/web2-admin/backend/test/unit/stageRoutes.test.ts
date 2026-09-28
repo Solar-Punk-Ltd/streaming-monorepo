@@ -32,6 +32,8 @@ import { StageService } from '../../src/domain/StageService.js';
 import { StreamStateService } from '../../src/domain/StreamStateService.js';
 import { PublishService } from '../../src/domain/PublishService.js';
 import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
+import { CatalogueMoveService } from '../../src/domain/CatalogueMove.js';
+import { Mutex } from '../../src/domain/Mutex.js';
 
 import {
   InMemoryCredentialRepository,
@@ -48,6 +50,7 @@ import {
   TEST_OWNER,
 } from './support/fakes.js';
 import {
+  CATALOGUE_BATCH_ID,
   catalogueStampRecord,
   FakeCatalogueStampStore,
   FakeStageStore,
@@ -56,6 +59,7 @@ import {
   stageRecord,
   TOKEN_SHA256,
 } from './support/stageFakes.js';
+import { FakeFeedWrites, FakeThumbnailStore, InMemoryCatalogueMoveStore } from './support/moveFakes.js';
 
 const TOKEN = 'test-registrar-token-000000000000000000';
 const PASSWORD = 'a-long-enough-password';
@@ -66,6 +70,10 @@ let cookie: string;
 let stages: FakeStageStore;
 let catalogue: FakeCatalogueStampStore;
 let audit: InMemoryAuditLog;
+/** The feed's history as the catalogue move reads it. */
+let moveWrites: FakeFeedWrites;
+let moveStore: InMemoryCatalogueMoveStore;
+let catalogueMoveService: CatalogueMoveService;
 
 /** Every line logged during a test, at any level, so a test can prove a secret never reached one. */
 const lines: string[] = [];
@@ -119,7 +127,23 @@ before(async () => {
     // Five minutes after the records the suite pushes were observed, so their time to live never runs out here.
     now: () => Date.parse('2026-09-28T10:05:00.000Z'),
   });
-  app.use('/api/catalogue-stamp', createCatalogueStampRouter({ stageService, catalogueBatch, requireAuth }));
+  moveWrites = new FakeFeedWrites();
+  moveStore = new InMemoryCatalogueMoveStore(moveWrites);
+  catalogueMoveService = new CatalogueMoveService(
+    moveStore,
+    catalogue,
+    moveWrites,
+    new FakeThumbnailStore(),
+    new FakeFeedGateway(),
+    new Mutex(),
+    feed,
+    audit,
+    { enabled: true, now: () => Date.parse('2026-09-28T10:05:00.000Z') },
+  );
+  app.use(
+    '/api/catalogue-stamp',
+    createCatalogueStampRouter({ stageService, catalogueBatch, catalogueMove: catalogueMoveService, requireAuth }),
+  );
   app.use(notFound);
   app.use(errorHandler);
 
@@ -142,6 +166,8 @@ beforeEach(() => {
   stages.tombstones.clear();
   catalogue.row = null;
   audit.entries.length = 0;
+  moveWrites.rows.length = 0;
+  moveStore.moves.length = 0;
   lines.length = 0;
   const keep = (...args: unknown[]) => void lines.push(args.map(String).join(' '));
   const methods = (['log', 'info', 'warn', 'error', 'debug'] as const).map((name) => mock.method(console, name, keep));
@@ -406,6 +432,14 @@ describe('the console’s stage reads', () => {
         moveWaitingTo: null,
         unrecordedHistory: null,
       },
+      catalogueMove: {
+        enabled: true,
+        waiting: null,
+        refusal: null,
+        latest: null,
+        designatedBatchId: null,
+        pinnedBatchId: null,
+      },
     });
 
     await call('PUT', '/api/internal/catalogue-stamp', { body: catalogueStampRecord() });
@@ -428,5 +462,98 @@ describe('the console’s stage reads', () => {
       unrecordedHistory: null,
     });
     assert.equal(after.text.includes('192.0.2.10'), false, 'the Bee API address reached the console');
+  });
+});
+
+describe('the console’s catalogue move', () => {
+  const NEW_BATCH = 'd3'.repeat(32);
+
+  /** Two slots written with the pinned batch, then a designation of another one: a move waits. */
+  async function historyThenAnotherBatch(): Promise<void> {
+    await call('PUT', '/api/internal/catalogue-stamp', { body: catalogueStampRecord() });
+    await catalogue.pin(catalogueStampRecord());
+    for (const index of [0, 1]) {
+      const payload = [{ topic: `t${index}` }];
+      await moveWrites.record({
+        owner: TEST_OWNER,
+        topic: '00'.repeat(32),
+        feedIndex: index,
+        entryCount: 1,
+        payload,
+        payloadText: JSON.stringify(payload),
+        reference: null,
+        batchId: CATALOGUE_BATCH_ID,
+      });
+    }
+    await call('PUT', '/api/internal/catalogue-stamp', {
+      body: catalogueStampRecord({ batchId: NEW_BATCH, observedAt: '2026-09-28T10:01:00.000Z' }),
+    });
+  }
+
+  it('answers 401 without a session, and never on the registrar token', async () => {
+    const body = { targetBatchId: NEW_BATCH };
+    assert.equal((await call('POST', '/api/catalogue-stamp/move', { token: null, body })).status, 401);
+    assert.equal((await call('POST', '/api/catalogue-stamp/move', { body })).status, 401);
+  });
+
+  it('refuses a body that names no batch', async () => {
+    const answer = await call('POST', '/api/catalogue-stamp/move', {
+      token: null,
+      cookie,
+      body: { targetBatchId: 'x' },
+    });
+    assert.equal(answer.status, 400);
+  });
+
+  it('refuses with 409 and the sentence when there is nothing to move', async () => {
+    await call('PUT', '/api/internal/catalogue-stamp', { body: catalogueStampRecord() });
+    const answer = await call('POST', '/api/catalogue-stamp/move', {
+      token: null,
+      cookie,
+      body: { targetBatchId: CATALOGUE_BATCH_ID },
+    });
+    assert.equal(answer.status, 409);
+    assert.deepEqual((answer.body as { problem: string }).problem, 'nothing');
+  });
+
+  it('shows the waiting move, starts it, and never says the Bee API address', async () => {
+    await historyThenAnotherBatch();
+
+    const read = await call('GET', '/api/catalogue-stamp', { token: null, cookie });
+    const { catalogueMove } = read.body as CatalogueStampResponse;
+    assert.deepEqual(catalogueMove.waiting, { targetBatchId: NEW_BATCH, fromBatchId: CATALOGUE_BATCH_ID, slots: 2 });
+    assert.equal(catalogueMove.refusal, null);
+
+    const started = await call('POST', '/api/catalogue-stamp/move', {
+      token: null,
+      cookie,
+      body: { targetBatchId: NEW_BATCH.toUpperCase() },
+    });
+    assert.equal(started.status, 202);
+    await catalogueMoveService.settled();
+
+    const after = await call('GET', '/api/catalogue-stamp', { token: null, cookie });
+    const moved = (after.body as CatalogueStampResponse).catalogueMove;
+    assert.equal(moved.latest?.state, 'done');
+    assert.equal(moved.latest?.slotsDone, 2);
+    assert.equal(moved.waiting, null);
+    assert.equal(after.text.includes('192.0.2.10'), false, 'the Bee API address reached the console');
+    assert.equal(started.text.includes('192.0.2.10'), false);
+    assert.deepEqual(
+      audit.entries.map((entry) => entry.action).filter((action) => action.startsWith('catalogue.move')),
+      ['catalogue.move.start', 'catalogue.move.done'],
+    );
+  });
+
+  it('refuses a start that names another batch than the designated one', async () => {
+    await historyThenAnotherBatch();
+    const answer = await call('POST', '/api/catalogue-stamp/move', {
+      token: null,
+      cookie,
+      body: { targetBatchId: 'e4'.repeat(32) },
+    });
+    assert.equal(answer.status, 409);
+    assert.equal((answer.body as { problem: string }).problem, 'changed');
+    assert.equal(moveStore.moves.length, 0);
   });
 });

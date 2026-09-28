@@ -1,6 +1,14 @@
 import { createHash } from 'node:crypto';
 
-import type { CatalogueTarget, FeedGateway, FeedSnapshot } from './FeedGateway.js';
+import type {
+  CatalogueRestamper,
+  CatalogueTarget,
+  FeedGateway,
+  FeedSnapshot,
+  RestampedSlot,
+  SlotToRestamp,
+  ThumbnailFile,
+} from './FeedGateway.js';
 
 interface FakeWrite {
   index: number;
@@ -45,7 +53,7 @@ export interface FakeFeedGatewayOptions {
  * while `write` still enforces the true next index — which is exactly the
  * shape of the bug: the network read was stale, the chunk address was not.
  */
-export class FakeFeedGateway implements FeedGateway {
+export class FakeFeedGateway implements FeedGateway, CatalogueRestamper {
   private snapshot: FeedSnapshot = { index: null, entries: [] };
   /** Every state the feed has been in, oldest first: what the lag reads from. */
   private readonly history: FeedSnapshot[] = [];
@@ -62,6 +70,10 @@ export class FakeFeedGateway implements FeedGateway {
   failNextRead: Error | null = null;
   failNextThumbnail: Error | null = null;
   failNextHasReference: Error | null = null;
+  failNextRestamp: Error | null = null;
+  /** Every slot and thumbnail uploaded again by a catalogue move, in order. */
+  readonly restamps: { index: number; payloadText: string; target: CatalogueTarget }[] = [];
+  readonly restampedThumbnails: { reference: string; fromAdmin: boolean; target: CatalogueTarget }[] = [];
 
   constructor(initial?: FeedSnapshot, options: FakeFeedGatewayOptions = {}) {
     if (initial) this.snapshot = initial;
@@ -124,7 +136,38 @@ export class FakeFeedGateway implements FeedGateway {
     return this.references.has(reference);
   }
 
-  private take(field: 'failNextRead' | 'failNextWrite' | 'failNextThumbnail' | 'failNextHasReference'): Error | null {
+  /**
+   * Moving the catalogue, in memory: a slot with its payload is taken as it is, and one without is known only when
+   * this process wrote it. Each is recorded with its target, so a test can tell which slots went under which batch.
+   */
+  async restampSlot(slot: SlotToRestamp, target: CatalogueTarget): Promise<RestampedSlot> {
+    const failure = this.take('failNextRestamp');
+    if (failure) throw failure;
+    const payloadText =
+      slot.payloadText ?? [...this.writes].reverse().find((write) => write.index === slot.index)?.payloadText;
+    if (payloadText === undefined) throw new Error(`the fake gateway holds no chunk for slot ${slot.index}`);
+    this.restamps.push({ index: slot.index, payloadText, target });
+    return {
+      reference: createHash('sha256').update(payloadText).digest('hex'),
+      source: slot.payloadText !== null ? 'recorded' : 'network',
+      wrapped: new TextEncoder().encode(payloadText).length > 4096,
+    };
+  }
+
+  async restampThumbnail(reference: string, file: ThumbnailFile | null, target: CatalogueTarget): Promise<string> {
+    const failure = this.take('failNextRestamp');
+    if (failure) throw failure;
+    this.restampedThumbnails.push({ reference, fromAdmin: file !== null, target });
+    if (!file) {
+      if (!this.references.has(reference)) throw new Error(`the fake gateway holds no file ${reference}`);
+      return reference;
+    }
+    return createHash('sha256').update(file.bytes).digest('hex');
+  }
+
+  private take(
+    field: 'failNextRead' | 'failNextWrite' | 'failNextThumbnail' | 'failNextHasReference' | 'failNextRestamp',
+  ): Error | null {
     const failure = this[field];
     this[field] = null;
     return failure;

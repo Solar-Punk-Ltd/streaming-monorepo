@@ -200,8 +200,9 @@ together once.
 
 ## The catalogue node
 
-Built on `stages/p7-catalogue-node`, phase 7 of the brief, 2026-09-28. Not
-deployed.
+Built on `stages/p7-catalogue-node`, phase 7 of the brief, 2026-09-28, and
+moving the catalogue to another batch on `stages/p8-catalogue-move`, phase 8,
+2026-09-28. Neither is deployed.
 
 The web2 admin writes the brand's catalogue through one Bee node and one batch
 of their own, so that no stage's segments fill the batch the catalogue's slots
@@ -231,29 +232,73 @@ save does. `CatalogueDesignationService` refuses, with one sentence each
 | a batch whose kind the node does not report                            | the kind that fails is the one it might be                                                 |
 | an expired batch                                                       | nothing written with it stays                                                              |
 | a batch an ABR uploader of this manager names in its `BEE_PUBLISHERS`  | segments would fill it                                                                     |
-| another batch than the one first designated, cleared since or not      | the catalogue's slots are stamped by that batch, and moving them is its own action         |
+| another batch than the pinned one, without `move: true`                | the catalogue's slots are stamped by the pinned batch, and moving them is its own action   |
+| a third batch while a move is pending, `move: true` or not             | the batch moved from still holds the history until the admin reports the move done         |
 
 The node is asked about the batch fresh, `GET /stamps/{id}` on its own Bee API,
 when the designation is saved.
 
-Once a batch has been designated, the catalogue stays on it. Another batch is
-refused, through a clear as well, with "Moving the catalogue to another batch
-is its own action, coming with the move; until then the catalogue stays on
-batch …": the admin's feed history is stamped by the first one, and moving it
-is phase 8. The same batch can be designated again after a clear, which puts
-it in force once more.
+Once a batch has been designated, the catalogue stays on it. The same batch can
+be designated again after a clear, which puts it in force once more. Another
+batch is a move, through a clear as well, and is refused without `move: true`
+with `catalogueMoveRefusal`: "Batch … would move the catalogue off batch …,
+whose slots the web2 admin then stamps again under the new batch, so it is
+saved only when confirmed as a move." `move: true` for the pinned batch itself,
+or before any designation, changes nothing.
+
+### Moving the catalogue
+
+A move is a designation of another batch with `move: true`, on the same
+Bee-only deployment or another one, and it passes every check above. Migration
+048 adds the batch moved from to the row. The move pins the new batch, puts the
+designation in force (a cleared one included), and records the batch pinned
+before, its node and its depth as `moving_from_*`, with `move_started_at` and
+`move_started_by`, in one statement at the revision the page read. The record
+the manager pushes is the new batch's (the contract does not change), so the
+web2 admin sees another batch designated and stamps every slot of the catalogue
+again under it before it writes with it. That is started in the admin, and it
+says there when it is done.
+
+While the move is pending:
+
+- the batch moved to can be designated again after a clear, and a clear keeps
+  the move as it is;
+- a move back to the batch moved from, `move: true` again, swaps the two, so
+  whichever still holds history is the one recorded as moved from;
+- any third batch is refused with `catalogueReleaseFirstRefusal`, "The
+  catalogue is still moving off batch …, so release the previous batch first,
+  once the web2 admin reports the move done, before moving it to another."
+
+`POST /manager-settings/catalogue-node/release`, with `{ expectedRevision }`,
+ends the move: it takes the `moving_from_*` and `move_started_*` columns out,
+records `released_at` and `released_by`, which stay until the next release, and
+tells the publisher. It is refused with "No move of the catalogue is pending, so
+there is no previous batch to release." when none is. The operator presses it
+once the admin reports the move done; the manager cannot tell that itself.
+
+There is no audit table. A designation, a move, a move back, a clear and a
+release are each logged with the user, the batches shortened, as in
+`[Catalogue] operator released batch abababab…ababab on catalogue-node after
+the move to cdcdcdcd…cdcdcd`, and the row records who made the last of each and
+when.
+
+### What the manager keeps
 
 The deployment the catalogue is pinned to is not removed, designated or
-cleared since. Its removal, from the page or the Clean action, answers 409
-`catalogue_node_designated`, asked before the deployment is claimed and once
-more before the clean script runs, so a designation saved in between is
-caught. Removing the catalogue node waits for the move.
+cleared since, and while a move is pending neither is the deployment of the
+batch moved from. Their removal, from the page or the Clean action, answers
+409 `catalogue_node_designated`, asked before the deployment is claimed and
+once more before the clean script runs, so a designation saved in between is
+caught. The one moved from says to release the previous batch first; after the
+release it can be removed, and its batch may lapse.
 
 A pool string may not name the catalogue either. A create or an update of a
 deployment whose `BEE_PUBLISHERS` has an entry with the pinned batch, or at the
 catalogue node's Bee API (the address the control host dials, or the one a
 container here does), is refused with the same sentence a designation of a
-segment batch is, `CATALOGUE_SEGMENT_BATCH_REFUSAL`, cleared or not.
+segment batch is, `CATALOGUE_SEGMENT_BATCH_REFUSAL`, cleared or not. While a
+move is pending the batch moved from and its node's Bee API are refused the
+same way.
 
 ### The record
 
@@ -295,7 +340,10 @@ read. It is pushed:
 - **every 30 seconds** otherwise, and at start.
 
 While a designation is in force its batch is read and pushed; once cleared it
-is read no more. A clear goes to the same link as `DELETE` with `{ observedAt }`, the moment the
+is read no more. While a move is pending, the batch moved from is read on its
+node on the same ten-second round, cleared or not, for the card alone: nothing
+of it goes to the admin, and a node of it that does not answer holds no push
+back. A clear goes to the same link as `DELETE` with `{ observedAt }`, the moment the
 designation was taken out, stored as `cleared_at`, so a retry and a restarted
 manager resend the same moment. It is sent until the admin answers it, and not
 after. One call is in flight at a time: a trigger that comes during one makes
@@ -313,19 +361,35 @@ and the log says it when it changes.
 The card lists the deployments that are nothing but a Bee node, then the
 batches the chosen one holds, each with its depth, life, fill and kind, and
 refuses before any save, with the manager's own sentence, what the manager
-would refuse, another batch than the pinned one included. Designated, it shows
-the node, the batch, its last reading and the last push, with Clear the
-designation. Cleared, it says which batch and node the catalogue stays pinned
-to, and offers Designate again for that batch.
+would refuse. Designated, it shows the node, the batch, its last reading and
+the last push, with Move to another batch and Clear the designation. Cleared,
+it says which batch and node the catalogue stays pinned to, and offers
+Designate again for that batch.
+
+Once a batch is pinned, choosing another one on a Bee-only node turns the
+button into **Move the catalogue to batch …**, which asks first: the web2 admin
+stamps every slot of the catalogue again under the new batch, then switches to
+it, and until its console says the move is done the previous batch has to stay
+alive. While the move is pending the card shows "Moving from batch … on …" with
+that batch's last reading and who started the move, the steps (in the web2
+admin, on the Stages page, start "Move the catalogue to batch …", which needs
+`CATALOGUE_MOVE_ENABLED` on that installation; wait until it says the move is
+done; press Release the previous batch here), and **Release the previous
+batch**, which asks first as well: the node moved from can then be removed and
+its batch may lapse, so it is pressed only once the admin reports the move
+done. A third batch is refused on the card with the manager's sentence while
+the move is pending. After a release the card says when and by whom the last
+one was made.
 
 On the node's own page the pinned batch carries a **catalogue** chip, and the
 Storage and funding card says that Buy and Use leave the catalogue on the
 pinned batch, and that moving it is its own action. Top up stays offered on it
 (`postage-stamps.md`).
 
-`pnpm -C frontend dev:mock` seeds a `catalogue-node` deployment with one
-immutable and one mutable batch, and
-`frontend/test/catalogue-node-browser.test.mjs` drives the card in Chrome.
+`pnpm -C frontend dev:mock` seeds a `catalogue-node` deployment with two
+immutable batches and a mutable one, so a designation, a move and a release can
+be tried, and `frontend/test/catalogue-node-browser.test.mjs` drives the card
+in Chrome through all three.
 
 ## Limits
 

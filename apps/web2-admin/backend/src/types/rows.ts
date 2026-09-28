@@ -49,6 +49,8 @@ export interface StreamRow {
   has_thumbnail: boolean;
   thumbnail_mime: string | null;
   thumbnail_ref: string | null;
+  /** The batch the thumbnail was last uploaded under (migration 014), or null when unknown. */
+  thumbnail_batch_id: string | null;
   status: StreamStatus;
   published_at: Date | null;
   published_feed_index: number | null;

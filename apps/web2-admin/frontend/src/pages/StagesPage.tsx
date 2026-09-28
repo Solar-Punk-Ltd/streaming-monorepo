@@ -18,16 +18,20 @@ import {
   Typography,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import type { CatalogueStampSummary, StageSummary } from '@streaming-monorepo/web2-admin-common';
+import type { CatalogueMoveStatus, CatalogueStampSummary, StageSummary } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
 import { formatAgo } from '../dateUtil';
 import { errorMessage } from '../errors';
+import { CatalogueMoveCard } from '../components/stages/CatalogueMoveCard';
 import { CatalogueStampCard } from '../components/stages/CatalogueStampCard';
 import { ChequebookChip, ReadinessChip, StampNumbers, StampStateChip } from '../components/stages/stamps';
 
 /** How often "last confirmed" is worked out again. The manager confirms every stage every 30 seconds. */
 const CLOCK_TICK_MS = 30_000;
+
+/** How often a running move of the catalogue is read again, for its progress. */
+const MOVE_POLL_MS = 3_000;
 
 const ENGINE_LABEL: Record<StageSummary['engine'], string> = { srs: 'SRS', ome: 'OvenMediaEngine' };
 
@@ -129,27 +133,50 @@ function Rungs({ stage }: { stage: StageSummary }) {
 }
 
 /**
- * The stages the manager runs for the brand, as it last pushed them, and the brand's catalogue stamp. Read only: the
- * manager registers, changes and retires a stage, and every top-up happens in the manager's console.
+ * The stages the manager runs for the brand, as it last pushed them, and the brand's catalogue stamp. Read only but
+ * for one action: moving the catalogue's history onto the batch the manager designated. The manager registers,
+ * changes and retires a stage, and every top-up happens in the manager's console.
  */
 export function StagesPage() {
   const [stages, setStages] = useState<StageSummary[] | null>(null);
   const [stamp, setStamp] = useState<CatalogueStampSummary | null>(null);
+  const [move, setMove] = useState<CatalogueMoveStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const load = useCallback(() => {
     setError(null);
-    Promise.all([api.fetchStages(), api.fetchCatalogueStamp()])
-      .then(([nextStages, nextStamp]) => {
+    Promise.all([api.fetchStages(), api.fetchCatalogueState()])
+      .then(([nextStages, catalogue]) => {
         setStages(nextStages);
-        setStamp(nextStamp);
+        setStamp(catalogue.stamp);
+        setMove(catalogue.move);
         setNow(Date.now());
       })
       .catch((e: unknown) => setError(errorMessage(e, 'Failed to load the stages')));
   }, []);
 
   useEffect(load, [load]);
+
+  // A running move is read again every few seconds, so its progress and its end show without a refresh.
+  const moveRunning = move?.latest?.state === 'running';
+  useEffect(() => {
+    if (!moveRunning) return undefined;
+    const timer = setInterval(() => {
+      api
+        .fetchCatalogueState()
+        .then((catalogue) => {
+          setStamp(catalogue.stamp);
+          setMove(catalogue.move);
+        })
+        .catch(() => undefined);
+    }, MOVE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [moveRunning]);
+
+  const startMove = useCallback(async (targetBatchId: string) => {
+    setMove(await api.startCatalogueMove(targetBatchId));
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
@@ -189,6 +216,7 @@ export function StagesPage() {
       ) : null}
 
       {stages ? <CatalogueStampCard stamp={stamp} now={now} /> : null}
+      {stages ? <CatalogueMoveCard move={move} onStart={startMove} /> : null}
 
       {stages && stages.length === 0 ? (
         <Paper variant="outlined" sx={{ p: 6, textAlign: 'center' }}>

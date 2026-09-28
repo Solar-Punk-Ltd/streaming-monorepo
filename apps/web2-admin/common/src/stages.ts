@@ -151,8 +151,85 @@ export interface CatalogueWriteStatus {
   unrecordedHistory: { writes: number } | null;
 }
 
+/**
+ * Why a move of the catalogue to the designated batch cannot start now:
+ *
+ * - `disabled`: `CATALOGUE_MOVE_ENABLED` is off on this installation, which it is until the move has been tried on a
+ *   real node.
+ * - `none`, `cleared`: the manager designates no batch to move to.
+ * - `nothing`: every slot is already under the designated batch, by the admin's record.
+ * - `target`: the designated batch is expired, gone or mutable.
+ * - `lapsed`: the batch the catalogue is written with is expired or gone, and some slots have no recorded bytes, so
+ *   there is nothing left to read them from.
+ * - `changed`: only a start is refused with it: the batch it names is not the one the manager designates now.
+ */
+export const CATALOGUE_MOVE_PROBLEMS = [
+  'disabled',
+  'none',
+  'cleared',
+  'nothing',
+  'target',
+  'lapsed',
+  'changed',
+] as const;
+export type CatalogueMoveProblem = (typeof CATALOGUE_MOVE_PROBLEMS)[number];
+
+export const CATALOGUE_MOVE_STATES = ['running', 'done', 'failed'] as const;
+export type CatalogueMoveState = (typeof CATALOGUE_MOVE_STATES)[number];
+
+/** One move of the catalogue's history to another batch, as the console shows it. */
+export interface CatalogueMoveSummary {
+  id: string;
+  state: CatalogueMoveState;
+  targetBatchId: string;
+  /** The batch the catalogue was written with when the move started, or null when none was pinned yet. */
+  fromBatchId: string | null;
+  /** Slots stamped under the target batch so far: every slot below this index. */
+  slotsDone: number;
+  /** The feed's slots as the job last counted them, 0 to its head. */
+  slotsTotal: number | null;
+  /** Slots uploaded again, and slots already under the target batch. */
+  restamped: number;
+  skipped: number;
+  /** Thumbnails uploaded again: every one a stream or the latest entry names, once the move is done. */
+  thumbnails: number;
+  /** Why a failed move stopped. */
+  error: string | null;
+  startedBy: string;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+/**
+ * The catalogue move as the Stages page reads it: whether one is waiting and can start, why it cannot, and the latest
+ * move, running or finished.
+ */
+export interface CatalogueMoveStatus {
+  /** Whether `CATALOGUE_MOVE_ENABLED` is on. */
+  enabled: boolean;
+  /**
+   * The move the history waits for, or null when none does: the designated batch differs from the one the catalogue
+   * is written with, or some writes were stamped by a batch the admin never recorded.
+   */
+  waiting: { targetBatchId: string; fromBatchId: string | null; slots: number } | null;
+  /** Why the waiting move cannot start now, in the sentence the start is refused with; null when it can. */
+  refusal: { problem: CatalogueMoveProblem; message: string } | null;
+  /** The latest move of this feed, or null before the first. */
+  latest: CatalogueMoveSummary | null;
+  /** The batch the manager designates now, or null when none is designated. */
+  designatedBatchId: string | null;
+  /** The batch the catalogue is written with, or null before the first write pins one. */
+  pinnedBatchId: string | null;
+}
+
+/** What `POST /api/catalogue-stamp/move` takes: the batch the operator saw named, which must be the designated one. */
+export interface CatalogueMoveRequest {
+  targetBatchId: string;
+}
+
 export interface CatalogueStampResponse {
   /** The designated batch: null until the manager designates one, and again once it clears the designation. */
   catalogueStamp: CatalogueStampSummary | null;
   catalogueWrite: CatalogueWriteStatus;
+  catalogueMove: CatalogueMoveStatus;
 }

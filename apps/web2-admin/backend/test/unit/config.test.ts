@@ -51,3 +51,30 @@ describe('the config', () => {
     assert.equal(config.feedGateway, 'bee');
   });
 });
+
+describe('CATALOGUE_MOVE_ENABLED', () => {
+  it('is off when unset: the move is tried on a real node before it is turned on', async () => {
+    Object.assign(process.env, REQUIRED);
+    delete process.env.CATALOGUE_MOVE_ENABLED;
+
+    const config = await loadConfig('move-unset');
+
+    assert.equal(config.catalogueMoveEnabled, false);
+  });
+
+  it('is on for true or 1, and off for false or 0', async () => {
+    const answers: Record<string, boolean> = { true: true, '1': true, TRUE: true, false: false, '0': false };
+    for (const [value, expected] of Object.entries(answers)) {
+      Object.assign(process.env, REQUIRED, { CATALOGUE_MOVE_ENABLED: value });
+      const config = await loadConfig(`move-${value}`);
+      assert.equal(config.catalogueMoveEnabled, expected, value);
+    }
+    delete process.env.CATALOGUE_MOVE_ENABLED;
+  });
+
+  it('refuses any other value rather than guess', async () => {
+    Object.assign(process.env, REQUIRED, { CATALOGUE_MOVE_ENABLED: 'yes please' });
+    await assert.rejects(loadConfig('move-bad'), /CATALOGUE_MOVE_ENABLED must be true or false/);
+    delete process.env.CATALOGUE_MOVE_ENABLED;
+  });
+});

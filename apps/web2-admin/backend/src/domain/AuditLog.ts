@@ -37,7 +37,10 @@ export type AuditAction =
   | 'catalogue.stamp.set'
   | 'catalogue.stamp.change'
   | 'catalogue.stamp.clear'
-  | 'catalogue.batch.pin';
+  | 'catalogue.batch.pin'
+  | 'catalogue.move.start'
+  | 'catalogue.move.done'
+  | 'catalogue.move.failed';
 
 /**
  * One row of `audit_log`: who did what to which stream, and what it moved.

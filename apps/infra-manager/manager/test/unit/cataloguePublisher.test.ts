@@ -362,6 +362,69 @@ describe('a cleared designation', () => {
   });
 });
 
+describe('while the catalogue is moving to another batch', () => {
+  const NEXT_BATCH = 'cd'.repeat(32);
+
+  async function moving() {
+    const t = await publisherFor({
+      profiles: [
+        makeProfile({ name: 'catalogue', kind: 'custom', components: ['bee-uploader'] }),
+        makeProfile({ name: 'catalogue-two', kind: 'custom', components: ['bee-uploader'] }),
+      ],
+    });
+    await t.store.move(
+      { profileName: 'catalogue-two', batchId: NEXT_BATCH, batchDepth: 21, at: new Date(t.clock.now()) },
+      1,
+      'op',
+    );
+    return t;
+  }
+
+  it('pushes the batch moved to, and reads the batch moved from for the card alone', async () => {
+    const t = await moving();
+    t.publisher.start();
+    await settle();
+    await t.clock.advance(CATALOGUE_CHECK_MS * 4);
+
+    assert.ok(stores(t.sent).length > 0);
+    for (const request of stores(t.sent)) {
+      assert.equal(request.record.batchId, NEXT_BATCH);
+      assert.equal(request.record.nodeName, 'catalogue-two');
+    }
+    assert.equal(
+      t.sent.some((request) => JSON.stringify(request).includes(BATCH)),
+      false,
+      'nothing of the batch moved from goes to the admin',
+    );
+    const { reading, previousReading } = t.publisher.status();
+    assert.equal(reading?.batchId, NEXT_BATCH);
+    assert.equal(previousReading?.batchId, BATCH);
+    assert.equal(previousReading?.state, 'active');
+    assert.equal(previousReading?.depth, 20);
+    assert.equal(t.state.readings % 2, 0, 'both batches are read on each round');
+    t.publisher.stop();
+  });
+
+  it('keeps reading the batch moved from after a clear, and stops once it is released', async () => {
+    const t = await moving();
+    await t.store.clear(new Date(t.clock.now()), 2, 'op');
+    t.publisher.start();
+    await settle();
+    assert.equal(t.publisher.status().previousReading?.batchId, BATCH);
+    const readings = t.state.readings;
+    await t.clock.advance(CATALOGUE_CHECK_MS);
+    assert.equal(t.state.readings, readings + 1, 'the batch moved from alone is read while cleared');
+
+    await t.store.release(new Date(t.clock.now()), 3, 'op');
+    await t.clock.advance(CATALOGUE_CHECK_MS);
+    assert.equal(t.publisher.status().previousReading, null);
+    const after = t.state.readings;
+    await t.clock.advance(CATALOGUE_CHECK_MS * 3);
+    assert.equal(t.state.readings, after, 'nothing is read once the move is released and the designation cleared');
+    t.publisher.stop();
+  });
+});
+
 describe('stopping', () => {
   it('starts no call after stop', async () => {
     const t = await publisherFor();

@@ -8,15 +8,18 @@ import { PostgresUserRepository } from './domain/auth/PostgresUserRepository.js'
 import { SessionSweep, startSessionSweep } from './domain/auth/sessionSweep.js';
 import { BeeFeedGateway } from './domain/BeeFeedGateway.js';
 import { CatalogueBatchService } from './domain/CatalogueBatch.js';
+import { CatalogueMoveService } from './domain/CatalogueMove.js';
+import { CatalogueMoveRepository } from './domain/CatalogueMoveRepository.js';
 import { Database } from './domain/Database.js';
 import { FakeFeedGateway } from './domain/FakeFeedGateway.js';
 import { FeedBootCheckRunner } from './domain/feedBootCheck.js';
-import type { FeedGateway } from './domain/FeedGateway.js';
+import type { CatalogueRestamper, FeedGateway } from './domain/FeedGateway.js';
 import { feedIdentityFrom } from './domain/feedIdentity.js';
 import { FeedWriteRepository } from './domain/FeedWriteRepository.js';
 import { IngestService } from './domain/IngestService.js';
 import { LadderService } from './domain/LadderService.js';
 import { Logger } from './domain/Logger.js';
+import { Mutex } from './domain/Mutex.js';
 import { PostgresAuditLog } from './domain/PostgresAuditLog.js';
 import { PublishService } from './domain/PublishService.js';
 import { resetOrphanedPublishing } from './domain/resetOrphanedPublishing.js';
@@ -67,6 +70,9 @@ function logStartupConfig(owner: string, topicHex: string): void {
   logger.info(`[Boot]   feed: owner ${owner} topic "${config.feedTopic}" (${topicHex})`);
   logger.info(`[Boot]   viewer: ${config.viewerBaseUrl || '(unset → no player links)'}`);
   logger.info(`[Boot]   internal API token: ${redactSecret(config.internalApiToken)}`);
+  logger.info(
+    `[Boot]   catalogue move: ${config.catalogueMoveEnabled ? 'enabled' : 'off (CATALOGUE_MOVE_ENABLED is not set)'}`,
+  );
   logger.info("[Boot]   ingest: from each stream's stage, as the manager pushed it");
   const retired = retiredEnvKeysSet();
   if (retired.length > 0) {
@@ -76,7 +82,7 @@ function logStartupConfig(owner: string, topicHex: string): void {
   }
 }
 
-function createFeedGateway(): FeedGateway {
+function createFeedGateway(): FeedGateway & CatalogueRestamper {
   if (config.feedGateway === 'fake') {
     logger.warn('[Boot] FEED_GATEWAY=fake: feed writes and thumbnail uploads stay in memory, nothing reaches Swarm');
     return new FakeFeedGateway();
@@ -87,6 +93,7 @@ function createFeedGateway(): FeedGateway {
 let apiServer: ApiServerHandle | undefined;
 let database: Database | undefined;
 let sessionSweep: SessionSweep | undefined;
+let catalogueMove: CatalogueMoveService | undefined;
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal: string): Promise<void> {
@@ -105,6 +112,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
     if (apiServer) {
       await apiServer.close();
       apiServer = undefined;
+    }
+    if (catalogueMove) {
+      // After the slot it is on, so the move stays running and the next start resumes it.
+      await catalogueMove.shutdown();
+      catalogueMove = undefined;
     }
     if (database) {
       await database.close();
@@ -160,15 +172,31 @@ async function main(): Promise<void> {
   const catalogueBatch = new CatalogueBatchService(catalogueStampRepository, feedWriteRepository, feed, auditLog, {
     stampRequired: config.feedGateway === 'bee',
   });
+  const gateway = createFeedGateway();
+  // Every catalogue write goes through this one mutex, and the last step of a catalogue move takes it as well, so
+  // nothing is written between the move's catch-up and its switch to the new batch.
+  const feedMutex = new Mutex();
   const publishService = new PublishService(
     streamRepository,
     renditionRepository,
     stageRepository,
     feedWriteRepository,
-    createFeedGateway(),
+    gateway,
     catalogueBatch,
     feed,
     auditLog,
+    feedMutex,
+  );
+  catalogueMove = new CatalogueMoveService(
+    new CatalogueMoveRepository(database.pool),
+    catalogueStampRepository,
+    feedWriteRepository,
+    streamRepository,
+    gateway,
+    feedMutex,
+    feed,
+    auditLog,
+    { enabled: config.catalogueMoveEnabled },
   );
   // After the orphan reset, so the dry-run diff sees the repaired statuses.
   // Never fatal: this is a cross-check of the feed, and the API is fully
@@ -176,6 +204,8 @@ async function main(): Promise<void> {
   // for the manager's first designation, below.
   const feedBootCheck = new FeedBootCheckRunner(publishService);
   await feedBootCheck.run();
+  // A move of the catalogue left running by the last process goes on where it stopped, in the background.
+  await catalogueMove.resumeOnBoot();
 
   const ingestService = new IngestService(streamRepository, stageRepository, auditLog);
   const streamStateService = new StreamStateService(streamRepository, publishService, auditLog);
@@ -194,6 +224,7 @@ async function main(): Promise<void> {
       ingestService,
       stageService,
       catalogueBatch,
+      catalogueMove,
       internalApiToken: config.internalApiToken,
       uploaderTokens: stageRepository,
       feed,

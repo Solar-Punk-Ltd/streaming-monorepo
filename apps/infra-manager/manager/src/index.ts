@@ -31,7 +31,6 @@ import { localPublisherHost } from './domain/localHost.js';
 import { CatalogueDesignationRepository } from './domain/stages/CatalogueDesignationRepository.js';
 import { CatalogueDesignationService } from './domain/stages/CatalogueDesignationService.js';
 import { CataloguePublisher } from './domain/stages/CataloguePublisher.js';
-import { CatalogueNodeRemovalError } from './domain/errors/index.js';
 import { UploaderHealthService } from './domain/UploaderHealthService.js';
 import { UploaderStartGate } from './domain/UploaderStartGate.js';
 import { readBundledCommit } from './domain/versions/bundledCommit.js';
@@ -432,9 +431,8 @@ async function main(): Promise<void> {
     nodeUrls: async (profile) => [beeApiUrlFor(profile), beePublisherUrlFor(profile, await localPublisherHost())],
   });
   profileService.setPoolStringGuard((beePublishers) => catalogueService.segmentBatchProblem(beePublishers));
-  orchestrator.setRemovalGuard(async (name) => {
-    if ((await catalogueService.designatedNode()) === name) throw new CatalogueNodeRemovalError(name);
-  });
+  // The pinned batch's node, and while a move is pending the node of the batch it moved from.
+  orchestrator.setRemovalGuard((name) => catalogueService.assertRemovable(name));
   catalogue.start();
 
   const engineConfigService = new EngineConfigService(

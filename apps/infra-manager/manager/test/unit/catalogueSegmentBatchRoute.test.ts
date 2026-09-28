@@ -1,7 +1,8 @@
 /**
  * A pool string may not stamp a stream's segments into the brand's catalogue batch: a create or an update of a
  * deployment whose BEE_PUBLISHERS names the catalogue's batch, or the catalogue node's Bee API, is refused with the
- * catalogue's own sentence, through `POST /profiles` and `PUT /profiles/:name`, designated or cleared since.
+ * catalogue's own sentence, through `POST /profiles` and `PUT /profiles/:name`, designated or cleared since. While a
+ * move is pending the batch and the node the catalogue is moving from are refused as well, until they are released.
  *
  * Unit test over the profile service harness, the real catalogue service and an in-memory designation. `pnpm test`
  * in manager/.
@@ -54,7 +55,7 @@ describe('a pool string naming the catalogue batch or node', () => {
     heldBatch: async () => {
       throw new Error('not asked');
     },
-    status: () => ({ reading: null, lastPush: null }),
+    status: () => ({ reading: null, previousReading: null, lastPush: null }),
     changed: () => undefined,
     nodeUrls: async (profile) => [beeApiUrlFor(profile)],
   });
@@ -109,5 +110,91 @@ describe('a pool string naming the catalogue batch or node', () => {
       bee_publishers: poolString(`360p@http://192.0.2.21:10015<${'ee'.repeat(32)}>`),
     });
     assert.notEqual(answer.status, 400, JSON.stringify(answer.body));
+  });
+});
+
+describe('a pool string naming the batch or node the catalogue is moving from', () => {
+  const MOVED_TO_BATCH = 'cd'.repeat(32);
+  const catalogueNode = profileRow({
+    name: 'catalogue',
+    kind: 'custom',
+    components: ['bee-uploader'],
+    host: NODE_HOST,
+    port_slot: 3,
+  });
+  const nextNode = profileRow({
+    name: 'catalogue-two',
+    kind: 'custom',
+    components: ['bee-uploader'],
+    host: '192.0.2.41',
+    port_slot: 4,
+  });
+  const stage = profileRow({ name: 'abr-stage', kind: 'abr-uploader', bee_publishers: poolString() });
+  const harness = profileServiceHarness([catalogueNode, nextNode, stage]);
+  const store = new InMemoryCatalogueDesignation();
+  const catalogue = new CatalogueDesignationService({
+    store,
+    profiles: {
+      findByName: async (name) => harness.profiles.rows.get(name) ?? null,
+      list: async () => [...harness.profiles.rows.values()],
+    },
+    groupKindOf: async () => null,
+    heldBatch: async () => {
+      throw new Error('not asked');
+    },
+    status: () => ({ reading: null, previousReading: null, lastPush: null }),
+    changed: () => undefined,
+    nodeUrls: async (profile) => [beeApiUrlFor(profile)],
+  });
+  harness.service.setPoolStringGuard((beePublishers) => catalogue.segmentBatchProblem(beePublishers));
+  const previousUrl = beeApiUrlFor(catalogueNode);
+  let app: RouterTestApp;
+
+  before(async () => {
+    await store.designate(
+      { profileName: 'catalogue', batchId: CATALOGUE_BATCH, batchDepth: 20, at: new Date(0) },
+      0,
+      'operator',
+    );
+    await store.move(
+      { profileName: 'catalogue-two', batchId: MOVED_TO_BATCH, batchDepth: 21, at: new Date(1) },
+      1,
+      'operator',
+    );
+    app = await startRouterTestApp(createProfilesRouter(harness.service, uploaderHealthStub(), false), '/profiles');
+  });
+  after(() => app.close());
+
+  const refusal = (answer: { status: number; body: unknown }) => {
+    assert.equal(answer.status, 400, JSON.stringify(answer.body));
+    return (answer.body as { errors: string[] }).errors;
+  };
+
+  it('refuses the batch moved from, and the one moved to, while the move is pending', async () => {
+    for (const batch of [CATALOGUE_BATCH, MOVED_TO_BATCH]) {
+      const answer = await call(app, 'PUT', '/profiles/abr-stage', {
+        bee_publishers: poolString(`360p@http://192.0.2.20:10015<${batch}>`),
+      });
+      assert.deepEqual(refusal(answer), [CATALOGUE_SEGMENT_BATCH_REFUSAL], batch);
+    }
+  });
+
+  it('refuses the Bee API of the node moved from, with another batch', async () => {
+    const answer = await call(app, 'PUT', '/profiles/abr-stage', {
+      bee_publishers: poolString(`360p@${previousUrl}<${'ee'.repeat(32)}>`),
+    });
+    assert.deepEqual(refusal(answer), [CATALOGUE_SEGMENT_BATCH_REFUSAL]);
+  });
+
+  it('lets the batch and the node moved from through once the batch is released', async () => {
+    await store.release(new Date(2), store.row.revision, 'operator');
+    const batch = await call(app, 'PUT', '/profiles/abr-stage', {
+      bee_publishers: poolString(`360p@http://192.0.2.20:10015<${CATALOGUE_BATCH}>`),
+    });
+    assert.notEqual(batch.status, 400, JSON.stringify(batch.body));
+    const node = await call(app, 'PUT', '/profiles/abr-stage', {
+      bee_publishers: poolString(`360p@${previousUrl}<${'ee'.repeat(32)}>`),
+    });
+    assert.notEqual(node.status, 400, JSON.stringify(node.body));
   });
 });

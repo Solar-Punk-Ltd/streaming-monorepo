@@ -59,6 +59,18 @@ export interface AppConfig {
   viewerBaseUrl: string;
   /** Bearer token the uploader presents on /api/internal. */
   internalApiToken: string;
+  /**
+   * `CATALOGUE_MOVE_ENABLED`: whether an operator may move the catalogue's history onto another batch from the
+   * Stages page. Off unless set, until the move has been tried on a real node (docs/architecture/stages.md).
+   */
+  catalogueMoveEnabled: boolean;
+}
+
+function optionalFlag(name: string): boolean {
+  const raw = optional(name, 'false').trim().toLowerCase();
+  if (raw === 'true' || raw === '1') return true;
+  if (raw === 'false' || raw === '0') return false;
+  throw new Error(`Env var ${name} must be true or false, got: ${raw}`);
 }
 
 function feedGateway(): FeedGatewayKind {
@@ -98,4 +110,5 @@ export const config: AppConfig = {
   feedTopic: optional('FEED_TOPIC', 'swarm-stream'),
   viewerBaseUrl: optional('VIEWER_BASE_URL', ''),
   internalApiToken: requiredSecret('INTERNAL_API_TOKEN', INTERNAL_API_TOKEN_MIN_LENGTH),
+  catalogueMoveEnabled: optionalFlag('CATALOGUE_MOVE_ENABLED'),
 };

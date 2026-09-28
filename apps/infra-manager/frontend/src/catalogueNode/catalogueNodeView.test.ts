@@ -1,7 +1,8 @@
 /**
  * What the catalogue node card offers and says: the deployments that are nothing but a Bee node, each batch's
  * reading in a line, and the manager's own refusal of a mutable batch, one whose kind the node did not report, and an
- * expired one.
+ * expired one. Once a batch is pinned, another is a move, a third one is refused while a move is pending, and a move
+ * is confirmed and released with the sentences the card shows.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -11,15 +12,21 @@ import {
   CATALOGUE_EXPIRED_REFUSAL,
   CATALOGUE_KIND_UNKNOWN_REFUSAL,
   CATALOGUE_MUTABLE_REFUSAL,
-  catalogueMoveRefusal,
   cataloguePushLine,
+  catalogueReleaseFirstRefusal,
 } from '@streaming-infra-manager/common';
 
 import {
+  CATALOGUE_RELEASE_LABEL,
   catalogueBatchViews,
   catalogueCandidates,
+  catalogueMoveConfirmText,
+  catalogueMoveLabel,
+  catalogueMoveSteps,
+  catalogueMovingLine,
   cataloguePinnedNote,
   catalogueReadingLine,
+  catalogueReleaseConfirmText,
   pinnedBatchNote,
 } from './catalogueNodeView';
 
@@ -80,16 +87,73 @@ describe('the batches the card offers', () => {
 });
 
 describe('once a batch has been designated', () => {
-  it('refuses every other batch with the move sentence, and takes the pinned one again', () => {
-    const views = catalogueBatchViews([stamp(), stamp({ batchID: 'ff'.repeat(32) })], BATCH);
-    assert.equal(views[0]!.problem, null);
-    assert.equal(views[1]!.problem, catalogueMoveRefusal(BATCH));
+  const NEXT = 'ff'.repeat(32);
+  const THIRD = 'ee'.repeat(32);
+
+  it('offers every other batch as a move, still refused for what a designation is refused for', () => {
+    const views = catalogueBatchViews(
+      [stamp(), stamp({ batchID: NEXT }), stamp({ batchID: THIRD, immutableFlag: false })],
+      BATCH,
+    );
+    assert.deepEqual(
+      views.map((view) => [view.problem, view.move]),
+      [
+        [null, false],
+        [null, true],
+        [CATALOGUE_MUTABLE_REFUSAL, true],
+      ],
+    );
+    assert.equal(catalogueMoveLabel(NEXT), 'Move the catalogue to batch ffffffff…ffffff');
+  });
+
+  it('while a move is pending, offers the batch moved from as a move back and refuses a third one', () => {
+    const views = catalogueBatchViews([stamp({ batchID: NEXT }), stamp(), stamp({ batchID: THIRD })], NEXT, BATCH);
+    assert.deepEqual(
+      views.map((view) => [view.problem, view.move]),
+      [
+        [null, false],
+        [null, true],
+        [catalogueReleaseFirstRefusal(BATCH), false],
+      ],
+    );
   });
 
   it('says, while cleared, which batch and node the catalogue stays pinned to', () => {
     const note = cataloguePinnedNote({ profileName: 'catalogue-node', batchId: BATCH });
     assert.match(note, /^The catalogue stays pinned to batch abababab…ababab on catalogue-node/);
     assert.match(note, /Designate it again/);
+    assert.match(note, /another batch is a move\.$/);
+  });
+});
+
+describe('a move of the catalogue', () => {
+  const NEXT = 'ff'.repeat(32);
+  const move = { profileName: 'catalogue-node', batchId: BATCH };
+
+  it('is confirmed with what the admin does and what to keep alive until it is done', () => {
+    const text = catalogueMoveConfirmText(BATCH, NEXT);
+    assert.match(
+      text,
+      /^The web2 admin stamps every slot of the catalogue again under batch ffffffff…ffffff, then switches to it\./,
+    );
+    assert.match(text, /keep batch abababab…ababab alive/);
+    assert.match(text, /press Release the previous batch here\.$/);
+  });
+
+  it('is shown pending with the batch moved from and the three steps', () => {
+    assert.equal(catalogueMovingLine(move), 'Moving from batch abababab…ababab on catalogue-node');
+    const steps = catalogueMoveSteps(NEXT);
+    assert.equal(steps.length, 3);
+    assert.match(steps[0]!, /Stages page, start “Move the catalogue to batch ffffffff…ffffff”/);
+    assert.match(steps[0]!, /CATALOGUE_MOVE_ENABLED/);
+    assert.equal(steps[1], 'Wait until it says the move is done.');
+    assert.equal(steps[2], `Press “${CATALOGUE_RELEASE_LABEL}” here.`);
+  });
+
+  it('is released after a confirm that says the node can then go and the batch may lapse', () => {
+    const text = catalogueReleaseConfirmText(move);
+    assert.match(text, /catalogue-node can then be removed, and the batch may lapse/);
+    assert.match(text, /only once the web2 admin reports the move done\.$/);
   });
 });
 
