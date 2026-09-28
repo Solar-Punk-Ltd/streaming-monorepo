@@ -16,6 +16,11 @@ procedure is "Opening the manager to the internet" in
 [../../deploy/README.md](../../deploy/README.md), which is the one to follow. What is kept below
 is the reasoning, because the order of the steps is the part worth understanding.
 
+**The manager's own edge is gone** (2026-09-28). The `edge` service, its `public` profile and
+`MANAGER_DOMAIN` in `manager/.env` described below were removed. HTTPS for the manager is the
+host's edge in `infra/edge/`, one Caddy per host for every console the host runs, and "Opening the
+manager to the internet" in the deploy README says how to use it.
+
 The decisions this page rests on were taken on 2026-09-05: D1 Caddy, D2 several users, D3 close
 the host doors first.
 
