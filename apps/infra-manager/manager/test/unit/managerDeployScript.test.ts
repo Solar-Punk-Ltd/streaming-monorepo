@@ -284,27 +284,14 @@ describe('deploy/deploy.sh', () => {
     assert.notEqual(closed, -1, 'the substitution that captures the receipt ends somewhere');
     assert.match(
       run.slice(0, closed + 2),
-      /\$\{PUBLIC_EDGE_FLAG\} < \/dev\/null\)"$/,
-      'the upgrade takes the edge decision and no standard input',
+      /\$\{FIRST_USE_FLAG\} < \/dev\/null\)"$/,
+      'the upgrade takes no standard input',
     );
     assert.match(
       script,
       /docker compose exec -T api [^\n]* < \/dev\/null/,
       'and neither does the check that follows it',
     );
-  });
-
-  it('asks for the public edge only where the domain says so', () => {
-    const branch = script.indexOf('COMPOSE_PROFILE_FLAG=""');
-    assert.equal(script.split('--public-edge').length - 1, 1, 'the flag is decided in one place');
-    const decision = script.indexOf('PUBLIC_EDGE_FLAG="--public-edge"');
-    assert.notEqual(decision, -1, 'the public branch sets it');
-    assert.ok(
-      decision > script.indexOf('elif [[ "$MANAGER_DOMAIN" =~ $HOSTNAME_PATTERN ]]'),
-      'inside the branch that saw a host name',
-    );
-    assert.ok(decision < script.indexOf('\nelse\n', script.indexOf('elif [[ "$MANAGER_DOMAIN"')), 'and not below it');
-    assert.equal(branch, -1, 'the old compose profile flag is gone');
   });
 
   it('prints the receipt the upgrade returned, after the command that returned it', () => {
