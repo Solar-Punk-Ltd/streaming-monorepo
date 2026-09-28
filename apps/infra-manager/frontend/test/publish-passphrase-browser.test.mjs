@@ -151,7 +151,10 @@ test('a deployment page puts an SRT passphrase on the line only when the line ca
         Boolean,
         'the copied plain stage line',
       );
-      assert.equal(copied, 'srt://offline.example:10011?streamid=#!::r=live/stream,m=publish&passphrase=plain.pass_word~-1');
+      assert.equal(
+        copied,
+        'srt://offline.example:10011?streamid=#!::r=live/stream,m=publish&passphrase=plain.pass_word~-1',
+      );
       assert.equal(await evaluate('location.hash'), hash);
     });
 
@@ -160,9 +163,21 @@ test('a deployment page puts an SRT passphrase on the line only when the line ca
       await waitFor(() => evaluate(`!!(${copyIn('awkward-stage')})`), Boolean, `the awkward stage Copy on the ${page}`);
       await evaluate(stubClipboard);
       await evaluate(`(${copyIn('awkward-stage')}).click()`);
-      await waitFor(() => evaluate('location.hash'), (value) => value === '#/deployments/awkward-stage', 'the deployment page');
-      await waitFor(() => evaluate(PAGE_TEXT), (body) => body.includes(OBS_FIELD_WORDS), 'the passphrase field wording');
-      assert.equal(await evaluate('window.copiedPublishUrl ?? null'), null, 'no line without its passphrase was copied');
+      await waitFor(
+        () => evaluate('location.hash'),
+        (value) => value === '#/deployments/awkward-stage',
+        'the deployment page',
+      );
+      await waitFor(
+        () => evaluate(PAGE_TEXT),
+        (body) => body.includes(OBS_FIELD_WORDS),
+        'the passphrase field wording',
+      );
+      assert.equal(
+        await evaluate('window.copiedPublishUrl ?? null'),
+        null,
+        'no line without its passphrase was copied',
+      );
     });
   }
 });
