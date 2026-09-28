@@ -120,7 +120,7 @@ describe('StagesPage', () => {
     expect(screen.getByText('Not supported yet (OvenMediaEngine)')).toBeInTheDocument();
   });
 
-  it('says which token each stage’s uploader presents, and asks for a rotation on the shared one', async () => {
+  it('says which token each stage’s uploader presents, and that a shared one is refused until it is rotated', async () => {
     serve(
       [
         makeStage({ name: 'Main stage', adminTokenKind: 'own' }),
@@ -134,10 +134,13 @@ describe('StagesPage', () => {
     const rowOf = async (name: string) => (await screen.findByText(name)).closest('tr') as HTMLElement;
     expect(within(await rowOf('Main stage')).getByText('Its own token')).toBeInTheDocument();
     expect(
-      within(await rowOf('Old stage')).getByText('Still on the shared token: rotate it in the manager.'),
+      within(await rowOf('Old stage')).getByText(
+        "Refused: not a token of its own. Rotate the uploader's admin token in the manager and redeploy the stage.",
+      ),
     ).toBeInTheDocument();
     expect(within(await rowOf('Hand stage')).getByText('No token pushed')).toBeInTheDocument();
-    expect(screen.getAllByText(/shared token/)).toHaveLength(1);
+    expect(screen.getAllByText(/^Refused:/)).toHaveLength(1);
+    expect(screen.queryByText(/shared token/)).toBeNull();
   });
 
   it('shows the catalogue stamp, and warns when it runs low or is gone', async () => {

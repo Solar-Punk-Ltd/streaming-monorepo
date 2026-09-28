@@ -14,6 +14,8 @@ import { splitStageRecord, type CatalogueStampStore, type StageStore } from '../
 import type { CatalogueStampRow, StageRow, StageSecretsRow } from '../../../src/types/index.js';
 
 export const STAGE_ID = '5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f';
+/** What an uploader of `STAGE_ID` is answered about: that stage's streams, which `streamRow` puts every stream on. */
+export const ON_STAGE = { stageId: STAGE_ID } as const;
 export const MANAGER_ID = '0d9e8f7a-6b5c-4d3e-9f21-a0b1c2d3e4f5';
 export const STAGE_OWNER = '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3';
 export const SRT_PASSPHRASE = 'stage-passphrase-do-not-print';

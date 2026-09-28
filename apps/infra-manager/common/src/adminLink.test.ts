@@ -18,8 +18,14 @@ import {
   adminLinkProblem,
   sameAdminOrigin,
   storedTokenMoveProblem,
+  TYPED_TOKEN_AT_LINK,
 } from './adminLink.js';
-import { ADMIN_LINK_TEST_OUTCOMES, adminLinkTestProblems } from './adminLinkTest.js';
+import {
+  ADMIN_LINK_TEST_OUTCOMES,
+  ADMIN_LINK_TOKEN_HOLDERS,
+  adminLinkTestProblems,
+  STORED_TOKEN_NOT_AN_UPLOADER,
+} from './adminLinkTest.js';
 import { adminTokenProblem, managerAdminLinkProblems } from './managerAdminLink.js';
 
 const ADMIN_URL = 'https://admin.example.com';
@@ -274,6 +280,33 @@ describe("a save of the manager's own web2 admin link", () => {
   });
 });
 
+describe("a stored token at the manager's link address", () => {
+  const LINK = 'https://admin.example.com';
+  const before = (stored: boolean, generatedFor: string | null = LINK) => ({
+    url: { current: LINK, afterReset: '' },
+    token: { current: stored, afterReset: false, generatedFor, stored },
+  });
+  const TYPED = { key: 'ADMIN_API_TOKEN', value: 'synthetic-typed-admin-token-0123456789abcdef' };
+
+  it('is refused while the link stores a token, typed now or left stored by a save of the address', () => {
+    assert.equal(adminLinkEditProblem([TYPED], before(false)), TYPED_TOKEN_AT_LINK);
+    assert.equal(
+      adminLinkEditProblem([{ key: 'ADMIN_API_URL', value: `${LINK}/v2` }], before(true)),
+      TYPED_TOKEN_AT_LINK,
+    );
+  });
+
+  it('is taken out by a reset or an empty value, and not held at another address or with no link token', () => {
+    assert.equal(adminLinkEditProblem([{ key: 'ADMIN_API_TOKEN', value: null }], before(true)), null);
+    assert.equal(
+      adminLinkEditProblem([{ key: 'ADMIN_API_URL', value: 'https://admin2.example.com' }, TYPED], before(false)),
+      null,
+    );
+    assert.equal(adminLinkEditProblem([TYPED], before(false, null)), null);
+    assert.equal(adminLinkEditProblem([{ key: 'LOG_LEVEL', value: 'debug' }], before(true)), null);
+  });
+});
+
 describe('a request to test a web2 admin link typed on a page', () => {
   const TOKEN = 'synthetic-admin-token-0123456789abcdef';
 
@@ -299,6 +332,17 @@ describe('a request to test a web2 admin link typed on a page', () => {
     );
   });
 
+  it("says whose token it is, and refuses the stored one as an uploader's, since it is the registrar's", () => {
+    const typed = { source: 'typed' as const, value: TOKEN };
+    assert.deepEqual(adminLinkTestProblems({ url: ADMIN_URL, token: typed, tokenFor: 'uploader' }), []);
+    assert.deepEqual(adminLinkTestProblems({ url: ADMIN_URL, token: typed, tokenFor: 'registrar' }), []);
+    assert.deepEqual(adminLinkTestProblems({ url: ADMIN_URL, token: { source: 'stored' }, tokenFor: 'registrar' }), []);
+    assert.deepEqual(adminLinkTestProblems({ url: ADMIN_URL, token: { source: 'stored' }, tokenFor: 'uploader' }), [
+      STORED_TOKEN_NOT_AN_UPLOADER,
+    ]);
+    assert.deepEqual([...ADMIN_LINK_TOKEN_HOLDERS], ['registrar', 'uploader']);
+  });
+
   it('knows every outcome the page has a sentence for', () => {
     assert.deepEqual([...ADMIN_LINK_TEST_OUTCOMES].sort(), [
       'invalid-address',
@@ -311,6 +355,7 @@ describe('a request to test a web2 admin link typed on a page', () => {
       'redirected',
       'stored-token-elsewhere',
       'token-accepted',
+      'token-not-own',
       'token-not-registered',
       'token-refused',
       'unreachable',

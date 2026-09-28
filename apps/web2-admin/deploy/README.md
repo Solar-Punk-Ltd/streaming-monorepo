@@ -573,8 +573,9 @@ node --test 'apps/web2-admin/deploy/test/*.test.mjs'
   `https://<ADMIN_DOMAIN>/api/internal` answers from anywhere, guarded by a
   bearer token alone: `INTERNAL_API_TOKEN` (32 characters or more, compared in
   constant time) on the manager's routes, and on the uploader's a stage's own
-  token, known by its sha256, or, while the stages move over, that same
-  `INTERNAL_API_TOKEN`. Whether the uploader should use that route, or the edge should refuse
-  it, belongs with the manager integration.
+  token, known by its sha256, and nothing else: since stages phase 9 the
+  uploader's routes refuse `INTERNAL_API_TOKEN`. Whether the uploader should use
+  that route, or the edge should refuse it, belongs with the manager
+  integration.
 - **Stop, health and clean scripts, and database backups.** Use compose by hand
   (above) until they exist. `down -v` deletes the profile's database.

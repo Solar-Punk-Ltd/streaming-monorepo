@@ -8,11 +8,13 @@
  * row or a log line.
  */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { beforeEach, describe, it, mock } from 'node:test';
 
 import { MANAGER } from '../../src/domain/actor.js';
 import type { AuditEntry } from '../../src/domain/AuditLog.js';
-import { StageService, splitStageRecord } from '../../src/domain/StageService.js';
+import { RequestShapeError } from '../../src/domain/errors/index.js';
+import { REGISTRAR_TOKEN_AS_OWN, StageService, splitStageRecord } from '../../src/domain/StageService.js';
 
 import { InMemoryAuditLog } from './support/fakes.js';
 import {
@@ -69,6 +71,36 @@ describe('splitStageRecord', () => {
     assert.equal('adminToken' in write.record, false);
     assert.equal('srtPassphrase' in write.record.ingest, false);
     assert.doesNotMatch(JSON.stringify(write.record), new RegExp(`${SRT_PASSPHRASE}|${TOKEN_SHA256}`));
+  });
+});
+
+describe('StageService.store and the registrar token', () => {
+  const REGISTRAR = 'ab'.repeat(32);
+  const registrarSha256 = createHash('sha256').update(REGISTRAR, 'utf8').digest('hex');
+
+  it('refuses a record that names the registrar token as the stage’s own, reading and writing nothing', async () => {
+    const guarded = new StageService(stages, catalogue, audit, { registrarToken: REGISTRAR });
+    for (const sha256 of [registrarSha256, registrarSha256.toUpperCase()]) {
+      await assert.rejects(
+        () => guarded.store(stageRecord({ adminToken: { sha256: sha256.toLowerCase(), kind: 'own' } })),
+        (error) => error instanceof RequestShapeError && error.problems[0] === REGISTRAR_TOKEN_AS_OWN,
+      );
+    }
+    assert.equal(await stages.find(STAGE_ID), null);
+    assert.equal(audit.entries.length, 0);
+  });
+
+  it('stores a record that names it as shared, and one with a token of its own', async () => {
+    const guarded = new StageService(stages, catalogue, audit, { registrarToken: REGISTRAR });
+    assert.deepEqual(await guarded.store(stageRecord({ adminToken: { sha256: registrarSha256, kind: 'shared' } })), {
+      stored: true,
+    });
+    assert.deepEqual(
+      await guarded.store(
+        stageRecord({ observedAt: '2026-09-28T11:00:00.000Z', adminToken: { sha256: 'cd'.repeat(32), kind: 'own' } }),
+      ),
+      { stored: true },
+    );
   });
 });
 

@@ -28,10 +28,10 @@ function optionalNumber(name: string, fallback: number): number {
 }
 
 /**
- * The internal API is the uploader's only way in, and it can flip a stream to
- * live and rewrite its catalogue entry. A short token would be brute-forceable
- * over a LAN, so the length is enforced here rather than trusted to whoever
- * wrote the .env.
+ * The registrar token is the manager's only way into the internal API, and it
+ * can register a stage and designate the catalogue's batch. A short token would
+ * be brute-forceable over a LAN, so the length is enforced here rather than
+ * trusted to whoever wrote the .env.
  */
 export const INTERNAL_API_TOKEN_MIN_LENGTH = ADMIN_API_TOKEN_MIN_LENGTH;
 

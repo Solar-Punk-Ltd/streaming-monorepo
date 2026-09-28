@@ -6,9 +6,11 @@ working in the repository has it in one place.
 ## What it is
 
 The brand console and the API behind it. Streams, branding and users, for every
-brand rather than one. Anything that touches a host or a wallet it asks the
-streaming-infra-manager to do, so this is where ownership is decided rather
-than where money moves.
+brand rather than one. Anything that touches a host or a wallet is the
+streaming-infra-manager's, and the manager tells the admin what it runs: since
+the [stages](stages.md) work, every stage the manager deploys pushes its record
+into the admin. So this is where ownership is decided rather than where money
+moves.
 
 Exactly one admin layer for every brand. If it is down, streaming continues;
 nobody can create a stream, top up a batch or change a logo until it is back.
@@ -17,13 +19,13 @@ Tech tags from the model: Postgres, REST.
 
 ## Components (five)
 
-| Component                    | Role                                                                                                                                                                 | Tech          | On loss                                                                               |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------- |
-| Brand console                | The only surface a customer touches. Streams, stamps, cheque balances and branding, scoped to the logged-in brand.                                                   | web UI        | API unaffected, brand cannot reach it.                                                |
-| Authentication and ownership | OPEN. Who may create and manage a brand's streams. Candidates: OIDC against something the brand already has, wallet signature, magic link.                           | OIDC / wallet | Anyone reaching the API can act as any brand. Blocks the second brand, not the first. |
-| Admin API                    | Every state change a brand can make, in one place. The only writer, so ownership is enforced in exactly one place. Calls the manager to provision and fund a stream. | REST          | Nothing can be created, funded or changed. Running streams carry on.                  |
-| Postgres                     | Brands, users, streams, batches and branding. The one row set that has to be right about which brand owns what. Small enough that a nightly dump is a real backup.   | Postgres      | Console and API stop answering. Published streams stay published (Swarm holds them).  |
-| Branding                     | Logo, colours and domain, turned into the config the Viewer SPA bootstrap reads: theme, logo, stream list, serving domain.                                           | theme, domain | Player falls back to unbranded default, a visible failure for a white-label product.  |
+| Component                    | Role                                                                                                                                                                                                                                                                                                                                                                          | Tech          | On loss                                                                               |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------- |
+| Brand console                | The only surface a customer touches. Streams and the stage each is on, the stages the manager pushed with their readiness, stamps and cheque balances, the catalogue batch, and branding.                                                                                                                                                                                     | web UI        | API unaffected, brand cannot reach it.                                                |
+| Authentication and ownership | OPEN. Who may create and manage a brand's streams. Candidates: OIDC against something the brand already has, wallet signature, magic link.                                                                                                                                                                                                                                    | OIDC / wallet | Anyone reaching the API can act as any brand. Blocks the second brand, not the first. |
+| Admin API                    | Every state change a brand can make, in one place. The only writer, so ownership is enforced in exactly one place. Takes the manager's stage and catalogue stamp records on the registrar token, and each stage's uploader on a token of its own, answered only about that stage's streams. Writes the catalogue through the catalogue node's batch. Never calls the manager. | REST          | Nothing can be created or changed. Running streams carry on.                          |
+| Postgres                     | Users, streams and their stages, the stage and catalogue stamp records the manager pushed, every catalogue write with its exact bytes, the audit log, and later brands and branding. The one row set that has to be right about which brand owns what. Small enough that a nightly dump is a real backup.                                                                     | Postgres      | Console and API stop answering. Published streams stay published (Swarm holds them).  |
+| Branding                     | Logo, colours and domain, turned into the config the Viewer SPA bootstrap reads: theme, logo, stream list, serving domain.                                                                                                                                                                                                                                                    | theme, domain | Player falls back to unbranded default, a visible failure for a white-label product.  |
 
 ## Connections
 
@@ -35,32 +37,48 @@ Inside the container:
 - Authentication authorises calls to the Admin API. It sits beside the API, not
   in front of the console, because the question is which brand a call may act
   for, not who may see a page.
-- Admin API provisions through the Manager API (streaming-infra-manager).
+- The manager (streaming-infra-manager) pushes each stage's record and the
+  brand's catalogue stamp record into the Admin API over its admin link. The
+  Admin API keeps what it was told and never calls the manager.
+- Each stage's stream uploader asks the Admin API which stream an encoder
+  publishes to and reports its state, on a token of its own.
 - Branding writes the theme and domain the Viewer SPA bootstrap reads.
 
 At the platform level the admin layer also:
 
-- tops up stamps on the Bee publishers (through the manager's stamps and cheques component),
-- watches cheque balances on the Bee gateways (same route),
+- writes the brand's catalogue, signed by the brand key, through the dedicated
+  catalogue node and the immutable batch the manager designates,
+- shows each rung's stamp and chequebook as the manager last pushed them,
+  where topping up stays in the manager's console,
 - hands brand config to the Viewer SPA.
 
 ## What it does not do
 
 - It never touches a wallet or a host directly. Postage, cheques, ssh and
   docker compose all live in streaming-infra-manager.
+- It does not call the manager. It does not provision, stop or fund a stage,
+  buy or top up a batch, or choose the catalogue's batch: the manager pushes
+  what it runs, and the admin reads it.
+- It carries no stage in its env file: no ingest address, port or passphrase,
+  Bee address or batch id. It learns them from the manager's pushes, and
+  refuses to publish, saying why, until the manager has designated a
+  catalogue batch.
+- It holds no stage's signing key. Each stage signs its feeds with a key of
+  its own, and the admin knows only its address; the brand key signs the
+  catalogue alone and never leaves the admin.
 - It does not serve media. Ingest, the ABR ladder, packaging and upload live on
   a stage host. Publishers and gateways live on a Bee host.
 
-## The manager it talks to
+## The manager that talks to it
 
 The manager, [`apps/infra-manager`](../../apps/infra-manager/README.md),
-exposes a Manager API: provision, stop, and read back what a stage is running.
-Inputs to provision: media profile (four-rung ABR ladder or single rendition),
-port slot, publisher list, signing key, postage batch, SRT passphrase. Output: a
-running media stack. Today it has no authentication and listens on loopback of
-the host it deploys to. The moment the admin layer calls it from another
-machine, that call has to be authenticated and attributed to a brand. This is
-the same open question as the auth component above, seen from the other end.
+provisions, stops and funds the stages, behind its own sessions. The admin
+layer does not call it. The manager holds the admin's address and its
+`INTERNAL_API_TOKEN`, the registrar token, in its admin link, and pushes with
+them: every stage's record (its ingest details, the owner it signs as, its
+rungs' stamps and chequebooks, its readiness, and the sha256 of its uploader's
+own token) and the catalogue stamp record. [stages.md](stages.md) is the design
+and says how it was built, phase by phase.
 
 ## Open questions carried into the build
 

@@ -17,47 +17,10 @@ export interface UploaderTokenStore {
   findActiveByOwnTokenSha256(sha256: string): Promise<StageRow[]>;
 }
 
-/** How often at most the admin says that an uploader is still on the shared token: once an hour. */
-export const UNATTRIBUTED_LOG_PERIOD_MS = 60 * 60 * 1000;
-
-/**
- * Counts the calls on the shared token and says when to log them: at the first call after boot, and then at the
- * first call at least a period after the last line, with how many calls there were since that line. Never a line
- * per request: an uploader calls on every segment it reports. The clock is injected so a test can move it.
- */
-export class UnattributedCallLog {
-  private lastLineAt: number | null = null;
-  private sinceLastLine = 0;
-
-  constructor(
-    private readonly now: () => number = Date.now,
-    private readonly periodMs: number = UNATTRIBUTED_LOG_PERIOD_MS,
-  ) {}
-
-  /** Counts one call, and answers the line to log for it, or null when it is not yet time for one. */
-  note(): string | null {
-    const at = this.now();
-    this.sinceLastLine += 1;
-    if (this.lastLineAt === null) {
-      this.lastLineAt = at;
-      this.sinceLastLine = 0;
-      return '[Internal] unattributed uploader: a call on the shared INTERNAL_API_TOKEN, which names no stage. It is answered about every stream until that uploader has a token of its own: rotate it in the manager.';
-    }
-    if (at - this.lastLineAt < this.periodMs) return null;
-    const count = this.sinceLastLine;
-    const since = new Date(this.lastLineAt).toISOString();
-    this.lastLineAt = at;
-    this.sinceLastLine = 0;
-    return `[Internal] unattributed uploader: ${count} call${count === 1 ? '' : 's'} on the shared INTERNAL_API_TOKEN since ${since}. Rotate each uploader's token in the manager.`;
-  }
-}
-
 export interface RequireUploaderTokenOptions {
-  /** `INTERNAL_API_TOKEN`: still taken from an uploader while the stages move over, as an unattributed caller. */
-  sharedToken: string;
+  /** `INTERNAL_API_TOKEN`, refused here before any lookup: it is the manager's, never an uploader's. */
+  registrarToken: string;
   stages: UploaderTokenStore;
-  /** Where the lines about unattributed calls are counted; a test passes one with a clock of its own. */
-  unattributed?: UnattributedCallLog;
 }
 
 /**
@@ -82,46 +45,31 @@ async function attribute(stages: UploaderTokenStore, presented: string): Promise
     return null;
   }
   const [stage] = matches;
-  return stage ? { kind: 'stage', stageId: stage.stage_id, owner: stage.owner, name: stage.name } : null;
+  return stage ? { stageId: stage.stage_id, owner: stage.owner, name: stage.name } : null;
 }
 
 /**
  * The door to the uploader's routes under /api/internal. `Authorization: Bearer <token>`, read exactly as the
- * registrar's door reads it, and one of two tokens:
+ * registrar's door reads it, and one kind of token alone: a stage's own, 64 hex characters as the manager generates
+ * it (anything else is 401 without a query). Its sha256 is looked up among the active stages whose record names a
+ * token of their `own`, and the one it matches is the caller, answered only about that stage's streams.
  *
- * - the shared `INTERNAL_API_TOKEN`, compared in constant time: an uploader not yet on a token of its own. It is let
- *   through unattributed (`req.uploaderCaller` is `{ kind: 'shared' }`) and answered as before stages had tokens,
- *   and the admin says so at info, at most once an hour;
- * - a stage's own token, 64 hex characters as the manager generates it (anything else is 401 without a query): its
- *   sha256 is looked up among the active stages whose record names a token of their `own`
- *   (`kind: 'own'`), and the one it matches is the caller. A retired stage's token, a hash a `shared` row carries
- *   (the shared token as it was when the manager pushed it, which is not taken once `INTERNAL_API_TOKEN` changes),
- *   and a hash no stage names are all 401. So is one that matches several stages, which cannot say which of them
- *   calls, with a warning in the log.
+ * Everything else is 401 `unauthenticated`: the registrar token, `INTERNAL_API_TOKEN`, which is the manager's alone
+ * since phase 9 of docs/architecture/stages.md, compared itself before any lookup; a retired stage's token; the hash a `shared` record carries, a token
+ * the manager did not generate, which that stage has to rotate in the manager; a hash no stage names; and one that
+ * matches several stages, which cannot say which of them calls, with a warning in the log.
  *
  * Neither the token nor its hash is logged, at any level. A session cookie is not a token here either.
  */
 export function createRequireUploaderToken(options: RequireUploaderTokenOptions): RequestHandler {
-  const shared = digest(options.sharedToken);
   const { stages } = options;
-  const unattributed = options.unattributed ?? new UnattributedCallLog();
+  const registrar = digest(options.registrarToken);
 
   return (req: Request, _res: Response, next: NextFunction) => {
     const presented = presentedBearer(req);
-    if (!presented) {
-      next(new UnauthenticatedError());
-      return;
-    }
-
-    if (sameToken(shared, presented)) {
-      req.uploaderCaller = { kind: 'shared' };
-      const line = unattributed.note();
-      if (line) logger.info(line);
-      next();
-      return;
-    }
-
-    if (!OWN_TOKEN_SHAPE.test(presented)) {
+    // The registrar token is compared itself, in constant time, and refused before the database is asked, so no
+    // stage record can make it an uploader's, whatever hash one names.
+    if (!presented || sameToken(registrar, presented) || !OWN_TOKEN_SHAPE.test(presented)) {
       next(new UnauthenticatedError());
       return;
     }

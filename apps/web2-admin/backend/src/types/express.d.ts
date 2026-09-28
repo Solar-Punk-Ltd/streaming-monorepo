@@ -17,8 +17,8 @@ declare global {
       /** The whole session, including when it runs out. Set by requireAuth. */
       authSession?: SessionInfo;
       /**
-       * Which uploader called one of the uploader's routes under /api/internal: a stage, by its own token, or an
-       * unattributed caller on the shared one. Set by requireUploaderToken; read it with uploaderCallerOf(req).
+       * Which uploader called one of the uploader's routes under /api/internal: a stage, by its own token. Set by
+       * requireUploaderToken; read it with uploaderCallerOf(req).
        */
       uploaderCaller?: UploaderCaller;
     }

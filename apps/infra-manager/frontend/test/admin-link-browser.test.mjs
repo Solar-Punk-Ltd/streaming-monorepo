@@ -12,9 +12,10 @@
  * from the manager's link with a token of the deployment's own, a move to a
  * typed token when the address leaves the link's origin, the two keys of
  * Advanced settings pointed at it, a deployment created linked with the address
- * alone, since its first deploy generates the token, one created with a token
- * typed there, and one created with the link off, which stores an empty
- * address. And a deployment's Stack settings card: a save that moves the
+ * alone, since its first deploy generates the token, a typed token held at the
+ * link's own admin, which takes only a token of its own from an uploader, one
+ * created with a token typed for another admin, and one created with the link
+ * off, which stores an empty address. And a deployment's Stack settings card: a save that moves the
  * address and leaves the token refused, and Test connection right after the
  * two keys, with every outcome's sentence for what the next deploy would give
  * the uploader.
@@ -36,7 +37,7 @@ import { createServer } from 'vite';
 import { ADMIN_LINK_TEST_OUTCOMES } from '@streaming-infra-manager/common';
 
 import { DEV_PASSWORD, DEV_USERNAME } from '../dev/mock-auth.mjs';
-import { adminLinkTestText } from '../src/adminLink/adminLinkText.ts';
+import { adminLinkTestText, TYPED_TOKEN_AT_LINK } from '../src/adminLink/adminLinkText.ts';
 import {
   buttonWithText,
   clickWhenEnabled,
@@ -63,6 +64,8 @@ const frontend = fileURLToPath(new URL('../', import.meta.url));
 /** Synthetic, and never expected on any page once typed. */
 const TOKEN = 'offline-admin-link-token-0123456789abcdef';
 const ADMIN_URL = 'https://admin.offline.example';
+/** Another web2 admin than the manager's own, where an uploader presents a token typed for it. */
+const OTHER_ADMIN_URL = 'https://other.admin2.offline.example';
 
 const SENTENCES = {
   'token-accepted': 'The web2 admin answered and took the token.',
@@ -462,6 +465,33 @@ test(
       assert.equal(await readWhenPresent(evaluate, typedField, 'type', 'the typed token field'), 'password');
       assert.equal(await evaluate(`${typedField}.getAttribute('autocomplete')`), 'new-password');
       await fillWhenPresent(evaluate, typedField, TOKEN, 'the typed token field');
+
+      // At the manager's own admin, which takes only a token of its own from an uploader, a typed one is held.
+      await waitFor(
+        groupText,
+        (text) => text.includes(TYPED_TOKEN_AT_LINK),
+        'the sentence on a typed token at the manager’s own admin',
+      );
+      assert.match(
+        await body(),
+        /Web2 admin: the manager's own web2 admin takes only a token of its own from an uploader, so choose A token of its own/,
+      );
+      assert.equal(
+        await evaluate(
+          `[...(${group}).querySelectorAll('button')].find(button => button.textContent.trim() === 'Test connection').disabled`,
+        ),
+        true,
+      );
+      assert.equal(await dialogFits(), true, 'the dialog scrolls sideways');
+
+      // Another admin, which the manager does not register stages with, takes the token typed for it.
+      await fillWhenPresent(
+        evaluate,
+        `(${group})?.querySelector('input[aria-label="Web2 admin address"]')`,
+        OTHER_ADMIN_URL,
+        'the group address',
+      );
+      await waitFor(groupText, (text) => !text.includes(TYPED_TOKEN_AT_LINK), 'the sentence gone at another admin');
       await click(
         `[...(${group}).querySelectorAll('button')].find(button => button.textContent.trim() === 'Test connection')`,
         'the group Test connection button',
@@ -477,7 +507,7 @@ test(
       await waitFor(body, (text) => text.includes('Check it, then deploy.'), 'the review');
       assert.match(
         await body(),
-        new RegExp(`Web2 admin\\s+Linked to ${ADMIN_URL.replace(/\./g, '\\.')}, with a token typed here\\.`),
+        new RegExp(`Web2 admin\\s+Linked to ${OTHER_ADMIN_URL.replace(/\./g, '\\.')}, with a token typed here\\.`),
       );
       await tokenNowhereInSight();
       await click(buttonWithText('Deploy'), 'the Deploy button');

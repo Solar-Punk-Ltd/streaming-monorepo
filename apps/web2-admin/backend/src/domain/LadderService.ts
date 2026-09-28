@@ -99,7 +99,7 @@ export class LadderService {
    * A stream outside the caller's scope is refused as not found before
    * anything is written: no rung, no feed write, no audit row.
    */
-  async report(id: string, report: RenditionReport, scope: UploaderScope = null): Promise<RenditionReportOutcome> {
+  async report(id: string, report: RenditionReport, scope: UploaderScope): Promise<RenditionReportOutcome> {
     const stream = await this.streams.findById(id);
     if (!stream || !inScope(stream, scope)) throw new StreamNotFoundError(id);
     // Nothing has been announced (`draft`), or a feed write is already in

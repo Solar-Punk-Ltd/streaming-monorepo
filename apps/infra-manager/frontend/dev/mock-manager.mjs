@@ -615,8 +615,7 @@ const ROUTES = [
       const { problem } = nodeChoicesFor(body);
       if (problem) return refuse(res, problem);
       // Kept off the profile, which every page and event carries.
-      // `use_manager_admin_token` is taken and ignored, as the manager ignores it.
-      const { stack_settings: namedSettings, use_manager_admin_token: _ignored, ...profileBody } = body;
+      const { stack_settings: namedSettings, ...profileBody } = body;
       const shape = { kind: body.kind ?? 'custom', components: body.components ?? null, host: body.host ?? null };
       const stackSettings = withManagerLink(namedSettings, versionForCreate(body), shape);
       const refusal = await createdSettingsRefusal(stackSettings, versionForCreate(body), shape, body.name);
@@ -796,7 +795,7 @@ const ROUTES = [
       const memberShape = isPool ? { kind: 'custom', components: ['bee-uploader'] } : {};
       const { problem } = nodeChoicesFor(body, memberShape);
       if (problem) return refuse(res, problem);
-      const { stack_settings: namedSettings, use_manager_admin_token: _ignored, ...groupBody } = body;
+      const { stack_settings: namedSettings, ...groupBody } = body;
       const settingsShape = {
         kind: memberShape.kind ?? body.kind ?? 'custom',
         components: memberShape.components ?? body.components ?? null,

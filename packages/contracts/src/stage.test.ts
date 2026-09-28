@@ -12,6 +12,7 @@ import {
   STAGE_CHEQUEBOOK_HEALTHS,
   STAGE_ENGINES,
   STAGE_KINDS,
+  REGISTRAR_CHECK_PATH,
   STAGE_READINESS_TONES,
   STAGE_RECORD_SCHEMA_VERSION,
   STAGE_SELF_PATH,
@@ -429,9 +430,16 @@ describe('the stage paths', () => {
     }
   });
 
-  it('names the catalogue stamp and the self paths', () => {
+  it('names the catalogue stamp, the self and the registrar check paths', () => {
     assert.equal(CATALOGUE_STAMP_PATH, '/api/internal/catalogue-stamp');
     assert.equal(STAGE_SELF_PATH, '/api/internal/stages/self');
+    assert.equal(REGISTRAR_CHECK_PATH, '/api/internal/registrar');
+  });
+
+  it('puts the registrar check where no stage id or stream route can be taken for it', () => {
+    assert.ok(REGISTRAR_CHECK_PATH.startsWith('/api/internal/'));
+    assert.throws(() => stageRecordPath('registrar'), /A stage id is a UUID/);
+    assert.notEqual(REGISTRAR_CHECK_PATH, STAGE_SELF_PATH);
   });
 });
 

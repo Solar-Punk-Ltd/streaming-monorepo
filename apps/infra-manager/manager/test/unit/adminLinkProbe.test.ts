@@ -1,17 +1,22 @@
 /**
- * Test connection's two requests to a web2 admin, against fake admins on
- * loopback.
+ * Test connection's requests to a web2 admin, against fake admins on loopback.
  *
  * Unit test, no database and no Docker. `pnpm test` in manager/.
  *
- * The probe asks what the stream uploader asks: the internal lookup of a
- * stream nobody declared, with the token, where the admin's own 404 means it
- * took the token and its 401 means it did not; then, with the token, the
- * stage it belongs to and the owner the admin knows for it, and on a 404
- * there, a token of no stage, the public config for the address the admin
- * signs its catalog with. It answers one outcome code
- * and nothing the far end said. It follows no redirect, reads a bounded body,
- * gives up after its timeout, and sends the token to the lookup alone.
+ * For an uploader's token the probe asks what the stream uploader asks: the
+ * internal lookup of a stream nobody declared, with the token, where the
+ * admin's own 404 means it took the token and its 401 means it did not; then,
+ * with the token, the stage it belongs to and the owner the admin knows for
+ * it, and on a 404 there, an admin older than stages, the public config for
+ * the address the admin signs its catalog with. For the manager's own token,
+ * the registrar's, it asks the admin's registrar check, and only on an older
+ * admin's 404 there the lookup. It answers one outcome code and nothing the
+ * far end said. It follows no redirect, reads a bounded body, gives up after
+ * its timeout, and sends the token to the admin's internal routes alone.
+ *
+ * `adminAnswering` is an admin of stages phases 5 to 8, which takes its
+ * registrar token on the uploader's routes and has no registrar check;
+ * `phase9Admin` is one of this version.
  */
 import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -70,7 +75,7 @@ function adminAnswering(
       if (request.headers.authorization !== `Bearer ${TOKEN}` && !onStage) {
         return json(response, 401, { error: 'unauthenticated' });
       }
-      // The shared token belongs to no stage, and is answered the 404 an unknown path gets.
+      // Up to phase 8, the shared token belongs to no stage, and is answered the 404 an unknown path gets.
       if (path === STAGE_SELF && onStage) {
         if (options.selfStatus) return json(response, options.selfStatus, { error: 'internal_error' });
         return json(response, 200, { stageId: STAGE_ID, owner: options.stageOwner ?? OWNER });
@@ -92,18 +97,109 @@ function adminAnswering(
   };
 }
 
-describe('Test connection against a web2 admin', () => {
+/** A web2 admin of this version: the registrar token opens the registrar check alone, and the uploader's routes refuse it. */
+function phase9Admin(request: IncomingMessage, response: ServerResponse): void {
+  const path = request.url ?? '';
+  const authorization = request.headers.authorization;
+  if (!path.startsWith('/api/internal/')) return json(response, 404, { error: 'not_found', path });
+  if (path === '/api/internal/registrar') {
+    if (authorization !== `Bearer ${TOKEN}`) return json(response, 401, { error: 'unauthenticated' });
+    response.writeHead(204);
+    return void response.end();
+  }
+  if (authorization !== `Bearer ${STAGE_TOKEN}`) return json(response, 401, { error: 'unauthenticated' });
+  if (path === STAGE_SELF) return json(response, 200, { stageId: STAGE_ID, owner: OWNER });
+  return json(response, 404, { error: 'stream_not_found' });
+}
+
+describe("Test connection of the manager's own token, the registrar's", () => {
+  it("proves it on the admin's registrar check alone, and asks nothing else", async () => {
+    const admin = await serve(phase9Admin);
+
+    assert.equal(
+      await probeAdminLink({ url: `${admin.url}/`, token: TOKEN, check: 'registrar', feedOwner: OWNER }),
+      'token-accepted',
+    );
+    assert.deepEqual(admin.seen, [{ path: '/api/internal/registrar', authorization: `Bearer ${TOKEN}` }]);
+  });
+
+  it("takes the admin's 401 there as the token refused, a stage's own token included", async () => {
+    const admin = await serve(phase9Admin);
+
+    for (const token of [`${TOKEN}-wrong`, STAGE_TOKEN]) {
+      assert.equal(
+        await probeAdminLink({ url: admin.url, token, check: 'registrar', feedOwner: null }),
+        'token-refused',
+      );
+    }
+    assert.equal(admin.seen.length, 2);
+  });
+
+  it('reads the same token as refused on the lookup, which is why the lookup no longer proves it', async () => {
+    const admin = await serve(phase9Admin);
+
+    assert.equal(
+      await probeAdminLink({ url: admin.url, token: TOKEN, check: 'uploader', feedOwner: null }),
+      'token-refused',
+    );
+  });
+
+  it("falls back to the lookup on an older admin's 404, where that admin still takes the token", async () => {
+    const admin = await serve(adminAnswering());
+
+    assert.equal(
+      await probeAdminLink({ url: admin.url, token: TOKEN, check: 'registrar', feedOwner: OWNER }),
+      'token-accepted',
+    );
+    assert.deepEqual(
+      admin.seen.map((seen) => seen.path),
+      ['/api/internal/registrar', UNUSED_STREAM],
+      'no owner is compared for the registrar token',
+    );
+    assert.equal(
+      await probeAdminLink({ url: admin.url, token: `${TOKEN}-wrong`, check: 'registrar', feedOwner: null }),
+      'token-refused',
+    );
+  });
+
+  it('is not fooled by another server, a redirect or silence', async () => {
+    const plain = await serve((_request, response) => {
+      response.writeHead(404, { 'content-type': 'text/html' });
+      response.end('<html>Not Found</html>');
+    });
+    const ok = await serve((_request, response) => json(response, 200, { hello: 'world' }));
+    const redirecting = await serve((_request, response) => {
+      response.writeHead(307, { location: 'http://127.0.0.1:9/' });
+      response.end();
+    });
+    const hanging = await serve(() => undefined);
+
+    const registrar = (url: string) => ({ url, token: TOKEN, check: 'registrar' as const, feedOwner: null });
+    assert.equal(await probeAdminLink(registrar(plain.url)), 'not-admin');
+    assert.equal(await probeAdminLink(registrar(ok.url)), 'not-admin');
+    assert.equal(await probeAdminLink(registrar(redirecting.url)), 'redirected');
+    assert.equal(await probeAdminLink(registrar(hanging.url), { timeoutMs: 300 }), 'unreachable');
+  });
+});
+
+describe("Test connection of an uploader's token", () => {
   it('asks the lookup of a stream nobody declared with the token, and takes its 404 as the token accepted', async () => {
     const admin = await serve(adminAnswering());
 
-    assert.equal(await probeAdminLink({ url: admin.url, token: TOKEN, feedOwner: null }), 'token-accepted');
+    assert.equal(
+      await probeAdminLink({ url: admin.url, token: TOKEN, check: 'uploader', feedOwner: null }),
+      'token-accepted',
+    );
     assert.deepEqual(admin.seen, [{ path: UNUSED_STREAM, authorization: `Bearer ${TOKEN}` }]);
   });
 
   it('strips a trailing slash from the address, as the uploader does', async () => {
     const admin = await serve(adminAnswering());
 
-    assert.equal(await probeAdminLink({ url: `${admin.url}/`, token: TOKEN, feedOwner: null }), 'token-accepted');
+    assert.equal(
+      await probeAdminLink({ url: `${admin.url}/`, token: TOKEN, check: 'uploader', feedOwner: null }),
+      'token-accepted',
+    );
     assert.equal(admin.seen[0]?.path, UNUSED_STREAM);
   });
 
@@ -111,10 +207,18 @@ describe('Test connection against a web2 admin', () => {
     const admin = await serve(adminAnswering());
 
     assert.equal(
-      await probeAdminLink({ url: admin.url, token: TOKEN, feedOwner: OWNER.toUpperCase().replace('0X', '0x') }),
+      await probeAdminLink({
+        url: admin.url,
+        token: TOKEN,
+        check: 'uploader',
+        feedOwner: OWNER.toUpperCase().replace('0X', '0x'),
+      }),
       'linked',
     );
-    assert.equal(await probeAdminLink({ url: admin.url, token: TOKEN, feedOwner: OWNER.slice(2) }), 'linked');
+    assert.equal(
+      await probeAdminLink({ url: admin.url, token: TOKEN, check: 'uploader', feedOwner: OWNER.slice(2) }),
+      'linked',
+    );
     assert.deepEqual(admin.seen[1], { path: STAGE_SELF, authorization: `Bearer ${TOKEN}` });
     assert.deepEqual(admin.seen[2], { path: '/api/config', authorization: undefined });
   });
@@ -123,7 +227,10 @@ describe('Test connection against a web2 admin', () => {
     // The catalog is the brand key's, and this stage signs with a key of its own.
     const admin = await serve(adminAnswering({ owner: OTHER_OWNER, stageOwner: OWNER }));
 
-    assert.equal(await probeAdminLink({ url: admin.url, token: STAGE_TOKEN, feedOwner: OWNER.slice(2) }), 'linked');
+    assert.equal(
+      await probeAdminLink({ url: admin.url, token: STAGE_TOKEN, check: 'uploader', feedOwner: OWNER.slice(2) }),
+      'linked',
+    );
     assert.deepEqual(
       admin.seen.map((seen) => seen.path),
       [UNUSED_STREAM, STAGE_SELF],
@@ -135,7 +242,10 @@ describe('Test connection against a web2 admin', () => {
   it('says so when the admin knows the stage under another owner than the stream address', async () => {
     const admin = await serve(adminAnswering({ owner: OWNER, stageOwner: OTHER_OWNER }));
 
-    assert.equal(await probeAdminLink({ url: admin.url, token: STAGE_TOKEN, feedOwner: OWNER }), 'owner-mismatch');
+    assert.equal(
+      await probeAdminLink({ url: admin.url, token: STAGE_TOKEN, check: 'uploader', feedOwner: OWNER }),
+      'owner-mismatch',
+    );
   });
 
   it('says the owner could not be compared when the stage read fails, without falling back to the catalog', async () => {
@@ -144,29 +254,47 @@ describe('Test connection against a web2 admin', () => {
       request.url === STAGE_SELF ? json(response, 200, { stageId: STAGE_ID }) : adminAnswering()(request, response),
     );
 
-    assert.equal(await probeAdminLink({ url: failing.url, token: STAGE_TOKEN, feedOwner: OWNER }), 'owner-unconfirmed');
+    assert.equal(
+      await probeAdminLink({ url: failing.url, token: STAGE_TOKEN, check: 'uploader', feedOwner: OWNER }),
+      'owner-unconfirmed',
+    );
     assert.equal(failing.seen.length, 2);
-    assert.equal(await probeAdminLink({ url: garbled.url, token: TOKEN, feedOwner: OWNER }), 'owner-unconfirmed');
+    assert.equal(
+      await probeAdminLink({ url: garbled.url, token: TOKEN, check: 'uploader', feedOwner: OWNER }),
+      'owner-unconfirmed',
+    );
   });
 
   it('says so when the admin signs its catalog with another address, which the uploader refuses to start with', async () => {
     const admin = await serve(adminAnswering({ owner: OTHER_OWNER }));
 
-    assert.equal(await probeAdminLink({ url: admin.url, token: TOKEN, feedOwner: OWNER }), 'owner-mismatch');
+    assert.equal(
+      await probeAdminLink({ url: admin.url, token: TOKEN, check: 'uploader', feedOwner: OWNER }),
+      'owner-mismatch',
+    );
   });
 
   it('says the owner could not be compared when the config names none or does not answer', async () => {
     const silent = await serve(adminAnswering({ owner: null }));
     const failing = await serve(adminAnswering({ configStatus: 500 }));
 
-    assert.equal(await probeAdminLink({ url: silent.url, token: TOKEN, feedOwner: OWNER }), 'owner-unconfirmed');
-    assert.equal(await probeAdminLink({ url: failing.url, token: TOKEN, feedOwner: OWNER }), 'owner-unconfirmed');
+    assert.equal(
+      await probeAdminLink({ url: silent.url, token: TOKEN, check: 'uploader', feedOwner: OWNER }),
+      'owner-unconfirmed',
+    );
+    assert.equal(
+      await probeAdminLink({ url: failing.url, token: TOKEN, check: 'uploader', feedOwner: OWNER }),
+      'owner-unconfirmed',
+    );
   });
 
   it("takes the admin's 401 as a wrong token, and asks nothing more", async () => {
     const admin = await serve(adminAnswering());
 
-    assert.equal(await probeAdminLink({ url: admin.url, token: `${TOKEN}-wrong`, feedOwner: OWNER }), 'token-refused');
+    assert.equal(
+      await probeAdminLink({ url: admin.url, token: `${TOKEN}-wrong`, check: 'uploader', feedOwner: OWNER }),
+      'token-refused',
+    );
     assert.equal(admin.seen.length, 1);
   });
 
@@ -178,9 +306,18 @@ describe('Test connection against a web2 admin', () => {
     });
     const gate = await serve((_request, response) => json(response, 401, { message: 'log in first' }));
 
-    assert.equal(await probeAdminLink({ url: `${prefixed.url}/console`, token: TOKEN, feedOwner: null }), 'not-admin');
-    assert.equal(await probeAdminLink({ url: plain.url, token: TOKEN, feedOwner: null }), 'not-admin');
-    assert.equal(await probeAdminLink({ url: gate.url, token: TOKEN, feedOwner: null }), 'not-admin');
+    assert.equal(
+      await probeAdminLink({ url: `${prefixed.url}/console`, token: TOKEN, check: 'uploader', feedOwner: null }),
+      'not-admin',
+    );
+    assert.equal(
+      await probeAdminLink({ url: plain.url, token: TOKEN, check: 'uploader', feedOwner: null }),
+      'not-admin',
+    );
+    assert.equal(
+      await probeAdminLink({ url: gate.url, token: TOKEN, check: 'uploader', feedOwner: null }),
+      'not-admin',
+    );
   });
 
   it('reads any other answer as not a web2 admin, garbage included', async () => {
@@ -190,8 +327,11 @@ describe('Test connection against a web2 admin', () => {
       response.end('{"error": "stream_not_found"');
     });
 
-    assert.equal(await probeAdminLink({ url: ok.url, token: TOKEN, feedOwner: null }), 'not-admin');
-    assert.equal(await probeAdminLink({ url: garbage.url, token: TOKEN, feedOwner: null }), 'not-admin');
+    assert.equal(await probeAdminLink({ url: ok.url, token: TOKEN, check: 'uploader', feedOwner: null }), 'not-admin');
+    assert.equal(
+      await probeAdminLink({ url: garbage.url, token: TOKEN, check: 'uploader', feedOwner: null }),
+      'not-admin',
+    );
   });
 
   it('refuses a redirect rather than following it, so the token goes nowhere else', async () => {
@@ -201,7 +341,10 @@ describe('Test connection against a web2 admin', () => {
       response.end();
     });
 
-    assert.equal(await probeAdminLink({ url: redirecting.url, token: TOKEN, feedOwner: null }), 'redirected');
+    assert.equal(
+      await probeAdminLink({ url: redirecting.url, token: TOKEN, check: 'uploader', feedOwner: null }),
+      'redirected',
+    );
     assert.equal(elsewhere.seen.length, 0, 'the redirect target was never asked');
   });
 
@@ -212,7 +355,7 @@ describe('Test connection against a web2 admin', () => {
     });
 
     assert.equal(
-      await probeAdminLink({ url: huge.url, token: TOKEN, feedOwner: null }, { maxBodyBytes: 4096 }),
+      await probeAdminLink({ url: huge.url, token: TOKEN, check: 'uploader', feedOwner: null }, { maxBodyBytes: 4096 }),
       'not-admin',
     );
   });
@@ -222,7 +365,7 @@ describe('Test connection against a web2 admin', () => {
     const started = performance.now();
 
     assert.equal(
-      await probeAdminLink({ url: hanging.url, token: TOKEN, feedOwner: null }, { timeoutMs: 300 }),
+      await probeAdminLink({ url: hanging.url, token: TOKEN, check: 'uploader', feedOwner: null }, { timeoutMs: 300 }),
       'unreachable',
     );
     assert.ok(performance.now() - started < 3_000, 'the timeout ended the wait');
@@ -233,11 +376,17 @@ describe('Test connection against a web2 admin', () => {
     const url = closed.url;
     await cleanups.pop()!();
 
-    assert.equal(await probeAdminLink({ url, token: TOKEN, feedOwner: null }), 'unreachable');
+    assert.equal(await probeAdminLink({ url, token: TOKEN, check: 'uploader', feedOwner: null }), 'unreachable');
   });
 
   it('asks nothing of an address that is not http or https', async () => {
-    assert.equal(await probeAdminLink({ url: 'ftp://127.0.0.1/', token: TOKEN, feedOwner: null }), 'invalid-address');
-    assert.equal(await probeAdminLink({ url: 'not an address', token: TOKEN, feedOwner: null }), 'invalid-address');
+    assert.equal(
+      await probeAdminLink({ url: 'ftp://127.0.0.1/', token: TOKEN, check: 'uploader', feedOwner: null }),
+      'invalid-address',
+    );
+    assert.equal(
+      await probeAdminLink({ url: 'not an address', token: TOKEN, check: 'uploader', feedOwner: null }),
+      'invalid-address',
+    );
   });
 });

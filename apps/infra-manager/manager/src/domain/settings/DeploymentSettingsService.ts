@@ -206,6 +206,7 @@ export class DeploymentSettingsService {
       requiredSecrets: next.version.contract?.requiredSecrets ?? [],
       ownTokenFor: this.managerAdminLink ? ownAdminTokenFor(await this.managerAdminLink.read(), profile) : null,
       currentIsOwnToken: next.generatedKeys.includes(ADMIN_API_TOKEN_KEY),
+      tokenStored: stored.secretKeys.includes(ADMIN_API_TOKEN_KEY),
     });
     return { catalog, stored, engineSettings, adminLink };
   }

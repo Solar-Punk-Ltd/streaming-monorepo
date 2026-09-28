@@ -24,6 +24,11 @@ import { ITEST_INTERNAL_TOKEN, ITEST_PASSWORD, ITEST_USERNAME, startInstance, ty
 export const ADMIN_USERNAME = ITEST_USERNAME;
 export const ADMIN_PASSWORD = ITEST_PASSWORD;
 export const INTERNAL_API_TOKEN = ITEST_INTERNAL_TOKEN;
+/**
+ * The own token of `STAGE_ID`'s uploader, for a suite that registers that stage with it: 64 hex characters, as the
+ * manager generates one. The uploader's routes take nothing else, the registrar token included.
+ */
+export const UPLOADER_TOKEN = '3c'.repeat(32);
 
 let instance: Instance | null = null;
 
@@ -46,10 +51,11 @@ export function stack(): Instance {
 }
 
 /**
- * Headers for an internal call: the bearer token, and `anonymous` so the
- * session cookie the rest of the suite holds is not sent with it. The internal
- * routes must answer on the token alone — and, since they sit ahead of the
- * cross-site check, without the header a browser would have to send.
+ * Headers for an internal call: the bearer token, the registrar token unless
+ * another is named, and `anonymous` so the session cookie the rest of the
+ * suite holds is not sent with it. The internal routes must answer on the
+ * token alone — and, since they sit ahead of the cross-site check, without the
+ * header a browser would have to send.
  */
 export function internalCall(token = INTERNAL_API_TOKEN): RequestOptions {
   return {
@@ -57,6 +63,11 @@ export function internalCall(token = INTERNAL_API_TOKEN): RequestOptions {
     crossSiteHeader: false,
     headers: { authorization: `Bearer ${token}` },
   };
+}
+
+/** An internal call as a stage's uploader makes it: on its own token, `UPLOADER_TOKEN` unless another is named. */
+export function uploaderCall(token = UPLOADER_TOKEN): RequestOptions {
+  return internalCall(token);
 }
 
 /** A 1x1 transparent PNG: the smallest real image to upload. */

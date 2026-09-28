@@ -349,7 +349,7 @@ INTERNAL_API_TOKEN="$(env_value INTERNAL_API_TOKEN)"
 if [ "${#INTERNAL_API_TOKEN}" -lt 32 ]; then
     problem "INTERNAL_API_TOKEN must be at least 32 characters (got ${#INTERNAL_API_TOKEN})."
 elif [ "$INTERNAL_API_TOKEN" = "$SAMPLE_INTERNAL_API_TOKEN" ]; then
-    warn "INTERNAL_API_TOKEN is the placeholder from .env.sample. It can flip streams live, so generate a real one."
+    warn "INTERNAL_API_TOKEN is the placeholder from .env.sample. It registers stages and designates the catalogue batch, so generate a real one."
 fi
 
 # The INGEST_* keys are no longer read: each stream's OBS details come from its

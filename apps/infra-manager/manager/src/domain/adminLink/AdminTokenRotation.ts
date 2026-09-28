@@ -31,9 +31,9 @@ const logger = Logger.getInstance();
  * generates a new one of its own and registers its sha256 with the admin before the uploader starts.
  *
  * Nothing that runs changes here. The running uploader keeps the token it was started with until the redeploy, and
- * the admin stops taking it once the manager next pushes the stage, whose record then carries no token. An
- * uploader that still presents the shared token keeps being taken as an unattributed caller while the admin takes
- * that one. The log names who rotated which deployment, never a token.
+ * the admin stops taking it once the manager next pushes the stage, whose record then carries no token. It is the
+ * one way back for an uploader on a token the manager did not generate, typed or copied from the link by an older
+ * manager, which the admin refuses. The log names who rotated which deployment, never a token.
  */
 export class AdminTokenRotation {
   constructor(

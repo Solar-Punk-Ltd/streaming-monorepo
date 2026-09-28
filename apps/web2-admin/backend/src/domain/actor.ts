@@ -7,8 +7,8 @@ import { quoteForLog } from '../utils/logText.js';
  * stream, so the log line and the audit row are the only places that say
  * which of them did.
  *
- * `uploader` is the caller of the internal API: one shared bearer token, no
- * session, no name. The services it calls say so themselves rather than being
+ * `uploader` is a caller of the uploader's routes of the internal API: a
+ * stage's own bearer token, no session, no user name. The services it calls say so themselves rather than being
  * told by the route, so a route cannot pass an operator off as the uploader or
  * the other way round. `manager` is the manager pushing stage and catalogue
  * stamp records on the registrar token, named by the stage service the same

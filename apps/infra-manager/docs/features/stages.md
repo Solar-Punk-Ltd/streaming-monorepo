@@ -8,11 +8,13 @@ link names. The admin never calls the manager. The design, and the phases it is
 built in, is `docs/architecture/stages.md` at the repository root; the record's
 shape is `stageRecordSchema` in `packages/contracts/src/stage.ts`.
 
-Status, 2026-09-28. Phase 3 of the brief, phase 5, which gives every
-uploader linked to the manager's admin a token of its own, and phase 6, where
-every stage signs with a key of its own. Not deployed. A deployment created before
-phase 5 still presents the link's own token, reported as `shared`, until it is
-rotated.
+Status, 2026-09-29. Phase 3 of the brief, phase 5, which gives every
+uploader linked to the manager's admin a token of its own, phase 6, where every
+stage signs with a key of its own, phases 7 and 8, the catalogue node and its
+move, and phase 9, where the admin stops taking any other token from an
+uploader. Not deployed. A deployment created before phase 5 still presents the
+link's own token, reported as `shared`, which the admin refuses since phase 9:
+its token has to be rotated.
 
 **A key per stage.** Every stage's `STREAM_KEY` is its own, generated in the
 new-deployment wizard, and nothing asks for the admin's brand key: the admin
@@ -70,8 +72,10 @@ deployment's Test connection answers `token-not-registered` rather than
 **Rotate the uploader's admin token**, on the stage card, takes the token out.
 The next push carries no token, so the admin stops taking the old one; the
 next deploy generates a new one and its pre-start push registers it. A
-deployment still on the link's token, `shared`, moves to one of its own this
-way. The link's token keeps being the registrar token these pushes present.
+deployment on any token the manager did not generate, `shared`, which the admin
+refuses since phase 9, gets one of its own this way and no other: its Test
+connection answers `token-not-own` until it has. The link's token is the
+registrar token these pushes present, and no uploader is given it.
 
 ### Readiness
 

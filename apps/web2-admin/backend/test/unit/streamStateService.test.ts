@@ -31,7 +31,7 @@ import {
   TEST_OPERATOR,
   TEST_OWNER,
 } from './support/fakes.js';
-import { stagesWithMain } from './support/stageFakes.js';
+import { ON_STAGE, stagesWithMain } from './support/stageFakes.js';
 
 const feed: FeedIdentity = {
   owner: TEST_OWNER,
@@ -99,12 +99,12 @@ async function broadcast(
   id: string,
   vod: { index: number; duration: number },
 ) {
-  await state.report(id, { state: 'live' });
-  await ladder.report(id, LIVE_360);
-  await ladder.report(id, LIVE_720);
-  await ladder.report(id, FINAL_360);
-  await ladder.report(id, FINAL_720);
-  await state.report(id, { state: 'vod', ...vod });
+  await state.report(id, { state: 'live' }, ON_STAGE);
+  await ladder.report(id, LIVE_360, ON_STAGE);
+  await ladder.report(id, LIVE_720, ON_STAGE);
+  await ladder.report(id, FINAL_360, ON_STAGE);
+  await ladder.report(id, FINAL_720, ON_STAGE);
+  await state.report(id, { state: 'vod', ...vod }, ON_STAGE);
 }
 
 describe('StreamStateService.report', () => {
@@ -113,7 +113,7 @@ describe('StreamStateService.report', () => {
     const draft = store.add(streamRow());
 
     await assert.rejects(
-      () => state.report(draft.id, { state: 'live' }),
+      () => state.report(draft.id, { state: 'live' }, ON_STAGE),
       (err: unknown) => err instanceof InvalidStateTransitionError && err.from === 'draft',
     );
   });
@@ -127,7 +127,7 @@ describe('StreamStateService.report', () => {
     assert.equal(ended.manifest_index, 7);
     assert.ok(ended.ended_at);
 
-    await state.report(stream.id, { state: 'live' });
+    await state.report(stream.id, { state: 'live' }, ON_STAGE);
 
     const resumed = store.get(stream.id);
     assert.equal(resumed.status, 'live');
@@ -145,7 +145,7 @@ describe('StreamStateService.report', () => {
       [10, 12],
     );
 
-    await state.report(stream.id, { state: 'live' });
+    await state.report(stream.id, { state: 'live' }, ON_STAGE);
 
     for (const row of await renditions.listByStream(stream.id)) {
       assert.equal(row.manifest_index, null, row.name);
@@ -157,7 +157,7 @@ describe('StreamStateService.report', () => {
     const { gateway, state, ladder, stream } = await setup();
     await broadcast(ladder, state, stream.id, { index: 7, duration: 62.5 });
 
-    const outcome = await state.report(stream.id, { state: 'live' });
+    const outcome = await state.report(stream.id, { state: 'live' }, ON_STAGE);
 
     const entry = entryAt(gateway, outcome.feed.index, stream.topic);
     assert.equal(entry.state, 'live');
@@ -170,11 +170,11 @@ describe('StreamStateService.report', () => {
     // The uploader retries, and a `live` arriving twice in one run must not
     // throw away rungs that finalized between the two.
     const { store, renditions, state, ladder, stream } = await setup();
-    await state.report(stream.id, { state: 'live' });
+    await state.report(stream.id, { state: 'live' }, ON_STAGE);
     const liveSince = store.get(stream.id).live_since;
-    await ladder.report(stream.id, FINAL_360);
+    await ladder.report(stream.id, FINAL_360, ON_STAGE);
 
-    await state.report(stream.id, { state: 'live' });
+    await state.report(stream.id, { state: 'live' }, ON_STAGE);
 
     assert.deepEqual(store.get(stream.id).live_since, liveSince);
     assert.deepEqual(
@@ -214,7 +214,7 @@ describe('StreamStateService audit', () => {
     const { audit, state, stream } = await setup();
     audit.entries.length = 0;
 
-    const outcome = await state.report(stream.id, { state: 'live' });
+    const outcome = await state.report(stream.id, { state: 'live' }, ON_STAGE);
 
     assert.deepEqual(audit.entries, [
       {
@@ -231,10 +231,10 @@ describe('StreamStateService audit', () => {
 
   it('records a vod report with where the recording is', async () => {
     const { audit, state, stream } = await setup();
-    await state.report(stream.id, { state: 'live' });
+    await state.report(stream.id, { state: 'live' }, ON_STAGE);
     audit.entries.length = 0;
 
-    const outcome = await state.report(stream.id, { state: 'vod', index: 7, duration: 62.5 });
+    const outcome = await state.report(stream.id, { state: 'vod', index: 7, duration: 62.5 }, ON_STAGE);
 
     assert.deepEqual(audit.entries, [
       {
@@ -269,7 +269,7 @@ describe('StreamStateService audit', () => {
     };
     audit.entries.length = 0;
 
-    const outcome = await state.report(stream.id, { state: 'live' });
+    const outcome = await state.report(stream.id, { state: 'live' }, ON_STAGE);
 
     assert.equal(entryAt(gateway, outcome.feed.index, stream.topic).state, 'vod', 'the catalogue has the later state');
     assert.deepEqual(audit.entries, [
@@ -298,7 +298,7 @@ describe('StreamStateService audit', () => {
     };
     audit.entries.length = 0;
 
-    const outcome = await state.report(stream.id, { state: 'live' });
+    const outcome = await state.report(stream.id, { state: 'live' }, ON_STAGE);
 
     assert.equal(entryAt(gateway, outcome.feed.index, stream.topic).state, 'live');
     assert.equal(outcome.stream.status, 'vod', 'the row moved on while the write was on its way');
@@ -312,7 +312,7 @@ describe('StreamStateService audit', () => {
     // the row. Its write lists recording 9, as the catalogue should; the
     // first report's entry names that write, beside its own 7.
     const { store, gateway, audit, state, stream } = await setup();
-    await state.report(stream.id, { state: 'live' });
+    await state.report(stream.id, { state: 'live' }, ON_STAGE);
     const markVod = store.markVod.bind(store);
     store.markVod = async (id, allowedFrom, manifestIndex, durationSeconds) => {
       const row = await markVod(id, allowedFrom, manifestIndex, durationSeconds);
@@ -321,7 +321,7 @@ describe('StreamStateService audit', () => {
     };
     audit.entries.length = 0;
 
-    const outcome = await state.report(stream.id, { state: 'vod', index: 7, duration: 62.5 });
+    const outcome = await state.report(stream.id, { state: 'vod', index: 7, duration: 62.5 }, ON_STAGE);
 
     const written = entryAt(gateway, outcome.feed.index, stream.topic);
     assert.deepEqual([written.index, written.duration], [9, 70], 'the catalogue lists the later recording');
@@ -351,7 +351,7 @@ describe('StreamStateService audit', () => {
     audit.entries.length = 0;
     gateway.failNextWrite = new Error('bee unreachable');
 
-    await assert.rejects(() => state.report(stream.id, { state: 'live' }), PublishFailedError);
+    await assert.rejects(() => state.report(stream.id, { state: 'live' }, ON_STAGE), PublishFailedError);
 
     assert.equal(store.get(stream.id).status, 'live');
     assert.deepEqual(

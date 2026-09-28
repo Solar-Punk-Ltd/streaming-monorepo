@@ -32,9 +32,19 @@ export interface AdminLinkBefore {
    * neither counting the token of its own the manager generates for the deployment. `generatedFor` is the address
    * that one is generated for, the manager's own web2 admin link, or null or left out where the manager generates
    * none: the deployment runs no stream uploader, or the manager has no link with a token to register it with.
+   * `stored` is whether the deployment stores a value for the token now, typed or copied, which is refused at that
+   * address.
    */
-  token: { current: boolean; afterReset: boolean; generatedFor?: string | null };
+  token: { current: boolean; afterReset: boolean; generatedFor?: string | null; stored?: boolean };
 }
+
+/**
+ * Why a stored `ADMIN_API_TOKEN` is refused at the address of the manager's link while the link stores a token: the
+ * web2 admin there takes only a token of the deployment's own from an uploader (stages phase 9). The wizard's group
+ * says it too.
+ */
+export const TYPED_TOKEN_AT_LINK =
+  'The web2 admin on Manager settings takes only a token of its own from an uploader, so a token typed for its address would be refused. Choose A token of its own, or leave ADMIN_API_TOKEN empty so the first deploy generates one.';
 
 /** One key of a save or a create: a value, or null to go back to what the version gives. */
 interface AdminLinkEdit {
@@ -81,7 +91,21 @@ export function adminLinkAfterEdits(edits: readonly AdminLinkEdit[], before: Adm
  */
 export function adminLinkEditProblem(edits: readonly AdminLinkEdit[], before: AdminLinkBefore): string | null {
   if (!editsAdminLink(edits)) return null;
-  return adminLinkProblem(adminLinkAfterEdits(edits, before));
+  return adminLinkProblem(adminLinkAfterEdits(edits, before)) ?? typedTokenAtLinkProblem(edits, before);
+}
+
+/**
+ * Why these edits leave a stored `ADMIN_API_TOKEN` at an address on the origin of the manager's link while the link
+ * stores a token (`generatedFor`), or null. A value typed now counts, and so does one the deployment stores that the
+ * edits leave, while a reset or an empty value takes it out, so the first deploy generates a token of its own.
+ */
+export function typedTokenAtLinkProblem(edits: readonly AdminLinkEdit[], before: AdminLinkBefore): string | null {
+  const link = before.token.generatedFor;
+  if (!link) return null;
+  const tokenEdit = edits.find(({ key }) => key === ADMIN_API_TOKEN_KEY);
+  const stored = tokenEdit === undefined ? Boolean(before.token.stored) : Boolean(tokenEdit.value);
+  if (!stored) return null;
+  return sameAdminOrigin(adminLinkAfterEdits(edits, before).url, link) ? TYPED_TOKEN_AT_LINK : null;
 }
 
 /**

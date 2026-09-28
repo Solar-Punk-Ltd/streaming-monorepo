@@ -11,7 +11,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, it, mock } from 'node:test';
 
-import { ADMIN_TOKEN_ROTATED_MESSAGE, type StagePushState } from '@streaming-infra-manager/common';
+import { ADMIN_TOKEN_ROTATED_MESSAGE, type StagePushState, TYPED_TOKEN_AT_LINK } from '@streaming-infra-manager/common';
 import { Router } from 'express';
 
 import type { SessionInfo } from '../../src/domain/auth/AuthService.js';
@@ -211,6 +211,64 @@ describe('a save of the web2 admin keys, with the token of its own', () => {
   });
 });
 
+describe("a stored token at the manager's link address, which that admin refuses from an uploader", () => {
+  const TYPED = 'synthetic-typed-admin-token-0123456789abcdef';
+
+  it('refuses a token typed for the link address, and takes one typed for another address', async () => {
+    const app = await appFor();
+    try {
+      assert.equal(
+        refusalOf(
+          await app.save([
+            { key: 'ADMIN_API_URL', value: `${ADMIN_URL}/v2` },
+            { key: 'ADMIN_API_TOKEN', value: TYPED },
+          ]),
+        ),
+        TYPED_TOKEN_AT_LINK,
+      );
+      const elsewhere = await app.save([
+        { key: 'ADMIN_API_URL', value: ELSEWHERE },
+        { key: 'ADMIN_API_TOKEN', value: TYPED },
+      ]);
+      assert.equal(elsewhere.status, 200, JSON.stringify(elsewhere.body));
+      // And back to the link's address with the stored token left: still refused.
+      assert.equal(refusalOf(await app.save([{ key: 'ADMIN_API_URL', value: ADMIN_URL }])), TYPED_TOKEN_AT_LINK);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses a save of the address that leaves a copied token there, and takes one that clears it', async () => {
+    const app = await appFor({ settings: { ADMIN_API_URL: ADMIN_URL, ADMIN_API_TOKEN: COPIED_TOKEN } });
+    try {
+      assert.equal(
+        refusalOf(await app.save([{ key: 'ADMIN_API_URL', value: `${ADMIN_URL}/v2` }])),
+        TYPED_TOKEN_AT_LINK,
+      );
+      const cleared = await app.save([
+        { key: 'ADMIN_API_URL', value: `${ADMIN_URL}/v2` },
+        { key: 'ADMIN_API_TOKEN', value: null },
+      ]);
+      assert.equal(cleared.status, 200, JSON.stringify(cleared.body));
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('holds nothing while the link stores no token, since no token of its own could be registered', async () => {
+    const app = await appFor({ linkToken: null });
+    try {
+      const saved = await app.save([
+        { key: 'ADMIN_API_URL', value: ADMIN_URL },
+        { key: 'ADMIN_API_TOKEN', value: TYPED },
+      ]);
+      assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describe("Rotate the uploader's admin token", () => {
   it('takes the generated token out, and the next deploy generates a new one', async () => {
     const app = await appFor({ settings: { ADMIN_API_URL: ADMIN_URL } });
@@ -332,16 +390,63 @@ describe("Test connection with the deployment's own token", () => {
     }
   });
 
-  it("asks with the deployment's own token and says a refusal of the shared one as it is", async () => {
-    const app = await appFor({
-      settings: { ADMIN_API_URL: ADMIN_URL, ADMIN_API_TOKEN: COPIED_TOKEN },
+  it("says a refused token the manager did not generate has to be rotated, at the link's address alone", async () => {
+    // A copy of the link's token, which an older manager put into the deployment, and a token typed there: the admin
+    // takes neither from an uploader since stages phase 9.
+    for (const token of [COPIED_TOKEN, 'synthetic-typed-admin-token-0123456789abcdef']) {
+      const app = await appFor({
+        settings: { ADMIN_API_URL: ADMIN_URL, ADMIN_API_TOKEN: token },
+        probe: 'token-refused',
+      });
+      try {
+        app.pushes.set('stage', { outcome: 'stored', at: new Date().toISOString() });
+        assert.deepEqual(await app.test(), { outcome: 'token-not-own' });
+        assert.deepEqual(app.probed, [token]);
+      } finally {
+        await app.close();
+      }
+    }
+
+    const elsewhere = await appFor({
+      settings: { ADMIN_API_URL: ELSEWHERE, ADMIN_API_TOKEN: COPIED_TOKEN },
       probe: 'token-refused',
     });
     try {
-      assert.deepEqual(await app.test(), { outcome: 'token-refused' });
-      assert.deepEqual(app.probed, [COPIED_TOKEN]);
+      assert.deepEqual(await elsewhere.test(), { outcome: 'token-refused' }, 'another admin refuses it as it likes');
+    } finally {
+      await elsewhere.close();
+    }
+  });
+
+  it('names a token the manager did not generate token-not-own even where an older admin still takes it', async () => {
+    // A phase 8 admin in front of a phase 9 manager, the rollout's second step: the stage still has to be rotated.
+    const app = await appFor({ settings: { ADMIN_API_URL: ADMIN_URL, ADMIN_API_TOKEN: COPIED_TOKEN } });
+    try {
+      assert.deepEqual(await app.test(), { outcome: 'token-not-own' });
     } finally {
       await app.close();
+    }
+    const elsewhere = await appFor({ settings: { ADMIN_API_URL: ELSEWHERE, ADMIN_API_TOKEN: COPIED_TOKEN } });
+    try {
+      assert.deepEqual(await elsewhere.test(), { outcome: 'token-accepted' }, 'another admin is not held to it');
+    } finally {
+      await elsewhere.close();
+    }
+  });
+
+  it('reads a refusal at another origin as token-refused, never token-not-own, whatever the token is', async () => {
+    // Neither a copy of the link's token nor a typed one is held to the link's rule at another admin.
+    for (const token of [COPIED_TOKEN, 'synthetic-typed-admin-token-0123456789abcdef']) {
+      const app = await appFor({
+        settings: { ADMIN_API_URL: ELSEWHERE, ADMIN_API_TOKEN: token },
+        probe: 'token-refused',
+      });
+      try {
+        app.pushes.set('stage', { outcome: 'stored', at: new Date().toISOString() });
+        assert.deepEqual(await app.test(), { outcome: 'token-refused' });
+      } finally {
+        await app.close();
+      }
     }
   });
 

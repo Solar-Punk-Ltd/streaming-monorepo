@@ -158,8 +158,9 @@ optional: `components`, `host`, `notes`,
 `stack_version_id`, `feed_owner`, `feed_topic`, `private_key`, `public_key`,
 `stamp_id`, `srt_passphrase`, `bee_url`, `bee_publishers`, `rpc_endpoint`,
 `rpc_endpoint_source`, `node_mode`, `engine_settings` and `stack_settings`.
-`use_manager_admin_token` is still taken and ignored, which [Linking uploaders
-to the web2 admin](#linking-uploaders-to-the-web2-admin) describes. `abr_ladder` belongs
+A key the schema does not name is dropped, `use_manager_admin_token` included,
+which [Linking uploaders to the web2
+admin](#linking-uploaders-to-the-web2-admin) describes. `abr_ladder` belongs
 to `POST /groups`, where it makes the group an ABR node pool, and a create body
 carrying it is refused. `manager/src/schemas/profile.ts` is the whole contract
 and its rules are the ones the route enforces.
@@ -583,8 +584,9 @@ this repository deploys to).
   floor, and it is a secret: no answer carries it, only whether one is stored.
   Since stages phase 5 an uploader linked to the manager's own web2 admin gets
   a token of its own, which the admin knows by the sha256 the stage record
-  carries. An uploader linked to another admin is given that admin's
-  `INTERNAL_API_TOKEN`, typed for it.
+  carries, and since phase 9 that admin takes no other token from an uploader.
+  An uploader linked to another admin is given a token typed for it, which
+  only an admin older than phase 9 takes, its `INTERNAL_API_TOKEN`.
 
 **A token of its own.** A deploy of a deployment that runs a stream uploader,
 whose uploader is given an address on the origin of the manager's link while
@@ -598,16 +600,19 @@ known. Only an address on the link's origin is given it; an address moved
 elsewhere needs a token typed for it. A create never copies the manager's
 stored token any more: the wizard and a create through the API store the
 address alone. A deployment created before this keeps the token it was
-created with, the link's, which the record reports as `shared` and the admin
-still takes while the stages move over, until it is rotated.
+created with, the link's, which the record reports as `shared`, as it does a
+typed token. The admin took a copy of the link's token as an unattributed
+caller from phase 5 to phase 8; since phase 9 it refuses every `shared` token,
+and the deployment's Test connection answers `token-not-own` until the token is
+rotated.
 
 **Rotate the uploader's admin token**, on the deployment page's Web2 admin
 stage card, takes the token out: the one the manager generated, and one stored
 in the settings, typed or copied, with the origin recorded for it. Nothing that
 runs changes. The next deploy generates a new one and registers it before the
 uploader starts; until then the admin stops taking the old one once the
-manager next pushes the stage, whose record then carries no token, and an
-uploader on the shared token keeps being taken. The rotation is refused for a
+manager next pushes the stage, whose record then carries no token. It is the
+one way back for an uploader on a `shared` token. The rotation is refused for a
 deployment that runs no stream uploader, one in the middle of a deploy, stop or
 removal, checked again by the statement that takes the token out, one whose
 uploader is given another address than the link's, a link with no token, and a
@@ -615,11 +620,20 @@ version whose env files set the token.
 
 **Rolling it out.** The admin is upgraded to phase 5 before the manager, and no
 uploader deployment is redeployed in between, so an older admin never meets a
-token of its own, which it would refuse.
+token of its own, which it would refuse. Phase 9 goes another way, on a host
+that runs the admin and manager from before stages: the admin at the phase 8
+tip, commit `d29616851`, then the phase 9 manager, then every stage rotated and
+redeployed until the admin's Stages page says "Its own token" for all, then the
+phase 9 admin. Skipping the first three steps means every running uploader gets
+401 until its stage is rotated and redeployed. A fresh installation needs none
+of this.
 
 In admin mode the uploader refuses to start without a token, so a save of a
 deployment's settings, or a create, that names either key and leaves an address
-with no token anywhere is refused with both keys named. A token counts when the
+with no token anywhere is refused with both keys named. One that leaves a
+stored `ADMIN_API_TOKEN` at an address on the origin of the manager's link,
+while the link stores a token, is refused as well, with the wizard's sentence:
+that admin takes only a token of the deployment's own from an uploader. A token counts when the
 deployment stores one, when its version sets one, when the manager generates
 one because the version requires it, or, at an address on the manager's link
 origin, the token of its own. A save of other keys is not held to this.
@@ -642,9 +656,9 @@ names the stage's address as its `owner`, and the admin writes that owner into
 the catalog entry of every stream on the stage. When it starts, the uploader
 asks the admin `GET /api/internal/stages/self` with its own token and refuses
 to start when the owner the admin names is another address than its stream
-key's, because every viewer would then resolve a feed nobody writes. On a token
-the admin ties to no stage, the link's shared one, it compares the catalog
-owner of the admin's public `/api/config` instead, as before stages. Fix a
+key's, because every viewer would then resolve a feed nobody writes. On an
+admin older than stages, which answers that route 404, it compares the catalog
+owner of the admin's public `/api/config` instead. Fix a
 mismatch in the deployment's stream key, or deploy so the stage is pushed with
 the key it has.
 
@@ -672,7 +686,10 @@ manager's link stores a token, and only for an address on the link's origin:
 elsewhere the group says so and offers to type a token for the address
 instead, and the manager refuses the create by the rule above. Test connection
 there presents the manager's stored token, since the deployment's own does not
-exist yet. The group
+exist yet. A token typed there is for another admin: at the link's address,
+while the link stores a token, the group holds it with a sentence and a button
+back to a token of its own, since that admin takes no typed token from an
+uploader. The group
 waits for the manager's link before Continue, and when that link cannot be
 read and the operator leaves the group alone, the create sends neither key, so
 the manager adds its own. Switched off, the deployment stores an empty
@@ -684,17 +701,22 @@ token hidden.
 
 **Test connection.** On the Manager settings card, in the wizard's group, and on
 a deployment's Stack settings card right after the two keys. The manager asks
-the admin what the uploader would ask it, from where the manager runs: the
-internal lookup of a stream nobody declared, `GET
+the admin, from where the manager runs, what the holder of the token would ask
+it. The manager's own token, on the Manager settings card and for the wizard's
+token of its own, is the admin's registrar token, proved on its registrar
+check, `GET <address>/api/internal/registrar`, which answers 204; an admin
+older than the check answers its own 404 there, and only then is the lookup
+below asked. An uploader's token, a deployment's or one typed in the wizard,
+is proved as the uploader asks: the internal lookup of a stream nobody
+declared, `GET
 <address>/api/internal/streams/by-ingest/video/00000000-0000-0000-0000-000000000000`
 with the token, and where there is a stream address to compare, `GET
 <address>/api/internal/stages/self` with the token, for the owner the admin
-knows for the token's stage, and only on its 404, a token of no stage, the
-admin's public `GET <address>/api/config` without it. The wizard's test
-compares the chosen stream key's address with a typed token, as the uploader
-will, and no owner with a token of its own, which does not exist before the
-first deploy. A typed token belongs to no stage, so a stage with a key of its
-own cannot boot on one. The card's test uses what the
+knows for the token's stage, and only on its 404, an admin older than stages,
+the admin's public `GET <address>/api/config` without it. The wizard's test
+compares the chosen stream key's address with a token typed for another admin,
+as the uploader will, and no owner with a token of its own, which does not
+exist before the first deploy. The card's test uses what the
 deployment's next deploy would give its uploader, the saved values, and the
 address of the stream key that deploy gives it, the deployment's own or the one
 its version's base `.env` sets, derived in memory and never sent, answered or
@@ -702,26 +724,28 @@ logged. A stored token is presented only to the origin it
 was stored for. It answers one of these, and the page says one sentence for
 each:
 
-| Outcome                  | What it means                                                                                                                                                                   |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `linked`                 | The admin took the token, and knows the deployment's stream address as its stage's owner, or on a token of no stage as its catalog's.                                           |
-| `token-accepted`         | The admin took the token. There was no stream address to compare.                                                                                                               |
-| `owner-unconfirmed`      | The admin took the token but did not say which owner it knows for it, so the stream address was not compared. The uploader starts and checks each declaration instead.          |
-| `owner-mismatch`         | The admin took the token but knows another owner for it: its stage's, or on a token of no stage its catalog's. The uploader will refuse to start.                               |
-| `token-refused`          | The admin answered its own 401: the token is wrong.                                                                                                                             |
-| `token-not-registered`   | The admin answered its own 401 to the deployment's own token while no push of the stage has been stored there, so the admin does not know the token yet. A deploy registers it. |
-| `not-admin`              | Something answered, but not the way a web2 admin does: another status, another server's 404, a body that is not the admin's JSON, or one past the bound.                        |
-| `redirected`             | The address answered with a redirect, which the test does not follow. Give the address the admin itself answers on.                                                             |
-| `unreachable`            | Nothing answered from where the manager runs, within five seconds a request, the uploader's own lookup timeout.                                                                 |
-| `invalid-address`        | The address is not an http or https one the uploader can use.                                                                                                                   |
-| `not-linked`             | The deployment has no address, so its uploader runs standalone.                                                                                                                 |
-| `no-token`               | There is an address and no token to test with.                                                                                                                                  |
-| `stored-token-elsewhere` | A stored token, the manager's or the deployment's own, was saved for another origin, so nothing was asked. Type the token again for this address where it is set.               |
+| Outcome                  | What it means                                                                                                                                                                                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `linked`                 | The admin took the token, and knows the deployment's stream address as its stage's owner, or on a token of no stage as its catalog's.                                                                                                                                        |
+| `token-accepted`         | The admin took the token: the registrar check answered, or there was no stream address to compare.                                                                                                                                                                           |
+| `owner-unconfirmed`      | The admin took the token but did not say which owner it knows for it, so the stream address was not compared. The uploader starts and checks each declaration instead.                                                                                                       |
+| `owner-mismatch`         | The admin took the token but knows another owner for it: its stage's, or on a token of no stage its catalog's. The uploader will refuse to start.                                                                                                                            |
+| `token-refused`          | The admin answered its own 401: the token is wrong.                                                                                                                                                                                                                          |
+| `token-not-own`          | At the link's address, the deployment's token is not one the manager generated: typed, copied from the link, or the version's. The phase 9 admin refuses it, and an older one still takes it. Rotate it and redeploy; a version's token is taken out of the version instead. |
+| `token-not-registered`   | The admin answered its own 401 to the deployment's own token while no push of the stage has been stored there, so the admin does not know the token yet. A deploy registers it.                                                                                              |
+| `not-admin`              | Something answered, but not the way a web2 admin does: another status, another server's 404, a body that is not the admin's JSON, or one past the bound.                                                                                                                     |
+| `redirected`             | The address answered with a redirect, which the test does not follow. Give the address the admin itself answers on.                                                                                                                                                          |
+| `unreachable`            | Nothing answered from where the manager runs, within five seconds a request, the uploader's own lookup timeout.                                                                                                                                                              |
+| `invalid-address`        | The address is not an http or https one the uploader can use.                                                                                                                                                                                                                |
+| `not-linked`             | The deployment has no address, so its uploader runs standalone.                                                                                                                                                                                                              |
+| `no-token`               | There is an address and no token to test with.                                                                                                                                                                                                                               |
+| `stored-token-elsewhere` | A stored token, the manager's or the deployment's own, was saved for another origin, so nothing was asked. Type the token again for this address where it is set.                                                                                                            |
 
-The admin's own 404 for that lookup is `{ "error": "stream_not_found" }` and its
-401 is `{ "error": "unauthenticated" }`, and the test reads those codes rather
-than the status alone, so a web server that answers 404 to everything is not
-taken for an admin. An answer is the outcome code and nothing the admin said,
+The admin's own 404 for that lookup is `{ "error": "stream_not_found" }`, its
+404 for a path it does not know `{ "error": "not_found" }`, and its 401
+`{ "error": "unauthenticated" }`, and the test reads those codes rather than the
+status alone, so a web server that answers 404 to everything is not taken for
+an admin. An answer is the outcome code and nothing the admin said,
 and the log names who tested and the outcome, never the address or a token.
 
 The test runs from where the manager runs, so an address only the deployment's
@@ -729,20 +753,20 @@ own network can reach reads as unreachable here. It reaches whatever the
 manager's host can reach, loopback and private addresses included, as the
 uploader reaches whatever its host can. It takes http and https alone, follows
 no redirect, gives up after five seconds a request, and reads at most 64 KiB of
-an answer. It sends the token to the internal lookup alone. Every route that
+an answer. It sends the token to the admin's internal routes alone. Every route that
 tests or edits the link needs a session.
 
-| Method | Path                                       | Body                                                                                                                       | Answer                                                                                                                                                                                                                                              |
-| ------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/manager-settings/admin-link`             | none                                                                                                                       | `{ url, tokenStored, revision }`, `no-store`. `url` null is no default                                                                                                                                                                              |
-| PUT    | `/manager-settings/admin-link`             | `{ expectedRevision, url, token? }`, `url` empty for no default, `token` left out to keep the stored one, null to clear it | The link as it stands after. 400 `validation_error` for an address or a token the uploader would refuse, a token with no address, or an address on another origin that keeps the stored token, 409 `manager_settings_changed` for an older revision |
-| POST   | `/manager-settings/admin-link/test`        | `{ url, token: { source: 'stored' } or { source: 'typed', value }, feedOwner? }`                                           | `{ outcome }`, `no-store`. `no-token` when the manager stores no token, `stored-token-elsewhere` for the stored token and an address on another origin. 400 `validation_error` for an address or a typed token the uploader would refuse            |
-| POST   | `/profiles/:name/settings/admin-link/test` | none                                                                                                                       | `{ outcome }` for what the deployment's next deploy would give its uploader                                                                                                                                                                         |
-| POST   | `/profiles/:name/admin-token/rotate`       | none                                                                                                                       | `{ message }`, `no-store`: the token is taken out and the next deploy generates a new one. 400 `validation_error` with a sentence where it would generate none, 409 `profile_busy` during a deploy, stop or removal, 404 for no such deployment     |
+| Method | Path                                       | Body                                                                                                                                         | Answer                                                                                                                                                                                                                                                                              |
+| ------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/manager-settings/admin-link`             | none                                                                                                                                         | `{ url, tokenStored, revision }`, `no-store`. `url` null is no default                                                                                                                                                                                                              |
+| PUT    | `/manager-settings/admin-link`             | `{ expectedRevision, url, token? }`, `url` empty for no default, `token` left out to keep the stored one, null to clear it                   | The link as it stands after. 400 `validation_error` for an address or a token the uploader would refuse, a token with no address, or an address on another origin that keeps the stored token, 409 `manager_settings_changed` for an older revision                                 |
+| POST   | `/manager-settings/admin-link/test`        | `{ url, token: { source: 'stored' } or { source: 'typed', value }, tokenFor?, feedOwner? }`, `tokenFor` `registrar` (left out) or `uploader` | `{ outcome }`, `no-store`. `no-token` when the manager stores no token, `stored-token-elsewhere` for the stored token and an address on another origin. 400 `validation_error` for an address or a typed token the uploader would refuse, and for the stored token as an uploader's |
+| POST   | `/profiles/:name/settings/admin-link/test` | none                                                                                                                                         | `{ outcome }` for what the deployment's next deploy would give its uploader                                                                                                                                                                                                         |
+| POST   | `/profiles/:name/admin-token/rotate`       | none                                                                                                                                         | `{ message }`, `no-store`: the token is taken out and the next deploy generates a new one. 400 `validation_error` with a sentence where it would generate none, 409 `profile_busy` during a deploy, stop or removal, 404 for no such deployment                                     |
 
-`POST /profiles` and `POST /groups` still take `use_manager_admin_token`, true
-or false, so an older page or script is not refused, and ignore it: nothing is
-copied, and the create is judged as one that sends no token. The 409s
+`POST /profiles` and `POST /groups` took `use_manager_admin_token` and ignored
+it from stages phase 5 until phase 9. It is gone: a create drops it as any key
+it does not name, so nothing is copied and an older script is not refused. The 409s
 `admin_token_missing` and `admin_token_elsewhere` are gone. The design and its
 limits are in
 [docs/features/web2-admin-link.md](../docs/features/web2-admin-link.md).

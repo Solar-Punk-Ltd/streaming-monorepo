@@ -72,9 +72,14 @@ function Ingest({ stage }: { stage: StageSummary }) {
 }
 
 /**
- * Which token the stage's uploader presents to the admin. A stage still on the shared token is answered about every
- * stream, not only its own, until the manager gives it a token of its own.
+ * Which token the stage's uploader presents to the admin. Only a token of its own, one the manager generated, is taken
+ * on the uploader's routes. Any other, `shared`, is refused, so that stage's uploader reports nothing until its token
+ * is rotated in the manager, the one way back: the next deploy generates one of its own.
  */
+/** Said for a stage whose uploader presents a token the manager did not generate. */
+const SHARED_TOKEN_REFUSED =
+  "Refused: not a token of its own. Rotate the uploader's admin token in the manager and redeploy the stage.";
+
 function UploaderToken({ stage }: { stage: StageSummary }) {
   switch (stage.adminTokenKind) {
     case 'own':
@@ -85,8 +90,8 @@ function UploaderToken({ stage }: { stage: StageSummary }) {
       );
     case 'shared':
       return (
-        <Typography variant="caption" sx={{ color: 'warning.main' }}>
-          Still on the shared token: rotate it in the manager.
+        <Typography variant="caption" sx={{ color: 'error.main' }}>
+          {SHARED_TOKEN_REFUSED}
         </Typography>
       );
     case null:

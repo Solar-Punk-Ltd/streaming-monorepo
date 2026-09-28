@@ -702,7 +702,7 @@ function takesOwnToken(url, address) {
  * as the manager adds it: for a deployment that runs a stream uploader, when
  * the create names neither key, the manager stores an address and a token, and
  * the version lets a create set both keys. The first deploy generates a token
- * of the deployment's own for it. `use_manager_admin_token` is not read.
+ * of the deployment's own for it.
  */
 export function withManagerLink(stackSettings, version, shape) {
   const named = stackSettings ?? [];
@@ -746,6 +746,7 @@ function adminLinkBefore(profile, store) {
     version: versionValuesFor(profile),
     requiredSecrets: versionOf(profile)?.contract?.requiredSecrets ?? [],
     ownTokenFor: ownTokenFor(profile),
+    tokenStored: store.secrets.has(ADMIN_API_TOKEN_KEY),
   });
 }
 
@@ -921,7 +922,9 @@ export function deploymentSettingsRoutes({ readBody, withProfile, deploy }) {
  * token is stored or generated, and the address of its stream key, its own or
  * the one its version sets, as the manager reads them. A stored token is not
  * presented to another origin than the one it was stored for. The outcome
- * itself is the mock's, off the address.
+ * itself is the mock's, off the address. A token the deployment stores at the
+ * address of the manager's link is not its own, which the web2 admin there
+ * refuses, so it is `token-not-own` wherever the address says nothing else.
  */
 function deploymentTestOutcome(profile) {
   const store = storeOf(profile);
@@ -935,5 +938,7 @@ function deploymentTestOutcome(profile) {
   const feedOwner = profile.has_private_key
     ? (profile.public_key ?? null)
     : addressOfStreamKey(values.STREAM_KEY ?? '');
-  return mockTestOutcome({ url, hasToken, feedOwner });
+  const outcome = mockTestOutcome({ url, hasToken, feedOwner });
+  const notOwn = store.secrets.has(ADMIN_API_TOKEN_KEY) && takesOwnToken(url, ownTokenFor(profile));
+  return notOwn && (outcome === 'linked' || outcome === 'token-accepted') ? 'token-not-own' : outcome;
 }

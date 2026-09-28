@@ -210,7 +210,9 @@ async function main(): Promise<void> {
   const ingestService = new IngestService(streamRepository, stageRepository, auditLog);
   const streamStateService = new StreamStateService(streamRepository, publishService, auditLog);
   const ladderService = new LadderService(streamRepository, renditionRepository, publishService, auditLog);
-  const stageService = new StageService(stageRepository, catalogueStampRepository, auditLog);
+  const stageService = new StageService(stageRepository, catalogueStampRepository, auditLog, {
+    registrarToken: config.internalApiToken,
+  });
   stageService.onCatalogueStampStored(() => void feedBootCheck.catalogueStampStored());
 
   apiServer = startApiServer(

@@ -32,7 +32,7 @@ import {
   TEST_OPERATOR,
   TEST_OWNER,
 } from './support/fakes.js';
-import { stagesWithMain } from './support/stageFakes.js';
+import { ON_STAGE, stagesWithMain } from './support/stageFakes.js';
 
 const feed: FeedIdentity = {
   owner: TEST_OWNER,
@@ -96,13 +96,16 @@ describe('LadderService.report', () => {
     const draft = store.add(streamRow());
     const publishing = store.add(streamRow({ status: 'publishing' }));
 
-    await assert.rejects(() => service.report('00000000-0000-4000-8000-0000000000ff', LIVE_360), StreamNotFoundError);
     await assert.rejects(
-      () => service.report(draft.id, LIVE_360),
+      () => service.report('00000000-0000-4000-8000-0000000000ff', LIVE_360, ON_STAGE),
+      StreamNotFoundError,
+    );
+    await assert.rejects(
+      () => service.report(draft.id, LIVE_360, ON_STAGE),
       (err: unknown) => err instanceof InvalidStateError && err.currentStatus === 'draft',
     );
     await assert.rejects(
-      () => service.report(publishing.id, LIVE_360),
+      () => service.report(publishing.id, LIVE_360, ON_STAGE),
       (err: unknown) => err instanceof InvalidStateError && err.currentStatus === 'publishing',
     );
   });
@@ -110,7 +113,7 @@ describe('LadderService.report', () => {
   it('answers an unfinished ladder for the first rung, and leaves the status alone', async () => {
     const { store, gateway, service, stream } = await setup();
 
-    const outcome = await service.report(stream.id, LIVE_360);
+    const outcome = await service.report(stream.id, LIVE_360, ON_STAGE);
 
     assert.deepEqual(outcome.ladder, {
       finished: false,
@@ -127,17 +130,17 @@ describe('LadderService.report', () => {
 
   it('flips to finished on the last final report, with the longest rung as the duration', async () => {
     const { service, stream } = await setup();
-    await service.report(stream.id, LIVE_360);
-    await service.report(stream.id, LIVE_720);
+    await service.report(stream.id, LIVE_360, ON_STAGE);
+    await service.report(stream.id, LIVE_720, ON_STAGE);
 
-    const first = await service.report(stream.id, FINAL_360);
+    const first = await service.report(stream.id, FINAL_360, ON_STAGE);
     assert.deepEqual(first.ladder, {
       finished: false,
       flippedToFinished: false,
       duration: null,
     });
 
-    const last = await service.report(stream.id, FINAL_720);
+    const last = await service.report(stream.id, FINAL_720, ON_STAGE);
     assert.deepEqual(last.ladder, {
       finished: true,
       flippedToFinished: true,
@@ -148,13 +151,13 @@ describe('LadderService.report', () => {
 
   it('does not flip again when the uploader repeats the final report', async () => {
     const { service, stream } = await setup();
-    await service.report(stream.id, LIVE_360);
-    await service.report(stream.id, LIVE_720);
-    await service.report(stream.id, FINAL_360);
-    const last = await service.report(stream.id, FINAL_720);
+    await service.report(stream.id, LIVE_360, ON_STAGE);
+    await service.report(stream.id, LIVE_720, ON_STAGE);
+    await service.report(stream.id, FINAL_360, ON_STAGE);
+    const last = await service.report(stream.id, FINAL_720, ON_STAGE);
     assert.equal(last.ladder.flippedToFinished, true);
 
-    const repeated = await service.report(stream.id, FINAL_720);
+    const repeated = await service.report(stream.id, FINAL_720, ON_STAGE);
 
     assert.deepEqual(repeated.ladder, {
       finished: true,
@@ -168,14 +171,14 @@ describe('LadderService.report', () => {
     // the row holds a finished ladder the catalogue does not show yet. The
     // flip is judged against the catalogue, so the retry still gets its cue.
     const { gateway, service, stream } = await setup();
-    await service.report(stream.id, LIVE_360);
-    await service.report(stream.id, LIVE_720);
-    await service.report(stream.id, FINAL_360);
+    await service.report(stream.id, LIVE_360, ON_STAGE);
+    await service.report(stream.id, LIVE_720, ON_STAGE);
+    await service.report(stream.id, FINAL_360, ON_STAGE);
     gateway.failNextWrite = new Error('bee unreachable');
 
-    await assert.rejects(() => service.report(stream.id, FINAL_720), PublishFailedError);
+    await assert.rejects(() => service.report(stream.id, FINAL_720, ON_STAGE), PublishFailedError);
 
-    const retried = await service.report(stream.id, FINAL_720);
+    const retried = await service.report(stream.id, FINAL_720, ON_STAGE);
     assert.equal(retried.ladder.finished, true);
     assert.equal(retried.ladder.flippedToFinished, true);
   });
@@ -186,11 +189,14 @@ describe('LadderService.report', () => {
     // finished after, and both would claim the flip; the cue to send `vod`
     // is meant to fire once, from the report whose write finished the entry.
     const { gateway, service, stream } = await setup();
-    await service.report(stream.id, LIVE_360);
-    await service.report(stream.id, LIVE_720);
+    await service.report(stream.id, LIVE_360, ON_STAGE);
+    await service.report(stream.id, LIVE_720, ON_STAGE);
     const before = gateway.writes.length;
 
-    const outcomes = await Promise.all([service.report(stream.id, FINAL_360), service.report(stream.id, FINAL_720)]);
+    const outcomes = await Promise.all([
+      service.report(stream.id, FINAL_360, ON_STAGE),
+      service.report(stream.id, FINAL_720, ON_STAGE),
+    ]);
 
     const flipped = outcomes.filter((o) => o.ladder.flippedToFinished);
     assert.equal(flipped.length, 1);
@@ -206,9 +212,9 @@ describe('LadderService.report', () => {
     // it does not change between sessions. Until that rung reports a final
     // again, the recording it finished stays addressable on the entry.
     const { service, stream } = await setup();
-    await service.report(stream.id, FINAL_360);
+    await service.report(stream.id, FINAL_360, ON_STAGE);
 
-    const again = await service.report(stream.id, LIVE_360);
+    const again = await service.report(stream.id, LIVE_360, ON_STAGE);
 
     assert.deepEqual(again.renditions, [FINAL_360]);
     assert.equal(again.ladder.finished, true);
@@ -220,28 +226,28 @@ describe('LadderService.report', () => {
     // the entry carries index-less rungs, and the next set of final reports
     // has a flip to give the uploader for the second `vod`.
     const { gateway, service, state, stream } = await setup();
-    await state.report(stream.id, { state: 'live' });
-    await service.report(stream.id, LIVE_360);
-    await service.report(stream.id, LIVE_720);
-    await service.report(stream.id, FINAL_360);
-    const ended = await service.report(stream.id, FINAL_720);
+    await state.report(stream.id, { state: 'live' }, ON_STAGE);
+    await service.report(stream.id, LIVE_360, ON_STAGE);
+    await service.report(stream.id, LIVE_720, ON_STAGE);
+    await service.report(stream.id, FINAL_360, ON_STAGE);
+    const ended = await service.report(stream.id, FINAL_720, ON_STAGE);
     assert.equal(ended.ladder.flippedToFinished, true);
-    await state.report(stream.id, { state: 'vod', index: 7, duration: 62.5 });
+    await state.report(stream.id, { state: 'vod', index: 7, duration: 62.5 }, ON_STAGE);
 
-    const resumed = await state.report(stream.id, { state: 'live' });
+    const resumed = await state.report(stream.id, { state: 'live' }, ON_STAGE);
 
     const entry = entryAt(gateway, resumed.feed.index, stream.topic);
     assert.deepEqual(entry.renditions, [LIVE_360, LIVE_720], 'unfinished');
 
-    const first = await service.report(stream.id, LIVE_720);
+    const first = await service.report(stream.id, LIVE_720, ON_STAGE);
     assert.deepEqual(first.ladder, {
       finished: false,
       flippedToFinished: false,
       duration: null,
     });
-    const second = await service.report(stream.id, FINAL_360);
+    const second = await service.report(stream.id, FINAL_360, ON_STAGE);
     assert.equal(second.ladder.flippedToFinished, false);
-    const last = await service.report(stream.id, FINAL_720);
+    const last = await service.report(stream.id, FINAL_720, ON_STAGE);
     assert.deepEqual(last.ladder, {
       finished: true,
       flippedToFinished: true,
@@ -257,7 +263,10 @@ describe('LadderService.report', () => {
     // both rungs.
     const { gateway, service, stream } = await setup();
 
-    const outcomes = await Promise.all([service.report(stream.id, LIVE_360), service.report(stream.id, LIVE_720)]);
+    const outcomes = await Promise.all([
+      service.report(stream.id, LIVE_360, ON_STAGE),
+      service.report(stream.id, LIVE_720, ON_STAGE),
+    ]);
 
     for (const outcome of outcomes) {
       const entry = entryAt(gateway, outcome.publish.feed.index, stream.topic);
@@ -281,7 +290,7 @@ describe('LadderService audit', () => {
     const { audit, service, stream } = await setup();
     audit.entries.length = 0;
 
-    const outcome = await service.report(stream.id, FINAL_720);
+    const outcome = await service.report(stream.id, FINAL_720, ON_STAGE);
 
     assert.deepEqual(audit.entries, [
       {
@@ -319,7 +328,7 @@ describe('LadderService audit', () => {
     };
     audit.entries.length = 0;
 
-    await service.report(stream.id, LIVE_360);
+    await service.report(stream.id, LIVE_360, ON_STAGE);
 
     const [entry] = audit.withAction('stream.rendition.report');
     assert.equal(entry?.statusBefore, 'live');
@@ -340,7 +349,7 @@ describe('LadderService audit', () => {
     };
     audit.entries.length = 0;
 
-    const outcome = await service.report(stream.id, LIVE_720);
+    const outcome = await service.report(stream.id, LIVE_720, ON_STAGE);
 
     assert.deepEqual(outcome.renditions, [FINAL_720], 'the catalogue has the later report');
     assert.deepEqual(audit.entries, [
@@ -377,7 +386,7 @@ describe('LadderService audit', () => {
     };
     audit.entries.length = 0;
 
-    const outcome = await service.report(stream.id, LIVE_360);
+    const outcome = await service.report(stream.id, LIVE_360, ON_STAGE);
 
     assert.equal(entryAt(gateway, outcome.publish.feed.index, stream.topic).state, 'scheduled');
     const [entry] = audit.withAction('stream.rendition.report');
@@ -390,7 +399,7 @@ describe('LadderService audit', () => {
     audit.entries.length = 0;
     gateway.failNextWrite = new Error('bee unreachable');
 
-    await assert.rejects(() => service.report(stream.id, LIVE_360), PublishFailedError);
+    await assert.rejects(() => service.report(stream.id, LIVE_360, ON_STAGE), PublishFailedError);
 
     assert.deepEqual(
       audit.entries.map(({ actor, action, details }) => ({ actor, action, details })),

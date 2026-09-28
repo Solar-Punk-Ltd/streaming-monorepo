@@ -22,11 +22,26 @@ import type { ManagerAdminLinkStore } from './ManagerAdminLinkRepository.js';
 const logger = Logger.getInstance();
 
 /**
+ * The outcomes of an admin that took the token. A token the manager did not generate for the deployment is still
+ * taken by an admin older than stages phase 9, which a rollout runs for a while (docs/architecture/stages.md), so
+ * at the link's address such a token reads as `token-not-own` whatever that admin answered: the phase 9 admin
+ * refuses it.
+ */
+const TOOK_THE_TOKEN: readonly AdminLinkTestOutcome[] = [
+  'linked',
+  'token-accepted',
+  'owner-unconfirmed',
+  'owner-mismatch',
+];
+
+/**
  * Test connection, from a page: an address typed there with a typed token or
  * the manager's stored one, and what a deployment's next deploy would give its
- * uploader. A stored token never reaches a page and is presented only to the
- * origin it was stored for, and an answer is the outcome code alone. The log line names who asked and the outcome, never the
- * address or a token.
+ * uploader. The manager's token is the web2 admin's registrar token, proved on
+ * the admin's registrar check, and an uploader's is proved on what the
+ * uploader asks. A stored token never reaches a page and is presented only to
+ * the origin it was stored for, and an answer is the outcome code alone. The
+ * log line names who asked and the outcome, never the address or a token.
  */
 export class AdminLinkTester {
   constructor(
@@ -38,24 +53,35 @@ export class AdminLinkTester {
     private readonly pushes?: Pick<StagePublisher, 'lastPush'>,
   ) {}
 
-  /** Tests an address typed on the Manager settings page or in the new-deployment wizard. */
+  /**
+   * Tests an address typed on the Manager settings page or in the new-deployment wizard. The stored token, and a typed
+   * one that is not said to be an uploader's, is the registrar's; a typed uploader's token is compared with the
+   * stream address, as the uploader will at boot.
+   */
   async testTyped(request: AdminLinkTestRequest, username: string): Promise<AdminLinkTestAnswer> {
     const problems = adminLinkTestProblems(request);
     if (problems.length > 0) throw new AdminLinkInputError(problems);
     const outcome =
-      request.token.source === 'typed'
-        ? await this.probe({ url: request.url, token: request.token.value, feedOwner: request.feedOwner ?? null })
-        : await this.outcomeWithStoredToken(request);
+      request.token.source === 'stored'
+        ? await this.outcomeWithStoredToken(request.url)
+        : request.tokenFor === 'uploader'
+          ? await this.probe({
+              url: request.url,
+              token: request.token.value,
+              check: 'uploader',
+              feedOwner: request.feedOwner ?? null,
+            })
+          : await this.probe({ url: request.url, token: request.token.value, check: 'registrar', feedOwner: null });
     logger.info(`[AdminLink] ${username} tested a web2 admin link typed on a page: ${outcome}`);
     return { outcome };
   }
 
   /** The stored token goes only to the origin it was saved with, so an address elsewhere is answered without asking it. */
-  private async outcomeWithStoredToken(request: AdminLinkTestRequest): Promise<AdminLinkTestOutcome> {
+  private async outcomeWithStoredToken(url: string): Promise<AdminLinkTestOutcome> {
     const stored = await this.store.storedLink();
     if (stored.token === null) return 'no-token';
-    if (!sameAdminOrigin(request.url, stored.url ?? '')) return 'stored-token-elsewhere';
-    return this.probe({ url: request.url, token: stored.token, feedOwner: request.feedOwner ?? null });
+    if (!sameAdminOrigin(url, stored.url ?? '')) return 'stored-token-elsewhere';
+    return this.probe({ url, token: stored.token, check: 'registrar', feedOwner: null });
   }
 
   /**
@@ -65,39 +91,54 @@ export class AdminLinkTester {
    * the address of the stream key the deploy gives, whether the deployment
    * stores it or its version's base .env sets it. Every stage signs with a key
    * of its own, so the probe compares it with the owner the admin knows for
-   * the stage the token belongs to, `GET /api/internal/stages/self`, and on a
-   * token that belongs to no stage, the shared one, with the admin's catalog
-   * owner, as the uploader's boot check does.
+   * the stage the token belongs to, `GET /api/internal/stages/self`, as the
+   * uploader's boot check does.
+   *
+   * A refused token is told apart by where it came from. The deployment's own,
+   * at the link's address before any push of its stage was stored there, is
+   * `token-not-registered`, since a deploy registers it. Any other token at the
+   * link's address, typed, copied from the link by an older manager, or the
+   * version's, is `token-not-own`: the admin takes only a token of the
+   * deployment's own from an uploader, and a rotation gives it one. So is
+   * such a token that an admin older than phase 9 still took.
    */
   async testDeployment(name: string, username: string): Promise<AdminLinkTestAnswer> {
     const profile = await this.profiles.findByName(name);
     if (!profile) throw new ProfileNotFoundError(name);
-    const { env } = await this.orchestrator.nextEnvFor(profile);
+    const { env, ownAdminToken } = await this.orchestrator.nextEnvFor(profile);
     const url = env[ADMIN_API_URL_KEY] ?? '';
     const token = env[ADMIN_API_TOKEN_KEY] ?? '';
     const storedWith = (await this.profiles.stackSettingsOf(name))?.adminTokenOrigin ?? null;
     let outcome =
       storedWith !== null && url !== '' && !sameAdminOrigin(url, storedWith)
         ? 'stored-token-elsewhere'
-        : await this.outcomeFor({ url, token, feedOwner: addressOfStreamKey(env.STREAM_KEY ?? '') });
-    if (outcome === 'token-refused' && (await this.notRegisteredYet(name, url, token)))
-      outcome = 'token-not-registered';
+        : await this.outcomeFor({ url, token, check: 'uploader', feedOwner: addressOfStreamKey(env.STREAM_KEY ?? '') });
+    if (outcome === 'token-refused') outcome = await this.whyRefused(name, url, ownAdminToken);
+    else if (TOOK_THE_TOKEN.includes(outcome) && !ownAdminToken && (await this.atLinkWithToken(url)))
+      outcome = 'token-not-own';
     logger.info(`[AdminLink] ${username} tested the web2 admin link of ${name}: ${outcome}`);
     return { outcome };
   }
 
   /**
-   * Whether a refused token is the deployment's own, which the admin learns from the stage record, at an address on
-   * the manager's link, while no push of the record has been stored there yet. The admin knows an uploader's own
-   * token by its sha256 on the record alone, so until then it refuses it as any unknown token. A token that is the
-   * link's is the shared one, which the admin takes without a record.
+   * Why the admin at the manager's link refused a deployment's token. The admin knows an uploader's own token by its
+   * sha256 on the stage record alone, so until a push of the record is stored it refuses it as any unknown token. It
+   * refuses every token the manager did not generate for the deployment. Elsewhere, the refusal is the admin's alone.
    */
-  private async notRegisteredYet(name: string, url: string, token: string): Promise<boolean> {
-    if (!this.pushes) return false;
+  private async whyRefused(name: string, url: string, ownAdminToken: boolean): Promise<AdminLinkTestOutcome> {
+    if (!(await this.atLinkWithToken(url))) return 'token-refused';
+    if (!ownAdminToken) return 'token-not-own';
+    const last = this.pushes?.lastPush(name);
+    if (last === undefined) return 'token-refused';
+    return last === null || (last.outcome !== 'stored' && last.outcome !== 'older-ignored')
+      ? 'token-not-registered'
+      : 'token-refused';
+  }
+
+  /** Whether the address is on the origin of the manager's link while the link stores a token. */
+  private async atLinkWithToken(url: string): Promise<boolean> {
     const link = await this.store.storedLink();
-    if (link.token === null || link.token === token || !sameAdminOrigin(url, link.url ?? '')) return false;
-    const last = this.pushes.lastPush(name);
-    return last === null || (last.outcome !== 'stored' && last.outcome !== 'older-ignored');
+    return link.token !== null && sameAdminOrigin(url, link.url ?? '');
   }
 
   /** Answers without asking anything when there is no address to ask, one the uploader could not use, or no token. */

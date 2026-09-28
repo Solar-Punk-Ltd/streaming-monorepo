@@ -1,10 +1,12 @@
 import { adminTokenProblem, adminUrlProblem } from './managerAdminLink.js';
 
 /**
- * Test connection: the manager asks a web2 admin what the stream uploader
- * would ask it, from where the manager runs, and answers one of these codes.
- * The page gives one plain sentence for each. No answer carries anything the
- * admin said, the address or a token.
+ * Test connection: the manager asks a web2 admin, from where the manager runs,
+ * what the holder of the token would ask it, and answers one of these codes.
+ * The manager's own token is the admin's registrar token, proved on the
+ * admin's registrar check; an uploader's token is proved on what the uploader
+ * asks. The page gives one plain sentence for each. No answer carries anything
+ * the admin said, the address or a token.
  */
 export const ADMIN_LINK_TEST_OUTCOMES = [
   /**
@@ -12,7 +14,10 @@ export const ADMIN_LINK_TEST_OUTCOMES = [
    * or on a token that belongs to no stage, the address it signs its catalog with.
    */
   'linked',
-  /** The admin took the token. There was no stream address to compare its owner with. */
+  /**
+   * The admin took the token. For the manager's token, the admin's registrar check answered; for an uploader's, there
+   * was no stream address to compare its owner with.
+   */
   'token-accepted',
   /** The admin took the token but did not say which address it signs with, so the stream address was not compared. */
   'owner-unconfirmed',
@@ -22,6 +27,12 @@ export const ADMIN_LINK_TEST_OUTCOMES = [
   'stored-token-elsewhere',
   /** The admin answered and refused the token. */
   'token-refused',
+  /**
+   * A deployment's token at the address of the manager's link is not one the manager generated for the deployment:
+   * typed, copied from the link by an older manager, or set by the version. An admin of stages phase 9 refuses it,
+   * and one older still takes it while a rollout runs; either way the token has to be rotated.
+   */
+  'token-not-own',
   /**
    * The admin refused the deployment's own token, and the manager has not registered the deployment's stage with it
    * yet, which is how the admin learns that token. A deploy registers it before the uploader starts.
@@ -46,13 +57,30 @@ export type AdminLinkTestOutcome = (typeof ADMIN_LINK_TEST_OUTCOMES)[number];
 /** The token a test presents: one typed on the page, or the manager's stored one, which never reaches the page. */
 export type AdminLinkTokenChoice = { source: 'stored' } | { source: 'typed'; value: string };
 
+/**
+ * Whose token a typed test presents: the web2 admin's registrar token, which the manager's link stores and the
+ * Manager settings card tests, or a stream uploader's, which the new-deployment wizard tests for an address the
+ * manager's link does not point at. The manager's stored token is the registrar's alone.
+ */
+export const ADMIN_LINK_TOKEN_HOLDERS = ['registrar', 'uploader'] as const;
+export type AdminLinkTokenHolder = (typeof ADMIN_LINK_TOKEN_HOLDERS)[number];
+
 /** What `POST /manager-settings/admin-link/test` takes. */
 export interface AdminLinkTestRequest {
   url: string;
   token: AdminLinkTokenChoice;
-  /** The address the deployment's stream key derives, compared with the owner the admin knows for the token, where there is one. */
+  /** Whose token it is: the registrar's, left out, or an uploader's, which only a typed token can be. */
+  tokenFor?: AdminLinkTokenHolder;
+  /**
+   * The address the deployment's stream key derives, compared with the owner the admin knows for an uploader's token,
+   * where there is one. A registrar's token belongs to no stage, so nothing is compared for one.
+   */
   feedOwner?: string | null;
 }
+
+/** Said when an uploader's token is asked for with the stored one, which is the registrar's. */
+export const STORED_TOKEN_NOT_AN_UPLOADER =
+  "The manager's stored token is the web2 admin's registrar token, which no uploader presents. Type the uploader's token to test it.";
 
 /** What both Test connection routes answer. */
 export interface AdminLinkTestAnswer {
@@ -60,7 +88,7 @@ export interface AdminLinkTestAnswer {
 }
 
 /** Why this request cannot be tested, one sentence each, or none. No sentence repeats the address or the token. */
-export function adminLinkTestProblems({ url, token }: AdminLinkTestRequest): string[] {
+export function adminLinkTestProblems({ url, token, tokenFor }: AdminLinkTestRequest): string[] {
   const problems: string[] = [];
   const urlProblem = url === '' ? 'Type the address of the web2 admin to test.' : adminUrlProblem(url);
   if (urlProblem) problems.push(urlProblem);
@@ -68,6 +96,8 @@ export function adminLinkTestProblems({ url, token }: AdminLinkTestRequest): str
     const tokenProblem =
       token.value === '' ? 'Type a token to test with, or test with the stored one.' : adminTokenProblem(token.value);
     if (tokenProblem) problems.push(tokenProblem);
+  } else if (tokenFor === 'uploader') {
+    problems.push(STORED_TOKEN_NOT_AN_UPLOADER);
   }
   return problems;
 }

@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import {
   isOlderStageRecord,
   type CatalogueStampClearAnswer,
@@ -18,6 +20,7 @@ import {
 import { quoteForLog } from '../utils/logText.js';
 
 import { describeActor, MANAGER } from './actor.js';
+import { RequestShapeError } from './errors/index.js';
 import { recordAudit, type AuditLog } from './AuditLog.js';
 import { shortBatch } from './CatalogueBatch.js';
 import { Logger } from './Logger.js';
@@ -130,15 +133,36 @@ export function stageChanges(previous: StageSecretsRow, write: StageWrite): Stag
  * Every write runs under one mutex, so the read that decides what a push changed and the write that stores it are
  * not interleaved with another push. The admin is one process; the SQL holds the ordering rule as well.
  */
+/** Why a stage record is refused that names the registrar token as a stage's own. Names neither token nor hash. */
+export const REGISTRAR_TOKEN_AS_OWN =
+  "adminToken names the admin's registrar token, INTERNAL_API_TOKEN, as the stage's own token. The registrar token is the manager's alone: give the stage a token of its own.";
+
+export interface StageServiceOptions {
+  mutex?: Mutex;
+  /**
+   * `INTERNAL_API_TOKEN`. A record whose `own` token has its sha256 is refused, so the registrar token can never be
+   * learned as an uploader's token. Left out, no record is checked for it (a test that is not about it).
+   */
+  registrarToken?: string;
+}
+
 export class StageService {
   private catalogueStampStored: (() => void) | null = null;
+  private readonly mutex: Mutex;
+  private readonly registrarSha256: string | null;
 
   constructor(
     private readonly stages: StageStore,
     private readonly catalogue: CatalogueStampStore,
     private readonly audit: AuditLog,
-    private readonly mutex: Mutex = new Mutex(),
-  ) {}
+    options: StageServiceOptions = {},
+  ) {
+    this.mutex = options.mutex ?? new Mutex();
+    this.registrarSha256 =
+      options.registrarToken === undefined
+        ? null
+        : createHash('sha256').update(options.registrarToken, 'utf8').digest('hex');
+  }
 
   /**
    * Called after a push stores a catalogue stamp record that designates a batch. The boot's feed check, which reads
@@ -153,8 +177,21 @@ export class StageService {
     return this.stages.list();
   }
 
-  /** Stores the record unless the admin holds one observed later. Equal moments store: a repeat is not older. */
+  /**
+   * Stores the record unless the admin holds one observed later. Equal moments store: a repeat is not older. A record
+   * whose `own` token is the registrar token is refused before anything is read or written, whatever its moment.
+   */
   store(record: StageRecord): Promise<StageStoreAnswer> {
+    if (
+      this.registrarSha256 !== null &&
+      record.adminToken?.kind === 'own' &&
+      record.adminToken.sha256.toLowerCase() === this.registrarSha256
+    ) {
+      logger.warn(
+        `[Stages] ${describeActor(MANAGER)} pushed stage ${describeStage({ name: record.name, stageId: record.stageId })} with the registrar token as its own token: refused, nothing stored`,
+      );
+      return Promise.reject(new RequestShapeError([REGISTRAR_TOKEN_AS_OWN]));
+    }
     return this.mutex.run(async () => {
       const previous = await this.stages.find(record.stageId);
       if (previous && isOlderStageRecord(record, previous.record)) {

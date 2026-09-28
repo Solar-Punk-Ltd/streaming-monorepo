@@ -78,16 +78,16 @@ Deploying to a server is a different compose file and a script:
 Every variable is documented in [.env.sample](.env.sample), which is the
 reference; the summary:
 
-| Var                                   | Default            | Meaning                                                                                                                                |
-| ------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `WEB2_ADMIN_PORT` / `WEB2_ADMIN_HOST` | `9877` / `0.0.0.0` | where to listen (the manager API uses 9876)                                                                                            |
-| `DATABASE_URL`                        | required           | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin`                                                                              |
-| `FEED_GATEWAY`                        | `bee`              | `fake` swaps in an in-memory gateway (see below)                                                                                       |
-| `FEED_PRIVATE_KEY`                    | required           | 0x + 64 hex. The brand key: signs the stream list feed, and is `owner` on a stream with no stage; a stream on a stage has its stage's  |
-| `FEED_TOPIC`                          | `swarm-stream`     | raw topic of that feed                                                                                                                 |
-| `VIEWER_BASE_URL`                     | empty              | branded viewer built for this feed, for "open player catalogue" links                                                                  |
-| `INTERNAL_API_TOKEN`                  | required           | 32+ chars. The registrar token the manager pushes stages with on `/api/internal`, and during the transition still taken from uploaders |
-| `CATALOGUE_MOVE_ENABLED`              | `false`            | `true` lets an operator move the catalogue's history onto another batch from the Stages page. Off until tried on a real node           |
+| Var                                   | Default            | Meaning                                                                                                                                        |
+| ------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WEB2_ADMIN_PORT` / `WEB2_ADMIN_HOST` | `9877` / `0.0.0.0` | where to listen (the manager API uses 9876)                                                                                                    |
+| `DATABASE_URL`                        | required           | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin`                                                                                      |
+| `FEED_GATEWAY`                        | `bee`              | `fake` swaps in an in-memory gateway (see below)                                                                                               |
+| `FEED_PRIVATE_KEY`                    | required           | 0x + 64 hex. The brand key: signs the stream list feed, and is `owner` on a stream with no stage; a stream on a stage has its stage's          |
+| `FEED_TOPIC`                          | `swarm-stream`     | raw topic of that feed                                                                                                                         |
+| `VIEWER_BASE_URL`                     | empty              | branded viewer built for this feed, for "open player catalogue" links                                                                          |
+| `INTERNAL_API_TOKEN`                  | required           | 32+ chars. The registrar token the manager pushes stages with on `/api/internal`. No uploader is given it, and the uploader's routes refuse it |
+| `CATALOGUE_MOVE_ENABLED`              | `false`            | `true` lets an operator move the catalogue's history onto another batch from the Stages page. Off until tried on a real node                   |
 
 There is no ingest setting. Each stream's OBS details come from the stage it
 is broadcast on, as the manager pushed it: see [A stream's stage](#a-streams-stage).
@@ -488,7 +488,9 @@ its own, so the two authentications cover disjoint surfaces. Each route names
 the token it takes (`src/api/routes/internal.ts`). A wrong or missing token is
 `401 unauthenticated`, the same answer the console's routes give. The manager's
 four stage routes are described in
-[The manager's stage routes](#the-managers-stage-routes) below.
+[The manager's stage routes](#the-managers-stage-routes) below, and
+`GET /registrar`, the manager's proof of its token, answers `204` and nothing
+else.
 
 | Method | Path                              | Token     | Answer                                                                                                            |
 | ------ | --------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -500,32 +502,31 @@ four stage routes are described in
 | DELETE | `/stages/:stageId`                | registrar | the manager: retires the stage, `{ retired }` out                                                                 |
 | PUT    | `/catalogue-stamp`                | registrar | the manager: the catalogue stamp record in, `{ stored }` out                                                      |
 | DELETE | `/catalogue-stamp`                | registrar | the manager: clears the catalogue stamp, `{ cleared }` out                                                        |
+| GET    | `/registrar`                      | registrar | the manager's Test connection on its link: `204`, no body                                                         |
 
 **The two tokens.** The manager's routes take the **registrar token**,
 `INTERNAL_API_TOKEN`, and nothing else: a stage's own uploader token is `401`
-there. The uploader's routes take an uploader's token
-(`src/api/middleware/requireUploaderToken.ts`), which is one of two:
+there. The uploader's routes take **a stage's own token** alone
+(`src/api/middleware/requireUploaderToken.ts`). The manager generates a token
+for every deployment that runs an uploader and pushes its sha256 on the stage
+record, with `adminToken.kind: 'own'`; any token it did not generate is
+`shared`. The token is 64 hex characters, and a bearer of any other shape is
+`401` without a query. The admin hashes the presented token and looks it up
+among the stages it holds (migration 012): the one active stage whose record
+names that hash as its own is the caller. A retired stage's token is `401`, and
+so is a token that is no stage's own, a hash a `shared` record carries
+included. A token that is the own token of several active stages is `401` too,
+since it cannot say which stage calls, with a warning in the log naming the
+stages.
 
-- **A stage's own token.** The manager generates a token for every deployment
-  that runs an uploader and pushes its sha256 on the stage record, with
-  `adminToken.kind: 'own'`; any token it did not generate is `shared`. The
-  token is 64 hex characters, and a bearer of any other shape that is not the
-  shared token is `401` without a query. The admin hashes the presented token and looks it
-  up among the stages it holds (migration 012): the one active stage whose
-  record names that hash as its own is the caller. A retired stage's token is
-  `401`, and so is a token that is no stage's own, a hash a `shared` record
-  carries included. A token that is the own token of several active stages is
-  `401` too, since it cannot say which stage calls, with a warning in the log
-  naming the stages.
-- **The shared token, during the transition.** `INTERNAL_API_TOKEN` is still
-  taken from an uploader that has no token of its own yet, as an
-  **unattributed caller**, and answered about every stream, as before stages
-  had tokens. The comparison is with the admin's current `INTERNAL_API_TOKEN`
-  itself, so a shared token the admin no longer holds is refused even when a
-  stage record still names it. The admin logs `unattributed uploader` at info
-  on the first such call after boot, and then at most once an hour, with the
-  number of calls since the last line; never a line per request. The last
-  phase of `docs/architecture/stages.md` stops taking it.
+**The registrar token on an uploader's route** is `401 unauthenticated`, like
+any other token that is not a stage's own, on the lookup, both reports and
+`GET /stages/self`, and nothing is written for it. From stages phase 5 to phase
+8 it was still taken there, as an unattributed caller answered about every
+stream; phase 9 stopped that. A stage whose uploader still presents it, or any
+other `shared` token, is refused until its token is rotated in the manager
+(**Rotate the uploader's admin token**) and the stage redeployed, and the
+Stages page says so.
 
 Neither token nor its hash is logged at any level, audited or answered.
 
@@ -534,14 +535,17 @@ the state report and the rendition report treat a stream on another stage, and
 a stream with no stage (a row older than stages), as one that does not exist:
 the same `404 stream_not_found`, answered before anything is written, so no
 status moves, no rung is stored, no feed is written and no audit row is added.
-The shared token is not scoped.
+A stream with no stage is reached by no uploader: unpublish it, give it a
+stage and publish it again before its next broadcast.
 
 **`GET /stages/self`** answers a stage's own token with the stage's id and
 the owner the manager pushed for it, which the uploader compares with the
-address it signs as. The shared token belongs to no stage and is answered
-`404` with the `not_found` answer an unknown path gets, which is what an admin
-without the route answers too, so the uploader falls back to its older check
-either way.
+address it signs as. Any other token is `401`. An admin older than stages
+answers `404` there, and the uploader falls back to its older check.
+
+**`GET /registrar`** answers the registrar token `204` with no body, and any
+other `401`. It does nothing: the manager's Test connection on its admin link
+proves its stored token with it, since the uploader's routes refuse that token.
 
 A path or a method no route names is `401` without a token either door takes,
 and `404` with one, as it was when one token opened the whole of
@@ -892,10 +896,10 @@ SELECT at, action, details FROM audit_log
 - **Nothing polls.** A state report is the only thing that moves a stream to
   `live` or `vod`; an uploader that dies without reporting leaves the stream
   live on the catalogue until someone republishes or unpublishes it by hand.
-- **Every stream's `owner` is still the admin's feed key**, and an uploader
-  without a token of its own still calls on the registrar's
-  `INTERNAL_API_TOKEN`. Moving the catalogue to another batch waits for its own
-  job. The access log still writes
+- **A stage on a token the manager did not generate reports nothing** until
+  its token is rotated in the manager and it is redeployed, and a published
+  stream with no stage takes no broadcast until it is given one. The access
+  log still writes
   one `[HTTP]` line at info for every push, although the stage service logs an
   unchanged one at debug.
 - **Sessions are unbounded per user** and pruned on sign-in and by a daily
