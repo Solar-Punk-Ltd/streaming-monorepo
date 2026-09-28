@@ -194,7 +194,9 @@ describe('bench-on-host gates every script the manifests say gates nothing itsel
 
     const sandbox = benchSandbox();
     await Promise.all(
-      scripts.map(({ name }) => runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--no-setup', '--script', name])),
+      scripts.map(({ name }) =>
+        runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--no-setup', '--script', name]),
+      ),
     );
     const commands = sandbox.sshCommands();
 

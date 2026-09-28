@@ -17,7 +17,15 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { ALL_REMOTE, BENCH_TARGET, GIT_STUB, makeSandbox, removeSandboxes, runScript, runScriptOk } from './helpers/sandbox.js';
+import {
+  ALL_REMOTE,
+  BENCH_TARGET,
+  GIT_STUB,
+  makeSandbox,
+  removeSandboxes,
+  runScript,
+  runScriptOk,
+} from './helpers/sandbox.js';
 import { classifySpawn, SPAWN_ABSENT, SPAWN_OK, SPAWN_TIMED_OUT } from './helpers/spawnOutcome.js';
 
 /** `docker compose config` parses files without the daemon, so this bound only guards a wedged CLI. */
