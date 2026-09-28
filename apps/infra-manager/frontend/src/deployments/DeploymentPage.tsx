@@ -54,6 +54,8 @@ import { RemoveCard } from './RemoveCard';
 import type { SettingReveal } from './settings/SettingsList';
 import { useDeploymentSettings } from './settings/useDeploymentSettings';
 import { SrtIngestCard } from './SrtIngestCard';
+import { StageCard } from './StageCard';
+import { isStage } from './stageText';
 import { offersLatencySetting, SRT_LATENCY_SETTING_KEY } from './srtIngestText';
 import { StorageCard } from './StorageCard';
 import { engineOf, isRunning, readsSrtIngest, shapeOf, streamersOf } from './shape';
@@ -329,6 +331,7 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
             engineLoadError={engineLoad.loadError}
             savedNotApplied={savedNotApplied}
           />
+          {isStage(profile) && <StageCard profile={profile} serverHost={serverHost} />}
           {shape === 'stream' && isRunning(profile) && <NextStepsCard streamName={profile.name} />}
           <NotesCard name={profile.name} notes={profile.notes} notesRevision={profile.notes_revision} />
         </Stack>

@@ -41,18 +41,18 @@ export type StagePushOutcome = (typeof STAGE_PUSH_OUTCOMES)[number];
 /** What each outcome is called on the deployment page. */
 export const STAGE_PUSH_OUTCOME_TEXT: Readonly<Record<StagePushOutcome, string>> = {
   stored: 'registered',
-  'older-ignored': 'the admin holds a newer reading',
+  'older-ignored': 'the admin kept a newer reading',
   retired: 'retired',
-  'not-retired': 'the admin had no such stage to retire',
-  'refused-token': 'the admin refused the link’s token',
-  'refused-record': 'the admin refused the record',
-  unreachable: 'the admin did not answer',
-  redirected: 'the admin’s address redirects, which the manager does not follow',
-  'not-admin': 'the address did not answer as a web2 admin',
-  'skipped-no-link': 'not pushed, the manager has no web2 admin link with a token',
-  'skipped-not-linked': 'not pushed, the deployment is not linked to a web2 admin',
-  'skipped-other-origin': 'not pushed, the deployment reports to another web2 admin than the manager’s link',
-  'skipped-no-record': 'not pushed, the record could not be put together',
+  'not-retired': 'nothing to retire',
+  'refused-token': 'token refused',
+  'refused-record': 'record refused',
+  unreachable: 'admin unreachable',
+  redirected: 'redirected, not followed',
+  'not-admin': 'not a web2 admin',
+  'skipped-no-link': 'not pushed (the manager has no admin link with a token)',
+  'skipped-not-linked': 'not pushed (not linked to a web2 admin)',
+  'skipped-other-origin': 'not pushed (linked to another admin than the manager’s)',
+  'skipped-no-record': 'not pushed (the record is incomplete)',
 };
 
 /** The last push of one deployment's record, as the manager keeps it in memory. */
