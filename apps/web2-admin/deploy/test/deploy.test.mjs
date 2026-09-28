@@ -217,3 +217,26 @@ describe('deploy.sh names files by paths that work from the repository root', ()
     assert.match(deployed.stdout, /first user.*from the repository root/);
   });
 });
+
+describe('deploy.sh and the INGEST_* keys the stream stage replaced', () => {
+  it('deploys an env file with none of them, since the admin needs no stage to start', () => {
+    const sandbox = makeSandbox({ checkout: { [ENV_FILES.qa.now]: fakeAdminEnv('no-ingest') } });
+
+    const deployed = sandbox.runScript(DEPLOY, LOCAL_QA);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.doesNotMatch(deployed.stderr, /INGEST_/);
+  });
+
+  it('deploys an env file that still sets them, and names each one it sets as no longer read', () => {
+    const stale = `${fakeAdminEnv('stale-ingest')}INGEST_HOST=ingest.fixture.invalid\nINGEST_KEY_VERIFIED=maybe\n`;
+    const sandbox = makeSandbox({ checkout: { [ENV_FILES.qa.now]: stale } });
+
+    const deployed = sandbox.runScript(DEPLOY, LOCAL_QA);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.match(deployed.stderr, /WARNING: INGEST_HOST is no longer read/);
+    assert.match(deployed.stderr, /WARNING: INGEST_KEY_VERIFIED is no longer read/);
+    assert.doesNotMatch(deployed.stderr, /INGEST_SRT_PORT/);
+  });
+});

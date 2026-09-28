@@ -21,7 +21,7 @@ a feed entry second.
 ## Quick start
 
 ```bash
-cp .env.sample .env       # then set FEED_PRIVATE_KEY and INGEST_HOST
+cp .env.sample .env       # then set FEED_PRIVATE_KEY
 pnpm database:start       # postgres:16-alpine on 127.0.0.1:5433
 pnpm user:add alice        # the first user: prompts twice, echoes nothing
 pnpm dev                  # API on :9877
@@ -78,24 +78,26 @@ Deploying to a server is a different compose file and a script:
 Every variable is documented in [.env.sample](.env.sample), which is the
 reference; the summary:
 
-| Var                                    | Default            | Meaning                                                                                                                    |
-| -------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `WEB2_ADMIN_PORT` / `WEB2_ADMIN_HOST`  | `9877` / `0.0.0.0` | where to listen (the manager API uses 9876)                                                                                |
-| `DATABASE_URL`                         | required           | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin`                                                                  |
-| `FEED_GATEWAY`                         | `bee`              | `fake` swaps in an in-memory gateway (see below)                                                                           |
-| `BEE_URL` / `POSTAGE_BATCH_ID`         | required           | node and batch used for feed writes and thumbnails                                                                         |
-| `FEED_PRIVATE_KEY`                     | required           | 0x + 64 hex. Signs the stream list feed; its address is `owner` on every stream                                            |
-| `FEED_TOPIC`                           | `swarm-stream`     | raw topic of that feed                                                                                                     |
-| `VIEWER_BASE_URL`                      | empty              | branded viewer built for this feed, for "open player catalogue" links                                                      |
-| `INTERNAL_API_TOKEN`                   | required           | 32+ chars. Bearer token for `/api/internal`, the routes the uploader calls                                                 |
-| `INGEST_HOST`                          | required           | host the encoder connects to                                                                                               |
-| `INGEST_SRT_PORT` / `INGEST_RTMP_PORT` | `10061` / `10062`  | SRS ports (`10001`/`10002` + slot×10; the test host is slot 6)                                                             |
-| `INGEST_RTMP_PUBLIC`                   | `false`            | `true` only where RTMP ingest is open to encoders. Off, the ingest answer has `rtmp: null` and the console offers SRT only |
-| `INGEST_SRT_PASSPHRASE`                | empty              | the server-wide SRT passphrase, shown to the operator                                                                      |
-| `INGEST_KEY_VERIFIED`                  | `false`            | `true` once the deployed uploader verifies `key=`                                                                          |
+| Var                                   | Default            | Meaning                                                                         |
+| ------------------------------------- | ------------------ | ------------------------------------------------------------------------------- |
+| `WEB2_ADMIN_PORT` / `WEB2_ADMIN_HOST` | `9877` / `0.0.0.0` | where to listen (the manager API uses 9876)                                     |
+| `DATABASE_URL`                        | required           | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin`                       |
+| `FEED_GATEWAY`                        | `bee`              | `fake` swaps in an in-memory gateway (see below)                                |
+| `BEE_URL` / `POSTAGE_BATCH_ID`        | required           | node and batch used for feed writes and thumbnails                              |
+| `FEED_PRIVATE_KEY`                    | required           | 0x + 64 hex. Signs the stream list feed; its address is `owner` on every stream |
+| `FEED_TOPIC`                          | `swarm-stream`     | raw topic of that feed                                                          |
+| `VIEWER_BASE_URL`                     | empty              | branded viewer built for this feed, for "open player catalogue" links           |
+| `INTERNAL_API_TOKEN`                  | required           | 32+ chars. Bearer token for `/api/internal`, the routes the uploader calls      |
 
-Startup logs the resolved configuration with the feed key, the batch id, the
-SRT passphrase and the internal API token redacted.
+There is no ingest setting. Each stream's OBS details come from the stage it
+is broadcast on, as the manager pushed it: see [A stream's stage](#a-streams-stage).
+`INGEST_HOST`, `INGEST_SRT_PORT`, `INGEST_RTMP_PORT`, `INGEST_RTMP_PUBLIC`,
+`INGEST_SRT_PASSPHRASE` and `INGEST_KEY_VERIFIED` are no longer read. An env
+file that still sets them starts as it did, and the boot log names each one it
+sets.
+
+Startup logs the resolved configuration with the feed key, the batch id and
+the internal API token redacted.
 
 ### FEED_GATEWAY=fake
 
@@ -148,6 +150,47 @@ the next index, logs it in `feed_writes`, and only then marks the row
 broadcast, so the row says what its entry says. Any failure puts the previous
 status back with `publish_error` set and answers `502 publish_failed`. Publish
 and unpublish are serialised through one in-process mutex.
+
+### A stream's stage
+
+Every stream is broadcast on a stage, a deployment the manager runs and pushes
+into the admin (`docs/architecture/stages.md` at the repository root).
+`streams.stage_id` (migration 011) names it, `Stream.stageId` carries it, and
+`StreamInput.stageId` sets it on `POST` and `PUT /api/streams`: a stage's id,
+`null` for none, or absent to leave the stream's as it is.
+
+- **Which stages take a stream.** One the admin holds, that the manager has not
+  retired, on an engine the admin takes streams on (SRS in this round). Any
+  other is `409 stage_unavailable` with `reason` `unknown`, `retired` or
+  `unsupported`. A stream already on a stage the manager retires later keeps
+  it, and a save naming the stage it has is not a change.
+- **When the stage changes.** Only while the stream is a `draft`, because
+  publishing fixes it: the catalogue entry and every viewer link carry the
+  stage's owner. A change to a stream in any other status is
+  `409 stage_locked` with `reason: 'published'`: unpublish, change it, publish
+  again. A draft that holds a recording (`manifest_index` set) keeps its
+  stage, `409 stage_locked` with `reason: 'recording'`, since the recording
+  lives under that stage's owner; a recorded draft from before stages, which
+  has none, may be given its first. The conditional `UPDATE` holds both rules
+  again, so an edit racing a publish cannot move a published stream. A stage
+  is not on the catalogue entry, so a change does not count as an edit the
+  entry lacks.
+- **Publishing needs one.** `POST /streams/:id/publish` on a draft with no
+  stage is `409 stage_required` ("Pick the stage this stream is broadcast on
+  before publishing."), and the claim refuses it too. A stream already on the
+  catalogue is republished as it is, so one published before stages existed
+  keeps working, with no stage until it is unpublished.
+- **The OBS details are the stage's.** `GET /streams/:id/ingest` builds the SRT
+  line from the stage's public ingest address and SRT port, adds the RTMP
+  server and stream key only where the stage opens RTMP, and answers the
+  stage's SRT passphrase, read from the `stages` table's own column for this
+  one answer. It names the stage (`stage: { stageId, name, retiredAt }`). With
+  no stage, `stage`, `srt` and `rtmp` are null and only the stream id and key
+  are answered. Every uploader that takes streams from this admin verifies the
+  `key=` they carry, so the answer no longer says whether it does.
+- **Audited.** A change is its own `stream.stage` row, `details: { from, to }`,
+  beside the `stream.update` row of any field the same save changed, and the
+  `stream.create` row carries the stage the stream was created on.
 
 ### Where the next index comes from
 
@@ -359,9 +402,9 @@ The manager pushes every stage it runs for the brand into the admin, and the
 brand's catalogue stamp (`docs/architecture/stages.md` at the repository root
 is the design, `packages/contracts/src/stage.ts` the records). It calls with
 the registrar token, which is `INTERNAL_API_TOKEN`, the one the manager's admin
-link stores. Nothing reads the records yet but the console's Stages page: the
-stream form, the OBS panel and the catalogue writes still use the `INGEST_*`,
-`BEE_URL` and `POSTAGE_BATCH_ID` settings.
+link stores. The console's Stages page lists the records, and the stream form
+and the OBS panel read them ([A stream's stage](#a-streams-stage)). The
+catalogue writes still use the `BEE_URL` and `POSTAGE_BATCH_ID` settings.
 
 Every moment these routes order things by is the manager's: a record's
 `observedAt`, and the `observedAt` a `DELETE` carries, the moment the manager
@@ -451,13 +494,14 @@ boot and recorded in `_migrations` (`src/domain/Database.ts`). Add a file, never
 edit an applied one; `001_init.sql` carries the rationale for each table in its
 header. `pnpm build` copies the directory into `dist`. `007_audit_log.sql` is
 the audit log below, and `008_streams_user_id_set_null.sql` stops removing a
-user from deleting the streams they drafted. The latest two are
+user from deleting the streams they drafted. The latest three are
 `009_stages.sql`, the `stages` table (the record without the passphrase and
 the token, the passphrase and the token hash in columns of their own, when the
 record was observed and received, and the retirement's moment and arrival) and
 `stage_retirements` (retirements of stages never stored), which also lets the
-audit log name the manager, and `010_catalogue_stamp.sql`, the single-row
-`catalogue_stamp`.
+audit log name the manager, `010_catalogue_stamp.sql`, the single-row
+`catalogue_stamp`, and `011_streams_stage.sql`, `streams.stage_id`, the stage
+a stream is broadcast on, with a foreign key to `stages` and an index.
 
 ## Audit log
 
@@ -485,7 +529,8 @@ into the log for any reader, nor reorder what its line appears to say.
 | `details`                       | JSON: changed fields, feed index and what that write published, rung, error message, target username. Never a key, hash or token                                                                                                                                                                                                               |
 
 The actions: `stream.create`, `stream.update` (only when a field actually
-changed; a save of an unchanged form is logged, not audited),
+changed; a save of an unchanged form is logged, not audited), `stream.stage`
+(a draft moved to another stage, or on or off one, `details: { from, to }`),
 `stream.delete`, `stream.thumbnail.set`, `stream.thumbnail.clear` (only when
 there was an image to remove), `stream.key.rotate`, `stream.publish`,
 `stream.republish` (only a publish of a live or recorded stream; publishing one
@@ -583,11 +628,10 @@ SELECT at, action, details FROM audit_log
 - **Nothing polls.** A state report is the only thing that moves a stream to
   `live` or `vod`; an uploader that dies without reporting leaves the stream
   live on the catalogue until someone republishes or unpublishes it by hand.
-- **The ingest does not verify `key=`** until the deployed uploader carries
-  publisher auth, which is what `INGEST_KEY_VERIFIED` admits to the UI.
-- **Stage records are only listed.** The stream form, the OBS panel and the
-  catalogue writes do not read them yet, and the manager's routes and the
-  uploader's share the one `INTERNAL_API_TOKEN`. The access log still writes
+- **The catalogue does not read stage records yet.** Its writes still go
+  through `BEE_URL` and `POSTAGE_BATCH_ID`, every stream's `owner` is still the
+  admin's feed key, and the manager's routes and the uploader's share the one
+  `INTERNAL_API_TOKEN`. The access log still writes
   one `[HTTP]` line at info for every push, although the stage service logs an
   unchanged one at debug.
 - **Sessions are unbounded per user** and pruned on sign-in and by a daily

@@ -61,11 +61,16 @@ ones: see "Upgrading from before the move into apps/web2-admin" below.
 
 The script refuses to deploy, before anything leaves your machine, when a key
 the API cannot start without is missing or malformed: `POSTGRES_PASSWORD`,
-`FEED_PRIVATE_KEY`, `INTERNAL_API_TOKEN` (32 characters or more), `BEE_URL`,
-`POSTAGE_BATCH_ID` and `INGEST_HOST`, plus the optional keys the API refuses
-when they are set wrong. It warns, and carries on, when a value is still the
-sample's: the public Hardhat key, the placeholder token, the all-zero batch,
-`ingest.example.com`.
+`FEED_PRIVATE_KEY`, `INTERNAL_API_TOKEN` (32 characters or more), `BEE_URL`
+and `POSTAGE_BATCH_ID`, plus the optional keys the API refuses when they are
+set wrong. It warns, and carries on, when a value is still the sample's: the
+public Hardhat key, the placeholder token, the all-zero batch.
+
+No ingest key is needed: each stream's OBS details come from its stage, as the
+manager pushes it. An env file that still sets `INGEST_HOST`,
+`INGEST_SRT_PORT`, `INGEST_RTMP_PORT`, `INGEST_RTMP_PUBLIC`,
+`INGEST_SRT_PASSPHRASE` or `INGEST_KEY_VERIFIED` deploys as it did, with a
+warning naming each one; remove them when convenient.
 
 Things that differ from running the API on your laptop:
 
