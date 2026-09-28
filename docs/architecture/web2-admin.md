@@ -79,7 +79,10 @@ the same open question as the auth component above, seen from the other end.
    The manager answered its own half on `main-v2`: sessions, roles and a
    cross-site check. What is undecided is how this service authenticates to it
    as a machine caller, which is the same shape of problem the uploader's
-   bearer token solves in the other direction.
+   bearer token solves in the other direction. Decided on 2026-09-28 and
+   described in [stages.md](stages.md): the admin does not call the manager.
+   The manager pushes what the admin needs over the admin link it already
+   holds.
 3. Chat: Swarm feeds/GSOC versus a websocket in the web2 layer. Drawn in the
    SPA, not decided. Only matters here if the websocket answer wins.
 
