@@ -6,7 +6,7 @@ name: packages
 
 on:
   push:
-    branches: [main, main-v3]
+    branches: [main]
     paths:
       [
         'packages/**',

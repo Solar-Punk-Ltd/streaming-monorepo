@@ -5,7 +5,7 @@ on:
   # scripts' tests run that tool. So does a change under packages/, the shared
   # packages the stack imports and its images carry.
   push:
-    branches: [main, main-v3]
+    branches: [main]
     paths:
       [
         'apps/hls-stream/**',
