@@ -366,13 +366,31 @@ deployment.
    | `10005 + 10 × s` | tcp      | the stage hosts that publish through it, and the control host, and nobody else |
 
    The second is the rung's Bee API. It asks for no password and can spend the node's postage, so
-   it is opened to named addresses only. It has to be open to them, because the pool string the
-   manager hands an uploader names each rung at this host's own address and that port, and the
-   manager buys and reads the postage there. The manager's firewall generator closes this port as
-   it does on a stage host, so on a Bee host that serves uploaders elsewhere, open it to those
-   addresses in the provider's firewall instead, as the Terraform's Vultr root does.
+   it is opened to named addresses only: the public address of each stage host whose uploader
+   publishes through the pool, and the control host's, because the manager buys and reads the
+   postage there. It has to be open to them, because the pool string the manager hands an uploader
+   names each rung at this host's own address and that port. Two things open it, and it takes both:
 
-   It worked when each rung's card shows its node answering.
+   - **The bind.** Set `BEE_UPLOADER_API_BIND` to `0.0.0.0` in each rung's settings and deploy the
+     rungs again, so the API answers on this host's public address and not on the Docker bridge
+     alone. Do it only together with the firewall below, because from then on the firewall is all
+     that stands between that API and anyone who finds it.
+   - **The firewall.** Generate this host's table as step 8 of the stage host says, with `bee-1`
+     as the alias, and name each of those addresses once with `--bee-api-source`, as a `/32`:
+
+     ```sh
+     ./deploy/host/firewall-rules.sh --iface eth0 --inventory firewall-inventory.json \
+       --bee-api-source <stage-host-address>/32 --bee-api-source <control-host-address>/32 \
+       > /tmp/bee-1-firewall.nft
+     ```
+
+     It opens each slot's Bee API port, `10005 + 10 × s` over tcp, to those addresses and to
+     nobody else, and leaves every other port as a stage host has it. Without the flag the port
+     stays closed, as on a stage host. A provider's firewall that admits the same addresses to the
+     same ports does the same job, which is how the Terraform's Vultr root does it.
+
+   It worked when each rung's card shows its node answering, and a port ending in 5 does not answer
+   from any address you did not name.
 
 4. **Fund each rung and buy its batch**, from the pool card, as "Using it" in
    `apps/infra-manager/docs/features/abr-ladder.md` describes. The manager shows each node's
