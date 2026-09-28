@@ -60,6 +60,12 @@ export interface RequireUploaderTokenOptions {
   unattributed?: UnattributedCallLog;
 }
 
+/**
+ * The shape of a stage's own token: the manager generates 64 hex characters. Anything else is refused before the
+ * database is asked, so a caller cannot make the admin query for every guess it sends.
+ */
+const OWN_TOKEN_SHAPE = /^[0-9a-f]{64}$/i;
+
 function sha256Hex(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
@@ -86,7 +92,8 @@ async function attribute(stages: UploaderTokenStore, presented: string): Promise
  * - the shared `INTERNAL_API_TOKEN`, compared in constant time: an uploader not yet on a token of its own. It is let
  *   through unattributed (`req.uploaderCaller` is `{ kind: 'shared' }`) and answered as before stages had tokens,
  *   and the admin says so at info, at most once an hour;
- * - a stage's own token: its sha256 is looked up among the active stages whose record names a token of their `own`
+ * - a stage's own token, 64 hex characters as the manager generates it (anything else is 401 without a query): its
+ *   sha256 is looked up among the active stages whose record names a token of their `own`
  *   (`kind: 'own'`), and the one it matches is the caller. A retired stage's token, a hash a `shared` row carries
  *   (the shared token as it was when the manager pushed it, which is not taken once `INTERNAL_API_TOKEN` changes),
  *   and a hash no stage names are all 401. So is one that matches several stages, which cannot say which of them
@@ -111,6 +118,11 @@ export function createRequireUploaderToken(options: RequireUploaderTokenOptions)
       const line = unattributed.note();
       if (line) logger.info(line);
       next();
+      return;
+    }
+
+    if (!OWN_TOKEN_SHAPE.test(presented)) {
+      next(new UnauthenticatedError());
       return;
     }
 

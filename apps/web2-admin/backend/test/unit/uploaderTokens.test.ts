@@ -54,15 +54,18 @@ const sha256 = (token: string) => createHash('sha256').update(token, 'utf8').dig
 
 /** The shared `INTERNAL_API_TOKEN`: the registrar token, and still taken from an uploader. */
 const SHARED = 'test-shared-internal-token-000000000000';
-/** The own token of `STAGE_ID`, the main stage. */
-const MAIN_TOKEN = 'main-stage-own-token-0000000000000000000';
-const OTHER_TOKEN = 'other-stage-own-token-000000000000000000';
-const RETIRED_TOKEN = 'retired-stage-own-token-0000000000000000';
-/** A shared token the admin no longer holds, which a `shared` row still names by its hash. */
-const OLD_SHARED = 'old-shared-internal-token-00000000000000';
+/** The own token of `STAGE_ID`, the main stage: 64 hex characters, as the manager generates one. */
+const MAIN_TOKEN = 'a1'.repeat(32);
+const OTHER_TOKEN = 'b2'.repeat(32);
+const RETIRED_TOKEN = 'c3'.repeat(32);
+/**
+ * A registrar token the admin no longer holds, which a `shared` row still names by its hash: a deployment still on
+ * an old copy after the link's token changed. Hex, so the admin does ask for it, and still refuses it.
+ */
+const OLD_SHARED = 'd4'.repeat(32);
 /** One own token two stages were pushed with. */
-const TWICE_TOKEN = 'twice-pushed-own-token-00000000000000000';
-const UNKNOWN_TOKEN = 'nobody-knows-this-token-0000000000000000';
+const TWICE_TOKEN = 'e5'.repeat(32);
+const UNKNOWN_TOKEN = 'f6'.repeat(32);
 
 const EVERY_TOKEN = [SHARED, MAIN_TOKEN, OTHER_TOKEN, RETIRED_TOKEN, OLD_SHARED, TWICE_TOKEN, UNKNOWN_TOKEN];
 
@@ -485,5 +488,30 @@ describe('requireUploaderToken on its own', () => {
 
   it('refuses a token no stage names as unauthenticated', async () => {
     assert.ok((await run({ findActiveByOwnTokenSha256: async () => [] })) instanceof UnauthenticatedError);
+  });
+
+  it('asks the database only for a token of 64 hex characters, and refuses anything else without a query', async () => {
+    let lookups = 0;
+    const store = {
+      findActiveByOwnTokenSha256: async () => {
+        lookups += 1;
+        return [] as never[];
+      },
+    };
+    const door = createRequireUploaderToken({ sharedToken: SHARED, stages: store });
+    const ask = (token: string) =>
+      new Promise((resolve) =>
+        door(
+          { get: (name: string) => (name.toLowerCase() === 'authorization' ? `Bearer ${token}` : undefined) } as never,
+          {} as Response,
+          ((err?: unknown) => resolve(err ?? null)) as never,
+        ),
+      );
+    for (const guess of ['short', `${MAIN_TOKEN}0`, MAIN_TOKEN.slice(1), `${'g'.repeat(64)}`, 'x'.repeat(40)]) {
+      assert.ok((await ask(guess)) instanceof UnauthenticatedError, guess);
+    }
+    assert.equal(lookups, 0, 'no guess of another shape reached the database');
+    assert.ok((await ask(UNKNOWN_TOKEN)) instanceof UnauthenticatedError);
+    assert.equal(lookups, 1);
   });
 });

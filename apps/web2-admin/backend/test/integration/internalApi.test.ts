@@ -649,7 +649,8 @@ describe('an uploader on a token of its own', () => {
   // record, whose uploader is still on the shared token.
   const OWN_STAGE = '6a1d3b9f-2c3d-4e5f-8a51-1b2c3d4e5f60';
   const OWN_OWNER = '0x' + '5c'.repeat(20);
-  const OWN_TOKEN = 'itest-own-stage-uploader-token-000000000000';
+  // 64 hex characters, as the manager generates a stage's own token; the admin asks for no other shape.
+  const OWN_TOKEN = '7e'.repeat(32);
   let mine: Stream;
   let theirs: Stream;
 

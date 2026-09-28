@@ -309,7 +309,9 @@ there. The uploader's routes take an uploader's token
 
 - **A stage's own token.** The manager generates a token for every deployment
   that runs an uploader and pushes its sha256 on the stage record, with
-  `adminToken.kind: 'own'`. The admin hashes the presented token and looks it
+  `adminToken.kind: 'own'`; any token it did not generate is `shared`. The
+  token is 64 hex characters, and a bearer of any other shape that is not the
+  shared token is `401` without a query. The admin hashes the presented token and looks it
   up among the stages it holds (migration 012): the one active stage whose
   record names that hash as its own is the caller. A retired stage's token is
   `401`, and so is a token that is no stage's own, a hash a `shared` record

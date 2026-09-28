@@ -100,9 +100,14 @@ still taken on an uploader's routes, as an unattributed caller; the last phase s
 
 As built in phase 5:
 
-- Only a record whose `adminToken.kind` is `own` attributes a call. A `shared` record's hash is the
-  shared token's, and the shared token is compared with the admin's current `INTERNAL_API_TOKEN`
-  itself, so an old shared token is refused once that changes, whatever a record still names.
+- Only a record whose `adminToken.kind` is `own` attributes a call, and the manager says `own` only
+  for the token it generated for that deployment. Any other token, one copied from the link by an
+  older manager, typed, or set by the version's env files, is `shared`. A shared token is taken
+  only when it equals the admin's current `INTERNAL_API_TOKEN`, compared itself, so an old copy is
+  refused once that changes, whatever a record still names, and several old copies never meet on
+  one hash as a stage's token.
+- The admin asks its database only for a bearer of 64 hex characters, the shape the manager
+  generates. Any other token that is not the shared one is refused without a query.
 - A retired stage's token is refused. A token that is the own token of more than one active stage
   is refused as well, since it cannot say which stage calls, and the admin logs a warning naming
   the stages.
@@ -263,6 +268,13 @@ nothing reaches a host without the owner's word.
 
 Phases 2 to 5 reach a host together, because until phase 5 every uploader holds the token that
 registers stages.
+
+**Rolling out phase 5.** The admin is upgraded before the manager, and no uploader deployment is
+redeployed in between. An admin older than phase 5 takes nothing but its `INTERNAL_API_TOKEN` from
+an uploader, so an uploader that a phase 5 manager redeploys with a token of its own would be
+refused by it. The upgraded admin still takes every uploader's shared token and learns each own
+token from the pushes, so every running uploader keeps working across both upgrades. Once both run
+phase 5, each uploader moves to a token of its own at its next deploy, or when it is rotated.
 
 ## Limits
 
