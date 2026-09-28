@@ -43,14 +43,14 @@ HOST_LOAD="${HERE}/host-load.sh"
   exit 1
 }
 
-OUT_DIR="${OUT_DIR:-/home/solarpunk/retrieval-probe}"
-STACK_DIR="${STACK_DIR:-/home/solarpunk/swarm-hls-stream-latbench}"
+OUT_DIR="${OUT_DIR:-${HOME}/retrieval-probe}"
+STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-latbench}"
 COMPOSE_DIR="${STACK_DIR}/deploy"
 ENV_FILE="${STACK_DIR}/.env"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-latbench}"
 GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-10077}"
-ACCT="${ACCT:-/home/solarpunk/phase06/acct2.sh}"
-METRICS="${METRICS:-/home/solarpunk/phase06/metrics.sh}"
+ACCT="${ACCT:-${HOME}/phase06/acct2.sh}"
+METRICS="${METRICS:-${HOME}/phase06/metrics.sh}"
 
 # The arm both windows run on. Unfunded by default, because a node with no chequebook cannot spend and
 # the whole measurement is then free.
@@ -84,7 +84,7 @@ SWAP_KEY=BEE_GATEWAY_SWAP_ENABLE
 env_file_value() { sed -n "s/^$1=//p" "${ENV_FILE}" 2>/dev/null | tail -n 1; }
 
 # This probe sets the arm both its windows run on by writing the env file, so the compose file has to
-# read the keys that arm is made of. Since T27 on 2026-09-17 the gateway's mode is two of them: an
+# read the keys that arm is made of. Since 2026-09-17 the gateway's mode is two of them: an
 # endpoint is what puts the node on a chain, an empty one is the whole of what makes it ultra-light,
 # and swap is what lets a node on a chain pay its peers. A stack that reads one and not the other
 # runs the node on whatever compose resolves instead, and nothing else here reads the node's mode, so

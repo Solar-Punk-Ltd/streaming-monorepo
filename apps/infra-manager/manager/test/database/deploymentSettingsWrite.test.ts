@@ -1,7 +1,7 @@
 /**
  * Saving a deployment's own settings, against a real PostgreSQL.
  *
- * `pnpm test:database` in manager/, or on its own with T11_TEST_PG_PORT set.
+ * `pnpm test:database` in manager/, or on its own with DEPLOYMENT_SETTINGS_TEST_PG_PORT set.
  *
  * A save names the deployment and the revision the page read, and stores
  * nothing once either moved, so two operators editing at once cannot overwrite
@@ -17,12 +17,12 @@ import pg, { type Pool } from 'pg';
 
 import { ProfileRepository } from '../../src/domain/ProfileRepository.js';
 
-const port = Number(process.env.T11_TEST_PG_PORT);
+const port = Number(process.env.DEPLOYMENT_SETTINGS_TEST_PG_PORT);
 const connection = {
   host: '127.0.0.1',
   port,
   user: 'postgres',
-  database: 't11_test',
+  database: 'deployment_settings_test',
   connectionTimeoutMillis: 10000,
 };
 
@@ -51,7 +51,7 @@ describe(
     }
 
     beforeEach(async () => {
-      schema = `t11_settings_write_${randomBytes(8).toString('hex')}`;
+      schema = `settings_write_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 4, options: `-c search_path=${schema}` });

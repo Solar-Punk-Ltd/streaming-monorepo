@@ -7,10 +7,10 @@ import { throwawayRoot } from '../support/throwawayRoot.js';
 import type { DeploymentGroupRepository } from '../../src/domain/DeploymentGroupRepository.js';
 import type { StackVersionRecord } from '../../src/domain/versions/StackVersionRepository.js';
 
-const root = throwawayRoot('t11-version-defaults-');
+const root = throwawayRoot('version-defaults-');
 process.env.SHLS_ROOT = root;
 process.env.BEE_DATA_ROOT = join(root, 'data');
-process.env.DATABASE_URL = 'postgresql://127.0.0.1:1/t11_unused';
+process.env.DATABASE_URL = 'postgresql://127.0.0.1:1/unused';
 after(() => rmSync(root, { recursive: true, force: true }));
 
 const { ProfileService } = await import('../../src/domain/ProfileService.js');

@@ -1,6 +1,6 @@
 # Does a setting hold still? The first broadcasts longer than a minute
 
-Measured 2026-08-03 on `manager-host`, profile `latbench`, engine SRS. Seven continuous broadcasts of 5
+Measured 2026-08-03 on the bench host, profile `latbench`, engine SRS. Seven continuous broadcasts of 5
 to 20 minutes, produced by `pnpm bench:longrun`, against `profiles.md`'s 86 runs of about 50 seconds
 each.
 

@@ -51,7 +51,7 @@ const NOTHING_REPORTED: string[] = [];
 /**
  * What one deployment's stream-uploader says about itself.
  *
- * Decision D16, the owner on 2026-09-17, lets an uploader start on a Bee node
+ * Since 2026-09-17 the manager lets an uploader start on a Bee node
  * that is not answering. The uploader then waits for that node rather than
  * exiting, so "started" stopped meaning "working" and the difference is only
  * visible on the uploader's own `/health`. This is the read of it, in the one

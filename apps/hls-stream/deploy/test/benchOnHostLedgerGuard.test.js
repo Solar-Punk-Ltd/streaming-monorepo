@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 
-import { makeSandbox, removeSandboxes, runScript } from './helpers/sandbox.js';
+import { BENCH_TARGET, makeSandbox, removeSandboxes, runScript } from './helpers/sandbox.js';
 
 after(removeSandboxes);
 
@@ -36,7 +36,7 @@ describe('bench-on-host refuses a checkout that holds no spend ledger', () => {
   it('stops before anything reaches the host', async () => {
     const sandbox = makeSandbox();
 
-    const run = await runScript(sandbox, 'bench-on-host.sh', ['--script', 'browser:watch']);
+    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--script', 'browser:watch']);
 
     assert.notEqual(run.exitCode, 0, 'a checkout without a ledger was allowed to sync');
     assert.match(run.stderr, /\.spend-ledger\.env does not exist/);
@@ -48,7 +48,13 @@ describe('bench-on-host refuses a checkout that holds no spend ledger', () => {
   it('refuses --no-setup too, since the checkout is still the one launching a sitting', async () => {
     const sandbox = sandboxWithRemoteDir();
 
-    const run = await runScript(sandbox, 'bench-on-host.sh', ['--no-setup', '--script', 'browser:watch']);
+    const run = await runScript(sandbox, 'bench-on-host.sh', [
+      '--target',
+      BENCH_TARGET,
+      '--no-setup',
+      '--script',
+      'browser:watch',
+    ]);
 
     assert.notEqual(run.exitCode, 0, 'a checkout without a ledger launched with --no-setup');
     assert.match(run.stderr, /\.spend-ledger\.env does not exist/);
@@ -59,7 +65,13 @@ describe('bench-on-host refuses a checkout that holds no spend ledger', () => {
     const sandbox = sandboxWithRemoteDir();
     writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
 
-    const run = await runScript(sandbox, 'bench-on-host.sh', ['--no-setup', '--script', 'browser:watch']);
+    const run = await runScript(sandbox, 'bench-on-host.sh', [
+      '--target',
+      BENCH_TARGET,
+      '--no-setup',
+      '--script',
+      'browser:watch',
+    ]);
 
     assert.equal(run.exitCode, 0, `bench-on-host.sh failed: ${run.stdout}${run.stderr}`);
     // The busy-target guard's `docker ps` and then the run, which is what a checkout with a ledger

@@ -18,7 +18,7 @@
  * minutes a scenario asks for. See `src/bench/authorisation.ts`.
  *
  * Usage, on the deployment host:
- *   deploy/scripts/bench-on-host.sh --script bench:longrun -- BENCH_RUN_MINUTES=30 BENCH_GOP_SECONDS=0.5
+ *   deploy/scripts/bench-on-host.sh --target <host> --script bench:longrun -- BENCH_RUN_MINUTES=30 BENCH_GOP_SECONDS=0.5
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';

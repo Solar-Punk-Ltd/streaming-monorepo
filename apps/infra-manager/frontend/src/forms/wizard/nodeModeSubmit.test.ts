@@ -5,7 +5,7 @@
  * Unit test, no DOM, the request captured off a mocked fetch the way the
  * segment length submission test does it. `pnpm test` in frontend/.
  *
- * Both are chosen when the node is created and nowhere else (T27, Levi
+ * Both are chosen when the node is created and nowhere else (since
  * 2026-09-17), so the body is the only door either value has.
  */
 import assert from 'node:assert/strict';

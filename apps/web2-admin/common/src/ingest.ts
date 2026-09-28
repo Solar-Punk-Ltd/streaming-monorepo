@@ -1,5 +1,13 @@
 import type { MediaType } from './api.js';
 
+/** What OBS needs to push over RTMP. */
+export interface IngestRtmpDetails {
+  /** OBS "Server". */
+  server: string;
+  /** OBS "Stream Key". */
+  streamKey: string;
+}
+
 /**
  * OBS / encoder connection details for one stream.
  *
@@ -26,12 +34,13 @@ export interface IngestDetails {
     url: string;
     passphrase: string | null;
   };
-  rtmp: {
-    /** OBS "Server". */
-    server: string;
-    /** OBS "Stream Key". */
-    streamKey: string;
-  };
+  /**
+   * Null unless the deployment opens RTMP ingest to encoders on purpose
+   * (`INGEST_RTMP_PUBLIC` on the API). Ingest is SRT only by default: RTMP
+   * carries no passphrase, and the deployments close its port, so an RTMP
+   * address would point the streamer at a port that refuses them.
+   */
+  rtmp: IngestRtmpDetails | null;
   /**
    * Whether the ingest currently verifies `key=`. False until the deployed
    * uploader carries publisher auth; the UI shows a note when false.
@@ -43,6 +52,8 @@ export interface IngestEndpoint {
   host: string;
   srtPort: number;
   rtmpPort: number;
+  /** Whether RTMP ingest is open to encoders, and so offered to the operator. */
+  rtmpPublic: boolean;
   srtPassphrase: string | null;
   keyVerified: boolean;
 }

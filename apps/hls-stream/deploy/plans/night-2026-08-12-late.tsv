@@ -8,5 +8,5 @@
 # So the four-hour soak that was dropped goes back on, at the GOP a broadcaster actually sends. At
 # 2.0s the segment peaks at 2.133s, so #EXT-X-TARGETDURATION is 3 and the stall penalty caps at 3.0s
 # instead of 1.0s. Whether that ratchet bites over hours has never been watched, and the 120-minute
-# run at 0.5s is the control taken the same night on the same box.
+# run at 0.5s is the control taken the same night on the same bench host.
 long-broadcast-obs	270	viewer-arms.sh	ARMS=soak-obs:2.0|ROUNDS=1|WARMUP_ROUNDS=0|MINUTES=240|PUBLISHER_MARGIN_S=120|METRICS_INTERVAL_S=120

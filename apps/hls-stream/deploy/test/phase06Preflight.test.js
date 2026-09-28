@@ -35,7 +35,7 @@ const PLUR_PER_BZZ = 10n ** 16n;
  * The stack's compose file, which is a different checkout from the one this driver is synced into.
  *
  * ⛔ The arms of this sitting are two lines in the env file, so compose has to be the thing that reads
- * them. Since T27 on 2026-09-17 the gateway's mode is `BEE_GATEWAY_RPC_ENDPOINT` and
+ * them. Since 2026-09-17 the gateway's mode is `BEE_GATEWAY_RPC_ENDPOINT` and
  * `BEE_GATEWAY_SWAP_ENABLE` together: an endpoint is what puts the node on a chain, an empty one is
  * the whole of what makes it ultra-light, and swap is what lets a node on a chain pay its peers. A
  * stack reading one of the two cannot produce the light arm, and the contrast would be drawn between

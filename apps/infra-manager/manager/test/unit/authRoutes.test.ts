@@ -23,7 +23,7 @@ import {
   startAuthTestApp,
 } from '../support/authTestApp.js';
 
-const USERNAME = 'levi';
+const USERNAME = 'operator';
 const PASSWORD = 'a-long-enough-password';
 const OTHER_PASSWORD = 'another-fine-password';
 

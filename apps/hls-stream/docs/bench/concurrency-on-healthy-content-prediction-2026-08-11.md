@@ -20,7 +20,7 @@ so none of today's absolute figures are a player's.
 
 360 references from the shipping-profile broadcast (fragment 1.0, 629 segments, **787 KB** each,
 indices 0-628, published 10:59:53Z to 11:19:59Z). Arms **c4 and c16**, 2 rounds, block 90, arms
-alternated between rounds. Canaries are abel-1's, so a discarded round means a sick node rather than
+alternated between rounds. Canaries are tester-1's, so a discarded round means a sick node rather than
 content we cannot retrieve.
 
 ⛔ **The 252 references reserved for the untouched decay arm are excluded, and the exclusion was

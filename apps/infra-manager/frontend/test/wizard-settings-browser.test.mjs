@@ -2,7 +2,7 @@
  * A new deployment created fully configured from the wizard, in a real Chrome,
  * at a phone's width.
  *
- * Levi ruled on 2026-09-25 that every setting a deployment reads is editable,
+ * Since 2026-09-25 every setting a deployment reads is editable,
  * with the version's value as the default, and the new-deployment wizard
  * carries the deployment page's settings editor, so a deployment is created
  * with its settings already set. This walks it: the

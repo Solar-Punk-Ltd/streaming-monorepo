@@ -49,7 +49,7 @@ describe('one manager upgrade owns every active project mutation', () => {
   let bundled: BundledBuildOutcome;
   let actions: string[];
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), 't04b-upgrade-'));
+    root = await mkdtemp(join(tmpdir(), 'upgrade-'));
     environment = { guardRoot: join(root, 'upgrade-owner'), mutableRoot: join(root, 'manager') };
     publication = { schema: 'current' };
     bundled = { state: 'ready', commit: PIN, buildId: PIN, problem: null };

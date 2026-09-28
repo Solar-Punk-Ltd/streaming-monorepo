@@ -5,8 +5,9 @@ arms and 11 sittings, rescored at four thresholds.
 
 > ## ⛔⛔ THIS CORRECTS A CORRECTION I MADE THIS MORNING
 >
-> `corpus-audit-2026-08-15.md` found that `docs/scale/running-a-high-scale-event-on-swarm.md` scores
-> every over-budget share against **267ms**, the latbench rig's segment duration, while the shipped
+> `corpus-audit-2026-08-15.md` found that `docs/scale/running-a-high-scale-event-on-swarm.md`
+> (removed since, the repository's history keeps it) scores every over-budget share against
+> **267ms**, the latbench rig's segment duration, while the shipped
 > profile is 0.5s and a **500ms** budget. I wrote that this makes every share in that document an
 > **upper bound**, which reads as "the real numbers are better".
 >

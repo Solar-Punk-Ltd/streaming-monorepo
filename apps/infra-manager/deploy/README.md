@@ -35,7 +35,7 @@ MANAGER_PORT=9876
 ## Local `~/.ssh/config` snippet
 
 ```
-Host manager-host
+Host control-1
   HostName <server-ip-or-hostname>
   User solarpunk
   LocalForward 8080 localhost:8080
@@ -46,7 +46,7 @@ Host manager-host
 From your local checkout:
 
 ```sh
-./deploy/deploy.sh manager-host
+./deploy/deploy.sh control-1
 ```
 
 This rsyncs the repo, then builds the images on the server and runs the upgrade
@@ -115,7 +115,7 @@ the project, waits for the new API to answer its health check, and then waits fo
 that API's own boot to finish building the pinned commit. `--bundled-timeout`
 says how long that last wait may take, twenty minutes by default, and you can
 raise it for a first build on a cold host with
-`BUNDLED_TIMEOUT=3600 ./deploy/deploy.sh manager-host`. It prints one line of
+`BUNDLED_TIMEOUT=3600 ./deploy/deploy.sh control-1`. It prints one line of
 JSON with the state and the bundled build, which the deploy echoes. A bundled
 build that failed or ran out of time makes the deploy exit non zero after the
 manager is already up, so the fix is Update on the Versions page rather than
@@ -158,7 +158,7 @@ root, so every file under the versions root belongs to root, and each of them is
 readable by its owner alone.
 
 ```sh
-ssh manager-host
+ssh control-1
 cd ~/streaming-infra-manager/manager
 sudo scripts/stack-config-edit.sh ~/streaming-infra-manager-versions/bundled set .env /tmp/new-env
 sudo scripts/stack-config-edit.sh ~/streaming-infra-manager-versions/bundled commit
@@ -183,7 +183,7 @@ That identity lives on the manager host in `/home/solarpunk/manager-ssh/`
 key pair, an `ssh_config` and a `known_hosts`:
 
 ```sh
-# As solarpunk@manager-host
+# As solarpunk@control-1
 mkdir -p ~/manager-ssh
 ssh-keygen -t ed25519 -N '' -f ~/manager-ssh/deploy_key
 ssh-copy-id -i ~/manager-ssh/deploy_key.pub deploy@203.0.113.7
@@ -243,7 +243,7 @@ If a deploy failed after the upgrade started, the guard directory is still
 there:
 
 ```sh
-ssh manager-host
+ssh control-1
 ls ~/streaming-infra-manager-versions/.manager-upgrade
 cat ~/streaming-infra-manager-versions/.manager-upgrade/owner.json
 ```
@@ -283,7 +283,7 @@ and it holds the `.env`, `deploy/config.json` and engine envs of every deploy
 that shipped one, so remove it once no deploy is running.
 
 ```sh
-ssh manager-host
+ssh control-1
 ls ~/streaming-infra-manager-versions/bundled.packages    # if it is still there
 rm -r ~/streaming-infra-manager-versions/bundled.packages
 ```
@@ -300,7 +300,7 @@ The manager has a login, and there is no sign-up. Once, after the first deploy,
 create a user on the server:
 
 ```sh
-ssh manager-host
+ssh control-1
 cd ~/streaming-infra-manager/manager
 docker compose exec -it api node dist/cli.js user:add <username>
 ```
@@ -323,7 +323,7 @@ last admin.
 ## Accessing
 
 ```sh
-ssh manager-host       # the LocalForward in ssh_config opens the tunnel
+ssh control-1       # the LocalForward in ssh_config opens the tunnel
 # then in your browser:
 open http://localhost:8080
 ```
@@ -407,8 +407,11 @@ manager inside its pool string. Since 2026-09-17 the `BEE_PUBLISHERS` value a
 pool hands an uploader names every rung at this same bridge address, not at the
 host's public one, and that is what an uploader container on this host can
 actually reach when these ports are bound here and nowhere else. `BEE_LOCAL_HOST`
-overrides that too, and it is what an uploader on another machine would need,
-together with a bind that admits that machine. An uploader created before
+overrides that too. An uploader on another machine is the Bee host's case
+instead: its rungs are named at that host's own address, and "A Bee host, made
+by hand" in `docs/hosts.md` at the repository root opens their API to the
+uploader's address alone, with a wider bind and the `--bee-api-source` flag of
+step 3. An uploader created before
 2026-09-17 still holds a string in the public form, which answers nowhere at
 all. Copy the pool string from the pool page again and paste it into the
 uploader's "Node pool string" field under Edit.
@@ -465,6 +468,17 @@ now closed like any other private port. The slot algebra still reserves them,
 which costs nothing and keeps the numbering free for a version that does run
 them.
 
+A Bee host whose rungs serve uploaders on other hosts needs one more door, and
+it is opened only on request. `--bee-api-source <address>/32`, repeated once
+per uploader host and once for the manager's host, opens each slot's Bee API
+port, `10005 + 10 × slot` over TCP, to those IPv4 blocks and to nobody else, in
+both the input and the forward chain. A block wider than `/24` is refused, as
+the Terraform's Vultr root refuses it, because anyone inside it can spend the
+node's postage. Without the flag nothing about the draft changes and the API
+ports stay closed. The draft names the admitted blocks in its header. Such a
+host binds its rungs' API wider as well, and "A Bee host, made by hand" in
+`docs/hosts.md` has both halves.
+
 An endpoint that lands on a tuple one of those bands opens causes generation to
 refuse, whatever its own port variable is. It is not treated as a closed port
 merely because `--max-slot` is at most 100. Fix the conflicting ownership
@@ -504,7 +518,9 @@ host's existing firewall configuration. Replacing all of `/etc/nftables.conf`
 could discard unrelated policy.
 
 The Bee API bind in step 2 still closes those APIs at their published
-interface. The input hook covers host listeners. The forward hook covers
+interface, except on a Bee host that binds them wider for the addresses it
+names with `--bee-api-source`, where this table is what admits those
+addresses alone. The input hook covers host listeners. The forward hook covers
 published container traffic. Host-network containers with unprovable bindings
 cause the inventory export to refuse.
 
@@ -526,7 +542,7 @@ the name in the edge's env file:
 ```sh
 cp infra/edge/.env.sample infra/edge/.env
 # set MANAGER_DOMAIN=manager.example.org, and MANAGER_PORT if WEB_PORT is not 8080
-./infra/edge/edge.sh --host=manager-host
+./infra/edge/edge.sh --host=control-1
 ```
 
 The run says which name it serves on which loopback port, checks that the
@@ -543,7 +559,7 @@ wrong, so leave it there.
 
 ## Operations
 
-All run on the server (`ssh manager-host`, then `cd ~/streaming-infra-manager/manager`):
+All run on the server (`ssh control-1`, then `cd ~/streaming-infra-manager/manager`):
 
 ```sh
 docker compose ps                 # status

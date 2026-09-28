@@ -18,8 +18,14 @@ import { StackVersionService } from '../../src/domain/versions/StackVersionServi
 import { buildDirFor } from '../../src/domain/versions/stackPaths.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
 
-const port = Number(process.env.T04B_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't04b_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.STACK_VERSIONS_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'stack_versions_test',
+  connectionTimeoutMillis: 10000,
+};
 const A = 'a'.repeat(40);
 const B = 'b'.repeat(40);
 const C = 'c'.repeat(40);
@@ -74,8 +80,8 @@ describe(
     };
 
     beforeEach(async () => {
-      root = await mkdtemp(join(tmpdir(), 't04b-execution-'));
-      schema = `t04b_execution_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'execution-'));
+      schema = `execution_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 10, options: `-c search_path=${schema} -c statement_timeout=10000` });

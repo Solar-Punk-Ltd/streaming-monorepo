@@ -1,5 +1,5 @@
 /**
- * The two columns T27 adds, read out of the migration's own text.
+ * The two node mode columns, read out of the migration's own text.
  *
  * Unit test, no database. `pnpm test` in manager/.
  *

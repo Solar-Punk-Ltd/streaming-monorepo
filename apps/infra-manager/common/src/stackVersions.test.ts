@@ -82,13 +82,17 @@ describe('stackRefProblem', () => {
   });
 
   it('refuses an empty ref and one over a hundred characters', () => {
-    assert.notEqual(stackRefProblem(''), null);
+    assert.equal(stackRefProblem(''), 'Type a branch or a tag, for example main.');
     assert.notEqual(stackRefProblem('a'.repeat(101)), null);
     assert.equal(stackRefProblem('a'.repeat(100)), null);
   });
 });
 
 describe('stackVersionNameProblem', () => {
+  it('asks for a name with main as the example', () => {
+    assert.equal(stackVersionNameProblem(''), 'Type a name for this version, for example main.');
+  });
+
   it('accepts a lower case name of letters, digits and dashes', () => {
     assert.equal(stackVersionNameProblem('main-v3'), null);
     assert.equal(stackVersionNameProblem('bundled'), null);

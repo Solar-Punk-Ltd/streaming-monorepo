@@ -15,9 +15,15 @@ import { stackRootOf } from '../../src/domain/versions/stackPaths.js';
 import type { StackPortVar } from '@streaming-infra-manager/common';
 
 // The caller supplies only a port. The database and host cannot point at a deployed manager.
-const port = Number(process.env.T06_TEST_PG_PORT);
+const port = Number(process.env.PORT_RESERVATIONS_TEST_PG_PORT);
 // Docker Desktop shares this machine. Connection setup is bounded separately from the contention assertions.
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't06_test', connectionTimeoutMillis: 30000 };
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'port_reservations_test',
+  connectionTimeoutMillis: 30000,
+};
 const table: StackPortVar[] = [
   { name: 'API_PORT', defaultPort: 10000, slotBase: 10000, protocol: 'tcp', service: 'stream-uploader' },
   { name: 'SRS_SRT_PORT', defaultPort: 10001, slotBase: 10001, protocol: 'udp', service: 'srs' },
@@ -35,7 +41,7 @@ describe('port reservations in isolated PostgreSQL schemas', { skip: !Number.isI
   let profiles: ProfileRepository;
 
   beforeEach(async () => {
-    schema = `t06_${randomBytes(8).toString('hex')}`;
+    schema = `port_reservations_${randomBytes(8).toString('hex')}`;
     admin = new pg.Pool(connection);
     await admin.query(`CREATE SCHEMA ${schema}`);
     pool = new pg.Pool({ ...connection, max: 20, options: `-c search_path=${schema}` });

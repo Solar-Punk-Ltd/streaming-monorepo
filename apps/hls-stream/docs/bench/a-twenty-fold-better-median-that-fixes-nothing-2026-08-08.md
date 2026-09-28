@@ -68,7 +68,7 @@ Round 3's J0 came back at **194ms of ending lag and 11.9% over budget**, against
 same arm in rounds 1 and 2. It is also the arm that tripped the load guard, at a mean of 49 runnable
 tasks where the other arms sat at 21 to 36.
 
-⚠️ **The guard measures the whole box, not this probe's share of it**, so a burst of work from one of the
+⚠️ **The guard measures the whole bench host, not this probe's share of it**, so a burst of work from one of the
 forty unrelated bee nodes on this host would produce exactly that signature. Something about that arm
 was different and the instrument says so, which is the entire reason the load column exists.
 
@@ -93,7 +93,7 @@ identical playback position, which is the shape after a common shock rather than
 
 ## Artifacts
 
-`/home/solarpunk/retrieval-probe/JIT4/`, with earlier readings from `jitter1` and `JIT3`. Probe:
+`~/retrieval-probe/JIT4/`, with earlier readings from `jitter1` and `JIT3`. Probe:
 `deploy/scripts/retrieval-debt-probe.sh`, jitter is the 8th arm field and spread the 7th. The shipped
 client default remains `GATEWAY_REQUEST_JITTER_MS = 0`, unchanged by this sitting, and nothing here
 argues for turning it on. Gateway restored to `--swap-enable=true` and `--cache-capacity=0` and

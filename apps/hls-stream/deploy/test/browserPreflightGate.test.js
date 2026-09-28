@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { makeSandbox, removeSandboxes, runScript } from './helpers/sandbox.js';
+import { BENCH_TARGET, makeSandbox, removeSandboxes, runScript } from './helpers/sandbox.js';
 
 after(removeSandboxes);
 
@@ -73,7 +73,7 @@ function benchSandbox() {
 async function benchOnHost(args) {
   const sandbox = benchSandbox();
 
-  const run = await runScript(sandbox, 'bench-on-host.sh', ['--no-setup', ...args]);
+  const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--no-setup', ...args]);
   assert.equal(run.exitCode, 0, `bench-on-host.sh failed: ${run.stdout}${run.stderr}`);
 
   // Two reads even with `--no-setup`: the busy-target guard's `docker ps`, then the run itself. The
@@ -194,7 +194,9 @@ describe('bench-on-host gates every script the manifests say gates nothing itsel
 
     const sandbox = benchSandbox();
     await Promise.all(
-      scripts.map(({ name }) => runScript(sandbox, 'bench-on-host.sh', ['--no-setup', '--script', name])),
+      scripts.map(({ name }) =>
+        runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--no-setup', '--script', name]),
+      ),
     );
     const commands = sandbox.sshCommands();
 

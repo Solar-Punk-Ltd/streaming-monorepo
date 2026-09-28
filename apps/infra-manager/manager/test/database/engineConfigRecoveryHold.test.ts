@@ -19,8 +19,14 @@ import type { Profile } from '../../src/types/index.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
 import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
-const port = Number(process.env.T01_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't01_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.ENGINE_CONFIG_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'engine_config_test',
+  connectionTimeoutMillis: 10000,
+};
 const A = 'a'.repeat(40);
 const contract = { ...ALLOCATION_CONTRACT, engineConfig: { ...ALLOCATION_CONTRACT.engineConfig, srs: true } };
 function signal() {
@@ -61,8 +67,8 @@ describe(
     let selected: StackVersionRecord;
 
     beforeEach(async () => {
-      root = await mkdtemp(join(tmpdir(), 't01-recovery-hold-'));
-      schema = `t01_recovery_hold_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'recovery-hold-'));
+      schema = `recovery_hold_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 8, options: `-c search_path=${schema} -c statement_timeout=10000` });
@@ -299,7 +305,7 @@ describe(
       assert.equal(await profiles.engineConfigOf(initial.name), 'synthetic new config');
     });
 
-    // Levi ruled on 2026-09-11: a rollout that has ended lets go of its hold,
+    // Since 2026-09-11 a rollout that has ended lets go of its hold,
     // because nothing can revert from it any more. These three have not ended.
     // `interrupted` is the one that matters: its recovery still deploys from the
     // build the hold protects.

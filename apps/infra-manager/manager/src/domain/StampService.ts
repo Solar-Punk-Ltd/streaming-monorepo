@@ -99,7 +99,7 @@ export function beeApiUrlFor(profile: Profile): string {
  * The bee API URL an ABR ladder's BEE_PUBLISHERS carries, which is the address a
  * stream-uploader **container on this host** dials.
  *
- * Deliberately not the manager's public host. T06 binds every local Bee API to
+ * Deliberately not the manager's public host. The stack binds every local Bee API to
  * the Docker bridge address and to nothing else, so the public address answers on
  * those ports from nowhere at all, and an uploader deployed by this manager runs
  * beside it rather than on another machine. `localPublisherHost` is what a
@@ -107,8 +107,9 @@ export function beeApiUrlFor(profile: Profile): string {
  * localHost.ts.
  *
  * A member on a declared remote host keeps that host's own address, and that is
- * the T06 caveat: the remote node's API has to be bound somewhere this host can
- * reach, which its own operator decides.
+ * the caveat of that binding: the remote node's API has to be bound somewhere this host can
+ * reach. A Bee host opens it to named addresses with a wider bind and the firewall
+ * generator's --bee-api-source, as the Bee host recipe in docs/hosts.md says.
  */
 export function beePublisherUrlFor(profile: Profile, localPublisherHost: string): string {
   const port = BEE_UPLOADER_API_BASE_PORT + profile.port_slot * 10;
@@ -326,8 +327,8 @@ export class StampService {
    * yet blocks the start: an uploader on such a batch reports RUNNING and
    * fails every upload, and the node itself has said so.
    *
-   * A node that answers nothing no longer blocks it. Decision D16, the owner
-   * on 2026-09-17: "we should be able to start the uploader but maybe say its
+   * A node that answers nothing no longer blocks it. Since 2026-09-17, in the
+   * owner's words: "we should be able to start the uploader but maybe say its
    * node not available, try to reconnect or something". The uploader waits for
    * its node instead of exiting, and reports that wait on its own health
    * route, which UploaderHealthService reads onto the deployment page. So the
@@ -349,7 +350,7 @@ export class StampService {
       }
       logger.warn(
         `[StampService] ${name}: the Bee node at ${nodeUrl} did not answer the stamp check (${getErrorMessage(err)}). ` +
-          'The uploader is started anyway and waits for its node, on decision D16.',
+          'The uploader is started anyway and waits for its node.',
       );
       return;
     }

@@ -24,7 +24,7 @@
  * broadcast, so this is not a theoretical difference.
  *
  * Usage, on the deployment host, against a broadcast that is already running:
- *   deploy/scripts/browser-on-host.sh --script browser:rung-outage
+ *   deploy/scripts/browser-on-host.sh --target <host> --script browser:rung-outage
  */
 
 import {

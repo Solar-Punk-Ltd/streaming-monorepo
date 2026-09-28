@@ -89,7 +89,7 @@ describe('beePublisherUrlFor', () => {
   });
 
   it('gives a local member the address a container on this host reaches it on', () => {
-    // Not the public host. T06 binds every local bee API to the docker bridge, so
+    // Not the public host. The manager binds every local bee API to the docker bridge, so
     // the public address answers on those ports from nowhere, and the uploader
     // handed this string is a container beside the manager.
     assert.equal(publisherUrl({ host: 'localhost' }), 'http://10.200.0.1:10055');
@@ -101,7 +101,7 @@ describe('beePublisherUrlFor', () => {
   });
 
   it('keeps a member on a declared remote host at that host’s own address', () => {
-    // The T06 caveat: that node's api has to be bound somewhere this host reaches,
+    // The caveat of that binding: that node's api has to be bound somewhere this host reaches,
     // and the local address says nothing about a machine that is not this one.
     assert.equal(publisherUrl({ host: '192.0.2.58' }), 'http://192.0.2.58:10055');
   });

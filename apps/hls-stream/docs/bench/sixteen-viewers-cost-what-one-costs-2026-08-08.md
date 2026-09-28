@@ -102,6 +102,6 @@ does is a separate question and the answer there was no.**
 
 ## Artifacts
 
-`/home/solarpunk/retrieval-probe/conc1/`. Probe: `deploy/scripts/retrieval-debt-probe.sh` with viewers
+`~/retrieval-probe/conc1/`. Probe: `deploy/scripts/retrieval-debt-probe.sh` with viewers
 as the fifth arm-plan field. The gateway was restored to `--swap-enable=true` and `--cache-capacity=0`
 and confirmed on the node.

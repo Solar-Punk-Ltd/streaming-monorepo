@@ -164,7 +164,7 @@ process.exit(0);
 `,
   );
 
-  // `run_browser_arm` passes the host docker group through, and this box is not the host.
+  // `run_browser_arm` passes the host docker group through, and this bench host is not the host.
   writeFileSync(join(bin, 'getent'), `#!/usr/bin/env node\nprocess.stdout.write('docker:x:999:\\n');\n`);
 
   const unfundedGateway = join(dir, 'unfunded-gateway.sh');
@@ -498,7 +498,7 @@ describe('both gateways are read either side of every arm', () => {
   });
 });
 
-describe('a sitting that refuses leaves the box as it found it', () => {
+describe('a sitting that refuses leaves the bench host as it found it', () => {
   it('publishes nothing when a previous sitting left a stop file', async () => {
     const result = await runSitting(setup({ stopFileFirst: true }));
 
@@ -565,7 +565,7 @@ describe('a sitting that refuses leaves the box as it found it', () => {
 
   /**
    * ⛔⛔⛔ By name, and only the names this run created. A teardown keyed on a name pattern killed a
-   * live paid broadcast on 2026-08-12: the pattern matched every publisher on the box, including one
+   * live paid broadcast on 2026-08-12: the pattern matched every publisher on the bench host, including one
    * serving somebody else's sitting.
    */
   it('removes only the publisher it started, never one that was already running', async () => {

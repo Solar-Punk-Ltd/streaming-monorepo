@@ -24,7 +24,6 @@ import {
   MAX_STATE_REPORT_ATTEMPTS,
   MIN_ADMIN_API_TOKEN_LENGTH,
   STATE_REPORT_ACCEPTED,
-  STATE_REPORT_ALREADY_SETTLED,
   STATE_REPORT_BACKOFF_MS,
   STATE_REPORT_FAILED,
   stateWasReported,
@@ -228,20 +227,62 @@ describe('the admin API client, reporting where a broadcast got to', () => {
   });
 
   /**
-   * ⛔ 409 is neither a success nor a failure, and it must not be retried. The admin answers it for a
-   * transition it cannot make from the state it holds, and the ordinary way to reach that is a report
-   * this uploader already delivered before a crash. Retried, a finalize resumed after a crash would
-   * spend the whole ladder discovering what the first answer said.
+   * The admin answers 409 to a state report only when the stream cannot take that state now, never
+   * for a repeat, which it accepts from the state it names. Its body says which state it holds.
+   * `draft` means the stream was unpublished and the report is refused for good. Any other state is
+   * one the stream is passing through: `publishing` while a republish or unpublish holds it, or the
+   * state another report wrote first when two raced. Asked again, those succeed.
    */
-  it('treats a 409 as settled and asks exactly once', async () => {
-    await withAdmin(always(409, { error: 'invalid_state_transition' }), async ({ client, received, sleeps }) => {
-      const outcome = await client.reportState(ADMIN_STREAM_ID, { state: ADMIN_STATE_LIVE });
+  it('fails a report the admin refuses because the stream is a draft, and asks once', async () => {
+    await withAdmin(
+      always(409, { error: 'invalid_state_transition', from: 'draft', to: 'live' }),
+      async ({ client, received, sleeps }) => {
+        const outcome = await client.reportState(ADMIN_STREAM_ID, { state: ADMIN_STATE_LIVE });
 
-      assert.equal(outcome, STATE_REPORT_ALREADY_SETTLED);
-      assert.equal(stateWasReported(outcome), true, 'a state the admin already holds is a state that was reported');
-      assert.equal(received.length, 1, 'a 409 does not become true by being asked again');
-      assert.deepEqual(sleeps, []);
-    });
+        assert.equal(outcome, STATE_REPORT_FAILED);
+        assert.equal(stateWasReported(outcome), false, 'a refused report must reach the caller as a failure');
+        assert.equal(received.length, 1, 'a draft does not become publishable by being asked again');
+        assert.deepEqual(sleeps, []);
+      },
+    );
+  });
+
+  it('asks again while a republish holds the stream, and reports the state once it lets go', async () => {
+    await withAdmin(
+      (_req, res, call) =>
+        call === 1
+          ? res.status(409).json({ error: 'invalid_state_transition', from: 'publishing', to: 'live' })
+          : res.status(200).json({}),
+      async ({ client, received, sleeps }) => {
+        assert.equal(await client.reportState(ADMIN_STREAM_ID, { state: ADMIN_STATE_LIVE }), STATE_REPORT_ACCEPTED);
+        assert.equal(received.length, 2);
+        assert.deepEqual(sleeps, [STATE_REPORT_BACKOFF_MS[0]]);
+      },
+    );
+  });
+
+  it('asks again after losing a race to another report, which the admin answers from the state that won', async () => {
+    await withAdmin(
+      (_req, res, call) =>
+        call === 1
+          ? res.status(409).json({ error: 'invalid_state_transition', from: 'live', to: 'vod' })
+          : res.status(200).json({}),
+      async ({ client, received }) => {
+        const outcome = await client.reportState(ADMIN_STREAM_ID, { state: ADMIN_STATE_VOD, index: 3, duration: 10 });
+        assert.equal(outcome, STATE_REPORT_ACCEPTED);
+        assert.equal(received.length, 2);
+      },
+    );
+  });
+
+  it('fails once a republish outlasts the bounded attempts', async () => {
+    await withAdmin(
+      always(409, { error: 'invalid_state_transition', from: 'publishing', to: 'live' }),
+      async ({ client, received }) => {
+        assert.equal(await client.reportState(ADMIN_STREAM_ID, { state: ADMIN_STATE_LIVE }), STATE_REPORT_FAILED);
+        assert.equal(received.length, MAX_STATE_REPORT_ATTEMPTS);
+      },
+    );
   });
 
   it('retries a 502 and reports the state once the admin comes back', async () => {

@@ -1,6 +1,6 @@
 # Integration tests
 
-This setup describes the authenticated T10 harness. It was written on 2026-09-10
+This setup describes the authenticated integration test harness. It was written on 2026-09-10
 on `feat/ai-remediation`, which has since merged into `main-v2`, so it is on
 `main-v2` now. These instructions are not authorization for a deployment run.
 The manual Docker workflow ran this suite twice on 2026-09-19. Runs
@@ -89,7 +89,7 @@ accepted deletion is observed for up to 60 seconds with one-second polls.
 Timeouts do not automatically retry a write. Unknown creation coverage is also
 reported. No failed cleanup is silently counted as a clean run.
 
-These guards are locally accepted at T10 `284790c`, including the integration
+These guards are locally accepted at `284790c`, including the integration
 after hooks. The 2026-09-19 Docker jobs exercised them against disposable
 workflow deployments. Their unresolved creation reports preserved the rule
 that a lost response grants no cleanup authority. The funded review deployment
@@ -122,7 +122,7 @@ lost the response at the former 30-second client limit. See
 - Viewer-group cases use two members. The ABR pool cases create a fixed four-rung pool. Multiple suite files can run concurrently, so two is not a whole-suite resource cap.
 - Ordinary reads and authentication wait at most 30 seconds for a response. Deployment writes wait at most 300 seconds, matching the production JSON proxy budget. After an accepted write, `waitForStatus` separately polls readiness for up to 240 seconds. Cleanup supplies its own five-second request signal.
 - A lost creation response may leave a resource whose identity was never confirmed. The suite reports that uncertainty and does not search by prefix and delete candidates.
-- T10's own checks, at `284790c`, passed 960 manager, 288 common and 31 real SQL tests plus types. Those are the numbers of that branch as it was merged, not a rerun of the repository as it stands. The 2026-09-19 Docker jobs establish that this deployment integration suite ran, but they do not establish a passing suite.
+- The harness branch's own checks, at `284790c`, passed 960 manager, 288 common and 31 real SQL tests plus types. Those are the numbers of that branch as it was merged, not a rerun of the repository as it stands. The 2026-09-19 Docker jobs establish that this deployment integration suite ran, but they do not establish a passing suite.
 
 ## Separate local regression suites
 

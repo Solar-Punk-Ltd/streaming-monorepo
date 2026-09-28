@@ -23,7 +23,7 @@ a feed entry second.
 ```bash
 cp .env.sample .env       # then set FEED_PRIVATE_KEY and INGEST_HOST
 pnpm database:start       # postgres:16-alpine on 127.0.0.1:5433
-pnpm user:add levi        # the first user — prompts twice, echoes nothing
+pnpm user:add alice        # the first user: prompts twice, echoes nothing
 pnpm dev                  # API on :9877
 curl localhost:9877/api/health                   # {"status":"ok"}
 ```
@@ -34,10 +34,10 @@ users: the API boots, logs a warning, serves `/api/health`, `/api/config` and
 made with the CLI. In the image that is
 
 ```bash
-docker compose exec -it api node dist/cli.js user:add levi
+docker compose exec -it api node dist/cli.js user:add alice
 # or, with the password never landing in a file or an argv:
 op read "op://<vault>/<item>/password" \
-  | docker compose exec -T api node dist/cli.js user:add levi --password-stdin
+  | docker compose exec -T api node dist/cli.js user:add alice --password-stdin
 ```
 
 The first user ever added can manage users whatever the flags said; later ones
@@ -78,20 +78,21 @@ Deploying to a server is a different compose file and a script:
 Every variable is documented in [.env.sample](.env.sample), which is the
 reference; the summary:
 
-| Var                                    | Default            | Meaning                                                                         |
-| -------------------------------------- | ------------------ | ------------------------------------------------------------------------------- |
-| `WEB2_ADMIN_PORT` / `WEB2_ADMIN_HOST`  | `9877` / `0.0.0.0` | where to listen (the manager API uses 9876)                                     |
-| `DATABASE_URL`                         | required           | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin`                       |
-| `FEED_GATEWAY`                         | `bee`              | `fake` swaps in an in-memory gateway (see below)                                |
-| `BEE_URL` / `POSTAGE_BATCH_ID`         | required           | node and batch used for feed writes and thumbnails                              |
-| `FEED_PRIVATE_KEY`                     | required           | 0x + 64 hex. Signs the stream list feed; its address is `owner` on every stream |
-| `FEED_TOPIC`                           | `swarm-stream`     | raw topic of that feed                                                          |
-| `VIEWER_BASE_URL`                      | empty              | branded viewer built for this feed, for "open player catalogue" links           |
-| `INTERNAL_API_TOKEN`                   | required           | 32+ chars. Bearer token for `/api/internal`, the routes the uploader calls      |
-| `INGEST_HOST`                          | required           | host the encoder connects to                                                    |
-| `INGEST_SRT_PORT` / `INGEST_RTMP_PORT` | `10061` / `10062`  | SRS ports (`10001`/`10002` + slot×10; the test host is slot 6)                  |
-| `INGEST_SRT_PASSPHRASE`                | empty              | the server-wide SRT passphrase, shown to the operator                           |
-| `INGEST_KEY_VERIFIED`                  | `false`            | `true` once the deployed uploader verifies `key=`                               |
+| Var                                    | Default            | Meaning                                                                                                                    |
+| -------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `WEB2_ADMIN_PORT` / `WEB2_ADMIN_HOST`  | `9877` / `0.0.0.0` | where to listen (the manager API uses 9876)                                                                                |
+| `DATABASE_URL`                         | required           | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin`                                                                  |
+| `FEED_GATEWAY`                         | `bee`              | `fake` swaps in an in-memory gateway (see below)                                                                           |
+| `BEE_URL` / `POSTAGE_BATCH_ID`         | required           | node and batch used for feed writes and thumbnails                                                                         |
+| `FEED_PRIVATE_KEY`                     | required           | 0x + 64 hex. Signs the stream list feed; its address is `owner` on every stream                                            |
+| `FEED_TOPIC`                           | `swarm-stream`     | raw topic of that feed                                                                                                     |
+| `VIEWER_BASE_URL`                      | empty              | branded viewer built for this feed, for "open player catalogue" links                                                      |
+| `INTERNAL_API_TOKEN`                   | required           | 32+ chars. Bearer token for `/api/internal`, the routes the uploader calls                                                 |
+| `INGEST_HOST`                          | required           | host the encoder connects to                                                                                               |
+| `INGEST_SRT_PORT` / `INGEST_RTMP_PORT` | `10061` / `10062`  | SRS ports (`10001`/`10002` + slot×10; the test host is slot 6)                                                             |
+| `INGEST_RTMP_PUBLIC`                   | `false`            | `true` only where RTMP ingest is open to encoders. Off, the ingest answer has `rtmp: null` and the console offers SRT only |
+| `INGEST_SRT_PASSPHRASE`                | empty              | the server-wide SRT passphrase, shown to the operator                                                                      |
+| `INGEST_KEY_VERIFIED`                  | `false`            | `true` once the deployed uploader verifies `key=`                                                                          |
 
 Startup logs the resolved configuration with the feed key, the batch id, the
 SRT passphrase and the internal API token redacted.

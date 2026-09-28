@@ -6,7 +6,7 @@ node's own CPU time and retrieval counters read per arm.
 
 This exists because of what [the counter correction](why-an-unfunded-gateway-is-slow-2026-08-08.md)
 implied and nobody had checked. If an unfunded node's 38 attempts per chunk are peer-selection
-iterations that never leave the box, then **what bounds a fleet of them is host CPU**, not network
+iterations that never leave the bench host, then **what bounds a fleet of them is host CPU**, not network
 capacity. That is a number, and until now it was not measured.
 
 ## ⭐ An unfunded viewer node costs about one CPU core. A funded one costs a third of that.
@@ -158,7 +158,7 @@ file and in the running container's own arguments.
 
 ## Artifacts
 
-`/home/solarpunk/retrieval-probe/cache1/` (this sitting) and `cache2/` (the unfunded re-run), each
+`~/retrieval-probe/cache1/` (this sitting) and `cache2/` (the unfunded re-run), each
 holding `probe.log`, `probe-state.tsv`, `probe-series.tsv`, `probe-metrics.tsv` and per-arm, per-pass
 timing files. Probe: `deploy/scripts/retrieval-debt-probe.sh`. Sampler:
 `deploy/scripts/gateway-retrieval-metrics.sh`.

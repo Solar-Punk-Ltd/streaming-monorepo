@@ -1378,7 +1378,7 @@ export class DeploymentOrchestrator {
           if (updated) {
             await this.publishChanged(updated);
           }
-          // The deploy is over, so the copy it replaced has done its job. D11
+          // The deploy is over, so the copy it replaced has done its job. Retention
           // keeps one previous copy until a deploy comes up, and this is that.
           await this.executions?.retireSuperseded(profile.name, { keep: 1 });
           await runHook('after it came up', () => hooks.afterRunning?.());

@@ -2,7 +2,7 @@
 --
 -- The stack names its built images by service alone, so two deployments
 -- building at once move one shared tag and a container can be created from
--- the other project's image (R04, reproduced). Every attempt holds its
+-- the other project's image (reproduced). Every attempt holds its
 -- Compose project until it resolves, so nothing else creates containers in
 -- that project meanwhile, and an attempt on a version that builds shared
 -- tags holds the daemon against every other such attempt.

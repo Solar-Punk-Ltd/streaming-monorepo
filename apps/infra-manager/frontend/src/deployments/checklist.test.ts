@@ -417,7 +417,7 @@ describe('the funding and stamp steps a node is given', () => {
     assert.ok(steps.includes('Postage stamp set'), steps.join(', '));
   });
 
-  it('gives an unchosen mode both, exactly as every deployment made before T27', () => {
+  it('gives an unchosen mode both, exactly as every deployment made before 2026-09-17', () => {
     const steps = titles({ node_mode: null });
 
     assert.ok(steps.includes('Bee node funded'));

@@ -1,5 +1,5 @@
 /**
- * The SRS image the T02 harness runs and the T01 observations were made on,
+ * The SRS image the config check isolation harness runs and the engine startup observations were made on,
  * read off the three places that name it.
  *
  * The harness rests on one sentence: the parser it questions is the parser a
@@ -41,7 +41,7 @@ const HARNESS_PROBLEM = 2;
 const pinned = digestsIn(script);
 const imageLine = script.split('\n').find((line) => line.startsWith('IMAGE=')) ?? '';
 
-describe('the SRS image the T02 harness pins', () => {
+describe('the SRS image the config check isolation harness pins', () => {
   it('names one digest and reaches the image by no other name', () => {
     assert.equal(new Set(pinned).size, 1, `the script names ${pinned.length} digests: ${pinned.join(' ')}`);
     assert.match(imageLine, ONE_SRS_DIGEST);
@@ -54,7 +54,7 @@ describe('the SRS image the T02 harness pins', () => {
 });
 
 describe('the places that have to agree with it', () => {
-  it('is the digest the T01 startup observations were made on', () => {
+  it('is the digest the engine startup observations were made on', () => {
     const observed = digestsIn(startupFailure);
     assert.deepEqual(
       [...new Set(observed)],

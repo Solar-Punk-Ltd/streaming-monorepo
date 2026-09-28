@@ -6,7 +6,7 @@ import { rolloutNotice } from '@streaming-infra-manager/common';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 import type { EngineWatcher } from '../../src/domain/engineConfig/EngineConfigService.js';
 
-const root = throwawayRoot('t01-creation-guard-');
+const root = throwawayRoot('creation-guard-');
 process.env.SHLS_ROOT = root;
 process.env.BEE_DATA_ROOT = join(root, 'data');
 mkdirSync(join(root, 'engines', 'srs'), { recursive: true });

@@ -4,7 +4,7 @@
 Predictions written first in `concurrency-on-healthy-content-prediction-2026-08-11.md`.
 
 360 references from the shipping-profile broadcast (787 KB segments), arms alternated over 2 rounds,
-block 90, canaries from abel-1. **No round was degraded**, and the analysis confirms the control
+block 90, canaries from tester-1. **No round was degraded**, and the analysis confirms the control
 separated warm from cold (2ms against a 3,800ms cold p50), so the sweep measured network fetches.
 
 | arm | achieved | in budget | **KB/s** | p50 | p90 | occupancy |

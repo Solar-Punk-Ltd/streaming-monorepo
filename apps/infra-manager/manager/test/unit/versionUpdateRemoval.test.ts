@@ -14,7 +14,7 @@ it(
   'an update whose version disappears during markBuilding refuses before filesystem or script work',
   { timeout: 5000 },
   async () => {
-    const root = await mkdtemp(join(tmpdir(), 't04a-removed-update-'));
+    const root = await mkdtemp(join(tmpdir(), 'removed-update-'));
     const versions = new InMemoryStackVersionRepository();
     versions.seedBundled();
     const selected = await versions.insert({

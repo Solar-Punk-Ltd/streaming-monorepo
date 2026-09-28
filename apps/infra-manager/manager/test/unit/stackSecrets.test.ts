@@ -136,7 +136,7 @@ describe('a deploy on a version that requires secrets', () => {
 /**
  * The version's own value, when it has one, is what a new deployment gets.
  *
- * D13: a settings page that shows a generated key and then has the manager
+ * A settings page that shows a generated key and then has the manager
  * generate a different value per deployment is a page that lies. So a
  * non-empty value in the version's own env is used as it stands, the manager
  * generates nothing for that key, and the file's own line reaches the

@@ -21,8 +21,14 @@ import { FakeScriptSpawner } from '../support/FakeScriptSpawner.js';
 import type { Profile } from '../../src/types/index.js';
 import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
-const port = Number(process.env.T04A_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't04a_test', connectionTimeoutMillis: 5000 };
+const port = Number(process.env.BUILD_REFERENCES_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'build_references_test',
+  connectionTimeoutMillis: 5000,
+};
 const BUILD = 'a'.repeat(40);
 function signal() {
   let resolve!: () => void;
@@ -62,8 +68,8 @@ describe(
     };
 
     beforeEach(async () => {
-      schema = `t04a_removal_${randomBytes(8).toString('hex')}`;
-      root = await mkdtemp(join(tmpdir(), 't04a-version-removal-'));
+      schema = `removal_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'version-removal-'));
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({

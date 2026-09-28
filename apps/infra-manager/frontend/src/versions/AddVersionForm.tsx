@@ -15,7 +15,7 @@ import { ANOTHER_BUILDING, useBuildAbort, useBuildSlot } from './buildSlot';
 import { addVersion, type BuildLine } from './versionsApi';
 
 const REF_HELP =
-  'A branch, a tag or a commit of streaming-monorepo, for example main-v3. The stack is taken from its apps/hls-stream folder, or the whole tree of a commit from before it moved there. The version stays on the commit that branch points at today, and moves only when you press Update.';
+  'A branch, a tag or a commit of streaming-monorepo, for example main. The stack is taken from its apps/hls-stream folder, or the whole tree of a commit from before it moved there. The version stays on the commit that branch points at today, and moves only when you press Update.';
 
 const NAME_HELP = 'Lower case letters, digits and dashes. Taken from the branch until you type your own.';
 

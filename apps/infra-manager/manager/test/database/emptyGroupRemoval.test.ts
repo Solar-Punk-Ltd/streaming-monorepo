@@ -7,8 +7,14 @@ import pg, { type Pool, type PoolClient } from 'pg';
 import { DeploymentGroupRepository } from '../../src/domain/DeploymentGroupRepository.js';
 import { ProfileRepository } from '../../src/domain/ProfileRepository.js';
 
-const port = Number(process.env.T10_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't10_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.PROFILE_REMOVAL_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'profile_removal_test',
+  connectionTimeoutMillis: 10000,
+};
 const placement = {
   stackVersionId: 1,
   slotCap: 100,
@@ -36,7 +42,7 @@ describe('empty group removal in isolated PostgreSQL', { skip: !Number.isInteger
   let groups: DeploymentGroupRepository;
   const clients: PoolClient[] = [];
   beforeEach(async () => {
-    schema = `t10_groups_${randomBytes(8).toString('hex')}`;
+    schema = `groups_${randomBytes(8).toString('hex')}`;
     admin = new pg.Pool(connection);
     await admin.query(`CREATE SCHEMA ${schema}`);
     pool = new pg.Pool({ ...connection, max: 10, options: `-c search_path=${schema} -c statement_timeout=10000` });

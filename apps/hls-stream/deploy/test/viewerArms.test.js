@@ -121,7 +121,7 @@ if (process.argv[2] === 'run') {
     fs.writeFileSync(${JSON.stringify(watchedFlag)}, '');
   }
 }
-// Lists one publisher already on the box, so a run that tears down everything matching the
+// Lists one publisher already on the bench host, so a run that tears down everything matching the
 // pattern shows up as a removal here.
 if (process.argv[2] === 'ps') {
   const filter = process.argv.find((a) => a.startsWith('name='));
@@ -365,7 +365,7 @@ describe('a viewer sitting runs its arms in an order that cannot fake a result',
   });
 
   /**
-   * The teardown matches every publisher on the box, not only this run's, and it hangs off an EXIT
+   * The teardown matches every publisher on the bench host, not only this run's, and it hangs off an EXIT
    * trap. On 2026-08-12 a PREFLIGHT_ONLY invocation, which publishes nothing at all, exited through
    * that trap and killed the broadcast a paid buffer sweep had been running against for forty
    * minutes. The sweep carried on sampling a dead stream.

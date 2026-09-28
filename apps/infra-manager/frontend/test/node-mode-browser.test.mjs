@@ -7,8 +7,8 @@
  * `pnpm test:browser`, or on its own:
  * `node --import tsx --test frontend/test/node-mode-browser.test.mjs`.
  *
- * Levi ruled on 2026-09-17 (T27) that both are chosen when the node is created
- * and that the node's page shows them. This walks it: a viewer gateway in each
+ * Since 2026-09-17 both are chosen when the node is created
+ * and the node's page shows them. This walks it: a viewer gateway in each
  * mode, a stream on the manager's own endpoint, and the two entries read off
  * each page afterwards. What it is here to catch is the gap the wizard and the
  * page can drift into, where a choice is made on one screen and a different

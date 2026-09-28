@@ -1,6 +1,6 @@
 -- A deployment's own values for the keys its stack version declares, which the
--- deploy writes into `.env.<profile>` over the version's base `.env`. Levi ruled
--- on 2026-09-25 that every setting a deployment reads is editable per
+-- deploy writes into `.env.<profile>` over the version's base `.env`. Since
+-- 2026-09-25 every setting a deployment reads is editable per
 -- deployment, with the version's value as the default.
 --
 -- Two columns, split by the rule the settings page masks by, so a query can

@@ -14,8 +14,11 @@
 # the run happens inside the image built from `e2e/Dockerfile.bench`.
 #
 # Usage:
-#   deploy/scripts/bench-on-host.sh [--profile latbench] [--portSlot 7] [--target manager-host]
+#   deploy/scripts/bench-on-host.sh --target <host> [--profile latbench] [--portSlot 7]
 #                                   [--script bench:latency]
+#
+# `--target` is the bench host, an ssh alias or user@host, and it has no default: a default would
+# name one machine, and a launch that forgot the flag would spend that machine's stage.
 #
 # `--setup-only` syncs, builds and installs, then stops without running anything. That is the state a
 # viewer arm of the e2e suite needs, since it mounts this checkout into the browser container.
@@ -66,7 +69,7 @@
 # otherwise replace the host's harness copy, ledger included, before any gate could say no.
 #
 # Anything after `--` is passed to the container as environment, so a knob sweep reads:
-#   deploy/scripts/bench-on-host.sh -- BENCH_GOP_SECONDS=4 BENCH_BITRATE_KBPS=1200
+#   deploy/scripts/bench-on-host.sh --target <host> -- BENCH_GOP_SECONDS=4 BENCH_BITRATE_KBPS=1200
 #
 # `--script` chooses which bench runs, so `bench:longrun` reuses the sync, the image and the container
 # arguments rather than copying them into a second script that could drift from this one.
@@ -102,7 +105,7 @@ CUT_DIR=""
 
 PROFILE="latbench"
 PORT_SLOT="7"
-TARGET="manager-host"
+TARGET=""
 # Kept apart from the rsynced deploy payload, which `deploy.sh` owns and overwrites.
 REMOTE_DIR="~/swarm-hls-bench"
 
@@ -139,7 +142,7 @@ SSH_OPTS=(-o ServerAliveInterval=30 -o ServerAliveCountMax=20)
 STOP_CONNECT_TIMEOUT_SECONDS=10
 
 # ⛔⛔ A connect timeout bounds the handshake and nothing after it. An ssh that connects and then sits
-# on a wedged 1Password agent waiting for a key is the failure that killed six readings on this
+# on a wedged ssh agent waiting for a key is the failure that killed six readings on this
 # project already, and the interrupt path is the worst place for it, because the operator has asked
 # for the terminal back and the handler is what holds it. Two things answer that: `BatchMode=yes`
 # below, which turns every prompt into an immediate refusal instead of a wait, and this wall-clock
@@ -188,6 +191,11 @@ while [ $# -gt 0 ]; do
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+
+if [ -z "${TARGET}" ]; then
+  echo "bench-on-host: --target <host> is required, the bench host as an ssh alias or user@host" >&2
+  exit 2
+fi
 
 # Screened here as well as in the shaper, because this value is interpolated into a docker command
 # carried over ssh, where anything but digits has no business.

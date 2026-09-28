@@ -113,21 +113,17 @@ export interface AdminStreamDraft {
 /**
  * What became of a state report.
  *
- * Three outcomes rather than a boolean, because `already-settled` is neither a success nor a failure
- * and the two callers must not treat it as either. The admin answers 409 when the transition it was
- * asked for cannot follow the state it holds, and the commonest way to reach that is a report this
- * uploader has already delivered — a finalize resumed after a crash, say. Retrying that forever
- * would strand the broadcast; counting it as a fresh success would announce a flip that this run did
- * not cause.
+ * The admin accepts a repeated report from the state it names, so a report this uploader already
+ * delivered, a finalize resumed after a crash say, is accepted again. It answers 409 only when the
+ * stream cannot take the state now, and its body says which state it holds: see `attemptReport`.
  */
 export const STATE_REPORT_ACCEPTED = 'accepted' as const;
-export const STATE_REPORT_ALREADY_SETTLED = 'already-settled' as const;
 export const STATE_REPORT_FAILED = 'failed' as const;
 
-export type StateReportOutcome =
-  | typeof STATE_REPORT_ACCEPTED
-  | typeof STATE_REPORT_ALREADY_SETTLED
-  | typeof STATE_REPORT_FAILED;
+export type StateReportOutcome = typeof STATE_REPORT_ACCEPTED | typeof STATE_REPORT_FAILED;
+
+/** The admin's state for a stream that was never published, or was unpublished, which refuses every report. */
+const ADMIN_STATUS_DRAFT = 'draft';
 
 /** Whether the admin now holds the state that was reported, however it got there. */
 export function stateWasReported(outcome: StateReportOutcome): boolean {
@@ -200,6 +196,15 @@ export function assertUsableAdminApiToken(token: string): void {
   if (token.length < MIN_ADMIN_API_TOKEN_LENGTH) {
     throw new Error(`ADMIN_API_TOKEN must be at least ${MIN_ADMIN_API_TOKEN_LENGTH} characters`);
   }
+}
+
+/** The state the admin says a stream holds, off the body of its 409 to a state report, or null. */
+function heldStateOf(body: unknown): string | null {
+  if (typeof body !== 'object' || body === null) {
+    return null;
+  }
+  const from = (body as Record<string, unknown>).from;
+  return typeof from === 'string' && from.length > 0 ? from : null;
 }
 
 export class AdminApiClient {
@@ -341,9 +346,9 @@ export class AdminApiClient {
    * whole ladder — and the caller turns that into a failed announce, which the uploader re-attempts on
    * `CATALOG_ANNOUNCE_RETRY_MS`. The merge is idempotent, so a whole report repeating is safe.
    *
-   * ⚠️ A 409 is NOT `already-settled` here, which is where this parts company with `reportState`. The
-   * admin answers it for a stream that is still a draft or has a catalog write in flight, so it means
-   * "not yet" rather than "already": retrying inside the ladder buys nothing for the first and the
+   * ⚠️ A 409 is not retried inside the ladder here, which is where this parts company with
+   * `reportState`. The admin answers it for a stream that is still a draft or has a catalog write in
+   * flight, so it means "not yet": retrying inside the ladder buys nothing for the first and the
    * announce cadence covers the second.
    *
    * @param id the admin's own id for the stream, which is the ladder rather than the rung.
@@ -426,8 +431,9 @@ export class AdminApiClient {
    * One attempt at a report, or null when the attempt failed in a way that is worth repeating.
    *
    * Null rather than a thrown error for the retryable case, so the loop above reads as the policy it
-   * is. A 4xx that is not 409 ends the loop immediately: a rejected token or an unknown id does not
-   * become true by being asked again, and spending four seconds discovering that delays a finalize.
+   * is. A 4xx other than a 409 from a stream in passing ends the loop immediately: a rejected token or
+   * an unknown id does not become true by being asked again, and spending four seconds discovering
+   * that delays a finalize.
    */
   private async attemptReport(
     url: string,
@@ -446,11 +452,22 @@ export class AdminApiClient {
         return STATE_REPORT_ACCEPTED;
       }
       if (response.status === 409) {
+        // A draft refuses for good. Any other state is one the stream is passing through: `publishing`
+        // while a republish or unpublish holds it, or the state another report wrote first when two
+        // raced. Both let the next attempt through.
+        const holds = heldStateOf(await this.readJson(response));
+        if (holds === ADMIN_STATUS_DRAFT) {
+          this.logger.error(
+            `[Admin] Refused the ${report.state} report for ${url}: the stream is a draft on the admin, ` +
+              'unpublished or never published, so it is not listed. Publish it on the admin to list the broadcast.',
+          );
+          return STATE_REPORT_FAILED;
+        }
         this.logger.warn(
-          `[Admin] Refused the ${report.state} report for ${url} as an invalid transition, which is what it ` +
-            'answers for a state it already holds. Treating the state as settled rather than retrying.',
+          `[Admin] Refused the ${report.state} report for ${url} while the stream is ${holds ?? 'in another state'}, ` +
+            `attempt ${attempt}. Asking again.`,
         );
-        return STATE_REPORT_ALREADY_SETTLED;
+        return null;
       }
       if (!isRetryableReportStatus(response.status)) {
         this.logger.error(`[Admin] Report of ${report.state} refused with ${response.status} for ${url}`);

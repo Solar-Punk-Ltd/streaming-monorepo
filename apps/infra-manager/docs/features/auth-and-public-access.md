@@ -4,7 +4,7 @@ Status, 2026-09-16. The login gate and the HTTPS edge are merged to `main-v2`. T
 at `6dc33d1` on `feat/ai-remediation`, the head of pull request #40, which landed. Both have since
 run on a host: the manager was deployed on 2026-09-11 and a second pass on 2026-09-13 reached it
 over its own public domain with a certificate, rather than through the ssh tunnel. That pass is
-recorded in [../handover/main-v2-remediation.md](../handover/main-v2-remediation.md).
+recorded in the remediation's handover record, which the repository's history keeps.
 Corrected 2026-09-23 against the code at `87673c99`: what reads `GET /health`, the Endpoints
 table, and the Access page under "What the operator sees". The last two predated the admin role
 added in `7346d880` on 2026-09-07, which now has a paragraph under Endpoints.
@@ -21,7 +21,7 @@ is the reasoning, because the order of the steps is the part worth understanding
 host's edge in `infra/edge/`, one Caddy per host for every console the host runs, and "Opening the
 manager to the internet" in the deploy README says how to use it.
 
-The decisions this page rests on were taken on 2026-09-05: D1 Caddy, D2 several users, D3 close
+The decisions this page rests on were taken on 2026-09-05: Caddy for HTTPS, several users, and closing
 the host doors first.
 
 ## Where we are
@@ -37,13 +37,13 @@ Making the manager public therefore has three parts, and the login is the smalle
 
 1. **A login gate in the manager.** Users, passwords, sessions, a sign-in page, and every API
    route behind it. This brief's first PR.
-2. **HTTPS in front.** A password over plain HTTP is a password given away. Decision D1.
+2. **HTTPS in front.** A password over plain HTTP is a password given away.
 3. **Closing the other doors.** The stack the manager deploys publishes ports on the host with no
    authentication: every Bee node's API (10005 and 10007 plus slot times 10), which can buy stamps
    and, with a whitelist, send the node's money away, the uploader's API (10000 plus slot times
    10), which accepts segments that spend postage, and the media server's HTTP port. When this
    was written those were open to the internet already, unless the host had a firewall nobody had
-   written down. A login on the manager does nothing for them. Decision D3, and the current steps
+   written down. A login on the manager does nothing for them. They close first, and the current steps are
    in [../../deploy/README.md](../../deploy/README.md).
 
 "Secure enough" here means: passwords stored with a slow salted hash, sessions that expire and can
@@ -60,8 +60,8 @@ mean two-factor or single sign-on. Both can be added later without changing the 
 - Signed in, the sidebar footer shows the username and a **Sign out** item. Sessions last twelve
   hours of inactivity and fourteen days at most, then the sign-in page comes back with
   `Your session ended. Sign in again.`
-- A sidebar page **Access** (`#/access`), there for every signed-in user. Decision D2, several
-  users, is why it exists. As built, everyone sees the **Users** table: each user's last sign-in
+- A sidebar page **Access** (`#/access`), there for every signed-in user. It exists because the
+  manager has several users. As built, everyone sees the **Users** table: each user's last sign-in
   (or `Never`) and open sessions, `manages users` beside each admin and `you` beside themselves,
   and a **Sign out everywhere** and a **Remove** button on every row. Everyone also gets the
   **Change my password** form (current, new, new again).
@@ -184,7 +184,7 @@ There is no sign-up. The first user is created on the host, once, with a small C
 image:
 
 ```bash
-docker compose exec -it api node dist/cli.js user:add levi
+docker compose exec -it api node dist/cli.js user:add operator
 ```
 
 It prompts for the password twice with echo off and writes only the hash to Postgres. When
@@ -192,7 +192,7 @@ stdin is not a terminal it refuses, unless `--password-stdin` is given, which re
 from a pipe and lets 1Password supply it without the value ever landing in a file or an argv:
 
 ```bash
-op read "op://<vault>/<item>/password" | docker compose exec -T api node dist/cli.js user:add levi --password-stdin
+op read "op://<vault>/<item>/password" | docker compose exec -T api node dist/cli.js user:add operator --password-stdin
 ```
 
 No `ADMIN_PASSWORD` environment variable and no seed file exist, deliberately. The manager
@@ -227,7 +227,7 @@ add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 `script-src 'self'` holds. Links to deployments' own pages (viewer, SRS) open in new tabs and are
 unaffected.
 
-HTTPS (decision D1, recommended (a)): a new `edge` service in `manager/docker-compose.yml`,
+HTTPS (Caddy, as recommended): a new `edge` service in `manager/docker-compose.yml`,
 image `caddy:2` pinned by digest, publishing `80` and `443`, with a five line Caddyfile:
 
 ```
@@ -287,7 +287,7 @@ passphrase and OvenMediaEngine publish URLs remain available immediately.
    the real client address and the sign-in rate limit in nginx, the host firewall generator script
    (below) and the runbook in `deploy/README.md`.
 
-## Host steps, for Levi to run (decision D3)
+## Host steps, for the host's operator to run
 
 **Superseded. Follow "Opening the manager to the internet" in
 [../../deploy/README.md](../../deploy/README.md) instead.** That page has the current five steps

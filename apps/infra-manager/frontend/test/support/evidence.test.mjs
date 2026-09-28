@@ -55,7 +55,7 @@ describe('the directory a suite is given', () => {
     const runnerTemp = await mkdtemp(join(tmpdir(), 'runner-temp-'));
     try {
       process.env.RUNNER_TEMP = runnerTemp;
-      const made = await evidenceDirectory('t11-browser-evidence-');
+      const made = await evidenceDirectory('browser-evidence-');
       assert.equal(dirname(made), runnerTemp);
     } finally {
       delete process.env.RUNNER_TEMP;
@@ -65,10 +65,10 @@ describe('the directory a suite is given', () => {
 
   it('is made under the OS temp directory where the job has none', async () => {
     delete process.env.RUNNER_TEMP;
-    const made = await evidenceDirectory('t11-browser-evidence-');
+    const made = await evidenceDirectory('browser-evidence-');
     try {
       assert.equal(dirname(made), tmpdir());
-      assert.match(made, /t11-browser-evidence-/);
+      assert.match(made, /browser-evidence-/);
     } finally {
       await rm(made, { recursive: true, force: true });
     }
@@ -76,7 +76,7 @@ describe('the directory a suite is given', () => {
 
   it('is a new one every time, so two runs cannot land in one place', async () => {
     delete process.env.RUNNER_TEMP;
-    const [one, two] = await Promise.all([evidenceDirectory('t12-'), evidenceDirectory('t12-')]);
+    const [one, two] = await Promise.all([evidenceDirectory('evidence-'), evidenceDirectory('evidence-')]);
     try {
       assert.notEqual(one, two);
     } finally {

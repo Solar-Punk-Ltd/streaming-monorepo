@@ -246,7 +246,7 @@ async function main(): Promise<void> {
   // A drained chequebook is the stamp failure one layer down: peers stop
   // forwarding what the node cannot pay them for. The gate asks about both.
   const chequebookService = new ChequebookService(profileRepository, config.chequebookFloorPlur, eventBus);
-  // What an uploader says about itself, which since D16 includes a Bee node it
+  // What an uploader says about itself, which includes a Bee node it
   // may still be waiting for. It reads the version's port table for the API
   // port of the deployment's own slot.
   const uploaderHealthService = new UploaderHealthService(

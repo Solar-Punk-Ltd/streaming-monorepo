@@ -8,10 +8,10 @@ Recovery can fail. Saving a file is not proof that publishing or playback works.
 Status, 2026-09-16. What this page described on that day is merged to
 `main-v2`, and the paragraphs dated after it describe `main`. It was
 written at `6dc33d1` on `feat/ai-remediation`, the head of pull request #40,
-which landed. It carries T01's service caller integration, the isolated SRS
-checks, the OvenMediaEngine validation and T11's effective settings. The branch
+which landed. It carries the engine config ownership work's service caller integration, the isolated SRS
+checks, the OvenMediaEngine validation and the effective engine settings. The branch
 has since been deployed twice, on 2026-09-11 and 2026-09-13, recorded in
-[../handover/main-v2-remediation.md](../handover/main-v2-remediation.md), so
+the remediation's handover record, which the repository's history keeps, so
 some of this has now been seen on a host. The engine-configuration decisions
 were accepted on 2026-09-07.
 
@@ -27,7 +27,7 @@ normal template. The editor uses a plain text area and accepts at most
 Support comes from the version contract's `engineConfig` flag for that engine.
 A version name alone does not prove support. New deployments can explicitly
 choose a version in the wizard. Moving an existing deployment to another
-version is outside the accepted D6 scope of the engine-configuration feature.
+version is outside the accepted scope of the engine-configuration feature.
 See [Stack versions](stack-versions.md).
 
 The stack fills recognized placeholders at container startup. Keep placeholders
@@ -218,10 +218,10 @@ version's own template with `work_dir /no/such/directory;` added, which the
 manager's check accepts and the engine dies on. The observations that establish
 that, taken on this laptop on 2026-09-10 against the SRS image the stack pins,
 are in the file's own header. It needs the whole stack deployed on a runner, so
-its first run is Levi's dispatch of the manual workflow. See
+its first run is a manual dispatch of the workflow. See
 [../ci.md](../ci.md).
 
-The local T03 evidence of 2026-09-08 records OvenMediaEngine `v0.21.0` with
+The local OvenMediaEngine validation evidence of 2026-09-08 records OvenMediaEngine `v0.21.0` with
 manifest-list digest
 `sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6`.
 On arm64, the healthy template started, a second root and an undefined entity
@@ -235,10 +235,10 @@ result, and it has not been repeated since.
 Private execution copies landed on 2026-09-11, so a deployment now runs out of a
 copy of its build rather than out of the immutable build directory. See "The
 tree a deployment runs in" in [stack-versions.md](stack-versions.md). What that
-leaves open here is T01's own remaining slice: the atomic begin and revert of a
+leaves open here is the engine config ownership work's own remaining slice: the atomic begin and revert of a
 config rollout, the creator receipt, and the release of operation holds after a
 proven watch. Those repository APIs exist and nothing calls them.
 
-T22 separately verifies authorised live Swarm delivery, and it waits for Levi's
-D05 numbers and a separate authorisation to spend. Unit tests do not substitute
+The live acceptance run separately verifies authorised live Swarm delivery, and it waits for
+its spending cap and duration and a separate authorisation to spend. Unit tests do not substitute
 for any of these execution results.

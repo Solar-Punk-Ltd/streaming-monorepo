@@ -11,8 +11,14 @@ import { PostgresBuildLedger } from '../../src/domain/versions/PostgresBuildLedg
 import { PostgresStackVersionRepository } from '../../src/domain/versions/PostgresStackVersionRepository.js';
 import { deployOwnerOf } from '../../src/domain/versions/buildLedger.js';
 
-const port = Number(process.env.T11_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't11_test', connectionTimeoutMillis: 5_000 };
+const port = Number(process.env.DEPLOYMENT_SETTINGS_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'deployment_settings_test',
+  connectionTimeoutMillis: 5_000,
+};
 
 describe(
   'engine settings instance fences in isolated PostgreSQL',
@@ -25,7 +31,7 @@ describe(
     let instanceId: string;
 
     beforeEach(async () => {
-      schema = `t11_${randomBytes(8).toString('hex')}`;
+      schema = `engine_settings_instance_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({

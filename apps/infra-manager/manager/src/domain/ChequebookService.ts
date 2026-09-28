@@ -147,9 +147,9 @@ export class ChequebookService {
    * and put it in the log. Nothing here refuses a start.
    *
    * ⛔ The name is older than the behaviour and the behaviour is the ruling.
-   * D02 of 2026-09-07 refused a start on a node that said nothing and on one
-   * that reported a chequebook under the floor. Decision D16 of 2026-09-17 took
-   * the silence back, "we should be able to start the uploader but maybe say its
+   * From 2026-09-07 the gate refused a start on a node that said nothing and on one
+   * that reported a chequebook under the floor. On 2026-09-17 the silence was taken
+   * back, "we should be able to start the uploader but maybe say its
    * node not available, try to reconnect or something", and the owner then took
    * the shortfall too: an operator who wants an uploader up on an unfunded node
    * gets it up. What that costs is uploads that stall, which the deployment page
@@ -175,7 +175,7 @@ export class ChequebookService {
     } catch (err) {
       logger.warn(
         `[ChequebookService] ${name}: the Bee node at ${nodeUrl} did not answer the chequebook check (${getErrorMessage(err)}). ` +
-          'The uploader is started anyway and waits for its node, on decision D16.',
+          'The uploader is started anyway and waits for its node.',
       );
       return;
     }

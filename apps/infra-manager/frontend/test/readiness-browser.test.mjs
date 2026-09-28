@@ -76,7 +76,7 @@ test('readiness and container diagnostics use current observations in the browse
     plugins: [
       react(),
       {
-        name: 't12-offline-fixture',
+        name: 'offline-fixture',
         configureServer(vite) {
           vite.middlewares.use((req, res, next) => {
             const path = req.url?.split('?')[0];
@@ -184,7 +184,7 @@ test('readiness and container diagnostics use current observations in the browse
   const port = server.httpServer.address().port;
   const origin = `http://127.0.0.1:${port}`;
   const browser = await launchChrome(t, origin);
-  const evidence = await evidenceDirectory('t12-browser-evidence-');
+  const evidence = await evidenceDirectory('browser-evidence-');
   const { call, evaluate } = browser;
   const body = () => evaluate(PAGE_TEXT);
   const hasUploader = () => evaluate(`!!${buttonWithText('Start uploader')}`);
