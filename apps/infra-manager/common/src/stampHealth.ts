@@ -14,6 +14,8 @@
  * (frontend), and the deploy gate.
  */
 
+import { STAMP_EXPIRY_WARNING_SECONDS } from '@streaming-monorepo/contracts';
+
 import type { ReadFailure } from './nodeReading.js';
 
 /**
@@ -199,9 +201,10 @@ export function nearlyFullConsequence(immutable: boolean | null | undefined, fil
  * is chosen against how the ladder is sized: the rungs' depths are deliberately
  * staggered (17/18/19/20) so the four expiries land hours apart rather than
  * together, and this needs to be wide enough to catch the first one and still be
- * showing when the last goes.
+ * showing when the last goes. The contracts package holds the number, so the
+ * admin warns about the catalogue's batch by the same one.
  */
-export const STAMP_EXPIRY_WARNING_SECONDS = 48 * 60 * 60;
+export { STAMP_EXPIRY_WARNING_SECONDS } from '@streaming-monorepo/contracts';
 
 /**
  * A batch that is still paying but will not be for long.

@@ -255,14 +255,38 @@ removed user's streams kept with `user_id` set to null. Migrations 007 and 008
 also applied cleanly by hand over a database at 006 seeded with users, a
 session and draft, published and live streams.
 
+## Stages from the manager (decided 2026-09-28, building on `feat/stages`)
+
+Spec: [stages.md](architecture/stages.md). Decided with the owner: the admin
+stops carrying one stage in its env file and learns every stage from the
+manager.
+
+- The manager pushes a record per stage into the admin over the admin link it
+  already holds. The admin never calls the manager, so the manager grows no
+  machine login, and the admin keeps what it was told in its own database.
+- One catalogue per brand, signed by the brand key. A stream's stage is picked
+  per stream and fixed at publish.
+- Every stage signs with its own key and presents its own token. The admin
+  answers a token only about its own stage's streams.
+- The catalogue has a batch of its own, immutable, on a dedicated catalogue
+  node, pinned by id. It never shares a batch a rung stamps segments with.
+- The admin reads stamps and chequebooks; spending stays in the manager.
+
+Built in nine phases, each a pull request into `feat/stages`; the list is in
+the spec. The feature branch goes to `main` once the owner has tried it whole.
+
 ## Checkpoint 3: manager integration
 
 - Manager deploys swarm-hls-stream from `main-v3`.
 - Derive ingest host and ports from a manager profile (`10001 + slot*10`
-  etc.) instead of env; provision and stop through the Manager API.
-- Stamp top-up and cheque balance read-through.
+  etc.) instead of env; provision and stop through the Manager API. Being
+  built as [stages](architecture/stages.md): the manager pushes each stage's
+  ingest details, and nothing is provisioned from the admin.
+- Stamp top-up and cheque balance read-through. The read-through is part of
+  the stages work; top-ups stay in the manager's console.
 - Decide how the admin layer authenticates to the manager once they are on
-  different hosts.
+  different hosts. Decided 2026-09-28: it does not, because the manager
+  pushes.
 
 ## Checkpoint 4: brand console
 
