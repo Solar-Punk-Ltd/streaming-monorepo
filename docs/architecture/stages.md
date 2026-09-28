@@ -98,8 +98,15 @@ manager's admin link already stores. An uploader's routes take that uploader's o
 to the admin by its sha256 on the stage record. While the stages move over, the shared token is
 still taken on an uploader's routes, as an unattributed caller; the last phase stops that.
 
+A `PUT` for a retired stage stores its record, and brings the stage back only when the record was
+observed after the retirement arrived, so a push already on its way when the deployment was
+deleted does not undo the `DELETE`. A cleared catalogue stamp is set again by the same rule. The
+`PUT`s answer `{ stored }`, and the `DELETE`s `{ retired }` and `{ cleared }`, false when there
+was nothing to retire or clear.
+
 The console gets `GET /api/stages`: every stage with its readiness and stamp readings and when
-the manager last confirmed them, without the passphrase or the token hash.
+the manager last confirmed them, without the passphrase or the token hash, and
+`GET /api/catalogue-stamp`: the catalogue batch without the Bee API address.
 
 In the database: a `stages` table (the record, the passphrase in a column no list selects, the
 token hash, the owner, when it was observed and received, when it was retired), a single-row
