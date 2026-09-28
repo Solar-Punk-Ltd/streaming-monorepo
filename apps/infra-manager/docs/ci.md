@@ -6,16 +6,18 @@ root `.github` only. The copies that sat under this folder's own `.github` never
 ran here and are gone. Neither workflow reaches a host, a Bee node or funds.
 **A green check says nothing about a host, a Bee node or funds.**
 
-## infra-manager.yml, on pull requests and pushes into main and main-v3
+## infra-manager.yml, on pull requests and pushes into main
 
 Four jobs, all on `ubuntu-latest`, the fourth, `images`, since 2026-09-25. Since 2026-09-07, turning the
 requirement on is a repository setting, made after the workflow has run
 once, with a bypass kept for the repository's administrators. Main-branch pushes still require the owner's explicit instruction.
 
-The workflow runs on a pull request into `main` or `main-v3`, the monorepo's
-integration branch, and on a push to either, whenever `apps/infra-manager`,
+The workflow runs on a pull request into `main`, the monorepo's integration
+branch, and on a push to it, whenever `apps/infra-manager`,
 `apps/hls-stream` or the workflow file changed. The stack counts because the
-manager's tests read it. Its steps run in `apps/infra-manager`.
+manager's tests read it. Its steps run in `apps/infra-manager`. The branch
+filters still name `main-v3` as well, the integration branch before `main`, and
+only until that branch is gone.
 
 **Where this stands.** This page was first written at `6dc33d1` on
 `feat/ai-remediation`, the head of pull request #40, which was merged.
