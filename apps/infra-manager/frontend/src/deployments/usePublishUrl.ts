@@ -6,7 +6,7 @@ import { useDeployments } from '../app/useDeploymentsStore';
 import { fetchSrtPassphrase } from '../data';
 import { useServerHost } from '../ServerHostContext';
 import type { Profile } from '../types';
-import { srtPublishUrl } from '../urls';
+import { srtPublishSettings, srtPublishUrl } from '../urls';
 import { publishPassphrase } from './publishPassphrase';
 import { engineOf } from './shape';
 
@@ -18,6 +18,11 @@ export interface PublishUrl {
   url: string | null;
   /** Whether this revision still needs its own passphrase before it is complete. */
   pending: boolean;
+  /**
+   * The passphrase for OBS's own passphrase field, when it has characters the
+   * URL cannot carry. Null whenever the URL carries it or there is none.
+   */
+  fieldPassphrase: string | null;
   /** Puts the whole URL on the clipboard, asking for the passphrase first. */
   copy: () => Promise<void>;
 }
@@ -108,8 +113,11 @@ export function usePublishUrl(profile: Profile, shown = false): PublishUrl {
   // answers, no URL or copy action may retain the earlier secret.
   const passphrase = revealed?.generation === generation ? revealed.passphrase : null;
 
+  const settings = srtPublishSettings(profile, serverHost, passphrase);
+
   return {
-    url: srtPublishUrl(profile, serverHost, passphrase),
+    url: settings?.server ?? null,
+    fieldPassphrase: settings?.passphraseRoute === 'authentication' ? (passphrase?.trim() ?? null) : null,
     pending: publishUrlNeedsReveal(profile) && revealed?.generation !== generation,
     copy: async () => {
       const answer = await readPassphrase();
