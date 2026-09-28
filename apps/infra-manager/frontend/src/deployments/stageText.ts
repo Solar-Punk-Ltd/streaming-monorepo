@@ -49,3 +49,14 @@ export function ingestHostToSave(draft: string): string | null {
   const value = draft.trim();
   return value === '' ? null : value;
 }
+
+/** The action that takes the uploader's web2 admin token out, on the stage card. */
+export const ROTATE_ADMIN_TOKEN_LABEL = "Rotate the uploader's admin token";
+
+/** Said under the action. */
+export const ROTATE_ADMIN_TOKEN_NOTE =
+  'The next deploy gives the uploader a new token of its own and registers it with the web2 admin before the uploader starts. An uploader still on the shared token moves to one of its own this way.';
+
+/** What the confirmation says before anything is taken out. */
+export const ROTATE_ADMIN_TOKEN_BODY =
+  "The uploader's current token is taken out, and the web2 admin stops taking it once the manager next pushes this stage. The running uploader then cannot report until the deployment is redeployed, which generates the new token. An uploader still on the shared token keeps being taken until then.";

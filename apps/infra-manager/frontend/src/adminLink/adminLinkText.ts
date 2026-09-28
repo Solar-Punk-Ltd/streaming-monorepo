@@ -17,6 +17,8 @@ const TEST_TEXT: Readonly<Record<AdminLinkTestOutcome, string>> = {
   'stored-token-elsewhere':
     'The stored token was saved for another address, so it was not sent here, and the token has to be typed again for this address.',
   'token-refused': 'The web2 admin answered but refused the token.',
+  'token-not-registered':
+    "The web2 admin does not know this deployment's own token yet, because the manager has not registered the stage with it: a deploy does that before the uploader starts, so deploy or wait for the next push.",
   'not-admin': 'Something answered at this address, but not the way a web2 admin does.',
   redirected: 'This address answered with a redirect, so give the address the web2 admin itself answers on.',
   unreachable: 'The web2 admin did not answer from where the manager runs.',
@@ -37,7 +39,8 @@ const QUIET: readonly AdminLinkTestOutcome[] = ['linked', 'token-accepted'];
 export function adminLinkTestSeverity(outcome: AdminLinkTestOutcome): AdminLinkTestSeverity {
   if (QUIET.includes(outcome)) return 'success';
   if (outcome === 'not-linked') return 'info';
-  if (outcome === 'owner-unconfirmed') return 'warning';
+  // A token not registered yet is one a deploy registers, not one the admin turned away.
+  if (outcome === 'owner-unconfirmed' || outcome === 'token-not-registered') return 'warning';
   return 'error';
 }
 
@@ -70,16 +73,19 @@ export const ADMIN_LINK_MANAGER_READING = "Reading the manager's link.";
 export const ADMIN_LINK_UNREAD =
   "This version's settings could not be read, so the deployment starts with the manager's link where its version takes one, and otherwise keeps what its version sets.";
 
-/** What the choice of the manager's stored token says, which depends on whether it has one. */
-export function storedTokenDetail(stored: boolean): string {
-  return stored
-    ? 'The manager copies it into this deployment when it is created. It never reaches this page.'
-    : 'The manager stores no token. Save one on Manager settings, or type one here.';
+/** The wizard's choice of a token of the deployment's own. */
+export const OWN_TOKEN_TITLE = 'A token of its own';
+
+/** What that choice says, which depends on whether the manager's link can register one. */
+export function ownTokenDetail(available: boolean): string {
+  return available
+    ? "This deployment gets a token of its own: the manager generates it at the first deploy and registers it with the web2 admin before the uploader starts. It never reaches this page, and Test connection uses the manager's stored token."
+    : 'The manager has no web2 admin link with a token to register one with. Save the link on Manager settings, or type a token here.';
 }
 
-/** Said in the wizard's group when the address leaves the origin the manager's stored token was saved for. */
-export const STORED_TOKEN_ELSEWHERE =
-  "The manager's stored token was saved for another address, and the manager sends it only there. Type the token for this address.";
+/** Said in the wizard's group when the address leaves the origin of the manager's link while a token of its own is chosen. */
+export const OWN_TOKEN_ELSEWHERE =
+  'A token of its own is registered only with the web2 admin on Manager settings, and this address is another one. Type the token for this address.';
 
 /** The button beside that sentence, which moves to a token typed here. */
 export const TYPE_TOKEN_HERE = 'Type a token for this address';

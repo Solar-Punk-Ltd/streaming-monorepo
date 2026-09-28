@@ -5,19 +5,28 @@ import { getErrorMessage, INGEST_HOST_HELP, stageRegistrationLine } from '@strea
 
 import { useToast } from '../app/ToastProvider';
 import { useDeployments } from '../app/useDeploymentsStore';
+import { ConfirmDialog, type ConfirmRequest } from '../components/ConfirmDialog';
 import { SectionCard } from '../components/SectionCard';
-import { updateIngestHost } from '../data';
+import { rotateAdminToken, updateIngestHost } from '../data';
 import { FormField } from '../forms/FormField';
 import type { Profile } from '../types';
-import { ingestHostDraftProblem, ingestHostToSave, ingestHostView } from './stageText';
+import {
+  ingestHostDraftProblem,
+  ingestHostToSave,
+  ingestHostView,
+  ROTATE_ADMIN_TOKEN_BODY,
+  ROTATE_ADMIN_TOKEN_LABEL,
+  ROTATE_ADMIN_TOKEN_NOTE,
+} from './stageText';
 import { useSecondsTicker, useStageRegistration } from './useStageRegistration';
 
 const FIELD_ID = 'stage-ingest-host';
 
 /**
  * The deployment as a stage of the web2 admin: the public address encoders
- * dial, edited in place and saved on its own, since no container reads it, and
- * how the manager's last push of the stage record went.
+ * dial, edited in place and saved on its own, since no container reads it, how
+ * the manager's last push of the stage record went, and Rotate the uploader's
+ * admin token, which the next deploy replaces with a new one of its own.
  */
 export function StageCard({ profile, serverHost }: { profile: Profile; serverHost: string }) {
   const { mergeProfiles } = useDeployments();
@@ -25,6 +34,9 @@ export function StageCard({ profile, serverHost }: { profile: Profile; serverHos
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+  const [rotating, setRotating] = useState(false);
+  const [rotateError, setRotateError] = useState<string | null>(null);
   const registration = useStageRegistration(profile.name);
   const now = useSecondsTicker(registration !== undefined && registration !== null);
 
@@ -50,6 +62,27 @@ export function StageCard({ profile, serverHost }: { profile: Profile; serverHos
       setSaving(false);
     }
   };
+
+  const rotate = async () => {
+    setRotating(true);
+    setRotateError(null);
+    try {
+      toast((await rotateAdminToken(profile.name)).message);
+    } catch (caught) {
+      setRotateError(getErrorMessage(caught, "failed to rotate the uploader's admin token"));
+    } finally {
+      setRotating(false);
+    }
+  };
+
+  const askRotate = () =>
+    setConfirm({
+      title: ROTATE_ADMIN_TOKEN_LABEL,
+      body: ROTATE_ADMIN_TOKEN_BODY,
+      confirmLabel: 'Rotate',
+      danger: true,
+      onConfirm: () => void rotate(),
+    });
 
   return (
     <SectionCard
@@ -117,7 +150,26 @@ export function StageCard({ profile, serverHost }: { profile: Profile; serverHos
             ? 'Web2 admin registration: not read yet'
             : stageRegistrationLine(registration, now)}
         </Typography>
+        <Stack spacing={0.5}>
+          <Button
+            size="small"
+            sx={{ alignSelf: 'flex-start' }}
+            onClick={askRotate}
+            disabled={rotating}
+            data-testid="rotate-admin-token"
+          >
+            {ROTATE_ADMIN_TOKEN_LABEL}
+          </Button>
+          <Typography
+            variant="caption"
+            sx={{ color: rotateError ? 'error.main' : 'text.secondary', overflowWrap: 'anywhere' }}
+            role={rotateError ? 'alert' : undefined}
+          >
+            {rotateError ?? ROTATE_ADMIN_TOKEN_NOTE}
+          </Typography>
+        </Stack>
       </Stack>
+      <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
     </SectionCard>
   );
 }

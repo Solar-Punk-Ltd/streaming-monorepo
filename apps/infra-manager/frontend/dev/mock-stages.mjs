@@ -9,7 +9,12 @@
  * registered when it last changed. A stage whose name carries `offline` reads
  * as `unreachable`, so the page's line can be seen in a failing state too.
  */
-import { ingestHostProblem, isStageKind, resolvedIngestHost } from '@streaming-infra-manager/common';
+import {
+  ADMIN_TOKEN_ROTATED_MESSAGE,
+  ingestHostProblem,
+  isStageKind,
+  resolvedIngestHost,
+} from '@streaming-infra-manager/common';
 
 const INTERVAL_MS = 30_000;
 
@@ -81,6 +86,33 @@ export function stageRoutes({ readBody, withProfile, profiles, changed, publicHo
         profile.updated_at = new Date().toISOString();
         changed(profile);
         return send(res, 200, profile);
+      }),
+    ],
+    [
+      // Rotate the uploader's admin token. A stage whose name carries `standalone` has no link, and is refused the
+      // way the manager refuses one whose next deploy would generate no token of its own.
+      'POST',
+      /^\/profiles\/([^/]+)\/admin-token\/rotate$/,
+      withProfile(async (_req, res, profile) => {
+        if (!isStageKind(profile.kind)) {
+          return send(res, 400, {
+            error: 'validation_error',
+            errors: ['This deployment runs no stream uploader, so it has no admin token to rotate.'],
+            name: profile.name,
+          });
+        }
+        if (profile.name.includes('standalone')) {
+          return send(res, 400, {
+            error: 'validation_error',
+            errors: [
+              "The uploader is given another address than the manager's web2 admin link, so its next deploy would generate no ADMIN_API_TOKEN of its own. Change ADMIN_API_TOKEN on the Stack settings card instead.",
+            ],
+            name: profile.name,
+          });
+        }
+        profile.updated_at = new Date().toISOString();
+        changed(profile);
+        return send(res, 200, { message: ADMIN_TOKEN_ROTATED_MESSAGE }, { 'cache-control': 'no-store' });
       }),
     ],
     [

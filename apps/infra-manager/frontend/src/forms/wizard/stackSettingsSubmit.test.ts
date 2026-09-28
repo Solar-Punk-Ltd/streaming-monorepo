@@ -227,14 +227,14 @@ describe('the web2 admin link on the wizard create body', () => {
     return sent;
   }
 
-  it("carries the address among the stack settings and asks for the manager's stored token, which the page never holds", async (t) => {
+  it('carries the address among the stack settings and no token, since the first deploy generates one of its own', async (t) => {
     const { body } = await sentWith(t, stateFor('stream', { stackSettings: { LOG_LEVEL: 'debug' } }), linkedContext());
 
     assert.deepEqual(body.stack_settings, [
       { key: 'LOG_LEVEL', value: 'debug' },
       { key: 'ADMIN_API_URL', value: ADMIN_URL },
     ]);
-    assert.equal(body.use_manager_admin_token, true);
+    assert.equal('use_manager_admin_token' in body, false);
   });
 
   it('carries a token typed in the group, and no token typed under Advanced settings, which the group takes over', async (t) => {
@@ -261,7 +261,7 @@ describe('the web2 admin link on the wizard create body', () => {
 
     assert.equal(path, '/groups');
     assert.deepEqual(body.stack_settings, [{ key: 'ADMIN_API_URL', value: ADMIN_URL }]);
-    assert.equal(body.use_manager_admin_token, true);
+    assert.equal('use_manager_admin_token' in body, false);
   });
 
   it('carries nothing of the link for a deployment that runs no uploader', async (t) => {

@@ -12,7 +12,8 @@ import {
   ADMIN_LINK_TEST_REACH,
   adminLinkTestSeverity,
   adminLinkTestText,
-  storedTokenDetail,
+  OWN_TOKEN_TITLE,
+  ownTokenDetail,
 } from './adminLinkText';
 
 describe('the sentence for each Test connection outcome', () => {
@@ -46,6 +47,7 @@ describe('the sentence for each Test connection outcome', () => {
     assert.equal(adminLinkTestSeverity('linked'), 'success');
     assert.equal(adminLinkTestSeverity('token-accepted'), 'success');
     assert.equal(adminLinkTestSeverity('owner-unconfirmed'), 'warning');
+    assert.equal(adminLinkTestSeverity('token-not-registered'), 'warning');
     assert.equal(adminLinkTestSeverity('not-linked'), 'info');
     for (const outcome of [
       'owner-mismatch',
@@ -61,18 +63,19 @@ describe('the sentence for each Test connection outcome', () => {
     }
   });
 
-  it("says what the wizard's switch does in each position, and where the stored token comes from", () => {
+  it("says what the wizard's switch does in each position, and that the deployment gets a token of its own", () => {
     assert.equal(
       ADMIN_LINK_OFF_NOTE,
       'Off, this deployment stores an empty ADMIN_API_URL, so its uploader runs standalone even when its version turns admin mode on.',
     );
+    assert.equal(OWN_TOKEN_TITLE, 'A token of its own');
     assert.equal(
-      storedTokenDetail(true),
-      'The manager copies it into this deployment when it is created. It never reaches this page.',
+      ownTokenDetail(true),
+      "This deployment gets a token of its own: the manager generates it at the first deploy and registers it with the web2 admin before the uploader starts. It never reaches this page, and Test connection uses the manager's stored token.",
     );
     assert.equal(
-      storedTokenDetail(false),
-      'The manager stores no token. Save one on Manager settings, or type one here.',
+      ownTokenDetail(false),
+      'The manager has no web2 admin link with a token to register one with. Save the link on Manager settings, or type a token here.',
     );
   });
 
