@@ -1,6 +1,6 @@
 import { Alert, Stack, Typography } from '@mui/material';
 
-import { OME_SERVICE } from '@streaming-infra-manager/common';
+import { OBS_SRT_PASSPHRASE_FIELD_HELP, OME_SERVICE } from '@streaming-infra-manager/common';
 
 import { CopyBox } from '../components/CopyBox';
 import { SectionCard } from '../components/SectionCard';
@@ -15,17 +15,19 @@ import { deploymentProgressText } from './deploymentPhase';
  * SRT_PASSPHRASE publishes in the clear, and saying "encrypted" there would be
  * the one sentence on this page that is not true.
  */
-function passphraseNote(profile: Profile, hostPassphrase: string | null): string {
+function passphraseNote(profile: Profile, hostPassphrase: string | null, inTheUrl: boolean): string {
   if (engineOf(profile) === OME_SERVICE) {
     return 'OvenMediaEngine ingest. Its SRT listener takes no passphrase.';
   }
+  const where = inTheUrl ? 'already in the URL' : "for OBS's own passphrase field below";
   if (profile.has_srt_passphrase) {
-    return "Encrypted with this deployment's own passphrase, already in the URL.";
+    return `Encrypted with this deployment's own passphrase, ${where}.`;
   }
   return hostPassphrase
-    ? 'Encrypted with the host-wide passphrase, already in the URL. Set a passphrase of its own under Edit.'
+    ? `Encrypted with the host-wide passphrase, ${where}. Set a passphrase of its own under Edit.`
     : 'This host has no shared passphrase, so the ingest is unencrypted. Set one for this deployment under Edit.';
 }
+
 
 export function PublishCard({
   profile,
@@ -33,6 +35,7 @@ export function PublishCard({
   hostPassphrase,
   ready,
   passphrasePending,
+  fieldPassphrase = null,
 }: {
   profile: Profile;
   url: string;
@@ -41,6 +44,8 @@ export function PublishCard({
   ready: boolean;
   /** Whether the URL still lacks this profile revision's own passphrase. */
   passphrasePending: boolean;
+  /** The passphrase the URL cannot carry, for OBS's own field. */
+  fieldPassphrase?: string | null;
 }) {
   return (
     <SectionCard title="Publish" sub="OBS, FFmpeg or any SRT sender">
@@ -57,13 +62,21 @@ export function PublishCard({
             Reading this deployment&apos;s passphrase. Copy is available when the complete URL is ready.
           </Typography>
         )}
+        {fieldPassphrase && (
+          <>
+            <CopyBox value={fieldPassphrase} />
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              {OBS_SRT_PASSPHRASE_FIELD_HELP}
+            </Typography>
+          </>
+        )}
         <Typography
           variant="caption"
           sx={{
             color: 'text.secondary',
           }}
         >
-          {!passphrasePending && <>{passphraseNote(profile, hostPassphrase)} </>}
+          {!passphrasePending && <>{passphraseNote(profile, hostPassphrase, !fieldPassphrase)} </>}
           Change <code>live/stream</code> to your own app and stream name if you use one.
         </Typography>
       </Stack>

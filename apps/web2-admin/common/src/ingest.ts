@@ -53,6 +53,7 @@ export {
   buildRtmpServer,
   buildRtmpStreamKey,
   buildSrtPublishUrl,
+  OBS_SRT_PASSPHRASE_FIELD_HELP,
   type ObsSrtServer,
   type SrtPassphraseRoute,
 } from '@streaming-monorepo/contracts';

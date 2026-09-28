@@ -118,7 +118,7 @@ cross-origin page to add.
 | Method | Path                              | Body                             | Answer                                                                                                                 |
 | ------ | --------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | POST   | `/auth/login`                     | `{ username, password }`         | 204 and the cookie, 401 wrong pair, 429 locked, 409 when no user exists                                                |
-| POST   | `/auth/logout`                    |                                  | 204, cookie cleared, session row deleted                                                                               |
+| POST   | `/auth/logout`                    |                                  | 204, cookie cleared, session row deleted. Also 204 without a valid session, so a stale cookie is cleared               |
 | GET    | `/auth/session`                   |                                  | `{ id, username, isAdmin, expiresAt }`, or 401 with `not_signed_in` or `no_users`                                      |
 | POST   | `/auth/password`                  | `{ current, next }`              | 204, every other session of yours revoked                                                                              |
 | GET    | `/auth/users`                     |                                  | `[{ id, username, isAdmin, createdAt, lastLoginAt, sessions }]`                                                        |
