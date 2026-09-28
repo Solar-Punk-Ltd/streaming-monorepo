@@ -5,6 +5,11 @@ serves every stage the manager runs for the brand. It was decided with the owner
 after a second opinion that read the code of all three apps. The decisions are at the top; the
 rest says what each part does and in which order it is built.
 
+**Status, 2026-09-29.** All nine phases are built on the feature branch `feat/stages`, pull
+requests #56 to #63 and the phase 9 one listed in [the roadmap](../ROADMAP.md). Each part below
+says how it was built. Nothing has reached a host, and the move of the catalogue to another batch
+stays off until the owner has tried it on a real node.
+
 ## The problem
 
 The admin carries one stage in its env file: `INGEST_HOST`, the SRT and RTMP ports and
@@ -57,20 +62,20 @@ that receives them.
 
 **A stage record**, pushed by the manager for one deployment:
 
-| Field                                    | What it is                                                                                                                                   |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `schemaVersion`                          | 1                                                                                                                                            |
-| `stageId`                                | the deployment's `instance_id`                                                                                                               |
-| `managerId`                              | the manager's own generated id, so two managers linked to one admin cannot collide                                                           |
-| `name`, `kind`, `engine`, `stackVersion` | for display; `kind` is `abr-uploader` or `streamer`, `engine` `srs` or `ome`                                                                 |
-| `status`                                 | the deployment's status as the manager reports it                                                                                            |
-| `observedAt`                             | when the manager read what the record says; an older record never replaces a newer one                                                       |
-| `ingest`                                 | `host` (the public address encoders dial), `srtPort`, `rtmpPort`, `rtmpPublic`, `srtPassphrase` (or null)                                    |
-| `owner`                                  | the address of the stage's `STREAM_KEY`, never the key                                                                                       |
-| `rungs[]`                                | per rung: its name, its stamp (`batchId`, `state`, `ttlSeconds`, `fillRatio`, `immutable`) and its chequebook's health; no node address      |
-| `uploader`                               | the uploader's health reading, or null when it could not be read                                                                             |
-| `readiness`                              | the manager's verdict (`ready`, `warning`, `blocked`, `unknown`) with its reasons, worked out in the manager and shown as it is              |
-| `adminToken`                             | the sha256 of the token the deployment's uploader presents to the admin, and whether it is the deployment's `own` or the link's `shared` one |
+| Field                                    | What it is                                                                                                                              |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `schemaVersion`                          | 1                                                                                                                                       |
+| `stageId`                                | the deployment's `instance_id`                                                                                                          |
+| `managerId`                              | the manager's own generated id, so two managers linked to one admin cannot collide                                                      |
+| `name`, `kind`, `engine`, `stackVersion` | for display; `kind` is `abr-uploader` or `streamer`, `engine` `srs` or `ome`                                                            |
+| `status`                                 | the deployment's status as the manager reports it                                                                                       |
+| `observedAt`                             | when the manager read what the record says; an older record never replaces a newer one                                                  |
+| `ingest`                                 | `host` (the public address encoders dial), `srtPort`, `rtmpPort`, `rtmpPublic`, `srtPassphrase` (or null)                               |
+| `owner`                                  | the address of the stage's `STREAM_KEY`, never the key                                                                                  |
+| `rungs[]`                                | per rung: its name, its stamp (`batchId`, `state`, `ttlSeconds`, `fillRatio`, `immutable`) and its chequebook's health; no node address |
+| `uploader`                               | the uploader's health reading, or null when it could not be read                                                                        |
+| `readiness`                              | the manager's verdict (`ready`, `warning`, `blocked`, `unknown`) with its reasons, worked out in the manager and shown as it is         |
+| `adminToken`                             | the sha256 of the token the deployment's uploader presents to the admin, and where it came from: `own` or `shared`, below               |
 
 **A catalogue stamp record**, pushed by the manager for the brand: the catalogue node's name, its
 Bee API address as the control host reaches it, the pinned `batchId`, whether the batch is
@@ -92,33 +97,37 @@ bearer token and no session:
 | `PUT /api/internal/catalogue-stamp`    | the manager  | stores the catalogue stamp record                                                                                                                               |
 | `DELETE /api/internal/catalogue-stamp` | the manager  | clears it as of the `observedAt` its body carries; the admin then refuses to publish, with a sentence saying why                                                |
 | `GET /api/internal/stages/self`        | an uploader  | answers the stage its token belongs to, and the owner that stage signs as                                                                                       |
+| `GET /api/internal/registrar`          | the manager  | answers 204 and does nothing else: the manager's Test connection proves its stored token with it                                                                |
 
 The manager's routes take the **registrar token**: the admin's `INTERNAL_API_TOKEN`, which the
 manager's admin link already stores. An uploader's routes take that uploader's own token, known
-to the admin by its sha256 on the stage record. While the stages move over, the shared token is
-still taken on an uploader's routes, as an unattributed caller; the last phase stops that.
+to the admin by its sha256 on the stage record, and nothing else.
 
-As built in phase 5:
+As built in phases 5 and 9:
 
 - Only a record whose `adminToken.kind` is `own` attributes a call, and the manager says `own` only
   for the token it generated for that deployment. Any other token, one copied from the link by an
-  older manager, typed, or set by the version's env files, is `shared`. A shared token is taken
-  only when it equals the admin's current `INTERNAL_API_TOKEN`, compared itself, so an old copy is
-  refused once that changes, whatever a record still names, and several old copies never meet on
-  one hash as a stage's token.
+  older manager, typed, or set by the version's env files, is `shared`.
+- The registrar token is the manager's alone. From phase 5 to phase 8 an uploader's routes still
+  took it, as an unattributed caller answered about every stream; phase 9 stopped that. It is now
+  refused on the by-ingest lookup, the state and rendition reports and `GET /stages/self` with the
+  same `401 unauthenticated` as any other token, and nothing is written for it. A stage whose
+  record says `shared` is refused the same way, whatever token it presents, and the one way back is
+  **Rotate the uploader's admin token** in the manager, whose next deploy generates one of its own.
 - The admin asks its database only for a bearer of 64 hex characters, the shape the manager
-  generates. Any other token that is not the shared one is refused without a query.
+  generates. Any other token is refused without a query.
 - A retired stage's token is refused. A token that is the own token of more than one active stage
   is refused as well, since it cannot say which stage calls, and the admin logs a warning naming
-  the stages.
+  the stages. Neither a token nor its hash is logged.
 - A stage's token is answered only about its stage's streams. A stream on another stage, or with no
-  stage, is the same 404 as a stream that does not exist, and nothing is written for it.
-- An unattributed call is logged at info on the first one after boot, then at most once an hour
-  with the number of calls since the last line. Neither token nor its hash is logged.
-- `GET /api/internal/stages/self` on the shared token answers the 404 an unknown path gets, which
-  is what an admin without the route answers.
-- The console's Stages page says per stage whether its uploader is on its own token, still on the
-  shared one, or on none the manager pushed.
+  stage, is the same 404 as a stream that does not exist, and nothing is written for it. A stream
+  with no stage, a row older than stages, is reached by no uploader: it takes a broadcast again
+  once it is unpublished, given a stage and published.
+- `GET /api/internal/registrar` answers 204 on the registrar token and 401 on any other. A path no
+  route names is 404 on either token and 401 without one.
+- The console's Stages page says per stage whether its uploader is on its own token, on a `shared`
+  one, which is refused until the token is rotated in the manager and the stage redeployed, or on
+  none the manager pushed.
 
 **Every moment the admin orders by is the manager's.** A record carries `observedAt`, and each
 `DELETE` carries a body `{ observedAt }` (`stageRetireRequestSchema`,
@@ -249,9 +258,12 @@ As built (phase 7), in `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
 
 With one key per stage, the uploader's boot check asks the admin `GET /api/internal/stages/self`
 with its own token and compares its signer with the owner the admin names. An admin that answers
-404 there, or a caller still on the shared token, falls back to today's comparison with the
-admin's public `/api/config`. The per-declaration owner check is unchanged: the declaration names
-the stage's owner, and a stream of another stage is refused at the gate.
+404 there, one older than stages (or, from phase 5 to 8, a caller on the shared token), falls back
+to the comparison with the admin's public `/api/config`. Since phase 9 an uploader on any token but
+its own is answered 401 there, which it logs as an owner it could not confirm, and every lookup and
+report it makes is refused the same way until its token is rotated. The uploader itself did not
+change in phase 9. The per-declaration owner check is unchanged: the declaration names the stage's
+owner, and a stream of another stage is refused at the gate.
 
 ## A key per stage, as built in phase 6
 
@@ -275,10 +287,9 @@ the stage's owner, and a stream of another stage is refused at the gate.
   and is not followed by the config, whose owner is not a stage's.
 - **The manager.** Test connection on a deployment asks `stages/self` with the deployment's token
   wherever there is a stream address to compare, and asks `/api/config` only on its 404. The
-  wizard's test compares the chosen key's address with a typed token, which belongs to no stage,
-  as the uploader will at boot, so a shared token and a stage's own key read as a mismatch there
-  too; with a token of its own it compares no owner, since the admin learns the stage's address
-  at the first deploy. Nothing tells an operator to give a stage the admin's key.
+  wizard's test with a token of its own compares no owner, since the admin learns the stage's
+  address at the first deploy. Nothing tells an operator to give a stage the admin's key. (Phase 9
+  changed the rest of the wizard's test, below.)
 - **A rotated key.** A reconcile counts as ours, besides the brand key and every stage's owner,
   the owner of every row on the catalogue, so a stream published under a key its stage signed
   with before the manager rotated it is still rebuilt, or added again, under that key. A publish
@@ -291,6 +302,36 @@ the stage's owner, and a stream of another stage is refused at the gate.
   before the uploader is redeployed with it. A draft published in that window names the new owner,
   while the running uploader still signs with the old key, so the gate refuses its broadcast until
   the uploader is redeployed. Redeploy the stage right after rotating its key.
+
+## The shared token stops, as built in phase 9
+
+- **The admin.** The uploader's door takes a stage's own token alone, as the admin's side above
+  says, and `GET /api/internal/registrar` is the manager's proof of its token.
+  `REGISTRAR_CHECK_PATH` in `packages/contracts/src/stage.ts` names it.
+- **Test connection on Manager settings**, the link card, proves the typed or stored token on the
+  registrar check: 204 is `token-accepted` and the admin's own 401 `token-refused`. It no longer
+  asks the uploader's lookup, which refuses that token. An admin older than the check answers its
+  own 404 there only past its door, so that 404 is followed by the lookup, which such an admin
+  still takes the token on. The origin rules are unchanged: the stored token goes only to the
+  origin it was stored for.
+- **The wizard's Web2 admin group.** A token of its own is tested as the manager's stored token,
+  on the registrar check. A token typed here is an uploader's (`tokenFor: 'uploader'` on the test
+  request), tested on the lookup and `stages/self` as the uploader asks, and it is held, with a
+  sentence and a button back to a token of its own, at the address of the manager's link while
+  the link stores a token: that admin takes no typed token from an uploader.
+- **Test connection on a deployment** keeps presenting the deployment's own token on the lookup
+  and `stages/self`. A refusal at the link's address of a token the manager did not generate for
+  the deployment is `token-not-own`: rotate the uploader's admin token and redeploy.
+- **Leftovers taken out.** `use_manager_admin_token` is gone from `POST /profiles` and
+  `POST /groups`; a create drops it as any key it does not name. The rotation's sentences and the
+  pages no longer say a shared token keeps being taken.
+
+**Rolling out phase 9.** The admin before the manager, as for phase 5. Before the admin is
+upgraded, the Stages page should say "Its own token" for every stage: a stage on a `shared` token
+reports nothing once the upgraded admin runs, until it is rotated and redeployed. A phase 8 manager
+in front of an upgraded admin keeps pushing, since the manager's routes take the same token, but
+its Manager settings Test connection asks the lookup and reads `token-refused` until the manager
+is upgraded too.
 
 ## Moving the catalogue to another batch
 
@@ -446,7 +487,10 @@ phase 5, each uploader moves to a token of its own at its next deploy, or when i
 ## Limits
 
 - One admin link per manager: stages whose `ADMIN_API_URL` is on another origin are not pushed,
-  and the deployment page says so. A second brand is a second link, not built here.
+  and the deployment page says so. A second brand is a second link, not built here. Since phase 9
+  such a stage can report only to an admin older than phase 9, which still takes its
+  `INTERNAL_API_TOKEN` from an uploader: an admin of this version takes a stage's own token alone,
+  and learns it only from the manager linked to it.
 - The admin reaches the catalogue node's Bee API, which asks for no password, so the Bee host's
   firewall admits the control host. The dedicated node keeps that door to one node.
 - Brand separation inside one admin, and top-ups from the admin, stay open decisions.
