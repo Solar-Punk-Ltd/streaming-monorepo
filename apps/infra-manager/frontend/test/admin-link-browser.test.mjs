@@ -336,13 +336,17 @@ test(
         `[...(${group}).querySelectorAll('button')].find(button => button.textContent.trim() === 'Test connection')`,
         'the group Test connection button',
       );
+      // A token of its own does not exist before the first deploy, so the test presents the manager's stored
+      // token, which belongs to no stage, and compares no owner: the admin learns the stage's at that deploy.
       await waitFor(
         groupText,
-        (text) =>
-          text.includes(
-            "Linked: the web2 admin took the token and signs its catalog with this deployment's stream address.",
-          ),
-        'the linked sentence',
+        (text) => text.includes(adminLinkTestText('token-accepted')),
+        'the token-accepted sentence',
+      );
+      assert.equal(
+        (await groupText()).includes(adminLinkTestText('linked')),
+        false,
+        'a token of its own read as linked before its stage has an owner at the admin',
       );
       assert.equal(await dialogFits(), true, 'the dialog scrolls sideways');
       await evaluate(`(${group}).scrollIntoView({ block: 'start' })`);
