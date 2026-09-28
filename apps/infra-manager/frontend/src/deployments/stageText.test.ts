@@ -47,6 +47,11 @@ describe('the public ingest address on the card', () => {
     assert.match(local.source, /resolved/);
   });
 
+  it('says a loopback address is not pushed', () => {
+    const view = ingestHostView(profile({ network_host: 'localhost' }), 'localhost');
+    assert.match(view.source, /does not push the stage/);
+  });
+
   it('says what the field is for in the one sentence the brief gives it', () => {
     assert.equal(INGEST_HOST_HELP, 'The address encoders dial. The address ssh uses can be a private one.');
   });
@@ -62,7 +67,12 @@ describe('what the field takes', () => {
   });
 
   it('refuses a scheme, a port and a path', () => {
-    for (const draft of ['srt://ingest.example.org', 'ingest.example.org:9000', 'ingest.example.org/live']) {
+    for (const draft of [
+      'srt://ingest.example.org',
+      'ingest.example.org:9000',
+      'ingest.example.org/live',
+      'localhost',
+    ]) {
       assert.notEqual(ingestHostDraftProblem(draft), null, draft);
     }
   });

@@ -73,10 +73,12 @@ describe('PATCH /profiles/:name/ingest-host', () => {
         'ingest.example.org:9000',
         'ingest.example.org/live',
         '2001:db8::1',
+        'localhost',
+        '127.0.0.1',
       ]) {
         const res = await call(app, 'PATCH', '/profiles/stream1/ingest-host', { ingest_host: bad });
         assert.equal(res.status, 400, bad);
-        assert.doesNotMatch(JSON.stringify(res.body), /ingest\.example\.org|2001:db8/);
+        assert.doesNotMatch(JSON.stringify(res.body), /ingest\.example\.org|2001:db8|127\.0\.0\.1/);
       }
       assert.equal(harness.profiles.rows.get('stream1')?.ingest_host, null);
     }));

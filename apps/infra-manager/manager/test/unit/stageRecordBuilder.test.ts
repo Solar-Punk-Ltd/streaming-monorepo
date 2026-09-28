@@ -12,6 +12,7 @@ import { describe, it } from 'node:test';
 
 import {
   addressOfStreamKey,
+  NO_PUBLIC_INGEST_HOST,
   chequebookHealthFrom,
   chequebookHealthPayload,
   type ChequebookSummary,
@@ -140,10 +141,10 @@ function readings(options: FakeReadingsOptions = {}): StageReadings & { asked: s
   };
 }
 
-function builder(options: FakeReadingsOptions = {}) {
+function builder(options: FakeReadingsOptions = {}, publicHost = 'manager.example.org') {
   return new StageRecordBuilder(readings(options), {
     managerId: MANAGER_ID,
-    publicHost: 'manager.example.org',
+    publicHost,
     now: () => OBSERVED,
   });
 }
@@ -380,6 +381,22 @@ describe('what a record never carries', () => {
 });
 
 describe('when there is no record to build', () => {
+  it('never gives a loopback address: no own address, a local deployment and no PUBLIC_HOST is no record', async () => {
+    for (const [profile, publicHost] of [
+      [stage({ network_host: 'localhost' }), ''],
+      [stage({ network_host: '127.0.0.1' }), ''],
+      [stage({ network_host: '' }), 'localhost'],
+      [stage({ network_host: 'native' }), '127.0.0.1'],
+      [stage({ ingest_host: 'localhost' }), 'manager.example.org'],
+      [stage({ network_host: '[::1]' }), 'manager.example.org'],
+    ] as const) {
+      const result = await builder({}, publicHost).build(profile, { token: null });
+      assert.equal(result.ok, false, `${profile.ingest_host ?? profile.network_host} / ${publicHost}`);
+      assert.equal(result.ok ? '' : result.problem, NO_PUBLIC_INGEST_HOST);
+    }
+    assert.match(NO_PUBLIC_INGEST_HOST, /set the deployment's public ingest address or PUBLIC_HOST/);
+  });
+
   it('is no stage for a kind that runs no uploader', async () => {
     const result = await builder().build(stage({ kind: 'viewer' }), { token: null });
     assert.equal(result.ok, false);

@@ -378,7 +378,8 @@ async function main(): Promise<void> {
       chequebookSummary: (name) => chequebookService.summary(name),
       uploaderHealth: (name) => uploaderHealthService.read(name),
     },
-    { managerId, publicHost: config.publicHost || 'localhost' },
+    // Never the localhost fallback the component links use: a stage with no public address is not pushed.
+    { managerId, publicHost: config.publicHost },
   );
   stagePublisher = new StagePublisher({
     profiles: {

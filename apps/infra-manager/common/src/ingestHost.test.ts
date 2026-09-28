@@ -9,7 +9,7 @@ import { describe, it } from 'node:test';
 
 import { stageIngestSchema } from '@streaming-monorepo/contracts';
 
-import { ingestHostProblem, isStageKind, resolvedIngestHost } from './ingestHost.js';
+import { ingestHostProblem, isLoopbackIngestHost, isStageKind, resolvedIngestHost } from './ingestHost.js';
 
 describe('the ingest address field', () => {
   it('takes a host name, an IPv4 address and a bracketed IPv6 one', () => {
@@ -34,7 +34,22 @@ describe('the ingest address field', () => {
     }
   });
 
-  it('takes exactly what the stage record takes, so a saved address is one the record carries', () => {
+  it('refuses an address that reaches this host alone', () => {
+    for (const host of [
+      'localhost',
+      'LOCALHOST',
+      'stage.localhost',
+      '127.0.0.1',
+      '127.1.2.3',
+      '0.0.0.0',
+      '[::1]',
+      '[::]',
+    ]) {
+      assert.match(ingestHostProblem(host) ?? '', /reaches this host alone/, host);
+    }
+  });
+
+  it('takes what the stage record takes, loopback aside, so a saved address is one the record carries', () => {
     for (const host of ['ingest.example.org', '192.0.2.10', '[2001:db8::1]', 'ingest.example.org:9000', 'x/y']) {
       assert.equal(ingestHostProblem(host) === null, stageIngestSchema.shape.host.safeParse(host).success, host);
     }
@@ -77,5 +92,29 @@ describe('which deployments are stages', () => {
     assert.equal(isStageKind('streamer'), true);
     assert.equal(isStageKind('viewer'), false);
     assert.equal(isStageKind('custom'), false);
+  });
+});
+
+describe('a loopback address', () => {
+  it('is one that reaches the dialling machine alone, or none', () => {
+    for (const host of [
+      'localhost',
+      'a.localhost',
+      '127.0.0.1',
+      '127.255.0.9',
+      '0.0.0.0',
+      '[::1]',
+      '[::]',
+      '',
+      '[::ffff:127.0.0.1]',
+    ]) {
+      assert.equal(isLoopbackIngestHost(host), true, host);
+    }
+  });
+
+  it('is not a public name or address', () => {
+    for (const host of ['ingest.example.org', '192.0.2.10', '[2001:db8::1]', 'localhost.example.org', '198.51.100.7']) {
+      assert.equal(isLoopbackIngestHost(host), false, host);
+    }
   });
 });

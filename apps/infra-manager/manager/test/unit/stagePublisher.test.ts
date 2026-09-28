@@ -14,6 +14,7 @@ import type { StageRecord } from '@streaming-monorepo/contracts';
 import { EventBus } from '../../src/domain/EventBus.js';
 import type { BuiltStage } from '../../src/domain/stages/StageRecordBuilder.js';
 import {
+  STAGE_PUSH_BEFORE_START_MS,
   STAGE_PUSH_DEBOUNCE_MS,
   STAGE_PUSH_INTERVAL_MS,
   StagePublisher,
@@ -119,7 +120,8 @@ function publisherFor(setup: Setup = {}) {
   const clock = new FakeClock();
   const events = new EventBus();
   const profiles = new Map((setup.profiles ?? [stage('stage-one', 1)]).map((profile) => [profile.name, profile]));
-  const link = setup.link ?? { url: LINK_URL, token: LINK_TOKEN };
+  // A copy the test may change, as a save of the Manager settings page would.
+  const link = { ...(setup.link ?? { url: LINK_URL, token: LINK_TOKEN }) };
   const sent: StageRequest[] = [];
   const builds: string[] = [];
   const publisher = new StagePublisher({
@@ -148,7 +150,7 @@ function publisherFor(setup: Setup = {}) {
       return setup.answer ? setup.answer(request) : request.kind === 'store' ? 'stored' : 'retired';
     },
   });
-  return { publisher, clock, events, profiles, sent, builds };
+  return { publisher, clock, events, profiles, sent, builds, link };
 }
 
 function changed(events: EventBus, profile: ProfileWithContainers): void {
@@ -495,5 +497,97 @@ describe('the console’s read', () => {
     assert.equal(broken!.record, null);
     assert.equal(broken!.problem, 'The version has no build yet.');
     assert.equal(broken!.lastPush, null);
+  });
+});
+
+describe('the pre-start push’s bound', () => {
+  it('gives up after ten seconds on a push that hangs, says so, and lets the deploy go on', async (t) => {
+    const lines = logLines(t);
+    const never = deferred<StagePushOutcome>();
+    const { publisher, clock, sent } = publisherFor({ answer: () => never.promise });
+    let returned = false;
+    const hook = publisher.beforeUploaderStart({ name: 'stage-one', kind: 'streamer' }).then(() => {
+      returned = true;
+    });
+    await settle();
+    assert.equal(sent.length, 1, 'the push was sent and hangs');
+
+    await clock.advance(STAGE_PUSH_BEFORE_START_MS - 1);
+    assert.equal(returned, false, 'still waiting within the bound');
+    await clock.advance(1);
+    await hook;
+    assert.equal(returned, true);
+    assert.ok(
+      lines.some((line) => /stage-one.*took too long/.test(line)),
+      lines.join('\n'),
+    );
+  });
+});
+
+describe('a retirement after the link moved', () => {
+  it('sends nothing, and the token never goes to the new origin', async (t) => {
+    const lines = logLines(t);
+    const { publisher, events, sent, link } = publisherFor();
+    publisher.start();
+    t.after(() => publisher.stop());
+    await publisher.pushNow('stage-one');
+    assert.equal(sent.length, 1);
+
+    link.url = 'https://other-admin.example.org';
+    link.token = 'synthetic-other-registrar-token-0123456789';
+    events.publish({ type: 'profile.deleted', name: 'stage-one' });
+    await settle();
+
+    assert.equal(sent.length, 1, 'no retirement was sent');
+    assert.ok(sent.every((request) => request.baseUrl === LINK_URL && request.token === LINK_TOKEN));
+    assert.ok(lines.some((line) => /stage-one.*not retired.*link has changed/.test(line)));
+  });
+});
+
+describe('after stop', () => {
+  it('starts no push: not a change, not the cadence, not a follow-up, not the pre-start hook', async (t) => {
+    logLines(t);
+    const gate = deferred<StagePushOutcome>();
+    const { publisher, clock, events, profiles, sent } = publisherFor({ answer: () => gate.promise });
+    publisher.start();
+    const inFlight = publisher.pushNow('stage-one');
+    await settle();
+    void publisher.pushNow('stage-one', 'follow');
+    changed(events, profiles.get('stage-one')!);
+    publisher.stop();
+
+    gate.resolve('stored');
+    await inFlight;
+    assert.equal(await publisher.pushNow('stage-one'), null);
+    await publisher.beforeUploaderStart({ name: 'stage-one', kind: 'streamer' });
+    changed(events, profiles.get('stage-one')!);
+    await clock.advance(STAGE_PUSH_INTERVAL_MS * 2);
+    publisher.start();
+    await clock.advance(STAGE_PUSH_INTERVAL_MS * 2);
+
+    assert.equal(sent.length, 1, 'only the push that was already in flight');
+  });
+});
+
+describe('what the publisher keeps', () => {
+  it('drops a name that is gone and was never pushed nor seen', async (t) => {
+    logLines(t);
+    const { publisher } = publisherFor({ profiles: [] });
+    assert.equal(await publisher.pushNow('gone-stage'), null);
+    assert.equal(publisher.keeps('gone-stage'), false);
+  });
+
+  it('keeps one it pushed, and one a change event named, until its removal retires it', async (t) => {
+    logLines(t);
+    const { publisher, events, profiles } = publisherFor();
+    publisher.start();
+    t.after(() => publisher.stop());
+    await publisher.pushNow('stage-one');
+    profiles.delete('stage-one');
+    assert.equal(await publisher.pushNow('stage-one'), null);
+    assert.equal(publisher.keeps('stage-one'), true, 'kept for its retirement');
+    events.publish({ type: 'profile.deleted', name: 'stage-one' });
+    await settle();
+    assert.equal(publisher.keeps('stage-one'), false);
   });
 });
