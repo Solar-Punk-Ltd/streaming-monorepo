@@ -28,9 +28,9 @@ export const ADMIN_LINK_TEST_OUTCOMES = [
   /** The admin answered and refused the token. */
   'token-refused',
   /**
-   * The admin refused a deployment's token at the address of the manager's link, and the token is not one the
-   * manager generated for the deployment: typed, copied from the link by an older manager, or set by the version. The
-   * admin takes only a token of the deployment's own from an uploader, so the token has to be rotated.
+   * A deployment's token at the address of the manager's link is not one the manager generated for the deployment:
+   * typed, copied from the link by an older manager, or set by the version. An admin of stages phase 9 refuses it,
+   * and one older still takes it while a rollout runs; either way the token has to be rotated.
    */
   'token-not-own',
   /**

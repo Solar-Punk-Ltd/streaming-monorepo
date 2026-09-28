@@ -22,6 +22,19 @@ import type { ManagerAdminLinkStore } from './ManagerAdminLinkRepository.js';
 const logger = Logger.getInstance();
 
 /**
+ * The outcomes of an admin that took the token. A token the manager did not generate for the deployment is still
+ * taken by an admin older than stages phase 9, which a rollout runs for a while (docs/architecture/stages.md), so
+ * at the link's address such a token reads as `token-not-own` whatever that admin answered: the phase 9 admin
+ * refuses it.
+ */
+const TOOK_THE_TOKEN: readonly AdminLinkTestOutcome[] = [
+  'linked',
+  'token-accepted',
+  'owner-unconfirmed',
+  'owner-mismatch',
+];
+
+/**
  * Test connection, from a page: an address typed there with a typed token or
  * the manager's stored one, and what a deployment's next deploy would give its
  * uploader. The manager's token is the web2 admin's registrar token, proved on
@@ -86,7 +99,8 @@ export class AdminLinkTester {
    * `token-not-registered`, since a deploy registers it. Any other token at the
    * link's address, typed, copied from the link by an older manager, or the
    * version's, is `token-not-own`: the admin takes only a token of the
-   * deployment's own from an uploader, and a rotation gives it one.
+   * deployment's own from an uploader, and a rotation gives it one. So is
+   * such a token that an admin older than phase 9 still took.
    */
   async testDeployment(name: string, username: string): Promise<AdminLinkTestAnswer> {
     const profile = await this.profiles.findByName(name);
@@ -100,6 +114,8 @@ export class AdminLinkTester {
         ? 'stored-token-elsewhere'
         : await this.outcomeFor({ url, token, check: 'uploader', feedOwner: addressOfStreamKey(env.STREAM_KEY ?? '') });
     if (outcome === 'token-refused') outcome = await this.whyRefused(name, url, ownAdminToken);
+    else if (TOOK_THE_TOKEN.includes(outcome) && !ownAdminToken && (await this.atLinkWithToken(url)))
+      outcome = 'token-not-own';
     logger.info(`[AdminLink] ${username} tested the web2 admin link of ${name}: ${outcome}`);
     return { outcome };
   }
@@ -110,14 +126,19 @@ export class AdminLinkTester {
    * refuses every token the manager did not generate for the deployment. Elsewhere, the refusal is the admin's alone.
    */
   private async whyRefused(name: string, url: string, ownAdminToken: boolean): Promise<AdminLinkTestOutcome> {
-    const link = await this.store.storedLink();
-    if (link.token === null || !sameAdminOrigin(url, link.url ?? '')) return 'token-refused';
+    if (!(await this.atLinkWithToken(url))) return 'token-refused';
     if (!ownAdminToken) return 'token-not-own';
     const last = this.pushes?.lastPush(name);
     if (last === undefined) return 'token-refused';
     return last === null || (last.outcome !== 'stored' && last.outcome !== 'older-ignored')
       ? 'token-not-registered'
       : 'token-refused';
+  }
+
+  /** Whether the address is on the origin of the manager's link while the link stores a token. */
+  private async atLinkWithToken(url: string): Promise<boolean> {
+    const link = await this.store.storedLink();
+    return link.token !== null && sameAdminOrigin(url, link.url ?? '');
   }
 
   /** Answers without asking anything when there is no address to ask, one the uploader could not use, or no token. */
