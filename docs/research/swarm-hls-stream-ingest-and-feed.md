@@ -12,7 +12,7 @@ Engines: srs (SRT+RTMP) | ome (SRT only). Ports base table deploy/scripts/_lib.s
 Secrets: SRT_PASSPHRASE is ONE server-level value in srs.conf srt_server{} (engines/srs/srs.conf.template:11-19; empty → unencrypted). Cannot be per-stream. OME has no passphrase. SRS_WEBHOOK_TOKEN (branches) service-to-service. OME_ADMISSION_SECRET HMAC. PUBLISH_KEY_SECRET (branches) → per-stream key.
 STREAM_KEY (.env) = Ethereum private key signing all feeds — NOT an OBS credential; don't reuse the name.
 Stream id = `${app}/${stream}` (buildStreamId); app 'audio' → audio else video (resolveMediaType). No registry; any name accepted.
-URLs today (main): SRT `srt://HOST:SRS_SRT_PORT?streamid=#!::r=<app>/<stream>,m=publish` (+ OBS Passphrase field = SRT_PASSPHRASE); RTMP server `rtmp://HOST:SRS_RTMP_PORT/<app>` stream key `<stream>`; OME `srt://HOST:OME_SRT_PORT?streamid=srt://HOST:OME_SRT_PORT/<app>/<stream>`.
+URLs today (main): SRT `srt://HOST:SRS_SRT_PORT?streamid=#!::r=<app>/<stream>,m=publish` (+ `&passphrase=SRT_PASSPHRASE` on OBS's Server line, OBS has no passphrase field); RTMP server `rtmp://HOST:SRS_RTMP_PORT/<app>` stream key `<stream>`; OME `srt://HOST:OME_SRT_PORT?streamid=srt://HOST:OME_SRT_PORT/<app>/<stream>`.
 With publish key (branches): RTMP `rtmp://HOST:PORT/<app>/<stream>?key=<32hex>`; SRT `srt://HOST:PORT?streamid=#!::r=<app>/<stream>?key=<key>,m=publish`; OME `srt://HOST:PORT?streamid=srt%3A%2F%2FHOST%2F<app>%2F<stream>%3Fkey%3D<key>` (percent-encoding load-bearing).
 
 ## Feed publishing (single rendition)

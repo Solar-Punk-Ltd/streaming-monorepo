@@ -15,6 +15,10 @@
  * MOCK_NO_USERS=true starts with an empty users table, which is the only way
  * to see the console's "no users yet" screen and the command it prints.
  *
+ * MOCK_RECORDING=true starts with one finished recording on the feed, which is
+ * the only way to see the recording's details and to unpublish and publish it
+ * again, since nothing here can broadcast.
+ *
  * No dependencies: plain node:http, plain node:crypto.
  */
 
@@ -138,9 +142,17 @@ async function readJson(req) {
   }
 }
 
+/** The statuses whose stream has an entry on the catalogue. */
+const ON_FEED_STATUSES = ['published', 'live', 'vod'];
+
 function publicStream(row) {
-  const { thumbnail, thumbnailMime, ...rest } = row;
-  return { ...rest, hasThumbnail: thumbnail !== null && thumbnailMime !== null };
+  const { thumbnail, thumbnailMime, editsNotOnFeed, ...rest } = row;
+  return {
+    ...rest,
+    hasThumbnail: thumbnail !== null && thumbnailMime !== null,
+    hasUnpublishedEdits:
+      editsNotOnFeed && ON_FEED_STATUSES.includes(row.status),
+  };
 }
 
 function ingestDetails(row) {
@@ -163,13 +175,30 @@ function ingestDetails(row) {
   };
 }
 
+/** What the catalogue entry carries of a stream's own fields. */
+function entryContent(row) {
+  return JSON.stringify([
+    row.title,
+    row.description,
+    row.tags,
+    row.mediaType,
+    row.scheduledStartTime,
+  ]);
+}
+
+/**
+ * Like the API, a save that changes nothing is not an edit: the console PUTs
+ * the whole form back every time.
+ */
 function applyInput(row, input) {
+  const before = entryContent(row);
   row.title = String(input.title ?? '');
   row.description = String(input.description ?? '');
   row.tags = Array.isArray(input.tags) ? input.tags.map(String) : [];
   row.mediaType = input.mediaType === 'audio' ? 'audio' : 'video';
   row.scheduledStartTime = input.scheduledStartTime ?? null;
   row.updatedAt = new Date().toISOString();
+  if (entryContent(row) !== before) row.editsNotOnFeed = true;
 }
 
 function newStream(input) {
@@ -192,10 +221,19 @@ function newStream(input) {
     publishError: null,
     publishKey: hex(16),
     publishKeyRotatedAt: null,
+    // What the uploader reports. Only the MOCK_RECORDING seed sets them.
+    manifestIndex: null,
+    durationSeconds: null,
+    liveSince: null,
+    endedAt: null,
+    // Stands in for the API's two timestamps: an edit the catalogue entry
+    // does not carry yet. Cleared by a publish, which rebuilds the entry.
+    editsNotOnFeed: false,
     createdAt: now,
     updatedAt: now,
   };
   applyInput(row, input);
+  row.editsNotOnFeed = false;
   return row;
 }
 
@@ -210,6 +248,28 @@ function publishResult(row) {
       entryCount: feedEntries,
     },
   };
+}
+
+if (process.env.MOCK_RECORDING === 'true') {
+  const row = newStream({
+    title: 'A finished broadcast',
+    description: 'Seeded by MOCK_RECORDING: a recording already on the feed.',
+    tags: ['mock'],
+    mediaType: 'video',
+    scheduledStartTime: '2026-09-11T10:00:00.000Z',
+  });
+  feedIndex += 1;
+  feedEntries += 1;
+  Object.assign(row, {
+    status: 'vod',
+    publishedAt: '2026-09-11T09:00:00.000Z',
+    publishedFeedIndex: feedIndex,
+    manifestIndex: 412,
+    durationSeconds: 3540,
+    liveSince: '2026-09-11T10:01:00.000Z',
+    endedAt: '2026-09-11T11:00:00.000Z',
+  });
+  streams.set(row.id, row);
 }
 
 const server = createServer((req, res) => {
@@ -403,7 +463,8 @@ async function handle(req, res) {
   }
 
   if (sub === '' && method === 'DELETE') {
-    if (row.status === 'published') {
+    if (row.status === 'live') return send(res, 409, { error: 'stream_live' });
+    if (ON_FEED_STATUSES.includes(row.status)) {
       return send(res, 409, { error: 'stream_published' });
     }
     streams.delete(row.id);
@@ -424,6 +485,7 @@ async function handle(req, res) {
     row.thumbnailMime = mime;
     // A new image invalidates whatever was uploaded to Swarm before.
     row.thumbnailRef = null;
+    row.editsNotOnFeed = true;
     row.updatedAt = new Date().toISOString();
     return send(res, 200, publicStream(row));
   }
@@ -439,6 +501,7 @@ async function handle(req, res) {
   }
 
   if (sub === '/thumbnail' && method === 'DELETE') {
+    if (row.thumbnail) row.editsNotOnFeed = true;
     row.thumbnail = null;
     row.thumbnailMime = null;
     row.thumbnailRef = null;
@@ -447,26 +510,33 @@ async function handle(req, res) {
   }
 
   if (sub === '/publish' && method === 'POST') {
-    if (row.status !== 'draft' && row.status !== 'published') {
+    if (row.status === 'publishing') {
       return send(res, 409, { error: 'stream_busy' });
     }
-    const wasPublished = row.status === 'published';
-    if (!wasPublished) feedEntries += 1;
+    if (!ON_FEED_STATUSES.includes(row.status)) feedEntries += 1;
     feedIndex += 1;
     if (row.thumbnail && !row.thumbnailRef) row.thumbnailRef = hex(32);
-    row.status = 'published';
-    row.publishedAt = new Date().toISOString();
+    const now = new Date().toISOString();
+    // Like the API: a live or recorded stream keeps its state, and a draft
+    // that still holds a recording goes back on the feed as that recording.
+    if (row.status === 'draft' || row.status === 'published') {
+      row.status = row.manifestIndex !== null ? 'vod' : 'published';
+      row.publishedAt = now;
+    }
     row.publishedFeedIndex = feedIndex;
     row.publishError = null;
-    row.updatedAt = row.publishedAt;
+    row.editsNotOnFeed = false;
+    row.updatedAt = now;
     return send(res, 200, publishResult(row));
   }
 
   if (sub === '/unpublish' && method === 'POST') {
-    if (row.status === 'published') {
+    if (row.status === 'live') return send(res, 409, { error: 'stream_live' });
+    if (ON_FEED_STATUSES.includes(row.status)) {
       feedEntries = Math.max(0, feedEntries - 1);
       feedIndex += 1;
     }
+    // Off the feed and back to a draft, keeping the recording, as the API does.
     row.status = 'draft';
     row.publishedAt = null;
     row.publishedFeedIndex = null;

@@ -10,10 +10,13 @@
 export type MediaType = 'video' | 'audio';
 
 /**
- * draft      never published, or unpublished again
+ * draft      never published, or unpublished again. It may still hold the
+ *            recording of an earlier broadcast, which the next publish lists
+ *            as vod
  * publishing publish in progress (transient)
  * published  entry is in the stream list feed with state 'scheduled'
- * live/vod   reserved for checkpoint 3, when the uploader reports state back
+ * live/vod   reported by the uploader: the broadcast is running, or it has
+ *            ended and manifestIndex says where its recording is
  */
 export type StreamStatus = 'draft' | 'publishing' | 'published' | 'live' | 'vod';
 
@@ -111,6 +114,18 @@ export interface Stream {
   /** When the uploader reported the stream live, and when it reported it ended. */
   liveSince?: string | null;
   endedAt?: string | null;
+  /**
+   * True while the console holds an edit this stream's catalogue entry does
+   * not carry: its title, description, tags, media type, scheduled start or
+   * thumbnail changed after the last write that rebuilt the entry from the
+   * stream. A publish or republish clears it, and so do the uploader's state
+   * and rendition reports, because each of those rebuilds the entry too. A
+   * reconcile clears it as well, except on a stream whose new image is still
+   * waiting to be uploaded, because a reconcile uploads nothing. The
+   * uploader's reports never set it. Always false for a stream that is not on
+   * the catalogue.
+   */
+  hasUnpublishedEdits: boolean;
   /**
    * The merged ABR ladder, when the uploader has reported rungs for this
    * stream. Absent for a single-rendition stream, and absent from the console's

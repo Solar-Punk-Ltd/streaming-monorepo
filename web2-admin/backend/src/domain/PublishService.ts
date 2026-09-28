@@ -32,6 +32,8 @@ import type { FeedIdentity } from './feedIdentity.js';
 import { Logger } from './Logger.js';
 import { Mutex } from './Mutex.js';
 import { toRendition } from './renditions.js';
+import { publishedStatusFor, type PublishedStatus } from './streamState.js';
+import { hasPendingThumbnail } from './unpublishedEdits.js';
 
 const logger = Logger.getInstance();
 
@@ -49,19 +51,40 @@ export interface PublishStreamStore {
     userId: string,
     allowedFrom: readonly StreamStatus[],
   ): Promise<StreamRow | null>;
+  /**
+   * `entryContentEditedAt` here and on `recordRepublish` is the
+   * `content_edited_at` of the row the entry was built from: which edit the
+   * catalogue now carries, not when the write finished. `status` is the one
+   * the entry was built with.
+   */
   finishPublish(
     id: string,
     userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
+    entryContentEditedAt: Date | null,
+    status: PublishedStatus,
   ): Promise<StreamRow | null>;
+  /**
+   * Back to `draft` and off the catalogue, keeping the recording and its rungs
+   * for the next publish.
+   */
   finishUnpublish(id: string, userId: string): Promise<StreamRow | null>;
   recordRepublish(
     id: string,
     userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
+    entryContentEditedAt: Date | null,
   ): Promise<StreamRow | null>;
+  /**
+   * Records which edit a stream's entry carries after a write that rebuilt it
+   * without being a publish of that stream: a reconcile. Touches nothing else.
+   */
+  recordEntryRebuilt(
+    id: string,
+    entryContentEditedAt: Date | null,
+  ): Promise<void>;
   /**
    * Releases a `publishing` claim back to `previousStatus` with the reason. For
    * the first publish and the unpublish, which took the claim; nothing else.
@@ -133,7 +156,8 @@ export interface PublishOutcome {
    * The ladder the entry was written with, ascending by height. Read inside
    * the mutex, in the same step as the write, so a rendition report answers
    * with exactly what its write put on the catalogue. Empty for a stream with
-   * no rungs, and after an unpublish.
+   * no rungs, and after an unpublish, which takes the entry off the feed while
+   * the rungs stay on the row.
    */
   renditions: Rendition[];
   /**
@@ -166,7 +190,11 @@ export interface FeedBootCheck {
   ghosts: string[];
 }
 
-/** A stream the uploader has reported on; its entry carries that state. */
+/**
+ * A stream whose status the uploader set, `live` or `vod`, so its entry
+ * carries that state. A draft that still holds a recording is not one:
+ * `doPublish` claims it and lists it as `vod` again.
+ */
 function hasReportedState(stream: StreamRow): boolean {
   return stream.status === 'live' || stream.status === 'vod';
 }
@@ -216,7 +244,7 @@ export class PublishService {
   async publish(id: string, userId: string): Promise<PublishOutcome> {
     return this.mutex.run(async () => {
       const before = await this.read(id, userId);
-      // A stream the uploader has reported on is republished as it is: the
+      // A stream that is `live` or `vod` is republished as it is: the
       // operator fixed a title mid-broadcast, and the entry must go back on
       // the feed still saying `live` (or `vod`, with its index and duration).
       // The `publishing` claim the first publish uses would lose that.
@@ -292,6 +320,7 @@ export class PublishService {
       logger.warn(
         `[Reconcile] rewrote the catalogue at feed index ${index} (${plan.entries.length} entries): removed [${plan.removed.join(', ')}], added [${plan.added.join(', ')}], updated [${plan.updated.join(', ')}]`,
       );
+      await this.recordRebuiltEntries(rows, [...plan.updated, ...plan.added]);
       return {
         index,
         removed: plan.removed,
@@ -400,25 +429,35 @@ export class PublishService {
     }
 
     const { claimed, previousStatus } = await this.claim(before, userId);
+    // The uploader's reports are refused while the row is claimed, so the
+    // recording this reads cannot change before the row is finished.
+    const status = publishedStatusFor(claimed);
 
     try {
       const thumbnailRef = await this.ensureThumbnailUploaded(claimed, userId);
-      const { entry, renditions } = await this.entryFor(claimed, thumbnailRef);
+      const { entry, renditions } = await this.entryFor(
+        { ...claimed, status },
+        thumbnailRef,
+      );
       const snapshot = await this.baseSnapshot();
       const previous = ladderOnFeed(snapshot.entries, entry.owner, entry.topic);
       const entries = upsertEntry(snapshot.entries, entry);
       const index = await this.writeFeed(entries, snapshot.index);
 
+      // The claim refuses every edit until this returns, so `claimed` still
+      // holds the edit the entry was built from.
       const stream = await this.streams.finishPublish(
         id,
         userId,
         index,
         thumbnailRef,
+        claimed.content_edited_at,
+        status,
       );
       if (!stream) throw new StreamNotFoundError(id);
 
       logger.info(
-        `[Publish] ${claimed.topic} published at feed index ${index} (${entries.length} entries)`,
+        `[Publish] ${claimed.topic} published${status === 'vod' ? ' as its recording' : ''} at feed index ${index} (${entries.length} entries)`,
       );
       return this.outcome(stream, index, entries.length, renditions, previous);
     } catch (error) {
@@ -510,11 +549,15 @@ export class PublishService {
       const entries = upsertEntry(snapshot.entries, entry);
       const index = await this.writeFeed(entries, snapshot.index);
 
+      // `current`'s edit, not whatever the row holds now: no claim is taken
+      // here, so the console can save an edit while this write is on its way,
+      // and that edit is not on the entry.
       const updated = await this.streams.recordRepublish(
         id,
         userId,
         index,
         thumbnailRef,
+        current.content_edited_at,
       );
       if (!updated) throw new StreamNotFoundError(id);
 
@@ -554,6 +597,32 @@ export class PublishService {
       if (rungs.length > 0) ladders.set(row.id, rungs.map(toRendition));
     }
     return ladders;
+  }
+
+  /**
+   * Tells each row whose entry a reconcile rewrote or added which edit that
+   * entry now carries, as a publish does for its one row. `topics` are the
+   * ones the plan rewrote or added, and each of those entries was built from
+   * its row in `rows`, read inside this same mutex, so that row's
+   * `content_edited_at` is the edit the entry carries.
+   *
+   * A row with an image waiting to be uploaded is left out. A reconcile
+   * uploads nothing, so its entry went out without that image, and the
+   * console has to keep asking for the republish that uploads it.
+   */
+  private async recordRebuiltEntries(
+    rows: readonly StreamRow[],
+    topics: readonly string[],
+  ): Promise<void> {
+    const rebuilt = new Set(topics.map((topic) => topic.toLowerCase()));
+    const recorded = rows.filter(
+      (row) => rebuilt.has(row.topic.toLowerCase()) && !hasPendingThumbnail(row),
+    );
+    await Promise.all(
+      recorded.map((row) =>
+        this.streams.recordEntryRebuilt(row.id, row.content_edited_at),
+      ),
+    );
   }
 
   /**

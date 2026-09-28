@@ -165,11 +165,13 @@ instead.
    `bee.makeFeedWriter(topic, new PrivateKey(FEED_PRIVATE_KEY)).uploadPayload(batch, JSON.stringify(entries), { index })`.
    Serialise publish and unpublish through one in-process async mutex so two
    requests cannot race for the same index.
-6. Record `feed_writes`, then `UPDATE streams SET status='published', published_at=NOW(), published_feed_index=$2, publish_error=NULL, thumbnail_ref=$3`.
+6. Record `feed_writes`, then `UPDATE streams SET status='published', published_at=NOW(), published_feed_index=$2, publish_error=NULL, thumbnail_ref=$3`. Since 2026-09-26 the status is `vod` when the draft still holds a recording, see below.
 7. On any failure: `UPDATE ... SET status = previous status, publish_error = message`, and respond `502 {error:'publish_failed', message}`.
 
 Unpublish removes the entry and writes the next index the same way, then sets
-`draft`, keeps `thumbnail_ref`.
+`draft`, keeps `thumbnail_ref`. Since 2026-09-26 it also keeps what the
+uploader reported, the recording and its rungs, and publishing a draft that
+holds a recording lists it as `vod` again.
 
 The Bee client is behind an interface (`FeedGateway`: `readLatest`, `write`,
 `uploadThumbnail`) so unit tests use an in-memory fake; the bee-js
@@ -221,7 +223,7 @@ Routes and screens:
 | `/login` | Username, password, Log in. Error text from the API. Redirect to `/` when already logged in. |
 | `/` | My Streams: cards or a table with thumbnail, title, media type chip, status chip (draft grey, published green, publishing spinner, error red with tooltip), scheduled time, buttons Edit, Details, Delete (confirm dialog), and a Create New Stream button. Empty state text. |
 | `/create` and `/edit/:id` | Form with the msrs-client fields and limits: Stream Name with n/100 counter, Description n/500, Tags (add on Enter or button, chips, n/10), Media Type radio Video Stream or Audio Only, Upload Thumbnail (max 5MB, preview, remove), Scheduled Start Time (datetime-local, min now). Preview step is optional; Save creates or updates, thumbnail is PUT separately after save. |
-| `/streams/:id` | Details: all metadata, status, publish and unpublish buttons with result feedback (feed index and owner/topic shown, "open player catalogue" link to the viewer's root when the viewer base URL is configured, since the viewer lists the catalogue feed it was built for; the per-stream route `#/watch/<mediatype>/<owner>/<topic>` is shown as copyable text and only plays once the uploader has written a manifest), last publish error, and the OBS panel: SRT URL with copy button, passphrase with copy button and show/hide, RTMP server and stream key with copy buttons, Rotate key with confirm, and a note when `keyVerified` is false: "The ingest does not verify this key yet. Anyone with the SRT passphrase can publish under this name until the uploader is upgraded." |
+| `/streams/:id` | Details: all metadata, status, publish and unpublish buttons with result feedback (feed index and owner/topic shown, "open player catalogue" link to the viewer's root when the viewer base URL is configured, since the viewer lists the catalogue feed it was built for, and the per-stream route `#/watch/<mediatype>/<owner>/<topic>` is shown as copyable text and only plays once the uploader has written a manifest), last publish error, and the OBS panel, which says for SRT and for RTMP separately what goes in OBS's Server box and its Stream Key box: for SRT the URL with `&passphrase=` on the end and an empty Stream Key (a passphrase with characters that line cannot carry goes in OBS's Use authentication Password instead), for RTMP the server and the stream key. Secrets are masked with show/hide, each value has a copy button that copies the real value, Rotate key asks first, and a note shows when `keyVerified` is false: "The ingest does not verify this key yet. Anyone with the SRT passphrase can publish under this name until the uploader is upgraded." Unpublish asks first, and for a recording it says the recording stops being listed while this admin keeps its recording details, so publishing it again lists it as that recording. An "Edited since it was published" notice shows while the catalogue entry does not carry the latest console edit. |
 | `/account` | Change password form. |
 
 App shell: top bar with the app name, username menu (My Streams, Account, Log
@@ -341,8 +343,10 @@ Semantics worth stating plainly:
   `502 publish_failed` when the row was stored but the catalogue write failed —
   the uploader retries the whole report, and the merge is idempotent.
 
-Migration 004 adds `stream_renditions`, one row per `(stream_id, name)`;
-`finishUnpublish` deletes them alongside the state columns it already clears.
+Migration 004 adds `stream_renditions`, one row per `(stream_id, name)`.
+`finishUnpublish` deleted them alongside the state columns it cleared until
+2026-09-26. Since then an unpublish keeps both, so a republished recording
+comes back with its ladder.
 
 ## Out of scope for checkpoint 2, tracked in the roadmap
 

@@ -11,9 +11,9 @@ import { STREAM_RENDITION_COLUMNS } from './streamSql.js';
  * uploader and has no session behind it — the same reason
  * `StreamRepository.findByIdUnscoped` exists.
  *
- * Deleting a stream takes its rungs with it through the foreign key;
- * `StreamRepository.finishUnpublish` clears them in its own statement, so an
- * unpublished draft cannot carry a stale ladder back onto the catalogue.
+ * Deleting a stream takes its rungs with it through the foreign key. An
+ * unpublish keeps them with the rest of the recording, so publishing the
+ * draft again lists the recording with its ladder.
  */
 export class StreamRenditionRepository {
   constructor(private readonly pool: Pool) {}
@@ -72,14 +72,5 @@ export class StreamRenditionRepository {
       ],
     );
     return result.rows[0]!;
-  }
-
-  /** How many rungs were dropped; 0 for a stream that never had a ladder. */
-  async deleteByStream(streamId: string): Promise<number> {
-    const result = await this.pool.query(
-      'DELETE FROM stream_renditions WHERE stream_id = $1',
-      [streamId],
-    );
-    return result.rowCount ?? 0;
   }
 }

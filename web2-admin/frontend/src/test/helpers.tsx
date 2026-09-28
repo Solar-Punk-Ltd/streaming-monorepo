@@ -173,6 +173,7 @@ export function makeStream(overrides: Partial<Stream> = {}): Stream {
     publishedAt: null,
     publishedFeedIndex: null,
     publishError: null,
+    hasUnpublishedEdits: false,
     createdAt: now,
     updatedAt: now,
     ...overrides,

@@ -5,7 +5,10 @@
  *
  * What is exercised here is the SQL a fake repository cannot stand in for:
  * the boot-time repair of rows left claimed by a process that died mid-publish,
- * and the un-finishing of an ABR ladder when a broadcast goes live again.
+ * the un-finishing of an ABR ladder when a broadcast goes live again, an
+ * unpublish that keeps the recording and its rungs, and which writes count as
+ * a console edit for the "Edited since it was published" notice (migration
+ * 006).
  * Getting the first wrong loses streams — a republish interrupted by a restart
  * that came back as `draft` could then be DELETEd, leaving its entry on the
  * feed with no row left to unpublish it. Getting the second wrong is invisible
@@ -23,7 +26,12 @@ import { after, before, describe, it } from 'node:test';
 import { Database } from '../../src/domain/Database.js';
 import { newPublishKey } from '../../src/domain/StreamService.js';
 import { StreamRenditionRepository } from '../../src/domain/StreamRenditionRepository.js';
-import { StreamRepository } from '../../src/domain/StreamRepository.js';
+import {
+  StreamRepository,
+  type StreamUpdateData,
+} from '../../src/domain/StreamRepository.js';
+import { hasUnpublishedEdits } from '../../src/domain/unpublishedEdits.js';
+import { EDITABLE_STATUSES, type StreamRow } from '../../src/types/index.js';
 
 import { releaseStack, requireStack, stack } from './helpers.js';
 
@@ -157,7 +165,14 @@ async function recordedLadder(): Promise<string> {
     scheduled_start_time: null,
     publish_key: newPublishKey(),
   });
-  await streams.finishPublish(row.id, userId, 1, null);
+  await streams.finishPublish(
+    row.id,
+    userId,
+    1,
+    null,
+    row.content_edited_at,
+    'published',
+  );
   await renditions.upsert(row.id, {
     name: '360p',
     width: 640,
@@ -244,5 +259,237 @@ describe('markLive un-finishes a broadcast that comes back', () => {
     assert.equal(row?.status, 'vod', 'still the recording it was');
     const rungs = await renditions.listByStream(id);
     assert.equal(Number(rungs.find((r) => r.name === '720p')?.manifest_index), 12);
+  });
+});
+
+describe('an unpublish keeps the recording for the next publish', () => {
+  it("clears the row's catalogue columns and keeps the recording and every rung", async () => {
+    const id = await recordedLadder();
+
+    const draft = await streams.finishUnpublish(id, userId);
+
+    assert.equal(draft?.status, 'draft');
+    assert.equal(draft?.published_at, null, 'no longer announced');
+    assert.equal(draft?.published_feed_index, null);
+    assert.equal(draft?.manifest_index, 7, 'where the recording is');
+    assert.equal(draft?.duration_seconds, 62.5, 'how long it runs');
+    assert.ok(draft?.live_since, 'when it went live');
+    assert.ok(draft?.ended_at, 'when it ended');
+
+    const rungs = await renditions.listByStream(id);
+    assert.deepEqual(
+      rungs.map((r) => [r.name, Number(r.manifest_index), Number(r.duration_seconds)]),
+      [
+        ['360p', 10, 61],
+        ['720p', 12, 62.5],
+      ],
+      'every rung, finished as it was',
+    );
+  });
+
+  it('stores the vod status a publish hands it, with the recording still on the row', async () => {
+    const id = await recordedLadder();
+    const draft = await streams.finishUnpublish(id, userId);
+    assert.ok(draft);
+
+    const listed = await streams.finishPublish(
+      id,
+      userId,
+      2,
+      null,
+      draft.content_edited_at,
+      'vod',
+    );
+
+    assert.equal(listed?.status, 'vod');
+    assert.equal(listed?.published_feed_index, 2);
+    assert.ok(listed?.published_at);
+    assert.equal(listed?.manifest_index, 7);
+  });
+});
+
+/** A published stream nobody has edited, as a first publish leaves it. */
+async function publishedStream(
+  scheduledStartTime: string | null = null,
+): Promise<StreamRow> {
+  const row = await streams.insert({
+    user_id: userId,
+    topic: randomUUID(),
+    owner: OWNER,
+    title: 'itest notice',
+    description: 'published, and not edited since',
+    tags: ['itest'],
+    media_type: 'video',
+    scheduled_start_time: scheduledStartTime,
+    publish_key: newPublishKey(),
+  });
+  const published = await streams.finishPublish(
+    row.id,
+    userId,
+    1,
+    null,
+    row.content_edited_at,
+    'published',
+  );
+  assert.ok(published);
+  return published;
+}
+
+/** The form as the row holds it: what a save that changes nothing sends. */
+function sameValues(row: StreamRow): StreamUpdateData {
+  return {
+    title: row.title,
+    description: row.description,
+    tags: row.tags,
+    media_type: row.media_type,
+    scheduled_start_time: row.scheduled_start_time?.toISOString() ?? null,
+  };
+}
+
+/** Puts the edit stamp somewhere unmistakable, so a write can be seen to move it. */
+async function setEditStamp(id: string, at: string): Promise<void> {
+  await database.pool.query(
+    'UPDATE streams SET content_edited_at = $2 WHERE id = $1',
+    [id, at],
+  );
+}
+
+describe('which writes count as a console edit (migration 006)', () => {
+  it('starts with nothing to republish, and neither the uploader nor the bookkeeping adds any', async () => {
+    const row = await publishedStream();
+    assert.equal(row.content_edited_at, null);
+    assert.equal(row.entry_content_edited_at, null);
+
+    await streams.markLive(row.id, ['published', 'live', 'vod']);
+    await streams.markVod(row.id, ['published', 'live', 'vod'], 7, 61);
+    await streams.rotatePublishKey(row.id, userId, newPublishKey());
+    await streams.recordThumbnailRef(row.id, userId, 'a'.repeat(64));
+    await streams.recordPublishError(row.id, userId, 'bee unreachable');
+
+    const reread = await streams.findById(row.id, userId);
+    assert.ok(reread);
+    assert.equal(reread.status, 'vod');
+    assert.equal(reread.content_edited_at, null);
+    assert.equal(hasUnpublishedEdits(reread), false);
+  });
+
+  it('stamps a real edit to the millisecond, and a save that changes nothing is not one', async () => {
+    const row = await publishedStream('2026-10-01T09:00:00.000Z');
+
+    const resaved = await streams.update(
+      row.id,
+      userId,
+      {
+        ...sameValues(row),
+        // The same instant, written the way another client might send it.
+        scheduled_start_time: '2026-10-01T11:00:00.000+02:00',
+      },
+      EDITABLE_STATUSES,
+    );
+    assert.ok(resaved);
+    assert.equal(resaved.content_edited_at, null, 'nothing the entry carries changed');
+
+    const edited = await streams.update(
+      row.id,
+      userId,
+      { ...sameValues(row), tags: ['itest', 'retagged'] },
+      EDITABLE_STATUSES,
+    );
+    assert.ok(edited);
+    assert.ok(edited.content_edited_at, 'a changed tag is an edit');
+    assert.equal(hasUnpublishedEdits(edited), true);
+
+    const stamp = await database.pool.query<{ whole: boolean }>(
+      `SELECT content_edited_at = date_trunc('milliseconds', content_edited_at) AS whole
+         FROM streams WHERE id = $1`,
+      [row.id],
+    );
+    assert.equal(stamp.rows[0]?.whole, true, 'nothing finer than a Date holds');
+  });
+
+  it('counts a new image always, and a removal only when there was an image', async () => {
+    const row = await publishedStream();
+
+    const nothingRemoved = await streams.clearThumbnail(
+      row.id,
+      userId,
+      EDITABLE_STATUSES,
+    );
+    assert.ok(nothingRemoved);
+    assert.equal(nothingRemoved.content_edited_at, null);
+
+    const withImage = await streams.setThumbnail(
+      row.id,
+      userId,
+      Buffer.from([1, 2, 3]),
+      'image/png',
+      EDITABLE_STATUSES,
+    );
+    assert.ok(withImage);
+    assert.ok(withImage.content_edited_at, 'a new image is an edit');
+
+    await setEditStamp(row.id, '2000-01-01T00:00:00.000Z');
+    const removed = await streams.clearThumbnail(
+      row.id,
+      userId,
+      EDITABLE_STATUSES,
+    );
+    assert.ok(removed);
+    assert.ok(removed.content_edited_at);
+    assert.ok(
+      removed.content_edited_at.getTime() > Date.parse('2000-01-01T00:00:00.000Z'),
+      'removing the image is an edit',
+    );
+  });
+
+  it('records the edit an entry was built from, not the one the row holds when the write lands', async () => {
+    const row = await publishedStream();
+    const edited = await streams.update(
+      row.id,
+      userId,
+      { ...sameValues(row), title: 'itest retitled' },
+      EDITABLE_STATUSES,
+    );
+    assert.ok(edited?.content_edited_at);
+    const builtFrom = edited.content_edited_at;
+
+    const caughtUp = await streams.recordRepublish(row.id, userId, 2, null, builtFrom);
+    assert.ok(caughtUp);
+    assert.equal(hasUnpublishedEdits(caughtUp), false);
+    const equal = await database.pool.query<{ equal: boolean }>(
+      `SELECT content_edited_at = entry_content_edited_at AS equal
+         FROM streams WHERE id = $1`,
+      [row.id],
+    );
+    assert.equal(
+      equal.rows[0]?.equal,
+      true,
+      'equal in SQL too, after the round trip through a Date',
+    );
+
+    // The console saves another edit while the next write is on its way, and
+    // that write still records the edit its entry was built from.
+    await setEditStamp(row.id, '2099-01-01T00:00:00.000Z');
+    const behind = await streams.recordRepublish(row.id, userId, 3, null, builtFrom);
+    assert.ok(behind);
+    assert.equal(behind.entry_content_edited_at?.getTime(), builtFrom.getTime());
+    assert.equal(hasUnpublishedEdits(behind), true, 'the later edit is not on the entry');
+  });
+
+  it('lets a reconcile record the entry it rebuilt', async () => {
+    const row = await publishedStream();
+    const edited = await streams.update(
+      row.id,
+      userId,
+      { ...sameValues(row), description: 'itest, reconciled' },
+      EDITABLE_STATUSES,
+    );
+    assert.ok(edited?.content_edited_at);
+
+    await streams.recordEntryRebuilt(row.id, edited.content_edited_at);
+
+    const reread = await streams.findById(row.id, userId);
+    assert.ok(reread);
+    assert.equal(hasUnpublishedEdits(reread), false);
   });
 });
