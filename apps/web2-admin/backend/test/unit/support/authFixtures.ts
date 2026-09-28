@@ -79,7 +79,17 @@ export class InMemoryUserRepository implements UserRepository {
     );
   }
 
+  /** The stored hash, read without an await so a credential write can compare and set in one step. */
+  passwordHashOf(id: string): string | undefined {
+    return this.rows.find((row) => row.id === id)?.password_hash;
+  }
+
   async markSignedIn(id: string, at: Date): Promise<void> {
+    this.setSignedIn(id, at);
+  }
+
+  /** Half of an admitted sign-in, which InMemoryCredentialRepository pairs up. */
+  setSignedIn(id: string, at: Date): void {
     this.rows = this.rows.map((row) => (row.id === id ? { ...row, last_login_at: at } : row));
   }
 
@@ -124,6 +134,11 @@ export class InMemorySessionRepository implements SessionRepository {
   constructor(private readonly users: UserRepository) {}
 
   async create(session: NewSession): Promise<void> {
+    this.createNow(session);
+  }
+
+  /** The session write without an await, for InMemoryCredentialRepository's one step. */
+  createNow(session: NewSession): void {
     const now = new Date();
     this.rows.set(session.tokenHash, {
       tokenHash: session.tokenHash,
@@ -199,9 +214,10 @@ export class InMemorySessionRepository implements SessionRepository {
 }
 
 /**
- * The password change without Postgres. It reaches into both in-memory tables
- * because that is what the one transaction in the Postgres version does, and
- * neither write can be observed between the two: nothing here awaits.
+ * The credential writes without Postgres. Each reaches into both in-memory
+ * tables because that is what the one transaction in the Postgres version does,
+ * and the hash check and the writes cannot be interleaved with anything else:
+ * nothing between them awaits, which is what the row lock gives the real one.
  */
 export class InMemoryCredentialRepository implements CredentialRepository {
   constructor(
@@ -209,8 +225,27 @@ export class InMemoryCredentialRepository implements CredentialRepository {
     private readonly sessions: InMemorySessionRepository,
   ) {}
 
-  async changePassword(userId: string, passwordHash: string, keepSessionTokenHash: string): Promise<void> {
+  async admitSession(
+    userId: string,
+    verifiedPasswordHash: string,
+    session: NewSession,
+    signedInAt: Date,
+  ): Promise<boolean> {
+    if (this.users.passwordHashOf(userId) !== verifiedPasswordHash) return false;
+    this.sessions.createNow(session);
+    this.users.setSignedIn(userId, signedInAt);
+    return true;
+  }
+
+  async changePassword(
+    userId: string,
+    verifiedPasswordHash: string,
+    passwordHash: string,
+    keepSessionTokenHash: string,
+  ): Promise<boolean> {
+    if (this.users.passwordHashOf(userId) !== verifiedPasswordHash) return false;
     this.users.setPasswordHash(userId, passwordHash);
     this.sessions.deleteForUserExcept(userId, keepSessionTokenHash);
+    return true;
   }
 }
