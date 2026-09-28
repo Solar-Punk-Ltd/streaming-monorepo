@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { CatalogueMoveStatus, CatalogueMoveSummary } from '@streaming-monorepo/web2-admin-common';
 
-import { moveDoneText } from '../components/stages/CatalogueMoveCard';
+import { moveDoneText, moveIsCurrent } from '../components/stages/CatalogueMoveCard';
 import { StagesPage } from '../pages/StagesPage';
 import { jsonError, jsonOk, mockFetch, renderWithProviders } from './helpers';
 
@@ -33,7 +33,17 @@ function summary(over: Partial<CatalogueMoveSummary> = {}): CatalogueMoveSummary
 
 const WAITING = { targetBatchId: NEW, fromBatchId: OLD, slots: 5 };
 
-function serve(move: CatalogueMoveStatus | undefined, started?: CatalogueMoveStatus) {
+/** A move status as the API answers it; the batches default to the designated one pinned once nothing waits. */
+type MoveAnswer = Omit<CatalogueMoveStatus, 'designatedBatchId' | 'pinnedBatchId'> &
+  Partial<Pick<CatalogueMoveStatus, 'designatedBatchId' | 'pinnedBatchId'>>;
+
+function full(answer: MoveAnswer): CatalogueMoveStatus {
+  return { designatedBatchId: NEW, pinnedBatchId: answer.waiting ? OLD : NEW, ...answer };
+}
+
+function serve(answer: MoveAnswer | undefined, startedAnswer?: MoveAnswer) {
+  const move = answer && full(answer);
+  const started = startedAnswer && full(startedAnswer);
   return mockFetch([
     { path: STAGES, respond: () => jsonOk({ stages: [] }) },
     { path: STAMP, respond: () => jsonOk({ catalogueStamp: null, ...(move ? { catalogueMove: move } : {}) }) },
@@ -135,5 +145,23 @@ describe('the catalogue move on the Stages page', () => {
       'The catalogue was moved to batch b2b2b2b2…b2b2b2: 5 slots, and the admin writes with it now. You can now release the previous batch, a1a1a1a1…a1a1a1, in the manager.',
     );
     expect(moveDoneText({ ...done, fromBatchId: null })).not.toMatch(/release/);
+  });
+
+  it('never says the previous batch can be released once the move is not what the catalogue is written with', async () => {
+    const done = summary({ state: 'done', slotsDone: 5, restamped: 5, finishedAt: '2026-09-28T10:10:00.000Z' });
+    const other = 'c3'.repeat(32);
+    const states: Partial<CatalogueMoveStatus>[] = [
+      { designatedBatchId: null }, // the designation was cleared since
+      { designatedBatchId: other }, // another batch designated, whose move waits or not
+      { pinnedBatchId: OLD }, // not switched
+    ];
+    for (const state of states) {
+      serve({ enabled: true, waiting: null, refusal: null, latest: done, ...state });
+      const { unmount } = renderWithProviders(<StagesPage />);
+      expect(await screen.findByText('No stages yet.')).toBeInTheDocument();
+      expect(screen.queryByText(/release the previous batch/)).not.toBeInTheDocument();
+      unmount();
+    }
+    expect(moveIsCurrent(full({ enabled: true, waiting: null, refusal: null, latest: done }), done)).toBe(true);
   });
 });

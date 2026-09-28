@@ -12,7 +12,7 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
-import type { CatalogueMoveStatus } from '@streaming-monorepo/web2-admin-common';
+import type { CatalogueMoveStatus, CatalogueMoveSummary } from '@streaming-monorepo/web2-admin-common';
 
 import { errorMessage } from '../../errors';
 import { shortHex } from '../../format';
@@ -25,6 +25,16 @@ export function moveDoneText(move: NonNullable<CatalogueMoveStatus['latest']>): 
     return `${moved} You can now release the previous batch, ${shortHex(move.fromBatchId)}, in the manager.`;
   }
   return moved;
+}
+
+/** Whether a move is done and is still the state of things: nothing waits, and its batch is pinned and designated. */
+export function moveIsCurrent(move: CatalogueMoveStatus, latest: CatalogueMoveSummary): boolean {
+  return (
+    latest.state === 'done' &&
+    move.waiting === null &&
+    move.pinnedBatchId === latest.targetBatchId &&
+    move.designatedBatchId === latest.targetBatchId
+  );
 }
 
 /**
@@ -48,7 +58,9 @@ export function CatalogueMoveCard({
   const { waiting, refusal, latest } = move;
   const running = latest?.state === 'running';
   const failed = latest?.state === 'failed' && waiting !== null && latest.targetBatchId === waiting.targetBatchId;
-  const done = latest?.state === 'done' && waiting === null;
+  // Done, and still what the catalogue is written with and the manager designates: only then is the previous batch
+  // free to release. A move since, or a designation of another batch, makes the old message untrue.
+  const done = latest !== null && moveIsCurrent(move, latest);
   if (!running && !waiting && !done) return null;
 
   const start = async (targetBatchId: string) => {
@@ -117,7 +129,7 @@ export function CatalogueMoveCard({
               <DialogContent>
                 <DialogContentText component="div">
                   Every slot of the catalogue, {waiting.slots} of them, is uploaded again under batch{' '}
-                  {shortHex(waiting.targetBatchId)} through the catalogue node, byte for byte, then the thumbnails the
+                  {shortHex(waiting.targetBatchId)} through the catalogue node, byte for byte, then every thumbnail the
                   latest entry names, and then the admin writes with the new batch. Publishing goes on meanwhile. Keep
                   the previous batch alive until this page says the move is done; then release it in the manager.
                 </DialogContentText>

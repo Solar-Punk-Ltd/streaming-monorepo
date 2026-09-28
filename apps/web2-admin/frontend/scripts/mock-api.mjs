@@ -488,7 +488,14 @@ async function handle(req, res) {
       catalogueStamp: null,
       catalogueWrite: { batch: null, refusal: null, moveWaitingTo: null, unrecordedHistory: null },
       // Nothing to move without a catalogue stamp, and the move is off by default, as CATALOGUE_MOVE_ENABLED is.
-      catalogueMove: { enabled: false, waiting: null, refusal: null, latest: null },
+      catalogueMove: {
+        enabled: false,
+        waiting: null,
+        refusal: null,
+        latest: null,
+        designatedBatchId: null,
+        pinnedBatchId: null,
+      },
     });
   }
 
