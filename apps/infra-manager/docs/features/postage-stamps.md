@@ -187,8 +187,11 @@ pinned batch carries a **catalogue** chip in the stamps table, and the Storage
 and funding card says so: buying a batch there, or using another one, changes
 the batch the deployment records, `stamp_id`, and leaves the catalogue on the
 pinned one, because the designation pins the batch by id in a table of its own.
-Moving the catalogue to another batch is its own action, which the web2 admin
-builds. **Top up** stays offered on the pinned batch and keeps it alive, and
+Moving the catalogue to another batch is its own action: the Manager settings
+card designates the new batch as a move, the web2 admin stamps the catalogue
+again under it, and the card releases the old one once the admin reports the
+move done ([stages.md](stages.md#moving-the-catalogue)). Until then the node
+of the batch moved from is not removed either. **Top up** stays offered on the pinned batch and keeps it alive, and
 the manager pushes the batch's new life to the admin within ten seconds.
 **Dilute** keeps the batch too, with half the life per step.
 
