@@ -68,3 +68,28 @@ describe('edge.sh in a checkout that ran the edge before it moved to infra/edge'
     assert.doesNotMatch(refused.stderr, /\bmv\b/);
   });
 });
+
+describe('edge.sh on a host that runs the manager alone', () => {
+  const MANAGER_ONLY_ENV = [
+    '# A test fixture, not a deployment.',
+    'MANAGER_DOMAIN=manager-only.fixture.invalid',
+    'MANAGER_PORT=8080',
+    '',
+  ].join('\n');
+
+  it('makes its folder on a host with no admin checkout and sends the edge there', () => {
+    // No `host`: the folder does not exist yet, as on a host nothing of the admin's was deployed to.
+    const sandbox = makeSandbox({ checkout: { [ENV_FILE.now]: MANAGER_ONLY_ENV } });
+
+    const run = sandbox.runScript(EDGE, ['--host=control-1', `--remote-path=${sandbox.hostDir}`]);
+
+    assert.doesNotMatch(run.stderr, /could not be created/, run.stderr);
+    assert.match(run.stdout, /https:\/\/manager-only\.fixture\.invalid -> 127\.0\.0\.1:8080/, run.stderr);
+    assert.match(run.stdout, /web2-admin console is not served/, run.stderr);
+    assert.ok(existsSync(sandbox.onHost('deploy/edge')), 'the edge folder was not made on the host');
+    assert.ok(
+      run.calls.some((call) => call.startsWith('rsync ') && call.includes(`${sandbox.hostDir}/deploy/edge/`)),
+      `the edge was not sent to the host's edge folder:\n${run.calls.join('\n')}`,
+    );
+  });
+});

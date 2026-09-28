@@ -1191,10 +1191,9 @@ every path in a compose file as a host path.
 - **Max 100 managed profiles per host.** `--portSlot` is an integer from 1 to 100. A stack version may declare a lower ceiling of its own, and the manager
   takes the lower of the two. A stopped deployment still holds its slot.
 - **No HTTPS of its own.** The sign-in gate is only as good as the transport in
-  front of it. The `edge` service in `docker-compose.yml` is that transport: a
-  Caddy container in the `public` compose profile that terminates TLS and gets
-  its own certificate for `MANAGER_DOMAIN`. It starts only when that name is
-  set, and `deploy/README.md` has the steps for turning it on.
+  front of it. The host's edge, `infra/edge` at the repository root, is that
+  transport: one Caddy per host that terminates TLS for each console the host
+  publishes on its loopback. `deploy/README.md` has the steps for turning it on.
 - **Streamed SSE.** A deploy answers over an HTTP connection held open for the
   whole run. Closing it does not stop the run: only the health check is killed
   when its client goes away. A deploy, a deploy-uploader or a stop finishes on

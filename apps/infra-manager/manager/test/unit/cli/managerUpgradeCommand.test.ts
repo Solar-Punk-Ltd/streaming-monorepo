@@ -353,15 +353,14 @@ describe('manager:upgrade', () => {
   it('builds its host operations from the flags it was given', async () => {
     const composeFile = join(mutableRoot, 'docker-compose.yml');
 
-    const run = await upgrade(argvWith({ '--compose-file': composeFile }, ['--public-edge']));
+    const run = await upgrade(argvWith({ '--compose-file': composeFile }, ['--first-use']));
 
     assert.equal(run.error, null);
     assert.deepEqual(settings, {
       versionsRoot,
       composeFile,
       bundledStackRoot: BUNDLED_STACK_ROOT,
-      publicEdge: true,
-      firstUse: false,
+      firstUse: true,
       postgresVolume: MANAGER_POSTGRES_VOLUME,
       apiHealthUrl: `http://api:${config.port}/health`,
       timeouts: { bundledBuild: Number(BUNDLED_TIMEOUT) * 1000 },

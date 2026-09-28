@@ -130,9 +130,10 @@ manager's `AuthService.closeStreamsOfEndedSessions` is the whole of it, and the
 comment there about a stream deliberately not counting as activity is the part
 that is easy to get wrong.
 
-Also left out, with less to say about them: the manager's Caddy edge, its nginx
-security headers and its host firewall generator. Those are deployment, this is
-the API, and web2-admin's own deployment story is `docs/infra-state.md`.
+Also left out, with less to say about them: the manager's nginx security
+headers and its host firewall generator. Those are deployment, this is the API,
+and web2-admin's own deployment story is `apps/web2-admin/deploy/README.md`,
+with the host it runs on set up by `docs/hosts.md`.
 
 ## The surface
 
