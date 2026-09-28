@@ -24,7 +24,9 @@ import { chosenKey, needsStreamKey, type WizardContext, type WizardState } from 
  * and keeps the operator's choice once they touch it. At the manager's own
  * address the deployment gets a token of its own, which its first deploy
  * generates and registers with the admin; no token reaches the page, and the
- * create sends the address alone. Elsewhere a token is typed here.
+ * create sends the address alone. That admin takes no other token from an
+ * uploader, so a token typed here is held there. Elsewhere a token is typed
+ * here.
  */
 export interface AdminLinkChoice {
   /** Whether the uploader reports to the web2 admin. Off, it runs standalone whatever its version sets. */
@@ -110,6 +112,18 @@ export function ownTokenElsewhere(state: WizardState, context: WizardContext): b
 }
 
 /**
+ * Whether the group asks for a token typed here at the address of the manager's link, while the link stores a token to
+ * register one of the deployment's own with. That admin takes only a token of the deployment's own from an uploader
+ * (stages phase 9), so a typed one would be refused there.
+ */
+export function typedTokenAtLink(state: WizardState, context: WizardContext): boolean {
+  const choice = chosenAdminLink(state, context);
+  const address = ownAdminTokenAddressOf(context.managerAdminLink);
+  if (!choice.on || choice.tokenSource !== 'typed' || address === null) return false;
+  return urlProblemOf(choice) === null && sameAdminOrigin(choice.url, address);
+}
+
+/**
  * The token a test presents, or why there is none to present. A token of the deployment's own does not exist until
  * its first deploy, so its test presents the manager's stored token, at the one address that token and the new one
  * both go to.
@@ -131,6 +145,13 @@ function tokenOf(
           problem:
             "a token of its own is registered only with the manager's own web2 admin, so type the token for this address",
         };
+  }
+  const address = ownAdminTokenAddressOf(context.managerAdminLink);
+  if (address !== null && urlProblemOf(choice) === null && sameAdminOrigin(choice.url, address)) {
+    return {
+      problem:
+        "the manager's own web2 admin takes only a token of its own from an uploader, so choose A token of its own",
+    };
   }
   if (choice.token === '') return { problem: 'type the token, or give the deployment a token of its own' };
   const problem = adminTokenProblem(choice.token);
@@ -190,22 +211,26 @@ export function adminLinkBody(state: WizardState, context: WizardContext): Admin
  * What Test connection asks from the group, or null until the address and the
  * token can be used.
  *
- * With a token typed here, the address of the stream key chosen here is the
- * owner to compare. A typed token is one the admin ties to no stage, so the
- * probe compares the key with the admin's catalog owner, which is what the
- * uploader will do at boot: a stage with a key of its own on such a token does
- * not start. With a token of its own no owner is compared, since the token
- * does not exist yet and the admin learns the stage's address from its first
- * push at the first deploy; the deployment's own Test connection compares it
- * then.
+ * With a token typed here, for another admin than the manager's own, the
+ * token is an uploader's and the address of the stream key chosen here is the
+ * owner to compare, which is what the uploader will do at boot. With a token
+ * of its own the test proves the manager's stored token, the registrar's, and
+ * no owner is compared, since the token does not exist yet and the admin
+ * learns the stage's address from its first push at the first deploy; the
+ * deployment's own Test connection compares it then.
  */
 export function adminLinkTestOf(state: WizardState, context: WizardContext): AdminLinkTestRequest | null {
   const choice = chosenAdminLink(state, context);
   if (!choice.on || urlProblemOf(choice) !== null) return null;
   const token = tokenOf(choice, context);
   if ('problem' in token) return null;
-  const feedOwner = choice.tokenSource === 'typed' ? (addressOfStreamKey(chosenKey(state)) ?? null) : null;
-  return { url: choice.url, token: token.token, feedOwner };
+  if (choice.tokenSource === 'own') return { url: choice.url, token: token.token, feedOwner: null };
+  return {
+    url: choice.url,
+    token: token.token,
+    tokenFor: 'uploader',
+    feedOwner: addressOfStreamKey(chosenKey(state)) ?? null,
+  };
 }
 
 /** The review's line for the link, naming the address and where the token comes from, never the token. Null where the group asks nothing. */

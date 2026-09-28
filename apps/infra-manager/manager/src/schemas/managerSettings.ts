@@ -1,4 +1,4 @@
-import type { AdminLinkTokenChoice } from '@streaming-infra-manager/common';
+import { ADMIN_LINK_TOKEN_HOLDERS, type AdminLinkTokenChoice } from '@streaming-infra-manager/common';
 import { boolean, InferType, mixed, number, object, string } from 'yup';
 
 /** Far past any real address or token, while keeping a save a small request. */
@@ -44,6 +44,8 @@ const TOKEN_CHOICE_MESSAGE =
   'token is either the stored one, { "source": "stored" }, or one typed, { "source": "typed", "value": "..." }';
 const FEED_OWNER_MESSAGE = 'feedOwner is a stream address, 40 hex characters with or without 0x';
 const FEED_OWNER_RE = /^(0x)?[0-9a-fA-F]{40}$/;
+const TOKEN_FOR_MESSAGE =
+  'tokenFor is "registrar" for the web2 admin\'s registrar token, or "uploader" for an uploader\'s';
 
 /** Exactly one of the two token choices, with no other key, whose typed value is text. */
 function isTokenChoice(value: unknown): value is AdminLinkTokenChoice {
@@ -56,9 +58,9 @@ function isTokenChoice(value: unknown): value is AdminLinkTokenChoice {
 
 /**
  * What `POST /manager-settings/admin-link/test` takes: an address typed on a
- * page, the token to present, and the stream address to compare the admin's
- * owner with, where the page has one. Only the shape here, with messages that
- * name no value.
+ * page, the token to present, whose token it is, and the stream address to
+ * compare the admin's owner with, where the page has one. Only the shape here,
+ * with messages that name no value.
  */
 export const testAdminLinkSchema = object({
   url: mixed<string>()
@@ -73,6 +75,11 @@ export const testAdminLinkSchema = object({
       LENGTH_MESSAGE,
       (value) => !isTokenChoice(value) || value.source === 'stored' || withinLength(value.value),
     ),
+  tokenFor: string()
+    .typeError(TOKEN_FOR_MESSAGE)
+    .strict()
+    .notRequired()
+    .oneOf(ADMIN_LINK_TOKEN_HOLDERS, TOKEN_FOR_MESSAGE),
   feedOwner: string().typeError(FEED_OWNER_MESSAGE).nullable().notRequired().matches(FEED_OWNER_RE, FEED_OWNER_MESSAGE),
 }).noUnknown(true);
 

@@ -19,7 +19,12 @@ import {
   sameAdminOrigin,
   storedTokenMoveProblem,
 } from './adminLink.js';
-import { ADMIN_LINK_TEST_OUTCOMES, adminLinkTestProblems } from './adminLinkTest.js';
+import {
+  ADMIN_LINK_TEST_OUTCOMES,
+  ADMIN_LINK_TOKEN_HOLDERS,
+  adminLinkTestProblems,
+  STORED_TOKEN_NOT_AN_UPLOADER,
+} from './adminLinkTest.js';
 import { adminTokenProblem, managerAdminLinkProblems } from './managerAdminLink.js';
 
 const ADMIN_URL = 'https://admin.example.com';
@@ -299,6 +304,17 @@ describe('a request to test a web2 admin link typed on a page', () => {
     );
   });
 
+  it("says whose token it is, and refuses the stored one as an uploader's, since it is the registrar's", () => {
+    const typed = { source: 'typed' as const, value: TOKEN };
+    assert.deepEqual(adminLinkTestProblems({ url: ADMIN_URL, token: typed, tokenFor: 'uploader' }), []);
+    assert.deepEqual(adminLinkTestProblems({ url: ADMIN_URL, token: typed, tokenFor: 'registrar' }), []);
+    assert.deepEqual(adminLinkTestProblems({ url: ADMIN_URL, token: { source: 'stored' }, tokenFor: 'registrar' }), []);
+    assert.deepEqual(adminLinkTestProblems({ url: ADMIN_URL, token: { source: 'stored' }, tokenFor: 'uploader' }), [
+      STORED_TOKEN_NOT_AN_UPLOADER,
+    ]);
+    assert.deepEqual([...ADMIN_LINK_TOKEN_HOLDERS], ['registrar', 'uploader']);
+  });
+
   it('knows every outcome the page has a sentence for', () => {
     assert.deepEqual([...ADMIN_LINK_TEST_OUTCOMES].sort(), [
       'invalid-address',
@@ -311,6 +327,7 @@ describe('a request to test a web2 admin link typed on a page', () => {
       'redirected',
       'stored-token-elsewhere',
       'token-accepted',
+      'token-not-own',
       'token-not-registered',
       'token-refused',
       'unreachable',

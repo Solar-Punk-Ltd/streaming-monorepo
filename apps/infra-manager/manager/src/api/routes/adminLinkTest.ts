@@ -32,6 +32,7 @@ export function createAdminLinkTestRouter(tester: AdminLinkTester): Router {
         {
           url: body.url as string,
           token: body.token as NonNullable<TestAdminLinkBody['token']>,
+          ...(body.tokenFor ? { tokenFor: body.tokenFor } : {}),
           feedOwner: body.feedOwner ?? null,
         },
         username,

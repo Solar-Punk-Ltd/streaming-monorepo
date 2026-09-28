@@ -17,6 +17,9 @@ import {
   OWN_TOKEN_TITLE,
   ownTokenDetail,
   TYPE_TOKEN_HERE,
+  TYPED_TOKEN_AT_LINK,
+  TYPED_TOKEN_DETAIL,
+  USE_OWN_TOKEN,
 } from '../../../adminLink/adminLinkText';
 import { PLAIN_TEXT_INPUT } from '../../../deployments/settings/SettingValueField';
 import { ChoiceGroup } from '../../ChoiceGroup';
@@ -28,6 +31,7 @@ import {
   chosenAdminLink,
   managerLinkPending,
   ownTokenElsewhere,
+  typedTokenAtLink,
 } from '../adminLinkChoice';
 import type { WizardStepProps } from '../wizardState';
 
@@ -51,6 +55,7 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
   const tokenProblem = choice.token === '' ? null : adminTokenProblem(choice.token);
   const testRequest = adminLinkTestOf(state, context);
   const elsewhere = ownTokenElsewhere(state, context);
+  const typedAtLink = typedTokenAtLink(state, context);
   const pending = managerLinkPending(state, context);
   const typeTokenHere = () => {
     set({ tokenSource: 'typed' });
@@ -153,7 +158,7 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
                   {
                     value: 'typed',
                     title: 'A token typed here',
-                    detail: "The web2 admin's INTERNAL_API_TOKEN, at least 32 characters.",
+                    detail: TYPED_TOKEN_DETAIL,
                     extra: (
                       <TextField
                         size="small"
@@ -191,12 +196,28 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
                   {OWN_TOKEN_ELSEWHERE}
                 </Alert>
               )}
+              {typedAtLink && (
+                <Alert
+                  severity="warning"
+                  data-typed-token-at-link
+                  sx={{ '& .MuiAlert-message': { minWidth: 0, overflowWrap: 'anywhere' } }}
+                  action={
+                    <Button color="inherit" size="small" onClick={() => set({ tokenSource: 'own' })}>
+                      {USE_OWN_TOKEN}
+                    </Button>
+                  }
+                >
+                  {TYPED_TOKEN_AT_LINK}
+                </Alert>
+              )}
               <AdminLinkTest
                 run={testRequest ? () => testAdminLink(testRequest) : null}
                 blockedReason={
                   elsewhere
                     ? 'Type the token for this address to test it.'
-                    : 'Give the address and a token to test the link.'
+                    : typedAtLink
+                      ? 'Choose A token of its own to test the link.'
+                      : 'Give the address and a token to test the link.'
                 }
                 resetKey={JSON.stringify([
                   choice.url,

@@ -5,18 +5,25 @@ import {
   feedOwnerOf,
   ingestLookupPath,
   MEDIA_TYPE_VIDEO,
+  REGISTRAR_CHECK_PATH,
   sameFeedOwner,
   STAGE_SELF_PATH,
   stageSelfAnswerSchema,
 } from '@streaming-monorepo/contracts';
 
-/** What Test connection asks a web2 admin with: the address and token the uploader would be given. */
+/**
+ * What Test connection asks a web2 admin with: the address, the token, and whose token it is. `registrar` is the
+ * manager's own, proved on the admin's registrar check; `uploader` is the one a deployment's uploader would be given,
+ * proved on what the uploader asks.
+ */
 export interface AdminLinkProbeTarget {
   url: string;
   token: string;
+  check: 'registrar' | 'uploader';
   /**
-   * The address the deployment's stream key derives, compared with the owner the admin knows for the token's stage,
-   * or with its catalog's for a token it ties to no stage. Null where there is none to compare.
+   * The address the deployment's stream key derives, compared with the owner the admin knows for an uploader's token's
+   * stage, or with its catalog's for a token it ties to no stage. Null where there is none to compare, and never
+   * compared for the registrar's token.
    */
   feedOwner: string | null;
 }
@@ -49,8 +56,8 @@ const CONFIG_PATH = '/api/config';
 
 /**
  * The owner the admin knows for the token's stage, off its answer to `GET /api/internal/stages/self`: the owner on a
- * 200 that names one, `no-stage` on a 404, which is a token that belongs to no stage (the shared one) or an admin
- * older than stages, and null for anything else.
+ * 200 that names one, `no-stage` on a 404, which only an admin older than stages answers (from stages phase 5 to 8 it
+ * also answered the shared token so), and null for anything else.
  */
 function stageOwnerOf(answer: Answer): string | 'no-stage' | null {
   if (answer.kind !== 'answered') return null;
@@ -134,14 +141,56 @@ function configuredFeedOwner(answer: Answer): string | null {
   return feedOwnerOf(answer.body);
 }
 
+/** The error code of the admin's 404 for a path no route names. */
+const ADMIN_ERROR_NOT_FOUND = 'not_found';
+
 /**
- * Asks a web2 admin what the stream uploader would ask it, and answers one
- * outcome code. Where there is a stream address to compare, it then asks what
- * the uploader asks at boot: the stage the token belongs to, with the token,
- * and the owner the admin knows for it. Every stage signs with a key of its
- * own, so that owner is the one compared. On a 404 there, a token that belongs
- * to no stage or an admin older than stages, it compares with the catalog
- * owner of the public config, asked without the token.
+ * Proves the manager's own token, the admin's registrar token, on the admin's registrar check: 204 is `token-accepted`
+ * and the admin's own 401 is `token-refused`. An admin older than the check answers its own 404 for the path only once
+ * a token got past its door, so that 404 is followed by the uploader's lookup with the same token, which such an admin
+ * still takes it on. The uploader's routes refuse the registrar token since stages phase 9, so a lookup would read an
+ * admin of this version as refusing it.
+ */
+async function probeRegistrar(
+  base: string,
+  token: string,
+  timeoutMs: number,
+  maxBytes: number,
+): Promise<AdminLinkTestOutcome> {
+  const check = await ask(`${base}${REGISTRAR_CHECK_PATH}`, { authorization: `Bearer ${token}` }, timeoutMs, maxBytes);
+  if (check.kind === 'none') return 'unreachable';
+  if (check.kind === 'redirect') return 'redirected';
+  if (check.status === 204) return 'token-accepted';
+  if (check.status === 401 && errorCodeOf(check) === ADMIN_ERROR_UNAUTHENTICATED) return 'token-refused';
+  if (check.status !== 404 || errorCodeOf(check) !== ADMIN_ERROR_NOT_FOUND) return 'not-admin';
+  return lookupOutcome(
+    await ask(`${base}${UNUSED_STREAM_PATH}`, { authorization: `Bearer ${token}` }, timeoutMs, maxBytes),
+  );
+}
+
+/** What the uploader's lookup of a stream nobody declared says about the token, or null when the admin took it. */
+function lookupRefusal(lookup: Answer): AdminLinkTestOutcome | null {
+  if (lookup.kind === 'none') return 'unreachable';
+  if (lookup.kind === 'redirect') return 'redirected';
+  if (lookup.status === 401 && errorCodeOf(lookup) === ADMIN_ERROR_UNAUTHENTICATED) return 'token-refused';
+  if (lookup.status !== 404 || errorCodeOf(lookup) !== ADMIN_ERROR_STREAM_NOT_FOUND) return 'not-admin';
+  return null;
+}
+
+function lookupOutcome(lookup: Answer): AdminLinkTestOutcome {
+  return lookupRefusal(lookup) ?? 'token-accepted';
+}
+
+/**
+ * Asks a web2 admin what the holder of the token would ask it, and answers one
+ * outcome code. The registrar's token is proved on the registrar check alone.
+ * An uploader's token is proved on the lookup the uploader makes on every
+ * publish. Where there is a stream address to compare, it then asks what the
+ * uploader asks at boot: the stage the token belongs to, with the token, and
+ * the owner the admin knows for it. Every stage signs with a key of its own,
+ * so that owner is the one compared. On a 404 there, an admin older than
+ * stages, it compares with the catalog owner of the public config, asked
+ * without the token.
  *
  * It reaches whatever the manager's own host can reach, loopback and private
  * addresses included, as the uploader reaches whatever its host can. It never
@@ -152,17 +201,12 @@ export const probeAdminLink: AdminLinkProbe = async (target, options = {}) => {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
   const base = target.url.replace(/\/+$/, '');
+  if (target.check === 'registrar') return probeRegistrar(base, target.token, timeoutMs, maxBytes);
 
-  const lookup = await ask(
-    `${base}${UNUSED_STREAM_PATH}`,
-    { authorization: `Bearer ${target.token}` },
-    timeoutMs,
-    maxBytes,
+  const refusal = lookupRefusal(
+    await ask(`${base}${UNUSED_STREAM_PATH}`, { authorization: `Bearer ${target.token}` }, timeoutMs, maxBytes),
   );
-  if (lookup.kind === 'none') return 'unreachable';
-  if (lookup.kind === 'redirect') return 'redirected';
-  if (lookup.status === 401 && errorCodeOf(lookup) === ADMIN_ERROR_UNAUTHENTICATED) return 'token-refused';
-  if (lookup.status !== 404 || errorCodeOf(lookup) !== ADMIN_ERROR_STREAM_NOT_FOUND) return 'not-admin';
+  if (refusal !== null) return refusal;
   if (target.feedOwner === null) return 'token-accepted';
 
   const stage = stageOwnerOf(

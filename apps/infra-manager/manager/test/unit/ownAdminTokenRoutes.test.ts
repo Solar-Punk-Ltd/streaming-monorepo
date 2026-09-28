@@ -332,14 +332,38 @@ describe("Test connection with the deployment's own token", () => {
     }
   });
 
-  it("asks with the deployment's own token and says a refusal of the shared one as it is", async () => {
-    const app = await appFor({
-      settings: { ADMIN_API_URL: ADMIN_URL, ADMIN_API_TOKEN: COPIED_TOKEN },
+  it("says a refused token the manager did not generate has to be rotated, at the link's address alone", async () => {
+    // A copy of the link's token, which an older manager put into the deployment, and a token typed there: the admin
+    // takes neither from an uploader since stages phase 9.
+    for (const token of [COPIED_TOKEN, 'synthetic-typed-admin-token-0123456789abcdef']) {
+      const app = await appFor({
+        settings: { ADMIN_API_URL: ADMIN_URL, ADMIN_API_TOKEN: token },
+        probe: 'token-refused',
+      });
+      try {
+        app.pushes.set('stage', { outcome: 'stored', at: new Date().toISOString() });
+        assert.deepEqual(await app.test(), { outcome: 'token-not-own' });
+        assert.deepEqual(app.probed, [token]);
+      } finally {
+        await app.close();
+      }
+    }
+
+    const elsewhere = await appFor({
+      settings: { ADMIN_API_URL: ELSEWHERE, ADMIN_API_TOKEN: COPIED_TOKEN },
       probe: 'token-refused',
     });
     try {
-      assert.deepEqual(await app.test(), { outcome: 'token-refused' });
-      assert.deepEqual(app.probed, [COPIED_TOKEN]);
+      assert.deepEqual(await elsewhere.test(), { outcome: 'token-refused' }, 'another admin refuses it as it likes');
+    } finally {
+      await elsewhere.close();
+    }
+  });
+
+  it('takes an accepted token the manager did not generate as it is, as an older admin still takes it', async () => {
+    const app = await appFor({ settings: { ADMIN_API_URL: ADMIN_URL, ADMIN_API_TOKEN: COPIED_TOKEN } });
+    try {
+      assert.deepEqual(await app.test(), { outcome: 'token-accepted' });
     } finally {
       await app.close();
     }

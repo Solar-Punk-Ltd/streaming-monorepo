@@ -30,6 +30,7 @@ import {
   asksAdminLink,
   chosenAdminLink,
   ownTokenElsewhere,
+  typedTokenAtLink,
   withAdminLinkPointed,
 } from './adminLinkChoice';
 import { initialWizardState, type WizardContext, type WizardGoal, type WizardState } from './wizardState';
@@ -208,6 +209,29 @@ describe('what stops Continue and Deploy', () => {
   });
 });
 
+describe("a token typed here at the manager's own web2 admin", () => {
+  const typed = { on: true, url: `${ADMIN_URL}/v2`, tokenSource: 'typed' as const, token: TOKEN };
+
+  it('holds Continue and the test, since that admin takes only a token of its own from an uploader', () => {
+    const state = stateFor('stream', { adminLink: typed });
+    assert.equal(
+      adminLinkError(state, contextWith(DEFAULT)),
+      "Web2 admin: the manager's own web2 admin takes only a token of its own from an uploader, so choose A token of its own",
+    );
+    assert.equal(typedTokenAtLink(state, contextWith(DEFAULT)), true);
+    assert.equal(adminLinkTestOf(state, contextWith(DEFAULT)), null);
+  });
+
+  it('holds nothing at another address, nor where the link has no token to register one of its own with', () => {
+    const elsewhere = stateFor('stream', { adminLink: { ...typed, url: 'https://admin2.example.com' } });
+    assert.equal(adminLinkError(elsewhere, contextWith(DEFAULT)), null);
+    assert.equal(typedTokenAtLink(elsewhere, contextWith(DEFAULT)), false);
+    const addressOnly = stateFor('stream', { adminLink: typed });
+    assert.equal(adminLinkError(addressOnly, contextWith(ADDRESS_ONLY)), null);
+    assert.equal(typedTokenAtLink(addressOnly, contextWith(ADDRESS_ONLY)), false);
+  });
+});
+
 describe('what the create sends', () => {
   it('sends the address alone for a token of its own, which the first deploy generates', () => {
     assert.deepEqual(adminLinkBody(stateFor('stream'), contextWith(DEFAULT)), {
@@ -245,6 +269,17 @@ describe('what Test connection asks from the group', () => {
       url: ADMIN_URL,
       token: { source: 'stored' },
       feedOwner: null,
+    });
+  });
+
+  it("says a typed token is an uploader's, so the manager proves it as the uploader will", () => {
+    const typed = { on: true, url: 'https://admin2.example.com', tokenSource: 'typed' as const, token: TOKEN };
+    const state = stateFor('stream', { adminLink: typed });
+    assert.deepEqual(adminLinkTestOf(state, contextWith(DEFAULT)), {
+      url: 'https://admin2.example.com',
+      token: { source: 'typed', value: TOKEN },
+      tokenFor: 'uploader',
+      feedOwner: addressOfStreamKey(state.generatedKey),
     });
   });
 
