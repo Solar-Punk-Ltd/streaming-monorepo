@@ -420,6 +420,11 @@ async function handle(req, res) {
     return send(res, 200, { user });
   }
 
+  // No manager pushes into the mock, so it has no stages and no catalogue
+  // stamp: the Stages page shows its empty state.
+  if (path === '/api/stages' && method === 'GET') return send(res, 200, { stages: [] });
+  if (path === '/api/catalogue-stamp' && method === 'GET') return send(res, 200, { catalogueStamp: null });
+
   if (path === '/api/streams' && method === 'GET') {
     const list = [...streams.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(publicStream);
     return send(res, 200, { streams: list });

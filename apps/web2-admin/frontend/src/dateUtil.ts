@@ -70,3 +70,20 @@ export function dateTimeLocalValueToIso(value: string): string | null {
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
 }
+
+/**
+ * How long ago an ISO moment was, the way a status line says it: `less than a
+ * minute ago`, `1 minute ago`, `5 minutes ago`, `2 hours ago`, `3 days ago`.
+ * A moment a little in the future, another clock's, reads as just now.
+ */
+export function formatAgo(iso: string, now: number = Date.now()): string {
+  const at = new Date(iso).getTime();
+  if (Number.isNaN(at)) return iso;
+  const minutes = Math.floor((now - at) / 60_000);
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'} ago`;
+  if (minutes < 1) return 'less than a minute ago';
+  if (minutes < 60) return plural(minutes, 'minute');
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return plural(hours, 'hour');
+  return plural(Math.floor(hours / 24), 'day');
+}

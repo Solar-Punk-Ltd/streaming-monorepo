@@ -1,10 +1,14 @@
 import type {
   AddUserRequest,
+  CatalogueStampResponse,
+  CatalogueStampSummary,
   ChangePasswordRequest,
   IngestDetails,
   MeResponse,
   PublicConfig,
   PublishResult,
+  StageListResponse,
+  StageSummary,
   Stream,
   StreamInput,
   StreamListResponse,
@@ -240,6 +244,18 @@ export function fetchIngest(id: string): Promise<IngestDetails> {
 
 export function rotateIngestKey(id: string): Promise<IngestDetails> {
   return sendJson<IngestDetails>('POST', `${API}/streams/${encodeURIComponent(id)}/ingest/rotate-key`);
+}
+
+// --- stages -----------------------------------------------------------------
+
+export async function fetchStages(): Promise<StageSummary[]> {
+  const body = await getJson<StageListResponse>(`${API}/stages`);
+  return body.stages;
+}
+
+export async function fetchCatalogueStamp(): Promise<CatalogueStampSummary | null> {
+  const body = await getJson<CatalogueStampResponse>(`${API}/catalogue-stamp`);
+  return body.catalogueStamp;
 }
 
 // --- public config ----------------------------------------------------------
