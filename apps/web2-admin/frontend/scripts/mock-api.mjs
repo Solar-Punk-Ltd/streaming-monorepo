@@ -34,6 +34,10 @@ let seedPassword = process.env.SEED_ADMIN_PASSWORD ?? 'admin1234';
 // Flip to true to exercise the "ingest verifies the key" branch of the OBS panel.
 const KEY_VERIFIED = process.env.INGEST_KEY_VERIFIED === 'true';
 
+// Flip to true to see the OBS panel of a deployment that opened RTMP ingest.
+// Off, as on the API, the panel offers SRT only.
+const RTMP_PUBLIC = process.env.INGEST_RTMP_PUBLIC === 'true';
+
 const OWNER = '1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c';
 const FEED_TOPIC = 'swarm-stream';
 const FEED_TOPIC_HEX = '4c4b1a0d9e5b1f7a3c2d8e6f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3';
@@ -165,10 +169,12 @@ function ingestDetails(row) {
       url: `srt://ingest.example.test:10061?streamid=#!::r=${streamId}?key=${row.publishKey},m=publish`,
       passphrase: 'mock-srt-passphrase-value',
     },
-    rtmp: {
-      server: `rtmp://ingest.example.test:10062/${row.mediaType}`,
-      streamKey: `${row.topic}?key=${row.publishKey}`,
-    },
+    rtmp: RTMP_PUBLIC
+      ? {
+          server: `rtmp://ingest.example.test:10062/${row.mediaType}`,
+          streamKey: `${row.topic}?key=${row.publishKey}`,
+        }
+      : null,
     keyVerified: KEY_VERIFIED,
   };
 }
@@ -540,6 +546,7 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log(`[mock-api] listening on http://127.0.0.1:${PORT}`);
   console.log(`[mock-api] log in as ${SEED_USERNAME} / ${seedPassword}`);
   console.log(`[mock-api] INGEST_KEY_VERIFIED=${KEY_VERIFIED}`);
+  console.log(`[mock-api] INGEST_RTMP_PUBLIC=${RTMP_PUBLIC}`);
 });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

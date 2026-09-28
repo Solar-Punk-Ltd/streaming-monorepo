@@ -4,6 +4,7 @@ import {
   buildRtmpStreamKey,
   buildSrtPublishUrl,
   type IngestDetails,
+  type IngestRtmpDetails,
 } from '@streaming-monorepo/web2-admin-common';
 
 import type { StreamRow } from '../types/index.js';
@@ -35,11 +36,19 @@ export function ingestDetailsFor(stream: StreamRow, endpoint: IngestConfig): Ing
       url: buildSrtPublishUrl(endpoint, streamId, stream.publish_key),
       passphrase: endpoint.srtPassphrase,
     },
-    rtmp: {
-      server: buildRtmpServer(endpoint, app),
-      streamKey: buildRtmpStreamKey(stream.topic, stream.publish_key),
-    },
+    rtmp: endpoint.rtmpPublic ? rtmpDetailsFor(stream, endpoint) : null,
     keyVerified: endpoint.keyVerified,
+  };
+}
+
+/**
+ * Only built where RTMP ingest is open, so the stream key does not travel a
+ * second time, in a form nobody can use, on a deployment that closed it.
+ */
+function rtmpDetailsFor(stream: StreamRow, endpoint: IngestConfig): IngestRtmpDetails {
+  return {
+    server: buildRtmpServer(endpoint, stream.media_type),
+    streamKey: buildRtmpStreamKey(stream.topic, stream.publish_key),
   };
 }
 
