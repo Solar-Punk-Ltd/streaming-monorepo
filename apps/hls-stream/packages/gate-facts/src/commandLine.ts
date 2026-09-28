@@ -1,7 +1,4 @@
-/**
- * Where pull requests in the monorepo go. Its `main` is the admin's branch from before the monorepo,
- * which holds neither the stack nor its lockfile.
- */
+/** Where pull requests in the monorepo go. */
 const DEFAULT_BASE = 'main';
 
 interface CommandLine {
