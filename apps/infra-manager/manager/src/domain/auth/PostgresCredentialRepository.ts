@@ -7,12 +7,7 @@ import type { NewSession } from './SessionRepository.js';
 export class PostgresCredentialRepository implements CredentialRepository {
   constructor(private readonly pool: Pool) {}
 
-  admitSession(
-    userId: number,
-    verifiedPasswordHash: string,
-    session: NewSession,
-    signedInAt: Date,
-  ): Promise<boolean> {
+  admitSession(userId: number, verifiedPasswordHash: string, session: NewSession, signedInAt: Date): Promise<boolean> {
     return writeIfPasswordUnchanged(this.pool, userId, verifiedPasswordHash, async (client) => {
       await client.query(
         `INSERT INTO sessions (token_hash, user_id, expires_at, ip, user_agent)
