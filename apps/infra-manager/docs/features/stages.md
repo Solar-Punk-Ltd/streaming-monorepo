@@ -9,9 +9,11 @@ built in, is `docs/architecture/stages.md` at the repository root; the record's
 shape is `stageRecordSchema` in `packages/contracts/src/stage.ts`.
 
 Status, 2026-09-28. Built on `stages/p3-manager-pushes-stages`, branched from
-`feat/stages` at `90def834`, phase 3 of the brief. Not deployed. Each uploader
-still presents the link's own token, which phase 5 replaces with one per
-deployment, and every stage still signs with the brand's key until phase 6.
+`feat/stages` at `90def834`, phase 3 of the brief, and on
+`stages/p5-uploader-tokens`, phase 5, which gives every uploader linked to the
+manager's admin a token of its own. Not deployed. A deployment created before
+phase 5 still presents the link's own token, reported as `shared`, until it is
+rotated, and every stage still signs with the brand's key until phase 6.
 
 ## What is pushed
 
@@ -32,7 +34,7 @@ One record per stage, checked against `stageRecordSchema` before it leaves:
 | `rungs[]`                           | a pool's rungs from its `BEE_PUBLISHERS`, lowest first, each read on the deployment of this manager whose `stamp_id` is that rung's batch: its stamp health and its chequebook. A stage with a node of its own has one rung, `source`, read there. No node address |
 | `uploader`                          | `UploaderHealthService`'s reading, its state and reasons alone, or null when it could not be read                                                                                                                                                                  |
 | `readiness`                         | the console's own readiness, below                                                                                                                                                                                                                                 |
-| `adminToken`                        | the sha256 of the deployment's effective `ADMIN_API_TOKEN`, `shared` when it equals the link's stored token and `own` otherwise, or null when the uploader is given none                                                                                           |
+| `adminToken`                        | the sha256 of the deployment's effective `ADMIN_API_TOKEN`, `shared` when it equals the link's stored token and `own` otherwise, or null when the uploader is given none. A token the manager generated for the deployment is `own`, below                         |
 
 A chequebook's `availableBzz` is its available PLUR written exactly in BZZ
 with `plurToBzzExact`. A rung whose node this manager does not run, a pool
@@ -42,6 +44,24 @@ under another manager, has no reading, and a node that did not answer reads
 No signing key, wallet key, RPC endpoint, token or node address has a field on
 the record, and `test/unit/stageRecordBuilder.test.ts` checks that none of
 them reaches the JSON that is sent.
+
+### The uploader's token
+
+Since phase 5 a deploy gives an uploader linked to the manager's admin a token
+of its own, generated the first time, kept with the deployment's generated
+secrets and never replaced (`manager/src/domain/adminLink/ownAdminToken.ts`;
+[web2-admin-link.md](web2-admin-link.md) has the rule). The admin knows it by
+the sha256 on the record alone, which is why the push before the uploader
+starts matters: that push is the one that registers a new token. Until a push
+carrying it has been stored, the admin refuses the token, and the
+deployment's Test connection answers `token-not-registered` rather than
+`token-refused`.
+
+**Rotate the uploader's admin token**, on the stage card, takes the token out.
+The next push carries no token, so the admin stops taking the old one; the
+next deploy generates a new one and its pre-start push registers it. A
+deployment still on the link's token, `shared`, moves to one of its own this
+way. The link's token keeps being the registrar token these pushes present.
 
 ### Readiness
 
@@ -158,7 +178,8 @@ together once.
   and where it comes from, edited in place with the sentence "The address
   encoders dial. The address ssh uses can be a private one.", and the line
   "Web2 admin registration: <outcome> <N> s ago", read every ten seconds from
-  `GET /stages/:name/registration`.
+  `GET /stages/:name/registration`, and Rotate the uploader's admin token,
+  `POST /profiles/:name/admin-token/rotate`, asked for first.
 - **`GET /stages`**, behind the session: every record the manager would push
   now, built afresh, each with its last push and without the SRT passphrase,
   which is answered only as `hasSrtPassphrase`.
@@ -182,3 +203,6 @@ together once.
   read its rungs.
 - The console's card estimates the ingest address from the page's own host
   for a deployment on the manager's host. The record uses `PUBLIC_HOST`.
+- Between a rotation and the redeploy, the running uploader's own token is
+  refused once the next push lands, so it cannot report until it is redeployed.
+  The card says so before it asks.
