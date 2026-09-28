@@ -18,7 +18,7 @@ import { describe, it } from 'node:test';
 import { SRS_SERVICE } from '@streaming-infra-manager/common';
 
 import type { Profile } from './types';
-import { hostFor, srtPublishUrl } from './urls';
+import { hostFor, srtPublishSettings, srtPublishUrl } from './urls';
 
 const SERVER_HOST = 'manager.example';
 
@@ -80,10 +80,33 @@ describe('the SRT line a broadcaster points at an SRS deployment', () => {
     assert.equal(srtPublishUrl(srs, SERVER_HOST), 'srt://stream.example:10011?streamid=#!::r=live/stream,m=publish');
   });
 
-  it('appends the passphrase as it is', () => {
+  it('appends a passphrase that is safe inside an address', () => {
+    assert.deepEqual(srtPublishSettings(srs, SERVER_HOST, ' s3cret.pass_word~-1 '), {
+      server: 'srt://stream.example:10011?streamid=#!::r=live/stream,m=publish&passphrase=s3cret.pass_word~-1',
+      passphraseRoute: 'server',
+    });
     assert.equal(
       srtPublishUrl(srs, SERVER_HOST, ' secret '),
       'srt://stream.example:10011?streamid=#!::r=live/stream,m=publish&passphrase=secret',
     );
+  });
+
+  it("leaves out a passphrase an address cannot carry, for OBS's own passphrase field", () => {
+    // OBS ends a value at `&` and reads `+` as a space, so this one would reach SRT cut short.
+    assert.deepEqual(srtPublishSettings(srs, SERVER_HOST, 'p&ss word#1'), {
+      server: 'srt://stream.example:10011?streamid=#!::r=live/stream,m=publish',
+      passphraseRoute: 'authentication',
+    });
+    assert.equal(
+      srtPublishUrl(srs, SERVER_HOST, 'p&ss word#1'),
+      'srt://stream.example:10011?streamid=#!::r=live/stream,m=publish',
+    );
+  });
+
+  it('says there is no passphrase when none is given', () => {
+    assert.deepEqual(srtPublishSettings(srs, SERVER_HOST, null), {
+      server: 'srt://stream.example:10011?streamid=#!::r=live/stream,m=publish',
+      passphraseRoute: 'none',
+    });
   });
 });
