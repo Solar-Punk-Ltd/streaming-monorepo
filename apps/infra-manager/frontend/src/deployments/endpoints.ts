@@ -1,3 +1,5 @@
+import { PUBLIC_PORT_ROLES, type PublicPortRole } from '@streaming-infra-manager/common';
+
 /** How an endpoint is reached, which decides what the port cell offers. */
 export type EndpointProtocol = 'http' | 'srt' | 'rtmp' | 'swarm-p2p' | 'tcp';
 
@@ -15,6 +17,15 @@ export interface EndpointKind {
    * which it should not.
    */
   opensInBrowser: boolean;
+  /** Whether the port cell offers its address to copy. */
+  offersAddress: boolean;
+}
+
+/** Whether the firewall policy opens this port to the outside, as the generated host rules do. */
+function isOpened(portKey: string, publicRoles: readonly PublicPortRole[]): boolean {
+  return publicRoles.some(
+    (role) => role.portVar === portKey || (role.aliases ?? []).some((alias) => alias.portVar === portKey),
+  );
 }
 
 /**
@@ -29,7 +40,10 @@ export interface EndpointKind {
  * The API check comes before the HTTP one on purpose: `SRS_HTTP_API_PORT` is
  * an API, and the order is what keeps it off the HLS branch.
  */
-export function endpointKindOf(portKey: string): EndpointKind {
+export function endpointKindOf(
+  portKey: string,
+  publicRoles: readonly PublicPortRole[] = PUBLIC_PORT_ROLES,
+): EndpointKind {
   const key = portKey.toUpperCase();
   if (key.includes('SRT')) {
     return {
@@ -37,14 +51,19 @@ export function endpointKindOf(portKey: string): EndpointKind {
       audience: 'public',
       label: 'SRT ingest, UDP, public',
       opensInBrowser: false,
+      offersAddress: true,
     };
   }
   if (key.includes('RTMP')) {
+    // Ingest is SRT only unless the policy opens RTMP, and an address the
+    // firewall turns away is not offered, as the admin console does not offer it.
+    const opened = isOpened(key, publicRoles);
     return {
       protocol: 'rtmp',
-      audience: 'internal',
-      label: 'RTMP ingest, TCP, internal, the firewall does not open it',
+      audience: opened ? 'public' : 'internal',
+      label: opened ? 'RTMP ingest, TCP, public' : 'RTMP ingest, TCP, internal, the firewall does not open it',
       opensInBrowser: false,
+      offersAddress: opened,
     };
   }
   if (key.includes('P2P')) {
@@ -53,6 +72,7 @@ export function endpointKindOf(portKey: string): EndpointKind {
       audience: 'public',
       label: 'Swarm peers, TCP and UDP, public',
       opensInBrowser: false,
+      offersAddress: true,
     };
   }
   if (key.includes('API')) {
@@ -61,6 +81,7 @@ export function endpointKindOf(portKey: string): EndpointKind {
       audience: 'administrative',
       label: 'API, HTTP, administrative',
       opensInBrowser: false,
+      offersAddress: true,
     };
   }
   if (key === 'CLIENT_PORT') {
@@ -69,6 +90,7 @@ export function endpointKindOf(portKey: string): EndpointKind {
       audience: 'public',
       label: 'viewer page, HTTP, public',
       opensInBrowser: true,
+      offersAddress: true,
     };
   }
   if (key.includes('HTTP') || key.includes('HLS')) {
@@ -77,9 +99,10 @@ export function endpointKindOf(portKey: string): EndpointKind {
       audience: 'internal',
       label: 'HLS, HTTP, internal',
       opensInBrowser: false,
+      offersAddress: true,
     };
   }
-  return { protocol: 'tcp', audience: 'internal', label: 'TCP', opensInBrowser: false };
+  return { protocol: 'tcp', audience: 'internal', label: 'TCP', opensInBrowser: false, offersAddress: true };
 }
 
 /** The address to hand to a tool, in the form that tool takes. */

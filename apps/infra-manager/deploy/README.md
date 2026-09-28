@@ -407,8 +407,11 @@ manager inside its pool string. Since 2026-09-17 the `BEE_PUBLISHERS` value a
 pool hands an uploader names every rung at this same bridge address, not at the
 host's public one, and that is what an uploader container on this host can
 actually reach when these ports are bound here and nowhere else. `BEE_LOCAL_HOST`
-overrides that too, and it is what an uploader on another machine would need,
-together with a bind that admits that machine. An uploader created before
+overrides that too. An uploader on another machine is the Bee host's case
+instead: its rungs are named at that host's own address, and "A Bee host, made
+by hand" in `docs/hosts.md` at the repository root opens their API to the
+uploader's address alone, with a wider bind and the `--bee-api-source` flag of
+step 3. An uploader created before
 2026-09-17 still holds a string in the public form, which answers nowhere at
 all. Copy the pool string from the pool page again and paste it into the
 uploader's "Node pool string" field under Edit.
@@ -465,6 +468,17 @@ now closed like any other private port. The slot algebra still reserves them,
 which costs nothing and keeps the numbering free for a version that does run
 them.
 
+A Bee host whose rungs serve uploaders on other hosts needs one more door, and
+it is opened only on request. `--bee-api-source <address>/32`, repeated once
+per uploader host and once for the manager's host, opens each slot's Bee API
+port, `10005 + 10 × slot` over TCP, to those IPv4 blocks and to nobody else, in
+both the input and the forward chain. A block wider than `/24` is refused, as
+the Terraform's Vultr root refuses it, because anyone inside it can spend the
+node's postage. Without the flag nothing about the draft changes and the API
+ports stay closed. The draft names the admitted blocks in its header. Such a
+host binds its rungs' API wider as well, and "A Bee host, made by hand" in
+`docs/hosts.md` has both halves.
+
 An endpoint that lands on a tuple one of those bands opens causes generation to
 refuse, whatever its own port variable is. It is not treated as a closed port
 merely because `--max-slot` is at most 100. Fix the conflicting ownership
@@ -504,7 +518,9 @@ host's existing firewall configuration. Replacing all of `/etc/nftables.conf`
 could discard unrelated policy.
 
 The Bee API bind in step 2 still closes those APIs at their published
-interface. The input hook covers host listeners. The forward hook covers
+interface, except on a Bee host that binds them wider for the addresses it
+names with `--bee-api-source`, where this table is what admits those
+addresses alone. The input hook covers host listeners. The forward hook covers
 published container traffic. Host-network containers with unprovable bindings
 cause the inventory export to refuse.
 
