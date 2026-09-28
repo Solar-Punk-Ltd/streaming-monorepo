@@ -41,7 +41,16 @@ function setup() {
   const gateway = new FakeFeedGateway();
   const writes = new FakeFeedWriteLog();
   const audit = new InMemoryAuditLog();
-  const service = new PublishService(store, renditions, stagesWithMain(), writes, gateway, noCatalogueStamp(), feed, audit);
+  const service = new PublishService(
+    store,
+    renditions,
+    stagesWithMain(),
+    writes,
+    gateway,
+    noCatalogueStamp(),
+    feed,
+    audit,
+  );
   return { store, gateway, writes, audit, service };
 }
 

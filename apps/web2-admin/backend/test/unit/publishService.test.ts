@@ -77,7 +77,16 @@ function setup(gateway = new FakeFeedGateway()) {
   const store = new FakeStreamStore(renditions);
   const writes = new FakeFeedWriteLog();
   const audit = new InMemoryAuditLog();
-  const service = new PublishService(store, renditions, stagesWithMain(), writes, gateway, noCatalogueStamp(), feed, audit);
+  const service = new PublishService(
+    store,
+    renditions,
+    stagesWithMain(),
+    writes,
+    gateway,
+    noCatalogueStamp(),
+    feed,
+    audit,
+  );
   return { store, renditions, writes, gateway, audit, service };
 }
 
