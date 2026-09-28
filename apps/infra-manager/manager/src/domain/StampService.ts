@@ -108,7 +108,8 @@ export function beeApiUrlFor(profile: Profile): string {
  *
  * A member on a declared remote host keeps that host's own address, and that is
  * the caveat of that binding: the remote node's API has to be bound somewhere this host can
- * reach, which its own operator decides.
+ * reach. A Bee host opens it to named addresses with a wider bind and the firewall
+ * generator's --bee-api-source, as the Bee host recipe in docs/hosts.md says.
  */
 export function beePublisherUrlFor(profile: Profile, localPublisherHost: string): string {
   const port = BEE_UPLOADER_API_BASE_PORT + profile.port_slot * 10;
