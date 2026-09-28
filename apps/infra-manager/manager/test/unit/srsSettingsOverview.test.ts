@@ -6,10 +6,10 @@ import { after, describe, it } from 'node:test';
 import type { EngineOverview } from '@streaming-infra-manager/common';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 
-const root = throwawayRoot('t11-srs-overview-');
+const root = throwawayRoot('srs-overview-');
 const previousRoot = process.env.SHLS_ROOT;
 process.env.SHLS_ROOT = root;
-process.env.DATABASE_URL = 'postgresql://127.0.0.1:1/t11_unused';
+process.env.DATABASE_URL = 'postgresql://127.0.0.1:1/unused';
 mkdirSync(join(root, 'engines', 'srs'), { recursive: true });
 writeFileSync(
   join(root, 'engines', 'srs', 'srs.conf.template'),

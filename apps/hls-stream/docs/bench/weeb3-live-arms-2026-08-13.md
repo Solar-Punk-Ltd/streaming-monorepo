@@ -11,7 +11,7 @@
 > experiment with his setup as it is"*, and this is not that.
 >
 > ⛔ **So any residual gateway load reported below is a floor THIS CLIENT imposes, not one weeb-3
-> imposes.** the tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
+> imposes.** The tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
 > here is a **lower bound** on what an in-tab node can do.
 >
 > ✅ **The arithmetic and the arm-to-arm contrasts are unaffected.** Both conditions read the
@@ -127,7 +127,7 @@ buffer. This sitting is consistent with that and does not settle who pays the se
 - Gateway warm and funded throughout: **134 peers**, 38h uptime, chequebook 2.388 to 2.061 BZZ. No bee
   container was restarted at any point.
 - Uploader 4.355 to 3.536 BZZ. Postage `00000003` 265 of 512 used, 250 hours left.
-- **Host load 5.64 to 11.20** across arms, and the box carries some forty other bee nodes plus other
+- **Host load 5.64 to 11.20** across arms, and the bench host carries some forty other bee nodes plus other
   tenants' stacks. Round 4 ran at the highest load of the sitting (10.93 and 11.20) and its two arms
   are one of each condition, so the counterbalancing carried it.
 - The arms took 3,738s of a 4,520s broadcast, 782s to spare.

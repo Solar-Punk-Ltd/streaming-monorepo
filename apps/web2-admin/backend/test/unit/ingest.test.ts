@@ -5,8 +5,9 @@
  * The URL shapes themselves are pinned in web2-admin-common's own test; what
  * is pinned here is the assembly: which part of the row becomes the app, which
  * becomes the stream name, that the server-wide SRT passphrase is passed
- * through rather than invented per stream, and that `keyVerified` reflects
- * config so the console can warn while the ingest ignores `key=`.
+ * through rather than invented per stream, that `keyVerified` reflects
+ * config so the console can warn while the ingest ignores `key=`, and that
+ * RTMP is sent only where the deployment opened it.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -20,6 +21,7 @@ const endpoint: IngestConfig = {
   host: 'ingest.example.com',
   srtPort: 10061,
   rtmpPort: 10062,
+  rtmpPublic: true,
   srtPassphrase: 'a-long-server-passphrase',
   keyVerified: false,
 };
@@ -56,8 +58,15 @@ describe('ingestDetailsFor', () => {
 
     assert.equal(details.app, 'audio');
     assert.equal(details.streamId, `audio/${row.topic}`);
-    assert.equal(details.rtmp.server, 'rtmp://ingest.example.com:10062/audio');
+    assert.equal(details.rtmp?.server, 'rtmp://ingest.example.com:10062/audio');
     assert.match(details.srt.url, new RegExp(`r=audio/${row.topic}`));
+  });
+
+  it('sends no RTMP server or stream key where the deployment keeps RTMP closed', () => {
+    const details = ingestDetailsFor(streamRow(), { ...endpoint, rtmpPublic: false });
+
+    assert.equal(details.rtmp, null);
+    assert.ok(details.srt.url.startsWith('srt://ingest.example.com:10061?'));
   });
 
   it('reports no passphrase when SRT is unencrypted', () => {
@@ -87,6 +96,6 @@ describe('ingestDetailsFor', () => {
       rtmpPort: 10002,
     });
     assert.match(slotZero.srt.url, /^srt:\/\/ingest\.example\.com:10001\?/);
-    assert.equal(slotZero.rtmp.server, 'rtmp://ingest.example.com:10002/video');
+    assert.equal(slotZero.rtmp?.server, 'rtmp://ingest.example.com:10002/video');
   });
 });

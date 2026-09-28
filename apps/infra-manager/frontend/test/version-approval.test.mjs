@@ -46,7 +46,7 @@ test('approval payload and explicit wizard version choice stay tied to the visib
     server: { host: '127.0.0.1', port: 0, strictPort: true },
     plugins: [
       {
-        name: 'offline-t08',
+        name: 'offline-version-approval',
         configureServer(vite) {
           vite.middlewares.use(
             passingRejections(async (req, res, next) => {
@@ -125,17 +125,20 @@ test('approval payload and explicit wizard version choice stay tied to the visib
   const dialogText = () => readWhenPresent(evaluate, DIALOG, 'innerText', 'the open wizard');
   let visitNumber = 0;
   async function visit(waitForVersions = true) {
-    await evaluate('window.__t08OldPage = true');
-    await call('Page.navigate', { url: `${origin}/?t08=${++visitNumber}#/versions` });
+    await evaluate('window.__versionApprovalOldPage = true');
+    await call('Page.navigate', { url: `${origin}/?visit=${++visitNumber}#/versions` });
     if (waitForVersions) {
       await waitFor(
-        () => evaluate(`window.__t08OldPage ? -1 : document.querySelectorAll('input[aria-label$=" tested"]').length`),
+        () =>
+          evaluate(
+            `window.__versionApprovalOldPage ? -1 : document.querySelectorAll('input[aria-label$=" tested"]').length`,
+          ),
         (n) => n === versions.length,
         'every version to be listed',
       );
     } else {
       await waitFor(
-        () => evaluate(`!window.__t08OldPage && (${buttonWithText('New deployment')})?.disabled === false`),
+        () => evaluate(`!window.__versionApprovalOldPage && (${buttonWithText('New deployment')})?.disabled === false`),
         Boolean,
         'the New deployment button to be enabled',
       );
@@ -201,10 +204,13 @@ test('approval payload and explicit wizard version choice stay tied to the visib
       (text) => text?.includes('Not tested since the update on'),
       'the not tested since warning',
     );
-    if (process.env.T08_EVIDENCE_DIR) {
-      await mkdir(process.env.T08_EVIDENCE_DIR, { recursive: true });
+    if (process.env.VERSION_APPROVAL_EVIDENCE_DIR) {
+      await mkdir(process.env.VERSION_APPROVAL_EVIDENCE_DIR, { recursive: true });
       const { data } = await call('Page.captureScreenshot', { fromSurface: true });
-      await writeFile(resolve(process.env.T08_EVIDENCE_DIR, 'default-warning-review.png'), Buffer.from(data, 'base64'));
+      await writeFile(
+        resolve(process.env.VERSION_APPROVAL_EVIDENCE_DIR, 'default-warning-review.png'),
+        Buffer.from(data, 'base64'),
+      );
     }
     await clickSelected('button[aria-label=close]', 'the wizard close button');
   });

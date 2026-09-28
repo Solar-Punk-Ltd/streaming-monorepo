@@ -141,7 +141,7 @@ segments, so the transfer times are not viewer latency and only compare to each 
 
 ## Artifacts
 
-`/opt/streaming/retrieval-probe/{spreadproving,spread1,spread2,spread3}/`. Probe:
+`~/retrieval-probe/{spreadproving,spread1,spread2,spread3}/`. Probe:
 `deploy/scripts/retrieval-debt-probe.sh`, spread is the 7th arm field. The `spread=1` arms reproduce
 the earlier synchronised paced arms, which is the control that makes the difference the spread rather
 than a changed setup. Gateway restored to `--swap-enable=true` and `--cache-capacity=0` and confirmed

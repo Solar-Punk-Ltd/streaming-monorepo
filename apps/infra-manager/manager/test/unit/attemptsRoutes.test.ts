@@ -46,7 +46,7 @@ const orchestrator = {
 let app: RouterTestApp;
 
 before(async () => {
-  app = await startRouterTestApp(createAttemptsRouter(orchestrator, () => 'owner'));
+  app = await startRouterTestApp(createAttemptsRouter(orchestrator, () => 'operator'));
 });
 
 after(() => app.close());
@@ -71,7 +71,7 @@ describe('POST /:id/release', () => {
 
     assert.equal(res.status, 200);
     assert.equal((res.body as { attempt: { state: string; releasedBy: string } }).attempt.state, 'released');
-    assert.deepEqual(released, [{ id: 7, by: 'owner' }]);
+    assert.deepEqual(released, [{ id: 7, by: 'operator' }]);
   });
 
   it('refuses a job id that does not match, releasing nothing', async () => {

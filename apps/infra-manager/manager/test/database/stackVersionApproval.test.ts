@@ -12,8 +12,14 @@ import { StackVersionService } from '../../src/domain/versions/StackVersionServi
 import { FakeScriptSpawner } from '../support/FakeScriptSpawner.js';
 import { scratchVersionsRoot } from '../support/stackFixtures.js';
 
-const port = Number(process.env.T08_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't08_test', connectionTimeoutMillis: 5000 };
+const port = Number(process.env.VERSION_APPROVAL_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'version_approval_test',
+  connectionTimeoutMillis: 5000,
+};
 const COMMIT = 'a'.repeat(40);
 const BUILD = COMMIT;
 const REBUILD = `${COMMIT}-r1`;
@@ -29,7 +35,7 @@ describe(
     let id: number;
 
     beforeEach(async () => {
-      schema = `t08_${randomBytes(8).toString('hex')}`;
+      schema = `stack_version_approval_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, application_name: schema, options: `-c search_path=${schema}` });

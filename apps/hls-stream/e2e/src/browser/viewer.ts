@@ -109,7 +109,7 @@ export async function discoverWatchUrl(page: Page, clientUrl: string): Promise<s
  * `docker stats` reads the whole container cgroup, which is the right total for what a viewer costs a
  * machine, and it said an in-tab node costs 0.6 of a core more than a gateway one. It cannot say
  * whether weeb-3 is *out* of CPU, because weeb-3 is one JS thread by construction and a 3.8-core peak
- * on a 48-core box says nothing about one thread. `TaskDuration` over wall time does say it.
+ * on a 48-core host says nothing about one thread. `TaskDuration` over wall time does say it.
  *
  * ⛔ Opt-in, and unset by default, so a run that does not ask for it launches exactly as before. The
  * sampler lives outside this process (see `deploy/scripts/main-thread.mjs`) for the same reason the

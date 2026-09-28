@@ -1,4 +1,8 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { registerCrashHandlers, registerShutdownSignals, SHUTDOWN_SIGNALS } from '../src/libs/processSignals.js';
@@ -96,7 +100,7 @@ describe('process signal handling', () => {
     const events = new RecordingProcess();
     const { lines, logger } = crashRecorder();
 
-    registerCrashHandlers(logger, events);
+    registerCrashHandlers(logger, events, () => {});
     events.emit('uncaughtException', new Error('boom'));
 
     assert.equal(lines.length, 2, 'an Error carries a message line and a stack line');
@@ -108,7 +112,7 @@ describe('process signal handling', () => {
     const events = new RecordingProcess();
     const { lines, logger } = crashRecorder();
 
-    registerCrashHandlers(logger, events);
+    registerCrashHandlers(logger, events, () => {});
     events.emit('unhandledRejection', new Error('nope'));
 
     assert.equal(lines.length, 2);
@@ -119,8 +123,55 @@ describe('process signal handling', () => {
   it('registers both crash events and nothing else', () => {
     const events = new RecordingProcess();
 
-    registerCrashHandlers(crashRecorder().logger, events);
+    registerCrashHandlers(crashRecorder().logger, events, () => {});
 
     assert.deepEqual(events.registered.sort(), ['uncaughtException', 'unhandledRejection']);
+  });
+});
+
+/**
+ * An uncaught exception leaves the process unsound, so it ends the process as a crash does, and the
+ * container's restart policy starts it again. It must not run the graceful shutdown: that finalizes the
+ * broadcast, while a crash leaves the recovery entry the restarted process resumes from.
+ */
+describe('after an uncaught exception', () => {
+  it('ends the process with a failure, without the graceful shutdown', () => {
+    const events = new RecordingProcess();
+    const { signals, lifecycle } = shutdownRecorder();
+    const exits: number[] = [];
+
+    registerShutdownSignals(lifecycle, events);
+    registerCrashHandlers(crashRecorder().logger, events, (code) => void exits.push(code));
+    events.emit('uncaughtException', new Error('boom'));
+
+    assert.deepEqual(exits, [1]);
+    assert.deepEqual(signals, [], 'the graceful shutdown would finalize the broadcast the restart should resume');
+  });
+
+  it('keeps running after an unhandled rejection, which is logged alone', () => {
+    const events = new RecordingProcess();
+    const exits: number[] = [];
+
+    registerCrashHandlers(crashRecorder().logger, events, (code) => void exits.push(code));
+    events.emit('unhandledRejection', new Error('nope'));
+
+    assert.deepEqual(exits, []);
+  });
+
+  it('leaves the recovery entry for the restart, in a real process that throws from a timer', () => {
+    const stateDir = mkdtempSync(join(tmpdir(), 'crash-exit-'));
+    try {
+      const run = spawnSync(
+        process.execPath,
+        ['--import', 'tsx', join(import.meta.dirname, 'fixtures', 'crashingUploader.ts'), stateDir],
+        { encoding: 'utf8', timeout: 20_000 },
+      );
+
+      assert.notEqual(run.status, 0, `the process exited 0 after an uncaught exception\n${run.stderr}`);
+      assert.match(run.stderr, /Uncaught exception:/);
+      assert.equal(readdirSync(stateDir).length, 1, 'the recovery entry is gone, so the restart has nothing to resume');
+    } finally {
+      rmSync(stateDir, { recursive: true, force: true });
+    }
   });
 });

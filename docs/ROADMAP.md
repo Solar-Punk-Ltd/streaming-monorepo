@@ -3,15 +3,6 @@
 Checkpoints are the unit of work. Each one ends with something verifiable and a
 short note here on what was decided.
 
-## Already running (before this repo)
-
-- ABR Bee nodes on Vps (publishers and gateways).
-- ABR uploader on the GCP stage host.
-- Test infrastructure: streaming-infra-manager (master) deployed with the
-  swarm-hls-stream player. A test stream plays on that host's client port
-  (port slot 6). Host addresses stay out of this repo: any brand's viewer can
-  live anywhere.
-
 ## Checkpoint 1: repo skeleton (done 2026-09-11)
 
 - MIT license, copyright Solar Punk Ltd.
@@ -27,8 +18,10 @@ scope `@streaming-monorepo/`.
 - Authentication with a seeded admin user and password change in the UI.
 - Stream drafts in Postgres with the msrs-client form fields.
 - Publish a draft to a stream list feed the backend owns (single writer).
-- OBS connection details per stream: SRT URL and RTMP server plus stream key
-  carrying a per-stream `key=`, the server-wide SRT passphrase shown alongside.
+- OBS connection details per stream: SRT URL carrying a per-stream `key=`, the
+  server-wide SRT passphrase shown alongside. The RTMP server and stream key are
+  shown only where the deployment opens RTMP ingest (`INGEST_RTMP_PUBLIC`), which
+  is off by default, since ingest is SRT only for now.
 - A real stream for a draft: the uploader (swarm-hls-stream `main-v3`) resolves
   the draft by ingest stream id through the admin's internal API, checks the
   key, publishes under the draft's topic and reports live and vod; the admin
@@ -51,18 +44,18 @@ gateway ran in `fake` mode; the bee-js integration test is skipped until
 `BEE_URL` and `POSTAGE_BATCH_ID` point at a real node. Docker image builds are
 unverified on this machine (no registry access).
 
-Real-Swarm test, same day: a team member pointed the backend at his Bee node, published
-two streams with thumbnails, and deployed a viewer built for the feed owner.
-Two defects came out of it. Publish reused a thumbnail reference minted by the
-fake gateway, so the real feed pointed at an image the node never had; publish
-now verifies a stored reference on the gateway before reusing it and re-uploads
-a missing one. The viewer ignored the catalogue's `thumbnail` field and probed
-each stream's manifest feed, which does not exist before the first segment;
-fixed on swarm-hls-stream branch `feat/catalogue-thumbnails` off `main-v3`
-(cards render the catalogue thumbnail, scheduled streams show "Upcoming", the
-watch page says the stream has not started). The viewer must be rebuilt from
-that branch. The player link in the console now opens the viewer catalogue,
-not the per-stream route, for the same reason.
+Real-Swarm test, same day: a colleague pointed the backend at their Bee node,
+published two streams with thumbnails, and deployed a viewer built for the feed
+owner. Two defects came out of it. Publish reused a thumbnail reference minted
+by the fake gateway, so the real feed pointed at an image the node never had;
+publish now verifies a stored reference on the gateway before reusing it and
+re-uploads a missing one. The viewer ignored the catalogue's `thumbnail` field
+and probed each stream's manifest feed, which does not exist before the first
+segment; fixed on swarm-hls-stream branch `feat/catalogue-thumbnails` off
+`main-v3` (cards render the catalogue thumbnail, scheduled streams show
+"Upcoming", the watch page says the stream has not started). The viewer must be
+rebuilt from that branch. The player link in the console now opens the viewer
+catalogue, not the per-stream route, for the same reason.
 
 Decided 2026-09-15, ABR ladder in admin mode (spec: the "ABR ladder in admin
 mode" section of docs/architecture/web2-admin-checkpoint-2.md). The declared
@@ -184,15 +177,15 @@ section is the recipe, and edge.sh stays for hosts with no front door yet.
 
 First real run, 2026-09-25, on the GCP QA control host (the monitoring VM): both
 consoles deployed to loopback (manager 8080, web2-admin profile `qa` on 9091,
-because Prometheus has 9090 there), then `edge.sh --host=<control host>` twice, first
-with the manager's name alone while the admin name still pointed elsewhere, then
-with both. Each run validated the Caddyfile, recreated Caddy, proved both
-upstreams from the host, and saw valid certificates from outside within the
-probe window; the certificate obtained in the first run survived the second in
-the volume, as designed. What it took in Terraform: one firewall rule (tcp 80
-and 443 from the internet to the host's tag), the manager's address and deploy
-key in both roots' tfvars in place of the Vps host's, and a re-run of the
-Bee host's provisioning so the new key landed there.
+because Prometheus has 9090 there), then `edge.sh --host=<control host>` twice,
+first with the manager's name alone while the admin name still pointed
+elsewhere, then with both. Each run validated the Caddyfile, recreated Caddy,
+proved both upstreams from the host, and saw valid certificates from outside
+within the probe window; the certificate obtained in the first run survived the
+second in the volume, as designed. What it took in Terraform: one firewall rule
+(tcp 80 and 443 from the internet to the host's tag), the manager's address and
+deploy key in both roots' tfvars in place of the previous manager host's, and a
+re-run of the Bee host's provisioning so the new key landed there.
 
 Since then the edge's sources live in `infra/edge/`, and the manager's own
 edge is gone: `infra/edge` is the one edge on every host, a host that runs the
@@ -206,8 +199,8 @@ Decided by the owner after a tester could not go live on the test host on
 because the panel sent OBS users to an "OBS Passphrase field" that OBS does
 not have.
 
-- The OBS panel says, for SRT and for RTMP separately, what goes in OBS's
-  Server box and its Stream Key box. For SRT the passphrase rides on the Server
+- The OBS panel says, for SRT and, where it is offered, for RTMP, what goes
+  in OBS's Server box and its Stream Key box. For SRT the passphrase rides on the Server
   line as `&passphrase=`, which OBS reads after its Use authentication Password
   and so wins, and the Stream Key stays empty, because OBS hands that box to
   SRT as the stream id and the URL's own `streamid=` replaces it. OBS ends a

@@ -11,7 +11,7 @@
 > experiment with his setup as it is"*, and this is not that.
 >
 > ⛔ **So any residual gateway load reported below is a floor THIS CLIENT imposes, not one weeb-3
-> imposes.** the tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
+> imposes.** The tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
 > here is a **lower bound** on what an in-tab node can do.
 >
 > ✅ **The arithmetic and the arm-to-arm contrasts are unaffected.** Both conditions read the
@@ -30,7 +30,7 @@ cores**, peak 2.1 → 3.8. Both figures came from `docker stats`, which is the r
 It cannot answer the next question. **weeb-3 is one JS thread by construction**, nineteen runtime
 loops cooperatively interleaved in a single `join!` with no workers, and in our shipped path
 `Weeb3FetchBackend` calls `retrieveBytes` directly on the page rather than through the package's
-service worker. A 3.8-core peak on a 48-core box says nothing about whether that one thread is full.
+service worker. A 3.8-core peak on a 48-core host says nothing about whether that one thread is full.
 A viewer at 0.35 of its thread and a viewer at 0.98 are indistinguishable from outside and are
 completely different products.
 
@@ -70,7 +70,7 @@ is the only one our code could have been running on.
 | gateway retrievals | 40,242 | 1,723 | **23.4x fewer** |
 
 **The main-thread ratio is 2.03x the container ratio.** A gateway viewer spreads its work over
-threads and processes a 48-core box absorbs without noticing. weeb-3 concentrates its share on the one
+threads and processes a 48-core host absorbs without noticing. weeb-3 concentrates its share on the one
 thread that cannot scale, so **the container total understates the in-tab cost exactly where it
 binds**. Every CPU figure published for this path before today was measured on the axis with slack.
 
@@ -113,7 +113,7 @@ which is plausible because weeb-3's retrieval work is per chunk, the mean goes 0
 the peak 0.600 → **1.38**, which is more than one thread can supply.
 
 ⛔⛔ **That is an extrapolation and it is written here so it is measured rather than assumed.** The
-container figures would have predicted 3.9 → 9.0 cores on a 48-core box and raised no concern at all.
+container figures would have predicted 3.9 → 9.0 cores on a 48-core host and raised no concern at all.
 An arm at 1080p with this instrument attached is the cheap way to settle it, and it is the first
 thing to book if the in-tab path is proposed above 720p.
 

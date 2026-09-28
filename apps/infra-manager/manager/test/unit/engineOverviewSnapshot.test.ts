@@ -14,10 +14,10 @@ import { throwawayRoot } from '../support/throwawayRoot.js';
 import { OME_TEMPLATE } from '../support/omeTemplate.js';
 import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
-const root = throwawayRoot('t11-overview-snapshot-');
+const root = throwawayRoot('overview-snapshot-');
 const previousRoot = process.env.SHLS_ROOT;
 process.env.SHLS_ROOT = root;
-process.env.DATABASE_URL = 'postgresql://127.0.0.1:1/t11_unused';
+process.env.DATABASE_URL = 'postgresql://127.0.0.1:1/unused';
 mkdirSync(join(root, 'engines', 'ome'), { recursive: true });
 writeFileSync(join(root, 'engines', 'ome', 'Server.xml.template'), OME_TEMPLATE);
 writeFileSync(join(root, '.env'), 'HLS_SEGMENT_DURATION=6\n');

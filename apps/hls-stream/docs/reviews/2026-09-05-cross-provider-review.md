@@ -228,7 +228,7 @@ The plan the day followed, as written the evening before:
    across the four publishing nodes. The owner buys each batch from their own shell:
 
    ```bash
-   ssh control-1 "curl -s -XPOST -H 'Immutable: true' 'http://127.0.0.1:11075/stamps/2924605440/17?label=drain-1080p'"
+   ssh <host> "curl -s -XPOST -H 'Immutable: true' 'http://127.0.0.1:11075/stamps/2924605440/17?label=drain-1080p'"
    ```
 
    then `deploy/scripts/drain-stage.sh --profile=latbench --portSlot=7 --rung=1080p arm --batch=<that id>`,

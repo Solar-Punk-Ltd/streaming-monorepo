@@ -2,7 +2,7 @@ import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { IngestPanel, KEY_UNVERIFIED_NOTE } from '../components/IngestPanel';
-import { makeIngest, mockFetch, renderWithProviders } from './helpers';
+import { RTMP_OFFERED, makeIngest, mockFetch, renderWithProviders } from './helpers';
 
 const renderPanel = (details = makeIngest()) =>
   renderWithProviders(<IngestPanel streamId="stream-1" details={details} onRotated={vi.fn()} />);
@@ -69,21 +69,34 @@ describe('IngestPanel', () => {
     expect(srt.getByLabelText('copy srt server')).toBeInTheDocument();
   });
 
-  it('says what goes in the OBS Server and Stream Key boxes for RTMP', () => {
+  it('offers SRT alone where the deployment keeps RTMP closed', () => {
     mockFetch([]);
-    const details = makeIngest();
+
+    renderPanel(makeIngest({ rtmp: null }));
+
+    expect(screen.getByRole('region', { name: 'SRT' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'RTMP' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('RTMP Stream Key')).not.toBeInTheDocument();
+    expect(screen.queryByText(/pick one of the two protocols/)).not.toBeInTheDocument();
+    expect(screen.getByText(/copy the SRT values below into OBS/)).toBeInTheDocument();
+  });
+
+  it('says what goes in the OBS Server and Stream Key boxes for RTMP where the deployment opens it', () => {
+    mockFetch([]);
+    const details = makeIngest({ rtmp: RTMP_OFFERED });
 
     renderPanel(details);
+    expect(screen.getByText(/pick one of the two protocols/)).toBeInTheDocument();
     const rtmp = section('RTMP');
 
     // The RTMP server carries no secret, so it is shown as-is.
-    expect(rtmp.getByLabelText('RTMP Server')).toHaveValue(details.rtmp.server);
+    expect(rtmp.getByLabelText('RTMP Server')).toHaveValue(RTMP_OFFERED.server);
 
     const key = shownValue('RTMP Stream Key');
     expect(key).toContain('key=••••••••');
     expect(key).not.toContain(details.publishKey);
     fireEvent.click(rtmp.getByLabelText('show rtmp stream key'));
-    expect(rtmp.getByLabelText('RTMP Stream Key')).toHaveValue(details.rtmp.streamKey);
+    expect(rtmp.getByLabelText('RTMP Stream Key')).toHaveValue(RTMP_OFFERED.streamKey);
 
     expect(rtmp.getByLabelText('copy rtmp server')).toBeInTheDocument();
     expect(rtmp.getByLabelText('copy rtmp stream key')).toBeInTheDocument();

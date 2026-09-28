@@ -9,14 +9,14 @@
 > sections carry the readings that stand.
 
 > **Owner's correction, the same afternoon.** This run measured **our client**, driving **our pinned
-> weeb-3 `0.0.329001` of 10 August** (twelve releases behind the tester's `0.0.341001`), under **Chrome's
-> emulated slow connection**. the tester's latest weeb-3 plays streams well above this bitrate, so weeb-3 is
+> weeb-3 `0.0.329001` of 10 August** (twelve releases behind a tester's `0.0.341001`), under **Chrome's
+> emulated slow connection**. The tester's latest weeb-3 plays streams well above this bitrate, so weeb-3 is
 > not the suspect and is not to be changed. The mistake is on our side, in the harness, the toolset,
 > the pin or the client, and the next three arms find which: the tester's own player under the same
 > emulated cap, a real shaped link instead of the emulation, and our client on `0.0.341001`. Read
 > every figure below as a reading of that one combination and nothing more.
 
-**2026-09-02, measured on control-1, 0 BZZ.** One run of `pnpm browser:in-tab-throttle-probe`
+**2026-09-02, measured on the bench host, 0 BZZ.** One run of `pnpm browser:in-tab-throttle-probe`
 against the shipped client at build `dd21a1e`, Chrome 151, the recording of sitting five. Plan:
 [`in-tab-throttle-probe-prediction-2026-09-02.md`](in-tab-throttle-probe-prediction-2026-09-02.md),
 written before the driver existed. Artifact:
@@ -189,7 +189,7 @@ to have mistakes of exactly the kind the owner named.
 
 ### Three things the latest weeb-3 expects that our side did not provide
 
-1. **A broadcast whose first segment is number 0.** the tester's player rebuilds a recording from the whole
+1. **A broadcast whose first segment is number 0.** The tester's player rebuilds a recording from the whole
    feed history and refuses unless the oldest update starts at `#EXT-X-MEDIA-SEQUENCE:0`. SRS keeps
    its segment counter across broadcasts of the same stream name while it runs, and our uploader
    publishes those numbers as they are, so the six ladder recordings of sitting five start at 210,

@@ -4,8 +4,8 @@
  * ## The question, in one sentence
  *
  * Our client, driving our pinned weeb-3 build, could not keep a 360p recording moving once Chrome's
- * emulation capped the tab at 2800 kbps. the tester's own published page is the same node in a client we
- * did not write, so running it against the same recording under the same cap says whether the cap
+ * emulation capped the tab at 2800 kbps. An outside tester's own published page is the same node in a
+ * client we did not write, so running it against the same recording under the same cap says whether the cap
  * beats the node or beats our harness.
  *
  * ## ⛔ Nothing here asserts, and a phase nobody sampled says so

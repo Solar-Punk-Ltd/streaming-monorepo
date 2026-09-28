@@ -16,8 +16,14 @@ import { PostgresEngineConfigOperationRepository } from '../../src/domain/engine
 import { orchestratorHarness } from '../support/orchestratorHarness.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
 
-const port = Number(process.env.T11_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't11_test', connectionTimeoutMillis: 5000 };
+const port = Number(process.env.DEPLOYMENT_SETTINGS_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'deployment_settings_test',
+  connectionTimeoutMillis: 5000,
+};
 const publishers = ['1080p', '720p', '480p', '360p']
   .map((rung, index) => `${rung}@http://192.0.2.10:${12015 + index * 10}<${'a'.repeat(64)}>`)
   .join(' ');
@@ -41,8 +47,8 @@ describe(
     let harness: ReturnType<typeof orchestratorHarness>;
 
     beforeEach(async () => {
-      schema = `t11_capture_${randomBytes(8).toString('hex')}`;
-      root = await mkdtemp(join(tmpdir(), 't11-capture-sql-'));
+      schema = `capture_${randomBytes(8).toString('hex')}`;
+      root = await mkdtemp(join(tmpdir(), 'capture-sql-'));
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({

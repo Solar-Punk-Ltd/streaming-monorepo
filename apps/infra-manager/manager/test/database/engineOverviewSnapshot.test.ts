@@ -6,8 +6,14 @@ import pg, { type Pool } from 'pg';
 
 import { ProfileRepository } from '../../src/domain/ProfileRepository.js';
 
-const port = Number(process.env.T11_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't11_test', connectionTimeoutMillis: 5_000 };
+const port = Number(process.env.DEPLOYMENT_SETTINGS_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'deployment_settings_test',
+  connectionTimeoutMillis: 5_000,
+};
 
 describe(
   'coherent engine overview inputs in isolated PostgreSQL',
@@ -19,7 +25,7 @@ describe(
     let profiles: ProfileRepository;
 
     beforeEach(async () => {
-      schema = `t11_${randomBytes(8).toString('hex')}`;
+      schema = `engine_overview_snapshot_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, options: `-c search_path=${schema} -c statement_timeout=5000` });

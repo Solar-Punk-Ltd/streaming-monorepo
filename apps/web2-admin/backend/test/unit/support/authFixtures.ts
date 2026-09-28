@@ -23,7 +23,7 @@ export function userRow(over: Partial<UserRow> = {}): UserRow {
   const at = new Date('2026-09-11T10:00:00.000Z');
   return {
     id: nextUserId(),
-    username: 'owner',
+    username: 'alice',
     password_hash: 'scrypt$32768$8$3$c2FsdA==$a2V5',
     is_admin: true,
     password_changed_at: null,

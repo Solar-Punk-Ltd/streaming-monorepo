@@ -121,7 +121,7 @@ for an audience that reads a catalogue uniformly, which a seek-everywhere VOD wo
 
 ## Artifacts
 
-`/opt/streaming/retrieval-probe/PATTERN1/`. Probe:
+`~/retrieval-probe/PATTERN1/`. Probe:
 [`deploy/scripts/retrieval-debt-probe.sh`](../../deploy/scripts/retrieval-debt-probe.sh), the pattern is
 the 9th arm field. Sequences:
 [`deploy/scripts/make-access-pattern-refs.sh`](../../deploy/scripts/make-access-pattern-refs.sh), seeded

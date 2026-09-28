@@ -19,7 +19,7 @@
 # ## Why it runs on the host
 #
 # `publish-clock.sh --host=localhost` is what makes the repo's own publisher usable from the machine
-# it publishes to: `config.json` names every service `control-1`, which this box cannot resolve for
+# it publishes to: `config.json` names every service `<host>`, which this bench host cannot resolve for
 # itself. Going through that script rather than composing ffmpeg here keeps the publish key
 # derivation, the SRT spelling and the detached container in the one place that gets them right.
 #
@@ -31,7 +31,7 @@
 #   ARMS="obs-default:2.0 shipped:0.5" ROUNDS=3 MINUTES=8 bash deploy/scripts/viewer-arms.sh
 set -u
 
-BENCH_REPO="${BENCH_REPO:-/opt/streaming/swarm-hls-bench}"
+BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
 PROFILE="${PROFILE:-latbench}"
 PORT_SLOT="${PORT_SLOT:-7}"
 ROUNDS="${ROUNDS:-3}"
@@ -101,7 +101,7 @@ RUN_SELFCHECK="${RUN_SELFCHECK:-1}"
 read -r -a ARM_LIST <<< "${ARMS:-obs-default:2.0 shipped:0.5}"
 
 # Outside BENCH_REPO, which is an rsync target with --delete.
-OUT_DIR="${OUT_DIR:-/opt/streaming/viewer-arms/$(date -u +%Y%m%d-%H%M%S)}"
+OUT_DIR="${OUT_DIR:-${HOME}/viewer-arms/$(date -u +%Y%m%d-%H%M%S)}"
 LOG="${OUT_DIR}/viewer-arms.log"
 STATE="${OUT_DIR}/viewer-arms-state.tsv"
 mkdir -p "${OUT_DIR}"
@@ -191,7 +191,7 @@ can_afford() {
 # stream id against every arm that follows.
 #
 # ⛔⛔ **Only ever removes publishers this run created.** The pattern matches every publisher on the
-# box, including one serving somebody else's live sitting, and the teardown is on an EXIT trap. On
+# bench host, including one serving somebody else's live sitting, and the teardown is on an EXIT trap. On
 # 2026-08-12 a PREFLIGHT_ONLY invocation of this script, which publishes nothing at all, exited
 # through that trap and killed the broadcast a paid buffer sweep had been running against for forty
 # minutes. The sweep went on sampling a dead stream.
@@ -257,7 +257,7 @@ wait_for_quiet() {
 # one. Killing a chain leaves exactly that: the driver dies, its `docker run` does not.
 #
 # ⛔⛔ By exact name, never by pattern. A teardown keyed on a name pattern killed a live paid
-# broadcast on 2026-08-12, and this box carries forty other bee nodes and eight unrelated stacks
+# broadcast on 2026-08-12, and this bench host carries forty other bee nodes and eight unrelated stacks
 # whose containers are not ours to touch.
 reclaim_browser_containers() {
   local name
@@ -435,7 +435,7 @@ fi
 say "  watching in ${BROWSER_IMAGE}"
 
 # ⛔ Every refusal that costs nothing comes first, and only then does anything get touched or run.
-# A sitting that is going to refuse should leave the box exactly as it found it, which is why the
+# A sitting that is going to refuse should leave the bench host exactly as it found it, which is why the
 # container reclaim and the fifteen-second selfcheck sit below all four cheap gates rather than
 # above them.
 if [ -f "${STOP_FILE}" ]; then

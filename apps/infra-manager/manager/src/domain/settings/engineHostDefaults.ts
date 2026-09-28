@@ -15,7 +15,7 @@ const logger = Logger.getInstance();
  * `root`, and where each value came from.
  *
  * `.env.<profile>` is a fresh copy of the host's base `.env` on every deploy
- * and an unset key is left out of it, so a key set on the box by hand is what
+ * and an unset key is left out of it, so a key set on the host by hand is what
  * the container starts with. Naming the stack's own value instead would
  * describe a deployment nobody is running. The Engine card, the engine
  * settings route and a deployment's settings list all name their defaults

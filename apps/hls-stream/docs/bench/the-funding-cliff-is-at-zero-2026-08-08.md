@@ -103,7 +103,7 @@ deposit. Uploader chequebook and postage untouched.
 
 ## Artifacts
 
-`/opt/streaming/retrieval-probe/cliff1/` and `cliff2/`, plus `cliff1/sampler.tsv` holding the
+`~/retrieval-probe/cliff1/` and `cliff2/`, plus `cliff1/sampler.tsv` holding the
 five-second balance trace beside the counters. Sampler:
-`/opt/streaming/retrieval-probe/cliff-sampler.sh`. Probe:
+`~/retrieval-probe/cliff-sampler.sh`. Probe:
 `deploy/scripts/retrieval-debt-probe.sh`.

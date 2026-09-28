@@ -6,7 +6,7 @@ import { after, beforeEach, it } from 'node:test';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 import type { DeploymentGroupRepository } from '../../src/domain/DeploymentGroupRepository.js';
 
-const root = throwawayRoot('t10-removal-ownership-');
+const root = throwawayRoot('removal-ownership-');
 process.env.SHLS_ROOT = root;
 process.env.BEE_DATA_ROOT = join(root, 'data');
 process.env.DATABASE_URL = 'postgres://unused';

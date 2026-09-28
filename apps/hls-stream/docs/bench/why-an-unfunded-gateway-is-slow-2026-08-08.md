@@ -149,6 +149,6 @@ taken during these arms.
 
 ## Artifacts
 
-`/opt/streaming/retrieval-probe/metrics1/`, holding `probe-metrics.tsv` with every counter before and
+`~/retrieval-probe/metrics1/`, holding `probe-metrics.tsv` with every counter before and
 after each arm. Sampler: `deploy/scripts/gateway-retrieval-metrics.sh`. Probe:
 `deploy/scripts/retrieval-debt-probe.sh`.

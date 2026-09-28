@@ -56,7 +56,7 @@ async function errorsFor(schema: Parameters<typeof validate>[0], value: unknown)
 }
 
 const goodStream = {
-  title: 'Pilot keynote',
+  title: 'Opening keynote',
   description: 'The opening talk.',
   mediaType: 'video',
   scheduledStartTime: '2026-10-01T09:00:00.000Z',
@@ -66,14 +66,14 @@ describe('streamInputSchema', () => {
   it('accepts a complete body and trims it', async () => {
     const value = await validate(streamInputSchema, {
       ...goodStream,
-      title: '  Pilot keynote  ',
+      title: '  Opening keynote  ',
       description: '  The opening talk.  ',
-      tags: [' swarm ', 'swarm', 'pilot'],
+      tags: [' swarm ', 'swarm', 'music'],
     });
     assert.deepEqual(value, {
-      title: 'Pilot keynote',
+      title: 'Opening keynote',
       description: 'The opening talk.',
-      tags: ['swarm', 'pilot'],
+      tags: ['swarm', 'music'],
       mediaType: 'video',
       scheduledStartTime: '2026-10-01T09:00:00.000Z',
     });

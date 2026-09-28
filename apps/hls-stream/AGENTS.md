@@ -56,7 +56,7 @@ Read **both** balances on the uploader's bee API. The wallet usually holds BZZ o
 so more headroom is often a move rather than a send:
 
 ```bash
-ssh control-1 'curl -s http://127.0.0.1:10075/chequebook/balance; echo; curl -s http://127.0.0.1:10075/wallet'
+ssh <host> 'curl -s http://127.0.0.1:10075/chequebook/balance; echo; curl -s http://127.0.0.1:10075/wallet'
 ```
 
 Since the per-rung split of 2026-08-31 that command reads ONE node of four, the coordinator. Each
@@ -64,7 +64,7 @@ rung publishes through its own bee with its own chequebook and wallet, so read a
 any funds statement (ports 10075, 11071, 11073, 11075, plus the gateway 10077):
 
 ```bash
-ssh control-1 'for p in 10075 11071 11073 11075 10077; do echo "== $p"; curl -s http://127.0.0.1:$p/chequebook/balance; echo; curl -s http://127.0.0.1:$p/wallet; echo; done'
+ssh <host> 'for p in 10075 11071 11073 11075 10077; do echo "== $p"; curl -s http://127.0.0.1:$p/chequebook/balance; echo; curl -s http://127.0.0.1:$p/wallet; echo; done'
 ```
 
 The chequebook preflight and `pnpm e2e:smoke` print the same readings per node. (Amended

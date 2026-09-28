@@ -53,11 +53,11 @@
 # in `.spend-ledger.env`, and it is asked at the same two moments, with no way to skip it.
 #
 # Usage, from the repo root on the laptop:
-#   rsync -a deploy/scripts/ control-1:~/swarm-hls-bench/deploy/scripts/   # the DIRECTORY, it sources burn-rates.sh
-#   ssh control-1 'setsid nohup bash ~/swarm-hls-bench/sweep-interleaved.sh >/dev/null 2>&1 &'
+#   rsync -a deploy/scripts/ <host>:~/swarm-hls-bench/deploy/scripts/   # the DIRECTORY, it sources burn-rates.sh
+#   ssh <host> 'setsid nohup bash ~/swarm-hls-bench/sweep-interleaved.sh >/dev/null 2>&1 &'
 set -u
 
-REPO_DIR="${REPO_DIR:-/opt/streaming/swarm-hls-bench}"
+REPO_DIR="${REPO_DIR:-${HOME}/swarm-hls-bench}"
 IMAGE="${IMAGE:-swarm-hls-bench:latest}"
 PROFILE="${PROFILE:-latbench}"
 PORT_SLOT="${PORT_SLOT:-7}"
@@ -91,7 +91,7 @@ GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
 # Deliberately outside REPO_DIR. That tree is an rsync target with `--delete`, so anything written
 # there is removed the next time the laptop syncs, which is exactly when someone would be checking on
 # a sweep still running.
-OUT_DIR="${OUT_DIR:-/opt/streaming/sweep-runs}"
+OUT_DIR="${OUT_DIR:-${HOME}/sweep-runs}"
 LOG="${OUT_DIR}/sweep.log"
 # One line per finished run, so progress can be read without parsing the log.
 STATE="${OUT_DIR}/sweep-state.tsv"

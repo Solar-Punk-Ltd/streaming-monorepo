@@ -9,7 +9,7 @@ import { throwawayRoot } from '../support/throwawayRoot.js';
 import type { Profile } from '../../src/types/index.js';
 import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
 
-const root = throwawayRoot('t04b-deploy-failure-');
+const root = throwawayRoot('deploy-failure-');
 process.env.SHLS_ROOT = join(root, 'bundled');
 process.env.BEE_DATA_ROOT = join(root, 'data');
 mkdirSync(process.env.SHLS_ROOT);
@@ -25,8 +25,14 @@ const { ALLOCATION_CONTRACT } = await import('../support/allocationContract.js')
 const { orchestratorHarness } = await import('../support/orchestratorHarness.js');
 type GroupRepository = import('../../src/domain/DeploymentGroupRepository.js').DeploymentGroupRepository;
 
-const port = Number(process.env.T04B_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't04b_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.STACK_VERSIONS_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'stack_versions_test',
+  connectionTimeoutMillis: 10000,
+};
 
 function deferred() {
   let resolve!: () => void;
@@ -49,7 +55,7 @@ describe(
     let initial: Profile;
 
     beforeEach(async () => {
-      schema = `t04b_failure_${randomBytes(8).toString('hex')}`;
+      schema = `failure_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 8, options: `-c search_path=${schema} -c statement_timeout=10000` });

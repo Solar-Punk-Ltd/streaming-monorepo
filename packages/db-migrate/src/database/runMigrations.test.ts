@@ -10,8 +10,14 @@ import pg, { type Pool } from 'pg';
 
 import { runMigrations } from '../runMigrations.js';
 
-const port = Number(process.env.T04B_TEST_PG_PORT);
-const connection = { host: '127.0.0.1', port, user: 'postgres', database: 't04b_test', connectionTimeoutMillis: 10000 };
+const port = Number(process.env.STACK_VERSIONS_TEST_PG_PORT);
+const connection = {
+  host: '127.0.0.1',
+  port,
+  user: 'postgres',
+  database: 'stack_versions_test',
+  connectionTimeoutMillis: 10000,
+};
 const silent = { info: () => {}, error: () => {} };
 async function bounded<T>(promise: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
@@ -35,7 +41,7 @@ const databaseRequired = process.env.DATABASE_TESTS_REQUIRED === '1';
 it('has a PostgreSQL port whenever the job requires the database tests', { skip: !databaseRequired }, () => {
   assert.ok(
     hasPort,
-    `DATABASE_TESTS_REQUIRED is set and T04B_TEST_PG_PORT is ${JSON.stringify(process.env.T04B_TEST_PG_PORT)}`,
+    `DATABASE_TESTS_REQUIRED is set and STACK_VERSIONS_TEST_PG_PORT is ${JSON.stringify(process.env.STACK_VERSIONS_TEST_PG_PORT)}`,
   );
 });
 
@@ -45,8 +51,8 @@ describe('migration admission in isolated PostgreSQL', { skip: !hasPort }, () =>
   let directory: string;
   let instances: { pool: Pool; name: string }[];
   beforeEach(async () => {
-    schema = `t04b_migrate_${randomBytes(8).toString('hex')}`;
-    directory = await mkdtemp(join(tmpdir(), 't04b-migrations-'));
+    schema = `migrate_${randomBytes(8).toString('hex')}`;
+    directory = await mkdtemp(join(tmpdir(), 'db-migrate-'));
     instances = [];
     admin = new pg.Pool(connection);
     await admin.query(`CREATE SCHEMA ${schema}`);
@@ -61,7 +67,7 @@ describe('migration admission in isolated PostgreSQL', { skip: !hasPort }, () =>
   });
   function database() {
     const name = `${schema}_${instances.length}`;
-    const url = new URL(`postgresql://postgres@127.0.0.1:${port}/t04b_test`);
+    const url = new URL(`postgresql://postgres@127.0.0.1:${port}/stack_versions_test`);
     url.searchParams.set('options', `-c search_path=${schema} -c statement_timeout=10000`);
     url.searchParams.set('application_name', name);
     const pool = new pg.Pool({ connectionString: url.toString(), max: 10 });

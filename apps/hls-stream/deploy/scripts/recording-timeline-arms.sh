@@ -47,7 +47,7 @@
 #     bash deploy/scripts/recording-timeline-arms.sh
 set -u
 
-BENCH_REPO="${BENCH_REPO:-/opt/streaming/swarm-hls-bench}"
+BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
 OWNER="${OWNER:-0000a00500000000000000000000000000000000}"
 
 # `label:topic:start_seconds`, space separated. Labels carry into the state file and the artefact
@@ -67,12 +67,12 @@ THREAD_URL="${THREAD_URL:-lat-murmeldjur}"
 VIEWER_CDP_PORT="${VIEWER_CDP_PORT:-9223}"
 MAIN_THREAD_INTERVAL_S="${MAIN_THREAD_INTERVAL_S:-5}"
 
-# ⛔⛔ The box carries roughly forty other bee nodes and eight unrelated stacks, and "existing
+# ⛔⛔ The bench host carries roughly forty other bee nodes and eight unrelated stacks, and "existing
 # resources must not be touched" covers starving them. Checked between arms rather than during, so a
 # stop leaves whole arms rather than half of one.
 LOAD_CEILING="${LOAD_CEILING:-32}"
 
-OUT_DIR="${OUT_DIR:-/opt/streaming/recording-timeline/$(date -u +%Y%m%d-%H%M%S)}"
+OUT_DIR="${OUT_DIR:-${HOME}/recording-timeline/$(date -u +%Y%m%d-%H%M%S)}"
 LOG="${OUT_DIR}/recording-timeline.log"
 STATE="${OUT_DIR}/recording-timeline-state.tsv"
 METRICS_DIR="${OUT_DIR}/node-metrics"

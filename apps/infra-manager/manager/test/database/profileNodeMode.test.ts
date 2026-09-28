@@ -1,7 +1,7 @@
 /**
- * The two columns T27 adds, against a real PostgreSQL.
+ * The two node mode columns, against a real PostgreSQL.
  *
- * `pnpm test:database` in manager/, or on its own with T04B_TEST_PG_PORT set.
+ * `pnpm test:database` in manager/, or on its own with STACK_VERSIONS_TEST_PG_PORT set.
  *
  * A CHECK constraint and a backfill are the two things a unit test cannot
  * judge: the first only refuses inside the database, and the second only
@@ -22,12 +22,12 @@ import { DeploymentGroupRepository, type SharedProfileParams } from '../../src/d
 import { NO_STACK_SETTINGS, ProfileRepository } from '../../src/domain/ProfileRepository.js';
 import type { Profile } from '../../src/types/index.js';
 
-const port = Number(process.env.T04B_TEST_PG_PORT);
+const port = Number(process.env.STACK_VERSIONS_TEST_PG_PORT);
 const connection = {
   host: '127.0.0.1',
   port,
   user: 'postgres',
-  database: 't04b_test',
+  database: 'stack_versions_test',
   connectionTimeoutMillis: 10000,
 };
 
@@ -132,7 +132,7 @@ describe(
     }
 
     beforeEach(async () => {
-      schema = `t04b_node_mode_${randomBytes(8).toString('hex')}`;
+      schema = `node_mode_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 4, options: `-c search_path=${schema}` });

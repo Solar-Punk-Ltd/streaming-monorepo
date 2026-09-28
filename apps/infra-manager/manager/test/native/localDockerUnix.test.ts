@@ -18,7 +18,7 @@ it(
   'runs native Unix connection plus synthetic Docker/Bee preparation and one submission in its owned temporary socket',
   { timeout: 5000 },
   async (t) => {
-    const directory = await mkdtemp('/tmp/t09-unix-');
+    const directory = await mkdtemp('/tmp/unix-');
     t.diagnostic(`Owned temporary Unix fixture: ${directory}`);
     const socketPath = join(directory, 'docker.sock');
     const docker = syntheticDockerBee(t, undefined, false);
@@ -96,7 +96,7 @@ it(
 );
 
 it('preserves arbitrary bytes and half-close on a native owned Unix socket', { timeout: 5000 }, async (t) => {
-  const directory = await mkdtemp('/tmp/t09-unix-');
+  const directory = await mkdtemp('/tmp/unix-');
   const socketPath = join(directory, 'echo.sock');
   t.diagnostic(`Owned temporary Unix fixture: ${directory}`);
   let peer: net.Socket | undefined;

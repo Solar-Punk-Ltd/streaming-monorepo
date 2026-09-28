@@ -59,4 +59,4 @@ else
   DIR=/tmp/w
 fi
 docker exec -u node -e CHROME_BIN=/usr/bin/chromium "$NAME" \
-  sh -lc "cd $DIR && rm -rf /tmp/w/frontend/node_modules/.vite-t09 && $RUN"
+  sh -lc "cd $DIR && rm -rf /tmp/w/frontend/node_modules/.vite-suites && $RUN"

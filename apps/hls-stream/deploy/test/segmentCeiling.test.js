@@ -40,7 +40,7 @@ describe('the length a segment is force-closed at', () => {
    * SRS takes a ratio and force-closes at `HLS_FRAGMENT * ratio`. Held as a
    * ratio, the ceiling scaled with a field the operator edits: the shipped pair
    * is 0.5 and 5.0, which is 2.5s, and moving the segment length to 2 in the
-   * settings drawer took it to 10s with nothing anywhere saying so. the owner hit
+   * settings drawer took it to 10s with nothing anywhere saying so. The owner hit
    * exactly that on 2026-09-15, on a stream asking for 2s segments and getting
    * 2.067s to 10.033s. What the ceiling has to clear is a number of seconds,
    * `GOP + 0.135s` of constant overshoot, so seconds is what it is set in.

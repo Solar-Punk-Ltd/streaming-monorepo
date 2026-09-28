@@ -92,6 +92,6 @@ and buffer arithmetic, not about an observed stall.
 
 ## Artifacts
 
-`/opt/streaming/retrieval-probe/COLD1/`. Probe: `deploy/scripts/retrieval-debt-probe.sh`. Driver:
+`~/retrieval-probe/COLD1/`. Probe: `deploy/scripts/retrieval-debt-probe.sh`. Driver:
 the `X` arm trick above, which is the only reason round 2 is a second cold start rather than a repeat of
 a warm one. Gateway restored to `--swap-enable=true` and `--cache-capacity=0` and confirmed on the node.

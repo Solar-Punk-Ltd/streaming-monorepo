@@ -59,7 +59,7 @@ waits for it first, and the curl in the quick start above.
 There is no sign-up. The first user is created on the host, once:
 
 ```bash
-docker compose exec -it api node dist/cli.js user:add owner
+docker compose exec -it api node dist/cli.js user:add operator
 ```
 
 It asks for the password twice with nothing echoed, and writes only the hash.
@@ -69,7 +69,7 @@ a file or an argument:
 
 ```bash
 op read "op://<vault>/<item>/password" | \
-  docker compose exec -T api node dist/cli.js user:add owner --password-stdin
+  docker compose exec -T api node dist/cli.js user:add operator --password-stdin
 ```
 
 There is deliberately no environment variable and no seed file that carries a
@@ -169,14 +169,14 @@ thirty seconds for each running deployment with an uploader container, so their
 "Needs attention" lists, the overview's Streams table and the Deployments rows
 say what an uploader reports about itself. Until then a list
 never asked, and on 2026-09-24 the overview read "everything is running and
-ready" while the tester's ABR uploader reported `postage_refused`. Decision
-D16 of 2026-09-17 lets an uploader start on a Bee node that is not answering, so
+ready" while the tester's ABR uploader reported `postage_refused`. Since
+2026-09-17 an uploader may start on a Bee node that is not answering, so
 a running container stopped meaning a working one: the uploader waits for that
 node and reports the wait on its own `/health`, which this route reads on the
 uploader's API port for the deployment's port slot, under a three second budget.
 It never fails for a reading. Nothing answering is `unreachable`, a deployment
 with no uploader container is `not_deployed`, a start gate that warned instead of
-refusing is `warned`, and a stack older than D16 reports none of the new fields
+refusing is `warned`, and a stack older than that change reports none of the new fields
 and so reads as `ok` or `unhealthy` on its own status alone.
 
 The deployment checklist renders that health step for a single-node stream and
@@ -254,7 +254,7 @@ siblings run rather than being asked again.
 chain at all and can only retrieve. Empty is the mode the stack ships that node
 in, light for a `bee-uploader` and ultra-light for a `bee-gateway`, which is
 what every deployment made before 2026-09-17 runs. It is chosen when the
-deployment is created, which is the owner's ruling of 2026-09-17, so an update
+deployment is created, a rule since 2026-09-17, so an update
 carrying a different mode is refused rather than applied. A `bee-uploader`
 asked to run ultra-light is refused outright, and a `bee-gateway` put on
 `light` has to name an endpoint, because the stack's default for a gateway is
@@ -569,7 +569,7 @@ defaults, and moves the one revision for the whole save.
 
 The web2 admin is a separate service where streams are declared and listed.
 A deployment's stream uploader reports to it when the stack gives it two
-settings (the owner, 2026-09-25: this works out of the box on any host a clone of
+settings (since 2026-09-25 this works out of the box on any host a clone of
 this repository deploys to).
 
 - **`ADMIN_API_URL`** is where the uploader reaches the admin. Setting it alone
@@ -939,7 +939,7 @@ one is generated per deployment as before, and a value already in
 running container was started with is a decision rather than a side effect.
 
 **A deployment's own settings** (2026-09-26, #55).
-the owner ruled on 2026-09-25 that every key a deployment's version declares is
+Since 2026-09-25 every key a deployment's version declares is
 editable per deployment, with the version's value as the default. The values
 are stored on the deployment, plain ones in `profiles.stack_settings` and
 secret ones in `profiles.stack_settings_secret`, which no page and no event
@@ -1120,7 +1120,7 @@ which the manager answers 403 whatever the cookie says. The port below is the
 curl -sS -c cookies.txt -X POST localhost:9876/auth/login \
   -H 'content-type: application/json' \
   -H 'X-Requested-With: streaming-infra-manager' \
-  -d '{"username":"owner","password":"<the password>"}'
+  -d '{"username":"operator","password":"<the password>"}'
 
 # Allocate streamer1 (port_slot=1)
 curl -sS -b cookies.txt -X POST localhost:9876/profiles \

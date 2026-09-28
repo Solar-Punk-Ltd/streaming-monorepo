@@ -51,6 +51,22 @@ export const PUBLIC_PORT_ROLES = Object.freeze([
   },
 ]);
 
+/**
+ * A Bee node's API, opened by the firewall generator only to the addresses an
+ * operator names with --bee-api-source, and never to anyone else. It is the Bee
+ * host's door for uploaders on other hosts that publish through its rungs. The
+ * API asks for no password and can spend the node's postage, so it is never a
+ * public role.
+ */
+export const NAMED_SOURCE_BEE_API = Object.freeze({
+  group: 'bee_api',
+  protocol: 'tcp',
+  base: 10005,
+  maxSlot: MANAGER_SLOT_CAP,
+  portVar: 'BEE_UPLOADER_API_PORT',
+  service: 'bee-uploader',
+});
+
 /** @typedef {{port: number, protocol: string, portVar: string, service: string | null}} ExposureEntry */
 
 /** The public role a saved ruleset can permit at a tuple, independent of its present owner.

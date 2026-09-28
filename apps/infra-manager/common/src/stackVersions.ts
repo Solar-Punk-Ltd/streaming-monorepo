@@ -162,7 +162,7 @@ export interface StackVersion {
 export const DEFAULT_MAX_SLOT = 999;
 
 /**
- * The highest port slot the manager allocates on any version (D01).
+ * The highest port slot the manager allocates on any version.
  *
  * The stack's two port bands land on each other at slot 100, where the first
  * band's `10000 + 100 * 10` is the second band's slot 0 P2P port, and
@@ -195,7 +195,7 @@ export const STACK_VERSION_NAME_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
  */
 export function stackVersionNameProblem(name: string): string | null {
   if (!name) {
-    return 'Type a name for this version, for example main-v3.';
+    return 'Type a name for this version, for example main.';
   }
   if (name.length > STACK_VERSION_NAME_MAX) {
     return `A version name can be at most ${STACK_VERSION_NAME_MAX} characters.`;
@@ -220,7 +220,7 @@ const STACK_REF_RE = /^[A-Za-z0-9._/-]+$/;
  */
 export function stackRefProblem(ref: string): string | null {
   if (!ref) {
-    return 'Type a branch or a tag, for example main-v3.';
+    return 'Type a branch or a tag, for example main.';
   }
   if (ref.length > STACK_REF_MAX) {
     return `A branch or tag can be at most ${STACK_REF_MAX} characters.`;

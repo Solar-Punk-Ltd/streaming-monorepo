@@ -89,6 +89,12 @@ export const GIT_STUB = {
 
 const sandboxes = [];
 
+/**
+ * The host the bench scripts are pointed at in a test. They take no default, since a default named
+ * one real machine, so every launch of `bench-on-host.sh` here passes it with `--target`.
+ */
+export const BENCH_TARGET = 'bench.example.org';
+
 export function removeSandboxes() {
   for (const dir of sandboxes) {
     rmSync(dir, { recursive: true, force: true });

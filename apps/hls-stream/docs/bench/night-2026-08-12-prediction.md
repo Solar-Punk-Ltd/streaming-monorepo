@@ -84,7 +84,7 @@ The night stops itself, and these are the reasons it is allowed to:
 1. Either chequebook under **0.5 BZZ** available. Not a budget: it is the distance from where peers
    refuse service to a node that cannot pay, which looks from outside like the network being slow.
 2. The batch at **75% of its 512 buckets**. `utilization` is the fullest bucket, not the average.
-3. Host load over **32 of 48 cores** at a sitting boundary. The box carries about forty other bee
+3. Host load over **32 of 48 cores** at a sitting boundary. The bench host carries about forty other bee
    nodes and eight unrelated stacks.
 4. A sitting past its deadline: 95, 270 and 210 minutes.
 

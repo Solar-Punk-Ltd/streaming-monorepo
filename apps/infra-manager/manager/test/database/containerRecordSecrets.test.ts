@@ -2,7 +2,7 @@
  * Migration 036 against a real PostgreSQL: the container records written before
  * it lose their secrets and keep everything else.
  *
- * `pnpm test:database` in manager/, or on its own with T04B_TEST_PG_PORT set.
+ * `pnpm test:database` in manager/, or on its own with STACK_VERSIONS_TEST_PG_PORT set.
  *
  * A data fix only happens to rows that were there before it ran, which a unit
  * test cannot hold. This file runs the migrations into a schema of its own,
@@ -19,12 +19,12 @@ import { NAMED_SECRET_SETTING_KEYS } from '@streaming-infra-manager/common';
 
 import { ContainerRepository } from '../../src/domain/ContainerRepository.js';
 
-const port = Number(process.env.T04B_TEST_PG_PORT);
+const port = Number(process.env.STACK_VERSIONS_TEST_PG_PORT);
 const connection = {
   host: '127.0.0.1',
   port,
   user: 'postgres',
-  database: 't04b_test',
+  database: 'stack_versions_test',
   connectionTimeoutMillis: 10000,
 };
 
@@ -76,7 +76,7 @@ describe(
     }
 
     beforeEach(async () => {
-      schema = `t04b_container_secrets_${randomBytes(8).toString('hex')}`;
+      schema = `container_secrets_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 4, options: `-c search_path=${schema}` });

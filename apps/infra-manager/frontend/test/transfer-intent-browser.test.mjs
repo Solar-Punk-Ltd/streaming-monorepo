@@ -31,7 +31,7 @@ const outcome = (browser) =>
 test('the transfer controller preserves intent through lost responses, auth and target changes', async (t) => {
   const origin = await ownedOrigin(t);
   const browser = await launchChrome(t, origin);
-  await browser.call('Page.navigate', { url: `${origin}/dev/t09-intent-tests.html` });
+  await browser.call('Page.navigate', { url: `${origin}/dev/transfer-intent-tests.html` });
   await clickWhenEnabled(browser.evaluate, wiredButton('controller'), 'the wired controller button');
   const result = await outcome(browser);
   assert.ok(!result.startsWith('FAILED:'), result);
@@ -43,7 +43,7 @@ test('the transfer controller preserves intent through lost responses, auth and 
 test('native IndexedDB keeps one immutable intent across concurrent browser connections', async (t) => {
   const origin = await ownedOrigin(t);
   const browser = await launchChrome(t, origin);
-  await browser.call('Page.navigate', { url: `${origin}/dev/t09-intent-tests.html` });
+  await browser.call('Page.navigate', { url: `${origin}/dev/transfer-intent-tests.html` });
   await clickWhenEnabled(browser.evaluate, wiredButton('run'), 'the wired run button');
   const result = await outcome(browser);
   assert.ok(!result.startsWith('FAILED:'), result);
@@ -89,7 +89,7 @@ test('two real tabs cannot replace each other’s confirmed intent after reload 
   const origin = await ownedOrigin(t);
   const first = await launchChrome(t, origin);
   const second = await anotherTab(t, first, origin);
-  const name = `t09-tabs-${crypto.randomUUID()}`;
+  const name = `tabs-${crypto.randomUUID()}`;
   const setup = `(async () => {
     const { IndexedDbTransferIntentStore: Store } = await import('/src/transfers/transferIntentStore.ts');
     globalThis.store = new Store(indexedDB, ${JSON.stringify(name)});
@@ -99,7 +99,7 @@ test('two real tabs cannot replace each other’s confirmed intent after reload 
     return true;
   })()`;
   for (const tab of [first, second]) {
-    await tab.call('Page.navigate', { url: `${origin}/dev/t09-intent-tests.html` });
+    await tab.call('Page.navigate', { url: `${origin}/dev/transfer-intent-tests.html` });
     await runButtonWired(tab);
     await tab.evaluate(setup);
   }

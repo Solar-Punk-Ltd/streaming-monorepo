@@ -62,7 +62,7 @@ function engineFacts(profile) {
  * The mock's stand-in for the deploy host's base `.env`.
  *
  * The manager reads the real one. A deploy server usually carries a value or
- * two set on the box by hand, and `.env.<profile>` is a copy of that file with
+ * two set on the host by hand, and `.env.<profile>` is a copy of that file with
  * the unset keys left out, so those values are what the container starts with.
  * One key is set here so the "set on this host" wording is on screen offline
  * as well.

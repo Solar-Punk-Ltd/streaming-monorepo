@@ -1,7 +1,7 @@
 import type { ChequebookTransferContext, ChequebookTransferIntent } from '@streaming-infra-manager/common';
 import type { ChainTransaction } from './chainEvidence.js';
 
-// Source and pinned Bee ABI evidence: docs/testing/t09-transaction-contracts.md.
+// Source and pinned Bee ABI evidence: docs/testing/chequebook-transaction-contracts.md.
 const TOKEN_ADDRESSES: Readonly<Record<number, string>> = Object.freeze({
   1: '0x19062190b1925b5b6689d7073fdfc8c2976ef8cb',
   100: '0xdbf3ea6f5bee45c02255b2c26a16f300502f68da',

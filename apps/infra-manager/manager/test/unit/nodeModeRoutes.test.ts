@@ -1,5 +1,5 @@
 /**
- * The three fields T27 added, from the request body to the service and back out
+ * The three node mode fields, from the request body to the service and back out
  * on a read.
  *
  * Unit test, no database and no Docker. `pnpm test` in manager/.

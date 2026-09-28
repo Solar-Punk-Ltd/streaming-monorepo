@@ -24,7 +24,7 @@ import {
   startAuthTestApp,
 } from './support/authTestApp.js';
 
-const USERNAME = 'owner';
+const USERNAME = 'alice';
 const PASSWORD = 'a-long-enough-password';
 const OTHER_PASSWORD = 'another-fine-password';
 
@@ -460,13 +460,13 @@ describe('managing users', () => {
   };
 
   it('lists who exists, when they last signed in, and how many sessions they hold', async () => {
-    const [owner, ...rest] = await list();
+    const [alice, ...rest] = await list();
 
     assert.equal(rest.length, 0);
-    assert.equal(owner!.username, USERNAME);
-    assert.equal(owner!.isAdmin, true);
-    assert.equal(owner!.sessions, 1);
-    assert.ok(owner!.lastLoginAt);
+    assert.equal(alice!.username, USERNAME);
+    assert.equal(alice!.isAdmin, true);
+    assert.equal(alice!.sessions, 1);
+    assert.ok(alice!.lastLoginAt);
   });
 
   it('adds a user, and refuses the name a second time', async () => {

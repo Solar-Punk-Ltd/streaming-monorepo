@@ -3,7 +3,7 @@
  *
  * Unit test, no database and no uploader. `pnpm test` in manager/.
  *
- * Decision D16 of 2026-09-17 lets an uploader start on a Bee node that is not
+ * Since 2026-09-17 an uploader may start on a Bee node that is not
  * answering, so the wait for that node is a state the deployment page has to
  * show. The uploader reports it on `/health`, and this is the reading the page
  * is given. A stack older than the pin answers none of the new fields, so a

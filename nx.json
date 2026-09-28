@@ -4,7 +4,7 @@
   "analytics": false,
   "useDaemonProcess": false,
   "cacheDirectory": ".nx/cache",
-  "defaultBase": "main-v3",
+  "defaultBase": "main",
   "pluginsConfig": {
     "@nx/js": {
       "analyzeSourceFiles": true

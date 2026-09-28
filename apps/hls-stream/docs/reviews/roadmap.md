@@ -219,10 +219,10 @@ themselves are the check on it.
 
 ## Phase 0.6 ✅ MEASURED AT BOTH PROFILES — light against ultra-light
 
-⛔⛔ **the owner ruled the other way on 2026-09-15 and nothing in this section was rewritten.**
+⛔⛔ **The owner ruled the other way on 2026-09-15 and nothing in this section was rewritten.**
 `deploy/docker-compose.yml` ships the viewer gateway ultra-light and unfunded, with the cost stated
 beside it as LAT-10: such a node has no chequebook, lives on the free bandwidth allowance alone, and a
-viewer polling it sees the feed freeze 30 to 48s at a time. Since 2026-09-17 (T27) the two flags are
+viewer polling it sees the feed freeze 30 to 48s at a time. Since 2026-09-17 the two flags are
 settings, `BEE_GATEWAY_RPC_ENDPOINT` and `BEE_GATEWAY_SWAP_ENABLE`, empty and false by default, so a
 gateway created on the chain is two keys in the env file rather than an edit to the compose file. So
 everything below is the answer as it stood before that ruling, and a reader of this section alone
@@ -1066,7 +1066,7 @@ time**, and ⚠️ the 43-44 MB/s throughput ceiling cannot see them at all, bec
 
 ## Phase 2.7 — in-browser viewer nodes, phase 1 🔎 **assessed and measured 2026-08-09, steps 1, 3, 7, 8 done**
 
-Full write-up: [in-browser phase 1](../scale/in-browser-phase-1.md). Raw data
+Full write-up: the in-browser phase 1 hand-over, which the repository's history keeps. Raw data
 [service time n=500](../bench/in-browser-service-time-2026-08-09.tsv), harness
 `deploy/scripts/in-browser-service-time.js`. **Total cost 0.0019231 BZZ and no broadcast minutes.**
 
@@ -1105,7 +1105,7 @@ side.** In exchange the 128-viewer knee and the 43-44 MB/s plateau stop existing
 infrastructure cost goes to roughly zero.
 
 ⭐⭐ **weeb-3 speaks our dialect.** Its feed topic derivation is byte-identical to bee-js
-`Topic.fromString`, verified against the live deployment's own log. The topic in the link the tester is
+`Topic.fromString`, verified against the live deployment's own log. The topic in the link an outside tester is
 testing with is a v4 UUID, the exact shape our uploader's `streamRawTopic` produces. ⚠️ The POC
 repository reports that weeb-3's **native** feed reader still cannot read bee-js sequential feeds, so
 topic and index encoding have to be settled separately.

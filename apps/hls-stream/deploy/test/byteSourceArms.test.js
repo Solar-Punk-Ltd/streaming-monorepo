@@ -184,7 +184,7 @@ process.exit(0);
 `,
   );
 
-  // `run_browser_arm` passes the host docker group through, and this box is not the host.
+  // `run_browser_arm` passes the host docker group through, and this bench host is not the host.
   writeFileSync(join(bin, 'getent'), `#!/usr/bin/env node\nprocess.stdout.write('docker:x:999:\\n');\n`);
 
   const nodeMetrics = join(dir, 'node-metrics.sh');
@@ -417,7 +417,7 @@ describe('the arm budget covers what an arm actually does', () => {
   });
 });
 
-describe('a sitting that refuses leaves the box as it found it', () => {
+describe('a sitting that refuses leaves the bench host as it found it', () => {
   it('takes a preflight reading and stops without publishing anything', async () => {
     const stubs = setup();
 
@@ -430,7 +430,7 @@ describe('a sitting that refuses leaves the box as it found it', () => {
   });
 
   /**
-   * ⛔⛔ A teardown keyed on a name pattern killed a live paid broadcast on this box on 2026-08-12.
+   * ⛔⛔ A teardown keyed on a name pattern killed a live paid broadcast on this bench host on 2026-08-12.
    * The names present before the run are recorded once and excluded from every teardown.
    */
   it('never removes a publisher it did not start', async () => {

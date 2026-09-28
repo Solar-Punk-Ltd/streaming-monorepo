@@ -2,7 +2,7 @@
  * The digests a container record keeps, migration 038, against a real
  * PostgreSQL.
  *
- * `pnpm test:database` in manager/, or on its own with T11_TEST_PG_PORT set.
+ * `pnpm test:database` in manager/, or on its own with DEPLOYMENT_SETTINGS_TEST_PG_PORT set.
  *
  * A record is written by every successful deploy and read to tell which
  * settings a running copy is behind on. This shows the repository writes and
@@ -20,12 +20,12 @@ import { buildContainerSnapshot } from '../../src/domain/containerKeysSpec.js';
 import { ContainerRepository } from '../../src/domain/ContainerRepository.js';
 import { settingDigest, unsetDigest } from '../../src/domain/settings/runningRecord.js';
 
-const port = Number(process.env.T11_TEST_PG_PORT);
+const port = Number(process.env.DEPLOYMENT_SETTINGS_TEST_PG_PORT);
 const connection = {
   host: '127.0.0.1',
   port,
   user: 'postgres',
-  database: 't11_test',
+  database: 'deployment_settings_test',
   connectionTimeoutMillis: 10000,
 };
 
@@ -62,7 +62,7 @@ describe(
     }
 
     beforeEach(async () => {
-      schema = `t11_record_digests_${randomBytes(8).toString('hex')}`;
+      schema = `record_digests_${randomBytes(8).toString('hex')}`;
       admin = new pg.Pool(connection);
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new pg.Pool({ ...connection, max: 4, options: `-c search_path=${schema}` });

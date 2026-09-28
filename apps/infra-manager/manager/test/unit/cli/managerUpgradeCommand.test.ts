@@ -49,7 +49,7 @@ describe('manager:upgrade', () => {
   let overrides: Partial<ManagerUpgradeOperations>;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), 't04b-upgrade-command-'));
+    root = await mkdtemp(join(tmpdir(), 'upgrade-command-'));
     versionsRoot = join(root, 'versions');
     mutableRoot = join(root, 'manager');
     await mkdir(versionsRoot);

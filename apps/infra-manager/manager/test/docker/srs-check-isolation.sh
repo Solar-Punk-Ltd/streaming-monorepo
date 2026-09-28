@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# T02: the real SRS parser on eight files at once, each differing in one
+# The real SRS parser on eight files at once, each differing in one
 # directive.
 #
 # What it proves: the manager's own config check, with its own command runner
@@ -13,7 +13,7 @@
 #
 # What it does not prove: that any of these files would run. Nothing is
 # started here, only parsed, and the engine that parses a file is not the
-# engine that has to stay up on it. That is T01.
+# engine that has to stay up on it. That is the engine startup failure test.
 #
 # Usage, from the repository root, with the stack submodule checked out:
 #   bash manager/test/docker/srs-check-isolation.sh

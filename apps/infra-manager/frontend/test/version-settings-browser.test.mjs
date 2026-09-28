@@ -32,7 +32,7 @@ import { passingRejections } from './support/passing-rejections.mjs';
  */
 
 const frontend = fileURLToPath(new URL('../', import.meta.url));
-const evidence = process.env.T18_EVIDENCE_DIR;
+const evidence = process.env.VERSIONS_PAGE_EVIDENCE_DIR;
 
 const NARROW = 390;
 

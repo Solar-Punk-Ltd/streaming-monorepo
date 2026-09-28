@@ -113,5 +113,5 @@ but the skip figures above include whatever it does contribute.
 
 ## Artifacts
 
-`/opt/streaming/retrieval-probe/conc3/`. Probe: `deploy/scripts/retrieval-debt-probe.sh`. The gateway
+`~/retrieval-probe/conc3/`. Probe: `deploy/scripts/retrieval-debt-probe.sh`. The gateway
 was restored to `--swap-enable=true` and `--cache-capacity=0` and confirmed on the node.

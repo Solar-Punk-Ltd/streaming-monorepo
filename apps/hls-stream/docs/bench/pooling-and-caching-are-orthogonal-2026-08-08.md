@@ -68,5 +68,5 @@ exceeds `--cache-capacity`. That is the next question this opens.
 
 ## Artifacts
 
-`/opt/streaming/retrieval-probe/pool1/`. Probe: `deploy/scripts/retrieval-debt-probe.sh`. Gateway
+`~/retrieval-probe/pool1/`. Probe: `deploy/scripts/retrieval-debt-probe.sh`. Gateway
 restored to `--swap-enable=true` and `--cache-capacity=0` and confirmed on the node.

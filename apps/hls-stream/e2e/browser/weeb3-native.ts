@@ -33,8 +33,9 @@
  * `WEEB3_NATIVE_SQUEEZE_KBPS` turns one counted window into three: settle, capped, recovered. Our
  * own client, driving our own pinned weeb-3, could not keep a 360p recording moving once Chrome's
  * emulation capped the tab, and the owner has ruled that weeb-3 is not at fault and must not be
- * changed. the tester's published page is the same node inside a client we did not write, so the same
- * recording under the same cap is the first thing that can tell our harness apart from his node. See
+ * changed. An outside tester's published page is the same node inside a client we did not write, so
+ * the same recording under the same cap is the first thing that can tell our harness apart from the
+ * tester's node. See
  * `docs/bench/in-tab-throttle-probe-result-2026-09-02.md`.
  *
  * ⛔ Unset, the driver behaves exactly as it did before the mode existed. Nothing in the squeeze
@@ -522,7 +523,8 @@ async function main(): Promise<void> {
   const broadcastStartMs = envNumberOrNull('WEEB3_NATIVE_BROADCAST_START_MS');
 
   const metricsHost = process.env.WEEB3_NATIVE_METRICS_SSH ?? '';
-  const metricsRoot = process.env.WEEB3_NATIVE_METRICS_DIR ?? '/opt/streaming/node-metrics-weeb3native';
+  // A folder on the metrics host, in the home of the account ssh logs in as. The remote shell expands the `~`.
+  const metricsRoot = process.env.WEEB3_NATIVE_METRICS_DIR ?? '~/node-metrics-weeb3native';
   // ⭐ A caller that brackets the arm itself names itself here, and the name is written into the
   // artefact. Without it an arms wrapper would have to pass ALLOW_NO_NODE_METRICS=1, and the run
   // would then carry "this run has no node-side evidence" while its wrapper was holding exactly that

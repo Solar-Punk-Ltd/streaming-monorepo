@@ -17,7 +17,15 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { ALL_REMOTE, GIT_STUB, makeSandbox, removeSandboxes, runScript, runScriptOk } from './helpers/sandbox.js';
+import {
+  ALL_REMOTE,
+  BENCH_TARGET,
+  GIT_STUB,
+  makeSandbox,
+  removeSandboxes,
+  runScript,
+  runScriptOk,
+} from './helpers/sandbox.js';
 import { classifySpawn, SPAWN_ABSENT, SPAWN_OK, SPAWN_TIMED_OUT } from './helpers/spawnOutcome.js';
 
 /** `docker compose config` parses files without the daemon, so this bound only guards a wedged CLI. */
@@ -368,7 +376,7 @@ describe('bench-on-host.sh from a checkout of the one workspace', () => {
     writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
     const tmp = ownTmpdir();
 
-    await runScriptOk(sandbox, 'bench-on-host.sh', ['--setup-only'], { TMPDIR: tmp });
+    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--setup-only'], { TMPDIR: tmp });
 
     const cut = expectedCut(workspace);
     const mirror = join(sandbox.remoteHome, REMOTE_BENCH_DIR);
@@ -399,7 +407,7 @@ describe('bench-on-host.sh from a checkout of the one workspace', () => {
     write(alone, earlier);
     const tmp = ownTmpdir();
 
-    await runScriptOk(sandbox, 'bench-on-host.sh', ['--setup-only'], {
+    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--setup-only'], {
       TMPDIR: tmp,
       RSYNC_ALONE_DEST: alone,
       RSYNC_ALONE_SKIP: tmp,
@@ -424,7 +432,7 @@ describe('bench-on-host.sh from a checkout of the one workspace', () => {
     const { sandbox } = oneWorkspace({ ownPair: true });
     writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
 
-    await runScriptOk(sandbox, 'bench-on-host.sh', ['--setup-only'], { TMPDIR: ownTmpdir() });
+    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--setup-only'], { TMPDIR: ownTmpdir() });
 
     assert.equal(
       readFileSync(join(sandbox.remoteHome, REMOTE_BENCH_DIR, 'pnpm-lock.yaml'), 'utf8'),

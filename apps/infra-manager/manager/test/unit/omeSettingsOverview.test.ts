@@ -7,10 +7,10 @@ import type { EngineOverview } from '@streaming-infra-manager/common';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 import { OME_TEMPLATE } from '../support/omeTemplate.js';
 
-const root = throwawayRoot('t11-ome-overview-');
+const root = throwawayRoot('ome-overview-');
 const previousRoot = process.env.SHLS_ROOT;
 process.env.SHLS_ROOT = root;
-process.env.DATABASE_URL = 'postgresql://127.0.0.1:1/t11_unused';
+process.env.DATABASE_URL = 'postgresql://127.0.0.1:1/unused';
 mkdirSync(join(root, 'engines', 'ome'), { recursive: true });
 writeFileSync(join(root, 'engines', 'ome', 'Server.xml.template'), OME_TEMPLATE);
 writeFileSync(join(root, '.env'), 'ENGINE=ome\nHLS_SEGMENT_DURATION=6\nHLS_SEGMENT_COUNT=9\n');
@@ -59,7 +59,7 @@ function withExtraApplication(publishers: string): string {
     '</Applications>',
     `<Application><Name>extra</Name><Type>live</Type><Publishers>${publishers}</Publishers></Application></Applications>`,
   );
-  assert.equal(omeContractProblem(OME_TEMPLATE, file), null, 'T03 admits the additional application');
+  assert.equal(omeContractProblem(OME_TEMPLATE, file), null, 'the OME config check admits the additional application');
   return file;
 }
 
