@@ -620,14 +620,20 @@ version whose env files set the token.
 
 **Rolling it out.** The admin is upgraded to phase 5 before the manager, and no
 uploader deployment is redeployed in between, so an older admin never meets a
-token of its own, which it would refuse. Phase 9 goes admin first as well, once
-the admin's Stages page says "Its own token" for every stage: the phase 9 admin
-refuses any other, and a phase 8 manager's Manager settings test reads
-`token-refused` in front of it until the manager is upgraded too.
+token of its own, which it would refuse. Phase 9 goes another way, on a host
+that runs the admin and manager from before stages: the admin at the phase 8
+tip, commit `d29616851`, then the phase 9 manager, then every stage rotated and
+redeployed until the admin's Stages page says "Its own token" for all, then the
+phase 9 admin. Skipping the first three steps means every running uploader gets
+401 until its stage is rotated and redeployed. A fresh installation needs none
+of this.
 
 In admin mode the uploader refuses to start without a token, so a save of a
 deployment's settings, or a create, that names either key and leaves an address
-with no token anywhere is refused with both keys named. A token counts when the
+with no token anywhere is refused with both keys named. One that leaves a
+stored `ADMIN_API_TOKEN` at an address on the origin of the manager's link,
+while the link stores a token, is refused as well, with the wizard's sentence:
+that admin takes only a token of the deployment's own from an uploader. A token counts when the
 deployment stores one, when its version sets one, when the manager generates
 one because the version requires it, or, at an address on the manager's link
 origin, the token of its own. A save of other keys is not held to this.
@@ -718,22 +724,22 @@ logged. A stored token is presented only to the origin it
 was stored for. It answers one of these, and the page says one sentence for
 each:
 
-| Outcome                  | What it means                                                                                                                                                                     |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `linked`                 | The admin took the token, and knows the deployment's stream address as its stage's owner, or on a token of no stage as its catalog's.                                             |
-| `token-accepted`         | The admin took the token: the registrar check answered, or there was no stream address to compare.                                                                                |
-| `owner-unconfirmed`      | The admin took the token but did not say which owner it knows for it, so the stream address was not compared. The uploader starts and checks each declaration instead.            |
-| `owner-mismatch`         | The admin took the token but knows another owner for it: its stage's, or on a token of no stage its catalog's. The uploader will refuse to start.                                 |
-| `token-refused`          | The admin answered its own 401: the token is wrong.                                                                                                                               |
-| `token-not-own`          | The admin at the link's address answered its own 401 to a deployment's token the manager did not generate: typed, copied from the link, or the version's. Rotate it and redeploy. |
-| `token-not-registered`   | The admin answered its own 401 to the deployment's own token while no push of the stage has been stored there, so the admin does not know the token yet. A deploy registers it.   |
-| `not-admin`              | Something answered, but not the way a web2 admin does: another status, another server's 404, a body that is not the admin's JSON, or one past the bound.                          |
-| `redirected`             | The address answered with a redirect, which the test does not follow. Give the address the admin itself answers on.                                                               |
-| `unreachable`            | Nothing answered from where the manager runs, within five seconds a request, the uploader's own lookup timeout.                                                                   |
-| `invalid-address`        | The address is not an http or https one the uploader can use.                                                                                                                     |
-| `not-linked`             | The deployment has no address, so its uploader runs standalone.                                                                                                                   |
-| `no-token`               | There is an address and no token to test with.                                                                                                                                    |
-| `stored-token-elsewhere` | A stored token, the manager's or the deployment's own, was saved for another origin, so nothing was asked. Type the token again for this address where it is set.                 |
+| Outcome                  | What it means                                                                                                                                                                                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `linked`                 | The admin took the token, and knows the deployment's stream address as its stage's owner, or on a token of no stage as its catalog's.                                                                                                                                        |
+| `token-accepted`         | The admin took the token: the registrar check answered, or there was no stream address to compare.                                                                                                                                                                           |
+| `owner-unconfirmed`      | The admin took the token but did not say which owner it knows for it, so the stream address was not compared. The uploader starts and checks each declaration instead.                                                                                                       |
+| `owner-mismatch`         | The admin took the token but knows another owner for it: its stage's, or on a token of no stage its catalog's. The uploader will refuse to start.                                                                                                                            |
+| `token-refused`          | The admin answered its own 401: the token is wrong.                                                                                                                                                                                                                          |
+| `token-not-own`          | At the link's address, the deployment's token is not one the manager generated: typed, copied from the link, or the version's. The phase 9 admin refuses it, and an older one still takes it. Rotate it and redeploy; a version's token is taken out of the version instead. |
+| `token-not-registered`   | The admin answered its own 401 to the deployment's own token while no push of the stage has been stored there, so the admin does not know the token yet. A deploy registers it.                                                                                              |
+| `not-admin`              | Something answered, but not the way a web2 admin does: another status, another server's 404, a body that is not the admin's JSON, or one past the bound.                                                                                                                     |
+| `redirected`             | The address answered with a redirect, which the test does not follow. Give the address the admin itself answers on.                                                                                                                                                          |
+| `unreachable`            | Nothing answered from where the manager runs, within five seconds a request, the uploader's own lookup timeout.                                                                                                                                                              |
+| `invalid-address`        | The address is not an http or https one the uploader can use.                                                                                                                                                                                                                |
+| `not-linked`             | The deployment has no address, so its uploader runs standalone.                                                                                                                                                                                                              |
+| `no-token`               | There is an address and no token to test with.                                                                                                                                                                                                                               |
+| `stored-token-elsewhere` | A stored token, the manager's or the deployment's own, was saved for another origin, so nothing was asked. Type the token again for this address where it is set.                                                                                                            |
 
 The admin's own 404 for that lookup is `{ "error": "stream_not_found" }`, its
 404 for a path it does not know `{ "error": "not_found" }`, and its 401

@@ -105,9 +105,29 @@ attributes only `own` tokens, refuses it.
 uploader deployment is redeployed in between. An older admin takes only its
 `INTERNAL_API_TOKEN` from an uploader and would refuse a token of its own that
 a redeploy by the new manager generated; the phase 5 admin takes both, so
-every running uploader keeps working while the two move. Phase 9 goes the same
-way, admin first, once every stage reads "Its own token" on the admin's Stages
-page: the phase 9 admin refuses any other.
+every running uploader keeps working while the two move. That was phase 5's
+rule. Phase 9 goes another way, decided 2026-09-29, on a host that runs the
+admin and manager from before stages:
+
+1. **Deploy the admin at the phase 8 tip**, commit `d29616851` on `feat/stages`. It takes both the
+   shared token and a stage's own.
+2. **Deploy the phase 9 manager.** It works in front of the phase 8 admin: its Manager settings
+   Test connection falls back from the registrar check's 404 to the lookup, and each deployment's
+   Test connection answers `token-not-own` for every stage still to rotate.
+3. **Rotate and redeploy every stage** (**Rotate the uploader's admin token** on its deployment
+   page, then deploy) until the admin's Stages page reads "Its own token" for all of them.
+4. **Deploy the phase 9 admin.**
+
+Skipping steps 1 to 3 means every running uploader gets 401 from the phase 9 admin until its stage
+is rotated and redeployed. A fresh installation needs none of this: every stage it creates has a
+token of its own from its first deploy.
+
+**A token the version sets cannot be rotated.** A deployment whose version's
+env files set `ADMIN_API_TOKEN` is given that value at every deploy, in place of
+a token of its own, and its record says `shared`, which the admin refuses since
+phase 9. The rotation below is refused for it. Take the token out of the
+version, or move the deployment to a version that sets none, and redeploy: the
+deploy then generates a token of its own.
 
 **Rotate the uploader's admin token**, on the deployment page's stage card
 (`POST /profiles/:name/admin-token/rotate`, behind the session and the
@@ -188,10 +208,11 @@ presents the deployment's own token, which the admin knows once the stage was
 pushed; when the admin refuses a token of the deployment's own, one that is
 not the link's, at the link's address while no push of its stage has been
 stored, the test answers `token-not-registered` rather than `token-refused`,
-since a deploy registers it. When it refuses there a token the manager did not
-generate for the deployment, a copy of the link's, a typed one or the
-version's, the test answers `token-not-own`: rotate the uploader's admin token
-and redeploy. The wizard's test for a token of its own, which does not exist
+since a deploy registers it. At the link's address, a token the manager did
+not generate for the deployment, a copy of the link's, a typed one or the
+version's, answers `token-not-own` whether the admin refused it or, older than
+phase 9, still took it: rotate the uploader's admin token and redeploy. At
+another address a refusal is `token-refused`. The wizard's test for a token of its own, which does not exist
 before the first deploy, presents the manager's stored token, as the
 registrar's.
 
@@ -282,12 +303,14 @@ and so on, and every sentence can be seen with `pnpm -C frontend dev:mock`.
   uploader without it, since it is written only for the link's origin; such a
   deployment is refused at save by the rule, and at deploy its uploader refuses
   to start until a token is typed for the address or the link is put back.
-- A typed token at the link's address is held only in the wizard. The Stack
-  settings card still saves one, which the admin there refuses from the
-  uploader since phase 9; the card's Test connection says so, `token-not-own`,
-  and a rotation takes it out. At another address, a typed token reaches only
-  an admin older than phase 9, since an admin of this version takes a stage's
-  own token alone and learns it only from the manager linked to it.
+- A stored token at the link's address, while the link stores a token, is
+  refused by the manager at a save and a create (`typedTokenAtLinkProblem` in
+  `common/src/adminLink.ts`), with the wizard's sentence, and the wizard holds
+  it before. One stored before phase 9 stays until a save of either key or a
+  rotation takes it out; its Test connection says `token-not-own`. At another
+  address, a typed token reaches only an admin older than phase 9, since an
+  admin of this version takes a stage's own token alone and learns it only from
+  the manager linked to it.
 - The card's test uses the saved values. A change that is not saved yet is
   tested once it is saved, and the block says so while one is pending.
 - A signed-in user can still save the manager's link with an address and a new

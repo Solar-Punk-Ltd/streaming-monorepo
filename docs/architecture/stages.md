@@ -320,18 +320,38 @@ owner, and a stream of another stage is refused at the gate.
   sentence and a button back to a token of its own, at the address of the manager's link while
   the link stores a token: that admin takes no typed token from an uploader.
 - **Test connection on a deployment** keeps presenting the deployment's own token on the lookup
-  and `stages/self`. A refusal at the link's address of a token the manager did not generate for
-  the deployment is `token-not-own`: rotate the uploader's admin token and redeploy.
+  and `stages/self`. At the link's address, a token the manager did not generate for the
+  deployment is `token-not-own` whether the admin refused it or, being older than phase 9, took
+  it: rotate the uploader's admin token and redeploy. At another address a refusal is
+  `token-refused`.
+- **A stored token at the link's address is refused by the manager.** A save of a deployment's
+  settings or a create that leaves a stored `ADMIN_API_TOKEN` at an address on the origin of the
+  manager's link, while the link stores a token, is refused with the wizard's sentence
+  (`TYPED_TOKEN_AT_LINK`, `typedTokenAtLinkProblem` in `common/src/adminLink.ts`). Clearing the
+  token, or resetting it to the version's, takes it; the first deploy then generates one of its
+  own.
+- **The registrar token is never an uploader's.** The uploader's door compares the presented
+  token with `INTERNAL_API_TOKEN` itself before any lookup, and the admin refuses a pushed record
+  whose own-token hash is that token's, with a 400 that names neither.
 - **Leftovers taken out.** `use_manager_admin_token` is gone from `POST /profiles` and
   `POST /groups`; a create drops it as any key it does not name. The rotation's sentences and the
   pages no longer say a shared token keeps being taken.
 
-**Rolling out phase 9.** The admin before the manager, as for phase 5. Before the admin is
-upgraded, the Stages page should say "Its own token" for every stage: a stage on a `shared` token
-reports nothing once the upgraded admin runs, until it is rotated and redeployed. A phase 8 manager
-in front of an upgraded admin keeps pushing, since the manager's routes take the same token, but
-its Manager settings Test connection asks the lookup and reads `token-refused` until the manager
-is upgraded too.
+**Rolling out phase 9**, decided 2026-09-29, on a host that runs today's admin and manager from
+before stages. It is not "admin first", which was phase 5's rule (below, kept as history):
+
+1. **Deploy the admin at the phase 8 tip**, commit `d29616851` on `feat/stages`. It takes both the
+   shared token and a stage's own.
+2. **Deploy the phase 9 manager.** It works in front of the phase 8 admin: its Manager settings
+   Test connection falls back from the registrar check's 404 to the lookup, and each deployment's
+   Test connection answers `token-not-own` for every stage still to rotate.
+3. **Rotate and redeploy every stage** (**Rotate the uploader's admin token** on its deployment
+   page, then deploy) until the admin's Stages page reads "Its own token" for all of them.
+4. **Deploy the phase 9 admin.**
+
+Skipping steps 1 to 3 means every running uploader gets 401 from the phase 9 admin until its stage
+is rotated and redeployed. A fresh installation needs none of this: every stage it creates has a
+token of its own from its first deploy.
 
 ## Moving the catalogue to another batch
 
@@ -477,7 +497,8 @@ nothing reaches a host without the owner's word.
 Phases 2 to 5 reach a host together, because until phase 5 every uploader holds the token that
 registers stages.
 
-**Rolling out phase 5.** The admin is upgraded before the manager, and no uploader deployment is
+**Rolling out phase 5** (history: phases 2 to 8 reached no host, and the phase 9 sequence above
+replaces this for a host that upgrades now). The admin is upgraded before the manager, and no uploader deployment is
 redeployed in between. An admin older than phase 5 takes nothing but its `INTERNAL_API_TOKEN` from
 an uploader, so an uploader that a phase 5 manager redeploys with a token of its own would be
 refused by it. The upgraded admin still takes every uploader's shared token and learns each own

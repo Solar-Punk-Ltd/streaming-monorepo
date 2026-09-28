@@ -171,11 +171,23 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
     `VIEWER_BASE_URL`. Then in the admin, **My Streams**: create a stream, pick its stage, schedule
     and publish. The OBS panel shows that stage's ingest details.
 
-**Upgrading.** The admin goes before the manager, and no uploader deployment is redeployed in
-between. An uploader presents only a token of its own to the admin, which the admin takes on its
-uploader routes and nowhere else, so before the admin reaches stages phase 9, check its Stages page:
-a stage that does not say "Its own token" is refused once it does, until **Rotate the uploader's
-admin token** on its deployment page in the manager and a redeploy give it one.
+**Upgrading a host that runs the admin and manager from before stages.** A fresh installation
+needs none of this. On a running one, in this order:
+
+1. **Deploy the admin at the phase 8 tip**, commit `d29616851` on `feat/stages`. It takes both the
+   shared token and a stage's own.
+2. **Deploy the phase 9 manager.** It works in front of the phase 8 admin: its Manager settings
+   Test connection falls back from the registrar check's 404 to the lookup, and each deployment's
+   Test connection answers `token-not-own` for every stage still to rotate.
+3. **Rotate and redeploy every stage** (**Rotate the uploader's admin token** on its deployment
+   page, then deploy) until the admin's Stages page reads "Its own token" for all of them.
+4. **Deploy the phase 9 admin.**
+
+Skipping steps 1 to 3 means every running uploader gets 401 from the phase 9 admin until its stage
+is rotated and redeployed. A fresh installation needs none of this: every stage it creates has a
+token of its own from its first deploy.
+
+[architecture/stages.md](architecture/stages.md) has the reasons.
 
 ## A stage host
 

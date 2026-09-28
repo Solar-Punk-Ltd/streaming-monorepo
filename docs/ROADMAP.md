@@ -335,9 +335,13 @@ Left open after the nine phases:
   the manager's console until this is decided.
 - **Brand separation** inside one admin, and a second admin link per manager
   for a second brand, among the open decisions below.
-- **Rollout.** Admin before manager, every stage on its own token before the
-  admin reaches phase 9 (the spec's rollout notes), and only with the owner's
-  word.
+- **Rollout**, decided 2026-09-29, for a host that runs the admin and manager
+  from before stages, and only with the owner's word: the admin at the phase 8
+  tip (`d29616851`), then the phase 9 manager, then every stage rotated and
+  redeployed until the admin's Stages page reads "Its own token" for all, then
+  the phase 9 admin. Skipping the first three steps means every running
+  uploader gets 401 until its stage is rotated and redeployed. A fresh
+  installation needs none of this.
 
 ## Checkpoint 3: manager integration (built on `feat/stages`, 2026-09-29)
 
