@@ -177,7 +177,8 @@ describe('what the editor opens on', () => {
 
     assert.equal(view.supported, false);
     assert.match(view.unsupportedReason ?? '', /bundled renders the SRS config from its template/);
-    assert.match(view.unsupportedReason ?? '', /main-v3/);
+    assert.match(view.unsupportedReason ?? '', /Deploy on a stack version that runs a file of its own to edit it\./);
+    assert.doesNotMatch(view.unsupportedReason ?? '', /main-v3/, 'names no branch that may not exist');
   });
 });
 
@@ -187,7 +188,8 @@ describe('applying a file', () => {
 
     await assert.rejects(
       service.apply('stream1', 'listen 1935;\n'),
-      (err: unknown) => err instanceof ProfileConfigError && /main-v3/.test(err.message),
+      (err: unknown) =>
+        err instanceof ProfileConfigError && /a stack version that runs a file of its own/.test(err.message),
     );
 
     assert.equal(harness.profiles.engineConfigs.has('stream1'), false);
