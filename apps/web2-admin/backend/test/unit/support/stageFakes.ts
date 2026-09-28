@@ -274,12 +274,15 @@ export class FakeCatalogueStampStore implements CatalogueStampStore {
     return { outcome: 'done', row: structuredClone(row) };
   }
 
-  /** As the SQL: pins the batch unless it is pinned already, and says whether it changed anything. */
+  /**
+   * As the SQL: pins the batch unless it is pinned already, keeping the stored designated record when it is for the
+   * same batch and `record` otherwise, and says whether it changed anything.
+   */
   async pin(record: CatalogueStampRecord): Promise<boolean> {
     this.pins.push(record.batchId);
     if (!this.row || this.row.active_batch_id === record.batchId) return false;
     this.row.active_batch_id = record.batchId;
-    this.row.active_record = structuredClone(record);
+    this.row.active_record = structuredClone(this.row.record?.batchId === record.batchId ? this.row.record : record);
     this.row.active_pinned_at = this.clock.now();
     return true;
   }

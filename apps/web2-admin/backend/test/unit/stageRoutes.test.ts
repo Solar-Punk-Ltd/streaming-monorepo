@@ -116,6 +116,8 @@ before(async () => {
   app.use('/api/stages', createStagesRouter({ stageService, requireAuth }));
   const catalogueBatch = new CatalogueBatchService(catalogue, new FakeFeedWriteLog(), feed, audit, {
     stampRequired: true,
+    // Five minutes after the records the suite pushes were observed, so their time to live never runs out here.
+    now: () => Date.parse('2026-09-28T10:05:00.000Z'),
   });
   app.use('/api/catalogue-stamp', createCatalogueStampRouter({ stageService, catalogueBatch, requireAuth }));
   app.use(notFound);
@@ -402,6 +404,7 @@ describe('the console’s stage reads', () => {
             'The manager has not designated a catalogue batch yet. Nothing is written to the catalogue until it does.',
         },
         moveWaitingTo: null,
+        unrecordedHistory: null,
       },
     });
 
@@ -422,6 +425,7 @@ describe('the console’s stage reads', () => {
       },
       refusal: null,
       moveWaitingTo: null,
+      unrecordedHistory: null,
     });
     assert.equal(after.text.includes('192.0.2.10'), false, 'the Bee API address reached the console');
   });

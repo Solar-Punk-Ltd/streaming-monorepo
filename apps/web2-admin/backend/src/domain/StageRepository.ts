@@ -247,14 +247,18 @@ export class CatalogueStampRepository {
   }
 
   /**
-   * Pins `record`'s batch as the one the catalogue is written with, and keeps the record as its node and readings.
-   * Answers whether it changed anything: pinning the batch already pinned is a no-op, so a write that races another
-   * cannot move `active_pinned_at`. The decision to pin is the catalogue batch service's; this only stores it.
+   * Pins `record`'s batch as the one the catalogue is written with, and keeps a record as its node and readings:
+   * the stored designated record when it is for the same batch, which is never older than the copy the caller read,
+   * and `record` otherwise. Answers whether it changed anything: pinning the batch already pinned is a no-op, so a
+   * write that races another cannot move `active_pinned_at`. The decision to pin is the catalogue batch service's;
+   * this only stores it.
    */
   async pin(record: CatalogueStampRecord): Promise<boolean> {
     const result = await this.pool.query(
       `UPDATE catalogue_stamp
-          SET active_batch_id = $1, active_record = $2::jsonb, active_pinned_at = NOW()
+          SET active_batch_id = $1,
+              active_record = CASE WHEN record->>'batchId' = $1 THEN record ELSE $2::jsonb END,
+              active_pinned_at = NOW()
         WHERE active_batch_id IS DISTINCT FROM $1`,
       [record.batchId, JSON.stringify(record)],
     );

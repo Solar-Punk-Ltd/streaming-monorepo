@@ -35,7 +35,31 @@ export function catalogueRefusal(problem: CatalogueWriteProblem, batchId: string
     case 'expired':
     case 'gone':
       return `The catalogue batch ${batchId ? shortBatch(batchId) : ''} is ${problem}. Nothing can be written to the catalogue with it.`;
+    case 'mutable':
+      return `The catalogue batch ${batchId ? shortBatch(batchId) : ''} is mutable, and a mutable batch overwrites the catalogue's oldest slots once it fills. Nothing is written to the catalogue with it.`;
   }
+}
+
+/**
+ * Whether a batch has run out by the time to live the manager last read for it: `observedAt` plus `ttlSeconds` is
+ * before `now`, whatever `state` says. Only for a positive time to live; Bee reports a negative one when it cannot
+ * tell. This compares the manager's moment with the admin's clock, which nothing else here does: a time to live is
+ * measured in hours and days, so two hosts' clocks a few seconds apart cannot change the answer. It matters most for
+ * a pinned batch the manager no longer reads, whose last reading only ages.
+ */
+export function expiredByClock(record: CatalogueStampRecord, now: number): boolean {
+  if (record.ttlSeconds === null || !(record.ttlSeconds > 0)) return false;
+  const observed = Date.parse(record.observedAt);
+  return Number.isFinite(observed) && observed + record.ttlSeconds * 1000 < now;
+}
+
+/** Why a write with this record is refused, or null when it can go. */
+function refusalFor(record: CatalogueStampRecord, now: number): CatalogueWriteProblem | null {
+  if (record.state === 'expired' || record.state === 'gone') return record.state;
+  if (expiredByClock(record, now)) return 'expired';
+  // The manager refuses to designate a mutable batch; this holds the rule on the admin's side as well.
+  if (!record.immutable) return 'mutable';
+  return null;
 }
 
 /**
@@ -55,7 +79,8 @@ export function catalogueRefusal(problem: CatalogueWriteProblem, batchId: string
  *   last read it, and say a move to the designated one is waiting.
  * - The manager designated another batch and the feed has no history (the feed key changed): there is nothing to
  *   move, so pin the designated one.
- * - The batch it would write with is expired or gone, by the last reading the admin holds: refuse.
+ * - The batch it would write with is expired or gone, by the last reading the admin holds or by the time to live that
+ *   reading gave it (`expiredByClock`), or it is mutable: refuse.
  *
  * The pinned batch's readings, once the manager designates another, are the last ones it pushed while that batch was
  * the designated one. They are kept and shown with the moment they were read, rather than treated as unknown: they
@@ -81,7 +106,11 @@ function refusal(problem: CatalogueWriteProblem, batchId: string | null): Catalo
   return { problem, message: catalogueRefusal(problem, batchId) };
 }
 
-export function planCatalogueWrite(row: CatalogueStampRow | null, hasHistory: boolean): CatalogueWritePlan {
+export function planCatalogueWrite(
+  row: CatalogueStampRow | null,
+  hasHistory: boolean,
+  now: number = Date.now(),
+): CatalogueWritePlan {
   const pinned = row?.active_batch_id ?? null;
   if (!isDesignated(row)) {
     // A row a clear made before any record arrived never designated anything here.
@@ -95,17 +124,19 @@ export function planCatalogueWrite(row: CatalogueStampRow | null, hasHistory: bo
   const batch = keepsActive ? active : designated;
   const moveWaitingTo = keepsActive ? designated.batchId : null;
 
-  if (batch.state === 'expired' || batch.state === 'gone') {
-    return { batch, refusal: refusal(batch.state, batch.batchId), moveWaitingTo, pin: false, pinned, hasHistory };
+  const problem = refusalFor(batch, now);
+  if (problem) {
+    return { batch, refusal: refusal(problem, batch.batchId), moveWaitingTo, pin: false, pinned, hasHistory };
   }
   return { batch, refusal: null, moveWaitingTo, pin: pinned !== batch.batchId, pinned, hasHistory };
 }
 
-function readingOf(record: CatalogueStampRecord): CatalogueBatchReading {
+/** The record as the console reads it. A batch refused as expired reads as expired, whatever its last state said. */
+function readingOf(record: CatalogueStampRecord, refused: CatalogueWriteProblem | null): CatalogueBatchReading {
   return {
     batchId: record.batchId,
     nodeName: record.nodeName,
-    state: record.state,
+    state: refused === 'expired' ? 'expired' : record.state,
     ttlSeconds: record.ttlSeconds,
     fillRatio: record.fillRatio,
     observedAt: record.observedAt,
@@ -122,9 +153,10 @@ export interface CatalogueBatchStore {
   pin(record: CatalogueStampRecord): Promise<boolean>;
 }
 
-/** Whether a feed has history: the slice of the feed write log this service reads. */
+/** Whether a feed has history, and how much of it no recorded batch stamped: the slice of the feed write log read here. */
 export interface FeedHistory {
   lastWrite(owner: string, topic: string): Promise<unknown>;
+  countUnrecordedBatch(owner: string, topic: string): Promise<number>;
 }
 
 export interface CatalogueBatchOptions {
@@ -134,6 +166,8 @@ export interface CatalogueBatchOptions {
    * need no manager. A stored designation is followed in both, expired and gone included.
    */
   stampRequired: boolean;
+  /** The admin's clock, for `expiredByClock`; a test sets it. */
+  now?: () => number;
 }
 
 /**
@@ -155,16 +189,25 @@ export class CatalogueBatchService {
       this.store.get(),
       this.history.lastWrite(this.feed.owner, this.feed.topicHex),
     ]);
-    return planCatalogueWrite(row, last !== null);
+    return planCatalogueWrite(row, last !== null, (this.options.now ?? Date.now)());
   }
 
-  /** What the console is told: the batch the catalogue is written with, why it is refused, and a waiting move. */
+  /**
+   * What the console is told: the batch the catalogue is written with, why it is refused, a waiting move, and the
+   * writes stamped by a batch the admin never recorded. Those are counted for as long as any is left, pinned batch or
+   * not: the batch that stamped them is unknown, so it cannot be told apart from the pinned one. The in-memory gateway
+   * counts none, since its writes stamp nothing.
+   */
   async status(): Promise<CatalogueWriteStatus> {
-    const plan = await this.plan();
+    const [plan, unrecorded] = await Promise.all([
+      this.plan(),
+      this.options.stampRequired ? this.history.countUnrecordedBatch(this.feed.owner, this.feed.topicHex) : 0,
+    ]);
     return {
-      batch: plan.batch ? readingOf(plan.batch) : null,
+      batch: plan.batch ? readingOf(plan.batch, plan.refusal?.problem ?? null) : null,
       refusal: this.writesUnstamped(plan) ? null : plan.refusal,
       moveWaitingTo: plan.moveWaitingTo,
+      unrecordedHistory: unrecorded > 0 ? { writes: unrecorded } : null,
     };
   }
 

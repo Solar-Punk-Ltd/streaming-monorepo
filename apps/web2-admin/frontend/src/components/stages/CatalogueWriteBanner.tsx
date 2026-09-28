@@ -11,13 +11,23 @@ function shortBatch(batchId: string): string {
 }
 
 /**
+ * The writes from before the catalogue stamp, stamped by the env file's batch, which the admin never recorded. The
+ * viewer stops at the first slot it cannot read, so when that batch expires the catalogue goes with it.
+ */
+export function unrecordedHistoryText(writes: number): string {
+  const which = writes === 1 ? '1 earlier catalogue write is' : `${writes} earlier catalogue writes are`;
+  return `${which} under a batch this admin did not record, from before the catalogue stamp. A move to the catalogue batch is waiting, and it has to run before that batch expires: the viewer stops at the first slot it cannot read.`;
+}
+
+/**
  * What My Streams says about the catalogue batch before anyone presses Publish: that the admin refuses to write the
  * catalogue and why, in the sentence it refuses with; that the batch it writes with has less than 48 hours left or
- * is at least 90% full; and that a move to the batch the manager designated is waiting. Nothing when all is well.
+ * is at least 90% full; that a move to the batch the manager designated is waiting; and that earlier writes are under
+ * a batch the admin never recorded, which is a move waiting as well. Nothing when all is well.
  */
 export function CatalogueWriteBanner({ status, now }: { status: CatalogueWriteStatus | null; now: number }) {
   if (!status) return null;
-  const { batch, refusal, moveWaitingTo } = status;
+  const { batch, refusal, moveWaitingTo, unrecordedHistory } = status;
 
   const alerts: { key: string; severity: 'error' | 'warning' | 'info'; text: string }[] = [];
   if (refusal) {
@@ -44,6 +54,9 @@ export function CatalogueWriteBanner({ status, now }: { status: CatalogueWriteSt
       severity: 'info',
       text: `A move to batch ${shortBatch(moveWaitingTo)} is waiting. Until it runs, the catalogue is written with batch ${shortBatch(batch.batchId)}, as the manager last read it ${formatAgo(batch.observedAt, now)}.`,
     });
+  }
+  if (unrecordedHistory) {
+    alerts.push({ key: 'unrecorded', severity: 'warning', text: unrecordedHistoryText(unrecordedHistory.writes) });
   }
 
   if (alerts.length === 0) return null;

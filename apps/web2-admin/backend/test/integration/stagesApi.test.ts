@@ -89,7 +89,10 @@ describe('the manager’s stage routes', () => {
 
   it('set and clear the catalogue stamp, which the console reads without the Bee API address', async () => {
     // The instance runs the in-memory gateway, which writes with no catalogue stamp, so nothing is refused.
-    const unset = { catalogueStamp: null, catalogueWrite: { batch: null, refusal: null, moveWaitingTo: null } };
+    const unset = {
+      catalogueStamp: null,
+      catalogueWrite: { batch: null, refusal: null, moveWaitingTo: null, unrecordedHistory: null },
+    };
     assert.deepEqual((await raw('GET', '/api/catalogue-stamp')).body, unset);
 
     const stored = await raw('PUT', '/api/internal/catalogue-stamp', {

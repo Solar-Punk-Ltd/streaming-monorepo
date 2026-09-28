@@ -12,6 +12,7 @@ import { getErrorMessage } from '../utils/errorUtils.js';
 import { describeActor, describeStream, type Actor } from './actor.js';
 import { recordAudit, type AuditLog } from './AuditLog.js';
 import type { CatalogueBatchService } from './CatalogueBatch.js';
+import { withoutCatalogueNode } from './catalogueNodeText.js';
 import {
   CatalogueStampUnavailableError,
   FeedOwnerMismatchError,
@@ -512,7 +513,7 @@ export class PublishService {
       });
       return this.outcome(stream, { status, entry }, index, entries.length, renditions, previous);
     } catch (error) {
-      throw await this.fail(actor, 'stream.publish.failed', claimed, previousStatus, written, error);
+      throw await this.fail(actor, 'stream.publish.failed', claimed, previousStatus, written, error, target);
     }
   }
 
@@ -566,7 +567,7 @@ export class PublishService {
       });
       return this.outcome(stream, null, index, entries.length, [], previous);
     } catch (error) {
-      throw await this.fail(actor, 'stream.unpublish.failed', claimed, previousStatus, written, error);
+      throw await this.fail(actor, 'stream.unpublish.failed', claimed, previousStatus, written, error, target);
     }
   }
 
@@ -626,11 +627,12 @@ export class PublishService {
       throw new FeedOwnerMismatchError(id, current.owner, this.feed.owner);
     }
 
+    let target: CatalogueTarget | null = null;
     try {
       // Inside the try, unlike a publish: the uploader's report has already
       // moved the row, so a refusal here is recorded on it like any failed
       // write, and the console says why the catalogue did not follow.
-      const target = await this.catalogue.forWrite(actor);
+      target = await this.catalogue.forWrite(actor);
       const thumbnailRef = await this.ensureThumbnailUploaded(current, target);
       const { entry, renditions } = await this.entryFor(current, thumbnailRef);
       const snapshot = await this.baseSnapshot(target);
@@ -652,7 +654,7 @@ export class PublishService {
       // No claim was taken, so there is no status to put back — and none may
       // be: the row's status is the uploader's last report, which can be newer
       // than anything this call has seen. Only the reason is recorded.
-      throw await this.failRepublish(actor, current, error);
+      throw await this.failRepublish(actor, current, error, target);
     }
   }
 
@@ -856,9 +858,10 @@ export class PublishService {
     previousStatus: StreamStatus,
     written: WrittenAt,
     error: unknown,
+    target: CatalogueTarget | null,
   ): Promise<PublishFailedError> {
     const verb = action === 'stream.publish.failed' ? 'publish' : 'unpublish';
-    const { failure, released } = await this.failed(actor, verb, claimed, error, (message) =>
+    const { failure, released } = await this.failed(actor, verb, claimed, error, target, (message) =>
       this.streams.failPublish(claimed.id, previousStatus, message),
     );
     await recordAudit(this.audit, {
@@ -882,21 +885,28 @@ export class PublishService {
     actor: Actor,
     current: StreamRow,
     error: unknown,
+    target: CatalogueTarget | null,
   ): Promise<PublishFailedError | CatalogueStampUnavailableError> {
-    const { failure } = await this.failed(actor, 'republish', current, error, (message) =>
+    const { failure } = await this.failed(actor, 'republish', current, error, target, (message) =>
       this.streams.recordPublishError(current.id, message),
     );
     return error instanceof CatalogueStampUnavailableError ? error : failure;
   }
 
+  /**
+   * Records and answers the reason without the catalogue node's address, which bee-js and Node print in their errors
+   * and the console is never told (`withoutCatalogueNode`). The log line keeps the error as it was.
+   */
   private async failed(
     actor: Actor,
     verb: string,
     stream: StreamRow,
     error: unknown,
+    target: CatalogueTarget | null,
     record: (message: string) => Promise<void>,
   ): Promise<{ failure: PublishFailedError; released: boolean }> {
-    const message = getErrorMessage(error);
+    const raw = getErrorMessage(error);
+    const message = withoutCatalogueNode(raw, target);
     const who = describeActor(actor);
     let released = true;
     try {
@@ -910,7 +920,7 @@ export class PublishService {
         `[Publish] ${who} could not record the failed ${verb} of ${describeStream(stream)}: ${getErrorMessage(recordError)}`,
       );
     }
-    logger.error(`[Publish] ${who} could not ${verb} ${describeStream(stream)}: ${message}`);
+    logger.error(`[Publish] ${who} could not ${verb} ${describeStream(stream)}: ${raw}`);
     return { failure: new PublishFailedError(stream.id, message), released };
   }
 

@@ -486,7 +486,7 @@ async function handle(req, res) {
   if (path === '/api/catalogue-stamp' && method === 'GET') {
     return send(res, 200, {
       catalogueStamp: null,
-      catalogueWrite: { batch: null, refusal: null, moveWaitingTo: null },
+      catalogueWrite: { batch: null, refusal: null, moveWaitingTo: null, unrecordedHistory: null },
     });
   }
 

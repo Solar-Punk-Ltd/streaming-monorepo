@@ -188,12 +188,15 @@ As built (phase 7), in `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
   finds them.
 - The pinned batch's readings, once the manager designates another, are the last ones pushed while
   it was the designated batch, kept with the moment they were read. An expired or gone among them
-  is a refusal.
+  is a refusal, and so is a time to live that has run out since that moment, whatever the state
+  says. A mutable batch is refused as well.
+- The writes from before the catalogue stamp have no batch recorded. While any is left, My Streams
+  counts them and says a move is waiting, since the batch that stamped them will expire.
 - A publish, an unpublish or a reconcile is refused before it moves anything, as `503` with the
-  reason: no designation, a cleared one, or the pinned batch expired or gone. A clear leaves the
-  pin, so a designation that comes back finds the history where it was. The uploader's reports
-  store their state first and are refused the same way when their rewrite comes; `503` is a
-  failure it retries.
+  reason: no designation, a cleared one, or the pinned batch expired, gone or mutable. A clear
+  leaves the pin, so a designation that comes back finds the history where it was. The uploader's
+  reports store their state first and are refused the same way when their rewrite comes; `503` is
+  a failure it retries. A failed write's reason never carries the catalogue node's address.
 - `feed_writes.payload_text` holds the exact string uploaded and `feed_writes.batch_id` the batch
   that stamped it (migration 013).
 - The boot's feed check reads the head through the catalogue node, so an admin started with no
@@ -232,7 +235,10 @@ As built (phase 7), in `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
   Manager settings page, next to the admin link, with its batch pinned by id. The manager refuses
   a mutable batch or one whose kind the node did not report. Buying or using another batch on that
   node leaves the catalogue on the pinned one, and the page says so; moving the catalogue is its
-  own action.
+  own action. As built (phase 7): once a batch has been designated the manager refuses any other,
+  through a clear as well, until the move exists, and the same batch can be designated again. A
+  clear keeps the node and the batch recorded; that node is not removed, and a pool string that
+  names its batch or its Bee API is refused on create and update.
 - **A read of the stages** for the manager's own console, `GET /stages`, behind the session like
   every other route, and `GET /stages/:name/registration`, the last push of one deployment, which
   the deployment page reads.
@@ -253,8 +259,8 @@ the history again: the admin rewrites every slot of the feed, in order, with the
 it recorded, under the new batch, re-uploads the thumbnails the latest entry names, then writes
 with the new batch. bee-js puts a payload straight into the feed's chunk with no timestamp, so
 the same bytes make the same chunks at the same addresses. The job is resumable and runs while
-the old batch still has days of life. Until it exists, the admin keeps writing with the batch it
-has and says a move is waiting.
+the old batch still has days of life. Until it exists, the manager designates no other batch
+(phase 7), and the admin keeps writing with the batch it has and says a move is waiting.
 
 ## The flow for a brand
 

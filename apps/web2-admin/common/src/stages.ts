@@ -112,9 +112,11 @@ export const CATALOGUE_FILL_WARNING_RATIO = 0.9;
 
 /**
  * Why the admin refuses to write the catalogue: the manager has designated no batch (`none`) or cleared the
- * designation (`cleared`), or the batch the catalogue is written with is `expired` or `gone`.
+ * designation (`cleared`), or the batch the catalogue is written with is `expired` (by its state, or by the time to
+ * live it had when the manager last read it), `gone`, or `mutable`, which would overwrite the catalogue's oldest
+ * slots once it fills.
  */
-export const CATALOGUE_WRITE_PROBLEMS = ['none', 'cleared', 'expired', 'gone'] as const;
+export const CATALOGUE_WRITE_PROBLEMS = ['none', 'cleared', 'expired', 'gone', 'mutable'] as const;
 export type CatalogueWriteProblem = (typeof CATALOGUE_WRITE_PROBLEMS)[number];
 
 /** The batch the catalogue is written with, as the manager last read it. */
@@ -140,6 +142,12 @@ export interface CatalogueWriteStatus {
   refusal: { problem: CatalogueWriteProblem; message: string } | null;
   /** The designated batch the catalogue waits to be moved to, or null when it is written with the designated one. */
   moveWaitingTo: string | null;
+  /**
+   * The writes of this feed stamped by a batch the admin never recorded: the env file's, before the catalogue stamp.
+   * They need moving to the catalogue batch before that batch expires, since the viewer stops at the first slot it
+   * cannot read. Null when there are none.
+   */
+  unrecordedHistory: { writes: number } | null;
 }
 
 export interface CatalogueStampResponse {

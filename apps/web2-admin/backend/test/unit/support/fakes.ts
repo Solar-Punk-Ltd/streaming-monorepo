@@ -472,6 +472,10 @@ export class FakeFeedWriteLog implements FeedWriteLog {
     const last = mine.reduce((a, b) => (b.feedIndex > a.feedIndex ? b : a));
     return { index: last.feedIndex, entries: last.payload };
   }
+
+  async countUnrecordedBatch(owner: string, topic: string): Promise<number> {
+    return this.records.filter((r) => r.owner === owner && r.topic === topic && r.batchId === null).length;
+  }
 }
 
 /**

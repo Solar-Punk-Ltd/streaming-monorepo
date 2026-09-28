@@ -21,7 +21,7 @@ import {
   planCatalogueWrite,
   type CatalogueWritePlan,
 } from '../../src/domain/CatalogueBatch.js';
-import { CatalogueStampUnavailableError } from '../../src/domain/errors/index.js';
+import { CatalogueStampUnavailableError, PublishFailedError } from '../../src/domain/errors/index.js';
 import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
 import { FeedBootCheckRunner } from '../../src/domain/feedBootCheck.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
@@ -55,11 +55,16 @@ const feed: FeedIdentity = {
 /** A batch the manager designates after the catalogue already has history under CATALOGUE_BATCH_ID. */
 const NEXT_BATCH_ID = 'd3'.repeat(32);
 
+/** The admin's clock in this suite: five minutes after the records it reads were observed. */
+const NOW = Date.parse('2026-09-28T10:05:00.000Z');
+
 const NONE = 'The manager has not designated a catalogue batch yet. Nothing is written to the catalogue until it does.';
 const CLEARED =
   'The manager cleared the catalogue batch designation. Nothing is written to the catalogue until it designates one again.';
 const EXPIRED = 'The catalogue batch c2c2c2c2… is expired. Nothing can be written to the catalogue with it.';
 const GONE = 'The catalogue batch c2c2c2c2… is gone. Nothing can be written to the catalogue with it.';
+const MUTABLE =
+  "The catalogue batch c2c2c2c2… is mutable, and a mutable batch overwrites the catalogue's oldest slots once it fills. Nothing is written to the catalogue with it.";
 
 /** The row as migrations 010 and 011 leave it after `record` was pushed and `active` pinned. */
 function row(
@@ -99,14 +104,14 @@ function writes(plan: CatalogueWritePlan): { batchId: string | undefined; pin: b
 describe('planCatalogueWrite', () => {
   it('refuses when the manager has designated no batch, with the sentence the console shows', () => {
     for (const stored of [null, row(null, null, true)]) {
-      const plan = planCatalogueWrite(stored, false);
+      const plan = planCatalogueWrite(stored, false, NOW);
       assert.deepEqual(plan.refusal, { problem: 'none', message: NONE });
       assert.equal(plan.batch, null);
     }
   });
 
   it('refuses a cleared designation, and keeps the pinned batch pinned', () => {
-    const plan = planCatalogueWrite(row(catalogueStampRecord(), catalogueStampRecord(), true), true);
+    const plan = planCatalogueWrite(row(catalogueStampRecord(), catalogueStampRecord(), true), true, NOW);
     assert.deepEqual(plan.refusal, { problem: 'cleared', message: CLEARED });
     assert.equal(plan.pin, false);
     assert.equal(plan.pinned, CATALOGUE_BATCH_ID);
@@ -114,7 +119,7 @@ describe('planCatalogueWrite', () => {
 
   it('writes with the designated batch and pins it when nothing is pinned, history or not', () => {
     for (const hasHistory of [false, true]) {
-      assert.deepEqual(writes(planCatalogueWrite(row(catalogueStampRecord()), hasHistory)), {
+      assert.deepEqual(writes(planCatalogueWrite(row(catalogueStampRecord()), hasHistory, NOW)), {
         batchId: CATALOGUE_BATCH_ID,
         pin: true,
         moveWaitingTo: null,
@@ -124,20 +129,20 @@ describe('planCatalogueWrite', () => {
 
   it('writes with the designated batch and its latest reading when it is the pinned one', () => {
     const designated = catalogueStampRecord({ ttlSeconds: 5 * 86_400, beeApiUrl: 'http://192.0.2.11:1633' });
-    const plan = planCatalogueWrite(row(designated, catalogueStampRecord()), true);
+    const plan = planCatalogueWrite(row(designated, catalogueStampRecord()), true, NOW);
     assert.deepEqual(writes(plan), { batchId: CATALOGUE_BATCH_ID, pin: false, moveWaitingTo: null });
     assert.equal(plan.batch, designated);
   });
 
   it('keeps writing with the pinned batch, as last read, while a move to a newly designated one waits', () => {
     const pinned = catalogueStampRecord();
-    const plan = planCatalogueWrite(row(next(), pinned), true);
+    const plan = planCatalogueWrite(row(next(), pinned), true, NOW);
     assert.deepEqual(writes(plan), { batchId: CATALOGUE_BATCH_ID, pin: false, moveWaitingTo: NEXT_BATCH_ID });
     assert.equal(plan.batch, pinned, "the pinned batch's own node and readings, not the designated one's");
   });
 
   it('adopts a newly designated batch when the feed has no history to move', () => {
-    assert.deepEqual(writes(planCatalogueWrite(row(next(), catalogueStampRecord()), false)), {
+    assert.deepEqual(writes(planCatalogueWrite(row(next(), catalogueStampRecord()), false, NOW)), {
       batchId: NEXT_BATCH_ID,
       pin: true,
       moveWaitingTo: null,
@@ -149,19 +154,52 @@ describe('planCatalogueWrite', () => {
       ['expired', EXPIRED],
       ['gone', GONE],
     ] as const) {
-      const plan = planCatalogueWrite(row(catalogueStampRecord({ state })), false);
+      const plan = planCatalogueWrite(row(catalogueStampRecord({ state })), false, NOW);
       assert.deepEqual(plan.refusal, { problem: state, message });
       assert.equal(plan.pin, false, 'a dead batch is never pinned');
     }
   });
 
   it('refuses when the pinned batch is expired by its last reading, even though the designated one is fine', () => {
-    const plan = planCatalogueWrite(row(next(), catalogueStampRecord({ state: 'expired' })), true);
+    const plan = planCatalogueWrite(row(next(), catalogueStampRecord({ state: 'expired' })), true, NOW);
     assert.deepEqual(plan.refusal, { problem: 'expired', message: EXPIRED });
     assert.equal(plan.moveWaitingTo, NEXT_BATCH_ID);
   });
 
+  it('refuses a batch whose time to live has run out since the manager read it, whatever its state says', () => {
+    // Read a day before NOW with an hour left: it ran out 23 hours ago.
+    const ranOut = { observedAt: '2026-09-27T10:05:00.000Z', ttlSeconds: 3600, state: 'active' as const };
+
+    const designated = planCatalogueWrite(row(catalogueStampRecord(ranOut)), false, NOW);
+    assert.deepEqual(designated.refusal, { problem: 'expired', message: EXPIRED });
+    assert.equal(designated.pin, false);
+
+    const kept = planCatalogueWrite(row(next(), catalogueStampRecord(ranOut)), true, NOW);
+    assert.deepEqual(kept.refusal, { problem: 'expired', message: EXPIRED }, 'a pinned record kept while a move waits');
+    assert.equal(kept.moveWaitingTo, NEXT_BATCH_ID);
+  });
+
+  it('counts a time to live only when it is positive, and only once it has passed', () => {
+    const readAt = '2026-09-28T10:00:00.000Z';
+    for (const ttlSeconds of [null, -1, 0, 300, 301]) {
+      const plan = planCatalogueWrite(row(catalogueStampRecord({ observedAt: readAt, ttlSeconds })), false, NOW);
+      assert.equal(plan.refusal, null, `ttl ${String(ttlSeconds)}`);
+    }
+    const plan = planCatalogueWrite(row(catalogueStampRecord({ observedAt: readAt, ttlSeconds: 299 })), false, NOW);
+    assert.equal(plan.refusal?.problem, 'expired');
+  });
+
+  it('refuses a mutable batch, designated or kept, with a sentence of its own', () => {
+    const designated = planCatalogueWrite(row(catalogueStampRecord({ immutable: false })), false, NOW);
+    assert.deepEqual(designated.refusal, { problem: 'mutable', message: MUTABLE });
+    assert.equal(designated.pin, false, 'a mutable batch is never pinned');
+
+    const kept = planCatalogueWrite(row(next(), catalogueStampRecord({ immutable: false })), true, NOW);
+    assert.deepEqual(kept.refusal, { problem: 'mutable', message: MUTABLE });
+  });
+
   it('says every refusal in a sentence of its own', () => {
+    assert.equal(catalogueRefusal('mutable', CATALOGUE_BATCH_ID), MUTABLE);
     assert.equal(catalogueRefusal('none', null), NONE);
     assert.equal(catalogueRefusal('cleared', null), CLEARED);
     assert.equal(catalogueRefusal('expired', CATALOGUE_BATCH_ID), EXPIRED);
@@ -174,7 +212,7 @@ function setup({ stampRequired = true } = {}) {
   const feedWrites = new FakeFeedWriteLog();
   const audit = new InMemoryAuditLog();
   const gateway = new FakeFeedGateway();
-  const batches = new CatalogueBatchService(catalogue, feedWrites, feed, audit, { stampRequired });
+  const batches = new CatalogueBatchService(catalogue, feedWrites, feed, audit, { stampRequired, now: () => NOW });
   const renditions = new FakeRenditionStore();
   const store = new FakeStreamStore(renditions);
   const service = new PublishService(store, renditions, stagesWithMain(), feedWrites, gateway, batches, feed, audit);
@@ -265,8 +303,73 @@ describe('CatalogueBatchService', () => {
       },
       refusal: null,
       moveWaitingTo: NEXT_BATCH_ID,
+      unrecordedHistory: null,
     });
     assert.equal(JSON.stringify(status).includes('1633'), false);
+  });
+
+  it('tells the console a batch that ran out by its time to live is expired, and refuses a write with it', async () => {
+    const { catalogue, batches } = setup();
+    await catalogue.upsert(catalogueStampRecord({ observedAt: '2026-09-27T10:05:00.000Z', ttlSeconds: 3600 }));
+
+    const status = await batches.status();
+    assert.equal(status.batch?.state, 'expired');
+    assert.deepEqual(status.refusal, { problem: 'expired', message: EXPIRED });
+    await refusedWith(batches.forWrite(TEST_OPERATOR), 'expired', EXPIRED);
+  });
+
+  it('refuses a write with a mutable batch', async () => {
+    const { catalogue, batches } = setup();
+    await catalogue.upsert(catalogueStampRecord({ immutable: false }));
+
+    await refusedWith(batches.forWrite(TEST_OPERATOR), 'mutable', MUTABLE);
+    assert.deepEqual(catalogue.pins, []);
+  });
+
+  it('counts the writes no recorded batch stamped, before the first pin and after it, while any is left', async () => {
+    const { catalogue, feedWrites, batches } = setup();
+    const write = (feedIndex: number, batchId: string | null) =>
+      feedWrites.record({
+        owner: feed.owner,
+        topic: feed.topicHex,
+        feedIndex,
+        entryCount: 0,
+        payload: [],
+        payloadText: '[]',
+        reference: 'a'.repeat(64),
+        batchId,
+      });
+    // The env file's batch stamped these, and the admin did not record it.
+    await write(0, null);
+    await write(1, null);
+    await catalogue.upsert(catalogueStampRecord());
+
+    const before = await batches.status();
+    assert.deepEqual(before.unrecordedHistory, { writes: 2 });
+    assert.equal(before.refusal, null, 'the catalogue is still written');
+
+    await batches.forWrite(TEST_OPERATOR);
+    await write(2, CATALOGUE_BATCH_ID);
+    assert.deepEqual((await batches.status()).unrecordedHistory, { writes: 2 }, 'the pin does not move them');
+
+    feedWrites.records.splice(0, 2);
+    assert.equal((await batches.status()).unrecordedHistory, null);
+  });
+
+  it('counts none for the in-memory gateway, whose writes stamp nothing', async () => {
+    const { feedWrites, batches } = setup({ stampRequired: false });
+    await feedWrites.record({
+      owner: feed.owner,
+      topic: feed.topicHex,
+      feedIndex: 0,
+      entryCount: 0,
+      payload: [],
+      payloadText: '[]',
+      reference: 'a'.repeat(64),
+      batchId: null,
+    });
+
+    assert.equal((await batches.status()).unrecordedHistory, null);
   });
 
   it('reads the feed through the batch it writes with, expired or not, and skips with no designation', async () => {
@@ -377,6 +480,28 @@ describe('PublishService through the catalogue stamp', () => {
 
     await refusedWith(service.publish(TEST_OPERATOR, stream.id), 'gone', GONE);
     assert.equal(store.get(stream.id).status, 'draft');
+  });
+
+  it("keeps the catalogue node's address out of a failed write's reason, on the row and in the answer", async () => {
+    const { catalogue, store, gateway, service } = ctx;
+    await catalogue.upsert(catalogueStampRecord({ beeApiUrl: 'http://192.0.2.30:10025' }));
+
+    for (const [failure, reason] of [
+      ['fetch failed: connect ECONNREFUSED 192.0.2.30:10025', 'fetch failed: connect ECONNREFUSED the catalogue node'],
+      [
+        'Request failed with status 500: http://192.0.2.30:10025/feeds/ab/cd?type=sequence',
+        'Request failed with status 500: the catalogue node',
+      ],
+    ]) {
+      const stream = store.add(streamRow());
+      gateway.failNextWrite = new Error(failure);
+      await assert.rejects(service.publish(TEST_OPERATOR, stream.id), (error: unknown) => {
+        assert.ok(error instanceof PublishFailedError);
+        assert.equal(error.reason, reason);
+        return true;
+      });
+      assert.equal(store.get(stream.id).publish_error, reason);
+    }
   });
 
   it("refuses a state report's rewrite, keeps the reported state, and records why on the row", async () => {

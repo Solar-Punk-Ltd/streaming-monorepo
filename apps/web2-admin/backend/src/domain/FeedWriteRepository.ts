@@ -73,6 +73,20 @@ export class FeedWriteRepository {
     );
   }
 
+  /**
+   * How many writes of this feed have no batch recorded: those from before migration 012, stamped by the env file's
+   * batch, and heads adopted from the network at boot. None of them is known to be under the catalogue batch.
+   */
+  async countUnrecordedBatch(owner: string, topic: string): Promise<number> {
+    const result = await this.pool.query<{ writes: number }>(
+      `SELECT COUNT(*)::int AS writes
+         FROM feed_writes
+        WHERE feed_owner = $1 AND feed_topic = $2 AND batch_id IS NULL`,
+      [normalise(owner), normalise(topic)],
+    );
+    return result.rows[0]?.writes ?? 0;
+  }
+
   /** The highest index recorded for this feed, with the payload written there. */
   async lastWrite(owner: string, topic: string): Promise<LastFeedWrite | null> {
     const result = await this.pool.query<{

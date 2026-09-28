@@ -96,6 +96,28 @@ describe('catalogue_stamp, the pinned batch', () => {
     assert.equal(cleared?.active_batch_id, CATALOGUE_BATCH_ID, 'a clear leaves the pin');
   });
 
+  it('pins with the stored designated record when it is for that batch, not an older copy the caller read', async () => {
+    await catalogue.upsert(catalogueStampRecord({ observedAt: at('10:00:00'), ttlSeconds: 30 * 86_400 }));
+    const readEarlier = catalogueStampRecord({ observedAt: at('10:00:00'), ttlSeconds: 30 * 86_400 });
+    // The manager pushes a fresher reading of the same batch between the plan and the pin.
+    await catalogue.upsert(catalogueStampRecord({ observedAt: at('10:01:00'), ttlSeconds: 29 * 86_400 }));
+
+    assert.equal(await catalogue.pin(readEarlier), true);
+    const pinned = await catalogue.get();
+    assert.equal(pinned?.active_record?.observedAt, at('10:01:00'));
+    assert.equal(pinned?.active_record?.ttlSeconds, 29 * 86_400);
+  });
+
+  it('pins with the record it is handed when the designated one is for another batch', async () => {
+    await catalogue.upsert(catalogueStampRecord({ observedAt: at('10:00:00'), batchId: NEXT_BATCH_ID }));
+
+    assert.equal(await catalogue.pin(catalogueStampRecord({ observedAt: at('09:00:00') })), true);
+    const pinned = await catalogue.get();
+    assert.equal(pinned?.active_batch_id, CATALOGUE_BATCH_ID);
+    assert.equal(pinned?.active_record?.batchId, CATALOGUE_BATCH_ID);
+    assert.equal(pinned?.active_record?.observedAt, at('09:00:00'));
+  });
+
   it('refuses half a pin, and a pinned record of another batch', async () => {
     await catalogue.upsert(catalogueStampRecord({ observedAt: at('10:00:00') }));
     const broken = [
@@ -150,6 +172,28 @@ describe('feed_writes, the exact bytes', () => {
       { code: '23514' },
     );
   });
+
+  it('counts the writes of this feed with no batch recorded, and no one else’s', async () => {
+    const insert = (owner: string, index: number, batchId: string | null) =>
+      database.pool.query(
+        `INSERT INTO feed_writes (feed_owner, feed_topic, feed_index, entry_count, payload, payload_text, batch_id)
+         VALUES ($1, $2, $3, 0, '[]', '[]', $4)`,
+        [owner, feed.topicHex, index, batchId],
+      );
+    await insert(feed.owner, 0, null);
+    await insert(feed.owner, 1, null);
+    await insert(feed.owner, 2, CATALOGUE_BATCH_ID);
+    // Another feed key's writes are not this feed's history.
+    await insert('ef'.repeat(20), 0, null);
+
+    try {
+      assert.equal(await feedWrites.countUnrecordedBatch(feed.owner, feed.topicHex), 2);
+      assert.equal(await feedWrites.countUnrecordedBatch(feed.owner.toUpperCase(), feed.topicHex), 2, 'any case');
+      assert.equal(await feedWrites.countUnrecordedBatch(feed.owner, 'ee'.repeat(32)), 0);
+    } finally {
+      await database.pool.query('DELETE FROM feed_writes WHERE feed_owner = $1', ['ef'.repeat(20)]);
+    }
+  });
 });
 
 describe('CatalogueBatchService over Postgres', () => {
@@ -186,6 +230,14 @@ describe('CatalogueBatchService over Postgres', () => {
     const status = await batches.status();
     assert.equal(status.moveWaitingTo, NEXT_BATCH_ID);
     assert.equal(status.batch?.batchId, CATALOGUE_BATCH_ID);
+    assert.equal(status.unrecordedHistory, null, 'the one write names its batch');
+
+    // A write from before the catalogue stamp, which names none.
+    await database.pool.query(
+      `INSERT INTO feed_writes (feed_owner, feed_topic, feed_index, entry_count, payload) VALUES ($1, $2, 1, 0, '[]')`,
+      [feed.owner, feed.topicHex],
+    );
+    assert.deepEqual((await batches.status()).unrecordedHistory, { writes: 1 });
 
     const audited = await database.pool.query<{ action: string; actor_kind: string }>(
       `SELECT action, actor_kind FROM audit_log WHERE action = 'catalogue.batch.pin'`,

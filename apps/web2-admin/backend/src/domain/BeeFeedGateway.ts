@@ -2,6 +2,7 @@ import { Bee, BeeResponseError, FeedIndex, PrivateKey, Topic } from '@etherspher
 
 import { getErrorMessage } from '../utils/errorUtils.js';
 
+import { withoutCatalogueNode } from './catalogueNodeText.js';
 import { FeedFormatError, ThumbnailCheckError } from './errors/index.js';
 import type { CatalogueTarget, FeedGateway, FeedSnapshot } from './FeedGateway.js';
 import { Logger } from './Logger.js';
@@ -136,8 +137,10 @@ export class BeeFeedGateway implements FeedGateway {
         return false;
       }
       // Unreachable, DNS, TLS: not an answer, so do not pretend the
-      // reference is gone and pay to upload it again.
-      throw new ThumbnailCheckError(reference, getErrorMessage(error));
+      // reference is gone and pay to upload it again. The detail goes to the
+      // console, so without the node's address.
+      logger.warn(`[BeeFeedGateway] could not check reference ${reference} at ${url}: ${getErrorMessage(error)}`);
+      throw new ThumbnailCheckError(reference, withoutCatalogueNode(getErrorMessage(error), target));
     }
 
     if (response.ok) return true;

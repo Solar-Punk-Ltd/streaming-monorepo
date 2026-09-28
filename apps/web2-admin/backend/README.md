@@ -224,7 +224,9 @@ chunks it wrote and the feed's history is those chunks. Migration `013` adds
 
 - The first write under a designation pins its batch, and `active_record`
   keeps the last record the manager pushed for it: its node address and its
-  readings, refreshed by every push for that batch. The pin is audited as
+  readings, refreshed by every push for that batch. The pin takes the stored
+  designated record when it is for that batch, which is never older than the
+  copy the write read. The pin is audited as
   `catalogue.batch.pin`, with the writer as the actor.
 - When the manager designates another batch and this feed has a write in
   `feed_writes`, the admin keeps writing with the pinned one, at its node, and
@@ -239,7 +241,9 @@ chunks it wrote and the feed's history is those chunks. Migration `013` adds
 - The first write after an upgrade from `POSTAGE_BATCH_ID` pins the designated
   batch; the feed's earlier writes were stamped by the env file's batch, which
   the admin never recorded, and the log says so. Their rows keep a null
-  `batch_id`, which is how the move finds them.
+  `batch_id`, which is how the move finds them. While any is left, My Streams
+  says how many and that a move is waiting, pin or no pin: the batch that
+  stamped them is unknown, so it cannot be told apart from the pinned one.
 - A clear of the designation leaves the pin as it is: the history is still
   stamped by that batch, and a designation that comes back finds it.
 
@@ -247,20 +251,32 @@ A publish, an unpublish or a reconcile is refused before it claims a row or
 writes anything, with `503 catalogue_stamp_unavailable`, `problem` and the
 sentence in `message`, when there is nothing to write with:
 
-| `problem` | `message`                                                                                                               |
-| --------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `none`    | The manager has not designated a catalogue batch yet. Nothing is written to the catalogue until it does.                |
-| `cleared` | The manager cleared the catalogue batch designation. Nothing is written to the catalogue until it designates one again. |
-| `expired` | The catalogue batch `ab12cd34…` is expired. Nothing can be written to the catalogue with it.                            |
-| `gone`    | The catalogue batch `ab12cd34…` is gone. Nothing can be written to the catalogue with it.                               |
+| `problem` | `message`                                                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `none`    | The manager has not designated a catalogue batch yet. Nothing is written to the catalogue until it does.                                                            |
+| `cleared` | The manager cleared the catalogue batch designation. Nothing is written to the catalogue until it designates one again.                                             |
+| `expired` | The catalogue batch `ab12cd34…` is expired. Nothing can be written to the catalogue with it.                                                                        |
+| `gone`    | The catalogue batch `ab12cd34…` is gone. Nothing can be written to the catalogue with it.                                                                           |
+| `mutable` | The catalogue batch `ab12cd34…` is mutable, and a mutable batch overwrites the catalogue's oldest slots once it fills. Nothing is written to the catalogue with it. |
 
-`expired` and `gone` name the batch the admin writes with, by the last reading
-it holds. The uploader's state and rendition reports store their state first
+`expired`, `gone` and `mutable` name the batch the admin writes with, by the
+last record it holds for it. A batch is also `expired` once the time to live
+that record gave it has run out, `observedAt` plus `ttlSeconds` before the
+admin's clock, whatever its state says: a pinned batch the manager no longer
+reads keeps its last reading, and that reading only ages. A time to live counts
+only when it is positive, and a clock a few seconds off cannot change an answer
+measured in hours. `mutable` holds on the admin's side the rule the manager
+already keeps when it designates a batch. The uploader's state and rendition reports store their state first
 and are refused the same way when their rewrite of the catalogue comes, with
 the sentence recorded as the stream's `publish_error`; 503 is a 5xx, so the
-uploader retries them. `GET /api/catalogue-stamp` tells the console the same:
-`catalogueWrite` holds the batch the catalogue is written with, the refusal and
-a waiting move, and My Streams shows them as a banner, with a warning under 48
+uploader retries them. A reason a failed write stores or answers never
+carries the catalogue node's address: bee-js and Node print it, as a URL or as
+`host:port` after `ECONNREFUSED` and the like, and it is replaced with "the
+catalogue node" (`src/domain/catalogueNodeText.ts`); the log keeps the error as
+it was. `GET /api/catalogue-stamp` tells the console the rest:
+`catalogueWrite` holds the batch the catalogue is written with, the refusal, a
+waiting move and `unrecordedHistory`, the count of this feed's writes with no
+batch recorded, and My Streams shows them as a banner, with a warning under 48
 hours left (`STAMP_EXPIRY_WARNING_SECONDS`) or at 90% full
 (`CATALOGUE_FILL_WARNING_RATIO`).
 
