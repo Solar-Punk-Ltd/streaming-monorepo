@@ -67,12 +67,7 @@ function SrtSettings({ srt }: { srt: IngestDetails['srt'] }) {
         <strong>Stream Key</strong>: leave it empty. The Server line already names the stream.
       </Typography>
       {passphraseRoute === 'authentication' && srt.passphrase ? (
-        <ValueField
-          label="SRT Password"
-          value={srt.passphrase}
-          secret
-          helperText={OBS_SRT_PASSPHRASE_FIELD_HELP}
-        />
+        <ValueField label="SRT Password" value={srt.passphrase} secret helperText={OBS_SRT_PASSPHRASE_FIELD_HELP} />
       ) : null}
       {passphraseRoute === 'none' ? (
         <Alert severity="info">No SRT passphrase is configured on this ingest server.</Alert>
