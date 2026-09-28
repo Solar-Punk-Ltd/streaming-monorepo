@@ -28,7 +28,6 @@ function passphraseNote(profile: Profile, hostPassphrase: string | null, inTheUr
     : 'This host has no shared passphrase, so the ingest is unencrypted. Set one for this deployment under Edit.';
 }
 
-
 export function PublishCard({
   profile,
   url,
