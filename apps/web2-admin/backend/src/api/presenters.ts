@@ -15,7 +15,7 @@ import type {
 import type { RenditionReportOutcome } from '../domain/LadderService.js';
 import type { PublishOutcome } from '../domain/PublishService.js';
 import { hasUnpublishedEdits } from '../domain/unpublishedEdits.js';
-import type { CatalogueStampRow, StageRow, StreamRow, UserRow } from '../types/index.js';
+import type { DesignatedCatalogueStamp, StageRow, StreamRow, UserRow } from '../types/index.js';
 
 function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
@@ -137,12 +137,12 @@ export function toStageSummary(row: StageRow): StageSummary {
     readiness: { tone: record.readiness.tone, reasons: [...record.readiness.reasons] },
     observedAt: row.observed_at.toISOString(),
     receivedAt: row.received_at.toISOString(),
-    retiredAt: iso(row.retired_at),
+    retiredAt: iso(row.retired_observed_at),
   };
 }
 
 /** The catalogue stamp as the console shows it: everything but the Bee API address the admin dials. */
-export function toCatalogueStampSummary(row: CatalogueStampRow): CatalogueStampSummary {
+export function toCatalogueStampSummary(row: DesignatedCatalogueStamp): CatalogueStampSummary {
   const { record } = row;
   return {
     nodeName: record.nodeName,

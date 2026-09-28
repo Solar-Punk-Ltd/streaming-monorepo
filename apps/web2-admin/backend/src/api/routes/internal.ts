@@ -6,13 +6,18 @@ import type {
   StreamStateResponse,
 } from '@streaming-monorepo/web2-admin-common';
 import {
+  catalogueStampClearRequestSchema,
   catalogueStampRecordSchema,
   ingestLookupParamsSchema,
   renditionReportSchema,
   stageRecordSchema,
+  stageRetireRequestSchema,
+  type CatalogueStampClearAnswer,
+  type CatalogueStampClearRequest,
   type CatalogueStampRecord,
   type StageRecord,
   type StageRetireAnswer,
+  type StageRetireRequest,
   type StageStoreAnswer,
   type StreamStateReport,
   streamStateReportSchema,
@@ -81,8 +86,10 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
   router.delete(
     '/stages/:stageId',
     validateParams(stageIdParamSchema),
+    validateContractBody(stageRetireRequestSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const response: StageRetireAnswer = await stageService.retire(stageIdOf(req));
+      const { observedAt } = req.body as StageRetireRequest;
+      const response: StageRetireAnswer = await stageService.retire(stageIdOf(req), observedAt);
       res.json(response);
     }),
   );
@@ -98,8 +105,11 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
 
   router.delete(
     '/catalogue-stamp',
-    asyncHandler(async (_req: Request, res: Response) => {
-      res.json(await stageService.clearCatalogueStamp());
+    validateContractBody(catalogueStampClearRequestSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const { observedAt } = req.body as CatalogueStampClearRequest;
+      const response: CatalogueStampClearAnswer = await stageService.clearCatalogueStamp(observedAt);
+      res.json(response);
     }),
   );
 

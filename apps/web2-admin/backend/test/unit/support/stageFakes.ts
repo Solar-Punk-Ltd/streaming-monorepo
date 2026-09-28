@@ -2,13 +2,14 @@
  * In-memory stand-ins for the stage and catalogue stamp repositories, and records to push into them.
  *
  * The fakes copy the semantics that matter from the SQL in StageRepository: a record observed before the stored one
- * is kept out, a retired stage comes back only for a record observed after its retirement arrived, and a list never
- * carries the passphrase or the token hash. `now` is the admin's clock, which stamps `received_at`, `retired_at` and
- * `cleared_at`; a test moves it by hand.
+ * is kept out; a retirement names the manager's moment, is not taken against a record observed after it, and is kept
+ * as a tombstone for a stage never stored; a retired stage comes back only for a record observed after the moment
+ * its retirement names; and a list never carries the passphrase or the token hash. `now` is the admin's clock, which
+ * only stamps when something arrived; a test moves it by hand.
  */
 import type { CatalogueStampRecord, StageRecord } from '@streaming-monorepo/contracts';
 
-import type { StageWrite } from '../../../src/domain/StageRepository.js';
+import type { RetireOutcome, StageWrite } from '../../../src/domain/StageRepository.js';
 import type { CatalogueStampStore, StageStore } from '../../../src/domain/StageService.js';
 import type { CatalogueStampRow, StageRow, StageSecretsRow } from '../../../src/types/index.js';
 
@@ -93,6 +94,8 @@ function listed(row: StageSecretsRow): StageRow {
 
 export class FakeStageStore implements StageStore {
   readonly rows = new Map<string, StageSecretsRow>();
+  /** Retirements of stages never stored, by id: `stage_retirements`. */
+  readonly tombstones = new Map<string, Date>();
   /** Set to make the next write fail, as a lost connection would. */
   failNextUpsert: Error | null = null;
 
@@ -102,7 +105,7 @@ export class FakeStageStore implements StageStore {
     return [...this.rows.values()]
       .sort(
         (a, b) =>
-          Number(a.retired_at !== null) - Number(b.retired_at !== null) ||
+          Number(a.retired_observed_at !== null) - Number(b.retired_observed_at !== null) ||
           a.name.localeCompare(b.name) ||
           a.stage_id.localeCompare(b.stage_id),
       )
@@ -122,11 +125,14 @@ export class FakeStageStore implements StageStore {
     }
     const { record } = write;
     const observedAt = new Date(record.observedAt);
+    const tombstone = this.tombstones.get(record.stageId);
+    if (tombstone && tombstone.getTime() >= observedAt.getTime()) return null;
+    this.tombstones.delete(record.stageId);
     const existing = this.rows.get(record.stageId);
     if (existing && existing.observed_at.getTime() > observedAt.getTime()) return null;
 
-    const retiredAt =
-      existing?.retired_at && observedAt.getTime() <= existing.retired_at.getTime() ? existing.retired_at : null;
+    const staysRetired =
+      existing?.retired_observed_at != null && observedAt.getTime() <= existing.retired_observed_at.getTime();
     const row: StageSecretsRow = {
       stage_id: record.stageId,
       manager_id: record.managerId,
@@ -139,7 +145,8 @@ export class FakeStageStore implements StageStore {
       admin_token_kind: write.adminToken?.kind ?? null,
       observed_at: observedAt,
       received_at: this.clock.now(),
-      retired_at: retiredAt,
+      retired_observed_at: staysRetired ? existing.retired_observed_at : null,
+      retired_at: staysRetired ? existing.retired_at : null,
       srt_passphrase: write.srtPassphrase,
       admin_token_sha256: write.adminToken?.sha256 ?? null,
     };
@@ -147,11 +154,22 @@ export class FakeStageStore implements StageStore {
     return listed(row);
   }
 
-  async retire(stageId: string): Promise<StageRow | null> {
+  async retire(stageId: string, observedAt: string): Promise<RetireOutcome<StageRow>> {
+    const at = new Date(observedAt);
     const row = this.rows.get(stageId);
-    if (!row || row.retired_at !== null) return null;
+    if (!row) {
+      const kept = this.tombstones.get(stageId);
+      this.tombstones.set(stageId, kept && kept.getTime() > at.getTime() ? kept : at);
+      return { outcome: 'unknown' };
+    }
+    if (row.observed_at.getTime() > at.getTime()) return { outcome: 'newer' };
+    if (row.retired_observed_at !== null) {
+      if (at.getTime() > row.retired_observed_at.getTime()) row.retired_observed_at = at;
+      return { outcome: 'already' };
+    }
+    row.retired_observed_at = at;
     row.retired_at = this.clock.now();
-    return listed(row);
+    return { outcome: 'done', row: listed(row) };
   }
 }
 
@@ -168,22 +186,43 @@ export class FakeCatalogueStampStore implements CatalogueStampStore {
     const observedAt = new Date(record.observedAt);
     const existing = this.row;
     if (existing && existing.observed_at.getTime() > observedAt.getTime()) return null;
-    const clearedAt =
-      existing?.cleared_at && observedAt.getTime() <= existing.cleared_at.getTime() ? existing.cleared_at : null;
+    const afterClear =
+      existing?.cleared_observed_at == null || observedAt.getTime() > existing.cleared_observed_at.getTime();
+    if (existing && existing.record === null && !afterClear) return null;
     this.row = {
       manager_id: record.managerId,
       batch_id: record.batchId,
       record: structuredClone(record),
       observed_at: observedAt,
       received_at: this.clock.now(),
-      cleared_at: clearedAt,
+      cleared_observed_at: afterClear ? null : existing!.cleared_observed_at,
+      cleared_at: afterClear ? null : existing!.cleared_at,
     };
     return structuredClone(this.row);
   }
 
-  async clear(): Promise<CatalogueStampRow | null> {
-    if (!this.row || this.row.cleared_at !== null) return null;
-    this.row.cleared_at = this.clock.now();
-    return structuredClone(this.row);
+  async clear(observedAt: string): Promise<RetireOutcome<CatalogueStampRow>> {
+    const at = new Date(observedAt);
+    const row = this.row;
+    if (!row) {
+      this.row = {
+        manager_id: null,
+        batch_id: null,
+        record: null,
+        observed_at: at,
+        received_at: this.clock.now(),
+        cleared_observed_at: at,
+        cleared_at: this.clock.now(),
+      };
+      return { outcome: 'unknown' };
+    }
+    if (row.observed_at.getTime() > at.getTime()) return { outcome: 'newer' };
+    if (row.cleared_observed_at !== null) {
+      if (at.getTime() > row.cleared_observed_at.getTime()) row.cleared_observed_at = at;
+      return { outcome: 'already' };
+    }
+    row.cleared_observed_at = at;
+    row.cleared_at = this.clock.now();
+    return { outcome: 'done', row: structuredClone(row) };
   }
 }

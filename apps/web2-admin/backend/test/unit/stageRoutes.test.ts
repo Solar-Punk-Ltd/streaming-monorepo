@@ -128,6 +128,7 @@ after(
 
 beforeEach(() => {
   stages.rows.clear();
+  stages.tombstones.clear();
   catalogue.row = null;
   audit.entries.length = 0;
   lines.length = 0;
@@ -171,6 +172,9 @@ async function call(
 
 const stagePath = `/api/internal/stages/${STAGE_ID}`;
 
+/** A DELETE body: the moment the manager saw the deployment, or the designation, gone. */
+const GONE = { observedAt: '2026-09-28T10:05:00.000Z' };
+
 function assertNoSecret(answer: Answer): void {
   assert.equal(answer.text.includes(SRT_PASSPHRASE), false, 'the passphrase reached an answer');
   assert.equal(answer.text.includes(TOKEN_SHA256), false, 'the token hash reached an answer');
@@ -180,9 +184,9 @@ describe('the manager’s stage routes', () => {
   it('refuse a request without the token, with a wrong one, and with a session cookie instead', async () => {
     const requests: [string, string, unknown][] = [
       ['PUT', stagePath, stageRecord()],
-      ['DELETE', stagePath, undefined],
+      ['DELETE', stagePath, GONE],
       ['PUT', '/api/internal/catalogue-stamp', catalogueStampRecord()],
-      ['DELETE', '/api/internal/catalogue-stamp', undefined],
+      ['DELETE', '/api/internal/catalogue-stamp', GONE],
     ];
     for (const [method, path, body] of requests) {
       for (const options of [{ token: null }, { token: `${TOKEN}x` }, { token: null, cookie }]) {
@@ -231,8 +235,11 @@ describe('the manager’s stage routes', () => {
   });
 
   it('refuse a stage id that is not a UUID', async () => {
-    for (const method of ['PUT', 'DELETE']) {
-      const answer = await call(method, '/api/internal/stages/self', { body: stageRecord() });
+    for (const [method, body] of [
+      ['PUT', stageRecord()],
+      ['DELETE', GONE],
+    ] as const) {
+      const answer = await call(method, '/api/internal/stages/self', { body });
       assert.equal(answer.status, 400, method);
       assert.deepEqual(answer.body, { error: 'validation_error', errors: ['stageId must be a UUID'] });
     }
@@ -271,15 +278,39 @@ describe('the manager’s stage routes', () => {
     assert.equal(text.includes(SRT_PASSPHRASE), false);
   });
 
-  it('retire a stage, and answer false the second time', async () => {
+  it('retire a stage as of the moment the body names, and answer false the second time', async () => {
     await call('PUT', stagePath, { body: stageRecord() });
 
-    const first = await call('DELETE', stagePath);
-    const second = await call('DELETE', `/api/internal/stages/${STAGE_ID.toUpperCase()}`);
+    const first = await call('DELETE', stagePath, { body: GONE });
+    const second = await call('DELETE', `/api/internal/stages/${STAGE_ID.toUpperCase()}`, { body: GONE });
 
     assert.deepEqual(first.body, { retired: true });
     assert.deepEqual(second.body, { retired: false });
-    assert.ok(stages.rows.get(STAGE_ID)?.retired_at instanceof Date, 'the row stays');
+    assert.equal(stages.rows.get(STAGE_ID)?.retired_observed_at?.toISOString(), GONE.observedAt, 'the row stays');
+  });
+
+  it('answer false for a stage never stored, and keep the retirement', async () => {
+    const unknown = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+
+    const answer = await call('DELETE', `/api/internal/stages/${unknown}`, { body: GONE });
+
+    assert.deepEqual(answer.body, { retired: false });
+    assert.equal(stages.tombstones.get(unknown)?.toISOString(), GONE.observedAt);
+  });
+
+  it('refuse a retirement or a clear without its moment', async () => {
+    await call('PUT', stagePath, { body: stageRecord() });
+    await call('PUT', '/api/internal/catalogue-stamp', { body: catalogueStampRecord() });
+
+    for (const path of [stagePath, '/api/internal/catalogue-stamp']) {
+      for (const body of [undefined, {}, { observedAt: 'now' }]) {
+        const answer = await call('DELETE', path, { body });
+        assert.equal(answer.status, 400, `${path} ${JSON.stringify(body)}`);
+        assert.equal((answer.body as { error: string }).error, 'validation_error');
+      }
+    }
+    assert.equal(stages.rows.get(STAGE_ID)?.retired_observed_at, null);
+    assert.equal(catalogue.row?.cleared_observed_at, null);
   });
 
   it('store and clear the catalogue stamp', async () => {
@@ -287,8 +318,8 @@ describe('the manager’s stage routes', () => {
     const refused = await call('PUT', '/api/internal/catalogue-stamp', {
       body: { ...catalogueStampRecord(), beeApiUrl: 'http://user:secret@192.0.2.10:1633' },
     });
-    const cleared = await call('DELETE', '/api/internal/catalogue-stamp');
-    const again = await call('DELETE', '/api/internal/catalogue-stamp');
+    const cleared = await call('DELETE', '/api/internal/catalogue-stamp', { body: GONE });
+    const again = await call('DELETE', '/api/internal/catalogue-stamp', { body: GONE });
 
     assert.deepEqual(stored.body, { stored: true });
     assert.equal(refused.status, 400);

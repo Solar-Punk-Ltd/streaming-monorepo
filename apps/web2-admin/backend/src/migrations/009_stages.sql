@@ -7,9 +7,15 @@
 -- runs and whenever it changes, and `DELETE`s it when the deployment goes.
 -- The admin keeps the latest record of each and never calls the manager back.
 --
+-- Every moment the admin orders these by is the manager's: a record's
+-- `observedAt`, stamped when the manager read the deployment row, and a
+-- retirement's `observedAt`, the moment the manager saw the deployment gone.
+-- The admin's own clock only says when something arrived.
+--
 --   stage_id            the deployment's instance id, in lower case.
---   manager_id          the id of the manager that pushed it, so two managers
---                       linked to one admin cannot be taken for each other.
+--   manager_id          the id of the manager that last pushed it. The last
+--                       manager to push wins, so a manager reinstalled with a
+--                       new id takes its stages back; the change is audited.
 --   name, kind, engine, owner
 --                       copied out of the record so a query can read them
 --                       without the JSON. `owner` is the address the stage's
@@ -30,12 +36,16 @@
 --   observed_at         when the manager read what the record says. A record
 --                       observed before the stored one never replaces it.
 --   received_at         when the admin last stored a record for the stage.
---   retired_at          when the manager deleted the stage, or null. The row
---                       is never deleted: streams and old catalogue entries
---                       name its owner. A later record un-retires it only
---                       when it was observed after the retirement arrived, so
---                       a push that was already on its way when the
---                       deployment was deleted does not bring it back.
+--   retired_observed_at when the manager saw the deployment gone, or null
+--                       while the stage is active. The row is never deleted:
+--                       streams and old catalogue entries name its owner. A
+--                       later record brings the stage back only when it was
+--                       observed after this moment, so a push that was
+--                       already on its way when the deployment was deleted
+--                       does not undo the delete. A retirement that names a
+--                       moment before the stored record's is not taken: the
+--                       manager has seen the deployment since.
+--   retired_at          when the retirement arrived. Both or neither.
 
 CREATE TABLE stages (
   stage_id            UUID PRIMARY KEY,
@@ -54,8 +64,26 @@ CREATE TABLE stages (
   admin_token_kind    TEXT NULL CHECK (admin_token_kind IN ('own', 'shared')),
   observed_at         TIMESTAMPTZ NOT NULL,
   received_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  retired_observed_at TIMESTAMPTZ NULL,
   retired_at          TIMESTAMPTZ NULL,
-  CHECK ((admin_token_sha256 IS NULL) = (admin_token_kind IS NULL))
+  CHECK ((admin_token_sha256 IS NULL) = (admin_token_kind IS NULL)),
+  CHECK ((retired_observed_at IS NULL) = (retired_at IS NULL))
+);
+
+-- A retirement of a stage the admin never stored: the manager deleted a
+-- deployment whose first push had not arrived yet, or was refused. Without
+-- it, that first push arriving late would register a stage that is gone. A
+-- record for the id is stored only when it was observed after `observed_at`,
+-- and storing it removes the row. A second retirement keeps the later moment.
+--
+--   stage_id     the deployment's instance id, in lower case.
+--   observed_at  when the manager saw the deployment gone.
+--   received_at  when the retirement last arrived.
+
+CREATE TABLE stage_retirements (
+  stage_id     UUID PRIMARY KEY,
+  observed_at  TIMESTAMPTZ NOT NULL,
+  received_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- The manager is a caller of its own in the audit log: it registers, changes

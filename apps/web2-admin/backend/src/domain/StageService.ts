@@ -1,19 +1,26 @@
 import {
   isOlderStageRecord,
+  type CatalogueStampClearAnswer,
   type CatalogueStampRecord,
   type StageRecord,
   type StageRetireAnswer,
   type StageStoreAnswer,
 } from '@streaming-monorepo/contracts';
 
-import type { CatalogueStampRow, StageRow, StageSecretsRow } from '../types/index.js';
+import {
+  isDesignated,
+  type CatalogueStampRow,
+  type DesignatedCatalogueStamp,
+  type StageRow,
+  type StageSecretsRow,
+} from '../types/index.js';
 import { quoteForLog } from '../utils/logText.js';
 
 import { describeActor, MANAGER } from './actor.js';
 import { recordAudit, type AuditLog } from './AuditLog.js';
 import { Logger } from './Logger.js';
 import { Mutex } from './Mutex.js';
-import type { StageWrite } from './StageRepository.js';
+import type { RetireOutcome, StageWrite } from './StageRepository.js';
 
 const logger = Logger.getInstance();
 
@@ -22,14 +29,14 @@ export interface StageStore {
   list(): Promise<StageRow[]>;
   find(stageId: string): Promise<StageSecretsRow | null>;
   upsert(write: StageWrite): Promise<StageRow | null>;
-  retire(stageId: string): Promise<StageRow | null>;
+  retire(stageId: string, observedAt: string): Promise<RetireOutcome<StageRow>>;
 }
 
 /** The slice of CatalogueStampRepository the service needs; a fake stands in. */
 export interface CatalogueStampStore {
   get(): Promise<CatalogueStampRow | null>;
   upsert(record: CatalogueStampRecord): Promise<CatalogueStampRow | null>;
-  clear(): Promise<CatalogueStampRow | null>;
+  clear(observedAt: string): Promise<RetireOutcome<CatalogueStampRow>>;
 }
 
 /** A stage record split the way migration 009 keeps it: the passphrase and the token apart from the rest. */
@@ -142,8 +149,9 @@ export class StageService {
       const write = splitStageRecord(record);
       const written = await this.stages.upsert(write);
       if (!written) {
-        // Only when another writer got in between, which the mutex rules out in one process.
-        this.keptNewer(record, 'before one stored in the meantime');
+        // A stage never stored whose retirement was observed at or after this record, or, which the mutex rules
+        // out in one process, a newer record stored in the meantime.
+        this.keptNewer(record, 'at or before a retirement the admin holds for it');
         return { stored: false };
       }
 
@@ -152,74 +160,109 @@ export class StageService {
     });
   }
 
-  /** Retires the stage. Its row stays: streams and old catalogue entries name its owner. */
-  retire(stageId: string): Promise<StageRetireAnswer> {
+  /**
+   * Retires the stage as of `observedAt`, the moment the manager saw the deployment gone. Its row stays: streams and
+   * old catalogue entries name its owner. Answers true only when this call retired a stored, active stage.
+   */
+  retire(stageId: string, observedAt: string): Promise<StageRetireAnswer> {
     return this.mutex.run(async () => {
-      const retired = await this.stages.retire(stageId);
-      if (!retired) {
-        logger.debug(
-          `[Stages] ${describeActor(MANAGER)} retired stage ${stageId}, which is unknown or retired already`,
-        );
-        return { retired: false };
+      const who = describeActor(MANAGER);
+      const result = await this.stages.retire(stageId, observedAt);
+      switch (result.outcome) {
+        case 'unknown':
+          logger.info(
+            `[Stages] ${who} retired stage ${stageId}, which was never registered here: a record observed at or before ${observedAt} will not register it`,
+          );
+          return { retired: false };
+        case 'newer':
+          logger.info(
+            `[Stages] ${who} retired stage ${stageId} as of ${observedAt}, but holds a record observed after that: the stage stays`,
+          );
+          return { retired: false };
+        case 'already':
+          logger.debug(`[Stages] ${who} retired stage ${stageId}, which was retired already`);
+          return { retired: false };
+        case 'done': {
+          const { row } = result;
+          logger.info(`[Stages] ${who} retired stage ${describeStage({ name: row.name, stageId: row.stage_id })}`);
+          await recordAudit(this.audit, {
+            actor: MANAGER,
+            action: 'stage.retire',
+            details: { stageId: row.stage_id, name: row.name, observedAt },
+          });
+          return { retired: true };
+        }
       }
-
-      const stage = { name: retired.name, stageId: retired.stage_id };
-      logger.info(`[Stages] ${describeActor(MANAGER)} retired stage ${describeStage(stage)}`);
-      await recordAudit(this.audit, {
-        actor: MANAGER,
-        action: 'stage.retire',
-        details: { stageId: retired.stage_id, name: retired.name },
-      });
-      return { retired: true };
     });
   }
 
   /** The designated catalogue stamp, or null when there is none or the manager cleared it. */
-  async catalogueStamp(): Promise<CatalogueStampRow | null> {
+  async catalogueStamp(): Promise<DesignatedCatalogueStamp | null> {
     const row = await this.catalogue.get();
-    return row && row.cleared_at === null ? row : null;
+    return isDesignated(row) ? row : null;
   }
 
-  /** Stores the catalogue stamp record unless the admin holds one observed later. */
+  /** Stores the catalogue stamp record unless the admin holds a record or a clear observed later. */
   storeCatalogueStamp(record: CatalogueStampRecord): Promise<StageStoreAnswer> {
     return this.mutex.run(async () => {
       const previous = await this.catalogue.get();
-      if (previous && isOlderStageRecord(record, previous.record)) {
+      if (previous && isOlderStageRecord(record, { observedAt: previous.observed_at.toISOString() })) {
         logger.debug(
-          `[Stages] kept the catalogue stamp: the record pushed was observed at ${record.observedAt}, before the stored one (${previous.record.observedAt})`,
+          `[Stages] kept the catalogue stamp: the record pushed was observed at ${record.observedAt}, before the stored one (${previous.observed_at.toISOString()})`,
         );
         return { stored: false };
       }
 
       const written = await this.catalogue.upsert(record);
       if (!written) {
-        logger.debug(`[Stages] kept the catalogue stamp: a newer record was stored first`);
+        logger.debug(
+          `[Stages] kept the catalogue stamp: the record pushed was observed at ${record.observedAt}, at or before the clear the admin holds`,
+        );
         return { stored: false };
       }
 
-      await this.recordCatalogueStored(previous, written);
+      await this.recordCatalogueStored(previous, record, written);
       return { stored: true };
     });
   }
 
-  /** Clears the designation: the admin then has no catalogue batch. */
-  clearCatalogueStamp(): Promise<{ cleared: boolean }> {
+  /**
+   * Clears the designation as of `observedAt`, the moment the manager saw it gone: the admin then has no catalogue
+   * batch. Answers true only when this call cleared a designation the admin held.
+   */
+  clearCatalogueStamp(observedAt: string): Promise<CatalogueStampClearAnswer> {
     return this.mutex.run(async () => {
-      const cleared = await this.catalogue.clear();
-      if (!cleared) {
-        logger.debug(`[Stages] ${describeActor(MANAGER)} cleared the catalogue stamp, which was not set`);
-        return { cleared: false };
+      const who = describeActor(MANAGER);
+      const result = await this.catalogue.clear(observedAt);
+      switch (result.outcome) {
+        case 'unknown':
+          logger.info(
+            `[Stages] ${who} cleared the catalogue stamp, which was never set here: a record observed at or before ${observedAt} will not set it`,
+          );
+          return { cleared: false };
+        case 'newer':
+          logger.info(
+            `[Stages] ${who} cleared the catalogue stamp as of ${observedAt}, but holds a record observed after that: it stays`,
+          );
+          return { cleared: false };
+        case 'already':
+          logger.debug(`[Stages] ${who} cleared the catalogue stamp, which was cleared already`);
+          return { cleared: false };
+        case 'done': {
+          const { record } = result.row;
+          logger.info(
+            `[Stages] ${who} cleared the catalogue stamp${
+              record ? ` (batch ${shortBatch(record.batchId)} on ${quoteForLog(record.nodeName)})` : ''
+            }`,
+          );
+          await recordAudit(this.audit, {
+            actor: MANAGER,
+            action: 'catalogue.stamp.clear',
+            details: { batchId: record?.batchId ?? null, nodeName: record?.nodeName ?? null, observedAt },
+          });
+          return { cleared: true };
+        }
       }
-
-      logger.info(
-        `[Stages] ${describeActor(MANAGER)} cleared the catalogue stamp (batch ${shortBatch(cleared.batch_id)} on ${quoteForLog(cleared.record.nodeName)})`,
-      );
-      await recordAudit(this.audit, {
-        actor: MANAGER,
-        action: 'catalogue.stamp.clear',
-        details: { batchId: cleared.batch_id, nodeName: cleared.record.nodeName },
-      });
-      return { cleared: true };
     });
   }
 
@@ -258,7 +301,7 @@ export class StageService {
     const changes = stageChanges(previous, write);
     const said = changes.phrases.length > 0 ? `: ${changes.phrases.join(', ')}` : '';
 
-    if (previous.retired_at !== null && written.retired_at === null) {
+    if (previous.retired_observed_at !== null && written.retired_observed_at === null) {
       logger.info(`[Stages] ${who} brought back retired stage ${stage}${said}`);
       await recordAudit(this.audit, {
         actor: MANAGER,
@@ -280,22 +323,29 @@ export class StageService {
 
     logger.debug(
       `[Stages] ${who} confirmed stage ${stage} as observed at ${record.observedAt}${
-        written.retired_at === null ? '' : ', which stays retired: the record was observed before the retirement'
+        written.retired_observed_at === null
+          ? ''
+          : ', which stays retired: the record was observed at or before the retirement'
       }`,
     );
   }
 
-  private async recordCatalogueStored(previous: CatalogueStampRow | null, written: CatalogueStampRow): Promise<void> {
+  private async recordCatalogueStored(
+    previous: CatalogueStampRow | null,
+    record: CatalogueStampRecord,
+    written: CatalogueStampRow,
+  ): Promise<void> {
     const who = describeActor(MANAGER);
-    const { record } = written;
     const where = `batch ${shortBatch(record.batchId)} on ${quoteForLog(record.nodeName)}`;
 
-    if (written.cleared_at !== null) {
-      logger.debug(`[Stages] ${who} pushed the catalogue stamp, which stays cleared: it was observed before the clear`);
+    if (written.cleared_observed_at !== null) {
+      logger.debug(
+        `[Stages] ${who} pushed the catalogue stamp, which stays cleared: it was observed at or before the clear`,
+      );
       return;
     }
 
-    if (!previous || previous.cleared_at !== null) {
+    if (!isDesignated(previous)) {
       logger.info(`[Stages] ${who} set the catalogue stamp: ${where}, depth ${record.depth}`);
       await recordAudit(this.audit, {
         actor: MANAGER,

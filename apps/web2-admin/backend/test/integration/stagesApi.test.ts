@@ -25,6 +25,9 @@ import { internalCall, login, raw, releaseStack, requireStack } from './helpers.
 
 const stagePath = `/api/internal/stages/${STAGE_ID}`;
 
+/** A DELETE body: the moment the manager saw the deployment, or the designation, gone. */
+const GONE = { observedAt: '2026-09-28T10:05:00.000Z' };
+
 before(async () => {
   await requireStack();
   await login();
@@ -38,9 +41,9 @@ describe('the manager’s stage routes', () => {
   it('refuse every call without the registrar token, and a console session in its place', async () => {
     const calls: [string, string, unknown][] = [
       ['PUT', stagePath, stageRecord()],
-      ['DELETE', stagePath, undefined],
+      ['DELETE', stagePath, GONE],
       ['PUT', '/api/internal/catalogue-stamp', catalogueStampRecord()],
-      ['DELETE', '/api/internal/catalogue-stamp', undefined],
+      ['DELETE', '/api/internal/catalogue-stamp', GONE],
     ];
     for (const [method, path, body] of calls) {
       const anonymous = await raw(method, path, { body, anonymous: true, crossSiteHeader: false });
@@ -70,13 +73,18 @@ describe('the manager’s stage routes', () => {
     assert.equal((await raw('GET', '/api/stages', { anonymous: true })).status, 401);
   });
 
-  it('retire it, which the console still lists', async () => {
-    const retired = await raw('DELETE', stagePath, internalCall());
+  it('refuse a retirement without the moment the manager saw the stage gone', async () => {
+    const answer = await raw('DELETE', stagePath, internalCall());
+    assert.equal(answer.status, 400);
+  });
+
+  it('retire it as of that moment, which the console still lists', async () => {
+    const retired = await raw('DELETE', stagePath, { ...internalCall(), body: GONE });
     assert.deepEqual(retired.body, { retired: true });
 
     const [stage] = ((await raw('GET', '/api/stages')).body as StageListResponse).stages;
     assert.equal(stage?.stageId, STAGE_ID);
-    assert.ok(stage?.retiredAt);
+    assert.equal(stage?.retiredAt, GONE.observedAt);
   });
 
   it('set and clear the catalogue stamp, which the console reads without the Bee API address', async () => {
@@ -92,7 +100,7 @@ describe('the manager’s stage routes', () => {
     assert.equal((read.body as CatalogueStampResponse).catalogueStamp?.batchId, catalogueStampRecord().batchId);
     assert.equal(read.text.includes('192.0.2.10'), false);
 
-    const cleared = await raw('DELETE', '/api/internal/catalogue-stamp', internalCall());
+    const cleared = await raw('DELETE', '/api/internal/catalogue-stamp', { ...internalCall(), body: GONE });
     assert.deepEqual(cleared.body, { cleared: true });
     assert.deepEqual((await raw('GET', '/api/catalogue-stamp')).body, { catalogueStamp: null });
   });

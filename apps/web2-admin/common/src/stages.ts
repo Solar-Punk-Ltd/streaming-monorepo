@@ -73,7 +73,7 @@ export interface StageSummary {
   observedAt: string;
   /** When the admin last stored a record for the stage. */
   receivedAt: string;
-  /** When the manager deleted the stage, or null. A retired stage takes no new streams. */
+  /** When the manager saw the stage's deployment gone, by its clock, or null. A retired stage takes no new streams. */
   retiredAt: string | null;
 }
 

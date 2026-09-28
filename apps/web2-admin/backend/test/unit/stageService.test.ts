@@ -213,54 +213,95 @@ describe('StageService.store', () => {
 });
 
 describe('StageService.retire', () => {
-  it('retires a stage once and keeps its row', async () => {
+  const UNKNOWN = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+
+  it('retires a stage once as of the manager’s moment, and keeps its row', async () => {
     await service.store(stageRecord());
     audit.entries.length = 0;
 
-    assert.deepEqual(await service.retire(STAGE_ID), { retired: true });
-    assert.deepEqual(await service.retire(STAGE_ID), { retired: false });
+    assert.deepEqual(await service.retire(STAGE_ID, '2026-09-28T10:05:00.000Z'), { retired: true });
+    assert.deepEqual(await service.retire(STAGE_ID, '2026-09-28T10:06:00.000Z'), { retired: false });
 
     const [listed] = await service.list();
     assert.equal(listed?.stage_id, STAGE_ID);
+    assert.equal(listed?.retired_observed_at?.toISOString(), '2026-09-28T10:06:00.000Z', 'the later moment is kept');
     assert.ok(listed?.retired_at instanceof Date);
     assert.deepEqual(
       audit.entries.map((entry) => [entry.action, entry.details]),
-      [['stage.retire', { stageId: STAGE_ID, name: 'Main stage' }]],
+      [['stage.retire', { stageId: STAGE_ID, name: 'Main stage', observedAt: '2026-09-28T10:05:00.000Z' }]],
     );
   });
 
-  it('answers false for a stage it never heard of, and audits nothing', async () => {
-    assert.deepEqual(await service.retire('ffffffff-ffff-4fff-8fff-ffffffffffff'), { retired: false });
+  it('does not take a retirement older than the record it holds', async () => {
+    await service.store(stageRecord({ observedAt: '2026-09-28T10:05:00.000Z' }));
+    audit.entries.length = 0;
+
+    assert.deepEqual(await service.retire(STAGE_ID, '2026-09-28T10:04:00.000Z'), { retired: false });
+
+    assert.equal(stages.rows.get(STAGE_ID)?.retired_observed_at, null);
     assert.equal(audit.entries.length, 0);
   });
 
-  it('brings a retired stage back for a record observed after the retirement', async () => {
+  it('keeps the retirement of a stage it never stored, so a late first push does not register it', async () => {
+    assert.deepEqual(await service.retire(UNKNOWN, '2026-09-28T10:05:00.000Z'), { retired: false });
+    assert.equal(audit.entries.length, 0);
+
+    const late = await service.store(stageRecord({ stageId: UNKNOWN, observedAt: '2026-09-28T10:04:30.000Z' }));
+    const same = await service.store(stageRecord({ stageId: UNKNOWN, observedAt: '2026-09-28T10:05:00.000Z' }));
+    assert.deepEqual(late, { stored: false });
+    assert.deepEqual(same, { stored: false });
+    assert.equal(stages.rows.has(UNKNOWN), false);
+
+    const back = await service.store(stageRecord({ stageId: UNKNOWN, observedAt: '2026-09-28T10:06:00.000Z' }));
+    assert.deepEqual(back, { stored: true });
+    assert.equal(stages.tombstones.has(UNKNOWN), false, 'storing it forgets the retirement');
+    assert.deepEqual(
+      audit.entries.map((entry) => entry.action),
+      ['stage.register'],
+    );
+  });
+
+  it('compares the manager’s moments only, whatever the admin’s clock says', async () => {
+    // The admin's clock is a day ahead of the manager's: under a rule that used it, no record could bring the
+    // stage back for a day.
+    clock.set('2026-09-29T10:00:00.000Z');
     await service.store(stageRecord());
-    clock.set('2026-09-28T10:05:00.000Z');
-    await service.retire(STAGE_ID);
+    await service.retire(STAGE_ID, '2026-09-28T10:05:00.000Z');
     audit.entries.length = 0;
 
-    const answer = await service.store(stageRecord({ observedAt: '2026-09-28T10:06:00.000Z' }));
+    const inFlight = await service.store(stageRecord({ observedAt: '2026-09-28T10:04:30.000Z' }));
+    assert.deepEqual(inFlight, { stored: true }, 'newer than the stored record, so it is stored');
+    assert.ok(stages.rows.get(STAGE_ID)?.retired_observed_at instanceof Date, 'but the stage stays retired');
 
-    assert.deepEqual(answer, { stored: true });
+    const tie = await service.store(stageRecord({ observedAt: '2026-09-28T10:05:00.000Z' }));
+    assert.deepEqual(tie, { stored: true });
+    assert.ok(stages.rows.get(STAGE_ID)?.retired_observed_at instanceof Date, 'a tie stays retired');
+    assert.equal(audit.entries.length, 0);
+
+    await service.store(stageRecord({ observedAt: '2026-09-28T10:06:00.000Z' }));
+    assert.equal(stages.rows.get(STAGE_ID)?.retired_observed_at, null);
     assert.equal(stages.rows.get(STAGE_ID)?.retired_at, null);
     assert.deepEqual(
       audit.entries.map((entry) => entry.action),
       ['stage.unretire'],
     );
   });
+});
 
-  it('leaves it retired for a push that was on its way when the stage was retired', async () => {
+describe('StageService manager ids', () => {
+  it('lets the last manager to push take a stage, and audits the move', async () => {
     await service.store(stageRecord());
-    clock.set('2026-09-28T10:05:00.000Z');
-    await service.retire(STAGE_ID);
     audit.entries.length = 0;
+    const reinstalled = '1e2f3a4b-5c6d-4e7f-8a9b-0c1d2e3f4a5b';
 
-    const answer = await service.store(stageRecord({ observedAt: '2026-09-28T10:04:30.000Z' }));
+    const answer = await service.store(stageRecord({ managerId: reinstalled, observedAt: '2026-09-28T10:00:30.000Z' }));
 
-    assert.deepEqual(answer, { stored: true }, 'the record is newer than the stored one, so it is stored');
-    assert.ok(stages.rows.get(STAGE_ID)?.retired_at instanceof Date, 'but the stage stays retired');
-    assert.equal(audit.entries.length, 0);
+    assert.deepEqual(answer, { stored: true });
+    assert.equal(stages.rows.get(STAGE_ID)?.manager_id, reinstalled);
+    assert.deepEqual(
+      audit.entries.map((entry) => [entry.action, detailsOf<{ changes: unknown }>(entry).changes]),
+      [['stage.change', { managerId: { from: stageRecord().managerId, to: reinstalled } }]],
+    );
   });
 });
 
@@ -297,16 +338,16 @@ describe('StageService catalogue stamp', () => {
     );
   });
 
-  it('clears it once, and sets it again only for a record observed after the clear', async () => {
+  it('clears it once as of the manager’s moment, and sets it again only for a record observed after it', async () => {
+    clock.set('2026-09-29T10:00:00.000Z');
     await service.storeCatalogueStamp(catalogueStampRecord());
-    clock.set('2026-09-28T10:05:00.000Z');
 
-    assert.deepEqual(await service.clearCatalogueStamp(), { cleared: true });
-    assert.deepEqual(await service.clearCatalogueStamp(), { cleared: false });
+    assert.deepEqual(await service.clearCatalogueStamp('2026-09-28T10:05:00.000Z'), { cleared: true });
+    assert.deepEqual(await service.clearCatalogueStamp('2026-09-28T10:05:10.000Z'), { cleared: false });
     assert.equal(await service.catalogueStamp(), null);
 
-    await service.storeCatalogueStamp(catalogueStampRecord({ observedAt: '2026-09-28T10:04:30.000Z' }));
-    assert.equal(await service.catalogueStamp(), null, 'a push from before the clear does not undo it');
+    await service.storeCatalogueStamp(catalogueStampRecord({ observedAt: '2026-09-28T10:05:05.000Z' }));
+    assert.equal(await service.catalogueStamp(), null, 'a push from before the (later) clear does not undo it');
 
     await service.storeCatalogueStamp(catalogueStampRecord({ observedAt: '2026-09-28T10:06:00.000Z' }));
     assert.equal((await service.catalogueStamp())?.batch_id, CATALOGUE_BATCH_ID);
@@ -317,8 +358,27 @@ describe('StageService catalogue stamp', () => {
     );
   });
 
-  it('answers false for a clear when nothing was set', async () => {
-    assert.deepEqual(await service.clearCatalogueStamp(), { cleared: false });
+  it('does not take a clear older than the record it holds', async () => {
+    await service.storeCatalogueStamp(catalogueStampRecord({ observedAt: '2026-09-28T10:05:00.000Z' }));
+
+    assert.deepEqual(await service.clearCatalogueStamp('2026-09-28T10:04:00.000Z'), { cleared: false });
+    assert.equal((await service.catalogueStamp())?.batch_id, CATALOGUE_BATCH_ID);
+  });
+
+  it('keeps a clear that arrives before any record, so a late first push does not set it', async () => {
+    assert.deepEqual(await service.clearCatalogueStamp('2026-09-28T10:05:00.000Z'), { cleared: false });
     assert.equal(audit.entries.length, 0);
+
+    const late = await service.storeCatalogueStamp(catalogueStampRecord({ observedAt: '2026-09-28T10:04:00.000Z' }));
+    const same = await service.storeCatalogueStamp(catalogueStampRecord({ observedAt: '2026-09-28T10:05:00.000Z' }));
+    assert.deepEqual([late, same], [{ stored: false }, { stored: false }]);
+    assert.equal(await service.catalogueStamp(), null);
+
+    await service.storeCatalogueStamp(catalogueStampRecord({ observedAt: '2026-09-28T10:06:00.000Z' }));
+    assert.equal((await service.catalogueStamp())?.batch_id, CATALOGUE_BATCH_ID);
+    assert.deepEqual(
+      audit.entries.map((entry) => entry.action),
+      ['catalogue.stamp.set'],
+    );
   });
 });

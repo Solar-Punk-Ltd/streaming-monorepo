@@ -3,12 +3,14 @@
  * service over them with the audit log in Postgres. Needs Postgres, like the rest of this suite; `DATABASE_URL`
  * overrides the connection.
  *
- * What a fake cannot stand in for is the SQL: that an older record is kept out by the upsert itself, that a retired
- * stage comes back only for a record observed after the retirement arrived (by the database's clock), that a list
- * never selects the passphrase or the token hash, and the CHECKs that keep both out of the stored record. And that
- * the audit log takes the manager as an actor (migration 009 widens its CHECK).
+ * What a fake cannot stand in for is the SQL: that an older record is kept out by the upsert itself; that a
+ * retirement is ordered by the manager's moment and never by the database's clock, is not taken against a record
+ * observed after it, and is kept for a stage never stored so a late first push cannot register it; that a list never
+ * selects the passphrase or the token hash; and the CHECKs that keep both out of the stored record. And that the audit
+ * log takes the manager as an actor (migration 009 widens its CHECK).
  *
- * Every row it writes is in the suite's throwaway database; it empties both tables before each test.
+ * The manager's moments here are in 2030, far from the database's clock, so a rule that used the latter would fail.
+ * Every row it writes is in the suite's throwaway database; it empties the tables before each test.
  */
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
@@ -31,10 +33,10 @@ let database: Database;
 let stages: StageRepository;
 let catalogue: CatalogueStampRepository;
 
-/** An ISO moment `seconds` from now, by this process's clock, which shares a host with the database here. */
-function secondsFromNow(seconds: number): string {
-  return new Date(Date.now() + seconds * 1000).toISOString();
-}
+const UNKNOWN = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+
+/** A manager's moment on a day the database's clock is nowhere near. */
+const at = (time: string) => `2030-01-01T${time}.000Z`;
 
 before(async () => {
   await requireStack();
@@ -54,6 +56,7 @@ after(async () => {
 
 beforeEach(async () => {
   await database.pool.query('DELETE FROM stages');
+  await database.pool.query('DELETE FROM stage_retirements');
   await database.pool.query('DELETE FROM catalogue_stamp');
   await database.pool.query(`DELETE FROM audit_log WHERE actor_kind = 'manager'`);
 });
@@ -66,7 +69,7 @@ describe('StageRepository', () => {
     assert.equal(written.stage_id, STAGE_ID);
     assert.equal(written.has_srt_passphrase, true);
     assert.equal(written.admin_token_kind, 'shared');
-    assert.equal(written.retired_at, null);
+    assert.equal(written.retired_observed_at, null);
     assert.equal('srt_passphrase' in written, false);
     assert.equal('admin_token_sha256' in written, false);
 
@@ -87,12 +90,12 @@ describe('StageRepository', () => {
     const other = '6a1d3b9f-2c3d-4e5f-8a51-1b2c3d4e5f60';
     await stages.upsert(splitStageRecord(stageRecord({ name: 'B stage' })));
     await stages.upsert(splitStageRecord(stageRecord({ stageId: other, name: 'A stage', adminToken: null })));
-    await stages.retire(other);
+    await stages.retire(other, at('10:05:00'));
 
     const listed = await stages.list();
 
     assert.deepEqual(
-      listed.map((row) => [row.name, row.retired_at === null]),
+      listed.map((row) => [row.name, row.retired_observed_at === null]),
       [
         ['B stage', true],
         ['A stage', false],
@@ -120,28 +123,69 @@ describe('StageRepository', () => {
     assert.equal((await stages.find(STAGE_ID))?.record.status, 'running');
   });
 
-  it('retires once, and brings a stage back only for a record observed after the retirement', async () => {
-    await stages.upsert(splitStageRecord(stageRecord({ observedAt: secondsFromNow(-120) })));
+  it('retires as of the manager’s moment, and brings a stage back only for a record observed after it', async () => {
+    await stages.upsert(splitStageRecord(stageRecord({ observedAt: at('10:00:00') })));
 
-    assert.ok(await stages.retire(STAGE_ID));
-    assert.equal(await stages.retire(STAGE_ID), null);
-    assert.equal(await stages.retire('ffffffff-ffff-4fff-8fff-ffffffffffff'), null);
+    const done = await stages.retire(STAGE_ID, at('10:05:00'));
+    assert.equal(done.outcome, 'done');
+    assert.equal((await stages.retire(STAGE_ID, at('10:05:30'))).outcome, 'already');
+    const row = await stages.find(STAGE_ID);
+    assert.equal(row?.retired_observed_at?.toISOString(), at('10:05:30'), 'a second retirement keeps the later moment');
+    assert.ok(row?.retired_at instanceof Date, 'and when it arrived is kept beside it');
 
-    const inFlight = await stages.upsert(splitStageRecord(stageRecord({ observedAt: secondsFromNow(-60) })));
+    const inFlight = await stages.upsert(splitStageRecord(stageRecord({ observedAt: at('10:05:10') })));
     assert.ok(inFlight, 'stored: it is newer than the stored record');
-    assert.ok(inFlight.retired_at instanceof Date, 'but the stage stays retired');
+    assert.ok(inFlight.retired_observed_at instanceof Date, 'but the stage stays retired');
 
-    const back = await stages.upsert(splitStageRecord(stageRecord({ observedAt: secondsFromNow(60) })));
+    const back = await stages.upsert(splitStageRecord(stageRecord({ observedAt: at('10:06:00') })));
+    assert.equal(back?.retired_observed_at, null);
     assert.equal(back?.retired_at, null);
   });
 
-  it('refuses a record that carries the passphrase or the token, and a token hash without its kind', async () => {
+  it('does not take a retirement older than the record it holds', async () => {
+    await stages.upsert(splitStageRecord(stageRecord({ observedAt: at('10:05:00') })));
+
+    assert.equal((await stages.retire(STAGE_ID, at('10:04:00'))).outcome, 'newer');
+    assert.equal((await stages.find(STAGE_ID))?.retired_observed_at, null);
+  });
+
+  it('keeps the retirement of a stage never stored, and a record observed after it replaces it', async () => {
+    assert.equal((await stages.retire(UNKNOWN, at('10:05:00'))).outcome, 'unknown');
+    assert.equal((await stages.retire(UNKNOWN, at('10:04:00'))).outcome, 'unknown');
+    const kept = await database.pool.query<{ observed_at: Date }>(
+      'SELECT observed_at FROM stage_retirements WHERE stage_id = $1',
+      [UNKNOWN],
+    );
+    assert.equal(kept.rows[0]?.observed_at.toISOString(), at('10:05:00'), 'the later moment is kept');
+
+    for (const time of ['10:04:30', '10:05:00']) {
+      const late = await stages.upsert(splitStageRecord(stageRecord({ stageId: UNKNOWN, observedAt: at(time) })));
+      assert.equal(late, null, time);
+    }
+    assert.equal(await stages.find(UNKNOWN), null);
+
+    const registered = await stages.upsert(
+      splitStageRecord(stageRecord({ stageId: UNKNOWN, observedAt: at('10:06:00') })),
+    );
+    assert.equal(registered?.stage_id, UNKNOWN);
+    assert.equal(registered?.retired_observed_at, null);
+    const left = await database.pool.query('SELECT 1 FROM stage_retirements WHERE stage_id = $1', [UNKNOWN]);
+    assert.equal(left.rowCount, 0, 'storing the record forgets the retirement');
+  });
+
+  it('refuses a record that carries the passphrase or the token, a token hash without its kind, and half a retirement', async () => {
     const record = JSON.stringify(stageRecord());
-    const insert = (recordJson: string, hash: string | null, kind: string | null) =>
+    const insert = (
+      recordJson: string,
+      hash: string | null,
+      kind: string | null,
+      retiredObservedAt: string | null = null,
+    ) =>
       database.pool.query(
-        `INSERT INTO stages (stage_id, manager_id, name, kind, engine, owner, record, admin_token_sha256, admin_token_kind, observed_at)
-         VALUES ($1, $2, 'x', 'abr-uploader', 'srs', $3, $4::jsonb, $5, $6, NOW())`,
-        [STAGE_ID, stageRecord().managerId, stageRecord().owner, recordJson, hash, kind],
+        `INSERT INTO stages (stage_id, manager_id, name, kind, engine, owner, record, admin_token_sha256, admin_token_kind,
+                             observed_at, retired_observed_at)
+         VALUES ($1, $2, 'x', 'abr-uploader', 'srs', $3, $4::jsonb, $5, $6, NOW(), $7)`,
+        [STAGE_ID, stageRecord().managerId, stageRecord().owner, recordJson, hash, kind, retiredObservedAt],
       );
 
     await assert.rejects(insert(record, null, null), { code: '23514' }, 'the whole record, passphrase and token');
@@ -150,6 +194,7 @@ describe('StageRepository', () => {
     const stored = JSON.stringify(splitStageRecord(stageRecord()).record);
     await assert.rejects(insert(stored, TOKEN_SHA256, null), { code: '23514' }, 'a hash without its kind');
     await assert.rejects(insert(stored, null, 'own'), { code: '23514' }, 'a kind without its hash');
+    await assert.rejects(insert(stored, null, null, at('10:00:00')), { code: '23514' }, 'a moment without arrival');
   });
 });
 
@@ -165,7 +210,7 @@ describe('CatalogueStampRepository', () => {
 
     assert.equal(older, null);
     assert.equal(next?.batch_id, 'd3'.repeat(32));
-    assert.equal(next?.record.beeApiUrl, catalogueStampRecord().beeApiUrl);
+    assert.equal(next?.record?.beeApiUrl, catalogueStampRecord().beeApiUrl);
     const count = await database.pool.query<{ n: number }>('SELECT COUNT(*)::int AS n FROM catalogue_stamp');
     assert.equal(count.rows[0]?.n, 1);
     await assert.rejects(
@@ -179,17 +224,39 @@ describe('CatalogueStampRepository', () => {
     );
   });
 
-  it('clears once, and a record observed before the clear leaves it cleared', async () => {
-    await catalogue.upsert(catalogueStampRecord({ observedAt: secondsFromNow(-120) }));
+  it('clears as of the manager’s moment, and sets it again only for a record observed after it', async () => {
+    await catalogue.upsert(catalogueStampRecord({ observedAt: at('10:00:00') }));
 
-    assert.ok(await catalogue.clear());
-    assert.equal(await catalogue.clear(), null);
+    assert.equal((await catalogue.clear(at('09:59:00'))).outcome, 'newer', 'older than the record: not taken');
+    assert.equal((await catalogue.clear(at('10:05:00'))).outcome, 'done');
+    assert.equal((await catalogue.clear(at('10:05:30'))).outcome, 'already');
 
-    const inFlight = await catalogue.upsert(catalogueStampRecord({ observedAt: secondsFromNow(-60) }));
-    assert.ok(inFlight?.cleared_at instanceof Date);
+    const inFlight = await catalogue.upsert(catalogueStampRecord({ observedAt: at('10:05:10') }));
+    assert.ok(inFlight?.cleared_observed_at instanceof Date, 'a record from before the later clear leaves it cleared');
 
-    const again = await catalogue.upsert(catalogueStampRecord({ observedAt: secondsFromNow(60) }));
+    const again = await catalogue.upsert(catalogueStampRecord({ observedAt: at('10:06:00') }));
+    assert.equal(again?.cleared_observed_at, null);
     assert.equal(again?.cleared_at, null);
+  });
+
+  it('keeps a clear that arrives before any record, and only a record observed after it sets the stamp', async () => {
+    assert.equal((await catalogue.clear(at('10:05:00'))).outcome, 'unknown');
+    const row = await catalogue.get();
+    assert.equal(row?.record, null);
+    assert.equal(row?.cleared_observed_at?.toISOString(), at('10:05:00'));
+
+    assert.equal(await catalogue.upsert(catalogueStampRecord({ observedAt: at('10:04:00') })), null);
+    assert.equal(await catalogue.upsert(catalogueStampRecord({ observedAt: at('10:05:00') })), null);
+
+    const set = await catalogue.upsert(catalogueStampRecord({ observedAt: at('10:06:00') }));
+    assert.equal(set?.batch_id, catalogueStampRecord().batchId);
+    assert.equal(set?.cleared_observed_at, null);
+  });
+
+  it('refuses a row with no record and no clear', async () => {
+    await assert.rejects(database.pool.query(`INSERT INTO catalogue_stamp (id, observed_at) VALUES (TRUE, NOW())`), {
+      code: '23514',
+    });
   });
 });
 
@@ -204,8 +271,9 @@ describe('StageService over Postgres', () => {
         ingest: { ...stageRecord().ingest, srtPassphrase: 'a-new-passphrase' },
       }),
     );
-    await service.retire(STAGE_ID);
+    await service.retire(STAGE_ID, '2026-09-28T10:05:00.000Z');
     await service.storeCatalogueStamp(catalogueStampRecord());
+    await service.clearCatalogueStamp('2026-09-28T10:05:00.000Z');
 
     const rows = await database.pool.query<{ actor_kind: string; actor_name: string | null; action: string }>(
       `SELECT actor_kind, actor_name, action, details FROM audit_log WHERE actor_kind = 'manager' ORDER BY id`,
@@ -217,6 +285,7 @@ describe('StageService over Postgres', () => {
         ['manager', null, 'stage.change'],
         ['manager', null, 'stage.retire'],
         ['manager', null, 'catalogue.stamp.set'],
+        ['manager', null, 'catalogue.stamp.clear'],
       ],
     );
     assert.doesNotMatch(JSON.stringify(rows.rows), new RegExp(`${SRT_PASSPHRASE}|a-new-passphrase|${TOKEN_SHA256}`));

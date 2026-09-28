@@ -125,6 +125,9 @@ export interface StageRow {
   admin_token_kind: AdminTokenKind | null;
   observed_at: Date;
   received_at: Date;
+  /** When the manager saw the deployment gone, by its clock, or null while the stage is active. */
+  retired_observed_at: Date | null;
+  /** When that retirement arrived. */
   retired_at: Date | null;
 }
 
@@ -134,12 +137,32 @@ export interface StageSecretsRow extends StageRow {
   admin_token_sha256: string | null;
 }
 
-/** The one row of `catalogue_stamp` (migration 010), cleared or not. */
+/**
+ * The one row of `catalogue_stamp` (migration 010), cleared or not. The record and the two values copied out of it
+ * are null only on a row a clear made before any record arrived.
+ */
 export interface CatalogueStampRow {
+  manager_id: string | null;
+  batch_id: string | null;
+  record: CatalogueStampRecord | null;
+  observed_at: Date;
+  received_at: Date;
+  /** When the manager saw the designation gone, by its clock, or null while one is designated. */
+  cleared_observed_at: Date | null;
+  /** When that clear arrived. */
+  cleared_at: Date | null;
+}
+
+/** The row while a catalogue batch is designated: it has a record, and no clear stands. */
+export interface DesignatedCatalogueStamp extends CatalogueStampRow {
   manager_id: string;
   batch_id: string;
   record: CatalogueStampRecord;
-  observed_at: Date;
-  received_at: Date;
-  cleared_at: Date | null;
+  cleared_observed_at: null;
+  cleared_at: null;
+}
+
+/** Whether the row says a catalogue batch is designated. */
+export function isDesignated(row: CatalogueStampRow | null): row is DesignatedCatalogueStamp {
+  return row !== null && row.record !== null && row.cleared_observed_at === null;
 }
