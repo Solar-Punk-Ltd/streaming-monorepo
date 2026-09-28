@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { CatalogueStampSummary, StageSummary } from '@streaming-monorepo/web2-admin-common';
 
@@ -118,6 +118,26 @@ describe('StagesPage', () => {
     expect(await screen.findByText('Old stage')).toBeInTheDocument();
     expect(screen.getByText('Retired')).toBeInTheDocument();
     expect(screen.getByText('Not supported yet (OvenMediaEngine)')).toBeInTheDocument();
+  });
+
+  it('says which token each stage’s uploader presents, and asks for a rotation on the shared one', async () => {
+    serve(
+      [
+        makeStage({ name: 'Main stage', adminTokenKind: 'own' }),
+        makeStage({ stageId: '6a1d3b9f-2c3d-4e5f-8a51-1b2c3d4e5f60', name: 'Old stage', adminTokenKind: 'shared' }),
+        makeStage({ stageId: '7b2e4c0a-3d4e-4f60-9b62-2c3d4e5f6071', name: 'Hand stage', adminTokenKind: null }),
+      ],
+      makeStamp(),
+    );
+    renderWithProviders(<StagesPage />);
+
+    const rowOf = async (name: string) => (await screen.findByText(name)).closest('tr') as HTMLElement;
+    expect(within(await rowOf('Main stage')).getByText('Its own token')).toBeInTheDocument();
+    expect(
+      within(await rowOf('Old stage')).getByText('Still on the shared token: rotate it in the manager.'),
+    ).toBeInTheDocument();
+    expect(within(await rowOf('Hand stage')).getByText('No token pushed')).toBeInTheDocument();
+    expect(screen.getAllByText(/shared token/)).toHaveLength(1);
   });
 
   it('shows the catalogue stamp, and warns when it runs low or is gone', async () => {

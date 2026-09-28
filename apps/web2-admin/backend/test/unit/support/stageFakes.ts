@@ -123,6 +123,18 @@ export class FakeStageStore implements StageStore {
     return row ? listed(row) : null;
   }
 
+  /** As the SQL is: active stages whose own token has this sha256, two at most, never the hash itself. */
+  async findActiveByOwnTokenSha256(sha256: string): Promise<StageRow[]> {
+    return [...this.rows.values()]
+      .filter(
+        (row) =>
+          row.admin_token_sha256 === sha256 && row.admin_token_kind === 'own' && row.retired_observed_at === null,
+      )
+      .sort((a, b) => a.stage_id.localeCompare(b.stage_id))
+      .slice(0, 2)
+      .map(listed);
+  }
+
   /**
    * Whether the stage can take a stream, as the stream UPDATE's move branch
    * asks the stages table: stored, not retired, on SRS.

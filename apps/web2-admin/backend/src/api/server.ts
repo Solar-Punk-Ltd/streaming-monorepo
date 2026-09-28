@@ -17,6 +17,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { notFound } from './middleware/notFound.js';
 import { createRequireAuth } from './middleware/requireAuth.js';
 import { createRequireInternalToken } from './middleware/requireInternalToken.js';
+import { createRequireUploaderToken, type UploaderTokenStore } from './middleware/requireUploaderToken.js';
 import { requireSameSite } from './middleware/requireSameSite.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { createAuthRouter } from './routes/auth.js';
@@ -40,8 +41,14 @@ export interface ApiDeps {
   publishService: PublishService;
   ingestService: IngestService;
   stageService: StageService;
-  /** Bearer token for /api/internal; never accepted anywhere else. */
+  /**
+   * The registrar token: the only one the manager's routes under /api/internal take, and, while the stages move
+   * over to tokens of their own, still taken from an uploader as an unattributed caller. Never accepted anywhere
+   * else.
+   */
   internalApiToken: string;
+  /** Where an uploader's own token is looked up by its sha256: the stages the manager pushed. */
+  uploaderTokens: UploaderTokenStore;
   feed: FeedIdentity;
   viewerBaseUrl: string;
 }
@@ -65,7 +72,8 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
   // /api/internal is for machine callers: swarm-hls-stream posts from a server,
   // and the manager pushes stage records from one, with no Origin, no
   // Sec-Fetch-Site and no custom header, and each authenticates
-  // with a bearer token that no browser holds. Putting it behind requireSameSite
+  // with a bearer token that no browser holds: the manager with the registrar
+  // token, an uploader with its stage's own token or, for now, the shared one. Putting it behind requireSameSite
   // would refuse every report it makes and break the live streaming loop, while
   // buying nothing: a cross-site page cannot forge the token either, and the
   // session cookie is never accepted here. Mounted first so the check that
@@ -77,7 +85,11 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
       streamStateService: deps.streamStateService,
       ladderService: deps.ladderService,
       stageService: deps.stageService,
-      requireInternalToken: createRequireInternalToken(deps.internalApiToken),
+      requireRegistrarToken: createRequireInternalToken(deps.internalApiToken),
+      requireUploaderToken: createRequireUploaderToken({
+        sharedToken: deps.internalApiToken,
+        stages: deps.uploaderTokens,
+      }),
     }),
   );
 

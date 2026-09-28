@@ -67,6 +67,33 @@ function Ingest({ stage }: { stage: StageSummary }) {
   );
 }
 
+/**
+ * Which token the stage's uploader presents to the admin. A stage still on the shared token is answered about every
+ * stream, not only its own, until the manager gives it a token of its own.
+ */
+function UploaderToken({ stage }: { stage: StageSummary }) {
+  switch (stage.adminTokenKind) {
+    case 'own':
+      return (
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          Its own token
+        </Typography>
+      );
+    case 'shared':
+      return (
+        <Typography variant="caption" sx={{ color: 'warning.main' }}>
+          Still on the shared token: rotate it in the manager.
+        </Typography>
+      );
+    case null:
+      return (
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          No token pushed
+        </Typography>
+      );
+  }
+}
+
 function Rungs({ stage }: { stage: StageSummary }) {
   if (stage.rungs.length === 0) {
     return (
@@ -203,6 +230,7 @@ export function StagesPage() {
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                         Uploader: {stage.uploader ? stage.uploader.state : 'not read'}
                       </Typography>
+                      <UploaderToken stage={stage} />
                     </Stack>
                   </TableCell>
                   <TableCell>

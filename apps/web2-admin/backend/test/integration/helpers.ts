@@ -12,6 +12,7 @@
  * and the real catalogue and which this suite would publish through.
  */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 
 import { stageRecordPath } from '@streaming-monorepo/contracts';
 import { REQUESTED_WITH_HEADER, REQUESTED_WITH_VALUE } from '@streaming-monorepo/web2-admin-common';
@@ -174,9 +175,20 @@ export async function cleanup(streamIds: Iterable<string>): Promise<void> {
  * Registers a stage the way the manager does, on the registrar token, so a
  * stream can be put on it and published: a draft with no stage is refused at
  * publish. Answers its id, `STAGE_ID` unless the record says otherwise.
+ *
+ * With `ownToken`, the record names that token, by its sha256, as the one the
+ * stage's uploader presents, of its `own`, so an uploader call on it is
+ * attributed to the stage. Without, the record's `adminToken` is what `over`
+ * says, or the fixture's.
  */
-export async function registerStage(over: Parameters<typeof stageRecord>[0] = {}): Promise<string> {
-  const record = stageRecord({ stageId: STAGE_ID, ...over });
+export async function registerStage(over: Parameters<typeof stageRecord>[0] = {}, ownToken?: string): Promise<string> {
+  const record = stageRecord({
+    stageId: STAGE_ID,
+    ...over,
+    ...(ownToken === undefined
+      ? {}
+      : { adminToken: { sha256: createHash('sha256').update(ownToken, 'utf8').digest('hex'), kind: 'own' as const } }),
+  });
   const stored = await raw('PUT', stageRecordPath(record.stageId), { ...internalCall(), body: record });
   assert.equal(stored.status, 200, stored.text);
   return record.stageId;

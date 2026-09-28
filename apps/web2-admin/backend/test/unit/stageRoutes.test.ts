@@ -22,6 +22,7 @@ import { errorHandler } from '../../src/api/middleware/errorHandler.js';
 import { notFound } from '../../src/api/middleware/notFound.js';
 import { createRequireAuth } from '../../src/api/middleware/requireAuth.js';
 import { createRequireInternalToken } from '../../src/api/middleware/requireInternalToken.js';
+import { createRequireUploaderToken } from '../../src/api/middleware/requireUploaderToken.js';
 import { createInternalRouter } from '../../src/api/routes/internal.js';
 import { createCatalogueStampRouter, createStagesRouter } from '../../src/api/routes/stages.js';
 import { AuthService } from '../../src/domain/auth/AuthService.js';
@@ -104,7 +105,8 @@ before(async () => {
       streamStateService: new StreamStateService(streams, publishService, audit),
       ladderService: new LadderService(streams, renditions, publishService, audit),
       stageService,
-      requireInternalToken: createRequireInternalToken(TOKEN),
+      requireRegistrarToken: createRequireInternalToken(TOKEN),
+      requireUploaderToken: createRequireUploaderToken({ sharedToken: TOKEN, stages }),
     }),
   );
   app.use(express.json());
@@ -375,6 +377,11 @@ describe('the console’s stage reads', () => {
     assert.equal(main.observedAt, '2026-09-28T10:00:00.000Z');
     assert.equal(main.retiredAt, null);
     assert.equal('adminToken' in main, false);
+    assert.deepEqual(
+      listed.map((stage) => stage.adminTokenKind),
+      [null, 'shared'],
+      'which token the uploader presents, and never its hash',
+    );
   });
 
   it('answer null for the catalogue stamp until it is set, and never the Bee API address', async () => {

@@ -1,4 +1,5 @@
 import type { SessionInfo } from '../domain/auth/AuthService.js';
+import type { UploaderCaller } from '../domain/uploaderScope.js';
 
 import type { UserRow } from './rows.js';
 
@@ -15,6 +16,11 @@ declare global {
       sessionTokenHash?: string;
       /** The whole session, including when it runs out. Set by requireAuth. */
       authSession?: SessionInfo;
+      /**
+       * Which uploader called one of the uploader's routes under /api/internal: a stage, by its own token, or an
+       * unattributed caller on the shared one. Set by requireUploaderToken; read it with uploaderCallerOf(req).
+       */
+      uploaderCaller?: UploaderCaller;
     }
   }
 }

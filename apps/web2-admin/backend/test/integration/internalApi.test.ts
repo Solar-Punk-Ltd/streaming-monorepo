@@ -31,7 +31,7 @@ import type {
 } from '@streaming-monorepo/web2-admin-common';
 import pg from 'pg';
 
-import { STAGE_ID } from '../unit/support/stageFakes.js';
+import { STAGE_ID, stageRecord } from '../unit/support/stageFakes.js';
 
 import {
   api,
@@ -641,5 +641,113 @@ describe('internal rendition reports', () => {
     assert.equal(entry.index, 9, 'the master, as before');
     assert.equal(entry.group, stream.topic);
     assert.equal(entry.renditions?.length, 2);
+  });
+});
+
+describe('an uploader on a token of its own', () => {
+  // A second stage, registered with the token its uploader presents, of its own. `STAGE_ID` stays on the fixture's
+  // record, whose uploader is still on the shared token.
+  const OWN_STAGE = '6a1d3b9f-2c3d-4e5f-8a51-1b2c3d4e5f60';
+  const OWN_OWNER = '0x' + '5c'.repeat(20);
+  const OWN_TOKEN = 'itest-own-stage-uploader-token-000000000000';
+  let mine: Stream;
+  let theirs: Stream;
+
+  before(async () => {
+    await registerStage({ stageId: OWN_STAGE, name: 'Own stage', owner: OWN_OWNER }, OWN_TOKEN);
+    mine = await publishedStream({ title: 'itest on its own stage', stageId: OWN_STAGE });
+    theirs = await publishedStream({ title: 'itest on the main stage' });
+  });
+
+  async function feedWriteCount(): Promise<number> {
+    const result = await pool.query<{ count: string }>('SELECT count(*) AS count FROM feed_writes');
+    return Number(result.rows[0]?.count);
+  }
+
+  it('names its stage and the owner that stage signs as, and the shared token none', async () => {
+    const self = await raw('GET', '/api/internal/stages/self', internalCall(OWN_TOKEN));
+    assert.equal(self.status, 200, self.text);
+    assert.deepEqual(self.body, { stageId: OWN_STAGE, owner: OWN_OWNER });
+
+    const shared = await raw('GET', '/api/internal/stages/self', internalCall());
+    assert.equal(shared.status, 404);
+    assert.equal((shared.body as { error: string }).error, 'not_found');
+  });
+
+  it('finds its own stage’s stream, and not another stage’s', async () => {
+    const found = await api<IngestLookupResponse>(
+      'GET',
+      `/api/internal/streams/by-ingest/video/${mine.topic}`,
+      internalCall(OWN_TOKEN),
+    );
+    assert.equal(found.id, mine.id);
+
+    const other = await raw('GET', `/api/internal/streams/by-ingest/video/${theirs.topic}`, internalCall(OWN_TOKEN));
+    assert.equal(other.status, 404);
+    assert.equal((other.body as { error: string }).error, 'stream_not_found');
+
+    const shared = await api<IngestLookupResponse>(
+      'GET',
+      `/api/internal/streams/by-ingest/video/${theirs.topic}`,
+      internalCall(),
+    );
+    assert.equal(shared.id, theirs.id, 'the shared token is answered about every stream, as before');
+  });
+
+  it('reports nothing for another stage’s stream, and writes nothing', async () => {
+    const writes = await feedWriteCount();
+
+    const state = await raw('POST', `/api/internal/streams/${theirs.id}/state`, {
+      ...internalCall(OWN_TOKEN),
+      body: { state: 'live' },
+    });
+    assert.equal(state.status, 404);
+    assert.equal((state.body as { error: string }).error, 'stream_not_found');
+
+    const rung = await raw('POST', `/api/internal/streams/${theirs.id}/renditions`, {
+      ...internalCall(OWN_TOKEN),
+      body: {
+        name: '720p',
+        width: 1280,
+        height: 720,
+        topic: 'bbbbbbbb-0000-4000-8000-000000000720',
+        bandwidth: 2_880_000,
+        avgBandwidth: 2_160_000,
+      },
+    });
+    assert.equal(rung.status, 404);
+
+    assert.equal(await feedWriteCount(), writes, 'no feed write');
+    const rungs = await pool.query('SELECT 1 FROM stream_renditions WHERE stream_id = $1', [theirs.id]);
+    assert.equal(rungs.rowCount, 0, 'no rung stored');
+    assert.equal((await api<Stream>('GET', `/api/streams/${theirs.id}`)).status, 'published');
+  });
+
+  it('reports for its own stage’s stream', async () => {
+    const live = await api<StreamStateResponse>('POST', `/api/internal/streams/${mine.id}/state`, {
+      ...internalCall(OWN_TOKEN),
+      body: { state: 'live' },
+    });
+    assert.equal(live.stream.status, 'live');
+    assert.equal((await catalogueEntry(mine.topic)).state, 'live');
+  });
+
+  it('is refused on the manager’s routes, and everywhere once its stage is retired', async () => {
+    const push = await raw('PUT', `/api/internal/stages/${OWN_STAGE}`, {
+      ...internalCall(OWN_TOKEN),
+      body: stageRecord({ stageId: OWN_STAGE, name: 'Own stage', owner: OWN_OWNER }),
+    });
+    assert.equal(push.status, 401);
+
+    const retired = await raw('DELETE', `/api/internal/stages/${OWN_STAGE}`, {
+      ...internalCall(),
+      body: { observedAt: '2026-09-28T10:05:00.000Z' },
+    });
+    assert.deepEqual(retired.body, { retired: true });
+
+    for (const path of ['/api/internal/stages/self', `/api/internal/streams/by-ingest/video/${mine.topic}`]) {
+      const answer = await raw('GET', path, internalCall(OWN_TOKEN));
+      assert.equal(answer.status, 401, path);
+    }
   });
 });

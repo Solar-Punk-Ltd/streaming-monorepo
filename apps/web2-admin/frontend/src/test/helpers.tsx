@@ -214,6 +214,7 @@ export function makeStage(overrides: Partial<StageSummary> = {}): StageSummary {
     ],
     uploader: { state: 'ready', reasons: [] },
     readiness: { tone: 'ready', reasons: [] },
+    adminTokenKind: 'own',
     observedAt: minutesAgo(5),
     receivedAt: minutesAgo(5),
     retiredAt: null,
