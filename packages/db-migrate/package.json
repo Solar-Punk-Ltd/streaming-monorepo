@@ -1,0 +1,43 @@
+{
+  "name": "@streaming-monorepo/db-migrate",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The migration runner the backends share: numbered SQL files applied once each, under one advisory lock.",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "compiled": "./dist/index.js",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "oxlint --type-aware .",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test 'src/*.test.ts'",
+    "test:database": "tsx --test --test-concurrency=1 'src/database/*.test.ts'"
+  },
+  "dependencies": {
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.4",
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2"
+  },
+  "nx": {
+    "tags": [
+      "scope:shared",
+      "type:lib"
+    ]
+  }
+}

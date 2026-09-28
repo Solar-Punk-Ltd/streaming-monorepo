@@ -1,3 +1,5 @@
+import { DEFAULT_QUALITY_LADDER, type QualityRung } from '@streaming-monorepo/contracts';
+
 import { BEE_UPLOADER_SERVICE } from './constants.js';
 import {
   classifyPublishUrl,
@@ -56,14 +58,11 @@ export function isLadderKind(kind: string | null | undefined): boolean {
   return kind === ABR_NODE_POOL_GROUP_KIND;
 }
 
-/** One rung of the shipped ladder. Ascending quality. */
-export interface AbrRung {
-  name: string;
-  width: number;
-  height: number;
-  /** Encoder target, kbps. Batch sizing depends on it. See suggestedRungDepth. */
-  kbps: number;
-}
+/**
+ * One rung of the shipped ladder. Its `kbps` is the encoder target, which batch sizing depends on. See
+ * suggestedRungDepth.
+ */
+export type AbrRung = QualityRung;
 
 /**
  * The shipped ABR ladder, the same rungs, geometry and target bitrates as the
@@ -75,12 +74,7 @@ export interface AbrRung {
  * longest-lived batch and those two feeds are the only addresses a viewer needs
  * to open a stage.
  */
-export const DEFAULT_ABR_LADDER: readonly AbrRung[] = [
-  { name: '360p', width: 640, height: 360, kbps: 700 },
-  { name: '480p', width: 854, height: 480, kbps: 1200 },
-  { name: '720p', width: 1280, height: 720, kbps: 2800 },
-  { name: '1080p', width: 1920, height: 1080, kbps: 5000 },
-];
+export const DEFAULT_ABR_LADDER: readonly AbrRung[] = DEFAULT_QUALITY_LADDER;
 
 export const DEFAULT_ABR_RUNGS: readonly string[] = DEFAULT_ABR_LADDER.map((rung) => rung.name);
 

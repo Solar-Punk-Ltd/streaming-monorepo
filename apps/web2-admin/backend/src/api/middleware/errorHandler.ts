@@ -1,3 +1,4 @@
+import { ADMIN_ERROR_STREAM_NOT_FOUND, ADMIN_ERROR_UNAUTHENTICATED } from '@streaming-monorepo/contracts';
 import { NextFunction, Request, Response } from 'express';
 import { ValidationError as YupValidationError } from 'yup';
 
@@ -13,6 +14,7 @@ import {
   MediaTypeLockedError,
   NoUsersError,
   PublishFailedError,
+  RequestShapeError,
   StreamBusyError,
   StreamLiveError,
   StreamLockedError,
@@ -54,6 +56,10 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     res.status(400).json({ error: 'validation_error', errors: err.errors });
     return;
   }
+  if (err instanceof RequestShapeError) {
+    res.status(400).json({ error: 'validation_error', errors: err.problems });
+    return;
+  }
   if (err instanceof WeakPasswordError || err instanceof InvalidUsernameError) {
     // Same shape as a schema rejection: the reason is the only useful text, and
     // the console already renders `errors` from a 400.
@@ -71,7 +77,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     return;
   }
   if (err instanceof UnauthenticatedError) {
-    res.status(401).json({ error: 'unauthenticated' });
+    res.status(401).json({ error: ADMIN_ERROR_UNAUTHENTICATED });
     return;
   }
   if (err instanceof NoUsersError) {
@@ -105,7 +111,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     return;
   }
   if (err instanceof StreamNotFoundError) {
-    res.status(404).json({ error: 'stream_not_found', id: err.streamId });
+    res.status(404).json({ error: ADMIN_ERROR_STREAM_NOT_FOUND, id: err.streamId });
     return;
   }
   if (err instanceof ThumbnailNotFoundError) {

@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "lint": "oxlint --type-aware .",
-    "build": "pnpm --filter @streaming-infra-manager/common build && tsc && rm -rf dist/migrations && cp -r src/migrations dist/migrations",
-    "start": "node dist/index.js",
+    "build": "pnpm --filter @streaming-monorepo/contracts build && pnpm --filter @streaming-monorepo/db-migrate build && pnpm --filter @streaming-monorepo/web-auth build && pnpm --filter @streaming-infra-manager/common build && tsc && rm -rf dist/migrations && cp -r src/migrations dist/migrations",
+    "start": "node --conditions=compiled dist/index.js",
     "database:start": "docker compose -p streaming-infra-manager -f ./docker-compose.yml up -d postgres",
     "database:stop": "docker compose -p streaming-infra-manager -f ./docker-compose.yml stop postgres",
     "stack:start": "docker compose -p streaming-infra-manager -f ./docker-compose.yml --profile full up -d --build",
@@ -20,6 +20,9 @@
   },
   "dependencies": {
     "@streaming-infra-manager/common": "workspace:*",
+    "@streaming-monorepo/contracts": "workspace:*",
+    "@streaming-monorepo/db-migrate": "workspace:*",
+    "@streaming-monorepo/web-auth": "workspace:*",
     "dockerode": "5.0.1",
     "dotenv": "17.4.2",
     "express": "5.2.1",

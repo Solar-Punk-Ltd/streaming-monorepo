@@ -262,6 +262,7 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
               hostPassphrase={hostPassphrase}
               ready={readiness.tone === 'ok'}
               passphrasePending={publish.pending}
+              fieldPassphrase={publish.fieldPassphrase}
             />
           )}
 

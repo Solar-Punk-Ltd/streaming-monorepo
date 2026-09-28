@@ -50,8 +50,8 @@ for the whole design.
 | Script                                  | What                                                                                                     |
 | --------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `pnpm dev`                              | `tsx watch` against `src/index.ts`                                                                       |
-| `pnpm build`                            | builds common, then `tsc` + copies `src/migrations` into `dist`                                          |
-| `pnpm start`                            | `node dist/index.js`                                                                                     |
+| `pnpm build`                            | builds the shared packages and common, then `tsc` + copies `src/migrations` into `dist`                  |
+| `pnpm start`                            | `node --conditions=compiled dist/index.js`, which loads the shared packages' built `dist`                |
 | `pnpm user:add <name> [--admin]`        | add a user; `--password-stdin` reads it from a pipe. The only way to make the first one                  |
 | `pnpm test`                             | unit tests (`test/unit`), no database or network                                                         |
 | `pnpm test:integration`                 | starts a backend of its own and drives it over HTTP — see [test/integration](test/integration/README.md) |

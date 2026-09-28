@@ -40,6 +40,13 @@ Each script prints its usage with `--help`.
 - **The workspace file:** the root's, with the globs under the app's folder named from it, the app's injection
   setting, and build permissions for the app's own packages alone. Overrides and every other setting stay as the root
   has them, and so do the comments.
+- **The shared packages the app links:** a project one folder under the root's `packages`, such as
+  `packages/contracts`, that the app depends on with `workspace:*`. The cut carries it, and every shared package it
+  links in turn, as `workspace-packages/<name>` beside the pair. The lockfile names its importer there, points the
+  app's links at it, and keeps what it reaches. The workspace file lists `workspace-packages/*` after the app's globs
+  and keeps the build permissions of what it reaches. Its files are git's view of its folder when the root is a
+  checkout, and every file but `node_modules` when the root is an export, such as the one `git archive` writes. A cut
+  of an app that links no shared package is the same as it was before shared packages were carried.
 
 The injection setting comes from [apps.mjs](apps.mjs). It is on for the manager alone, because its image runs
 `pnpm deploy` without `--legacy`, and pnpm refuses that unless injection is on for the whole workspace the deploy
@@ -55,8 +62,14 @@ A cut writes nothing and says why when:
 - the root or the app names no `packageManager`, or the two name different ones. A build from the app folder runs the
   app's pnpm, so it must be the root's
 - `apps.mjs` has no entry for the app
+- the app holds a `workspace-packages` of its own, which a cut would write over
 - the root has no lockfile, or a lockfile in a format other than `'9.0'`
-- a workspace link, a folder dependency or a glob reaches outside the app, which a copy of the app cannot carry
+- a workspace link, a folder dependency or a glob reaches outside the app, which a copy of the app cannot carry. A
+  link to a shared package is the one exception
+- a shared package links anything but another shared package, such as an app or a tool, because it is carried into
+  each app's cut on its own
+- a shared package holds an env file, `.env` or `.env.<anything>`, anywhere outside `node_modules`, whether git
+  ignores it or not
 
 `cut.mjs` exits 0 when it wrote the pair, 1 when it refused, 2 on bad arguments. `in-copy.mjs` exits with the
 command's own status, or 125 when it could not make the copy or start the command.

@@ -4,18 +4,14 @@
  *
  * The stack reads it from two settings. `ADMIN_API_URL` alone turns the
  * uploader's admin mode on, and in admin mode the uploader refuses to start
- * without `ADMIN_API_TOKEN` of at least 32 characters
- * (`packages/stream-uploader/src/utils/config.ts` and `libs/AdminApiClient.ts`
- * in swarm-hls-stream). The manager and the page hold a setting of the two to
- * the same rule, so neither stores one the uploader would refuse.
+ * without `ADMIN_API_TOKEN` of at least 32 characters. The contracts package
+ * holds the two names and that floor. The manager and the page hold a setting
+ * of the two to the same rule, so neither stores one the uploader would refuse.
  */
 
-export const ADMIN_API_URL_KEY = 'ADMIN_API_URL';
+import { ADMIN_API_TOKEN_KEY, ADMIN_API_URL_KEY } from '@streaming-monorepo/contracts';
 
-export const ADMIN_API_TOKEN_KEY = 'ADMIN_API_TOKEN';
-
-/** The stream uploader's own floor for the token, `MIN_ADMIN_API_TOKEN_LENGTH`. */
-export const ADMIN_API_TOKEN_MIN_LENGTH = 32;
+export { ADMIN_API_TOKEN_KEY, ADMIN_API_TOKEN_MIN_LENGTH, ADMIN_API_URL_KEY } from '@streaming-monorepo/contracts';
 
 /** What the two keys come to once a save or a create lands, as far as the rule needs them. */
 export interface AdminLinkState {

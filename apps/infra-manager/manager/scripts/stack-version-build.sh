@@ -244,9 +244,15 @@ if [ "$EXPORT_FOLDER" != . ] && [ ! -e "$STAGING/pnpm-lock.yaml" ] &&
         echo "ERROR: $COMMIT's $EXPORT_FOLDER holds a $WORKSPACE_ROOT_DIR of its own, where the build puts the root's files" >&2
         exit 2
     fi
-    echo "==> Exporting the root's lockfile, workspace file, package.json and tools/app-workspace into $STAGING/$WORKSPACE_ROOT_DIR"
+    ROOT_PATHS=(package.json pnpm-lock.yaml pnpm-workspace.yaml tools/app-workspace "$EXPORT_FOLDER/package.json")
+    # The packages every app shares, when the commit has them. The cut copies
+    # each one the stack links into the stack's workspace-packages/.
+    if git -C "$REPO" cat-file -e "$COMMIT:packages" 2>/dev/null; then
+        ROOT_PATHS+=(packages)
+    fi
+    echo "==> Exporting ${ROOT_PATHS[*]} of the root into $STAGING/$WORKSPACE_ROOT_DIR"
     mkdir "$STAGING/$WORKSPACE_ROOT_DIR"
-    git -C "$REPO" archive "$ARCHIVE_REV" -- package.json pnpm-lock.yaml pnpm-workspace.yaml tools/app-workspace "$EXPORT_FOLDER/package.json" |
+    git -C "$REPO" archive "$ARCHIVE_REV" -- "${ROOT_PATHS[@]}" |
         tar -x -C "$STAGING/$WORKSPACE_ROOT_DIR"
     CUT_COMMAND="node $WORKSPACE_ROOT_DIR/tools/app-workspace/cut.mjs --root $WORKSPACE_ROOT_DIR --app $EXPORT_FOLDER --out . && "
 fi

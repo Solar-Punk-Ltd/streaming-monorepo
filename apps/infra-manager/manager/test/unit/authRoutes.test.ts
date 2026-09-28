@@ -12,9 +12,8 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
 import { SESSION_IDLE_TIMEOUT_MS } from '@streaming-infra-manager/common';
+import { hashSessionToken, LoginLimiter } from '@streaming-monorepo/web-auth';
 
-import { LoginLimiter } from '../../src/domain/auth/LoginLimiter.js';
-import { hashSessionToken } from '../../src/domain/auth/sessionToken.js';
 import {
   AuthTestApp,
   call,
@@ -155,6 +154,30 @@ describe('signing in and out', () => {
     assert.equal(out.status, 204);
     assert.equal(sessionCookieFrom(out.setCookie), null);
     assert.equal((await call(app, 'GET', '/profiles', { cookie })).status, 401);
+  });
+
+  it('clears a stale cookie on sign-out rather than refusing it', async () => {
+    const out = await call(app, 'POST', '/auth/logout', { cookie: 'sim_session=no-such-session' });
+
+    assert.equal(out.status, 204);
+    assert.ok(
+      out.setCookie.some((header) => header.startsWith('sim_session=;')),
+      `the stale cookie is cleared, got ${JSON.stringify(out.setCookie)}`,
+    );
+  });
+
+  it('answers a sign-out with no cookie at all as done', async () => {
+    const out = await call(app, 'POST', '/auth/logout');
+
+    assert.equal(out.status, 204);
+  });
+
+  it('leaves every other session alone when a stale cookie signs out', async () => {
+    const { cookie } = await signIn(app, USERNAME, PASSWORD);
+
+    await call(app, 'POST', '/auth/logout', { cookie: 'sim_session=no-such-session' });
+
+    assert.equal((await call(app, 'GET', '/profiles', { cookie })).status, 200);
   });
 });
 

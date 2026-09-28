@@ -1,4 +1,5 @@
 import { PrivateKey } from '@ethersphere/bee-js';
+import { sameFeedOwner } from '@swarm-hls-stream/shared';
 import path from 'path';
 
 // Side-effect import, and it must stay ahead of every other local import. `utils/env.js` runs
@@ -31,7 +32,6 @@ import { runStartGates, StartGate } from './libs/StartGates.js';
 import { StreamCatalog } from './libs/StreamCatalog.js';
 import { StreamOrchestrator } from './libs/StreamOrchestrator.js';
 import { config } from './utils/config.js';
-import { sameFeedOwner } from './utils/feedOwner.js';
 import { NodeWaitReport } from './types.js';
 
 /** The gate's floor is configured in hours, because that is the unit an operator tops a batch up in. */

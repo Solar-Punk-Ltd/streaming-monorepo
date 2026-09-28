@@ -1,5 +1,6 @@
 import { Request, RequestHandler, Response, Router } from 'express';
 import type { SessionInfo } from '@streaming-infra-manager/common';
+import { clientIpOf } from '@streaming-monorepo/web-auth';
 
 import { AuthService } from '../../domain/auth/AuthService.js';
 import { AdminRequiredError } from '../../domain/errors/index.js';
@@ -12,7 +13,6 @@ import {
   loginSchema,
   userIdParamSchema,
 } from '../../schemas/auth.js';
-import { clientIpOf } from '../../utils/clientIp.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requireAdmin, signedInSession, signedInUser } from '../middleware/requireSession.js';
 import { validateBody, validateParams } from '../middleware/validate.js';
@@ -34,9 +34,10 @@ function userIdOf(req: Request): number {
 /**
  * Signing in, signing out, and who may do either.
  *
- * `POST /login` and `GET /session` are the only routes past `/health` that
- * answer without a session, and `/session` answers 401 either way: it exists so
- * the frontend can tell "signed out" from "no users have been created yet".
+ * `POST /login`, `POST /logout` and `GET /session` are the only routes past
+ * `/health` that answer without a session. `/session` answers 401 either way:
+ * it exists so the frontend can tell "signed out" from "no users have been
+ * created yet".
  */
 export function createAuthRouter(authService: AuthService, requireSession: RequestHandler): Router {
   const router = Router();
@@ -81,9 +82,10 @@ export function createAuthRouter(authService: AuthService, requireSession: Reque
 
   router.post(
     '/logout',
-    requireSession,
     asyncHandler(async (req: Request, res: Response) => {
-      await authService.signOut(signedInSession(req));
+      // Without a session too, so a stale cookie is cleared rather than refused.
+      const token = readSessionToken(req);
+      if (token) await authService.signOutToken(token);
       clearSessionCookie(req, res);
       res.status(204).end();
     }),

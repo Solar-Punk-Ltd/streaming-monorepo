@@ -1,3 +1,4 @@
+import { adminFeedRungSchema } from '@streaming-monorepo/contracts';
 import type { Rendition } from '@streaming-monorepo/web2-admin-common';
 
 import type { StreamRenditionRow } from '../types/index.js';
@@ -34,18 +35,7 @@ export function toRendition(row: StreamRenditionRow): Rendition {
  * carries is read before it is trusted, never cast.
  */
 export function isRendition(value: unknown): value is Rendition {
-  if (typeof value !== 'object' || value === null) return false;
-  const rung = value as Record<string, unknown>;
-  return (
-    typeof rung.name === 'string' &&
-    typeof rung.width === 'number' &&
-    typeof rung.height === 'number' &&
-    typeof rung.topic === 'string' &&
-    typeof rung.bandwidth === 'number' &&
-    typeof rung.avgBandwidth === 'number' &&
-    (rung.index === undefined || typeof rung.index === 'number') &&
-    (rung.duration === undefined || typeof rung.duration === 'number')
-  );
+  return adminFeedRungSchema.safeParse(value).success;
 }
 
 /** A rung's feed topic is a UUID; its case has never been load-bearing. */

@@ -10,6 +10,10 @@ import {
   PACKAGES,
   ROOT_LOCKFILE,
   SETTINGS,
+  SHARED_IMPORTERS,
+  SHARED_PACKAGES,
+  SHARED_ROOT_LOCKFILE,
+  SHARED_SNAPSHOTS,
   SNAPSHOTS,
   lockfileText,
 } from './support/workspace.mjs';
@@ -199,5 +203,132 @@ describe('cutLockfile', () => {
       () => cutLockfile(ROOT_LOCKFILE, { app: 'apps/gamma', injectWorkspacePackages: false }),
       (error) => error instanceof Refusal && /apps\/gamma/.test(error.message) && /no importer/.test(error.message),
     );
+  });
+
+  describe('with a shared package under packages/', () => {
+    /** The blocks of the shared root whose names are given, in the root's own order. */
+    const keep = (blocks, names) =>
+      Object.entries(blocks)
+        .filter(([name]) => names.includes(name))
+        .map(([, block]) => block);
+
+    const ALPHA_SHARED_KEPT = [...ALPHA_KEPT, 'esbuild', 'esbuildLinux', 'valibot'];
+
+    const CARRIED_CONTRACTS = SHARED_IMPORTERS.contracts.replace(
+      '  packages/contracts:',
+      '  workspace-packages/contracts:',
+    );
+
+    const ALPHA_SHARED_IMPORTERS = [
+      SHARED_IMPORTERS.alpha
+        .replace('  apps/alpha:', '  .:')
+        .replace('link:../../packages/contracts', 'link:workspace-packages/contracts'),
+      SHARED_IMPORTERS.alphaCommon.replace('  apps/alpha/common:', '  common:'),
+      SHARED_IMPORTERS.alphaServer
+        .replace('  apps/alpha/server:', '  server:')
+        .replace('link:../../../packages/contracts', 'link:../workspace-packages/contracts'),
+      CARRIED_CONTRACTS,
+    ];
+
+    /** The shared root with some importers replaced, and others added, by their root names. */
+    function sharedWith(importers) {
+      const blocks = { ...SHARED_IMPORTERS, ...importers };
+      return lockfileText({
+        importers: Object.values(blocks).filter((block) => block !== null),
+        packages: Object.values(SHARED_PACKAGES),
+        snapshots: Object.values(SHARED_SNAPSHOTS),
+      });
+    }
+
+    it("carries the package as workspace-packages/<name>, points the app's links at it, and keeps what it reaches", () => {
+      const cut = cutLockfile(SHARED_ROOT_LOCKFILE, ALPHA);
+
+      assert.equal(
+        cut.text,
+        lockfileText({
+          importers: ALPHA_SHARED_IMPORTERS,
+          packages: keep(SHARED_PACKAGES, ALPHA_SHARED_KEPT),
+          snapshots: keep(SHARED_SNAPSHOTS, ALPHA_SHARED_KEPT),
+        }),
+      );
+    });
+
+    it('names the carried package among the projects and its packages among the names, and says where it goes', () => {
+      const cut = cutLockfile(SHARED_ROOT_LOCKFILE, ALPHA);
+
+      assert.deepEqual(cut.projects, ['common', 'server', 'workspace-packages/contracts']);
+      assert.deepEqual(cut.sharedPackages, [{ from: 'packages/contracts', to: 'workspace-packages/contracts' }]);
+      assert.equal(cut.packageNames.has('esbuild'), true);
+      assert.equal(cut.packageNames.has('@esbuild/linux-x64'), true);
+      assert.equal(cut.packageNames.has('left-pad'), false);
+    });
+
+    it('carries a shared package another shared package links, with the link between them as the root has it', () => {
+      const contracts = SHARED_IMPORTERS.contracts.replace(
+        '    dependencies:\n',
+        "    dependencies:\n      '@example/unused':\n        specifier: workspace:*\n        version: link:../unused\n",
+      );
+      const cut = cutLockfile(sharedWith({ contracts }), ALPHA);
+
+      const kept = [...ALPHA_SHARED_KEPT, 'leftPad'];
+      assert.equal(
+        cut.text,
+        lockfileText({
+          importers: [
+            ...ALPHA_SHARED_IMPORTERS.slice(0, 3),
+            contracts.replace('  packages/contracts:', '  workspace-packages/contracts:'),
+            SHARED_IMPORTERS.unused.replace('  packages/unused:', '  workspace-packages/unused:'),
+          ],
+          packages: keep(SHARED_PACKAGES, kept),
+          snapshots: keep(SHARED_SNAPSHOTS, kept),
+        }),
+      );
+      assert.deepEqual(
+        cut.sharedPackages.map((shared) => shared.to),
+        ['workspace-packages/contracts', 'workspace-packages/unused'],
+      );
+    });
+
+    it('refuses a shared package that links anything outside packages/, naming the importer, the link and the target', () => {
+      const contracts = SHARED_IMPORTERS.contracts.replace(
+        '    dependencies:\n',
+        '    dependencies:\n      beta:\n        specifier: workspace:*\n        version: link:../../apps/beta\n',
+      );
+
+      assert.throws(
+        () => cutLockfile(sharedWith({ contracts }), ALPHA),
+        (error) =>
+          error instanceof Refusal &&
+          /packages\/contracts links beta from apps\/beta/.test(error.message) &&
+          /link:\.\.\/\.\.\/apps\/beta/.test(error.message),
+      );
+    });
+
+    it('refuses a link to a folder under packages/ the root lockfile has no importer for', () => {
+      const alpha = SHARED_IMPORTERS.alpha.replace('packages/contracts', 'packages/missing');
+
+      assert.throws(
+        () => cutLockfile(sharedWith({ alpha }), ALPHA),
+        (error) =>
+          error instanceof Refusal && /packages\/missing/.test(error.message) && /no importer/.test(error.message),
+      );
+    });
+
+    it('refuses a link deeper than one folder under packages/, which the root glob does not list', () => {
+      const alpha = SHARED_IMPORTERS.alpha.replace('packages/contracts', 'packages/contracts/nested');
+
+      assert.throws(
+        () => cutLockfile(sharedWith({ alpha }), ALPHA),
+        (error) => error instanceof Refusal && /outside apps\/alpha/.test(error.message),
+      );
+    });
+
+    it('cuts an app that links no shared package to the same bytes whether the root holds shared packages or not', () => {
+      const shared = cutLockfile(SHARED_ROOT_LOCKFILE, BETA);
+
+      assert.equal(shared.text, cutLockfile(ROOT_LOCKFILE, BETA).text);
+      assert.deepEqual(shared.projects, []);
+      assert.deepEqual(shared.sharedPackages, []);
+    });
   });
 });
