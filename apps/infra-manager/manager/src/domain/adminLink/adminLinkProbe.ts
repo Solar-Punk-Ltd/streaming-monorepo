@@ -50,7 +50,7 @@ type Answer = { kind: 'none' } | { kind: 'redirect' } | { kind: 'answered'; stat
  * or one that is not JSON. Throws only when the body stops arriving, which the
  * timeout ends.
  */
-async function boundedJson(response: Response, maxBytes: number): Promise<unknown> {
+export async function boundedJson(response: Response, maxBytes: number): Promise<unknown> {
   const declared = Number(response.headers.get('content-length'));
   if (!response.body || (Number.isFinite(declared) && declared > maxBytes)) {
     await response.body?.cancel();

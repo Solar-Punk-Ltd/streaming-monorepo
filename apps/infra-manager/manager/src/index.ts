@@ -23,6 +23,9 @@ import { ProfileRepository } from './domain/ProfileRepository.js';
 import { ProfileService } from './domain/ProfileService.js';
 import { ScriptRunner } from './domain/ScriptRunner.js';
 import { SrtIngestHealthService } from './domain/srtIngest/SrtIngestHealthService.js';
+import { readManagerId } from './domain/stages/managerIdentity.js';
+import { StagePublisher } from './domain/stages/StagePublisher.js';
+import { StageRecordBuilder } from './domain/stages/StageRecordBuilder.js';
 import { StampService } from './domain/StampService.js';
 import { UploaderHealthService } from './domain/UploaderHealthService.js';
 import { UploaderStartGate } from './domain/UploaderStartGate.js';
@@ -90,6 +93,7 @@ let metricsCollector: MetricsCollector | undefined;
 let sessionSweep: SessionSweep | undefined;
 let streamRevalidation: StreamRevalidation | undefined;
 let chequebookOperations: ReturnType<typeof createChequebookOperationsService> | undefined;
+let stagePublisher: StagePublisher | undefined;
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal: string): Promise<void> {
@@ -112,6 +116,10 @@ async function gracefulShutdown(signal: string): Promise<void> {
     if (metricsCollector) {
       metricsCollector.stop();
       metricsCollector = undefined;
+    }
+    if (stagePublisher) {
+      stagePublisher.stop();
+      stagePublisher = undefined;
     }
     const [apiClosed, transferCleanup] = await Promise.allSettled([
       apiServer?.close(),
@@ -358,6 +366,36 @@ async function main(): Promise<void> {
   );
   const deployService = new DeployService(profileService, orchestrator);
 
+  // The stage records every uploader deployment pushes into the web2 admin its
+  // link names, under the manager's own id. docs/features/stages.md.
+  const managerId = await readManagerId(database.pool);
+  logger.info(`[Boot]   manager id: ${managerId}`);
+  const stageBuilder = new StageRecordBuilder(
+    {
+      nextEnvFor: (profile) => orchestrator.nextEnvFor(profile),
+      listProfiles: () => profileRepository.list(),
+      stampHealthFor: (profile, stampId) => stampService.stampHealthFor(profile, stampId),
+      chequebookSummary: (name) => chequebookService.summary(name),
+      uploaderHealth: (name) => uploaderHealthService.read(name),
+    },
+    { managerId, publicHost: config.publicHost || 'localhost' },
+  );
+  stagePublisher = new StagePublisher({
+    profiles: {
+      list: () => profileService.list(),
+      find: async (name) => {
+        const row = await profileRepository.findByName(name);
+        return row ? containerRepository.withContainers(row) : null;
+      },
+    },
+    builder: stageBuilder,
+    link: managerAdminLink,
+    events: eventBus,
+  });
+  const publisher = stagePublisher;
+  orchestrator.setBeforeUploaderStart((profile) => publisher.beforeUploaderStart(profile));
+  publisher.start();
+
   const engineConfigService = new EngineConfigService(
     profileRepository,
     containerRepository,
@@ -399,6 +437,7 @@ async function main(): Promise<void> {
       ),
       managerAdminLinkService: new ManagerAdminLinkService(managerAdminLink),
       adminLinkTester: new AdminLinkTester(managerAdminLink, profileRepository, orchestrator),
+      stagePublisher: publisher,
       stackVersionService,
       orchestrator,
       deployTargets,
