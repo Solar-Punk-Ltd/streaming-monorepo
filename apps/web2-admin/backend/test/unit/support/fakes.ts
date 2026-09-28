@@ -158,6 +158,12 @@ export class FakeStreamStore
   /** Set to make the status write fail, as a lost connection would. */
   failNextFailPublish: Error | null = null;
 
+  /**
+   * The stages the move branch of `update` checks a new stage against, as the
+   * SQL checks the stages table. Unset, every stage takes streams.
+   */
+  stages: { takesStreams(stageId: string): boolean } | null = null;
+
   /** Linked so `markLive` un-finishes the ladder, as the real SQL does. */
   constructor(private readonly renditions?: FakeRenditionStore) {}
 
@@ -186,7 +192,7 @@ export class FakeStreamStore
    * Conditional on `allowedFrom`, and `content_edited_at` moves only when a
    * value changes, as the SQL has it. A stage change is refused as the SQL
    * refuses it: unless the row is a draft that does not hold both a
-   * recording and a stage.
+   * recording and a stage, and the new stage, if any, takes streams.
    */
   async update(id: string, data: StreamUpdateData, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
     const row = this.rows.get(id);
@@ -195,6 +201,7 @@ export class FakeStreamStore
     if (stageMoves && !(row.status === 'draft' && (row.manifest_index === null || row.stage_id === null))) {
       return null;
     }
+    if (stageMoves && data.stage_id && this.stages && !this.stages.takesStreams(data.stage_id)) return null;
     const scheduled = toDate(data.scheduled_start_time);
     const changed =
       row.title !== data.title ||

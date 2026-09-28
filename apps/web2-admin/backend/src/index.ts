@@ -160,6 +160,7 @@ async function main(): Promise<void> {
   const publishService = new PublishService(
     streamRepository,
     renditionRepository,
+    stageRepository,
     feedWriteRepository,
     createFeedGateway(),
     feed,

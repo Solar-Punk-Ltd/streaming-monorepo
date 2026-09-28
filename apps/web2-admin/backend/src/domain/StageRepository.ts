@@ -63,6 +63,17 @@ export class StageRepository {
     return result.rows;
   }
 
+  /**
+   * One stage as a list reads it, without the passphrase or the token hash: what the stream edits and the publish
+   * check a stage by.
+   */
+  async findSummary(stageId: string): Promise<StageRow | null> {
+    const result = await this.pool.query<StageRow>(`SELECT ${STAGE_COLUMNS} FROM stages WHERE stage_id = $1`, [
+      stageId,
+    ]);
+    return result.rows[0] ?? null;
+  }
+
   /** One stage with its passphrase and token hash, for the service to tell what a push changed. */
   async find(stageId: string): Promise<StageSecretsRow | null> {
     const result = await this.pool.query<StageSecretsRow>(

@@ -52,9 +52,13 @@ export interface StreamServiceStore {
   clearThumbnail(id: string, allowedFrom: readonly StreamStatus[]): Promise<ClearedThumbnail | null>;
 }
 
-/** How the stream edits read a stage: the row a list would, without its passphrase. A fake stands in. */
+/**
+ * How the stream edits and the publish read a stage: the columns a list reads,
+ * so the SRT passphrase and the token hash are never selected here.
+ * StageRepository's `findSummary`; a fake stands in.
+ */
 export interface StreamStageLookup {
-  find(stageId: string): Promise<StageRow | null>;
+  findSummary(stageId: string): Promise<StageRow | null>;
 }
 
 /** A validated StreamInput, with tags and scheduledStartTime settled. */
@@ -271,7 +275,7 @@ export class StreamService {
 
   /** The stage, when it can take a new stream; otherwise refuses with why not. */
   private async assignableStage(stageId: string): Promise<StageRow> {
-    const stage = await this.stages.find(stageId);
+    const stage = await this.stages.findSummary(stageId);
     const reason = stageUnavailability(stage);
     if (reason) {
       logger.info(
@@ -377,7 +381,8 @@ export class StreamService {
   /**
    * A conditional UPDATE returned nothing: say which reason it was. `stageId`
    * is the stage the update tried to move the stream to, when it tried to:
-   * the row may have been published, or taken a recording, since it was read.
+   * the row may have been published, or taken a recording, since it was read,
+   * and the stage may have been retired.
    * Always throws.
    */
   private async refuse(id: string, stageId?: string | null): Promise<never> {
@@ -386,6 +391,12 @@ export class StreamService {
     if (stageId !== undefined && existing.status !== 'publishing') {
       const lock = stageLockFor(existing, stageId);
       if (lock) throw new StageLockedError(id, lock);
+      // The UPDATE takes a stage only while it can take streams, so the
+      // manager may have retired it since the service looked.
+      if (stageId !== null) {
+        const reason = stageUnavailability(await this.stages.findSummary(stageId));
+        if (reason) throw new StageUnavailableError(stageId, reason);
+      }
     }
     throw new StreamBusyError(id, existing.status);
   }

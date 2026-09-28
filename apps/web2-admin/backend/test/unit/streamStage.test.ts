@@ -74,7 +74,15 @@ async function setup() {
   const store = new FakeStreamStore(renditions);
   const audit = new InMemoryAuditLog();
   const service = new StreamService(store, stages, feed, audit);
-  const publish = new PublishService(store, renditions, new FakeFeedWriteLog(), new FakeFeedGateway(), feed, audit);
+  const publish = new PublishService(
+    store,
+    renditions,
+    stages,
+    new FakeFeedWriteLog(),
+    new FakeFeedGateway(),
+    feed,
+    audit,
+  );
   return { stages, store, audit, service, publish };
 }
 
@@ -271,6 +279,33 @@ describe('StreamService on stages', () => {
     assert.equal(store.get(row.id).stage_id, STAGE_ID);
   });
 
+  it('refuses the move to a stage the manager retired while the edit was on its way', async () => {
+    const { stages, store, service } = await setup();
+    store.stages = stages;
+    const row = store.add(streamRow());
+    const update = store.update.bind(store);
+    store.update = async (id, data, allowedFrom) => {
+      await stages.retire(SECOND_STAGE, '2026-09-28T12:00:00.000Z');
+      return update(id, data, allowedFrom);
+    };
+
+    await assert.rejects(
+      () => service.update(TEST_OPERATOR, row.id, { ...FORM, stageId: SECOND_STAGE }),
+      (error: unknown) => error instanceof StageUnavailableError && error.reason === 'retired',
+    );
+    assert.equal(store.get(row.id).stage_id, STAGE_ID);
+  });
+
+  it('reads a stage without its passphrase, on an edit and on a publish', async () => {
+    const { stages, store, service, publish } = await setup();
+    stages.find = () => Promise.reject(new Error('the passphrase is read'));
+    const row = store.add(streamRow());
+
+    await service.update(TEST_OPERATOR, row.id, { ...FORM, stageId: SECOND_STAGE });
+    await service.create(TEST_OPERATOR, { ...FORM, stageId: STAGE_ID });
+    assert.equal((await publish.publish(TEST_OPERATOR, row.id)).stream.status, 'published');
+  });
+
   it('answers stream_busy when a publish claimed the draft while the move was on its way', async () => {
     // The claim is released again, to a draft or back to published, so the
     // operator is told to try again rather than that the stage is fixed.
@@ -299,6 +334,35 @@ describe('PublishService on stages', () => {
     assert.equal(store.get(row.id).status, 'draft');
     assert.equal(store.get(row.id).publish_error, null);
     assert.deepEqual(audit.entries, []);
+  });
+
+  it('refuses to publish a draft whose stage no longer takes streams, and writes nothing', async () => {
+    const { store, audit, publish } = await setup();
+
+    for (const [stageId, reason] of [
+      [RETIRED_STAGE, 'retired'],
+      [OME_STAGE, 'unsupported'],
+      [UNKNOWN_STAGE, 'unknown'],
+    ] as const) {
+      const row = store.add(streamRow({ stage_id: stageId }));
+      await assert.rejects(
+        () => publish.publish(TEST_OPERATOR, row.id),
+        (error: unknown) => error instanceof StageUnavailableError && error.reason === reason,
+        reason,
+      );
+      assert.equal(store.get(row.id).status, 'draft', reason);
+    }
+    assert.deepEqual(audit.entries, []);
+  });
+
+  it('publishes a draft that holds a recording on a stage retired since, as that recording', async () => {
+    const { store, publish } = await setup();
+    const row = store.add(streamRow({ stage_id: RETIRED_STAGE, manifest_index: 7, duration_seconds: 61 }));
+
+    const outcome = await publish.publish(TEST_OPERATOR, row.id);
+
+    assert.equal(outcome.stream.status, 'vod');
+    assert.equal(outcome.stream.stage_id, RETIRED_STAGE);
   });
 
   it('publishes a draft on its stage', async () => {

@@ -171,13 +171,20 @@ into the admin (`docs/architecture/stages.md` at the repository root).
   again. A draft that holds a recording (`manifest_index` set) keeps its
   stage, `409 stage_locked` with `reason: 'recording'`, since the recording
   lives under that stage's owner; a recorded draft from before stages, which
-  has none, may be given its first. The conditional `UPDATE` holds both rules
-  again, so an edit racing a publish cannot move a published stream. A stage
+  has none, may be given its first. The conditional `UPDATE` holds these rules
+  again, and moves a stream only to a stage the `stages` table holds, not
+  retired and on a supported engine, so an edit racing a publish or a
+  retirement cannot move a stream where the service would not. The stage is
+  read by `findSummary`, the columns a list reads, so the passphrase is never
+  selected for it. A stage
   is not on the catalogue entry, so a change does not count as an edit the
   entry lacks.
 - **Publishing needs one.** `POST /streams/:id/publish` on a draft with no
   stage is `409 stage_required` ("Pick the stage this stream is broadcast on
-  before publishing."), and the claim refuses it too. A stream already on the
+  before publishing."), and the claim refuses it too. A draft without a
+  recording whose stage no longer takes streams (retired since it was picked,
+  or not supported) is `409 stage_unavailable`; a draft that holds a recording
+  is published as that recording whatever became of its stage. A stream already on the
   catalogue is republished as it is, so one published before stages existed
   keeps working, with no stage until it is unpublished.
 - **The OBS details are the stage's.** `GET /streams/:id/ingest` builds the SRT

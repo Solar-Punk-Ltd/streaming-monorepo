@@ -6,7 +6,8 @@
  *
  * What a fake cannot stand in for: that the conditional UPDATE moves a stage
  * only while the row is a draft that does not hold both a recording and a
- * stage, whatever the service read before it; that a save leaving the stage
+ * stage, and only to a stage the stages table holds, not retired, on SRS,
+ * whatever the service read before it; that a save leaving the stage
  * alone, or naming the one the row has, passes on any status; that a stage
  * never moves `content_edited_at`; that the claim refuses a draft with no
  * stage when asked to; and that a stage id the stages table does not hold is
@@ -130,6 +131,42 @@ describe('StreamRepository on stages', () => {
 
     const cleared = await streams.update(row.id, form(row, null), EDITABLE_STATUSES);
     assert.equal(cleared?.stage_id, null);
+  });
+
+  it('refuses to move a draft to a stage that is retired, unsupported or not in the stages table', async () => {
+    const stages = new StageRepository(database.pool);
+    const retired = randomUUID();
+    const ome = randomUUID();
+    await stages.upsert(splitStageRecord(stageRecord({ stageId: retired, name: 'Stage R' })));
+    assert.equal((await stages.retire(retired, '2099-01-01T00:00:00.000Z')).outcome, 'done');
+    await stages.upsert(splitStageRecord(stageRecord({ stageId: ome, name: 'Stage O', engine: 'ome' })));
+    const row = await stream(stageA);
+
+    for (const target of [retired, ome, randomUUID()]) {
+      assert.equal(await streams.update(row.id, form(row, target), EDITABLE_STATUSES), null, target);
+    }
+    assert.equal((await streams.findById(row.id))?.stage_id, stageA);
+    assert.equal((await streams.update(row.id, form(row, stageB), EDITABLE_STATUSES))?.stage_id, stageB);
+  });
+
+  it('keeps a stream on its stage once that stage is retired, through a save that names it', async () => {
+    const stages = new StageRepository(database.pool);
+    const retiring = randomUUID();
+    await stages.upsert(splitStageRecord(stageRecord({ stageId: retiring, name: 'Stage D' })));
+    const row = await stream(retiring);
+    await stages.retire(retiring, '2099-01-01T00:00:00.000Z');
+
+    const saved = await streams.update(row.id, { ...form(row, retiring), title: 'Renamed' }, EDITABLE_STATUSES);
+    assert.equal(saved?.title, 'Renamed');
+    assert.equal(saved?.stage_id, retiring);
+  });
+
+  it('reads a stage summary without the passphrase or the token hash', async () => {
+    const summary = await new StageRepository(database.pool).findSummary(stageA);
+
+    assert.equal(summary?.stage_id, stageA);
+    assert.equal(summary?.has_srt_passphrase, true);
+    assert.ok(summary && !('srt_passphrase' in summary) && !('admin_token_sha256' in summary));
   });
 
   it('leaves the stage alone when the update does not name one', async () => {

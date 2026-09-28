@@ -15,6 +15,7 @@ import {
   FeedOwnerMismatchError,
   PublishFailedError,
   StageRequiredError,
+  StageUnavailableError,
   StreamBusyError,
   StreamLiveError,
   StreamNotFoundError,
@@ -26,6 +27,7 @@ import { Logger } from './Logger.js';
 import { Mutex } from './Mutex.js';
 import { toRendition } from './renditions.js';
 import { publishedStatusFor, type PublishedStatus } from './streamState.js';
+import { stageUnavailability, type StreamStageLookup } from './StreamService.js';
 import { hasPendingThumbnail } from './unpublishedEdits.js';
 
 const logger = Logger.getInstance();
@@ -244,6 +246,8 @@ export class PublishService {
   constructor(
     private readonly streams: PublishStreamStore,
     private readonly renditions: PublishRenditionStore,
+    /** How a draft's stage is checked before it goes on the catalogue. */
+    private readonly stages: StreamStageLookup,
     private readonly feedWrites: FeedWriteLog,
     private readonly gateway: FeedGateway,
     private readonly feed: FeedIdentity,
@@ -429,6 +433,15 @@ export class PublishService {
     // as it is: one published before stages existed has none, and cannot be
     // given one until it is unpublished.
     if (before.status === 'draft' && before.stage_id === null) throw new StageRequiredError(id);
+    // A draft goes on the catalogue only on a stage that still takes streams:
+    // the manager may have retired it since it was picked. A draft that holds
+    // a recording is listed as that recording, which needs no broadcast, and
+    // keeps the stage it was made on, so it is published whatever became of
+    // the stage.
+    if (before.status === 'draft' && before.stage_id !== null && before.manifest_index === null) {
+      const reason = stageUnavailability(await this.stages.findSummary(before.stage_id));
+      if (reason) throw new StageUnavailableError(before.stage_id, reason);
+    }
     // The entry carries the row's `owner`, while the gateway signs with the
     // configured key. If those have drifted apart — the feed key was rotated
     // after this stream was created — the entry would advertise an owner the

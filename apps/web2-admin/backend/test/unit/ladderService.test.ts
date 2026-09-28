@@ -31,6 +31,7 @@ import {
   TEST_OPERATOR,
   TEST_OWNER,
 } from './support/fakes.js';
+import { stagesWithMain } from './support/stageFakes.js';
 
 const feed: FeedIdentity = {
   owner: TEST_OWNER,
@@ -62,7 +63,15 @@ async function setup() {
   const store = new FakeStreamStore(renditions);
   const gateway = new FakeFeedGateway();
   const audit = new InMemoryAuditLog();
-  const publishService = new PublishService(store, renditions, new FakeFeedWriteLog(), gateway, feed, audit);
+  const publishService = new PublishService(
+    store,
+    renditions,
+    stagesWithMain(),
+    new FakeFeedWriteLog(),
+    gateway,
+    feed,
+    audit,
+  );
   const service = new LadderService(store, renditions, publishService, audit);
   const state = new StreamStateService(store, publishService, audit);
   const stream = store.add(streamRow());
