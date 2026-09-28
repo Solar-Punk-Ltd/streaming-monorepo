@@ -273,13 +273,22 @@ the stage's owner, and a stream of another stage is refused at the gate.
   and is not followed by the config, whose owner is not a stage's.
 - **The manager.** Test connection on a deployment asks `stages/self` with the deployment's token
   wherever there is a stream address to compare, and asks `/api/config` only on its 404. The
-  wizard's test compares no owner, since the new stage's key is generated in the wizard and the
-  admin learns its address at the first deploy. Nothing tells an operator to give a stage the
-  admin's key.
-- **Left as it was.** An entry under a key a stage signed with before the manager rotated it is no
-  longer counted as ours by a reconcile, and is copied through as it is. A stream that was
-  published, and not yet live, when its stage's key was rotated keeps the old owner until it is
-  unpublished and published again, and its broadcast is refused at the gate until then.
+  wizard's test compares the chosen key's address with a typed token, which belongs to no stage,
+  as the uploader will at boot, so a shared token and a stage's own key read as a mismatch there
+  too; with a token of its own it compares no owner, since the admin learns the stage's address
+  at the first deploy. Nothing tells an operator to give a stage the admin's key.
+- **A rotated key.** A reconcile counts as ours, besides the brand key and every stage's owner,
+  the owner of every row on the catalogue, so a stream published under a key its stage signed
+  with before the manager rotated it is still rebuilt, or added again, under that key. A publish
+  of a draft whose last publish failed first takes off any entry of ours for its topic under
+  another owner, one the failed write may have left under the owner the row had then, so a
+  failure and a rotation cannot list the stream twice. A stream that was published, and not yet
+  live, when its stage's key was rotated keeps the old owner until it is unpublished and published
+  again, and its broadcast is refused at the gate until then.
+- **The redeploy window.** The manager pushes the stage's new owner as soon as the key changes,
+  before the uploader is redeployed with it. A draft published in that window names the new owner,
+  while the running uploader still signs with the old key, so the gate refuses its broadcast until
+  the uploader is redeployed. Redeploy the stage right after rotating its key.
 
 ## Moving the catalogue to another batch
 
