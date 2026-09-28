@@ -462,6 +462,17 @@ describe('the admin API client, reading the feed owner', () => {
     });
   });
 
+  /**
+   * The config page answers anyone, so the token buys nothing there and every hop in between that
+   * logs headers would record it. The internal routes above each assert that they still carry it.
+   */
+  it('sends no admin token to the public config', async () => {
+    await withAdmin(always(200, CONFIG), async ({ client, received }) => {
+      await client.fetchFeedOwner();
+      assert.equal(received[0].authorization, undefined);
+    });
+  });
+
   for (const [name, handle] of [
     ['the admin answers 5xx', always(503)],
     ['the body carries no feed owner', always(200, { feed: { topic: 't' } })],

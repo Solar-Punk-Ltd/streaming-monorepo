@@ -247,7 +247,7 @@ export class AdminApiClient {
   public async fetchFeedOwner(): Promise<string | null> {
     const url = `${this.baseUrl}/api/config`;
     try {
-      const response = await this.send(url, { method: 'GET' }, this.lookupTimeoutMs);
+      const response = await this.sendPublic(url, { method: 'GET' }, this.lookupTimeoutMs);
       if (!response.ok) {
         this.logger.warn(`[Admin] ${url} answered ${response.status}, so the feed owner could not be confirmed`);
         return null;
@@ -477,11 +477,19 @@ export class AdminApiClient {
    * `BEE_REQUEST_TIMEOUT_MS` was added for on the bee side.
    */
   private send(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
-    return this.fetcher(url, {
-      ...init,
-      headers: { ...(init.headers ?? {}), authorization: `Bearer ${this.token}` },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    return this.sendPublic(
+      url,
+      { ...init, headers: { ...(init.headers ?? {}), authorization: `Bearer ${this.token}` } },
+      timeoutMs,
+    );
+  }
+
+  /**
+   * One request without the token, for the admin's public pages. A page that answers anyone gains
+   * nothing from it, and any proxy in between that logs headers would record it.
+   */
+  private sendPublic(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+    return this.fetcher(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
   }
 
   /** A body that is not JSON is a body that is not a draft, and the caller says so for both. */
