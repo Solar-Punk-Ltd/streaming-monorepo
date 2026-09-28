@@ -33,23 +33,23 @@ HOST_LOAD="${HERE}/host-load.sh"
   exit 1
 }
 
-OUT_DIR="${OUT_DIR:-/opt/streaming/retrieval-probe}"
-STACK_DIR="${STACK_DIR:-/opt/streaming/swarm-hls-stream-latbench}"
+OUT_DIR="${OUT_DIR:-${HOME}/retrieval-probe}"
+STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-latbench}"
 COMPOSE_DIR="${STACK_DIR}/deploy"
 ENV_FILE="${STACK_DIR}/.env"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-latbench}"
 GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-10077}"
-REFS="${REFS:-/opt/streaming/phase06/refs.txt}"
+REFS="${REFS:-${HOME}/phase06/refs.txt}"
 # Where a named reference pattern is looked up, as `refs-<name>.txt`. An arm that names one walks it
 # instead of ${REFS}, which is what lets one sitting interleave access patterns rather than compare a
 # sitting of one against a sitting of another.
 REFS_DIR="${REFS_DIR:-$(dirname "${REFS}")}"
-ACCT="${ACCT:-/opt/streaming/phase06/acct2.sh}"
+ACCT="${ACCT:-${HOME}/phase06/acct2.sh}"
 # The node's own view of why a retrieval was slow, which nothing measured at the client can supply.
 # `bee_accounting_accounting_blocks_count` is bee's own words for the mechanism under test: "temporarily
 # skipping a peer to avoid crossing their disconnect thresholds". With the attempt histogram beside it,
 # a one-second stall can finally be attributed to a peer refusing rather than to a slow network.
-METRICS="${METRICS:-/opt/streaming/phase06/metrics.sh}"
+METRICS="${METRICS:-${HOME}/phase06/metrics.sh}"
 
 SEGMENTS="${SEGMENTS:-400}"
 ROUNDS="${ROUNDS:-2}"

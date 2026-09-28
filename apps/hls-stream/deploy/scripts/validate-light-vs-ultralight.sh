@@ -33,10 +33,10 @@
 # references in the same order.
 set -u
 
-STACK_DIR="${STACK_DIR:-/opt/streaming/swarm-hls-stream-latbench}"
+STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-latbench}"
 ENV_FILE="${STACK_DIR}/.env"
-PROBE="${PROBE:-/opt/streaming/phase06/retrieval-debt-probe.sh}"
-BASE="${BASE:-/opt/streaming/retrieval-probe}"
+PROBE="${PROBE:-${HOME}/phase06/retrieval-debt-probe.sh}"
+BASE="${BASE:-${HOME}/retrieval-probe}"
 RUN_ID="${RUN_ID:-validate-$(date -u +%Y%m%d-%H%M%S)}"
 RUN_DIR="${BASE}/${RUN_ID}"
 LOG="${RUN_DIR}/driver.log"

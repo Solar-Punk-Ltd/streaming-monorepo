@@ -31,7 +31,7 @@
 #   ARMS="obs-default:2.0 shipped:0.5" ROUNDS=3 MINUTES=8 bash deploy/scripts/viewer-arms.sh
 set -u
 
-BENCH_REPO="${BENCH_REPO:-/opt/streaming/swarm-hls-bench}"
+BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
 PROFILE="${PROFILE:-latbench}"
 PORT_SLOT="${PORT_SLOT:-7}"
 ROUNDS="${ROUNDS:-3}"
@@ -101,7 +101,7 @@ RUN_SELFCHECK="${RUN_SELFCHECK:-1}"
 read -r -a ARM_LIST <<< "${ARMS:-obs-default:2.0 shipped:0.5}"
 
 # Outside BENCH_REPO, which is an rsync target with --delete.
-OUT_DIR="${OUT_DIR:-/opt/streaming/viewer-arms/$(date -u +%Y%m%d-%H%M%S)}"
+OUT_DIR="${OUT_DIR:-${HOME}/viewer-arms/$(date -u +%Y%m%d-%H%M%S)}"
 LOG="${OUT_DIR}/viewer-arms.log"
 STATE="${OUT_DIR}/viewer-arms-state.tsv"
 mkdir -p "${OUT_DIR}"

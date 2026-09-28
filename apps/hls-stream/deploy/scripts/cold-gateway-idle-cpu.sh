@@ -43,14 +43,14 @@ HOST_LOAD="${HERE}/host-load.sh"
   exit 1
 }
 
-OUT_DIR="${OUT_DIR:-/opt/streaming/retrieval-probe}"
-STACK_DIR="${STACK_DIR:-/opt/streaming/swarm-hls-stream-latbench}"
+OUT_DIR="${OUT_DIR:-${HOME}/retrieval-probe}"
+STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-latbench}"
 COMPOSE_DIR="${STACK_DIR}/deploy"
 ENV_FILE="${STACK_DIR}/.env"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-latbench}"
 GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-10077}"
-ACCT="${ACCT:-/opt/streaming/phase06/acct2.sh}"
-METRICS="${METRICS:-/opt/streaming/phase06/metrics.sh}"
+ACCT="${ACCT:-${HOME}/phase06/acct2.sh}"
+METRICS="${METRICS:-${HOME}/phase06/metrics.sh}"
 
 # The arm both windows run on. Unfunded by default, because a node with no chequebook cannot spend and
 # the whole measurement is then free.

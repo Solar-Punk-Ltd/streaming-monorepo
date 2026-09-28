@@ -57,8 +57,8 @@ HOST_LOAD="${HERE}/host-load.sh"
 }
 
 GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-10077}"
-OUT_DIR="${OUT_DIR:-/opt/streaming/feed-concurrency}"
-HITS_FILE="${HITS_FILE:-/opt/streaming/soc-miss/hits.txt}"
+OUT_DIR="${OUT_DIR:-${HOME}/feed-concurrency}"
+HITS_FILE="${HITS_FILE:-${HOME}/soc-miss/hits.txt}"
 
 # Reads per reader, held CONSTANT across arms. The work one viewer does must not change with how many
 # viewers there are, or the arms measure two things at once.
