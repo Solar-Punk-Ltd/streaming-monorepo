@@ -9,7 +9,7 @@
  * logged, because the mutation it describes has already happened.
  */
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 
 import { describeStream } from '../../src/domain/actor.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
@@ -158,6 +158,39 @@ describe('StreamService audit', () => {
 
     assert.equal(cleared.has_thumbnail, false);
     assert.deepEqual(audit.entries, []);
+  });
+
+  it('records the clear of an image another operator set just before it', async () => {
+    // The upload lands after anything the service read and before the clear,
+    // so the clear finds an image and removes it. Nothing else will ever say
+    // that image was there, or who took it away.
+    const { store, audit, service } = setup();
+    const row = store.add(streamRow({ status: 'published' }));
+    const clear = store.clearThumbnail.bind(store);
+    store.clearThumbnail = async (id, allowedFrom) => {
+      await store.setThumbnail(id, Buffer.alloc(64), 'image/png', allowedFrom);
+      return clear(id, allowedFrom);
+    };
+    const info = mock.method(console, 'info', () => {});
+
+    const cleared = await service.removeThumbnail(TEST_OPERATOR, row.id).finally(() => info.mock.restore());
+
+    assert.equal(cleared.has_thumbnail, false);
+    assert.deepEqual(audit.withAction('stream.thumbnail.clear'), [
+      {
+        actor: TEST_OPERATOR,
+        action: 'stream.thumbnail.clear',
+        streamId: row.id,
+        topic: row.topic,
+        statusBefore: 'published',
+        statusAfter: 'published',
+      },
+    ]);
+    const lines = info.mock.calls.map((logged) => String(logged.arguments[0]));
+    assert.ok(
+      lines.some((line) => line.endsWith(`[Stream] test-operator cleared the thumbnail of ${describeStream(row)}`)),
+      JSON.stringify(lines),
+    );
   });
 
   it('still creates the stream when the audit write fails', async () => {
