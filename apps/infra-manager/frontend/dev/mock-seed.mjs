@@ -444,7 +444,7 @@ export function seed() {
   });
 
   // A Bee-only deployment of its own, which the Manager settings page's catalogue node card can designate: one
-  // immutable batch it takes, and one mutable batch it refuses.
+  // immutable batch it takes, one mutable batch it refuses, and a second immutable batch to move the catalogue to.
   const catalogueNode = makeProfile({
     name: 'catalogue-node',
     kind: 'custom',
@@ -456,7 +456,11 @@ export function seed() {
   catalogueEntry.bzz = String(20n * 10n ** 15n);
   catalogueEntry.chequebook = makeChequebook({ total: bzz(1, 0), available: bzz(1, 0) });
   const catalogueBatch = makeStamp({ depth: 20, ttl: 90 * DAY, immutable: true });
-  catalogueEntry.stamps = [catalogueBatch, makeStamp({ depth: 18, ttl: 30 * DAY, immutable: false })];
+  catalogueEntry.stamps = [
+    catalogueBatch,
+    makeStamp({ depth: 18, ttl: 30 * DAY, immutable: false }),
+    makeStamp({ depth: 21, ttl: 180 * DAY, immutable: true }),
+  ];
   catalogueNode.stamp_id = catalogueBatch.batchID;
   state.profiles.push(catalogueNode);
 

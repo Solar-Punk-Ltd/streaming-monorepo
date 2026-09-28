@@ -2,8 +2,8 @@ import {
   type CatalogueNodeCandidate,
   type CatalogueReading,
   catalogueBatchProblem,
-  catalogueMoveRefusal,
   catalogueNodeProblem,
+  catalogueReleaseFirstRefusal,
   formatFillPercent,
   formatTtl,
   fullestBucketFillRatio,
@@ -28,7 +28,44 @@ export const CATALOGUE_SAVE_RACE =
   'Another save changed the catalogue node after this page read it. It is shown as it stands now. Make the change again.';
 /** What the card says while a designation is cleared: the batch the catalogue stays pinned to. */
 export function cataloguePinnedNote(pinned: { profileName: string; batchId: string }): string {
-  return `The catalogue stays pinned to batch ${shortHex(pinned.batchId)} on ${pinned.profileName}, which stamps its slots. Designate it again to write the catalogue once more; another batch waits for the move.`;
+  return `The catalogue stays pinned to batch ${shortHex(pinned.batchId)} on ${pinned.profileName}, which stamps its slots. Designate it again to write the catalogue once more; another batch is a move.`;
+}
+
+export const CATALOGUE_MOVED = 'Catalogue moved';
+export const CATALOGUE_RELEASED = 'Previous batch released';
+export const CATALOGUE_MOVE_TITLE = 'Move the catalogue?';
+export const CATALOGUE_MOVE_CONFIRM = 'Move the catalogue';
+export const CATALOGUE_RELEASE_LABEL = 'Release the previous batch';
+export const CATALOGUE_RELEASE_TITLE = 'Release the previous batch?';
+export const CATALOGUE_RELEASE_CONFIRM = 'Release';
+
+/** The save button's label for a batch that moves the catalogue. */
+export function catalogueMoveLabel(batchId: string): string {
+  return `Move the catalogue to batch ${shortHex(batchId)}`;
+}
+
+/** What the confirm step says before a move: what the admin does, and what to keep alive until it is done. */
+export function catalogueMoveConfirmText(fromBatchId: string, toBatchId: string): string {
+  return `The web2 admin stamps every slot of the catalogue again under batch ${shortHex(toBatchId)}, then switches to it. Until the admin’s console says the move is done, keep batch ${shortHex(fromBatchId)} alive, then press ${CATALOGUE_RELEASE_LABEL} here.`;
+}
+
+/** The line that heads a pending move on the card. */
+export function catalogueMovingLine(move: { profileName: string; batchId: string }): string {
+  return `Moving from batch ${shortHex(move.batchId)} on ${move.profileName}`;
+}
+
+/** The steps of a pending move, in order, as the card lists them. */
+export function catalogueMoveSteps(toBatchId: string): string[] {
+  return [
+    `In the web2 admin, on the Stages page, start “${catalogueMoveLabel(toBatchId)}”. It needs CATALOGUE_MOVE_ENABLED on that installation.`,
+    'Wait until it says the move is done.',
+    `Press “${CATALOGUE_RELEASE_LABEL}” here.`,
+  ];
+}
+
+/** What the confirm step says before a release: what it lets go of, and when to press it. */
+export function catalogueReleaseConfirmText(move: { profileName: string; batchId: string }): string {
+  return `The manager stops keeping batch ${shortHex(move.batchId)} for the catalogue: ${move.profileName} can then be removed, and the batch may lapse. Press it only once the web2 admin reports the move done.`;
 }
 
 /** One deployment the card offers, and why it cannot be the catalogue node when it cannot. */
@@ -66,11 +103,15 @@ export interface CatalogueBatchStamp {
   immutableFlag?: boolean | null;
 }
 
-/** One batch the card offers: its reading in a line, and why it cannot be the catalogue's when it cannot. */
+/**
+ * One batch the card offers: its reading in a line, why it cannot be the catalogue's when it cannot, and whether
+ * choosing it moves the catalogue off the pinned batch.
+ */
 export interface CatalogueBatchView {
   batchId: string;
   label: string;
   problem: string | null;
+  move: boolean;
 }
 
 /** A batch's kind as the node reported it, or that it did not. */
@@ -86,22 +127,24 @@ function fillOf(fillRatio: number | null): string {
 }
 
 /**
- * The batches the card offers, each refused as the manager refuses it. Once a batch has been designated, every other
- * one is refused, since moving the catalogue to another batch is an action of its own.
+ * The batches the card offers, each refused as the manager refuses it. Once a batch has been designated, another one
+ * is a move, which the card confirms before it saves. While a move is pending only the batch moved from can be moved
+ * to, back, and every third one is refused until that batch is released.
  */
 export function catalogueBatchViews(
   stamps: readonly CatalogueBatchStamp[],
   pinnedBatchId: string | null = null,
+  movingFromBatchId: string | null = null,
 ): CatalogueBatchView[] {
   return stamps.map((stamp) => {
     const batchId = stamp.batchID.replace(/^0x/, '').toLowerCase();
+    const move = pinnedBatchId !== null && batchId !== pinnedBatchId;
+    const thirdBatch = move && movingFromBatchId !== null && batchId !== movingFromBatchId;
     return {
       batchId,
       label: `${shortHex(stamp.batchID)} · depth ${stamp.depth} · ${formatTtl(stamp.batchTTL)} · ${fillOf(fullestBucketFillRatio(stamp))} · ${kindOf(stamp.immutableFlag)}`,
-      problem:
-        pinnedBatchId !== null && batchId !== pinnedBatchId
-          ? catalogueMoveRefusal(pinnedBatchId)
-          : catalogueBatchProblem(stamp),
+      problem: thirdBatch ? catalogueReleaseFirstRefusal(movingFromBatchId) : catalogueBatchProblem(stamp),
+      move: move && !thirdBatch,
     };
   });
 }
