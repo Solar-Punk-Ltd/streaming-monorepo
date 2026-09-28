@@ -169,10 +169,19 @@ pushed; when the admin refuses a token of the deployment's own, one that is
 not the link's, at the link's address while no push of its stage has been
 stored, the test answers `token-not-registered` rather than `token-refused`,
 since a deploy registers it. The wizard's test for a token of its own, which
-does not exist before the first deploy, presents the manager's stored token. Then, where there is a
-stream address to compare, the admin's public `GET <address>/api/config`
-without the token, for `feed.owner`, compared the way the uploader compares it,
-without case and with or without `0x`.
+does not exist before the first deploy, presents the manager's stored token.
+
+Then, where there is a stream address to compare, what the uploader asks at
+boot. Every stage signs with a key of its own, so the owner compared is the
+one the admin knows for the stage the token belongs to:
+`GET <address>/api/internal/stages/self` with the same token, whose
+`{ stageId, owner }` answers `linked` or `owner-mismatch`. A 404 there is a
+token that belongs to no stage, the link's shared one, or an admin older than
+stages, and only then is the admin's public `GET <address>/api/config` asked,
+without the token, for `feed.owner`, the brand key the catalogue is signed
+with. Any other answer to the stage read is `owner-unconfirmed`, and the
+catalogue owner is not asked, since it is not a stage's. Both are compared the
+way the uploader compares them, without case and with or without `0x`.
 
 It takes http and https alone, follows no redirect and says so, gives up after
 five seconds a request, the uploader's own lookup timeout, and reads at most
@@ -186,8 +195,12 @@ where it stores none, the one its version's base `.env` sets. The manager
 derives it in memory with `addressOfStreamKey` in `common/src/streamKey.ts`,
 and the key itself goes nowhere: not to the admin, an answer, an error or a
 log line. Only a deployment for which neither sets a key compares no owner. The
-wizard's test compares the address of the stream key chosen in the step, which
-the browser derives with the same function. This holds from 2026-09-26, commit 1256076.
+wizard's test compares no owner: the stream key chosen in the step is the new
+stage's own, which the admin learns from the stage's first push at the first
+deploy, so the only owner the admin could name before then is its catalogue's.
+The deployment's own Test connection compares it once the stage exists. This
+holds from phase 6 of the stages brief, 2026-09-28; the comparison with the
+catalogue owner alone held from 2026-09-26, commit 1256076.
 
 ## What it reaches
 

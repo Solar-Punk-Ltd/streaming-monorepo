@@ -14,12 +14,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  addressOfStreamKey,
-  type DeploymentSettingEntry,
-  type ManagerAdminLink,
-  type StackVersion,
-} from '@streaming-infra-manager/common';
+import { type DeploymentSettingEntry, type ManagerAdminLink, type StackVersion } from '@streaming-infra-manager/common';
 
 import type { NewDeploymentSettingsLoad } from '../../deployments/settings/useNewDeploymentSettings';
 import {
@@ -239,12 +234,12 @@ describe('what the create sends', () => {
 });
 
 describe('what Test connection asks from the group', () => {
-  it("tests a token of its own with the manager's stored token, and the stream key's address as the owner to compare", () => {
+  it("tests a token of its own with the manager's stored token, and compares no owner, since the stage's key is its own", () => {
     const state = stateFor('stream');
     assert.deepEqual(adminLinkTestOf(state, contextWith(DEFAULT)), {
       url: ADMIN_URL,
       token: { source: 'stored' },
-      feedOwner: addressOfStreamKey(state.generatedKey),
+      feedOwner: null,
     });
   });
 

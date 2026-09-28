@@ -6,8 +6,10 @@
  *
  * The probe asks what the stream uploader asks: the internal lookup of a
  * stream nobody declared, with the token, where the admin's own 404 means it
- * took the token and its 401 means it did not, and then the public config for
- * the address the admin signs its catalog with. It answers one outcome code
+ * took the token and its 401 means it did not; then, with the token, the
+ * stage it belongs to and the owner the admin knows for it, and on a 404
+ * there, a token of no stage, the public config for the address the admin
+ * signs its catalog with. It answers one outcome code
  * and nothing the far end said. It follows no redirect, reads a bounded body,
  * gives up after its timeout, and sends the token to the lookup alone.
  */
@@ -18,6 +20,10 @@ import { afterEach, describe, it } from 'node:test';
 import { probeAdminLink } from '../../src/domain/adminLink/adminLinkProbe.js';
 
 const TOKEN = 'synthetic-admin-token-0123456789abcdef';
+/** A stage's own token, which the admin answers `stages/self` for. */
+const STAGE_TOKEN = 'c3'.repeat(32);
+const STAGE_ID = '5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f';
+const STAGE_SELF = '/api/internal/stages/self';
 const OWNER = `0x${'ab'.repeat(20)}`;
 const OTHER_OWNER = `0x${'cd'.repeat(20)}`;
 const UNUSED_STREAM = '/api/internal/streams/by-ingest/video/00000000-0000-0000-0000-000000000000';
@@ -54,11 +60,21 @@ function json(response: ServerResponse, status: number, body: unknown): void {
 }
 
 /** Answers as the web2 admin's own routes do, for the one token it was started with. */
-function adminAnswering(options: { owner?: string | null; configStatus?: number } = {}) {
+function adminAnswering(
+  options: { owner?: string | null; configStatus?: number; stageOwner?: string; selfStatus?: number } = {},
+) {
   return (request: IncomingMessage, response: ServerResponse) => {
     const path = request.url ?? '';
     if (path.startsWith('/api/internal/')) {
-      if (request.headers.authorization !== `Bearer ${TOKEN}`) return json(response, 401, { error: 'unauthenticated' });
+      const onStage = request.headers.authorization === `Bearer ${STAGE_TOKEN}`;
+      if (request.headers.authorization !== `Bearer ${TOKEN}` && !onStage) {
+        return json(response, 401, { error: 'unauthenticated' });
+      }
+      // The shared token belongs to no stage, and is answered the 404 an unknown path gets.
+      if (path === STAGE_SELF && onStage) {
+        if (options.selfStatus) return json(response, options.selfStatus, { error: 'internal_error' });
+        return json(response, 200, { stageId: STAGE_ID, owner: options.stageOwner ?? OWNER });
+      }
       if (/^\/api\/internal\/streams\/by-ingest\/(video|audio)\/[0-9a-f-]{36}$/.test(path)) {
         return json(response, 404, { error: 'stream_not_found', id: path.split('/').slice(-2).join('/') });
       }
@@ -99,7 +115,38 @@ describe('Test connection against a web2 admin', () => {
       'linked',
     );
     assert.equal(await probeAdminLink({ url: admin.url, token: TOKEN, feedOwner: OWNER.slice(2) }), 'linked');
-    assert.deepEqual(admin.seen[1], { path: '/api/config', authorization: undefined });
+    assert.deepEqual(admin.seen[1], { path: STAGE_SELF, authorization: `Bearer ${TOKEN}` });
+    assert.deepEqual(admin.seen[2], { path: '/api/config', authorization: undefined });
+  });
+
+  it("compares a stage's own token with the owner the admin knows for its stage, and not with the catalog's", async () => {
+    // The catalog is the brand key's, and this stage signs with a key of its own.
+    const admin = await serve(adminAnswering({ owner: OTHER_OWNER, stageOwner: OWNER }));
+
+    assert.equal(await probeAdminLink({ url: admin.url, token: STAGE_TOKEN, feedOwner: OWNER.slice(2) }), 'linked');
+    assert.deepEqual(
+      admin.seen.map((seen) => seen.path),
+      [UNUSED_STREAM, STAGE_SELF],
+      'the public config is not asked',
+    );
+    assert.equal(admin.seen[1]?.authorization, `Bearer ${STAGE_TOKEN}`);
+  });
+
+  it('says so when the admin knows the stage under another owner than the stream address', async () => {
+    const admin = await serve(adminAnswering({ owner: OWNER, stageOwner: OTHER_OWNER }));
+
+    assert.equal(await probeAdminLink({ url: admin.url, token: STAGE_TOKEN, feedOwner: OWNER }), 'owner-mismatch');
+  });
+
+  it('says the owner could not be compared when the stage read fails, without falling back to the catalog', async () => {
+    const failing = await serve(adminAnswering({ selfStatus: 500 }));
+    const garbled = await serve((request, response) =>
+      request.url === STAGE_SELF ? json(response, 200, { stageId: STAGE_ID }) : adminAnswering()(request, response),
+    );
+
+    assert.equal(await probeAdminLink({ url: failing.url, token: STAGE_TOKEN, feedOwner: OWNER }), 'owner-unconfirmed');
+    assert.equal(failing.seen.length, 2);
+    assert.equal(await probeAdminLink({ url: garbled.url, token: TOKEN, feedOwner: OWNER }), 'owner-unconfirmed');
   });
 
   it('says so when the admin signs its catalog with another address, which the uploader refuses to start with', async () => {

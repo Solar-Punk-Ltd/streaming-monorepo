@@ -63,7 +63,11 @@ export class AdminLinkTester {
    * the deployment stores is presented only to the origin it was stored for,
    * which is what the deploy holds it to as well. The feed owner compared is
    * the address of the stream key the deploy gives, whether the deployment
-   * stores it or its version's base .env sets it.
+   * stores it or its version's base .env sets it. Every stage signs with a key
+   * of its own, so the probe compares it with the owner the admin knows for
+   * the stage the token belongs to, `GET /api/internal/stages/self`, and on a
+   * token that belongs to no stage, the shared one, with the admin's catalog
+   * owner, as the uploader's boot check does.
    */
   async testDeployment(name: string, username: string): Promise<AdminLinkTestAnswer> {
     const profile = await this.profiles.findByName(name);

@@ -29,7 +29,7 @@ describe('the sentence for each Test connection outcome', () => {
   it('says what each outcome means for the uploader', () => {
     assert.equal(
       adminLinkTestText('linked'),
-      "Linked: the web2 admin took the token and signs its catalog with this deployment's stream address.",
+      "Linked: the web2 admin took the token and knows this deployment's stream address as the owner its streams are signed as.",
     );
     assert.equal(adminLinkTestText('token-refused'), 'The web2 admin answered but refused the token.');
     assert.equal(adminLinkTestText('unreachable'), 'The web2 admin did not answer from where the manager runs.');
@@ -39,7 +39,7 @@ describe('the sentence for each Test connection outcome', () => {
     );
     assert.equal(
       adminLinkTestText('owner-mismatch'),
-      "The web2 admin took the token but signs its catalog with another address than this deployment's stream key, so the uploader will refuse to start.",
+      "The web2 admin took the token but knows another owner for this deployment than its stream key's address, so the uploader will refuse to start.",
     );
   });
 

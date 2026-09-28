@@ -3,7 +3,6 @@ import {
   ADMIN_API_URL_KEY,
   type AdminLinkTestRequest,
   type AdminLinkTokenChoice,
-  addressOfStreamKey,
   adminTokenProblem,
   adminUrlProblem,
   type DeploymentSettingEntry,
@@ -14,7 +13,7 @@ import {
 } from '@streaming-infra-manager/common';
 
 import { ADMIN_LINK_ABSENT, ADMIN_LINK_MANAGER_UNREAD, ADMIN_LINK_UNREAD } from '../../adminLink/adminLinkText';
-import { chosenKey, needsStreamKey, type WizardContext, type WizardState } from './wizardState';
+import { needsStreamKey, type WizardContext, type WizardState } from './wizardState';
 
 /**
  * The new-deployment wizard's Web2 admin group: whether the deployment's
@@ -187,16 +186,19 @@ export function adminLinkBody(state: WizardState, context: WizardContext): Admin
 }
 
 /**
- * What Test connection asks from the group, with the address of the stream key
- * chosen here as the owner to compare, or null until the address and the token
- * can be used.
+ * What Test connection asks from the group, or null until the address and the
+ * token can be used. No owner is compared: every stage signs with a key of its
+ * own, the one chosen here, and the web2 admin learns its address from the
+ * stage's first push at the first deploy. Until then the only owner the admin
+ * could name is its catalog's, which is not this deployment's. A deployment's
+ * own Test connection compares it once the stage exists.
  */
 export function adminLinkTestOf(state: WizardState, context: WizardContext): AdminLinkTestRequest | null {
   const choice = chosenAdminLink(state, context);
   if (!choice.on || urlProblemOf(choice) !== null) return null;
   const token = tokenOf(choice, context);
   if ('problem' in token) return null;
-  return { url: choice.url, token: token.token, feedOwner: addressOfStreamKey(chosenKey(state)) ?? null };
+  return { url: choice.url, token: token.token, feedOwner: null };
 }
 
 /** The review's line for the link, naming the address and where the token comes from, never the token. Null where the group asks nothing. */

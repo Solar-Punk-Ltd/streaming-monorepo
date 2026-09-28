@@ -8,10 +8,22 @@ link names. The admin never calls the manager. The design, and the phases it is
 built in, is `docs/architecture/stages.md` at the repository root; the record's
 shape is `stageRecordSchema` in `packages/contracts/src/stage.ts`.
 
-Status, 2026-09-28. Phase 3 of the brief, and phase 5, which gives every
-uploader linked to the manager's admin a token of its own. Not deployed. A deployment created before
+Status, 2026-09-28. Phase 3 of the brief, phase 5, which gives every
+uploader linked to the manager's admin a token of its own, and phase 6, where
+every stage signs with a key of its own. Not deployed. A deployment created before
 phase 5 still presents the link's own token, reported as `shared`, until it is
-rotated, and every stage still signs with the brand's key until phase 6.
+rotated.
+
+**A key per stage.** Every stage's `STREAM_KEY` is its own, generated in the
+new-deployment wizard, and nothing asks for the admin's brand key: the admin
+signs the catalogue with it alone. The record's `owner` is how the admin learns
+the stage's address, and it writes that owner into every catalogue entry of the
+stage's streams. A key rotated in the manager is pushed as a new `owner`: a
+draft that holds no recording takes it when it is published, and a recording
+made under the old key keeps it, so the admin refuses to publish that recording
+on the stage again. Test connection on the deployment's card compares the
+stream key's address with the owner the admin knows for the stage, see
+`web2-admin-link.md`.
 
 ## What is pushed
 
