@@ -195,7 +195,7 @@ As built (phase 7), in `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
   store their state first and are refused the same way when their rewrite comes; `503` is a
   failure it retries.
 - `feed_writes.payload_text` holds the exact string uploaded and `feed_writes.batch_id` the batch
-  that stamped it (migration 011).
+  that stamped it (migration 013).
 - The boot's feed check reads the head through the catalogue node, so an admin started with no
   designation skips it and runs it once the first designation arrives.
 

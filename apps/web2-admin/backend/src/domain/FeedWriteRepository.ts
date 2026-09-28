@@ -11,7 +11,7 @@ export interface FeedWriteRecord {
   /** The list, element by element. */
   payload: unknown[];
   /**
-   * The exact string uploaded as the payload (migration 011), or null for a head adopted from the network when the
+   * The exact string uploaded as the payload (migration 013), or null for a head adopted from the network when the
    * gateway could not say what it read.
    */
   payloadText: string | null;
@@ -53,7 +53,7 @@ export class FeedWriteRepository {
 
   /**
    * `payload` is stored from `payloadText` when there is one, so the parsed column and the exact bytes cannot drift
-   * apart; migration 011's CHECK holds them together as well.
+   * apart; migration 013's CHECK holds them together as well.
    */
   async record(write: FeedWriteRecord): Promise<void> {
     await this.pool.query(

@@ -106,7 +106,7 @@ function reportRendition(id: string, body: unknown): Promise<RawResponse> {
 
 /**
  * The entry for this topic in the newest feed write that contains it. Every such row also carries the exact string
- * the gateway was handed (migration 011), which must read back as the payload, and no batch: this instance runs the
+ * the gateway was handed (migration 013), which must read back as the payload, and no batch: this instance runs the
  * in-memory gateway with no catalogue stamp.
  */
 async function catalogueEntry(topic: string): Promise<FeedStreamEntry> {

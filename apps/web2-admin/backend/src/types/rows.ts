@@ -158,7 +158,7 @@ export interface CatalogueStampRow {
   /** When that clear arrived. */
   cleared_at: Date | null;
   /**
-   * The batch the catalogue is written with (migration 011), or null until a write pins one. It stays what it is when
+   * The batch the catalogue is written with (migration 013), or null until a write pins one. It stays what it is when
    * the manager designates another batch or clears the designation.
    */
   active_batch_id: string | null;

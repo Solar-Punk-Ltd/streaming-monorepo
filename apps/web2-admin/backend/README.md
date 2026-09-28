@@ -219,7 +219,7 @@ env file or held in memory, so a new designation or a moved node takes effect on
 the next write.
 
 The admin keeps the batch it actually writes with, since a batch stamps the
-chunks it wrote and the feed's history is those chunks. Migration `011` adds
+chunks it wrote and the feed's history is those chunks. Migration `013` adds
 `active_batch_id`, `active_record` and `active_pinned_at` to `catalogue_stamp`:
 
 - The first write under a designation pins its batch, and `active_record`
@@ -266,7 +266,7 @@ hours left (`STAMP_EXPIRY_WARNING_SECONDS`) or at 90% full
 
 Every write records the exact string it uploaded as the payload in
 `feed_writes.payload_text`, next to `payload`, which holds it parsed, and the
-batch that stamped it in `feed_writes.batch_id` (migration `011`). bee-js puts
+batch that stamped it in `feed_writes.batch_id` (migration `013`). bee-js puts
 a payload straight into the feed's chunk with no timestamp, so the same bytes at
 the same index make the same chunk: these are what moving the catalogue uploads
 again. Rows from before the migration have neither; a head adopted at boot has
@@ -626,16 +626,18 @@ boot and recorded in `_migrations` (`src/domain/Database.ts`). Add a file, never
 edit an applied one; `001_init.sql` carries the rationale for each table in its
 header. `pnpm build` copies the directory into `dist`. `007_audit_log.sql` is
 the audit log below, and `008_streams_user_id_set_null.sql` stops removing a
-user from deleting the streams they drafted. The latest four are
+user from deleting the streams they drafted. The latest five are
 `009_stages.sql`, the `stages` table (the record without the passphrase and
 the token, the passphrase and the token hash in columns of their own, when the
 record was observed and received, and the retirement's moment and arrival) and
 `stage_retirements` (retirements of stages never stored), which also lets the
 audit log name the manager, `010_catalogue_stamp.sql`, the single-row
 `catalogue_stamp`, `011_streams_stage.sql`, `streams.stage_id`, the stage
-a stream is broadcast on, with a foreign key to `stages` and an index, and
+a stream is broadcast on, with a foreign key to `stages` and an index,
 `012_stages_admin_token_index.sql`, the partial index an uploader's own token
-is looked up by.
+is looked up by, and `013_catalogue_writes.sql`, the batch the catalogue is
+written with on `catalogue_stamp` and the exact bytes and batch of every write
+on `feed_writes` ([Where the catalogue is written](#where-the-catalogue-is-written)).
 
 ## Audit log
 

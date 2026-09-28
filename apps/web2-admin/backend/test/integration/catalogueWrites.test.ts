@@ -1,5 +1,5 @@
 /**
- * Migration 011 against the real database: the batch the catalogue is written with on `catalogue_stamp`, and the
+ * Migration 013 against the real database: the batch the catalogue is written with on `catalogue_stamp`, and the
  * exact bytes and the batch of every write on `feed_writes`. Needs Postgres, like the rest of this suite;
  * `DATABASE_URL` overrides the connection.
  *
