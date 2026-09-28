@@ -23,5 +23,6 @@ export interface PublicPortRole {
 }
 
 export const PUBLIC_PORT_ROLES: readonly PublicPortRole[];
+export const NAMED_SOURCE_BEE_API: Readonly<PublicPortRole>;
 export function publicPortRole(entry: Pick<ExposureEntry, 'port' | 'protocol'>): PublicPortRole | null;
 export function portExposureProblem(entry: ExposureEntry): string | null;
