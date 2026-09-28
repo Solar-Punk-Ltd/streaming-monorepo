@@ -28,7 +28,7 @@ export const SWARM_HLS_STREAM_SOURCE: StackSource = {
  * the stack moved into apps/hls-stream, brought in with its commit ids, so it
  * and every ancestor of it are commits of the monorepo too.
  */
-export const STACK_IMPORT_HEAD = 'fe655bc4b57cce0146dcb6df68b3528f79dcba65';
+export const STACK_IMPORT_HEAD = 'b4912eb01dafb934cbb3bd9607c73724c5ec6bfb';
 
 /**
  * The monorepo this manager ships in. Every version added from now on, and the

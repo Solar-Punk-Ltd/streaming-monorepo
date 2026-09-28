@@ -22,7 +22,7 @@ export const V3_FIXTURE = join(STACK_FIXTURES, 'v3');
 export const MONOREPO_URL = 'https://github.com/Solar-Punk-Ltd/streaming-monorepo.git';
 export const MONOREPO_STACK_FOLDER = 'apps/hls-stream';
 /** The stack head the monorepo's import took in, the newest commit of the stack's own history. */
-export const STACK_HISTORY_HEAD = 'fe655bc4b57cce0146dcb6df68b3528f79dcba65';
+export const STACK_HISTORY_HEAD = 'b4912eb01dafb934cbb3bd9607c73724c5ec6bfb';
 export const SWARM_HLS_STREAM_URL = 'https://github.com/Solar-Punk-Ltd/swarm-hls-stream.git';
 
 /** The image and the pnpm the build script records for a stack that names no pnpm of its own. */
