@@ -105,7 +105,10 @@ function instrumentPool(hook: (text: string, pid: number, run: () => Promise<unk
 }
 
 /** Runs `body` with a user of its own, signed in nowhere, and removes it afterwards. */
-async function withOwner(body: (auth: AuthService, owner: UserRow) => Promise<void>, repository = credentials) {
+async function withOwner(
+  body: (auth: AuthService, owner: UserRow) => Promise<void>,
+  repository: CredentialRepository = credentials,
+) {
   const auth = new AuthService(users, sessions, repository);
   const added = await auth.addUser(`itest-${randomUUID().slice(0, 8)}`, OLD_PASSWORD);
   try {
