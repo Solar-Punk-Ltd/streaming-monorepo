@@ -134,12 +134,14 @@ waits for it and then pushes once more with what changed since; the 30-second
 pass leaves it to answer. A removed deployment, on its `profile.deleted` event,
 is retired with `DELETE`, carrying `{ observedAt }`, the moment the manager saw
 it gone (`stageRetireRequestSchema`), so a record read before the removal and
-arriving after it cannot bring the stage back. A push in flight is waited for
-first, since it may be the stage's first.
+arriving after it cannot bring the stage back. The event carries that moment,
+taken as the deployment's row is deleted, with the deployment's `instance_id`
+and kind. A push in flight is waited for first, since it may be the stage's
+first.
 
 Every moment the admin orders by is the manager's own: a record's `observedAt`
 is taken as its deployment's row is read, before the node and uploader
-readings, and a retirement's as the removal is seen, so a 30-second pass that
+readings, and a retirement's as the row is deleted, so a 30-second pass that
 starts before a removal and ends after it still carries the earlier moment.
 
 ## To whom
@@ -153,10 +155,13 @@ linked to another admin, one not linked at all, or any while the link stores no
 token, is skipped with an outcome saying which.
 
 A retirement goes to the link its records went to, and only while the link is
-still on that origin. A deployment removed before its first push, one whose
-change event the manager saw and whose push it had not made yet, is retired at
-the link as well, which the admin keeps as a tombstone of a stage it never
-stored.
+still on that origin. A deployment removed before its first push since the
+manager started is retired at the current link as well, by the `instance_id`
+the removal event carries, and with the link's token: one whose push was not
+made yet, and one this manager pushed before a restart and not since. The admin
+retires the stage it holds, or keeps a tombstone of one it never stored, so a
+retirement it did not need changes nothing there. A deployment the manager
+skipped since it started, linked to another admin or to none, is not retired.
 
 ## Outcomes
 
@@ -319,6 +324,14 @@ builds it, and `catalogueRequest.ts` checks it against
 | `state`, `ttlSeconds`, `fillRatio`, `immutable` | `StampService.batchReadingFor`, the node's `GET /stamps/{id}` read as `stampHealthFrom` reads it; a node that does not answer is `unknown` |
 | `depth`                                         | the same reading, or the last one the node gave, or the depth at designation while the node does not answer                                |
 | `observedAt`                                    | the moment the designation row was read, before the node is asked                                                                          |
+| `previous`                                      | while a move is pending, the batch moved from: its node's name and Bee API, and the same readings of it; null otherwise                    |
+
+`previous` is there because the admin keeps writing with the batch moved from
+until its own move runs, and would otherwise hold readings of it that only age,
+so a top-up of it would not reach the admin and a time to live that ran out on
+paper would refuse its writes. It is null when no move is pending, and also when
+the node of the batch moved from did not answer, reported no depth or has a
+loopback Bee API: the admin then keeps the last reading it had.
 
 A node whose Bee API reaches the dialling host alone (`localhost`,
 `127.0.0.0/8`, `0.0.0.0`, `[::1]`) is no address for the admin: the record is
@@ -340,14 +353,14 @@ read. It is pushed:
 - **when the pinned batch's readings change**: the batch is read every ten
   seconds, and a record goes when its state, depth, fill or kind moved, or its
   life moved more than five minutes off the clock, as a top-up or a dilution
-  moves it;
+  moves it. The same holds for the batch moved from, while a move is pending;
 - **every 30 seconds** otherwise, and at start.
 
 While a designation is in force its batch is read and pushed; once cleared it
 is read no more. While a move is pending, the batch moved from is read on its
-node on the same ten-second round, cleared or not, for the card alone: nothing
-of it goes to the admin, and a node of it that does not answer holds no push
-back. A clear goes to the same link as `DELETE` with `{ observedAt }`, the moment the
+node on the same ten-second round, cleared or not, for the card and for the
+record's `previous`. Both nodes are read at once, so the push waits for the
+slower of the two, whose read is bounded. A clear goes to the same link as `DELETE` with `{ observedAt }`, the moment the
 designation was taken out, stored as `cleared_at`, so a retry and a restarted
 manager resend the same moment. It is sent until the admin answers it, and not
 after. One call is in flight at a time: a trigger that comes during one makes
@@ -406,8 +419,8 @@ in Chrome through all three.
   that, not a change, the cadence, a follow-up or the pre-start push. A
   deployment that is gone and was never pushed or seen is dropped from memory.
 - The outcomes are in memory. A restarted manager says "not pushed yet" until
-  its first push, and it retires only a deployment it has seen since it started.
-  A running stage is pushed within 30 seconds of the start.
+  its first push. A running stage is pushed within 30 seconds of the start, and
+  one removed before that is retired at the current link by its id.
 - A deployment whose `ADMIN_API_URL` moves to another origin is no longer
   pushed, and the stage it was stays at the admin it left until that admin
   retires it.

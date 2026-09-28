@@ -41,8 +41,11 @@ without `BEE_URL`, `POSTAGE_BATCH_ID` and `INGEST_HOST`.
   admin's env file, and scopes itself: each deployment is pushed to the admin it is linked to.
 - **The admin caches.** The uploader's live and vod reports rewrite the catalogue during a
   broadcast. Every fact the admin needs to do that sits in its own database, so a manager that is
-  down stops nothing but fresh readiness readings. The overview's promise holds: the manager and
-  the admin are not on the media path.
+  down stops fresh readiness readings, and nothing else until the catalogue batch's last reading
+  runs out: once the `observedAt` of the last catalogue stamp record the admin holds, plus its
+  `ttlSeconds`, has passed, the admin refuses every catalogue write as expired
+  (`expiredByClock`), a top-up made meanwhile included, until the manager pushes a fresh reading.
+  The overview's promise holds: the manager and the admin are not on the media path.
 - **One key per stage.** The viewer reads the catalogue under the owner it was built for, and
   resolves each entry under that entry's own `owner` and `topic`, so Swarm never needed the two
   keys to be one. Only three checks in code tie them: the uploader's boot check, the admin's
@@ -80,7 +83,9 @@ that receives them.
 **A catalogue stamp record**, pushed by the manager for the brand: the catalogue node's name, its
 Bee API address as the control host reaches it, the pinned `batchId`, whether the batch is
 `immutable`, its `depth`, its stamp `state`, `ttlSeconds` and `fillRatio`, when it was designated,
-and `observedAt`.
+and `observedAt`. While a move is pending in the manager, `previous` carries the batch moved from,
+its node's name and Bee API and the same readings (`catalogueStampPreviousSchema`); it is null or
+absent otherwise.
 
 Neither record ever carries a signing key, a wallet key, an RPC endpoint, a token or a rung's
 node address.
@@ -196,9 +201,12 @@ As built (phase 7), in `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
   designated batch; the writes before it keep a null batch in `feed_writes`, which is how the move
   finds them.
 - The pinned batch's readings, once the manager designates another, are the last ones pushed while
-  it was the designated batch, kept with the moment they were read. An expired or gone among them
-  is a refusal, and so is a time to live that has run out since that moment, whatever the state
-  says. A mutable batch is refused as well.
+  it was the designated batch, kept with the moment they were read, and since the final review the
+  ones a record's `previous` carries of it while the manager's move is pending: a record whose
+  `previous.batchId` is the pinned batch refreshes `active_record`'s node, address and readings, as
+  of the record's `observedAt`, unless the reading held was observed later. An expired or gone
+  among them is a refusal, and so is a time to live that has run out since that moment, whatever
+  the state says. A mutable batch is refused as well.
 - The writes from before the catalogue stamp have no batch recorded. While any is left, My Streams
   counts them and says a move is waiting, since the batch that stamped them will expire.
 - A publish, an unpublish or a reconcile is refused before it moves anything, as `503` with the
@@ -218,9 +226,14 @@ As built (phase 7), in `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
   record and pushes it to the link's stored address with the link's stored token: when the
   deployment changes (its `profile.changed` event, coalesced per deployment), every 30 seconds while
   it runs, and before a deploy starts its uploader, so the uploader's first call finds its token
-  known. A deleted deployment is retired the same way. The client is bounded like the Test
-  connection probe: http and https alone, no redirects, five seconds, a small answer read, and an
-  outcome code, never what the far end said, in the log and on the deployment page. A pool's rungs
+  known. A deleted deployment is retired the same way, by the `instance_id` and the moment its
+  `profile.deleted` event carries, at the current link with its token, whether or not the manager
+  pushed it since it started. The client is bounded like the Test connection probe: http and https
+  alone, no redirects, five seconds, a small answer read, and an outcome code, never what the far
+  end said, in the log and on the deployment page. In production the link is https, which the edge
+  provides: every push carries the registrar token, each stage's SRT passphrase and its token
+  hash. The Manager settings card warns under a plain http address to another host than the
+  manager's own, and a save of one is logged as a warning. A pool's rungs
   are read on the deployments of this manager that stamp with each rung's batch, and a rung under
   another manager has no reading. `apps/infra-manager/docs/features/stages.md` is the page.
 - **The moments it stamps.** The admin orders everything by these, so they must be true:
@@ -337,21 +350,34 @@ owner, and a stream of another stage is refused at the gate.
   `POST /groups`; a create drops it as any key it does not name. The rotation's sentences and the
   pages no longer say a shared token keeps being taken.
 
-**Rolling out phase 9**, decided 2026-09-29, on a host that runs today's admin and manager from
-before stages. It is not "admin first", which was phase 5's rule (below, kept as history):
+**Rolling out phase 9**, decided 2026-09-29 and corrected by the final review, on a host that runs
+today's admin and manager from before stages. It is not "admin first", which was phase 5's rule
+(below, kept as history). [Upgrading](../self-hosting.md#the-control-host), at the end of the
+control host in the self-hosting guide, has each step in full:
 
-1. **Deploy the admin at the phase 8 tip**, commit `d29616851` on `feat/stages`. It takes both the
-   shared token and a stage's own.
-2. **Deploy the phase 9 manager.** It works in front of the phase 8 admin: its Manager settings
-   Test connection falls back from the registrar check's 404 to the lookup, and each deployment's
-   Test connection answers `token-not-own` for every stage still to rotate.
-3. **Rotate and redeploy every stage** (**Rotate the uploader's admin token** on its deployment
-   page, then deploy) until the admin's Stages page reads "Its own token" for all of them.
-4. **Deploy the phase 9 admin.**
+0. **Create the catalogue node** and buy its immutable batch.
+1. **Deploy the phase 9 manager** and designate the catalogue node. The admin from before stages
+   has no `/api/internal/stages` route, so every push comes to `not-admin` until step 2, which is
+   harmless. Create no stage and rotate nothing yet.
+2. **Deploy the phase 8 admin**, the phase 8 state of `feat/stages` (commit `d29616851`; tag it,
+   e.g. `web2-admin/stages-phase-8`, before `feat/stages` is merged to `main`, because a squash or
+   rebase merge leaves that commit unreachable). It refuses every catalogue write, `503`, until it
+   holds a catalogue stamp, which the manager pushes within ten seconds of its start.
+3. **Give every stream a stage** before any rotation: unpublish every scheduled stream, pick its
+   stage, publish it again. A stage on its own token is answered only about its own streams, and a
+   stream live at rotation keeps its live state until an operator unpublishes it.
+4. **Rotate and redeploy every stage** until the admin's Stages page reads "Its own token" for all.
+5. **Deploy the phase 9 admin.**
 
-Skipping steps 1 to 3 means every running uploader gets 401 from the phase 9 admin until its stage
-is rotated and redeployed. A fresh installation needs none of this: every stage it creates has a
-token of its own from its first deploy.
+Skipping steps 2 to 4 means every running uploader gets 401 from the phase 9 admin until its stage
+is rotated and redeployed. After the upgrade, give each stage a `STREAM_KEY` of its own and
+redeploy it, since a stage from before stages signs with the brand key, then publish its scheduled
+streams again. Until the catalogue is moved, the batch the admin's env file named as
+`POSTAGE_BATCH_ID` stamps every slot written before step 2 (`batch_id NULL`): keep it topped up and
+its node alive, never dilute or replace it or name it in a pool string, and run the move first
+after the trial below. That is the one remaining way the catalogue can go dark. A fresh
+installation needs none of this: every stage it creates has a token and a key of its own from its
+first deploy, and its catalogue starts on the catalogue node.
 
 ## Moving the catalogue to another batch
 
@@ -366,8 +392,10 @@ the old batch still has days of life.
 **The move is off by default.** `CATALOGUE_MOVE_ENABLED` in the admin's env file turns it on,
 and it stays off on every installation until the owner has tried it on a real node, by
 [Trying the move on a real node](#trying-the-move-on-a-real-node) below. Until then the Stages
-page says the move is not yet enabled on this installation, and the manager's move and release
-work as built: they only change which batch is pinned and which is guarded.
+page says the move is not yet enabled on this installation. The manager's move and release still
+work as built: they change which batch is designated and which is guarded, and while a move is
+pending the manager pushes the batch moved from as the record's `previous`, so the admin, which
+keeps writing with it, keeps its readings fresh.
 
 As built (phase 8), on the manager's side (`CatalogueDesignationService`, migration 048;
 `apps/infra-manager/docs/features/stages.md` is the page):
@@ -375,9 +403,10 @@ As built (phase 8), on the manager's side (`CatalogueDesignationService`, migrat
 - Designating another batch than the pinned one is a move, saved only when the request says
   `move: true` (the card's "Move the catalogue to batch …", confirmed). The new batch passes
   every check a designation does. The row keeps the previous node and batch as "moving from",
-  and the catalogue stamp record pushed is the new batch's: the contract is unchanged.
+  and the catalogue stamp record pushed is the new batch's, with the previous one as `previous`.
 - While a move is pending, both nodes are guarded against removal, no pool string may name
-  either batch or node, the previous batch is still read every ten seconds for the card, a third
+  either batch or node, the previous batch is still read every ten seconds, for the card and for
+  `previous`, and a change in its readings is pushed as one in the pinned batch's is, a third
   batch is refused (release the previous one first), and moving back to the previous batch
   swaps the two.
 - **Release the previous batch**, `POST /manager-settings/catalogue-node/release`, revisioned,

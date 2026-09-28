@@ -109,18 +109,37 @@ every running uploader keeps working while the two move. That was phase 5's
 rule. Phase 9 goes another way, decided 2026-09-29, on a host that runs the
 admin and manager from before stages:
 
-1. **Deploy the admin at the phase 8 tip**, commit `d29616851` on `feat/stages`. It takes both the
-   shared token and a stage's own.
-2. **Deploy the phase 9 manager.** It works in front of the phase 8 admin: its Manager settings
-   Test connection falls back from the registrar check's 404 to the lookup, and each deployment's
-   Test connection answers `token-not-own` for every stage still to rotate.
-3. **Rotate and redeploy every stage** (**Rotate the uploader's admin token** on its deployment
+0. **Create the catalogue node** and buy its immutable batch.
+1. **Deploy the phase 9 manager** and designate the catalogue node. An admin from before stages
+   has no `/api/internal/stages` or `/api/internal/catalogue-stamp` route, so every push comes to
+   `not-admin` until step 2, which is harmless: it stores nothing. Its Manager settings Test
+   connection falls back from the registrar check's 404 to the lookup, which takes the token.
+   Create no stage and rotate nothing yet: that admin refuses a token of its own.
+2. **Deploy the phase 8 admin**, the phase 8 state of `feat/stages` (commit `d29616851`; tag it,
+   e.g. `web2-admin/stages-phase-8`, before `feat/stages` is merged to `main`, because a squash or
+   rebase merge leaves that commit unreachable). It takes both the shared token and a stage's own,
+   and refuses every catalogue write, `503`, until the manager's next push, within ten seconds.
+   Each deployment's Test connection answers `token-not-own` for every stage still to rotate.
+3. **Give every stream a stage** before any rotation: unpublish every scheduled stream, pick its
+   stage and publish it again. A stage on its own token is answered only about its own streams.
+4. **Rotate and redeploy every stage** (**Rotate the uploader's admin token** on its deployment
    page, then deploy) until the admin's Stages page reads "Its own token" for all of them.
-4. **Deploy the phase 9 admin.**
+5. **Deploy the phase 9 admin.**
 
-Skipping steps 1 to 3 means every running uploader gets 401 from the phase 9 admin until its stage
-is rotated and redeployed. A fresh installation needs none of this: every stage it creates has a
-token of its own from its first deploy.
+Skipping steps 2 to 4 means every running uploader gets 401 from the phase 9 admin until its stage
+is rotated and redeployed. After it, give each stage a `STREAM_KEY` of its own, since a stage from
+before stages signs with the brand key. A fresh installation needs none of this: every stage it
+creates has a token of its own from its first deploy. The whole sequence, with what to keep of the
+batch from before stages until the catalogue is moved, is "Upgrading" in the repository's
+`docs/self-hosting.md`.
+
+**The link is https in production.** Every push carries the stored token, each
+stage's SRT passphrase and its token hash, so the link's address is the https
+one the edge serves the admin on. The Manager settings card warns under a plain
+http address to another host than the manager's own
+(`plainHttpAdminLinkWarning` in `common/src/managerAdminLink.ts`), and a save of
+one logs a warning. Both are warnings: a loopback address, or a test setup,
+still saves.
 
 **A token the version sets cannot be rotated.** A deployment whose version's
 env files set `ADMIN_API_TOKEN` is given that value at every deploy, in place of

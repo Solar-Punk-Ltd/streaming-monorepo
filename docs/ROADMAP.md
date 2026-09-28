@@ -335,13 +335,22 @@ Left open after the nine phases:
   the manager's console until this is decided.
 - **Brand separation** inside one admin, and a second admin link per manager
   for a second brand, among the open decisions below.
-- **Rollout**, decided 2026-09-29, for a host that runs the admin and manager
-  from before stages, and only with the owner's word: the admin at the phase 8
-  tip (`d29616851`), then the phase 9 manager, then every stage rotated and
-  redeployed until the admin's Stages page reads "Its own token" for all, then
-  the phase 9 admin. Skipping the first three steps means every running
-  uploader gets 401 until its stage is rotated and redeployed. A fresh
-  installation needs none of this.
+- **Rollout**, decided 2026-09-29 and corrected by the final review, for a
+  host that runs the admin and manager from before stages, and only with the
+  owner's word: the catalogue node created; the phase 9 manager, with the node
+  designated at once; the phase 8 admin, the phase 8 state of `feat/stages`
+  (commit `d29616851`; tag it, e.g. `web2-admin/stages-phase-8`, before
+  `feat/stages` is merged to `main`, because a squash or rebase merge leaves
+  that commit unreachable); every scheduled stream unpublished, given a stage
+  and published again; every stage rotated and redeployed until the admin's
+  Stages page reads "Its own token" for all; the phase 9 admin; then a
+  `STREAM_KEY` of its own for each stage. Until the catalogue is moved, the
+  batch from before stages holds every slot written before the phase 8 admin:
+  it stays topped up and alive, is never diluted, replaced or put in a pool
+  string, and the move runs first after the real-node trial. That is the one
+  remaining way the catalogue can go dark. "Upgrading" in
+  `docs/self-hosting.md` has each step. A fresh installation needs none of
+  this.
 
 ## Checkpoint 3: manager integration (built on `feat/stages`, 2026-09-29)
 
