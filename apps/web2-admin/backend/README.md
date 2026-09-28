@@ -83,7 +83,7 @@ reference; the summary:
 | `WEB2_ADMIN_PORT` / `WEB2_ADMIN_HOST` | `9877` / `0.0.0.0` | where to listen (the manager API uses 9876)                                                                                            |
 | `DATABASE_URL`                        | required           | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin`                                                                              |
 | `FEED_GATEWAY`                        | `bee`              | `fake` swaps in an in-memory gateway (see below)                                                                                       |
-| `FEED_PRIVATE_KEY`                    | required           | 0x + 64 hex. Signs the stream list feed; its address is `owner` on every stream                                                        |
+| `FEED_PRIVATE_KEY`                    | required           | 0x + 64 hex. The brand key: signs the stream list feed, and is `owner` on a stream with no stage; a stream on a stage has its stage's  |
 | `FEED_TOPIC`                          | `swarm-stream`     | raw topic of that feed                                                                                                                 |
 | `VIEWER_BASE_URL`                     | empty              | branded viewer built for this feed, for "open player catalogue" links                                                                  |
 | `INTERNAL_API_TOKEN`                  | required           | 32+ chars. The registrar token the manager pushes stages with on `/api/internal`, and during the transition still taken from uploaders |
@@ -181,7 +181,9 @@ into the admin (`docs/architecture/stages.md` at the repository root).
   again. A draft that holds a recording (`manifest_index` set) keeps its
   stage, `409 stage_locked` with `reason: 'recording'`, since the recording
   lives under that stage's owner; a recorded draft from before stages, which
-  has none, may be given its first. The conditional `UPDATE` holds these rules
+  has none, may be given its first, and only one that signs as the
+  recording's owner, the brand key's address when it was made: any other is
+  `409 stage_locked` with `reason: 'owner'`. The conditional `UPDATE` holds these rules
   again, and moves a stream only to a stage the `stages` table holds, not
   retired and on a supported engine, so an edit racing a publish or a
   retirement cannot move a stream where the service would not. The stage is
@@ -205,7 +207,22 @@ into the admin (`docs/architecture/stages.md` at the repository root).
   no stage, `stage`, `srt` and `rtmp` are null and only the stream id and key
   are answered. Every uploader that takes streams from this admin verifies the
   `key=` they carry, so the answer no longer says whether it does.
+- **A stream signs as its stage.** Every stage signs with a key of its own,
+  and the stage record names its address as `owner`. A stream takes its
+  stage's owner, lower case and without `0x`, when it is created on a stage
+  and whenever its stage is set or changed; one with no stage has the brand
+  key's. The publish claim of a draft that holds no recording reads it from
+  the stage again, in the same statement, since a key rotated in the manager
+  is pushed as a new owner. A row that holds a recording never changes owner,
+  because the recording's feeds resolve only under the key they were signed
+  with, and publishing one whose stage now signs as another address is
+  `409 feed_owner_mismatch` ("The recording was made under another key: …"),
+  with the stream's `id` and its `stageId`. A stream already on the catalogue
+  keeps the owner publishing fixed. The catalogue itself is still signed by
+  `FEED_PRIVATE_KEY`, and `GET /api/config` still names that address, for the
+  viewer build; every entry names its own stream's owner.
 - **Audited.** A change is its own `stream.stage` row, `details: { from, to }`,
+  with `ownerFrom` and `ownerTo` when the stream's owner moved with it,
   beside the `stream.update` row of any field the same save changed, and the
   `stream.create` row carries the stage the stream was created on.
 
@@ -335,7 +352,9 @@ catalogue entry that has no stream row behind it.
 The repair path for exactly that: an entry no request can name, because
 `unpublish` needs a row and topics are server-minted. Session auth, no body.
 Under the publish mutex it takes the authoritative base and rewrites the list
-from the database — drops entries of ours whose topic has no row in
+from the database — "ours" being every entry whose owner is the brand key's or
+any stage's the admin holds, retired stages included, since their streams and
+old entries still name them — drops entries of ours whose topic has no row in
 `published`/`live`/`vod`, rebuilds entries that no longer match their row,
 appends published rows that are missing, and copies everything written by
 anyone else through untouched. It writes only if something changed, so running
@@ -363,10 +382,9 @@ A restart that interrupts a publish leaves the row claimed; boot repairs it
 (`resetOrphanedPublishing`), sending a first-time publish back to `draft` and
 an interrupted republish back to `published`, since that one's entry is still
 on the feed and only an unpublish may remove it. Publishing also refuses with
-`409 feed_owner_mismatch` when a stream was created under a different feed key
-than the one now configured — its entry would advertise an owner the feed is
-not published under. Unpublishing such a stream is still allowed, by the owner
-stored on the row.
+`409 feed_owner_mismatch` a draft that holds a recording whose stage now signs
+as another key, as above. Unpublishing is always allowed, by the owner stored
+on the row.
 
 **Do not give `FEED_PRIVATE_KEY` to a running swarm-hls-stream uploader.** It
 caches the feed's next index; two writers at one index fork the feed.

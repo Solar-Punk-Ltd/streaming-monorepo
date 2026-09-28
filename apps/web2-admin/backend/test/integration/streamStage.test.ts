@@ -30,6 +30,10 @@ import { stageRecord } from '../unit/support/stageFakes.js';
 import { releaseStack, requireStack, stack } from './helpers.js';
 
 const OWNER = '90f8bf6a479f320ead074411a4b0e7944ea8c9c1';
+/** Stage A signs as `OWNER`, printed the way a stage record prints it; stage B with a key of its own. */
+const STAGE_A_OWNER = `0x${OWNER.toUpperCase()}`;
+const STAGE_B_OWNER = '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3';
+const ROTATED_OWNER = '0x4f0e1c2b3a49586772635441302f1e0d0c0b0a09';
 
 let database: Database;
 let streams: StreamRepository;
@@ -49,8 +53,8 @@ before(async () => {
   const stages = new StageRepository(database.pool);
   stageA = randomUUID();
   stageB = randomUUID();
-  await stages.upsert(splitStageRecord(stageRecord({ stageId: stageA, name: 'Stage A' })));
-  await stages.upsert(splitStageRecord(stageRecord({ stageId: stageB, name: 'Stage B' })));
+  await stages.upsert(splitStageRecord(stageRecord({ stageId: stageA, name: 'Stage A', owner: STAGE_A_OWNER })));
+  await stages.upsert(splitStageRecord(stageRecord({ stageId: stageB, name: 'Stage B', owner: STAGE_B_OWNER })));
 });
 
 after(async () => {
@@ -208,6 +212,77 @@ describe('StreamRepository on stages', () => {
     const row = await stream(stageA);
 
     assert.equal((await streams.claimForPublish(row.id, ['draft', 'published'], true))?.status, 'publishing');
+  });
+
+  it('writes the owner an update names with a stage change, and never on a row that holds a recording', async () => {
+    const row = await stream(stageA);
+    const moved = await streams.update(row.id, { ...form(row, stageB), owner: 'b'.repeat(40) }, EDITABLE_STATUSES);
+    assert.equal(moved?.owner, 'b'.repeat(40));
+
+    const older = await stream(null, { recording: true });
+    const given = await streams.update(older.id, { ...form(older, stageA), owner: 'b'.repeat(40) }, EDITABLE_STATUSES);
+    assert.equal(given?.stage_id, stageA);
+    assert.equal(given?.owner, OWNER, 'a recording keeps the owner it was made under');
+  });
+
+  it('gives a recorded draft older than stages only a stage that signs as its owner', async () => {
+    const older = await stream(null, { recording: true });
+
+    assert.equal(await streams.update(older.id, form(older, stageB), EDITABLE_STATUSES), null);
+    assert.equal((await streams.findById(older.id))?.stage_id, null);
+    // Stage A prints the same address in upper case and with 0x.
+    assert.equal((await streams.update(older.id, form(older, stageA), EDITABLE_STATUSES))?.stage_id, stageA);
+  });
+
+  it('gives a draft with no recording its stage’s owner at the claim, as the stage signs now', async () => {
+    const stages = new StageRepository(database.pool);
+    const rotating = randomUUID();
+    await stages.upsert(splitStageRecord(stageRecord({ stageId: rotating, name: 'Stage D', owner: STAGE_B_OWNER })));
+    const row = await stream(rotating);
+    await stages.upsert(
+      splitStageRecord(
+        stageRecord({
+          stageId: rotating,
+          name: 'Stage D',
+          owner: ROTATED_OWNER,
+          observedAt: '2026-09-28T10:05:00.000Z',
+        }),
+      ),
+    );
+
+    const claimed = await streams.claimForPublish(row.id, ['draft', 'published'], true);
+
+    assert.equal(claimed?.owner, ROTATED_OWNER.slice(2), 'lower case, without 0x');
+  });
+
+  it('leaves the owner alone at an unpublish claim, which removes an entry by the owner it was written with', async () => {
+    const row = await stream(stageB);
+
+    assert.equal((await streams.claimForPublish(row.id, ['draft', 'published', 'vod']))?.owner, OWNER);
+  });
+
+  it('keeps the owner of a recorded draft and of a published stream at the claim', async () => {
+    const recorded = await stream(stageB, { recording: true });
+    assert.equal((await streams.claimForPublish(recorded.id, ['draft'], true))?.owner, OWNER);
+
+    const published = await stream(stageB, { status: 'published' });
+    assert.equal((await streams.claimForPublish(published.id, ['published'], true))?.owner, OWNER);
+  });
+
+  it('lists every stage’s owner once, retired ones included', async () => {
+    const stages = new StageRepository(database.pool);
+    const retired = randomUUID();
+    const twin = randomUUID();
+    await stages.upsert(splitStageRecord(stageRecord({ stageId: retired, name: 'Stage E', owner: ROTATED_OWNER })));
+    await stages.upsert(splitStageRecord(stageRecord({ stageId: twin, name: 'Stage F', owner: ROTATED_OWNER })));
+    assert.equal((await stages.retire(retired, '2099-01-01T00:00:00.000Z')).outcome, 'done');
+
+    const owners = await stages.listOwners();
+
+    assert.equal(owners.filter((owner) => owner === ROTATED_OWNER).length, 1);
+    assert.ok(owners.includes(STAGE_B_OWNER));
+    // The fixture is pushed without the schema's parse, so it keeps its case.
+    assert.ok(owners.includes(STAGE_A_OWNER));
   });
 
   it('keeps the stage of a stream when the stage is retired', async () => {

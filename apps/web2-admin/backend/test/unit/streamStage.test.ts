@@ -63,11 +63,24 @@ const FORM: StreamInputValues = {
   scheduledStartTime: '2026-10-01T09:00:00.000Z',
 };
 
+/**
+ * The main stage and the retired one sign as the brand key, as every stage did
+ * before each had a key of its own, so a row older than stages fits them. The
+ * second stage signs with a key of its own. test/unit/stageOwner.test.ts
+ * holds the owner rules.
+ */
+const BRAND_STAGE_OWNER = `0x${TEST_OWNER}`;
+const SECOND_STAGE_OWNER = '0x2222222222222222222222222222222222222222';
+
 async function setup() {
   const stages = new FakeStageStore();
-  await stages.upsert(splitStageRecord(stageRecord()));
-  await stages.upsert(splitStageRecord(stageRecord({ stageId: SECOND_STAGE, name: 'Second stage' })));
-  await stages.upsert(splitStageRecord(stageRecord({ stageId: RETIRED_STAGE, name: 'Old stage' })));
+  await stages.upsert(splitStageRecord(stageRecord({ owner: BRAND_STAGE_OWNER })));
+  await stages.upsert(
+    splitStageRecord(stageRecord({ stageId: SECOND_STAGE, name: 'Second stage', owner: SECOND_STAGE_OWNER })),
+  );
+  await stages.upsert(
+    splitStageRecord(stageRecord({ stageId: RETIRED_STAGE, name: 'Old stage', owner: BRAND_STAGE_OWNER })),
+  );
   await stages.retire(RETIRED_STAGE, '2026-09-28T11:00:00.000Z');
   await stages.upsert(splitStageRecord(stageRecord({ stageId: OME_STAGE, name: 'OME stage', engine: 'ome' })));
 
@@ -171,9 +184,15 @@ describe('StreamService on stages', () => {
         topic: row.topic,
         statusBefore: 'draft',
         statusAfter: 'draft',
-        details: { from: STAGE_ID, to: SECOND_STAGE },
+        details: {
+          from: STAGE_ID,
+          to: SECOND_STAGE,
+          ownerFrom: TEST_OWNER,
+          ownerTo: SECOND_STAGE_OWNER.slice(2),
+        },
       },
     ]);
+    assert.equal(updated.owner, SECOND_STAGE_OWNER.slice(2), 'a draft signs as its stage');
   });
 
   it('audits a save that moved the stage and edited a field as two entries', async () => {

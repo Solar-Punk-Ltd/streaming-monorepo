@@ -21,6 +21,7 @@ export {
   STAGE_READINESS_TONES,
   STAGE_STAMP_STATES,
   STAMP_EXPIRY_WARNING_SECONDS,
+  sameFeedOwner,
   type AdminTokenKind,
   type StageChequebookHealth,
   type StageEngine,

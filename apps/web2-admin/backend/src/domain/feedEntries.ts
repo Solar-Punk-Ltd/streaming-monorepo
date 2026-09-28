@@ -4,6 +4,8 @@ import type { FeedStreamEntry, Rendition, StreamStatus } from '@streaming-monore
 
 import type { StreamRow } from '../types/index.js';
 
+import { asFeedOwner } from './feedIdentity.js';
+
 import { isRendition } from './renditions.js';
 
 /**
@@ -148,7 +150,7 @@ function entryTopic(value: unknown): string | null {
 function entryOwner(value: unknown): string | null {
   if (typeof value !== 'object' || value === null) return null;
   const owner = (value as { owner?: unknown }).owner;
-  return typeof owner === 'string' ? owner.toLowerCase() : null;
+  return typeof owner === 'string' ? asFeedOwner(owner) : null;
 }
 
 /**
@@ -173,9 +175,12 @@ function entryOwner(value: unknown): string | null {
  *    untouched — including its `timestamp`, so a clean catalogue is a no-op
  *    and costs no stamp.
  *
- * Rows with no entry are appended. A row created under a different feed key is
- * skipped: its entry would advertise an owner this feed is not published
- * under, which is the same thing publishing refuses with `feed_owner_mismatch`.
+ * "Ours" is an entry whose owner is one of `ourOwners`: the brand key's, which
+ * every entry older than stages carries, and each stage's, since a stream on a
+ * stage is signed as that stage. Compared whatever the case and the `0x`.
+ *
+ * Rows with no entry are appended. A row whose owner is none of ours is
+ * skipped: its entry would name an owner this admin does not publish under.
  *
  * `ladders` is each row's stored ABR rungs, by stream id, and it has to be
  * given for the rebuild to mean anything on a ladder stream: an entry rebuilt
@@ -185,11 +190,11 @@ function entryOwner(value: unknown): string | null {
 export function planReconcile(
   base: unknown[],
   rows: StreamRow[],
-  feedOwner: string,
+  ourOwners: readonly string[],
   now: number = Date.now(),
   ladders: ReadonlyMap<string, readonly Rendition[]> = new Map(),
 ): ReconcilePlan {
-  const owner = feedOwner.toLowerCase();
+  const ours = new Set(ourOwners.map(asFeedOwner));
   const byTopic = new Map(rows.map((row) => [row.topic.toLowerCase(), row]));
   const seen = new Set<string>();
 
@@ -204,7 +209,8 @@ export function planReconcile(
     // a row whose entry sits under a rotated key is not appended a second time.
     if (topic) seen.add(topic);
 
-    if (entryOwner(element) !== owner || topic === null) {
+    const owner = entryOwner(element);
+    if (owner === null || !ours.has(owner) || topic === null) {
       entries.push(element);
       continue;
     }
@@ -232,7 +238,7 @@ export function planReconcile(
 
   for (const row of rows) {
     if (seen.has(row.topic.toLowerCase())) continue;
-    if (row.owner.toLowerCase() !== owner) continue;
+    if (!ours.has(asFeedOwner(row.owner))) continue;
     added.push(row.topic);
     entries.push(buildFeedEntry(row, row.thumbnail_ref, now, ladders.get(row.id) ?? []));
   }

@@ -1,20 +1,21 @@
 /**
- * The stream was created under a different feed key than the one the gateway
- * signs with now. `streams.owner` is denormalised at create time and is what
- * viewers look the stream up by, so publishing it under the current key would
- * write an entry whose `owner` nobody can resolve.
+ * The stream holds a recording signed as one address, and its stage now signs as another: the manager rotated the
+ * stage's key since the recording was made. A row that holds a recording never changes owner, because the recording's
+ * feeds resolve only under the key they were signed with, so the publish is refused rather than listing the recording
+ * under a stage that no longer signs as its owner.
  *
- * Unpublishing is deliberately still allowed: the entry is removed by the
- * owner stored on the row, which is the one it was written with.
+ * Unpublishing is still allowed: the entry is removed by the owner stored on the row, which is the one it was written
+ * with.
  */
 export class FeedOwnerMismatchError extends Error {
   constructor(
     public readonly streamId: string,
     public readonly streamOwner: string,
-    public readonly feedOwner: string,
+    public readonly stageId: string,
+    public readonly stageOwner: string,
   ) {
     super(
-      `This stream was created under feed owner ${streamOwner}, but the backend now signs the stream list feed as ${feedOwner}. Unpublish it, or recreate it, to publish under the current key.`,
+      `The recording was made under another key: this stream's recording is signed as ${streamOwner}, and its stage now signs as ${stageOwner}. It cannot be published on that stage.`,
     );
     this.name = 'FeedOwnerMismatchError';
   }

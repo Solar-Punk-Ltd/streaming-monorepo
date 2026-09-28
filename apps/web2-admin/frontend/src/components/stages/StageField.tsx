@@ -1,5 +1,5 @@
 import { Alert, Box, TextField } from '@mui/material';
-import type { StageSummary } from '@streaming-monorepo/web2-admin-common';
+import { sameFeedOwner, type StageSummary } from '@streaming-monorepo/web2-admin-common';
 
 import { formatAgo } from '../../dateUtil';
 import { shortHex } from '../../format';
@@ -8,10 +8,27 @@ import { shortHex } from '../../format';
  * The stages a stream may be put on: those the manager has not retired, on an
  * engine the admin takes streams on. The API refuses any other with
  * `stage_unavailable`, so the picker does not offer them.
+ *
+ * `recordingOwner` is the owner of a draft older than stages that holds a
+ * recording and no stage. Its recording is signed as that address, which it
+ * keeps, so it may be given only a stage that signs as the same; the API
+ * refuses any other with `stage_locked`.
  */
-export function assignableStages(stages: readonly StageSummary[]): StageSummary[] {
-  return stages.filter((stage) => stage.retiredAt === null && stage.supported);
+export function assignableStages(
+  stages: readonly StageSummary[],
+  recordingOwner: string | null = null,
+): StageSummary[] {
+  return stages.filter(
+    (stage) =>
+      stage.retiredAt === null &&
+      stage.supported &&
+      (recordingOwner === null || sameFeedOwner(stage.owner, recordingOwner)),
+  );
 }
+
+/** Said when no stage signs as the owner of a recording older than stages. */
+export const NO_STAGE_FOR_RECORDING =
+  "No stage signs as this recording's owner, so none can take it. A stage signs as the key its deployment was given in the manager.";
 
 /** How the picker and My Streams name a stage the list does not hold: its id, shortened. */
 export function unknownStageLabel(stageId: string): string {
@@ -39,6 +56,7 @@ export function StageField({
   loadError = null,
   disabled = false,
   helperText,
+  recordingOwner = null,
 }: {
   value: string;
   onChange: (stageId: string) => void;
@@ -47,15 +65,19 @@ export function StageField({
   loadError?: string | null;
   disabled?: boolean;
   helperText?: string;
+  /** The owner of a recording older than stages, which only a stage signing as it may take. */
+  recordingOwner?: string | null;
 }) {
-  const offered = assignableStages(stages ?? []);
+  const offered = assignableStages(stages ?? [], recordingOwner);
   const current = value && !offered.some((stage) => stage.stageId === value) ? value : null;
   const currentStage = current ? (stages ?? []).find((stage) => stage.stageId === current) : undefined;
 
   let help = helperText;
   if (!help && loadError) help = loadError;
   if (!help && stages !== null && offered.length === 0) {
-    help = 'No stage takes streams yet. The manager registers each one once its admin link points here.';
+    help = recordingOwner
+      ? NO_STAGE_FOR_RECORDING
+      : 'No stage takes streams yet. The manager registers each one once its admin link points here.';
   }
 
   return (

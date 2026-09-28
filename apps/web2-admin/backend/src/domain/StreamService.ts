@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
+import { sameFeedOwner } from '@streaming-monorepo/contracts';
 import type { MediaType, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
 import {
@@ -27,7 +28,7 @@ import {
   type StageLockReason,
   type StageUnavailableReason,
 } from './errors/index.js';
-import type { FeedIdentity } from './feedIdentity.js';
+import { asFeedOwner, type FeedIdentity } from './feedIdentity.js';
 import { Logger } from './Logger.js';
 import { describeStage, stageTakesStreams } from './StageService.js';
 import { isScheduleLocked } from './streamState.js';
@@ -101,6 +102,25 @@ export function stageLockFor(stream: StreamRow, stageId: string | null): StageLo
 }
 
 /**
+ * Whether a stage fits a draft older than stages that holds a recording and no
+ * stage. Its recording is signed as the row's owner, the brand key's address
+ * when it was made, and a row that holds a recording never changes owner, so
+ * it takes only a stage that signs as that address. Any other stream fits any
+ * stage that takes streams.
+ */
+export function stageFitsRecording(stream: StreamRow, stage: Pick<StageRow, 'owner'>): boolean {
+  return stream.manifest_index === null || sameFeedOwner(stream.owner, stage.owner);
+}
+
+/**
+ * The owner a stream on `stage` signs its feeds as: the stage's, in the form a
+ * row keeps it, or the brand key's for a stream with no stage.
+ */
+export function ownerOnStage(stage: Pick<StageRow, 'owner'> | null, brandOwner: string): string {
+  return stage ? asFeedOwner(stage.owner) : brandOwner;
+}
+
+/**
  * Whether an edit would move a published stream's ingest address. The ingest
  * stream id is `<mediaType>/<topic>`, so the media type is half of what the
  * streamer has already typed into OBS — and, once the uploader looks drafts up
@@ -164,13 +184,15 @@ export class StreamService {
    */
   async create(actor: OperatorActor, input: StreamInputValues): Promise<StreamRow> {
     const stageId = input.stageId ?? null;
-    if (stageId !== null) await this.assignableStage(stageId);
+    const stage = stageId !== null ? await this.assignableStage(stageId) : null;
     const created = await this.streams.insert({
       user_id: actor.userId,
       // The stream id viewers see. Minted here, not in the browser as
       // msrs-client did, so it is unique and owned by a row from the start.
       topic: randomUUID(),
-      owner: this.feed.owner,
+      // A stream signs as its stage does. One with no stage yet keeps the
+      // brand key's address, and takes its stage's when it is given one.
+      owner: ownerOnStage(stage, this.feed.owner),
       title: input.title,
       description: input.description,
       tags: input.tags,
@@ -217,10 +239,15 @@ export class StreamService {
     }
     const stageId = input.stageId;
     const movesStage = stageId !== undefined && stageId !== existing.stage_id;
+    // The owner the stream takes with its new stage. A row that holds a
+    // recording keeps its own, so it is left out of the write for one.
+    let owner: string | undefined;
     if (movesStage) {
       const lock = stageLockFor(existing, stageId);
       if (lock) throw new StageLockedError(id, lock);
-      if (stageId !== null) await this.assignableStage(stageId);
+      const stage = stageId !== null ? await this.assignableStage(stageId) : null;
+      if (stage && !stageFitsRecording(existing, stage)) throw new StageLockedError(id, 'owner');
+      if (existing.manifest_index === null) owner = ownerOnStage(stage, this.feed.owner);
     }
 
     const updated = await this.streams.update(
@@ -232,6 +259,7 @@ export class StreamService {
         media_type: input.mediaType,
         scheduled_start_time: input.scheduledStartTime,
         ...(movesStage ? { stage_id: stageId } : {}),
+        ...(owner !== undefined ? { owner } : {}),
       },
       EDITABLE_STATUSES,
     );
@@ -258,7 +286,9 @@ export class StreamService {
     }
     if (stageMoved) {
       logger.info(
-        `[Stream] ${describeActor(actor)} moved ${describeStream(updated)} from stage ${existing.stage_id ?? '(none)'} to ${updated.stage_id ?? '(none)'}`,
+        `[Stream] ${describeActor(actor)} moved ${describeStream(updated)} from stage ${existing.stage_id ?? '(none)'} to ${updated.stage_id ?? '(none)'}${
+          updated.owner === existing.owner ? '' : `, owner ${existing.owner} → ${updated.owner}`
+        }`,
       );
       await recordAudit(this.audit, {
         actor,
@@ -267,7 +297,11 @@ export class StreamService {
         topic: updated.topic,
         statusBefore: existing.status,
         statusAfter: updated.status,
-        details: { from: existing.stage_id, to: updated.stage_id },
+        details: {
+          from: existing.stage_id,
+          to: updated.stage_id,
+          ...(updated.owner === existing.owner ? {} : { ownerFrom: existing.owner, ownerTo: updated.owner }),
+        },
       });
     }
     return updated;
@@ -394,8 +428,12 @@ export class StreamService {
       // The UPDATE takes a stage only while it can take streams, so the
       // manager may have retired it since the service looked.
       if (stageId !== null) {
-        const reason = stageUnavailability(await this.stages.findSummary(stageId));
+        const stage = await this.stages.findSummary(stageId);
+        const reason = stageUnavailability(stage);
         if (reason) throw new StageUnavailableError(stageId, reason);
+        // The UPDATE gives a row with a recording only a stage that signs as
+        // its owner, and the manager may have rotated the stage's key since.
+        if (stage && !stageFitsRecording(existing, stage)) throw new StageLockedError(id, 'owner');
       }
     }
     throw new StreamBusyError(id, existing.status);
