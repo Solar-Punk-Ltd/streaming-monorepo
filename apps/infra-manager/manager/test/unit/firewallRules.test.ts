@@ -60,8 +60,27 @@ function chain(text: string, name: string): string[] {
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith('#'));
 }
+/** The IPv4 address sets, each as its CIDR blocks. */
+function addressSets(text: string): Map<string, string[]> {
+  return new Map(
+    [...text.matchAll(/set (\w+) \{\s*type ipv4_addr;[^}]*elements = \{([^}]*)\}/g)].map((match) => [
+      match[1]!,
+      match[2]!.split(',').map((value) => value.trim()),
+    ]),
+  );
+}
+function toNumber(address: string): number {
+  return address.split('.').reduce((total, octet) => total * 256 + Number(octet), 0);
+}
+function inBlock(address: string, block: string): boolean {
+  const [base, prefix] = block.split('/');
+  const size = 2 ** (32 - Number(prefix));
+  return Math.floor(toNumber(address) / size) === Math.floor(toNumber(base!) / size);
+}
 interface Packet {
   family: 'ipv4' | 'ipv6';
+  /** The sender's IPv4 address, for a rule that admits named sources only. */
+  source?: string;
   protocol: 'tcp' | 'udp';
   originalPort: number;
   destinationPort: number;
@@ -73,6 +92,7 @@ interface Packet {
 function verdict(text: string, hook: 'input' | 'forward', packet: Packet): string {
   assert.match(text, /table inet streaming_infra_manager \{/);
   const portSets = sets(text);
+  const sources = addressSets(text);
   let policy = '';
   for (const line of chain(text, hook)) {
     const declaration = line.match(/^type filter hook (input|forward) priority -?\d+; policy (accept|drop);$/);
@@ -86,6 +106,12 @@ function verdict(text: string, hook: 'input' | 'forward', packet: Packet): strin
     rest = rest.replace(/^iifname (!= )?"([^"]+)" /, (_all, inverse: string | undefined, iface: string) => {
       const same = (packet.iface ?? 'eth0') === iface;
       match &&= inverse ? !same : same;
+      return '';
+    });
+    rest = rest.replace(/^ip saddr @(\w+) /, (_all, name: string) => {
+      const blocks = sources.get(name);
+      assert.ok(blocks, 'unknown address set @' + name);
+      match &&= packet.family === 'ipv4' && blocks.some((block) => inBlock(packet.source ?? '192.0.2.200', block));
       return '';
     });
     rest = rest.replace(/^ct state established,related /, () => {
@@ -358,6 +384,79 @@ describe('firewall rules from shared policy and complete inventory', () => {
       assert.match(result.stderr, /inventory|evidence|policy/i);
     });
   }
+  it('opens no Bee API port to anyone unless sources are named', () => {
+    const text = rules();
+    assert.doesNotMatch(text, /saddr|bee_api/);
+    assert.equal(
+      verdict(text, 'forward', {
+        family: 'ipv4',
+        source: '203.0.113.7',
+        protocol: 'tcp',
+        originalPort: 10015,
+        destinationPort: 1633,
+        dnat: true,
+      }),
+      'drop',
+    );
+  });
+
+  describe('with named uploader addresses on a Bee host', () => {
+    const named = ['--bee-api-source', '203.0.113.7/32', '--bee-api-source', '198.51.100.0/24'];
+    const bee = (text: string, hook: 'input' | 'forward', port: number, source: string, family: 'ipv4' | 'ipv6' = 'ipv4') =>
+      verdict(text, hook, { family, source, protocol: 'tcp', originalPort: port, destinationPort: hook === 'input' ? port : 1633, dnat: true });
+
+    it("admits each named address to every slot's Bee API port, and nobody else", () => {
+      const text = rules(named);
+      for (const hook of ['input', 'forward'] as const) {
+        for (const port of [10015, 10505, 11005]) {
+          assert.equal(bee(text, hook, port, '203.0.113.7'), 'accept', hook + ' ' + port + ' from the named host');
+          assert.equal(bee(text, hook, port, '198.51.100.44'), 'accept', hook + ' ' + port + ' from the named /24');
+          assert.equal(bee(text, hook, port, '203.0.113.8'), 'drop', hook + ' ' + port + ' from a stranger');
+          assert.equal(bee(text, hook, port, '203.0.113.7', 'ipv6'), 'drop', hook + ' ' + port + ' over IPv6');
+        }
+      }
+    });
+
+    it('opens nothing else to them, the gateway API and the other private ports included', () => {
+      const text = rules(named);
+      for (const port of [10010, 10012, 10013, 10017, 10019]) {
+        for (const hook of ['input', 'forward'] as const) {
+          assert.equal(bee(text, hook, port, '203.0.113.7'), 'drop', hook + ' ' + port);
+        }
+      }
+      assert.equal(
+        verdict(text, 'forward', { family: 'ipv4', source: '203.0.113.7', protocol: 'udp', originalPort: 10015, destinationPort: 1633, dnat: true }),
+        'drop',
+        'UDP to a Bee API port',
+      );
+    });
+
+    it('keeps the public bands exactly as they were', () => {
+      const plain = sets(rules());
+      const opened = sets(rules(named));
+      for (const band of ['bee_p2p', 'srt_ingest', 'viewer']) assert.deepEqual(opened.get(band), plain.get(band), band);
+    });
+
+    it('stops at --max-slot like every other band', () => {
+      const text = rules([...named, '--max-slot', '20']);
+      assert.equal(bee(text, 'forward', 10205, '203.0.113.7'), 'accept');
+      assert.equal(bee(text, 'forward', 10215, '203.0.113.7'), 'drop');
+    });
+
+    it('names the admitted addresses at the top of the draft', () => {
+      assert.match(rules(named), /^# Bee API ports open to: 203\.0\.113\.7\/32, 198\.51\.100\.0\/24$/m);
+    });
+  });
+
+  for (const source of ['0.0.0.0/0', '203.0.113.0/16', '203.0.113.7', '256.1.1.1/32', '203.0.113.7/33', '2001:db8::1/128', 'example.org/32']) {
+    it('refuses --bee-api-source ' + source, () => {
+      const result = run(evidence(), ['--bee-api-source', source]);
+      assert.equal(result.status, 2);
+      assert.equal(result.stdout, '');
+      assert.match(result.stderr, /--bee-api-source/);
+    });
+  }
+
   it('requires an exporter snapshot', () => {
     const result = spawnSync('bash', [script, '--iface', 'eth0'], runOptions);
     assert.equal(result.status, 2);
