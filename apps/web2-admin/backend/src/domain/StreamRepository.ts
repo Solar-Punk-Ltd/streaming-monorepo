@@ -5,7 +5,7 @@ import type { StreamRow, ThumbnailRow } from '../types/index.js';
 
 import { SUPPORTED_STAGE_ENGINES } from './StageService.js';
 import type { PublishedStatus } from './streamState.js';
-import { CONTENT_EDITED_NOW, STREAM_COLUMNS } from './streamSql.js';
+import { CONTENT_EDITED_NOW, FEED_OWNER_SQL, SAME_OWNER_SQL, STREAM_COLUMNS } from './streamSql.js';
 
 export interface StreamInsertData {
   /**
@@ -39,6 +39,12 @@ export interface StreamUpdateData {
    * change is written only while the row may take one; see `update`.
    */
   stage_id?: string | null;
+  /**
+   * The owner the stream takes with its new stage, or absent to leave it. Set
+   * only with a stage change, and written only while the row holds no
+   * recording, since a recording is signed as the owner it was made under.
+   */
+  owner?: string;
 }
 
 /** What a thumbnail clear left on the row, and whether it removed an image. */
@@ -132,7 +138,12 @@ export class StreamRepository {
    * row takes one only while it is a draft, and never while it holds both a
    * recording and a stage, and only a stage that can take streams: one the
    * stages table holds, not retired, on a supported engine. A save that leaves
-   * the stage alone, or names the one it has, is not a change.
+   * the stage alone, or names the one it has, is not a change. A row that
+   * holds a recording and no stage, one older than stages, takes only a stage
+   * that signs as the row's owner, since its recording is signed as that.
+   *
+   * `owner` is written with the stage, and never on a row that holds a
+   * recording.
    */
   async update(id: string, data: StreamUpdateData, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
@@ -152,6 +163,10 @@ export class StreamRepository {
                 ELSE content_edited_at
               END,
               stage_id = CASE WHEN $9 THEN $8::uuid ELSE stage_id END,
+              owner = CASE
+                WHEN $11::text IS NOT NULL AND manifest_index IS NULL THEN $11::text
+                ELSE owner
+              END,
               updated_at = NOW()
         WHERE id = $1 AND status = ANY($2::text[])
           AND (
@@ -167,6 +182,10 @@ export class StreamRepository {
                    WHERE stages.stage_id = $8::uuid
                      AND stages.retired_observed_at IS NULL
                      AND stages.engine = ANY($10::text[])
+                     AND (
+                       streams.manifest_index IS NULL
+                       OR ${SAME_OWNER_SQL('stages.owner', 'streams.owner')}
+                     )
                 )
               )
             )
@@ -183,6 +202,7 @@ export class StreamRepository {
         data.stage_id ?? null,
         data.stage_id !== undefined,
         SUPPORTED_STAGE_ENGINES,
+        data.owner ?? null,
       ],
     );
     return this.one(result.rows, result.rowCount);
@@ -443,6 +463,16 @@ export class StreamRepository {
    * `draftNeedsStage`, it is a draft with no stage: a publish checks that
    * before it claims, and this holds it against an edit that clears the stage
    * in between.
+   *
+   * A publish's claim, the one with `draftNeedsStage`, gives a draft that
+   * holds no recording its stage's owner, read in the same statement: the
+   * manager may have rotated the stage's key since the stage was picked, and
+   * the entry this publish writes names the owner the stage signs as now. A
+   * row that holds a recording keeps its owner, and a publish's claim takes
+   * it only while its stage signs as that owner, since its feeds resolve under
+   * it alone; null then too. It keeps its owner, and so does every row that is
+   * not a draft, since publishing fixed it, and every row an unpublish
+   * claims, which takes an entry off by the owner it was written with.
    */
   async claimForPublish(
     id: string,
@@ -452,9 +482,24 @@ export class StreamRepository {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
           SET status = 'publishing',
+              owner = CASE
+                WHEN $3 AND status = 'draft' AND manifest_index IS NULL THEN COALESCE(
+                  (SELECT ${FEED_OWNER_SQL('stages.owner')} FROM stages WHERE stages.stage_id = streams.stage_id),
+                  owner
+                )
+                ELSE owner
+              END,
               updated_at = NOW()
         WHERE id = $1 AND status = ANY($2::text[])
           AND (NOT $3 OR status <> 'draft' OR stage_id IS NOT NULL)
+          AND (
+            NOT $3 OR status <> 'draft' OR manifest_index IS NULL OR stage_id IS NULL
+            OR EXISTS (
+              SELECT 1 FROM stages
+               WHERE stages.stage_id = streams.stage_id
+                 AND ${SAME_OWNER_SQL('stages.owner', 'streams.owner')}
+            )
+          )
         RETURNING ${STREAM_COLUMNS}`,
       [id, allowedFrom, draftNeedsStage],
     );

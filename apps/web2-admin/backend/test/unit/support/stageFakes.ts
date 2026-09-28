@@ -135,6 +135,16 @@ export class FakeStageStore implements StageStore {
       .map(listed);
   }
 
+  /** As the SQL is: every stored stage's owner, retired ones included, each once. */
+  async listOwners(): Promise<string[]> {
+    return [...new Set([...this.rows.values()].map((row) => row.owner))].sort();
+  }
+
+  /** The stage's owner as the stream UPDATE and the publish claim read it off the stages table, or null. */
+  ownerOf(stageId: string): string | null {
+    return this.rows.get(stageId)?.owner ?? null;
+  }
+
   /**
    * Whether the stage can take a stream, as the stream UPDATE's move branch
    * asks the stages table: stored, not retired, on SRS.
@@ -205,10 +215,10 @@ export class FakeStageStore implements StageStore {
  * `streamRow()` puts every stream on. Filled synchronously, for the setups
  * that are not async.
  */
-export function stagesWithMain(clock: TestClock = new TestClock()): FakeStageStore {
+export function stagesWithMain(clock: TestClock = new TestClock(), over: Partial<StageRecord> = {}): FakeStageStore {
   const stages = new FakeStageStore(clock);
   // `upsert` reaches no `await`, so the row is in place when this returns.
-  void stages.upsert(splitStageRecord(stageRecord()));
+  void stages.upsert(splitStageRecord(stageRecord(over)));
   return stages;
 }
 

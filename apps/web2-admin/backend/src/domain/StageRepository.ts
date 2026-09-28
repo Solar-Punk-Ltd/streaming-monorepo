@@ -65,6 +65,15 @@ export class StageRepository {
   }
 
   /**
+   * The owner of every stage the admin holds, retired ones included, each once: what a reconcile counts as ours beside
+   * the brand key. A retired stage keeps its row for this, since its streams and old catalogue entries name its owner.
+   */
+  async listOwners(): Promise<string[]> {
+    const result = await this.pool.query<{ owner: string }>(`SELECT DISTINCT owner FROM stages ORDER BY owner`);
+    return result.rows.map((row) => row.owner);
+  }
+
+  /**
    * One stage as a list reads it, without the passphrase or the token hash: what the stream edits and the publish
    * check a stage by.
    */

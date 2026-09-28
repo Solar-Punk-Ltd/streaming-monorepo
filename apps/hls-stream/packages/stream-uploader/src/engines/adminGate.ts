@@ -118,8 +118,8 @@ export async function resolveAdminPublish(
   if (signerOwner !== undefined && !sameFeedOwner(draft.owner, signerOwner)) {
     logger.error(
       `${tag} refused ${streamId}: the announced stream is owned by ${draft.owner} and this service signs as ` +
-        `${signerOwner}. STREAM_KEY and the admin's FEED_PRIVATE_KEY have to derive one address, or the feeds this ` +
-        "service writes resolve under an owner the admin's catalog entry never names",
+        `${signerOwner}. STREAM_KEY and the owner the admin knows for this stage have to be one address, or the ` +
+        "feeds this service writes resolve under an owner the admin's catalog entry never names",
     );
     return { kind: ADMIN_PUBLISH_WRONG_OWNER };
   }

@@ -899,13 +899,23 @@ when the presented `key=` is not the declaration's, when the declaration is owne
 service does not sign with, or when the ingest `app` and the declared media type disagree. Each
 refusal says which it was in the log.
 
-Both services have to sign as one owner. The admin's catalog entry points a viewer at `owner/topic`,
-and every feed this service writes at that topic is signed with `STREAM_KEY`, so the admin's
-`FEED_PRIVATE_KEY` must derive the same address or the entry resolves a feed nobody wrote — while every
-report answers 200 and nothing says so. Nothing on the wire carries a key, so the address is what is
-compared: once at boot, off the admin's public `/api/config`, where a mismatch refuses to start and an
-admin that cannot be reached yet only warns; and again on every publish, against the declaration's
-`owner`.
+This service has to sign as the owner the admin knows for its stage. Every stage signs with a key of
+its own, `STREAM_KEY`, the manager tells the admin each stage's owner, and the admin's catalog entry
+points a viewer at `owner/topic` with that owner; the catalog itself is signed by the admin's own key,
+which no uploader holds. With `STREAM_KEY` apart from the stage's owner the entry resolves a feed
+nobody wrote, while every report answers 200 and nothing says so. Nothing on the wire carries a key, so
+the address is what is compared, once at boot and again on every publish, against the declaration's
+`owner`. At boot:
+
+| The admin answers `GET /api/internal/stages/self`, with `ADMIN_API_TOKEN`   | The uploader                                                                           |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| 200 with `{ stageId, owner }`                                               | Compares `owner` with its signer. A mismatch refuses to start, naming both addresses   |
+| 404: the shared token, which belongs to no stage, or an admin before stages | Compares the catalog owner of the public `/api/config`, as before stages, the same way |
+| Anything else, or nothing                                                   | Warns and starts. The publish gate compares each declaration's owner                   |
+
+A refusal says to fix the deployment's `STREAM_KEY` in the manager, or the stage the admin holds for
+it. On the shared token it says to give the deployment a token of its own, so the admin can name its
+stage.
 
 | Variable          | Description                                                                        |
 | ----------------- | ---------------------------------------------------------------------------------- |

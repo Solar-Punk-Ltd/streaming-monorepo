@@ -85,7 +85,10 @@ export interface Stream {
   id: string;
   /** Stream id inside the stream list feed; a UUID minted by the backend. */
   topic: string;
-  /** Feed owner address (hex, no 0x) derived from the backend's feed key. */
+  /**
+   * Feed owner address (hex, no 0x): the address the stream's stage signs as, or the backend's feed key's for a
+   * stream with no stage. A stream that holds a recording keeps the owner it was recorded under.
+   */
   owner: string;
   title: string;
   description: string;

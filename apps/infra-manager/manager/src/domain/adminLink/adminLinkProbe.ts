@@ -6,13 +6,18 @@ import {
   ingestLookupPath,
   MEDIA_TYPE_VIDEO,
   sameFeedOwner,
+  STAGE_SELF_PATH,
+  stageSelfAnswerSchema,
 } from '@streaming-monorepo/contracts';
 
 /** What Test connection asks a web2 admin with: the address and token the uploader would be given. */
 export interface AdminLinkProbeTarget {
   url: string;
   token: string;
-  /** The address the deployment's stream key derives, compared with the admin's feed owner, or null where there is none to compare. */
+  /**
+   * The address the deployment's stream key derives, compared with the owner the admin knows for the token's stage,
+   * or with its catalog's for a token it ties to no stage. Null where there is none to compare.
+   */
   feedOwner: string | null;
 }
 
@@ -41,6 +46,19 @@ const DEFAULT_MAX_BODY_BYTES = 64 * 1024;
  */
 const UNUSED_STREAM_PATH = ingestLookupPath(`${MEDIA_TYPE_VIDEO}/00000000-0000-0000-0000-000000000000`);
 const CONFIG_PATH = '/api/config';
+
+/**
+ * The owner the admin knows for the token's stage, off its answer to `GET /api/internal/stages/self`: the owner on a
+ * 200 that names one, `no-stage` on a 404, which is a token that belongs to no stage (the shared one) or an admin
+ * older than stages, and null for anything else.
+ */
+function stageOwnerOf(answer: Answer): string | 'no-stage' | null {
+  if (answer.kind !== 'answered') return null;
+  if (answer.status === 404) return 'no-stage';
+  if (answer.status !== 200) return null;
+  const read = stageSelfAnswerSchema.safeParse(answer.body);
+  return read.success ? read.data.owner : null;
+}
 
 /** What one request came to: no answer, a redirect, or a status with the body read as JSON, undefined when it was not JSON or ran past the bound. */
 type Answer = { kind: 'none' } | { kind: 'redirect' } | { kind: 'answered'; status: number; body: unknown };
@@ -118,9 +136,12 @@ function configuredFeedOwner(answer: Answer): string | null {
 
 /**
  * Asks a web2 admin what the stream uploader would ask it, and answers one
- * outcome code. The token goes to the internal lookup alone, the public config
- * is asked without it, and only when there is a stream address to compare its
- * owner with.
+ * outcome code. Where there is a stream address to compare, it then asks what
+ * the uploader asks at boot: the stage the token belongs to, with the token,
+ * and the owner the admin knows for it. Every stage signs with a key of its
+ * own, so that owner is the one compared. On a 404 there, a token that belongs
+ * to no stage or an admin older than stages, it compares with the catalog
+ * owner of the public config, asked without the token.
  *
  * It reaches whatever the manager's own host can reach, loopback and private
  * addresses included, as the uploader reaches whatever its host can. It never
@@ -143,6 +164,12 @@ export const probeAdminLink: AdminLinkProbe = async (target, options = {}) => {
   if (lookup.status === 401 && errorCodeOf(lookup) === ADMIN_ERROR_UNAUTHENTICATED) return 'token-refused';
   if (lookup.status !== 404 || errorCodeOf(lookup) !== ADMIN_ERROR_STREAM_NOT_FOUND) return 'not-admin';
   if (target.feedOwner === null) return 'token-accepted';
+
+  const stage = stageOwnerOf(
+    await ask(`${base}${STAGE_SELF_PATH}`, { authorization: `Bearer ${target.token}` }, timeoutMs, maxBytes),
+  );
+  if (stage === null) return 'owner-unconfirmed';
+  if (stage !== 'no-stage') return sameFeedOwner(stage, target.feedOwner) ? 'linked' : 'owner-mismatch';
 
   const owner = configuredFeedOwner(await ask(`${base}${CONFIG_PATH}`, {}, timeoutMs, maxBytes));
   if (owner === null) return 'owner-unconfirmed';

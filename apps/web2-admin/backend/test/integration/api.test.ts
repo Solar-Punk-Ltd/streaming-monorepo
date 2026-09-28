@@ -41,7 +41,7 @@ import {
   sessionCookie,
   stack,
 } from './helpers.js';
-import { SRT_PASSPHRASE, STAGE_ID } from '../unit/support/stageFakes.js';
+import { SRT_PASSPHRASE, STAGE_ID, STAGE_OWNER } from '../unit/support/stageFakes.js';
 
 const created = new Set<string>();
 
@@ -197,8 +197,11 @@ describe('stream lifecycle', () => {
     assert.equal(stream.publishedFeedIndex, null);
     assert.match(stream.topic, /^[0-9a-f-]{36}$/);
 
+    // A stream signs as its stage, and the brand key signs the catalogue alone,
+    // which is what the public config still names for the viewer build.
+    assert.equal(stream.owner, STAGE_OWNER.slice(2), "owner is the stage's, lower case and without 0x");
     const config = await api<PublicConfig>('GET', '/api/config');
-    assert.equal(stream.owner, config.feed.owner, 'owner is the feed key');
+    assert.notEqual(config.feed.owner, stream.owner, 'the catalogue is the brand key');
   });
 
   it('puts the draft on the stage the form named', () => {

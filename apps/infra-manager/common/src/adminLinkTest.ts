@@ -7,13 +7,16 @@ import { adminTokenProblem, adminUrlProblem } from './managerAdminLink.js';
  * admin said, the address or a token.
  */
 export const ADMIN_LINK_TEST_OUTCOMES = [
-  /** The admin took the token and signs its catalog with the deployment's stream address. */
+  /**
+   * The admin took the token and knows the deployment's stream address as its owner: the owner of the token's stage,
+   * or on a token that belongs to no stage, the address it signs its catalog with.
+   */
   'linked',
   /** The admin took the token. There was no stream address to compare its owner with. */
   'token-accepted',
   /** The admin took the token but did not say which address it signs with, so the stream address was not compared. */
   'owner-unconfirmed',
-  /** The admin took the token but signs with another address, which the uploader refuses to start with. */
+  /** The admin took the token but knows another owner for it than the stream address, which the uploader refuses to start with. */
   'owner-mismatch',
   /** A stored token, the manager's or the deployment's own, was saved for another origin, so nothing was asked. */
   'stored-token-elsewhere',
@@ -47,7 +50,7 @@ export type AdminLinkTokenChoice = { source: 'stored' } | { source: 'typed'; val
 export interface AdminLinkTestRequest {
   url: string;
   token: AdminLinkTokenChoice;
-  /** The address the deployment's stream key derives, compared with the admin's feed owner, where there is one. */
+  /** The address the deployment's stream key derives, compared with the owner the admin knows for the token, where there is one. */
   feedOwner?: string | null;
 }
 

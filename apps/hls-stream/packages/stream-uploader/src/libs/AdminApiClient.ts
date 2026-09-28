@@ -4,6 +4,8 @@ import {
   ingestLookupAnswerSchema,
   ingestLookupPath,
   renditionReportAnswerSchema,
+  STAGE_SELF_PATH,
+  stageSelfAnswerSchema,
 } from '@swarm-hls-stream/shared';
 
 import { MediaType, Rendition } from '../types.js';
@@ -37,9 +39,11 @@ import { Logger } from './Logger.js';
  * outcome and decides, because the two callers want different things from a failure — see
  * {@link StateReportOutcome}.
  *
- * `fetchFeedOwner` runs once at boot and never throws either: it confirms that the admin signs its
- * catalog with the address this service signs its feeds with, and an admin that cannot be asked yet
- * is a warning rather than a refusal, because the publish gate compares each declaration's owner.
+ * `fetchStageSelf` and `fetchFeedOwner` run once at boot and never throw either: they confirm that
+ * the owner the admin knows for this stage, or for a caller it cannot tie to a stage the address it
+ * signs its catalog with, is the one this service signs its feeds with. An admin that cannot be
+ * asked yet is a warning rather than a refusal, because the publish gate compares each declaration's
+ * owner. See `libs/AdminOwnerCheck.ts`.
  *
  * `reportRendition` follows `reportState`'s policy exactly, on the same ladder and the same timeout,
  * and for the same reason: a rung announcing itself is behind a broadcast that is already running.
@@ -170,6 +174,20 @@ export interface RenditionReportResponse {
   };
 }
 
+/**
+ * What the admin says about the stage this service's token belongs to.
+ *
+ * - `stage`: it named the stage and the owner that stage signs as.
+ * - `no-stage`: it answered 404. The token is the shared one, which belongs to no stage, or the admin
+ *   is older than the route; the two answer alike, and both are compared with the public config.
+ * - `unconfirmed`: it could not be read: no answer, another status, or a body that is not the answer.
+ *   `reason` says which, for the log.
+ */
+export type StageSelfOutcome =
+  | { kind: 'stage'; stageId: string; owner: string }
+  | { kind: 'no-stage' }
+  | { kind: 'unconfirmed'; reason: string };
+
 interface AdminApiClientOptions {
   baseUrl: string;
   token: string;
@@ -235,12 +253,43 @@ export class AdminApiClient {
   }
 
   /**
+   * The stage the admin ties this service's token to, and the owner it knows for that stage.
+   *
+   * Boot asks this first. Each stage signs its feeds with a key of its own, and the admin writes that
+   * stage's owner into every catalog entry of its streams, so the owner it names here is the one this
+   * service has to sign as. The token goes with it, because the answer is about the caller. Never
+   * throws, for the reason `fetchFeedOwner` gives.
+   */
+  public async fetchStageSelf(): Promise<StageSelfOutcome> {
+    const url = `${this.baseUrl}${STAGE_SELF_PATH}`;
+    try {
+      const response = await this.send(url, { method: 'GET' }, this.lookupTimeoutMs);
+      if (response.status === 404) {
+        await response.body?.cancel().catch(() => undefined);
+        return { kind: 'no-stage' };
+      }
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined);
+        return { kind: 'unconfirmed', reason: `${url} answered ${response.status}` };
+      }
+      const answer = stageSelfAnswerSchema.safeParse(await this.readJson(response));
+      if (!answer.success) {
+        return { kind: 'unconfirmed', reason: `${url} answered 200 with a body that names no stage and owner` };
+      }
+      return { kind: 'stage', stageId: answer.data.stageId, owner: answer.data.owner };
+    } catch (error) {
+      return { kind: 'unconfirmed', reason: `${url} did not answer: ${getErrorMessage(error)}` };
+    }
+  }
+
+  /**
    * The address the admin signs its catalog feed with, read off its public config, or null when it
    * could not be read.
    *
-   * Boot asks this once. Both services have to sign as one owner: the admin's catalog entry points a
-   * viewer at `owner/topic`, and the master this service writes at that topic resolves only under the
-   * key it was signed with. Nothing on the wire carries a key, so the address is the one thing that
+   * Boot asks this when `fetchStageSelf` names no stage: a caller on the shared token, or an admin
+   * older than stages, where both services still sign as one owner. The admin's catalog entry points
+   * a viewer at `owner/topic`, and the master this service writes at that topic resolves only under
+   * the key it was signed with. Nothing on the wire carries a key, so the address is the one thing that
    * can be compared, and a deployment where the two differ answers 200 to every report while every
    * viewer resolves a feed nobody wrote. `resolveAdminPublish` runs the per-declaration half of the
    * same check on every publish.

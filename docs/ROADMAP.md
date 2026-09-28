@@ -283,6 +283,12 @@ the spec. The feature branch goes to `main` once the owner has tried it whole.
   `INGEST_SRT_PASSPHRASE` and `INGEST_KEY_VERIFIED` leave the admin's env:
   every uploader that takes streams from the admin verifies the per-stream
   `key=`, so the console no longer warns that it might not.
+- Phase 6, a key per stage: a stream's owner is its stage's, read again at
+  the publish claim of a draft with no recording, and a recording keeps the
+  owner it was made under. The brand key signs the catalogue alone. The
+  uploader's boot check and the manager's Test connection compare with the
+  owner the admin knows for the token's stage, and fall back to the catalogue
+  owner only for a token of no stage.
 
 ## Checkpoint 3: manager integration
 

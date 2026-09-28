@@ -172,7 +172,9 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     return;
   }
   if (err instanceof FeedOwnerMismatchError) {
-    res.status(409).json({ error: 'feed_owner_mismatch', message: err.message });
+    res
+      .status(409)
+      .json({ error: 'feed_owner_mismatch', id: err.streamId, stageId: err.stageId, message: err.message });
     return;
   }
   if (err instanceof StageLockedError) {

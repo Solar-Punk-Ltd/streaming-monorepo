@@ -8,4 +8,6 @@ export {
   renditionReportAnswerSchema,
   type RenditionReportAnswer,
   sameFeedOwner,
+  STAGE_SELF_PATH,
+  stageSelfAnswerSchema,
 } from '@streaming-monorepo/contracts';

@@ -3,6 +3,7 @@ import { Route, Routes } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import type { StageSummary, Stream } from '@streaming-monorepo/web2-admin-common';
 
+import { NO_STAGE_FOR_RECORDING } from '../components/stages/StageField';
 import { STAGE_LOCKED } from '../errors';
 import { FIRST_STAGE_IS_FINAL, StreamFormPage } from '../pages/StreamFormPage';
 import { StreamsPage } from '../pages/StreamsPage';
@@ -14,6 +15,15 @@ const OME_STAGE_ID = '7b2e4c0a-3d4e-4f50-8b62-2c3d4e5f6071';
 
 const RETIRED = makeStage({ stageId: RETIRED_STAGE_ID, name: 'Old stage', retiredAt: '2026-09-28T11:00:00.000Z' });
 const OME = makeStage({ stageId: OME_STAGE_ID, name: 'OME stage', engine: 'ome', supported: false });
+
+/** The address `makeStage()` signs as, the way a stream row keeps an owner. */
+const MAIN_STAGE_OWNER = '3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3';
+/** A stage with a key of its own, which a recording signed as the main stage's owner cannot take. */
+const OTHER_KEY = makeStage({
+  stageId: SECOND_STAGE_ID,
+  name: 'Other key',
+  owner: '0x4f0e1c2b3a49586772635441302f1e0d0c0b0a09',
+});
 
 const stageSelect = () => screen.getByLabelText('Stage') as HTMLSelectElement;
 const optionLabels = (select: HTMLSelectElement) => [...select.options].map((option) => option.textContent);
@@ -186,6 +196,7 @@ describe('the stream form stage picker', () => {
     const sent: Record<string, unknown>[] = [];
     const recorded = makeStream({
       id: 'old-rec',
+      owner: MAIN_STAGE_OWNER,
       status: 'draft',
       stageId: null,
       manifestIndex: 7,
@@ -215,6 +226,7 @@ describe('the stream form stage picker', () => {
     const sent: Record<string, unknown>[] = [];
     const recorded = makeStream({
       id: 'old-rec',
+      owner: MAIN_STAGE_OWNER,
       status: 'draft',
       stageId: null,
       manifestIndex: 7,
@@ -228,6 +240,40 @@ describe('the stream form stage picker', () => {
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0]!.stageId).toBeNull();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('offers a recording from before stages only the stages that sign as its owner', async () => {
+    const recorded = makeStream({
+      id: 'old-rec',
+      owner: MAIN_STAGE_OWNER.toUpperCase(),
+      status: 'draft',
+      stageId: null,
+      manifestIndex: 7,
+      durationSeconds: 61,
+    });
+    renderEdit(recorded, [makeStage(), OTHER_KEY]);
+
+    await waitFor(() => expect(optionLabels(stageSelect())).toEqual(['No stage', 'Main stage']));
+  });
+
+  it('says so when no stage signs as the owner of a recording from before stages', async () => {
+    const recorded = makeStream({
+      id: 'old-rec',
+      status: 'draft',
+      stageId: null,
+      manifestIndex: 7,
+      durationSeconds: 61,
+    });
+    renderEdit(recorded, [makeStage(), OTHER_KEY]);
+
+    await waitFor(() => expect(optionLabels(stageSelect())).toEqual(['No stage']));
+    expect(screen.getByText(NO_STAGE_FOR_RECORDING)).toBeInTheDocument();
+  });
+
+  it('offers every stage to a draft that holds no recording, whatever it signs as', async () => {
+    renderEdit(makeStream({ id: 'bare-id', stageId: null }), [makeStage(), OTHER_KEY]);
+
+    await waitFor(() => expect(optionLabels(stageSelect())).toEqual(['No stage', 'Main stage', 'Other key']));
   });
 
   it('says nothing about a final first stage on a draft that holds no recording', async () => {

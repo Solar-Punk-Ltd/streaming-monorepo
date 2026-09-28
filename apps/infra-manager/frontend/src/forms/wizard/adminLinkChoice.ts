@@ -187,16 +187,25 @@ export function adminLinkBody(state: WizardState, context: WizardContext): Admin
 }
 
 /**
- * What Test connection asks from the group, with the address of the stream key
- * chosen here as the owner to compare, or null until the address and the token
- * can be used.
+ * What Test connection asks from the group, or null until the address and the
+ * token can be used.
+ *
+ * With a token typed here, the address of the stream key chosen here is the
+ * owner to compare. A typed token is one the admin ties to no stage, so the
+ * probe compares the key with the admin's catalog owner, which is what the
+ * uploader will do at boot: a stage with a key of its own on such a token does
+ * not start. With a token of its own no owner is compared, since the token
+ * does not exist yet and the admin learns the stage's address from its first
+ * push at the first deploy; the deployment's own Test connection compares it
+ * then.
  */
 export function adminLinkTestOf(state: WizardState, context: WizardContext): AdminLinkTestRequest | null {
   const choice = chosenAdminLink(state, context);
   if (!choice.on || urlProblemOf(choice) !== null) return null;
   const token = tokenOf(choice, context);
   if ('problem' in token) return null;
-  return { url: choice.url, token: token.token, feedOwner: addressOfStreamKey(chosenKey(state)) ?? null };
+  const feedOwner = choice.tokenSource === 'typed' ? (addressOfStreamKey(chosenKey(state)) ?? null) : null;
+  return { url: choice.url, token: token.token, feedOwner };
 }
 
 /** The review's line for the link, naming the address and where the token comes from, never the token. Null where the group asks nothing. */

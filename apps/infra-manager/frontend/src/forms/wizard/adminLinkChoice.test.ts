@@ -239,13 +239,20 @@ describe('what the create sends', () => {
 });
 
 describe('what Test connection asks from the group', () => {
-  it("tests a token of its own with the manager's stored token, and the stream key's address as the owner to compare", () => {
+  it("tests a token of its own with the manager's stored token, and compares no owner, since the stage's key is its own", () => {
     const state = stateFor('stream');
     assert.deepEqual(adminLinkTestOf(state, contextWith(DEFAULT)), {
       url: ADMIN_URL,
       token: { source: 'stored' },
-      feedOwner: addressOfStreamKey(state.generatedKey),
+      feedOwner: null,
     });
+  });
+
+  it("compares a typed token with the stream key's address, as the uploader will at boot", () => {
+    const typed = { on: true, url: ADMIN_URL, tokenSource: 'typed' as const, token: TOKEN };
+    const state = stateFor('stream', { adminLink: typed });
+    assert.equal(adminLinkTestOf(state, contextWith(NONE))?.feedOwner, addressOfStreamKey(state.generatedKey));
+    assert.ok(adminLinkTestOf(state, contextWith(NONE))?.feedOwner, 'an address, not null');
   });
 
   it('tests a typed token, and nothing until the address and the token are usable', () => {

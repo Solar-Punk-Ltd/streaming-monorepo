@@ -11,10 +11,12 @@
  * its next write, which is how the tests prove a failed audit write never
  * fails the operation it describes.
  */
+import { sameFeedOwner } from '@streaming-monorepo/contracts';
 import type { Rendition, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
 import type { OperatorActor } from '../../../src/domain/actor.js';
 import type { AuditAction, AuditEntry, AuditLog } from '../../../src/domain/AuditLog.js';
+import { asFeedOwner } from '../../../src/domain/feedIdentity.js';
 import type { IngestStreamStore } from '../../../src/domain/IngestService.js';
 import type { LadderRenditionStore, LadderStreamStore } from '../../../src/domain/LadderService.js';
 import type { FeedWriteRecord } from '../../../src/domain/FeedWriteRepository.js';
@@ -168,7 +170,7 @@ export class FakeStreamStore
    * The stages the move branch of `update` checks a new stage against, as the
    * SQL checks the stages table. Unset, every stage takes streams.
    */
-  stages: { takesStreams(stageId: string): boolean } | null = null;
+  stages: { takesStreams(stageId: string): boolean; ownerOf(stageId: string): string | null } | null = null;
 
   /** Linked so `markLive` un-finishes the ladder, as the real SQL does. */
   constructor(private readonly renditions?: FakeRenditionStore) {}
@@ -208,6 +210,11 @@ export class FakeStreamStore
       return null;
     }
     if (stageMoves && data.stage_id && this.stages && !this.stages.takesStreams(data.stage_id)) return null;
+    // A row that holds a recording takes only a stage that signs as its owner.
+    if (stageMoves && data.stage_id && this.stages && row.manifest_index !== null) {
+      const stageOwner = this.stages.ownerOf(data.stage_id);
+      if (stageOwner === null || !sameFeedOwner(stageOwner, row.owner)) return null;
+    }
     const scheduled = toDate(data.scheduled_start_time);
     const changed =
       row.title !== data.title ||
@@ -223,6 +230,7 @@ export class FakeStreamStore
       scheduled_start_time: scheduled,
       ...(changed ? { content_edited_at: new Date('2026-09-11T11:00:00.000Z') } : {}),
       ...(data.stage_id !== undefined ? { stage_id: data.stage_id } : {}),
+      ...(data.owner !== undefined && row.manifest_index === null ? { owner: data.owner } : {}),
     });
   }
 
@@ -365,7 +373,18 @@ export class FakeStreamStore
     const row = this.rows.get(id);
     if (!row || !allowedFrom.includes(row.status)) return null;
     if (draftNeedsStage && row.status === 'draft' && row.stage_id === null) return null;
-    return this.patch(id, { status: 'publishing' });
+    // A recorded draft is claimed only while its stage signs as its owner.
+    if (draftNeedsStage && row.status === 'draft' && row.manifest_index !== null && row.stage_id !== null) {
+      const stageOwner = this.stages?.ownerOf(row.stage_id) ?? null;
+      if (stageOwner !== null && !sameFeedOwner(stageOwner, row.owner)) return null;
+    }
+    // A draft with no recording takes its stage's owner as the stages table
+    // holds it now, as the SQL does in the same statement.
+    const stageOwner =
+      draftNeedsStage && row.status === 'draft' && row.manifest_index === null && row.stage_id !== null
+        ? (this.stages?.ownerOf(row.stage_id) ?? null)
+        : null;
+    return this.patch(id, { status: 'publishing', ...(stageOwner !== null ? { owner: asFeedOwner(stageOwner) } : {}) });
   }
 
   async finishPublish(

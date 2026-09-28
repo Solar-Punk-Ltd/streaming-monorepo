@@ -1,3 +1,4 @@
+import { sameFeedOwner } from '@streaming-monorepo/contracts';
 import type { FeedStreamEntry, Rendition, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
 import {
@@ -23,7 +24,14 @@ import {
   StreamLiveError,
   StreamNotFoundError,
 } from './errors/index.js';
-import { buildFeedEntry, ladderOnFeed, planReconcile, removeEntry, upsertEntry } from './feedEntries.js';
+import {
+  buildFeedEntry,
+  ladderOnFeed,
+  planReconcile,
+  removeEntry,
+  upsertEntry,
+  withoutTopicUnderOtherOwners,
+} from './feedEntries.js';
 import { encodeFeedPayload, type CatalogueTarget, type FeedGateway, type FeedSnapshot } from './FeedGateway.js';
 import type { FeedIdentity } from './feedIdentity.js';
 import type { FeedWriteRecord } from './FeedWriteRepository.js';
@@ -36,12 +44,25 @@ import { hasPendingThumbnail } from './unpublishedEdits.js';
 
 const logger = Logger.getInstance();
 
+/**
+ * How publishing reads the stages: one stage, for the checks a draft passes
+ * before it goes on the catalogue, and the owner of every stage the admin
+ * holds, retired ones included, for what a reconcile counts as ours.
+ * StageRepository; a fake stands in.
+ */
+export interface PublishStageLookup extends StreamStageLookup {
+  listOwners(): Promise<string[]>;
+}
+
 /** The slice of StreamRepository publishing needs; a fake stands in for tests. */
 export interface PublishStreamStore {
   findById(id: string): Promise<StreamRow | null>;
   findThumbnail(id: string): Promise<ThumbnailRow | null>;
   recordThumbnailRef(id: string, thumbnailRef: string): Promise<void>;
-  /** Null as well, with `draftNeedsStage`, for a draft that has no stage. */
+  /**
+   * Null as well, with `draftNeedsStage`, for a draft that has no stage. A
+   * draft that holds no recording takes its stage's owner in the same step.
+   */
   claimForPublish(
     id: string,
     allowedFrom: readonly StreamStatus[],
@@ -216,11 +237,6 @@ interface WrittenAt {
   index: number | null;
 }
 
-/** Feed owners are hex addresses; case has never been load-bearing. */
-function sameOwner(left: string, right: string): boolean {
-  return left.toLowerCase() === right.toLowerCase();
-}
-
 const THUMBNAIL_FILE_EXTENSIONS: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -256,8 +272,8 @@ export class PublishService {
   constructor(
     private readonly streams: PublishStreamStore,
     private readonly renditions: PublishRenditionStore,
-    /** How a draft's stage is checked before it goes on the catalogue. */
-    private readonly stages: StreamStageLookup,
+    /** How a draft's stage is checked before it goes on the catalogue, and whose entries are ours. */
+    private readonly stages: PublishStageLookup,
     private readonly feedWrites: FeedWriteLog,
     private readonly gateway: FeedGateway,
     private readonly catalogue: CatalogueTargets,
@@ -325,7 +341,13 @@ export class PublishService {
       const target = await this.catalogue.forWrite(actor);
       const base = await this.baseSnapshot(target);
       const rows = await this.streams.listOnFeed();
-      const plan = planReconcile(base.entries, rows, this.feed.owner, Date.now(), await this.laddersOf(rows));
+      const plan = planReconcile(
+        base.entries,
+        rows,
+        await this.ourOwners(rows),
+        Date.now(),
+        await this.laddersOf(rows),
+      );
 
       if (!plan.changed) {
         logger.info(
@@ -434,7 +456,13 @@ export class PublishService {
       // entry is invisible in the console (its row is gone) and only shows up
       // as a viewer seeing a stream that does not exist.
       const rows = await this.streams.listOnFeed();
-      const plan = planReconcile(base.entries, rows, this.feed.owner, Date.now(), await this.laddersOf(rows));
+      const plan = planReconcile(
+        base.entries,
+        rows,
+        await this.ourOwners(rows),
+        Date.now(),
+        await this.laddersOf(rows),
+      );
       if (plan.removed.length > 0) {
         logger.warn(
           `[Boot] ${plan.removed.length} catalogue entr${plan.removed.length === 1 ? 'y has' : 'ies have'} no stream row behind ${plan.removed.length === 1 ? 'it' : 'them'}: ${plan.removed.join(', ')} — POST /api/feed/reconcile removes ${plan.removed.length === 1 ? 'it' : 'them'}`,
@@ -467,13 +495,13 @@ export class PublishService {
       const reason = stageUnavailability(await this.stages.findSummary(before.stage_id));
       if (reason) throw new StageUnavailableError(before.stage_id, reason);
     }
-    // The entry carries the row's `owner`, while the gateway signs with the
-    // configured key. If those have drifted apart — the feed key was rotated
-    // after this stream was created — the entry would advertise an owner the
-    // feed is not published under, so refuse instead of writing a lie.
-    if (!sameOwner(before.owner, this.feed.owner)) {
-      throw new FeedOwnerMismatchError(id, before.owner, this.feed.owner);
-    }
+    // The entry carries the row's `owner`, which is its stage's: the stage's
+    // uploader signs every feed of the stream, and the brand key signs only
+    // the catalogue. The claim below gives a draft with no recording the
+    // stage's owner as it stands now, and refuses one that holds a recording
+    // when its stage now signs as another than the owner it was recorded
+    // under, since its feeds resolve under that alone: the manager rotated the
+    // stage's key since. `claim` turns that refusal into its sentence.
     // Before the claim: a publish with no catalogue batch to write with is
     // refused with the row as it was, and nothing to put back.
     const target = await this.catalogue.forWrite(actor);
@@ -489,7 +517,16 @@ export class PublishService {
       const { entry, renditions } = await this.entryFor({ ...claimed, status }, thumbnailRef);
       const snapshot = await this.baseSnapshot(target);
       const previous = ladderOnFeed(snapshot.entries, entry.owner, entry.topic);
-      const entries = upsertEntry(snapshot.entries, entry);
+      // A publish that failed may have put the entry on the catalogue after
+      // all, under the owner the row had then, and the claim may have given
+      // the row its stage's new owner since. Any entry of ours for this topic
+      // under another owner is that one, and goes, so the stream is listed
+      // once.
+      const base =
+        before.publish_error !== null
+          ? withoutTopicUnderOtherOwners(snapshot.entries, entry, await this.ourOwners([before, claimed]))
+          : snapshot.entries;
+      const entries = upsertEntry(base, entry);
       const index = await this.writeFeed(entries, snapshot.index, target, written);
 
       // The claim refuses every edit until this returns, so `claimed` still
@@ -618,14 +655,13 @@ export class PublishService {
    * the feed write, which is what the claim protected on the feed's side.
    *
    * `current` is the row as it was read inside this mutex, and everything here
-   * — the owner check, the entry, the log line, what a failure records — is
-   * about that row, never about whatever the caller read before queueing.
+   * — the entry, the log line, what a failure records — is about that row,
+   * never about whatever the caller read before queueing. Its owner is the
+   * one its broadcast was signed as, which publishing fixed, so it is written
+   * as it is.
    */
   private async doRepublishWithState(actor: Actor, current: StreamRow): Promise<PublishOutcome> {
     const { id } = current;
-    if (!sameOwner(current.owner, this.feed.owner)) {
-      throw new FeedOwnerMismatchError(id, current.owner, this.feed.owner);
-    }
 
     let target: CatalogueTarget | null = null;
     try {
@@ -656,6 +692,18 @@ export class PublishService {
       // than anything this call has seen. Only the reason is recorded.
       throw await this.failRepublish(actor, current, error, target);
     }
+  }
+
+  /**
+   * Whose entries on the catalogue are this admin's: the brand key's, which
+   * the entries older than stages carry; every stage's the admin holds,
+   * retired ones included, since a retired stage's streams and old entries
+   * still name it; and the owner of each of `rows`, which keeps a stream
+   * published under a key its stage signed with before the manager rotated it
+   * counted as ours, so its entry can still be rebuilt or added again.
+   */
+  private async ourOwners(rows: readonly StreamRow[] = []): Promise<string[]> {
+    return [this.feed.owner, ...(await this.stages.listOwners()), ...rows.map((row) => row.owner)];
   }
 
   private async read(id: string): Promise<StreamRow> {
@@ -739,6 +787,19 @@ export class PublishService {
       if (!current) throw new StreamNotFoundError(before.id);
       if (draftNeedsStage && current.status === 'draft' && current.stage_id === null) {
         throw new StageRequiredError(before.id);
+      }
+      // The claim takes a draft that holds a recording only while its stage
+      // signs as the owner the recording was made under.
+      if (
+        draftNeedsStage &&
+        current.status === 'draft' &&
+        current.stage_id !== null &&
+        current.manifest_index !== null
+      ) {
+        const stage = await this.stages.findSummary(current.stage_id);
+        if (stage && !sameFeedOwner(current.owner, stage.owner)) {
+          throw new FeedOwnerMismatchError(current.id, current.owner, current.stage_id, stage.owner);
+        }
       }
       throw new StreamBusyError(before.id, current.status);
     }

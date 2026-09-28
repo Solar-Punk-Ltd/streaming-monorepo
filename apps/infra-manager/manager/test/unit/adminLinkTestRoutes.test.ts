@@ -146,7 +146,13 @@ function capturedLogs(t: TestContext): string[] {
 }
 
 /** A web2 admin on loopback that takes `token`, names `owner` in its public config, and records each request line and its headers. */
-async function fakeAdmin(t: TestContext, token: string, owner: string): Promise<{ url: string; received: string[] }> {
+async function fakeAdmin(
+  t: TestContext,
+  token: string,
+  owner: string,
+  /** The owner the admin knows for the token's stage; unset, the token belongs to no stage. */
+  stageOwner?: string,
+): Promise<{ url: string; received: string[] }> {
   const received: string[] = [];
   const server = http.createServer((request, response) => {
     const path = request.url ?? '';
@@ -157,6 +163,11 @@ async function fakeAdmin(t: TestContext, token: string, owner: string): Promise<
     };
     if (path.startsWith('/api/internal/')) {
       if (request.headers.authorization !== `Bearer ${token}`) return reply(401, { error: 'unauthenticated' });
+      if (path === '/api/internal/stages/self') {
+        return stageOwner
+          ? reply(200, { stageId: '5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f', owner: stageOwner })
+          : reply(404, { error: 'not_found' });
+      }
       return reply(404, { error: 'stream_not_found' });
     }
     if (path === '/api/config') return reply(200, { feed: { owner, topic: 'catalog' }, viewerBaseUrl: null });
@@ -349,7 +360,7 @@ describe('POST /profiles/:name/settings/admin-link/test', () => {
         assert.deepEqual(answer.body, { outcome });
         assert.equal(api.probed[0]?.feedOwner, FAKE_STREAM_ADDRESS);
         assert.equal(carriesKey(answer.text, FAKE_STREAM_KEY), false);
-        assert.equal(admin.received.length, 2);
+        assert.equal(admin.received.length, 3, 'the lookup, the stage the token belongs to, and the config');
         assert.equal(
           admin.received.some((request) => carriesKey(request, FAKE_STREAM_KEY)),
           false,
@@ -363,6 +374,30 @@ describe('POST /profiles/:name/settings/admin-link/test', () => {
       logs.some((line) => carriesKey(line, FAKE_STREAM_KEY)),
       false,
     );
+  });
+
+  it("compares a deployment on a token of its own with the owner the admin knows for its stage, not the catalog's", async (t) => {
+    // The catalog is signed by the brand key, OWNER, and this stage signs with a key of its own.
+    for (const [stageOwner, outcome] of [
+      [FAKE_STREAM_ADDRESS, 'linked'],
+      [OWNER, 'owner-mismatch'],
+    ] as const) {
+      const admin = await fakeAdmin(t, TOKEN, OWNER, stageOwner);
+      const api = await testApi({ baseEnv: `STREAM_KEY=${FAKE_STREAM_KEY}\n`, probe: probeAdminLink });
+      try {
+        api.harness.profiles.stackSettings.set('stage', { ADMIN_API_URL: admin.url, ADMIN_API_TOKEN: TOKEN });
+        const answer = await api.testDeployment();
+
+        assert.deepEqual(answer.body, { outcome }, stageOwner);
+        assert.deepEqual(
+          admin.received.map((request) => request.split(' ')[1]),
+          ['/api/internal/streams/by-ingest/video/00000000-0000-0000-0000-000000000000', '/api/internal/stages/self'],
+          'the catalog owner is not asked once the stage is known',
+        );
+      } finally {
+        await api.close();
+      }
+    }
   });
 
   it("answers without the owner, and without repeating the value, for a version's stream key no address derives from", async (t) => {

@@ -635,13 +635,18 @@ another origin, because the version's own address moved under it, is refused
 the same way. A token stored before that migration is recorded by its next
 deploy. A token the version's base `.env` sets is not held to this.
 
-**The owner rule.** The admin signs its catalog with its `FEED_PRIVATE_KEY`,
-and the uploader signs every feed it writes with the deployment's stream key,
-`STREAM_KEY`. The two have to derive one address. The uploader reads the admin's
-public `/api/config` when it starts and refuses to start when the admin's
-`feed.owner` is another address, because every viewer would then resolve a feed
-nobody writes. Give the deployment the stream key whose address the admin signs
-with, or point it at the admin that signs with its own.
+**The owner rule.** Every stage signs the feeds it writes with a key of its
+own, the deployment's `STREAM_KEY`, which the wizard generates; the admin signs
+its catalog with a key no deployment holds. The stage record the manager pushes
+names the stage's address as its `owner`, and the admin writes that owner into
+the catalog entry of every stream on the stage. When it starts, the uploader
+asks the admin `GET /api/internal/stages/self` with its own token and refuses
+to start when the owner the admin names is another address than its stream
+key's, because every viewer would then resolve a feed nobody writes. On a token
+the admin ties to no stage, the link's shared one, it compares the catalog
+owner of the admin's public `/api/config` instead, as before stages. Fix a
+mismatch in the deployment's stream key, or deploy so the stage is pushed with
+the key it has.
 
 **The manager-wide default.** The Manager settings page in the navigation has
 one card, Web2 admin link for new deployments: the address, and a token field
@@ -682,8 +687,14 @@ a deployment's Stack settings card right after the two keys. The manager asks
 the admin what the uploader would ask it, from where the manager runs: the
 internal lookup of a stream nobody declared, `GET
 <address>/api/internal/streams/by-ingest/video/00000000-0000-0000-0000-000000000000`
-with the token, and where there is a stream address to compare, the admin's
-public `GET <address>/api/config` without it. The card's test uses what the
+with the token, and where there is a stream address to compare, `GET
+<address>/api/internal/stages/self` with the token, for the owner the admin
+knows for the token's stage, and only on its 404, a token of no stage, the
+admin's public `GET <address>/api/config` without it. The wizard's test
+compares the chosen stream key's address with a typed token, as the uploader
+will, and no owner with a token of its own, which does not exist before the
+first deploy. A typed token belongs to no stage, so a stage with a key of its
+own cannot boot on one. The card's test uses what the
 deployment's next deploy would give its uploader, the saved values, and the
 address of the stream key that deploy gives it, the deployment's own or the one
 its version's base `.env` sets, derived in memory and never sent, answered or
@@ -691,21 +702,21 @@ logged. A stored token is presented only to the origin it
 was stored for. It answers one of these, and the page says one sentence for
 each:
 
-| Outcome                  | What it means                                                                                                                                                                     |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `linked`                 | The admin took the token, and signs its catalog with the deployment's stream address.                                                                                             |
-| `token-accepted`         | The admin took the token. There was no stream address to compare.                                                                                                                 |
-| `owner-unconfirmed`      | The admin took the token but its config did not say which address it signs with, so the stream address was not compared. The uploader starts and checks each declaration instead. |
-| `owner-mismatch`         | The admin took the token but signs with another address. The uploader will refuse to start.                                                                                       |
-| `token-refused`          | The admin answered its own 401: the token is wrong.                                                                                                                               |
-| `token-not-registered`   | The admin answered its own 401 to the deployment's own token while no push of the stage has been stored there, so the admin does not know the token yet. A deploy registers it.   |
-| `not-admin`              | Something answered, but not the way a web2 admin does: another status, another server's 404, a body that is not the admin's JSON, or one past the bound.                          |
-| `redirected`             | The address answered with a redirect, which the test does not follow. Give the address the admin itself answers on.                                                               |
-| `unreachable`            | Nothing answered from where the manager runs, within five seconds a request, the uploader's own lookup timeout.                                                                   |
-| `invalid-address`        | The address is not an http or https one the uploader can use.                                                                                                                     |
-| `not-linked`             | The deployment has no address, so its uploader runs standalone.                                                                                                                   |
-| `no-token`               | There is an address and no token to test with.                                                                                                                                    |
-| `stored-token-elsewhere` | A stored token, the manager's or the deployment's own, was saved for another origin, so nothing was asked. Type the token again for this address where it is set.                 |
+| Outcome                  | What it means                                                                                                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `linked`                 | The admin took the token, and knows the deployment's stream address as its stage's owner, or on a token of no stage as its catalog's.                                           |
+| `token-accepted`         | The admin took the token. There was no stream address to compare.                                                                                                               |
+| `owner-unconfirmed`      | The admin took the token but did not say which owner it knows for it, so the stream address was not compared. The uploader starts and checks each declaration instead.          |
+| `owner-mismatch`         | The admin took the token but knows another owner for it: its stage's, or on a token of no stage its catalog's. The uploader will refuse to start.                               |
+| `token-refused`          | The admin answered its own 401: the token is wrong.                                                                                                                             |
+| `token-not-registered`   | The admin answered its own 401 to the deployment's own token while no push of the stage has been stored there, so the admin does not know the token yet. A deploy registers it. |
+| `not-admin`              | Something answered, but not the way a web2 admin does: another status, another server's 404, a body that is not the admin's JSON, or one past the bound.                        |
+| `redirected`             | The address answered with a redirect, which the test does not follow. Give the address the admin itself answers on.                                                             |
+| `unreachable`            | Nothing answered from where the manager runs, within five seconds a request, the uploader's own lookup timeout.                                                                 |
+| `invalid-address`        | The address is not an http or https one the uploader can use.                                                                                                                   |
+| `not-linked`             | The deployment has no address, so its uploader runs standalone.                                                                                                                 |
+| `no-token`               | There is an address and no token to test with.                                                                                                                                  |
+| `stored-token-elsewhere` | A stored token, the manager's or the deployment's own, was saved for another origin, so nothing was asked. Type the token again for this address where it is set.               |
 
 The admin's own 404 for that lookup is `{ "error": "stream_not_found" }` and its
 401 is `{ "error": "unauthenticated" }`, and the test reads those codes rather

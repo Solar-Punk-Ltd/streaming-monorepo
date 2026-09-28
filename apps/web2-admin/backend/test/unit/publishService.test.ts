@@ -22,7 +22,6 @@ import { describe, it } from 'node:test';
 import type { FeedStreamEntry } from '@streaming-monorepo/web2-admin-common';
 
 import {
-  FeedOwnerMismatchError,
   PublishFailedError,
   StreamBusyError,
   StreamLiveError,
@@ -77,16 +76,12 @@ function setup(gateway = new FakeFeedGateway()) {
   const store = new FakeStreamStore(renditions);
   const writes = new FakeFeedWriteLog();
   const audit = new InMemoryAuditLog();
-  const service = new PublishService(
-    store,
-    renditions,
-    stagesWithMain(),
-    writes,
-    gateway,
-    noCatalogueStamp(),
-    feed,
-    audit,
-  );
+  // The stage every `streamRow()` is on signs as the brand key here, as every
+  // stage did before each had a key of its own, so a recording made on it is
+  // published under its row's owner. test/unit/stageOwner.test.ts covers a
+  // stage with a key of its own.
+  const stages = stagesWithMain(undefined, { owner: `0x${TEST_OWNER}` });
+  const service = new PublishService(store, renditions, stages, writes, gateway, noCatalogueStamp(), feed, audit);
   return { store, renditions, writes, gateway, audit, service };
 }
 
@@ -347,27 +342,18 @@ describe('PublishService.publish', () => {
     assert.deepEqual(audit.entries, []);
   });
 
-  it('refuses a stream created under a different feed owner', async () => {
-    // The entry carries the row's owner while the gateway signs with the
-    // configured key; after a key rotation, publishing would advertise an
-    // owner the feed is not published under.
+  it('publishes a stream whose owner is not the key the catalogue is signed with', async () => {
+    // The brand key signs the catalogue and each stage signs its own
+    // streams' feeds, so an entry names its row's owner whatever the brand
+    // key is. test/unit/stageOwner.test.ts covers where that owner comes from.
     const { store, gateway, service } = setup();
-    const row = store.add(streamRow({ owner: 'f'.repeat(40) }));
+    const row = store.add(streamRow({ owner: 'f'.repeat(40), status: 'published' }));
 
-    await assert.rejects(
-      () => service.publish(TEST_OPERATOR, row.id),
-      (err: unknown) =>
-        err instanceof FeedOwnerMismatchError && err.streamOwner === 'f'.repeat(40) && err.feedOwner === TEST_OWNER,
-    );
-    assert.equal(gateway.writes.length, 0);
-    assert.equal(store.get(row.id).status, 'draft', 'never even claimed');
-  });
-
-  it('matches the owner case-insensitively', async () => {
-    const { store, service } = setup();
-    const row = store.add(streamRow({ owner: TEST_OWNER.toUpperCase() }));
     const outcome = await service.publish(TEST_OPERATOR, row.id);
+
     assert.equal(outcome.stream.status, 'published');
+    assert.equal(outcome.feed.owner, TEST_OWNER, 'the catalogue is still the brand key');
+    assert.equal(entriesOf(gateway)[0]!.owner, 'f'.repeat(40));
   });
 
   it('restores the previous status and records why, on a failed feed write', async () => {

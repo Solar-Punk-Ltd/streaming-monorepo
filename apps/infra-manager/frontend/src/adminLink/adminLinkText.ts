@@ -8,12 +8,13 @@ import type { AdminLinkTestOutcome } from '@streaming-infra-manager/common';
 
 /** One plain sentence for each outcome of Test connection. */
 const TEST_TEXT: Readonly<Record<AdminLinkTestOutcome, string>> = {
-  linked: "Linked: the web2 admin took the token and signs its catalog with this deployment's stream address.",
+  linked:
+    "Linked: the web2 admin took the token and knows this deployment's stream address as the owner its streams are signed as.",
   'token-accepted': 'The web2 admin answered and took the token.',
   'owner-unconfirmed':
-    "The web2 admin took the token but did not say which address it signs with, so this deployment's stream key could not be compared.",
+    "The web2 admin took the token but did not say which owner it knows for this deployment, so this deployment's stream key could not be compared.",
   'owner-mismatch':
-    "The web2 admin took the token but signs its catalog with another address than this deployment's stream key, so the uploader will refuse to start.",
+    "The web2 admin took the token but knows another owner for this deployment than its stream key's address, so the uploader will refuse to start.",
   'stored-token-elsewhere':
     'The stored token was saved for another address, so it was not sent here, and the token has to be typed again for this address.',
   'token-refused': 'The web2 admin answered but refused the token.',

@@ -110,7 +110,7 @@ function toInput(form: FormState): StreamInput | null {
  * and again before its first stage is saved.
  */
 export const FIRST_STAGE_IS_FINAL =
-  'This stream holds a recording made before stages. The first stage you give it is final, and it must be the stage the recording was made on.';
+  'This stream holds a recording made before stages. The first stage you give it is final, and only a stage that signs as the recording’s owner is offered.';
 
 /**
  * Why the stream's stage can no longer change, as the API would say it, or
@@ -419,6 +419,7 @@ export function StreamFormPage() {
                 loadError={stagesError}
                 disabled={saving || stageLock !== null}
                 helperText={stageLock ?? undefined}
+                recordingOwner={firstStageIsFinal ? (loaded?.owner ?? null) : null}
               />
               {firstStageIsFinal ? <Alert severity="warning">{FIRST_STAGE_IS_FINAL}</Alert> : null}
               {chosenStage ? <StageReadinessWarning stage={chosenStage} /> : null}
