@@ -14,6 +14,7 @@ import { after, before, describe, it } from 'node:test';
 
 import { hashSessionToken } from '@streaming-monorepo/web-auth';
 
+import { actorFor, TEST_SETUP } from './support/authFixtures.js';
 import { AuthTestApp, call, sessionCookieFrom, signIn, startAuthTestApp } from './support/authTestApp.js';
 
 const USERNAME = 'alice';
@@ -27,7 +28,7 @@ let userId: string;
 
 before(async () => {
   app = await startAuthTestApp();
-  userId = (await app.authService.addUser(USERNAME, PASSWORD)).id;
+  userId = (await app.authService.addUser(TEST_SETUP, USERNAME, PASSWORD)).id;
 });
 
 after(() => app.close());
@@ -114,11 +115,11 @@ describe('requireAuth', () => {
   });
 
   it('drops every session of a user whose account is removed', async () => {
-    const doomed = await app.authService.addUser('doomed', PASSWORD);
+    const doomed = await app.authService.addUser(TEST_SETUP, 'doomed', PASSWORD);
     const { cookie } = await signIn(app, 'doomed', PASSWORD);
     assert.equal((await call(app, 'GET', '/api/streams', { cookie })).status, 200);
 
-    await app.authService.removeUser(doomed.id, userId);
+    await app.authService.removeUser(actorFor({ id: userId, username: USERNAME }), doomed.id);
 
     assert.equal((await call(app, 'GET', '/api/streams', { cookie })).status, 401);
   });

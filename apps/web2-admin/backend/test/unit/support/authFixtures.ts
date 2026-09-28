@@ -6,12 +6,21 @@
  * SQL does, because those are the rules, not an implementation detail of the
  * statement that enforces them.
  */
+import type { Actor, OperatorActor } from '../../../src/domain/actor.js';
 import type { CredentialRepository } from '../../../src/domain/auth/CredentialRepository.js';
 import type { NewSession, SessionRepository, StoredSession } from '../../../src/domain/auth/SessionRepository.js';
 import type { UserDeletion, UserRepository } from '../../../src/domain/auth/UserRepository.js';
 import type { UserRow } from '../../../src/types/index.js';
 
 let sequence = 0;
+
+/** Who adds the users a test starts from: nobody signed in, like the CLI. */
+export const TEST_SETUP: Actor = { kind: 'system', reason: 'test' };
+
+/** A user as the actor of what they do, the way `actorOf(req)` builds one. */
+export function actorFor(user: { id: string; username: string }): OperatorActor {
+  return { kind: 'operator', userId: user.id, username: user.username };
+}
 
 /** A UUID like the database mints, but predictable. */
 export function nextUserId(): string {

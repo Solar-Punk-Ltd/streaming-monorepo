@@ -25,7 +25,9 @@ import type { CredentialRepository } from '../../src/domain/auth/CredentialRepos
 import { PostgresCredentialRepository } from '../../src/domain/auth/PostgresCredentialRepository.js';
 import { PostgresSessionRepository } from '../../src/domain/auth/PostgresSessionRepository.js';
 import { PostgresUserRepository } from '../../src/domain/auth/PostgresUserRepository.js';
+import type { Actor } from '../../src/domain/actor.js';
 import { Database } from '../../src/domain/Database.js';
+import { PostgresAuditLog } from '../../src/domain/PostgresAuditLog.js';
 import type { UserRow } from '../../src/types/index.js';
 
 import { releaseStack, requireStack, stack } from './helpers.js';
@@ -34,6 +36,8 @@ const OLD_PASSWORD = 'a-long-current-password';
 const FIRST_PASSWORD = 'a-long-winning-password';
 const SECOND_PASSWORD = 'a-long-losing-password';
 const SIGNAL_TIMEOUT_MS = 2_000;
+/** Who adds the users these tests start from: nobody signed in, like the CLI. */
+const TEST_SETUP: Actor = { kind: 'system', reason: 'test' };
 
 let database: Database;
 let users: PostgresUserRepository;
@@ -109,8 +113,8 @@ async function withOwner(
   body: (auth: AuthService, owner: UserRow) => Promise<void>,
   repository: CredentialRepository = credentials,
 ) {
-  const auth = new AuthService(users, sessions, repository);
-  const added = await auth.addUser(`itest-${randomUUID().slice(0, 8)}`, OLD_PASSWORD);
+  const auth = new AuthService(users, sessions, repository, new PostgresAuditLog(database.pool));
+  const added = await auth.addUser(TEST_SETUP, `itest-${randomUUID().slice(0, 8)}`, OLD_PASSWORD);
   try {
     await body(auth, (await users.findById(added.id))!);
   } finally {

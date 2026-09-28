@@ -53,7 +53,8 @@ At the platform level the admin layer also:
 
 ## The manager it talks to
 
-The manager, [`apps/infra-manager`](../../apps/infra-manager/README.md), exposes a Manager API: provision, stop, and read back what a stage is running.
+The manager, [`apps/infra-manager`](../../apps/infra-manager/README.md),
+exposes a Manager API: provision, stop, and read back what a stage is running.
 Inputs to provision: media profile (four-rung ABR ladder or single rendition),
 port slot, publisher list, signing key, postage batch, SRT passphrase. Output: a
 running media stack. Today it has no authentication and listens on loopback of
@@ -66,10 +67,13 @@ the same open question as the auth component above, seen from the other end.
 1. Ownership across brands: which brand a call may act for. The operator half
    of this is answered — the console has usernames, passwords, an admin role
    and user management, ported from streaming-infra-manager and described in
-   [web2-admin-auth.md](web2-admin-auth.md) — and streams are scoped to the
-   user who created them, which is the single-tenant shape of the answer.
-   Choosing how a brand proves itself, OIDC against something it already has,
-   a wallet signature, or a magic link, is still open and still blocks the
+   [web2-admin-auth.md](web2-admin-auth.md). A stream belongs to the
+   installation: every signed-in operator can act on every stream,
+   `streams.user_id` records who drafted it, and the audit log
+   (migration 007) records who acted on it since. That is the single-tenant
+   shape of the answer. Separating one brand's streams from another's, and
+   choosing how a brand proves itself (OIDC against something it already has,
+   a wallet signature, or a magic link), are still open and still block the
    second brand rather than the first.
 2. Manager API authentication once admin and manager are on different hosts.
    The manager answered its own half on `main-v2`: sessions, roles and a

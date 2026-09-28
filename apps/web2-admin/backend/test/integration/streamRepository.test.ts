@@ -6,9 +6,11 @@
  * What is exercised here is the SQL a fake repository cannot stand in for:
  * the boot-time repair of rows left claimed by a process that died mid-publish,
  * the un-finishing of an ABR ladder when a broadcast goes live again, an
- * unpublish that keeps the recording and its rungs, and which writes count as
+ * unpublish that keeps the recording and its rungs, which writes count as
  * a console edit for the "Edited since it was published" notice (migration
- * 006).
+ * 006), a thumbnail clear that says whether it removed an image, one
+ * committed while it waited on the row lock included, and that no statement
+ * is scoped to the user who drafted a row.
  * Getting the first wrong loses streams — a republish interrupted by a restart
  * that came back as `draft` could then be DELETEd, leaving its entry on the
  * feed with no row left to unpublish it. Getting the second wrong is invisible
@@ -16,15 +18,18 @@
  * a CTE that clears none of them returns exactly the same row as one that
  * clears them all.
  *
- * It creates its own user and removes it in `after` (streams cascade), so no
- * other row is touched.
+ * It creates its own users and removes them in `after`, deleting their streams
+ * first: since migration 008 a removed user's streams stay, so nothing
+ * cascades any more. No other row is touched.
  */
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
 
 import { Database } from '../../src/domain/Database.js';
-import { newPublishKey } from '../../src/domain/StreamService.js';
+import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
+import { PostgresAuditLog } from '../../src/domain/PostgresAuditLog.js';
+import { newPublishKey, StreamService } from '../../src/domain/StreamService.js';
 import { StreamRenditionRepository } from '../../src/domain/StreamRenditionRepository.js';
 import { StreamRepository, type StreamUpdateData } from '../../src/domain/StreamRepository.js';
 import { hasUnpublishedEdits } from '../../src/domain/unpublishedEdits.js';
@@ -66,6 +71,7 @@ before(async () => {
 
 after(async () => {
   if (userId) {
+    await database.pool.query('DELETE FROM streams WHERE user_id = $1', [userId]);
     await database.pool.query('DELETE FROM users WHERE id = $1', [userId]);
   }
   await database.close();
@@ -107,11 +113,11 @@ describe('resetOrphanedPublishing', () => {
       'both claimed rows are reported',
     );
 
-    const draft = await streams.findById(firstPublish, userId);
+    const draft = await streams.findById(firstPublish);
     assert.equal(draft?.status, 'draft', 'never reached the feed');
     assert.equal(draft?.publish_error, 'backend restarted while publishing');
 
-    const published = await streams.findById(republish, userId);
+    const published = await streams.findById(republish);
     assert.equal(published?.status, 'published', 'was on the feed before the interrupted publish, so it still is');
     assert.equal(published?.published_feed_index, 7);
     assert.equal(published?.publish_error, 'backend restarted while publishing');
@@ -127,7 +133,7 @@ describe('resetOrphanedPublishing', () => {
       false,
       'a second boot has nothing to repair',
     );
-    assert.equal((await streams.findById(republish, userId))?.status, 'published');
+    assert.equal((await streams.findById(republish))?.status, 'published');
   });
 
   it('keeps a repaired published row undeletable until it is unpublished', async () => {
@@ -135,8 +141,8 @@ describe('resetOrphanedPublishing', () => {
     const republish = await claimedStream(9);
     await streams.resetOrphanedPublishing();
 
-    assert.equal(await streams.deleteById(republish, userId, ['draft']), false, 'its entry is still on the feed');
-    assert.ok(await streams.findById(republish, userId));
+    assert.equal(await streams.deleteById(republish, ['draft']), false, 'its entry is still on the feed');
+    assert.ok(await streams.findById(republish));
   });
 });
 
@@ -153,7 +159,7 @@ async function recordedLadder(): Promise<string> {
     scheduled_start_time: null,
     publish_key: newPublishKey(),
   });
-  await streams.finishPublish(row.id, userId, 1, null, row.content_edited_at, 'published');
+  await streams.finishPublish(row.id, 1, null, row.content_edited_at, 'published');
   await renditions.upsert(row.id, {
     name: '360p',
     width: 640,
@@ -228,7 +234,7 @@ describe('markLive un-finishes a broadcast that comes back', () => {
     const refused = await streams.markLive(id, ['published']);
 
     assert.equal(refused, null, 'vod is not in allowedFrom');
-    const row = await streams.findById(id, userId);
+    const row = await streams.findById(id);
     assert.equal(row?.status, 'vod', 'still the recording it was');
     const rungs = await renditions.listByStream(id);
     assert.equal(Number(rungs.find((r) => r.name === '720p')?.manifest_index), 12);
@@ -239,7 +245,7 @@ describe('an unpublish keeps the recording for the next publish', () => {
   it("clears the row's catalogue columns and keeps the recording and every rung", async () => {
     const id = await recordedLadder();
 
-    const draft = await streams.finishUnpublish(id, userId);
+    const draft = await streams.finishUnpublish(id);
 
     assert.equal(draft?.status, 'draft');
     assert.equal(draft?.published_at, null, 'no longer announced');
@@ -262,10 +268,10 @@ describe('an unpublish keeps the recording for the next publish', () => {
 
   it('stores the vod status a publish hands it, with the recording still on the row', async () => {
     const id = await recordedLadder();
-    const draft = await streams.finishUnpublish(id, userId);
+    const draft = await streams.finishUnpublish(id);
     assert.ok(draft);
 
-    const listed = await streams.finishPublish(id, userId, 2, null, draft.content_edited_at, 'vod');
+    const listed = await streams.finishPublish(id, 2, null, draft.content_edited_at, 'vod');
 
     assert.equal(listed?.status, 'vod');
     assert.equal(listed?.published_feed_index, 2);
@@ -287,7 +293,7 @@ async function publishedStream(scheduledStartTime: string | null = null): Promis
     scheduled_start_time: scheduledStartTime,
     publish_key: newPublishKey(),
   });
-  const published = await streams.finishPublish(row.id, userId, 1, null, row.content_edited_at, 'published');
+  const published = await streams.finishPublish(row.id, 1, null, row.content_edited_at, 'published');
   assert.ok(published);
   return published;
 }
@@ -316,11 +322,11 @@ describe('which writes count as a console edit (migration 006)', () => {
 
     await streams.markLive(row.id, ['published', 'live', 'vod']);
     await streams.markVod(row.id, ['published', 'live', 'vod'], 7, 61);
-    await streams.rotatePublishKey(row.id, userId, newPublishKey());
-    await streams.recordThumbnailRef(row.id, userId, 'a'.repeat(64));
-    await streams.recordPublishError(row.id, userId, 'bee unreachable');
+    await streams.rotatePublishKey(row.id, newPublishKey());
+    await streams.recordThumbnailRef(row.id, 'a'.repeat(64));
+    await streams.recordPublishError(row.id, 'bee unreachable');
 
-    const reread = await streams.findById(row.id, userId);
+    const reread = await streams.findById(row.id);
     assert.ok(reread);
     assert.equal(reread.status, 'vod');
     assert.equal(reread.content_edited_at, null);
@@ -332,7 +338,6 @@ describe('which writes count as a console edit (migration 006)', () => {
 
     const resaved = await streams.update(
       row.id,
-      userId,
       {
         ...sameValues(row),
         // The same instant, written the way another client might send it.
@@ -343,12 +348,7 @@ describe('which writes count as a console edit (migration 006)', () => {
     assert.ok(resaved);
     assert.equal(resaved.content_edited_at, null, 'nothing the entry carries changed');
 
-    const edited = await streams.update(
-      row.id,
-      userId,
-      { ...sameValues(row), tags: ['itest', 'retagged'] },
-      EDITABLE_STATUSES,
-    );
+    const edited = await streams.update(row.id, { ...sameValues(row), tags: ['itest', 'retagged'] }, EDITABLE_STATUSES);
     assert.ok(edited);
     assert.ok(edited.content_edited_at, 'a changed tag is an edit');
     assert.equal(hasUnpublishedEdits(edited), true);
@@ -364,42 +364,31 @@ describe('which writes count as a console edit (migration 006)', () => {
   it('counts a new image always, and a removal only when there was an image', async () => {
     const row = await publishedStream();
 
-    const nothingRemoved = await streams.clearThumbnail(row.id, userId, EDITABLE_STATUSES);
+    const nothingRemoved = await streams.clearThumbnail(row.id, EDITABLE_STATUSES);
     assert.ok(nothingRemoved);
-    assert.equal(nothingRemoved.content_edited_at, null);
+    assert.equal(nothingRemoved.stream.content_edited_at, null);
 
-    const withImage = await streams.setThumbnail(
-      row.id,
-      userId,
-      Buffer.from([1, 2, 3]),
-      'image/png',
-      EDITABLE_STATUSES,
-    );
+    const withImage = await streams.setThumbnail(row.id, Buffer.from([1, 2, 3]), 'image/png', EDITABLE_STATUSES);
     assert.ok(withImage);
     assert.ok(withImage.content_edited_at, 'a new image is an edit');
 
     await setEditStamp(row.id, '2000-01-01T00:00:00.000Z');
-    const removed = await streams.clearThumbnail(row.id, userId, EDITABLE_STATUSES);
+    const removed = await streams.clearThumbnail(row.id, EDITABLE_STATUSES);
     assert.ok(removed);
-    assert.ok(removed.content_edited_at);
+    assert.ok(removed.stream.content_edited_at);
     assert.ok(
-      removed.content_edited_at.getTime() > Date.parse('2000-01-01T00:00:00.000Z'),
+      removed.stream.content_edited_at.getTime() > Date.parse('2000-01-01T00:00:00.000Z'),
       'removing the image is an edit',
     );
   });
 
   it('records the edit an entry was built from, not the one the row holds when the write lands', async () => {
     const row = await publishedStream();
-    const edited = await streams.update(
-      row.id,
-      userId,
-      { ...sameValues(row), title: 'itest retitled' },
-      EDITABLE_STATUSES,
-    );
+    const edited = await streams.update(row.id, { ...sameValues(row), title: 'itest retitled' }, EDITABLE_STATUSES);
     assert.ok(edited?.content_edited_at);
     const builtFrom = edited.content_edited_at;
 
-    const caughtUp = await streams.recordRepublish(row.id, userId, 2, null, builtFrom);
+    const caughtUp = await streams.recordRepublish(row.id, 2, null, builtFrom);
     assert.ok(caughtUp);
     assert.equal(hasUnpublishedEdits(caughtUp), false);
     const equal = await database.pool.query<{ equal: boolean }>(
@@ -412,7 +401,7 @@ describe('which writes count as a console edit (migration 006)', () => {
     // The console saves another edit while the next write is on its way, and
     // that write still records the edit its entry was built from.
     await setEditStamp(row.id, '2099-01-01T00:00:00.000Z');
-    const behind = await streams.recordRepublish(row.id, userId, 3, null, builtFrom);
+    const behind = await streams.recordRepublish(row.id, 3, null, builtFrom);
     assert.ok(behind);
     assert.equal(behind.entry_content_edited_at?.getTime(), builtFrom.getTime());
     assert.equal(hasUnpublishedEdits(behind), true, 'the later edit is not on the entry');
@@ -422,7 +411,6 @@ describe('which writes count as a console edit (migration 006)', () => {
     const row = await publishedStream();
     const edited = await streams.update(
       row.id,
-      userId,
       { ...sameValues(row), description: 'itest, reconciled' },
       EDITABLE_STATUSES,
     );
@@ -430,8 +418,206 @@ describe('which writes count as a console edit (migration 006)', () => {
 
     await streams.recordEntryRebuilt(row.id, edited.content_edited_at);
 
-    const reread = await streams.findById(row.id, userId);
+    const reread = await streams.findById(row.id);
     assert.ok(reread);
     assert.equal(hasUnpublishedEdits(reread), false);
+  });
+});
+
+/** Waits until some backend is blocked on a lock that the backend `pid` holds. */
+async function untilBlockedBy(pid: number): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const { rows } = await database.pool.query<{ blocked: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))
+       ) AS blocked`,
+      [pid],
+    );
+    if (rows[0]!.blocked) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error('the clear never waited for the row lock');
+}
+
+/**
+ * The clear reports whether it removed an image, because the console has no
+ * other way to know: another operator can set one between anything it read
+ * and the clear, and a removal nobody recorded is exactly what the audit log
+ * is for.
+ */
+describe('a thumbnail clear says whether it removed an image', () => {
+  it('reports a removal when there was an image, and none when there was not', async () => {
+    const row = await publishedStream();
+
+    const nothing = await streams.clearThumbnail(row.id, EDITABLE_STATUSES);
+    assert.equal(nothing?.removed, false);
+
+    await streams.setThumbnail(row.id, Buffer.from([1, 2, 3]), 'image/png', EDITABLE_STATUSES);
+    const cleared = await streams.clearThumbnail(row.id, EDITABLE_STATUSES);
+    assert.equal(cleared?.removed, true);
+    assert.equal(cleared?.stream.has_thumbnail, false);
+    assert.equal(await streams.findThumbnail(row.id), null, 'the image is gone');
+
+    const again = await streams.clearThumbnail(row.id, EDITABLE_STATUSES);
+    assert.equal(again?.removed, false, 'a second clear has nothing left to remove');
+  });
+
+  it('counts an image committed while it waited on the row lock', async () => {
+    // The upload holds the row when the clear arrives. The clear waits for
+    // it and then removes that image, so it has to say it did: a read made in
+    // the statement's own snapshot still sees the row without one.
+    const row = await publishedStream();
+    const upload = await database.pool.connect();
+    try {
+      await upload.query('BEGIN');
+      await upload.query(
+        `UPDATE streams SET thumbnail = $2, thumbnail_mime = 'image/png', thumbnail_ref = NULL WHERE id = $1`,
+        [row.id, Buffer.from([1, 2, 3])],
+      );
+      const { pid } = (await upload.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!;
+
+      const clearing = streams.clearThumbnail(row.id, EDITABLE_STATUSES);
+      await untilBlockedBy(pid);
+      await upload.query('COMMIT');
+      const cleared = await clearing;
+
+      assert.equal(cleared?.removed, true);
+      assert.equal(cleared?.stream.has_thumbnail, false);
+      assert.ok(cleared?.stream.content_edited_at, 'and removing it is an edit');
+    } finally {
+      await upload.query('ROLLBACK').catch(() => undefined);
+      upload.release();
+    }
+  });
+});
+
+/** What StreamService stamps on a stream it creates; only `owner` is read there. */
+const FEED: FeedIdentity = {
+  owner: OWNER,
+  topic: 'web2-admin-integration',
+  topicHex: '83ff7e81474bee7ebc98da7888a44e63a4777bbc8446ab60d8da605a3d261435',
+};
+
+/** A fresh draft, as `user` drafted it. */
+async function draftedBy(user: string): Promise<StreamRow> {
+  return streams.insert({
+    user_id: user,
+    topic: randomUUID(),
+    owner: OWNER,
+    title: 'itest shared',
+    description: 'drafted by one operator, managed by every one of them',
+    tags: [],
+    media_type: 'video',
+    scheduled_start_time: null,
+    publish_key: newPublishKey(),
+  });
+}
+
+/**
+ * A stream belongs to the installation, not to whoever drafted it, so no
+ * statement here takes a user: each one below acts on a row drafted by a
+ * second user, and that user is still recorded on the row when they are done.
+ */
+describe('a stream belongs to the installation, not to who drafted it', () => {
+  let secondUserId: string;
+  let secondUsername: string;
+
+  before(async () => {
+    const user = await database.pool.query<{ id: string; username: string }>(
+      `INSERT INTO users (username, password_hash)
+       VALUES ($1, 'scrypt$16384$8$1$aaaa$bbbb')
+       RETURNING id, username`,
+      [`itest-${randomUUID().slice(0, 8)}`],
+    );
+    secondUserId = user.rows[0]!.id;
+    secondUsername = user.rows[0]!.username;
+  });
+
+  after(async () => {
+    if (secondUserId) {
+      await database.pool.query('DELETE FROM streams WHERE user_id = $1', [secondUserId]);
+      await database.pool.query('DELETE FROM users WHERE id = $1', [secondUserId]);
+    }
+  });
+
+  it('records who drafted a stream when it is created', async () => {
+    const service = new StreamService(streams, FEED, new PostgresAuditLog(database.pool));
+    const created = await service.create(
+      { kind: 'operator', userId: secondUserId, username: secondUsername },
+      {
+        title: 'itest shared',
+        description: 'drafted by one operator, managed by every one of them',
+        tags: [],
+        mediaType: 'video',
+        scheduledStartTime: '2026-10-01T09:00:00.000Z',
+      },
+    );
+
+    assert.equal(created.user_id, secondUserId);
+    assert.equal((await streams.findById(created.id))?.user_id, secondUserId, 'and it reads back');
+  });
+
+  it('lists and finds every row, whoever drafted it', async () => {
+    const first = await draftedBy(userId);
+    const second = await draftedBy(secondUserId);
+
+    const listed = (await streams.list()).map((row) => row.id);
+    assert.ok(listed.includes(first.id) && listed.includes(second.id), 'one list, the installation’s');
+    assert.equal((await streams.findById(second.id))?.id, second.id);
+  });
+
+  it('writes a row whoever drafted it, through a whole publish and back', async () => {
+    const row = await draftedBy(secondUserId);
+    const { id } = row;
+
+    const edited = await streams.update(id, { ...sameValues(row), title: 'itest shared, edited' }, EDITABLE_STATUSES);
+    assert.equal(edited?.title, 'itest shared, edited');
+    assert.equal(
+      (await streams.setThumbnail(id, Buffer.from([1, 2, 3]), 'image/png', EDITABLE_STATUSES))?.has_thumbnail,
+      true,
+    );
+    assert.deepEqual((await streams.findThumbnail(id))?.thumbnail, Buffer.from([1, 2, 3]));
+    await streams.recordThumbnailRef(id, 'a'.repeat(64));
+    assert.equal((await streams.findById(id))?.thumbnail_ref, 'a'.repeat(64));
+    assert.equal((await streams.clearThumbnail(id, EDITABLE_STATUSES))?.stream.has_thumbnail, false);
+    assert.ok((await streams.rotatePublishKey(id, newPublishKey()))?.publish_key_rotated_at);
+
+    assert.equal((await streams.claimForPublish(id, ['draft']))?.status, 'publishing');
+    await streams.failPublish(id, 'draft', 'itest: the write failed');
+    assert.equal((await streams.findById(id))?.status, 'draft');
+    assert.ok(await streams.claimForPublish(id, ['draft']));
+    assert.equal((await streams.finishPublish(id, 1, null, null, 'published'))?.status, 'published');
+    assert.equal((await streams.recordRepublish(id, 2, null, null))?.published_feed_index, 2);
+    await streams.recordPublishError(id, 'itest: the republish failed');
+    assert.equal((await streams.findById(id))?.publish_error, 'itest: the republish failed');
+    assert.ok(await streams.claimForPublish(id, ['published']));
+    assert.equal((await streams.finishUnpublish(id))?.status, 'draft');
+
+    assert.equal((await streams.findById(id))?.user_id, secondUserId, 'who drafted it is still on the row');
+    assert.equal(await streams.deleteById(id, ['draft']), true);
+  });
+
+  it('keeps the streams of a user who is removed, with user_id set to null', async () => {
+    // Migration 008. Under 001's cascade this DELETE took every stream the
+    // user had drafted with it, published and live ones included.
+    const user = await database.pool.query<{ id: string }>(
+      `INSERT INTO users (username, password_hash)
+       VALUES ($1, 'scrypt$16384$8$1$aaaa$bbbb')
+       RETURNING id`,
+      [`itest-${randomUUID().slice(0, 8)}`],
+    );
+    const leaverId = user.rows[0]!.id;
+    const row = await draftedBy(leaverId);
+    assert.ok(await streams.claimForPublish(row.id, ['draft']));
+    assert.ok(await streams.finishPublish(row.id, 1, null, null, 'published'));
+
+    await database.pool.query('DELETE FROM users WHERE id = $1', [leaverId]);
+
+    const kept = await streams.findById(row.id);
+    assert.ok(kept, 'the stream outlives its drafter');
+    assert.equal(kept.user_id, null);
+    assert.equal(kept.status, 'published', 'and nothing else about it moved');
+
+    await database.pool.query('DELETE FROM streams WHERE id = $1', [row.id]);
   });
 });

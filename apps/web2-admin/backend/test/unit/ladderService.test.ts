@@ -26,9 +26,10 @@ import {
   FakeFeedWriteLog,
   FakeRenditionStore,
   FakeStreamStore,
+  InMemoryAuditLog,
   streamRow,
+  TEST_OPERATOR,
   TEST_OWNER,
-  TEST_USER_ID,
 } from './support/fakes.js';
 
 const feed: FeedIdentity = {
@@ -60,12 +61,13 @@ async function setup() {
   const renditions = new FakeRenditionStore();
   const store = new FakeStreamStore(renditions);
   const gateway = new FakeFeedGateway();
-  const publishService = new PublishService(store, renditions, new FakeFeedWriteLog(), gateway, feed);
-  const service = new LadderService(store, renditions, publishService);
-  const state = new StreamStateService(store, publishService);
+  const audit = new InMemoryAuditLog();
+  const publishService = new PublishService(store, renditions, new FakeFeedWriteLog(), gateway, feed, audit);
+  const service = new LadderService(store, renditions, publishService, audit);
+  const state = new StreamStateService(store, publishService, audit);
   const stream = store.add(streamRow());
-  await publishService.publish(stream.id, TEST_USER_ID);
-  return { store, renditions, gateway, service, state, stream };
+  await publishService.publish(TEST_OPERATOR, stream.id);
+  return { store, renditions, gateway, audit, service, state, stream };
 }
 
 /** The stream's entry as the write at `index` left it on the feed. */
@@ -254,6 +256,140 @@ describe('LadderService.report', () => {
     assert.deepEqual(
       later!.renditions.map((r) => r.name),
       ['360p', '720p'],
+    );
+  });
+});
+
+/**
+ * A rung report is the uploader's, so the entry names the uploader whatever
+ * route it came through, and it carries the rung, the feed index of the
+ * write that put it on the catalogue, and that rung as the write carried it.
+ */
+describe('LadderService audit', () => {
+  it('records a rung report as the uploader, with the rung, the feed index and the rung the write carried', async () => {
+    const { audit, service, stream } = await setup();
+    audit.entries.length = 0;
+
+    const outcome = await service.report(stream.id, FINAL_720);
+
+    assert.deepEqual(audit.entries, [
+      {
+        actor: { kind: 'uploader' },
+        action: 'stream.rendition.report',
+        streamId: stream.id,
+        topic: stream.topic,
+        statusBefore: 'published',
+        statusAfter: 'published',
+        details: {
+          rung: '720p',
+          index: 12,
+          duration: 62.5,
+          feedIndex: outcome.publish.feed.index,
+          entryRung: FINAL_720,
+          finished: true,
+          flippedToFinished: true,
+        },
+      },
+    ]);
+  });
+
+  it('claims no transition when a live report lands between its read and its write', async () => {
+    // At the start of an ABR broadcast the first rung and the `live` report
+    // race. The ladder reads the row as `published`, the state report moves
+    // it to `live`, and the ladder's write sees `live`. The transition is the
+    // state report's to record; the rung's entry names the one status its
+    // write saw, on both sides.
+    const { store, renditions, audit, service, stream } = await setup();
+    const upsert = renditions.upsert.bind(renditions);
+    renditions.upsert = async (streamId, rendition) => {
+      const row = await upsert(streamId, rendition);
+      await store.markLive(streamId, ['published']);
+      return row;
+    };
+    audit.entries.length = 0;
+
+    await service.report(stream.id, LIVE_360);
+
+    const [entry] = audit.withAction('stream.rendition.report');
+    assert.equal(entry?.statusBefore, 'live');
+    assert.equal(entry?.statusAfter, 'live');
+  });
+
+  it('records the rung as its write published it when a later report for that rung lands first', async () => {
+    // This report stores 720p still live, then 720p's final report is stored
+    // before the republish reads the ladder. The write carries the final
+    // rung, as the catalogue should; the entry pairs this report's index and
+    // duration with that write, so it has to say what the write carried.
+    const { renditions, audit, service, stream } = await setup();
+    const upsert = renditions.upsert.bind(renditions);
+    renditions.upsert = async (streamId, rendition) => {
+      const row = await upsert(streamId, rendition);
+      await upsert(streamId, FINAL_720);
+      return row;
+    };
+    audit.entries.length = 0;
+
+    const outcome = await service.report(stream.id, LIVE_720);
+
+    assert.deepEqual(outcome.renditions, [FINAL_720], 'the catalogue has the later report');
+    assert.deepEqual(audit.entries, [
+      {
+        actor: { kind: 'uploader' },
+        action: 'stream.rendition.report',
+        streamId: stream.id,
+        topic: stream.topic,
+        statusBefore: 'published',
+        statusAfter: 'published',
+        details: {
+          rung: '720p',
+          index: null,
+          duration: null,
+          feedIndex: outcome.publish.feed.index,
+          entryRung: FINAL_720,
+          finished: true,
+          flippedToFinished: true,
+        },
+      },
+    ]);
+  });
+
+  it('names the status its write published when a live report lands while that write is on its way', async () => {
+    // The republish reads the row as published and writes that. The live
+    // report's row lands before the write is recorded, so the row the write
+    // hands back says live; the transition is the state report's to record.
+    const { store, gateway, audit, service, stream } = await setup();
+    const write = gateway.write.bind(gateway);
+    gateway.write = async (entries, index) => {
+      const reference = await write(entries, index);
+      await store.markLive(stream.id, ['published']);
+      return reference;
+    };
+    audit.entries.length = 0;
+
+    const outcome = await service.report(stream.id, LIVE_360);
+
+    assert.equal(entryAt(gateway, outcome.publish.feed.index, stream.topic).state, 'scheduled');
+    const [entry] = audit.withAction('stream.rendition.report');
+    assert.equal(entry?.statusBefore, 'published');
+    assert.equal(entry?.statusAfter, 'published');
+  });
+
+  it('records a rung that was stored but whose catalogue write failed, with the reason', async () => {
+    const { gateway, audit, service, stream } = await setup();
+    audit.entries.length = 0;
+    gateway.failNextWrite = new Error('bee unreachable');
+
+    await assert.rejects(() => service.report(stream.id, LIVE_360), PublishFailedError);
+
+    assert.deepEqual(
+      audit.entries.map(({ actor, action, details }) => ({ actor, action, details })),
+      [
+        {
+          actor: { kind: 'uploader' },
+          action: 'stream.rendition.report',
+          details: { rung: '360p', index: null, duration: null, feedIndex: null, publishError: 'bee unreachable' },
+        },
+      ],
     );
   });
 });

@@ -26,6 +26,7 @@ import { createAuthRouter } from '../../../src/api/routes/auth.js';
 import { AuthService } from '../../../src/domain/auth/AuthService.js';
 
 import { InMemoryCredentialRepository, InMemorySessionRepository, InMemoryUserRepository } from './authFixtures.js';
+import { InMemoryAuditLog } from './fakes.js';
 
 /** The token the harness's stand-in uploader route accepts. */
 export const INTERNAL_TOKEN = 'test-internal-token-0000000000000000';
@@ -35,13 +36,21 @@ export interface AuthTestApp {
   authService: AuthService;
   users: InMemoryUserRepository;
   sessions: InMemorySessionRepository;
+  audit: InMemoryAuditLog;
   close(): Promise<void>;
 }
 
 export async function startAuthTestApp(limiter?: LoginLimiter): Promise<AuthTestApp> {
   const users = new InMemoryUserRepository();
   const sessions = new InMemorySessionRepository(users);
-  const authService = new AuthService(users, sessions, new InMemoryCredentialRepository(users, sessions), limiter);
+  const audit = new InMemoryAuditLog();
+  const authService = new AuthService(
+    users,
+    sessions,
+    new InMemoryCredentialRepository(users, sessions),
+    audit,
+    limiter,
+  );
   const requireAuth = createRequireAuth(authService);
 
   const app = express();
@@ -85,6 +94,7 @@ export async function startAuthTestApp(limiter?: LoginLimiter): Promise<AuthTest
     authService,
     users,
     sessions,
+    audit,
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((err) => (err ? reject(err) : resolve()));

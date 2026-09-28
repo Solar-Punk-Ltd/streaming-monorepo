@@ -23,6 +23,7 @@ import {
   signIn,
   startAuthTestApp,
 } from './support/authTestApp.js';
+import { actorFor, TEST_SETUP } from './support/authFixtures.js';
 
 const USERNAME = 'alice';
 const PASSWORD = 'a-long-enough-password';
@@ -87,7 +88,7 @@ describe('signing in and out', () => {
 
   before(async () => {
     app = await startAuthTestApp();
-    await app.authService.addUser(USERNAME, PASSWORD);
+    await app.authService.addUser(TEST_SETUP, USERNAME, PASSWORD);
   });
   after(() => app.close());
 
@@ -188,8 +189,8 @@ describe('too many attempts', () => {
 
   before(async () => {
     app = await startAuthTestApp(new LoginLimiter(() => clock.now));
-    await app.authService.addUser(USERNAME, PASSWORD);
-    await app.authService.addUser('mate', OTHER_PASSWORD);
+    await app.authService.addUser(TEST_SETUP, USERNAME, PASSWORD);
+    await app.authService.addUser(TEST_SETUP, 'mate', OTHER_PASSWORD);
   });
   after(() => app.close());
 
@@ -248,7 +249,7 @@ describe('a burst of sign-ins sent at once', () => {
 
   before(async () => {
     app = await startAuthTestApp();
-    await app.authService.addUser(USERNAME, PASSWORD);
+    await app.authService.addUser(TEST_SETUP, USERNAME, PASSWORD);
   });
   after(() => app.close());
 
@@ -279,7 +280,7 @@ describe('too many wrong current passwords', () => {
 
   before(async () => {
     app = await startAuthTestApp(new LoginLimiter(() => clock.now));
-    await app.authService.addUser(USERNAME, PASSWORD);
+    await app.authService.addUser(TEST_SETUP, USERNAME, PASSWORD);
     cookie = (await signIn(app, USERNAME, PASSWORD)).cookie;
   });
   after(() => app.close());
@@ -326,7 +327,7 @@ describe('cross-site writes', () => {
 
   before(async () => {
     app = await startAuthTestApp();
-    await app.authService.addUser(USERNAME, PASSWORD);
+    await app.authService.addUser(TEST_SETUP, USERNAME, PASSWORD);
     cookie = (await signIn(app, USERNAME, PASSWORD)).cookie;
   });
   after(() => app.close());
@@ -420,12 +421,12 @@ describe('cross-site writes', () => {
 describe('two users removing each other at once', () => {
   it('refuses the removal that would empty the table', async () => {
     const app = await startAuthTestApp();
-    const ann = await app.authService.addUser('ann', PASSWORD);
-    const bob = await app.authService.addUser('bob', OTHER_PASSWORD);
+    const ann = await app.authService.addUser(TEST_SETUP, 'ann', PASSWORD);
+    const bob = await app.authService.addUser(TEST_SETUP, 'bob', OTHER_PASSWORD);
 
     const outcomes = await Promise.allSettled([
-      app.authService.removeUser(bob.id, ann.id),
-      app.authService.removeUser(ann.id, bob.id),
+      app.authService.removeUser(actorFor(ann), bob.id),
+      app.authService.removeUser(actorFor(bob), ann.id),
     ]);
 
     assert.equal(
@@ -448,7 +449,7 @@ describe('managing users', () => {
 
   before(async () => {
     app = await startAuthTestApp();
-    adminId = (await app.authService.addUser(USERNAME, PASSWORD)).id;
+    adminId = (await app.authService.addUser(TEST_SETUP, USERNAME, PASSWORD)).id;
     cookie = (await signIn(app, USERNAME, PASSWORD)).cookie;
   });
   after(() => app.close());
@@ -599,8 +600,8 @@ describe('who may manage users', () => {
     app = await startAuthTestApp();
     // Asked for a plain user, and made an admin anyway: somebody has to be
     // able to add the second.
-    adminId = (await app.authService.addUser(USERNAME, PASSWORD, { admin: false })).id;
-    plainId = (await app.authService.addUser('mate', OTHER_PASSWORD)).id;
+    adminId = (await app.authService.addUser(TEST_SETUP, USERNAME, PASSWORD, { admin: false })).id;
+    plainId = (await app.authService.addUser(TEST_SETUP, 'mate', OTHER_PASSWORD)).id;
     adminCookie = (await signIn(app, USERNAME, PASSWORD)).cookie;
     plainCookie = (await signIn(app, 'mate', OTHER_PASSWORD)).cookie;
   });

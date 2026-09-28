@@ -6,7 +6,7 @@ import { PostgresCredentialRepository } from '../domain/auth/PostgresCredentialR
 import { PostgresSessionRepository } from '../domain/auth/PostgresSessionRepository.js';
 import { PostgresUserRepository } from '../domain/auth/PostgresUserRepository.js';
 import { Database } from '../domain/Database.js';
-import { Logger } from '../domain/Logger.js';
+import { PostgresAuditLog } from '../domain/PostgresAuditLog.js';
 import { config } from '../utils/config.js';
 
 /**
@@ -36,8 +36,6 @@ export const USER_ADD_USAGE = [
   `feeding it from a vault. ${ADMIN_FLAG} lets the new user add and remove`,
   'users; the first user ever added can do that whether or not it is given.',
 ].join('\n');
-
-const logger = Logger.getInstance();
 
 async function readPassword(fromStdin: boolean): Promise<string> {
   if (fromStdin) {
@@ -75,9 +73,10 @@ async function addUser(username: string, fromStdin: boolean, admin: boolean): Pr
       new PostgresUserRepository(database.pool),
       new PostgresSessionRepository(database.pool),
       new PostgresCredentialRepository(database.pool),
+      new PostgresAuditLog(database.pool),
     );
-    const created = await authService.addUser(username, password, { admin });
-    logger.info(`[cli] created user ${username}${created.isAdmin ? ' (can manage users)' : ''}`);
+    // AuthService logs the line that says it was done, as `system (cli)`.
+    await authService.addUser({ kind: 'system', reason: 'cli' }, username, password, { admin });
   } finally {
     await database.close();
   }

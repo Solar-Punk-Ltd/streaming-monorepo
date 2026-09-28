@@ -43,7 +43,8 @@ and being wrong about a different half of it.
   `last_seen_at`, absolute 14 days in `expires_at`, and the session ends at
   `min(expires_at, last_seen_at + idle)`. `last_seen_at` is written at most once
   a minute, or an open console would be a database write per request.
-- **The cookie** (`src/api/cookies.ts`, over `packages/web-auth/src/cookies.ts`). httpOnly, SameSite=Lax, Path=/, and no
+- **The cookie** (`src/api/cookies.ts`, over
+  `packages/web-auth/src/cookies.ts`). httpOnly, SameSite=Lax, Path=/, and no
   `Max-Age` or `Expires` at all: the sessions row is the only clock, and a
   cookie with a deadline of its own would be a second one to keep in step.
   `Secure` is computed **per request** from the first `X-Forwarded-Proto` hop or
@@ -95,7 +96,7 @@ and being wrong about a different half of it.
 | The manager                                        | Here                                                                     | Why                                                                                                                                                                         |
 | -------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SERIAL` user ids                                  | `UUID`                                                                   | The table was already UUID-keyed. `userIdParamSchema` matches a UUID, not `^[1-9]\d*$`.                                                                                     |
-| `StoredSession` carries `username` and `isAdmin`   | carries the whole `UserRow`                                              | `GET /api/auth/me` answers the `User` the contract declares and every stream route reads `req.user.id`; joining the row once is cheaper than a second lookup per request.   |
+| `StoredSession` carries `username` and `isAdmin`   | carries the whole `UserRow`                                              | `/api/auth/me` answers its `User`, `POST /api/streams` records its id as the drafter, and every change behind the gate names it as its actor: one join, no second lookup.   |
 | `SESSION_COOKIE_NAME = 'sim_session'`              | `web2_admin_session`                                                     | Different product, and the two run on the same laptop.                                                                                                                      |
 | `REQUESTED_WITH_VALUE = 'streaming-infra-manager'` | `web2-admin`                                                             | Same.                                                                                                                                                                       |
 | `POST /login` → 204                                | → `MeResponse`                                                           | The console already had the user from the login answer; taking it away would have been a change to a working contract for nothing.                                          |
@@ -104,6 +105,7 @@ and being wrong about a different half of it.
 | `NoUsersError` → 409                               | → 401                                                                    | It is an answer to "who am I", and the console's fetch wrapper already treats `/auth/session` and `/auth/login` as routes where a 401 is an answer rather than an eviction. |
 | `GET /auth/users` → a bare array                   | → `{ users: [...] }`                                                     | `UserListResponse` in web2-admin-common.                                                                                                                                    |
 | One password check throttled per route             | Same, but the wrong _current_ password answers 401 `invalid_credentials` | The manager's choice, kept: the console's wrapper exempts `/auth/password` from the sign-out-on-401 rule for exactly this case.                                             |
+| No audit log; user add and remove log no actor     | takes an `AuditLog`: every user action names its actor and is audited    | Every operator can act on every stream, so who did what is kept in `audit_log` (migration 007), and changing the users is one of those things.                              |
 | `manager/src/domain/auth/*`                        | `apps/web2-admin/backend/src/domain/auth/*`                              | Same shape, under this repo's `src/domain/`.                                                                                                                                |
 
 The login body is **not** trimmed, which the old `loginSchema` did. That is the
@@ -142,23 +144,33 @@ Everything is under `/api`. The open routes are `GET /api/health`,
 `POST /api/auth/logout` and `GET /api/auth/session`. Everything else needs a
 session.
 
-| Method | Path                         | Who                | Answer                                                                                        |
-| ------ | ---------------------------- | ------------------ | --------------------------------------------------------------------------------------------- |
-| POST   | `/api/auth/login`            | anyone             | `MeResponse` + the cookie; 401 `invalid_credentials`, 401 `no_users`, 429 `too_many_attempts` |
-| POST   | `/api/auth/logout`           | anyone             | 204, cookie cleared, session row deleted                                                      |
-| GET    | `/api/auth/session`          | anyone             | `MeResponse`; 401 `no_users` when the table is empty, 401 `unauthenticated` otherwise         |
-| GET    | `/api/auth/me`               | signed in          | `MeResponse` — kept for compatibility                                                         |
-| POST   | `/api/auth/password`         | signed in          | `MeResponse`; 401 `invalid_credentials`, 400 `validation_error`, 429                          |
-| GET    | `/api/auth/users`            | signed in          | `UserListResponse`                                                                            |
-| POST   | `/api/auth/users`            | admin              | 201 `UserSummary`; 409 `user_exists`, 400 `validation_error`, 403 `admin_required`            |
-| DELETE | `/api/auth/users/:id`        | admin              | 204; 409 `cannot_remove_user` (yourself, the last user, the last admin), 404 `user_not_found` |
-| POST   | `/api/auth/users/:id/revoke` | admin, or yourself | 204; 403 `admin_required`, 404 `user_not_found`                                               |
+| Method | Path                         | Who                | Answer                                                                                                                                                                 |
+| ------ | ---------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/auth/login`            | anyone             | `MeResponse` + the cookie; 401 `invalid_credentials`, 401 `no_users`, 429 `too_many_attempts`                                                                          |
+| POST   | `/api/auth/logout`           | anyone             | 204, cookie cleared, session row deleted                                                                                                                               |
+| GET    | `/api/auth/session`          | anyone             | `MeResponse`; 401 `no_users` when the table is empty, 401 `unauthenticated` otherwise                                                                                  |
+| GET    | `/api/auth/me`               | signed in          | `MeResponse` — kept for compatibility                                                                                                                                  |
+| POST   | `/api/auth/password`         | signed in          | `MeResponse`; 401 `invalid_credentials`, 400 `validation_error`, 429                                                                                                   |
+| GET    | `/api/auth/users`            | signed in          | `UserListResponse`                                                                                                                                                     |
+| POST   | `/api/auth/users`            | admin              | 201 `UserSummary`; 409 `user_exists`, 400 `validation_error`, 403 `admin_required`                                                                                     |
+| DELETE | `/api/auth/users/:id`        | admin              | 204, and the user's streams stay, with `user_id` set to null (migration 008); 409 `cannot_remove_user` (yourself, the last user, the last admin), 404 `user_not_found` |
+| POST   | `/api/auth/users/:id/revoke` | admin, or yourself | 204; 403 `admin_required`, 404 `user_not_found`                                                                                                                        |
 
 New error codes: `cross_site_request` 403, `admin_required` 403, `no_users` 401,
 `user_exists` 409, `user_not_found` 404, `cannot_remove_user` 409, and
 `too_many_attempts` 429 now carries `retryAfterSeconds` beside `Retry-After`. A
 weak password or a bad username is a 400 `validation_error` with the reason in
 `errors`, the same shape a schema rejection has. No token is logged anywhere.
+
+Adding a user, removing one, revoking sessions and changing a password each
+write a row to the audit log (migration 007, `audit_log`) with the acting user
+and the username acted on; the `user:add` CLI acts as `system (cli)`. Neither
+signing in nor signing out is audited: a sign-in has a log line of its own, and
+a sign-out logs nothing beyond the `[HTTP]` request line. No row carries a
+password, a hash or a token, and a failed audit write never fails the change it
+records. The backend README has the table. Removing a user no longer deletes
+the streams they drafted: a stream is the installation's, and since migration
+008 its `user_id` goes null instead.
 
 ## `/api/internal` is outside the cross-site check
 
@@ -216,16 +228,17 @@ one install this landed on had a single user, `admin`, which it accepts.
 
 Unit (`pnpm test`, `node:test` under tsx):
 
-| File                      | What it pins                                                                                                                                                                                                              |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `passwordHash.test.ts`    | round trip, wrong passwords, the recorded parameters, **an old-parameter hash still verifying**, salting, an unreadable row refusing everyone                                                                             |
-| `sessionToken.test.ts`    | 32 random bytes as base64url, sha256, hash ≠ token                                                                                                                                                                        |
-| `sessionLifetime.test.ts` | 12 hours idle, 14 days absolute, the earlier clock winning, the one-minute touch throttle                                                                                                                                 |
-| `loginLimiter.test.ts`    | the schedule, the countdown, forgetting, per-key isolation, the shared-key give-back, **pending attempts counting**, eviction at the cap, the password-change key                                                         |
-| `cookies.test.ts`         | the hand-written parser's edges, and the cookie's attributes including `Secure` per request and no expiry                                                                                                                 |
-| `requireSameSite.test.ts` | every combination of the three headers                                                                                                                                                                                    |
-| `requireAuth.test.ts`     | the gate over real HTTP with in-memory repositories: both clocks, the touch throttle, a removed user's sessions                                                                                                           |
-| `authRoutes.test.ts`      | the routes over real HTTP: the empty-users state, the cookie, the lockout as an operator meets it, a burst of twenty, cross-site refusals, roles, user removal races, and `/api/internal` reachable in front of all of it |
+| File                      | What it pins                                                                                                                                                                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `passwordHash.test.ts`    | round trip, wrong passwords, the recorded parameters, **an old-parameter hash still verifying**, salting, an unreadable row refusing everyone                                                                                                                      |
+| `sessionToken.test.ts`    | 32 random bytes as base64url, sha256, hash ≠ token                                                                                                                                                                                                                 |
+| `sessionLifetime.test.ts` | 12 hours idle, 14 days absolute, the earlier clock winning, the one-minute touch throttle                                                                                                                                                                          |
+| `loginLimiter.test.ts`    | the schedule, the countdown, forgetting, per-key isolation, the shared-key give-back, **pending attempts counting**, eviction at the cap, the password-change key                                                                                                  |
+| `cookies.test.ts`         | the hand-written parser's edges, and the cookie's attributes including `Secure` per request and no expiry                                                                                                                                                          |
+| `requireSameSite.test.ts` | every combination of the three headers                                                                                                                                                                                                                             |
+| `requireAuth.test.ts`     | the gate over real HTTP with in-memory repositories: both clocks, the touch throttle, a removed user's sessions                                                                                                                                                    |
+| `authRoutes.test.ts`      | the routes over real HTTP: the empty-users state, the cookie, the lockout as an operator meets it, a burst of twenty, cross-site refusals, roles, user removal races, and `/api/internal` reachable in front of all of it                                          |
+| `authAudit.test.ts`       | the audit rows for adding and removing a user, revoking sessions and changing a password: the acting user, the target, nothing secret, no row for a refusal, a failed audit write not failing the change, and the user routes naming the signed-in admin over HTTP |
 
 Integration (`pnpm test:integration`) starts **its own backend**: its own
 database, its own port, `FEED_GATEWAY=fake`, and a first user made by running

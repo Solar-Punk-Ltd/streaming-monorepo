@@ -213,6 +213,48 @@ not have.
   with its index, duration and ladder). No database constraint ties those
   columns to a status, so nothing in the schema changed.
 
+## Streams belong to the installation; actor logging and audit log (2026-09-28)
+
+Decided with the owner. A stream is the installation's, not the drafter's:
+every signed-in operator lists, edits, publishes, unpublishes and deletes
+every stream, and `streams.user_id` only records who drafted the row. No
+query in the backend scopes by user any more (sessions aside). Brand
+separation is not this; it stays an open decision below.
+
+With every operator able to act on every stream, who did what has to be
+recorded somewhere else:
+
+- Every mutation logs a line naming the actor first, the way the manager's
+  lines do:
+  `[Publish] alice published "Opening keynote" (topic …): draft → published at feed index 12 (3 entries)`.
+  Most are info; a reconcile that wrote and the boot repair warn, and failures
+  are errors. The actor is the signed-in operator, `the uploader` for the
+  internal API (the services say so themselves; the route has no session to
+  name anyone by) or `system (boot)` / `system (cli)`.
+- Migration 007 adds `audit_log`, one row per mutation: actor, dotted action,
+  stream id and topic (no foreign key, so a deleted stream keeps its
+  history), status before and after, and a JSON `details`. Failed publishes
+  and unpublishes are recorded with the reason; refusals are not. A failed
+  audit write is logged and never fails the operation, which has already
+  happened. Read with `psql` for now; the backend README has the queries.
+
+Migration 008 follows from the same decision: `streams.user_id` was
+`ON DELETE CASCADE`, so removing a user deleted every stream they had drafted,
+published and live ones included, and left their entries on the catalogue. It
+is nullable now and set to null instead; the `stream.create` audit row keeps
+the drafter's username for every stream created since migration 007. Nothing
+is backfilled for older streams: decided with the owner, since the
+installations start from a new database.
+
+Verified 2026-09-28 with the unit and integration suites, nothing deployed:
+each service's audit entries, a failed audit write, the actor on the routes
+(the unit suite checks create, publish, reconcile and the user routes; the
+integration suite's audit query checks the other stream writes), a second
+operator through a whole stream lifecycle, the Postgres audit writer, and a
+removed user's streams kept with `user_id` set to null. Migrations 007 and 008
+also applied cleanly by hand over a database at 006 seeded with users, a
+session and draft, published and live streams.
+
 ## Checkpoint 3: manager integration
 
 - Manager deploys swarm-hls-stream from `main-v3`.

@@ -15,7 +15,9 @@ import { FeedWriteRepository } from './domain/FeedWriteRepository.js';
 import { IngestService } from './domain/IngestService.js';
 import { LadderService } from './domain/LadderService.js';
 import { Logger } from './domain/Logger.js';
+import { PostgresAuditLog } from './domain/PostgresAuditLog.js';
 import { PublishService } from './domain/PublishService.js';
+import { resetOrphanedPublishing } from './domain/resetOrphanedPublishing.js';
 import { StreamRenditionRepository } from './domain/StreamRenditionRepository.js';
 import { StreamRepository } from './domain/StreamRepository.js';
 import { StreamService } from './domain/StreamService.js';
@@ -130,16 +132,16 @@ async function main(): Promise<void> {
   const streamRepository = new StreamRepository(database.pool);
   const renditionRepository = new StreamRenditionRepository(database.pool);
   const feedWriteRepository = new FeedWriteRepository(database.pool);
+  const auditLog = new PostgresAuditLog(database.pool);
 
-  const orphans = await streamRepository.resetOrphanedPublishing();
-  if (orphans.length > 0) {
-    logger.warn(`[Boot] reset streams stuck in publishing: ${orphans.map((s) => s.topic).join(', ')}`);
-  }
+  // Logs a line per row it repairs.
+  await resetOrphanedPublishing(streamRepository, auditLog);
 
   const authService = new AuthService(
     userRepository,
     sessionRepository,
     new PostgresCredentialRepository(database.pool),
+    auditLog,
   );
   // Prunes what has run out now, and once a day after that. There is no
   // sign-up and no seeded account: a database with no users refuses every
@@ -152,13 +154,14 @@ async function main(): Promise<void> {
     );
   }
 
-  const streamService = new StreamService(streamRepository, feed);
+  const streamService = new StreamService(streamRepository, feed, auditLog);
   const publishService = new PublishService(
     streamRepository,
     renditionRepository,
     feedWriteRepository,
     createFeedGateway(),
     feed,
+    auditLog,
   );
   // After the orphan reset, so the dry-run diff sees the repaired statuses.
   // Never fatal: this is a cross-check of the feed, and the API is fully
@@ -172,9 +175,9 @@ async function main(): Promise<void> {
     logger.warn(`[Boot] feed check failed: ${getErrorMessage(error)}`);
   }
 
-  const ingestService = new IngestService(streamRepository, config.ingest);
-  const streamStateService = new StreamStateService(streamRepository, publishService);
-  const ladderService = new LadderService(streamRepository, renditionRepository, publishService);
+  const ingestService = new IngestService(streamRepository, config.ingest, auditLog);
+  const streamStateService = new StreamStateService(streamRepository, publishService, auditLog);
+  const ladderService = new LadderService(streamRepository, renditionRepository, publishService, auditLog);
 
   apiServer = startApiServer(
     {

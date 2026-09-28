@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
 import type {
+  FeedReconcileResult,
   IngestDetails,
   MeResponse,
   PublicConfig,
@@ -23,6 +24,7 @@ import type {
   Stream,
   StreamListResponse,
 } from '@streaming-monorepo/web2-admin-common';
+import { Pool } from 'pg';
 
 import {
   ADMIN_PASSWORD,
@@ -36,6 +38,7 @@ import {
   releaseStack,
   requireStack,
   sessionCookie,
+  stack,
 } from './helpers.js';
 
 const created = new Set<string>();
@@ -351,6 +354,172 @@ describe('stream lifecycle', () => {
     const malformed = await raw('GET', '/api/streams/not-a-uuid');
     assert.equal(malformed.status, 400);
     assert.equal((malformed.body as { error: string }).error, 'validation_error');
+  });
+});
+
+/**
+ * A stream belongs to the installation, not to whoever drafted it: every one
+ * publishes to the same catalogue feed, signed by the installation's key.
+ * Everything below is done by a second operator, a plain user made with the
+ * CLI, on a stream the first operator drafted, through the routes the console
+ * uses, and none of it is refused. The session still gates every one of them.
+ */
+describe('a second operator, on a stream the first one drafted', () => {
+  const OPERATOR_USERNAME = 'itest-operator';
+  const OPERATOR_PASSWORD = 'a-second-operators-password';
+  let stream: Stream;
+
+  before(async () => {
+    await login();
+    stream = await api<Stream>('POST', '/api/streams', {
+      body: { ...draft, title: 'itest shared' },
+    });
+    created.add(stream.id);
+    await stack().addUser(OPERATOR_USERNAME, OPERATOR_PASSWORD, false);
+    await login(OPERATOR_USERNAME, OPERATOR_PASSWORD);
+  });
+
+  after(async () => {
+    await login();
+  });
+
+  it('turns every one of these routes away without a session', async () => {
+    const calls: [string, string][] = [
+      ['GET', '/api/streams'],
+      ['GET', `/api/streams/${stream.id}`],
+      ['PUT', `/api/streams/${stream.id}`],
+      ['DELETE', `/api/streams/${stream.id}`],
+      ['GET', `/api/streams/${stream.id}/thumbnail`],
+      ['PUT', `/api/streams/${stream.id}/thumbnail`],
+      ['DELETE', `/api/streams/${stream.id}/thumbnail`],
+      ['POST', `/api/streams/${stream.id}/publish`],
+      ['POST', `/api/streams/${stream.id}/unpublish`],
+      ['GET', `/api/streams/${stream.id}/ingest`],
+      ['POST', `/api/streams/${stream.id}/ingest/rotate-key`],
+      ['POST', '/api/feed/reconcile'],
+    ];
+    for (const [method, path] of calls) {
+      const response = await raw(method, path, { anonymous: true });
+      assert.equal(response.status, 401, `${method} ${path}`);
+      assert.deepEqual(response.body, { error: 'unauthenticated' });
+    }
+  });
+
+  it('sees it in the list, and opens it', async () => {
+    const list = await api<StreamListResponse>('GET', '/api/streams');
+    assert.ok(
+      list.streams.some((s) => s.id === stream.id),
+      'the list is the installation’s, not the caller’s',
+    );
+
+    const opened = await api<Stream>('GET', `/api/streams/${stream.id}`);
+    assert.equal(opened.title, 'itest shared');
+  });
+
+  it('edits it', async () => {
+    const edited = await api<Stream>('PUT', `/api/streams/${stream.id}`, {
+      body: { ...draft, title: 'itest shared, edited by the second operator' },
+    });
+    assert.equal(edited.title, 'itest shared, edited by the second operator');
+  });
+
+  it('stores its thumbnail, serves it back and removes it', async () => {
+    const stored = await api<Stream>('PUT', `/api/streams/${stream.id}/thumbnail`, {
+      raw: PNG_1X1,
+      contentType: 'image/png',
+    });
+    assert.equal(stored.hasThumbnail, true);
+
+    const served = await raw('GET', `/api/streams/${stream.id}/thumbnail`);
+    assert.equal(served.status, 200);
+    assert.deepEqual(served.bytes, PNG_1X1);
+
+    const removed = await api<Stream>('DELETE', `/api/streams/${stream.id}/thumbnail`);
+    assert.equal(removed.hasThumbnail, false);
+  });
+
+  it('reads its OBS details and rotates its publish key', async () => {
+    const details = await api<IngestDetails>('GET', `/api/streams/${stream.id}/ingest`);
+    assert.equal(details.streamId, `video/${stream.topic}`);
+
+    const rotated = await api<IngestDetails>('POST', `/api/streams/${stream.id}/ingest/rotate-key`);
+    assert.notEqual(rotated.publishKey, details.publishKey);
+  });
+
+  it('publishes it, and unpublishes it', async () => {
+    const published = await api<PublishResult>('POST', `/api/streams/${stream.id}/publish`);
+    assert.equal(published.stream.status, 'published');
+
+    const unpublished = await api<PublishResult>('POST', `/api/streams/${stream.id}/unpublish`);
+    assert.equal(unpublished.stream.status, 'draft');
+  });
+
+  it('repairs its entry with a reconcile, after the first operator edited it on the catalogue', async () => {
+    // An edit to a published stream leaves its entry saying what was
+    // published: drift that a reconcile rebuilds from the row. The reconcile
+    // used to rebuild only the streams of whoever ran it.
+    await login();
+    await api<PublishResult>('POST', `/api/streams/${stream.id}/publish`);
+    const edited = await api<Stream>('PUT', `/api/streams/${stream.id}`, {
+      body: { ...draft, title: 'itest shared, edited on the catalogue' },
+    });
+    assert.equal(edited.hasUnpublishedEdits, true);
+
+    await login(OPERATOR_USERNAME, OPERATOR_PASSWORD);
+    const reconciled = await api<FeedReconcileResult>('POST', '/api/feed/reconcile');
+    assert.deepEqual(reconciled.updated, [stream.topic]);
+    const repaired = await api<Stream>('GET', `/api/streams/${stream.id}`);
+    assert.equal(repaired.hasUnpublishedEdits, false, 'the entry carries the edit now');
+
+    const unpublished = await api<PublishResult>('POST', `/api/streams/${stream.id}/unpublish`);
+    assert.equal(unpublished.stream.status, 'draft');
+  });
+
+  it('deletes it, and it is gone for the first operator too', async () => {
+    const deleted = await raw('DELETE', `/api/streams/${stream.id}`);
+    assert.equal(deleted.status, 204);
+    created.delete(stream.id);
+
+    await login();
+    const gone = await raw('GET', `/api/streams/${stream.id}`);
+    assert.equal(gone.status, 404);
+    assert.equal((gone.body as { error: string }).error, 'stream_not_found');
+  });
+
+  it('left an audit row naming the second operator for each of those, the stream gone or not', async () => {
+    // The one read of the database in this file: nothing in the API serves
+    // the audit log yet, and it is the record of who did what here.
+    const pool = new Pool({ connectionString: stack().databaseUrl });
+    try {
+      const rows = await pool.query<{ action: string; actor_kind: string; actor_user_id: string | null }>(
+        `SELECT action, actor_kind, actor_user_id FROM audit_log
+          WHERE stream_id = $1 AND actor_name = $2
+          ORDER BY id`,
+        [stream.id, OPERATOR_USERNAME],
+      );
+      assert.deepEqual(
+        rows.rows.map((row) => row.action),
+        [
+          'stream.update',
+          'stream.thumbnail.set',
+          'stream.thumbnail.clear',
+          'stream.key.rotate',
+          'stream.publish',
+          'stream.unpublish',
+          'stream.unpublish',
+          'stream.delete',
+        ],
+      );
+      assert.ok(rows.rows.every((row) => row.actor_kind === 'operator' && row.actor_user_id !== null));
+
+      const reconcile = await pool.query(
+        `SELECT 1 FROM audit_log WHERE action = 'feed.reconcile' AND actor_name = $1`,
+        [OPERATOR_USERNAME],
+      );
+      assert.equal(reconcile.rowCount, 1, 'the reconcile is the second operator’s too');
+    } finally {
+      await pool.end();
+    }
   });
 });
 

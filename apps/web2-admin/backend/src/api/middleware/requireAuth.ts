@@ -1,5 +1,6 @@
 import { NextFunction, Request, RequestHandler, Response } from 'express';
 
+import { operatorActor, type OperatorActor } from '../../domain/actor.js';
 import type { AuthService, SessionInfo } from '../../domain/auth/AuthService.js';
 import { AdminRequiredError, UnauthenticatedError } from '../../domain/errors/index.js';
 import type { UserRow } from '../../types/index.js';
@@ -39,6 +40,15 @@ export function requireUser(req: Request): {
 } {
   if (!req.user || !req.sessionTokenHash) throw new UnauthenticatedError();
   return { user: req.user, tokenHash: req.sessionTokenHash };
+}
+
+/**
+ * The signed-in user as the actor of whatever this request changes. Every
+ * mutating service call behind the gate takes it, so the log line and the
+ * audit row say which operator it was.
+ */
+export function actorOf(req: Request): OperatorActor {
+  return operatorActor(requireUser(req).user);
 }
 
 /** The whole session on a request that came through requireAuth. */
