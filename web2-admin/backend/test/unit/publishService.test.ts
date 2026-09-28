@@ -32,6 +32,7 @@ import {
 import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
 import { PublishService } from '../../src/domain/PublishService.js';
+import { hasUnpublishedEdits } from '../../src/domain/unpublishedEdits.js';
 
 import {
   FakeFeedWriteLog,
@@ -550,6 +551,49 @@ describe('PublishService republishing a stream that has gone live', () => {
     assert.equal(entriesOf(gateway)[0]!.duration, 61);
   });
 
+  it('publishes a draft that still holds a recording as that recording', async () => {
+    // An unpublish keeps the recording, so the next publish has to list the
+    // stream as what it is, never as one that has not started.
+    const { store, renditions, gateway, service } = setup();
+    const row = store.add(
+      streamRow({
+        manifest_index: 7,
+        duration_seconds: 61,
+        live_since: new Date('2026-09-11T10:01:00.000Z'),
+        ended_at: new Date('2026-09-11T10:02:01.000Z'),
+      }),
+    );
+    await renditions.upsert(row.id, rung('720p', 720, 12));
+
+    const outcome = await service.publish(row.id, TEST_USER_ID);
+
+    assert.equal(outcome.stream.status, 'vod');
+    assert.equal(outcome.stream.published_feed_index, outcome.feed.index);
+    assert.equal(outcome.stream.manifest_index, 7);
+    const [entry] = entriesOf(gateway);
+    assert.equal(entry!.state, 'vod');
+    assert.equal(entry!.index, 7);
+    assert.equal(entry!.duration, 61);
+    assert.equal(entry!.renditions?.[0]?.index, 12);
+  });
+
+  it('puts a draft holding a recording back to draft, recording intact, when the write fails', async () => {
+    const { store, gateway, service } = setup();
+    const row = store.add(streamRow({ manifest_index: 7, duration_seconds: 61 }));
+    gateway.failNextWrite = new Error('bee unreachable');
+
+    await assert.rejects(
+      () => service.publish(row.id, TEST_USER_ID),
+      PublishFailedError,
+    );
+
+    const after = store.get(row.id);
+    assert.equal(after.status, 'draft');
+    assert.equal(after.manifest_index, 7);
+    assert.equal(after.duration_seconds, 61);
+    assert.equal(after.publish_error, 'bee unreachable');
+  });
+
   it('serialises a state report against a concurrent publish', async () => {
     // Two feed writes, one index each: the report does not hold the row's
     // `publishing` claim, so the mutex is all that keeps them apart.
@@ -641,20 +685,34 @@ describe('PublishService and the ABR ladder', () => {
     assert.deepEqual(gone.previousRenditions, second.renditions);
   });
 
-  it('drops the ladder when the stream is unpublished', async () => {
-    // Back to `draft` is a fresh life: the rungs describe a broadcast that is
-    // no longer on the catalogue, and must not ride onto the next publish.
+  it('keeps the ladder when a recording is unpublished, and publishes it back with it', async () => {
+    // An unpublish takes the entry off the catalogue and keeps what the stream
+    // has, so the next publish lists the same recording, ladder and all.
     const { store, renditions, gateway, service } = setup();
-    const row = store.add(streamRow());
+    const row = store.add(
+      streamRow({
+        status: 'vod',
+        manifest_index: 9,
+        duration_seconds: 61,
+        published_feed_index: 0,
+      }),
+    );
+    await renditions.upsert(row.id, rung('360p', 360, 10));
     await renditions.upsert(row.id, rung('720p', 720, 12));
     await service.publish(row.id, TEST_USER_ID);
+    const listed = entriesOf(gateway)[0]!;
 
     await service.unpublish(row.id, TEST_USER_ID);
-    assert.deepEqual(await renditions.listByStream(row.id), []);
+    assert.equal((await renditions.listByStream(row.id)).length, 2, 'the rungs stay');
+    assert.deepEqual(entriesOf(gateway), [], 'the entry is off the catalogue');
 
     await service.publish(row.id, TEST_USER_ID);
-    const [entry] = entriesOf(gateway);
-    assert.ok(!('renditions' in entry!), 'republished without a ladder');
+    assert.equal(store.get(row.id).status, 'vod');
+    assert.deepEqual(
+      { ...entriesOf(gateway)[0]!, timestamp: 0 },
+      { ...listed, timestamp: 0 },
+      'the same recording as before the unpublish',
+    );
   });
 });
 
@@ -740,16 +798,30 @@ describe('PublishService.unpublish', () => {
     assert.deepEqual(gateway.writes.at(-1)!.entries, []);
   });
 
-  it('takes a recording off the feed like any published stream', async () => {
+  it('takes a recording off the feed and keeps what the uploader reported', async () => {
     const { store, gateway, service } = setup();
     const row = store.add(streamRow({ status: 'live' }));
     await service.republishWithState(store.get(row.id));
-    store.add({ ...store.get(row.id), status: 'vod', manifest_index: 4 });
+    const liveSince = new Date('2026-09-11T10:01:00.000Z');
+    const endedAt = new Date('2026-09-11T11:00:00.000Z');
+    store.add({
+      ...store.get(row.id),
+      status: 'vod',
+      manifest_index: 4,
+      duration_seconds: 3540,
+      live_since: liveSince,
+      ended_at: endedAt,
+    });
 
     const outcome = await service.unpublish(row.id, TEST_USER_ID);
 
     assert.equal(outcome.stream.status, 'draft');
     assert.deepEqual(entriesOf(gateway), []);
+    assert.equal(outcome.stream.published_feed_index, null, 'off the catalogue');
+    assert.equal(outcome.stream.manifest_index, 4, 'where the recording is');
+    assert.equal(outcome.stream.duration_seconds, 3540, 'how long it runs');
+    assert.deepEqual(outcome.stream.live_since, liveSince);
+    assert.deepEqual(outcome.stream.ended_at, endedAt);
   });
 
   it('refuses to unpublish a live stream', async () => {
@@ -1091,5 +1163,171 @@ describe('PublishService.reconcile', () => {
     assert.equal(outcome.entryCount, 1);
     assert.equal(gateway.writes.length, 1, 'no stamp spent either');
     assert.equal(writes.records.length, 1);
+  });
+});
+
+/**
+ * The console warns "Edited since it was published" while the row holds an
+ * edit the catalogue entry does not carry. Every write that rebuilds this
+ * stream's entry from its row has to say which edit it carried, and nothing
+ * else may: the uploader's reports move the row but edit nothing, and a write
+ * for another stream copies this one's entry as it was.
+ */
+describe('PublishService and the edited-since-published notice', () => {
+  const REBUILT_AT = new Date('2026-09-24T10:00:00.000Z');
+  const EDITED_AT = new Date('2026-09-24T10:05:00.000Z');
+
+  it('records the edit a first publish put on the feed', async () => {
+    const { store, service } = setup();
+    const row = store.add(streamRow({ content_edited_at: EDITED_AT }));
+
+    const outcome = await service.publish(row.id, TEST_USER_ID);
+
+    assert.equal(
+      outcome.stream.entry_content_edited_at?.getTime(),
+      EDITED_AT.getTime(),
+    );
+    assert.equal(hasUnpublishedEdits(outcome.stream), false);
+  });
+
+  it('clears on a republish of a recording, which leaves published_at alone', async () => {
+    // The live finding: a recording was edited and republished, the catalogue
+    // was rewritten at a new index, and the console still warned.
+    const { store, gateway, service } = setup();
+    const row = store.add(
+      streamRow({
+        status: 'vod',
+        manifest_index: 7,
+        duration_seconds: 61,
+        published_at: REBUILT_AT,
+        published_feed_index: 1,
+        title: 'Retitled after the broadcast',
+        content_edited_at: EDITED_AT,
+        entry_content_edited_at: REBUILT_AT,
+      }),
+    );
+    assert.equal(hasUnpublishedEdits(store.get(row.id)), true, 'not on the feed yet');
+
+    const outcome = await service.publish(row.id, TEST_USER_ID);
+
+    assert.equal(entriesOf(gateway)[0]!.title, 'Retitled after the broadcast');
+    assert.equal(
+      outcome.stream.published_at?.getTime(),
+      REBUILT_AT.getTime(),
+      'still the first announcement',
+    );
+    assert.equal(hasUnpublishedEdits(outcome.stream), false);
+    assert.equal(hasUnpublishedEdits(store.get(row.id)), false);
+  });
+
+  it('clears when a state report rebuilds the entry with the edit on it', async () => {
+    // A report rewrites the entry from the row, so an edit waiting for a
+    // republish reaches the feed with it, and nothing is left to republish.
+    const { store, gateway, service } = setup();
+    const row = store.add(
+      streamRow({
+        status: 'live',
+        published_feed_index: 0,
+        title: 'Fixed before the report',
+        content_edited_at: EDITED_AT,
+        entry_content_edited_at: REBUILT_AT,
+      }),
+    );
+
+    await service.republishWithState(store.get(row.id));
+
+    assert.equal(entriesOf(gateway)[0]!.title, 'Fixed before the report');
+    assert.equal(hasUnpublishedEdits(store.get(row.id)), false);
+  });
+
+  it('keeps warning about an edit that lands while the entry is being written', async () => {
+    // A live stream stays editable while a report's write is on its way to
+    // Bee. That edit is not on the entry, so the notice must survive the write.
+    const { store, gateway, service } = setup();
+    const row = store.add(
+      streamRow({
+        status: 'live',
+        published_feed_index: 0,
+        content_edited_at: REBUILT_AT,
+        entry_content_edited_at: REBUILT_AT,
+      }),
+    );
+    const write = gateway.write.bind(gateway);
+    gateway.write = async (entries: unknown[], index: number) => {
+      store.add({
+        ...store.get(row.id),
+        title: 'Saved mid-write',
+        content_edited_at: EDITED_AT,
+      });
+      return write(entries, index);
+    };
+
+    await service.republishWithState(store.get(row.id));
+
+    assert.notEqual(entriesOf(gateway)[0]!.title, 'Saved mid-write');
+    assert.equal(store.get(row.id).title, 'Saved mid-write', 'the edit stands');
+    assert.equal(hasUnpublishedEdits(store.get(row.id)), true);
+  });
+
+  it('does not count a write made for another stream', async () => {
+    // Publishing the second stream copies the first one's entry as it was.
+    const { store, gateway, service } = setup();
+    const edited = store.add(streamRow());
+    const other = store.add(streamRow());
+    await service.publish(edited.id, TEST_USER_ID);
+    store.add({
+      ...store.get(edited.id),
+      title: 'Not republished',
+      content_edited_at: EDITED_AT,
+    });
+
+    await service.publish(other.id, TEST_USER_ID);
+
+    const onFeed = entriesOf(gateway).find((e) => e.topic === edited.topic);
+    assert.equal(onFeed?.title, 'Devcon keynote');
+    assert.equal(hasUnpublishedEdits(store.get(edited.id)), true);
+  });
+
+  it('counts a reconcile that rewrote the entry from the edited row', async () => {
+    const { store, gateway, service } = setup();
+    const row = store.add(streamRow());
+    await service.publish(row.id, TEST_USER_ID);
+    store.add({
+      ...store.get(row.id),
+      title: 'Edited, then reconciled',
+      content_edited_at: EDITED_AT,
+    });
+
+    const outcome = await service.reconcile(TEST_USER_ID);
+
+    assert.deepEqual(outcome.updated, [row.topic]);
+    assert.equal(entriesOf(gateway)[0]!.title, 'Edited, then reconciled');
+    assert.equal(hasUnpublishedEdits(store.get(row.id)), false);
+  });
+
+  it('keeps warning when a reconcile could not carry a replaced thumbnail', async () => {
+    // A reconcile uploads nothing, so an image that replaced the published one
+    // goes out as no thumbnail at all, and only a republish uploads it.
+    const { store, gateway, service } = setup();
+    const row = store.add(
+      streamRow({ has_thumbnail: true, thumbnail_mime: 'image/png' }),
+      { thumbnail: Buffer.from([1, 2, 3]), thumbnail_mime: 'image/png' },
+    );
+    await service.publish(row.id, TEST_USER_ID);
+    store.add({
+      ...store.get(row.id),
+      thumbnail_ref: null,
+      content_edited_at: EDITED_AT,
+    });
+
+    const outcome = await service.reconcile(TEST_USER_ID);
+
+    assert.deepEqual(outcome.updated, [row.topic]);
+    assert.equal(entriesOf(gateway)[0]!.thumbnail, '');
+    assert.equal(hasUnpublishedEdits(store.get(row.id)), true);
+
+    await service.publish(row.id, TEST_USER_ID);
+    assert.match(entriesOf(gateway)[0]!.thumbnail, /^[0-9a-f]{64}$/);
+    assert.equal(hasUnpublishedEdits(store.get(row.id)), false);
   });
 });

@@ -129,12 +129,13 @@ normal and not a divergence.
 One writer, one feed, payload is the whole JSON array rewritten each time
 (`src/domain/PublishService.ts`). A publish claims the row into `publishing`,
 uploads the thumbnail if it has no reference yet, takes the current list and
-index from `feed_writes`, replaces or appends this stream's entry by
-`(owner, topic)` — entries written by anyone else are kept verbatim — writes at
+index from `feed_writes`, and replaces or appends this stream's entry by
+`(owner, topic)`, keeping entries written by anyone else verbatim. It writes at
 the next index, logs it in `feed_writes`, and only then marks the row
-`published`. Any failure puts the previous status back with `publish_error` set
-and answers `502 publish_failed`. Publish and unpublish are serialised through
-one in-process mutex.
+`published`, or `vod` when the draft still holds the recording of an earlier
+broadcast, so the row says what its entry says. Any failure puts the previous
+status back with `publish_error` set and answers `502 publish_failed`. Publish
+and unpublish are serialised through one in-process mutex.
 
 ### Where the next index comes from
 
@@ -299,9 +300,9 @@ order their entries landed and only one of them flips. Refused with
 a state report, so a failed write is `502 publish_failed` and the retry has
 only the write left to do — the merge is idempotent.
 
-Migration 004 adds `stream_renditions`, one row per `(stream_id, name)`, and
-`finishUnpublish` deletes a stream's rungs in the same statement that clears
-its state columns.
+Migration 004 adds `stream_renditions`, one row per `(stream_id, name)`. An
+unpublish keeps a stream's rungs with the rest of its recording, and deleting
+the stream takes them with it through the foreign key.
 
 ### What that changes for the console
 
@@ -314,11 +315,21 @@ its state columns.
   it is* — the entry keeps its state and its index and duration — rather than
   claiming the row into `publishing` and returning it as `published`, which
   would quietly tell every viewer the broadcast had stopped.
+- Every stream the API returns carries `hasUnpublishedEdits`, which drives the
+  console's "Edited since it was published" notice. It is true while the
+  console holds an edit the catalogue entry does not carry, and `updatedAt` is
+  no longer read for it, because the uploader's reports move that too.
+  Migration 006 adds the two columns behind it: `content_edited_at`, moved
+  only by an edit that changes something the entry carries, and
+  `entry_content_edited_at`, the edit the entry was last rebuilt from, written
+  by a publish, a republish, a state or rendition report and a reconcile.
 - `POST /streams/:id/unpublish` and `DELETE /streams/:id` on a live stream are
   `409 stream_live` ("Stop the broadcast first."): nothing here can stop the
   encoder that is still pushing to it. On a recording both work as they do on a
-  published stream, and the unpublish clears everything the uploader reported,
-  because the row is a draft again — the ABR ladder included.
+  published stream, and the unpublish keeps everything the uploader reported:
+  where the recording is, how long it runs, when it was live and the ABR
+  ladder. `POST /streams/:id/publish` on a draft that holds a recording lists
+  it as that recording again (`vod`), never as a stream that has not started.
 
 ## Migrations
 

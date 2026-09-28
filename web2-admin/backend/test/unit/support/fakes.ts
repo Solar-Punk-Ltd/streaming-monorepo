@@ -4,8 +4,8 @@
  *
  * FakeStreamStore copies the semantics that matter from StreamRepository: the
  * status transitions are conditional, exactly as the SQL is, so a claim on a
- * row that is already `publishing` returns null here too, and `finishUnpublish`
- * drops the stream's rungs the way the CTE in the real statement does.
+ * row that is already `publishing` returns null here too, and `markLive`
+ * un-finishes the stream's rungs the way the CTE in the real statement does.
  */
 import type {
   Rendition,
@@ -22,6 +22,7 @@ import type {
   PublishStreamStore,
 } from '../../../src/domain/PublishService.js';
 import type { StateStreamStore } from '../../../src/domain/StreamStateService.js';
+import type { PublishedStatus } from '../../../src/domain/streamState.js';
 import type {
   StreamRenditionRow,
   StreamRow,
@@ -59,6 +60,8 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
     duration_seconds: null,
     live_since: null,
     ended_at: null,
+    content_edited_at: null,
+    entry_content_edited_at: null,
     created_at: at,
     updated_at: at,
     ...over,
@@ -104,12 +107,6 @@ export class FakeRenditionStore
     return row;
   }
 
-  async deleteByStream(streamId: string): Promise<number> {
-    const dropped = this.rows.get(streamId)?.length ?? 0;
-    this.rows.delete(streamId);
-    return dropped;
-  }
-
   /**
    * Un-finishes every rung, as the CTE in `markLive` does for a stream coming
    * back from `vod`. Index and duration go together, which is the migration's
@@ -137,7 +134,7 @@ export class FakeStreamStore
   /** Set to make the status write fail, as a lost connection would. */
   failNextFailPublish: Error | null = null;
 
-  /** Linked so `finishUnpublish` clears the ladder, as the real SQL does. */
+  /** Linked so `markLive` un-finishes the ladder, as the real SQL does. */
   constructor(private readonly renditions?: FakeRenditionStore) {}
 
   add(row: StreamRow, thumbnail?: ThumbnailRow): StreamRow {
@@ -261,51 +258,62 @@ export class FakeStreamStore
     userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
+    entryContentEditedAt: Date | null,
+    status: PublishedStatus,
   ): Promise<StreamRow | null> {
     if (!(await this.findById(id, userId))) return null;
     return this.patch(id, {
-      status: 'published',
+      status,
       published_at: new Date('2026-09-11T11:00:00.000Z'),
       published_feed_index: feedIndex,
       publish_error: null,
       thumbnail_ref: thumbnailRef,
+      entry_content_edited_at: entryContentEditedAt,
     });
   }
 
+  /** Keeps the recording and the rungs, as the SQL does. */
   async finishUnpublish(
     id: string,
     userId: string,
   ): Promise<StreamRow | null> {
     if (!(await this.findById(id, userId))) return null;
-    await this.renditions?.deleteByStream(id);
-    // Everything the uploader reported goes with it, as the SQL does it: a
-    // draft still carrying a manifest index or a `live_since` would describe a
-    // recording that is no longer on the catalogue.
     return this.patch(id, {
       status: 'draft',
       published_at: null,
       published_feed_index: null,
       publish_error: null,
-      manifest_index: null,
-      duration_seconds: null,
-      live_since: null,
-      ended_at: null,
     });
   }
 
-  /** Status untouched, exactly as the SQL is: a republish keeps its state. */
+  /**
+   * Status untouched, exactly as the SQL is: a republish keeps its state. The
+   * rest of the row is read as it is now, so an edit that landed while the
+   * entry was being written survives this, as it does in Postgres.
+   */
   async recordRepublish(
     id: string,
     userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
+    entryContentEditedAt: Date | null,
   ): Promise<StreamRow | null> {
     if (!(await this.findById(id, userId))) return null;
     return this.patch(id, {
       published_feed_index: feedIndex,
       publish_error: null,
       thumbnail_ref: thumbnailRef,
+      entry_content_edited_at: entryContentEditedAt,
     });
+  }
+
+  /** Unscoped, as the SQL is: a reconcile rebuilds every user's entries. */
+  async recordEntryRebuilt(
+    id: string,
+    entryContentEditedAt: Date | null,
+  ): Promise<void> {
+    if (!this.rows.has(id)) return;
+    this.patch(id, { entry_content_edited_at: entryContentEditedAt });
   }
 
   async failPublish(

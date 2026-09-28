@@ -3,7 +3,8 @@ import { Pool } from 'pg';
 
 import type { StreamRow, ThumbnailRow } from '../types/index.js';
 
-import { STREAM_COLUMNS } from './streamSql.js';
+import type { PublishedStatus } from './streamState.js';
+import { CONTENT_EDITED_NOW, STREAM_COLUMNS } from './streamSql.js';
 
 export interface StreamInsertData {
   user_id: string;
@@ -112,7 +113,14 @@ export class StreamRepository {
     return result.rows[0]!;
   }
 
-  /** Null when the row is not in one of `allowedFrom` (or does not exist). */
+  /**
+   * Null when the row is not in one of `allowedFrom` (or does not exist).
+   *
+   * `content_edited_at` moves only when a value actually changes. The console
+   * PUTs the whole form back on every save, so a save that changed nothing
+   * would otherwise ask the operator to republish an entry that is already
+   * right. The comparisons read the row as it was, before this SET.
+   */
   async update(
     id: string,
     userId: string,
@@ -126,6 +134,15 @@ export class StreamRepository {
               tags = $6,
               media_type = $7,
               scheduled_start_time = $8,
+              content_edited_at = CASE
+                WHEN title IS DISTINCT FROM $4
+                  OR description IS DISTINCT FROM $5
+                  OR tags IS DISTINCT FROM $6
+                  OR media_type IS DISTINCT FROM $7
+                  OR scheduled_start_time IS DISTINCT FROM $8
+                THEN ${CONTENT_EDITED_NOW}
+                ELSE content_edited_at
+              END,
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2 AND status = ANY($3::text[])
         RETURNING ${STREAM_COLUMNS}`,
@@ -172,7 +189,8 @@ export class StreamRepository {
   /**
    * Stores new image bytes and clears `thumbnail_ref`: the reference now
    * belongs to a different image, and a null ref is what tells the next
-   * publish to upload the new one.
+   * publish to upload the new one. Always an edit, for the same reason: the
+   * entry keeps the old reference until a publish uploads this image.
    */
   async setThumbnail(
     id: string,
@@ -186,6 +204,7 @@ export class StreamRepository {
           SET thumbnail = $4,
               thumbnail_mime = $5,
               thumbnail_ref = NULL,
+              content_edited_at = ${CONTENT_EDITED_NOW},
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2 AND status = ANY($3::text[])
         RETURNING ${STREAM_COLUMNS}`,
@@ -194,6 +213,7 @@ export class StreamRepository {
     return this.one(result.rows, result.rowCount);
   }
 
+  /** An edit only when there was an image to remove. */
   async clearThumbnail(
     id: string,
     userId: string,
@@ -204,6 +224,10 @@ export class StreamRepository {
           SET thumbnail = NULL,
               thumbnail_mime = NULL,
               thumbnail_ref = NULL,
+              content_edited_at = CASE
+                WHEN thumbnail IS NOT NULL THEN ${CONTENT_EDITED_NOW}
+                ELSE content_edited_at
+              END,
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2 AND status = ANY($3::text[])
         RETURNING ${STREAM_COLUMNS}`,
@@ -259,13 +283,12 @@ export class StreamRepository {
    * its head.
    *
    * The ladder is un-finished with it, in this one statement rather than
-   * through StreamRenditionRepository, for the reason `finishUnpublish` clears
-   * it in its own: a crash between two statements would leave the entry
-   * advertising rung recordings that have been superseded. Only a row coming
-   * back from `vod` is touched — a repeated `live` report must not throw away
-   * rungs that have finalized since, and there is nothing to clear for a
-   * broadcast that is starting for the first time. Index and duration go null
-   * together, as migration 004 requires.
+   * through StreamRenditionRepository: a crash between two statements would
+   * leave the entry advertising rung recordings that have been superseded.
+   * Only a row coming back from `vod` is touched. A repeated `live` report
+   * must not throw away rungs that have finalized since, and there is nothing
+   * to clear for a broadcast that is starting for the first time. Index and
+   * duration go null together, as migration 004 requires.
    *
    * Conditional on `allowedFrom` for the same reason every other transition
    * here is: the check and the write are one statement, so two reports racing
@@ -348,24 +371,48 @@ export class StreamRepository {
    * stream that is live or recorded, where the whole point is that it stays
    * where it is. `published_at` is left alone — it is when the stream was
    * first announced, not when its entry was last rewritten.
+   *
+   * `entryContentEditedAt` is the `content_edited_at` the entry was built
+   * from. It is handed in rather than copied from the row, because an edit can
+   * land while the write is in flight, and the entry does not carry that one.
    */
   async recordRepublish(
     id: string,
     userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
+    entryContentEditedAt: Date | null,
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
           SET published_feed_index = $3,
               publish_error = NULL,
               thumbnail_ref = $4,
+              entry_content_edited_at = $5,
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2
         RETURNING ${STREAM_COLUMNS}`,
-      [id, userId, feedIndex, thumbnailRef],
+      [id, userId, feedIndex, thumbnailRef, entryContentEditedAt],
     );
     return this.one(result.rows, result.rowCount);
+  }
+
+  /**
+   * A reconcile rebuilt this stream's entry from the row: record which edit it
+   * carries now. Unscoped, like the reconcile itself, which rebuilds entries
+   * from every user's rows when no user is given.
+   */
+  async recordEntryRebuilt(
+    id: string,
+    entryContentEditedAt: Date | null,
+  ): Promise<void> {
+    await this.pool.query(
+      `UPDATE streams
+          SET entry_content_edited_at = $2,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [id, entryContentEditedAt],
+    );
   }
 
   /**
@@ -388,60 +435,52 @@ export class StreamRepository {
     return this.one(result.rows, result.rowCount);
   }
 
+  /**
+   * `entryContentEditedAt` as on `recordRepublish`. `status` is where the
+   * publish leaves the row, `vod` for a draft that still holds a recording
+   * (`publishedStatusFor`), so the row says what its entry says.
+   */
   async finishPublish(
     id: string,
     userId: string,
     feedIndex: number,
     thumbnailRef: string | null,
+    entryContentEditedAt: Date | null,
+    status: PublishedStatus,
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
-          SET status = 'published',
+          SET status = $6,
               published_at = NOW(),
               published_feed_index = $3,
               publish_error = NULL,
               thumbnail_ref = $4,
+              entry_content_edited_at = $5,
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2
         RETURNING ${STREAM_COLUMNS}`,
-      [id, userId, feedIndex, thumbnailRef],
+      [id, userId, feedIndex, thumbnailRef, entryContentEditedAt, status],
     );
     return this.one(result.rows, result.rowCount);
   }
 
   /**
-   * Back to `draft`, keeping `thumbnail_ref` — the upload is still paid for.
-   * Everything the uploader reported is cleared: the row is a draft again, and
-   * a stale `live_since` or manifest index would describe a recording that is
-   * no longer on the catalogue.
-   *
-   * The ABR ladder goes with it, in this one statement rather than through
-   * StreamRenditionRepository: the rungs are part of what the uploader
-   * reported, and a crash between two statements would leave a draft that
-   * carries a ladder from a broadcast nobody can play any more onto the next
-   * entry it is published with. The delete is scoped through `owned` so it
-   * cannot touch another user's stream when the UPDATE itself would not.
+   * Back to `draft` and off the catalogue, keeping everything the stream has:
+   * `thumbnail_ref`, because the upload is still paid for, and what the
+   * uploader reported, which is where the recording is, how long it runs,
+   * when it was live and its ABR rungs. Publishing the draft again lists it as
+   * that recording.
    */
   async finishUnpublish(
     id: string,
     userId: string,
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
-      `WITH owned AS (
-         SELECT id FROM streams WHERE id = $1 AND user_id = $2
-       ), cleared AS (
-         DELETE FROM stream_renditions
-          WHERE stream_id IN (SELECT id FROM owned)
-       )
-       UPDATE streams
+      `UPDATE streams
           SET status = 'draft',
               published_at = NULL,
               published_feed_index = NULL,
               publish_error = NULL,
-              manifest_index = NULL,
-              duration_seconds = NULL,
-              live_since = NULL,
-              ended_at = NULL,
               updated_at = NOW()
         WHERE id = $1 AND user_id = $2
         RETURNING ${STREAM_COLUMNS}`,

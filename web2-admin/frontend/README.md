@@ -12,15 +12,17 @@ types from [`../common`](../common/).
 | `#/login` | Username, password, Log in. The API's error text is shown inline. |
 | `#/` | My Streams: thumbnail, title, media type chip, status chip, scheduled start, Edit / Details / Delete, Create New Stream. |
 | `#/create`, `#/edit/:id` | The msrs-client form: Stream Name (n/100), Description (n/500), Tags (Enter or Add, max 10 × 20 chars), Media Type (locked once published), Upload Thumbnail (max 5MB, preview, remove), Scheduled Start Time. |
-| `#/streams/:id` | Details: metadata, publish / unpublish with feed feedback, a link to the viewer catalogue plus the copyable per-stream route, last publish error, and the OBS connection details with copy buttons and Rotate key. |
+| `#/streams/:id` | Details: metadata, publish / unpublish with feed feedback (Unpublish asks first, and for a recording says the recording stays with the stream and is listed again on the next publish), a link to the viewer catalogue plus the copyable per-stream route, last publish error, and the OBS connection details: for SRT and for RTMP separately, what goes in OBS's Server box and Stream Key box, with copy buttons and Rotate key. |
 | `#/account` | Change password. |
 
-The SRT URL embeds the same per-stream `key=` as the RTMP stream key, so both
-fields hide that parameter until the operator reveals it; the host, port and
-stream id stay readable, and Copy always copies the real value. Copying falls
-back to `document.execCommand('copy')` where `navigator.clipboard` is missing
-— it is only present in a secure context, and the console is deployed over
-plain http — and, failing that, selects the value for a manual copy.
+The SRT Server line carries the same per-stream `key=` as the RTMP stream key,
+and the SRT passphrase wherever OBS can read it there, so the console hides
+those values, and the SRT Password field when there is one, until the operator
+reveals them. The host, port and stream id stay readable, and Copy always
+copies the real value. `navigator.clipboard` exists only in a secure context,
+so on a console served over plain http Copy falls back to
+`document.execCommand('copy')` and, failing that, selects the value for a
+manual copy.
 
 The router is a `HashRouter`, so the console can be served from any path
 without server rewrites. Every fetch is relative (`/api/...`) and carries
@@ -63,7 +65,9 @@ honours a few env vars:
 | `SEED_ADMIN_USERNAME` | `admin` | the seeded user |
 | `SEED_ADMIN_PASSWORD` | `admin1234` | its password (changeable through the UI) |
 | `INGEST_KEY_VERIFIED` | `false` | set `true` to hide the "ingest does not verify this key yet" note |
-| `VIEWER_BASE_URL` | `http://localhost:10064` | drives the "open player catalogue" link; must be a viewer built for this backend's feed |
+| `VIEWER_BASE_URL` | `http://localhost:10074` | drives the "open player catalogue" link. It must be a viewer built for this backend's feed |
+| `MOCK_NO_USERS` | unset | set `true` to start with no users, the only way to see the console's "no users yet" screen |
+| `MOCK_RECORDING` | unset | set `true` to start with one finished recording on the feed, the only way to see a recording's details and to unpublish and publish it again |
 
 ## Checks
 

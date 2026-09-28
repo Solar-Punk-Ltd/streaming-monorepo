@@ -119,6 +119,17 @@ async function catalogueEntry(topic: string): Promise<FeedStreamEntry> {
   return entry as FeedStreamEntry;
 }
 
+/** Whether the newest feed write, the catalogue as it stands, lists this topic. */
+async function isOnCatalogue(topic: string): Promise<boolean> {
+  const result = await pool.query<{ listed: boolean }>(
+    `SELECT payload @> $1::jsonb AS listed FROM feed_writes
+      ORDER BY id DESC
+      LIMIT 1`,
+    [JSON.stringify([{ topic }])],
+  );
+  return result.rows[0]?.listed ?? false;
+}
+
 describe('internal API authentication', () => {
   it('refuses every internal route without the token', async () => {
     const id = '1867808f-7b1c-4e46-b437-f7423b466b39';
@@ -269,6 +280,11 @@ describe('internal state reports', () => {
     assert.ok(result.stream.liveSince, 'liveSince is stamped');
     assert.equal(result.stream.endedAt ?? null, null);
     assert.equal(result.stream.publishedFeedIndex, result.feed.index);
+    assert.equal(
+      result.stream.hasUnpublishedEdits,
+      false,
+      'a report moves the row but is not an edit to republish',
+    );
 
     const entry = await catalogueEntry(stream.topic);
     assert.equal(entry.state, 'live');
@@ -322,6 +338,7 @@ describe('internal state reports', () => {
     });
     assert.equal(edited.status, 'live', 'editing does not end the broadcast');
     assert.equal(edited.title, 'itest internal live, edited');
+    assert.equal(edited.hasUnpublishedEdits, true, 'not on the entry yet');
 
     const rescheduled = await raw('PUT', `/api/streams/${stream.id}`, {
       body: {
@@ -347,6 +364,7 @@ describe('internal state reports', () => {
       `/api/streams/${stream.id}/publish`,
     );
     assert.equal(result.stream.status, 'live');
+    assert.equal(result.stream.hasUnpublishedEdits, false, 'the edit went out');
 
     const entry = await catalogueEntry(stream.topic);
     assert.equal(entry.state, 'live');
@@ -365,6 +383,11 @@ describe('internal state reports', () => {
     assert.equal(result.stream.durationSeconds, 3725.5);
     assert.ok(result.stream.endedAt, 'endedAt is stamped');
     assert.ok(result.stream.liveSince, 'and liveSince is kept');
+    assert.equal(
+      result.stream.hasUnpublishedEdits,
+      false,
+      'a recording nobody edited since its republish has nothing to republish',
+    );
 
     const entry = await catalogueEntry(stream.topic);
     assert.equal(entry.state, 'vod');
@@ -404,16 +427,32 @@ describe('internal state reports', () => {
     assert.equal(ended.stream.status, 'vod');
   });
 
-  it('unpublishes a recording and clears what the uploader reported', async () => {
+  it('unpublishes a recording and keeps what the uploader reported', async () => {
     const result = await api<PublishResult>(
       'POST',
       `/api/streams/${stream.id}/unpublish`,
     );
     assert.equal(result.stream.status, 'draft');
-    assert.equal(result.stream.manifestIndex ?? null, null);
-    assert.equal(result.stream.durationSeconds ?? null, null);
-    assert.equal(result.stream.liveSince ?? null, null);
-    assert.equal(result.stream.endedAt ?? null, null);
+    assert.equal(result.stream.publishedFeedIndex ?? null, null);
+    assert.equal(result.stream.manifestIndex, 412, 'where the recording is');
+    assert.equal(result.stream.durationSeconds, 3725.5, 'how long it runs');
+    assert.ok(result.stream.liveSince, 'when it went live');
+    assert.ok(result.stream.endedAt, 'when it ended');
+    assert.equal(await isOnCatalogue(stream.topic), false, 'off the catalogue');
+  });
+
+  it('publishes it again as the recording, never as a stream that has not started', async () => {
+    const result = await api<PublishResult>(
+      'POST',
+      `/api/streams/${stream.id}/publish`,
+    );
+    assert.equal(result.stream.status, 'vod');
+    assert.equal(result.stream.manifestIndex, 412);
+
+    const entry = await catalogueEntry(stream.topic);
+    assert.equal(entry.state, 'vod');
+    assert.equal(entry.index, 412);
+    assert.equal(entry.duration, 3725.5);
   });
 });
 
@@ -662,27 +701,30 @@ describe('internal rendition reports', () => {
     );
   });
 
-  it('drops the ladder when the recording is unpublished', async () => {
+  it('keeps the ladder when the recording is unpublished, and publishes it back with it', async () => {
     const result = await api<PublishResult>(
       'POST',
       `/api/streams/${stream.id}/unpublish`,
     );
     assert.equal(result.stream.status, 'draft');
+    assert.equal(await isOnCatalogue(stream.topic), false, 'off the catalogue');
 
     const rows = await pool.query(
       'SELECT 1 FROM stream_renditions WHERE stream_id = $1',
       [stream.id],
     );
-    assert.equal(rows.rowCount, 0, 'the rungs went with the state columns');
+    assert.equal(rows.rowCount, 2, 'the rungs stay with the recording');
 
-    // And a fresh publish of the same row announces a single-rendition stream.
+    // And the next publish lists the same recording, ladder and all.
     const republished = await api<PublishResult>(
       'POST',
       `/api/streams/${stream.id}/publish`,
     );
-    assert.equal(republished.stream.status, 'published');
+    assert.equal(republished.stream.status, 'vod');
     const entry = await catalogueEntry(stream.topic);
-    assert.ok(!('renditions' in entry), 'no ladder');
-    assert.ok(!('group' in entry), 'and no group');
+    assert.equal(entry.state, 'vod');
+    assert.equal(entry.index, 9, 'the master, as before');
+    assert.equal(entry.group, stream.topic);
+    assert.equal(entry.renditions?.length, 2);
   });
 });

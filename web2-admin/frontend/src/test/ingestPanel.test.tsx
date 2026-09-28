@@ -1,11 +1,27 @@
 import { fireEvent, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   IngestPanel,
   KEY_UNVERIFIED_NOTE,
 } from '../components/IngestPanel';
 import { makeIngest, mockFetch, renderWithProviders } from './helpers';
+
+const renderPanel = (details = makeIngest()) =>
+  renderWithProviders(
+    <IngestPanel streamId="stream-1" details={details} onRotated={vi.fn()} />,
+  );
+
+const section = (name: 'SRT' | 'RTMP') =>
+  within(screen.getByRole('region', { name }));
+
+const shownValue = (label: string) =>
+  (screen.getByLabelText(label) as HTMLInputElement).value;
+
+afterEach(() => {
+  // `restoreMocks` does not undo defineProperty on navigator.
+  Reflect.deleteProperty(navigator as object, 'clipboard');
+});
 
 describe('IngestPanel', () => {
   it('warns that the key is not verified yet', () => {
@@ -41,71 +57,110 @@ describe('IngestPanel', () => {
     expect(screen.queryByText(KEY_UNVERIFIED_NOTE)).not.toBeInTheDocument();
   });
 
-  it('shows every value the encoder needs, with copy buttons', () => {
+  it('says what goes in the OBS Server and Stream Key boxes for SRT', () => {
+    mockFetch([]);
+    const details = makeIngest();
+    const server = `${details.srt.url}&passphrase=${details.srt.passphrase}`;
+
+    renderPanel(details);
+
+    expect(screen.getByText(/set Service to Custom/)).toBeInTheDocument();
+    const srt = section('SRT');
+
+    // One line carries the stream id, the key and the passphrase. Both
+    // secrets start masked, while host and port stay readable.
+    const shown = shownValue('SRT Server');
+    expect(shown).toContain('srt://ingest.example.test:10061');
+    expect(shown).toContain('key=••••••••');
+    expect(shown).toContain('passphrase=••••••••');
+    expect(shown).not.toContain(details.publishKey);
+    expect(shown).not.toContain(details.srt.passphrase!);
+
+    fireEvent.click(srt.getByLabelText('show srt server'));
+    expect(srt.getByLabelText('SRT Server')).toHaveValue(server);
+
+    // OBS's Stream Key box becomes the SRT stream id, so it stays empty.
+    expect(srt.getByText(/Stream Key/)).toBeInTheDocument();
+    expect(srt.getByText(/leave it empty/)).toBeInTheDocument();
+    expect(srt.queryByLabelText('SRT Password')).not.toBeInTheDocument();
+    expect(srt.getByLabelText('copy srt server')).toBeInTheDocument();
+  });
+
+  it('says what goes in the OBS Server and Stream Key boxes for RTMP', () => {
     mockFetch([]);
     const details = makeIngest();
 
-    renderWithProviders(
-      <IngestPanel
-        streamId="stream-1"
-        details={details}
-        onRotated={vi.fn()}
-      />,
-    );
+    renderPanel(details);
+    const rtmp = section('RTMP');
 
     // The RTMP server carries no secret, so it is shown as-is.
-    expect(screen.getByLabelText('RTMP Server')).toHaveValue(
-      details.rtmp.server,
-    );
+    expect(rtmp.getByLabelText('RTMP Server')).toHaveValue(details.rtmp.server);
 
-    // Everything carrying `key=` starts masked — the SRT URL embeds the same
-    // publish key as the RTMP stream key, so hiding only one would lie about
-    // which values are safe to leave on screen. The rest of the URL stays
-    // readable so the operator can still check host and port.
-    for (const label of ['SRT URL', 'Your stream key']) {
-      const shown = (screen.getByLabelText(label) as HTMLInputElement).value;
-      expect(shown).toContain('key=••••••••');
-      expect(shown).not.toContain(details.publishKey);
-    }
-    expect(
-      (screen.getByLabelText('SRT URL') as HTMLInputElement).value,
-    ).toContain('srt://ingest.example.test:10061');
-    expect(screen.getByLabelText('SRT Passphrase')).not.toHaveValue(
-      details.srt.passphrase!,
-    );
-
-    fireEvent.click(screen.getByLabelText('show your stream key'));
-    expect(screen.getByLabelText('Your stream key')).toHaveValue(
+    const key = shownValue('RTMP Stream Key');
+    expect(key).toContain('key=••••••••');
+    expect(key).not.toContain(details.publishKey);
+    fireEvent.click(rtmp.getByLabelText('show rtmp stream key'));
+    expect(rtmp.getByLabelText('RTMP Stream Key')).toHaveValue(
       details.rtmp.streamKey,
     );
 
-    fireEvent.click(screen.getByLabelText('show srt url'));
-    expect(screen.getByLabelText('SRT URL')).toHaveValue(details.srt.url);
-
-    expect(screen.getByLabelText('copy srt url')).toBeInTheDocument();
-    expect(screen.getByLabelText('copy rtmp server')).toBeInTheDocument();
-    expect(screen.getByLabelText('copy your stream key')).toBeInTheDocument();
-    expect(screen.getByLabelText('copy srt passphrase')).toBeInTheDocument();
+    expect(rtmp.getByLabelText('copy rtmp server')).toBeInTheDocument();
+    expect(rtmp.getByLabelText('copy rtmp stream key')).toBeInTheDocument();
     expect(screen.getByText(/Ingest stream id video\//)).toBeInTheDocument();
+  });
+
+  it('copies the real SRT Server line while it is masked', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+    mockFetch([]);
+    const details = makeIngest();
+
+    renderPanel(details);
+    fireEvent.click(screen.getByLabelText('copy srt server'));
+
+    expect(
+      await screen.findByText('SRT Server copied to your clipboard.'),
+    ).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledWith(
+      `${details.srt.url}&passphrase=${details.srt.passphrase}`,
+    );
+  });
+
+  it('sends a passphrase the Server line cannot carry to Use authentication', () => {
+    mockFetch([]);
+    const passphrase = 'has+plus&and0123';
+    const details = makeIngest({
+      srt: { url: makeIngest().srt.url, passphrase },
+    });
+
+    renderPanel(details);
+    const srt = section('SRT');
+
+    fireEvent.click(srt.getByLabelText('show srt server'));
+    expect(srt.getByLabelText('SRT Server')).toHaveValue(details.srt.url);
+
+    expect(srt.getByLabelText('SRT Password')).not.toHaveValue(passphrase);
+    expect(srt.getByText(/tick Use authentication/)).toBeInTheDocument();
+    fireEvent.click(srt.getByLabelText('show srt password'));
+    expect(srt.getByLabelText('SRT Password')).toHaveValue(passphrase);
   });
 
   it('says so when the server has no SRT passphrase', () => {
     mockFetch([]);
+    const url = 'srt://host:10061?streamid=x';
 
-    renderWithProviders(
-      <IngestPanel
-        streamId="stream-1"
-        details={makeIngest({
-          srt: { url: 'srt://host:10061?streamid=x', passphrase: null },
-        })}
-        onRotated={vi.fn()}
-      />,
-    );
+    renderPanel(makeIngest({ srt: { url, passphrase: null } }));
+    const srt = section('SRT');
 
     expect(
-      screen.getByText('No SRT passphrase is configured on this ingest server.'),
+      srt.getByText('No SRT passphrase is configured on this ingest server.'),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText('SRT Passphrase')).not.toBeInTheDocument();
+    fireEvent.click(srt.getByLabelText('show srt server'));
+    expect(srt.getByLabelText('SRT Server')).toHaveValue(url);
+    expect(srt.queryByLabelText('SRT Password')).not.toBeInTheDocument();
   });
 
   it('confirms before rotating the key and reports the new one', async () => {

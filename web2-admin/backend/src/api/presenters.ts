@@ -12,6 +12,7 @@ import type {
 
 import type { RenditionReportOutcome } from '../domain/LadderService.js';
 import type { PublishOutcome } from '../domain/PublishService.js';
+import { hasUnpublishedEdits } from '../domain/unpublishedEdits.js';
 import type { StreamRow, UserRow } from '../types/index.js';
 
 function iso(value: Date | null): string | null {
@@ -49,6 +50,7 @@ export function toStream(row: StreamRow): Stream {
     durationSeconds: row.duration_seconds,
     liveSince: iso(row.live_since),
     endedAt: iso(row.ended_at),
+    hasUnpublishedEdits: hasUnpublishedEdits(row),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
