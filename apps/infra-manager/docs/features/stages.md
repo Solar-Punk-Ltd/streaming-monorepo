@@ -186,9 +186,119 @@ together once.
 `pnpm -C frontend dev:mock` shows the card, and
 `frontend/test/stage-card-browser.test.mjs` drives it in Chrome.
 
+## The catalogue node
+
+Built on `stages/p7-catalogue-node`, phase 7 of the brief, 2026-09-28. Not
+deployed.
+
+The web2 admin writes the brand's catalogue through one Bee node and one batch
+of their own, so that no stage's segments fill the batch the catalogue's slots
+live in (`docs/architecture/stages.md`, "Why these"). The operator designates
+them on the **Manager settings** page, in the **Catalogue node** card beside the
+admin link, and the manager pushes the **catalogue stamp record** to the admin
+its link names.
+
+### The designation
+
+One row, `catalogue_designation`, migration 047: the deployment's name, the
+pinned batch id (64 hex digits, lower case, no `0x`), the depth the node
+reported at designation, when and by whom it was designated, when the last one
+was cleared, and a revision. A save and a clear name the revision the page
+read, so two operators cannot overwrite each other unseen, as the admin link's
+save does. `CatalogueDesignationService` refuses, with one sentence each
+(`common/src/catalogueNode.ts`):
+
+| Refused                                                                | Why                                                                                        |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| a deployment that runs more than a Bee node (`isBeeNodeOnly` is false) | the catalogue node shares its node with no stage                                           |
+| a rung of an ABR node pool                                             | a rung's batches pay for a stream's segments                                               |
+| a batch the node does not hold, or a node that does not answer         | the kind of the batch cannot be checked                                                    |
+| a mutable batch                                                        | once a bucket fills it overwrites its oldest chunks, which are the catalogue's first slots |
+| a batch whose kind the node does not report                            | the kind that fails is the one it might be                                                 |
+| an expired batch                                                       | nothing written with it stays                                                              |
+| a batch an ABR uploader of this manager names in its `BEE_PUBLISHERS`  | segments would fill it                                                                     |
+
+The node is asked about the batch fresh, `GET /stamps/{id}` on its own Bee API,
+when the designation is saved. Designating another batch later is allowed: the
+admin keeps writing with the batch its feed has history under and says a move
+is waiting, which phase 8 builds.
+
+The designated deployment is not removed while it is designated. Its removal,
+from the page or the Clean action, answers 409 `catalogue_node_designated`
+before anything is claimed: clear the designation first.
+
+### The record
+
+`CataloguePublisher` (`manager/src/domain/stages/CataloguePublisher.ts`)
+builds it, and `catalogueRequest.ts` checks it against
+`catalogueStampRecordSchema` before it leaves:
+
+| Field                                           | Where the manager reads it                                                                                                                 |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `managerId`                                     | the manager's own id, migration 045                                                                                                        |
+| `nodeName`                                      | the designated deployment's name                                                                                                           |
+| `beeApiUrl`                                     | the node's Bee API as the control host reaches it, `beeApiUrlFor`, the address the Storage card reads, not a container's pool URL          |
+| `batchId`, `designatedAt`                       | the designation row                                                                                                                        |
+| `state`, `ttlSeconds`, `fillRatio`, `immutable` | `StampService.batchReadingFor`, the node's `GET /stamps/{id}` read as `stampHealthFrom` reads it; a node that does not answer is `unknown` |
+| `depth`                                         | the same reading, or the last one the node gave, or the depth at designation while the node does not answer                                |
+| `observedAt`                                    | the moment the designation row was read, before the node is asked                                                                          |
+
+`immutable` is what the node says, and `true` while it says nothing, since the
+designation refused a batch whose kind was not reported and a batch's kind never
+changes.
+
+### When and to whom
+
+To the manager's web2 admin link, `PUT <link>/api/internal/catalogue-stamp`,
+with the link's stored token, the registrar's, on the stage client's bounds:
+http and https alone, no redirect followed, five seconds, 64 KiB of an answer
+read. It is pushed:
+
+- **when the designation changes**, at once after the save;
+- **when the designated deployment changes**, on its `profile.changed` event;
+- **when the pinned batch's readings change**: the batch is read every ten
+  seconds, and a record goes when its state, depth, fill or kind moved, or its
+  life moved more than five minutes off the clock, as a top-up or a dilution
+  moves it;
+- **every 30 seconds** otherwise, and at start.
+
+A clear goes to the same link as `DELETE` with `{ observedAt }`, the moment the
+designation was taken out, stored as `cleared_at`, so a retry and a restarted
+manager resend the same moment. It is sent until the admin answers it, and not
+after. One call is in flight at a time: a trigger that comes during one makes
+one more after it, so a clear never overtakes the push before it.
+
+Each call comes to one of `CATALOGUE_PUSH_OUTCOMES`: `stored`, `older-ignored`,
+`cleared`, `not-cleared`, `refused-token`, `refused-record`, `unreachable`,
+`redirected`, `not-admin`, `skipped-no-link`, `skipped-no-node` (the designated
+deployment is gone) and `skipped-no-record` (a record the contract refuses, or
+no depth known). The card shows the last one, "Web2 admin: stored 12 s ago",
+and the log says it when it changes.
+
+### The card and the node's page
+
+The card lists the deployments that are nothing but a Bee node, then the
+batches the chosen one holds, each with its depth, life, fill and kind, and
+refuses before any save, with the manager's own sentence, what the manager
+would refuse. Designated, it shows the node, the batch, its last reading and
+the last push, with Change and Clear the designation.
+
+On the node's own page the pinned batch carries a **catalogue** chip, and the
+Storage and funding card says that Buy and Use leave the catalogue on the
+pinned batch, and that moving it is its own action. Top up stays offered on it
+(`postage-stamps.md`).
+
+`pnpm -C frontend dev:mock` seeds a `catalogue-node` deployment with one
+immutable and one mutable batch, and
+`frontend/test/catalogue-node-browser.test.mjs` drives the card in Chrome.
+
 ## Limits
 
 - One admin link per manager: a stage on another admin's origin is not pushed.
+- The catalogue stamp record goes to the link as it is now. A link moved to
+  another admin leaves the old one holding the last record it was sent.
+- The last catalogue reading and push are in memory, and a restarted manager
+  says "not sent yet" until its first push, which it makes at start.
 - When the manager shuts down the publisher stops first: no push starts after
   that, not a change, the cadence, a follow-up or the pre-start push. A
   deployment that is gone and was never pushed or seen is dropped from memory.
