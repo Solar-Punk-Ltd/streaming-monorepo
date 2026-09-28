@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { deploymentProgressText } from './deploymentPhase';
-import { statusLabelOf } from './shape';
-import type { Profile } from '../types';
 
-const deploying = { status: 'DEPLOYING', containers: [{ service: 'srs', ports: {} }] } as Profile;
+import { deploymentProgressText, type ReadinessProfile, statusLabelOf } from './index.js';
+
+type Profile = ReadinessProfile;
+
+const deploying = { status: 'DEPLOYING', containers: [{ service: 'srs', ports: {} }] } as unknown as Profile;
 
 describe('deployment phase evidence', () => {
   it('distinguishes manager-recorded starting and restarting across a reload', () => {

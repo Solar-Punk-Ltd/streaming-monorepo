@@ -1,6 +1,6 @@
 import { Box, Button, CircularProgress, Link, Paper, Stack, Typography } from '@mui/material';
 
-import { isLadderKind } from '@streaming-infra-manager/common';
+import { isLadderKind, streamerFor } from '@streaming-infra-manager/common';
 
 import { useEditors } from '../app/EditorsContext';
 import { navigate, routes } from '../app/router';
@@ -11,7 +11,6 @@ import { EmptyState } from '../components/EmptyState';
 import { ReadinessPill } from '../components/ReadinessPill';
 import { SectionCard } from '../components/SectionCard';
 import { ShapePill } from '../components/ShapePill';
-import { streamerFor } from '../deployments/checklist';
 import { isRunning, isTransitional, SHAPE_LABEL, shapeOf, streamersOf } from '../deployments/shape';
 import { formatDate } from '../format';
 import type { Profile } from '../types';

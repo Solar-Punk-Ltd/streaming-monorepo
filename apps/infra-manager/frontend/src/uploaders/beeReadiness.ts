@@ -1,10 +1,7 @@
-import type { BeeNodeObservation, BeeNodeState } from '@streaming-infra-manager/common';
+import type { BeeNodeObservation, BeeNodeState, BeeReadinessView } from '@streaming-infra-manager/common';
 
-export interface BeeReadinessView {
-  state: BeeNodeState | 'stale';
-  label: string;
-  detail: string;
-}
+// Declared beside the readiness list that reads it, in the common package since 2026-09-28.
+export type { BeeReadinessView } from '@streaming-infra-manager/common';
 
 /** How old a reading may get before this view stops vouching for it. */
 export const OBSERVATION_MAX_AGE_MS = 30_000;

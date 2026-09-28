@@ -10,16 +10,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  beePublishersValue,
-  DEFAULT_ABR_RUNGS,
-  stampHealthFrom,
-  type UploaderHealthReading,
-} from '@streaming-infra-manager/common';
+import { beePublishersValue, DEFAULT_ABR_RUNGS, stampHealthFrom, type UploaderHealthReading } from './index.js';
 
-import { formatDateTime } from '../format';
-import type { Profile } from '../types';
-import { buildChecklist, type ChecklistInput } from './checklist';
+import { buildChecklist, type ChecklistInput, formatDateTime, type ReadinessProfile } from './index.js';
+
+/** A console profile as the tests wrote it; the readiness composition reads the fields `ReadinessProfile` names. */
+type Profile = Omit<ReadinessProfile, 'containers'> & {
+  containers: ({ service: string } & Record<string, unknown>)[];
+} & Record<string, unknown>;
 
 const BATCH = `0x${'a'.repeat(64)}`;
 

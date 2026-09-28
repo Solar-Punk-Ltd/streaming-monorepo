@@ -1,36 +1,66 @@
+import { beePublishersProblem, parseBeePublishers } from './abrLadder.js';
+import type { BeeNodeState } from './beeNodeObservation.js';
+import { type ChequebookHealth, chequebookStateReason, plurToBzz } from './chequebook.js';
+import { STREAM_UPLOADER_SERVICE } from './constants.js';
 import {
-  beePublishersProblem,
-  type ChequebookHealth,
-  chequebookStateReason,
-  effectiveNodeMode,
+  canDeployUploader,
+  deploymentProgressText,
+  hasService,
+  isRunning,
+  isStreamLike,
+  isTransitional,
+  type ReadinessProfile,
+  shapeOf,
+  statusLabelOf,
+} from './deploymentShape.js';
+import {
+  BZZ_DECIMALS,
+  formatDateTime,
+  formatTokenBalance,
+  formatTtl,
+  shortHex,
+  XDAI_DECIMALS,
+} from './displayFormat.js';
+import { effectiveNodeMode, LIGHT_NODE_MODE } from './nodeMode.js';
+import type { ReadFailure, ReadFailureReason } from './nodeReading.js';
+import {
   formatFillPercent,
   isFullestBucketFull,
   isStampExpiringSoon,
   isStampNearlyFull,
-  LIGHT_NODE_MODE,
   nearlyFullConsequence,
-  parseBeePublishers,
-  plurToBzz,
-  type ReadFailure,
-  type ReadFailureReason,
+  type StampFill,
   stampBucketCapacity,
   type StampHealth,
-  STREAM_UPLOADER_SERVICE,
-  type UploaderHealthReading,
-  type UploaderHealthState,
-  type UploaderStartGateWarning,
-  ownsBeeNode,
-  usesNodePool,
-} from '@streaming-infra-manager/common';
+} from './stampHealth.js';
+import { ownsBeeNode, usesNodePool } from './stampGating.js';
+import type { UploaderHealthReading, UploaderHealthState, UploaderStartGateWarning } from './uploaderHealth.js';
 
-import { canDeployUploader } from '../data';
-import { BZZ_DECIMALS, formatDateTime, formatTokenBalance, formatTtl, shortHex, XDAI_DECIMALS } from '../format';
-import type { Profile } from '../types';
-import type { BeeReadinessView } from '../uploaders/beeReadiness';
-import type { BeeStamp, BeeWallet } from '../uploaders/stampApi';
-import { isStreamLike, statusLabelOf } from './shape';
-import { deploymentProgressText } from './deploymentPhase';
-import { hasService, isRunning, isTransitional, shapeOf } from './shape';
+/**
+ * The readiness list of a deployment: one step for each thing it needs before
+ * it does its job, in the order an operator acts on them. It lived in the
+ * console until 2026-09-28 and moved here so the manager can work out a
+ * stage's readiness in the same words, from the readings it takes itself.
+ */
+
+/** What the Bee API observation came to, as the console words it (`beeReadinessView`). */
+export interface BeeReadinessView {
+  state: BeeNodeState | 'stale';
+  label: string;
+  detail: string;
+}
+
+/** The node's two balances, in base units, as Bee reports them. */
+export interface ReadinessWallet {
+  bzzBalance: string;
+  nativeTokenBalance: string;
+}
+
+/** The fields of the node's `/stamps` entry for the recorded batch that the list quotes. */
+export interface ReadinessStamp extends StampFill {
+  utilization: number;
+  depth: number;
+}
 
 export type StepState = 'ok' | 'warn' | 'err' | 'busy' | 'off';
 
@@ -63,7 +93,7 @@ export interface ChecklistStep {
 }
 
 export interface ChecklistInput {
-  profile: Profile;
+  profile: ReadinessProfile;
   nodeReadiness?: BeeReadinessView;
   /**
    * What this deployment's own Bee node holds.
@@ -74,17 +104,17 @@ export interface ChecklistInput {
    * things to tell an operator, and calling the first one unchecked says
    * nobody looked when nobody was ever going to.
    */
-  wallet: BeeWallet | null | undefined;
+  wallet: ReadinessWallet | null | undefined;
   /** What the same node can still pay peers with, null when it did not say. */
   chequebook: ChequebookHealth | null;
   nodeAddress: string | null;
   stampHealth: StampHealth;
   /** The recorded batch as the node reports it, for its depth. */
-  currentStamp: BeeStamp | null;
+  currentStamp: ReadinessStamp | null;
   publishUrl: string | null;
   clientUrl: string | null;
   /** Every profile on this manager that signs a stream, to name a feed owner. */
-  streamers: Profile[];
+  streamers: readonly ReadinessProfile[];
   /**
    * What the deployment's own stream-uploader says about itself.
    *
@@ -152,7 +182,7 @@ function nodeStep(observed: BeeReadinessView): ChecklistStep {
   };
 }
 
-function containersStep(profile: Profile): ChecklistStep {
+function containersStep(profile: ReadinessProfile): ChecklistStep {
   const services = profile.containers.map((c) => c.service);
   const state: StepState = isRunning(profile)
     ? 'ok'
@@ -488,7 +518,7 @@ export const STAMP_NEARLY_FULL = 'Stamp nearly full';
  * How full the fullest bucket is, in chunks where the page holds the batch
  * itself and as a share where it holds only the reading.
  */
-function fullestBucketText(health: StampHealth, stamp: BeeStamp | null): string | null {
+function fullestBucketText(health: StampHealth, stamp: ReadinessStamp | null): string | null {
   const capacity = stamp ? stampBucketCapacity(stamp) : null;
   if (stamp && capacity !== null) {
     return `${stamp.utilization} of ${capacity} chunks in its fullest bucket`;
@@ -497,7 +527,7 @@ function fullestBucketText(health: StampHealth, stamp: BeeStamp | null): string 
   return `its fullest bucket ${formatFillPercent(health.fillRatio)} full`;
 }
 
-function fullStampDetail(health: StampHealth, stamp: BeeStamp | null): string {
+function fullStampDetail(health: StampHealth, stamp: ReadinessStamp | null): string {
   const amount = fullestBucketText(health, stamp);
   const howFull = amount ? `, ${amount}` : '';
   if (health.immutable === null) {
@@ -529,12 +559,12 @@ function fillParts(health: StampHealth): string[] {
  * Reading that silence as an empty wallet leaves a list unable to say that a
  * running node has no stamp, which is a state the manager knows on its own.
  */
-function stampAffordable(wallet: BeeWallet | null | undefined): boolean {
+function stampAffordable(wallet: ReadinessWallet | null | undefined): boolean {
   if (wallet === undefined) return true;
   return wallet !== null && toBigInt(wallet.bzzBalance) > 0n;
 }
 
-function activeStampDetail(profile: Profile, health: StampHealth, stamp: BeeStamp | null): string {
+function activeStampDetail(profile: ReadinessProfile, health: StampHealth, stamp: ReadinessStamp | null): string {
   const parts = [`${formatTtl(health.ttl)} left`, ...fillParts(health)];
   if (profile.stamp_id) parts.push(`batch ${shortHex(profile.stamp_id)}`);
   if (stamp) parts.push(`depth ${stamp.depth}`);
@@ -622,7 +652,7 @@ const RUNNING_UPLOADER_STEPS: Record<UploaderHealthState, { state: StepState; pr
  * Both are states nothing on the container says, which is why they are read
  * from the uploader rather than inferred here.
  */
-function runningUploaderStep(health: UploaderHealthReading | undefined, profile: Profile): ChecklistStep {
+function runningUploaderStep(health: UploaderHealthReading | undefined, profile: ReadinessProfile): ChecklistStep {
   const title = UPLOADER_TITLE;
   if (!health) return { title, state: 'ok', detail: UPLOADER_UNVERIFIED };
 
@@ -639,7 +669,7 @@ function runningUploaderStep(health: UploaderHealthReading | undefined, profile:
  * What an uploader's own reading says, in the words its readiness step uses, so
  * a list that names the reading says the same thing as the deployment's page.
  */
-export function uploaderHealthDetail(health: UploaderHealthReading, profile: Profile): string {
+export function uploaderHealthDetail(health: UploaderHealthReading, profile: ReadinessProfile): string {
   switch (health.state) {
     case 'waiting_for_node':
       return waitingDetail(health);
@@ -718,7 +748,7 @@ function capitalised(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-function poolStep(profile: Profile): ChecklistStep {
+function poolStep(profile: ReadinessProfile): ChecklistStep {
   const title = 'Node pool configured';
   const problem = beePublishersProblem(profile.bee_publishers);
   if (problem) {
@@ -762,7 +792,10 @@ function followingStep({ profile, streamers }: ChecklistInput): ChecklistStep {
 }
 
 /** The profile on this manager that signs the feed at `address`, if any. */
-export function streamerFor(address: string | null | undefined, streamers: Profile[]): Profile | null {
+export function streamerFor(
+  address: string | null | undefined,
+  streamers: readonly ReadinessProfile[],
+): ReadinessProfile | null {
   if (!address) return null;
   const wanted = address.toLowerCase();
   return streamers.find((p) => p.public_key?.toLowerCase() === wanted) ?? null;

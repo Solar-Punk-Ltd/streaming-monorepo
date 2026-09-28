@@ -1,12 +1,10 @@
-import type { StampHealth } from '@streaming-infra-manager/common';
-
-import type { Tone } from '../components/tone';
-import type { ChecklistInput } from './checklist';
-import { isStreamLike, readinessFor } from './readiness';
-import { hasService, isRunning, shapeOf } from './shape';
+import { hasService, isRunning, isStreamLike, shapeOf } from './deploymentShape.js';
+import { readinessFor, type ReadinessTone } from './readiness.js';
+import type { ChecklistInput } from './readinessChecklist.js';
+import type { StampHealth } from './stampHealth.js';
 
 export interface ReadySummary {
-  tone: Tone;
+  tone: ReadinessTone;
   title: string;
   url: string | null;
   /** The url opens in a browser rather than being pasted into an encoder. */

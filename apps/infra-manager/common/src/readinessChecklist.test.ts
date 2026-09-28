@@ -21,11 +21,22 @@ import {
   type ReadFailureReason,
   stampHealthFrom,
   ULTRA_LIGHT_NODE_MODE,
-} from '@streaming-infra-manager/common';
+} from './index.js';
 
-import type { Profile } from '../types';
-import type { BeeStamp } from '../uploaders/stampApi';
-import { buildChecklist, type ChecklistInput } from './checklist';
+import {
+  buildChecklist,
+  type ChecklistInput,
+  type ReadinessProfile,
+  type ReadinessStamp,
+  type StampLike,
+} from './index.js';
+
+/** A console profile as the tests wrote it; the readiness composition reads the fields `ReadinessProfile` names. */
+type Profile = Omit<ReadinessProfile, 'containers'> & {
+  containers: ({ service: string } & Record<string, unknown>)[];
+} & Record<string, unknown>;
+/** Bee's `/stamps` entry, of which the list quotes the fill and the depth. */
+type BeeStamp = StampLike & ReadinessStamp & Record<string, unknown>;
 
 const BATCH = `0x${'a'.repeat(64)}`;
 

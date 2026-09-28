@@ -13,9 +13,9 @@ import { useServerHost } from '../ServerHostContext';
 import type { Profile } from '../types';
 import { clientUrl, hostFor } from '../urls';
 import { PrimaryAction } from './PrimaryAction';
-import { readinessOf } from './readiness';
 import { usePublishUrl } from './usePublishUrl';
 import { isRunning, isTransitional, SHAPE_LABEL, servicesOf, shapeOf, statusLabelOf } from './shape';
+import { readinessOf } from '@streaming-infra-manager/common';
 
 export function DeploymentRow({
   profile,
