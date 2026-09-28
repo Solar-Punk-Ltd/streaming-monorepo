@@ -19,7 +19,7 @@ const TEST_TEXT: Readonly<Record<AdminLinkTestOutcome, string>> = {
     'The stored token was saved for another address, so it was not sent here, and the token has to be typed again for this address.',
   'token-refused': 'The web2 admin answered but refused the token.',
   'token-not-own':
-    "The web2 admin takes only a token the manager generated for this deployment and refused this one, so rotate the uploader's admin token on the deployment page and redeploy.",
+    "This deployment's token is not one the manager generated for it, and the web2 admin on Manager settings takes no other from an uploader since stages phase 9, so rotate the uploader's admin token on the deployment page and redeploy.",
   'token-not-registered':
     "The web2 admin does not know this deployment's own token yet, because the manager has not registered the stage with it: a deploy does that before the uploader starts, so deploy or wait for the next push.",
   'not-admin': 'Something answered at this address, but not the way a web2 admin does.',
@@ -92,10 +92,9 @@ export const OWN_TOKEN_ELSEWHERE =
 
 /**
  * Said in the wizard's group when a token typed here is chosen at the address of the manager's link, whose web2 admin
- * takes only a token of the deployment's own from an uploader.
+ * takes only a token of the deployment's own from an uploader. The manager refuses such a save or create with it.
  */
-export const TYPED_TOKEN_AT_LINK =
-  'The web2 admin on Manager settings takes only a token of its own from an uploader, so a token typed here would be refused. Choose A token of its own.';
+export { TYPED_TOKEN_AT_LINK } from '@streaming-infra-manager/common';
 
 /** The button beside that sentence, which moves back to a token of its own. */
 export const USE_OWN_TOKEN = 'Use a token of its own';

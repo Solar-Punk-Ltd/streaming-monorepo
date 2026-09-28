@@ -16,6 +16,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, it } from 'node:test';
 
+import { TYPED_TOKEN_AT_LINK } from '@streaming-infra-manager/common';
+
 import { throwawayRoot } from '../support/throwawayRoot.js';
 import { uploaderHealthStub } from '../support/uploaderHealthStub.js';
 
@@ -171,6 +173,44 @@ describe("a create for an uploader at the manager's web2 admin address", () => {
       assert.equal((await app.harness.profiles.stackSettingsForDeploy('stage')).ADMIN_API_TOKEN, TYPED_TOKEN);
       assert.equal(app.harness.profiles.adminTokenOrigins.get('stage'), 'https://elsewhere.example.net');
       assert.equal(JSON.stringify(created.body).includes(TYPED_TOKEN), false);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("a create with a token typed for the manager's web2 admin address", () => {
+  it('is refused, a group included, since that admin takes only a token of its own from an uploader', async () => {
+    const app = await appFor();
+    try {
+      const typed = {
+        stack_settings: [
+          { key: 'ADMIN_API_URL', value: `${ADMIN_URL}/v2` },
+          { key: 'ADMIN_API_TOKEN', value: TYPED_TOKEN },
+        ],
+      };
+      const refused = await app.create(typed);
+      assert.equal(refused.status, 400, JSON.stringify(refused.body));
+      assert.ok(JSON.stringify(refused.body).includes(TYPED_TOKEN_AT_LINK));
+      assert.equal(JSON.stringify(refused.body).includes(TYPED_TOKEN), false);
+      const group = await app.createGroup(typed);
+      assert.equal(group.status, 400, JSON.stringify(group.body));
+      assert.equal(app.harness.profiles.rows.has('stage'), false);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('is taken while the manager stores no token, so no token of its own could be generated', async () => {
+    const app = await appFor({ storedToken: null });
+    try {
+      const created = await app.create({
+        stack_settings: [
+          { key: 'ADMIN_API_URL', value: ADMIN_URL },
+          { key: 'ADMIN_API_TOKEN', value: TYPED_TOKEN },
+        ],
+      });
+      assert.equal(created.status, 202, JSON.stringify(created.body));
     } finally {
       await app.close();
     }

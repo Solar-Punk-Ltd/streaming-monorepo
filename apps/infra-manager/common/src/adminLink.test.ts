@@ -18,6 +18,7 @@ import {
   adminLinkProblem,
   sameAdminOrigin,
   storedTokenMoveProblem,
+  TYPED_TOKEN_AT_LINK,
 } from './adminLink.js';
 import {
   ADMIN_LINK_TEST_OUTCOMES,
@@ -276,6 +277,33 @@ describe("a save of the manager's own web2 admin link", () => {
     assert.deepEqual(managerAdminLinkProblems({ expectedRevision: 0, url: ADMIN_URL, token: '' }), [
       'The token cannot be empty. Leave it out to keep the stored one, or clear it.',
     ]);
+  });
+});
+
+describe("a stored token at the manager's link address", () => {
+  const LINK = 'https://admin.example.com';
+  const before = (stored: boolean, generatedFor: string | null = LINK) => ({
+    url: { current: LINK, afterReset: '' },
+    token: { current: stored, afterReset: false, generatedFor, stored },
+  });
+  const TYPED = { key: 'ADMIN_API_TOKEN', value: 'synthetic-typed-admin-token-0123456789abcdef' };
+
+  it('is refused while the link stores a token, typed now or left stored by a save of the address', () => {
+    assert.equal(adminLinkEditProblem([TYPED], before(false)), TYPED_TOKEN_AT_LINK);
+    assert.equal(
+      adminLinkEditProblem([{ key: 'ADMIN_API_URL', value: `${LINK}/v2` }], before(true)),
+      TYPED_TOKEN_AT_LINK,
+    );
+  });
+
+  it('is taken out by a reset or an empty value, and not held at another address or with no link token', () => {
+    assert.equal(adminLinkEditProblem([{ key: 'ADMIN_API_TOKEN', value: null }], before(true)), null);
+    assert.equal(
+      adminLinkEditProblem([{ key: 'ADMIN_API_URL', value: 'https://admin2.example.com' }, TYPED], before(false)),
+      null,
+    );
+    assert.equal(adminLinkEditProblem([TYPED], before(false, null)), null);
+    assert.equal(adminLinkEditProblem([{ key: 'LOG_LEVEL', value: 'debug' }], before(true)), null);
   });
 });
 

@@ -22,6 +22,8 @@ export interface AdminLinkValues {
    * link's origin, so it is not counted as a token of its own wherever the address goes.
    */
   currentIsOwnToken?: boolean;
+  /** Whether the deployment stores a value for `ADMIN_API_TOKEN`, typed or copied. None does before a create. */
+  tokenStored?: boolean;
 }
 
 function filled(values: Readonly<Record<string, string>>, key: string): boolean {
@@ -39,6 +41,7 @@ export function adminLinkBeforeOf({
   requiredSecrets,
   ownTokenFor = null,
   currentIsOwnToken = false,
+  tokenStored = false,
 }: AdminLinkValues): AdminLinkBefore {
   const generated = requiredSecrets.includes(ADMIN_API_TOKEN_KEY);
   return {
@@ -47,6 +50,7 @@ export function adminLinkBeforeOf({
       current: generated || (!currentIsOwnToken && filled(current, ADMIN_API_TOKEN_KEY)),
       afterReset: generated || filled(version, ADMIN_API_TOKEN_KEY),
       generatedFor: generated ? null : ownTokenFor,
+      stored: tokenStored,
     },
   };
 }

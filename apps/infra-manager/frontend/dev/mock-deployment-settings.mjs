@@ -746,6 +746,7 @@ function adminLinkBefore(profile, store) {
     version: versionValuesFor(profile),
     requiredSecrets: versionOf(profile)?.contract?.requiredSecrets ?? [],
     ownTokenFor: ownTokenFor(profile),
+    tokenStored: store.secrets.has(ADMIN_API_TOKEN_KEY),
   });
 }
 
