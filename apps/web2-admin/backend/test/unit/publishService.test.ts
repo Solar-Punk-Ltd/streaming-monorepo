@@ -92,7 +92,7 @@ describe('PublishService.publish', () => {
     assert.deepEqual(entry, {
       owner: TEST_OWNER,
       topic: row.topic,
-      title: 'Pilot keynote',
+      title: 'Opening keynote',
       description: 'The opening talk.',
       tags: ['swarm'],
       state: 'scheduled',
@@ -136,10 +136,10 @@ describe('PublishService.publish', () => {
     const row = store.add(streamRow());
     await service.publish(row.id, TEST_USER_ID);
 
-    store.add({ ...store.get(row.id), title: 'Pilot closing', status: 'published' });
+    store.add({ ...store.get(row.id), title: 'Closing keynote', status: 'published' });
     await service.publish(row.id, TEST_USER_ID);
 
-    assert.equal(entriesOf(gateway)[0]!.title, 'Pilot closing');
+    assert.equal(entriesOf(gateway)[0]!.title, 'Closing keynote');
   });
 
   it('keeps entries it did not write, including ones it cannot parse', async () => {
@@ -1225,7 +1225,7 @@ describe('PublishService and the edited-since-published notice', () => {
     await service.publish(other.id, TEST_USER_ID);
 
     const onFeed = entriesOf(gateway).find((e) => e.topic === edited.topic);
-    assert.equal(onFeed?.title, 'Pilot keynote');
+    assert.equal(onFeed?.title, 'Opening keynote');
     assert.equal(hasUnpublishedEdits(store.get(edited.id)), true);
   });
 
