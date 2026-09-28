@@ -366,7 +366,10 @@ logs two lines, its own and the republish it caused (`[Publish] the uploader
 republished …`); a rendition report whose write failed logs only the failure.
 The line is at info, except a reconcile that wrote and the boot repair, which
 are at warn, and failures, which are at error. Titles are written as JSON
-strings, so one cannot carry a newline into the log.
+strings, with U+2028 and U+2029, DEL and the C1 controls, and the
+bidirectional controls escaped as well, all of which JSON leaves as they are
+(`quoteForLog` in `src/utils/logText.ts`). A title cannot carry a line break
+into the log for any reader, nor reorder what its line appears to say.
 
 | Column                          | What it holds                                                                                                                                                                                                                                                                                                                                  |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

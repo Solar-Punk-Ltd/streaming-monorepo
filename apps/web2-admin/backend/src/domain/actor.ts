@@ -1,5 +1,7 @@
 import type { StreamRow, UserRow } from '../types/index.js';
 
+import { quoteForLog } from '../utils/logText.js';
+
 /**
  * Who a mutation is done by. Every signed-in operator can act on every
  * stream, so the log line and the audit row are the only places that say
@@ -38,9 +40,11 @@ export function describeActor(actor: Actor): string {
 
 /**
  * `"Opening keynote" (topic 1867…)`: how a log line names a stream. The title
- * is an operator's free text, so it is written as a JSON string: the quotes
- * stay, and a newline in it cannot start a forged line of its own.
+ * is an operator's free text, so it goes in through `quoteForLog`: a JSON
+ * string, so the quotes stay, with every character a log reader could take
+ * for a line break or a control escaped, a newline among them. It cannot
+ * start a forged line of its own, nor reorder what the line appears to say.
  */
 export function describeStream(stream: Pick<StreamRow, 'title' | 'topic'>): string {
-  return `${JSON.stringify(stream.title)} (topic ${stream.topic})`;
+  return `${quoteForLog(stream.title)} (topic ${stream.topic})`;
 }
