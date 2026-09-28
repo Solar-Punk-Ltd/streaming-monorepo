@@ -148,12 +148,14 @@ also records the exact bytes it uploaded, so the history can be stamped again un
 
 - **The stage publisher.** For every deployment that runs a stream uploader and whose effective
   `ADMIN_API_URL` is on the origin of the manager's admin link, the manager builds the stage
-  record and pushes it there with the link's stored token: when the deployment changes (its
-  `profile.changed` event, coalesced per deployment), every 30 seconds while it runs, and before a
-  deploy starts its uploader, so the uploader's first call finds its token known. A deleted
-  deployment is retired the same way. The client is bounded like the Test connection probe:
-  http and https alone, no redirects, five seconds, a small answer read, and an outcome code, never
-  what the far end said, in the log and on the deployment page.
+  record and pushes it to the link's stored address with the link's stored token: when the
+  deployment changes (its `profile.changed` event, coalesced per deployment), every 30 seconds while
+  it runs, and before a deploy starts its uploader, so the uploader's first call finds its token
+  known. A deleted deployment is retired the same way. The client is bounded like the Test
+  connection probe: http and https alone, no redirects, five seconds, a small answer read, and an
+  outcome code, never what the far end said, in the log and on the deployment page. A pool's rungs
+  are read on the deployments of this manager that stamp with each rung's batch, and a rung under
+  another manager has no reading. `apps/infra-manager/docs/features/stages.md` is the page.
 - **The moments it stamps.** The admin orders everything by these, so they must be true:
   - A record's `observedAt` is the moment the manager read the deployment row. It is stamped
     before the slower readings (stamps, chequebooks, the uploader's health), not after them. A
@@ -177,7 +179,8 @@ also records the exact bytes it uploaded, so the history can be stamped again un
   node leaves the catalogue on the pinned one, and the page says so; moving the catalogue is its
   own action.
 - **A read of the stages** for the manager's own console, `GET /stages`, behind the session like
-  every other route.
+  every other route, and `GET /stages/:name/registration`, the last push of one deployment, which
+  the deployment page reads.
 
 ## The uploader's side
 
