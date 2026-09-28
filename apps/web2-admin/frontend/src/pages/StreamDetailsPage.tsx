@@ -347,6 +347,14 @@ export function StreamDetailsPage() {
                   </Field>
                 </Grid>
                 <Grid size={{ xs: 6, sm: 4 }}>
+                  <Field label="Stage">
+                    {/* Named by the OBS details, which are read from the stage. */}
+                    <Typography variant="body2">
+                      {ingest?.stage ? ingest.stage.name : stream.stageId ? '—' : 'No stage'}
+                    </Typography>
+                  </Field>
+                </Grid>
+                <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Scheduled start">
                     <Typography variant="body2">{formatDateTime(stream.scheduledStartTime)}</Typography>
                   </Field>

@@ -44,6 +44,28 @@ function renderDetails() {
 }
 
 describe('StreamDetailsPage', () => {
+  it('names the stage the stream is on, from its OBS details', async () => {
+    mockFetch(routesFor(makeStream({ id: ID, stageId: 'stage-1' })));
+
+    renderDetails();
+
+    const field = (await screen.findByText('Stage')).parentElement as HTMLElement;
+    await waitFor(() => expect(within(field).getByText('Main stage')).toBeInTheDocument());
+  });
+
+  it('says a stream has no stage, and the OBS panel says to pick one', async () => {
+    mockFetch([
+      { path: `/api/streams/${ID}/ingest`, respond: () => jsonOk(makeIngest({ stage: null, srt: null })) },
+      ...routesFor(makeStream({ id: ID, stageId: null })),
+    ]);
+
+    renderDetails();
+
+    const field = (await screen.findByText('Stage')).parentElement as HTMLElement;
+    expect(within(field).getByText('No stage')).toBeInTheDocument();
+    expect(await screen.findByText(/Pick the stage this stream is broadcast on/)).toBeInTheDocument();
+  });
+
   it('warns when the API reports edits the catalogue entry does not carry', async () => {
     // The timestamps are equal on purpose: the notice is the API's answer, not
     // a comparison the page makes of its own.
