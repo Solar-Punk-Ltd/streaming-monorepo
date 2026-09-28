@@ -178,6 +178,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
         working-directory: .
       - run: pnpm --filter @streaming-infra-manager/common build
+      # The API's build script builds the shared packages it links first, so
+      # their dist exists for the compiled condition below.
       - run: pnpm --filter @streaming-infra-manager/api build
 
       - name: The roots the manager writes under
@@ -197,9 +199,12 @@ jobs:
           git rev-parse HEAD > "$SHLS_ROOT/../.stack-commit"
           # Production's API runs as root and can remove Bee-owned directories.
           # Keep the test client unprivileged and elevate only that API process.
+          # The shared packages export their TypeScript source by default, which
+          # plain node cannot load, so the flag picks their built dist the way
+          # the image's NODE_OPTIONS and the start script do.
           NODE_BIN="$(command -v node)"
           nohup sudo --preserve-env=DATABASE_URL,SHLS_ROOT,STACK_VERSIONS_ROOT,BEE_DATA_ROOT \
-            "$NODE_BIN" dist/index.js > "$RUNNER_TEMP/manager.log" 2>&1 &
+            "$NODE_BIN" --conditions=compiled dist/index.js > "$RUNNER_TEMP/manager.log" 2>&1 &
           for _ in $(seq 1 30); do
             if curl -fsS "$MANAGER_URL/health" > /dev/null; then exit 0; fi
             sleep 1
@@ -247,11 +252,12 @@ jobs:
 
       - name: Create the user the suite signs in as
         # The CLI takes the password on stdin and nowhere else. Node hands it
-        # over from the step's own environment, so no shell writes it out.
+        # over from the step's own environment, so no shell writes it out. The
+        # CLI loads the shared packages' dist as the manager above does.
         env:
           ITEST_PASSWORD: ${{ secrets.ITEST_PASSWORD }}
         working-directory: apps/infra-manager/manager
-        run: node -e "process.stdout.write(process.env.ITEST_PASSWORD ?? '')" | node dist/cli.js user:add itest --password-stdin
+        run: node -e "process.stdout.write(process.env.ITEST_PASSWORD ?? '')" | node --conditions=compiled dist/cli.js user:add itest --password-stdin
 
       - name: Integration suite, signed in, against the manager on this runner
         # This is where T01's engine-startup-failure file runs, for the first

@@ -1,14 +1,30 @@
+import { writeIfPasswordUnchanged } from '@streaming-monorepo/web-auth';
 import { Pool } from 'pg';
 
 import type { CredentialRepository } from './CredentialRepository.js';
+import type { NewSession } from './SessionRepository.js';
 
 export class PostgresCredentialRepository implements CredentialRepository {
   constructor(private readonly pool: Pool) {}
 
-  async changePassword(userId: string, passwordHash: string, keepSessionTokenHash: string): Promise<void> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
+  admitSession(userId: string, verifiedPasswordHash: string, session: NewSession, signedInAt: Date): Promise<boolean> {
+    return writeIfPasswordUnchanged(this.pool, userId, verifiedPasswordHash, async (client) => {
+      await client.query(
+        `INSERT INTO sessions (token_hash, user_id, expires_at, ip, user_agent)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [session.tokenHash, userId, session.expiresAt, session.ip, session.userAgent],
+      );
+      await client.query('UPDATE users SET last_login_at = $2 WHERE id = $1', [userId, signedInAt]);
+    });
+  }
+
+  changePassword(
+    userId: string,
+    verifiedPasswordHash: string,
+    passwordHash: string,
+    keepSessionTokenHash: string,
+  ): Promise<boolean> {
+    return writeIfPasswordUnchanged(this.pool, userId, verifiedPasswordHash, async (client) => {
       await client.query(
         `UPDATE users
             SET password_hash = $2,
@@ -21,12 +37,6 @@ export class PostgresCredentialRepository implements CredentialRepository {
         userId,
         keepSessionTokenHash,
       ]);
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK').catch(() => {});
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   }
 }

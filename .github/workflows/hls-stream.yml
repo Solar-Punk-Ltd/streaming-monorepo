@@ -2,13 +2,15 @@ name: hls-stream
 
 on:
   # A change under tools/app-workspace starts it too, because the deploy
-  # scripts' tests run that tool.
+  # scripts' tests run that tool. So does a change under packages/, the shared
+  # packages the stack imports and its images carry.
   push:
     branches: [main, main-v3]
     paths:
       [
         'apps/hls-stream/**',
         'tools/app-workspace/**',
+        'packages/**',
         'package.json',
         'pnpm-lock.yaml',
         'pnpm-workspace.yaml',
@@ -21,6 +23,7 @@ on:
       [
         'apps/hls-stream/**',
         'tools/app-workspace/**',
+        'packages/**',
         'package.json',
         'pnpm-lock.yaml',
         'pnpm-workspace.yaml',

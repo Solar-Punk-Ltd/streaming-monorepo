@@ -1,7 +1,11 @@
 import { useId, useState, type ReactNode } from 'react';
 import { Alert, Button, Paper, Stack, Typography } from '@mui/material';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
-import { buildObsSrtServer, type IngestDetails } from '@streaming-monorepo/web2-admin-common';
+import {
+  buildObsSrtServer,
+  OBS_SRT_PASSPHRASE_FIELD_HELP,
+  type IngestDetails,
+} from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
 import { errorMessage } from '../errors';
@@ -63,12 +67,7 @@ function SrtSettings({ srt }: { srt: IngestDetails['srt'] }) {
         <strong>Stream Key</strong>: leave it empty. The Server line already names the stream.
       </Typography>
       {passphraseRoute === 'authentication' && srt.passphrase ? (
-        <ValueField
-          label="SRT Password"
-          value={srt.passphrase}
-          secret
-          helperText="This passphrase has characters the Server line cannot carry. In OBS, tick Use authentication, leave Username empty and paste this into Password."
-        />
+        <ValueField label="SRT Password" value={srt.passphrase} secret helperText={OBS_SRT_PASSPHRASE_FIELD_HELP} />
       ) : null}
       {passphraseRoute === 'none' ? (
         <Alert severity="info">No SRT passphrase is configured on this ingest server.</Alert>

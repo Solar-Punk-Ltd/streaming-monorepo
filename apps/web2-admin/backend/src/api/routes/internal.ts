@@ -5,19 +5,19 @@ import type {
   RenditionReportResponse,
   StreamStateResponse,
 } from '@streaming-monorepo/web2-admin-common';
+import {
+  ingestLookupParamsSchema,
+  renditionReportSchema,
+  type StreamStateReport,
+  streamStateReportSchema,
+} from '@streaming-monorepo/contracts';
 import { Request, RequestHandler, Response, Router } from 'express';
 
 import { LadderService } from '../../domain/LadderService.js';
 import { StreamStateService } from '../../domain/StreamStateService.js';
-import {
-  ingestLookupParamSchema,
-  renditionReportSchema,
-  streamStateSchema,
-  type StreamStateBody,
-} from '../../schemas/internal.js';
 import { streamIdParamSchema } from '../../schemas/stream.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { validateBody, validateParams } from '../middleware/validate.js';
+import { validateContractBody, validateContractParams, validateParams } from '../middleware/validate.js';
 import { toIngestLookup, toPublishResult, toRenditionReportResponse } from '../presenters.js';
 
 export interface InternalRoutesDeps {
@@ -46,7 +46,7 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
 
   router.get(
     '/streams/by-ingest/:app/:stream',
-    validateParams(ingestLookupParamSchema),
+    validateContractParams(ingestLookupParamsSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const stream = await streamStateService.lookupByIngest(
         String(req.params.app) as MediaType,
@@ -60,9 +60,9 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
   router.post(
     '/streams/:id/state',
     validateParams(streamIdParamSchema),
-    validateBody(streamStateSchema),
+    validateContractBody(streamStateReportSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const outcome = await streamStateService.report(String(req.params.id), req.body as StreamStateBody);
+      const outcome = await streamStateService.report(String(req.params.id), req.body as StreamStateReport);
       const response: StreamStateResponse = toPublishResult(outcome);
       res.json(response);
     }),
@@ -71,7 +71,7 @@ export function createInternalRouter(deps: InternalRoutesDeps): Router {
   router.post(
     '/streams/:id/renditions',
     validateParams(streamIdParamSchema),
-    validateBody(renditionReportSchema),
+    validateContractBody(renditionReportSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const outcome = await ladderService.report(String(req.params.id), req.body as RenditionReport);
       const response: RenditionReportResponse = toRenditionReportResponse(outcome);

@@ -1,4 +1,5 @@
 import { usernameProblem } from '@streaming-monorepo/web2-admin-common';
+import { promptSecret, readSecretFromStdin } from '@streaming-monorepo/web-auth';
 
 import { AuthService } from '../domain/auth/AuthService.js';
 import { PostgresCredentialRepository } from '../domain/auth/PostgresCredentialRepository.js';
@@ -7,7 +8,6 @@ import { PostgresUserRepository } from '../domain/auth/PostgresUserRepository.js
 import { Database } from '../domain/Database.js';
 import { Logger } from '../domain/Logger.js';
 import { config } from '../utils/config.js';
-import { promptSecret, readSecretFromStdin } from '../utils/secretInput.js';
 
 /**
  * The one thing that cannot be done through the API: creating a user when none

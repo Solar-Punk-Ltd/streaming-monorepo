@@ -1,6 +1,22 @@
 import { randomBytes } from 'node:crypto';
 
 import { passwordProblem, usernameProblem, type UserSummary } from '@streaming-infra-manager/common';
+import {
+  absoluteExpiryFrom,
+  clientIpKey,
+  createSessionToken,
+  endsAt,
+  hashPassword,
+  hashSessionToken,
+  hasExpired,
+  idleSince,
+  LoginLimiter,
+  needsTouch,
+  passwordChangeKey,
+  usernameKey,
+  verifyPassword,
+  type LoginAttempt,
+} from '@streaming-monorepo/web-auth';
 
 import {
   CannotRemoveUserError,
@@ -15,12 +31,8 @@ import {
 import { Logger } from '../Logger.js';
 
 import type { CredentialRepository } from './CredentialRepository.js';
-import { clientIpKey, LoginLimiter, passwordChangeKey, type LoginAttempt, usernameKey } from './LoginLimiter.js';
 import type { OpenStreams } from './OpenStreams.js';
-import { hashPassword, verifyPassword } from './passwordHash.js';
 import type { SessionRepository } from './SessionRepository.js';
-import { absoluteExpiryFrom, endsAt, hasExpired, idleSince, needsTouch } from './sessionLifetime.js';
-import { createSessionToken, hashSessionToken } from './sessionToken.js';
 import type { UserRepository } from './UserRepository.js';
 
 const logger = Logger.getInstance();
@@ -153,9 +165,11 @@ export class AuthService {
     }
   }
 
-  async signOut(session: SessionInfo): Promise<void> {
-    await this.sessions.deleteByTokenHash(session.tokenHash);
-    this.openStreams.closeSession(session.tokenHash);
+  /** Ends the session behind a cookie value, when there is one. An unknown or expired value ends nothing. */
+  async signOutToken(token: string): Promise<void> {
+    const tokenHash = hashSessionToken(token);
+    await this.sessions.deleteByTokenHash(tokenHash);
+    this.openStreams.closeSession(tokenHash);
   }
 
   /** The session behind a cookie value, or null when it is unknown or over. */

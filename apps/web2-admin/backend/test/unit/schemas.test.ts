@@ -11,10 +11,14 @@ import { describe, it } from 'node:test';
 
 import { ValidationError } from 'yup';
 
+import {
+  ingestLookupParamsSchema as ingestLookupParamSchema,
+  renditionReportSchema,
+  streamStateReportSchema as streamStateSchema,
+} from '@streaming-monorepo/contracts';
 import { PASSWORD_MAX_LENGTH } from '@streaming-monorepo/web2-admin-common';
 
 import { changePasswordSchema, createUserSchema, loginSchema } from '../../src/schemas/auth.js';
-import { ingestLookupParamSchema, renditionReportSchema, streamStateSchema } from '../../src/schemas/internal.js';
 import { streamIdParamSchema, streamInputSchema } from '../../src/schemas/stream.js';
 
 const validate = <T>(
@@ -23,6 +27,23 @@ const validate = <T>(
   },
   value: unknown,
 ): Promise<T> => schema.validate(value, { abortEarly: false, stripUnknown: true });
+
+/** What a contract schema reads a request to, as the internal routes read it, or a failed test. */
+function read<T>(schema: { safeParse(value: unknown): { success: boolean; data?: T } }, value: unknown): T {
+  const result = schema.safeParse(value);
+  assert.ok(result.success, `refused ${JSON.stringify(value)}`);
+  return result.data as T;
+}
+
+/** Every reason a contract schema gives for refusing a request, as the internal routes answer with them. */
+function problemsOf(
+  schema: { safeParse(value: unknown): { success: boolean; error?: { issues: { message: string }[] } } },
+  value: unknown,
+): string[] {
+  const result = schema.safeParse(value);
+  assert.equal(result.success, false, `accepted ${JSON.stringify(value)}`);
+  return result.error!.issues.map((issue) => issue.message);
+}
 
 async function errorsFor(schema: Parameters<typeof validate>[0], value: unknown) {
   try {
@@ -275,8 +296,8 @@ describe('auth schemas', () => {
 });
 
 describe('ingestLookupParamSchema', () => {
-  it('accepts the two halves of an ingest stream id', async () => {
-    const value = await validate(ingestLookupParamSchema, {
+  it('accepts the two halves of an ingest stream id', () => {
+    const value = read(ingestLookupParamSchema, {
       app: 'audio',
       stream: '1867808f-7b1c-4e46-b437-f7423b466b39',
     });
@@ -286,18 +307,18 @@ describe('ingestLookupParamSchema', () => {
     });
   });
 
-  it('refuses anything the uploader could have been handed by an encoder', async () => {
+  it('refuses anything the uploader could have been handed by an encoder', () => {
     // `streamid=` is attacker-controlled all the way from OBS, so neither half
     // reaches a query unchecked.
     assert.deepEqual(
-      await errorsFor(ingestLookupParamSchema, {
+      problemsOf(ingestLookupParamSchema, {
         app: 'video',
         stream: "' OR 1=1 --",
       }),
       ['stream must be a UUID'],
     );
     assert.deepEqual(
-      await errorsFor(ingestLookupParamSchema, {
+      problemsOf(ingestLookupParamSchema, {
         app: 'text',
         stream: '1867808f-7b1c-4e46-b437-f7423b466b39',
       }),
@@ -307,13 +328,13 @@ describe('ingestLookupParamSchema', () => {
 });
 
 describe('streamStateSchema', () => {
-  it('accepts a bare live report', async () => {
-    const value = await validate(streamStateSchema, { state: 'live' });
+  it('accepts a bare live report', () => {
+    const value = read(streamStateSchema, { state: 'live' });
     assert.deepEqual(value, { state: 'live' });
   });
 
-  it('accepts a vod report with its index and duration', async () => {
-    const value = await validate(streamStateSchema, {
+  it('accepts a vod report with its index and duration', () => {
+    const value = read(streamStateSchema, {
       state: 'vod',
       index: 412,
       duration: 3725.5,
@@ -321,23 +342,21 @@ describe('streamStateSchema', () => {
     assert.deepEqual(value, { state: 'vod', index: 412, duration: 3725.5 });
   });
 
-  it('requires both numbers with vod', async () => {
-    assert.deepEqual(await errorsFor(streamStateSchema, { state: 'vod' }), [
+  it('requires both numbers with vod', () => {
+    assert.deepEqual(problemsOf(streamStateSchema, { state: 'vod' }), [
       'index is required when state is vod',
       'duration is required when state is vod',
     ]);
   });
 
-  it('refuses them with live, rather than dropping them quietly', async () => {
+  it('refuses them with live, rather than dropping them quietly', () => {
     // A live report carrying an index is the uploader sending the wrong
     // thing; swallowing it would put a stale index on the next entry written.
-    assert.deepEqual(await errorsFor(streamStateSchema, { state: 'live', index: 4 }), [
-      'index is only sent with state vod',
-    ]);
+    assert.deepEqual(problemsOf(streamStateSchema, { state: 'live', index: 4 }), ['index is only sent with state vod']);
   });
 
-  it('refuses a negative or fractional index and a negative duration', async () => {
-    const errors = await errorsFor(streamStateSchema, {
+  it('refuses a negative or fractional index and a negative duration', () => {
+    const errors = problemsOf(streamStateSchema, {
       state: 'vod',
       index: -1.5,
       duration: -2,
@@ -349,9 +368,9 @@ describe('streamStateSchema', () => {
     ]);
   });
 
-  it('refuses a state this backend owns', async () => {
+  it('refuses a state this backend owns', () => {
     // `published` and `draft` are the console's, not the uploader's.
-    assert.deepEqual(await errorsFor(streamStateSchema, { state: 'published' }), ['state must be one of live, vod']);
+    assert.deepEqual(problemsOf(streamStateSchema, { state: 'published' }), ['state must be one of live, vod']);
   });
 });
 
@@ -365,13 +384,13 @@ describe('renditionReportSchema', () => {
     avgBandwidth: 2400000,
   };
 
-  it('accepts a rung that is still delivering', async () => {
-    const value = await validate(renditionReportSchema, goodRung);
+  it('accepts a rung that is still delivering', () => {
+    const value = read(renditionReportSchema, goodRung);
     assert.deepEqual(value, goodRung);
   });
 
-  it('accepts a rung that has finalized', async () => {
-    const value = await validate(renditionReportSchema, {
+  it('accepts a rung that has finalized', () => {
+    const value = read(renditionReportSchema, {
       ...goodRung,
       index: 42,
       duration: 61.5,
@@ -379,16 +398,16 @@ describe('renditionReportSchema', () => {
     assert.deepEqual(value, { ...goodRung, index: 42, duration: 61.5 });
   });
 
-  it('refuses one of index and duration without the other', async () => {
+  it('refuses one of index and duration without the other', () => {
     // A ladder is finished when every rung has an index, and an index with no
     // duration would finish it with nothing to put on the entry's seek bar.
     const message = 'index and duration are sent together, or neither is';
-    assert.deepEqual(await errorsFor(renditionReportSchema, { ...goodRung, index: 42 }), [message]);
-    assert.deepEqual(await errorsFor(renditionReportSchema, { ...goodRung, duration: 61.5 }), [message]);
+    assert.deepEqual(problemsOf(renditionReportSchema, { ...goodRung, index: 42 }), [message]);
+    assert.deepEqual(problemsOf(renditionReportSchema, { ...goodRung, duration: 61.5 }), [message]);
   });
 
-  it('accepts index 0 with duration 0, which is not "absent"', async () => {
-    const value = await validate(renditionReportSchema, {
+  it('accepts index 0 with duration 0, which is not "absent"', () => {
+    const value = read(renditionReportSchema, {
       ...goodRung,
       index: 0,
       duration: 0,
@@ -397,12 +416,12 @@ describe('renditionReportSchema', () => {
     assert.equal(value.duration, 0);
   });
 
-  it('refuses a name outside the charset the uploader uses', async () => {
+  it('refuses a name outside the charset the uploader uses', () => {
     // '_' separates the base from the rung in an ingest id, so it cannot be
     // part of a rung name; the rest would end up in a master playlist and in
     // log lines unescaped.
     for (const name of ['720_p', '720p/../etc', '', 'x'.repeat(33), 'rung p']) {
-      const errors = await errorsFor(renditionReportSchema, {
+      const errors = problemsOf(renditionReportSchema, {
         ...goodRung,
         name,
       });
@@ -413,9 +432,9 @@ describe('renditionReportSchema', () => {
     }
   });
 
-  it('refuses a rung topic that is not a UUID', async () => {
+  it('refuses a rung topic that is not a UUID', () => {
     assert.deepEqual(
-      await errorsFor(renditionReportSchema, {
+      problemsOf(renditionReportSchema, {
         ...goodRung,
         topic: "' OR 1=1 --",
       }),
@@ -423,8 +442,8 @@ describe('renditionReportSchema', () => {
     );
   });
 
-  it('refuses geometry and bandwidths that cannot describe a rung', async () => {
-    const errors = await errorsFor(renditionReportSchema, {
+  it('refuses geometry and bandwidths that cannot describe a rung', () => {
+    const errors = problemsOf(renditionReportSchema, {
       ...goodRung,
       width: 0,
       height: -720,
@@ -439,8 +458,8 @@ describe('renditionReportSchema', () => {
     ]);
   });
 
-  it('requires every field a master playlist entry needs', async () => {
-    const errors = await errorsFor(renditionReportSchema, {});
+  it('requires every field a master playlist entry needs', () => {
+    const errors = problemsOf(renditionReportSchema, {});
     assert.equal(errors.length, 6, errors.join('; '));
   });
 });

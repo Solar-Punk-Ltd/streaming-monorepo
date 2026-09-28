@@ -7,6 +7,9 @@ import {
   UPLOADER_HEALTH_UNREACHABLE,
   UPLOADER_HEALTH_WAITING_FOR_NODE,
   UPLOADER_HEALTH_WARNED,
+  UPLOADER_REASON_NODE_UNAVAILABLE,
+  UPLOADER_REASON_START_GATE_WARNED,
+  UPLOADER_STATUS_WAITING_FOR_NODE,
   type UploaderHealthReading,
   type UploaderNodeWait,
   type UploaderStartGateWarning,
@@ -134,7 +137,7 @@ function readingFrom(ok: boolean, body: unknown): UploaderHealthReading {
   const reasons = textsOf(payload.reasons, MAX_REASONS);
   const warnings = startGateWarningsOf(payload.startGateWarnings);
 
-  if (payload.status === UPLOADER_HEALTH_WAITING_FOR_NODE || reasons.includes('node_unavailable')) {
+  if (payload.status === UPLOADER_STATUS_WAITING_FOR_NODE || reasons.includes(UPLOADER_REASON_NODE_UNAVAILABLE)) {
     const waitingSince = textOf(payload.waitingSince);
     const node = nodeWaitOf(payload.node);
     return {
@@ -147,7 +150,7 @@ function readingFrom(ok: boolean, body: unknown): UploaderHealthReading {
 
   if (ok) return { state: UPLOADER_HEALTH_OK, reasons };
 
-  const warnedOnly = reasons.length > 0 && reasons.every((reason) => reason === 'start_gate_warned');
+  const warnedOnly = reasons.length > 0 && reasons.every((reason) => reason === UPLOADER_REASON_START_GATE_WARNED);
   return {
     state: warnedOnly ? UPLOADER_HEALTH_WARNED : UPLOADER_HEALTH_UNHEALTHY,
     reasons,

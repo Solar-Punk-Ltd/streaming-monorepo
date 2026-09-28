@@ -36,15 +36,19 @@ RUN corepack enable && corepack prepare pnpm@12.4.1+sha512.2e81e399d73fe8390dab2
 
 # Workspace lockfile + just the package manifests first, for layer caching. The trailing "..." in
 # the filter below means "and its workspace dependencies", so the shared manifest has to be here
-# too or the install resolves a link target that does not exist.
+# too or the install resolves a link target that does not exist. So does the manifest of the
+# contracts package shared links, which the cut carries into `workspace-packages/`.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/client/package.json packages/client/
 COPY packages/shared/package.json packages/shared/
+COPY workspace-packages/contracts/package.json workspace-packages/contracts/
 
 RUN pnpm install --frozen-lockfile --filter "@swarm-hls-stream/client..."
 
 # Now the sources, separate layer so manifest-only changes don't bust install. Shared is consumed
-# as TypeScript, with no build of its own, so vite compiles it as part of the client bundle.
+# as TypeScript, with no build of its own, so vite compiles it as part of the client bundle. Contracts
+# is read the same way, through its `default` export condition, which names its sources.
+COPY workspace-packages/contracts workspace-packages/contracts
 COPY packages/shared packages/shared
 COPY packages/client packages/client
 
@@ -61,6 +65,7 @@ RUN pnpm --filter @swarm-hls-stream/client build
 # the build it would rebuild both for a checkout whose client sources never changed.
 ARG CLIENT_BUILD_CLIENT_TREE=
 ARG CLIENT_BUILD_SHARED_TREE=
+ARG CLIENT_BUILD_CONTRACTS_TREE=
 ARG CLIENT_BUILD_HEAD=
 ARG CLIENT_BUILD_DIRTY=0
 ARG CLIENT_BUILD_AT=
@@ -73,9 +78,10 @@ ARG CLIENT_BUILD_AT=
 # ⚠️ `dirty` is written as a JSON boolean, because the gate refuses on it and a quoted "0" would be
 # truthy on the way in. An image built by a deploy script that passes none of these args still
 # builds, and the empty clientTree is what the gate then refuses on, which asks for a redeploy.
-RUN printf '{"clientTree":"%s","sharedTree":"%s","head":"%s","dirty":%s,"builtAt":"%s","fetchBackend":"%s","exposePlayer":"%s"}\n' \
+RUN printf '{"clientTree":"%s","sharedTree":"%s","contractsTree":"%s","head":"%s","dirty":%s,"builtAt":"%s","fetchBackend":"%s","exposePlayer":"%s"}\n' \
       "$CLIENT_BUILD_CLIENT_TREE" \
       "$CLIENT_BUILD_SHARED_TREE" \
+      "$CLIENT_BUILD_CONTRACTS_TREE" \
       "$CLIENT_BUILD_HEAD" \
       "$(if [ "$CLIENT_BUILD_DIRTY" = "1" ]; then echo true; else echo false; fi)" \
       "$CLIENT_BUILD_AT" \

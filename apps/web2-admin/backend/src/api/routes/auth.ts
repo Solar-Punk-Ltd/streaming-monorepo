@@ -1,4 +1,5 @@
 import type { MeResponse, UserListResponse, UserSummary } from '@streaming-monorepo/web2-admin-common';
+import { clientIpOf } from '@streaming-monorepo/web-auth';
 import { Request, RequestHandler, Response, Router } from 'express';
 
 import { AuthService } from '../../domain/auth/AuthService.js';
@@ -12,7 +13,6 @@ import {
   userIdParamSchema,
 } from '../../schemas/auth.js';
 import { USER_AGENT_MAX_LENGTH } from '../../types/index.js';
-import { clientIpOf } from '../../utils/clientIp.js';
 import { clearSessionCookie, readSessionToken, setSessionCookie } from '../cookies.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requireAdmin, requireUser, signedInSession } from '../middleware/requireAuth.js';

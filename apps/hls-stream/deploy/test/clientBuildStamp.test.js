@@ -30,6 +30,7 @@ const SCRIPTS = join(ROOT, 'deploy/scripts');
 const CLIENT_STAMP_KEYS = [
   'CLIENT_BUILD_CLIENT_TREE',
   'CLIENT_BUILD_SHARED_TREE',
+  'CLIENT_BUILD_CONTRACTS_TREE',
   'CLIENT_BUILD_HEAD',
   'CLIENT_BUILD_DIRTY',
   'CLIENT_BUILD_AT',
@@ -45,6 +46,13 @@ const CLIENT_SOURCE_PATHS = [
   'deploy/Dockerfile.client',
   'deploy/client-nginx.conf.template',
 ];
+
+/**
+ * The package at the root of the one workspace that the stack's shared package re-exports, so vite
+ * compiles it into the bundle too. It sits outside the stack's folder, so each script reads it from
+ * the workspace root rather than from the stack.
+ */
+const CONTRACTS_PACKAGE = 'packages/contracts';
 
 async function deployClientRemotely(env = {}) {
   const sandbox = makeSandbox({ config: ALL_REMOTE, project: 'default' });
@@ -124,6 +132,17 @@ describe('deploy.sh minting the client build stamp', () => {
     assert.match(sandbox.remoteEnvFiles(), /^CLIENT_BUILD_CLIENT_TREE=\s*$/m);
   });
 
+  /**
+   * The sandbox is a stack in no workspace at all, as a build tree that keeps its own lockfile is, so
+   * there is no root to read the contracts package from. Empty, exactly as a missing shared tree is.
+   */
+  it('leaves the contracts tree empty for a stack outside the one workspace, without asking git', async () => {
+    const { sandbox, sent } = await deployClientRemotely();
+
+    assert.match(sent, /^CLIENT_BUILD_CONTRACTS_TREE=\s*$/m);
+    assert.doesNotMatch(sandbox.gitCalls().join('\n'), /packages\/contracts/);
+  });
+
   /** Nothing else builds the client image, so nothing else has any use for these keys. */
   it('computes nothing for a deploy the client is not part of', async () => {
     const sandbox = makeSandbox({ config: ALL_REMOTE, project: 'default' });
@@ -149,7 +168,7 @@ describe('the two sides of the client stamp asking about the same sources', () =
     body: readFileSync(join(SCRIPTS, name), 'utf8'),
   }));
 
-  for (const path of CLIENT_SOURCE_PATHS) {
+  for (const path of [...CLIENT_SOURCE_PATHS, CONTRACTS_PACKAGE]) {
     it(`both scripts judge dirtiness over ${path}`, () => {
       for (const { name, body } of scripts) {
         assert.ok(body.includes(path), `${name} does not name ${path}`);
@@ -178,6 +197,7 @@ const FIXTURE_IDENTITY = {
 const STAMP_FUNCTION = /^client_build_stamp_text\(\) \{\n[\s\S]*?\n\}$/m;
 const SOURCE_PATHS_ARRAY = /^CLIENT_SOURCE_PATHS=\(\n[\s\S]*?\n\)$/m;
 const EXPECTED_TREE_FUNCTION = /^git_tree_or_empty\(\) \{\n[\s\S]*?\n\}$/m;
+const EXPECTED_WORKSPACE_TREE_FUNCTION = /^workspace_tree_or_empty\(\) \{\n[\s\S]*?\n\}$/m;
 
 const fixtureDirs = [];
 
@@ -366,5 +386,96 @@ describe('the trees bench-on-host.sh expects, read by a real git, wherever the s
     for (const pkg of STAMPED_PACKAGES) {
       assert.equal(expectedTreeFrom(exported, pkg, { GIT_CEILING_DIRECTORIES: dirname(exported) }), '', pkg);
     }
+  });
+});
+
+/**
+ * A throwaway checkout of the one workspace: the stack at {@link STACK_SUBFOLDER} and, unless
+ * `contracts` is false, the contracts package at the root's {@link CONTRACTS_PACKAGE}, committed once.
+ */
+function commitWorkspaceFixture({ contracts = true } = {}) {
+  const repo = tempDir('client-stamp-workspace-');
+  const stack = join(repo, STACK_SUBFOLDER);
+  writeStampedPackages(stack);
+  if (contracts) {
+    mkdirSync(join(repo, CONTRACTS_PACKAGE, 'src'), { recursive: true });
+    writeFileSync(join(repo, CONTRACTS_PACKAGE, 'src', 'index.ts'), 'export const contract = 1;\n');
+  }
+  gitIn(repo, 'init', '-q');
+  gitIn(repo, 'add', '-A');
+  gitIn(repo, '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'fixture');
+  return { repo, stack };
+}
+
+/**
+ * The contracts tree `bench-on-host.sh` expects, from the functions it ships run with `REPO_ROOT` at
+ * `stack` and `WORKSPACE_ROOT` at `workspaceRoot`.
+ */
+function expectedContractsTreeFrom(stack, workspaceRoot) {
+  const lifted = liftFrom('bench-on-host.sh', [EXPECTED_TREE_FUNCTION, EXPECTED_WORKSPACE_TREE_FUNCTION]);
+  return execFileSync('bash', ['-c', `${lifted.join('\n')}\nworkspace_tree_or_empty "$1"`, 'bash', CONTRACTS_PACKAGE], {
+    encoding: 'utf8',
+    env: { ...machineEnv(), REPO_ROOT: stack, WORKSPACE_ROOT: workspaceRoot },
+  });
+}
+
+/**
+ * ⛔⛔ The stack's shared package re-exports the contracts package, so vite compiles its sources into
+ * the bundle, and a change there alone reaches a viewer with the client and shared trees untouched.
+ * It sits at the root of the one workspace rather than in the stack's folder, so both sides read it
+ * from the workspace root `deploy.sh` and `bench-on-host.sh` already work out. A stack that keeps its
+ * own lockfile has no such root, and a commit without the package has no such tree: both read as
+ * empty, the way a missing shared tree does.
+ */
+describe('the contracts tree, read by a real git from the root of the one workspace', () => {
+  it('stamps the tree of the root package, beside the stack trees read from the stack folder', () => {
+    const { repo, stack } = commitWorkspaceFixture();
+
+    const stamp = stampFrom(stack, { WORKSPACE_ROOT: repo });
+
+    assert.equal(stamp.CLIENT_BUILD_CONTRACTS_TREE, gitIn(repo, 'rev-parse', `HEAD:${CONTRACTS_PACKAGE}`));
+    assert.equal(stamp.CLIENT_BUILD_SHARED_TREE, gitIn(repo, 'rev-parse', `HEAD:${STACK_SUBFOLDER}/packages/shared`));
+    assert.equal(stamp.CLIENT_BUILD_DIRTY, '0');
+  });
+
+  it('stamps no contracts tree for a commit that has no contracts package', () => {
+    const { repo, stack } = commitWorkspaceFixture({ contracts: false });
+
+    const stamp = stampFrom(stack, { WORKSPACE_ROOT: repo });
+
+    assert.equal(stamp.CLIENT_BUILD_CONTRACTS_TREE, '');
+    assert.notEqual(stamp.CLIENT_BUILD_CLIENT_TREE, '', 'the stack trees are read all the same');
+  });
+
+  it('stamps no contracts tree for a stack that keeps its own lockfile, which has no workspace root', () => {
+    const { stack } = commitWorkspaceFixture();
+
+    const stamp = stampFrom(stack, { WORKSPACE_ROOT: '' });
+
+    assert.equal(stamp.CLIENT_BUILD_CONTRACTS_TREE, '');
+  });
+
+  /** A tree hash names a commit, so an uncommitted change there makes the stamped hash name something else. */
+  it('flags the build dirty for an uncommitted change under the contracts package alone', () => {
+    const { repo, stack } = commitWorkspaceFixture();
+    writeFileSync(join(repo, CONTRACTS_PACKAGE, 'src', 'index.ts'), 'export const contract = 2;\n');
+
+    const stamp = stampFrom(stack, { WORKSPACE_ROOT: repo });
+
+    assert.equal(stamp.CLIENT_BUILD_DIRTY, '1');
+  });
+
+  it('has bench-on-host.sh expect the same contracts tree the stamp names', () => {
+    const { repo, stack } = commitWorkspaceFixture();
+
+    assert.equal(expectedContractsTreeFrom(stack, repo), gitIn(repo, 'rev-parse', `HEAD:${CONTRACTS_PACKAGE}`));
+  });
+
+  it('has bench-on-host.sh expect no contracts tree where there is no workspace root or no package', () => {
+    const withPackage = commitWorkspaceFixture();
+    const withoutPackage = commitWorkspaceFixture({ contracts: false });
+
+    assert.equal(expectedContractsTreeFrom(withPackage.stack, ''), '');
+    assert.equal(expectedContractsTreeFrom(withoutPackage.stack, withoutPackage.repo), '');
   });
 });

@@ -1,6 +1,21 @@
 import { randomBytes } from 'node:crypto';
 
 import { passwordProblem, usernameProblem, type UserSummary } from '@streaming-monorepo/web2-admin-common';
+import {
+  absoluteExpiryFrom,
+  clientIpKey,
+  createSessionToken,
+  endsAt,
+  hashPassword,
+  hashSessionToken,
+  hasExpired,
+  idleSince,
+  LoginLimiter,
+  needsTouch,
+  passwordChangeKey,
+  usernameKey,
+  verifyPassword,
+} from '@streaming-monorepo/web-auth';
 
 import type { UserRow } from '../../types/index.js';
 import {
@@ -17,11 +32,7 @@ import {
 import { Logger } from '../Logger.js';
 
 import type { CredentialRepository } from './CredentialRepository.js';
-import { clientIpKey, LoginLimiter, passwordChangeKey, usernameKey } from './LoginLimiter.js';
-import { hashPassword, verifyPassword } from './passwordHash.js';
 import type { SessionRepository } from './SessionRepository.js';
-import { absoluteExpiryFrom, endsAt, hasExpired, idleSince, needsTouch } from './sessionLifetime.js';
-import { createSessionToken, hashSessionToken } from './sessionToken.js';
 import type { UserRepository } from './UserRepository.js';
 
 const logger = Logger.getInstance();
@@ -124,14 +135,16 @@ export class AuthService {
 
     const token = createSessionToken();
     const expiresAt = absoluteExpiryFrom(now);
-    await this.sessions.create({
-      tokenHash: hashSessionToken(token),
-      userId: user.id,
-      expiresAt,
-      ip: input.ip,
-      userAgent: input.userAgent,
-    });
-    await this.users.markSignedIn(user.id, now);
+    const admitted = await this.credentials.admitSession(
+      user.id,
+      user.password_hash,
+      { tokenHash: hashSessionToken(token), userId: user.id, expiresAt, ip: input.ip, userAgent: input.userAgent },
+      now,
+    );
+    if (!admitted) {
+      logger.warn(`[Auth] sign-in refused, the password changed while it was checked: username="${input.username}"`);
+      throw new InvalidCredentialsError();
+    }
 
     logger.info(`[Auth] ${user.username} signed in from ${input.ip}`);
     return { user: { ...user, last_login_at: now }, token, expiresAt };
@@ -279,7 +292,16 @@ export class AuthService {
     if (problem) throw new WeakPasswordError(problem);
 
     const changedAt = new Date();
-    await this.credentials.changePassword(user.id, await hashPassword(next), session.tokenHash);
+    const changed = await this.credentials.changePassword(
+      user.id,
+      user.password_hash,
+      await hashPassword(next),
+      session.tokenHash,
+    );
+    if (!changed) {
+      logger.warn(`[Auth] password change refused, the password changed while it was checked: ${user.username}`);
+      throw new InvalidCredentialsError();
+    }
     logger.info(`[Auth] password changed: ${user.username}`);
     return { ...user, password_changed_at: changedAt, updated_at: changedAt };
   }

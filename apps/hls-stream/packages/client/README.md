@@ -48,8 +48,10 @@ In production builds or when pointing to a remote gateway, requests go directly 
 
 A deployed client serves `/build-stamp.json` beside `index.html`, recording which sources the bundle
 was built from: `clientTree` and `sharedTree` are `git rev-parse HEAD:packages/client` and the same
-for `packages/shared`, alongside the head commit, whether the build came from uncommitted sources,
-when it was built, and the two Vite knobs that decide what the bundle actually does. `deploy.sh`
+for `packages/shared`, and `contractsTree` the same for the `packages/contracts` at the workspace
+root that shared re-exports, empty where the checkout has no such package. Beside them sit the head
+commit, whether the build came from uncommitted sources, when it was built, and the two Vite knobs
+that decide what the bundle actually does. `deploy.sh`
 mints the values from git and `deploy/Dockerfile.client` writes them into `dist/`, so nginx serves
 the file off the filesystem with no configuration of its own.
 

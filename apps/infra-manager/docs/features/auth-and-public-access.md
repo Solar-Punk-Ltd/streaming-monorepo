@@ -148,7 +148,7 @@ CREATE INDEX sessions_user_idx ON sessions (user_id);
 | Method | Path                              | Body                             | Answer                                                                                                                 |
 | ------ | --------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | POST   | `/auth/login`                     | `{ username, password }`         | 204 and the cookie, 401 wrong pair, 429 locked, 409 `no_users` when none has been created                              |
-| POST   | `/auth/logout`                    |                                  | 204, cookie cleared, session row deleted                                                                               |
+| POST   | `/auth/logout`                    |                                  | 204, cookie cleared, session row deleted. Also 204 without a valid session, so a stale cookie is cleared               |
 | GET    | `/auth/session`                   |                                  | `{ id, username, isAdmin, expiresAt }`, or 401 with `not_signed_in` or `no_users`                                      |
 | POST   | `/auth/password`                  | `{ current, next }`              | 204, all other sessions of the user revoked                                                                            |
 | GET    | `/auth/users`                     |                                  | `[{ id, username, isAdmin, createdAt, lastLoginAt, sessions }]`                                                        |
@@ -373,8 +373,8 @@ moved and are marked where they do.
 
 ## Done means
 
-- Every route except `/health` and `/auth/login` answers 401 without a session, including both
-  SSE streams.
+- Every route except `/health`, `/auth/login` and `/auth/logout` answers 401 without a session,
+  including both SSE streams. A sign-out without one answers 204 and clears the cookie.
 - Passwords are scrypt hashes with recorded parameters. No plaintext password or session token
   appears in any file, log line, environment variable or the browser's JavaScript.
 - Brute force locks and is logged. Cross-site POSTs are refused.

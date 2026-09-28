@@ -553,6 +553,17 @@ sync_to_remote() {
       "$workspace_files/pnpm-lock.yaml" \
       "$workspace_files/pnpm-workspace.yaml" \
       "$target:$REMOTE_BASE/"
+
+    # The packages every app shares that the lockfile links, carried beside the pair by the cut or
+    # kept there by a tree that holds its own. Both images install through those links, and the
+    # client compiles their sources too, so a build context without them fails the same way a
+    # missing lockfile does.
+    if [ -d "$workspace_files/workspace-packages" ]; then
+      rsync -az --delete \
+        --exclude 'node_modules' --exclude 'dist' \
+        "$workspace_files/workspace-packages/" \
+        "$target:$REMOTE_BASE/workspace-packages/"
+    fi
   fi
 
   # Sync node init script
@@ -561,8 +572,8 @@ sync_to_remote() {
 
 # --- Client build stamp ---
 
-# The sources whose content decides what a viewer is actually served: the two packages vite compiles
-# into the bundle, plus the image and the nginx template that decide how it is served.
+# The sources whose content decides what a viewer is actually served: the two packages of the stack
+# vite compiles into the bundle, plus the image and the nginx template that decide how it is served.
 #
 # `bench-on-host.sh` answers the harness side of the same question over the same four paths, and
 # `deploy/test/clientBuildStamp.test.js` is what holds the two lists together. A path in one and not
@@ -585,7 +596,11 @@ CLIENT_SOURCE_PATHS=(
 # from an export has no history to name, and the gate refuses on the empty hash rather than this
 # script blocking a deploy over a stamp.
 client_build_stamp_text() {
-  local out="" head client_tree shared_tree dirty=0
+  local out="" head client_tree shared_tree contracts_tree="" dirty=0
+  # The package the stack's shared package re-exports, which vite compiles into the bundle as well. It
+  # sits at the root of the one workspace rather than in the stack's folder, so it is read from
+  # WORKSPACE_ROOT, and a stack that keeps its own lockfile has no root to read it from.
+  local contracts_path="packages/contracts"
   head=$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true)
   # `HEAD:./<path>` is read from the folder `-C` names, where a bare `HEAD:<path>` is read from the
   # repository root. The stack can sit in a subfolder of a larger repository, and there the bare form
@@ -595,9 +610,18 @@ client_build_stamp_text() {
   if [ -n "$(git -C "$ROOT_DIR" status --porcelain -- "${CLIENT_SOURCE_PATHS[@]}" 2>/dev/null || true)" ]; then
     dirty=1
   fi
+  if [ -n "${WORKSPACE_ROOT:-}" ]; then
+    # A commit without the package is ordinary here, and git prints the argument back before it fails
+    # on a path that names nothing, so a failure empties the value rather than keeping what it printed.
+    contracts_tree=$(git -C "$WORKSPACE_ROOT" rev-parse "HEAD:./$contracts_path" 2>/dev/null) || contracts_tree=""
+    if [ -n "$(git -C "$WORKSPACE_ROOT" status --porcelain -- "$contracts_path" 2>/dev/null || true)" ]; then
+      dirty=1
+    fi
+  fi
 
   out+="CLIENT_BUILD_CLIENT_TREE=${client_tree}\n"
   out+="CLIENT_BUILD_SHARED_TREE=${shared_tree}\n"
+  out+="CLIENT_BUILD_CONTRACTS_TREE=${contracts_tree}\n"
   out+="CLIENT_BUILD_HEAD=${head}\n"
   out+="CLIENT_BUILD_DIRTY=${dirty}\n"
   out+="CLIENT_BUILD_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)\n"

@@ -1,14 +1,13 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { describe, it } from 'node:test';
 
 import {
   BUILD_STAMP_PATH,
   clientShapeRefusal,
   clientShapeSummary,
-  type ClientTrees,
   parseClientBuildStamp,
   readClientShapeExpectation,
+  readGitClientTrees,
 } from '../../src/clientShape.js';
 import { loadConfig, ROOT_DIR } from '../../src/config.js';
 import { makeHost } from '../../src/harness/host.js';
@@ -34,8 +33,9 @@ import { makeHost } from '../../src/harness/host.js';
  *
  * ⚠️ **It compares what the client was BUILT FROM, not what survived the build.** A client bundle is
  * minified and tree-shaken, so grepping it for a symbol the way the uploader gate greps `dist` would
- * answer about the wrong thing. The image records `git rev-parse HEAD:packages/client` and the same
- * for `packages/shared`, and this reads it back. Content hashes rather than commits, so a rebuild
+ * answer about the wrong thing. The image records `git rev-parse HEAD:packages/client`, the same for
+ * `packages/shared`, and the same for the `packages/contracts` that shared re-exports from the
+ * workspace root, and this reads it back. Content hashes rather than commits, so a rebuild
  * from an unchanged tree still matches.
  *
  * **Read through nginx rather than out of the container**, because what a viewer is actually served
@@ -46,8 +46,8 @@ import { makeHost } from '../../src/harness/host.js';
  * `spend-ceiling.test.ts`, which records why at length.
  *
  * The rule lives in `src/clientShape.ts` because nothing under `suites/` runs in CI. It is covered
- * by `test/clientShape.test.ts` and therefore by `pnpm verify`, leaving this file as the wiring, the
- * one impure read of git, and a failure message.
+ * by `test/clientShape.test.ts` and therefore by `pnpm verify`, the read of git included, leaving this
+ * file as the wiring and a failure message.
  */
 
 /** Read at module scope: a throw inside `describe` prints `not ok` and still exits 0. */
@@ -56,68 +56,11 @@ const cfg = loadConfig();
 /** Seconds allowed for one small file over loopback, past which the client is not answering. */
 const STAMP_FETCH_TIMEOUT_S = 10;
 
-/**
- * Whether git counts `dir` as inside a checkout.
- *
- * Asked of git rather than read off a `.git` entry in `dir`, because this repository can sit in a
- * subfolder of a larger one, whose `.git` is at that repository's root. No git, or no history above
- * `dir`, answers no without printing git's complaint, since that is the ordinary answer on the
- * deployment host.
- */
-function isInsideGitCheckout(dir: string): boolean {
-  try {
-    const answer = execFileSync('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    return answer.trim() === 'true';
-  } catch {
-    return false;
-  }
-}
-
-/**
- * The trees this checkout holds, or null when it has no history to ask.
- *
- * ⛔ Null is the ordinary answer on the deployment host, not an error: `bench-on-host.sh` excludes
- * `.git` from its rsync, so a harness there cannot answer this for itself and the run script passes
- * the answer in instead.
- *
- * The tree paths start with `./` so git reads them from `ROOT_DIR` rather than from the repository
- * root. The two are the same folder only when this repository is checked out on its own.
- */
-function readGitTrees(): ClientTrees | null {
-  if (!isInsideGitCheckout(ROOT_DIR)) {
-    return null;
-  }
-
-  const git = (args: readonly string[]) => execFileSync('git', ['-C', ROOT_DIR, ...args], { encoding: 'utf8' }).trim();
-
-  try {
-    return {
-      clientTree: git(['rev-parse', 'HEAD:./packages/client']),
-      sharedTree: git(['rev-parse', 'HEAD:./packages/shared']),
-      dirty:
-        git([
-          'status',
-          '--porcelain',
-          '--',
-          'packages/client',
-          'packages/shared',
-          'deploy/Dockerfile.client',
-          'deploy/client-nginx.conf.template',
-        ]).length > 0,
-    };
-  } catch {
-    return null;
-  }
-}
-
 describe('preflight — the deployed client is built from the sources this harness reads', () => {
   const host = makeHost(cfg);
 
   it('serves a build stamp that matches this checkout', async () => {
-    const expectation = readClientShapeExpectation(process.env, readGitTrees);
+    const expectation = readClientShapeExpectation(process.env, () => readGitClientTrees(ROOT_DIR));
 
     // ⛔ Through `localText` rather than a hand-built loopback URL, because the container this runs
     // in does not always have the deployment on its own loopback. Under `--own-network` the client

@@ -37,7 +37,7 @@ const TOKEN = 'admin-api-token-0123456789abcdef';
 const STREAM_ID = 'video/demo';
 const ADMIN_STREAM_ID = 'str_01HZY';
 
-/** A draft shaped the way the admin contract states it, so `asDraft` accepts it. */
+/** A draft shaped the way the admin contract states it, so `ingestLookupAnswerSchema` accepts it. */
 const DRAFT: AdminStreamDraft = {
   id: ADMIN_STREAM_ID,
   topic: 'declared-topic-0001',
@@ -173,6 +173,12 @@ describe('the admin API client, looking a draft up by ingest id', () => {
 
     await withAdmin(always(200, withoutKey), async ({ client }) => {
       await assert.rejects(() => client.lookupByIngestId(STREAM_ID), /not a stream/);
+    });
+  });
+
+  it('takes an audio stream as it takes a video one', async () => {
+    await withAdmin(always(200, { ...DRAFT, mediaType: 'audio' }), async ({ client }) => {
+      assert.equal((await client.lookupByIngestId(STREAM_ID))?.mediaType, 'audio');
     });
   });
 
@@ -324,7 +330,7 @@ describe('the admin API client, reporting one rung of a ladder', () => {
     avgBandwidth: 2_400_000,
   };
 
-  /** The merged ladder as the contract states it, so `asRenditionReport` accepts it. */
+  /** The merged ladder as the contract states it, so `renditionReportAnswerSchema` accepts it. */
   const MERGED = {
     stream: { id: ADMIN_STREAM_ID },
     renditions: [RUNG],
@@ -456,6 +462,17 @@ describe('the admin API client, reading the feed owner', () => {
     });
   });
 
+  /**
+   * The config page answers anyone, so the token buys nothing there and every hop in between that
+   * logs headers would record it. The internal routes above each assert that they still carry it.
+   */
+  it('sends no admin token to the public config', async () => {
+    await withAdmin(always(200, CONFIG), async ({ client, received }) => {
+      await client.fetchFeedOwner();
+      assert.equal(received[0].authorization, undefined);
+    });
+  });
+
   for (const [name, handle] of [
     ['the admin answers 5xx', always(503)],
     ['the body carries no feed owner', always(200, { feed: { topic: 't' } })],
@@ -485,6 +502,10 @@ describe('the admin API token', () => {
       () => new AdminApiClient({ baseUrl: 'http://admin.test', token: 'a'.repeat(MIN_ADMIN_API_TOKEN_LENGTH - 1) }),
       /ADMIN_API_TOKEN/,
     );
+  });
+
+  it('puts the floor at 32 characters, as the admin and the manager do', () => {
+    assert.equal(MIN_ADMIN_API_TOKEN_LENGTH, 32);
   });
 
   it('accepts one exactly at the floor', () => {
