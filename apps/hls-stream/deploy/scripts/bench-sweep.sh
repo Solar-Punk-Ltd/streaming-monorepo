@@ -23,7 +23,7 @@
 # and a half minutes a run.
 #
 # Usage:
-#   deploy/scripts/bench-sweep.sh [--runs 5] [--profile latbench] [--portSlot 7]
+#   deploy/scripts/bench-sweep.sh --target <host> [--runs 5] [--profile latbench] [--portSlot 7]
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -31,15 +31,22 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RUNS=5
 PROFILE="latbench"
 PORT_SLOT="7"
+TARGET=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --runs) RUNS="$2"; shift 2 ;;
     --profile) PROFILE="$2"; shift 2 ;;
     --portSlot) PORT_SLOT="$2"; shift 2 ;;
+    --target) TARGET="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+
+if [ -z "${TARGET}" ]; then
+  echo "bench-sweep: --target <host> is required, the bench host every run goes to" >&2
+  exit 2
+fi
 
 ENGINE_ENV="${REPO_ROOT}/engines/srs/.env.${PROFILE}"
 [ -f "${ENGINE_ENV}" ] || { echo "no engine env file at ${ENGINE_ENV}" >&2; exit 1; }
@@ -86,7 +93,7 @@ for setting in "${SETTINGS[@]}"; do
     echo "--- fragment=${fragment} gop=${gop} run ${run}/${RUNS} ---" | tee -a "${SWEEP_LOG}"
     # A failed run loses that run and nothing else. Each one is a real broadcast, so aborting the
     # sweep would throw away every setting already measured.
-    if ! "${REPO_ROOT}/deploy/scripts/bench-on-host.sh" \
+    if ! "${REPO_ROOT}/deploy/scripts/bench-on-host.sh" --target "${TARGET}" \
       --profile "${PROFILE}" --portSlot "${PORT_SLOT}" ${setup_flag} \
       -- "BENCH_GOP_SECONDS=${gop}" >> "${SWEEP_LOG}" 2>&1; then
       echo "    run ${run} FAILED, continuing" | tee -a "${SWEEP_LOG}"
