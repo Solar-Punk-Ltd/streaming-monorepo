@@ -56,6 +56,8 @@ const RETIRED_STAGE = '6a1d3b9f-2c3d-4e4f-9a51-1b2c3d4e5f60';
 const RETIRED_OWNER = '0x1111111111111111111111111111111111111111';
 /** Nobody this admin knows. */
 const FOREIGN_OWNER = '0x2222222222222222222222222222222222222222';
+/** A key `STAGE_ID` signed with before the one it has, which no stage row names any more. */
+const PRE_ROTATION_OWNER = '0x1234567890123456789012345678901234567890';
 /** `STAGE_ID`'s owner once the manager rotated its key. */
 const ROTATED_OWNER = '0x4f0e1c2b3a49586772635441302f1e0d0c0b0a09';
 
@@ -285,6 +287,37 @@ describe('publishing on a stage with a key of its own', () => {
     assert.equal(outcome.stream.owner, TEST_OWNER);
   });
 
+  it('takes off an entry a failed publish left under the pre-rotation owner, so the stream is listed once', async () => {
+    const row = onOwnStage({ publish_error: 'the node timed out after it took the write' });
+    const leftOver = { ...buildFeedEntry(row, null, 1), title: 'Left by the failed publish' };
+    const foreign = { owner: asFeedOwner(FOREIGN_OWNER), topic: row.topic, title: 'Someone else’s' };
+    const { stages, store, gateway, publish } = await setup(
+      new FakeFeedGateway({ index: 3, entries: [leftOver, foreign] }),
+    );
+    store.add(row);
+    await rotate(stages);
+
+    await publish.publish(TEST_OPERATOR, row.id);
+
+    const written = gateway.writes.at(-1)!.entries as { owner: string; topic: string }[];
+    assert.deepEqual(
+      written.map((entry) => entry.owner),
+      [asFeedOwner(FOREIGN_OWNER), ROTATED_OWNER.slice(2)],
+      'the left-over entry is gone, and an owner of nobody this admin knows is left',
+    );
+  });
+
+  it('leaves the list alone for a draft whose last publish did not fail', async () => {
+    const row = onOwnStage();
+    const other = { ...buildFeedEntry(row, null, 1), owner: RETIRED_OWNER.slice(2) };
+    const { store, gateway, publish } = await setup(new FakeFeedGateway({ index: 3, entries: [other] }));
+    store.add(row);
+
+    await publish.publish(TEST_OPERATOR, row.id);
+
+    assert.equal((gateway.writes.at(-1)!.entries as unknown[]).length, 2);
+  });
+
   it('leaves the owner alone at the claim of an unpublish', async () => {
     const { stages, store, publish } = await setup();
     const row = store.add(onOwnStage());
@@ -331,8 +364,6 @@ describe('reconcile with an owner per stage', () => {
     const onRetired = store.add(
       streamRow({ stage_id: RETIRED_STAGE, owner: asFeedOwner(RETIRED_OWNER), status: 'published' }),
     );
-    const unknownOwner = store.add(streamRow({ owner: asFeedOwner(FOREIGN_OWNER), status: 'published' }));
-
     const outcome = await publish.reconcile(TEST_OPERATOR);
 
     assert.deepEqual(outcome.removed, [ghost('', 1).topic, ghost('', 2).topic, ghost('', 3).topic]);
@@ -343,10 +374,40 @@ describe('reconcile with an owner per stage', () => {
       written.slice(1).map((entry) => entry.owner),
       [OWN_OWNER.slice(2), RETIRED_OWNER.slice(2)],
     );
-    assert.ok(
-      !written.some((entry) => entry.topic === unknownOwner.topic),
-      'a row under no owner of ours is not added',
+  });
+
+  it('adds a stream published under its stage’s key before the manager rotated it, under that key', async () => {
+    const { stages, store, gateway, publish } = await setup(new FakeFeedGateway({ index: 3, entries: [] }));
+    const row = store.add(
+      streamRow({ stage_id: STAGE_ID, owner: asFeedOwner(PRE_ROTATION_OWNER), status: 'published' }),
     );
+    await rotate(stages);
+
+    const outcome = await publish.reconcile(TEST_OPERATOR);
+
+    assert.deepEqual(outcome.added, [row.topic]);
+    const written = gateway.writes.at(-1)!.entries as { owner: string; topic: string }[];
+    assert.deepEqual(
+      written.map((entry) => entry.owner),
+      [asFeedOwner(PRE_ROTATION_OWNER)],
+    );
+  });
+
+  it('rebuilds the stale entry of a stream under its stage’s pre-rotation key', async () => {
+    const row = streamRow({ stage_id: STAGE_ID, owner: asFeedOwner(PRE_ROTATION_OWNER), status: 'published' });
+    const stale = { ...buildFeedEntry(row, null, 1), title: 'Stale title' };
+    const { stages, store, gateway, publish } = await setup(new FakeFeedGateway({ index: 3, entries: [stale] }));
+    store.add(row);
+    await rotate(stages);
+
+    const outcome = await publish.reconcile(TEST_OPERATOR);
+
+    assert.deepEqual(outcome.updated, [row.topic]);
+    assert.deepEqual([outcome.added, outcome.removed], [[], []]);
+    const written = gateway.writes.at(-1)!.entries as { owner: string; title: string }[];
+    assert.equal(written.length, 1, 'rebuilt in place, not added a second time');
+    assert.equal(written[0]!.title, row.title);
+    assert.equal(written[0]!.owner, asFeedOwner(PRE_ROTATION_OWNER));
   });
 
   it('compares owners whatever their case and prefix', () => {

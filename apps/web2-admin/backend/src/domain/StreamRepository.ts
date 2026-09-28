@@ -468,7 +468,9 @@ export class StreamRepository {
    * holds no recording its stage's owner, read in the same statement: the
    * manager may have rotated the stage's key since the stage was picked, and
    * the entry this publish writes names the owner the stage signs as now. A
-   * row that holds a recording keeps its owner, and so does every row that is
+   * row that holds a recording keeps its owner, and a publish's claim takes
+   * it only while its stage signs as that owner, since its feeds resolve under
+   * it alone; null then too. It keeps its owner, and so does every row that is
    * not a draft, since publishing fixed it, and every row an unpublish
    * claims, which takes an entry off by the owner it was written with.
    */
@@ -490,6 +492,14 @@ export class StreamRepository {
               updated_at = NOW()
         WHERE id = $1 AND status = ANY($2::text[])
           AND (NOT $3 OR status <> 'draft' OR stage_id IS NOT NULL)
+          AND (
+            NOT $3 OR status <> 'draft' OR manifest_index IS NULL OR stage_id IS NULL
+            OR EXISTS (
+              SELECT 1 FROM stages
+               WHERE stages.stage_id = streams.stage_id
+                 AND ${SAME_OWNER_SQL('stages.owner', 'streams.owner')}
+            )
+          )
         RETURNING ${STREAM_COLUMNS}`,
       [id, allowedFrom, draftNeedsStage],
     );

@@ -279,7 +279,9 @@ at the old paths, and so does every host it deployed to.
 
 Move each env file, from the repository root, rather than making a new one from
 the sample. A new `POSTGRES_PASSWORD` locks the API out of the profile's
-existing database, and a new `FEED_PRIVATE_KEY` makes every publish fail.
+existing database, and a new `FEED_PRIVATE_KEY` is a new brand key, so the
+admin writes a new catalogue feed under another owner, one no viewer was built
+for, and the one viewers read stops changing.
 
 ```sh
 mv web2-admin/backend/.env.brand-a apps/web2-admin/backend/.env.brand-a   # each profile

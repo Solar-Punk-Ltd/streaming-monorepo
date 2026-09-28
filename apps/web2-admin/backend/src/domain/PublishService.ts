@@ -24,7 +24,14 @@ import {
   StreamLiveError,
   StreamNotFoundError,
 } from './errors/index.js';
-import { buildFeedEntry, ladderOnFeed, planReconcile, removeEntry, upsertEntry } from './feedEntries.js';
+import {
+  buildFeedEntry,
+  ladderOnFeed,
+  planReconcile,
+  removeEntry,
+  upsertEntry,
+  withoutTopicUnderOtherOwners,
+} from './feedEntries.js';
 import { encodeFeedPayload, type CatalogueTarget, type FeedGateway, type FeedSnapshot } from './FeedGateway.js';
 import type { FeedIdentity } from './feedIdentity.js';
 import type { FeedWriteRecord } from './FeedWriteRepository.js';
@@ -334,7 +341,13 @@ export class PublishService {
       const target = await this.catalogue.forWrite(actor);
       const base = await this.baseSnapshot(target);
       const rows = await this.streams.listOnFeed();
-      const plan = planReconcile(base.entries, rows, await this.ourOwners(), Date.now(), await this.laddersOf(rows));
+      const plan = planReconcile(
+        base.entries,
+        rows,
+        await this.ourOwners(rows),
+        Date.now(),
+        await this.laddersOf(rows),
+      );
 
       if (!plan.changed) {
         logger.info(
@@ -443,7 +456,13 @@ export class PublishService {
       // entry is invisible in the console (its row is gone) and only shows up
       // as a viewer seeing a stream that does not exist.
       const rows = await this.streams.listOnFeed();
-      const plan = planReconcile(base.entries, rows, await this.ourOwners(), Date.now(), await this.laddersOf(rows));
+      const plan = planReconcile(
+        base.entries,
+        rows,
+        await this.ourOwners(rows),
+        Date.now(),
+        await this.laddersOf(rows),
+      );
       if (plan.removed.length > 0) {
         logger.warn(
           `[Boot] ${plan.removed.length} catalogue entr${plan.removed.length === 1 ? 'y has' : 'ies have'} no stream row behind ${plan.removed.length === 1 ? 'it' : 'them'}: ${plan.removed.join(', ')} — POST /api/feed/reconcile removes ${plan.removed.length === 1 ? 'it' : 'them'}`,
@@ -478,17 +497,11 @@ export class PublishService {
     }
     // The entry carries the row's `owner`, which is its stage's: the stage's
     // uploader signs every feed of the stream, and the brand key signs only
-    // the catalogue. A draft with no recording takes the stage's owner as it
-    // stands now, in the claim below. One that holds a recording keeps the
-    // owner it was recorded under, since its feeds resolve under that alone,
-    // so it is refused when its stage now signs as another: the manager
-    // rotated the stage's key since.
-    if (before.status === 'draft' && before.stage_id !== null && before.manifest_index !== null) {
-      const stage = await this.stages.findSummary(before.stage_id);
-      if (stage && !sameFeedOwner(before.owner, stage.owner)) {
-        throw new FeedOwnerMismatchError(id, before.owner, before.stage_id, stage.owner);
-      }
-    }
+    // the catalogue. The claim below gives a draft with no recording the
+    // stage's owner as it stands now, and refuses one that holds a recording
+    // when its stage now signs as another than the owner it was recorded
+    // under, since its feeds resolve under that alone: the manager rotated the
+    // stage's key since. `claim` turns that refusal into its sentence.
     // Before the claim: a publish with no catalogue batch to write with is
     // refused with the row as it was, and nothing to put back.
     const target = await this.catalogue.forWrite(actor);
@@ -504,7 +517,16 @@ export class PublishService {
       const { entry, renditions } = await this.entryFor({ ...claimed, status }, thumbnailRef);
       const snapshot = await this.baseSnapshot(target);
       const previous = ladderOnFeed(snapshot.entries, entry.owner, entry.topic);
-      const entries = upsertEntry(snapshot.entries, entry);
+      // A publish that failed may have put the entry on the catalogue after
+      // all, under the owner the row had then, and the claim may have given
+      // the row its stage's new owner since. Any entry of ours for this topic
+      // under another owner is that one, and goes, so the stream is listed
+      // once.
+      const base =
+        before.publish_error !== null
+          ? withoutTopicUnderOtherOwners(snapshot.entries, entry, await this.ourOwners([before, claimed]))
+          : snapshot.entries;
+      const entries = upsertEntry(base, entry);
       const index = await this.writeFeed(entries, snapshot.index, target, written);
 
       // The claim refuses every edit until this returns, so `claimed` still
@@ -674,13 +696,14 @@ export class PublishService {
 
   /**
    * Whose entries on the catalogue are this admin's: the brand key's, which
-   * the entries older than stages carry, and every stage's the admin holds,
+   * the entries older than stages carry; every stage's the admin holds,
    * retired ones included, since a retired stage's streams and old entries
-   * still name it. An entry under a key a stage signed with before the
-   * manager rotated it is no longer counted, and is left as it is.
+   * still name it; and the owner of each of `rows`, which keeps a stream
+   * published under a key its stage signed with before the manager rotated it
+   * counted as ours, so its entry can still be rebuilt or added again.
    */
-  private async ourOwners(): Promise<string[]> {
-    return [this.feed.owner, ...(await this.stages.listOwners())];
+  private async ourOwners(rows: readonly StreamRow[] = []): Promise<string[]> {
+    return [this.feed.owner, ...(await this.stages.listOwners()), ...rows.map((row) => row.owner)];
   }
 
   private async read(id: string): Promise<StreamRow> {
@@ -764,6 +787,19 @@ export class PublishService {
       if (!current) throw new StreamNotFoundError(before.id);
       if (draftNeedsStage && current.status === 'draft' && current.stage_id === null) {
         throw new StageRequiredError(before.id);
+      }
+      // The claim takes a draft that holds a recording only while its stage
+      // signs as the owner the recording was made under.
+      if (
+        draftNeedsStage &&
+        current.status === 'draft' &&
+        current.stage_id !== null &&
+        current.manifest_index !== null
+      ) {
+        const stage = await this.stages.findSummary(current.stage_id);
+        if (stage && !sameFeedOwner(current.owner, stage.owner)) {
+          throw new FeedOwnerMismatchError(current.id, current.owner, current.stage_id, stage.owner);
+        }
       }
       throw new StreamBusyError(before.id, current.status);
     }

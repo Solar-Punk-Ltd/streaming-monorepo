@@ -45,6 +45,26 @@ export function removeEntry(
 }
 
 /**
+ * The list without any entry of ours for `entry`'s topic under another owner
+ * than `entry`'s: what a failed publish may have left under the owner the row
+ * had before its stage's key was rotated. An element under an owner that is
+ * none of `ourOwners`, and anything that is not an entry, stays as it is.
+ */
+export function withoutTopicUnderOtherOwners(
+  entries: unknown[],
+  entry: Pick<FeedStreamEntry, 'owner' | 'topic'>,
+  ourOwners: readonly string[],
+): unknown[] {
+  const ours = new Set(ourOwners.map(asFeedOwner));
+  const keep = asFeedOwner(entry.owner);
+  const topic = entry.topic.toLowerCase();
+  return entries.filter((element) => {
+    const owner = entryOwner(element);
+    return !(entryTopic(element) === topic && owner !== null && owner !== keep && ours.has(owner));
+  });
+}
+
+/**
  * The ladder the stream's entry carries on the list right now — what
  * `upsertEntry` is about to replace. Empty when the stream has no entry there
  * or its entry carries no `renditions`.

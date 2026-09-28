@@ -255,6 +255,15 @@ describe('StreamRepository on stages', () => {
     assert.equal(claimed?.owner, ROTATED_OWNER.slice(2), 'lower case, without 0x');
   });
 
+  it('refuses the publish claim of a recorded draft whose stage signs as another owner', async () => {
+    const recorded = await stream(stageB, { recording: true });
+
+    assert.equal(await streams.claimForPublish(recorded.id, ['draft', 'published'], true), null);
+    assert.equal((await streams.findById(recorded.id))?.status, 'draft', 'not claimed');
+    // An unpublish claim does not ask.
+    assert.equal((await streams.claimForPublish(recorded.id, ['draft', 'published', 'vod']))?.status, 'publishing');
+  });
+
   it('leaves the owner alone at an unpublish claim, which removes an entry by the owner it was written with', async () => {
     const row = await stream(stageB);
 
@@ -262,7 +271,8 @@ describe('StreamRepository on stages', () => {
   });
 
   it('keeps the owner of a recorded draft and of a published stream at the claim', async () => {
-    const recorded = await stream(stageB, { recording: true });
+    // Stage A prints OWNER in upper case and with 0x, which is still that owner.
+    const recorded = await stream(stageA, { recording: true });
     assert.equal((await streams.claimForPublish(recorded.id, ['draft'], true))?.owner, OWNER);
 
     const published = await stream(stageB, { status: 'published' });

@@ -373,6 +373,11 @@ export class FakeStreamStore
     const row = this.rows.get(id);
     if (!row || !allowedFrom.includes(row.status)) return null;
     if (draftNeedsStage && row.status === 'draft' && row.stage_id === null) return null;
+    // A recorded draft is claimed only while its stage signs as its owner.
+    if (draftNeedsStage && row.status === 'draft' && row.manifest_index !== null && row.stage_id !== null) {
+      const stageOwner = this.stages?.ownerOf(row.stage_id) ?? null;
+      if (stageOwner !== null && !sameFeedOwner(stageOwner, row.owner)) return null;
+    }
     // A draft with no recording takes its stage's owner as the stages table
     // holds it now, as the SQL does in the same statement.
     const stageOwner =

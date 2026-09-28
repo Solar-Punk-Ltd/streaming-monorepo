@@ -217,7 +217,11 @@ into the admin (`docs/architecture/stages.md` at the repository root).
   because the recording's feeds resolve only under the key they were signed
   with, and publishing one whose stage now signs as another address is
   `409 feed_owner_mismatch` ("The recording was made under another key: …"),
-  with the stream's `id` and its `stageId`. A stream already on the catalogue
+  with the stream's `id` and its `stageId`; the publish claim itself refuses
+  it, so a rotation that lands between the read and the claim is refused too.
+  A publish of a draft whose last publish failed first takes off any entry of
+  ours for its topic under another owner, which the failed write may have left
+  under the owner the row had then. A stream already on the catalogue
   keeps the owner publishing fixed. The catalogue itself is still signed by
   `FEED_PRIVATE_KEY`, and `GET /api/config` still names that address, for the
   viewer build; every entry names its own stream's owner.
@@ -352,9 +356,10 @@ catalogue entry that has no stream row behind it.
 The repair path for exactly that: an entry no request can name, because
 `unpublish` needs a row and topics are server-minted. Session auth, no body.
 Under the publish mutex it takes the authoritative base and rewrites the list
-from the database — "ours" being every entry whose owner is the brand key's or
+from the database — "ours" being every entry whose owner is the brand key's,
 any stage's the admin holds, retired stages included, since their streams and
-old entries still name them — drops entries of ours whose topic has no row in
+old entries still name them, or any row's on the catalogue, which keeps a
+stream published under a stage's key from before a rotation — drops entries of ours whose topic has no row in
 `published`/`live`/`vod`, rebuilds entries that no longer match their row,
 appends published rows that are missing, and copies everything written by
 anyone else through untouched. It writes only if something changed, so running
