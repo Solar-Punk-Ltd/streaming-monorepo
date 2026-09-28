@@ -90,9 +90,15 @@ since no container reads it.
 A push already in flight is never doubled. A change or the pre-start push
 waits for it and then pushes once more with what changed since; the 30-second
 pass leaves it to answer. A removed deployment, on its `profile.deleted` event,
-is retired with `DELETE`, carrying the moment the manager saw it gone, so a
-record read before the removal and arriving after it cannot bring the stage
-back.
+is retired with `DELETE`, carrying `{ observedAt }`, the moment the manager saw
+it gone (`stageRetireRequestSchema`), so a record read before the removal and
+arriving after it cannot bring the stage back. A push in flight is waited for
+first, since it may be the stage's first.
+
+Every moment the admin orders by is the manager's own: a record's `observedAt`
+is taken as its deployment's row is read, before the node and uploader
+readings, and a retirement's as the removal is seen, so a 30-second pass that
+starts before a removal and ends after it still carries the earlier moment.
 
 ## To whom
 
@@ -105,7 +111,10 @@ linked to another admin, one not linked at all, or any while the link stores no
 token, is skipped with an outcome saying which.
 
 A retirement goes to the link its records went to, and only while the link is
-still on that origin.
+still on that origin. A deployment removed before its first push, one whose
+change event the manager saw and whose push it had not made yet, is retired at
+the link as well, which the admin keeps as a tombstone of a stage it never
+stored.
 
 ## Outcomes
 
@@ -153,7 +162,7 @@ together once.
 
 - One admin link per manager: a stage on another admin's origin is not pushed.
 - The outcomes are in memory. A restarted manager says "not pushed yet" until
-  its first push, and it retires only a deployment it pushed since it started.
+  its first push, and it retires only a deployment it has seen since it started.
   A running stage is pushed within 30 seconds of the start.
 - A deployment whose `ADMIN_API_URL` moves to another origin is no longer
   pushed, and the stage it was stays at the admin it left until that admin

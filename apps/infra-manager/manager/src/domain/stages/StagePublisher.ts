@@ -77,6 +77,8 @@ interface StageEntry {
   last: StagePushState | null;
   /** The stage id and the link origin the last request went to, which a retirement goes to. */
   pushed: { stageId: string; origin: string } | null;
+  /** The stage id of the deployment as its last change event named it, for one removed before its first push. */
+  seenStageId: string | null;
   /** The problem last logged, so a record that cannot be built says so once and not every 30 seconds. */
   loggedProblem: string | null;
 }
@@ -231,7 +233,9 @@ export class StagePublisher {
 
   private onEvent(event: ManagerEvent): void {
     if (event.type === 'profile.changed') {
-      if (isStageKind(event.profile.kind)) this.schedule(event.profile.name);
+      if (!isStageKind(event.profile.kind)) return;
+      this.entryOf(event.profile.name).seenStageId = event.profile.instance_id;
+      this.schedule(event.profile.name);
     } else if (event.type === 'profile.deleted') {
       void this.retire(event.name, new Date(this.clock.now()));
     }
@@ -250,7 +254,7 @@ export class StagePublisher {
   private entryOf(name: string): StageEntry {
     let entry = this.entries.get(name);
     if (!entry) {
-      entry = { again: false, last: null, pushed: null, loggedProblem: null };
+      entry = { again: false, last: null, pushed: null, seenStageId: null, loggedProblem: null };
       this.entries.set(name, entry);
     }
     return entry;
@@ -285,8 +289,9 @@ export class StagePublisher {
 
   /**
    * Retires a deleted deployment's stage at the link its records went to, with the moment the manager saw it gone,
-   * so a record read before that and arriving after it cannot bring the stage back. One this manager has not pushed
-   * since it started, or whose link has moved to another origin since, is left as it is and the log says so.
+   * so a record read before that and arriving after it cannot bring the stage back. One removed before its first
+   * push is retired at the link too. One this manager has not seen since it started, one it skipped, or one whose
+   * link has moved to another origin since, is left as it is, and the last of these says so in the log.
    */
   private async retire(name: string, goneAt: Date): Promise<void> {
     const entry = this.entries.get(name);
@@ -297,9 +302,13 @@ export class StagePublisher {
     try {
       // A push in flight may be the first to reach the admin, so its answer decides whether there is a stage to retire.
       await entry.inFlight;
-      if (!entry.pushed) return;
+      // One removed before its first push is retired all the same, which the admin keeps as a tombstone, so a
+      // record of it that arrives late does not register a deployment that is gone.
+      const stageId = entry.pushed?.stageId ?? (entry.last === null ? entry.seenStageId : null);
+      if (!stageId) return;
       const link = await this.deps.link.storedLink();
-      if (!link.url || !link.token || adminOriginOf(link.url) !== entry.pushed.origin) {
+      if (!link.url || !link.token) return;
+      if (entry.pushed && adminOriginOf(link.url) !== entry.pushed.origin) {
         logger.warn(`[Stages] ${name}: removed, and its stage was not retired: the web2 admin link has changed since`);
         return;
       }
@@ -307,7 +316,7 @@ export class StagePublisher {
         kind: 'retire',
         baseUrl: link.url,
         token: link.token,
-        stageId: entry.pushed.stageId,
+        stageId,
         observedAt: goneAt.toISOString(),
       });
       const line = `[Stages] ${name}: removed, and retiring its stage came to ${outcome}`;

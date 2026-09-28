@@ -3,6 +3,7 @@ import {
   ADMIN_ERROR_UNAUTHENTICATED,
   type StageRecord,
   stageRecordPath,
+  type StageRetireRequest,
   stageRetireAnswerSchema,
   stageStoreAnswerSchema,
 } from '@streaming-monorepo/contracts';
@@ -10,15 +11,9 @@ import {
 import { boundedJson } from '../adminLink/adminLinkProbe.js';
 
 /**
- * What `DELETE /api/internal/stages/:stageId` takes: the moment the manager saw the deployment gone, so a record read
- * before it and arriving after it cannot bring the stage back. The shape of `stageRetireRequestSchema` in the
- * contracts package.
+ * One call the stage publisher makes: store a record, or retire a stage as of the moment the manager saw its
+ * deployment gone, which `DELETE` carries as `stageRetireRequestSchema` takes it.
  */
-export interface StageRetireBody {
-  observedAt: string;
-}
-
-/** One call the stage publisher makes: store a record, or retire a stage. */
 export type StageRequest =
   | { kind: 'store'; baseUrl: string; token: string; record: StageRecord }
   | { kind: 'retire'; baseUrl: string; token: string; stageId: string; observedAt: string };
@@ -80,7 +75,7 @@ export const sendStageRequest: StageSender = async (request, options = {}) => {
     authorization: `Bearer ${request.token}`,
     'content-type': 'application/json',
   };
-  const body: StageRecord | StageRetireBody =
+  const body: StageRecord | StageRetireRequest =
     request.kind === 'store' ? request.record : { observedAt: request.observedAt };
 
   let response: Response;

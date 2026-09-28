@@ -371,7 +371,7 @@ describe('a deployment that goes', () => {
     assert.equal(publisher.lastPush('stage-one'), null, 'nothing kept of it');
   });
 
-  it('retires nothing it never pushed', async (t) => {
+  it('retires nothing it skipped, and nothing it never saw', async (t) => {
     logLines(t);
     const { publisher, events, sent } = publisherFor({ adminUrls: { 'stage-one': 'https://other.example.org' } });
     publisher.start();
@@ -383,7 +383,7 @@ describe('a deployment that goes', () => {
     assert.equal(sent.length, 0);
   });
 
-  it('cancels a push it had gathered for the deployment', async (t) => {
+  it('cancels a push it had gathered, and retires the stage all the same, which the admin keeps as a tombstone', async (t) => {
     logLines(t);
     const { publisher, clock, events, profiles, sent } = publisherFor();
     publisher.start();
@@ -392,7 +392,10 @@ describe('a deployment that goes', () => {
     events.publish({ type: 'profile.deleted', name: 'stage-one' });
     profiles.delete('stage-one');
     await clock.advance(STAGE_PUSH_DEBOUNCE_MS);
-    assert.equal(sent.length, 0);
+    assert.deepEqual(
+      sent.map((request) => [request.kind, request.kind === 'retire' ? request.stageId : '']),
+      [['retire', idOf(1)]],
+    );
   });
 });
 
