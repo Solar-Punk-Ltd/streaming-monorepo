@@ -11,7 +11,7 @@ import { describe, it, type TestContext } from 'node:test';
 import type { StagePushOutcome } from '@streaming-infra-manager/common';
 import type { StageRecord } from '@streaming-monorepo/contracts';
 
-import { EventBus } from '../../src/domain/EventBus.js';
+import { EventBus, type ManagerEvent } from '../../src/domain/EventBus.js';
 import type { BuiltStage } from '../../src/domain/stages/StageRecordBuilder.js';
 import {
   STAGE_PUSH_BEFORE_START_MS,
@@ -22,7 +22,7 @@ import {
   type StageClock,
 } from '../../src/domain/stages/StagePublisher.js';
 import type { StageRequest } from '../../src/domain/stages/stageRequest.js';
-import type { ProfileWithContainers } from '../../src/types/index.js';
+import type { ProfileKind, ProfileWithContainers } from '../../src/types/index.js';
 import { makeProfile } from '../support/profileFixtures.js';
 
 const LINK_URL = 'https://admin.example.org';
@@ -64,6 +64,17 @@ class FakeClock implements StageClock {
     this.time = end;
     await settle();
   }
+}
+
+/** The event the orchestrator publishes once a deployment's row is deleted, at the clock's moment or a fixed one. */
+function removal(
+  name: string,
+  n: number,
+  clock?: FakeClock,
+  kind: ProfileKind = 'streamer',
+): Extract<ManagerEvent, { type: 'profile.deleted' }> {
+  const at = clock?.time ?? Date.parse('2026-09-28T10:00:00.000Z');
+  return { type: 'profile.deleted', name, instanceId: idOf(n), kind, deletedAt: new Date(at).toISOString() };
 }
 
 async function settle(): Promise<void> {
@@ -361,7 +372,7 @@ describe('a deployment that goes', () => {
     t.after(() => publisher.stop());
     await publisher.pushNow('stage-one');
 
-    events.publish({ type: 'profile.deleted', name: 'stage-one' });
+    events.publish(removal('stage-one', 1, clock));
     await settle();
     assert.equal(sent.length, 2);
     assert.deepEqual(sent[1], {
@@ -380,10 +391,36 @@ describe('a deployment that goes', () => {
     publisher.start();
     t.after(() => publisher.stop());
     await publisher.pushNow('stage-one');
-    events.publish({ type: 'profile.deleted', name: 'stage-one' });
-    events.publish({ type: 'profile.deleted', name: 'never-seen' });
+    events.publish(removal('stage-one', 1));
+    events.publish(removal('never-a-stage', 2, undefined, 'custom'));
     await settle();
     assert.equal(sent.length, 0);
+  });
+
+  it('retires a stage removed before this manager pushed it since it started, by the id the removal carries', async (t) => {
+    const lines = logLines(t);
+    const { publisher, clock, events, sent } = publisherFor({ profiles: [] });
+    publisher.start();
+    t.after(() => publisher.stop());
+    await clock.advance(5_000);
+    const deletedAt = new Date(clock.time - 2_000).toISOString();
+    events.publish({ ...removal('pushed-before-a-restart', 7), deletedAt });
+    await settle();
+    assert.deepEqual(sent, [
+      { kind: 'retire', baseUrl: LINK_URL, token: LINK_TOKEN, stageId: idOf(7), observedAt: deletedAt },
+    ]);
+    assert.equal(publisher.keeps('pushed-before-a-restart'), false);
+    for (const line of lines) assert.ok(!line.includes(LINK_TOKEN) && !line.includes('admin.example.org'), line);
+  });
+
+  it('retires one it never pushed only at a link that stores a token', async (t) => {
+    logLines(t);
+    const unlinked = publisherFor({ profiles: [], link: { url: LINK_URL, token: null } });
+    unlinked.publisher.start();
+    t.after(() => unlinked.publisher.stop());
+    unlinked.events.publish(removal('stage-two', 2));
+    await settle();
+    assert.equal(unlinked.sent.length, 0);
   });
 
   it('cancels a push it had gathered, and retires the stage all the same, which the admin keeps as a tombstone', async (t) => {
@@ -392,7 +429,7 @@ describe('a deployment that goes', () => {
     publisher.start();
     t.after(() => publisher.stop());
     changed(events, profiles.get('stage-one')!);
-    events.publish({ type: 'profile.deleted', name: 'stage-one' });
+    events.publish(removal('stage-one', 1, clock));
     profiles.delete('stage-one');
     await clock.advance(STAGE_PUSH_DEBOUNCE_MS);
     assert.deepEqual(
@@ -421,7 +458,7 @@ describe('the moment a record says it was observed', () => {
     const readAt = clock.time;
 
     await clock.advance(5_000);
-    events.publish({ type: 'profile.deleted', name: 'stage-one' });
+    events.publish(removal('stage-one', 1, clock));
     slow.resolve();
     await push;
     await settle();
@@ -547,7 +584,7 @@ describe('a retirement after the link moved', () => {
 
     link.url = 'https://other-admin.example.org';
     link.token = 'synthetic-other-registrar-token-0123456789';
-    events.publish({ type: 'profile.deleted', name: 'stage-one' });
+    events.publish(removal('stage-one', 1));
     await settle();
 
     assert.equal(sent.length, 1, 'no retirement was sent');
@@ -598,7 +635,7 @@ describe('what the publisher keeps', () => {
     profiles.delete('stage-one');
     assert.equal(await publisher.pushNow('stage-one'), null);
     assert.equal(publisher.keeps('stage-one'), true, 'kept for its retirement');
-    events.publish({ type: 'profile.deleted', name: 'stage-one' });
+    events.publish(removal('stage-one', 1));
     await settle();
     assert.equal(publisher.keeps('stage-one'), false);
   });
