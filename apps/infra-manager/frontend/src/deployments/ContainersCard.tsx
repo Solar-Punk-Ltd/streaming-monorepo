@@ -198,7 +198,7 @@ function PortCell({ portKey, port, host }: { portKey: string; port: number; host
             {port}
           </Box>
         )}
-        <CopyButton value={address} label={address} />
+        {kind.offersAddress && <CopyButton value={address} label={address} />}
       </Box>
       <Typography
         variant="caption"
