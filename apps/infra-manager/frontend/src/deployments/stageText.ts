@@ -1,4 +1,9 @@
-import { ingestHostProblem, isStageKind, resolvedIngestHost } from '@streaming-infra-manager/common';
+import {
+  ingestHostProblem,
+  isLoopbackIngestHost,
+  isStageKind,
+  resolvedIngestHost,
+} from '@streaming-infra-manager/common';
 
 import type { Profile } from '../types';
 
@@ -22,12 +27,15 @@ export interface IngestHostView {
 
 export function ingestHostView(profile: Profile, serverHost: string): IngestHostView {
   const own = Boolean(profile.ingest_host?.trim());
+  const address = resolvedIngestHost(profile, serverHost);
   return {
-    address: resolvedIngestHost(profile, serverHost),
+    address,
     own,
-    source: own
-      ? 'Set for this deployment.'
-      : 'The host the manager resolved for this deployment. Set one when encoders reach it at another address.',
+    source: isLoopbackIngestHost(address)
+      ? 'This address reaches this host alone, so the manager does not push the stage. Set one encoders reach, or PUBLIC_HOST on the manager.'
+      : own
+        ? 'Set for this deployment.'
+        : 'The host the manager resolved for this deployment. Set one when encoders reach it at another address.',
   };
 }
 

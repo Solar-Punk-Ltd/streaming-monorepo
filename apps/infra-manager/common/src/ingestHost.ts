@@ -22,10 +22,35 @@ export const INGEST_HOST_HELP = 'The address encoders dial. The address ssh uses
 export function ingestHostProblem(value: string): string | null {
   if (value.trim() !== value) return 'The ingest address cannot start or end with a space.';
   if (value.length > INGEST_HOST_MAX) return `The ingest address is longer than ${INGEST_HOST_MAX} characters.`;
-  return stageIngestSchema.shape.host.safeParse(value).success
-    ? null
-    : 'The ingest address has to be a host name, an IPv4 address or an IPv6 one in brackets, with no scheme, port or path.';
+  if (!stageIngestSchema.shape.host.safeParse(value).success) {
+    return 'The ingest address has to be a host name, an IPv4 address or an IPv6 one in brackets, with no scheme, port or path.';
+  }
+  return isLoopbackIngestHost(value)
+    ? 'The ingest address reaches this host alone, and encoders elsewhere cannot dial it. Give an address they reach.'
+    : null;
 }
+
+/**
+ * Whether an address only reaches the machine it is dialled from, or no machine at all: a loopback name or address,
+ * or the unspecified one. An encoder elsewhere cannot reach it, so the manager never hands one to the admin as a
+ * stage's ingest address.
+ */
+export function isLoopbackIngestHost(host: string): boolean {
+  if (host.trim() === '') return true;
+  let hostname: string;
+  try {
+    hostname = new URL(`http://${host.trim()}`).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (hostname === 'localhost' || hostname.endsWith('.localhost')) return true;
+  if (hostname === '0.0.0.0' || /^127\.\d+\.\d+\.\d+$/.test(hostname)) return true;
+  return hostname === '[::1]' || hostname === '[::]' || /^\[::ffff:(7f[0-9a-f]{2}:[0-9a-f]{1,4}|0:0)\]$/.test(hostname);
+}
+
+/** Why a stage has no ingest address the admin may be given, which the manager's log and `GET /stages` say. */
+export const NO_PUBLIC_INGEST_HOST =
+  "The stage has no public ingest address, only one that reaches this host alone: set the deployment's public ingest address or PUBLIC_HOST.";
 
 /** Every spelling of a deploy target that means the manager's own machine, as `LOCAL_DEPLOY_TARGETS` in the manager reads them. */
 const LOCAL_HOSTS: ReadonlySet<string> = new Set(['', 'localhost', '127.0.0.1', '0.0.0.0', 'native']);

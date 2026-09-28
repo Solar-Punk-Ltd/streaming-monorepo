@@ -71,9 +71,17 @@ manager's ssh dials can be a private one, so it is a setting of the deployment,
 resolved for the deployment, `network_host`, or `PUBLIC_HOST` for one on the
 manager's own host (`resolvedIngestHost` in `common/src/ingestHost.ts`). It is
 held to the record's own rule, a host name, an IPv4 address or a bracketed IPv6
-one with no scheme, port or path. It is saved on its own, from the stage card on
-the deployment page or `PATCH /profiles/:name/ingest-host`, and deploys nothing,
-since no container reads it.
+one with no scheme, port or path, and never one that reaches the dialling host
+alone: `localhost`, `127.0.0.0/8`, `0.0.0.0`, `[::1]` (`isLoopbackIngestHost`).
+It is saved on its own, from the stage card on the deployment page or
+`PATCH /profiles/:name/ingest-host`, and deploys nothing, since no container
+reads it.
+
+A stage whose address comes to a loopback one or to none, a deployment on the
+manager's host with no address of its own while `PUBLIC_HOST` is unset, is not
+pushed: its outcome is `skipped-no-record`, and the log and `GET /stages` say
+"set the deployment's public ingest address or PUBLIC_HOST". The `localhost`
+fallback the console's component links use never reaches a record.
 
 ## When
 
@@ -122,21 +130,21 @@ Every push comes to one code, `STAGE_PUSH_OUTCOMES` in
 `common/src/stagePush.ts`. The code is what the log and the deployment page
 say, never what the admin answered, its address or a token.
 
-| Outcome                | What it means                                                                      |
-| ---------------------- | ---------------------------------------------------------------------------------- |
-| `stored`               | the admin stored the record                                                        |
-| `older-ignored`        | the admin holds a record read later than this one and kept it                      |
-| `retired`              | the admin retired the stage                                                        |
-| `not-retired`          | the admin had no such stage to retire                                              |
-| `refused-token`        | 401 with the admin's `unauthenticated` code: the link's token is not the admin's   |
-| `refused-record`       | 400 or 422: the admin refused the record, as one of another contract version would |
-| `unreachable`          | nothing answered within five seconds, or the answer stopped arriving               |
-| `redirected`           | a redirect, which is not followed                                                  |
-| `not-admin`            | any other answer, or one that is not the admin's JSON                              |
-| `skipped-no-link`      | the manager's link has no address or no token                                      |
-| `skipped-not-linked`   | the deployment's next deploy gives its uploader no `ADMIN_API_URL`                 |
-| `skipped-other-origin` | its `ADMIN_API_URL` is on another origin than the link's                           |
-| `skipped-no-record`    | the record could not be put together: no stream key, no port, no environment yet   |
+| Outcome                | What it means                                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `stored`               | the admin stored the record                                                                                |
+| `older-ignored`        | the admin holds a record read later than this one and kept it                                              |
+| `retired`              | the admin retired the stage                                                                                |
+| `not-retired`          | the admin had no such stage to retire                                                                      |
+| `refused-token`        | 401 with the admin's `unauthenticated` code: the link's token is not the admin's                           |
+| `refused-record`       | 400 or 422: the admin refused the record, as one of another contract version would                         |
+| `unreachable`          | nothing answered within five seconds, or the answer stopped arriving                                       |
+| `redirected`           | a redirect, which is not followed                                                                          |
+| `not-admin`            | any other answer, or one that is not the admin's JSON                                                      |
+| `skipped-no-link`      | the manager's link has no address or no token                                                              |
+| `skipped-not-linked`   | the deployment's next deploy gives its uploader no `ADMIN_API_URL`                                         |
+| `skipped-other-origin` | its `ADMIN_API_URL` is on another origin than the link's                                                   |
+| `skipped-no-record`    | the record could not be put together: no stream key, no port, no environment yet, no public ingest address |
 
 The client is bounded like Test connection: http and https alone, no redirect
 followed, five seconds a call, at most 64 KiB of an answer read. The last
@@ -161,6 +169,9 @@ together once.
 ## Limits
 
 - One admin link per manager: a stage on another admin's origin is not pushed.
+- When the manager shuts down the publisher stops first: no push starts after
+  that, not a change, the cadence, a follow-up or the pre-start push. A
+  deployment that is gone and was never pushed or seen is dropped from memory.
 - The outcomes are in memory. A restarted manager says "not pushed yet" until
   its first push, and it retires only a deployment it has seen since it started.
   A running stage is pushed within 30 seconds of the start.

@@ -9,7 +9,9 @@ import {
   type ChequebookSummary,
   engineForComponents,
   getErrorMessage,
+  isLoopbackIngestHost,
   isStageKind,
+  NO_PUBLIC_INGEST_HOST,
   ownsBeeNode,
   parseBeePublishers,
   plurToBzzExact,
@@ -64,7 +66,7 @@ export interface StageReadings {
 export interface StageRecordBuilderOptions {
   /** The manager's own id, migration 045. */
   managerId: string;
-  /** The manager's public address, `PUBLIC_HOST`, for a deployment on its own host. */
+  /** The manager's public address, `PUBLIC_HOST`, for a deployment on its own host, or empty when it has none. */
   publicHost: string;
   now?: () => Date;
 }
@@ -195,6 +197,9 @@ export class StageRecordBuilder {
       };
     }
 
+    const ingestHost = resolvedIngestHost(profile, this.options.publicHost);
+    if (isLoopbackIngestHost(ingestHost)) return { ok: false, problem: NO_PUBLIC_INGEST_HOST, stageId };
+
     const ownReadings = this.ownNodeReadings(profile);
     const [rungs, own, uploader] = await Promise.all([
       this.rungsOf(profile, ownReadings),
@@ -214,7 +219,7 @@ export class StageRecordBuilder {
       status: profile.status,
       observedAt,
       ingest: {
-        host: resolvedIngestHost(profile, this.options.publicHost),
+        host: ingestHost,
         srtPort,
         rtmpPort,
         rtmpPublic: portIsPublic(RTMP_PORT_KEY),

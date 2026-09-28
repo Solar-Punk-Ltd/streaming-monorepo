@@ -111,6 +111,8 @@ export class StagePublisher {
   private readonly intervalMs: number;
   private unsubscribe: (() => void) | null = null;
   private interval: unknown = null;
+  /** Set by `stop`, after which nothing starts a push: the manager is shutting down. */
+  private stopped = false;
 
   constructor(private readonly deps: StagePublisherDeps) {
     this.send = deps.send ?? sendStageRequest;
@@ -120,12 +122,13 @@ export class StagePublisher {
   }
 
   start(): void {
-    if (this.unsubscribe) return;
+    if (this.unsubscribe || this.stopped) return;
     this.unsubscribe = this.deps.events.subscribe((event) => this.onEvent(event));
     this.interval = this.clock.setInterval(() => void this.pushRunning(), this.intervalMs);
   }
 
   stop(): void {
+    this.stopped = true;
     this.unsubscribe?.();
     this.unsubscribe = null;
     if (this.interval !== null) this.clock.clearInterval(this.interval);
@@ -133,7 +136,13 @@ export class StagePublisher {
     for (const entry of this.entries.values()) {
       if (entry.timer !== undefined) this.clock.clearTimeout(entry.timer);
       entry.timer = undefined;
+      entry.again = false;
     }
+  }
+
+  /** Whether the publisher keeps anything of this deployment in memory. */
+  keeps(name: string): boolean {
+    return this.entries.has(name);
   }
 
   /** The last push of one deployment's record, or null before any. */
@@ -147,7 +156,7 @@ export class StagePublisher {
    * failed push logs a warning and the deploy goes on.
    */
   async beforeUploaderStart(profile: Pick<Profile, 'name' | 'kind'>): Promise<void> {
-    if (!isStageKind(profile.kind)) return;
+    if (!isStageKind(profile.kind) || this.stopped) return;
     let timer: unknown;
     const timeout = new Promise<'timeout'>((resolve) => {
       timer = this.clock.setTimeout(() => resolve('timeout'), STAGE_PUSH_BEFORE_START_MS);
@@ -209,6 +218,7 @@ export class StagePublisher {
    * `follow` waits for it and then pushes once more with what has changed since.
    */
   pushNow(name: string, whileInFlight: 'skip' | 'follow' = 'follow'): Promise<StagePushOutcome | null> {
+    if (this.stopped) return Promise.resolve(null);
     const entry = this.entryOf(name);
     if (entry.inFlight) {
       if (whileInFlight === 'skip') return entry.inFlight;
@@ -222,10 +232,9 @@ export class StagePublisher {
       })
       .finally(() => {
         entry.inFlight = undefined;
-        if (entry.again) {
-          entry.again = false;
-          void this.pushNow(name, 'follow');
-        }
+        const again = entry.again;
+        entry.again = false;
+        if (again && !this.stopped) void this.pushNow(name, 'follow');
       });
     entry.inFlight = push;
     return push;
@@ -243,6 +252,7 @@ export class StagePublisher {
 
   /** Gathers change events for one deployment into one push, a short while after the first. */
   private schedule(name: string): void {
+    if (this.stopped) return;
     const entry = this.entryOf(name);
     if (entry.timer !== undefined) return;
     entry.timer = this.clock.setTimeout(() => {
@@ -264,7 +274,14 @@ export class StagePublisher {
     // Taken as the row is read, before any slower reading: the moment the record says it was observed.
     const readAt = new Date(this.clock.now());
     const profile = await this.deps.profiles.find(name);
-    if (!profile || !isStageKind(profile.kind)) return null;
+    if (!profile || !isStageKind(profile.kind)) {
+      // A name that is gone, or is no stage now, never pushed and never seen as one: nothing to retire, so nothing to
+      // keep. One its change event named waits for its removal event, which retires it and drops it then.
+      if (!entry.pushed && !entry.seenStageId && entry.timer === undefined && this.entries.get(name) === entry) {
+        this.entries.delete(name);
+      }
+      return null;
+    }
     const link = await this.deps.link.storedLink();
     if (!link.url || !link.token) return this.record(entry, name, 'skipped-no-link');
 
