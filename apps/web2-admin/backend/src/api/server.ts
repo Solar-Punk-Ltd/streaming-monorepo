@@ -9,6 +9,7 @@ import { IngestService } from '../domain/IngestService.js';
 import { LadderService } from '../domain/LadderService.js';
 import { Logger } from '../domain/Logger.js';
 import { PublishService } from '../domain/PublishService.js';
+import { StageService } from '../domain/StageService.js';
 import { StreamService } from '../domain/StreamService.js';
 import { StreamStateService } from '../domain/StreamStateService.js';
 
@@ -23,6 +24,7 @@ import { createConfigRouter } from './routes/config.js';
 import { createFeedRouter } from './routes/feed.js';
 import { createHealthRouter } from './routes/health.js';
 import { createInternalRouter } from './routes/internal.js';
+import { createCatalogueStampRouter, createStagesRouter } from './routes/stages.js';
 import { createStreamsRouter } from './routes/streams.js';
 
 const logger = Logger.getInstance();
@@ -37,6 +39,7 @@ export interface ApiDeps {
   ladderService: LadderService;
   publishService: PublishService;
   ingestService: IngestService;
+  stageService: StageService;
   /** Bearer token for /api/internal; never accepted anywhere else. */
   internalApiToken: string;
   feed: FeedIdentity;
@@ -56,11 +59,12 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
   // streams router. Everything else is small JSON.
   const json = express.json({ limit: '256kb' });
 
-  // The uploader's routes, mounted ahead of the cross-site check and with a
-  // body parser of their own.
+  // The uploader's and the manager's routes, mounted ahead of the cross-site
+  // check and with a body parser of their own.
   //
-  // /api/internal is a machine caller: swarm-hls-stream posts from a server
-  // with no Origin, no Sec-Fetch-Site and no custom header, and it authenticates
+  // /api/internal is for machine callers: swarm-hls-stream posts from a server,
+  // and the manager pushes stage records from one, with no Origin, no
+  // Sec-Fetch-Site and no custom header, and each authenticates
   // with a bearer token that no browser holds. Putting it behind requireSameSite
   // would refuse every report it makes and break the live streaming loop, while
   // buying nothing: a cross-site page cannot forge the token either, and the
@@ -72,6 +76,7 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
     createInternalRouter({
       streamStateService: deps.streamStateService,
       ladderService: deps.ladderService,
+      stageService: deps.stageService,
       requireInternalToken: createRequireInternalToken(deps.internalApiToken),
     }),
   );
@@ -102,6 +107,8 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
       requireAuth,
     }),
   );
+  app.use('/api/stages', createStagesRouter({ stageService: deps.stageService, requireAuth }));
+  app.use('/api/catalogue-stamp', createCatalogueStampRouter({ stageService: deps.stageService, requireAuth }));
 
   app.use(notFound);
   app.use(errorHandler);

@@ -10,29 +10,36 @@ import { quoteForLog } from '../utils/logText.js';
  * `uploader` is the caller of the internal API: one shared bearer token, no
  * session, no name. The services it calls say so themselves rather than being
  * told by the route, so a route cannot pass an operator off as the uploader or
- * the other way round. `system` is this process acting on its own account —
- * the boot repair, the `user:add` CLI — with `reason` saying which.
+ * the other way round. `manager` is the manager pushing stage and catalogue
+ * stamp records on the registrar token, named by the stage service the same
+ * way. `system` is this process acting on its own account — the boot repair,
+ * the `user:add` CLI — with `reason` saying which.
  */
 export type Actor =
   | { kind: 'operator'; userId: string; username: string }
   | { kind: 'uploader' }
+  | { kind: 'manager' }
   | { kind: 'system'; reason: string };
 
 export type OperatorActor = Extract<Actor, { kind: 'operator' }>;
 
 export const UPLOADER: Actor = { kind: 'uploader' };
 
+export const MANAGER: Actor = { kind: 'manager' };
+
 export function operatorActor(user: UserRow): OperatorActor {
   return { kind: 'operator', userId: user.id, username: user.username };
 }
 
-/** `alice`, `the uploader`, `system (boot)`: the subject of a log line. */
+/** `alice`, `the uploader`, `the manager`, `system (boot)`: the subject of a log line. */
 export function describeActor(actor: Actor): string {
   switch (actor.kind) {
     case 'operator':
       return actor.username;
     case 'uploader':
       return 'the uploader';
+    case 'manager':
+      return 'the manager';
     case 'system':
       return `system (${actor.reason})`;
   }
