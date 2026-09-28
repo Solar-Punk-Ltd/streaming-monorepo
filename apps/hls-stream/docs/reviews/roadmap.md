@@ -1066,7 +1066,7 @@ time**, and ⚠️ the 43-44 MB/s throughput ceiling cannot see them at all, bec
 
 ## Phase 2.7 — in-browser viewer nodes, phase 1 🔎 **assessed and measured 2026-08-09, steps 1, 3, 7, 8 done**
 
-Full write-up: [in-browser phase 1](../scale/in-browser-phase-1.md). Raw data
+Full write-up: the in-browser phase 1 hand-over, which the repository's history keeps. Raw data
 [service time n=500](../bench/in-browser-service-time-2026-08-09.tsv), harness
 `deploy/scripts/in-browser-service-time.js`. **Total cost 0.0019231 BZZ and no broadcast minutes.**
 

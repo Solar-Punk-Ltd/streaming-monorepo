@@ -11,7 +11,7 @@ written at `6dc33d1` on `feat/ai-remediation`, the head of pull request #40,
 which landed. It carries the engine config ownership work's service caller integration, the isolated SRS
 checks, the OvenMediaEngine validation and the effective engine settings. The branch
 has since been deployed twice, on 2026-09-11 and 2026-09-13, recorded in
-[../handover/main-v2-remediation.md](../handover/main-v2-remediation.md), so
+the remediation's handover record, which the repository's history keeps, so
 some of this has now been seen on a host. The engine-configuration decisions
 were accepted on 2026-09-07.
 
