@@ -111,15 +111,17 @@ interface FakeReadingsOptions {
   chequebooks?: Record<string, ChequebookSummary>;
   uploader?: UploaderHealthReading | 'throws';
   nextEnvThrows?: boolean;
+  /** Whether the next deploy's ADMIN_API_TOKEN is the one the manager generated for the deployment. */
+  ownAdminToken?: boolean;
 }
 
 function readings(options: FakeReadingsOptions = {}): StageReadings & { asked: string[] } {
   const asked: string[] = [];
   return {
     asked,
-    async nextEnvFor(): Promise<Pick<NextDeployEnv, 'env' | 'version'>> {
+    async nextEnvFor(): Promise<Pick<NextDeployEnv, 'env' | 'version' | 'ownAdminToken'>> {
       if (options.nextEnvThrows) throw new Error('The version has no build yet.');
-      return { env: options.env ?? baseEnv(), version };
+      return { env: options.env ?? baseEnv(), version, ownAdminToken: options.ownAdminToken ?? false };
     },
     async listProfiles() {
       return options.profiles ?? [];
@@ -154,8 +156,8 @@ const liveStamp = (batch: string, ttl = 30 * 86_400) =>
     { batchID: batch, usable: true, batchTTL: ttl, depth: 22, bucketDepth: 16, utilization: 16, immutableFlag: true },
   ]);
 
-async function built(options: FakeReadingsOptions = {}, profile = stage(), token: string | null = SHARED_TOKEN) {
-  const result = await builder(options).build(profile, { token });
+async function built(options: FakeReadingsOptions = {}, profile = stage()) {
+  const result = await builder(options).build(profile);
   assert.ok(result.ok, result.ok ? '' : result.problem);
   return result;
 }
@@ -176,7 +178,7 @@ describe('a stage record, field by field', () => {
 
   it('says it was observed when the caller read the row, not after the slower readings', async () => {
     const readAt = new Date('2026-09-28T09:59:58.000Z');
-    const result = await builder().build(stage(), { token: null }, readAt);
+    const result = await builder().build(stage(), readAt);
     assert.ok(result.ok);
     assert.equal(result.record.observedAt, readAt.toISOString());
   });
@@ -241,7 +243,7 @@ describe('the owner', () => {
   });
 
   it('leaves no record when the next deploy gives no key, and says why without a key in it', async () => {
-    const result = await builder({ env: baseEnv({ STREAM_KEY: '' }) }).build(stage(), { token: null });
+    const result = await builder({ env: baseEnv({ STREAM_KEY: '' }) }).build(stage());
     assert.equal(result.ok, false);
     assert.match(result.ok ? '' : result.problem, /no stream key/);
   });
@@ -318,15 +320,16 @@ describe('the rungs', () => {
 describe('the admin token', () => {
   const sha = (token: string) => createHash('sha256').update(token).digest('hex');
 
-  it('is the link’s shared token when the deployment’s equals it', async () => {
+  it('is shared for a token the deployment stores or its version sets, whatever it is', async () => {
     assert.deepEqual((await built()).record.adminToken, { sha256: sha(SHARED_TOKEN), kind: 'shared' });
+    // An old copy of the registrar token, after the link's token changed: still shared, never a stage's own.
+    const oldCopy = await built({ env: baseEnv({ ADMIN_API_TOKEN: OWN_TOKEN }) });
+    assert.deepEqual(oldCopy.record.adminToken, { sha256: sha(OWN_TOKEN), kind: 'shared' });
   });
 
-  it('is the deployment’s own when it differs, or when the manager stores none', async () => {
-    const own = await built({ env: baseEnv({ ADMIN_API_TOKEN: OWN_TOKEN }) });
+  it('is own only for the token the manager generated for the deployment', async () => {
+    const own = await built({ env: baseEnv({ ADMIN_API_TOKEN: OWN_TOKEN }), ownAdminToken: true });
     assert.deepEqual(own.record.adminToken, { sha256: sha(OWN_TOKEN), kind: 'own' });
-    const noLink = await built({}, stage(), null);
-    assert.equal(noLink.record.adminToken?.kind, 'own');
   });
 
   it('is null when the uploader is given none', async () => {
@@ -390,7 +393,7 @@ describe('when there is no record to build', () => {
       [stage({ ingest_host: 'localhost' }), 'manager.example.org'],
       [stage({ network_host: '[::1]' }), 'manager.example.org'],
     ] as const) {
-      const result = await builder({}, publicHost).build(profile, { token: null });
+      const result = await builder({}, publicHost).build(profile);
       assert.equal(result.ok, false, `${profile.ingest_host ?? profile.network_host} / ${publicHost}`);
       assert.equal(result.ok ? '' : result.problem, NO_PUBLIC_INGEST_HOST);
     }
@@ -398,18 +401,18 @@ describe('when there is no record to build', () => {
   });
 
   it('is no stage for a kind that runs no uploader', async () => {
-    const result = await builder().build(stage({ kind: 'viewer' }), { token: null });
+    const result = await builder().build(stage({ kind: 'viewer' }));
     assert.equal(result.ok, false);
   });
 
   it('says why when the next deploy cannot be worked out', async () => {
-    const result = await builder({ nextEnvThrows: true }).build(stage(), { token: null });
+    const result = await builder({ nextEnvThrows: true }).build(stage());
     assert.equal(result.ok, false);
     assert.match(result.ok ? '' : result.problem, /could not be worked out: The version has no build yet/);
   });
 
   it('refuses a record the contract would refuse, by field name alone', async () => {
-    const result = await builder().build(stage({ ingest_host: 'bad host:1', instance_id: STAGE_ID }), { token: null });
+    const result = await builder().build(stage({ ingest_host: 'bad host:1', instance_id: STAGE_ID }));
     assert.equal(result.ok, false);
     assert.match(result.ok ? '' : result.problem, /ingest\.host/);
     assert.doesNotMatch(result.ok ? '' : result.problem, /bad host/);

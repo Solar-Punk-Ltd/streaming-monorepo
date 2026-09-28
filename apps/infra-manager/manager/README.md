@@ -591,7 +591,8 @@ whose uploader is given an address on the origin of the manager's link while
 the link stores a token, and which stores no `ADMIN_API_TOKEN` and whose version
 sets none, generates one: 64 hex characters, kept with the deployment's other
 generated secrets and written into its env file like them. A stored value is
-never replaced. The stage record carries its sha256 as `own`, and the push
+never replaced. The stage record carries its sha256 as `own`, the one kind
+decided by where the token came from (every other token is `shared`), and the push
 before the uploader starts registers it, so the uploader's first call finds it
 known. Only an address on the link's origin is given it; an address moved
 elsewhere needs a token typed for it. A create never copies the manager's
@@ -606,10 +607,15 @@ in the settings, typed or copied, with the origin recorded for it. Nothing that
 runs changes. The next deploy generates a new one and registers it before the
 uploader starts; until then the admin stops taking the old one once the
 manager next pushes the stage, whose record then carries no token, and an
-uploader on the shared token keeps being taken. It is refused for a deployment
-that runs no stream uploader, one in the middle of a deploy, stop or removal,
-one whose uploader is given another address than the link's, a link with no
-token, and a version whose env files set the token.
+uploader on the shared token keeps being taken. The rotation is refused for a
+deployment that runs no stream uploader, one in the middle of a deploy, stop or
+removal, checked again by the statement that takes the token out, one whose
+uploader is given another address than the link's, a link with no token, and a
+version whose env files set the token.
+
+**Rolling it out.** The admin is upgraded to phase 5 before the manager, and no
+uploader deployment is redeployed in between, so an older admin never meets a
+token of its own, which it would refuse.
 
 In admin mode the uploader refuses to start without a token, so a save of a
 deployment's settings, or a create, that names either key and leaves an address

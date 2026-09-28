@@ -78,7 +78,14 @@ export class AdminTokenRotation {
     }
 
     const updated = await this.profiles.clearAdminToken(name, profile.instance_id);
-    if (!updated) throw new ProfileInstanceChangedError(name);
+    if (!updated) {
+      // The statement refuses a row that moved since the read above: say which way it moved.
+      const now = await this.profiles.findByName(name);
+      if (now && now.instance_id === profile.instance_id && TRANSITIONAL_STATUSES.includes(now.status)) {
+        throw new ProfileBusyError(name, now.status);
+      }
+      throw new ProfileInstanceChangedError(name);
+    }
     logger.info(`[AdminLink] ${username} rotated the web2 admin token of ${name}: its next deploy generates a new one`);
     // The stage publisher pushes on this, so the admin stops taking the old token without waiting for the interval.
     this.events.publish({ type: 'profile.changed', profile: await this.containers.withContainers(updated) });

@@ -52,7 +52,7 @@ export const SINGLE_RUNG_NAME = 'source';
 /** What the builder reads, each a narrow door so a test hands in its own. */
 export interface StageReadings {
   /** The environment the deployment's next deploy gives its containers, `DeploymentOrchestrator.nextEnvFor`. */
-  nextEnvFor(profile: Profile): Promise<Pick<NextDeployEnv, 'env' | 'version'>>;
+  nextEnvFor(profile: Profile): Promise<Pick<NextDeployEnv, 'env' | 'version' | 'ownAdminToken'>>;
   /** Every deployment, to find the node that stamps with a pool's batch. */
   listProfiles(): Promise<Profile[]>;
   /** `StampService.stampHealthFor`, which never throws. */
@@ -75,11 +75,6 @@ export interface StageRecordBuilderOptions {
 export type BuiltStage =
   | { ok: true; record: StageRecord; adminApiUrl: string }
   | { ok: false; problem: string; stageId: string | null };
-
-/** The stored web2 admin token, which the builder compares and never copies. */
-export interface LinkToken {
-  token: string | null;
-}
 
 /** What a stage's own node said, for a stage that runs one. */
 interface OwnNodeReadings {
@@ -158,14 +153,14 @@ export class StageRecordBuilder {
    *   Before the slower readings of nodes and the uploader, so a record read before the deployment was removed can
    *   never carry a later moment than its retirement. Left out, it is now.
    */
-  async build(profile: ProfileWithContainers, link: LinkToken, readAt: Date = this.now()): Promise<BuiltStage> {
+  async build(profile: ProfileWithContainers, readAt: Date = this.now()): Promise<BuiltStage> {
     const stageId = profile.instance_id;
     if (!isStageKind(profile.kind)) {
       return { ok: false, problem: `A ${profile.kind} deployment runs no stream uploader.`, stageId: null };
     }
     const observedAt = readAt.toISOString();
 
-    let next: Pick<NextDeployEnv, 'env' | 'version'>;
+    let next: Pick<NextDeployEnv, 'env' | 'version' | 'ownAdminToken'>;
     try {
       next = await this.readings.nextEnvFor(profile);
     } catch (err) {
@@ -234,7 +229,10 @@ export class StageRecordBuilder {
       adminToken:
         token === ''
           ? null
-          : { sha256: sha256Hex(token), kind: link.token !== null && token === link.token ? 'shared' : 'own' },
+          : // By where the token came from, never by comparing it with the link's: only the token the manager
+            // generated for this deployment is its own. A copied or typed token, or a version's, is shared, so an old
+            // copy of the registrar token never becomes a stage's own after the link's token changes.
+            { sha256: sha256Hex(token), kind: next.ownAdminToken ? 'own' : 'shared' },
     };
 
     const parsed = stageRecordSchema.safeParse(record);

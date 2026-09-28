@@ -8,7 +8,7 @@ import {
 } from '@streaming-infra-manager/common';
 import { Pool } from 'pg';
 
-import { Profile, ProfileKind, ProfileStatus } from '../types/index.js';
+import { Profile, ProfileKind, ProfileStatus, TRANSITIONAL_STATUSES } from '../types/index.js';
 import { reserveSlotFor } from './ports/reservationSql.js';
 import {
   DEPLOYMENT_PHASE_FROM_PRIOR_STATUS_SQL,
@@ -647,8 +647,9 @@ export class ProfileRepository {
    * Takes the uploader's web2 admin token out, so the next deploy generates one of the deployment's own: the one
    * the manager generated, and one stored in its settings, typed or copied from the manager's link by a manager
    * older than the token of its own, with the origin recorded for it. The settings revision moves when a stored one
-   * goes, since the settings page lists it. Only while the row is the instance the caller read. Answers the row, or
-   * null when it had moved or is gone.
+   * goes, since the settings page lists it. Only while the row is the instance the caller read and is not in the
+   * middle of a deploy, stop or removal, which the statement checks itself, so a deploy that started after the
+   * caller's read cannot have its token taken out under it. Answers the row, or null when nothing was taken out.
    */
   async clearAdminToken(name: string, instanceId: string): Promise<Profile | null> {
     const result = await this.pool.query<Profile>(
@@ -658,9 +659,9 @@ export class ProfileRepository {
               admin_token_origin = CASE WHEN stack_settings_secret ? $3::text THEN NULL ELSE admin_token_origin END,
               settings_revision = settings_revision + CASE WHEN stack_settings_secret ? $3::text THEN 1 ELSE 0 END,
               updated_at = NOW()
-        WHERE name = $1 AND instance_id = $2
+        WHERE name = $1 AND instance_id = $2 AND status <> ALL($4::text[])
         RETURNING ${PROFILE_COLUMNS}`,
-      [name, instanceId, ADMIN_API_TOKEN_KEY],
+      [name, instanceId, ADMIN_API_TOKEN_KEY, [...TRANSITIONAL_STATUSES]],
     );
     return result.rows[0] ?? null;
   }

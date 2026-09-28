@@ -9,9 +9,15 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
 
-import { ADMIN_API_TOKEN_KEY, ADMIN_API_URL_KEY, type StackContract } from '@streaming-infra-manager/common';
+import {
+  ADMIN_API_TOKEN_KEY,
+  ADMIN_API_URL_KEY,
+  type StackContract,
+  stampHealthFrom,
+} from '@streaming-infra-manager/common';
 
 import type { ProfileKind } from '../../src/types/index.js';
 import { InMemoryManagerAdminLink } from '../support/InMemoryManagerAdminLink.js';
@@ -25,6 +31,7 @@ process.env.SHLS_ROOT = root;
 const { orchestratorHarness, untilRunning } = await import('../support/orchestratorHarness.js');
 const { ownAdminTokenFor, runsStreamUploader, takesOwnAdminToken } =
   await import('../../src/domain/adminLink/ownAdminToken.js');
+const { StageRecordBuilder } = await import('../../src/domain/stages/StageRecordBuilder.js');
 
 const ADMIN_URL = 'https://admin.example.org';
 const LINK_TOKEN = 'synthetic-link-admin-token-0123456789abcdef';
@@ -53,6 +60,7 @@ async function harnessFor(setup: Setup = {}) {
   const stored = makeProfile({
     name: 'stage',
     port_slot: 3,
+    instance_id: '5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f',
     stamp_id: STAMP,
     kind: setup.kind ?? 'streamer',
     components: setup.components ?? null,
@@ -177,5 +185,73 @@ describe('a deploy that gives no token of its own', () => {
     assert.notEqual(envFileValue(ADMIN_API_TOKEN_KEY), generated);
     const next = await harness.orchestrator.nextEnvFor(harness.profiles.rows.get('stage')!);
     assert.notEqual(next.env[ADMIN_API_TOKEN_KEY], generated);
+  });
+});
+
+describe('the kind of token the stage record names, by where the token came from', () => {
+  const sha = (token: string) => createHash('sha256').update(token, 'utf8').digest('hex');
+  const STREAM_KEY = `0x${'0'.repeat(63)}1`;
+
+  /** The builder over the real orchestrator's next deploy environment, the other readings stubbed. */
+  function recordBuilder(harness: Awaited<ReturnType<typeof harnessFor>>) {
+    return new StageRecordBuilder(
+      {
+        nextEnvFor: (profile) => harness.orchestrator.nextEnvFor(profile),
+        listProfiles: async () => [],
+        stampHealthFor: async (_profile, stampId) => stampHealthFrom(stampId, null),
+        chequebookSummary: async () => {
+          throw new Error('no node');
+        },
+        uploaderHealth: async () => ({ state: 'ok', reasons: [] }),
+      },
+      { managerId: '00000000-0000-4000-8000-00000000cafe', publicHost: 'manager.example.org' },
+    );
+  }
+
+  async function adminTokenOf(harness: Awaited<ReturnType<typeof harnessFor>>) {
+    harness.profiles.privateKeys.set('stage', STREAM_KEY);
+    const profile = harness.profiles.rows.get('stage')!;
+    const built = await recordBuilder(harness).build(await harness.containers.asRepository().withContainers(profile));
+    assert.ok(built.ok, built.ok ? '' : built.problem);
+    return built.record.adminToken;
+  }
+
+  it('is own for the token the manager generated for the deployment', async () => {
+    const harness = await harnessFor();
+    await deploy(harness);
+    const generated = harness.profiles.secrets.get('stage')![ADMIN_API_TOKEN_KEY]!;
+
+    assert.equal((await harness.orchestrator.nextEnvFor(harness.profiles.rows.get('stage')!)).ownAdminToken, true);
+    assert.deepEqual(await adminTokenOf(harness), { sha256: sha(generated), kind: 'own' });
+  });
+
+  it('is shared for an old copy of the link token once the link token changed, never own', async () => {
+    // Created by a manager older than phase 5: the link's token was copied into the settings.
+    const harness = await harnessFor({
+      settings: { [ADMIN_API_URL_KEY]: ADMIN_URL, [ADMIN_API_TOKEN_KEY]: COPIED_TOKEN },
+      link: { url: ADMIN_URL, token: COPIED_TOKEN },
+    });
+    await deploy(harness);
+    assert.deepEqual(await adminTokenOf(harness), { sha256: sha(COPIED_TOKEN), kind: 'shared' });
+
+    // The admin's INTERNAL_API_TOKEN, and so the link's, is changed; the deployment still holds the old copy.
+    const link = new InMemoryManagerAdminLink();
+    link.url = ADMIN_URL;
+    link.token = LINK_TOKEN;
+    harness.orchestrator.setManagerAdminLink(link);
+
+    assert.equal((await harness.orchestrator.nextEnvFor(harness.profiles.rows.get('stage')!)).ownAdminToken, false);
+    assert.deepEqual(await adminTokenOf(harness), { sha256: sha(COPIED_TOKEN), kind: 'shared' });
+  });
+
+  it("is shared for a token typed for the deployment, and for one its version's env files set", async () => {
+    const typed = await harnessFor({
+      settings: { [ADMIN_API_URL_KEY]: ADMIN_URL, [ADMIN_API_TOKEN_KEY]: 'f'.repeat(64) },
+    });
+    assert.equal((await adminTokenOf(typed))?.kind, 'shared');
+
+    const versioned = await harnessFor({ baseEnv: `ENGINE=srs\nADMIN_API_URL=\nADMIN_API_TOKEN=${COPIED_TOKEN}\n` });
+    await deploy(versioned);
+    assert.equal((await adminTokenOf(versioned))?.kind, 'shared');
   });
 });

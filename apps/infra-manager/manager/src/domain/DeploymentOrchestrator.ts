@@ -423,6 +423,12 @@ export interface NextDeployEnv {
   env: Record<string, string>;
   /** Keys whose value is a secret the manager generated for this deployment. */
   generatedKeys: string[];
+  /**
+   * Whether the `ADMIN_API_TOKEN` the uploader is given is the one the manager generated for this deployment, its
+   * token of its own. False for a token the deployment stores, typed or copied from the link, one its version's env
+   * files set, and none. The stage record's `adminToken.kind` is `own` on this alone.
+   */
+  ownAdminToken: boolean;
   /** The build tree the next deploy copies. */
   root: string;
   version: StackVersionRecord;
@@ -884,9 +890,11 @@ export class DeploymentOrchestrator {
       rootEnvText: renderProfileEnv(baseText, managed, stored),
       engineEnvText: readIfPresent(engineEnvPath(root, engine)),
     });
+    const generatedToken = ADMIN_API_TOKEN_KEY in stored ? '' : (stackSecrets[ADMIN_API_TOKEN_KEY] ?? '');
     return {
       env,
       generatedKeys: Object.keys(withoutKeys(stackSecrets, Object.keys(stored))),
+      ownAdminToken: generatedToken !== '' && env[ADMIN_API_TOKEN_KEY] === generatedToken,
       root,
       version,
       engineSettingsProblem: engineSettingsLinesOf(values, baseText).problem,

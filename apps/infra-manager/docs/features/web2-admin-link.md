@@ -90,13 +90,29 @@ link's own, copied in at its insert. The stage record reports it as `shared`,
 the admin still takes it as an unattributed caller while the stages move over,
 and the admin's Stages page says so.
 
+The stage record's `adminToken.kind` says where the token came from, never
+whether it equals the link's: `own` only for the token the manager generated
+for the deployment (`NextDeployEnv.ownAdminToken`), `shared` for any other, a
+copy, a typed token or a version's. So an old copy of the link's token stays
+`shared` after the admin's `INTERNAL_API_TOKEN` changes, and the admin, which
+attributes only `own` tokens, refuses it.
+
+**Rolling it out.** The admin is upgraded to phase 5 before the manager, and no
+uploader deployment is redeployed in between. An older admin takes only its
+`INTERNAL_API_TOKEN` from an uploader and would refuse a token of its own that
+a redeploy by the new manager generated; the upgraded admin takes both, so
+every running uploader keeps working while the two move.
+
 **Rotate the uploader's admin token**, on the deployment page's stage card
 (`POST /profiles/:name/admin-token/rotate`, behind the session and the
 same-site check), moves such a deployment, or any, to a new token of its own.
 One statement takes out the generated token and a token stored in the settings,
 with the origin recorded for it and a new settings revision when there was one
-(`ProfileRepository.clearAdminToken`), and the deployment's change event makes
-the stage publisher push at once. The record then carries no token, so the
+(`ProfileRepository.clearAdminToken`), and only while the deployment is not in
+the middle of a deploy, stop or removal, which the statement checks itself: a
+deploy that starts after the rotation read the row makes it `profile_busy`
+and takes nothing out. The deployment's change event makes the stage publisher
+push at once. The record then carries no token, so the
 admin stops taking the old one, and the uploader cannot report until the
 redeploy that generates the new one and registers it before starting it. The
 rotation is refused, with a sentence, where that redeploy would generate

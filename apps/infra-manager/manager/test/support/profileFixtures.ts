@@ -580,7 +580,7 @@ export class InMemoryProfiles {
   /** As the real UPDATE: both tokens out, the origin and a revision with a stored one, for the instance read. */
   async clearAdminToken(name: string, instanceId: string): Promise<Profile | null> {
     const row = this.rows.get(name);
-    if (!row || row.instance_id !== instanceId) return null;
+    if (!row || row.instance_id !== instanceId || TRANSITIONAL_STATUSES.includes(row.status)) return null;
     const generated = { ...(this.secrets.get(name) ?? {}) };
     delete generated[ADMIN_API_TOKEN_KEY];
     this.secrets.set(name, generated);

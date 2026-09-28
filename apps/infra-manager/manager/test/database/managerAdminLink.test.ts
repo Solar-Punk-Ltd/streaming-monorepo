@@ -16,13 +16,18 @@
  */
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { readFile, readdir } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import pg, { type Pool } from 'pg';
 
 import { STANDARD_GROUP_KIND } from '@streaming-infra-manager/common';
 
+import { AdminTokenRotation } from '../../src/domain/adminLink/AdminTokenRotation.js';
 import { ManagerAdminLinkRepository } from '../../src/domain/adminLink/ManagerAdminLinkRepository.js';
+import type { NextDeployEnv } from '../../src/domain/DeploymentOrchestrator.js';
+import { ProfileBusyError } from '../../src/domain/errors/index.js';
 import { DeploymentGroupRepository, type SharedProfileParams } from '../../src/domain/DeploymentGroupRepository.js';
 import { type InitialStackSettings, ProfileRepository } from '../../src/domain/ProfileRepository.js';
 
@@ -220,7 +225,7 @@ describe(
         const row = await profiles.insertWithFreeSlot(
           'copied',
           'streamer',
-          'DEPLOYING',
+          'STOPPED',
           {},
           PLACEMENT,
           {},
@@ -250,7 +255,7 @@ describe(
         const row = await profiles.insertWithFreeSlot(
           'own',
           'streamer',
-          'DEPLOYING',
+          'STOPPED',
           {},
           PLACEMENT,
           {},
@@ -274,7 +279,7 @@ describe(
         const row = await profiles.insertWithFreeSlot(
           'moved',
           'streamer',
-          'DEPLOYING',
+          'STOPPED',
           {},
           PLACEMENT,
           {},
@@ -285,6 +290,69 @@ describe(
 
         assert.equal(await profiles.clearAdminToken('moved', '00000000-0000-4000-8000-000000000000'), null);
         assert.deepEqual((await rowOf('moved')).stack_secrets, { ADMIN_API_TOKEN: OTHER });
+      });
+
+      it('takes nothing out of a deployment in the middle of a deploy, stop or removal', async () => {
+        const profiles = new ProfileRepository(pool);
+        const row = await profiles.insertWithFreeSlot(
+          'busy',
+          'streamer',
+          'STOPPED',
+          {},
+          PLACEMENT,
+          {},
+          { plain: { ADMIN_API_URL: ADMIN_URL }, secret: { ADMIN_API_TOKEN: TOKEN }, adminTokenOrigin: ADMIN_URL },
+        );
+        assert.ok(row);
+        await profiles.storeStackSecrets('busy', { ADMIN_API_TOKEN: OTHER });
+
+        for (const status of ['DEPLOYING', 'STOPPING', 'REMOVING']) {
+          await pool.query('UPDATE profiles SET status = $2 WHERE name = $1', ['busy', status]);
+          assert.equal(await profiles.clearAdminToken('busy', row.instance_id), null, status);
+        }
+        assert.deepEqual(await rowOf('busy'), {
+          stack_secrets: { ADMIN_API_TOKEN: OTHER },
+          stack_settings_secret: { ADMIN_API_TOKEN: TOKEN },
+          admin_token_origin: ADMIN_URL,
+          settings_revision: 0,
+        });
+      });
+
+      it("is refused as busy when a deploy starts between the rotation's read and its clear", async () => {
+        const profiles = new ProfileRepository(pool);
+        const row = await profiles.insertWithFreeSlot(
+          'raced',
+          'streamer',
+          'RUNNING',
+          {},
+          PLACEMENT,
+          {},
+          { plain: { ADMIN_API_URL: ADMIN_URL }, secret: {} },
+        );
+        assert.ok(row);
+        await profiles.storeStackSecrets('raced', { ADMIN_API_TOKEN: OTHER });
+        await link.write({ url: ADMIN_URL, token: TOKEN }, 0, 'operator');
+        const root = await mkdtemp(join(tmpdir(), 'rotate-race-'));
+
+        const rotation = new AdminTokenRotation(
+          profiles,
+          {
+            // The rotation reads the row, then the next deploy's environment: a deploy claims the row in between.
+            nextEnvFor: async () => {
+              await pool.query(`UPDATE profiles SET status = 'DEPLOYING' WHERE name = 'raced'`);
+              return { env: { ADMIN_API_URL: ADMIN_URL }, root } as unknown as NextDeployEnv;
+            },
+          },
+          link,
+          { withContainers: async (profile) => ({ ...profile, containers: [] }) as never },
+          { publish: () => undefined },
+        );
+
+        await assert.rejects(
+          rotation.rotate('raced', 'operator'),
+          (error: Error) => error instanceof ProfileBusyError && error.currentStatus === 'DEPLOYING',
+        );
+        assert.deepEqual((await rowOf('raced')).stack_secrets, { ADMIN_API_TOKEN: OTHER }, 'nothing taken out');
       });
     });
 

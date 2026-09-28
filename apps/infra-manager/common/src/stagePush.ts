@@ -68,8 +68,11 @@ export type ConsoleStageIngest = Omit<StageRecord['ingest'], 'srtPassphrase'> & 
   hasSrtPassphrase: boolean;
 };
 
-/** A record as `GET /stages` answers it. */
-export type ConsoleStageRecord = Omit<StageRecord, 'ingest'> & { ingest: ConsoleStageIngest };
+/** A record as `GET /stages` answers it: without the passphrase, and the admin token by its kind alone. */
+export type ConsoleStageRecord = Omit<StageRecord, 'ingest' | 'adminToken'> & {
+  ingest: ConsoleStageIngest;
+  adminToken: Pick<NonNullable<StageRecord['adminToken']>, 'kind'> | null;
+};
 
 /** One deployment in `GET /stages`: the record the manager would push, and how its last push went. */
 export interface ConsoleStage {

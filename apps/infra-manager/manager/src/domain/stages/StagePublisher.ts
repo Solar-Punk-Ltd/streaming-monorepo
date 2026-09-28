@@ -182,11 +182,11 @@ export class StagePublisher {
   /** Every stage the manager would push, with how its last push went and without the SRT passphrase. */
   async consoleStages(): Promise<ConsoleStage[]> {
     const readAt = new Date(this.clock.now());
-    const [profiles, link] = await Promise.all([this.deps.profiles.list(), this.deps.link.storedLink()]);
+    const profiles = await this.deps.profiles.list();
     const stages = profiles.filter((profile) => isStageKind(profile.kind));
     return Promise.all(
       stages.map(async (profile) => {
-        const built = await this.buildQuietly(profile, link, readAt);
+        const built = await this.buildQuietly(profile, readAt);
         return {
           name: profile.name,
           record: built.ok ? consoleRecordOf(built.record) : null,
@@ -285,7 +285,7 @@ export class StagePublisher {
     const link = await this.deps.link.storedLink();
     if (!link.url || !link.token) return this.record(entry, name, 'skipped-no-link');
 
-    const built = await this.buildQuietly(profile, link, readAt);
+    const built = await this.buildQuietly(profile, readAt);
     if (!built.ok) {
       if (entry.loggedProblem !== built.problem) {
         logger.warn(`[Stages] ${name}: no stage record: ${built.problem}`);
@@ -344,13 +344,9 @@ export class StagePublisher {
     }
   }
 
-  private async buildQuietly(
-    profile: ProfileWithContainers,
-    link: StoredAdminLinkSecret,
-    readAt: Date,
-  ): Promise<BuiltStage> {
+  private async buildQuietly(profile: ProfileWithContainers, readAt: Date): Promise<BuiltStage> {
     try {
-      return await this.deps.builder.build(profile, { token: link.token }, readAt);
+      return await this.deps.builder.build(profile, readAt);
     } catch (err) {
       return { ok: false, problem: getErrorMessage(err), stageId: profile.instance_id };
     }
@@ -372,5 +368,9 @@ export class StagePublisher {
 /** A record as the manager's own console is answered it, whose SRT passphrase stays in the manager. */
 export function consoleRecordOf(record: StageRecord): ConsoleStageRecord {
   const { srtPassphrase, ...ingest } = record.ingest;
-  return { ...record, ingest: { ...ingest, hasSrtPassphrase: srtPassphrase !== null } };
+  return {
+    ...record,
+    ingest: { ...ingest, hasSrtPassphrase: srtPassphrase !== null },
+    adminToken: record.adminToken && { kind: record.adminToken.kind },
+  };
 }

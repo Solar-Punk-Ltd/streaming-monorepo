@@ -8,10 +8,8 @@ link names. The admin never calls the manager. The design, and the phases it is
 built in, is `docs/architecture/stages.md` at the repository root; the record's
 shape is `stageRecordSchema` in `packages/contracts/src/stage.ts`.
 
-Status, 2026-09-28. Built on `stages/p3-manager-pushes-stages`, branched from
-`feat/stages` at `90def834`, phase 3 of the brief, and on
-`stages/p5-uploader-tokens`, phase 5, which gives every uploader linked to the
-manager's admin a token of its own. Not deployed. A deployment created before
+Status, 2026-09-28. Phase 3 of the brief, and phase 5, which gives every
+uploader linked to the manager's admin a token of its own. Not deployed. A deployment created before
 phase 5 still presents the link's own token, reported as `shared`, until it is
 rotated, and every stage still signs with the brand's key until phase 6.
 
@@ -34,7 +32,7 @@ One record per stage, checked against `stageRecordSchema` before it leaves:
 | `rungs[]`                           | a pool's rungs from its `BEE_PUBLISHERS`, lowest first, each read on the deployment of this manager whose `stamp_id` is that rung's batch: its stamp health and its chequebook. A stage with a node of its own has one rung, `source`, read there. No node address |
 | `uploader`                          | `UploaderHealthService`'s reading, its state and reasons alone, or null when it could not be read                                                                                                                                                                  |
 | `readiness`                         | the console's own readiness, below                                                                                                                                                                                                                                 |
-| `adminToken`                        | the sha256 of the deployment's effective `ADMIN_API_TOKEN`, `shared` when it equals the link's stored token and `own` otherwise, or null when the uploader is given none. A token the manager generated for the deployment is `own`, below                         |
+| `adminToken`                        | the sha256 of the deployment's effective `ADMIN_API_TOKEN`, and where it came from: `own` for the token the manager generated for the deployment, below, `shared` for any other (copied, typed, or the version's), or null when the uploader is given none         |
 
 A chequebook's `availableBzz` is its available PLUR written exactly in BZZ
 with `plurToBzzExact`. A rung whose node this manager does not run, a pool
@@ -182,7 +180,8 @@ together once.
   `POST /profiles/:name/admin-token/rotate`, asked for first.
 - **`GET /stages`**, behind the session: every record the manager would push
   now, built afresh, each with its last push and without the SRT passphrase,
-  which is answered only as `hasSrtPassphrase`.
+  which is answered only as `hasSrtPassphrase`, or the admin token's sha256,
+  which is answered only by its `kind`.
 
 `pnpm -C frontend dev:mock` shows the card, and
 `frontend/test/stage-card-browser.test.mjs` drives it in Chrome.
