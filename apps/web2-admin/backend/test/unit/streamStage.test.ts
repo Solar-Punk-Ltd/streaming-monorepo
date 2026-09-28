@@ -36,6 +36,7 @@ import {
   FakeRenditionStore,
   FakeStreamStore,
   InMemoryAuditLog,
+  noCatalogueStamp,
   streamRow,
   TEST_OPERATOR,
   TEST_OWNER,
@@ -80,6 +81,7 @@ async function setup() {
     stages,
     new FakeFeedWriteLog(),
     new FakeFeedGateway(),
+    noCatalogueStamp(),
     feed,
     audit,
   );

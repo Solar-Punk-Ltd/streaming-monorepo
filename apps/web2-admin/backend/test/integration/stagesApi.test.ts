@@ -88,7 +88,12 @@ describe('the manager’s stage routes', () => {
   });
 
   it('set and clear the catalogue stamp, which the console reads without the Bee API address', async () => {
-    assert.deepEqual((await raw('GET', '/api/catalogue-stamp')).body, { catalogueStamp: null });
+    // The instance runs the in-memory gateway, which writes with no catalogue stamp, so nothing is refused.
+    const unset = {
+      catalogueStamp: null,
+      catalogueWrite: { batch: null, refusal: null, moveWaitingTo: null, unrecordedHistory: null },
+    };
+    assert.deepEqual((await raw('GET', '/api/catalogue-stamp')).body, unset);
 
     const stored = await raw('PUT', '/api/internal/catalogue-stamp', {
       ...internalCall(),
@@ -98,10 +103,11 @@ describe('the manager’s stage routes', () => {
 
     const read = await raw('GET', '/api/catalogue-stamp');
     assert.equal((read.body as CatalogueStampResponse).catalogueStamp?.batchId, catalogueStampRecord().batchId);
+    assert.equal((read.body as CatalogueStampResponse).catalogueWrite.batch?.batchId, catalogueStampRecord().batchId);
     assert.equal(read.text.includes('192.0.2.10'), false);
 
     const cleared = await raw('DELETE', '/api/internal/catalogue-stamp', { ...internalCall(), body: GONE });
     assert.deepEqual(cleared.body, { cleared: true });
-    assert.deepEqual((await raw('GET', '/api/catalogue-stamp')).body, { catalogueStamp: null });
+    assert.deepEqual((await raw('GET', '/api/catalogue-stamp')).body, unset);
   });
 });

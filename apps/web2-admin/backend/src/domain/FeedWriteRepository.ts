@@ -2,6 +2,28 @@ import { Pool } from 'pg';
 
 import { FeedFormatError } from './errors/index.js';
 
+/** One row of `feed_writes`, as a write or the boot check's adoption records it. */
+export interface FeedWriteRecord {
+  owner: string;
+  topic: string;
+  feedIndex: number;
+  entryCount: number;
+  /** The list, element by element. */
+  payload: unknown[];
+  /**
+   * The exact string uploaded as the payload (migration 013), or null for a head adopted from the network when the
+   * gateway could not say what it read.
+   */
+  payloadText: string | null;
+  /** Chunk reference hex, or null for a head adopted from the network at boot. */
+  reference: string | null;
+  /**
+   * The batch that stamped the write, or null when the admin does not know it: a head adopted from the network, or a
+   * write the in-memory gateway took with no catalogue stamp.
+   */
+  batchId: string | null;
+}
+
 /** The newest write this backend recorded for one feed. */
 export interface LastFeedWrite {
   index: number;
@@ -29,20 +51,40 @@ export interface LastFeedWrite {
 export class FeedWriteRepository {
   constructor(private readonly pool: Pool) {}
 
-  async record(
-    owner: string,
-    topic: string,
-    feedIndex: number,
-    entryCount: number,
-    payload: unknown[],
-    reference: string | null,
-  ): Promise<void> {
+  /**
+   * `payload` is stored from `payloadText` when there is one, so the parsed column and the exact bytes cannot drift
+   * apart; migration 013's CHECK holds them together as well.
+   */
+  async record(write: FeedWriteRecord): Promise<void> {
     await this.pool.query(
       `INSERT INTO feed_writes
-         (feed_owner, feed_topic, feed_index, entry_count, payload, reference)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
-      [normalise(owner), normalise(topic), feedIndex, entryCount, JSON.stringify(payload), reference],
+         (feed_owner, feed_topic, feed_index, entry_count, payload, reference, payload_text, batch_id)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)`,
+      [
+        normalise(write.owner),
+        normalise(write.topic),
+        write.feedIndex,
+        write.entryCount,
+        write.payloadText ?? JSON.stringify(write.payload),
+        write.reference,
+        write.payloadText,
+        write.batchId,
+      ],
     );
+  }
+
+  /**
+   * How many writes of this feed have no batch recorded: those from before migration 013, stamped by the env file's
+   * batch, and heads adopted from the network at boot. None of them is known to be under the catalogue batch.
+   */
+  async countUnrecordedBatch(owner: string, topic: string): Promise<number> {
+    const result = await this.pool.query<{ writes: number }>(
+      `SELECT COUNT(*)::int AS writes
+         FROM feed_writes
+        WHERE feed_owner = $1 AND feed_topic = $2 AND batch_id IS NULL`,
+      [normalise(owner), normalise(topic)],
+    );
+    return result.rows[0]?.writes ?? 0;
   }
 
   /** The highest index recorded for this feed, with the payload written there. */

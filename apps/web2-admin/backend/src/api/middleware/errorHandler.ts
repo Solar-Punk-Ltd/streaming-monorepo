@@ -5,6 +5,7 @@ import { ValidationError as YupValidationError } from 'yup';
 import {
   AdminRequiredError,
   CannotRemoveUserError,
+  CatalogueStampUnavailableError,
   CrossSiteRequestError,
   FeedOwnerMismatchError,
   InvalidCredentialsError,
@@ -196,6 +197,12 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
   }
   if (err instanceof UnsupportedMediaTypeError) {
     res.status(415).json({ error: 'unsupported_media_type', message: err.message });
+    return;
+  }
+  if (err instanceof CatalogueStampUnavailableError) {
+    // 503: the admin cannot write the catalogue until the manager designates a usable batch, which is a state that
+    // ends, not a request that was wrong. The uploader retries a 5xx, and a state report refused here must be retried.
+    res.status(503).json({ error: 'catalogue_stamp_unavailable', problem: err.problem, message: err.message });
     return;
   }
   if (err instanceof PublishFailedError) {

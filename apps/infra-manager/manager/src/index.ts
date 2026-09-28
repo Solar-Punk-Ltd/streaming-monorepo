@@ -26,7 +26,12 @@ import { SrtIngestHealthService } from './domain/srtIngest/SrtIngestHealthServic
 import { readManagerId } from './domain/stages/managerIdentity.js';
 import { StagePublisher } from './domain/stages/StagePublisher.js';
 import { StageRecordBuilder } from './domain/stages/StageRecordBuilder.js';
-import { StampService } from './domain/StampService.js';
+import { beeApiUrlFor, beePublisherUrlFor, StampService } from './domain/StampService.js';
+import { localPublisherHost } from './domain/localHost.js';
+import { CatalogueDesignationRepository } from './domain/stages/CatalogueDesignationRepository.js';
+import { CatalogueDesignationService } from './domain/stages/CatalogueDesignationService.js';
+import { CataloguePublisher } from './domain/stages/CataloguePublisher.js';
+import { CatalogueNodeRemovalError } from './domain/errors/index.js';
 import { UploaderHealthService } from './domain/UploaderHealthService.js';
 import { UploaderStartGate } from './domain/UploaderStartGate.js';
 import { readBundledCommit } from './domain/versions/bundledCommit.js';
@@ -95,6 +100,7 @@ let sessionSweep: SessionSweep | undefined;
 let streamRevalidation: StreamRevalidation | undefined;
 let chequebookOperations: ReturnType<typeof createChequebookOperationsService> | undefined;
 let stagePublisher: StagePublisher | undefined;
+let cataloguePublisher: CataloguePublisher | undefined;
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal: string): Promise<void> {
@@ -121,6 +127,10 @@ async function gracefulShutdown(signal: string): Promise<void> {
     if (stagePublisher) {
       stagePublisher.stop();
       stagePublisher = undefined;
+    }
+    if (cataloguePublisher) {
+      cataloguePublisher.stop();
+      cataloguePublisher = undefined;
     }
     const [apiClosed, transferCleanup] = await Promise.allSettled([
       apiServer?.close(),
@@ -400,6 +410,33 @@ async function main(): Promise<void> {
   orchestrator.setBeforeUploaderStart((profile) => publisher.beforeUploaderStart(profile));
   publisher.start();
 
+  // The brand's catalogue node and its pinned batch, whose record goes to the same link. docs/features/stages.md.
+  const catalogueDesignation = new CatalogueDesignationRepository(database.pool);
+  cataloguePublisher = new CataloguePublisher({
+    designation: catalogueDesignation,
+    profiles: profileRepository,
+    reading: (profile, batchId) => stampService.batchReadingFor(profile, batchId),
+    beeApiUrl: beeApiUrlFor,
+    link: managerAdminLink,
+    events: eventBus,
+    managerId,
+  });
+  const catalogue = cataloguePublisher;
+  const catalogueService = new CatalogueDesignationService({
+    store: catalogueDesignation,
+    profiles: profileRepository,
+    groupKindOf: async (id) => (await deploymentGroupRepository.findById(id))?.kind ?? null,
+    heldBatch: (name, batchId) => stampService.heldBatch(name, batchId),
+    status: () => catalogue.status(),
+    changed: () => void catalogue.pushNow(),
+    nodeUrls: async (profile) => [beeApiUrlFor(profile), beePublisherUrlFor(profile, await localPublisherHost())],
+  });
+  profileService.setPoolStringGuard((beePublishers) => catalogueService.segmentBatchProblem(beePublishers));
+  orchestrator.setRemovalGuard(async (name) => {
+    if ((await catalogueService.designatedNode()) === name) throw new CatalogueNodeRemovalError(name);
+  });
+  catalogue.start();
+
   const engineConfigService = new EngineConfigService(
     profileRepository,
     containerRepository,
@@ -450,6 +487,7 @@ async function main(): Promise<void> {
         eventBus,
       ),
       stagePublisher: publisher,
+      catalogueService,
       stackVersionService,
       orchestrator,
       deployTargets,

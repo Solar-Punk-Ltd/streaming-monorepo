@@ -26,6 +26,7 @@ import type { DeploymentOrchestrator } from '../domain/DeploymentOrchestrator.js
 import type { VerifiedDeployTargets } from '../domain/ports/VerifiedDeployTargets.js';
 import type { FirewallInventoryExporter } from '../domain/ports/FirewallInventoryExporter.js';
 import type { PortReservationRepository } from '../domain/ports/PortReservationRepository.js';
+import type { CatalogueDesignationService } from '../domain/stages/CatalogueDesignationService.js';
 import type { StagePublisher } from '../domain/stages/StagePublisher.js';
 
 import { errorHandler } from './middleware/errorHandler.js';
@@ -51,6 +52,7 @@ import { createProfilesRouter } from './routes/profiles.js';
 import { createSrtIngestRouter } from './routes/srtIngest.js';
 import { createSrtPassphraseRouter } from './routes/srtPassphrase.js';
 import { createStagesRouter } from './routes/stages.js';
+import { createCatalogueNodeRouter } from './routes/catalogueNode.js';
 import { createStampRouter } from './routes/stamp.js';
 import { createAttemptsRouter } from './routes/attempts.js';
 import { createVersionsRouter } from './routes/versions.js';
@@ -84,6 +86,8 @@ export interface ApiDeps {
   adminTokenRotation: Pick<AdminTokenRotation, 'rotate'>;
   /** The stage records the manager pushes into the web2 admin, which `GET /stages` reads. */
   stagePublisher: Pick<StagePublisher, 'consoleStages' | 'lastPush'>;
+  /** The brand's catalogue node, which the Manager settings page designates. */
+  catalogueService: CatalogueDesignationService;
   stackVersionService: StackVersionService;
   /** For the deploy attempts that hold a project or the daemon, and their release. */
   orchestrator: DeploymentOrchestrator;
@@ -157,6 +161,7 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
   app.use('/', createAdminLinkTestRouter(deps.adminLinkTester));
   app.use('/', createAdminTokenRouter(deps.adminTokenRotation));
   app.use('/stages', createStagesRouter(deps.stagePublisher));
+  app.use('/', createCatalogueNodeRouter(deps.catalogueService));
 
   app.use(notFound);
   app.use(errorHandler);

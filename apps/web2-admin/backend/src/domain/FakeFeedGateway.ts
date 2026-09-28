@@ -1,10 +1,14 @@
 import { createHash } from 'node:crypto';
 
-import type { FeedGateway, FeedSnapshot } from './FeedGateway.js';
+import type { CatalogueTarget, FeedGateway, FeedSnapshot } from './FeedGateway.js';
 
 interface FakeWrite {
   index: number;
   entries: unknown[];
+  /** The text as it was handed over, which is what `feed_writes` must record. */
+  payloadText: string;
+  /** Where the caller said the write goes: null for a write with no catalogue stamp. */
+  target: CatalogueTarget | null;
   /** What `write` returned, so a test can check what was logged next to it. */
   reference: string;
 }
@@ -31,6 +35,10 @@ export interface FakeFeedGatewayOptions {
  * (or by a run with FEED_GATEWAY=fake, read back under `bee`) is not one
  * anybody can resolve.
  *
+ * It writes nowhere, so it needs no catalogue stamp: it takes a null target,
+ * and records whatever target it was handed so a test can tell which batch a
+ * write would have been stamped with.
+ *
  * `readLagWrites` reproduces the one way the real node is *not* like this: its
  * feed lookup answers with the head as it was some seconds ago, not as it is.
  * With a lag of n, `readLatest` answers with the state as of n writes ago
@@ -44,7 +52,9 @@ export class FakeFeedGateway implements FeedGateway {
   private readonly readLagWrites: number;
   /** Every write, in order: what the tests assert on. */
   readonly writes: FakeWrite[] = [];
-  readonly thumbnails: { filename: string; contentType: string; size: number }[] = [];
+  readonly thumbnails: { filename: string; contentType: string; size: number; target: CatalogueTarget | null }[] = [];
+  /** The target of every read, in order, so a test can tell which node a check asked. */
+  readonly reads: (CatalogueTarget | null)[] = [];
   /** The references uploadThumbnail handed out, for the life of the process. */
   private readonly references = new Set<string>();
   /** Set to make the next call fail, as a network or postage error would. */
@@ -59,15 +69,20 @@ export class FakeFeedGateway implements FeedGateway {
     this.history.push(this.snapshot);
   }
 
-  async readLatest(): Promise<FeedSnapshot> {
+  async readLatest(target: CatalogueTarget | null = null): Promise<FeedSnapshot> {
     const failure = this.take('failNextRead');
     if (failure) throw failure;
+    this.reads.push(target);
     const at = Math.max(0, this.history.length - 1 - this.readLagWrites);
     const seen = this.history[at]!;
-    return { index: seen.index, entries: [...seen.entries] };
+    return {
+      index: seen.index,
+      entries: [...seen.entries],
+      ...(seen.payloadText === undefined ? {} : { payloadText: seen.payloadText }),
+    };
   }
 
-  async write(entries: unknown[], index: number): Promise<string> {
+  async write(payloadText: string, index: number, target: CatalogueTarget | null = null): Promise<string> {
     const failure = this.take('failNextWrite');
     if (failure) throw failure;
 
@@ -80,18 +95,24 @@ export class FakeFeedGateway implements FeedGateway {
     if (this.snapshot.index !== null && index !== this.snapshot.index + 1) {
       throw new Error(`Fake feed write at index ${index}, expected ${this.snapshot.index + 1}`);
     }
-    this.snapshot = { index, entries: [...entries] };
+    const entries = JSON.parse(payloadText) as unknown[];
+    this.snapshot = { index, entries: [...entries], payloadText };
     this.history.push(this.snapshot);
-    const reference = createHash('sha256').update(JSON.stringify(entries)).digest('hex');
-    this.writes.push({ index, entries: [...entries], reference });
+    const reference = createHash('sha256').update(payloadText).digest('hex');
+    this.writes.push({ index, entries: [...entries], payloadText, target, reference });
     return reference;
   }
 
-  async uploadThumbnail(bytes: Uint8Array, filename: string, contentType: string): Promise<string> {
+  async uploadThumbnail(
+    bytes: Uint8Array,
+    filename: string,
+    contentType: string,
+    target: CatalogueTarget | null = null,
+  ): Promise<string> {
     const failure = this.take('failNextThumbnail');
     if (failure) throw failure;
 
-    this.thumbnails.push({ filename, contentType, size: bytes.length });
+    this.thumbnails.push({ filename, contentType, size: bytes.length, target });
     const reference = createHash('sha256').update(bytes).digest('hex');
     this.references.add(reference);
     return reference;

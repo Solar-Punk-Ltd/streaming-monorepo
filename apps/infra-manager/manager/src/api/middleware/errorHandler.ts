@@ -13,6 +13,8 @@ import { ValidationError as YupValidationError } from 'yup';
 import {
   AdminLinkInputError,
   AdminRequiredError,
+  CatalogueNodeInputError,
+  CatalogueNodeRemovalError,
   AllSlotsUsedError,
   PortReservedError,
   ReservationInventoryPendingError,
@@ -172,8 +174,12 @@ export function errorHandler(
     res.status(400).json({ error: 'validation_error', errors: err.errors.map(withoutQuotedValue) });
     return;
   }
-  if (err instanceof AdminLinkInputError) {
+  if (err instanceof AdminLinkInputError || err instanceof CatalogueNodeInputError) {
     res.status(400).json({ error: 'validation_error', errors: err.reasons });
+    return;
+  }
+  if (err instanceof CatalogueNodeRemovalError) {
+    res.status(409).json({ error: 'catalogue_node_designated', message: err.message });
     return;
   }
   if (err instanceof ManagerSettingsChangedError) {

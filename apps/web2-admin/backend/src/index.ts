@@ -7,8 +7,10 @@ import { PostgresSessionRepository } from './domain/auth/PostgresSessionReposito
 import { PostgresUserRepository } from './domain/auth/PostgresUserRepository.js';
 import { SessionSweep, startSessionSweep } from './domain/auth/sessionSweep.js';
 import { BeeFeedGateway } from './domain/BeeFeedGateway.js';
+import { CatalogueBatchService } from './domain/CatalogueBatch.js';
 import { Database } from './domain/Database.js';
 import { FakeFeedGateway } from './domain/FakeFeedGateway.js';
+import { FeedBootCheckRunner } from './domain/feedBootCheck.js';
 import type { FeedGateway } from './domain/FeedGateway.js';
 import { feedIdentityFrom } from './domain/feedIdentity.js';
 import { FeedWriteRepository } from './domain/FeedWriteRepository.js';
@@ -25,7 +27,7 @@ import { StreamRepository } from './domain/StreamRepository.js';
 import { StreamService } from './domain/StreamService.js';
 import { StreamStateService } from './domain/StreamStateService.js';
 import { config } from './utils/config.js';
-import { getErrorMessage, getErrorStack } from './utils/errorUtils.js';
+import { getErrorStack } from './utils/errorUtils.js';
 import { retiredEnvKeysSet } from './utils/retiredEnv.js';
 
 const logger = Logger.getInstance();
@@ -56,9 +58,11 @@ function logStartupConfig(owner: string, topicHex: string): void {
       SESSION_ABSOLUTE_TIMEOUT_MS / 86_400_000
     }d, cookie Secure decided per request from X-Forwarded-Proto`,
   );
-  logger.info(`[Boot]   feed gateway: ${config.feedGateway}`);
-  logger.info(`[Boot]   bee: ${config.beeUrl}`);
-  logger.info(`[Boot]   postage batch: ${redactSecret(config.postageBatchId)}`);
+  logger.info(
+    `[Boot]   feed gateway: ${config.feedGateway}, through the catalogue stamp the manager pushes${
+      config.feedGateway === 'fake' ? ' (none needed while fake)' : ''
+    }`,
+  );
   logger.info(`[Boot]   feed key: ${redactSecret(config.feedPrivateKey)}`);
   logger.info(`[Boot]   feed: owner ${owner} topic "${config.feedTopic}" (${topicHex})`);
   logger.info(`[Boot]   viewer: ${config.viewerBaseUrl || '(unset → no player links)'}`);
@@ -67,7 +71,7 @@ function logStartupConfig(owner: string, topicHex: string): void {
   const retired = retiredEnvKeysSet();
   if (retired.length > 0) {
     logger.warn(
-      `[Boot] ${retired.join(', ')} ${retired.length === 1 ? 'is' : 'are'} set but no longer read: each stream's OBS details come from its stage. Remove ${retired.length === 1 ? 'it' : 'them'} from the env file.`,
+      `[Boot] ${retired.join(', ')} ${retired.length === 1 ? 'is' : 'are'} set but no longer read: each stream's OBS details come from its stage, and the catalogue is written through the catalogue stamp the manager pushes. Remove ${retired.length === 1 ? 'it' : 'them'} from the env file.`,
     );
   }
 }
@@ -77,12 +81,7 @@ function createFeedGateway(): FeedGateway {
     logger.warn('[Boot] FEED_GATEWAY=fake: feed writes and thumbnail uploads stay in memory, nothing reaches Swarm');
     return new FakeFeedGateway();
   }
-  return new BeeFeedGateway({
-    beeUrl: config.beeUrl,
-    postageBatchId: config.postageBatchId,
-    feedPrivateKey: config.feedPrivateKey,
-    feedTopic: config.feedTopic,
-  });
+  return new BeeFeedGateway({ feedPrivateKey: config.feedPrivateKey, feedTopic: config.feedTopic });
 }
 
 let apiServer: ApiServerHandle | undefined;
@@ -157,31 +156,32 @@ async function main(): Promise<void> {
 
   const stageRepository = new StageRepository(database.pool);
   const streamService = new StreamService(streamRepository, stageRepository, feed, auditLog);
+  const catalogueStampRepository = new CatalogueStampRepository(database.pool);
+  const catalogueBatch = new CatalogueBatchService(catalogueStampRepository, feedWriteRepository, feed, auditLog, {
+    stampRequired: config.feedGateway === 'bee',
+  });
   const publishService = new PublishService(
     streamRepository,
     renditionRepository,
     stageRepository,
     feedWriteRepository,
     createFeedGateway(),
+    catalogueBatch,
     feed,
     auditLog,
   );
   // After the orphan reset, so the dry-run diff sees the repaired statuses.
   // Never fatal: this is a cross-check of the feed, and the API is fully
-  // usable whatever it finds.
-  try {
-    const check = await publishService.checkFeedOnBoot();
-    logger.info(
-      `[Boot] feed: last write recorded ${check.recorded ?? 'none'}, network head ${check.network ?? 'none'}${check.adopted ? ' (adopted)' : ''}`,
-    );
-  } catch (error) {
-    logger.warn(`[Boot] feed check failed: ${getErrorMessage(error)}`);
-  }
+  // usable whatever it finds. With no catalogue batch designated yet it waits
+  // for the manager's first designation, below.
+  const feedBootCheck = new FeedBootCheckRunner(publishService);
+  await feedBootCheck.run();
 
   const ingestService = new IngestService(streamRepository, stageRepository, auditLog);
   const streamStateService = new StreamStateService(streamRepository, publishService, auditLog);
   const ladderService = new LadderService(streamRepository, renditionRepository, publishService, auditLog);
-  const stageService = new StageService(stageRepository, new CatalogueStampRepository(database.pool), auditLog);
+  const stageService = new StageService(stageRepository, catalogueStampRepository, auditLog);
+  stageService.onCatalogueStampStored(() => void feedBootCheck.catalogueStampStored());
 
   apiServer = startApiServer(
     {
@@ -193,6 +193,7 @@ async function main(): Promise<void> {
       publishService,
       ingestService,
       stageService,
+      catalogueBatch,
       internalApiToken: config.internalApiToken,
       uploaderTokens: stageRepository,
       feed,

@@ -186,9 +186,142 @@ together once.
 `pnpm -C frontend dev:mock` shows the card, and
 `frontend/test/stage-card-browser.test.mjs` drives it in Chrome.
 
+## The catalogue node
+
+Built on `stages/p7-catalogue-node`, phase 7 of the brief, 2026-09-28. Not
+deployed.
+
+The web2 admin writes the brand's catalogue through one Bee node and one batch
+of their own, so that no stage's segments fill the batch the catalogue's slots
+live in (`docs/architecture/stages.md`, "Why these"). The operator designates
+them on the **Manager settings** page, in the **Catalogue node** card beside the
+admin link, and the manager pushes the **catalogue stamp record** to the admin
+its link names.
+
+### The designation
+
+One row, `catalogue_designation`, migration 047: the deployment's name, the
+pinned batch id (64 hex digits, lower case, no `0x`), the depth the node
+reported at designation, when and by whom it was designated, when it was last
+cleared, and a revision. The deployment and the batch stay recorded after a
+clear, which only sets `cleared_at`; a designation is in force while
+`cleared_at` is NULL. A save and a clear name the revision the page
+read, so two operators cannot overwrite each other unseen, as the admin link's
+save does. `CatalogueDesignationService` refuses, with one sentence each
+(`common/src/catalogueNode.ts`):
+
+| Refused                                                                | Why                                                                                        |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| a deployment that runs more than a Bee node (`isBeeNodeOnly` is false) | the catalogue node shares its node with no stage                                           |
+| a rung of an ABR node pool                                             | a rung's batches pay for a stream's segments                                               |
+| a batch the node does not hold, or a node that does not answer         | the kind of the batch cannot be checked                                                    |
+| a mutable batch                                                        | once a bucket fills it overwrites its oldest chunks, which are the catalogue's first slots |
+| a batch whose kind the node does not report                            | the kind that fails is the one it might be                                                 |
+| an expired batch                                                       | nothing written with it stays                                                              |
+| a batch an ABR uploader of this manager names in its `BEE_PUBLISHERS`  | segments would fill it                                                                     |
+| another batch than the one first designated, cleared since or not      | the catalogue's slots are stamped by that batch, and moving them is its own action         |
+
+The node is asked about the batch fresh, `GET /stamps/{id}` on its own Bee API,
+when the designation is saved.
+
+Once a batch has been designated, the catalogue stays on it. Another batch is
+refused, through a clear as well, with "Moving the catalogue to another batch
+is its own action, coming with the move; until then the catalogue stays on
+batch …": the admin's feed history is stamped by the first one, and moving it
+is phase 8. The same batch can be designated again after a clear, which puts
+it in force once more.
+
+The deployment the catalogue is pinned to is not removed, designated or
+cleared since. Its removal, from the page or the Clean action, answers 409
+`catalogue_node_designated`, asked before the deployment is claimed and once
+more before the clean script runs, so a designation saved in between is
+caught. Removing the catalogue node waits for the move.
+
+A pool string may not name the catalogue either. A create or an update of a
+deployment whose `BEE_PUBLISHERS` has an entry with the pinned batch, or at the
+catalogue node's Bee API (the address the control host dials, or the one a
+container here does), is refused with the same sentence a designation of a
+segment batch is, `CATALOGUE_SEGMENT_BATCH_REFUSAL`, cleared or not.
+
+### The record
+
+`CataloguePublisher` (`manager/src/domain/stages/CataloguePublisher.ts`)
+builds it, and `catalogueRequest.ts` checks it against
+`catalogueStampRecordSchema` before it leaves:
+
+| Field                                           | Where the manager reads it                                                                                                                 |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `managerId`                                     | the manager's own id, migration 045                                                                                                        |
+| `nodeName`                                      | the designated deployment's name                                                                                                           |
+| `beeApiUrl`                                     | the node's Bee API as the control host reaches it, `beeApiUrlFor`, the address the Storage card reads, not a container's pool URL          |
+| `batchId`, `designatedAt`                       | the designation row                                                                                                                        |
+| `state`, `ttlSeconds`, `fillRatio`, `immutable` | `StampService.batchReadingFor`, the node's `GET /stamps/{id}` read as `stampHealthFrom` reads it; a node that does not answer is `unknown` |
+| `depth`                                         | the same reading, or the last one the node gave, or the depth at designation while the node does not answer                                |
+| `observedAt`                                    | the moment the designation row was read, before the node is asked                                                                          |
+
+A node whose Bee API reaches the dialling host alone (`localhost`,
+`127.0.0.0/8`, `0.0.0.0`, `[::1]`) is no address for the admin: the record is
+not sent, the outcome is `skipped-no-record`, and the log says why once.
+
+`immutable` is what the node says, and `true` while it says nothing, since the
+designation refused a batch whose kind was not reported and a batch's kind never
+changes.
+
+### When and to whom
+
+To the manager's web2 admin link, `PUT <link>/api/internal/catalogue-stamp`,
+with the link's stored token, the registrar's, on the stage client's bounds:
+http and https alone, no redirect followed, five seconds, 64 KiB of an answer
+read. It is pushed:
+
+- **when the designation changes**, at once after the save;
+- **when the designated deployment changes**, on its `profile.changed` event;
+- **when the pinned batch's readings change**: the batch is read every ten
+  seconds, and a record goes when its state, depth, fill or kind moved, or its
+  life moved more than five minutes off the clock, as a top-up or a dilution
+  moves it;
+- **every 30 seconds** otherwise, and at start.
+
+While a designation is in force its batch is read and pushed; once cleared it
+is read no more. A clear goes to the same link as `DELETE` with `{ observedAt }`, the moment the
+designation was taken out, stored as `cleared_at`, so a retry and a restarted
+manager resend the same moment. It is sent until the admin answers it, and not
+after. One call is in flight at a time: a trigger that comes during one makes
+one more after it, so a clear never overtakes the push before it.
+
+Each call comes to one of `CATALOGUE_PUSH_OUTCOMES`: `stored`, `older-ignored`,
+`cleared`, `not-cleared`, `refused-token`, `refused-record`, `unreachable`,
+`redirected`, `not-admin`, `skipped-no-link`, `skipped-no-node` (the designated
+deployment is gone) and `skipped-no-record` (a record the contract refuses, no
+depth known, or a loopback Bee API address). The card shows the last one, "Web2 admin: stored 12 s ago",
+and the log says it when it changes.
+
+### The card and the node's page
+
+The card lists the deployments that are nothing but a Bee node, then the
+batches the chosen one holds, each with its depth, life, fill and kind, and
+refuses before any save, with the manager's own sentence, what the manager
+would refuse, another batch than the pinned one included. Designated, it shows
+the node, the batch, its last reading and the last push, with Clear the
+designation. Cleared, it says which batch and node the catalogue stays pinned
+to, and offers Designate again for that batch.
+
+On the node's own page the pinned batch carries a **catalogue** chip, and the
+Storage and funding card says that Buy and Use leave the catalogue on the
+pinned batch, and that moving it is its own action. Top up stays offered on it
+(`postage-stamps.md`).
+
+`pnpm -C frontend dev:mock` seeds a `catalogue-node` deployment with one
+immutable and one mutable batch, and
+`frontend/test/catalogue-node-browser.test.mjs` drives the card in Chrome.
+
 ## Limits
 
 - One admin link per manager: a stage on another admin's origin is not pushed.
+- The catalogue stamp record goes to the link as it is now. A link moved to
+  another admin leaves the old one holding the last record it was sent.
+- The last catalogue reading and push are in memory, and a restarted manager
+  says "not sent yet" until its first push, which it makes at start.
 - When the manager shuts down the publisher stops first: no push starts after
   that, not a change, the cadence, a follow-up or the pre-start push. A
   deployment that is gone and was never pushed or seen is dropped from memory.

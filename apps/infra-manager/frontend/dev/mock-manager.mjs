@@ -40,6 +40,7 @@ import {
 import { authRoutes, DEV_PASSWORD, DEV_USERNAME, refuseRequest, seedAuth, userFor } from './mock-auth.mjs';
 import { attemptRefusal, attemptRoutes, openAttempt, resolveAttempt, seedAttempts } from './mock-attempts.mjs';
 import { adminLinkRoutes } from './mock-admin-link.mjs';
+import { catalogueNodeRoutes, catalogueRemovalRefusal } from './mock-catalogue-node.mjs';
 import {
   copyStoredSettings,
   createdSettingsRefusal,
@@ -683,6 +684,8 @@ const ROUTES = [
     'DELETE',
     /^\/profiles\/([^/]+)$/,
     withProfile((_req, res, profile) => {
+      const refusal = catalogueRemovalRefusal(profile.name);
+      if (refusal) return send(res, 409, refusal);
       remove(profile);
       send(res, 202, profile);
     }),
@@ -892,6 +895,13 @@ const ROUTES = [
   ],
   ...attemptRoutes(readBody, publish),
   ...adminLinkRoutes({ readBody }),
+  ...catalogueNodeRoutes({
+    readBody,
+    profiles: () => state.profiles,
+    groups: () => state.groups,
+    stamps: (name) => node(name).stamps,
+    userFor,
+  }),
   ...createTargetRoutes(readBody),
   ...engineRoutes({ readBody, withProfile, findProfile, deploy, publish, settingsSaved: engineSettingsSaved }),
   ...engineConfigRoutes({ readBody, withProfile, deploy, publish }),

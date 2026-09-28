@@ -3,6 +3,7 @@ import http from 'node:http';
 import express from 'express';
 
 import { AuthService } from '../domain/auth/AuthService.js';
+import type { CatalogueBatchService } from '../domain/CatalogueBatch.js';
 import { Database } from '../domain/Database.js';
 import type { FeedIdentity } from '../domain/feedIdentity.js';
 import { IngestService } from '../domain/IngestService.js';
@@ -41,6 +42,7 @@ export interface ApiDeps {
   publishService: PublishService;
   ingestService: IngestService;
   stageService: StageService;
+  catalogueBatch: CatalogueBatchService;
   /**
    * The registrar token: the only one the manager's routes under /api/internal take, and, while the stages move
    * over to tokens of their own, still taken from an uploader as an unattributed caller. Never accepted anywhere
@@ -120,7 +122,10 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
     }),
   );
   app.use('/api/stages', createStagesRouter({ stageService: deps.stageService, requireAuth }));
-  app.use('/api/catalogue-stamp', createCatalogueStampRouter({ stageService: deps.stageService, requireAuth }));
+  app.use(
+    '/api/catalogue-stamp',
+    createCatalogueStampRouter({ stageService: deps.stageService, catalogueBatch: deps.catalogueBatch, requireAuth }),
+  );
 
   app.use(notFound);
   app.use(errorHandler);

@@ -214,6 +214,8 @@ export function stagesWithMain(clock: TestClock = new TestClock()): FakeStageSto
 
 export class FakeCatalogueStampStore implements CatalogueStampStore {
   row: CatalogueStampRow | null = null;
+  /** Every batch `pin` was asked to pin, in order, whether it changed anything or not. */
+  readonly pins: string[] = [];
 
   constructor(private readonly clock: TestClock = new TestClock()) {}
 
@@ -236,6 +238,10 @@ export class FakeCatalogueStampStore implements CatalogueStampStore {
       received_at: this.clock.now(),
       cleared_observed_at: afterClear ? null : existing!.cleared_observed_at,
       cleared_at: afterClear ? null : existing!.cleared_at,
+      active_batch_id: existing?.active_batch_id ?? null,
+      active_record:
+        existing?.active_batch_id === record.batchId ? structuredClone(record) : (existing?.active_record ?? null),
+      active_pinned_at: existing?.active_pinned_at ?? null,
     };
     return structuredClone(this.row);
   }
@@ -252,6 +258,9 @@ export class FakeCatalogueStampStore implements CatalogueStampStore {
         received_at: this.clock.now(),
         cleared_observed_at: at,
         cleared_at: this.clock.now(),
+        active_batch_id: null,
+        active_record: null,
+        active_pinned_at: null,
       };
       return { outcome: 'unknown' };
     }
@@ -263,5 +272,18 @@ export class FakeCatalogueStampStore implements CatalogueStampStore {
     row.cleared_observed_at = at;
     row.cleared_at = this.clock.now();
     return { outcome: 'done', row: structuredClone(row) };
+  }
+
+  /**
+   * As the SQL: pins the batch unless it is pinned already, keeping the stored designated record when it is for the
+   * same batch and `record` otherwise, and says whether it changed anything.
+   */
+  async pin(record: CatalogueStampRecord): Promise<boolean> {
+    this.pins.push(record.batchId);
+    if (!this.row || this.row.active_batch_id === record.batchId) return false;
+    this.row.active_batch_id = record.batchId;
+    this.row.active_record = structuredClone(this.row.record?.batchId === record.batchId ? this.row.record : record);
+    this.row.active_pinned_at = this.clock.now();
+    return true;
   }
 }

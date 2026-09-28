@@ -279,6 +279,40 @@ export class StampService {
   }
 
   /**
+   * What a deployment's own node says about one batch, as `stampHealthFor` reads it, with the batch's depth, which
+   * the catalogue stamp record carries. Never throws: a node that does not answer reads `unknown`, and the depth is
+   * then null.
+   */
+  async batchReadingFor(profile: Profile, batchId: string): Promise<{ health: StampHealth; depth: number | null }> {
+    return this.reads.read(nodeReadKey(profile.name, `stamp/${batchIdOf(batchId)}/reading`), async () => {
+      const client = this.clientFactory(beeApiUrlFor(profile), PROBE_TIMEOUT_MS);
+      const started = Date.now();
+      try {
+        const stamp = await client.getStamp(batchIdOf(batchId));
+        return {
+          health: stampHealthFrom(batchId, [stamp]),
+          depth: Number.isInteger(stamp.depth) ? stamp.depth : null,
+        };
+      } catch (err) {
+        if (err instanceof BeeHttpError && err.status === 404) {
+          return { health: stampHealthFrom(batchId, []), depth: null };
+        }
+        return { health: stampHealthFrom(batchId, null, readFailureFrom(err, Date.now() - started)), depth: null };
+      }
+    });
+  }
+
+  /**
+   * One batch as a deployment's own node reports it now, asked fresh because the caller is about to rely on its
+   * kind. Throws `StampNotFoundError` where the node does not hold it, and a Bee error where the node did not answer.
+   */
+  async heldBatch(name: string, batchId: string): Promise<BeeStamp> {
+    const profile = await this.profiles.findByName(name);
+    if (!profile) throw new ProfileNotFoundError(name);
+    return this.heldStamp(profile, batchId);
+  }
+
+  /**
    * Whether a bee node actually answers at the address a ladder publishes.
    *
    * Probes the *published* URL, not `beeApiUrlFor`. That is the whole point.

@@ -70,20 +70,41 @@ export const sendStageRequest: StageSender = async (request, options = {}) => {
   } catch {
     return 'skipped-no-record';
   }
-  const url = `${request.baseUrl.replace(/\/+$/, '')}${path}`;
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${request.token}`,
-    'content-type': 'application/json',
-  };
   const body: StageRecord | StageRetireRequest =
     request.kind === 'store' ? request.record : { observedAt: request.observedAt };
+  const answered = await boundedAdminCall(
+    { baseUrl: request.baseUrl, path, method: request.kind === 'store' ? 'PUT' : 'DELETE', token: request.token, body },
+    options,
+  );
+  if (answered === 'unreachable' || answered === 'redirected') return answered;
+  return outcomeOf(request, answered.status, answered.body);
+};
 
+/** One call to the web2 admin's internal routes, as the stage and catalogue publishers make it. */
+export interface AdminCall {
+  baseUrl: string;
+  path: string;
+  method: 'PUT' | 'DELETE';
+  token: string;
+  body: unknown;
+}
+
+/**
+ * Sends one JSON call with the link's token on the Test connection probe's rules: no redirect followed, five seconds
+ * in all, at most 64 KiB of the answer read. Answers the status and the body read as JSON, or what stopped it. Never
+ * throws, and what the far end sent goes to the caller alone.
+ */
+export async function boundedAdminCall(
+  call: AdminCall,
+  options: StageRequestOptions = {},
+): Promise<{ status: number; body: unknown } | 'unreachable' | 'redirected'> {
+  const url = `${call.baseUrl.replace(/\/+$/, '')}${call.path}`;
   let response: Response;
   try {
     response = await fetch(url, {
-      method: request.kind === 'store' ? 'PUT' : 'DELETE',
-      headers,
-      body: JSON.stringify(body),
+      method: call.method,
+      headers: { authorization: `Bearer ${call.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(call.body),
       redirect: 'manual',
       signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
     });
@@ -94,11 +115,12 @@ export const sendStageRequest: StageSender = async (request, options = {}) => {
     await response.body?.cancel().catch(() => undefined);
     return 'redirected';
   }
-  let answer: unknown;
   try {
-    answer = await boundedJson(response, options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES);
+    return {
+      status: response.status,
+      body: await boundedJson(response, options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES),
+    };
   } catch {
     return 'unreachable';
   }
-  return outcomeOf(request, response.status, answer);
-};
+}

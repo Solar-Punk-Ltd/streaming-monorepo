@@ -40,6 +40,7 @@ import {
   FakeRenditionStore,
   FakeStreamStore,
   InMemoryAuditLog,
+  noCatalogueStamp,
   TEST_OWNER,
 } from './support/fakes.js';
 import { FakeStageStore, STAGE_ID, stageRecord } from './support/stageFakes.js';
@@ -99,6 +100,7 @@ before(async () => {
     stages,
     new FakeFeedWriteLog(),
     new FakeFeedGateway(),
+    noCatalogueStamp(),
     feed,
     audit,
   );

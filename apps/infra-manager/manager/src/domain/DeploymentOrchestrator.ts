@@ -454,10 +454,17 @@ interface DeploySecrets {
  */
 export type BeforeUploaderStart = (profile: Profile) => Promise<void>;
 
+/**
+ * What a removal asks before it claims the deployment: throws to refuse it. The catalogue node's guard refuses the
+ * designated catalogue node, which the web2 admin writes the brand's catalogue through.
+ */
+export type RemovalGuard = (profileName: string) => Promise<void>;
+
 export class DeploymentOrchestrator {
   private beforeUploaderStart: BeforeUploaderStart | null = null;
   /** The manager's web2 admin link, whose address a token of a deployment's own is generated for. */
   private managerAdminLink: Pick<ManagerAdminLinkStore, 'read'> | null = null;
+  private removalGuard: RemovalGuard | null = null;
 
   constructor(
     private readonly profiles: ProfileRepository,
@@ -499,6 +506,11 @@ export class DeploymentOrchestrator {
    */
   setManagerAdminLink(link: Pick<ManagerAdminLinkStore, 'read'> | null): void {
     this.managerAdminLink = link;
+  }
+
+  /** Sets what a removal asks before it claims the deployment, a setter for the same reason as the one above. */
+  setRemovalGuard(guard: RemovalGuard | null): void {
+    this.removalGuard = guard;
   }
 
   /** The hook, where this deploy starts an uploader. A failure is a warning and never holds the deploy. */
@@ -1546,6 +1558,7 @@ export class DeploymentOrchestrator {
     profile: Profile,
     input: { all?: boolean; expectedInstanceId?: string } = {},
   ): Promise<RunHandle & { profile: Profile }> {
+    await this.removalGuard?.(profile.name);
     await this.assertRemovalReady(profile.name);
     await this.targetDaemon(targetAlias(profile.host));
     const expectedInstanceId = input.expectedInstanceId ?? profile.instance_id;
@@ -1577,7 +1590,12 @@ export class DeploymentOrchestrator {
         paths,
         script: paths.clean,
         args,
-        beforeRun: () => this.assertRemovalReady(claimed.name),
+        // The guard again, after the claim: a designation saved between the first check and the claim is caught
+        // here, before the clean script runs. A designation refuses a deployment that is being removed after this.
+        beforeRun: async () => {
+          await this.removalGuard?.(claimed.name);
+          await this.assertRemovalReady(claimed.name);
+        },
         markFailure,
         onSuccess: async () => {
           await this.verifyPortRemoval(claimed);

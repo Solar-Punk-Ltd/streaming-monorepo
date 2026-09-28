@@ -20,6 +20,7 @@ import {
 } from '@streaming-infra-manager/common';
 
 import { useEditors } from '../app/EditorsContext';
+import { useCatalogueNode } from '../catalogueNode/useCatalogueNode';
 import { navigate, routes, type DeploymentFocus } from '../app/router';
 import { useActions } from '../app/useDeploymentActions';
 import { useDeployments } from '../app/useDeploymentsStore';
@@ -157,6 +158,8 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
   const group = groups.find((entry) => entry.id === profile.group_id) ?? null;
   const version = versions?.find((entry) => entry.id === profile.stack_version_id) ?? null;
   const rung = group ? rungFromMemberName(group.name, profile.name) : null;
+  // Only a node that could be the catalogue's asks whether it is.
+  const catalogue = useCatalogueNode({ enabled: shape === 'bee-node' });
   const stampHealth = stampHealthFrom(profile.stamp_id, bee?.stamps ?? null, bee?.stampsFailure);
   const chequebookHealth: ChequebookHealth | null = bee?.chequebook
     ? chequebookHealthFromPayload(bee.chequebook.health)
@@ -297,6 +300,11 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
               chequebookHealth={chequebookHealth}
               defaultDepth={rung ? suggestedRungDepth(rung) : undefined}
               rung={rung}
+              catalogueBatchId={
+                catalogue.answer?.designation?.profileName === profile.name
+                  ? catalogue.answer.designation.batchId
+                  : null
+              }
               onChanged={reload}
             />
           )}
