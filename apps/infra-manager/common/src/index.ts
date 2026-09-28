@@ -55,4 +55,9 @@ export {
 } from './portPolicy.js';
 export { addressOfStreamKey } from './streamKey.js';
 // The SRT line a broadcaster sends to, built as every app builds it.
-export { buildObsSrtServer, buildSrtPublishUrl, type ObsSrtServer } from '@streaming-monorepo/contracts';
+export {
+  buildObsSrtServer,
+  buildSrtPublishUrl,
+  OBS_SRT_PASSPHRASE_FIELD_HELP,
+  type ObsSrtServer,
+} from '@streaming-monorepo/contracts';
