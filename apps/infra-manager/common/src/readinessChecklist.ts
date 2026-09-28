@@ -792,10 +792,10 @@ function followingStep({ profile, streamers }: ChecklistInput): ChecklistStep {
 }
 
 /** The profile on this manager that signs the feed at `address`, if any. */
-export function streamerFor(
+export function streamerFor<P extends ReadinessProfile>(
   address: string | null | undefined,
-  streamers: readonly ReadinessProfile[],
-): ReadinessProfile | null {
+  streamers: readonly P[],
+): P | null {
   if (!address) return null;
   const wanted = address.toLowerCase();
   return streamers.find((p) => p.public_key?.toLowerCase() === wanted) ?? null;

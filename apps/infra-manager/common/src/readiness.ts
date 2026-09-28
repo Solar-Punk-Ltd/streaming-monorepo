@@ -1,3 +1,5 @@
+import type { StageReadiness, StageReadinessTone } from '@streaming-monorepo/contracts';
+
 import type { ChequebookHealth } from './chequebook.js';
 import { type ReadinessProfile, shapeOf } from './deploymentShape.js';
 import {
@@ -58,7 +60,17 @@ export function readinessOf(
   chequebook?: ChequebookHealth | null,
   { wallet, uploaderHealth }: OtherReadings = {},
 ): Readiness {
-  return readinessFor({
+  return readinessFor(readinessInputOf(profile, health, chequebook, { wallet, uploaderHealth }));
+}
+
+/** The checklist input `readinessOf` judges, for a caller that wants the whole list and not only its first blocker. */
+export function readinessInputOf(
+  profile: ReadinessProfile,
+  health?: StampHealth,
+  chequebook?: ChequebookHealth | null,
+  { wallet, uploaderHealth }: OtherReadings = {},
+): ChecklistInput {
+  return {
     profile,
     stampHealth: health ?? stampHealthFrom(profile.stamp_id, null),
     chequebook: chequebook ?? null,
@@ -69,7 +81,7 @@ export function readinessOf(
     clientUrl: null,
     streamers: [],
     ...(uploaderHealth ? { uploaderHealth } : {}),
-  });
+  };
 }
 
 /** The readings some views take beside a batch and a chequebook, each absent where the view did not. */
@@ -88,4 +100,37 @@ export function needsAttention(
 ): boolean {
   const { tone } = readinessOf(profile, health, chequebook, { uploaderHealth });
   return tone === 'warn' || tone === 'err';
+}
+
+/**
+ * How a console tone reads on a stage record.
+ *
+ * - `ok` is `ready`: every step of the list is ok.
+ * - `warn` is `warning`: the stage can take a stream, and something is short, like a batch that ends soon or an
+ *   uploader waiting for its node.
+ * - `err` is `blocked`: the node or the uploader refuses, like a full batch or an empty chequebook.
+ * - `gray` is `blocked` as well: a step that is off is one nothing acts on until an operator does, like a stopped
+ *   deployment or a batch still to buy, and a stream sent to it goes nowhere.
+ * - `info` is `unknown`: the step is under way or its reading has not arrived, like a deploy or a batch settling, so
+ *   the manager has no verdict yet.
+ */
+export const STAGE_READINESS_OF_TONE: Readonly<Record<ReadinessTone, StageReadinessTone>> = {
+  ok: 'ready',
+  warn: 'warning',
+  err: 'blocked',
+  gray: 'blocked',
+  info: 'unknown',
+};
+
+/**
+ * The readiness of a stage as the manager hands it to the web2 admin. The verdict is `readinessFor`'s, the one the
+ * console shows, and the reasons are the problem of every step of the list that is not ok, in the list's order, so
+ * the first reason is the console's own label. A stage that is ready has none.
+ */
+export function stageReadinessOf(input: ChecklistInput): StageReadiness {
+  const { tone } = readinessFor(input);
+  const reasons = buildChecklist(input)
+    .filter((step) => step.state !== 'ok')
+    .map((step) => step.problem ?? step.title);
+  return { tone: STAGE_READINESS_OF_TONE[tone], reasons };
 }
