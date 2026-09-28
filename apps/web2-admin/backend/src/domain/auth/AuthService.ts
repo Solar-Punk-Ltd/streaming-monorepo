@@ -135,14 +135,16 @@ export class AuthService {
 
     const token = createSessionToken();
     const expiresAt = absoluteExpiryFrom(now);
-    await this.sessions.create({
-      tokenHash: hashSessionToken(token),
-      userId: user.id,
-      expiresAt,
-      ip: input.ip,
-      userAgent: input.userAgent,
-    });
-    await this.users.markSignedIn(user.id, now);
+    const admitted = await this.credentials.admitSession(
+      user.id,
+      user.password_hash,
+      { tokenHash: hashSessionToken(token), userId: user.id, expiresAt, ip: input.ip, userAgent: input.userAgent },
+      now,
+    );
+    if (!admitted) {
+      logger.warn(`[Auth] sign-in refused, the password changed while it was checked: username="${input.username}"`);
+      throw new InvalidCredentialsError();
+    }
 
     logger.info(`[Auth] ${user.username} signed in from ${input.ip}`);
     return { user: { ...user, last_login_at: now }, token, expiresAt };
@@ -290,7 +292,16 @@ export class AuthService {
     if (problem) throw new WeakPasswordError(problem);
 
     const changedAt = new Date();
-    await this.credentials.changePassword(user.id, await hashPassword(next), session.tokenHash);
+    const changed = await this.credentials.changePassword(
+      user.id,
+      user.password_hash,
+      await hashPassword(next),
+      session.tokenHash,
+    );
+    if (!changed) {
+      logger.warn(`[Auth] password change refused, the password changed while it was checked: ${user.username}`);
+      throw new InvalidCredentialsError();
+    }
     logger.info(`[Auth] password changed: ${user.username}`);
     return { ...user, password_changed_at: changedAt, updated_at: changedAt };
   }
