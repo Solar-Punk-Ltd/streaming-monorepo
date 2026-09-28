@@ -33,10 +33,10 @@
 #      it holds one directory for the whole run so a second upgrade cannot
 #      start beside it, stops the old api, migrates, starts the project, waits
 #      for the api to answer, and then waits for the api's own boot to finish
-#      building the pinned stack commit. With MANAGER_DOMAIN set the upgrade is
-#      asked for the public TLS edge, and without it the edge is removed by name
-#      and the removal is checked, because dropping a profile does not stop a
-#      container already running under it.
+#      building the pinned stack commit.
+#
+# HTTPS is the host's edge, infra/edge/edge.sh, which serves the console
+# published on the host's loopback. See deploy/README.md.
 #
 # The streaming stack's own settings live on the server, under the versions
 # root, and no deploy reads or writes them. See deploy/README.md.
@@ -72,35 +72,6 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 if ! grep -q "POSTGRES_PASSWORD=.\+" "$ENV_FILE"; then
     echo "ERROR: POSTGRES_PASSWORD is missing or empty in $ENV_FILE." >&2
-    exit 1
-fi
-
-# Compose trims the same value on the server and strips one pair of quotes, so
-# a value like MANAGER_DOMAIN="manager.example.org" is a plain name to it. Trailing whitespace or a
-# carriage return left the name looking set here, this script reporting success,
-# and the edge restarting forever on an empty site address. Trim it the way
-# Compose will, and refuse a name Caddy could not ask for a certificate for
-# rather than finding out from the edge's logs.
-MANAGER_DOMAIN="$(
-    sed -n 's/^MANAGER_DOMAIN=//p' "$ENV_FILE" |
-        tail -n 1 |
-        tr -d '\r' |
-        tr '[:upper:]' '[:lower:]' |
-        sed 's/^[[:space:]]*//; s/[[:space:]]*$//' |
-        sed -E 's/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/'
-)"
-HOSTNAME_PATTERN='^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
-
-if [ -z "$MANAGER_DOMAIN" ]; then
-    PUBLIC_EDGE_FLAG=""
-    echo "==> MANAGER_DOMAIN is empty: no public edge, SSH tunnel only"
-elif [[ "$MANAGER_DOMAIN" =~ $HOSTNAME_PATTERN ]]; then
-    PUBLIC_EDGE_FLAG="--public-edge"
-    echo "==> MANAGER_DOMAIN=${MANAGER_DOMAIN}: starting the public HTTPS edge too"
-else
-    echo "ERROR: MANAGER_DOMAIN in $ENV_FILE is not a host name: '${MANAGER_DOMAIN}'." >&2
-    echo "Give it a dotted name with an A record on this host, such as" >&2
-    echo "manager.example.org, or leave it empty for the SSH tunnel only." >&2
     exit 1
 fi
 
@@ -264,7 +235,7 @@ RECEIPT="\$(docker compose run --rm --no-deps -T api node dist/cli.js manager:up
     --compose-file ${REMOTE_PATH}/manager/docker-compose.yml \
     --mutable-root ${REMOTE_PATH} \
     --bundled-timeout '${BUNDLED_TIMEOUT}' \
-    \${FIRST_USE_FLAG} ${PUBLIC_EDGE_FLAG} < /dev/null)" || UPGRADE_STATUS=\$?
+    \${FIRST_USE_FLAG} < /dev/null)" || UPGRADE_STATUS=\$?
 echo "[deploy] upgrade receipt: \${RECEIPT}"
 if [ "\${UPGRADE_STATUS}" -ne 0 ]; then
     echo "[deploy] the upgrade exited with \${UPGRADE_STATUS}" >&2
@@ -278,9 +249,5 @@ REMOTE
 
 
 echo "==> Done."
-if [ -n "$MANAGER_DOMAIN" ]; then
-    echo "Public: https://${MANAGER_DOMAIN}"
-    echo "First certificate: ssh ${SSH_TARGET}, then in ${REMOTE_PATH}/manager run docker compose logs -f edge"
-fi
 echo "Tunnel: ssh -L 8080:localhost:8080 ${SSH_TARGET}"
 echo "Then open: http://localhost:8080"

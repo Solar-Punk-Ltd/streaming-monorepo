@@ -21,8 +21,8 @@ and how the pieces fit under `docs/`. Read it before moving anything.
 - `docs/ROADMAP.md` is the plan and the checkpoint log. Update it when a checkpoint closes or a
   decision lands.
 - `docs/architecture/` holds the design briefs.
-- `docs/hosts.md` holds the host roles, the edge, and the names on the hosts that never change.
-- `docs/infra-state.md` says what is deployed where.
+- `docs/hosts.md` holds the host roles, the edge, the recipe for each kind of fresh host, and the
+  names on the hosts that never change.
 - `docs/research/` holds condensed reports on the neighbouring systems. Read the relevant one
   before touching anything that talks to those systems.
 

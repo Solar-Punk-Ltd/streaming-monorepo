@@ -31,8 +31,6 @@ export interface ComposeUpgradeSettings {
   composeFile: string;
   /** The tree the manager ships with, whose parent holds the commit it pins. */
   bundledStackRoot: string;
-  /** Whether this deploy asked for the public HTTPS edge. */
-  publicEdge: boolean;
   /**
    * Whether the deploy found a host that has never run the manager.
    *
@@ -61,8 +59,6 @@ const DEFAULT_TIMEOUTS: Required<ComposeUpgradeTimeouts> = {
 
 export const API_SERVICE = 'api';
 const POSTGRES_SERVICE = 'postgres';
-const EDGE_SERVICE = 'edge';
-const PUBLIC_PROFILE = ['--profile', 'public'];
 const HEALTHY = 'healthy';
 const RUNNING = 'running';
 const PROBE_TIMEOUT_MS = 10_000;
@@ -250,31 +246,12 @@ export class ComposeUpgradeOperations implements ManagerUpgradeOperations {
     // this is the boot this upgrade started, and anything it still says is an
     // earlier one's.
     this.bundledBeforeStart = await this.database.readBundledVersion();
-    if (this.settings.publicEdge) {
-      await this.compose(request.project, [...PUBLIC_PROFILE, 'up', '-d', '--no-build', '--remove-orphans']);
-      return;
-    }
     await this.compose(request.project, ['up', '-d', '--no-build', '--remove-orphans']);
-    // Dropping a profile does not stop a container already running under it, so the edge goes by name.
-    await this.compose(request.project, [...PUBLIC_PROFILE, 'rm', '-sf', EDGE_SERVICE]);
-    if (await this.edgeIsRunning(request.project)) {
-      throw new Error(
-        'MANAGER_DOMAIN is empty and the edge is still running, so the host is still answering on 80 and 443. Stop it by hand before deploying again.',
-      );
-    }
   }
 
   async verifyProject(request: ManagerUpgradeRequest): Promise<void> {
     await this.waitForApi();
     await this.assertApiRunsTheBuiltImage(request);
-    const running = await this.edgeIsRunning(request.project);
-    if (running !== this.settings.publicEdge) {
-      throw new Error(
-        running
-          ? 'The public edge is running although this deploy set no domain, so the host is answering on 80 and 443.'
-          : 'This deploy set a domain but the public edge is not running, so the host is not answering on 443.',
-      );
-    }
   }
 
   /**
@@ -366,10 +343,6 @@ export class ComposeUpgradeOperations implements ManagerUpgradeOperations {
   private async serviceContainers(project: string, service: string): Promise<ServiceContainer[]> {
     const result = await this.compose(project, ['ps', '-a', '--format', 'json', service]);
     return parseServiceContainers(result.stdout);
-  }
-
-  private edgeIsRunning(project: string): Promise<boolean> {
-    return this.containerIds(project, [...PUBLIC_PROFILE, 'ps', '-q', EDGE_SERVICE]).then((ids) => ids.length > 0);
   }
 
   /**

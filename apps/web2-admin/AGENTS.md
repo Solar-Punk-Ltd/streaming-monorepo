@@ -15,7 +15,7 @@ of the repository holds the rules that apply everywhere. This file adds the admi
 - The docs are at the repository root. `../../docs/architecture/web2-admin.md` is the text
   version of the interactive MVP model and the reference for what the admin layer is and is not.
   `../../docs/architecture/web2-admin-auth.md` is the login gate. `../../docs/ROADMAP.md` is the
-  plan and the checkpoint log. `../../docs/infra-state.md` says what is deployed where.
+  plan and the checkpoint log. `../../docs/hosts.md` says how a host is set up.
   `../../docs/research/` holds condensed reports on the sibling systems (the manager and the
   stack). Read the relevant one before touching anything that talks to those systems.
 

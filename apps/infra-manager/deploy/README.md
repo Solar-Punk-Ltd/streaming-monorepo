@@ -2,8 +2,8 @@
 
 Single-server deployment: postgres + manager API + nginx-served frontend, all
 in one `docker compose` project. Team access over an SSH tunnel, with no public
-port, until a domain is set and the Caddy edge gives it HTTPS. See "Opening the
-manager to the internet" below.
+port, until the host's edge, `infra/edge`, gives it a name and HTTPS. See
+"Opening the manager to the internet" below.
 
 ## One-time server bootstrap
 
@@ -30,8 +30,6 @@ WEB_PORT=8080
 # This value is only used if you also run `pnpm dev` on the server (you won't).
 DATABASE_URL=postgres://manager:manager@localhost:5432/manager
 MANAGER_PORT=9876
-# Empty until the manager goes public. See "Opening the manager to the internet".
-MANAGER_DOMAIN=
 ```
 
 ## Local `~/.ssh/config` snippet
@@ -510,33 +508,32 @@ interface. The input hook covers host listeners. The forward hook covers
 published container traffic. Host-network containers with unprovable bindings
 cause the inventory export to refuse.
 
-### 4. DNS, then the domain
+### 4. DNS, then the host's edge
+
+The manager has no HTTPS of its own. The host's edge does it: one Caddy per
+host, its own compose project `edge`, kept in `infra/edge/` in this repository,
+serving every console the host publishes on its loopback under its own name. On
+a host that runs the manager alone it serves the manager's name alone. "Public
+HTTPS: the host's edge" in
+[../../web2-admin/deploy/README.md](../../web2-admin/deploy/README.md) is the
+whole of it.
 
 Point an A record at the server. Give the manager a name of its own rather than
 an apex domain that also serves other things, because the edge sends an HSTS
-header that covers subdomains for a year. Then in `manager/.env`:
-
-```env
-MANAGER_DOMAIN=manager.example.org
-```
-
-Deploy again. `deploy.sh` prints which of the two it is doing, and with a domain
-set it adds `--profile public`, which starts the `edge` container. Watch the
-first certificate arrive:
+header that covers subdomains for a year. Then, from the repository root, put
+the name in the edge's env file:
 
 ```sh
-ssh manager-host
-cd ~/streaming-infra-manager/manager
-docker compose logs -f edge
+cp infra/edge/.env.sample infra/edge/.env
+# set MANAGER_DOMAIN=manager.example.org, and MANAGER_PORT if WEB_PORT is not 8080
+./infra/edge/edge.sh --host=manager-host
 ```
 
-Then open `https://manager.example.org` and sign in. The certificate and Caddy's
-account key live in the `edge-data` volume, so recreating the container does not
-ask Let's Encrypt for another one.
-
-To go back to the tunnel alone, empty `MANAGER_DOMAIN` and deploy again. The
-edge container is stopped and removed, the deploy checks that it is gone, and
-the volume keeps the certificate for the next time it is switched on.
+The run says which name it serves on which loopback port, checks that the
+manager answers there, and waits a while for the first certificate. Then open
+`https://manager.example.org` and sign in. The certificates live in the edge's
+volume `edge_caddy-data`, so running the edge again does not ask Let's Encrypt
+for another one.
 
 ### 5. Keep the tunnel
 
@@ -559,18 +556,12 @@ docker compose down -v            # nuke postgres data too, so be sure
 
 ## Architecture notes
 
-- **`edge`** (Caddy) is the only service that publishes a port to the world:
-  80, 443 and 443/udp. It exists only in the `public` compose profile, which
-  `deploy.sh` adds when `MANAGER_DOMAIN` is set, so without a domain it never
-  starts. Clearing the domain and deploying again stops and removes the
-  container, and the deploy fails rather than finishing quietly if it is still
-  running afterwards. That takes naming the profile: Compose counts a service
-  whose profile is inactive as one it knows about rather than an orphan, so
-  `--remove-orphans` leaves it running. It terminates TLS, gets and renews its
-  own certificate, and proxies everything to `web:80`.
+- **No service publishes a port to the world.** HTTPS is the host's edge,
+  `infra/edge`, a compose project of its own on the host's network, which
+  terminates TLS and proxies the manager's name to `127.0.0.1:8080`.
 - **`web`** (nginx:alpine) publishes `127.0.0.1:8080` and nothing else, so it is
-  reachable through the SSH tunnel and from the edge over the compose network,
-  never directly from outside. It serves the built React SPA and
+  reachable through the SSH tunnel and from the host's edge on the host's
+  loopback, never directly from outside. It serves the built React SPA and
   reverse-proxies `/auth`, `/profiles`, `/groups`, `/health`, `/services`,
   `/config`, `/targets`, `/manager-settings`, `/versions`, `/chequebook`,
   `/metrics` and `/events` to `api:9876`. Every path the dev server proxies has
