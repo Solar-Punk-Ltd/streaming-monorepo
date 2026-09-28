@@ -23,6 +23,7 @@ import {
 import { ScheduleField } from '../components/schedule/ScheduleField';
 import { assignableStages, StageField, StageReadinessWarning } from '../components/stages/StageField';
 import { nextFullHourValue } from '../components/schedule/scheduleTime';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useSnackbar } from '../components/Snackbar';
 
 /** msrs-client's messages, so the two consoles fail the same way. */
@@ -105,6 +106,13 @@ function toInput(form: FormState): StreamInput | null {
 }
 
 /**
+ * Said beside the stage of a draft from before stages that holds a recording,
+ * and again before its first stage is saved.
+ */
+export const FIRST_STAGE_IS_FINAL =
+  'This stream holds a recording made before stages. The first stage you give it is final, and it must be the stage the recording was made on.';
+
+/**
  * Why the stream's stage can no longer change, as the API would say it, or
  * null while it can. Publishing fixes it, and a stream that holds a recording
  * keeps the stage the recording was made on; one from before stages, which
@@ -138,6 +146,8 @@ export function StreamFormPage() {
   // appears meanwhile shows on the next visit to the form.
   const [stages, setStages] = useState<StageSummary[] | null>(null);
   const [stagesError, setStagesError] = useState<string | null>(null);
+  // The save waiting on the operator's word that the first stage is final.
+  const [confirmFirstStage, setConfirmFirstStage] = useState<StreamInput | null>(null);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     const next = { ...form, [key]: value };
@@ -247,6 +257,9 @@ export function StreamFormPage() {
   const scheduleLocked = hasGoneLive && loaded?.scheduledStartTime !== null;
 
   const stageLock = stageLockOf(loaded);
+  // A draft from before stages that holds a recording may be given a stage
+  // once, and then keeps it: the recording lives under that stage's owner.
+  const firstStageIsFinal = loaded?.status === 'draft' && loaded.manifestIndex != null && loaded.stageId === null;
   const chosenStage = stages?.find((stage) => stage.stageId === form.stageId) ?? null;
 
   const storedThumbnail = loaded?.hasThumbnail && !removeStored && !picked ? api.thumbnailUrl(loaded) : null;
@@ -287,6 +300,17 @@ export function StreamFormPage() {
       return;
     }
     setError(null);
+    // The first stage of a recording from before stages cannot be taken back,
+    // so it is asked for once more before it is sent.
+    if (firstStageIsFinal && input.stageId) {
+      setConfirmFirstStage(input);
+      return;
+    }
+    await save(input);
+  };
+
+  // Catches every failure into the form's error line, like `submit`.
+  const save = async (input: StreamInput) => {
     setSaving(true);
 
     let saved: Stream;
@@ -396,6 +420,7 @@ export function StreamFormPage() {
                 disabled={saving || stageLock !== null}
                 helperText={stageLock ?? undefined}
               />
+              {firstStageIsFinal ? <Alert severity="warning">{FIRST_STAGE_IS_FINAL}</Alert> : null}
               {chosenStage ? <StageReadinessWarning stage={chosenStage} /> : null}
             </Stack>
 
@@ -426,6 +451,19 @@ export function StreamFormPage() {
           </Stack>
         </Box>
       </Paper>
+
+      <ConfirmDialog
+        open={confirmFirstStage !== null}
+        title="Give the recording its stage"
+        message={`${FIRST_STAGE_IS_FINAL} Save with ${chosenStage?.name ?? 'this stage'}?`}
+        confirmText="Save"
+        onConfirm={() => {
+          const input = confirmFirstStage;
+          setConfirmFirstStage(null);
+          if (input) void save(input);
+        }}
+        onCancel={() => setConfirmFirstStage(null)}
+      />
     </Stack>
   );
 }

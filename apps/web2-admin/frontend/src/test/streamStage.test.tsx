@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { StageSummary, Stream } from '@streaming-monorepo/web2-admin-common';
 
 import { STAGE_LOCKED } from '../errors';
-import { StreamFormPage } from '../pages/StreamFormPage';
+import { FIRST_STAGE_IS_FINAL, StreamFormPage } from '../pages/StreamFormPage';
 import { StreamsPage } from '../pages/StreamsPage';
 import { MAIN_STAGE_ID, jsonOk, makeStage, makeStream, mockFetch, renderWithProviders } from './helpers';
 
@@ -182,6 +182,61 @@ describe('the stream form stage picker', () => {
     expect(screen.getByText(STAGE_LOCKED.recording)).toBeInTheDocument();
   });
 
+  it('warns that the first stage of a recording from before stages is final, and asks before saving it', async () => {
+    const sent: Record<string, unknown>[] = [];
+    const recorded = makeStream({
+      id: 'old-rec',
+      status: 'draft',
+      stageId: null,
+      manifestIndex: 7,
+      durationSeconds: 61,
+    });
+    renderEdit(recorded, [makeStage()], (body) => sent.push(body));
+
+    await waitFor(() => expect(optionLabels(stageSelect())).toEqual(['No stage', 'Main stage']));
+    expect(stageSelect()).toBeEnabled();
+    expect(screen.getByText(FIRST_STAGE_IS_FINAL)).toBeInTheDocument();
+
+    fireEvent.change(stageSelect(), { target: { value: MAIN_STAGE_ID } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update Stream' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Save with Main stage?');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(sent).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Update Stream' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]!.stageId).toBe(MAIN_STAGE_ID);
+  });
+
+  it('saves a recording from before stages without asking while it stays without a stage', async () => {
+    const sent: Record<string, unknown>[] = [];
+    const recorded = makeStream({
+      id: 'old-rec',
+      status: 'draft',
+      stageId: null,
+      manifestIndex: 7,
+      durationSeconds: 61,
+    });
+    renderEdit(recorded, [makeStage()], (body) => sent.push(body));
+
+    await waitFor(() => expect(stageSelect()).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Update Stream' }));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]!.stageId).toBeNull();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('says nothing about a final first stage on a draft that holds no recording', async () => {
+    renderEdit(makeStream({ id: 'bare-id', stageId: null }), [makeStage()]);
+
+    await waitFor(() => expect(stageSelect()).toBeEnabled());
+    expect(screen.queryByText(FIRST_STAGE_IS_FINAL)).not.toBeInTheDocument();
+  });
+
   it('shows the stream on a stage the manager retired, and says it takes no new streams', async () => {
     renderEdit(makeStream({ id: 'old-id', stageId: RETIRED_STAGE_ID }), [makeStage(), RETIRED]);
 
@@ -237,6 +292,20 @@ describe('My Streams by stage', () => {
 
     fireEvent.change(filter, { target: { value: 'all' } });
     expect(screen.getAllByRole('row')).toHaveLength(4);
+  });
+
+  it('says so when no stream is without a stage', async () => {
+    mockFetch([
+      { path: '/api/streams', respond: () => jsonOk({ streams: [streams[0]] }) },
+      { path: '/api/stages', respond: () => jsonOk({ stages: [makeStage()] }) },
+    ]);
+    renderWithProviders(<StreamsPage />);
+    await screen.findByText('On main');
+
+    fireEvent.change(screen.getByLabelText('Stage'), { target: { value: 'none' } });
+
+    expect(screen.getByText('No streams without a stage.')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
   it('keeps the list when the stages cannot be read, naming each stage by its id', async () => {

@@ -214,7 +214,7 @@ export function StreamsPage() {
       {shown && streams && streams.length > 0 && shown.length === 0 ? (
         <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            No streams on this stage.
+            {stageFilter === NO_STAGE ? 'No streams without a stage.' : 'No streams on this stage.'}
           </Typography>
         </Paper>
       ) : null}

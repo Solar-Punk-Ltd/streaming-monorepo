@@ -141,7 +141,11 @@ ingest details. The admin warns before a stream is scheduled on a stage whose re
 
 Two rows older than stages are let through, since each has no stage to keep: a draft that holds a
 recording may be given its first stage, and a stream already on the catalogue is republished as it
-is, with no stage until it is unpublished. Only a draft is refused at publish for having none. The
+is, with no stage until it is unpublished. Only a draft is refused at publish for having none, and
+a draft without a recording is refused as well when its stage no longer takes streams. The console
+warns that the first stage of such a recorded draft is final and asks before saving it. Phase 6 must
+revisit these rows, whose recordings are signed by the brand key: for example by offering them only
+stages whose owner matches the recording's. The
 admin no longer asks whether the ingest verifies the per-stream `key=`: every uploader that takes
 streams from it does, so `INGEST_KEY_VERIFIED` leaves the env with the other `INGEST_*` keys.
 
