@@ -33,7 +33,7 @@ the same rig which gave 2.9%, 13.1% and 0.0%, and found all 19 refusals retrieva
 edited hours before it landed. The recommendation was right the whole time. The reason given for it
 was dead.
 
-**`docs/scale/running-a-high-scale-event-on-swarm.md` told another repository that a 0.25s GOP
+**`docs/scale/running-a-high-scale-event-on-swarm.md` (removed since, the repository's history keeps it) told another repository that a 0.25s GOP
 ships**, and derived from it the 267ms segment budget that every over-budget share in that document
 is scored against, at nine sites. What ships is 0.5s and a **500ms** budget. A simulation built from
 that handover would have set its pass threshold at roughly half the real one.
