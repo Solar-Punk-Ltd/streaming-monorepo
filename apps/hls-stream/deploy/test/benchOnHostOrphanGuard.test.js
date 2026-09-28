@@ -302,7 +302,13 @@ describe('bench-on-host names its container after the profile and the slot', () 
   it('launches the run under that name', async () => {
     const sandbox = benchSandbox();
 
-    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--no-setup', '--script', 'bench:latency']);
+    const run = await runScript(sandbox, 'bench-on-host.sh', [
+      '--target',
+      BENCH_TARGET,
+      '--no-setup',
+      '--script',
+      'bench:latency',
+    ]);
 
     assert.equal(run.exitCode, 0, `bench-on-host.sh failed: ${run.stdout}${run.stderr}`);
     const launches = sandbox.sshCommands().filter((command) => command.includes('docker run '));
@@ -372,7 +378,13 @@ describe('bench-on-host names its container after the profile and the slot', () 
   it('refuses a profile that cannot be a container name', async () => {
     const sandbox = benchSandbox();
 
-    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--no-setup', '--profile', 'Lat bench']);
+    const run = await runScript(sandbox, 'bench-on-host.sh', [
+      '--target',
+      BENCH_TARGET,
+      '--no-setup',
+      '--profile',
+      'Lat bench',
+    ]);
 
     assert.notEqual(run.exitCode, 0, 'a profile that is not a usable container name was accepted');
     assert.match(run.stderr, /--profile/);
@@ -382,7 +394,13 @@ describe('bench-on-host names its container after the profile and the slot', () 
   it('refuses a slot that cannot be a container name', async () => {
     const sandbox = benchSandbox();
 
-    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--no-setup', '--portSlot', 'seven']);
+    const run = await runScript(sandbox, 'bench-on-host.sh', [
+      '--target',
+      BENCH_TARGET,
+      '--no-setup',
+      '--portSlot',
+      'seven',
+    ]);
 
     assert.notEqual(run.exitCode, 0, 'a slot that is not a whole number was accepted');
     assert.match(run.stderr, /--portSlot/);
@@ -436,7 +454,13 @@ describe('bench-on-host refuses a target that is already running a harness conta
   it('reads only the container this profile and slot would launch', async () => {
     const sandbox = benchSandbox();
 
-    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--no-setup', '--portSlot', '1']);
+    const run = await runScript(sandbox, 'bench-on-host.sh', [
+      '--target',
+      BENCH_TARGET,
+      '--no-setup',
+      '--portSlot',
+      '1',
+    ]);
 
     assert.equal(run.exitCode, 0, `a free target was refused: ${run.stdout}${run.stderr}`);
     assert.match(sandbox.sshCommands()[0], /docker ps -a --filter 'name=\^latbench-harness-slot1\$'/);
