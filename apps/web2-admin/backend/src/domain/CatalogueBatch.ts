@@ -156,7 +156,8 @@ export interface CatalogueBatchStore {
 /** Whether a feed has history, and how much of it no recorded batch stamped: the slice of the feed write log read here. */
 export interface FeedHistory {
   lastWrite(owner: string, topic: string): Promise<unknown>;
-  countUnrecordedBatch(owner: string, topic: string): Promise<number>;
+  /** Rows already uploaded again under `pinnedBatchId` by a move are under a known batch, and are not counted. */
+  countUnrecordedBatch(owner: string, topic: string, pinnedBatchId: string | null): Promise<number>;
 }
 
 export interface CatalogueBatchOptions {
@@ -194,15 +195,15 @@ export class CatalogueBatchService {
 
   /**
    * What the console is told: the batch the catalogue is written with, why it is refused, a waiting move, and the
-   * writes stamped by a batch the admin never recorded. Those are counted for as long as any is left, pinned batch or
-   * not: the batch that stamped them is unknown, so it cannot be told apart from the pinned one. The in-memory gateway
+   * writes stamped by a batch the admin never recorded. Those are counted for as long as any is left that a move has
+   * not uploaded again under the pinned batch, pinned batch or not: the batch that stamped them is unknown, so it cannot be told apart from the pinned one. The in-memory gateway
    * counts none, since its writes stamp nothing.
    */
   async status(): Promise<CatalogueWriteStatus> {
-    const [plan, unrecorded] = await Promise.all([
-      this.plan(),
-      this.options.stampRequired ? this.history.countUnrecordedBatch(this.feed.owner, this.feed.topicHex) : 0,
-    ]);
+    const plan = await this.plan();
+    const unrecorded = this.options.stampRequired
+      ? await this.history.countUnrecordedBatch(this.feed.owner, this.feed.topicHex, plan.pinned)
+      : 0;
     return {
       batch: plan.batch ? readingOf(plan.batch, plan.refusal?.problem ?? null) : null,
       refusal: this.writesUnstamped(plan) ? null : plan.refusal,

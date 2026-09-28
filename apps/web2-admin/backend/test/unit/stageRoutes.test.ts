@@ -437,6 +437,8 @@ describe('the console’s stage reads', () => {
         waiting: null,
         refusal: null,
         latest: null,
+        designatedBatchId: null,
+        pinnedBatchId: null,
       },
     });
 

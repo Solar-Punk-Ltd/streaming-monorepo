@@ -39,6 +39,12 @@
 -- On feed_writes, restamped_batch_id and restamped_at say which batch a write
 -- was last uploaded again under, and when. Both or neither. A slot with no row
 -- (written before migration 003) is covered by next_index alone.
+--
+-- On streams, thumbnail_batch_id is the batch the image thumbnail_ref names
+-- was last uploaded under: by a publish, or again by a move. A publish uploads
+-- the image again when it differs from the batch the catalogue is written
+-- with, so an entry never names a thumbnail only an old batch holds. Null when
+-- unknown (rows from before this migration) and whenever thumbnail_ref is.
 
 CREATE TABLE catalogue_moves (
   id               BIGSERIAL PRIMARY KEY,
@@ -71,3 +77,7 @@ ALTER TABLE feed_writes
   ADD COLUMN restamped_batch_id TEXT NULL,
   ADD COLUMN restamped_at       TIMESTAMPTZ NULL,
   ADD CONSTRAINT feed_writes_restamped_whole CHECK ((restamped_batch_id IS NULL) = (restamped_at IS NULL));
+
+ALTER TABLE streams
+  ADD COLUMN thumbnail_batch_id TEXT NULL,
+  ADD CONSTRAINT streams_thumbnail_batch_needs_ref CHECK (thumbnail_batch_id IS NULL OR thumbnail_ref IS NOT NULL);

@@ -171,6 +171,17 @@ describe('catalogue_moves', () => {
     assert.deepEqual(await moves.slotCounts(OWNER, TOPIC, OLD, 0, 3), { underTarget: 1, readable: 2 });
   });
 
+  it('stops counting a write with no batch once a move uploaded it under the pinned batch', async () => {
+    await slot(0, null, false);
+    await slot(1, null, true);
+    const move = (await start())!;
+    await moves.recordSlot(move.id, { owner: OWNER, topic: TOPIC, index: 0, restamped: true, head: 1 });
+
+    assert.equal(await feedWrites.countUnrecordedBatch(OWNER, TOPIC, NEW), 1);
+    assert.equal(await feedWrites.countUnrecordedBatch(OWNER, TOPIC, OLD), 2, 'under another batch than the pinned');
+    assert.equal(await feedWrites.countUnrecordedBatch(OWNER, TOPIC, null), 2, 'nothing pinned');
+  });
+
   it('retries only a failed move, and not beside a running one', async () => {
     const move = (await start())!;
     assert.equal(await moves.retry(move.id), null, 'it is running');
@@ -341,7 +352,7 @@ describe('a thumbnail by its reference', () => {
     await database.pool.query('DELETE FROM users WHERE id = $1', [userId]);
   });
 
-  it('is found while the stream names it, with its topic, and not once the image changed', async () => {
+  it('is listed while a stream names it, with its bytes and topic, keeps its batch, and goes once the image changed', async () => {
     const row = await streams.insert({
       user_id: userId,
       topic: randomUUID(),
@@ -356,16 +367,33 @@ describe('a thumbnail by its reference', () => {
     });
     const reference = 'fe'.repeat(32);
     await streams.setThumbnail(row.id, Buffer.from([1, 2, 3]), 'image/png', EDITABLE_STATUSES);
-    await streams.recordThumbnailRef(row.id, reference);
+    await streams.recordThumbnailRef(row.id, reference, OLD);
+    assert.equal((await streams.findById(row.id))?.thumbnail_batch_id, OLD);
 
-    const found = await streams.findThumbnailByRef(reference);
-    assert.deepEqual(found && [found.topic, found.thumbnail_mime, [...found.thumbnail]], [
-      row.topic,
+    const mine = async () => (await streams.listStoredThumbnails()).filter((t) => t.topic === row.topic);
+    const [found] = await mine();
+    assert.deepEqual(found && [found.reference, found.thumbnail_mime, [...(found.thumbnail ?? [])]], [
+      reference,
       'image/png',
       [1, 2, 3],
     ]);
 
+    await streams.recordThumbnailBatch(reference, NEW);
+    assert.equal((await streams.findById(row.id))?.thumbnail_batch_id, NEW);
+    // A publish that writes the same reference keeps the batch; one that writes another forgets it.
+    await streams.recordRepublish(row.id, 0, reference, null);
+    assert.equal((await streams.findById(row.id))?.thumbnail_batch_id, NEW);
+    await streams.recordRepublish(row.id, 1, 'fd'.repeat(32), null);
+    assert.equal((await streams.findById(row.id))?.thumbnail_batch_id, null);
+
+    await streams.recordThumbnailRef(row.id, reference, NEW);
     await streams.setThumbnail(row.id, Buffer.from([4, 5]), 'image/jpeg', EDITABLE_STATUSES);
-    assert.equal(await streams.findThumbnailByRef(reference), null);
+    assert.deepEqual(await mine(), []);
+    assert.equal((await streams.findById(row.id))?.thumbnail_batch_id, null);
+    await assert.rejects(
+      database.pool.query('UPDATE streams SET thumbnail_batch_id = $2 WHERE id = $1', [row.id, NEW]),
+      /check constraint/,
+      'a batch with no reference',
+    );
   });
 });

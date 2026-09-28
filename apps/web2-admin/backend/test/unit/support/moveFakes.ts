@@ -10,6 +10,7 @@ import type {
   SlotCounts,
 } from '../../../src/domain/CatalogueMoveRepository.js';
 import type { FeedWriteRecord } from '../../../src/domain/FeedWriteRepository.js';
+import type { StoredThumbnail } from '../../../src/domain/StreamRepository.js';
 import type { FeedWriteLog } from '../../../src/domain/PublishService.js';
 
 interface Written extends FeedWriteRecord {
@@ -31,8 +32,14 @@ export class FakeFeedWrites implements FeedWriteLog {
     return { index: last.feedIndex, entries: structuredClone(last.payload) };
   }
 
-  async countUnrecordedBatch(owner: string, topic: string): Promise<number> {
-    return this.rows.filter((row) => row.owner === owner && row.topic === topic && row.batchId === null).length;
+  async countUnrecordedBatch(owner: string, topic: string, pinnedBatchId: string | null = null): Promise<number> {
+    return this.rows.filter(
+      (row) =>
+        row.owner === owner &&
+        row.topic === topic &&
+        row.batchId === null &&
+        (pinnedBatchId === null || row.restampedBatchId !== pinnedBatchId),
+    ).length;
   }
 
   of(owner: string, topic: string, from: number, to: number): Written[] {
@@ -174,13 +181,16 @@ export class InMemoryCatalogueMoveStore implements CatalogueMoveStore {
   }
 }
 
-/** Where the move finds a thumbnail's stored bytes: a map by reference. */
+/** The thumbnails streams name, by reference, with their bytes (null once a row lost them), and the batch each was recorded under. */
 export class FakeThumbnailStore {
-  readonly byRef = new Map<string, { thumbnail: Buffer; thumbnail_mime: string | null; topic: string }>();
+  readonly byRef = new Map<string, { thumbnail: Buffer | null; thumbnail_mime: string | null; topic: string }>();
+  readonly batches = new Map<string, string>();
 
-  async findThumbnailByRef(
-    reference: string,
-  ): Promise<{ thumbnail: Buffer; thumbnail_mime: string | null; topic: string } | null> {
-    return this.byRef.get(reference) ?? null;
+  async listStoredThumbnails(): Promise<StoredThumbnail[]> {
+    return [...this.byRef].map(([reference, stored]) => ({ reference, ...stored }));
+  }
+
+  async recordThumbnailBatch(reference: string, batchId: string): Promise<void> {
+    if (this.byRef.has(reference)) this.batches.set(reference, batchId);
   }
 }

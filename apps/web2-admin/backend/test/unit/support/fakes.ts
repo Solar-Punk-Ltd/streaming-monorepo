@@ -27,7 +27,12 @@ import type {
   PublishStreamStore,
 } from '../../../src/domain/PublishService.js';
 import type { OrphanedPublishingStore } from '../../../src/domain/resetOrphanedPublishing.js';
-import type { ClearedThumbnail, StreamInsertData, StreamUpdateData } from '../../../src/domain/StreamRepository.js';
+import type {
+  ClearedThumbnail,
+  StoredThumbnail,
+  StreamInsertData,
+  StreamUpdateData,
+} from '../../../src/domain/StreamRepository.js';
 import type { StreamServiceStore } from '../../../src/domain/StreamService.js';
 import type { StateStreamStore } from '../../../src/domain/StreamStateService.js';
 import type { PublishedStatus } from '../../../src/domain/streamState.js';
@@ -82,6 +87,7 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
     has_thumbnail: false,
     thumbnail_mime: null,
     thumbnail_ref: null,
+    thumbnail_batch_id: null,
     status: 'draft',
     published_at: null,
     published_feed_index: null,
@@ -255,6 +261,7 @@ export class FakeStreamStore
       has_thumbnail: true,
       thumbnail_mime: mime,
       thumbnail_ref: null,
+      thumbnail_batch_id: null,
       content_edited_at: new Date('2026-09-11T11:00:00.000Z'),
     });
   }
@@ -268,6 +275,7 @@ export class FakeStreamStore
       has_thumbnail: false,
       thumbnail_mime: null,
       thumbnail_ref: null,
+      thumbnail_batch_id: null,
       ...(row.has_thumbnail ? { content_edited_at: new Date('2026-09-11T11:00:00.000Z') } : {}),
     });
     return { stream, removed: row.has_thumbnail };
@@ -359,9 +367,37 @@ export class FakeStreamStore
     return this.thumbnails.get(id) ?? null;
   }
 
-  async recordThumbnailRef(id: string, thumbnailRef: string): Promise<void> {
+  async recordThumbnailRef(id: string, thumbnailRef: string, batchId: string | null = null): Promise<void> {
     if (!(await this.findById(id))) return;
-    this.patch(id, { thumbnail_ref: thumbnailRef });
+    this.patch(id, { thumbnail_ref: thumbnailRef, thumbnail_batch_id: batchId });
+  }
+
+  /** As the SQL is: every stream's named thumbnail, once per reference, with its bytes while the row holds them. */
+  async listStoredThumbnails(): Promise<StoredThumbnail[]> {
+    const seen = new Map<string, StoredThumbnail>();
+    for (const row of this.rows.values()) {
+      if (!row.thumbnail_ref) continue;
+      const stored = this.thumbnails.get(row.id);
+      const candidate = {
+        reference: row.thumbnail_ref,
+        thumbnail: stored?.thumbnail ?? null,
+        thumbnail_mime: stored?.thumbnail_mime ?? row.thumbnail_mime,
+        topic: row.topic,
+      };
+      if (!seen.get(row.thumbnail_ref)?.thumbnail) seen.set(row.thumbnail_ref, candidate);
+    }
+    return [...seen.values()];
+  }
+
+  async recordThumbnailBatch(reference: string, batchId: string): Promise<void> {
+    for (const row of this.rows.values()) {
+      if (row.thumbnail_ref === reference) this.patch(row.id, { thumbnail_batch_id: batchId });
+    }
+  }
+
+  /** The SQL's `CASE WHEN thumbnail_ref IS DISTINCT FROM $3 THEN NULL ELSE thumbnail_batch_id END`. */
+  private thumbnailBatchAfter(id: string, thumbnailRef: string | null): { thumbnail_batch_id?: null } {
+    return this.rows.get(id)?.thumbnail_ref === thumbnailRef ? {} : { thumbnail_batch_id: null };
   }
 
   /** As the SQL is: with `draftNeedsStage`, a draft with no stage is not claimed either. */
@@ -400,6 +436,7 @@ export class FakeStreamStore
       published_at: new Date('2026-09-11T11:00:00.000Z'),
       published_feed_index: feedIndex,
       publish_error: null,
+      ...this.thumbnailBatchAfter(id, thumbnailRef),
       thumbnail_ref: thumbnailRef,
       entry_content_edited_at: entryContentEditedAt,
     });
@@ -431,6 +468,7 @@ export class FakeStreamStore
     return this.patch(id, {
       published_feed_index: feedIndex,
       publish_error: null,
+      ...this.thumbnailBatchAfter(id, thumbnailRef),
       thumbnail_ref: thumbnailRef,
       entry_content_edited_at: entryContentEditedAt,
     });

@@ -25,6 +25,7 @@ import type { FeedIdentity } from './feedIdentity.js';
 import { Logger } from './Logger.js';
 import type { Mutex } from './Mutex.js';
 import { THUMBNAIL_FILE_EXTENSIONS } from './PublishService.js';
+import type { StoredThumbnail } from './StreamRepository.js';
 
 const logger = Logger.getInstance();
 
@@ -71,6 +72,11 @@ export interface CatalogueMoveInput {
   toRestamp: number;
   /** Of those, the slots with no recorded bytes, which only the network can give. */
   lacking: number;
+  /**
+   * Whether the latest move to the designated batch is running or failed: it has not switched, and its thumbnails or
+   * its switch may be all that is left, with every slot already under the batch.
+   */
+  unfinished: boolean;
   now: number;
 }
 
@@ -84,10 +90,12 @@ export interface CatalogueMovePlan {
 /**
  * Whether a move of the catalogue's history waits, and why it cannot start now.
  *
- * A move waits whenever some slot from 0 to the head is not under the designated batch by the admin's record: the
- * manager designated another batch than the pinned one, or some writes were stamped by a batch the admin never
- * recorded (the env file's, before the catalogue stamp). Either way the viewer loses every entry after the first slot
- * whose batch lapses.
+ * A move waits when the feed has history and any of these holds: the pinned batch is not the designated one (the
+ * manager designated another, or moved back to one whose slots are all still under it, which needs the switch
+ * alone); some slot from 0 to the head is not under the designated batch by the admin's record (written with
+ * another batch, or with one the admin never recorded, the env file's); or the latest move to it has not finished.
+ * Nothing waits only when the pinned batch is the designated one and every slot is under it. Otherwise the viewer
+ * loses every entry after the first slot whose batch lapses.
  *
  * It cannot start while the move is not enabled, when the designated batch cannot be written with (expired, gone or
  * mutable, as `refusalFor` says for a write), or when the batch the catalogue is written with has lapsed while some
@@ -103,7 +111,8 @@ export function planCatalogueMove(input: CatalogueMoveInput): CatalogueMovePlan 
   }
 
   const target = row.record;
-  if (input.head === null || input.toRestamp <= 0) {
+  const pinnedIsTarget = row.active_batch_id === target.batchId;
+  if (input.head === null || (input.toRestamp <= 0 && pinnedIsTarget && !input.unfinished)) {
     const refusal = {
       problem: 'nothing' as const,
       message: catalogueMoveRefusal('nothing', { targetBatchId: target.batchId }),
@@ -161,11 +170,13 @@ export interface MoveFeedHistory {
   lastWrite(owner: string, topic: string): Promise<{ index: number; entries: unknown[] } | null>;
 }
 
-/** Where the move finds a thumbnail's stored bytes by the reference an entry names. */
+/**
+ * Where the move finds every thumbnail a stream names, with its stored bytes, and records the batch each is under once
+ * it was uploaded again: StreamRepository.
+ */
 export interface MoveThumbnailStore {
-  findThumbnailByRef(
-    reference: string,
-  ): Promise<{ thumbnail: Buffer; thumbnail_mime: string | null; topic: string } | null>;
+  listStoredThumbnails(): Promise<StoredThumbnail[]>;
+  recordThumbnailBatch(reference: string, batchId: string): Promise<void>;
 }
 
 export interface CatalogueMoveOptions {
@@ -186,8 +197,8 @@ const REFERENCE_RE = /^[0-9a-f]{64}([0-9a-f]{64})?$/i;
 
 /**
  * Moving the catalogue's history onto another batch: every slot of the feed, from 0 to its head, uploaded again under
- * the batch the manager designated, byte for byte, then the thumbnails the latest entry names, then the admin writes
- * with the new batch. `docs/architecture/stages.md`, "Moving the catalogue to another batch", is the design.
+ * the batch the manager designated, byte for byte, then every thumbnail a stream or the latest entry names, then the
+ * admin writes with the new batch. `docs/architecture/stages.md`, "Moving the catalogue to another batch", is the design.
  *
  * The job does not hold the publish mutex while it goes through the history, so publishing carries on, writing with
  * the pinned batch. It takes the mutex only for the last step: the slots written meanwhile, the thumbnails of the
@@ -220,12 +231,14 @@ export class CatalogueMoveService {
   }
 
   async status(): Promise<CatalogueMoveStatus> {
-    const { plan, latest } = await this.evaluate();
+    const { plan, latest, row } = await this.evaluate();
     return {
       enabled: this.options.enabled,
       waiting: plan.waiting,
       refusal: plan.waiting ? plan.refusal : null,
       latest: summaryOf(latest),
+      designatedBatchId: isDesignated(row) ? row.record.batchId : null,
+      pinnedBatchId: row?.active_batch_id ?? null,
     };
   }
 
@@ -235,6 +248,8 @@ export class CatalogueMoveService {
    * shows, for every reason `planCatalogueMove` gives.
    */
   async start(actor: Actor, targetBatchId: string): Promise<CatalogueMoveStatus> {
+    // First, before a running move is resumed: nothing moves while the move is off.
+    if (!this.options.enabled) throw new CatalogueMoveRefusedError('disabled', catalogueMoveRefusal('disabled'));
     const { plan, latest, head } = await this.evaluate();
     if (latest?.state === 'running' && latest.targetBatchId === targetBatchId) {
       // Running here, or left running by a process that stopped and has not resumed it: go on with it.
@@ -316,9 +331,10 @@ export class CatalogueMoveService {
   }
 
   private launch(move: CatalogueMoveRow, actor: Actor): void {
-    this.job = this.run(move, actor).finally(() => {
-      this.job = null;
+    const job: Promise<void> = this.run(move, actor).finally(() => {
+      if (this.job === job) this.job = null;
     });
+    this.job = job;
   }
 
   private async evaluate(): Promise<{
@@ -326,6 +342,7 @@ export class CatalogueMoveService {
     latest: CatalogueMoveRow | null;
     head: number | null;
     covered: number;
+    row: CatalogueStampRow | null;
   }> {
     const { owner, topicHex } = this.feed;
     const [row, last, latest] = await Promise.all([
@@ -347,8 +364,17 @@ export class CatalogueMoveService {
         lacking = span - counts.readable;
       }
     }
-    const plan = planCatalogueMove({ enabled: this.options.enabled, row, head, toRestamp, lacking, now: this.now() });
-    return { plan, latest, head, covered };
+    const unfinished = latest !== null && latest.targetBatchId === targetBatchId && latest.state !== 'done';
+    const plan = planCatalogueMove({
+      enabled: this.options.enabled,
+      row,
+      head,
+      toRestamp,
+      lacking,
+      unfinished,
+      now: this.now(),
+    });
+    return { plan, latest, head, covered, row };
   }
 
   /**
@@ -391,7 +417,7 @@ export class CatalogueMoveService {
         target = slice;
         const head = await this.head();
         if (head - progress.move.nextIndex + 1 <= this.sliceSlots) {
-          // The thumbnails the latest entry names now; the last step does the ones a later write names.
+          // The thumbnails named now; the last step does the ones named since.
           await this.restampThumbnails(slice, done);
           break;
         }
@@ -504,7 +530,13 @@ export class CatalogueMoveService {
       const under = index < covered || row?.batchId === target.batchId || row?.restampedBatchId === target.batchId;
       if (!under) {
         await this.gateway.restampSlot(
-          { index, payloadText: row?.payloadText ?? null, reference: row?.reference ?? null },
+          {
+            index,
+            // A head adopted from the network at boot (no reference, no batch) is not a write of this admin's: its text
+            // is what a node answered, so its chunk is read from the network rather than signed again from it.
+            payloadText: row && !(row.reference === null && row.batchId === null) ? row.payloadText : null,
+            reference: row?.reference ?? null,
+          },
           target,
         );
       }
@@ -521,27 +553,59 @@ export class CatalogueMoveService {
   }
 
   /**
-   * Every thumbnail the latest entry names, uploaded again under the target, and each has to come out at the
-   * reference the entry names: another would be another file, and the entry would still point at the old one. The
-   * admin's stored bytes are used when a stream still holds the image; otherwise the file is read from the network.
+   * Every thumbnail a stream names, published or not, and every one the latest entry names, uploaded again under the
+   * target: a draft published again after the move names its thumbnail by the same reference, so it has to be under
+   * the new batch too. The admin's stored bytes are used where a stream still holds the image, and the network
+   * otherwise. Each one uploaded is recorded as under the target on the streams that name it
+   * (`streams.thumbnail_batch_id`).
+   *
+   * A thumbnail the latest entry names has to come out at the reference the entry names, or the move stops before the
+   * switch: the entry would still point at the old batch. An upload that fails stops the move as well, to be retried,
+   * whenever the bytes were to hand. Only one no entry names only warns when the network cannot give it or it comes
+   * out elsewhere: its stream keeps the batch it had recorded, so its next publish uploads it again under the batch
+   * the catalogue is written with.
    */
   private async restampThumbnails(target: CatalogueTarget, done: Set<string>): Promise<void> {
     const last = await this.history.lastWrite(this.feed.owner, this.feed.topicHex);
-    for (const reference of thumbnailsNamedBy(last?.entries ?? [])) {
+    const named = new Set(thumbnailsNamedBy(last?.entries ?? []));
+    const stored = new Map((await this.thumbnails.listStoredThumbnails()).map((t) => [t.reference.toLowerCase(), t]));
+    for (const reference of new Set([...named, ...stored.keys()])) {
       if (done.has(reference)) continue;
-      const stored = await this.thumbnails.findThumbnailByRef(reference);
-      const file: ThumbnailFile | null = stored
+      if (this.stopping) throw new MovePaused();
+      const row = stored.get(reference);
+      const file: ThumbnailFile | null = row?.thumbnail
         ? {
-            bytes: new Uint8Array(stored.thumbnail),
-            filename: `${stored.topic}.${THUMBNAIL_FILE_EXTENSIONS[stored.thumbnail_mime ?? 'image/png'] ?? 'bin'}`,
-            contentType: stored.thumbnail_mime ?? 'image/png',
+            bytes: new Uint8Array(row.thumbnail),
+            filename: `${row.topic}.${THUMBNAIL_FILE_EXTENSIONS[row.thumbnail_mime ?? 'image/png'] ?? 'bin'}`,
+            contentType: row.thumbnail_mime ?? 'image/png',
           }
         : null;
-      const uploaded = await this.gateway.restampThumbnail(reference, file, target);
-      if (uploaded.toLowerCase() !== reference) {
-        throw new MoveStopped(
-          `The thumbnail ${reference} came out as ${uploaded} under batch ${shortBatch(target.batchId)}, so the entry that names it would still point at the old batch. Nothing was switched.`,
+      let uploaded: string;
+      try {
+        uploaded = (await this.gateway.restampThumbnail(reference, file, target)).toLowerCase();
+      } catch (error) {
+        if (named.has(reference) || row?.thumbnail) {
+          throw new MoveStopped(
+            `The thumbnail ${reference} could not be uploaded again under batch ${shortBatch(target.batchId)}: ${withoutCatalogueNode(getErrorMessage(error), target)}. Nothing was switched.`,
+          );
+        }
+        logger.warn(
+          `[CatalogueMove] the thumbnail ${reference}, which no catalogue entry names, could not be uploaded again: ${getErrorMessage(error)}; its stream uploads it at its next publish`,
         );
+        done.add(reference);
+        continue;
+      }
+      if (uploaded !== reference) {
+        if (named.has(reference)) {
+          throw new MoveStopped(
+            `The thumbnail ${reference} came out as ${uploaded} under batch ${shortBatch(target.batchId)}, so the entry that names it would still point at the old batch. Nothing was switched.`,
+          );
+        }
+        logger.warn(
+          `[CatalogueMove] the thumbnail ${reference}, which no catalogue entry names, came out as ${uploaded}; its stream uploads it at its next publish`,
+        );
+      } else if (row) {
+        await this.thumbnails.recordThumbnailBatch(row.reference, target.batchId);
       }
       done.add(reference);
     }

@@ -191,7 +191,7 @@ export interface CatalogueMoveSummary {
   /** Slots uploaded again, and slots already under the target batch. */
   restamped: number;
   skipped: number;
-  /** Thumbnails of the latest entry uploaded again, once the move is done. */
+  /** Thumbnails uploaded again: every one a stream or the latest entry names, once the move is done. */
   thumbnails: number;
   /** Why a failed move stopped. */
   error: string | null;
@@ -216,6 +216,10 @@ export interface CatalogueMoveStatus {
   refusal: { problem: CatalogueMoveProblem; message: string } | null;
   /** The latest move of this feed, or null before the first. */
   latest: CatalogueMoveSummary | null;
+  /** The batch the manager designates now, or null when none is designated. */
+  designatedBatchId: string | null;
+  /** The batch the catalogue is written with, or null before the first write pins one. */
+  pinnedBatchId: string | null;
 }
 
 /** What `POST /api/catalogue-stamp/move` takes: the batch the operator saw named, which must be the designated one. */

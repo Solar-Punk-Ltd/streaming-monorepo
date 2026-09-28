@@ -322,14 +322,21 @@ in `catalogue_moves` (migration `014`).
 **Off by default.** `CATALOGUE_MOVE_ENABLED=true` turns it on. Until the owner
 has tried it on a real node (`docs/architecture/stages.md`, "Trying the move on
 a real node"), the Stages page says the move is not yet enabled on this
-installation, and a start is refused with `problem: disabled`.
+installation, and a start is refused with `problem: disabled` before anything
+else, a move left running included.
 
-**When a move waits.** Whenever some slot from 0 to the head is not under the
-designated batch by the admin's record: the manager designated another batch
-than the pinned one (`moveWaitingTo`), or some writes were stamped by a batch the
-admin never recorded (`unrecordedHistory`, the env file's). The Stages page
-then shows the catalogue move card, with "Move the catalogue to batch …" and a
-confirmation.
+**When a move waits.** When the feed has history and the pinned batch is not the
+designated one (another designated, `moveWaitingTo`, or a move back to one that
+still holds every slot, which needs the switch alone), or some slot from 0 to the
+head is not under the designated batch by the admin's record (written with
+another batch, or with one the admin never recorded: `unrecordedHistory`, the env
+file's; rows a move uploaded again under the pinned batch no longer count there),
+or the latest move to it has not finished (a failure after its last slot, at the
+thumbnails, is retried). Nothing waits only when the pinned batch is the
+designated one and every slot is under it. The Stages page then shows the
+catalogue move card, with "Move the catalogue to batch …" and a confirmation. It
+says the previous batch can be released in the manager only while the finished
+move's batch is both pinned and designated.
 
 **What the job does**, for slots 0 to the head, in order:
 
@@ -342,12 +349,19 @@ confirmation.
   is read from the network through the catalogue node, checked against its
   address, and uploaded with the signature it carries. A payload over 4096
   bytes is a wrapped chunk: its content-addressed data is uploaded again first,
-  and has to come to the root the slot wraps.
+  and has to come to the root the slot wraps. A head adopted from the network at
+  boot (no reference, no batch) takes the network path too: its text is what a
+  node answered, not a write of this admin's.
 - A slot already under the new batch by the record (written with it, uploaded
   again under it, or covered by a move to it that finished) is left as it is.
-- Then the thumbnails the latest entry names, from `streams.thumbnail` where a
-  stream still names the reference, otherwise read from the network; each has
-  to come out at the reference the entry names, or the move stops.
+- Then every thumbnail a stream names (`streams.thumbnail_ref`, published or
+  not, since a draft published again names the same reference) and every one
+  the latest entry names, from `streams.thumbnail` where the row still holds
+  the bytes, otherwise read from the network. One the entry names has to come
+  out at that reference, and an upload that fails stops the move, to be
+  retried. Each is recorded as under the new batch on its streams
+  (`streams.thumbnail_batch_id`, migration `014`), and a publish uploads a
+  thumbnail again whenever that batch is not the one it writes with.
 - Then the admin writes with the new batch: the pin moves to it.
 
 **Publishing goes on.** The history goes in slices of 20 slots outside the
@@ -434,9 +448,12 @@ it on a clean catalogue costs no index and no stamp. The answer is
 `FeedReconcileResult`: the index written (or `null`), and the topics
 `removed` / `added` / `updated`.
 
-A stored `thumbnail_ref` is verified before it is reused: the gateway is asked
-whether it still holds that reference, and only then is it carried onto the
-feed. A reference the gateway does not have is re-uploaded and the new one
+A stored `thumbnail_ref` is reused only when `thumbnail_batch_id` (migration
+`014`) says it was uploaded under the batch the write goes with, and the
+gateway still holds it; otherwise the same bytes are uploaded again under that
+batch, which comes to the same reference, and the batch is recorded. An image
+only an older batch holds would lapse with it. The gateway is asked whether it
+still holds that reference, and only then is it carried onto the feed. A reference the gateway does not have is re-uploaded and the new one
 persisted, with a warning naming the stream and the stale reference. This is
 what makes the `fake`/`bee` switch safe — `fake` mints references that exist
 nowhere, and without the check a stream published under `fake` would keep

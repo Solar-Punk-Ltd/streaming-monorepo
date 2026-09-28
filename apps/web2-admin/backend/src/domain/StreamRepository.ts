@@ -47,6 +47,14 @@ export interface StreamUpdateData {
   owner?: string;
 }
 
+/** A thumbnail a stream names, as moving the catalogue uploads it again: its bytes are null once the row lost them. */
+export interface StoredThumbnail {
+  reference: string;
+  thumbnail: Buffer | null;
+  thumbnail_mime: string | null;
+  topic: string;
+}
+
 /** What a thumbnail clear left on the row, and whether it removed an image. */
 export interface ClearedThumbnail {
   stream: StreamRow;
@@ -228,19 +236,23 @@ export class StreamRepository {
   }
 
   /**
-   * The stored image whose upload `reference` is, with the stream's topic its file was named by, or null when no
-   * stream holds it: moving the catalogue uploads it again from these bytes. A row whose image changed since has
-   * cleared its reference, so it is never answered for the old one.
+   * Every thumbnail a stream names by its upload reference, published or not, with the stored bytes when the row
+   * still holds them and the topic its file was named by: moving the catalogue uploads each again under the new
+   * batch. A row whose image changed since has cleared its reference, so it never answers for the old one.
    */
-  async findThumbnailByRef(reference: string): Promise<(ThumbnailRow & { topic: string }) | null> {
-    const result = await this.pool.query<ThumbnailRow & { topic: string }>(
-      `SELECT thumbnail, thumbnail_mime, topic FROM streams
-        WHERE thumbnail_ref = $1 AND thumbnail IS NOT NULL
-        ORDER BY updated_at DESC
-        LIMIT 1`,
-      [reference],
+  async listStoredThumbnails(): Promise<StoredThumbnail[]> {
+    const result = await this.pool.query<StoredThumbnail>(
+      `SELECT DISTINCT ON (thumbnail_ref) thumbnail_ref AS reference, thumbnail, thumbnail_mime, topic
+         FROM streams
+        WHERE thumbnail_ref IS NOT NULL
+        ORDER BY thumbnail_ref, (thumbnail IS NOT NULL) DESC, updated_at DESC`,
     );
-    return result.rows[0] ?? null;
+    return result.rows;
+  }
+
+  /** Records that the thumbnail `reference` names is under `batchId` now, on every stream that names it. */
+  async recordThumbnailBatch(reference: string, batchId: string): Promise<void> {
+    await this.pool.query(`UPDATE streams SET thumbnail_batch_id = $2 WHERE thumbnail_ref = $1`, [reference, batchId]);
   }
 
   /**
@@ -260,6 +272,7 @@ export class StreamRepository {
           SET thumbnail = $3,
               thumbnail_mime = $4,
               thumbnail_ref = NULL,
+              thumbnail_batch_id = NULL,
               content_edited_at = ${CONTENT_EDITED_NOW},
               updated_at = NOW()
         WHERE id = $1 AND status = ANY($2::text[])
@@ -294,6 +307,7 @@ export class StreamRepository {
           SET thumbnail = NULL,
               thumbnail_mime = NULL,
               thumbnail_ref = NULL,
+              thumbnail_batch_id = NULL,
               content_edited_at = CASE
                 WHEN locked.had_thumbnail THEN ${CONTENT_EDITED_NOW}
                 ELSE content_edited_at
@@ -315,13 +329,14 @@ export class StreamRepository {
    * upload is paid for the moment it succeeds, so it must survive a publish
    * that fails afterwards instead of being uploaded again next time.
    */
-  async recordThumbnailRef(id: string, thumbnailRef: string): Promise<void> {
+  async recordThumbnailRef(id: string, thumbnailRef: string, batchId: string | null = null): Promise<void> {
     await this.pool.query(
       `UPDATE streams
           SET thumbnail_ref = $2,
+              thumbnail_batch_id = $3,
               updated_at = NOW()
         WHERE id = $1`,
-      [id, thumbnailRef],
+      [id, thumbnailRef, batchId],
     );
   }
 
@@ -449,6 +464,7 @@ export class StreamRepository {
       `UPDATE streams
           SET published_feed_index = $2,
               publish_error = NULL,
+              thumbnail_batch_id = CASE WHEN thumbnail_ref IS DISTINCT FROM $3 THEN NULL ELSE thumbnail_batch_id END,
               thumbnail_ref = $3,
               entry_content_edited_at = $4,
               updated_at = NOW()
@@ -540,6 +556,7 @@ export class StreamRepository {
               published_at = NOW(),
               published_feed_index = $2,
               publish_error = NULL,
+              thumbnail_batch_id = CASE WHEN thumbnail_ref IS DISTINCT FROM $3 THEN NULL ELSE thumbnail_batch_id END,
               thumbnail_ref = $3,
               entry_content_edited_at = $4,
               updated_at = NOW()

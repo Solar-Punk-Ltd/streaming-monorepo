@@ -24,11 +24,12 @@ import { CatalogueMoveRefusedError } from '../../src/domain/errors/index.js';
 import { encodeFeedPayload } from '../../src/domain/FeedGateway.js';
 import { feedIdentityFrom } from '../../src/domain/feedIdentity.js';
 import { Mutex } from '../../src/domain/Mutex.js';
+import { PublishService } from '../../src/domain/PublishService.js';
 
 import { FakeBee } from './support/fakeBee.js';
-import { InMemoryAuditLog, TEST_OPERATOR } from './support/fakes.js';
+import { FakeRenditionStore, FakeStreamStore, InMemoryAuditLog, streamRow, TEST_OPERATOR } from './support/fakes.js';
 import { FakeFeedWrites, FakeThumbnailStore, InMemoryCatalogueMoveStore } from './support/moveFakes.js';
-import { catalogueStampRecord, FakeCatalogueStampStore } from './support/stageFakes.js';
+import { catalogueStampRecord, FakeCatalogueStampStore, stagesWithMain } from './support/stageFakes.js';
 
 /** Hardhat's first test account: public, and it signs nothing that matters. */
 const KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
@@ -237,9 +238,13 @@ describe('a move of the catalogue', () => {
     assert.equal((await moving.status()).waiting, null, 'a slot written after the move is already under the new batch');
   });
 
-  it('uploads the thumbnails the latest entry names again, from the admin’s bytes or the network', async () => {
+  it('uploads every thumbnail a stream or the latest entry names again, from the admin’s bytes or the network', async () => {
     const png = new Uint8Array([137, 80, 78, 71, 13, 10]);
     const jpeg = new Uint8Array([255, 216, 255, 224]);
+    const gif = new Uint8Array([71, 73, 70, 56]);
+    // A draft's image, on no catalogue entry: published again after the move, it names the same reference.
+    const draft = await gateway.uploadThumbnail(gif, 'draft.gif', 'image/gif', { beeApiUrl: bee.url, batchId: OLD });
+    thumbnails.byRef.set(draft, { thumbnail: Buffer.from(gif), thumbnail_mime: 'image/gif', topic: 'draft' });
     const stored = await gateway.uploadThumbnail(png, 'kept.png', 'image/png', { beeApiUrl: bee.url, batchId: OLD });
     const lost = await gateway.uploadThumbnail(jpeg, 'lost.jpg', 'image/jpeg', { beeApiUrl: bee.url, batchId: OLD });
     thumbnails.byRef.set(stored, { thumbnail: Buffer.from(png), thumbnail_mime: 'image/png', topic: 'kept' });
@@ -263,10 +268,18 @@ describe('a move of the catalogue', () => {
         .under(NEW, 'file')
         .map((u) => u.address)
         .sort(),
-      [stored, lost].sort(),
-      'both thumbnails, at the references the entry names',
+      [stored, lost, draft].sort(),
+      'every thumbnail, at the reference it had',
     );
-    assert.equal((await moving.status()).latest?.thumbnails, 2);
+    assert.equal((await moving.status()).latest?.thumbnails, 3);
+    assert.deepEqual(
+      [...thumbnails.batches].sort(),
+      [
+        [draft, NEW],
+        [stored, NEW],
+      ].sort(),
+      'the streams that name one are told it is under the new batch',
+    );
   });
 
   it('refuses to switch when a thumbnail comes out at another reference, and says which', async () => {
@@ -565,5 +578,211 @@ describe('a move at boot', () => {
     assert.equal(latest?.state, 'running');
     assert.equal(latest?.nextIndex, 2);
     assert.deepEqual(actions(), ['catalogue.move.start']);
+  });
+});
+
+describe('a move that is still owed', () => {
+  it('waits for the switch back when the manager moves back to a batch that still holds every slot', async () => {
+    // X → Y, moved; then the manager moves back to X before anything is published. Every slot is still under X by
+    // its row, but the admin writes with Y: "nothing to move" would leave it there for ever.
+    await history(3);
+    const moving = service();
+    await moving.start(TEST_OPERATOR, NEW);
+    await moving.settled();
+    assert.equal(stamps.row?.active_batch_id, NEW);
+    await stamps.upsert(record(OLD, { observedAt: '2026-09-28T10:02:00.000Z' }));
+
+    const back = await moving.status();
+    assert.deepEqual(back.waiting, { targetBatchId: OLD, fromBatchId: NEW, slots: 3 });
+    assert.equal(back.refusal, null);
+    const uploadsBefore = bee.under(OLD, 'soc').length;
+
+    await moving.start(TEST_OPERATOR, OLD);
+    await moving.settled();
+
+    const done = await moving.status();
+    assert.equal(done.latest?.state, 'done');
+    assert.equal(done.latest?.targetBatchId, OLD);
+    assert.equal(done.latest?.skipped, 3, 'every slot was already under it');
+    assert.equal(bee.under(OLD, 'soc').length, uploadsBefore, 'no slot uploaded again');
+    assert.equal(stamps.row?.active_batch_id, OLD, 'switched back');
+    assert.equal(done.waiting, null);
+    assert.deepEqual([done.designatedBatchId, done.pinnedBatchId], [OLD, OLD]);
+  });
+
+  it('lets a move that failed after its last slot be retried, and finishes it without uploading a slot again', async () => {
+    const png = new Uint8Array([137, 80, 78, 71]);
+    const gif = new Uint8Array([71, 73, 70]);
+    const late = await gateway.uploadThumbnail(gif, 'late.gif', 'image/gif', { beeApiUrl: bee.url, batchId: OLD });
+    const reference = await gateway.uploadThumbnail(png, 'a.png', 'image/png', { beeApiUrl: bee.url, batchId: OLD });
+    thumbnails.byRef.set(reference, { thumbnail: Buffer.from(png), thumbnail_mime: 'image/png', topic: 'a' });
+    await history(3, { entries: (index) => [{ topic: 'a', title: `v${index}`, thumbnail: reference }] });
+    // Slots 0 and 1 go in slices; slot 2 and the last thumbnails in the last step, where the thumbnail fails.
+    const moving = service({ sliceSlots: 1 });
+    let armed = false;
+    bee.beforeAnswer = (upload) => {
+      if (upload.kind === 'soc' && upload.batch === NEW && upload.address === addresses[2] && !armed) {
+        armed = true;
+        // A draft's new image, uploaded while the move ran, which the last step has to move as well.
+        thumbnails.byRef.set(late, { thumbnail: Buffer.from(gif), thumbnail_mime: 'image/gif', topic: 'late' });
+        bee.failNext = { kind: 'file', status: 500, batch: NEW };
+      }
+    };
+
+    await moving.start(TEST_OPERATOR, NEW);
+    await moving.settled();
+
+    const failed = await moving.status();
+    assert.equal(failed.latest?.state, 'failed');
+    assert.equal(failed.latest?.slotsDone, 3, 'every slot was recorded before the thumbnail step failed');
+    assert.match(failed.latest?.error ?? '', new RegExp(`The thumbnail ${late} could not be uploaded again`));
+    assert.deepEqual(failed.waiting, { targetBatchId: NEW, fromBatchId: OLD, slots: 3 }, 'still owed, not "nothing"');
+    assert.equal(failed.refusal, null);
+    assert.equal(stamps.row?.active_batch_id, OLD);
+
+    await moving.start(TEST_OPERATOR, NEW);
+    await moving.settled();
+
+    const done = await moving.status();
+    assert.equal(done.latest?.state, 'done');
+    assert.equal(bee.under(NEW, 'soc').length, 3, 'each slot uploaded once');
+    // A retry goes through the thumbnails again: an upload of the same file under the same batch changes nothing.
+    assert.deepEqual(
+      [...new Set(bee.under(NEW, 'file').map((upload) => upload.address))].sort(),
+      [reference, late].sort(),
+    );
+    assert.equal(stamps.row?.active_batch_id, NEW);
+  });
+
+  it('refuses a start while the move is off even when a move is left running, and resumes nothing', async () => {
+    await history(2);
+    await store.create({
+      owner: feed.owner,
+      topic: feed.topicHex,
+      targetBatchId: NEW,
+      fromBatchId: OLD,
+      startedBy: 'a',
+    });
+    const moving = service({ enabled: false });
+
+    const error = await moving.start(TEST_OPERATOR, NEW).then(
+      () => null,
+      (e: unknown) => e,
+    );
+
+    assert.ok(error instanceof CatalogueMoveRefusedError);
+    assert.equal(error.problem, 'disabled');
+    await moving.settled();
+    assert.equal(bee.under(NEW).length, 0, 'nothing was uploaded');
+    assert.equal((await store.latest(feed.owner, feed.topicHex))?.nextIndex, 0);
+  });
+
+  it('uploads a slot adopted from the network at boot as the network holds it, not signed again from its text', async () => {
+    await history(2);
+    // Slot 1 as the boot check adopts a head: the text a node answered, no reference and no batch.
+    writes.rows[1]!.reference = null;
+    writes.rows[1]!.batchId = null;
+    writes.rows[1]!.payloadText = '[{"topic":"what the node said"}]';
+    const moving = service();
+
+    await moving.start(TEST_OPERATOR, NEW);
+    await moving.settled();
+
+    assertEverySlotMoved(2);
+  });
+
+  it('stops counting writes with no recorded batch once a move has uploaded them under the pinned batch', async () => {
+    await history(3, { legacy: [0, 1] });
+    const batch = new CatalogueBatchService(stamps, writes, feed, audit, { stampRequired: true, now: () => NOW });
+    assert.deepEqual((await batch.status()).unrecordedHistory, { writes: 2 });
+
+    const moving = service();
+    await moving.start(TEST_OPERATOR, NEW);
+    await moving.settled();
+
+    assert.equal((await batch.status()).unrecordedHistory, null);
+  });
+});
+
+describe('a thumbnail after a move', () => {
+  it('is under the new batch when a stream unpublished before the move is published again', async () => {
+    await stamps.upsert(record(OLD));
+    const renditions = new FakeRenditionStore();
+    const streams = new FakeStreamStore(renditions);
+    const batch = new CatalogueBatchService(stamps, writes, feed, audit, { stampRequired: true, now: () => NOW });
+    const publishing = new PublishService(
+      streams,
+      renditions,
+      stagesWithMain(),
+      writes,
+      gateway,
+      batch,
+      feed,
+      audit,
+      mutex,
+    );
+    const png = new Uint8Array([137, 80, 78, 71, 5, 6, 7]);
+    const row = streams.add(streamRow({ owner: feed.owner, has_thumbnail: true, thumbnail_mime: 'image/png' }), {
+      thumbnail: Buffer.from(png),
+      thumbnail_mime: 'image/png',
+    });
+
+    await publishing.publish(TEST_OPERATOR, row.id);
+    const reference = streams.get(row.id).thumbnail_ref!;
+    assert.equal(streams.get(row.id).thumbnail_batch_id, OLD);
+    await publishing.unpublish(TEST_OPERATOR, row.id);
+
+    await stamps.upsert(record(NEW, { observedAt: '2026-09-28T10:01:00.000Z' }));
+    const moving = new CatalogueMoveService(store, stamps, writes, streams, gateway, mutex, feed, audit, {
+      enabled: true,
+      now: () => NOW,
+    });
+    await moving.start(TEST_OPERATOR, NEW);
+    await moving.settled();
+    assert.equal((await moving.status()).latest?.state, 'done');
+    assert.equal(streams.get(row.id).thumbnail_batch_id, NEW, 'the draft’s image was moved too');
+
+    await publishing.publish(TEST_OPERATOR, row.id);
+
+    assert.equal(streams.get(row.id).thumbnail_ref, reference, 'the same image, at the same reference');
+    assert.ok(
+      bee.under(NEW, 'file').some((upload) => upload.address === reference),
+      'the thumbnail is under the new batch',
+    );
+    const entries = (await writes.lastWrite(feed.owner, feed.topicHex))?.entries as { thumbnail: string }[];
+    assert.equal(entries[0]?.thumbnail, reference);
+    assert.equal(writes.rows.at(-1)?.batchId, NEW);
+  });
+
+  it('is uploaded again by a publish when it was uploaded under another batch than the catalogue’s', async () => {
+    await stamps.upsert(record(OLD));
+    const renditions = new FakeRenditionStore();
+    const streams = new FakeStreamStore(renditions);
+    const batch = new CatalogueBatchService(stamps, writes, feed, audit, { stampRequired: true, now: () => NOW });
+    const publishing = new PublishService(
+      streams,
+      renditions,
+      stagesWithMain(),
+      writes,
+      gateway,
+      batch,
+      feed,
+      audit,
+      mutex,
+    );
+    const png = new Uint8Array([1, 1, 2, 3, 5]);
+    const row = streams.add(streamRow({ owner: feed.owner, has_thumbnail: true, thumbnail_mime: 'image/png' }), {
+      thumbnail: Buffer.from(png),
+      thumbnail_mime: 'image/png',
+    });
+    await publishing.publish(TEST_OPERATOR, row.id);
+    // The row says another batch holds it, as one from before migration 014 says none.
+    streams.add({ ...streams.get(row.id), thumbnail_batch_id: 'c3'.repeat(32) });
+    const before = bee.under(OLD, 'file').length;
+
+    await publishing.publish(TEST_OPERATOR, row.id);
+
+    assert.equal(bee.under(OLD, 'file').length, before + 1, 'uploaded again under the catalogue’s batch');
+    assert.equal(streams.get(row.id).thumbnail_batch_id, OLD);
   });
 });

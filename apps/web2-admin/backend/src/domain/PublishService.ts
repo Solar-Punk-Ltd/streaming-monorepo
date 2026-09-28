@@ -58,7 +58,8 @@ export interface PublishStageLookup extends StreamStageLookup {
 export interface PublishStreamStore {
   findById(id: string): Promise<StreamRow | null>;
   findThumbnail(id: string): Promise<ThumbnailRow | null>;
-  recordThumbnailRef(id: string, thumbnailRef: string): Promise<void>;
+  /** `batchId` is the batch the image was uploaded under, or null when it went with no catalogue stamp. */
+  recordThumbnailRef(id: string, thumbnailRef: string, batchId: string | null): Promise<void>;
   /**
    * Null as well, with `draftNeedsStage`, for a draft that has no stage. A
    * draft that holds no recording takes its stage's owner in the same step.
@@ -826,7 +827,15 @@ export class PublishService {
    */
   private async ensureThumbnailUploaded(stream: StreamRow, target: CatalogueTarget | null): Promise<string | null> {
     if (!stream.has_thumbnail) return stream.thumbnail_ref;
-    if (stream.thumbnail_ref && (await this.gateway.hasReference(stream.thumbnail_ref, target))) {
+    // Reused only when it was uploaded under the batch this write goes with: an image only an older batch holds
+    // lapses with it. The same bytes upload to the same reference, so another batch costs a stamp and changes
+    // nothing the entry says.
+    const batchId = target?.batchId ?? null;
+    if (
+      stream.thumbnail_ref &&
+      stream.thumbnail_batch_id === batchId &&
+      (await this.gateway.hasReference(stream.thumbnail_ref, target))
+    ) {
       return stream.thumbnail_ref;
     }
 
@@ -834,7 +843,11 @@ export class PublishService {
     if (!stored) return null;
 
     if (stream.thumbnail_ref) {
-      logger.warn(`[Publish] ${stream.topic} thumbnail ${stream.thumbnail_ref} is not on the gateway; re-uploading`);
+      logger.warn(
+        stream.thumbnail_batch_id === batchId
+          ? `[Publish] ${stream.topic} thumbnail ${stream.thumbnail_ref} is not on the gateway; re-uploading`
+          : `[Publish] ${stream.topic} thumbnail ${stream.thumbnail_ref} was uploaded under another batch than the catalogue's; re-uploading`,
+      );
     }
 
     const mime = stored.thumbnail_mime ?? 'image/png';
@@ -848,7 +861,7 @@ export class PublishService {
     // Written now, not with the rest of the publish: the chunk is paid for
     // already, and a feed write that fails after this must not make the next
     // attempt upload the same image again.
-    await this.streams.recordThumbnailRef(stream.id, reference);
+    await this.streams.recordThumbnailRef(stream.id, reference, batchId);
     return reference;
   }
 
