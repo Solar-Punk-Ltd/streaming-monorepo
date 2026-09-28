@@ -214,6 +214,8 @@ export function makeProfile(input) {
     // Null means the default version, which is what every deployment ran
     // before a version could be chosen per deployment.
     stack_version_id: input.stack_version_id ?? null,
+    // The public ingest address encoders dial, or null for the resolved host.
+    ingest_host: input.ingest_host ?? null,
   };
 }
 

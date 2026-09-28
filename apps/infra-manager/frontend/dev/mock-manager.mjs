@@ -56,6 +56,7 @@ import { closeRollout, engineConfigRoutes, forgetEngineConfig } from './mock-eng
 import { readBody, send as sendRaw, sendScriptRun } from './mock-http.mjs';
 import { metricsClients, metricsSnapshot } from './mock-metrics.mjs';
 import { srtIngestRoutes } from './mock-srt-ingest.mjs';
+import { stageRoutes } from './mock-stages.mjs';
 import { MOCK_CURRENT_PRICE, stampChangeRoutes } from './mock-stamps.mjs';
 import { defaultVersionId, newDeploymentVersionProblem, seedVersions, versionRoutes } from './mock-versions.mjs';
 import {
@@ -911,6 +912,7 @@ const ROUTES = [
   ...engineRoutes({ readBody, withProfile, findProfile, deploy, publish, settingsSaved: engineSettingsSaved }),
   ...engineConfigRoutes({ readBody, withProfile, deploy, publish }),
   ...srtIngestRoutes({ withProfile }),
+  ...stageRoutes({ readBody, withProfile, profiles: () => state.profiles, changed, publicHost: PUBLIC_HOST, send }),
   ...deploymentSettingsRoutes({ readBody, withProfile, deploy }),
   ...versionRoutes(readBody, publish),
   ['GET', /^\/events$/, (_req, res) => openStream(res, eventClients)],

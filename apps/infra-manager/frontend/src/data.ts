@@ -6,6 +6,8 @@ import {
   type NewDeploymentSetting,
   type NodeMode,
   type RpcEndpointSource,
+  type StagePushState,
+  type StageRegistrationAnswer,
 } from '@streaming-infra-manager/common';
 
 import { ACTION_TIMEOUT_MS, actionTimedOutMessage } from './deployments/actionLimit';
@@ -243,6 +245,19 @@ export function updateProfile(name: string, body: UpdateProfileBody): Promise<Pr
  * Saves the notes alone: no claim on the deployment, no deploy. A note saved
  * elsewhere since `loadedRevision` was read is answered with 409.
  */
+/** Saves the public ingest address alone, or clears it with null. Deploys nothing. */
+export function updateIngestHost(name: string, ingestHost: string | null): Promise<Profile> {
+  return sendJson<Profile>('PATCH', `/profiles/${encodeURIComponent(name)}/ingest-host`, { ingest_host: ingestHost });
+}
+
+/** How the manager's last push of this deployment's stage record into the web2 admin went, or null before any. */
+export async function fetchStageRegistration(name: string, signal?: AbortSignal): Promise<StagePushState | null> {
+  const answer = await getJson<StageRegistrationAnswer>(`/stages/${encodeURIComponent(name)}/registration`, {
+    signal,
+  });
+  return answer.registration;
+}
+
 export function updateNotes(name: string, notes: string | null, loadedRevision: number): Promise<Profile> {
   return sendJson<Profile>('PATCH', `/profiles/${encodeURIComponent(name)}/notes`, {
     notes,
