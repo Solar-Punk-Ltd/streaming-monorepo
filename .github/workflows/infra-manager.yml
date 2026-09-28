@@ -9,7 +9,7 @@ name: infra-manager
 
 on:
   pull_request:
-    branches: [main, main-v3]
+    branches: [main]
     paths:
       [
         'apps/infra-manager/**',
@@ -24,7 +24,7 @@ on:
         '.github/workflows/infra-manager.yml',
       ]
   push:
-    branches: [main, main-v3]
+    branches: [main]
     paths:
       [
         'apps/infra-manager/**',

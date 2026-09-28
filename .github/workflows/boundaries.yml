@@ -9,7 +9,7 @@ name: boundaries
 on:
   pull_request:
   push:
-    branches: [main, main-v3]
+    branches: [main]
 
 permissions:
   contents: read

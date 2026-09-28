@@ -10,7 +10,7 @@ name: tools
 
 on:
   push:
-    branches: [main, main-v3]
+    branches: [main]
     paths:
       [
         'tools/**',

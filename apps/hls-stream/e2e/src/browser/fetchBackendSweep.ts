@@ -336,7 +336,8 @@ export async function openByteSourceArm({
     throw new Error(`arm ${source} is not the condition it claims: ${notComparable}`);
   }
 
-  const remainingMs = playbackStartedAtMs + settleMs - clock.now();
+  const settleEndsAtMs = playbackStartedAtMs + settleMs;
+  const remainingMs = settleEndsAtMs - clock.now();
   if (remainingMs < 0) {
     throw new Error(
       `arm ${source} took ${((settleMs - remainingMs) / 1000).toFixed(1)}s to reach its byte source, past ` +
@@ -344,6 +345,8 @@ export async function openByteSourceArm({
     );
   }
   await clock.wait(remainingMs);
+  // Node's timers can fire up to a millisecond before Date.now() agrees, so the settle ends by the clock.
+  while (clock.now() < settleEndsAtMs) await clock.wait(settleEndsAtMs - clock.now());
 
   const settledUntilMs = clock.now();
   return {

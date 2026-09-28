@@ -8,7 +8,7 @@ name: web2-admin
 
 on:
   push:
-    branches: [main, main-v3]
+    branches: [main]
     paths:
       [
         'apps/web2-admin/**',
