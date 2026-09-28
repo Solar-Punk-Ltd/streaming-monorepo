@@ -237,6 +237,57 @@ describe('StreamStateService audit', () => {
     ]);
   });
 
+  it('records the status its write published when a later report lands before the write reads the row', async () => {
+    // The live report's row is written, then the vod report's, and only then
+    // does the republish read the row inside the mutex. Its write carries
+    // vod, as the catalogue should; the live report's entry names that write,
+    // so it has to say what the write published.
+    const { store, gateway, audit, state, stream } = await setup();
+    const markLive = store.markLive.bind(store);
+    store.markLive = async (id, allowedFrom) => {
+      const row = await markLive(id, allowedFrom);
+      await store.markVod(id, ['live'], 7, 62.5);
+      return row;
+    };
+    audit.entries.length = 0;
+
+    const outcome = await state.report(stream.id, { state: 'live' });
+
+    assert.equal(entryAt(gateway, outcome.feed.index, stream.topic).state, 'vod', 'the catalogue has the later state');
+    assert.deepEqual(audit.entries, [
+      {
+        actor: { kind: 'uploader' },
+        action: 'stream.state.live',
+        streamId: stream.id,
+        topic: stream.topic,
+        statusBefore: 'published',
+        statusAfter: 'live',
+        details: { feedIndex: outcome.feed.index, entryStatus: 'vod' },
+      },
+    ]);
+  });
+
+  it('records the status its write published when a later report lands while that write is on its way', async () => {
+    // The republish reads the row as live and writes a live entry. The vod
+    // report's row lands before that write is recorded, so the row the write
+    // hands back already says vod; the write itself published live.
+    const { store, gateway, audit, state, stream } = await setup();
+    const write = gateway.write.bind(gateway);
+    gateway.write = async (entries, index) => {
+      const reference = await write(entries, index);
+      await store.markVod(stream.id, ['live'], 7, 62.5);
+      return reference;
+    };
+    audit.entries.length = 0;
+
+    const outcome = await state.report(stream.id, { state: 'live' });
+
+    assert.equal(entryAt(gateway, outcome.feed.index, stream.topic).state, 'live');
+    assert.equal(outcome.stream.status, 'vod', 'the row moved on while the write was on its way');
+    const [entry] = audit.withAction('stream.state.live');
+    assert.deepEqual(entry?.details, { feedIndex: outcome.feed.index, entryStatus: 'live' });
+  });
+
   it('records the transition when the republish after it failed, with the reason', async () => {
     // The state is persisted before the feed write, so it did move; the entry
     // says so, and that the catalogue has not caught up.

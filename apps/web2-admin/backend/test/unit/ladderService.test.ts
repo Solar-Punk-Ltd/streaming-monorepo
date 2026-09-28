@@ -314,6 +314,65 @@ describe('LadderService audit', () => {
     assert.equal(entry?.statusAfter, 'live');
   });
 
+  it('records the rung as its write published it when a later report for that rung lands first', async () => {
+    // This report stores 720p still live, then 720p's final report is stored
+    // before the republish reads the ladder. The write carries the final
+    // rung, as the catalogue should; the entry pairs this report's index and
+    // duration with that write, so it has to say what the write carried.
+    const { renditions, audit, service, stream } = await setup();
+    const upsert = renditions.upsert.bind(renditions);
+    renditions.upsert = async (streamId, rendition) => {
+      const row = await upsert(streamId, rendition);
+      await upsert(streamId, FINAL_720);
+      return row;
+    };
+    audit.entries.length = 0;
+
+    const outcome = await service.report(stream.id, LIVE_720);
+
+    assert.deepEqual(outcome.renditions, [FINAL_720], 'the catalogue has the later report');
+    assert.deepEqual(audit.entries, [
+      {
+        actor: { kind: 'uploader' },
+        action: 'stream.rendition.report',
+        streamId: stream.id,
+        topic: stream.topic,
+        statusBefore: 'published',
+        statusAfter: 'published',
+        details: {
+          rung: '720p',
+          index: null,
+          duration: null,
+          feedIndex: outcome.publish.feed.index,
+          entryRung: FINAL_720,
+          finished: true,
+          flippedToFinished: true,
+        },
+      },
+    ]);
+  });
+
+  it('names the status its write published when a live report lands while that write is on its way', async () => {
+    // The republish reads the row as published and writes that. The live
+    // report's row lands before the write is recorded, so the row the write
+    // hands back says live; the transition is the state report's to record.
+    const { store, gateway, audit, service, stream } = await setup();
+    const write = gateway.write.bind(gateway);
+    gateway.write = async (entries, index) => {
+      const reference = await write(entries, index);
+      await store.markLive(stream.id, ['published']);
+      return reference;
+    };
+    audit.entries.length = 0;
+
+    const outcome = await service.report(stream.id, LIVE_360);
+
+    assert.equal(entryAt(gateway, outcome.publish.feed.index, stream.topic).state, 'scheduled');
+    const [entry] = audit.withAction('stream.rendition.report');
+    assert.equal(entry?.statusBefore, 'published');
+    assert.equal(entry?.statusAfter, 'published');
+  });
+
   it('records a rung that was stored but whose catalogue write failed, with the reason', async () => {
     const { gateway, audit, service, stream } = await setup();
     audit.entries.length = 0;
