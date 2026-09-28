@@ -10,6 +10,10 @@ is the section [Linking uploaders to the web2
 admin](../../manager/README.md#linking-uploaders-to-the-web2-admin) of
 `manager/README.md`.
 
+The same link is where the manager pushes each stage's record, with the stored
+token as the registrar's: [stages.md](stages.md) says what is pushed, when, to
+whom and what each outcome means.
+
 ## The two keys, and the rule they answer to together
 
 Both keys are typed fields in `common/src/stackSettingFields.ts`, so the page
