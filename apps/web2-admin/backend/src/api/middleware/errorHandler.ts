@@ -15,6 +15,9 @@ import {
   NoUsersError,
   PublishFailedError,
   RequestShapeError,
+  StageLockedError,
+  StageRequiredError,
+  StageUnavailableError,
   StreamBusyError,
   StreamLiveError,
   StreamLockedError,
@@ -169,6 +172,22 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
   }
   if (err instanceof FeedOwnerMismatchError) {
     res.status(409).json({ error: 'feed_owner_mismatch', message: err.message });
+    return;
+  }
+  if (err instanceof StageLockedError) {
+    res.status(409).json({ error: 'stage_locked', id: err.streamId, reason: err.reason, message: err.message });
+    return;
+  }
+  if (err instanceof StageUnavailableError) {
+    // 409 for all three reasons, an unknown id included: the id is well formed, and whether a stage takes streams
+    // is the admin's state, which the manager changes under the form.
+    res
+      .status(409)
+      .json({ error: 'stage_unavailable', stageId: err.stageId, reason: err.reason, message: err.message });
+    return;
+  }
+  if (err instanceof StageRequiredError) {
+    res.status(409).json({ error: 'stage_required', id: err.streamId, message: err.message });
     return;
   }
   if (err instanceof MediaTypeLockedError) {

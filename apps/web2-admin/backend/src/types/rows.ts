@@ -72,6 +72,12 @@ export interface StreamRow {
    * does not carry. Migration 006.
    */
   entry_content_edited_at: Date | null;
+  /**
+   * The stage the stream is broadcast on, or null until one is picked
+   * (migration 011). Changes only while the stream is a draft, and never on
+   * a row that holds a recording and a stage.
+   */
+  stage_id: string | null;
   created_at: Date;
   updated_at: Date;
 }

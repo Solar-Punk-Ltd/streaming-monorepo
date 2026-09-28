@@ -25,6 +25,8 @@ import type { StateStreamStore } from '../../../src/domain/StreamStateService.js
 import type { PublishedStatus } from '../../../src/domain/streamState.js';
 import type { StreamRenditionRow, StreamRow, ThumbnailRow } from '../../../src/types/index.js';
 
+import { STAGE_ID } from './stageFakes.js';
+
 export const TEST_OWNER = '19e7e376e7c213b7e7e7e46cc70a5dd086daff2a';
 export const TEST_USER_ID = '00000000-0000-4000-8000-000000000001';
 
@@ -84,6 +86,9 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
     ended_at: null,
     content_edited_at: null,
     entry_content_edited_at: null,
+    // On the stage `stageFakes` pushes, as every stream picked in the form now
+    // is. A test about a stream without one says so.
+    stage_id: STAGE_ID,
     created_at: at,
     updated_at: at,
     ...over,
@@ -179,11 +184,17 @@ export class FakeStreamStore
 
   /**
    * Conditional on `allowedFrom`, and `content_edited_at` moves only when a
-   * value changes, as the SQL has it.
+   * value changes, as the SQL has it. A stage change is refused as the SQL
+   * refuses it: unless the row is a draft that does not hold both a
+   * recording and a stage.
    */
   async update(id: string, data: StreamUpdateData, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
     const row = this.rows.get(id);
     if (!row || !allowedFrom.includes(row.status)) return null;
+    const stageMoves = data.stage_id !== undefined && data.stage_id !== row.stage_id;
+    if (stageMoves && !(row.status === 'draft' && (row.manifest_index === null || row.stage_id === null))) {
+      return null;
+    }
     const scheduled = toDate(data.scheduled_start_time);
     const changed =
       row.title !== data.title ||
@@ -198,6 +209,7 @@ export class FakeStreamStore
       media_type: data.media_type,
       scheduled_start_time: scheduled,
       ...(changed ? { content_edited_at: new Date('2026-09-11T11:00:00.000Z') } : {}),
+      ...(data.stage_id !== undefined ? { stage_id: data.stage_id } : {}),
     });
   }
 
@@ -331,9 +343,15 @@ export class FakeStreamStore
     this.patch(id, { thumbnail_ref: thumbnailRef });
   }
 
-  async claimForPublish(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
+  /** As the SQL is: with `draftNeedsStage`, a draft with no stage is not claimed either. */
+  async claimForPublish(
+    id: string,
+    allowedFrom: readonly StreamStatus[],
+    draftNeedsStage = false,
+  ): Promise<StreamRow | null> {
     const row = this.rows.get(id);
     if (!row || !allowedFrom.includes(row.status)) return null;
+    if (draftNeedsStage && row.status === 'draft' && row.stage_id === null) return null;
     return this.patch(id, { status: 'publishing' });
   }
 

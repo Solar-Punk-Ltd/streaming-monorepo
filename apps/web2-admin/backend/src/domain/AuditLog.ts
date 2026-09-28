@@ -11,6 +11,7 @@ const logger = Logger.getInstance();
 export type AuditAction =
   | 'stream.create'
   | 'stream.update'
+  | 'stream.stage'
   | 'stream.delete'
   | 'stream.thumbnail.set'
   | 'stream.thumbnail.clear'

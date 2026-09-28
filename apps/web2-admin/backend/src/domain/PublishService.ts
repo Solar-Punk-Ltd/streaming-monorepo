@@ -14,6 +14,7 @@ import { recordAudit, type AuditLog } from './AuditLog.js';
 import {
   FeedOwnerMismatchError,
   PublishFailedError,
+  StageRequiredError,
   StreamBusyError,
   StreamLiveError,
   StreamNotFoundError,
@@ -34,7 +35,12 @@ export interface PublishStreamStore {
   findById(id: string): Promise<StreamRow | null>;
   findThumbnail(id: string): Promise<ThumbnailRow | null>;
   recordThumbnailRef(id: string, thumbnailRef: string): Promise<void>;
-  claimForPublish(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null>;
+  /** Null as well, with `draftNeedsStage`, for a draft that has no stage. */
+  claimForPublish(
+    id: string,
+    allowedFrom: readonly StreamStatus[],
+    draftNeedsStage?: boolean,
+  ): Promise<StreamRow | null>;
   /**
    * `entryContentEditedAt` here and on `recordRepublish` is the
    * `content_edited_at` of the row the entry was built from: which edit the
@@ -418,6 +424,11 @@ export class PublishService {
 
   private async doPublish(actor: Actor, before: StreamRow): Promise<PublishOutcome> {
     const id = before.id;
+    // A draft goes on the catalogue only once it says which stage it is
+    // broadcast on. A stream that is on the catalogue already is republished
+    // as it is: one published before stages existed has none, and cannot be
+    // given one until it is unpublished.
+    if (before.status === 'draft' && before.stage_id === null) throw new StageRequiredError(id);
     // The entry carries the row's `owner`, while the gateway signs with the
     // configured key. If those have drifted apart — the feed key was rotated
     // after this stream was created — the entry would advertise an owner the
@@ -426,7 +437,7 @@ export class PublishService {
       throw new FeedOwnerMismatchError(id, before.owner, this.feed.owner);
     }
 
-    const { claimed, previousStatus } = await this.claim(before);
+    const { claimed, previousStatus } = await this.claim(before, PUBLISHABLE_STATUSES, true);
     // The uploader's reports are refused while the row is claimed, so the
     // recording this reads cannot change before the row is finished.
     const status = publishedStatusFor(claimed);
@@ -667,13 +678,18 @@ export class PublishService {
   private async claim(
     before: StreamRow,
     allowedFrom: readonly StreamStatus[] = PUBLISHABLE_STATUSES,
+    draftNeedsStage = false,
   ): Promise<{ claimed: StreamRow; previousStatus: StreamStatus }> {
-    const claimed = await this.streams.claimForPublish(before.id, allowedFrom);
+    const claimed = await this.streams.claimForPublish(before.id, allowedFrom, draftNeedsStage);
     if (!claimed) {
       // Re-read rather than trusting `before`: the row may have been deleted
-      // between the two statements, which is a 404, not a 409.
+      // between the two statements, which is a 404, not a 409, and an edit
+      // may have taken its stage away.
       const current = await this.streams.findById(before.id);
       if (!current) throw new StreamNotFoundError(before.id);
+      if (draftNeedsStage && current.status === 'draft' && current.stage_id === null) {
+        throw new StageRequiredError(before.id);
+      }
       throw new StreamBusyError(before.id, current.status);
     }
 

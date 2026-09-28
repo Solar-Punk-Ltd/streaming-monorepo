@@ -27,13 +27,6 @@ function optionalNumber(name: string, fallback: number): number {
   return value;
 }
 
-function optionalBoolean(name: string, fallback: boolean): boolean {
-  const raw = optional(name, String(fallback)).trim().toLowerCase();
-  if (raw === 'true' || raw === '1' || raw === 'yes') return true;
-  if (raw === 'false' || raw === '0' || raw === 'no') return false;
-  throw new Error(`Env var ${name} must be true or false, got: ${raw}`);
-}
-
 /**
  * The internal API is the uploader's only way in, and it can flip a stream to
  * live and rewrite its catalogue entry. A short token would be brute-forceable
@@ -56,21 +49,6 @@ export type FeedGatewayKind = 'bee' | 'fake';
 
 const FEED_GATEWAY_KINDS: readonly FeedGatewayKind[] = ['bee', 'fake'];
 
-export interface IngestConfig {
-  host: string;
-  srtPort: number;
-  rtmpPort: number;
-  /**
-   * Whether RTMP ingest is open to encoders on this deployment, and so shown
-   * to the operator. Off by default: ingest is SRT only, the deployments
-   * close RTMP's port, and RTMP carries no passphrase.
-   */
-  rtmpPublic: boolean;
-  /** One value for the whole SRS server, or null when SRT is unencrypted. */
-  srtPassphrase: string | null;
-  keyVerified: boolean;
-}
-
 export interface AppConfig {
   port: number;
   host: string;
@@ -83,7 +61,6 @@ export interface AppConfig {
   viewerBaseUrl: string;
   /** Bearer token the uploader presents on /api/internal. */
   internalApiToken: string;
-  ingest: IngestConfig;
 }
 
 function feedGateway(): FeedGatewayKind {
@@ -125,12 +102,4 @@ export const config: AppConfig = {
   feedTopic: optional('FEED_TOPIC', 'swarm-stream'),
   viewerBaseUrl: optional('VIEWER_BASE_URL', ''),
   internalApiToken: requiredSecret('INTERNAL_API_TOKEN', INTERNAL_API_TOKEN_MIN_LENGTH),
-  ingest: {
-    host: required('INGEST_HOST'),
-    srtPort: optionalNumber('INGEST_SRT_PORT', 10061),
-    rtmpPort: optionalNumber('INGEST_RTMP_PORT', 10062),
-    rtmpPublic: optionalBoolean('INGEST_RTMP_PUBLIC', false),
-    srtPassphrase: optional('INGEST_SRT_PASSPHRASE', '') || null,
-    keyVerified: optionalBoolean('INGEST_KEY_VERIFIED', false),
-  },
 };

@@ -14,6 +14,7 @@ import type {
 
 import type { RenditionReportOutcome } from '../domain/LadderService.js';
 import type { PublishOutcome } from '../domain/PublishService.js';
+import { stageTakesStreams } from '../domain/StageService.js';
 import { hasUnpublishedEdits } from '../domain/unpublishedEdits.js';
 import type { DesignatedCatalogueStamp, StageRow, StreamRow, UserRow } from '../types/index.js';
 
@@ -53,6 +54,7 @@ export function toStream(row: StreamRow): Stream {
     liveSince: iso(row.live_since),
     endedAt: iso(row.ended_at),
     hasUnpublishedEdits: hasUnpublishedEdits(row),
+    stageId: row.stage_id,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -107,7 +109,7 @@ export function toStageSummary(row: StageRow): StageSummary {
     name: row.name,
     kind: row.kind,
     engine: row.engine,
-    supported: row.engine === 'srs',
+    supported: stageTakesStreams(row.engine),
     stackVersion: record.stackVersion,
     status: record.status,
     owner: row.owner,

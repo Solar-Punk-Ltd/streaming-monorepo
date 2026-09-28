@@ -7,8 +7,7 @@ import {
   type IngestRtmpDetails,
 } from '@streaming-monorepo/web2-admin-common';
 
-import type { StreamRow } from '../types/index.js';
-import type { IngestConfig } from '../utils/config.js';
+import type { StageSecretsRow, StreamRow } from '../types/index.js';
 
 import { describeActor, describeStream, type Actor } from './actor.js';
 import { recordAudit, type AuditLog } from './AuditLog.js';
@@ -25,39 +24,63 @@ export interface IngestStreamStore {
 }
 
 /**
- * What the operator types into OBS, derived from the row and the configured
- * SRS endpoint — no network call, no state. The manager computed this in its
- * frontend from port arithmetic; here it is one server-side answer, so the
- * console cannot disagree with what the uploader will accept.
- *
- * The SRT passphrase is a property of the SRS server, not of the stream; the
- * per-stream credential is `publishKey`, which rides in `key=`.
+ * How the ingest details read a stage: with its SRT passphrase, which only
+ * one stream's details ever carry. StageRepository's `find`; a fake stands in.
  */
-export function ingestDetailsFor(stream: StreamRow, endpoint: IngestConfig): IngestDetails {
+export interface IngestStageLookup {
+  find(stageId: string): Promise<StageSecretsRow | null>;
+}
+
+/**
+ * What the operator types into OBS, derived from the row and the stage it is
+ * broadcast on, as the manager last pushed it: no network call. The manager
+ * computed this in its frontend from port arithmetic; here it is one
+ * server-side answer, so the console cannot disagree with what the uploader
+ * will accept.
+ *
+ * The SRT passphrase is a property of the stage's ingest server, not of the
+ * stream; the per-stream credential is `publishKey`, which rides in `key=`.
+ * Without a stage there is nowhere to send the stream, and only the stream's
+ * own id and key are answered.
+ *
+ * A stage the manager retired keeps its streams' details: a stream published
+ * on it stays as it is.
+ */
+export function ingestDetailsFor(stream: StreamRow, stage: StageSecretsRow | null): IngestDetails {
   const app = stream.media_type;
   const streamId = buildIngestStreamId(app, stream.topic);
-  return {
+  const own = {
     streamId,
     app,
     stream: stream.topic,
     publishKey: stream.publish_key,
     publishKeyRotatedAt: stream.publish_key_rotated_at ? stream.publish_key_rotated_at.toISOString() : null,
-    srt: {
-      url: buildSrtPublishUrl(endpoint, streamId, stream.publish_key),
-      passphrase: endpoint.srtPassphrase,
+  };
+  if (!stage) return { ...own, stage: null, srt: null, rtmp: null };
+
+  const { ingest } = stage.record;
+  return {
+    ...own,
+    stage: {
+      stageId: stage.stage_id,
+      name: stage.name,
+      retiredAt: stage.retired_observed_at ? stage.retired_observed_at.toISOString() : null,
     },
-    rtmp: endpoint.rtmpPublic ? rtmpDetailsFor(stream, endpoint) : null,
-    keyVerified: endpoint.keyVerified,
+    srt: {
+      url: buildSrtPublishUrl(ingest, streamId, stream.publish_key),
+      passphrase: stage.srt_passphrase,
+    },
+    rtmp: ingest.rtmpPublic ? rtmpDetailsFor(stream, ingest) : null,
   };
 }
 
 /**
- * Only built where RTMP ingest is open, so the stream key does not travel a
- * second time, in a form nobody can use, on a deployment that closed it.
+ * Only built where the stage opens RTMP ingest, so the stream key does not
+ * travel a second time, in a form nobody can use, on a stage that closed it.
  */
-function rtmpDetailsFor(stream: StreamRow, endpoint: IngestConfig): IngestRtmpDetails {
+function rtmpDetailsFor(stream: StreamRow, ingest: { host: string; rtmpPort: number }): IngestRtmpDetails {
   return {
-    server: buildRtmpServer(endpoint, stream.media_type),
+    server: buildRtmpServer(ingest, stream.media_type),
     streamKey: buildRtmpStreamKey(stream.topic, stream.publish_key),
   };
 }
@@ -65,14 +88,14 @@ function rtmpDetailsFor(stream: StreamRow, endpoint: IngestConfig): IngestRtmpDe
 export class IngestService {
   constructor(
     private readonly streams: IngestStreamStore,
-    private readonly endpoint: IngestConfig,
+    private readonly stages: IngestStageLookup,
     private readonly audit: AuditLog,
   ) {}
 
   async detailsFor(id: string): Promise<IngestDetails> {
     const stream = await this.streams.findById(id);
     if (!stream) throw new StreamNotFoundError(id);
-    return ingestDetailsFor(stream, this.endpoint);
+    return ingestDetailsFor(stream, await this.stageOf(stream));
   }
 
   /**
@@ -94,6 +117,10 @@ export class IngestService {
       statusBefore: rotated.status,
       statusAfter: rotated.status,
     });
-    return ingestDetailsFor(rotated, this.endpoint);
+    return ingestDetailsFor(rotated, await this.stageOf(rotated));
+  }
+
+  private async stageOf(stream: StreamRow): Promise<StageSecretsRow | null> {
+    return stream.stage_id ? this.stages.find(stream.stage_id) : null;
   }
 }

@@ -2,13 +2,21 @@ import { randomBytes, randomUUID } from 'node:crypto';
 
 import type { MediaType, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
-import { EDITABLE_STATUSES, THUMBNAIL_MIME_TYPES, type StreamRow, type ThumbnailRow } from '../types/index.js';
+import {
+  EDITABLE_STATUSES,
+  THUMBNAIL_MIME_TYPES,
+  type StageRow,
+  type StreamRow,
+  type ThumbnailRow,
+} from '../types/index.js';
 
 import { describeActor, describeStream, type Actor, type OperatorActor } from './actor.js';
 import { recordAudit, type AuditLog } from './AuditLog.js';
 
 import {
   MediaTypeLockedError,
+  StageLockedError,
+  StageUnavailableError,
   StreamBusyError,
   StreamLiveError,
   StreamLockedError,
@@ -16,9 +24,12 @@ import {
   StreamPublishedError,
   ThumbnailNotFoundError,
   UnsupportedMediaTypeError,
+  type StageLockReason,
+  type StageUnavailableReason,
 } from './errors/index.js';
 import type { FeedIdentity } from './feedIdentity.js';
 import { Logger } from './Logger.js';
+import { describeStage, stageTakesStreams } from './StageService.js';
 import { isScheduleLocked } from './streamState.js';
 import type { ClearedThumbnail, StreamInsertData, StreamUpdateData } from './StreamRepository.js';
 
@@ -41,6 +52,11 @@ export interface StreamServiceStore {
   clearThumbnail(id: string, allowedFrom: readonly StreamStatus[]): Promise<ClearedThumbnail | null>;
 }
 
+/** How the stream edits read a stage: the row a list would, without its passphrase. A fake stands in. */
+export interface StreamStageLookup {
+  find(stageId: string): Promise<StageRow | null>;
+}
+
 /** A validated StreamInput, with tags and scheduledStartTime settled. */
 export interface StreamInputValues {
   title: string;
@@ -48,6 +64,36 @@ export interface StreamInputValues {
   tags: string[];
   mediaType: MediaType;
   scheduledStartTime: string;
+  /** The stage to broadcast on, null for none, or absent to leave the stream's as it is. */
+  stageId?: string | null;
+}
+
+/**
+ * Why a stage cannot take a new stream, or null when it can: the admin knows
+ * it, the manager has not retired it, and it runs an engine the admin takes
+ * streams on. A stream already on a stage that is retired later keeps it;
+ * this is asked only of a stage being picked.
+ */
+export function stageUnavailability(stage: StageRow | null): StageUnavailableReason | null {
+  if (!stage) return 'unknown';
+  if (stage.retired_observed_at !== null) return 'retired';
+  if (!stageTakesStreams(stage.engine)) return 'unsupported';
+  return null;
+}
+
+/**
+ * Why the stream cannot move to `stageId`, or null when it can. Naming the
+ * stage it has is not a move. Publishing fixes the stage, because the entry
+ * and every viewer link carry the stage's owner, so only a draft moves; and a
+ * draft that holds a recording keeps the stage the recording was made on.
+ * One that holds a recording and no stage, a row older than stages, may be
+ * given its first.
+ */
+export function stageLockFor(stream: StreamRow, stageId: string | null): StageLockReason | null {
+  if (stageId === stream.stage_id) return null;
+  if (stream.status !== 'draft') return 'published';
+  if (stream.manifest_index !== null && stream.stage_id !== null) return 'recording';
+  return null;
 }
 
 /**
@@ -92,6 +138,7 @@ export function newPublishKey(): string {
 export class StreamService {
   constructor(
     private readonly streams: StreamServiceStore,
+    private readonly stages: StreamStageLookup,
     private readonly feed: FeedIdentity,
     private readonly audit: AuditLog,
   ) {}
@@ -112,6 +159,8 @@ export class StreamService {
    * operator drafts one.
    */
   async create(actor: OperatorActor, input: StreamInputValues): Promise<StreamRow> {
+    const stageId = input.stageId ?? null;
+    if (stageId !== null) await this.assignableStage(stageId);
     const created = await this.streams.insert({
       user_id: actor.userId,
       // The stream id viewers see. Minted here, not in the browser as
@@ -124,9 +173,12 @@ export class StreamService {
       media_type: input.mediaType,
       scheduled_start_time: input.scheduledStartTime,
       publish_key: newPublishKey(),
+      stage_id: stageId,
     });
 
-    logger.info(`[Stream] ${describeActor(actor)} created ${describeStream(created)}`);
+    logger.info(
+      `[Stream] ${describeActor(actor)} created ${describeStream(created)}${stageId ? ` on stage ${stageId}` : ''}`,
+    );
     await recordAudit(this.audit, {
       actor,
       action: 'stream.create',
@@ -134,7 +186,7 @@ export class StreamService {
       topic: created.topic,
       statusBefore: null,
       statusAfter: created.status,
-      details: { title: created.title, mediaType: created.media_type },
+      details: { title: created.title, mediaType: created.media_type, stageId: created.stage_id },
     });
     return created;
   }
@@ -159,6 +211,13 @@ export class StreamService {
     if (isScheduleLocked(existing, input.scheduledStartTime)) {
       throw new StreamLockedError(id, 'scheduledStartTime');
     }
+    const stageId = input.stageId;
+    const movesStage = stageId !== undefined && stageId !== existing.stage_id;
+    if (movesStage) {
+      const lock = stageLockFor(existing, stageId);
+      if (lock) throw new StageLockedError(id, lock);
+      if (stageId !== null) await this.assignableStage(stageId);
+    }
 
     const updated = await this.streams.update(
       id,
@@ -168,28 +227,59 @@ export class StreamService {
         tags: input.tags,
         media_type: input.mediaType,
         scheduled_start_time: input.scheduledStartTime,
+        ...(movesStage ? { stage_id: stageId } : {}),
       },
       EDITABLE_STATUSES,
     );
-    if (!updated) return this.refuse(id);
+    if (!updated) return this.refuse(id, movesStage ? stageId : undefined);
 
     const changed = changedFields(existing, updated);
-    if (changed.length === 0) {
+    const stageMoved = movesStage && updated.stage_id !== existing.stage_id;
+    if (changed.length === 0 && !stageMoved) {
       logger.info(`[Stream] ${describeActor(actor)} saved ${describeStream(updated)} with no changes`);
       return updated;
     }
 
-    logger.info(`[Stream] ${describeActor(actor)} updated ${describeStream(updated)}: ${changed.join(', ')}`);
-    await recordAudit(this.audit, {
-      actor,
-      action: 'stream.update',
-      streamId: updated.id,
-      topic: updated.topic,
-      statusBefore: existing.status,
-      statusAfter: updated.status,
-      details: { changed },
-    });
+    if (changed.length > 0) {
+      logger.info(`[Stream] ${describeActor(actor)} updated ${describeStream(updated)}: ${changed.join(', ')}`);
+      await recordAudit(this.audit, {
+        actor,
+        action: 'stream.update',
+        streamId: updated.id,
+        topic: updated.topic,
+        statusBefore: existing.status,
+        statusAfter: updated.status,
+        details: { changed },
+      });
+    }
+    if (stageMoved) {
+      logger.info(
+        `[Stream] ${describeActor(actor)} moved ${describeStream(updated)} from stage ${existing.stage_id ?? '(none)'} to ${updated.stage_id ?? '(none)'}`,
+      );
+      await recordAudit(this.audit, {
+        actor,
+        action: 'stream.stage',
+        streamId: updated.id,
+        topic: updated.topic,
+        statusBefore: existing.status,
+        statusAfter: updated.status,
+        details: { from: existing.stage_id, to: updated.stage_id },
+      });
+    }
     return updated;
+  }
+
+  /** The stage, when it can take a new stream; otherwise refuses with why not. */
+  private async assignableStage(stageId: string): Promise<StageRow> {
+    const stage = await this.stages.find(stageId);
+    const reason = stageUnavailability(stage);
+    if (reason) {
+      logger.info(
+        `[Stream] refused stage ${stage ? describeStage({ name: stage.name, stageId }) : stageId}: ${reason}`,
+      );
+      throw new StageUnavailableError(stageId, reason);
+    }
+    return stage!;
   }
 
   /**
@@ -285,12 +375,18 @@ export class StreamService {
   }
 
   /**
-   * A conditional UPDATE returned nothing: say which of the two reasons it
-   * was. Always throws.
+   * A conditional UPDATE returned nothing: say which reason it was. `stageId`
+   * is the stage the update tried to move the stream to, when it tried to:
+   * the row may have been published, or taken a recording, since it was read.
+   * Always throws.
    */
-  private async refuse(id: string): Promise<never> {
+  private async refuse(id: string, stageId?: string | null): Promise<never> {
     const existing = await this.streams.findById(id);
     if (!existing) throw new StreamNotFoundError(id);
+    if (stageId !== undefined && existing.status !== 'publishing') {
+      const lock = stageLockFor(existing, stageId);
+      if (lock) throw new StageLockedError(id, lock);
+    }
     throw new StreamBusyError(id, existing.status);
   }
 }
