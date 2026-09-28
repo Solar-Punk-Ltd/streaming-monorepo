@@ -443,6 +443,23 @@ export function seed() {
     state.profiles.push(member);
   });
 
+  // A Bee-only deployment of its own, which the Manager settings page's catalogue node card can designate: one
+  // immutable batch it takes, and one mutable batch it refuses.
+  const catalogueNode = makeProfile({
+    name: 'catalogue-node',
+    kind: 'custom',
+    components: ['bee-uploader'],
+    created_at: '2026-09-28T08:00:00Z',
+  });
+  const catalogueEntry = node(catalogueNode.name);
+  catalogueEntry.xdai = '150000000000000000';
+  catalogueEntry.bzz = String(20n * 10n ** 15n);
+  catalogueEntry.chequebook = makeChequebook({ total: bzz(1, 0), available: bzz(1, 0) });
+  const catalogueBatch = makeStamp({ depth: 20, ttl: 90 * DAY, immutable: true });
+  catalogueEntry.stamps = [catalogueBatch, makeStamp({ depth: 18, ttl: 30 * DAY, immutable: false })];
+  catalogueNode.stamp_id = catalogueBatch.batchID;
+  state.profiles.push(catalogueNode);
+
   for (const profile of state.profiles) {
     if (profile.status === 'RUNNING') {
       profile.containers = containersFor(profile, {

@@ -42,6 +42,7 @@ export function StampTable({
   stamps,
   loading,
   currentStampId,
+  pinnedBatchId = null,
   busy,
   ...handlers
 }: {
@@ -49,6 +50,8 @@ export function StampTable({
   stamps: BeeStamp[] | null;
   loading: boolean;
   currentStampId: string | null | undefined;
+  /** The batch pinned for the brand's catalogue, when this node is the catalogue node. */
+  pinnedBatchId?: string | null;
   busy: boolean;
 } & BatchHandlers) {
   return (
@@ -87,6 +90,7 @@ export function StampTable({
                   key={stamp.batchID}
                   stamp={stamp}
                   isCurrent={currentStampId != null && sameBatchId(currentStampId, stamp.batchID)}
+                  isPinned={pinnedBatchId != null && sameBatchId(pinnedBatchId, stamp.batchID.toLowerCase())}
                   busy={busy}
                   {...handlers}
                 />
@@ -109,6 +113,7 @@ function usabilityChip(stamp: BeeStamp, expired: boolean): { color: 'error' | 's
 function BatchRows({
   stamp,
   isCurrent,
+  isPinned,
   busy,
   onUse,
   onTopUp,
@@ -116,6 +121,7 @@ function BatchRows({
 }: {
   stamp: BeeStamp;
   isCurrent: boolean;
+  isPinned: boolean;
   busy: boolean;
 } & BatchHandlers) {
   const expired = isStampExpired(stamp);
@@ -136,6 +142,7 @@ function BatchRows({
           >
             <span>{shortHex(stamp.batchID)}</span>
             <CopyButton value={stamp.batchID} label="batch id" />
+            {isPinned && <Chip size="small" color="primary" label="catalogue" data-catalogue-pinned />}
           </Stack>
         </TableCell>
         <TableCell align="right">{stamp.depth}</TableCell>
