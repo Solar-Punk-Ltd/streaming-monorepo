@@ -70,6 +70,7 @@ export function makeProfile(over: Partial<ProfileFixture> = {}): ProfileFixture 
     has_engine_config: false,
     engine_config_error: null,
     stack_version_id: 1,
+    ingest_host: null,
     status: 'RUNNING',
     last_error: null,
     last_error_at: null,
@@ -458,6 +459,11 @@ export class InMemoryProfiles {
     const row = this.rows.get(name);
     if (!row || row.notes_revision !== expectedRevision) return null;
     return this.write(name, { notes, notes_revision: row.notes_revision + 1 });
+  }
+
+  async updateIngestHost(name: string, ingestHost: string | null): Promise<Profile | null> {
+    if (!this.rows.has(name)) return null;
+    return this.write(name, { ingest_host: ingestHost });
   }
 
   async updateEngineSettings(

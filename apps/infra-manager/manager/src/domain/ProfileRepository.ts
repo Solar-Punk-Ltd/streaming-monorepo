@@ -393,6 +393,22 @@ export class ProfileRepository {
   }
 
   /**
+   * Saves the public ingest address alone, migration 046, or null for none.
+   * Nothing a container reads, so no claim, no revision and no deploy.
+   */
+  async updateIngestHost(name: string, ingestHost: string | null): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles
+         SET ingest_host = $2,
+             updated_at = NOW()
+       WHERE name = $1
+       RETURNING ${PROFILE_COLUMNS}`,
+      [name, ingestHost],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /**
    * Replaces the whole engine settings object, for the engine settings route
    * scripts save and recreate through.
    *

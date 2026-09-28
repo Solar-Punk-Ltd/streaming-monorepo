@@ -1,5 +1,6 @@
 import {
   slotCapFor,
+  ingestHostProblem,
   ABR_NODE_POOL_GROUP_KIND,
   ABR_RUNG_COMPONENTS,
   assembleEngineSettingObservations,
@@ -688,6 +689,26 @@ export class ProfileService {
     }
     const withContainers = await this.containers.withContainers(row);
     this.publishChanged(withContainers);
+    return withContainers;
+  }
+
+  /**
+   * Saves the public ingest address alone, or clears it with null: no claim,
+   * no gate, no deploy, because no container reads it. Only the stage record
+   * the manager pushes into the web2 admin carries it, and the change event
+   * this publishes is what pushes that record again.
+   */
+  async updateIngestHost(name: string, ingestHost: string | null): Promise<ProfileWithContainers> {
+    const value = ingestHost === null || ingestHost.trim() === '' ? null : ingestHost;
+    const problem = value === null ? null : ingestHostProblem(value);
+    if (problem) throw new ProfileConfigError(name, problem);
+    const row = await this.repo.updateIngestHost(name, value);
+    if (!row) throw new ProfileNotFoundError(name);
+    const withContainers = await this.containers.withContainers(row);
+    this.publishChanged(withContainers);
+    logger.info(
+      `[ProfileService] ${name}: ${value === null ? 'cleared its ingest address' : 'set its ingest address'}`,
+    );
     return withContainers;
   }
 
