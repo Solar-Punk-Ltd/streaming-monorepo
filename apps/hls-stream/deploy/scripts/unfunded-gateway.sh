@@ -87,7 +87,7 @@ MATCHED_FLAGS=(
 PASSWORD_FILE_IN_CONTAINER=/home/bee/.bee/password
 
 # Outside every rsync target, which are synced with --delete.
-DATA_DIR="${UNFUNDED_DATA_DIR:-/home/solarpunk/unfunded-gateway/data}"
+DATA_DIR="${UNFUNDED_DATA_DIR:-${HOME}/unfunded-gateway/data}"
 
 # The funded gateway advertises `BEE_NAT_ADDR=<public ip>:10078` so peers can dial it back. Without
 # one this node is reachable only outbound, which changes how many peers keep it, and peer count is a

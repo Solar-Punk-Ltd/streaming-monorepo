@@ -22,7 +22,7 @@
 #   BYTE_SOURCE=weeb3 bash deploy/scripts/buffer-sweep-sitting.sh
 set -u
 
-BENCH_REPO="${BENCH_REPO:-/home/solarpunk/swarm-hls-bench}"
+BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
 PROFILE="${PROFILE:-latbench}"
 PORT_SLOT="${PORT_SLOT:-7}"
 SIZE="${SIZE:-1280x720}"
@@ -65,7 +65,7 @@ BROWSER_IMAGE="${BROWSER_IMAGE:-swarm-hls-browser:latest}"
 BROWSER_CONTAINER_NAME="${BROWSER_CONTAINER_NAME:-buffer-sweep-browser}"
 RUN_SELFCHECK="${RUN_SELFCHECK:-1}"
 
-OUT_DIR="${OUT_DIR:-/home/solarpunk/buffer-sweep/$(date -u +%Y%m%d-%H%M%S)}"
+OUT_DIR="${OUT_DIR:-${HOME}/buffer-sweep/$(date -u +%Y%m%d-%H%M%S)}"
 LOG="${OUT_DIR}/buffer-sweep.log"
 STATE="${OUT_DIR}/buffer-sweep-state.tsv"
 mkdir -p "${OUT_DIR}"

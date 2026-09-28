@@ -523,7 +523,8 @@ async function main(): Promise<void> {
   const broadcastStartMs = envNumberOrNull('WEEB3_NATIVE_BROADCAST_START_MS');
 
   const metricsHost = process.env.WEEB3_NATIVE_METRICS_SSH ?? '';
-  const metricsRoot = process.env.WEEB3_NATIVE_METRICS_DIR ?? '/home/solarpunk/node-metrics-weeb3native';
+  // A folder on the metrics host, in the home of the account ssh logs in as. The remote shell expands the `~`.
+  const metricsRoot = process.env.WEEB3_NATIVE_METRICS_DIR ?? '~/node-metrics-weeb3native';
   // ⭐ A caller that brackets the arm itself names itself here, and the name is written into the
   // artefact. Without it an arms wrapper would have to pass ALLOW_NO_NODE_METRICS=1, and the run
   // would then carry "this run has no node-side evidence" while its wrapper was holding exactly that

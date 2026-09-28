@@ -45,7 +45,7 @@
 #   ARM_PLAN="weeb3:6:warm-up weeb3:180:counted" bash deploy/scripts/byte-source-arms.sh
 set -u
 
-BENCH_REPO="${BENCH_REPO:-/home/solarpunk/swarm-hls-bench}"
+BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
 PROFILE="${PROFILE:-latbench}"
 PORT_SLOT="${PORT_SLOT:-7}"
 
@@ -170,7 +170,7 @@ RATES="${HERE}/burn-rates.sh"
   exit 1
 }
 
-OUT_DIR="${OUT_DIR:-/home/solarpunk/byte-source-arms/$(date -u +%Y%m%d-%H%M%S)}"
+OUT_DIR="${OUT_DIR:-${HOME}/byte-source-arms/$(date -u +%Y%m%d-%H%M%S)}"
 LOG="${OUT_DIR}/byte-source-arms.log"
 STATE="${OUT_DIR}/byte-source-arms-state.tsv"
 mkdir -p "${OUT_DIR}"

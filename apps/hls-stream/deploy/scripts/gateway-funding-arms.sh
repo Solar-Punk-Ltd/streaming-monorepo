@@ -40,7 +40,7 @@
 #   ROUNDS=4 ARM_MINUTES=6 bash deploy/scripts/gateway-funding-arms.sh
 set -u
 
-BENCH_REPO="${BENCH_REPO:-/home/solarpunk/swarm-hls-bench}"
+BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
 PROFILE="${PROFILE:-latbench}"
 PORT_SLOT="${PORT_SLOT:-7}"
 
@@ -105,7 +105,7 @@ RATES="${HERE}/burn-rates.sh"
   exit 1
 }
 
-OUT_DIR="${OUT_DIR:-/home/solarpunk/gateway-funding-arms/$(date -u +%Y%m%d-%H%M%S)}"
+OUT_DIR="${OUT_DIR:-${HOME}/gateway-funding-arms/$(date -u +%Y%m%d-%H%M%S)}"
 LOG="${OUT_DIR}/gateway-funding-arms.log"
 STATE="${OUT_DIR}/gateway-funding-arms-state.tsv"
 mkdir -p "${OUT_DIR}"

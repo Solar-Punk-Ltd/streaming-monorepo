@@ -53,7 +53,7 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLAN="${1:?usage: overnight-chain.sh <plan.tsv>}"
 
-CHAIN_DIR="${CHAIN_DIR:-/home/solarpunk/overnight/$(date -u +%Y%m%d-%H%M%S)}"
+CHAIN_DIR="${CHAIN_DIR:-${HOME}/overnight/$(date -u +%Y%m%d-%H%M%S)}"
 LOG="${CHAIN_DIR}/chain.log"
 STATE="${CHAIN_DIR}/chain-state.tsv"
 # One file for the whole night. A floor crossed in sitting two is still crossed in sitting three.

@@ -29,7 +29,7 @@
 #   ARMS="viewer-gateway-outage:weeb3 viewer-gateway-outage:gateway" bash deploy/scripts/crash-arms.sh
 set -u
 
-BENCH_REPO="${BENCH_REPO:-/home/solarpunk/swarm-hls-bench}"
+BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
 PROFILE="${PROFILE:-latbench}"
 PORT_SLOT="${PORT_SLOT:-7}"
 MINUTES="${MINUTES:-7}"
@@ -83,7 +83,7 @@ DEFAULT_ARMS="viewer-gateway-outage:weeb3 viewer-gateway-outage:gateway uploader
 read -r -a ARM_LIST <<< "${ARMS:-${DEFAULT_ARMS}}"
 
 # Outside BENCH_REPO, which is an rsync target with --delete.
-OUT_DIR="${OUT_DIR:-/home/solarpunk/crash-arms/$(date -u +%Y%m%d-%H%M%S)}"
+OUT_DIR="${OUT_DIR:-${HOME}/crash-arms/$(date -u +%Y%m%d-%H%M%S)}"
 LOG="${OUT_DIR}/crash-arms.log"
 STATE="${OUT_DIR}/crash-arms-state.tsv"
 mkdir -p "${OUT_DIR}"

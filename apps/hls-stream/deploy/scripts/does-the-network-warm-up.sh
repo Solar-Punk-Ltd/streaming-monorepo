@@ -25,11 +25,11 @@
 # network held something for hours; it does not locate it or promise it survives a day.
 set -u
 
-STACK_DIR="${STACK_DIR:-/home/solarpunk/swarm-hls-stream-latbench}"
+STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-latbench}"
 ENV_FILE="${STACK_DIR}/.env"
-PROBE="${PROBE:-/home/solarpunk/phase06/retrieval-debt-probe.sh}"
-PHASE06="${PHASE06:-/home/solarpunk/phase06}"
-RUN_DIR="${RUN_DIR:-/home/solarpunk/retrieval-probe/warmup-$(date -u +%Y%m%d-%H%M%S)}"
+PROBE="${PROBE:-${HOME}/phase06/retrieval-debt-probe.sh}"
+PHASE06="${PHASE06:-${HOME}/phase06}"
+RUN_DIR="${RUN_DIR:-${HOME}/retrieval-probe/warmup-$(date -u +%Y%m%d-%H%M%S)}"
 LOG="${RUN_DIR}/warmup.log"
 CONTAINER="${CONTAINER:-latbench-bee-gateway-1}"
 GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-10077}"
