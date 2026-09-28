@@ -74,7 +74,7 @@ export class FeedWriteRepository {
   }
 
   /**
-   * How many writes of this feed have no batch recorded: those from before migration 012, stamped by the env file's
+   * How many writes of this feed have no batch recorded: those from before migration 013, stamped by the env file's
    * batch, and heads adopted from the network at boot. None of them is known to be under the catalogue batch.
    */
   async countUnrecordedBatch(owner: string, topic: string): Promise<number> {
