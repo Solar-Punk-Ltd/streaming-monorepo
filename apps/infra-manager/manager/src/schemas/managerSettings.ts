@@ -77,3 +77,36 @@ export const testAdminLinkSchema = object({
 }).noUnknown(true);
 
 export type TestAdminLinkBody = InferType<typeof testAdminLinkSchema>;
+
+const CATALOGUE_REVISION_MESSAGE = 'expectedRevision is the revision the page read, a whole number';
+const CATALOGUE_PROFILE_MESSAGE = 'profileName is the name of the deployment whose Bee node holds the batch';
+const CATALOGUE_BATCH_MESSAGE = 'batchId is a batch id, 64 hex digits with or without 0x';
+
+const catalogueRevision = number()
+  .typeError(CATALOGUE_REVISION_MESSAGE)
+  .required(CATALOGUE_REVISION_MESSAGE)
+  .integer(CATALOGUE_REVISION_MESSAGE)
+  .min(0, CATALOGUE_REVISION_MESSAGE);
+
+/**
+ * What `PUT /manager-settings/catalogue-node` takes: the deployment and the batch its node holds, at the revision the
+ * page read. Only the shape here: whether that node and that batch can hold the catalogue is the service's to answer.
+ */
+export const saveCatalogueNodeSchema = object({
+  expectedRevision: catalogueRevision,
+  profileName: string()
+    .typeError(CATALOGUE_PROFILE_MESSAGE)
+    .required(CATALOGUE_PROFILE_MESSAGE)
+    .max(128, CATALOGUE_PROFILE_MESSAGE),
+  batchId: string()
+    .typeError(CATALOGUE_BATCH_MESSAGE)
+    .required(CATALOGUE_BATCH_MESSAGE)
+    .matches(/^(0x)?[0-9a-fA-F]{64}$/, CATALOGUE_BATCH_MESSAGE),
+}).noUnknown(true);
+
+export type SaveCatalogueNodeBody = InferType<typeof saveCatalogueNodeSchema>;
+
+/** What `DELETE /manager-settings/catalogue-node` takes: the revision the page read. */
+export const clearCatalogueNodeSchema = object({ expectedRevision: catalogueRevision }).noUnknown(true);
+
+export type ClearCatalogueNodeBody = InferType<typeof clearCatalogueNodeSchema>;
