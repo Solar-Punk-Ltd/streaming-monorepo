@@ -402,8 +402,21 @@ describe('firewall rules from shared policy and complete inventory', () => {
 
   describe('with named uploader addresses on a Bee host', () => {
     const named = ['--bee-api-source', '203.0.113.7/32', '--bee-api-source', '198.51.100.0/24'];
-    const bee = (text: string, hook: 'input' | 'forward', port: number, source: string, family: 'ipv4' | 'ipv6' = 'ipv4') =>
-      verdict(text, hook, { family, source, protocol: 'tcp', originalPort: port, destinationPort: hook === 'input' ? port : 1633, dnat: true });
+    const bee = (
+      text: string,
+      hook: 'input' | 'forward',
+      port: number,
+      source: string,
+      family: 'ipv4' | 'ipv6' = 'ipv4',
+    ) =>
+      verdict(text, hook, {
+        family,
+        source,
+        protocol: 'tcp',
+        originalPort: port,
+        destinationPort: hook === 'input' ? port : 1633,
+        dnat: true,
+      });
 
     it("admits each named address to every slot's Bee API port, and nobody else", () => {
       const text = rules(named);
@@ -425,7 +438,14 @@ describe('firewall rules from shared policy and complete inventory', () => {
         }
       }
       assert.equal(
-        verdict(text, 'forward', { family: 'ipv4', source: '203.0.113.7', protocol: 'udp', originalPort: 10015, destinationPort: 1633, dnat: true }),
+        verdict(text, 'forward', {
+          family: 'ipv4',
+          source: '203.0.113.7',
+          protocol: 'udp',
+          originalPort: 10015,
+          destinationPort: 1633,
+          dnat: true,
+        }),
         'drop',
         'UDP to a Bee API port',
       );
@@ -448,7 +468,15 @@ describe('firewall rules from shared policy and complete inventory', () => {
     });
   });
 
-  for (const source of ['0.0.0.0/0', '203.0.113.0/16', '203.0.113.7', '256.1.1.1/32', '203.0.113.7/33', '2001:db8::1/128', 'example.org/32']) {
+  for (const source of [
+    '0.0.0.0/0',
+    '203.0.113.0/16',
+    '203.0.113.7',
+    '256.1.1.1/32',
+    '203.0.113.7/33',
+    '2001:db8::1/128',
+    'example.org/32',
+  ]) {
     it('refuses --bee-api-source ' + source, () => {
       const result = run(evidence(), ['--bee-api-source', source]);
       assert.equal(result.status, 2);

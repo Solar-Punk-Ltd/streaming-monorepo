@@ -14,7 +14,7 @@ const TABLE = 'streaming_infra_manager';
 const usage =
   'Usage: firewall-rules.sh --iface NAME --inventory FILE [--max-slot N] [--ssh-port N] [--bee-api-source CIDR]...\n' +
   'Prints a draft only. Requires Node.js and an authenticated /targets/firewall export.\n' +
-  '--bee-api-source opens each slot\'s Bee API port to that IPv4 block alone, /24 or narrower. Repeat it per uploader host.\n' +
+  "--bee-api-source opens each slot's Bee API port to that IPv4 block alone, /24 or narrower. Repeat it per uploader host.\n" +
   'Blocks new direct routing from the selected external interface. Review before using on a router.\n' +
   'Preserves established connections and other firewall tables. Applies nothing.\n';
 
@@ -33,7 +33,9 @@ function beeApiSource(value) {
   const octets = match ? match.slice(1, 5).map(Number) : [];
   const prefix = match ? Number(match[5]) : -1;
   if (!match || octets.some((octet) => octet > 255) || prefix < 24 || prefix > 32) {
-    throw new Error('--bee-api-source must be an IPv4 block from /24 to /32, such as 203.0.113.7/32 (got ' + value + ').');
+    throw new Error(
+      '--bee-api-source must be an IPv4 block from /24 to /32, such as 203.0.113.7/32 (got ' + value + ').',
+    );
   }
   return value;
 }
@@ -149,7 +151,13 @@ function printRules(config, inventory) {
   }
   if (config.beeApiSources.length) {
     lines.push(
-      '    ip saddr @' + beeApiFrom + ' meta l4proto ' + NAMED_SOURCE_BEE_API.protocol + ' ct original proto-dst @' + beeApi + ' accept',
+      '    ip saddr @' +
+        beeApiFrom +
+        ' meta l4proto ' +
+        NAMED_SOURCE_BEE_API.protocol +
+        ' ct original proto-dst @' +
+        beeApi +
+        ' accept',
     );
   }
   lines.push(
