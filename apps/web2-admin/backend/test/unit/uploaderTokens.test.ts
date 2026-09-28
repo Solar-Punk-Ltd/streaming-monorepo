@@ -12,6 +12,8 @@
  * - a stage's token is answered only about its stage's streams: another stage's stream, and a stream with no stage,
  *   are the same 404 as a stream that does not exist, with nothing written;
  * - `GET /stages/self` names the caller's stage and owner, and is 401 on the registrar token;
+ * - the registrar token is refused before any lookup, even when a stage row names it as its `own` token, and a push
+ *   that names it as a stage's own is refused and stores nothing;
  * - no token and no token hash reaches a log line, and a refused registrar token logs nothing.
  */
 import { createHash } from 'node:crypto';
@@ -76,6 +78,11 @@ const RETIRED_ID = '7b2e4c0a-3d4e-4f60-9b62-2c3d4e5f6071';
 const SHARED_ROW_ID = '8c3f5d1b-4e5f-4071-8c73-3d4e5f607182';
 /** A stage still on a copy of the current registrar token, which an older manager copied into it: it must rotate. */
 const COPIED_ROW_ID = 'bf628a4e-7182-43a4-9fa6-60718293a4b5';
+/**
+ * A row that names the registrar token as its `own`, which no push can store any more (the service refuses it) but a
+ * database written before that could hold: the door still refuses the token, without asking.
+ */
+const REGISTRAR_AS_OWN_ID = 'c0739b5f-8293-44b5-8a06-718293a4b5c6';
 const TWICE_IDS = ['9d406e2c-5f60-4182-9d84-4e5f60718293', 'ae517f3d-6071-4293-8e95-5f60718293a4'];
 
 let server: http.Server;
@@ -116,6 +123,7 @@ before(async () => {
     }),
     ownStage(TWICE_IDS[0]!, 'Twice stage A', TWICE_TOKEN),
     ownStage(TWICE_IDS[1]!, 'Twice stage B', TWICE_TOKEN),
+    ownStage(REGISTRAR_AS_OWN_ID, 'Registrar stage', REGISTRAR),
   ]) {
     await stages.upsert(splitStageRecord(record));
   }
@@ -151,9 +159,9 @@ before(async () => {
     createInternalRouter({
       streamStateService: new StreamStateService(streams, publishService, audit),
       ladderService: new LadderService(streams, renditions, publishService, audit),
-      stageService: new StageService(stages, new FakeCatalogueStampStore(), audit),
+      stageService: new StageService(stages, new FakeCatalogueStampStore(), audit, { registrarToken: REGISTRAR }),
       requireRegistrarToken: createRequireInternalToken(REGISTRAR),
-      requireUploaderToken: createRequireUploaderToken({ stages }),
+      requireUploaderToken: createRequireUploaderToken({ registrarToken: REGISTRAR, stages }),
     }),
   );
   app.use(notFound);
@@ -437,9 +445,40 @@ describe('GET /stages/self', () => {
   });
 });
 
+describe('the registrar token as a stage’s own', () => {
+  it('is refused on a push, which stores nothing and answers 400 without the token or its hash', async () => {
+    const pushed = ownStage('d1840c6a-93a4-45c6-9b17-8293a4b5c6d7', 'Pushed with the registrar token', REGISTRAR);
+    const before = JSON.stringify([...stages.rows.keys()]);
+    const answer = await call('PUT', `/stages/${pushed.stageId}`, { body: pushed });
+    assert.equal(answer.status, 400, answer.text);
+    assert.equal(answer.text.includes(sha256(REGISTRAR)), false);
+    assert.match(answer.text, /registrar token/);
+    assert.equal(JSON.stringify([...stages.rows.keys()]), before, 'the record was stored');
+    assert.ok(lines.some((line) => line.includes('[WARN]') && line.includes('registrar token as its own')));
+  });
+
+  it('still stores a record that names the registrar token as shared, which the door refuses anyway', async () => {
+    const copied = stageRecord({
+      stageId: COPIED_ROW_ID,
+      name: 'Copied stage',
+      observedAt: '2026-09-28T11:00:00.000Z',
+      adminToken: { sha256: sha256(REGISTRAR), kind: 'shared' },
+    });
+    const answer = await call('PUT', `/stages/${COPIED_ROW_ID}`, { body: copied });
+    assert.equal(answer.status, 200, answer.text);
+  });
+
+  it('is refused on every uploader route even where a stored row names it as its own', async () => {
+    for (const [method, path, body] of uploaderCalls(onMain)) {
+      const answer = await call(method, path, { body, token: REGISTRAR });
+      assert.equal(answer.status, 401, `${method} ${path}`);
+    }
+  });
+});
+
 describe('requireUploaderToken on its own', () => {
   function run(store: { findActiveByOwnTokenSha256(sha256: string): Promise<never[]> }): Promise<unknown> {
-    const door = createRequireUploaderToken({ stages: store });
+    const door = createRequireUploaderToken({ registrarToken: REGISTRAR, stages: store });
     const req = {
       get: (name: string) => (name.toLowerCase() === 'authorization' ? `Bearer ${MAIN_TOKEN}` : undefined),
     } as unknown as Request;
@@ -463,7 +502,7 @@ describe('requireUploaderToken on its own', () => {
         return [] as never[];
       },
     };
-    const door = createRequireUploaderToken({ stages: store });
+    const door = createRequireUploaderToken({ registrarToken: REGISTRAR, stages: store });
     const ask = (token: string) =>
       new Promise((resolve) =>
         door(
@@ -478,5 +517,9 @@ describe('requireUploaderToken on its own', () => {
     assert.equal(lookups, 0, 'no guess of another shape reached the database');
     assert.ok((await ask(UNKNOWN_TOKEN)) instanceof UnauthenticatedError);
     assert.equal(lookups, 1);
+    // The registrar token has the shape of an own token, and is refused without a query.
+    assert.ok((await ask(REGISTRAR)) instanceof UnauthenticatedError);
+    assert.ok((await ask(`${REGISTRAR}  `)) instanceof UnauthenticatedError);
+    assert.equal(lookups, 1, 'the registrar token reached the database');
   });
 });

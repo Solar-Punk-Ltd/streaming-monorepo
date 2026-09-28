@@ -90,7 +90,10 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
       ladderService: deps.ladderService,
       stageService: deps.stageService,
       requireRegistrarToken: createRequireInternalToken(deps.internalApiToken),
-      requireUploaderToken: createRequireUploaderToken({ stages: deps.uploaderTokens }),
+      requireUploaderToken: createRequireUploaderToken({
+        registrarToken: deps.internalApiToken,
+        stages: deps.uploaderTokens,
+      }),
     }),
   );
 

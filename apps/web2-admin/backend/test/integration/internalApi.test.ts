@@ -214,6 +214,21 @@ describe('the registrar token', () => {
     assert.equal((await api<Stream>('GET', `/api/streams/${stream.id}`)).status, 'published');
   });
 
+  it('is never stored as a stage’s own token: the push is refused and registers nothing', async () => {
+    const stageId = 'd1840c6a-93a4-45c6-9b17-8293a4b5c6d7';
+    const pushed = await raw('PUT', `/api/internal/stages/${stageId}`, {
+      ...internalCall(),
+      body: stageRecord({
+        stageId,
+        name: 'Pushed with the registrar token',
+        adminToken: { sha256: createHash('sha256').update(INTERNAL_API_TOKEN, 'utf8').digest('hex'), kind: 'own' },
+      }),
+    });
+    assert.equal(pushed.status, 400, pushed.text);
+    const rows = await pool.query('SELECT 1 FROM stages WHERE stage_id = $1', [stageId]);
+    assert.equal(rows.rowCount, 0);
+  });
+
   it('passes the registrar check, which answers 204 and takes no uploader’s token', async () => {
     const checked = await raw('GET', '/api/internal/registrar', internalCall());
     assert.equal(checked.status, 204);
