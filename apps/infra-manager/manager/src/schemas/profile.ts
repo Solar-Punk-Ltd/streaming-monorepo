@@ -9,6 +9,7 @@ import {
   engineForComponents,
   hasConflictingEngines,
   impliedRpcEndpointSource,
+  ingestHostProblem,
   LADDER_GROUP_NAME_MAX,
   type NodeMode,
   NODE_MODES,
@@ -401,6 +402,22 @@ export const updateNotesSchema = object({
 }).noUnknown(true);
 
 export type UpdateNotesInput = InferType<typeof updateNotesSchema>;
+
+/** `PATCH /profiles/:name/ingest-host`: the public ingest address, or null or empty for none. */
+export const updateIngestHostSchema = object({
+  ingest_host: string()
+    .nullable()
+    .defined()
+    .test('ingest-host', 'invalid ingest_host', function (value) {
+      if (value === null || value === undefined || value === '') return true;
+      const problem = ingestHostProblem(value);
+      return problem ? this.createError({ message: `ingest_host: ${problem}` }) : true;
+    }),
+})
+  .noUnknown(true)
+  .strict();
+
+export type UpdateIngestHostInput = InferType<typeof updateIngestHostSchema>;
 
 export const createGroupSchema = object({
   group_name: string()
