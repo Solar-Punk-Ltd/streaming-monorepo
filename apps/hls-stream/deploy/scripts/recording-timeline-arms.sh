@@ -67,7 +67,7 @@ THREAD_URL="${THREAD_URL:-lat-murmeldjur}"
 VIEWER_CDP_PORT="${VIEWER_CDP_PORT:-9223}"
 MAIN_THREAD_INTERVAL_S="${MAIN_THREAD_INTERVAL_S:-5}"
 
-# ⛔⛔ The box carries roughly forty other bee nodes and eight unrelated stacks, and "existing
+# ⛔⛔ The bench host carries roughly forty other bee nodes and eight unrelated stacks, and "existing
 # resources must not be touched" covers starving them. Checked between arms rather than during, so a
 # stop leaves whole arms rather than half of one.
 LOAD_CEILING="${LOAD_CEILING:-32}"

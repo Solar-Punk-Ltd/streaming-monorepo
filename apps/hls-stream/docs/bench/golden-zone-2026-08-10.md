@@ -1,7 +1,7 @@
 # Which profile a viewer survives on: the golden-zone sitting, written up five days late
 
 **Run 2026-08-10, written up 2026-08-15.** Artefacts at
-`/home/solarpunk/retrieval-probe/goldenzone2-20260810-155801`, driver
+`~/retrieval-probe/goldenzone2-20260810-155801`, driver
 `deploy/scripts/overnight-golden-zone.sh`. All arms unfunded, no spend possible.
 
 > ## ⛔⛔⛔ WHY THIS FILE EXISTS

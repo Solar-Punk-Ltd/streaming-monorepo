@@ -5,7 +5,7 @@ import { counterbalancedOrder } from './gatewaySweep.js';
  * manifest from a bee gateway.
  *
  * ⛔⛔ **Every in-tab figure this project published before 2026-08-16 is this viewer**, and the
- * split was never authorised. See `docs/bench/abel-gateway-less-live-2026-08-16.md`. The name
+ * split was never authorised. See `docs/bench/tester-gateway-less-live-2026-08-16.md`. The name
  * matches `BROWSER_FETCH_BACKEND=weeb3` so an arm keeps the label the existing corpus files it under.
  */
 export const HYBRID_VIEWER = 'weeb3';

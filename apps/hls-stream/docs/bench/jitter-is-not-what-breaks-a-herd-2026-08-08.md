@@ -96,7 +96,7 @@ scattered, and the earlier report covers that case.
 
 ## Artifacts
 
-`/home/solarpunk/retrieval-probe/{jitproving,jitproving2,jitter1}/`. Probe:
+`~/retrieval-probe/{jitproving,jitproving2,jitter1}/`. Probe:
 `deploy/scripts/retrieval-debt-probe.sh`, jitter is the 8th arm field.
 
 The instrument was proved both ways before use. A jitter smaller than the pace is absorbed and leaves

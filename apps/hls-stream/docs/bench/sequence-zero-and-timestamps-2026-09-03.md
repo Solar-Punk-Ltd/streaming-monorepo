@@ -228,5 +228,5 @@ replicate, and it repeats run 1 in every row.
    and every rung's manifest feed, so the owner is the address `discoverCatalogFeed` already reads out
    of the `[StreamCatalog]` line, and the topic comes from the rung announce. See
    `e2e/src/harness/manifestContractLive.ts`.
-5. Abel's player needs telling that the history starts at 0 now and that stamps are present. The owner
+5. A tester's player needs telling that the history starts at 0 now and that stamps are present. The owner
    does that.

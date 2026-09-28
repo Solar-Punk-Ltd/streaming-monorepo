@@ -22,7 +22,7 @@ Chunk counts throughout are `ceil(bytes / 4096)`, Swarm's chunk payload size.
 weeb-3 caps **segment** loads at 4 (`stream_hls.rs:3720`) and **chunk** retrievals at 2,048
 (`lib.rs:321`). A 90 KB segment is ~23 chunks, so our bench profile fills 4.5% of the semaphore that
 matters. If throughput follows chunks in flight rather than segments, every in-browser figure we hold
-was taken on a starved node. See `abel-sustain-prediction-2026-08-11.md`.
+was taken on a starved node. See `tester-sustain-prediction-2026-08-11.md`.
 
 ⛔ **The concurrency sittings cannot answer this.** They all fetched ~90 KB, so chunks are just
 segments times 23.1, to three significant figures, in every arm. Two perfectly collinear variables

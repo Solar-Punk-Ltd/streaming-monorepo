@@ -2,7 +2,7 @@
 
 **2026-08-12.** Free: unfunded in-browser node, references already published, no broadcast. Four
 sittings, one per segment size, each carrying its own c1 and c4 arms so the contrast lives inside one
-sitting. Canaries from abel-1, whose content nobody is questioning.
+sitting. Canaries from tester-1, whose content nobody is questioning.
 
 **Every sitting: control valid, rounds trusted 2, degraded [], and 100% of fetches inside budget.**
 

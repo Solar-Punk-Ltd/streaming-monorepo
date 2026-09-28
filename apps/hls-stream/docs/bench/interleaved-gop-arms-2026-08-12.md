@@ -86,7 +86,7 @@ show them because they happen inside the gateway rather than at its edge.
 
 ## ⚠️ A neighbour spike landed on one condition, and it did not move the result
 
-Host load on this 48-core box reached **47.22** at the end of round 2's 2.0s arm and was still 43.76
+Host load on this 48-core host reached **47.22** at the end of round 2's 2.0s arm and was still 43.76
 at the start of round 3's 2.0s arm. Roughly four of those were ours.
 
 ⛔ **This is a weakness of ABBA counterbalancing that is worth naming.** Alternating `AB / BA / AB / BA`

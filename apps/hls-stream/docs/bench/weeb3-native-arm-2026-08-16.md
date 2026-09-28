@@ -6,7 +6,7 @@ our own 2026-08-11 shipping-profile recording, owner `8d8a30ff…`, topic
 `7e87a2d9-82fe-422f-a66a-5b1e42281636`. Artefacts `weeb3-native-2026-08-16T06-33-22-925Z.*`.
 
 This is what the owner asked for on **2026-08-11T07:07Z** and did not get. See
-[`abel-gateway-less-live-2026-08-16.md`](abel-gateway-less-live-2026-08-16.md) for why.
+[`tester-gateway-less-live-2026-08-16.md`](tester-gateway-less-live-2026-08-16.md) for why.
 
 ## Result
 

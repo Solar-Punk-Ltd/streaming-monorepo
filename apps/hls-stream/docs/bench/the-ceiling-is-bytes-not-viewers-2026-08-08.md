@@ -61,7 +61,7 @@ At the top arm, three separate resources that could explain a 43 MB/s wall all h
 
 ⭐ **So the ceiling is internal to bee**, which is consistent with LAT-11 having put the concurrency
 limit inside bee rather than in the network or the wallet. It is not a capacity that can be bought with
-a bigger box or a faster link.
+a bigger host or a faster link.
 
 ⚠️ The host load figure is new, added for this sweep precisely so a starved probe client could not be
 mistaken for a slow gateway. At 36 of 48 there were roughly twelve idle cores, so the probe's own
@@ -155,7 +155,7 @@ more than this sitting.
 
 ## Artifacts
 
-`/home/solarpunk/retrieval-probe/KNEE1/`. Probe: `deploy/scripts/retrieval-debt-probe.sh`, with viewers
+`~/retrieval-probe/KNEE1/`. Probe: `deploy/scripts/retrieval-debt-probe.sh`, with viewers
 as the 5th arm field and spread as the 7th. Host load was added to the probe for this sweep and its
 ceiling was set at 40 of 48 cores, which never tripped: the hottest arm peaked at 35.94. Gateway
 restored to `--swap-enable=true` and `--cache-capacity=0` and confirmed on the node.

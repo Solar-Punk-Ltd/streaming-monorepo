@@ -1,4 +1,4 @@
-# Prediction, written and committed BEFORE the abel-1 sustain sitting
+# Prediction, written and committed BEFORE the tester-1 sustain sitting
 
 **2026-08-11.** Committed before the run rather than kept in a scratchpad, so that neither model below
 can be adjusted after the number arrives. The previous sustain prediction was written the same way and
@@ -6,10 +6,10 @@ called 0.69 against a measured 0.6734, which is the only reason its mechanism is
 
 ## The run
 
-`window.__sustainStream = 'abel-1'`, twelve minutes, weeb-3's own player, one focused tab, no gateway
+`window.__sustainStream = 'tester-1'`, twelve minutes, weeb-3's own player, one focused tab, no gateway
 in the path. A third party VOD that the publisher reports plays fine through this same in-browser node.
 
-| | latbench (what every prior sitting used) | **abel-1** |
+| | latbench (what every prior sitting used) | **tester-1** |
 | --- | ---: | ---: |
 | segment duration | 0.266s | **4.167s** |
 | segment size | 90 KB | **4,241 KB** |
@@ -44,7 +44,7 @@ chunks one segment load puts in flight:
 | profile | chunks per segment | at 4 segments in flight | share of the 2,048 semaphore |
 | --- | ---: | ---: | ---: |
 | latbench, 90 KB | ~23 | ~92 | **4.5%** |
-| **abel-1, 4,241 KB** | **~1,060** | **~4,240** | **saturated** |
+| **tester-1, 4,241 KB** | **~1,060** | **~4,240** | **saturated** |
 
 ⭐ On this model every throughput figure we hold was taken on a **starved** node. A 90 KB segment cannot
 put enough chunks in flight to reach the limit that matters, so our ceiling is a fact about our segment
@@ -66,7 +66,7 @@ Model B says and what Model A cannot explain.
 
 Extrapolating the three rows above, throughput grows roughly with the square root of chunks in flight:
 92 to 368 is 4x the chunks for 1.87x the bytes. Carrying that to a saturated 2,048 gives **~1,040 KB/s**,
-which sits almost exactly on abel-1's 1,018 KB/s demand.
+which sits almost exactly on tester-1's 1,018 KB/s demand.
 
 ⚠️ That is an extrapolation across 5.6x, from three points, so its error bars are wide enough to cover
 both verdicts. **I am not able to call this run, and saying so now is the point of writing it down.**
@@ -104,30 +104,30 @@ fragment sittings measured delivery beyond that point too, and it collapses:
 | 2.5 MB | 1/5 | the one success took **132s** |
 | **3.5 MB** | ⛔ **0/5** | all at weeb-3's own 240s ceiling |
 
-⛔ **abel-1's segments are 4.14 MB, past the end of that table.** The one time a 3.5 MB object did
+⛔ **tester-1's segments are 4.14 MB, past the end of that table.** The one time a 3.5 MB object did
 arrive on a healthier node it took **48.8s**, which is 73 KB/s. Four of those in parallel is ~345 KB/s
 against a 1,018 KB/s demand, a ratio of **0.34**.
 
-⭐ So the chunk reading and the delivery reading now bracket abel-1 from both sides: throughput
-improves with size right up to ~1.3 MB and then the node stops coping, and abel-1 sits beyond the
+⭐ So the chunk reading and the delivery reading now bracket tester-1 from both sides: throughput
+improves with size right up to ~1.3 MB and then the node stops coping, and tester-1 sits beyond the
 collapse. **This moves my expectation toward DOES NOT SUSTAIN**, and it makes a sustaining result more
 informative rather than less, because almost nothing in our own corpus predicts it.
 
 ⭐⭐ **And it promotes content replication from a footnote to the leading explanation.** Our large
-references were bench fixtures uploaded once. abel-1 is a working stream someone actually watches. If
+references were bench fixtures uploaded once. tester-1 is a working stream someone actually watches. If
 it sustains where our 3.5 MB fixtures returned 0/5, the difference is far more likely to be how well
 the chunks are spread through the network than anything about size or the node. That is a question we
-have never asked and could answer cheaply, by timing retrieval of one of Abel's segments against one
+have never asked and could answer cheaply, by timing retrieval of one of a tester's segments against one
 of ours, same node, same minute.
 
 ## ⚠️ Confounds this run does not control
 
-- **Content replication.** Abel's segments may simply be better seeded than references we uploaded for
+- **Content replication.** The tester's segments may simply be better seeded than references we uploaded for
   a bench. Nothing in this design separates that from a size effect, and if the answer lands between
   the two models this is the first thing to suspect.
-- **abel-1 is a different recording, not just a different size.** Codec, resolution and how it was
+- **tester-1 is a different recording, not just a different size.** Codec, resolution and how it was
   uploaded all differ from ours.
-- **n=1**, as every sitting that costs a human twelve minutes is. `abel-2` is in the harness as a
-  replicate, though its segment shape is assumed from abel-1 rather than read.
+- **n=1**, as every sitting that costs a human twelve minutes is. `tester-2` is in the harness as a
+  replicate, though its segment shape is assumed from tester-1 rather than read.
 - **Peers.** If the table comes up short of ~130 the run measures a weak node. `peersAtStart` is
   reported and is read before the ratio, not after.

@@ -8,7 +8,7 @@ invented after the fact fits whatever it is shown.
 
 Two results from today sit in tension and one broadcast separates them.
 
-1. A gateway-less in-browser node sustained **8.34 Mbps** on abel-1's 4.24 MB segments, ratio 0.9962.
+1. A gateway-less in-browser node sustained **8.34 Mbps** on tester-1's 4.24 MB segments, ratio 0.9962.
 2. Our own references from 2026-08-03 delivered **2/10**, and a 225 KB one of ours **0/5**, on the same
    node in the same minutes his delivered 10/10.
 
@@ -42,7 +42,7 @@ segment size.
 | latbench 0.25s / 2500k | 90 KB | 23 | 92 | **4.5%** | 235 KB/s |
 | **720p 1.0s / 2500k** | ~329 KB | 82 | 329 | **16.1%** | ⬅ this run |
 | **1080p 1.0s / 6000k, SHIPS** | ~766 KB | 192 | 767 | **37.5%** | ⬅ this run |
-| abel-1 4.17s | 4,241 KB | 1,060 | 4,241 | **saturated** | 1,014 KB/s |
+| tester-1 4.17s | 4,241 KB | 1,060 | 4,241 | **saturated** | 1,014 KB/s |
 
 Two points exist. A straight line through them is
 `KB/s = 235 + 8.16 x (occupancy - 4.5)`.
@@ -61,7 +61,7 @@ a ratio near 1.0. The two shapes disagree by 80% at the profile we ship, which i
 worth paying for.
 
 ⛔ **Whatever comes back, it is one sitting.** The 720p and 1080p arms are a within-sitting contrast
-and comparable to each other. Against abel-1 they are across sittings, and abel-1 is itself n=1.
+and comparable to each other. Against tester-1 they are across sittings, and tester-1 is itself n=1.
 
 ## What is being bought
 
@@ -183,7 +183,7 @@ a fixed 30 MB per arm and never divided by an assumed duration.
 - **H2 dies** if our fresh refs deliver ≥8/10 against his in the alternating arm.
 - **H1 dies** if our fresh refs deliver ≤5/10. That would also void the decay reading in
   [[swarm-hls-content-decay]] and point the whole investigation at our uploader.
-- **The run is void** if the abel-1 control arm does not deliver ≥8/10, because then the node is sick
+- **The run is void** if the tester-1 control arm does not deliver ≥8/10, because then the node is sick
   and neither arm means anything. ⭐ The control is **his** content, deliberately: a canary made of
   ours cannot tell a sick node from missing content, which is the defect this instrument was built to
   avoid.

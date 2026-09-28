@@ -5,7 +5,7 @@ Instrument `deploy/scripts/corpus-delivery.mjs`, rows in `docs/bench/fresh-vs-de
 
 | arm | what it is | delivered | mean KB | mean KB/s |
 | --- | --- | ---: | ---: | ---: |
-| **his** | abel-1, a stream people watch | **8/8** | 4,214 | **1,121** |
+| **his** | tester-1, a stream people watch | **8/8** | 4,214 | **1,121** |
 | **ours-live-1080p** | broadcast 65 minutes earlier, today | **8/8** | 801 | **348** |
 | **ours-aug03** | our GOP-4 sweep of 2026-08-03 | **0/8** | - | - |
 

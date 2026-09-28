@@ -175,8 +175,8 @@ find instead of the sitting.
 ## Reproducing it
 
 ```bash
-scp deploy/scripts/phase06-light-vs-ultralight.sh manager-host:/home/solarpunk/phase06/
-ssh manager-host 'setsid nohup bash /home/solarpunk/phase06/phase06-light-vs-ultralight.sh >/dev/null 2>&1 &'
+scp deploy/scripts/phase06-light-vs-ultralight.sh <bench host>:phase06/
+ssh <bench host> 'setsid nohup bash ~/phase06/phase06-light-vs-ultralight.sh >/dev/null 2>&1 &'
 ```
 
 `PREFLIGHT_ONLY=1` answers whether the chequebooks and the postage batch cover the sitting without

@@ -1,4 +1,4 @@
-# Abel's live path is gateway-less, ours is not, and nobody asked for the difference
+# A tester's live path is gateway-less, ours is not, and nobody asked for the difference
 
 **2026-08-16, free. No broadcast, no BZZ.** One Chromium tab on
 `lat-murmeldjur.github.io/weeb-3/#/live/stream/47535Bf0…/83de1c3f-…`, his own live broadcast, read
@@ -6,7 +6,7 @@ through the page's own resource timing and service-worker accounting.
 
 > ## ⛔⛔⛔ WHY THIS FILE EXISTS
 >
-> On **2026-08-11T07:07Z** the owner wrote: *"Abel optimized the player as much as possible let's
+> On **2026-08-11T07:07Z** the owner wrote: *"the tester optimized the player as much as possible let's
 > measure and experiment with his setup as it is."*
 >
 > On **2026-08-13** PR #183 built something else: our player, our loader, weeb-3 supplying **segment
@@ -23,7 +23,7 @@ through the page's own resource timing and service-worker accounting.
 | | reads the feed and manifest from | reads segment bytes from |
 | --- | --- | --- |
 | **our `weeb3` build** | **the bee gateway**, [ManifestManagement.ts:692](../../packages/client/src/components/SwarmHlsPlayer/ManifestManagement.ts) | weeb-3, [CustomManifestLoader.ts:193](../../packages/client/src/components/SwarmHlsPlayer/CustomManifestLoader.ts) |
-| **Abel's page** | **the in-tab node** | the in-tab node |
+| **The tester's page** | **the in-tab node** | the in-tab node |
 
 `ManifestManagement` contains no weeb-3 path at all. Every feed walk and every playlist read resolves
 against `${beeUrl}`.
@@ -84,7 +84,7 @@ retrievals** and states honestly, at line 87, that the residual ~1,640 reads per
 feed and manifest still going through the gateway. The arithmetic is right and the caveat was there
 from the first day.
 
-⛔ **What was never said is that the residual is a property of my design and not of weeb-3.** Abel's
+⛔ **What was never said is that the residual is a property of my design and not of weeb-3.** The tester's
 page drives that residual to **zero**. Our 24.4x is not a measurement of what an in-tab node can
 save. It is a measurement of what an in-tab node saves **given a client that keeps a gateway in the
 loop for the feed**, and the ceiling is higher than any of our documents suggest.
@@ -112,7 +112,7 @@ nothing to decode and nothing played. Two of the five resolved segments failed o
 ⚠️ **And it is a replicate of a diagnosis this project already published, not a new finding.**
 `docs/reviews/roadmap.md` states it more sharply than today's tab does:
 
-> "The reason Abel's link struggles is the content, and a public gateway cannot serve it either. That
+> "The reason the tester's link struggles is the content, and a public gateway cannot serve it either. That
 > stream is 2560x1600 at ~8.5 Mbps with 4.17s segments. A public gateway delivered its segments at a
 > median 665 KB/s, the POC measured weeb-3 at ~580 [...] the content needs 1.6x the fastest of them."
 
@@ -129,13 +129,13 @@ verdict on his stack. It is a reason not to treat "gateway-less" and "works" as 
 
 Read off his own segment log:
 
-| | Abel's broadcast | what we ship |
+| | The tester's broadcast | what we ship |
 | --- | ---: | ---: |
 | segment duration | **4.167 s** | 0.5 s |
 | segment size | **4.32 to 4.40 MB** | ~0.8 MB |
 | resolution | **2560x1600** | 720p, 1080p at 6000k |
 
-⭐⭐ **This is the regime our own work says weeb-3 is good at.** `abel-sustain-prediction` measured
+⭐⭐ **This is the regime our own work says weeb-3 is good at.** `tester-sustain-prediction` measured
 0.9962 on 4.14 MB segments and concluded the ceiling was our segment size rather than the node, and
 `size-collapses-at-c4` found the small-segment advantage is a concurrency-1 artefact.
 
@@ -203,7 +203,7 @@ buffer is a delivery result, not a playback result.**
 
 ## What this changes
 
-⛔ **I was wrong two hours ago when I said the next step was blocked on a question for Abel.** It was
+⛔ **I was wrong two hours ago when I said the next step was blocked on a question for the tester.** It was
 blocked on a ten-minute test I had not run, and the answer was in our own uploader source the whole
 time: our topic is a UUID, his route takes a UUID.
 

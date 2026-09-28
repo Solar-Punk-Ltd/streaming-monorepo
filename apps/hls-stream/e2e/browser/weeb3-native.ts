@@ -6,7 +6,7 @@
  * Every "in-tab node" figure this project has published came from a **hybrid** client: segment bytes
  * from weeb-3, feed and manifest still from a bee gateway. That split was never authorised, and the
  * owner had asked, two days before it was built, to measure weeb-3's own setup as it is. See
- * `docs/bench/abel-gateway-less-live-2026-08-16.md`.
+ * `docs/bench/tester-gateway-less-live-2026-08-16.md`.
  *
  * ⭐ The thing that makes this cheap was in our own uploader the whole time: `streamRawTopic` is a
  * `crypto.randomUUID()`, and weeb-3's page route is `#/live/stream/<owner>/<uuid>`. Our identifiers

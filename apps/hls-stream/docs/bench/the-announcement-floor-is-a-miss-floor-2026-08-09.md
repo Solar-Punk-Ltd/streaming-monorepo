@@ -193,6 +193,6 @@ rather than held constant.
 ## Artifacts
 
 The archive half: `docs/bench/*.requests.json`, 70 logs, unchanged, no gateway touched and nothing
-spent. The direct-path half: `/home/solarpunk/soc-miss2/`, instrument
+spent. The direct-path half: `~/soc-miss2/`, instrument
 [`deploy/scripts/soc-miss-cost.sh`](../../deploy/scripts/soc-miss-cost.sh), **0.0000615 BZZ total**,
 which was one cheque written during the first block and nothing at all across the other three.

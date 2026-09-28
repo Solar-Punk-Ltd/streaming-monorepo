@@ -80,7 +80,7 @@ empirical denominator, not a derived one.
 
 ## Artifacts
 
-`/home/solarpunk/retrieval-probe/HOTSET1/`. Probe:
+`~/retrieval-probe/HOTSET1/`. Probe:
 [`deploy/scripts/retrieval-debt-probe.sh`](../../deploy/scripts/retrieval-debt-probe.sh), capacity is the
 4th arm field and the pattern is the 9th. Sequences:
 [`deploy/scripts/make-access-pattern-refs.sh`](../../deploy/scripts/make-access-pattern-refs.sh).

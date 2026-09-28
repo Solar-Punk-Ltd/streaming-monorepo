@@ -1,8 +1,8 @@
 # What an in-browser viewer costs in CPU, n=3, and its one thread is the ceiling
 
-**2026-08-11.** Three headless runs against `abel-1` on a 12-core Apple Silicon Mac, driven by
+**2026-08-11.** Three headless runs against `tester-1` on a 12-core Apple Silicon Mac, driven by
 `run-sustain-headless.mjs`. **Cost: nothing.** No gateway, no broadcast, no encoder, no postage, and
-an unfunded in-browser node that cannot spend. `abel-1` is VOD, so this is repeatable on demand.
+an unfunded in-browser node that cannot spend. `tester-1` is VOD, so this is repeatable on demand.
 
 Every CPU figure this project held was a **bee** figure, read off one PID by
 `retrieval-debt-probe.sh`. The in-browser mode had none at all, and the browser was outside every
@@ -90,5 +90,5 @@ node would cost, and it cannot: two weeb-3 nodes starve each other's peer table.
 
 ⚠️ **The printed verdict reads DOES NOT SUSTAIN on all three.** The bar is 0.999 and it charges
 startup against the stream. See
-[the sustain result](abel-sustain-result-2026-08-11.md) for why that threshold, not the stream, is
+[the sustain result](tester-sustain-result-2026-08-11.md) for why that threshold, not the stream, is
 what fails.

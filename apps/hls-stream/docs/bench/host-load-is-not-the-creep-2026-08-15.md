@@ -7,24 +7,24 @@
 > has no weeb-3 path, only `CustomManifestLoader` does.
 >
 > That split was my design decision in PR #183 and **nobody authorised it**. The owner's instruction
-> of **2026-08-11T07:07Z** was *"Abel optimized the player as much as possible let's measure and
+> of **2026-08-11T07:07Z** was *"the tester optimized the player as much as possible let's measure and
 > experiment with his setup as it is"*, and this is not that.
 >
 > ⛔ **So any residual gateway load reported below is a floor THIS CLIENT imposes, not one weeb-3
-> imposes.** Abel's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
+> imposes.** The tester's own live page drives it to zero, proved free on 2026-08-16. Every saving figure
 > here is a **lower bound** on what an in-tab node can do.
 >
 > ✅ **The arithmetic and the arm-to-arm contrasts are unaffected.** Both conditions read the
 > manifest the same way, so the comparison is clean. What is limited is the **subject**, not the sums.
 >
-> See [`abel-gateway-less-live-2026-08-16.md`](abel-gateway-less-live-2026-08-16.md).
+> See [`tester-gateway-less-live-2026-08-16.md`](tester-gateway-less-live-2026-08-16.md).
 
 No broadcast, no BZZ. Every number here comes from the eight arms of
 `1080p-main-thread-2026-08-15.md` and the published window medians of
 `thread-scaling-shape-2026-08-15.md`.
 
 Written because the next drift sitting is **one** three-hour in-tab arm, and a single long arm on
-this box invites an obvious objection: forty neighbour bee nodes share the host, so a thread that
+this bench host invites an obvious objection: forty neighbour bee nodes share the host, so a thread that
 rises over three hours could be the session ageing or it could be the neighbours waking up. Those
 are the same column.
 
@@ -63,7 +63,7 @@ between-arm difference survives.
 | in-tab (weeb3) | +0.00000 ± 0.00036 | +0.01 | 0.00073 |
 | gateway | +0.00029 ± 0.00025 | +1.15 | 0.00080 |
 
-⭐ **Neither is distinguishable from zero, across a load range of 4.7 to 56.1 on a 48-core box.**
+⭐ **Neither is distinguishable from zero, across a load range of 4.7 to 56.1 on a 48-core host.**
 
 The number that matters for the three-hour arm: to manufacture the **+0.034 cores/hr** in-tab creep,
 host load would have to rise **47 units every hour, monotonically, even at the two-standard-error

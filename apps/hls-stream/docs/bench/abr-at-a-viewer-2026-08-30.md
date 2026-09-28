@@ -71,7 +71,7 @@ Capped at 2800 kbps each time, the rung below the 1080p every arm settled on.
 
 **The viewer suffers, every time.** Playback fell from exactly 1.000 to 0.55–0.60 in all three arms,
 across loads from 10.4 to 16.6. ⭐ That spread of load with that tight a result is what rules out
-co-tenancy on a box carrying 40 other bee nodes: a bracket inside one arm could not have done it.
+co-tenancy on a host carrying 40 other bee nodes: a bracket inside one arm could not have done it.
 
 **The viewer rides 1080p through all of it, every time.** In all three arms the lowest rung selected
 during the whole 60 second squeeze was 1080p. Not once did a viewer get the lower quality the ladder
