@@ -34,6 +34,8 @@ export type SettingOwner =
   | 'feed-owner'
   | 'feed-topic'
   | 'engine-config'
+  /** The ABR ladder's rung settings, which the manager composes the key from. */
+  | 'abr-rungs'
   /** The engine settings of a deployment not created yet: the new-deployment wizard asks for the segment length in a field of its own, and its page sets the rest. */
   | 'engine-settings'
   /** The web2 admin link of a deployment not created yet, which the new-deployment wizard asks for in a group of its own. */
@@ -261,6 +263,7 @@ export const SETTING_OWNER_LABELS: Readonly<Record<SettingOwner, string>> = {
   'feed-owner': "the deployment's feed owner",
   'feed-topic': "the deployment's feed topic",
   'engine-config': "the engine's own config file",
+  'abr-rungs': 'the rung settings under Engine settings, the width, height and bitrate of each rung',
   'engine-settings': 'the engine settings',
   'admin-link': 'the Web2 admin group of this step',
   'port-slot': "the deployment's port slot",
