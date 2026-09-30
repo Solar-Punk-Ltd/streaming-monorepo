@@ -63,7 +63,7 @@ const DIMENSIONS: Readonly<Record<AbrRungDimension, DimensionSpec>> = {
     max: 20_000,
     mustBeEven: false,
     help: (rung) =>
-      `The most the ${rung} video may use, in kilobits per second. It has to be higher than the rung below it, or a viewer who steps down to save bandwidth saves none. A higher bitrate also fills this rung's postage batch faster.`,
+      `The bitrate the ${rung} video is encoded at, in kilobits per second, which the encoder buffer setting turns into a ceiling. It has to be higher than the rung below it, or a viewer who steps down to save bandwidth saves none. A higher bitrate also fills this rung's postage batch faster.`,
   },
 };
 

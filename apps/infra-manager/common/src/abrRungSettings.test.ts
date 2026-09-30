@@ -73,6 +73,14 @@ describe('the rung settings', () => {
     assert.equal(field(key('1080p', 'kbps')).label, '1080p bitrate');
     assert.equal(field(key('1080p', 'kbps')).unit, 'kbps');
   });
+
+  it('call the bitrate the target it is encoded at, which the encoder buffer turns into a ceiling', () => {
+    const help = ABR_RUNG_SETTINGS.find((candidate) => candidate.key === key('720p', 'kbps'))!.help;
+    assert.match(
+      help,
+      /^The bitrate the 720p video is encoded at, in kilobits per second, which the encoder buffer setting turns into a ceiling\./,
+    );
+  });
 });
 
 describe('ABR_LADDER composed from the rung settings', () => {
