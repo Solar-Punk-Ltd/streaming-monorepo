@@ -32,10 +32,11 @@ interface DimensionSpec {
   help: (rung: string) => string;
 }
 
-// The bounds are the manager's. 128 by 72 is the smallest picture a player
-// still shows as video, 3840 by 2160 is 4K, and 20000 kbps is well past what a
-// 4K live rung needs. The stack's entrypoint refuses only odd sizes and values
-// that are not whole numbers.
+// The bounds are the manager's. 128 by 72 is the floor chosen here, small
+// enough for any thumbnail rung and large enough that the encoder still
+// encodes it. 3840 by 2160 is 4K, and 20000 kbps is well past what a 4K live
+// rung needs. The stack refuses only odd sizes and values that are not
+// positive whole numbers.
 const DIMENSIONS: Readonly<Record<AbrRungDimension, DimensionSpec>> = {
   width: {
     label: 'width',
