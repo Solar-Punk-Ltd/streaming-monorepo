@@ -430,8 +430,9 @@ export function normalizeBeePublishers<T extends string | null | undefined>(valu
  * Checked where the operator can still fix it, the form and the API, rather
  * than by an uploader refusing to start on another machine. The rules are the
  * uploader's own: every rung of the ladder, no rung twice, nothing else, and an
- * address it can reach. The ladder is the shipped one because that is what the
- * manager writes to ABR_LADDER beside it.
+ * address it can reach. The rung names are the shipped ones because the
+ * manager writes ABR_LADDER beside it with exactly those names, whatever size
+ * and bitrate each rung is set to.
  */
 export function beePublishersProblem(value: string | null | undefined): string | null {
   if (!value || !value.trim()) return null;
