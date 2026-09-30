@@ -74,6 +74,7 @@ export function abrRungSettingKey(rung: string, dimension: AbrRungDimension): st
   return `ABR_RUNG_${rung.toUpperCase()}_${dimension.toUpperCase()}`;
 }
 
+/** The engine setting for one dimension of one rung, defaulting to the shipped ladder's value. */
 function rungField(rung: QualityRung, dimension: AbrRungDimension): EngineSettingField {
   const spec = DIMENSIONS[dimension];
   return {
