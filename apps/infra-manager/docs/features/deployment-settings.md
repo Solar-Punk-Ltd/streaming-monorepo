@@ -77,8 +77,8 @@ refuse, a force-close ceiling under the segment length, a frame rate and segment
 product is not whole, or a ladder rung no taller or no dearer than the one below it, is refused with
 that sentence. A save that names no engine setting is not held
 to them. The stack columns, the engine settings and the revision move in one statement, so a save
-lands whole or not at all. Turning the ABR ladder off in the deployment's Edit drawer takes the rung
-settings out of the engine settings by key, so a value saved from this card while that edit was on
+lands whole or not at all. Turning the ABR ladder off in the deployment's Edit drawer takes the
+ladder-only settings, the transcoding settings and the rung settings, out of the engine settings by key, so a value saved from this card while that edit was on
 its way stays.
 
 The host can stop taking engine settings it took when they were saved: a change to its base `.env`
