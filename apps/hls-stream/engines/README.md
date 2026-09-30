@@ -35,34 +35,42 @@ which is SRS 6.0-r2 with two changes:
 
 **Why the hold exists.** With the ABR ladder on, SRS runs one ffmpeg per rung. When the broadcaster drops, stock
 SRS stops those encoders one after another before it lets the stream name be published again. Each stop waits up
-to a second before it kills, so for about 4.6 seconds after a drop every reconnect is refused as "stream busy". An
-encoder like OBS that reconnects straight away is refused, and the broadcast ends. Upstream knows the symptom
-([ossrs/srs#4173](https://github.com/ossrs/srs/issues/4173)), and every SRS line has the same code.
+to a second before it kills, and a stalled ffmpeg ignores the polite signal, so for about 4 seconds after a drop
+every reconnect is refused as "stream busy". An encoder like OBS that reconnects straight away is refused, and the
+broadcast can end there. Measured on a local rig with the stack's own config and a four-rung ladder, a reconnect
+0.3 seconds after a clean drop was refused in 10 tries of 10, at 1 second in 9 of 10 and at 2 seconds in 6 of 10.
+Upstream knows the symptom ([ossrs/srs#4173](https://github.com/ossrs/srs/issues/4173)), and every SRS line has the
+same code.
 
 **What the fork does instead.** When the broadcaster drops, SRS frees the stream name at once and keeps the rung
 encoders running. If the broadcaster comes back within the hold, the same encoders carry on. If nobody comes back,
-the encoders stop when the hold runs out. The hold defaults to 60 seconds, which matches the uploader's own 60
-second resume window. A hold of 0 is stock behaviour. Destroying the source, reloading the transcode config and
-shutting SRS down stop the encoders at once.
+the encoders are killed when the hold runs out. Destroying the source, reloading the transcode config and shutting
+SRS down stop the encoders at once.
 
-> **TODO:** the name of the hold's config directive, where it goes in `srs.conf`, and whether the stack sets it.
-> Fill this in once the fork's change is final.
+The hold is the transcode directive `unpublish_hold`, in seconds, set inside the `transcode` block beside `ffmpeg`.
+It defaults to 60 seconds, and 0 gives stock behaviour. The stack's generated config does not set it, so the default
+applies. SRS checks it every 3 seconds, so a 60 second hold ends between 60 and 63 seconds after the drop.
 
-**What a broadcaster and the uploader see.** A local rig measured this on stock SRS 6.0-r2 by running one rung's
-exact ffmpeg command as a held encoder:
+**What a broadcaster and the uploader see.** Measured on the same rig with the fork's image and the 60 second
+default, ten tries per case, every reconnect was accepted:
 
-- **A short gap, up to about 5 seconds.** The rung carries on as one unbroken stream. Its segment numbers continue,
-  its `on_hls` hooks keep the same client, and its media time continues without the gap, one frame later than the
-  last frame before it. There are no timestamp errors, and every segment after the gap is 1.0 second and starts on
-  a keyframe. The first new rung segment appears 2.2 to 2.5 seconds after the new publish. It makes no difference
-  whether the broadcaster's clock restarts from zero or continues.
-- **A longer gap.** SRS cuts a publish that has sent nothing for its publish timeout, 5 seconds by default, and
-  checks for it every 5 seconds. So the rung's publish on the ABR vhost is cut 5 to 10 seconds into the gap, and
-  the uploader gets that rung's `on_unpublish` during the gap. The held ffmpeg doesn't notice until the broadcaster
-  returns. It then fails on its first write and exits.
-
-> **TODO:** what the fork does after that cut, from the proof run on the fork's image: whether the encoder loop
-> restarts the rung as a new publish, and how long the uploader waits for its first segment.
+- **A gap of up to about 5 seconds.** The same four encoders carry on and no rung sends a hook. Each rung's segment
+  numbers continue, and its media time continues without the gap, one frame later than the last frame before it,
+  with no timestamp errors. The first new rung segment appears about 2 seconds after the new publish. It makes no
+  difference whether the broadcaster's clock restarts from zero or continues.
+- **A longer gap inside the hold.** SRS cuts a publish that has sent nothing for its publish timeout, 5 seconds by
+  default, which the stack does not set. So each rung's publish on the ABR vhost is cut about 15 seconds after the
+  drop, and the uploader gets that rung's `on_unpublish` during the gap. When the broadcaster returns, each held
+  ffmpeg fails on its first write, and SRS's encoder loop starts a new one. The rungs publish again as new clients,
+  and the first new segments appear about 8 seconds after the return. The uploader takes them up through its usual
+  resume path.
+- **No return within the hold.** The encoders are killed 60 to 63 seconds after the drop. A broadcast that starts
+  after that gets a fresh set, with its first segments about 4 seconds after its publish.
+- **A drop with no SRT close**, such as a dead network. SRS keeps the silent publisher for about 7 seconds and
+  refuses a reconnect until then, whatever the hold does. After that the hold starts as it does after a clean drop.
+  Whether OBS's own retry then gets in was not measured.
+- **A broadcaster who returns with different settings.** Video is re-encoded to each rung's size as before. The rungs
+  copy audio, so a different audio sample rate carries on inside the same rendition with no discontinuity marker.
 
 **How the image is built.** A workflow in the fork builds SRS's own root `Dockerfile` for `linux/amd64`, with the
 configure flags of upstream's release (`--sanitizer=off --gb28181=on`), and pushes it to
