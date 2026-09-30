@@ -230,6 +230,14 @@ export function NewDeploymentWizard({ prefill, onClose }: { prefill?: WizardPref
     onClose();
   };
 
+  // A click beside the dialog is not a request to close it. It used to be
+  // taken as one, and since closing forgets every choice made here, a stray
+  // click outside cost the whole draft. The close button in the title and
+  // Escape still close it, and a deploy that is accepted closes it too.
+  const closeUnlessBackdrop = (_event: unknown, reason: 'backdropClick' | 'escapeKeyDown') => {
+    if (reason !== 'backdropClick') close();
+  };
+
   const deploy = async () => {
     if (inFlight.current || uncertainSubmission) return;
     inFlight.current = true;
@@ -308,7 +316,7 @@ export function NewDeploymentWizard({ prefill, onClose }: { prefill?: WizardPref
   const blocked = state.step === 1 ? state.goal === null : stepError !== null;
 
   return (
-    <Dialog open maxWidth="md" fullWidth onClose={close}>
+    <Dialog open maxWidth="md" fullWidth onClose={closeUnlessBackdrop}>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Box sx={{ flex: 1 }}>{poolSetup ? 'Create a storage pool for your uploader' : 'New deployment'}</Box>
         <IconButton onClick={close} aria-label="close" size="small">
