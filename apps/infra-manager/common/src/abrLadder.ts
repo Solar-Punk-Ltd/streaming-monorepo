@@ -472,15 +472,16 @@ export function beePublishersProblem(value: string | null | undefined): string |
 }
 
 /**
- * The engine's `ABR_LADDER` for the shipped ladder, `name:width:height:kbps`,
- * space separated, highest rung first as the engine's own sample writes it.
+ * The engine's `ABR_LADDER` for a ladder given lowest rung first, the shipped
+ * one unless another is named, `name:width:height:kbps`, space separated,
+ * highest rung first as the engine's own sample writes it.
  *
  * Written beside BEE_PUBLISHERS so the two cannot drift: the uploader refuses
  * to start unless the publishers cover ABR_LADDER exactly, and the engine's
  * sample is a file the manager does not own.
  */
-export function abrLadderEnvValue(): string {
-  return [...DEFAULT_ABR_LADDER]
+export function abrLadderEnvValue(rungs: readonly AbrRung[] = DEFAULT_ABR_LADDER): string {
+  return [...rungs]
     .reverse()
     .map((rung) => `${rung.name}:${rung.width}:${rung.height}:${rung.kbps}`)
     .join(' ');
