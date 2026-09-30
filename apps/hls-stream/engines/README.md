@@ -23,6 +23,60 @@ The plugin registers engine-specific HTTP routes on the uploader's server. No se
 3. The engine plugin reads segments from disk and passes them to the upload pipeline
 4. The uploader handles everything else (Swarm upload, manifests, feed management)
 
+## The SRS image
+
+The stack runs SRS from our public fork, [Solar-Punk-Ltd/swarm-srs](https://github.com/Solar-Punk-Ltd/swarm-srs),
+which is SRS 6.0-r2 with two changes:
+
+- **The encoder hold on reconnect**, described below.
+- **Upstream's fix for [ossrs/srs#4740](https://github.com/ossrs/srs/issues/4740)**, where a malformed H.264
+  sequence header aborts the whole server. Upstream merged it only on its development line
+  ([ossrs/srs#4741](https://github.com/ossrs/srs/pull/4741)), so the fork carries it on 6.0.
+
+**Why the hold exists.** With the ABR ladder on, SRS runs one ffmpeg per rung. When the broadcaster drops, stock
+SRS stops those encoders one after another before it lets the stream name be published again. Each stop waits up
+to a second before it kills, so for about 4.6 seconds after a drop every reconnect is refused as "stream busy". An
+encoder like OBS that reconnects straight away is refused, and the broadcast ends. Upstream knows the symptom
+([ossrs/srs#4173](https://github.com/ossrs/srs/issues/4173)), and every SRS line has the same code.
+
+**What the fork does instead.** When the broadcaster drops, SRS frees the stream name at once and keeps the rung
+encoders running. If the broadcaster comes back within the hold, the same encoders carry on. If nobody comes back,
+the encoders stop when the hold runs out. The hold defaults to 60 seconds, which matches the uploader's own 60
+second resume window. A hold of 0 is stock behaviour. Destroying the source, reloading the transcode config and
+shutting SRS down stop the encoders at once.
+
+> **TODO:** the name of the hold's config directive, where it goes in `srs.conf`, and whether the stack sets it.
+> Fill this in once the fork's change is final.
+
+**What a broadcaster and the uploader see.** A local rig measured this on stock SRS 6.0-r2 by running one rung's
+exact ffmpeg command as a held encoder:
+
+- **A short gap, up to about 5 seconds.** The rung carries on as one unbroken stream. Its segment numbers continue,
+  its `on_hls` hooks keep the same client, and its media time continues without the gap, one frame later than the
+  last frame before it. There are no timestamp errors, and every segment after the gap is 1.0 second and starts on
+  a keyframe. The first new rung segment appears 2.2 to 2.5 seconds after the new publish. It makes no difference
+  whether the broadcaster's clock restarts from zero or continues.
+- **A longer gap.** SRS cuts a publish that has sent nothing for its publish timeout, 5 seconds by default, and
+  checks for it every 5 seconds. So the rung's publish on the ABR vhost is cut 5 to 10 seconds into the gap, and
+  the uploader gets that rung's `on_unpublish` during the gap. The held ffmpeg doesn't notice until the broadcaster
+  returns. It then fails on its first write and exits.
+
+> **TODO:** what the fork does after that cut, from the proof run on the fork's image: whether the encoder loop
+> restarts the rung as a new publish, and how long the uploader waits for its first segment.
+
+**How the image is built.** A workflow in the fork builds SRS's own root `Dockerfile` for `linux/amd64`, with the
+configure flags of upstream's release (`--sanitizer=off --gb28181=on`), and pushes it to
+`ghcr.io/solar-punk-ltd/swarm-srs`. That Dockerfile copies ffmpeg from upstream's build image instead of compiling
+it. On 2026-10-01 that build image held the same ffmpeg 8.1.2 binary as the official `ossrs/srs:v6.0-r1` and
+`v6.0-r2` images, byte for byte.
+
+> **TODO:** the compose files still run `ossrs/srs:v6.0-r1`. Pin the fork's image by digest in
+> `engines/srs/docker-compose.yml` and `deploy/docker-compose.yml` once its first release build exists.
+
+The segment-duration probes in `deploy/scripts/srs-segment-duration*` keep the stock `ossrs/srs` image on purpose.
+They run a minimal config against upstream SRS, so a reproduction there points at SRS and a non-reproduction points
+at our template.
+
 ## ABR ladder (SRS only)
 
 Set `ABR_ENABLED=true` in the root `.env` and SRS produces four renditions instead of one. The

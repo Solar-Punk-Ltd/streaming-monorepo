@@ -438,7 +438,7 @@ OBS/FFmpeg ──SRT──> SRS (port 10080)
 | `bee-uploader-1080p` | `ethersphere/bee:2.8.2`            | The 1080p rung's own Bee node. Disabled by default     |
 | `bee-gateway`        | `ethersphere/bee:2.8.2`            | Bee node for reading (paired with `client`)            |
 | `stream-uploader`    | Built from `Dockerfile.uploader`   | Receives segments, uploads to Swarm                    |
-| `srs`                | `ossrs/srs:6`                      | SRT/RTMP to HLS segmenting (no transcode)              |
+| `srs`                | `ossrs/srs:v6.0-r1`                | SRT/RTMP to HLS, ABR transcode, see engines/README.md  |
 | `ome`                | `airensoft/ovenmediaengine:latest` | SRT ingest, uploader pulls HLS over HTTP               |
 | `client`             | Built from `Dockerfile.client`     | React viewer (nginx), proxies `/bee/` to `bee-gateway` |
 
