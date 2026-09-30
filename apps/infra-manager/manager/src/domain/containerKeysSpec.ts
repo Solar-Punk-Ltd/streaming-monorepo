@@ -39,8 +39,9 @@ export const UPLOADER_ENGINE_SETTING_KEYS: readonly string[] = ['OME_HLS_POLL_IN
  * `HLS_FRAGMENT` is the only settings field in this position, read off
  * `deploy/docker-compose.yml` rather than assumed: the engine is asked
  * to cut at it and the uploader dates every segment by it. The other keys both
- * blocks set, ABR_ENABLED, ABR_LADDER, ABR_VHOST and SRS_WEBHOOK_TOKEN, are not
- * settings fields and never reach this decision.
+ * blocks set, ABR_ENABLED, ABR_VHOST and SRS_WEBHOOK_TOKEN, are not settings
+ * fields and never reach this decision. ABR_LADDER reaches it through the rung
+ * settings composed into it, see {@link COMPOSED_ENGINE_SETTING_KEYS}.
  */
 export const SHARED_ENGINE_SETTING_KEYS: readonly string[] = ['HLS_FRAGMENT'];
 

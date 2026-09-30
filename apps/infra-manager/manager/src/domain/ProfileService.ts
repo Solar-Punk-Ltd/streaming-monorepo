@@ -816,9 +816,10 @@ export class ProfileService {
    * are left running because taking them down would interrupt an upload that
    * has nothing to do with the change. The exceptions are the keys the uploader
    * reads too: `OME_HLS_POLL_INTERVAL_MS`, which compose puts in the uploader's
-   * environment alone, and `HLS_FRAGMENT`, which both containers read. A change
-   * to either recreates the uploader as well, or the new value never reaches
-   * the process that reads it.
+   * environment alone, `HLS_FRAGMENT`, which both containers read, and the rung
+   * settings, which the manager composes into `ABR_LADDER`, which both read too.
+   * A change to any of them recreates the uploader as well, or the new value
+   * never reaches the process that reads it.
    *
    * The stored settings are read first, with the revision a deployment's
    * settings page saves under, and the write is refused once a page save has
