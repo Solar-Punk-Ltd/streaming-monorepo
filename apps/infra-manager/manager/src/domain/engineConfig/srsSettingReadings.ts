@@ -265,7 +265,10 @@ export function srsSettingReadings(
         ];
       }
       if (field.key === SRT_LATENCY_KEY) return [field.key, srtLatencyReadings(field, template, file, fileText ?? '')];
-      if (field.key === 'ABR_VBV_SECONDS' || opaqueEncoder) return [field.key, [unknown('unsupported-syntax')]];
+      // A rung's size and bitrate reach the encoders through ABR_LADDER, and
+      // nothing here reads them back out of a hand-written engine block.
+      if (field.key === 'ABR_VBV_SECONDS' || field.composedInto || opaqueEncoder)
+        return [field.key, [unknown('unsupported-syntax')]];
       if (!encoders.length) return [field.key, [{ kind: 'omitted' }]];
       if (field.key === 'ABR_AUDIO_BITRATE') return [field.key, bitrateReadings(encoders)];
       const directive = ENCODER_DIRECTIVES[field.key];

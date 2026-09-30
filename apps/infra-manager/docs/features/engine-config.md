@@ -69,11 +69,12 @@ itself. Keep each placeholder on a line of its own.
 
 The ABR ladder's rung settings, each rung's width, height and bitrate, have no
 placeholder of their own. The stack reads them as one key, `ABR_LADDER`, which
-the entrypoint turns into the generated transcode block, so the Engine card
-shows them as "Unverified" wherever that block is generated, as it shows the
-other transcoding settings there. A file of the deployment's own that writes its
-own `engine` blocks encodes at the sizes it writes, whatever the rung settings
-say, while the uploader still describes each rung from `ABR_LADDER`. See
+the entrypoint turns into the generated transcode block. The Engine card shows
+them as "Unverified" in every config, because the manager does not read sizes
+or bitrates out of an `engine` block, neither a generated one nor one written by
+hand. A file of the deployment's own that writes its own `engine` blocks encodes
+at the sizes it writes, whatever the rung settings say, while the uploader still
+describes each rung from `ABR_LADDER`. See
 [Each rung's size and bitrate](abr-ladder.md#each-rungs-size-and-bitrate).
 
 Omitted settings are labeled "Not specified". Conflicting values, unsupported
