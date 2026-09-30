@@ -490,3 +490,74 @@ describe('valueProblem for an engine setting', () => {
     );
   });
 });
+
+/** A deployment that encodes the ABR ladder, every rung at the manager's own default. */
+const LADDER_CATALOG: DeploymentSettingsCatalog = {
+  ...CATALOG,
+  abr: true,
+  entries: [
+    engineEntry('HLS_FRAGMENT', '2', { services: ['srs', 'stream-uploader'] }),
+    engineEntry('ABR_FPS', '30'),
+    ...[
+      ['360P', '640', '360', '700'],
+      ['480P', '854', '480', '1200'],
+      ['720P', '1280', '720', '2800'],
+      ['1080P', '1920', '1080', '5000'],
+    ].flatMap(([rung, width, height, kbps]) =>
+      (
+        [
+          ['WIDTH', width],
+          ['HEIGHT', height],
+          ['KBPS', kbps],
+        ] as const
+      ).map(([dimension, value]) =>
+        engineEntry(`ABR_RUNG_${rung}_${dimension}`, value!, {
+          services: ['srs', 'stream-uploader'],
+          engineSetting: { defaultSource: 'manager', notInConfig: false },
+        }),
+      ),
+    ),
+  ],
+};
+
+describe('a draft of the rung settings', () => {
+  it('names an odd size under its own field and keeps it out of the ladder rule', () => {
+    const draft = withValue(EMPTY_DRAFT, LADDER_CATALOG, 'ABR_RUNG_1080P_WIDTH', '1921');
+
+    assert.deepEqual(draftProblems(LADDER_CATALOG, draft), {
+      ABR_RUNG_1080P_WIDTH:
+        '1080p width must be an even number, because the H.264 encoder refuses odd picture sizes. Got 1921.',
+    });
+    assert.equal(engineDraftProblem(LADDER_CATALOG, draft), null);
+  });
+
+  it('names a rung no taller than the one below it, judged against the defaults of the rungs it leaves alone', () => {
+    const draft = withValue(EMPTY_DRAFT, LADDER_CATALOG, 'ABR_RUNG_480P_HEIGHT', '720');
+
+    assert.match(
+      engineDraftProblem(LADDER_CATALOG, draft) ?? '',
+      /^The 720p rung has to be taller than the 480p rung below it\./,
+    );
+  });
+
+  it('saves a whole rung moved up, as its three keys and nothing else', () => {
+    const draft = withValue(
+      withValue(
+        withValue(EMPTY_DRAFT, LADDER_CATALOG, 'ABR_RUNG_1080P_WIDTH', '2560'),
+        LADDER_CATALOG,
+        'ABR_RUNG_1080P_HEIGHT',
+        '1440',
+      ),
+      LADDER_CATALOG,
+      'ABR_RUNG_1080P_KBPS',
+      '8000',
+    );
+
+    assert.equal(engineDraftProblem(LADDER_CATALOG, draft), null);
+    assert.deepEqual(saveOf(LADDER_CATALOG, draft).entries, [
+      { key: 'ABR_RUNG_1080P_WIDTH', value: '2560' },
+      { key: 'ABR_RUNG_1080P_HEIGHT', value: '1440' },
+      { key: 'ABR_RUNG_1080P_KBPS', value: '8000' },
+    ]);
+  });
+});
