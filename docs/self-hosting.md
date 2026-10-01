@@ -277,6 +277,11 @@ images on the host itself.
    this. It worked when an encoder reaches the SRT port, a browser opens the viewer page, and a port
    ending in 5 or 7 does not answer from outside.
 
+The engine's `docker logs` on a stage host are as sensitive as its env files. SRS logs every
+broadcaster's publish key when they connect and the webhook token on every hook it calls, and a
+publish the uploader refuses logs both at error, whatever the level. The detail, and why the
+level stays at trace, is in `apps/hls-stream/engines/README.md`, "What SRS logs".
+
 ## A Bee host
 
 A Bee host carries the Bee nodes of ABR node pools, one node per quality rung, which the uploaders on
