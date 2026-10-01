@@ -484,6 +484,8 @@ describe('the admin publish gate with the ABR ladder on', () => {
     disconnects: string[];
     /** How many refusals reached `/health` through `recordAuthRejection`. See OBS-15. */
     authRejections: number;
+    /** Every ladder source whose held rungs the engine asked to resume. */
+    resumes: string[];
   }
 
   interface SrsBody {
@@ -499,7 +501,7 @@ describe('the admin publish gate with the ABR ladder on', () => {
     lookup: LookupAnswer,
     drive: (harness: { calls: LadderCalls; post: (body: SrsBody) => Promise<number> }) => Promise<void>,
   ): Promise<void> {
-    const calls: LadderCalls = { starts: [], stops: [], disconnects: [], authRejections: 0 };
+    const calls: LadderCalls = { starts: [], stops: [], disconnects: [], authRejections: 0, resumes: [] };
     const orchestrator = makeFakeOrchestrator({
       startStream: (streamId: string, _mediatype: unknown, _claimant: unknown, admin?: AdminSession) => {
         calls.starts.push({ streamId, admin });
@@ -510,6 +512,9 @@ describe('the admin publish gate with the ABR ladder on', () => {
       },
       noteDisconnect: (streamId: string) => {
         calls.disconnects.push(streamId);
+      },
+      resumeHeldRungs: (baseStreamId: string) => {
+        calls.resumes.push(baseStreamId);
       },
       recordAuthRejection: () => {
         calls.authRejections += 1;
@@ -567,6 +572,24 @@ describe('the admin publish gate with the ABR ladder on', () => {
       assert.equal(await post(source({ param: `?key=${DECLARED_KEY}` })), 0);
       assert.deepEqual(calls.starts, [], 'the source exists to be transcoded by SRS, not ingested by the uploader');
       assert.equal(calls.authRejections, 0);
+    });
+  });
+
+  it('asks the held rungs of a source that resolved to resume', async () => {
+    await withSrsLadder(answersDraft(), async ({ calls, post }) => {
+      assert.equal(await post(source({ param: `?key=${DECLARED_KEY}` })), 0);
+      assert.deepEqual(calls.resumes, [STREAM_ID]);
+    });
+  });
+
+  it('asks nothing of a source refused for its key, or one the admin could not resolve', async () => {
+    await withSrsLadder(answersDraft(), async ({ calls, post }) => {
+      assert.equal(await post(source({ param: '?key=not-the-declared-key' })), 1);
+      assert.deepEqual(calls.resumes, [], 'a refused publish changes nothing about the broadcast');
+    });
+    await withSrsLadder(refusesTheConnection, async ({ calls, post }) => {
+      assert.equal(await post(source({ param: `?key=${DECLARED_KEY}` })), 1);
+      assert.deepEqual(calls.resumes, [], 'and neither does one the admin lookup failed for');
     });
   });
 

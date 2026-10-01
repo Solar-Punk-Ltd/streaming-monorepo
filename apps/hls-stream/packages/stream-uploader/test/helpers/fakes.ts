@@ -225,6 +225,9 @@ export function makeFakeOrchestrator(overrides: Record<string, unknown> = {}): S
     // the compiler, the handler's own catch swallows the `TypeError`, and a test asserting that the
     // webhook was acted on passes because nothing was acted on at all.
     noteDisconnect: () => {},
+    // The same trap one webhook along: a ladder source's publish calls this, and a missing method
+    // turns the handler's catch into a refused publish.
+    resumeHeldRungs: () => {},
     handleSegment: () => ({ accepted: true }),
     handleSegmentLoss: () => true,
     keepAlive: () => false,

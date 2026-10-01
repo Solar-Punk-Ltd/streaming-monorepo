@@ -1411,7 +1411,158 @@ describe('a ladder whose uploader restarts in the middle of its encoder coming b
  * ⛔ The only thing these assert is WHICH call, because that is the whole of the engine's part in
  * this. What the call then does is every case above.
  */
-describe('what an SRS unpublish asks the orchestrator to do', () => {
+/**
+ * A ladder whose source dropped and came back while SRS kept its transcoders running.
+ *
+ * ⛔⛔ **No rung says anything, so the source's return is the only event there is.** With the
+ * encoder hold, a short drop no longer stops the transcoders: SRS sends the source's `on_unpublish`
+ * and, when the broadcaster returns, the source's `on_publish`, and every rung simply carries on with
+ * its numbering and its media time continuing straight across the gap. Measured on SRS 6.0-r2 with
+ * the hold on 2026-10-01. Without being told, every rung's dating stepped on from the segment before
+ * the gap, and the recording fell behind the wall clock by the length of each drop.
+ */
+describe('a ladder whose rungs SRS held through a short drop of its source', () => {
+  const rungIds = RUNG_NAMES.map((rung) => `${LADDER_BASE}_${rung}`);
+  /** Short enough that SRS still holds every rung's publish. Nothing about it is asserted. */
+  const HELD_GAP_MS = 10_000;
+
+  async function ladderBeforeTheDrop(harness: ReconnectHarness): Promise<void> {
+    for (const streamId of rungIds) {
+      harness.start(streamId);
+      await harness.segment(`${streamId}-a0`, 0, streamId);
+      await harness.segment(`${streamId}-a1`, 1, streamId);
+    }
+  }
+
+  async function returningPlaylist(harness: ReconnectHarness, streamId: string): Promise<string> {
+    await harness.published(`${streamId}-b0`);
+    const write = writesNaming(harness.writes, `${streamId}-b0`).at(-1);
+    assert.ok(write, `${streamId} must have published its first segment after the drop`);
+    return write.playlist;
+  }
+
+  it('breaks every held rung once, on the first segment after the drop', async () => {
+    const harness = reconnectHarness({ ladder: true });
+    await ladderBeforeTheDrop(harness);
+    await harness.passTime(HELD_GAP_MS);
+
+    harness.orchestrator.resumeHeldRungs(LADDER_BASE);
+    for (const streamId of rungIds) {
+      await harness.segment(`${streamId}-b0`, 2, streamId);
+    }
+
+    for (const streamId of rungIds) {
+      assert.equal(seamCount(await returningPlaylist(harness, streamId)), 1, `${streamId} declares the drop once`);
+    }
+  });
+
+  it('dates every held rung on one line, at the wall clock the source came back at', async () => {
+    const harness = reconnectHarness({ ladder: true });
+    await ladderBeforeTheDrop(harness);
+    await harness.passTime(HELD_GAP_MS);
+
+    harness.orchestrator.resumeHeldRungs(LADDER_BASE);
+    for (const streamId of rungIds) {
+      await harness.segment(`${streamId}-b0`, 2, streamId);
+    }
+
+    const returningDates: string[] = [];
+    for (const streamId of rungIds) {
+      returningDates.push(dateOfSegment(await returningPlaylist(harness, streamId), `${streamId}-b0`));
+    }
+    assert.deepEqual(
+      returningDates,
+      rungIds.map(() => new Date(TEST_ANCHOR.startedAtMs + HELD_GAP_MS).toISOString()),
+      'stepped on from the segment before the drop, the recording falls behind the wall clock by the drop',
+    );
+  });
+
+  it('keeps counting segments for a held rung, whose counter carried straight on', async () => {
+    const harness = reconnectHarness({ ladder: true });
+    await ladderBeforeTheDrop(harness);
+    await harness.passTime(HELD_GAP_MS);
+    const [held] = rungIds;
+
+    harness.orchestrator.resumeHeldRungs(LADDER_BASE);
+    assert.deepEqual(
+      harness.orchestrator.handleSegment(held, 1, SEGMENT_SECONDS, Buffer.from(`${held}-again`)),
+      { accepted: true },
+    );
+    await harness.segment(`${held}-b0`, 2, held);
+    await harness.published(`${held}-b0`);
+
+    assert.equal(
+      writesNaming(harness.writes, `${held}-again`).length,
+      0,
+      'an index the rung already delivered is still a duplicate, because nothing restarted its counter',
+    );
+  });
+
+  /**
+   * A drop long enough that SRS cut one rung's idle publish. That rung comes back through its own
+   * `on_publish`, as before, and has to land on the line its held siblings took for the same return
+   * rather than be resumed twice and start a second one.
+   */
+  it('leaves a rung that disconnected to its own return, on the line its held siblings took', async () => {
+    const harness = reconnectHarness({ ladder: true });
+    await ladderBeforeTheDrop(harness);
+    const held = rungIds.slice(0, 3);
+    const cut = rungIds[rungIds.length - 1];
+    harness.orchestrator.noteDisconnect(cut);
+    await harness.passTime(HELD_GAP_MS);
+
+    harness.orchestrator.resumeHeldRungs(LADDER_BASE);
+    for (const streamId of held) {
+      await harness.segment(`${streamId}-b0`, 2, streamId);
+    }
+    await harness.passTime(3_000);
+    harness.start(cut);
+    await harness.segment(`${cut}-b0`, 0, cut);
+
+    const cutPlaylist = await returningPlaylist(harness, cut);
+    assert.equal(seamCount(cutPlaylist), 1, 'the cut rung declares the drop once, at its own return');
+    assert.equal(
+      dateOfSegment(cutPlaylist, `${cut}-b0`),
+      dateOfSegment(await returningPlaylist(harness, held[0]), `${held[0]}-b0`),
+      'one return of the ladder is one line, however its rungs came back from it',
+    );
+  });
+
+  it('does nothing for a first publish, which has no rungs yet', async () => {
+    const harness = reconnectHarness({ ladder: true });
+    harness.orchestrator.resumeHeldRungs(LADDER_BASE);
+
+    const [first] = rungIds;
+    harness.start(first);
+    await harness.segment(`${first}-a0`, 0, first);
+    await harness.published(`${first}-a0`);
+    const opening = writesNaming(harness.writes, `${first}-a0`).at(-1);
+    assert.ok(opening);
+    assert.equal(seamCount(opening.playlist), 0, 'a broadcast that has not started has nothing to break');
+  });
+
+  it('leaves a single rendition alone, which is never a ladder source', async () => {
+    const harness = reconnectHarness();
+    harness.start();
+    await harness.segment('a0', 0);
+    await harness.segment('a1', 1);
+    await harness.passTime(HELD_GAP_MS);
+
+    harness.orchestrator.resumeHeldRungs(STREAM_ID);
+    await harness.segment('b0', 2);
+    await harness.published('b0');
+    const write = writesNaming(harness.writes, 'b0').at(-1);
+    assert.ok(write);
+    assert.equal(seamCount(write.playlist), 0);
+    assert.equal(
+      dateOfSegment(write.playlist, 'b0'),
+      new Date(TEST_ANCHOR.startedAtMs + 2 * SEGMENT_SECONDS * 1000).toISOString(),
+      'its dating steps on exactly as before',
+    );
+  });
+});
+
+describe('what an SRS unpublish or source publish asks the orchestrator to do', () => {
   const TEST_WEBHOOK_TOKEN = 'srs-webhook-token-0123456789abcdef';
   const ABR_VHOST = 'abr.local';
   const LOOPBACK_IP = '127.0.0.1';
@@ -1420,6 +1571,8 @@ describe('what an SRS unpublish asks the orchestrator to do', () => {
     disconnected: string[];
     stopped: string[];
     started: string[];
+    /** Every ladder source whose held rungs the engine asked to resume. */
+    resumed: string[];
   }
 
   interface SrsPost {
@@ -1428,11 +1581,18 @@ describe('what an SRS unpublish asks the orchestrator to do', () => {
     stream: string;
     vhost?: string;
     ip?: string;
+    param?: string;
+    /** What SRS must be answered, 0 unless the case is a refusal. */
+    answer?: number;
   }
 
   /** Posts one webhook against a real SRS router and reports what the orchestrator was asked to do. */
-  async function postToSrs(posts: readonly SrsPost[], withLadder: boolean): Promise<OrchestratorCalls> {
-    const calls: OrchestratorCalls = { disconnected: [], stopped: [], started: [] };
+  async function postToSrs(
+    posts: readonly SrsPost[],
+    withLadder: boolean,
+    publishKeySecret?: string,
+  ): Promise<OrchestratorCalls> {
+    const calls: OrchestratorCalls = { disconnected: [], stopped: [], started: [], resumed: [] };
     const orchestrator = {
       startStream: (streamId: string) => {
         calls.started.push(streamId);
@@ -1440,11 +1600,13 @@ describe('what an SRS unpublish asks the orchestrator to do', () => {
       },
       stopStream: async (streamId: string) => void calls.stopped.push(streamId),
       noteDisconnect: (streamId: string) => calls.disconnected.push(streamId),
+      resumeHeldRungs: (baseStreamId: string) => calls.resumed.push(baseStreamId),
       recordAuthRejection: () => undefined,
     } as unknown as StreamOrchestrator;
 
     const engine = createSrsEngine('/srv/media', {
       webhookToken: TEST_WEBHOOK_TOKEN,
+      ...(publishKeySecret === undefined ? {} : { publishKeySecret }),
       ...(withLadder ? { abr: { vhost: ABR_VHOST, ladder: AbrLadder.parse(DEFAULT_LADDER_SPEC) } } : {}),
     });
     const app = express();
@@ -1453,7 +1615,7 @@ describe('what an SRS unpublish asks the orchestrator to do', () => {
 
     const { server, baseUrl } = await listenOnLoopback(app);
     try {
-      for (const post of posts) {
+      for (const { answer = 0, ...post } of posts) {
         const response = await fetch(
           `${baseUrl}${engine.prefix}/streams?${SRS_WEBHOOK_TOKEN_PARAM}=${TEST_WEBHOOK_TOKEN}`,
           {
@@ -1462,7 +1624,7 @@ describe('what an SRS unpublish asks the orchestrator to do', () => {
             body: JSON.stringify({ vhost: '__defaultVhost__', param: '', ...post }),
           },
         );
-        assert.equal(await response.json(), 0, `SRS must be acknowledged for ${post.action} of ${post.stream}`);
+        assert.equal(await response.json(), answer, `SRS must be answered ${answer} for ${post.action} of ${post.stream}`);
       }
     } finally {
       server.close();
@@ -1537,5 +1699,32 @@ describe('what an SRS unpublish asks the orchestrator to do', () => {
 
     assert.deepEqual(calls.disconnected, [], 'a stray is ingested by nothing and so ends nothing');
     assert.deepEqual(calls.stopped, []);
+  });
+
+  it('asks the held rungs of a ladder source that publishes to resume', async () => {
+    const calls = await postToSrs(
+      [{ action: 'on_publish', app: 'video', stream: 'demo', ip: '203.0.113.10' }],
+      true,
+    );
+
+    assert.deepEqual(calls.resumed, ['video/demo'], 'the source coming back is the only word a held rung gets');
+    assert.deepEqual(calls.started, [], 'and the source itself is still never ingested');
+  });
+
+  it('asks nothing when a source is refused for its key', async () => {
+    const calls = await postToSrs(
+      [{ action: 'on_publish', app: 'video', stream: 'demo', ip: '203.0.113.10', param: '?key=wrong', answer: 1 }],
+      true,
+      'publish-key-secret-0123456789abcdef',
+    );
+
+    assert.deepEqual(calls.resumed, [], 'a publish that is refused changes nothing about the broadcast');
+  });
+
+  it('asks nothing of a single stream, which has no rungs to hold', async () => {
+    const calls = await postToSrs([{ action: 'on_publish', app: 'video', stream: 'demo' }], false);
+
+    assert.deepEqual(calls.started, ['video/demo']);
+    assert.deepEqual(calls.resumed, []);
   });
 });
