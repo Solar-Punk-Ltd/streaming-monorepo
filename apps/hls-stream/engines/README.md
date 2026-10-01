@@ -48,8 +48,12 @@ the encoders are killed when the hold runs out. Destroying the source, reloading
 SRS down stop the encoders at once.
 
 The hold is the transcode directive `unpublish_hold`, in seconds, set inside the `transcode` block beside `ffmpeg`.
-It defaults to 60 seconds, and 0 gives stock behaviour. The stack's generated config does not set it, so the default
-applies. SRS checks it every 3 seconds, so a 60 second hold ends between 60 and 63 seconds after the drop.
+The fork defaults it to 60 seconds, and 0 gives stock behaviour. The stack sets it from `ABR_UNPUBLISH_HOLD`, **12
+seconds by default**, and SRS checks it every 3 seconds, so a 12 second hold ends 12 to 15 seconds after the drop.
+It is kept short on purpose, for the reason the measurements below show: SRS cuts the idle rung publishes about 15
+seconds into a drop, and past that a held encoder only fails and restarts, which is slower than a fresh set. The hold
+does not decide how long a broadcaster may be away. That is the uploader's `ORPHAN_REAP_MS`, 60 seconds by default,
+and a broadcaster back within it continues the same broadcast whatever the hold is.
 
 **What a broadcaster and the uploader see.** Measured on the same rig with the fork's image and the 60 second
 default, ten tries per case, every reconnect was accepted:

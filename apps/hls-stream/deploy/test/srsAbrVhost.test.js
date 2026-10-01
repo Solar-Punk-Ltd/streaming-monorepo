@@ -171,6 +171,33 @@ describe('the generated ABR vhost', () => {
   });
 });
 
+/**
+ * How long SRS keeps the rung encoders after the broadcaster drops, the fork's `unpublish_hold`.
+ *
+ * SRS cuts a rung publish that has sent nothing for its publish timeout, about 15 seconds into a drop
+ * on this config, and a held encoder whose publish was cut only fails and restarts when the
+ * broadcaster returns, measured about 9 seconds to its first segment against about 4 for a fresh set.
+ * So the hold is kept below that cut. How long a broadcaster may be away is the uploader's reap
+ * window, which this does not touch.
+ */
+describe('the generated transcode block', () => {
+  it('holds the encoders for 12 seconds by default', () => {
+    const conf = renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: '' });
+    assert.equal(directive(vhostBlock(conf, INGEST_VHOST), 'unpublish_hold'), '12');
+  });
+
+  it('carries a configured hold, 0 included', () => {
+    for (const hold of ['30', '0']) {
+      const conf = renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: hold });
+      assert.equal(directive(vhostBlock(conf, INGEST_VHOST), 'unpublish_hold'), hold);
+    }
+  });
+
+  it('refuses a hold that is not a whole number of seconds', () => {
+    assert.throws(() => renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: '1.5' }), /ABR_UNPUBLISH_HOLD/);
+  });
+});
+
 describe('the listen line the ladder input dials', () => {
   /**
    * SRS builds the transcode INPUT itself, and an SRT-bridged source carries no RTMP port, so the

@@ -270,6 +270,12 @@ if abr_enabled; then
   ABR_ACODEC="${ABR_ACODEC:-copy}"
   ABR_AUDIO_BITRATE="${ABR_AUDIO_BITRATE:-128}"
   ABR_VBV_SECONDS="${ABR_VBV_SECONDS:-1}"
+  # Seconds the rung encoders outlive a dropped broadcaster, the fork's `unpublish_hold`. A
+  # broadcaster back within it keeps the same encoders and its picture returns in about 2s. Kept
+  # under the ~15s after which SRS cuts the idle rung publishes (publish.normal_timeout), past which
+  # a held encoder only fails and restarts, slower than a fresh set. The uploader's reap window, not
+  # this, decides how long a broadcaster may be away.
+  ABR_UNPUBLISH_HOLD="${ABR_UNPUBLISH_HOLD:-12}"
   ABR_LADDER="${ABR_LADDER:-1080p:1920:1080:5000 720p:1280:720:2800 480p:854:480:1200 360p:640:360:700}"
 
   require_name ABR_VHOST "$ABR_VHOST"
@@ -277,6 +283,7 @@ if abr_enabled; then
   require_int ABR_FPS "$ABR_FPS"
   require_int ABR_THREADS "$ABR_THREADS"
   require_int ABR_VBV_SECONDS "$ABR_VBV_SECONDS"
+  require_int ABR_UNPUBLISH_HOLD "$ABR_UNPUBLISH_HOLD"
   require_int ABR_AUDIO_BITRATE "$ABR_AUDIO_BITRATE"
   require_name ABR_PRESET "$ABR_PRESET"
   require_name ABR_PROFILE "$ABR_PROFILE"
@@ -303,6 +310,7 @@ if abr_enabled; then
     echo "    transcode {"
     echo "        enabled     on;"
     echo "        ffmpeg      ./objs/ffmpeg/bin/ffmpeg;"
+    echo "        unpublish_hold ${ABR_UNPUBLISH_HOLD};"
   } > "$TRANSCODE_FRAGMENT"
 
   for rung in $ABR_LADDER; do
