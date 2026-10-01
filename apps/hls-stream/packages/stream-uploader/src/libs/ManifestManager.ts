@@ -432,7 +432,9 @@ export class ManifestManager {
    * carries straight on: {@link placeInBroadcast}'s own restart test sees a number above the
    * high-water mark and correctly concludes nothing restarted. The break is real all the same — the
    * encoder's clock restarted and the media either side of the gap is not continuous — and the
-   * orchestrator is the only layer that knows it happened. See {@link resumeAfterReconnect}.
+   * orchestrator is the only layer that knows it happened. A rung SRS held through the drop is the same
+   * case with no webhook of its own: its numbering and its media time both run on without the gap, and
+   * only its ladder source's return says the drop happened. See {@link resumeAfterReconnect}.
    *
    * It survives a crash through the recovery entry, beside `pendingDiscontinuity`, because the gap
    * between arming it and the segment that consumes it is exactly a window in which nothing is
