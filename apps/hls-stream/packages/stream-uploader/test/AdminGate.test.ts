@@ -495,6 +495,7 @@ describe('the admin publish gate with the ABR ladder on', () => {
     vhost: string;
     ip?: string;
     param?: string;
+    client_id?: string;
   }
 
   async function withSrsLadder(
@@ -647,6 +648,27 @@ describe('the admin publish gate with the ABR ladder on', () => {
    * ⛔ The rungs must not outlive their base. An unpublished source gives up the declaration, so a rung
    * arriving afterwards has nothing to publish under and is refused rather than started without one.
    */
+  /**
+   * ⛔ A publish takeover: the new connection authenticates, then the old one's unpublish arrives.
+   * That late unpublish names a connection that no longer holds the base, so it must leave the
+   * declaration the new connection resolved in place for the rungs that follow.
+   */
+  it('keeps the declaration a takeover resolved when the old connection unpublishes late', async () => {
+    await withSrsLadder(answersDraft(), async ({ calls, post }) => {
+      const key = `?key=${DECLARED_KEY}`;
+      assert.equal(await post(source({ param: key, client_id: 'old-connection' })), 0);
+      assert.equal(await post(source({ param: key, client_id: 'new-connection' })), 0);
+      assert.equal(await post(source({ action: 'on_unpublish', param: key, client_id: 'old-connection' })), 0);
+
+      assert.equal(await post(rung()), 0, 'a rung of the new connection is admitted');
+      assert.deepEqual(
+        calls.starts.map((start) => start.admin?.id),
+        [DRAFT.id],
+        'under the declaration the new connection resolved',
+      );
+    });
+  });
+
   it('forgets the declaration when the source unpublishes', async () => {
     await withSrsLadder(answersDraft(), async ({ calls, post }) => {
       await post(source({ param: `?key=${DECLARED_KEY}` }));

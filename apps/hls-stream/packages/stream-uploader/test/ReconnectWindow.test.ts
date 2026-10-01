@@ -1582,6 +1582,8 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
     vhost?: string;
     ip?: string;
     param?: string;
+    /** SRS's id for the connection a hook is about. */
+    client_id?: string;
     /** What SRS must be answered, 0 unless the case is a refusal. */
     answer?: number;
   }
@@ -1719,6 +1721,53 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
     );
 
     assert.deepEqual(calls.resumed, [], 'a publish that is refused changes nothing about the broadcast');
+  });
+
+  /**
+   * ⛔ The order SRS's publish takeover produces on one stream id, confirmed on the fork: the new
+   * connection's `on_publish`, then the old connection's `on_unpublish`, then the new connection's
+   * media with no second `on_publish`. The old connection's unpublish arrives after the new one has
+   * authenticated, so clearing the base on it would refuse every rung from then on.
+   */
+  it('keeps the base a takeover authenticated when the old connection unpublishes late', async () => {
+    const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
+    const calls = await postToSrs(
+      [
+        { action: 'on_publish', ...broadcaster, client_id: 'old-connection' },
+        { action: 'on_publish', ...broadcaster, client_id: 'new-connection' },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'old-connection' },
+        { action: 'on_publish', app: 'video', stream: `demo_${RUNG_NAMES[0]}`, vhost: ABR_VHOST, ip: LOOPBACK_IP },
+      ],
+      true,
+    );
+
+    assert.deepEqual(calls.started, [`video/demo_${RUNG_NAMES[0]}`], 'a rung of the new connection is admitted');
+    assert.deepEqual(
+      calls.resumed,
+      ['video/demo', 'video/demo'],
+      'and the takeover is the return, resumed before the old connection had said anything',
+    );
+  });
+
+  it('still forgets the base when the connection that authenticated it unpublishes', async () => {
+    const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
+    const calls = await postToSrs(
+      [
+        { action: 'on_publish', ...broadcaster, client_id: 'only-connection' },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'only-connection' },
+        {
+          action: 'on_publish',
+          app: 'video',
+          stream: `demo_${RUNG_NAMES[0]}`,
+          vhost: ABR_VHOST,
+          ip: LOOPBACK_IP,
+          answer: 1,
+        },
+      ],
+      true,
+    );
+
+    assert.deepEqual(calls.started, [], 'its rungs must not outlive their base');
   });
 
   it('asks nothing of a single stream, which has no rungs to hold', async () => {
