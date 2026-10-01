@@ -101,8 +101,8 @@ reconnect is refused as on stock SRS.
 
 - **The uploader** sees `on_publish` for the new connection before `on_unpublish` for the old one, and ignores an
   `on_unpublish` from a connection that is no longer the stream's publisher.
-- **SRS logs** one `srt serve error code=6003(SrtInterrupt)` line for each publisher it takes a stream from. It is the
-  old connection being closed, not a fault.
+- **SRS logs** one serve error line for each publisher it takes a stream from, `code=6003(SrtInterrupt)` for an SRT
+  publisher and `code=1070(StThreadInterrupt)` for an RTMP one. It is the old connection being closed, not a fault.
 - **Two encoders publishing with the same key** take the stream from each other in turn, and the picture alternates
   between them. Closing one of them ends it.
 
