@@ -602,6 +602,8 @@ async function handleStreams(
         // they belong to can be established. SRS_ACCEPT lets SRS go on to transcode it.
         authenticatedBases.set(streamId, verdict.session);
         logger.info(`[SRS] Ladder source authenticated: ${streamId}, declared as admin stream ${verdict.session.id}`);
+        // Rungs SRS held through a drop of this source send nothing of their own. See `resumeHeldRungs`.
+        streamOrchestrator.resumeHeldRungs(streamId);
         srsResponse(res, SRS_ACCEPT);
         return;
       }
@@ -642,6 +644,8 @@ async function handleStreams(
       // this map is the whole of what the base proved.
       authenticatedBases.set(streamId, null);
       logger.info(`[SRS] Ladder source authenticated: ${streamId}`);
+      // Rungs SRS held through a drop of this source send nothing of their own. See `resumeHeldRungs`.
+      streamOrchestrator.resumeHeldRungs(streamId);
       srsResponse(res, SRS_ACCEPT);
       return;
     }

@@ -612,6 +612,57 @@ export class StreamOrchestrator {
   }
 
   /**
+   * A ladder's source has published again, so every rung of it that SRS held through the drop
+   * resumes from that return.
+   *
+   * ⛔⛔ **A held rung says nothing, so this is the only word of the return it gets.** SRS's encoder
+   * hold keeps the transcoders running while the broadcaster is away, so a short drop sends no rung
+   * webhook at all: the rungs' numbering carries straight on and their media time continues across
+   * the gap. Left alone, each rung's dating stepped on from the segment before the drop and the
+   * recording fell behind the wall clock by every drop. So each held rung takes what a returning
+   * rung takes in {@link resumeLiveSession}: a break on its next segment and a re-anchored dating, on
+   * the ladder's shared return through {@link tokenForThisReturn}, so the rungs mint one line.
+   *
+   * ⛔ **A rung with a disconnect noted is left to its own return.** SRS cut its idle publish during a
+   * longer drop, and its transcoder will announce again through `on_publish`, which resumes it then
+   * and joins the line minted here. Resumed here as well, it would already be in this return's set
+   * and its own announce would start a second line.
+   *
+   * ⛔ **The segment accounting is not restarted**, unlike {@link resumeLiveSession}: a held rung kept
+   * its publish session, so its counter carries straight on and the duplicate filter is still right
+   * about every index it holds.
+   *
+   * A source with no live rungs is a first publish, and this does nothing. A single rendition is
+   * never a ladder source, so no session's base names it.
+   */
+  public resumeHeldRungs(baseStreamId: string): void {
+    const held = [...this.streamBases]
+      .filter(([, base]) => base === baseStreamId)
+      .map(([streamId]) => streamId)
+      .filter((streamId) => {
+        const uploader = this.activeStreams.get(streamId);
+        return (
+          uploader !== undefined &&
+          !this.isDraining(streamId, uploader) &&
+          !this.streamDisconnectedAt.has(streamId)
+        );
+      });
+
+    for (const streamId of held) {
+      this.activeStreams.get(streamId)?.resumeAfterReconnect(this.tokenForThisReturn(streamId));
+      this.holdTheReaperForAFirstSegment(streamId);
+      this.ensureStallReaperArmed(streamId);
+    }
+
+    if (held.length > 0) {
+      this.logger.info(
+        `[StreamOrchestrator] The source of ${baseStreamId} published again while SRS held its rungs, so ` +
+          `${held.join(', ')} resumed the same session: same recording, same feed, one break at the seam`,
+      );
+    }
+  }
+
+  /**
    * Take a session's segment accounting back to where a session that had never received anything
    * starts, because the engine feeding it has opened a new publish session.
    *
