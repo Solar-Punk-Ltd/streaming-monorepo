@@ -645,10 +645,6 @@ describe('the admin publish gate with the ABR ladder on', () => {
   });
 
   /**
-   * ⛔ The rungs must not outlive their base. An unpublished source gives up the declaration, so a rung
-   * arriving afterwards has nothing to publish under and is refused rather than started without one.
-   */
-  /**
    * ⛔ A publish takeover: the new connection authenticates, then the old one's unpublish arrives.
    * That late unpublish names a connection that no longer holds the base, so it must leave the
    * declaration the new connection resolved in place for the rungs that follow.
@@ -685,6 +681,10 @@ describe('the admin publish gate with the ABR ladder on', () => {
     });
   });
 
+  /**
+   * ⛔ The rungs must not outlive their base. An unpublished source gives up the declaration, so a rung
+   * arriving afterwards has nothing to publish under and is refused rather than started without one.
+   */
   it('forgets the declaration when the source unpublishes', async () => {
     await withSrsLadder(answersDraft(), async ({ calls, post }) => {
       await post(source({ param: `?key=${DECLARED_KEY}` }));

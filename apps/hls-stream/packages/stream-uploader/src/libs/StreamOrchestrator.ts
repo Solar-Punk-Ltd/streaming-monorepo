@@ -340,9 +340,10 @@ export class StreamOrchestrator {
    *
    * An entry means a live session whose publisher has gone but whose broadcast is deliberately still
    * open: see {@link noteDisconnect}. It is cleared by the next accepted segment and by the session
-   * being retired, and it is read by nothing that decides anything — the window belongs to the stall
-   * reaper, which measures media rather than webhooks. What it is for is saying so out loud, through
-   * {@link HealthSignals.disconnectedStreams}.
+   * being retired. It never decides when a broadcast ends, because the window belongs to the stall
+   * reaper, which measures media rather than webhooks. It reports the disconnect through
+   * {@link HealthSignals.disconnectedStreams}, and it tells {@link resumeHeldRungs} which rungs SRS cut
+   * rather than held, so those are left to their own return.
    */
   private streamDisconnectedAt = new Map<string, number>();
   /**
@@ -2039,8 +2040,9 @@ export class StreamOrchestrator {
         return;
       }
 
-      // A stream holding a recovery timer is that timer's business, not this one's. The two never
-      // arm together today, and this keeps a future path that armed both from finalizing twice.
+      // A stream holding a recovery timer is that timer's business, not this one's. The two can be
+      // armed together, when a held rung resumed by `resumeHeldRungs` is still waiting on a recovery
+      // timer, and this keeps them from finalizing it twice.
       if (this.recoveryTimers.has(streamId)) {
         return;
       }

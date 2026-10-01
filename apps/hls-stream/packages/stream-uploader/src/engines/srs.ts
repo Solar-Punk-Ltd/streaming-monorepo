@@ -253,11 +253,11 @@ export function createSrsEngine(mediaRootPath: string, options: SrsEngineOptions
       //
       // ⛔ A map rather than a set, because in admin mode the base carries the declaration its rungs
       // publish under: the source is what presents the key and is resolved against the admin, and the
-      // rungs that follow it inherit that session without a lookup of their own. A `null` session is
-      // the standalone deployment, where membership alone is the whole of what the base proved. Reading
-      // a base as "present" therefore still means exactly what it meant, which is what keeps SEC-28's
-      // rule — a rung is admitted only because its base authenticated — unchanged. An entry is cleared
-      // only when the last connection the source's hook accepted has left. See `PublisherConnections`.
+      // rungs that follow it inherit that session without a lookup of their own. `null` is the
+      // standalone deployment, where membership alone is the whole of what the base proved. Reading a
+      // base as "present" therefore still means exactly what it meant, which keeps SEC-28's rule, that
+      // a rung is admitted only because its base authenticated, unchanged. An entry is cleared only when
+      // the last connection the source's hook accepted has left. See `PublisherConnections`.
       const authenticatedBases = new Map<string, AdminSession | null>();
       const connections: SrsConnections = {
         sources: new PublisherConnections(clock),

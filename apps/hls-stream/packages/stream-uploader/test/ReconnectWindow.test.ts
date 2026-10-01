@@ -1456,13 +1456,6 @@ describe('a single stream taken over from a connection SRS still held', () => {
 });
 
 /**
- * The SRS webhook's own wiring, one layer above everything else here: which orchestrator call each
- * role's `on_unpublish` makes.
- *
- * ⛔ The only thing these assert is WHICH call, because that is the whole of the engine's part in
- * this. What the call then does is every case above.
- */
-/**
  * A ladder whose source dropped and came back while SRS kept its transcoders running.
  *
  * ⛔⛔ **No rung says anything, so the source's return is the only event there is.** With the
@@ -1612,6 +1605,14 @@ describe('a ladder whose rungs SRS held through a short drop of its source', () 
   });
 });
 
+/**
+ * The SRS webhook's own wiring, one layer above everything else here: which orchestrator call each
+ * role's `on_unpublish` makes, which a ladder source's or a single stream's `on_publish` makes, and
+ * when a publish that arrives while an older connection is still there has its resume held back.
+ *
+ * ⛔ The only thing these assert is WHICH call, and when, because that is the whole of the engine's
+ * part in this. What the call then does is every case above.
+ */
 describe('what an SRS unpublish or source publish asks the orchestrator to do', () => {
   const TEST_WEBHOOK_TOKEN = 'srs-webhook-token-0123456789abcdef';
   const ABR_VHOST = 'abr.local';
@@ -1735,9 +1736,10 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
 
   /**
    * ⛔ SRS's publish takeover on a single stream: the new connection's `on_publish`, then the old
-   * connection's `on_unpublish`, then media from the new one and nothing more. The new connection has
-   * already resumed the session, so a disconnect noted on the old one's late unpublish would report a
-   * live stream as disconnected until its next return or its end.
+   * connection's last segment, flushed as it is expired, then the old connection's `on_unpublish`,
+   * then media from the new one and nothing more. The new connection is still publishing, so a
+   * disconnect noted on the old one's late unpublish would report a live stream as disconnected until
+   * its next return or its end.
    */
   it('notes no disconnect for a single stream when the old connection unpublishes after a takeover', async () => {
     const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
