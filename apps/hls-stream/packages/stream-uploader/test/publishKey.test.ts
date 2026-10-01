@@ -15,7 +15,7 @@ const OTHER_SECRET = 'y'.repeat(MIN_PUBLISH_KEY_SECRET_LENGTH);
 
 /**
  * One admission body and one webhook body, captured on 2026-08-03 from `airensoft/ovenmediaengine:latest`
- * and `ossrs/srs:6`, the two images this deployment pins, each publishing over the provider it actually
+ * and `ossrs/srs:6`, the two images this deployment ran then, each publishing over the provider it actually
  * uses. They are here because the whole feature rests on the credential surviving the engine, and
  * neither engine documents that it does.
  *
