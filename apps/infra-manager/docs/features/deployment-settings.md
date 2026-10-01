@@ -32,7 +32,8 @@ Each key of the list says where the value its next deploy writes comes from:
 | generated       | a secret the manager generated for this deployment                                                                                                   |
 | unset           | set by nothing, so the stack's own default applies                                                                                                   |
 
-The controls that decide a key are the services the deployment runs, its postage stamp, its node pool,
+The controls that decide a key are the services the deployment runs, its postage stamp, its node pool
+(on an ABR uploader its rung settings decide `ABR_LADDER` instead),
 its chain endpoint and the gateway's node mode, its Bee URL, its SRT passphrase, its feed key, owner
 and topic, the engine's own config file, the port slot, and on the manager's own host the data
 directories. A save that names one of those keys is refused with the control named. A value stored
@@ -46,14 +47,20 @@ generated one stays kept for when the value is reset.
 Every engine setting the deployment reads is listed as its own to set, whether the version's samples
 declare it or not, in the order the engine's field list gives them: for SRS the segment length, the
 force-close ceiling, the playlist window and the SRT latency, and on an ABR uploader the seven
-transcoding settings, for OvenMediaEngine the segment duration and count and the uploader's poll
+transcoding settings and each rung's width, height and bitrate, for OvenMediaEngine the segment duration and count and the uploader's poll
 interval. The field list is `common/src/engineSettings.ts`, and the page takes each setting's label,
 unit, help, kind, bounds and choices from it, so the answer carries none of them.
 
 - **Its value** is what the deployment stores in its engine settings, and **its default** is what an
   unset one falls back to on the deployment's host, as the Engine card names it: the host's base
   `.env` first, then the version's own fallback, except for the SRT latency, whose 2000 is the
-  manager's own and is named as such.
+  manager's own and is named as such, and the rung settings, whose shipped ladder is the manager's
+  own too and which the host's base `.env` cannot set.
+- **A rung setting** is never written as a line of its own. The deploy composes `ABR_LADDER` from
+  the twelve of them, which is why the `ABR_LADDER` row stays read-only on an ABR uploader, shows
+  the value the deployment gets and says it is put together from the rung settings, and why a
+  change to one recreates the engine and the uploader, which both read that key. See
+  [Each rung's size and bitrate](abr-ladder.md#each-rungs-size-and-bitrate).
 - **A key the config the engine runs no longer reads**, because the deployment's own config file
   dropped its placeholder or the version's template never takes it, says on its row that a value
   there has no effect.
@@ -66,11 +73,12 @@ A save puts an engine key in `profiles.engine_settings` and never in the stack c
 held to its field, refused by key in the engine's own words. What the engine settings will be once the
 save lands, the stored ones with its values set and its resets taken out, is then held to the
 engine's own rules, with the host's default for a key nothing stores, so a pair the engine would
-refuse, a force-close ceiling under the segment length or a frame rate and segment length whose
-product is not whole, is refused with that sentence. A save that names no engine setting is not held
+refuse, a force-close ceiling under the segment length, a frame rate and segment length whose
+product is not whole, or a ladder rung no taller or no dearer than the one below it, is refused with
+that sentence. A save that names no engine setting is not held
 to them. The stack columns, the engine settings and the revision move in one statement, so a save
-lands whole or not at all. Turning the ABR ladder off in the deployment's Edit drawer takes the rung
-settings out of the engine settings by key, so a value saved from this card while that edit was on
+lands whole or not at all. Turning the ABR ladder off in the deployment's Edit drawer takes the
+ladder-only settings, the transcoding settings and the rung settings, out of the engine settings by key, so a value saved from this card while that edit was on
 its way stays.
 
 The host can stop taking engine settings it took when they were saved: a change to its base `.env`

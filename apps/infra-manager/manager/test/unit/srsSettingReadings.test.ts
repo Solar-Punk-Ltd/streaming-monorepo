@@ -81,6 +81,14 @@ describe('bounded SRS config observations', () => {
     assert.equal(reason(result, 'ABR_VBV_SECONDS'), 'unsupported-syntax');
   });
 
+  it('does not read a rung size or bitrate out of a hand-written engine block, and says so rather than blaming the file', () => {
+    const result = observe(config(engine('low', 'aac', '128', 'vwidth 640; vheight 360; vbitrate 700;')));
+    for (const key of ['ABR_RUNG_360P_WIDTH', 'ABR_RUNG_360P_HEIGHT', 'ABR_RUNG_1080P_KBPS']) {
+      assert.equal(reason(result, key), 'unsupported-syntax', key);
+    }
+    assert.equal(result.notInConfig.includes('ABR_RUNG_360P_WIDTH'), false);
+  });
+
   it('requires every explicit encoder to agree and keep each mapped directive', () => {
     const conflicting = observe(config(engine('low') + engine('high').replace('vfps 25;', 'vfps 50;')));
     assert.equal(reason(conflicting, 'ABR_FPS'), 'conflicting-values');

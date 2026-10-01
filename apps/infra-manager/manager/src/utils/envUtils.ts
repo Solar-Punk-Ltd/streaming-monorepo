@@ -4,10 +4,11 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  abrLadderEnvValue,
+  ABR_LADDER_ENV_KEY,
   applicableEngineSettings,
   beePublishersProblem,
   beeUrlProblem,
+  composedAbrLadderEnvValue,
   CUSTOM_RPC_ENDPOINT_SOURCE,
   DEFAULT_RPC_ENDPOINT_SOURCE,
   type NodeMode,
@@ -393,7 +394,9 @@ export function managedEnvLines(
   // into engines/srs/.env.<profile>: the root env wins over it in deploy.sh, both
   // srs and the uploader read them from the compose environment, and the
   // uploader refuses to start unless the publishers cover the ladder exactly,
-  // so the two are written by one hand, from one definition.
+  // so the two are written by one hand, from one definition. The rung names
+  // are fixed and only each rung's size and bitrate come from the deployment's
+  // rung settings, which is what keeps that true.
   // Normalised here too, not only in the schema: rows written before the
   // schema canonicalised the value still hold whatever was pasted, and this is
   // the last point before it becomes a line in a file compose has to parse.
@@ -408,7 +411,8 @@ export function managedEnvLines(
     }
     set('BEE_PUBLISHERS', publishers);
     set('ABR_ENABLED', 'true');
-    set('ABR_LADDER', abrLadderEnvValue());
+    const rungSettings = applicableEngineSettings(values.engine, values.engineSettings ?? {}, { abr: true });
+    set(ABR_LADDER_ENV_KEY, composedAbrLadderEnvValue(rungSettings));
     // STAMP is deliberately left alone, tempting though it is to clear: a
     // pool-backed uploader owns no batch, and .env.<profile> is a full copy of
     // the base .env, so whatever STAMP was configured there rides along and

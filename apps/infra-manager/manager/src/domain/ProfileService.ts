@@ -47,7 +47,11 @@ import { DeploymentGroup, Profile, ProfileKind, ProfileWithContainers, TRANSITIO
 import { portTableForEngine } from './versions/enginePortTable.js';
 
 import { ContainerRepository } from './ContainerRepository.js';
-import { SHARED_ENGINE_SETTING_KEYS, UPLOADER_ENGINE_SETTING_KEYS } from './containerKeysSpec.js';
+import {
+  COMPOSED_ENGINE_SETTING_KEYS,
+  SHARED_ENGINE_SETTING_KEYS,
+  UPLOADER_ENGINE_SETTING_KEYS,
+} from './containerKeysSpec.js';
 import { DeploymentOrchestrator, DeployReservation } from './DeploymentOrchestrator.js';
 import { NodeReadLog, readLogKey, spellSuffix, spellText } from './nodeReadLog.js';
 import {
@@ -197,7 +201,8 @@ function stackSettingsNote(settings: InitialStackSettings): string {
  *
  * The engine always, and the uploader as well when a key the uploader also
  * reads has a different value than before. That is the keys compose hands to
- * the uploader rather than to the engine, and the keys it hands to BOTH.
+ * the uploader rather than to the engine, the keys it hands to BOTH, and the
+ * rung settings the manager composes into `ABR_LADDER`, which both read.
  *
  * ⛔ The second half was missing until 2026-09-15: only the first list was
  * consulted, so changing the segment length recreated the engine and left the
@@ -205,9 +210,11 @@ function stackSettingsNote(settings: InitialStackSettings): string {
  * right. The list it read was the wrong list.
  */
 function servicesToRecreate(engine: EngineName, before: EngineSettings, after: EngineSettings): string[] {
-  const uploaderChanged = [...UPLOADER_ENGINE_SETTING_KEYS, ...SHARED_ENGINE_SETTING_KEYS].some(
-    (key) => before[key] !== after[key],
-  );
+  const uploaderChanged = [
+    ...UPLOADER_ENGINE_SETTING_KEYS,
+    ...SHARED_ENGINE_SETTING_KEYS,
+    ...COMPOSED_ENGINE_SETTING_KEYS,
+  ].some((key) => before[key] !== after[key]);
   return uploaderChanged ? [engine, STREAM_UPLOADER_SERVICE] : [engine];
 }
 
@@ -809,9 +816,10 @@ export class ProfileService {
    * are left running because taking them down would interrupt an upload that
    * has nothing to do with the change. The exceptions are the keys the uploader
    * reads too: `OME_HLS_POLL_INTERVAL_MS`, which compose puts in the uploader's
-   * environment alone, and `HLS_FRAGMENT`, which both containers read. A change
-   * to either recreates the uploader as well, or the new value never reaches
-   * the process that reads it.
+   * environment alone, `HLS_FRAGMENT`, which both containers read, and the rung
+   * settings, which the manager composes into `ABR_LADDER`, which both read too.
+   * A change to any of them recreates the uploader as well, or the new value
+   * never reaches the process that reads it.
    *
    * The stored settings are read first, with the revision a deployment's
    * settings page saves under, and the write is refused once a page save has

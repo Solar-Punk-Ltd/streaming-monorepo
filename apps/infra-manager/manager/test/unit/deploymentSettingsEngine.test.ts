@@ -35,7 +35,7 @@ const hostEnvPath = join(root, '.env');
 writeFileSync(hostEnvPath, HOST_ENV, 'utf8');
 writeFileSync(join(root, '.env.sample'), '# === Stream Uploader ===\nLOG_LEVEL=debug\n', 'utf8');
 mkdirSync(join(root, 'engines', 'srs'), { recursive: true });
-writeFileSync(join(root, 'engines', 'srs', '.env.sample'), '# === ABR ladder ===\nABR_FPS=30\n', 'utf8');
+writeFileSync(join(root, 'engines', 'srs', '.env.sample'), '# === ABR ladder ===\nABR_FPS=30\nABR_LADDER=\n', 'utf8');
 
 const { orchestratorHarness, untilRunning } = await import('../support/orchestratorHarness.js');
 const { createDeploymentSettingsRouter } = await import('../../src/api/routes/deploymentSettings.js');
@@ -341,6 +341,121 @@ describe('engine settings this host no longer takes', () => {
       await assert.rejects(harness.orchestrator.startDeploy(harness.profiles.rows.get('stage')!, undefined), {
         message: `refusing to write the engine settings to the env file: ${REFUSED}`,
       });
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe('the rung settings of a deployment that encodes the ABR ladder', () => {
+  const SHIPPED_LADDER = '1080p:1920:1080:5000 720p:1280:720:2800 480p:854:480:1200 360p:640:360:700';
+  const POOL = ['360p', '480p', '720p', '1080p']
+    .map((rung, index) => `${rung}@http://192.0.2.20:${10015 + index * 10}<${'a'.repeat(64)}>`)
+    .join(' ');
+  const ladder = { kind: 'custom' as const, components: ['srs', 'stream-uploader'], bee_publishers: POOL };
+
+  it("lists each rung's size and bitrate as engine settings, at the shipped ladder by the manager's own default", async () => {
+    const { app } = await running(ladder);
+    try {
+      const catalog = await listed(app);
+      const width = entryOf(catalog, 'ABR_RUNG_1080P_WIDTH');
+
+      assert.equal(catalog.abr, true);
+      assert.equal(width.owner, null);
+      assert.deepEqual(width.engineSetting, { defaultSource: 'manager', notInConfig: false });
+      assert.equal(width.versionValue, '1920');
+      assert.equal(width.source, 'manager-default');
+      assert.equal(entryOf(catalog, 'ABR_RUNG_360P_KBPS').versionValue, '700');
+      assert.deepEqual(width.services, ['srs', 'stream-uploader']);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('shows ABR_LADDER with the value the deployment gets, set by the rung settings', async () => {
+    const { app } = await running(ladder);
+    try {
+      const row = entryOf(await listed(app), 'ABR_LADDER');
+
+      assert.equal(row.owner, 'abr-rungs');
+      assert.equal(row.value, SHIPPED_LADDER);
+      assert.equal(row.source, 'manager');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('moves ABR_LADDER with a saved rung, and Apply recreates both containers that read it', async () => {
+    const { app, harness } = await running(ladder);
+    try {
+      const saved = await save(app, 0, [
+        { key: 'ABR_RUNG_1080P_WIDTH', value: '2560' },
+        { key: 'ABR_RUNG_1080P_HEIGHT', value: '1440' },
+      ]);
+      assert.equal(saved.status, 200, JSON.stringify(saved.body));
+      assert.deepEqual(harness.profiles.rows.get('stage')!.engine_settings, {
+        ABR_RUNG_1080P_WIDTH: '2560',
+        ABR_RUNG_1080P_HEIGHT: '1440',
+      });
+
+      const catalog = await listed(app);
+      assert.equal(
+        entryOf(catalog, 'ABR_LADDER').value,
+        '1080p:2560:1440:5000 720p:1280:720:2800 480p:854:480:1200 360p:640:360:700',
+      );
+      assert.deepEqual(catalog.drift, {
+        keys: ['ABR_LADDER'],
+        services: ['srs', 'stream-uploader'],
+        fullRedeploy: false,
+      });
+
+      const answer = await call(app, 'POST', '/profiles/stage/settings/apply', { expectedInstanceId: INSTANCE_ID });
+      assert.deepEqual(answer.body, { recreated: ['srs', 'stream-uploader'] });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses a rung no taller than the one below it, and stores nothing', async () => {
+    const { app, harness } = await running(ladder);
+    try {
+      const refused = await save(app, 0, [{ key: 'ABR_RUNG_720P_HEIGHT', value: '480' }]);
+
+      assert.equal(refused.status, 400);
+      assert.match(
+        (refused.body as { errors: string[] }).errors.join(' '),
+        /The 720p rung has to be taller than the 480p rung below it/,
+      );
+      assert.deepEqual(harness.profiles.rows.get('stage')!.engine_settings, {});
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses an odd width, naming the field', async () => {
+    const { app } = await running(ladder);
+    try {
+      const refused = await save(app, 0, [{ key: 'ABR_RUNG_480P_WIDTH', value: '853' }]);
+
+      assert.equal(refused.status, 400);
+      assert.deepEqual((refused.body as { errors: string[] }).errors, [
+        'ABR_RUNG_480P_WIDTH: 480p width must be an even number, because the H.264 encoder refuses odd picture sizes. Got 853.',
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('lists none of them on a deployment without the ladder, whose ABR_LADDER the node pool decides', async () => {
+    const { app } = await running();
+    try {
+      const catalog = await listed(app);
+
+      assert.equal(
+        catalog.entries.some((entry) => entry.key.startsWith('ABR_RUNG_')),
+        false,
+      );
+      assert.equal(entryOf(catalog, 'ABR_LADDER').owner, 'node-pool');
     } finally {
       await app.close();
     }

@@ -168,11 +168,45 @@ valid paste resolves to, because a line of four URLs and four 64-character batch
 ids is not something anyone proof-reads.
 
 At deploy `writeProfileEnv` writes `BEE_PUBLISHERS`, `ABR_ENABLED=true` and
-`ABR_LADDER` (emitted from `DEFAULT_ABR_LADDER`) into `.env.<profile>`. The root
-env wins over `engines/srs/.env.<profile>` in `deploy.sh`, and both `srs` and the
-uploader read all three from the compose environment, so the ladder the engine
-encodes and the ladder the uploader publishes come from one definition and cannot
-drift. SRS only, and the ladder is not implemented for OME.
+`ABR_LADDER` into `.env.<profile>`. The root env wins over
+`engines/srs/.env.<profile>` in `deploy.sh`, and both `srs` and the uploader read
+all three from the compose environment, so the ladder the engine encodes and the
+ladder the uploader publishes come from one definition and cannot drift. SRS
+only, and the ladder is not implemented for OME.
+
+### Each rung's size and bitrate
+
+The four rung names are fixed, because the pool has one Bee node per rung named
+after it and the uploader refuses to start unless the pool covers the ladder
+exactly. Each rung's width, height and bitrate are not. They are twelve engine
+settings of the ABR Uploader, `ABR_RUNG_<RUNG>_WIDTH`, `_HEIGHT` and `_KBPS`
+(for example `ABR_RUNG_1080P_WIDTH`), listed under Engine settings on the
+deployment's settings card, grouped by rung, each defaulting to the shipped
+ladder as the manager's own default. Save, then Stop and Start the deployment,
+or Apply while it runs, and the stack encodes at the new values.
+
+They are never written as lines of their own, because the stack reads only
+`ABR_LADDER`. `writeProfileEnv` composes that key from them where it writes
+`BEE_PUBLISHERS`, each stored value or else the shipped one, highest rung first,
+so with nothing stored it is byte for byte the value it always was. A value the
+host's base `.env` sets for `ABR_LADDER` never applies to an ABR Uploader, as
+before. The settings card shows `ABR_LADDER` read-only with the value the
+deployment gets, and says it is put together from the rung settings.
+
+A save, and again the deploy, refuses:
+
+- a width or height that is odd, because the H.264 encoder refuses odd picture
+  sizes, or a value that is not a whole number
+- a width outside 128 to 3840, a height outside 72 to 2160, or a bitrate outside
+  100 to 20000 kbps
+- a rung no taller than the one below it, or with no higher a bitrate, because a
+  viewer stepping up would get no sharper picture and one stepping down would
+  save no bandwidth
+
+A change to any of them recreates the engine and the uploader, which both read
+`ABR_LADDER`. The node pool's own pages still describe each rung at the shipped
+size and bitrate, and a rung's suggested batch depth still follows the shipped
+bitrates, because a pool does not know which uploader publishes through it.
 
 The string goes stale two ways, and since nothing links the two managers,
 nothing invalidates a copy that has gone wrong:
@@ -269,15 +303,17 @@ stdin-less runner.
 
 ### `common`
 
-| File                            | Change                                                                                                                                                                                                                                                                                                                                                                                   |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/abrLadder.ts` (new)        | The whole ladder domain: `DEFAULT_ABR_LADDER` (rungs, geometry, kbps), `ladderMemberName` / `rungFromMemberName` / `ladderMemberNames`, `rungOrder`, `suggestedRungDepth`, `assembleBeePublishers`, `beePublishersValue`, `parseBeePublishers` / `beePublishersProblem`, `abrLadderEnvValue`, `LADDER_GROUP_NAME_MAX`.                                                                   |
-| `src/abrLadder.test.ts` (new)   | Tests over naming, round-tripping, group recognition, depth scaling and assembly, including that the name cap is exactly where member names stop fitting, and that a ladder of expired batches yields no value.                                                                                                                                                                          |
-| `src/stampHealth.ts` (new)      | `stampHealthFrom` / `isStampExpired` / `isStampExpiringSoon` / `isDeadStampState` / `stampStateReason` / `sameBatchId`, the one place that decides what a recorded batch is worth. Since 2026-09-25 also `fullestBucketFillRatio` / `stampBucketCapacity` / `isFullestBucketFull` / `isStampNearlyFull` / `formatFillPercent`, how full a batch is. See [Rung validity](#rung-validity). |
-| `src/publishUrl.ts` (new)       | `classifyPublishUrl` / `isInvalidUrlState` / `publishUrlReason` / `publishUrlWarning`, what a rung's published address is worth, structurally, before anything is probed.                                                                                                                                                                                                                |
-| `src/publishUrl.test.ts` (new)  | Tests for loopback in every spelling, ssh user info, non-http schemes, and that a bare internal hostname is _not_ refused.                                                                                                                                                                                                                                                               |
-| `src/stampHealth.test.ts` (new) | Tests over the classification and the expiry window, including that an unreachable node classifies as `unknown` and never as `expired`, and that a negative `batchTTL` is not expiry.                                                                                                                                                                                                    |
-| `src/stampGating.ts`            | `isBeeNodeOnly` and `managesOwnStamp`. A rung has no `stream-uploader`, so the old gate said it needed no stamp, which would have left it invisible on the Uploaders tab with no way to fund it.                                                                                                                                                                                         |
+| File                                | Change                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/abrLadder.ts` (new)            | The whole ladder domain: `DEFAULT_ABR_LADDER` (rungs, geometry, kbps), `ladderMemberName` / `rungFromMemberName` / `ladderMemberNames`, `rungOrder`, `suggestedRungDepth`, `assembleBeePublishers`, `beePublishersValue`, `parseBeePublishers` / `beePublishersProblem`, `abrLadderEnvValue`, `LADDER_GROUP_NAME_MAX`.                                                                   |
+| `src/abrLadder.test.ts` (new)       | Tests over naming, round-tripping, group recognition, depth scaling and assembly, including that the name cap is exactly where member names stop fitting, and that a ladder of expired batches yields no value.                                                                                                                                                                          |
+| `src/abrRungSettings.ts` (new)      | Each rung's width, height and bitrate as twelve ladder-only SRS engine settings generated from `DEFAULT_QUALITY_LADDER`, `composedAbrLadderEnvValue`, which puts `ABR_LADDER` together from them, and `abrLadderOrderProblem`, which refuses a rung no taller or no dearer than the one below it.                                                                                        |
+| `src/abrRungSettings.test.ts` (new) | Tests over the field list and its defaults, the composed value byte for byte with nothing stored and with values changed, no rung setting written as a line of its own, the manager's default whatever the host sets, and every refusal: odd sizes, fractions, bounds and rungs out of order.                                                                                            |
+| `src/stampHealth.ts` (new)          | `stampHealthFrom` / `isStampExpired` / `isStampExpiringSoon` / `isDeadStampState` / `stampStateReason` / `sameBatchId`, the one place that decides what a recorded batch is worth. Since 2026-09-25 also `fullestBucketFillRatio` / `stampBucketCapacity` / `isFullestBucketFull` / `isStampNearlyFull` / `formatFillPercent`, how full a batch is. See [Rung validity](#rung-validity). |
+| `src/publishUrl.ts` (new)           | `classifyPublishUrl` / `isInvalidUrlState` / `publishUrlReason` / `publishUrlWarning`, what a rung's published address is worth, structurally, before anything is probed.                                                                                                                                                                                                                |
+| `src/publishUrl.test.ts` (new)      | Tests for loopback in every spelling, ssh user info, non-http schemes, and that a bare internal hostname is _not_ refused.                                                                                                                                                                                                                                                               |
+| `src/stampHealth.test.ts` (new)     | Tests over the classification and the expiry window, including that an unreachable node classifies as `unknown` and never as `expired`, and that a negative `batchTTL` is not expiry.                                                                                                                                                                                                    |
+| `src/stampGating.ts`                | `isBeeNodeOnly` and `managesOwnStamp`. A rung has no `stream-uploader`, so the old gate said it needed no stamp, which would have left it invisible on the Uploaders tab with no way to fund it.                                                                                                                                                                                         |
 
 ### Manager
 
