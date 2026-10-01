@@ -425,7 +425,8 @@ OBS/FFmpeg ──SRT──> SRS (port 10080)
                             |
                             +-- on_publish   -> start stream session
                             +-- on_hls      -> read segment, upload to Swarm
-                            +-- on_unpublish -> finalize VOD manifest
+                            +-- on_unpublish -> note a disconnect, the recording ends as a VOD if
+                                                no media returns within ORPHAN_REAP_MS (60s by default)
 ```
 
 ## Services
