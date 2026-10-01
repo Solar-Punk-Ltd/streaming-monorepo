@@ -47,13 +47,15 @@ same code.
 **What the fork does instead.** When the broadcaster drops, SRS frees the stream name at once and keeps the rung
 encoders running. If the broadcaster comes back within the hold, the same encoders carry on. If nobody comes back,
 the encoders are killed when the hold runs out. Destroying the source, reloading the transcode config and shutting
-SRS down stop the encoders at once.
+SRS down kill held encoders at once.
 
 The hold is the transcode directive `unpublish_hold`, in seconds, set inside the `transcode` block beside `ffmpeg`.
 The fork defaults it to 60 seconds, and 0 gives stock behaviour. The stack sets it from `ABR_UNPUBLISH_HOLD`, **12
 seconds by default**, and SRS checks it every 3 seconds, so a 12 second hold ends 12 to 15 seconds after the drop.
 It is kept short on purpose, for the reason the measurements below show: SRS cuts the idle rung publishes about 13 to
-17 seconds into a drop, and past that a held encoder only fails and restarts, which is slower than a fresh set. The hold
+17 seconds into a drop, and past that a held encoder only fails and restarts, which is slower than a fresh set. The
+hold's own end, 12 to 15 seconds after the drop, can overlap the earliest of those cuts, so a broadcaster back 13 to 15
+seconds after a drop can meet a held encoder that has to restart. The hold
 does not decide how long a broadcaster may be away. That is the uploader's `ORPHAN_REAP_MS`, 60 seconds by default,
 and a broadcaster back within it continues the same broadcast whatever the hold is.
 
@@ -72,8 +74,12 @@ hold and a clean drop, every reconnect was accepted at every gap from 0.3 to 70 
 - **Why the hold is not longer.** With the fork's own default of 60 seconds, a return between about 13 and 60 seconds
   finds encoders whose rung publishes SRS has already cut. They fail on their first write and restart, and every rung
   is back after 8 to 10 seconds instead of about 4. Up to about 12 seconds the two behave the same.
+- **The uploader** sees only the source's `on_unpublish` and `on_publish` while the rungs are held. When the source
+  returns, it marks a break on each held rung's first segment after the return and dates the recording from the wall
+  clock again at that point, because the rungs' media time ran on without the gap.
 - **A broadcaster who returns with different settings.** Video is re-encoded to each rung's size as before. The rungs
-  copy audio, so a different audio sample rate carries on inside the same rendition with no discontinuity marker.
+  copy audio, so a different audio sample rate carries on inside the same rendition, and the change can fall inside a
+  segment.
 
 **The takeover of a silent publisher.** When a broadcaster's network dies without closing the connection, SRS keeps
 the old SRT publisher until it notices the dead peer, about 7 seconds, and stock SRS refuses every reconnect until
@@ -81,8 +87,8 @@ then. An encoder that gives up after one refusal ends the broadcast there. With 
 the `on_publish` hook accepted replaces the old one: SRS disconnects the old publisher, waits up to 5 seconds for it to
 be gone, and accepts the new one, or refuses it as before if the old one does not go. The fork leaves it off by
 default, because with no `on_publish` hook every publisher is accepted and could replace a live one. The stack turns it
-on with `SRT_TAKEOVER`, on by default, because the uploader's hook refuses a wrong publish key. It applies to SRT
-publishers only.
+on with `SRT_TAKEOVER`, on by default, because the uploader's hook refuses a wrong publish key. The new publisher has
+to come over SRT, but the one it replaces can be an RTMP publisher.
 
 Measured on the same rig with the 12 second hold, a publisher killed without closing its connection and a new one
 with the same key 1, 3 or 5 seconds later: all 30 reconnects were accepted, the takeover took 11 to 45 milliseconds,
@@ -105,6 +111,9 @@ it. On 2026-10-01 that build image held the same ffmpeg 8.1.2 binary as the offi
 
 > **TODO:** the compose files still run `ossrs/srs:v6.0-r1`. Pin the fork's image by digest in
 > `engines/srs/docker-compose.yml` and `deploy/docker-compose.yml` once its first release build exists.
+
+**Going back to stock SRS** means going back to a stack version from before this change as well. The entrypoint writes
+`unpublish_hold` and `takeover`, and stock SRS refuses to start on a directive it does not know.
 
 The segment-duration probes in `deploy/scripts/srs-segment-duration*` keep the stock `ossrs/srs` image on purpose.
 They run a minimal config against upstream SRS, so a reproduction there points at SRS and a non-reproduction points
@@ -230,7 +239,7 @@ template while the variable says otherwise.
 Start from a copy of the template and edit from there. A file that does not parse takes the engine
 down on its next start, so check it first. SRS has a test mode that names the offending line. It
 checks values as well as syntax, so a file that still carries the tokens is refused at the first of
-them, which on a copy of the template is the bare `TRANSCODE_PLACEHOLDER` at line 57, and a mistake
+them, which on a copy of the template is the bare `TRANSCODE_PLACEHOLDER` line, and a mistake
 of yours further down is never reached. Fill the tokens with a stand-in and drop the two bare lines
 first:
 
@@ -241,7 +250,7 @@ docker run --rm -v "$PWD/my-srs.check.conf:/check/srs.conf:ro" ossrs/srs:6 ./obj
 
 The copy that passes is not the file you deploy. The deploy mounts `my-srs.conf` itself, and the
 entrypoint fills its tokens from the environment. Measured 2026-09-07 on `ossrs/srs:6` at 6.0.184: a
-copy of the template is refused at line 57, the filled copy passes, and a misspelt `hls_window` in
+copy of the template is refused at that line, the filled copy passes, and a misspelt `hls_window` in
 the filled copy is named.
 
 OvenMediaEngine has no test mode. Its log names the element it refused.
