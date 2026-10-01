@@ -214,11 +214,24 @@ sed -i "s/SRT_LATENCY_PLACEHOLDER/${SRT_LATENCY:-2000}/" "$CONF"
 
 # Whether a reconnecting SRT broadcaster replaces a publisher SRS still holds, such as one whose network
 # died without closing the connection. Off, SRS refuses the reconnect as busy until it notices the dead
-# peer, about 7 seconds, and an encoder that gives up after one refusal ends the broadcast. Our SRS fork
-# leaves it off by default, because it is only safe where the on_publish hook refuses a wrong key, which
-# the uploader's hook does.
-require_on_off SRT_TAKEOVER "${SRT_TAKEOVER:-on}"
-sed -i "s/SRT_TAKEOVER_PLACEHOLDER/${SRT_TAKEOVER:-on}/" "$CONF"
+# peer, about 7 seconds, and an encoder that gives up after one refusal ends the broadcast. It is only
+# safe where the on_publish hook refuses a wrong key, which the uploader does when a publish key secret
+# or admin mode is configured. Compose tells this container only whether either is set, never the
+# values, so left unset the takeover follows that, and SRT_TAKEOVER decides it outright.
+# --- srt takeover, replayed whole by deploy/test/srsTuning.test.js ---
+SRT_TAKEOVER="${SRT_TAKEOVER:-}"
+if [ -z "$SRT_TAKEOVER" ]; then
+  if [ -n "${UPLOADER_PUBLISH_KEYS:-}${UPLOADER_ADMIN_MODE:-}" ]; then
+    SRT_TAKEOVER=on
+  else
+    SRT_TAKEOVER=off
+  fi
+elif [ "$SRT_TAKEOVER" = on ] && [ -z "${UPLOADER_PUBLISH_KEYS:-}${UPLOADER_ADMIN_MODE:-}" ]; then
+  echo "SRT_TAKEOVER is on while the uploader checks no publish key, so anyone who reaches the SRT port can replace a live broadcaster." >&2
+fi
+# --- end srt takeover ---
+require_on_off SRT_TAKEOVER "$SRT_TAKEOVER"
+sed -i "s/SRT_TAKEOVER_PLACEHOLDER/${SRT_TAKEOVER}/" "$CONF"
 
 # The uploader rejects every webhook without this, so an empty value is a misconfiguration worth
 # failing on here rather than at the first publish. SRS cannot sign its callbacks or send a header,

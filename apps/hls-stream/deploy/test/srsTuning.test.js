@@ -48,6 +48,10 @@ function shippedBlock(pattern, what) {
 
 const REQUIRE_NUMBER = /^require_number\(\) \{\n[\s\S]*?\n\}$/m;
 
+/** Where the takeover's default is decided, which a replay of the `sed -i` lines alone would skip. */
+const SRT_TAKEOVER_DEFAULT =
+  /^# --- srt takeover, replayed whole by deploy\/test\/srsTuning\.test\.js ---\n([\s\S]*?)^# --- end srt takeover ---$/m;
+
 /**
  * Where the ceiling is turned into the ratio SRS takes.
  *
@@ -104,6 +108,7 @@ function renderSrsConf(env) {
     shippedBlock(REQUIRE_NUMBER, 'require_number'),
     shippedSecretChecks(2),
     shippedBlock(HLS_TUNING, 'the hls tuning block'),
+    shippedBlock(SRT_TAKEOVER_DEFAULT, 'the srt takeover block'),
     ...localSeds,
   ].join('\n');
 
@@ -327,17 +332,44 @@ describe('the SRS latency knobs', () => {
 describe('the SRT takeover', () => {
   const REQUIRE_ON_OFF = /^require_on_off\(\) \{\n[\s\S]*?\n\}$/m;
   const ingestSrtBlock = (conf) => conf.match(/vhost __defaultVhost__ \{\s*srt \{([^}]*)\}/)?.[1] ?? '';
+  const takeover = (env) => ingestSrtBlock(renderSrsConf({ ...VALID, ...env })).match(/^\s*takeover\s+(\S+);/m)?.[1];
 
-  it('is on in the ingest vhost by default', () => {
-    assert.match(ingestSrtBlock(renderSrsConf({ ...VALID })), /^\s*takeover\s+on;/m);
+  it('is off where the uploader checks no publish key', () => {
+    assert.equal(takeover({}), 'off');
   });
 
-  it('is off when a deployment turns it off', () => {
-    assert.match(ingestSrtBlock(renderSrsConf({ ...VALID, SRT_TAKEOVER: 'off' })), /^\s*takeover\s+off;/m);
+  it('is on where the uploader checks publish keys', () => {
+    assert.equal(takeover({ UPLOADER_PUBLISH_KEYS: 'yes' }), 'on');
+  });
+
+  it('is on in admin mode, where every publish is checked against its declaration', () => {
+    assert.equal(takeover({ UPLOADER_ADMIN_MODE: 'yes' }), 'on');
+  });
+
+  it('follows a deployment that decides it either way', () => {
+    assert.equal(takeover({ SRT_TAKEOVER: 'off', UPLOADER_PUBLISH_KEYS: 'yes' }), 'off');
+    assert.equal(takeover({ SRT_TAKEOVER: 'on' }), 'on');
   });
 
   it('is checked by the entrypoint before it reaches the config', () => {
-    assert.match(readFileSync(ENTRYPOINT, 'utf8'), /^require_on_off SRT_TAKEOVER "\$\{SRT_TAKEOVER:-on\}"$/m);
+    assert.match(readFileSync(ENTRYPOINT, 'utf8'), /^require_on_off SRT_TAKEOVER "\$SRT_TAKEOVER"$/m);
+  });
+
+  /**
+   * SEC-28 keeps the publish key secret out of the SRS container, so what reaches SRS is only whether a key or admin
+   * mode is configured, which compose works out from the variables it already holds.
+   */
+  it('learns whether the uploader checks keys without ever being handed the secret or the admin address', () => {
+    const deploy = readFileSync(COMPOSE, 'utf8');
+    const services = [
+      ['deploy/docker-compose.yml', deploy.slice(deploy.indexOf('\n  srs:'), deploy.indexOf('\n  ome:'))],
+      ['engines/srs/docker-compose.yml', readFileSync(join(ROOT, 'engines/srs/docker-compose.yml'), 'utf8')],
+    ];
+    for (const [name, srs] of services) {
+      assert.match(srs, /^\s*UPLOADER_PUBLISH_KEYS:\s*\$\{PUBLISH_KEY_SECRET:\+yes\}\s*$/m, name);
+      assert.match(srs, /^\s*UPLOADER_ADMIN_MODE:\s*\$\{ADMIN_API_URL:\+yes\}\s*$/m, name);
+      assert.doesNotMatch(srs, /^\s*(PUBLISH_KEY_SECRET|ADMIN_API_URL|ADMIN_API_TOKEN):/m, name);
+    }
   });
 
   const runOnOff = (value) =>
