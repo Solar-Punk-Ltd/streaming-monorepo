@@ -1405,6 +1405,57 @@ describe('a ladder whose uploader restarts in the middle of its encoder coming b
 });
 
 /**
+ * A single stream taken over from a connection SRS still held.
+ *
+ * ⛔ SRS answers the new connection's `on_publish` first, then expires the old connection, whose open
+ * segment is closed and delivered before its `on_unpublish`. The engine admits the new connection at
+ * its publish and lets its resume go ahead only at the old connection's unpublish, so the break lands
+ * on the new connection's first segment.
+ */
+describe('a single stream taken over from a connection SRS still held', () => {
+  async function takenOver(harness: ReconnectHarness): Promise<void> {
+    harness.start();
+    await harness.segment('a0', 0);
+    await harness.segment('a1', 1);
+    await harness.passTime(5_000);
+    assert.equal(
+      harness.orchestrator.startStream(STREAM_ID, MEDIA_TYPE_AUDIO, undefined, DECLARATION, { deferResume: true }),
+      true,
+      'the takeover is admitted',
+    );
+    await harness.segment('a2', 2);
+  }
+
+  it('puts the break on the new connection’s first segment, not on the old one’s last', async () => {
+    const harness = reconnectHarness();
+    await takenOver(harness);
+
+    harness.orchestrator.resumeDeferredReturn(STREAM_ID);
+    await harness.segment('b0', 3);
+    await harness.published('b0');
+    const playlist = writesNaming(harness.writes, 'b0').at(-1)?.playlist ?? '';
+    const lines = playlist.split('\n').map((line) => line.trim());
+
+    assert.equal(seamCount(playlist), 1);
+    const seam = lines.indexOf(DISCONTINUITY_TAG);
+    assert.ok(lines.indexOf('segment-a2') < seam, 'the old connection’s flushed segment is still before the break');
+    assert.ok(seam < lines.indexOf('segment-b0'), 'and the new connection’s media starts after it');
+  });
+
+  it('marks no break when the held resume is dropped, the reconnect having been refused', async () => {
+    const harness = reconnectHarness();
+    await takenOver(harness);
+
+    harness.orchestrator.dropDeferredReturn(STREAM_ID);
+    harness.orchestrator.resumeDeferredReturn(STREAM_ID);
+    await harness.segment('a3', 3);
+    await harness.published('a3');
+
+    assert.equal(seamCount(writesNaming(harness.writes, 'a3').at(-1)?.playlist ?? ''), 0);
+  });
+});
+
+/**
  * The SRS webhook's own wiring, one layer above everything else here: which orchestrator call each
  * role's `on_unpublish` makes.
  *
@@ -1576,6 +1627,12 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
     resumed: string[];
     /** The position in the case's list of the post that asked for each resume, in step with `resumed`. */
     resumedAt: number[];
+    /** Per `startStream`, whether the engine asked for its resume to wait. */
+    startDeferred: boolean[];
+    /** The position of each post that let a single stream's deferred resume go ahead. */
+    deferredResumedAt: number[];
+    /** The position of each post that dropped a single stream's deferred resume. */
+    deferredDroppedAt: number[];
   }
 
   interface SrsPost {
@@ -1599,14 +1656,32 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
     withLadder: boolean,
     publishKeySecret?: string,
   ): Promise<OrchestratorCalls> {
-    const calls: OrchestratorCalls = { disconnected: [], stopped: [], started: [], resumed: [], resumedAt: [] };
+    const calls: OrchestratorCalls = {
+      disconnected: [],
+      stopped: [],
+      started: [],
+      resumed: [],
+      resumedAt: [],
+      startDeferred: [],
+      deferredResumedAt: [],
+      deferredDroppedAt: [],
+    };
     let postAt = 0;
     let nowMs = 0;
     const orchestrator = {
-      startStream: (streamId: string) => {
+      startStream: (
+        streamId: string,
+        _mediatype: unknown,
+        _claimant: unknown,
+        _admin: unknown,
+        options?: { deferResume?: boolean },
+      ) => {
         calls.started.push(streamId);
+        calls.startDeferred.push(options?.deferResume ?? false);
         return true;
       },
+      resumeDeferredReturn: () => calls.deferredResumedAt.push(postAt),
+      dropDeferredReturn: () => calls.deferredDroppedAt.push(postAt),
       stopStream: async (streamId: string) => void calls.stopped.push(streamId),
       noteDisconnect: (streamId: string) => calls.disconnected.push(streamId),
       resumeHeldRungs: (baseStreamId: string) => {
@@ -1905,6 +1980,56 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
 
     assert.deepEqual(calls.resumedAt, [0]);
     assert.deepEqual(calls.started, [`video/demo_${RUNG_NAMES[0]}`]);
+  });
+
+  /**
+   * ⛔ On a single stream the old connection's last segment is flushed after the new connection's
+   * `on_publish` and before the old connection's `on_unpublish`. A break armed at the new publish
+   * lands on that old segment, so the resume waits for the old connection to leave.
+   */
+  it('lets a single stream’s takeover resume only once the old connection has left', async () => {
+    const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
+    const calls = await postToSrs(
+      [
+        { action: 'on_publish', ...broadcaster, client_id: 'old-connection' },
+        { action: 'on_publish', ...broadcaster, client_id: 'new-connection' },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'old-connection' },
+      ],
+      false,
+    );
+
+    assert.deepEqual(calls.startDeferred, [false, true], 'the takeover is admitted with its resume held back');
+    assert.deepEqual(calls.deferredResumedAt, [2], 'until the connection it replaced has gone');
+  });
+
+  it('drops the held resume of a single-stream reconnect SRT refused', async () => {
+    const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
+    const calls = await postToSrs(
+      [
+        { action: 'on_publish', ...broadcaster, client_id: 'live-connection' },
+        { action: 'on_publish', ...broadcaster, client_id: 'refused-connection' },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'refused-connection' },
+      ],
+      false,
+    );
+
+    assert.deepEqual(calls.deferredResumedAt, []);
+    assert.deepEqual(calls.deferredDroppedAt, [2], 'a reconnect that never published resumes nothing');
+  });
+
+  it('holds back nothing for a single stream whose old connection had already left', async () => {
+    const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
+    const calls = await postToSrs(
+      [
+        { action: 'on_publish', ...broadcaster, client_id: 'old-connection' },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'old-connection' },
+        { action: 'on_publish', ...broadcaster, client_id: 'new-connection' },
+      ],
+      false,
+    );
+
+    assert.deepEqual(calls.startDeferred, [false, false]);
+    assert.deepEqual(calls.deferredResumedAt, []);
   });
 
   it('notes no disconnect for a single stream when SRT refused its reconnect while it was live', async () => {
