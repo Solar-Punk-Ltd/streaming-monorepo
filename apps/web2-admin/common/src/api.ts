@@ -229,9 +229,16 @@ export interface PublishResult {
     topic: string;
     /** Hex topic as it appears in bee URLs. */
     topicHex: string;
+    /** The index this call wrote at, or, when it wrote nothing, the one the feed already stands at. */
     index: number;
     entryCount: number;
   };
+  /**
+   * Whether this call wrote the catalogue. False for a republish whose entry the head already carries (apart from
+   * its `timestamp`), which spends no slot, and for an unpublish of a stream that was not on the feed. True on every
+   * real write.
+   */
+  written: boolean;
 }
 
 /**

@@ -283,6 +283,38 @@ describe('an unpublish keeps the recording for the next publish', () => {
   });
 });
 
+describe('a publish that wrote nothing', () => {
+  it('releases the claim and records the edit, leaving when and where the entry was published', async () => {
+    const published = await publishedStream();
+    const claimed = await streams.claimForPublish(published.id, ['published']);
+    assert.equal(claimed?.status, 'publishing');
+    await setEditStamp(published.id, '2026-09-24T10:05:00.000Z');
+    const reread = await streams.findById(published.id);
+    assert.ok(reread?.content_edited_at);
+
+    const finished = await streams.finishWithoutWrite(published.id, null, reread.content_edited_at, 'published');
+
+    assert.ok(finished);
+    assert.equal(finished.status, 'published', 'the claim released');
+    assert.equal(finished.publish_error, null);
+    assert.equal(finished.published_feed_index, 1, 'still the write that last carried its entry');
+    assert.equal(finished.published_at?.getTime(), published.published_at?.getTime(), 'still its first announcement');
+    assert.equal(hasUnpublishedEdits(finished), false, 'the edit its entry carries is recorded');
+  });
+
+  it('leaves the status the uploader reported when a republish by hand wrote nothing', async () => {
+    const published = await publishedStream();
+    const live = await streams.markLive(published.id, ['published']);
+    assert.equal(live?.status, 'live');
+
+    const finished = await streams.finishWithoutWrite(published.id, null, published.content_edited_at, null);
+
+    assert.equal(finished?.status, 'live');
+    assert.equal(finished?.published_feed_index, 1);
+    assert.equal(finished?.published_at?.getTime(), published.published_at?.getTime());
+  });
+});
+
 /** A published stream nobody has edited, as a first publish leaves it. */
 async function publishedStream(scheduledStartTime: string | null = null): Promise<StreamRow> {
   const row = await streams.insert({

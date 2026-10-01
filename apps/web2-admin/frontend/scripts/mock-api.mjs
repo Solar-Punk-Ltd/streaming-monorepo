@@ -284,7 +284,8 @@ function newStream(input) {
   return row;
 }
 
-function publishResult(row) {
+/** `written` is whether the call wrote the feed, as the API answers it. */
+function publishResult(row, written) {
   return {
     stream: publicStream(row),
     feed: {
@@ -294,6 +295,7 @@ function publishResult(row) {
       index: feedIndex,
       entryCount: feedEntries,
     },
+    written,
   };
 }
 
@@ -604,8 +606,11 @@ async function handle(req, res) {
         message: 'Pick the stage this stream is broadcast on before publishing.',
       });
     }
+    // Like the API: a stream on the catalogue with no edit its entry lacks,
+    // and no failed attempt behind it, has nothing to write.
+    const written = !ON_FEED_STATUSES.includes(row.status) || row.editsNotOnFeed || row.publishError !== null;
     if (!ON_FEED_STATUSES.includes(row.status)) feedEntries += 1;
-    feedIndex += 1;
+    if (written) feedIndex += 1;
     if (row.thumbnail && !row.thumbnailRef) row.thumbnailRef = hex(32);
     const now = new Date().toISOString();
     // Like the API: a live or recorded stream keeps its state, and a draft
@@ -618,12 +623,13 @@ async function handle(req, res) {
     row.publishError = null;
     row.editsNotOnFeed = false;
     row.updatedAt = now;
-    return send(res, 200, publishResult(row));
+    return send(res, 200, publishResult(row, written));
   }
 
   if (sub === '/unpublish' && method === 'POST') {
     if (row.status === 'live') return send(res, 409, { error: 'stream_live' });
-    if (ON_FEED_STATUSES.includes(row.status)) {
+    const written = ON_FEED_STATUSES.includes(row.status);
+    if (written) {
       feedEntries = Math.max(0, feedEntries - 1);
       feedIndex += 1;
     }
@@ -632,7 +638,7 @@ async function handle(req, res) {
     row.publishedAt = null;
     row.publishedFeedIndex = null;
     row.updatedAt = new Date().toISOString();
-    return send(res, 200, publishResult(row));
+    return send(res, 200, publishResult(row, written));
   }
 
   if (sub === '/ingest' && method === 'GET') {

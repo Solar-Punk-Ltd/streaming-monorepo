@@ -568,6 +568,36 @@ export class StreamRepository {
   }
 
   /**
+   * A publish or a hand republish that found its entry on the catalogue head
+   * already and wrote nothing: what `finishPublish` or `recordRepublish` would
+   * record, except `published_at` and `published_feed_index`. Nothing was
+   * published, so neither the stream's first announcement nor the write that
+   * last carried its entry moved. `status` releases a publish's claim; null,
+   * for a stream that is live or recorded, leaves the one the uploader last
+   * reported, as `recordRepublish` does.
+   */
+  async finishWithoutWrite(
+    id: string,
+    thumbnailRef: string | null,
+    entryContentEditedAt: Date | null,
+    status: PublishedStatus | null,
+  ): Promise<StreamRow | null> {
+    const result = await this.pool.query<StreamRow>(
+      `UPDATE streams
+          SET status = COALESCE($4::text, status),
+              publish_error = NULL,
+              thumbnail_batch_id = CASE WHEN thumbnail_ref IS DISTINCT FROM $2 THEN NULL ELSE thumbnail_batch_id END,
+              thumbnail_ref = $2,
+              entry_content_edited_at = $3,
+              updated_at = NOW()
+        WHERE id = $1
+        RETURNING ${STREAM_COLUMNS}`,
+      [id, thumbnailRef, entryContentEditedAt, status],
+    );
+    return this.one(result.rows, result.rowCount);
+  }
+
+  /**
    * Back to `draft` and off the catalogue, keeping everything the stream has:
    * `thumbnail_ref`, because the upload is still paid for, and what the
    * uploader reported, which is where the recording is, how long it runs,

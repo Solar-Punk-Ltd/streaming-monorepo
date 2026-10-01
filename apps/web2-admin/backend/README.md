@@ -162,6 +162,31 @@ broadcast, so the row says what its entry says. Any failure puts the previous
 status back with `publish_error` set and answers `502 publish_failed`. Publish
 and unpublish are serialised through one in-process mutex.
 
+`POST /streams/:id/publish` and `POST /streams/:id/unpublish` answer
+`PublishResult`: `{ stream, feed: { owner, topic, topicHex, index, entryCount },
+written }`. `written` is whether the call wrote the catalogue, and `index` is
+the index it wrote at, or, when it wrote nothing, the one the feed already
+stands at.
+
+**A republish with nothing to write writes nothing.** Every write takes a slot
+on the catalogue batch and lengthens the history a viewer walks, so a publish
+of a stream already on the catalogue (`published`, `live` or `vod`) whose entry
+the head, the list the write would start from, already carries exactly as it
+would be written, apart from its `timestamp`, spends none. The publish still
+finishes: the claim is released, the row records which edit its entry carries
+and keeps the image it has, a live or recorded stream stays in its state, and
+the answer has `written: false` with the index the feed stands at.
+`published_at` and `published_feed_index` do not move, since nothing was
+published: they stay with the stream's first announcement and with the write
+that last carried its entry, which the head need not be. The log line says
+nothing was written, and so does the audit row. A draft's publish, a publish
+after an unpublish, a changed entry and a retry after a failed attempt
+(`publish_error` set, which may have left the catalogue behind the row) write
+as before. So does every state and rendition report. An unpublish of a stream
+that was not on the feed answers `written: false` too. The console keeps
+Republish disabled while the stream holds no edit its entry lacks and its last
+attempt did not fail.
+
 ### A stream's stage
 
 Every stream is broadcast on a stage, a deployment the manager runs and pushes
@@ -646,7 +671,9 @@ the stream takes them with it through the foreign key.
 - `POST /streams/:id/publish` on a live or recorded stream republishes it _as
   it is_ — the entry keeps its state and its index and duration — rather than
   claiming the row into `publishing` and returning it as `published`, which
-  would quietly tell every viewer the broadcast had stopped.
+  would quietly tell every viewer the broadcast had stopped. One whose entry
+  the catalogue already carries writes nothing, as for a published stream
+  ([Publishing](#publishing)).
 - Every stream the API returns carries `hasUnpublishedEdits`, which drives the
   console's "Edited since it was published" notice. It is true while the
   console holds an edit the catalogue entry does not carry, and `updatedAt` is
@@ -816,10 +843,13 @@ that is already `published` records `stream.publish` with
 `stream.unpublish.failed`, `stream.state.live`, `stream.state.vod`,
 `stream.rendition.report`, `feed.reconcile` (only when it wrote),
 `stream.publishing.reset` (boot), `user.add`, `user.remove`,
-`user.sessions.revoke`, `user.password.change`. A state or rendition report
-is one row, carrying the feed index of the republish it caused, or the
-publish error when that write failed; the republish adds none of its own.
-That republish reads the row and the ladder again when its turn at the
+`user.sessions.revoke`, `user.password.change`. A `stream.publish` or
+`stream.republish` row carries `feedIndex`, `entryCount` and `written`, which
+is false for a republish whose entry the catalogue already carried: nothing
+was written, and `feedIndex` is the index the feed stood at. A state or
+rendition report is one row, carrying the feed index of the republish it
+caused, or the publish error when that write failed; the republish adds none
+of its own. That republish reads the row and the ladder again when its turn at the
 publish mutex comes, so a later report stored in the meantime is what it
 publishes, as it should be. Beside `feedIndex` the row therefore says what
 the write published. A state report's row has `entryStatus`, the status the

@@ -101,6 +101,12 @@ const UNPUBLISH_PROMPTS = {
 /** Beside a Publish that is disabled because the draft has no stage. The API's `stage_required` sentence. */
 export const NEEDS_STAGE_HINT = 'Pick the stage this stream is broadcast on before publishing.';
 
+/** Beside a Republish that is disabled because the catalogue entry already carries every edit. */
+export const UP_TO_DATE_HINT = 'Nothing to republish: the catalogue already has the latest edit.';
+
+/** The statuses whose stream has an entry on the catalogue, as the API counts them. */
+const ON_CATALOGUE: readonly StreamStatus[] = ['published', 'live', 'vod'];
+
 type UnpublishPrompt = (typeof UNPUBLISH_PROMPTS)[keyof typeof UNPUBLISH_PROMPTS];
 
 /**
@@ -183,9 +189,11 @@ export function StreamDetailsPage() {
       setStream(result.stream);
       setLastResult(result);
       snackbar.success(
-        action === 'publish'
-          ? `Published at feed index ${result.feed.index}.`
-          : `Unpublished. Feed is at index ${result.feed.index}.`,
+        action === 'unpublish'
+          ? `Unpublished. Feed is at index ${result.feed.index}.`
+          : result.written
+            ? `Published at feed index ${result.feed.index}.`
+            : `Nothing to write: the catalogue already has this edit, at feed index ${result.feed.index}.`,
       );
       return true;
     } catch (e) {
@@ -241,9 +249,13 @@ export function StreamDetailsPage() {
   // mid-broadcast reaches viewers — and it keeps the state it is in. Only a
   // live one cannot be taken off the feed: nothing here can stop the encoder.
   // A draft goes on the catalogue only once it has a stage; the API refuses
-  // it with stage_required otherwise, and the button says so first.
+  // it with stage_required otherwise, and the button says so first. A stream
+  // on the catalogue has something to republish only while the console holds
+  // an edit its entry lacks, or after a failed attempt, which may have left the
+  // catalogue behind the row: otherwise the API writes nothing.
   const needsStage = stream.status === 'draft' && stream.stageId === null;
-  const canPublish = stream.status !== 'publishing' && !needsStage;
+  const upToDate = ON_CATALOGUE.includes(stream.status) && !stream.hasUnpublishedEdits && !stream.publishError;
+  const canPublish = stream.status !== 'publishing' && !needsStage && !upToDate;
   // `publishing` keeps saying Publish: a first publish is in flight, and the
   // button is disabled anyway.
   const publishLabel = stream.status === 'draft' || stream.status === 'publishing' ? 'Publish' : 'Republish';
@@ -476,6 +488,11 @@ export function StreamDetailsPage() {
             <Link component={RouterLink} to={`/edit/${stream.id}`}>
               Edit the stream
             </Link>
+          </Typography>
+        ) : null}
+        {upToDate ? (
+          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1 }}>
+            {UP_TO_DATE_HINT}
           </Typography>
         ) : null}
 

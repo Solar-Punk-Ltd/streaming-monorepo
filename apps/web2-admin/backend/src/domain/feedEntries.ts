@@ -35,6 +35,18 @@ export function upsertEntry(entries: unknown[], entry: FeedStreamEntry): unknown
   return next;
 }
 
+/**
+ * Whether the list already carries `entry` exactly as it would be written, apart from its `timestamp`, which only
+ * says when the entry was last written. `upsertEntry` would then hand back the same list with a newer timestamp,
+ * and a write of it would spend a slot on nothing. Compared as `planReconcile` compares a rebuilt entry, field by
+ * field: an element without a timestamp, or with a field the rebuild has not, is not carried.
+ */
+export function carriesEntry(entries: unknown[], entry: FeedStreamEntry): boolean {
+  const current = entries.find((e) => sameId(e, entry.owner, entry.topic));
+  if (typeof current !== 'object' || current === null || !('timestamp' in current)) return false;
+  return isDeepStrictEqual(current, { ...entry, timestamp: current.timestamp });
+}
+
 export function removeEntry(
   entries: unknown[],
   owner: string,

@@ -442,6 +442,23 @@ export class FakeStreamStore
     });
   }
 
+  /** As the SQL is: `published_at` and `published_feed_index` stay, and a null status leaves the row's. */
+  async finishWithoutWrite(
+    id: string,
+    thumbnailRef: string | null,
+    entryContentEditedAt: Date | null,
+    status: PublishedStatus | null,
+  ): Promise<StreamRow | null> {
+    if (!(await this.findById(id))) return null;
+    return this.patch(id, {
+      ...(status !== null ? { status } : {}),
+      publish_error: null,
+      ...this.thumbnailBatchAfter(id, thumbnailRef),
+      thumbnail_ref: thumbnailRef,
+      entry_content_edited_at: entryContentEditedAt,
+    });
+  }
+
   /** Keeps the recording and the rungs, as the SQL does. */
   async finishUnpublish(id: string): Promise<StreamRow | null> {
     if (!(await this.findById(id))) return null;

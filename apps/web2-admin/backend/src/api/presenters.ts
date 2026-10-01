@@ -62,7 +62,7 @@ export function toStream(row: StreamRow): Stream {
 }
 
 export function toPublishResult(outcome: PublishOutcome): PublishResult {
-  return { stream: toStream(outcome.stream), feed: outcome.feed };
+  return { stream: toStream(outcome.stream), feed: outcome.feed, written: outcome.written };
 }
 
 /**
