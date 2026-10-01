@@ -156,7 +156,7 @@ export interface StreamOrchestratorConfig {
  * from a wall clock is wrong by however far that clock is adjusted.
  */
 /** How an engine asks for an announce to be admitted. */
-export interface StartStreamOptions {
+interface StartStreamOptions {
   /**
    * Admit a returning publisher now, and hold back its resume until {@link StreamOrchestrator.resumeDeferredReturn}.
    * For an engine that heard the new connection before the old one has finished delivering. Only a

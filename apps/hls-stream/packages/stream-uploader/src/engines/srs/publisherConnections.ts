@@ -14,17 +14,17 @@ export const TAKEOVER_SETTLE_MS = 10_000;
 /** Whether a publish's resume may go ahead now, or waits for an older connection to leave. */
 export const RESUME_NOW = 'now';
 export const RESUME_DEFERRED = 'deferred';
-export type ResumeTiming = typeof RESUME_NOW | typeof RESUME_DEFERRED;
+type ResumeTiming = typeof RESUME_NOW | typeof RESUME_DEFERRED;
 
 /** What an unpublish settles about a resume that was deferred. */
-export const DEFERRAL_UNCHANGED = 'unchanged';
+const DEFERRAL_UNCHANGED = 'unchanged';
 /** The older connection the deferred resume waited for has left, so it goes ahead now. */
 export const DEFERRAL_FIRES = 'fires';
 /** The connection whose resume was deferred has left first, so SRS refused it and nothing resumes. */
 export const DEFERRAL_DROPPED = 'dropped';
-export type DeferralOutcome = typeof DEFERRAL_UNCHANGED | typeof DEFERRAL_FIRES | typeof DEFERRAL_DROPPED;
+type DeferralOutcome = typeof DEFERRAL_UNCHANGED | typeof DEFERRAL_FIRES | typeof DEFERRAL_DROPPED;
 
-export interface Departure {
+interface Departure {
   /** Whether no accepted connection is left, so the stream's publisher has really gone. */
   lastLeft: boolean;
   deferral: DeferralOutcome;
