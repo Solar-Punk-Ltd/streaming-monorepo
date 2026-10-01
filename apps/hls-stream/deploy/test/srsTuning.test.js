@@ -320,6 +320,47 @@ describe('the SRS latency knobs', () => {
 });
 
 /**
+ * Whether a reconnecting SRT broadcaster replaces a publisher SRS still holds, such as one whose network
+ * died without closing. Our SRS fork leaves it off by default, because it is only safe where the
+ * on_publish hook refuses a wrong key. The uploader's hook does, so this stack turns it on.
+ */
+describe('the SRT takeover', () => {
+  const REQUIRE_ON_OFF = /^require_on_off\(\) \{\n[\s\S]*?\n\}$/m;
+  const ingestSrtBlock = (conf) => conf.match(/vhost __defaultVhost__ \{\s*srt \{([^}]*)\}/)?.[1] ?? '';
+
+  it('is on in the ingest vhost by default', () => {
+    assert.match(ingestSrtBlock(renderSrsConf({ ...VALID })), /^\s*takeover\s+on;/m);
+  });
+
+  it('is off when a deployment turns it off', () => {
+    assert.match(ingestSrtBlock(renderSrsConf({ ...VALID, SRT_TAKEOVER: 'off' })), /^\s*takeover\s+off;/m);
+  });
+
+  it('is checked by the entrypoint before it reaches the config', () => {
+    assert.match(readFileSync(ENTRYPOINT, 'utf8'), /^require_on_off SRT_TAKEOVER "\$\{SRT_TAKEOVER:-on\}"$/m);
+  });
+
+  const runOnOff = (value) =>
+    execFileSync(
+      'bash',
+      ['-c', `${shippedBlock(REQUIRE_ON_OFF, 'require_on_off')}\nrequire_on_off SRT_TAKEOVER "$SRT_TAKEOVER"`],
+      { env: { PATH: process.env.PATH, SRT_TAKEOVER: value }, stdio: 'pipe' },
+    );
+
+  for (const bad of ['yes', 'true', 'On', 'on;', 'off/x']) {
+    it(`refuses an SRT_TAKEOVER of ${JSON.stringify(bad)}`, () => {
+      assert.throws(() => runOnOff(bad), /must be on or off/);
+    });
+  }
+
+  for (const good of ['on', 'off']) {
+    it(`lets ${good} through`, () => {
+      assert.doesNotThrow(() => runOnOff(good));
+    });
+  }
+});
+
+/**
  * The two credentials this entrypoint writes into srs.conf.
  *
  * ⛔ `&` is the dangerous one and it is silent. sed expands a bare `&` in a replacement to the whole

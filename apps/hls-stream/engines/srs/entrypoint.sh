@@ -41,6 +41,13 @@ require_int() {
   esac
 }
 
+require_on_off() {
+  case "$2" in
+    on | off) ;;
+    *) echo "$1 must be on or off, got '$2'" >&2; exit 1 ;;
+  esac
+}
+
 # Names reach the generated config as bare tokens and as part of an RTMP URL, so anything
 # outside this set could terminate a directive early or redirect the republish elsewhere.
 require_name() {
@@ -204,6 +211,14 @@ HLS_AOF_RATIO="$(aof_ratio_for "$HLS_FRAGMENT" "$HLS_SEGMENT_MAX" "${HLS_AOF_RAT
 # can still ask for more.
 require_number SRT_LATENCY "${SRT_LATENCY:-2000}"
 sed -i "s/SRT_LATENCY_PLACEHOLDER/${SRT_LATENCY:-2000}/" "$CONF"
+
+# Whether a reconnecting SRT broadcaster replaces a publisher SRS still holds, such as one whose network
+# died without closing the connection. Off, SRS refuses the reconnect as busy until it notices the dead
+# peer, about 7 seconds, and an encoder that gives up after one refusal ends the broadcast. Our SRS fork
+# leaves it off by default, because it is only safe where the on_publish hook refuses a wrong key, which
+# the uploader's hook does.
+require_on_off SRT_TAKEOVER "${SRT_TAKEOVER:-on}"
+sed -i "s/SRT_TAKEOVER_PLACEHOLDER/${SRT_TAKEOVER:-on}/" "$CONF"
 
 # The uploader rejects every webhook without this, so an empty value is a misconfiguration worth
 # failing on here rather than at the first publish. SRS cannot sign its callbacks or send a header,

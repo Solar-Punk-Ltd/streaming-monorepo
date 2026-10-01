@@ -77,6 +77,8 @@ services:
       HLS_AOF_RATIO: ${HLS_AOF_RATIO:-}
       HLS_WINDOW: ${HLS_WINDOW:-15}
       SRT_LATENCY: ${SRT_LATENCY:-2000}
+      # A reconnecting SRT broadcaster replaces a publisher SRS still holds. See engines/README.md.
+      SRT_TAKEOVER: ${SRT_TAKEOVER:-on}
       # The ABR ladder, read by this entrypoint. Off by default.
       ABR_ENABLED: ${ABR_ENABLED:-false}
       ABR_LADDER: ${ABR_LADDER:-}
