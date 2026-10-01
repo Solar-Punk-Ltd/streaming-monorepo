@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { Stream } from '@streaming-monorepo/web2-admin-common';
 
 import { NO_STAGE_NOTE } from '../components/IngestPanel';
+import { shortHex } from '../format';
 import { NEEDS_STAGE_HINT, StreamDetailsPage, UP_TO_DATE_HINT } from '../pages/StreamDetailsPage';
 import {
   MAIN_STAGE_ID,
@@ -296,6 +297,36 @@ describe('StreamDetailsPage', () => {
     expect(screen.queryByText('Live since')).not.toBeInTheDocument();
     expect(screen.queryByText('Duration')).not.toBeInTheDocument();
     expect(screen.queryByText('Manifest index')).not.toBeInTheDocument();
+  });
+
+  it('tells the catalogue’s owner from the stream’s feed owner once it has published', async () => {
+    // The stream's feeds are signed by its stage's key and the catalogue by
+    // the brand key. The line under the buttons named the catalogue's just
+    // "owner", below a "Feed owner" that is the stage's.
+    const catalogueOwner = '5ef3a1b2c3d4e5f60718293a4b5c6d7e8f901234';
+    const draft = makeStream({ id: ID, status: 'draft', stageId: MAIN_STAGE_ID });
+    mockFetch(
+      routesFor(draft, [
+        {
+          method: 'POST',
+          path: `/api/streams/${ID}/publish`,
+          respond: () =>
+            jsonOk({
+              stream: { ...draft, status: 'published', publishedAt: '2026-09-11T10:00:00.000Z', publishedFeedIndex: 7 },
+              feed: { owner: catalogueOwner, topic: 'swarm-stream', topicHex: 'ff', index: 7, entryCount: 3 },
+            }),
+        },
+      ]),
+    );
+
+    renderDetails();
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }));
+
+    expect(await screen.findByText(/^Catalogue feed index 7/)).toHaveTextContent(
+      `Catalogue feed index 7 · 3 entries · catalogue owner ${shortHex(catalogueOwner, 10, 8)} · catalogue topic swarm-stream`,
+    );
+    const feedOwner = screen.getByText('Feed owner').parentElement as HTMLElement;
+    expect(feedOwner).toHaveTextContent(shortHex(draft.owner, 10, 8));
   });
 
   it('offers a refresh while publishing leaves both buttons disabled', async () => {

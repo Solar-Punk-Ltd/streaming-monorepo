@@ -1298,6 +1298,29 @@ describe('PublishService.reconcile', () => {
     assert.equal(entry!.duration, 61);
   });
 
+  it('moves the feed index of each stream whose entry it rewrote or added, and only theirs', async () => {
+    // The console shows the index a stream's entry was last written at. A
+    // reconcile that rewrote the entry at a later one left the row naming the
+    // index of its last publish.
+    const { store, service } = setup();
+    const drifted = store.add(streamRow());
+    const untouched = store.add(streamRow());
+    await service.publish(TEST_OPERATOR, drifted.id);
+    await service.publish(TEST_OPERATOR, untouched.id);
+    store.add({ ...store.get(drifted.id), title: 'Retitled since its publish' });
+    // Says it was written at 1, by a write that the one after it overwrote.
+    const missing = store.add(streamRow({ status: 'published', published_feed_index: 1 }));
+
+    const outcome = await service.reconcile(TEST_OPERATOR);
+
+    assert.deepEqual(outcome.updated, [drifted.topic]);
+    assert.deepEqual(outcome.added, [missing.topic]);
+    assert.equal(outcome.index, 2);
+    assert.equal(store.get(drifted.id).published_feed_index, 2, 'rewritten at 2');
+    assert.equal(store.get(missing.id).published_feed_index, 2, 'added at 2');
+    assert.equal(store.get(untouched.id).published_feed_index, 1, 'copied through, written at 1');
+  });
+
   it('keeps a ladder′s renditions on the entry, and does not count them as drift', async () => {
     // A reconcile rebuilds every entry of ours from its row. The rungs are not
     // on the row, so a rebuild that did not read them would strip `renditions`
@@ -1547,6 +1570,8 @@ describe('PublishService and the edited-since-published notice', () => {
     assert.deepEqual(outcome.updated, [row.topic]);
     assert.equal(entriesOf(gateway)[0]!.thumbnail, '');
     assert.equal(hasUnpublishedEdits(store.get(row.id)), true);
+    // The entry went out without the image, but it went out at this index.
+    assert.equal(store.get(row.id).published_feed_index, outcome.index);
 
     await service.publish(TEST_OPERATOR, row.id);
     assert.match(entriesOf(gateway)[0]!.thumbnail, /^[0-9a-f]{64}$/);

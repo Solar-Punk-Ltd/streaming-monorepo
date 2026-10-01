@@ -108,10 +108,11 @@ export interface PublishStreamStore {
     entryContentEditedAt: Date | null,
   ): Promise<StreamRow | null>;
   /**
-   * Records which edit a stream's entry carries after a write that rebuilt it
-   * without being a publish of that stream: a reconcile. Touches nothing else.
+   * Records a write that rebuilt a stream's entry without being a publish of
+   * that stream, a reconcile: the index it wrote the entry at, and which edit
+   * the entry carries. Touches nothing else.
    */
-  recordEntryRebuilt(id: string, entryContentEditedAt: Date | null): Promise<void>;
+  recordEntryRebuilt(id: string, feedIndex: number, entryContentEditedAt: Date | null): Promise<void>;
   /**
    * Releases a `publishing` claim back to `previousStatus` with the reason. For
    * the first publish and the unpublish, which took the claim; nothing else.
@@ -369,8 +370,10 @@ export class PublishService {
    *
    * The operator repair for what the stale feed read left on the live feed —
    * an entry whose stream was unpublished, then deleted, so no request could
-   * ever name it again. Nothing here touches a row: the database is the truth
-   * this rewrites *towards*.
+   * ever name it again. Nothing here changes what a row says about its
+   * stream: the database is the truth this rewrites *towards*. A row whose
+   * entry it rewrote or added is told only where that entry now is and which
+   * edit it carries.
    *
    * Writes only when something changed, so running it on a clean catalogue
    * costs nothing. A failure is left as it is rather than dressed as a publish
@@ -408,7 +411,7 @@ export class PublishService {
       logger.warn(
         `[Reconcile] ${describeActor(actor)} rewrote the catalogue at feed index ${index} (${plan.entries.length} entries): removed [${plan.removed.join(', ')}], added [${plan.added.join(', ')}], updated [${plan.updated.join(', ')}]`,
       );
-      await this.recordRebuiltEntries(rows, [...plan.updated, ...plan.added]);
+      await this.recordRebuiltEntries(rows, [...plan.updated, ...plan.added], index);
       await recordAudit(this.audit, {
         actor,
         action: 'feed.reconcile',
@@ -805,20 +808,35 @@ export class PublishService {
   }
 
   /**
-   * Tells each row whose entry a reconcile rewrote or added which edit that
-   * entry now carries, as a publish does for its one row. `topics` are the
-   * ones the plan rewrote or added, and each of those entries was built from
-   * its row in `rows`, read inside this same mutex, so that row's
-   * `content_edited_at` is the edit the entry carries.
+   * Tells each row whose entry a reconcile rewrote or added the index that
+   * entry was written at, and which edit it now carries, as a publish does
+   * for its one row. `topics` are the ones the plan rewrote or added, and each
+   * of those entries was built from its row in `rows`, read inside this same
+   * mutex, so that row's `content_edited_at` is the edit the entry carries.
    *
-   * A row with an image waiting to be uploaded is left out. A reconcile
-   * uploads nothing, so its entry went out without that image, and the
-   * console has to keep asking for the republish that uploads it.
+   * A row with an image waiting to be uploaded keeps the edit it was counted
+   * as carrying. A reconcile uploads nothing, so its entry went out without
+   * that image, and the console has to keep asking for the republish that
+   * uploads it. Its index moves all the same, since the entry was written
+   * there. Only this service writes `entry_content_edited_at`, under this
+   * mutex, so the one read with the row is still the row's.
    */
-  private async recordRebuiltEntries(rows: readonly StreamRow[], topics: readonly string[]): Promise<void> {
+  private async recordRebuiltEntries(
+    rows: readonly StreamRow[],
+    topics: readonly string[],
+    feedIndex: number,
+  ): Promise<void> {
     const rebuilt = new Set(topics.map((topic) => topic.toLowerCase()));
-    const recorded = rows.filter((row) => rebuilt.has(row.topic.toLowerCase()) && !hasPendingThumbnail(row));
-    await Promise.all(recorded.map((row) => this.streams.recordEntryRebuilt(row.id, row.content_edited_at)));
+    const recorded = rows.filter((row) => rebuilt.has(row.topic.toLowerCase()));
+    await Promise.all(
+      recorded.map((row) =>
+        this.streams.recordEntryRebuilt(
+          row.id,
+          feedIndex,
+          hasPendingThumbnail(row) ? row.entry_content_edited_at : row.content_edited_at,
+        ),
+      ),
+    );
   }
 
   /**

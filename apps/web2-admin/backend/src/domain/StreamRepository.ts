@@ -476,16 +476,18 @@ export class StreamRepository {
   }
 
   /**
-   * A reconcile rebuilt this stream's entry from the row: record which edit it
-   * carries now.
+   * A reconcile rebuilt this stream's entry from the row and wrote it at
+   * `feedIndex`: record where the entry is now and which edit it carries.
+   * `published_at` is left alone, as on `recordRepublish`.
    */
-  async recordEntryRebuilt(id: string, entryContentEditedAt: Date | null): Promise<void> {
+  async recordEntryRebuilt(id: string, feedIndex: number, entryContentEditedAt: Date | null): Promise<void> {
     await this.pool.query(
       `UPDATE streams
-          SET entry_content_edited_at = $2,
+          SET published_feed_index = $2,
+              entry_content_edited_at = $3,
               updated_at = NOW()
         WHERE id = $1`,
-      [id, entryContentEditedAt],
+      [id, feedIndex, entryContentEditedAt],
     );
   }
 

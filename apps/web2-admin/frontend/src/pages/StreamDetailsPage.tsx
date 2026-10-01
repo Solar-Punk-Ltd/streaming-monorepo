@@ -508,9 +508,9 @@ export function StreamDetailsPage() {
 
         {lastResult ? (
           <Alert severity="info" sx={{ mt: 2 }}>
-            Feed index {lastResult.feed.index} · {lastResult.feed.entryCount}{' '}
-            {lastResult.feed.entryCount === 1 ? 'entry' : 'entries'} · owner {shortHex(lastResult.feed.owner, 10, 8)} ·
-            topic {lastResult.feed.topic}
+            Catalogue feed index {lastResult.feed.index} · {lastResult.feed.entryCount}{' '}
+            {lastResult.feed.entryCount === 1 ? 'entry' : 'entries'} · catalogue owner{' '}
+            {shortHex(lastResult.feed.owner, 10, 8)} · catalogue topic {lastResult.feed.topic}
           </Alert>
         ) : null}
       </Paper>

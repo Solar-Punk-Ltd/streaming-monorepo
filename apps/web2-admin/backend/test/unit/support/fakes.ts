@@ -491,10 +491,10 @@ export class FakeStreamStore
     });
   }
 
-  /** Only which edit the entry carries, as the SQL is. */
-  async recordEntryRebuilt(id: string, entryContentEditedAt: Date | null): Promise<void> {
+  /** Only where the entry is and which edit it carries, as the SQL is. */
+  async recordEntryRebuilt(id: string, feedIndex: number, entryContentEditedAt: Date | null): Promise<void> {
     if (!this.rows.has(id)) return;
-    this.patch(id, { entry_content_edited_at: entryContentEditedAt });
+    this.patch(id, { published_feed_index: feedIndex, entry_content_edited_at: entryContentEditedAt });
   }
 
   async failPublish(id: string, previousStatus: StreamStatus, message: string): Promise<void> {

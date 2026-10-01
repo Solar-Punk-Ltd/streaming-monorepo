@@ -480,7 +480,11 @@ appends published rows that are missing, and copies everything written by
 anyone else through untouched. It writes only if something changed, so running
 it on a clean catalogue costs no index and no stamp. The answer is
 `FeedReconcileResult`: the index written (or `null`), and the topics
-`removed` / `added` / `updated`.
+`removed` / `added` / `updated`. Each stream whose entry it rewrote or added
+takes that index as its `publishedFeedIndex`, which is always the index the
+stream's own entry was last written at: by its publish, a republish, a state or
+rendition report, or a reconcile. A write for another stream copies the entry
+and leaves it, and a reconcile leaves `publishedAt` alone.
 
 A stored `thumbnail_ref` is reused only when `thumbnail_batch_id` (migration
 `014`) says it was uploaded under the batch the write goes with, and the

@@ -452,11 +452,13 @@ describe('which writes count as a console edit (migration 006)', () => {
     );
     assert.ok(edited?.content_edited_at);
 
-    await streams.recordEntryRebuilt(row.id, edited.content_edited_at);
+    await streams.recordEntryRebuilt(row.id, 4, edited.content_edited_at);
 
     const reread = await streams.findById(row.id);
     assert.ok(reread);
     assert.equal(hasUnpublishedEdits(reread), false);
+    assert.equal(reread.published_feed_index, 4, 'the index the reconcile wrote the entry at');
+    assert.equal(reread.published_at?.getTime(), row.published_at?.getTime(), 'published_at left alone');
   });
 });
 

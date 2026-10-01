@@ -102,7 +102,11 @@ export interface Stream {
   thumbnailRef: string | null;
   status: StreamStatus;
   publishedAt: string | null;
-  /** Feed index of the last publication that included this stream. */
+  /**
+   * Catalogue feed index this stream's entry was last written at: by its publish, a republish, a state or rendition
+   * report, or a reconcile that rewrote or added it. A write for another stream copies the entry and leaves this.
+   * Null while the stream is off the catalogue.
+   */
   publishedFeedIndex: number | null;
   publishError: string | null;
   /** Feed index of the final manifest, reported by the uploader when the stream ends. */
