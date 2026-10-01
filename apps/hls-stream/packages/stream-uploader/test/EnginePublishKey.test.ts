@@ -11,7 +11,7 @@
  * exactly that state for SEC-26's address, and this field arrives through the same two webhooks.
  *
  * The bodies below are shaped from captures taken on 2026-08-03 against `airensoft/ovenmediaengine:latest`
- * and `ossrs/srs:6`, the images this deployment pins. `param` really does arrive with its leading `?`.
+ * and `ossrs/srs:6`, the images this deployment ran then. `param` really does arrive with its leading `?`.
  */
 
 import express from 'express';

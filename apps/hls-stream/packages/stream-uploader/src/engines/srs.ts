@@ -88,7 +88,7 @@ interface SrsStreamPayload {
   /**
    * The publish URL's query string, which is where a broadcaster's publish key travels. See SEC-28.
    *
-   * Measured on 2026-08-03 against `ossrs/srs:6`, the image this deployment pins: it arrives as
+   * Measured on 2026-08-03 against `ossrs/srs:6`, the image this deployment ran then: it arrives as
    * `?key=...`, **leading question mark included**, on `on_publish` and again on `on_unpublish`.
    * Optional for the same reason `ip` is: a build that omits it has to mean "presented nothing".
    */
