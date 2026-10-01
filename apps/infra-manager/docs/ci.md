@@ -59,12 +59,17 @@ the variable after an import which reaches it deployed into the stack's own
 folder and left a `.env.<profile>` there, merged from the
 developer's own `.env`. One did. `unitStackRoot.test.ts` fails in words when a
 run goes around the runner, and to run a single file by hand give it both of the
-variables the runner pins:
+variables the runner pins, and the placeholder database URL it fills in:
 
 ```sh
-SHLS_ROOT="$(mktemp -d)" BEE_LOCAL_HOST=127.0.0.1 \
+SHLS_ROOT="$(mktemp -d)" BEE_LOCAL_HOST=127.0.0.1 DATABASE_URL=postgres://unused@localhost/unused \
   tsx --conditions=development --test test/unit/<file>
 ```
+
+The URL matters for more files than it did. Since 2026-10-01
+`src/domain/localHost.ts` reads `BEE_LOCAL_HOST` from the config module, which
+checks it at load, so every file that reaches the local host reaches the config
+too, and the config refuses to load without a database URL.
 
 `BEE_LOCAL_HOST` matters as much as the root. `src/domain/localHost.ts` answers
 `host.docker.internal` when `/.dockerenv` is there, so the Bee target locator's

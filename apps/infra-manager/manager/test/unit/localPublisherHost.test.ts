@@ -1,8 +1,8 @@
 /**
  * The address a pool string hands an uploader for a node deployed on this host.
  *
- * Unit test, no Docker and no dns: the environment, the in-container check and
- * the lookup are injected, so every shape runs on a laptop.
+ * Unit test, no Docker and no dns: the operator's override, the in-container
+ * check and the lookup are injected, so every shape runs on a laptop.
  *
  * Why the shapes are what they are. The manager binds every local bee API to the docker
  * bridge address and to nothing else, so the manager's public address answers on
@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { localPublisherHostReader, resolveLocalPublisherHost } from '../../src/domain/localHost.js';
+import { config } from '../../src/utils/config.js';
 
 const BRIDGE = '10.200.0.1';
 const DOCKER_HOST_NAME = 'host.docker.internal';
@@ -43,7 +44,7 @@ describe('resolveLocalPublisherHost', () => {
   it('takes the operator’s override as given, without asking dns', async () => {
     const spy = spies();
     const host = await resolveLocalPublisherHost({
-      env: { BEE_LOCAL_HOST: '10.42.0.1' },
+      beeLocalHost: '10.42.0.1',
       isInContainer: () => true,
       lookupIpv4: spy.answers,
       warn: spy.warn,
@@ -55,7 +56,7 @@ describe('resolveLocalPublisherHost', () => {
   it('resolves an override that names the docker host, since the name reaches no uploader', async () => {
     const spy = spies();
     const host = await resolveLocalPublisherHost({
-      env: { BEE_LOCAL_HOST: DOCKER_HOST_NAME },
+      beeLocalHost: DOCKER_HOST_NAME,
       isInContainer: () => true,
       lookupIpv4: spy.answers,
       warn: spy.warn,
@@ -67,7 +68,7 @@ describe('resolveLocalPublisherHost', () => {
   it('answers the bridge address as a literal when the manager runs in a container', async () => {
     const spy = spies();
     const host = await resolveLocalPublisherHost({
-      env: {},
+      beeLocalHost: null,
       isInContainer: () => true,
       lookupIpv4: spy.answers,
       warn: spy.warn,
@@ -80,7 +81,7 @@ describe('resolveLocalPublisherHost', () => {
   it('falls back to the name and warns once when the lookup fails', async () => {
     const spy = spies();
     const host = await resolveLocalPublisherHost({
-      env: {},
+      beeLocalHost: null,
       isInContainer: () => true,
       lookupIpv4: spy.fails,
       warn: spy.warn,
@@ -93,7 +94,7 @@ describe('resolveLocalPublisherHost', () => {
   it('answers the docker host by name when the manager runs natively', async () => {
     const spy = spies();
     const host = await resolveLocalPublisherHost({
-      env: {},
+      beeLocalHost: null,
       isInContainer: () => false,
       lookupIpv4: spy.answers,
       warn: spy.warn,
@@ -102,15 +103,16 @@ describe('resolveLocalPublisherHost', () => {
     assert.deepEqual(spy.looked, []);
   });
 
-  it('treats an empty override as no override', async () => {
+  it('takes the override the config checked at startup when none is passed', async () => {
+    // A blank or malformed BEE_LOCAL_HOST never gets this far: beeLocalHostSetting.test.ts.
     const spy = spies();
     const host = await resolveLocalPublisherHost({
-      env: { BEE_LOCAL_HOST: '  ' },
-      isInContainer: () => false,
+      isInContainer: () => true,
       lookupIpv4: spy.answers,
       warn: spy.warn,
     });
-    assert.equal(host, DOCKER_HOST_NAME);
+    const override = config.beeLocalHost;
+    assert.equal(host, override === null || override === DOCKER_HOST_NAME ? BRIDGE : override);
   });
 });
 
@@ -126,7 +128,7 @@ describe('localPublisherHostReader', () => {
     const spy = spies();
     let attempts = 0;
     const read = localPublisherHostReader({
-      env: {},
+      beeLocalHost: null,
       isInContainer: () => true,
       lookupIpv4: async (hostname) => {
         attempts += 1;
@@ -143,7 +145,7 @@ describe('localPublisherHostReader', () => {
   it('asks dns once when the lookup answered', async () => {
     const spy = spies();
     const read = localPublisherHostReader({
-      env: {},
+      beeLocalHost: null,
       isInContainer: () => true,
       lookupIpv4: spy.answers,
       warn: spy.warn,
@@ -156,7 +158,7 @@ describe('localPublisherHostReader', () => {
   it('warns when the docker host resolves to a public address, and still answers it', async () => {
     const spy = spies();
     const read = localPublisherHostReader({
-      env: {},
+      beeLocalHost: null,
       isInContainer: () => true,
       lookupIpv4: async () => '8.8.8.8',
       warn: spy.warn,

@@ -3,6 +3,8 @@ import { existsSync } from 'node:fs';
 
 import { getErrorMessage } from '@streaming-infra-manager/common';
 
+import { config } from '../utils/config.js';
+
 import { Logger } from './Logger.js';
 
 const logger = Logger.getInstance();
@@ -18,10 +20,11 @@ const DOCKER_HOST_NAME = 'host.docker.internal';
  * gateway. Running natively, in development or the integration suite, that
  * name does not resolve, so the loopback address is used. BEE_LOCAL_HOST
  * overrides both, and keeps its name from when only the Bee API was reached
- * this way.
+ * this way. It is read from the config, which refuses at startup a value that
+ * is not a host name or an address, and which loads manager/.env before this
+ * module reads it.
  */
-export const LOCAL_PUBLISHED_HOST =
-  process.env.BEE_LOCAL_HOST ?? (existsSync('/.dockerenv') ? DOCKER_HOST_NAME : '127.0.0.1');
+export const LOCAL_PUBLISHED_HOST = config.beeLocalHost ?? (existsSync('/.dockerenv') ? DOCKER_HOST_NAME : '127.0.0.1');
 
 /**
  * Every spelling of `profiles.host` that means this machine, after
@@ -40,7 +43,8 @@ export const LOCAL_PUBLISHED_HOST =
 export const LOCAL_DEPLOY_TARGETS: ReadonlySet<string> = new Set(['', 'localhost', '127.0.0.1', '0.0.0.0', 'native']);
 
 export interface LocalPublisherHostDeps {
-  env?: { BEE_LOCAL_HOST?: string | undefined };
+  /** BEE_LOCAL_HOST as the config checked it, null for none. The config's own when left out. */
+  beeLocalHost?: string | null;
   isInContainer?: () => boolean;
   lookupIpv4?: (hostname: string) => Promise<string>;
   warn?: (message: string) => void;
@@ -96,13 +100,12 @@ interface LocalPublisherHostReading {
 
 async function readLocalPublisherHost(deps: LocalPublisherHostDeps): Promise<LocalPublisherHostReading> {
   const {
-    env = process.env,
+    beeLocalHost: override = config.beeLocalHost,
     isInContainer = () => existsSync('/.dockerenv'),
     lookupIpv4 = async (hostname: string) => (await lookup(hostname, { family: 4 })).address,
     warn = (message: string) => logger.warn(message),
   } = deps;
 
-  const override = env.BEE_LOCAL_HOST?.trim();
   if (override) {
     return override === DOCKER_HOST_NAME
       ? literalAddressOf(override, lookupIpv4, warn)
