@@ -669,6 +669,22 @@ describe('the admin publish gate with the ABR ladder on', () => {
     });
   });
 
+  /**
+   * ⛔ A reconnect SRT refused as busy after the hook accepted it, whose own unpublish then arrives.
+   * The broadcaster that was live still is, so its declaration stays for its rungs.
+   */
+  it('keeps the declaration when SRT refuses a reconnect while the source is live', async () => {
+    await withSrsLadder(answersDraft(), async ({ calls, post }) => {
+      const key = `?key=${DECLARED_KEY}`;
+      assert.equal(await post(source({ param: key, client_id: 'live-connection' })), 0);
+      assert.equal(await post(source({ param: key, client_id: 'refused-connection' })), 0);
+      assert.equal(await post(source({ action: 'on_unpublish', param: key, client_id: 'refused-connection' })), 0);
+
+      assert.equal(await post(rung()), 0, 'a rung of the live source is admitted');
+      assert.deepEqual(calls.resumes, [STREAM_ID], 'and the refused reconnect resumed nothing');
+    });
+  });
+
   it('forgets the declaration when the source unpublishes', async () => {
     await withSrsLadder(answersDraft(), async ({ calls, post }) => {
       await post(source({ param: `?key=${DECLARED_KEY}` }));

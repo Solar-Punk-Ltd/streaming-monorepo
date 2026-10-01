@@ -1565,6 +1565,8 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
   const TEST_WEBHOOK_TOKEN = 'srs-webhook-token-0123456789abcdef';
   const ABR_VHOST = 'abr.local';
   const LOOPBACK_IP = '127.0.0.1';
+  /** Far past the milliseconds in which SRS settles a takeover or refuses a reconnect as busy. */
+  const PAST_ANY_TAKEOVER_MS = 60_000;
 
   interface OrchestratorCalls {
     disconnected: string[];
@@ -1572,6 +1574,8 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
     started: string[];
     /** Every ladder source whose held rungs the engine asked to resume. */
     resumed: string[];
+    /** The position in the case's list of the post that asked for each resume, in step with `resumed`. */
+    resumedAt: number[];
   }
 
   interface SrsPost {
@@ -1585,6 +1589,8 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
     client_id?: string;
     /** What SRS must be answered, 0 unless the case is a refusal. */
     answer?: number;
+    /** The engine's clock when this hook arrives, in ms from the case's start. Stepped, never waited for. */
+    atMs?: number;
   }
 
   /** Posts one webhook against a real SRS router and reports what the orchestrator was asked to do. */
@@ -1593,7 +1599,9 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
     withLadder: boolean,
     publishKeySecret?: string,
   ): Promise<OrchestratorCalls> {
-    const calls: OrchestratorCalls = { disconnected: [], stopped: [], started: [], resumed: [] };
+    const calls: OrchestratorCalls = { disconnected: [], stopped: [], started: [], resumed: [], resumedAt: [] };
+    let postAt = 0;
+    let nowMs = 0;
     const orchestrator = {
       startStream: (streamId: string) => {
         calls.started.push(streamId);
@@ -1601,12 +1609,16 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
       },
       stopStream: async (streamId: string) => void calls.stopped.push(streamId),
       noteDisconnect: (streamId: string) => calls.disconnected.push(streamId),
-      resumeHeldRungs: (baseStreamId: string) => calls.resumed.push(baseStreamId),
+      resumeHeldRungs: (baseStreamId: string) => {
+        calls.resumed.push(baseStreamId);
+        calls.resumedAt.push(postAt);
+      },
       recordAuthRejection: () => undefined,
     } as unknown as StreamOrchestrator;
 
     const engine = createSrsEngine('/srv/media', {
       webhookToken: TEST_WEBHOOK_TOKEN,
+      clock: () => nowMs,
       ...(publishKeySecret === undefined ? {} : { publishKeySecret }),
       ...(withLadder ? { abr: { vhost: ABR_VHOST, ladder: AbrLadder.parse(DEFAULT_LADDER_SPEC) } } : {}),
     });
@@ -1616,7 +1628,9 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
 
     const { server, baseUrl } = await listenOnLoopback(app);
     try {
-      for (const { answer = 0, ...post } of posts) {
+      for (const [at, { answer = 0, atMs, ...post }] of posts.entries()) {
+        postAt = at;
+        nowMs = atMs ?? nowMs;
         const response = await fetch(
           `${baseUrl}${engine.prefix}/streams?${SRS_WEBHOOK_TOKEN_PARAM}=${TEST_WEBHOOK_TOKEN}`,
           {
@@ -1764,6 +1778,9 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
    * connection's `on_publish`, then the old connection's `on_unpublish`, then the new connection's
    * media with no second `on_publish`. The old connection's unpublish arrives after the new one has
    * authenticated, so clearing the base on it would refuse every rung from then on.
+   *
+   * SRS asks the hook before it decides whether to take the stream over, so the new connection's
+   * publish does not yet show that it will publish. The resume waits for the old connection to leave.
    */
   it('keeps the base a takeover authenticated when the old connection unpublishes late', async () => {
     const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
@@ -1779,10 +1796,143 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
 
     assert.deepEqual(calls.started, [`video/demo_${RUNG_NAMES[0]}`], 'a rung of the new connection is admitted');
     assert.deepEqual(
-      calls.resumed,
-      ['video/demo', 'video/demo'],
-      'and the takeover is the return, resumed before the old connection had said anything',
+      calls.resumedAt,
+      [0, 2],
+      'and the takeover is the return, resumed when the old connection left rather than when the new one asked',
     );
+  });
+
+  /**
+   * ⛔ SRT refuses a reconnect while the stream is busy only after the hook has accepted it, and then
+   * sends that refused connection's `on_unpublish`. The broadcaster that was live is still live, so
+   * neither the hook's acceptance nor the refused connection's unpublish may change anything.
+   */
+  it('changes nothing for a reconnect SRT refused while the source was still live', async () => {
+    const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
+    const calls = await postToSrs(
+      [
+        { action: 'on_publish', ...broadcaster, client_id: 'live-connection' },
+        { action: 'on_publish', ...broadcaster, client_id: 'refused-connection' },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'refused-connection' },
+        { action: 'on_publish', app: 'video', stream: `demo_${RUNG_NAMES[0]}`, vhost: ABR_VHOST, ip: LOOPBACK_IP },
+      ],
+      true,
+    );
+
+    assert.deepEqual(calls.resumedAt, [0], 'a healthy ladder gets no break for a reconnect that never published');
+    assert.deepEqual(calls.started, [`video/demo_${RUNG_NAMES[0]}`], 'and the live source keeps its base');
+  });
+
+  /**
+   * ⛔ RTMP sends no `on_unpublish` for a connection it refused as busy, so that connection never says
+   * it left. A connection the hook accepted while an older one was publishing is settled by SRS
+   * within milliseconds, either by the older one's unpublish or by its own. One still unsettled long
+   * after is a refused RTMP reconnect, and it must not keep the live publisher's own exit from acting.
+   */
+  it('forgets the base when the live source leaves long after an RTMP reconnect was refused', async () => {
+    const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
+    const calls = await postToSrs(
+      [
+        { action: 'on_publish', ...broadcaster, client_id: 'live-connection', atMs: 0 },
+        { action: 'on_publish', ...broadcaster, client_id: 'refused-connection', atMs: 0 },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'live-connection', atMs: PAST_ANY_TAKEOVER_MS },
+        {
+          action: 'on_publish',
+          app: 'video',
+          stream: `demo_${RUNG_NAMES[0]}`,
+          vhost: ABR_VHOST,
+          ip: LOOPBACK_IP,
+          answer: 1,
+        },
+      ],
+      true,
+    );
+
+    assert.deepEqual(calls.resumedAt, [0], 'the refused reconnect never resumed anything');
+    assert.deepEqual(calls.started, [], 'and the source that really left took its base with it');
+  });
+
+  it('resumes a clean reconnect at once, the old connection having already left', async () => {
+    const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
+    const calls = await postToSrs(
+      [
+        { action: 'on_publish', ...broadcaster, client_id: 'old-connection' },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'old-connection' },
+        { action: 'on_publish', ...broadcaster, client_id: 'new-connection' },
+      ],
+      true,
+    );
+
+    assert.deepEqual(calls.resumedAt, [0, 2]);
+  });
+
+  /**
+   * Two encoders on one key, each taking the stream over from the other in turn. Every switch is a
+   * return with one resume, at the moment the connection it replaced leaves.
+   */
+  it('resumes once per switch when two encoders on one key take the source over in turn', async () => {
+    const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
+    const calls = await postToSrs(
+      [
+        { action: 'on_publish', ...broadcaster, client_id: 'encoder-a-1' },
+        { action: 'on_publish', ...broadcaster, client_id: 'encoder-b-1' },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'encoder-a-1' },
+        { action: 'on_publish', ...broadcaster, client_id: 'encoder-a-2' },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'encoder-b-1' },
+        { action: 'on_publish', app: 'video', stream: `demo_${RUNG_NAMES[0]}`, vhost: ABR_VHOST, ip: LOOPBACK_IP },
+      ],
+      true,
+    );
+
+    assert.deepEqual(calls.resumedAt, [0, 2, 4]);
+    assert.deepEqual(calls.started, [`video/demo_${RUNG_NAMES[0]}`], 'the base stays with whichever encoder is live');
+  });
+
+  /**
+   * An uploader restarted in the middle of a takeover knows nothing of the connection it replaced, so
+   * the first connection it hears from is the one it treats as live.
+   */
+  it('keeps the base after a restart when an old connection it never saw unpublishes late', async () => {
+    const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
+    const calls = await postToSrs(
+      [
+        { action: 'on_publish', ...broadcaster, client_id: 'new-connection' },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'connection-from-before-the-restart' },
+        { action: 'on_publish', app: 'video', stream: `demo_${RUNG_NAMES[0]}`, vhost: ABR_VHOST, ip: LOOPBACK_IP },
+      ],
+      true,
+    );
+
+    assert.deepEqual(calls.resumedAt, [0]);
+    assert.deepEqual(calls.started, [`video/demo_${RUNG_NAMES[0]}`]);
+  });
+
+  it('notes no disconnect for a single stream when SRT refused its reconnect while it was live', async () => {
+    const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
+    const calls = await postToSrs(
+      [
+        { action: 'on_publish', ...broadcaster, client_id: 'live-connection' },
+        { action: 'on_publish', ...broadcaster, client_id: 'refused-connection' },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'refused-connection' },
+      ],
+      false,
+    );
+
+    assert.deepEqual(calls.disconnected, [], 'the broadcaster that was live never left');
+  });
+
+  it('notes the disconnect when a single stream leaves long after an RTMP reconnect was refused', async () => {
+    const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
+    const calls = await postToSrs(
+      [
+        { action: 'on_publish', ...broadcaster, client_id: 'live-connection', atMs: 0 },
+        { action: 'on_publish', ...broadcaster, client_id: 'refused-connection', atMs: 0 },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'live-connection', atMs: PAST_ANY_TAKEOVER_MS },
+      ],
+      false,
+    );
+
+    assert.deepEqual(calls.disconnected, ['video/demo'], 'the refused reconnect never published, so nothing is left');
   });
 
   it('still forgets the base when the connection that authenticated it unpublishes', async () => {
