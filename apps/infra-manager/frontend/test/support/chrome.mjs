@@ -366,6 +366,12 @@ export async function throttleCpu(call, env = process.env) {
  */
 const RESOURCE_TIMING_BUFFER = 10;
 
+/**
+ * How long a new Chrome gets to open its debugging port. The first starts of
+ * Chrome 154 on GitHub's ubuntu-24.04 runner image took about 19 seconds.
+ */
+const CHROME_START_BUDGET_MS = 60_000;
+
 /** How long a signalled Chrome gets before the next signal, and before the teardown refuses. */
 const EXIT_WAIT_MS = 3000;
 /** How long the helpers get to stop writing into the profile before it is left where it is. */
@@ -615,6 +621,7 @@ export async function launchChrome(t, origin) {
     },
     Boolean,
     'Chrome debugging port',
+    CHROME_START_BUDGET_MS,
   ).catch((error) => {
     if (ended) throw error;
     throw new Error(`${error.message}. The browser is still running and said: ${saidOrNothing(said)}`);
