@@ -93,6 +93,24 @@ interface SrsStreamPayload {
    * Optional for the same reason `ip` is: a build that omits it has to mean "presented nothing".
    */
   param?: string;
+  /**
+   * SRS's id for the connection the hook is about, the same on a connection's `on_publish` and its
+   * `on_unpublish`. Optional for the same reason `ip` is: a build that omits it has to mean "no
+   * evidence", which is never read as a different connection.
+   */
+  client_id?: string;
+}
+
+/**
+ * A ladder source that authenticated, and what its rungs inherit from it.
+ *
+ * `session` is the declaration in admin mode and `null` in the standalone deployment, where
+ * membership alone is the whole of what the base proved. `clientId` is the connection that proved
+ * it, so an unpublish from any other connection can be told apart. See {@link mayForgetBase}.
+ */
+interface AuthenticatedBase {
+  session: AdminSession | null;
+  clientId: string | null;
 }
 
 interface SrsHlsPayload {
@@ -234,11 +252,12 @@ export function createSrsEngine(mediaRootPath: string, options: SrsEngineOptions
       //
       // ⛔ A map rather than a set, because in admin mode the base carries the declaration its rungs
       // publish under: the source is what presents the key and is resolved against the admin, and the
-      // rungs that follow it inherit that session without a lookup of their own. `null` is the
-      // standalone deployment, where membership alone is the whole of what the base proved. Reading a
-      // base as "present" therefore still means exactly what it meant, which is what keeps SEC-28's
-      // rule — a rung is admitted only because its base authenticated — unchanged.
-      const authenticatedBases = new Map<string, AdminSession | null>();
+      // rungs that follow it inherit that session without a lookup of their own. A `null` session is
+      // the standalone deployment, where membership alone is the whole of what the base proved. Reading
+      // a base as "present" therefore still means exactly what it meant, which is what keeps SEC-28's
+      // rule — a rung is admitted only because its base authenticated — unchanged. Each entry also names
+      // the connection that authenticated it. See `mayForgetBase`.
+      const authenticatedBases = new Map<string, AuthenticatedBase>();
 
       router.use(createWebhookGate(webhookToken));
 
@@ -372,7 +391,7 @@ function classifyLadderStream(payload: SrsStreamPayload, streamId: string, abr?:
 function reasonToRefuseRung(
   payload: SrsStreamPayload,
   baseStreamId: string,
-  authenticatedBases: Map<string, AdminSession | null>,
+  authenticatedBases: Map<string, AuthenticatedBase>,
   adminMode: boolean,
 ): string | null {
   if (!isLoopbackPublisher(payload)) {
@@ -381,10 +400,29 @@ function reasonToRefuseRung(
   if (!authenticatedBases.has(baseStreamId)) {
     return 'its base stream never authenticated';
   }
-  if (adminMode && !authenticatedBases.get(baseStreamId)) {
+  if (adminMode && !authenticatedBases.get(baseStreamId)?.session) {
     return 'its base stream authenticated without a declaration, which admin mode has nothing to publish under';
   }
   return null;
+}
+
+/**
+ * Whether a source unpublish may clear the base its rungs are admitted by.
+ *
+ * ⛔ **Not when a newer connection holds it.** SRS's publish takeover answers a reconnect after a
+ * silent drop by accepting the new connection and dropping the old one, and the hooks arrive in that
+ * order: the new connection's `on_publish`, then the old connection's `on_unpublish`. Cleared on that
+ * late unpublish, the base the new connection had just authenticated was gone, and every rung of the
+ * broadcast was refused from then on.
+ *
+ * Without a client id on either side there is no evidence of a different connection, so the base is
+ * cleared exactly as it always was.
+ */
+function mayForgetBase(base: AuthenticatedBase | undefined, payload: SrsStreamPayload): boolean {
+  if (base === undefined || base.clientId === null || payload.client_id === undefined) {
+    return true;
+  }
+  return base.clientId === payload.client_id;
 }
 
 /**
@@ -409,7 +447,7 @@ async function handleStreams(
   streamOrchestrator: StreamOrchestrator,
   gate: SrsPublishGate,
   abr?: AbrGuard,
-  authenticatedBases: Map<string, AdminSession | null> = new Map(),
+  authenticatedBases: Map<string, AuthenticatedBase> = new Map(),
 ): Promise<void> {
   const { publishKeySecret, adminApi, signerOwner } = gate;
   // Read before the try, so the catch below can tell a publish from anything else. A handler error on
@@ -495,6 +533,13 @@ async function handleStreams(
       }
 
       if (role.kind === 'source') {
+        if (!mayForgetBase(authenticatedBases.get(streamId), payload)) {
+          logger.info(
+            `[SRS] Ladder source ${streamId}: an earlier connection unpublished after a newer one authenticated, ` +
+              'so the base stays with the newer one',
+          );
+          return;
+        }
         // Its rungs must not outlive their base. Only after the key check, so a forged unpublish
         // cannot evict a live broadcaster's base and take the whole ladder down with it.
         authenticatedBases.delete(streamId);
@@ -564,7 +609,7 @@ async function handleStreams(
         // is one declared stream and the rungs are what the transcoder makes of it. The session the
         // source resolved is therefore the only thing that can tell this rung which broadcast it
         // belongs to, and `reasonToRefuseRung` has already refused a rung that has none.
-        authenticatedBases.get(role.baseStreamId) ?? undefined,
+        authenticatedBases.get(role.baseStreamId)?.session ?? undefined,
       );
       srsResponse(res, accepted ? SRS_ACCEPT : SRS_REJECT);
       return;
@@ -600,7 +645,7 @@ async function handleStreams(
         // than a bare "this name authenticated", because the rungs that follow carry no key AND no
         // ingest id the admin has ever heard of, so this is the only point at which the broadcast
         // they belong to can be established. SRS_ACCEPT lets SRS go on to transcode it.
-        authenticatedBases.set(streamId, verdict.session);
+        authenticatedBases.set(streamId, { session: verdict.session, clientId: payload.client_id ?? null });
         logger.info(`[SRS] Ladder source authenticated: ${streamId}, declared as admin stream ${verdict.session.id}`);
         // Rungs SRS held through a drop of this source send nothing of their own. See `resumeHeldRungs`.
         streamOrchestrator.resumeHeldRungs(streamId);
@@ -642,7 +687,7 @@ async function handleStreams(
       //
       // `null` rather than a session: outside admin mode there is no declaration, and membership of
       // this map is the whole of what the base proved.
-      authenticatedBases.set(streamId, null);
+      authenticatedBases.set(streamId, { session: null, clientId: payload.client_id ?? null });
       logger.info(`[SRS] Ladder source authenticated: ${streamId}`);
       // Rungs SRS held through a drop of this source send nothing of their own. See `resumeHeldRungs`.
       streamOrchestrator.resumeHeldRungs(streamId);
