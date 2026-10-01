@@ -14,7 +14,12 @@ import http from 'node:http';
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
-import { SESSION_COOKIE_NAME, type IngestDetails, type Stream } from '@streaming-monorepo/web2-admin-common';
+import {
+  SESSION_COOKIE_NAME,
+  type IngestDetails,
+  type PublishResult,
+  type Stream,
+} from '@streaming-monorepo/web2-admin-common';
 import express from 'express';
 
 import { errorHandler } from '../../src/api/middleware/errorHandler.js';
@@ -178,6 +183,21 @@ describe('the stream routes', () => {
     const [entry] = audit.withAction('stream.publish');
     assert.deepEqual(entry?.actor, { kind: 'operator', userId: userIds.get('bob'), username: 'bob' });
     assert.equal(store.get(created.id).user_id, userIds.get('ann'), 'the drafter is still recorded');
+  });
+
+  it('answer a republish the catalogue already carries with written: false, at the index the feed stands at', async () => {
+    const created = (await (await send('ann', 'POST', '/api/streams', FORM)).json()) as Stream;
+
+    const first = (await (await send('ann', 'POST', `/api/streams/${created.id}/publish`)).json()) as PublishResult;
+    const res = await send('ann', 'POST', `/api/streams/${created.id}/publish`);
+
+    assert.equal(res.status, 200);
+    const again = (await res.json()) as PublishResult;
+    assert.equal(first.written, true);
+    assert.equal(again.written, false);
+    assert.equal(again.feed.index, first.feed.index);
+    assert.equal(again.stream.status, 'published');
+    assert.equal(again.stream.hasUnpublishedEdits, false);
   });
 
   it('pass the signed-in user as the actor of POST /api/feed/reconcile', async () => {

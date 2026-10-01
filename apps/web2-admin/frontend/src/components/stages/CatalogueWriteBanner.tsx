@@ -21,9 +21,10 @@ export function unrecordedHistoryText(writes: number): string {
 
 /**
  * What My Streams says about the catalogue batch before anyone presses Publish: that the admin refuses to write the
- * catalogue and why, in the sentence it refuses with; that the batch it writes with has less than 48 hours left or
- * is at least 90% full; that a move to the batch the manager designated is waiting; and that earlier writes are under
- * a batch the admin never recorded, which is a move waiting as well. Nothing when all is well.
+ * catalogue and why, in the sentence it refuses with; that the batch it writes with has less than 48 hours left, by
+ * the time left the API aged from the manager's last reading as the refusal ages it, or is at least 90% full; that a
+ * move to the batch the manager designated is waiting; and that earlier writes are under a batch the admin never
+ * recorded, which is a move waiting as well. Nothing when all is well.
  */
 export function CatalogueWriteBanner({ status, now }: { status: CatalogueWriteStatus | null; now: number }) {
   if (!status) return null;

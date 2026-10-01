@@ -64,6 +64,9 @@ import { FakeFeedWrites, FakeThumbnailStore, InMemoryCatalogueMoveStore } from '
 const TOKEN = 'test-registrar-token-000000000000000000';
 const PASSWORD = 'a-long-enough-password';
 
+/** The admin's clock: five minutes after the records the suite pushes were observed, so their time to live never runs out here. */
+const now = () => Date.parse('2026-09-28T10:05:00.000Z');
+
 let server: http.Server;
 let url: string;
 let cookie: string;
@@ -121,11 +124,10 @@ before(async () => {
     }),
   );
   app.use(express.json());
-  app.use('/api/stages', createStagesRouter({ stageService, requireAuth }));
+  app.use('/api/stages', createStagesRouter({ stageService, requireAuth, now }));
   const catalogueBatch = new CatalogueBatchService(catalogue, new FakeFeedWriteLog(), feed, audit, {
     stampRequired: true,
-    // Five minutes after the records the suite pushes were observed, so their time to live never runs out here.
-    now: () => Date.parse('2026-09-28T10:05:00.000Z'),
+    now,
   });
   moveWrites = new FakeFeedWrites();
   moveStore = new InMemoryCatalogueMoveStore(moveWrites);
@@ -138,11 +140,11 @@ before(async () => {
     new Mutex(),
     feed,
     audit,
-    { enabled: true, now: () => Date.parse('2026-09-28T10:05:00.000Z') },
+    { enabled: true, now },
   );
   app.use(
     '/api/catalogue-stamp',
-    createCatalogueStampRouter({ stageService, catalogueBatch, catalogueMove: catalogueMoveService, requireAuth }),
+    createCatalogueStampRouter({ stageService, catalogueBatch, catalogueMove: catalogueMoveService, requireAuth, now }),
   );
   app.use(notFound);
   app.use(errorHandler);
@@ -408,6 +410,19 @@ describe('the console’s stage reads', () => {
       hasSrtPassphrase: true,
     });
     assert.deepEqual(main.rungs[0]?.chequebook, { health: 'ok', availableBzz: '12.5' });
+    assert.deepEqual(
+      main.rungs[0]?.stamp,
+      {
+        batchId: 'b1'.repeat(32),
+        state: 'active',
+        ttlSeconds: 5 * 86_400,
+        remainingSeconds: 5 * 86_400 - 300,
+        expiredByClock: false,
+        fillRatio: 0.25,
+        immutable: false,
+      },
+      'the time left aged by the five minutes since the manager read the stage',
+    );
     assert.equal(main.observedAt, '2026-09-28T10:00:00.000Z');
     assert.equal(main.retiredAt, null);
     assert.equal('adminToken' in main, false);
@@ -448,12 +463,17 @@ describe('the console’s stage reads', () => {
     const { catalogueStamp, catalogueWrite } = after.body as CatalogueStampResponse;
     assert.equal(catalogueStamp?.batchId, catalogueStampRecord().batchId);
     assert.equal(catalogueStamp?.depth, 22);
+    assert.equal(catalogueStamp?.ttlSeconds, 30 * 86_400);
+    assert.equal(catalogueStamp?.remainingSeconds, 30 * 86_400 - 300);
+    assert.equal(catalogueStamp?.expiredByClock, false);
     assert.deepEqual(catalogueWrite, {
       batch: {
         batchId: catalogueStampRecord().batchId,
         nodeName: 'catalogue-node',
         state: 'active',
         ttlSeconds: 30 * 86_400,
+        remainingSeconds: 30 * 86_400 - 300,
+        expiredByClock: false,
         fillRatio: 0.01,
         observedAt: catalogueStampRecord().observedAt,
       },

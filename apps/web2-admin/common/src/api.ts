@@ -102,7 +102,11 @@ export interface Stream {
   thumbnailRef: string | null;
   status: StreamStatus;
   publishedAt: string | null;
-  /** Feed index of the last publication that included this stream. */
+  /**
+   * Catalogue feed index this stream's entry was last written at: by its publish, a republish, a state or rendition
+   * report, or a reconcile that rewrote or added it. A write for another stream copies the entry and leaves this.
+   * Null while the stream is off the catalogue.
+   */
   publishedFeedIndex: number | null;
   publishError: string | null;
   /** Feed index of the final manifest, reported by the uploader when the stream ends. */
@@ -229,9 +233,16 @@ export interface PublishResult {
     topic: string;
     /** Hex topic as it appears in bee URLs. */
     topicHex: string;
+    /** The index this call wrote at, or, when it wrote nothing, the one the feed already stands at. */
     index: number;
     entryCount: number;
   };
+  /**
+   * Whether this call wrote the catalogue. False for a republish whose entry the head already carries (apart from
+   * its `timestamp`), which spends no slot, and for an unpublish of a stream that was not on the feed. True on every
+   * real write.
+   */
+  written: boolean;
 }
 
 /**

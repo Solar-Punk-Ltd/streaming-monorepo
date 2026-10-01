@@ -8,6 +8,7 @@ export type Route =
   | { page: 'deployments' }
   | { page: 'deployment'; name: string; focus: DeploymentFocus }
   | { page: 'group'; id: number }
+  | { page: 'stages' }
   | { page: 'host' }
   | { page: 'versions' }
   | { page: 'versionSettings'; id: number }
@@ -20,6 +21,7 @@ export type Route =
 export const routes = {
   overview: '#/',
   deployments: '#/deployments',
+  stages: '#/stages',
   host: '#/host',
   versions: '#/versions',
   versionSettings: (id: number): string => `#/versions/${id}/settings`,
@@ -38,10 +40,12 @@ export function navigate(hash: string): void {
   window.location.hash = hash;
 }
 
-function parse(hash: string): Route {
+/** The page a hash names. Anything it does not know is the overview. */
+export function parseRoute(hash: string): Route {
   const segments = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
 
   if (segments.length === 0) return { page: 'overview' };
+  if (segments[0] === 'stages') return { page: 'stages' };
   if (segments[0] === 'host') return { page: 'host' };
   if (segments[0] === 'versions') {
     const id = Number.parseInt(segments[1] ?? '', 10);
@@ -77,10 +81,10 @@ function parse(hash: string): Route {
 }
 
 export function useRoute(): Route {
-  const [route, setRoute] = useState<Route>(() => parse(window.location.hash));
+  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash));
 
   const sync = useCallback(() => {
-    setRoute(parse(window.location.hash));
+    setRoute(parseRoute(window.location.hash));
     window.scrollTo(0, 0);
   }, []);
 

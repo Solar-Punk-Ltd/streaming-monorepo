@@ -74,7 +74,31 @@ describe('PublishService audit', () => {
         topic: row.topic,
         statusBefore: 'draft',
         statusAfter: 'published',
-        details: { feedIndex: 2, entryCount: 3 },
+        details: { feedIndex: 2, entryCount: 3, written: true },
+      },
+    ]);
+  });
+
+  it('records a republish the catalogue already carried as a publish that wrote nothing', async () => {
+    // The head's entry is what the write would have put there, so no slot is
+    // spent; the row says the operator asked, and that nothing was written.
+    const { store, gateway, audit, service } = setup();
+    const row = store.add(streamRow());
+    const first = await service.publish(TEST_OPERATOR, row.id);
+    audit.entries.length = 0;
+
+    await service.publish(TEST_OPERATOR, row.id);
+
+    assert.equal(gateway.writes.length, 1);
+    assert.deepEqual(audit.entries, [
+      {
+        actor: TEST_OPERATOR,
+        action: 'stream.publish',
+        streamId: row.id,
+        topic: row.topic,
+        statusBefore: 'published',
+        statusAfter: 'published',
+        details: { feedIndex: first.feed.index, entryCount: 1, written: false },
       },
     ]);
   });
@@ -94,7 +118,29 @@ describe('PublishService audit', () => {
         topic: row.topic,
         statusBefore: 'live',
         statusAfter: 'live',
-        details: { feedIndex: outcome.feed.index, entryCount: 1 },
+        details: { feedIndex: outcome.feed.index, entryCount: 1, written: true },
+      },
+    ]);
+  });
+
+  it('records an unchanged hand republish of a live stream as a republish that wrote nothing', async () => {
+    const { store, gateway, audit, service } = setup();
+    const row = store.add(streamRow({ status: 'live', published_feed_index: 0 }));
+    const first = await service.publish(TEST_OPERATOR, row.id);
+    audit.entries.length = 0;
+
+    await service.publish(TEST_OPERATOR, row.id);
+
+    assert.equal(gateway.writes.length, 1);
+    assert.deepEqual(audit.entries, [
+      {
+        actor: TEST_OPERATOR,
+        action: 'stream.republish',
+        streamId: row.id,
+        topic: row.topic,
+        statusBefore: 'live',
+        statusAfter: 'live',
+        details: { feedIndex: first.feed.index, entryCount: 1, written: false },
       },
     ]);
   });

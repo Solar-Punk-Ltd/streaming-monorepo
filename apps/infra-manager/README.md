@@ -90,8 +90,8 @@ run any of it on a laptop: [docs/ci.md](docs/ci.md).
     to the web2 admin out of the box, the token of its own every uploader
     presents, and Test connection.
   - [stages.md](docs/features/stages.md): the stage records the manager pushes
-    into the web2 admin, the catalogue node, and moving the catalogue to
-    another batch.
+    into the web2 admin, the console's Stages page that lists them, the
+    catalogue node, and moving the catalogue to another batch.
   - [abr-ladder.md](docs/features/abr-ladder.md): a node pool with one Bee node
     per quality rung, and the pool string an uploader publishes to.
   - [chequebook.md](docs/features/chequebook.md): funding a node's chequebook

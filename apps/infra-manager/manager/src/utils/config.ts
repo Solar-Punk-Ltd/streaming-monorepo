@@ -1,6 +1,10 @@
 import 'dotenv/config';
 
+import { isIP } from 'node:net';
+
 import { bzzToPlur, DEFAULT_CHEQUEBOOK_FLOOR_BZZ, rpcEndpointProblem } from '@streaming-infra-manager/common';
+
+import { DEFAULT_LOG_LEVEL, isLogLevel, LOG_LEVELS, type LogLevel } from '../domain/Logger.js';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -58,12 +62,82 @@ export function beeRpcEndpoint(raw: string | undefined): string | null {
   return value;
 }
 
+/**
+ * How much the manager logs, read once at startup, which the api hands its
+ * logger before it logs anything else. Trimmed, in either case, and info when
+ * unset.
+ *
+ * A level the logger does not know stops the process rather than falling back
+ * to info, for the reason the chequebook floor does: logging at a level other
+ * than the one the operator wrote is how this setting went unnoticed before,
+ * when it was read and never applied.
+ *
+ * Exported so the refusal can be tested without the process exiting.
+ */
+export function logLevel(raw: string | undefined): LogLevel {
+  const value = raw?.trim().toLowerCase();
+  if (!value) return DEFAULT_LOG_LEVEL;
+  if (!isLogLevel(value)) throw new Error(`LOG_LEVEL must be one of ${LOG_LEVELS.join(', ')}, got: ${raw}`);
+  return value;
+}
+
+/** One RFC 1123 label: letters, digits and inner hyphens, at most 63 of them. */
+const HOST_NAME_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+
+/**
+ * Whether a value is a host name, RFC 1123 labels joined by dots. The last
+ * label is never all digits, as RFC 1123 says, so 10.0.0.256 is refused as a
+ * broken address rather than taken as a name.
+ */
+function isHostName(value: string): boolean {
+  if (value.length > 253) return false;
+  const labels = value.split('.');
+  if (!labels.every((label) => HOST_NAME_LABEL.test(label))) return false;
+  return !/^\d+$/.test(labels.at(-1) ?? '');
+}
+
+/**
+ * The host the manager reaches a locally published port on, or null when the
+ * operator configured none and src/domain/localHost.ts picks the default.
+ *
+ * A host name or an IPv4 address and nothing more: no scheme, no path, no
+ * port, no spaces. The value is written into the address of every local
+ * uploader health read, every local Bee API call and every local pool string,
+ * so anything else reads as a node that does not answer. A filesystem path
+ * left here once reported every local stage as "uploader unreachable" for a
+ * day, with nothing above a debug line saying why. So a malformed value stops
+ * the process, for the reason the chequebook floor does.
+ *
+ * An IPv6 address is refused for now with a message of its own. Those
+ * addresses are written as http://<host>:<port> without brackets, so one would
+ * pass this check and still make no working address, which is what the check
+ * is here to stop.
+ *
+ * Exported so the refusal can be tested without the process exiting.
+ */
+export function beeLocalHost(raw: string | undefined): string | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  if (isIP(value) === 6) {
+    throw new Error(
+      `BEE_LOCAL_HOST does not take an IPv6 address yet: the manager writes it into http://<host>:<port> addresses without brackets, got: ${raw}`,
+    );
+  }
+  if (isIP(value) === 0 && !isHostName(value)) {
+    throw new Error(
+      `BEE_LOCAL_HOST must be a host name or an IPv4 address, with no scheme, path, port or spaces, got: ${raw}`,
+    );
+  }
+  return value;
+}
+
 export interface AppConfig {
   port: number;
   host: string;
   publicHost: string;
   databaseUrl: string;
-  logLevel: string;
+  /** See `logLevel`. */
+  logLevel: LogLevel;
   chequebookFloorPlur: bigint;
   /**
    * Where added stack versions are checked out. A sibling of the data root,
@@ -73,6 +147,8 @@ export interface AppConfig {
   stackVersionsRoot: string;
   /** See `beeRpcEndpoint`. Null when the operator configured none. */
   beeRpcEndpoint: string | null;
+  /** See `beeLocalHost`. Null when the operator configured none. */
+  beeLocalHost: string | null;
 }
 
 export const config: AppConfig = {
@@ -80,8 +156,9 @@ export const config: AppConfig = {
   host: optional('MANAGER_HOST', '0.0.0.0'),
   publicHost: optional('PUBLIC_HOST', ''),
   databaseUrl: required('DATABASE_URL'),
-  logLevel: optional('LOG_LEVEL', 'info'),
+  logLevel: logLevel(process.env.LOG_LEVEL),
   chequebookFloorPlur: chequebookFloorPlur(),
   stackVersionsRoot: optional('STACK_VERSIONS_ROOT', '/opt/streaming/streaming-infra-manager-versions'),
   beeRpcEndpoint: beeRpcEndpoint(process.env.BEE_RPC_ENDPOINT),
+  beeLocalHost: beeLocalHost(process.env.BEE_LOCAL_HOST),
 };

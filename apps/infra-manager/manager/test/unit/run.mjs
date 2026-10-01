@@ -15,7 +15,8 @@
  *
  * To run a single file, give it a root of its own the same way:
  *
- *   SHLS_ROOT="$(mktemp -d)" BEE_LOCAL_HOST=127.0.0.1 tsx --conditions=development --test test/unit/<file>
+ *   SHLS_ROOT="$(mktemp -d)" BEE_LOCAL_HOST=127.0.0.1 DATABASE_URL=postgres://unused@localhost/unused \
+ *     tsx --conditions=development --test test/unit/<file>
  */
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -30,10 +31,11 @@ export const STACK_ROOT_VARIABLE = 'SHLS_ROOT';
 /**
  * A database URL that names nothing, for a run that opens no database.
  *
- * src/utils/config.ts requires the variable when it is first imported, and 26
- * unit files reach it, so a checkout with no manager/.env fails them all at
- * import. dotenv never overwrites a variable that is already set, so a
- * developer's own URL still wins when they exported one.
+ * src/utils/config.ts requires the variable when it is first imported, and
+ * every unit file that reaches src/domain/localHost.ts reaches it, so a
+ * checkout with no manager/.env fails them all at import. dotenv never
+ * overwrites a variable that is already set, so a developer's own URL still
+ * wins when they exported one.
  */
 export const PLACEHOLDER_DATABASE_URL = 'postgres://unused@localhost/unused';
 

@@ -8,12 +8,21 @@
  * 30-second mark, the cadence the manager pushes on, and any other stage as
  * registered when it last changed. A stage whose name carries `offline` reads
  * as `unreachable`, so the page's line can be seen in a failing state too.
+ *
+ * The records `GET /stages` answers, which the console's Stages page lists,
+ * carry the readiness the manager works out, from the same composition, and
+ * the uploader's token by its kind: none for a stage whose name carries
+ * `standalone`, which is linked to no admin of the manager's, a shared one for
+ * one whose name carries `legacy`, as a deployment made before tokens of their
+ * own presents, and its own for any other.
  */
 import {
   ADMIN_TOKEN_ROTATED_MESSAGE,
   ingestHostProblem,
   isStageKind,
+  readinessInputOf,
   resolvedIngestHost,
+  stageReadinessOf,
 } from '@streaming-infra-manager/common';
 
 const INTERVAL_MS = 30_000;
@@ -24,6 +33,12 @@ function lastPushOf(profile, now = Date.now()) {
   const outcome = profile.name.includes('offline') ? 'unreachable' : 'stored';
   const at = profile.status === 'RUNNING' ? now - (now % INTERVAL_MS) : Date.parse(profile.updated_at);
   return { outcome, at: new Date(at).toISOString() };
+}
+
+/** The token a stage's uploader presents, by its kind alone, as `GET /stages` answers it. */
+function adminTokenOf(profile) {
+  if (profile.name.includes('standalone')) return null;
+  return { kind: profile.name.includes('legacy') ? 'shared' : 'own' };
 }
 
 /** The record `GET /stages` answers for one stage, without its passphrase, as the manager would build it. */
@@ -50,8 +65,8 @@ function consoleStageOf(profile, publicHost, managerId) {
       owner: profile.public_key ?? `0x${'0'.repeat(40)}`,
       rungs: [],
       uploader: null,
-      readiness: { tone: profile.status === 'RUNNING' ? 'ready' : 'blocked', reasons: [] },
-      adminToken: null,
+      readiness: stageReadinessOf(readinessInputOf(profile)),
+      adminToken: adminTokenOf(profile),
     },
     problem: null,
     lastPush: lastPushOf(profile),

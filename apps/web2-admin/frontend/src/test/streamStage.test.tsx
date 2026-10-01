@@ -133,9 +133,50 @@ describe('the stream form stage picker', () => {
     renderCreate([makeStage({ readiness: { tone: 'warning', reasons: ['720p batch has 30 hours left'] } })]);
 
     const warning = await screen.findByRole('alert');
-    expect(warning).toHaveTextContent('Main stage is not ready (warning): 720p batch has 30 hours left.');
+    expect(warning).toHaveTextContent('Main stage has a warning: 720p batch has 30 hours left.');
     expect(warning).toHaveTextContent('The manager last confirmed it 5 minutes ago.');
     expect(screen.getByRole('button', { name: 'Create Stream' })).toBeEnabled();
+  });
+
+  it.each([
+    ['warning', 'Main stage has a warning: 720p batch has 30 hours left; uploader is slow.'],
+    ['blocked', 'Main stage is blocked: 720p batch has 30 hours left; uploader is slow.'],
+    ['unknown', "Main stage's readiness is unknown: 720p batch has 30 hours left; uploader is slow."],
+  ] as const)('words a stage whose readiness is %s in a sentence of its own', async (tone, sentence) => {
+    renderCreate([makeStage({ readiness: { tone, reasons: ['720p batch has 30 hours left', 'uploader is slow'] } })]);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      `${sentence} The manager last confirmed it 5 minutes ago.`,
+    );
+  });
+
+  it('leaves the reasons out of the sentence when the manager gave none', async () => {
+    renderCreate([makeStage({ readiness: { tone: 'blocked', reasons: [] } })]);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Main stage is blocked. The manager last confirmed it 5 minutes ago.',
+    );
+  });
+
+  it('says nothing about the readiness of the stage of a published stream, which cannot change', async () => {
+    renderEdit(makeStream({ id: 'pub-id', status: 'published', stageId: MAIN_STAGE_ID }), [
+      makeStage({ readiness: { tone: 'warning', reasons: ['Uploader not answering'] } }),
+    ]);
+
+    await waitFor(() => expect(stageSelect().value).toBe(MAIN_STAGE_ID));
+    expect(stageSelect()).toBeDisabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('says nothing about a retired stage that a stream which holds its recording keeps', async () => {
+    renderEdit(
+      makeStream({ id: 'vod-id', status: 'vod', stageId: RETIRED_STAGE_ID, manifestIndex: 7, durationSeconds: 61 }),
+      [makeStage(), { ...RETIRED, readiness: { tone: 'blocked', reasons: ['Deployment gone'] } }],
+    );
+
+    await waitFor(() => expect(stageSelect().value).toBe(RETIRED_STAGE_ID));
+    expect(stageSelect()).toBeDisabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('says nothing about a stage that is ready', async () => {

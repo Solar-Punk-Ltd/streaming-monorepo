@@ -162,6 +162,31 @@ broadcast, so the row says what its entry says. Any failure puts the previous
 status back with `publish_error` set and answers `502 publish_failed`. Publish
 and unpublish are serialised through one in-process mutex.
 
+`POST /streams/:id/publish` and `POST /streams/:id/unpublish` answer
+`PublishResult`: `{ stream, feed: { owner, topic, topicHex, index, entryCount },
+written }`. `written` is whether the call wrote the catalogue, and `index` is
+the index it wrote at, or, when it wrote nothing, the one the feed already
+stands at.
+
+**A republish with nothing to write writes nothing.** Every write takes a slot
+on the catalogue batch and lengthens the history a viewer walks, so a publish
+of a stream already on the catalogue (`published`, `live` or `vod`) whose entry
+the head, the list the write would start from, already carries exactly as it
+would be written, apart from its `timestamp`, spends none. The publish still
+finishes: the claim is released, the row records which edit its entry carries
+and keeps the image it has, a live or recorded stream stays in its state, and
+the answer has `written: false` with the index the feed stands at.
+`published_at` and `published_feed_index` do not move, since nothing was
+published: they stay with the stream's first announcement and with the write
+that last carried its entry, which the head need not be. The log line says
+nothing was written, and so does the audit row. A draft's publish, a publish
+after an unpublish, a changed entry and a retry after a failed attempt
+(`publish_error` set, which may have left the catalogue behind the row) write
+as before. So does every state and rendition report. An unpublish of a stream
+that was not on the feed answers `written: false` too. The console keeps
+Republish disabled while the stream holds no edit its entry lacks and its last
+attempt did not fail.
+
 ### A stream's stage
 
 Every stream is broadcast on a stage, a deployment the manager runs and pushes
@@ -295,7 +320,9 @@ that record gave it has run out, `observedAt` plus `ttlSeconds` before the
 admin's clock, whatever its state says: a pinned batch the manager no longer
 reads keeps its last reading, and that reading only ages. A time to live counts
 only when it is positive, and a clock a few seconds off cannot change an answer
-measured in hours. `mutable` holds on the admin's side the rule the manager
+measured in hours. The console is shown every batch reading aged by the same
+rule (`src/domain/stampAge.ts`), so it never shows time left on a batch the
+admin refuses. `mutable` holds on the admin's side the rule the manager
 already keeps when it designates a batch. The uploader's state and rendition reports store their state first
 and are refused the same way when their rewrite of the catalogue comes, with
 the sentence recorded as the stream's `publish_error`; 503 is a 5xx, so the
@@ -307,8 +334,8 @@ it was. `GET /api/catalogue-stamp` tells the console the rest:
 `catalogueWrite` holds the batch the catalogue is written with, the refusal, a
 waiting move and `unrecordedHistory`, the count of this feed's writes with no
 batch recorded, and My Streams shows them as a banner, with a warning under 48
-hours left (`STAMP_EXPIRY_WARNING_SECONDS`) or at 90% full
-(`CATALOGUE_FILL_WARNING_RATIO`).
+hours left (`STAMP_EXPIRY_WARNING_SECONDS`), by the batch's `remainingSeconds`
+aged to the request, or at 90% full (`CATALOGUE_FILL_WARNING_RATIO`).
 
 Every write records the exact string it uploaded as the payload in
 `feed_writes.payload_text`, next to `payload`, which holds it parsed, and the
@@ -453,7 +480,11 @@ appends published rows that are missing, and copies everything written by
 anyone else through untouched. It writes only if something changed, so running
 it on a clean catalogue costs no index and no stamp. The answer is
 `FeedReconcileResult`: the index written (or `null`), and the topics
-`removed` / `added` / `updated`.
+`removed` / `added` / `updated`. Each stream whose entry it rewrote or added
+takes that index as its `publishedFeedIndex`, which is always the index the
+stream's own entry was last written at: by its publish, a republish, a state or
+rendition report, or a reconcile. A write for another stream copies the entry
+and leaves it, and a reconcile leaves `publishedAt` alone.
 
 A stored `thumbnail_ref` is reused only when `thumbnail_batch_id` (migration
 `014`) says it was uploaded under the batch the write goes with, and the
@@ -644,7 +675,9 @@ the stream takes them with it through the foreign key.
 - `POST /streams/:id/publish` on a live or recorded stream republishes it _as
   it is_ — the entry keeps its state and its index and duration — rather than
   claiming the row into `publishing` and returning it as `published`, which
-  would quietly tell every viewer the broadcast had stopped.
+  would quietly tell every viewer the broadcast had stopped. One whose entry
+  the catalogue already carries writes nothing, as for a published stream
+  ([Publishing](#publishing)).
 - Every stream the API returns carries `hasUnpublishedEdits`, which drives the
   console's "Edited since it was published" notice. It is true while the
   console holds an edit the catalogue entry does not carry, and `updatedAt` is
@@ -715,10 +748,10 @@ token are kept in columns of their own (migration 009) that no list selects;
 neither is logged, audited or answered to anyone. The console reads the
 records back behind the session:
 
-| Method | Path                   | Answer                                                                                                                                                                                                                                                                                                                                                                               |
-| ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GET    | `/api/stages`          | `StageListResponse`: every stage, retired ones last, with `supported` (the engine is SRS), its status, owner, ingest host and ports, `hasSrtPassphrase`, rung stamp and chequebook readings, uploader, readiness, `adminTokenKind` (`own`, `shared`, or `null` when the manager pushed no token) and when it was observed                                                            |
-| GET    | `/api/catalogue-stamp` | `CatalogueStampResponse`: `catalogueStamp`, the designated batch's node name, batch id, immutable, depth, state, time to live and fill, or null; `catalogueWrite`, the batch the catalogue is written with, the refusal and a waiting move; and `catalogueMove`, the move of the history ([Moving the catalogue](#moving-the-catalogue-to-another-batch)). Never the Bee API address |
+| Method | Path                   | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/stages`          | `StageListResponse`: every stage, retired ones last, with `supported` (the engine is SRS), its status, owner, ingest host and ports, `hasSrtPassphrase`, rung stamp and chequebook readings, uploader, readiness, `adminTokenKind` (`own`, `shared`, or `null` when the manager pushed no token) and when it was observed. Each rung stamp carries `remainingSeconds` and `expiredByClock`, aged at request time from the stage's `observedAt`                                                        |
+| GET    | `/api/catalogue-stamp` | `CatalogueStampResponse`: `catalogueStamp`, the designated batch's node name, batch id, immutable, depth, state, time to live and fill, or null; `catalogueWrite`, the batch the catalogue is written with, the refusal and a waiting move; and `catalogueMove`, the move of the history ([Moving the catalogue](#moving-the-catalogue-to-another-batch)). Both batch readings carry `remainingSeconds` and `expiredByClock`, aged at request time from their `observedAt`. Never the Bee API address |
 
 `POST /api/catalogue-stamp/move`, behind the session and the same-site check,
 takes `{ targetBatchId }` and starts the move, or retries a failed one, and
@@ -814,10 +847,13 @@ that is already `published` records `stream.publish` with
 `stream.unpublish.failed`, `stream.state.live`, `stream.state.vod`,
 `stream.rendition.report`, `feed.reconcile` (only when it wrote),
 `stream.publishing.reset` (boot), `user.add`, `user.remove`,
-`user.sessions.revoke`, `user.password.change`. A state or rendition report
-is one row, carrying the feed index of the republish it caused, or the
-publish error when that write failed; the republish adds none of its own.
-That republish reads the row and the ladder again when its turn at the
+`user.sessions.revoke`, `user.password.change`. A `stream.publish` or
+`stream.republish` row carries `feedIndex`, `entryCount` and `written`, which
+is false for a republish whose entry the catalogue already carried: nothing
+was written, and `feedIndex` is the index the feed stood at. A state or
+rendition report is one row, carrying the feed index of the republish it
+caused, or the publish error when that write failed; the republish adds none
+of its own. That republish reads the row and the ladder again when its turn at the
 publish mutex comes, so a later report stored in the meantime is what it
 publishes, as it should be. Beside `feedIndex` the row therefore says what
 the write published. A state report's row has `entryStatus`, the status the

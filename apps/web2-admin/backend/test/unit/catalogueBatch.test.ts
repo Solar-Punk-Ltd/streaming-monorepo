@@ -344,6 +344,9 @@ describe('CatalogueBatchService', () => {
         nodeName: 'catalogue-node',
         state: 'active',
         ttlSeconds: 30 * 86_400,
+        // Read five minutes before NOW: the time left is aged by them, as the refusal ages it.
+        remainingSeconds: 30 * 86_400 - 300,
+        expiredByClock: false,
         fillRatio: 0.01,
         observedAt: '2026-09-28T10:00:00.000Z',
       },
@@ -360,6 +363,9 @@ describe('CatalogueBatchService', () => {
 
     const status = await batches.status();
     assert.equal(status.batch?.state, 'expired');
+    assert.equal(status.batch?.ttlSeconds, 3600, 'the reading as the manager pushed it');
+    assert.equal(status.batch?.remainingSeconds, 0);
+    assert.equal(status.batch?.expiredByClock, true);
     assert.deepEqual(status.refusal, { problem: 'expired', message: EXPIRED });
     await refusedWith(batches.forWrite(TEST_OPERATOR), 'expired', EXPIRED);
   });

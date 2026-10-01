@@ -117,13 +117,14 @@ function Rungs({ stage }: { stage: StageSummary }) {
         <Stack key={rung.name} spacing={0.5} sx={{ alignItems: 'flex-start' }}>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
             <Typography variant="body2">{rung.name}</Typography>
-            {rung.stamp ? <StampStateChip state={rung.stamp.state} /> : null}
+            {rung.stamp ? <StampStateChip state={rung.stamp.state} expiredByClock={rung.stamp.expiredByClock} /> : null}
             {rung.chequebook ? <ChequebookChip health={rung.chequebook.health} /> : null}
           </Stack>
           {rung.stamp ? (
             <StampNumbers
               state={rung.stamp.state}
-              ttlSeconds={rung.stamp.ttlSeconds}
+              remainingSeconds={rung.stamp.remainingSeconds}
+              expiredByClock={rung.stamp.expiredByClock}
               fillRatio={rung.stamp.fillRatio}
             />
           ) : (

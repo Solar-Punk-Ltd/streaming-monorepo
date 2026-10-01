@@ -208,7 +208,15 @@ export function makeStage(overrides: Partial<StageSummary> = {}): StageSummary {
     rungs: [
       {
         name: '720p',
-        stamp: { batchId: 'b1'.repeat(32), state: 'active', ttlSeconds: 5 * 86_400, fillRatio: 0.25, immutable: false },
+        stamp: {
+          batchId: 'b1'.repeat(32),
+          state: 'active',
+          ttlSeconds: 5 * 86_400,
+          remainingSeconds: 5 * 86_400,
+          expiredByClock: false,
+          fillRatio: 0.25,
+          immutable: false,
+        },
         chequebook: { health: 'ok', availableBzz: '12.5' },
       },
     ],

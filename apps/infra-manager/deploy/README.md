@@ -397,11 +397,13 @@ container has no route to does the same without saying so: stamp reads, postage
 buys and chequebook operations stop for every deployment on this host and no
 message names the cause. If the address
 has to be something other than the bridge, set `BEE_LOCAL_HOST` in
-`manager/.env` to that same address. That is the one override the manager reads
-for it, and the stack file's own comments, which suggest a private interface
-here, are only safe with it set. The two SRS ports are the exception: the
-manager never reaches them, so they can go to `127.0.0.1` wherever every use of
-them is a curl run on the server itself.
+`manager/.env` to that same address, written bare as a host name or an IPv4
+address: no scheme, no port, no path. A value of any other shape, an IPv6
+address included for now, stops the manager at startup with the variable named.
+That is the one override the manager reads for it, and the stack file's own
+comments, which suggest a private interface here, are only safe with it set.
+The two SRS ports are the exception: the manager never reaches them, so they can
+go to `127.0.0.1` wherever every use of them is a curl run on the server itself.
 
 OME's port is worth one more line. After an engine config rollout the manager
 probes it on that same address to see whether OME came back up, so a binding it

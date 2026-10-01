@@ -30,11 +30,30 @@ export {
   type StageStampState,
 } from '@streaming-monorepo/contracts';
 
-/** A batch as the manager last read it from its node. */
-export interface StageStampReading {
+/**
+ * A batch reading aged to the moment the admin answers, by the rule its catalogue refusal counts time by. A reading's
+ * `ttlSeconds` is what the node said when the manager read it, at the reading's `observedAt`, and a reading the
+ * manager has not refreshed since (it is down, it designated another batch, or the record was pushed by hand) only
+ * ages. The console shows and warns by these two, never by `ttlSeconds` as it is.
+ */
+export interface StampReadingAge {
+  /**
+   * `ttlSeconds` less the time since `observedAt`, never below 0. Null when the node did not say how long the batch
+   * has, or said a negative number, which is Bee saying it cannot tell.
+   */
+  remainingSeconds: number | null;
+  /**
+   * Whether that time to live has run out by the admin's clock: `observedAt` plus a positive `ttlSeconds` is past.
+   * The admin refuses a catalogue write with such a batch as `expired`, whatever its state says.
+   */
+  expiredByClock: boolean;
+}
+
+/** A batch as the manager last read it from its node, at the stage's `observedAt`. */
+export interface StageStampReading extends StampReadingAge {
   batchId: string;
   state: StageStampState;
-  /** Seconds left, when the node said. Negative when the node could not work it out. */
+  /** Seconds left when the manager read it, when the node said. Negative when the node could not work it out. */
   ttlSeconds: number | null;
   /** How full the fullest bucket is, 0 to 1, when the node said enough to tell. */
   fillRatio: number | null;
@@ -92,7 +111,7 @@ export interface StageListResponse {
 }
 
 /** The brand's catalogue batch on its dedicated node, as `GET /api/catalogue-stamp` answers it. */
-export interface CatalogueStampSummary {
+export interface CatalogueStampSummary extends StampReadingAge {
   nodeName: string;
   batchId: string;
   immutable: boolean;
@@ -121,7 +140,7 @@ export const CATALOGUE_WRITE_PROBLEMS = ['none', 'cleared', 'expired', 'gone', '
 export type CatalogueWriteProblem = (typeof CATALOGUE_WRITE_PROBLEMS)[number];
 
 /** The batch the catalogue is written with, as the manager last read it. */
-export interface CatalogueBatchReading {
+export interface CatalogueBatchReading extends StampReadingAge {
   batchId: string;
   nodeName: string;
   state: StageStampState;

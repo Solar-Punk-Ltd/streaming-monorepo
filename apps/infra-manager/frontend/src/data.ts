@@ -2,6 +2,8 @@ import {
   type AdminTokenRotateAnswer,
   type BeePublishersResult,
   type ConfiguredBeeRpcEndpoint,
+  type ConsoleStage,
+  type ConsoleStagesAnswer,
   DEFAULT_CHEQUEBOOK_FLOOR_BZZ,
   type EngineSettings,
   type NewDeploymentSetting,
@@ -247,6 +249,14 @@ export function updateProfile(name: string, body: UpdateProfileBody): Promise<Pr
 /** Saves the public ingest address alone, or clears it with null. Deploys nothing. */
 export function updateIngestHost(name: string, ingestHost: string | null): Promise<Profile> {
   return sendJson<Profile>('PATCH', `/profiles/${encodeURIComponent(name)}/ingest-host`, { ingest_host: ingestHost });
+}
+
+/**
+ * Every stage of this manager, for the Stages page: the record the manager would push into the web2 admin now, built
+ * afresh, without the SRT passphrase and with the admin token by its kind alone, and how its last push went.
+ */
+export async function fetchConsoleStages(signal?: AbortSignal): Promise<ConsoleStage[]> {
+  return (await getJson<ConsoleStagesAnswer>('/stages', { signal })).stages;
 }
 
 /** How the manager's last push of this deployment's stage record into the web2 admin went, or null before any. */

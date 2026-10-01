@@ -31,6 +31,7 @@ import {
   DockerUnavailableError,
   ProfileNotFoundError,
 } from '../../src/domain/errors/index.js';
+import { Logger } from '../../src/domain/Logger.js';
 import type { LogWindow } from '../../src/domain/logWindow.js';
 import type { MarkedLines } from '../../src/domain/ports/remoteLogLines.js';
 import {
@@ -197,11 +198,14 @@ describe('what an SRT ingest reading may carry', () => {
     return Object.values(value).flatMap(stringsIn);
   }
 
+  /** Every line logged from each level, with the logger at trace so a debug line the default level drops is read too. */
   function captureLogs(t: TestContext): string[] {
     const lines: string[] = [];
     for (const level of ['log', 'info', 'warn', 'error', 'debug'] as const) {
       t.mock.method(console, level, (...args: unknown[]) => lines.push(args.map(String).join(' ')));
     }
+    const previous = Logger.getInstance().setLevel('trace');
+    t.after(() => Logger.getInstance().setLevel(previous));
     return lines;
   }
 
