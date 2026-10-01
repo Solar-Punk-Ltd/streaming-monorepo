@@ -287,9 +287,9 @@ if abr_enabled; then
   ABR_VBV_SECONDS="${ABR_VBV_SECONDS:-1}"
   # Seconds the rung encoders outlive a dropped broadcaster, the fork's `unpublish_hold`. A
   # broadcaster back within it keeps the same encoders and its picture returns in about 2s. Kept
-  # under the ~15s after which SRS cuts the idle rung publishes (publish.normal_timeout), past which
-  # a held encoder only fails and restarts, slower than a fresh set. The uploader's reap window, not
-  # this, decides how long a broadcaster may be away.
+  # short because SRS cuts the idle rung publishes 13 to 17s into a drop (publish.normal_timeout),
+  # and past that a held encoder only fails and restarts, slower than a fresh set. The uploader's
+  # reap window, not this, decides how long a broadcaster may be away.
   ABR_UNPUBLISH_HOLD="${ABR_UNPUBLISH_HOLD:-12}"
   ABR_LADDER="${ABR_LADDER:-1080p:1920:1080:5000 720p:1280:720:2800 480p:854:480:1200 360p:640:360:700}"
 

@@ -174,7 +174,7 @@ describe('the generated ABR vhost', () => {
 /**
  * How long SRS keeps the rung encoders after the broadcaster drops, the fork's `unpublish_hold`.
  *
- * SRS cuts a rung publish that has sent nothing for its publish timeout, about 15 seconds into a drop
+ * SRS cuts a rung publish that has sent nothing for its publish timeout, 13 to 17 seconds into a drop
  * on this config, and a held encoder whose publish was cut only fails and restarts when the
  * broadcaster returns, measured about 9 seconds to its first segment against about 4 for a fresh set.
  * So the hold is kept below that cut. How long a broadcaster may be away is the uploader's reap
