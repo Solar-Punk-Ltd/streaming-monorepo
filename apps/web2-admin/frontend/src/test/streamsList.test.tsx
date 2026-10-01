@@ -87,6 +87,25 @@ describe('StreamsPage', () => {
     expect(image.getAttribute('src')).toContain('/thumbnail?v=');
     expect(screen.queryByAltText('Without image thumbnail')).not.toBeInTheDocument();
   });
+
+  it('clamps a long description to two lines, and keeps the whole of it to hover', async () => {
+    // The form takes 500 characters, which printed whole made a row about
+    // twenty lines tall.
+    const description = 'A long talk about the keynote, told at length. '.repeat(11).slice(0, 500);
+    mockFetch([{ path: STREAMS, respond: () => jsonOk({ streams: [makeStream({ title: 'Wordy', description })] }) }]);
+
+    renderWithProviders(<StreamsPage />);
+
+    await screen.findByText('Wordy');
+    const shown = screen.getByText(description);
+    expect(shown).toHaveStyle({ display: '-webkit-box', overflow: 'hidden' });
+    // Read one by one: `toHaveStyle` drops a property it cannot parse, and
+    // would pass on these whatever the page set.
+    const style = getComputedStyle(shown);
+    expect(style.getPropertyValue('-webkit-line-clamp')).toBe('2');
+    expect(style.getPropertyValue('-webkit-box-orient')).toBe('vertical');
+    expect(shown).toHaveAttribute('title', description);
+  });
 });
 
 function batch(overrides: Partial<CatalogueBatchReading> = {}): CatalogueBatchReading {

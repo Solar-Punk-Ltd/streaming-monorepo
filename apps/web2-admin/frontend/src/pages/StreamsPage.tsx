@@ -255,7 +255,24 @@ export function StreamsPage() {
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2">{stream.title}</Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    {/*
+                      Two lines at most: a description may run to 500
+                      characters, and printed whole it made the row about
+                      twenty lines tall. The whole of it is on hover, and on
+                      the details page.
+                    */}
+                    <Typography
+                      variant="caption"
+                      title={stream.description}
+                      sx={{
+                        color: 'text.secondary',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        overflowWrap: 'anywhere',
+                      }}
+                    >
                       {stream.description}
                     </Typography>
                   </TableCell>
