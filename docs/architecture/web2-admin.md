@@ -78,7 +78,7 @@ layer does not call it. The manager holds the admin's address and its
 them: every stage's record (its ingest details, the owner it signs as, its
 rungs' stamps and chequebooks, its readiness, and the sha256 of its uploader's
 own token) and the catalogue stamp record. [stages.md](stages.md) is the design
-and says how it was built, phase by phase.
+and the behaviour as built.
 
 ## Open questions carried into the build
 

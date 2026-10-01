@@ -178,15 +178,17 @@ needs none of this. On a running one, in this order, and only with the owner's w
 
 0. **Create the catalogue node**, by step 6 of the Bee host recipe below: a Bee-only deployment,
    funded, with one immutable batch bought on it. It must be ready before step 2.
-1. **Deploy the phase 9 manager**, and designate the catalogue node and its batch on **Manager
-   settings** at once. The admin from before stages has no `/api/internal/stages` or
+1. **Deploy the manager that pushes stage records**, and designate the catalogue node and its
+   batch on **Manager settings** at once. The admin from before stages has no
+   `/api/internal/stages` or
    `/api/internal/catalogue-stamp` route, so every stage's push and the catalogue stamp come to
    `not-admin` ("not a web2 admin") until step 2. That is harmless: that admin stores nothing and
    keeps writing with its env file's batch, and Test connection on Manager settings still takes the
    token there. Create no stage and rotate nothing until step 2 is done: an admin from before
    stages refuses a token of its own.
-2. **Deploy the phase 8 admin**: the phase 8 state of `feat/stages` (commit `d29616851`; tag it,
-   e.g. `web2-admin/stages-phase-8`, before `feat/stages` is merged to `main`, because a squash or
+2. **Deploy the intermediate admin**, which takes stage records and still accepts the shared
+   token on an uploader's routes: commit `d29616851` of `feat/stages` (tag it, e.g.
+   `web2-admin/stages-intermediate`, before `feat/stages` is merged to `main`, because a squash or
    rebase merge leaves that commit unreachable). It takes both the shared token and a stage's own.
    It refuses every catalogue write, `503`, until it holds a catalogue stamp, so publishing and the
    uploaders' state reports (which retry) wait from its start until the manager's next push, at
@@ -199,10 +201,10 @@ needs none of this. On a running one, in this order, and only with the owner's w
    operator unpublishes it.
 4. **Rotate and redeploy every stage** (**Rotate the uploader's admin token** on its deployment
    page, then deploy) until the admin's Stages page reads "Its own token" for all of them.
-5. **Deploy the phase 9 admin.**
+5. **Deploy the admin that refuses the shared token.**
 
-Skipping steps 2 to 4 means every running uploader gets 401 from the phase 9 admin until its stage
-is rotated and redeployed. A fresh installation needs none of this: every stage it creates has a
+Skipping steps 2 to 4 means every running uploader gets 401 from the admin that refuses the shared
+token until its stage is rotated and redeployed. A fresh installation needs none of this: every stage it creates has a
 token of its own from its first deploy.
 
 After the upgrade, give each stage a `STREAM_KEY` of its own in the manager and redeploy it right
