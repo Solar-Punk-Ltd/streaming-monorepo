@@ -422,7 +422,12 @@ export function StreamFormPage() {
                 recordingOwner={firstStageIsFinal ? (loaded?.owner ?? null) : null}
               />
               {firstStageIsFinal ? <Alert severity="warning">{FIRST_STAGE_IS_FINAL}</Alert> : null}
-              {chosenStage ? <StageReadinessWarning stage={chosenStage} /> : null}
+              {/*
+                Readiness is worth a word only while the operator can still
+                pick another stage. Once publishing or a recording has fixed
+                it, nothing on this form can act on it.
+              */}
+              {chosenStage && stageLock === null ? <StageReadinessWarning stage={chosenStage} /> : null}
             </Stack>
 
             <Divider />

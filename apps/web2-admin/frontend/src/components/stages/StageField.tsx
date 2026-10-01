@@ -1,5 +1,5 @@
 import { Alert, Box, TextField } from '@mui/material';
-import { sameFeedOwner, type StageSummary } from '@streaming-monorepo/web2-admin-common';
+import { sameFeedOwner, type StageReadinessTone, type StageSummary } from '@streaming-monorepo/web2-admin-common';
 
 import { formatAgo } from '../../dateUtil';
 import { shortHex } from '../../format';
@@ -110,28 +110,35 @@ export function StageField({
   );
 }
 
+/** How the warning names a verdict other than `ready`, the stage's name first. */
+const READINESS_VERDICT: Record<Exclude<StageReadinessTone, 'ready'>, (name: string) => string> = {
+  warning: (name) => `${name} has a warning`,
+  blocked: (name) => `${name} is blocked`,
+  unknown: (name) => `${name}'s readiness is unknown`,
+};
+
 /**
  * Said before a stream is scheduled on a stage the manager does not call
  * ready: its verdict, its reasons and when it last confirmed them. A warning,
  * not a block. The manager works readiness out, and it can be right again by
- * the time the stream starts.
+ * the time the stream starts. The form shows it only while the stream's stage
+ * can still change, since nothing can be done about it once it cannot.
  */
 export function StageReadinessWarning({ stage, now = Date.now() }: { stage: StageSummary; now?: number }) {
   const notes: string[] = [];
   if (stage.retiredAt)
     notes.push('The manager retired this stage, so it takes no new streams. A stream on it keeps it.');
   if (!stage.supported) notes.push('The admin does not take streams on this engine yet.');
-  const ready = stage.readiness.tone === 'ready';
-  if (ready && notes.length === 0) return null;
+  const { tone, reasons } = stage.readiness;
+  if (tone === 'ready' && notes.length === 0) return null;
 
   return (
     <Alert severity="warning">
-      {ready ? null : (
+      {tone === 'ready' ? null : (
         <Box>
-          {stage.name} is{' '}
-          {stage.readiness.tone === 'unknown' ? 'of unknown readiness' : `not ready (${stage.readiness.tone})`}
-          {stage.readiness.reasons.length > 0 ? `: ${stage.readiness.reasons.join('; ')}` : ''}. The manager last
-          confirmed it {formatAgo(stage.observedAt, now)}.
+          {READINESS_VERDICT[tone](stage.name)}
+          {reasons.length > 0 ? `: ${reasons.join('; ')}` : ''}. The manager last confirmed it{' '}
+          {formatAgo(stage.observedAt, now)}.
         </Box>
       )}
       {notes.map((note) => (
