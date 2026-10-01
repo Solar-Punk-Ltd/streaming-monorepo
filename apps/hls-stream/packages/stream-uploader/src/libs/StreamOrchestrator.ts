@@ -155,6 +155,16 @@ export interface StreamOrchestratorConfig {
  * is the injected monotonic reading, because it is only ever used to compute an age, and an age taken
  * from a wall clock is wrong by however far that clock is adjusted.
  */
+/** How an engine asks for an announce to be admitted. */
+export interface StartStreamOptions {
+  /**
+   * Admit a returning publisher now, and hold back its resume until {@link StreamOrchestrator.resumeDeferredReturn}.
+   * For an engine that heard the new connection before the old one has finished delivering. Only a
+   * live session resuming is held back: a new, replaced or recovered session starts as it would anyway.
+   */
+  deferResume?: boolean;
+}
+
 interface RetainedStopOutcome {
   report: StreamStatusReport;
   recordedAt: number;
@@ -356,6 +366,11 @@ export class StreamOrchestrator {
    */
   private resumeGraceUntil = new Map<string, number>();
   /**
+   * Per stream, the publisher admitted to resume this live session whose resume waits for the
+   * engine's word. See {@link resumeDeferredReturn}.
+   */
+  private deferredReturns = new Map<string, StreamClaimant>();
+  /**
    * Per broadcast, the return its rungs are currently coming back from, and which of them have said
    * so. Keyed by {@link datingKeyOf}, so a lone rendition is a ladder of one.
    *
@@ -415,12 +430,14 @@ export class StreamOrchestrator {
    * refusing its broadcasters.
    * @param admin the declaration this ingest session resolved to, in admin mode. Required there and
    * meaningless without it — see the refusal at the top of the body.
+   * @param options see {@link StartStreamOptions}.
    */
   public startStream(
     streamId: string,
     mediatype: MediaType,
     claimant: StreamClaimant = ANONYMOUS_CLAIMANT,
     admin?: AdminSession,
+    options: StartStreamOptions = {},
   ): boolean {
     // ⛔ In admin mode there is no such thing as a stream nobody declared. The engines always resolve
     // one before they announce, so the caller this refuses is the generic `POST /stream/start`, which
@@ -506,6 +523,16 @@ export class StreamOrchestrator {
       // break on the next segment and a dating re-anchored at it. See {@link resumeLiveSession} and
       // {@link isTheSamePublisher}.
       if (!this.isDrainingId(streamId) && this.isTheSamePublisher(streamId, claimant)) {
+        if (options.deferResume) {
+          this.deferredReturns.set(streamId, claimant);
+          this.logger.info(
+            `[StreamOrchestrator] ${describeClaimant(claimant)} re-announced ${streamId} while the engine still ` +
+              'held the connection it replaces, so its resume waits until that connection has delivered its last ' +
+              'segment and left',
+          );
+          return true;
+        }
+        this.deferredReturns.delete(streamId);
         this.resumeLiveSession(streamId, stale, claimant);
         return true;
       }
@@ -609,6 +636,36 @@ export class StreamOrchestrator {
         `${this.config.orphanReapMs}ms from its last media: an encoder back inside that resumes this same ` +
         'broadcast, and one that is not ends it as a recording',
     );
+  }
+
+  /**
+   * The connection a held-back return replaced has left, so that return resumes the live session now.
+   *
+   * ⛔ **Held back so the break lands on the new connection's media.** SRS answers a takeover's new
+   * `on_publish` before it expires the old connection, whose last segment is then flushed before its
+   * own `on_unpublish`. Resumed at the publish, the break and the re-anchored dating were spent on
+   * that old segment, and the real switch of encoder and clock went unmarked. Does nothing when no
+   * return is held back, or when the session it was for has ended.
+   */
+  public resumeDeferredReturn(streamId: string): void {
+    const claimant = this.deferredReturns.get(streamId);
+    if (claimant === undefined) {
+      return;
+    }
+    this.deferredReturns.delete(streamId);
+    const uploader = this.activeStreams.get(streamId);
+    if (uploader === undefined || this.isDraining(streamId, uploader)) {
+      return;
+    }
+    this.resumeLiveSession(streamId, uploader, claimant);
+  }
+
+  /**
+   * The connection whose return was held back has left first, so SRS refused it and the session goes
+   * on with the publisher it had. Nothing resumes.
+   */
+  public dropDeferredReturn(streamId: string): void {
+    this.deferredReturns.delete(streamId);
   }
 
   /**
@@ -1023,6 +1080,7 @@ export class StreamOrchestrator {
     this.streamDisconnectedAt.delete(streamId);
     // Same reasoning: a grace is a promise made to one returning encoder, and this session is over.
     this.resumeGraceUntil.delete(streamId);
+    this.deferredReturns.delete(streamId);
     // Cleared with the session rather than kept for the id, so that a later broadcast on the same id
     // says it again. Whether an engine's segments are readable is a fact about the session producing
     // them, and the id can be handed to a different engine entirely.

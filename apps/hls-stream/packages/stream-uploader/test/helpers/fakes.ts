@@ -228,6 +228,9 @@ export function makeFakeOrchestrator(overrides: Record<string, unknown> = {}): S
     // The same trap one webhook along: a ladder source's publish calls this, and a missing method
     // turns the handler's catch into a refused publish.
     resumeHeldRungs: () => {},
+    // And a single stream's unpublish calls one of these after a takeover.
+    resumeDeferredReturn: () => {},
+    dropDeferredReturn: () => {},
     handleSegment: () => ({ accepted: true }),
     handleSegmentLoss: () => true,
     keepAlive: () => false,

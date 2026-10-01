@@ -13,7 +13,13 @@ import { assertUsablePublishKeySecret, hasValidPublishKey, publishKeyFromParam }
 import { isUsableStreamId } from '../utils/streamId.js';
 import { redactUrlSecrets } from '../utils/urlSecrets.js';
 
-import { DEFERRAL_FIRES, PublisherConnections, RESUME_NOW } from './srs/publisherConnections.js';
+import {
+  DEFERRAL_DROPPED,
+  DEFERRAL_FIRES,
+  PublisherConnections,
+  RESUME_DEFERRED,
+  RESUME_NOW,
+} from './srs/publisherConnections.js';
 import { assertUsableWebhookToken, hasValidWebhookToken } from './srs/webhookToken.js';
 import { ADMIN_PUBLISH_ALLOWED, isAuthRefusal, resolveAdminPublish } from './adminGate.js';
 import { EngineFactoryDeps, EnginePlugin } from './types.js';
@@ -545,7 +551,14 @@ async function handleStreams(
         return;
       }
 
-      if (!connections.singles.leave(streamId, payload.client_id).lastLeft) {
+      const departure = connections.singles.leave(streamId, payload.client_id);
+      if (departure.deferral === DEFERRAL_FIRES) {
+        // The connection a takeover replaced has delivered its last segment and left. See `PublisherConnections`.
+        streamOrchestrator.resumeDeferredReturn(streamId);
+      } else if (departure.deferral === DEFERRAL_DROPPED) {
+        streamOrchestrator.dropDeferredReturn(streamId);
+      }
+      if (!departure.lastLeft) {
         logger.info(
           `[SRS] Stream ${streamId}: a connection unpublished while another the hook accepted is still there, ` +
             'so nothing is disconnected',
@@ -665,6 +678,7 @@ async function handleStreams(
         // apply exactly as they do for a derived key. See SEC-26 and SEC-28.
         { address: publisherAddress(payload), isAuthenticated: true },
         verdict.session,
+        { deferResume: connections.singles.timingFor(streamId, payload.client_id) === RESUME_DEFERRED },
       );
       if (admitted) {
         connections.singles.accept(streamId, payload.client_id);
@@ -704,10 +718,13 @@ async function handleStreams(
     const mediatype = resolveMediaType(payload.app);
     logger.info(`[SRS] Stream published: ${streamId} (${mediatype})`);
 
-    const accepted = streamOrchestrator.startStream(streamId, mediatype, {
-      address: publisherAddress(payload),
-      isAuthenticated,
-    });
+    const accepted = streamOrchestrator.startStream(
+      streamId,
+      mediatype,
+      { address: publisherAddress(payload), isAuthenticated },
+      undefined,
+      { deferResume: connections.singles.timingFor(streamId, payload.client_id) === RESUME_DEFERRED },
+    );
     if (accepted) {
       connections.singles.accept(streamId, payload.client_id);
     }
