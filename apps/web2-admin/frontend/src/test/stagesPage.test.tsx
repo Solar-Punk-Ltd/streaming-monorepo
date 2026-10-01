@@ -19,6 +19,8 @@ function makeStamp(overrides: Partial<CatalogueStampSummary> = {}): CatalogueSta
     depth: 22,
     state: 'active',
     ttlSeconds: 30 * 86_400,
+    remainingSeconds: 30 * 86_400,
+    expiredByClock: false,
     fillRatio: 0.01,
     designatedAt: '2026-09-27T09:00:00.000Z',
     observedAt: minutesAgo(1),
@@ -63,7 +65,7 @@ describe('StagesPage', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 
-  it('lists a stage with its readiness, ingest address, rung readings and when it was last confirmed', async () => {
+  it('lists a stage with its readiness, ingest address, rung readings aged to now and when it was last confirmed', async () => {
     serve(
       [
         makeStage({
@@ -71,14 +73,30 @@ describe('StagesPage', () => {
           rungs: [
             {
               name: '720p',
+              // Two days to live when the manager read it, 20 hours of them left now.
               stamp: {
                 batchId: 'b1'.repeat(32),
                 state: 'active',
-                ttlSeconds: 20 * 3600,
+                ttlSeconds: 2 * 86_400,
+                remainingSeconds: 20 * 3600,
+                expiredByClock: false,
                 fillRatio: 0.5,
                 immutable: false,
               },
               chequebook: { health: 'low', availableBzz: '0.1' },
+            },
+            {
+              name: '480p',
+              stamp: {
+                batchId: 'b2'.repeat(32),
+                state: 'active',
+                ttlSeconds: 3600,
+                remainingSeconds: 0,
+                expiredByClock: true,
+                fillRatio: 0.1,
+                immutable: false,
+              },
+              chequebook: null,
             },
           ],
         }),
@@ -94,6 +112,11 @@ describe('StagesPage', () => {
     expect(screen.getByText('ingest.example.org:10061')).toBeInTheDocument();
     expect(screen.getByText(/SRT, with a passphrase/)).toBeInTheDocument();
     expect(screen.getByText('20 h 0 min left, 50% full (under 48 h)')).toBeInTheDocument();
+    expect(screen.getByText('Expired by the clock, 10% full')).toBeInTheDocument();
+    expect(screen.queryByText(/2 days 0 h left/)).not.toBeInTheDocument();
+    // The 480p rung's chip says it ran out, in the error colour, rather than the "Active" the manager last read.
+    expect(screen.getByText('Expired by the clock').closest('.MuiChip-root')).toHaveClass('MuiChip-colorError');
+    expect(screen.getAllByText('Active')).toHaveLength(2);
     expect(screen.getByText('Chequebook low')).toBeInTheDocument();
     expect(screen.getByText('5 minutes ago')).toBeInTheDocument();
     expect(screen.queryByText(/Not supported yet/)).not.toBeInTheDocument();
@@ -144,7 +167,7 @@ describe('StagesPage', () => {
   });
 
   it('shows the catalogue stamp, and warns when it runs low or is gone', async () => {
-    serve([], makeStamp({ ttlSeconds: 10 * 3600 }));
+    serve([], makeStamp({ ttlSeconds: 10 * 3600, remainingSeconds: 10 * 3600 }));
     const { unmount } = renderWithProviders(<StagesPage />);
 
     expect(await screen.findByText(/Batch c2c2c2c2…/)).toBeInTheDocument();
@@ -155,11 +178,51 @@ describe('StagesPage', () => {
     ).toBeInTheDocument();
     unmount();
 
-    serve([], makeStamp({ state: 'expired', ttlSeconds: 0 }));
+    serve([], makeStamp({ state: 'expired', ttlSeconds: 0, remainingSeconds: 0 }));
     renderWithProviders(<StagesPage />);
     expect(
       await screen.findByText('The catalogue batch is expired. Nothing can be written to the catalogue with it.'),
     ).toBeInTheDocument();
+  });
+
+  it('shows the catalogue stamp’s time left as of now, not as the manager last read it, and warns by it', async () => {
+    // Three days to live when the manager read it, 42 hours ago: 30 hours of them are left.
+    serve([], makeStamp({ ttlSeconds: 3 * 86_400, remainingSeconds: 30 * 3600, observedAt: minutesAgo(42 * 60) }));
+    renderWithProviders(<StagesPage />);
+
+    expect(await screen.findByText('1 day 6 h left, 1% full (under 48 h)')).toBeInTheDocument();
+    expect(
+      screen.getByText('The catalogue batch has less than 48 hours left. Top it up in the manager.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/3 days 0 h left/)).not.toBeInTheDocument();
+  });
+
+  it('says the catalogue stamp is expired by the clock once its time to live ran out since the manager read it', async () => {
+    // The state the manager last read is still active: the admin refuses the batch as expired all the same.
+    serve(
+      [],
+      makeStamp({
+        ttlSeconds: 3 * 86_400,
+        remainingSeconds: 0,
+        expiredByClock: true,
+        observedAt: minutesAgo(4 * 1440),
+      }),
+    );
+    renderWithProviders(<StagesPage />);
+
+    expect(await screen.findByText('Expired by the clock, 1% full')).toBeInTheDocument();
+    const alert = screen.getByText(
+      'The catalogue batch is expired by the clock: the time to live the manager last read for it has run out. Nothing can be written to the catalogue with it.',
+    );
+    expect(alert.closest('.MuiAlert-root')).toHaveClass('MuiAlert-colorError');
+    expect(screen.getByText('Expired by the clock').closest('.MuiChip-root')).toHaveClass('MuiChip-colorError');
+    expect(screen.queryByText('Active')).toBeNull();
+    expect(screen.getByText('Last confirmed 4 days ago')).toBeInTheDocument();
+    expect(screen.queryByText(/3 days 0 h left/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/less than 48 hours/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('The catalogue batch is active. Nothing can be written to the catalogue with it.'),
+    ).toBeNull();
   });
 
   it('does not warn about a stamp with days left', async () => {
@@ -173,13 +236,21 @@ describe('StagesPage', () => {
 });
 
 describe('stage readings', () => {
-  it('warn under 48 hours and when the batch is gone, and not when Bee cannot tell', () => {
-    expect(stampConcern({ state: 'active', ttlSeconds: 47 * 3600 })).toBe('low');
-    expect(stampConcern({ state: 'active', ttlSeconds: 48 * 3600 })).toBeNull();
-    expect(stampConcern({ state: 'expired', ttlSeconds: null })).toBe('gone');
-    expect(stampConcern({ state: 'gone', ttlSeconds: 100 * 86_400 })).toBe('gone');
-    expect(stampConcern({ state: 'active', ttlSeconds: -1 })).toBeNull();
+  it('warn under 48 hours left and when the batch is gone or expired by the clock, and not when Bee cannot tell', () => {
+    expect(stampConcern({ state: 'active', remainingSeconds: 47 * 3600, expiredByClock: false })).toBe('low');
+    expect(stampConcern({ state: 'active', remainingSeconds: 48 * 3600, expiredByClock: false })).toBeNull();
+    expect(stampConcern({ state: 'active', remainingSeconds: 0, expiredByClock: false })).toBe('low');
+    expect(stampConcern({ state: 'active', remainingSeconds: 0, expiredByClock: true })).toBe('gone');
+    expect(stampConcern({ state: 'expired', remainingSeconds: null, expiredByClock: false })).toBe('gone');
+    expect(stampConcern({ state: 'gone', remainingSeconds: 100 * 86_400, expiredByClock: false })).toBe('gone');
+    // The admin answers a negative time to live, Bee's "cannot tell", as no time left known at all.
+    expect(stampConcern({ state: 'active', remainingSeconds: null, expiredByClock: false })).toBeNull();
     expect(stampConcern(null)).toBeNull();
+  });
+
+  it('go by the time left now, never by the time to live the manager last read', () => {
+    expect(stampConcern(makeStamp({ ttlSeconds: 3 * 86_400, remainingSeconds: 10 * 3600 }))).toBe('low');
+    expect(stampConcern(makeStamp({ ttlSeconds: 3 * 86_400, remainingSeconds: 0, expiredByClock: true }))).toBe('gone');
   });
 
   it('say how long ago and how long left in words', () => {

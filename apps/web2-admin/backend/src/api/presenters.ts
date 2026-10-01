@@ -15,6 +15,7 @@ import type {
 import type { RenditionReportOutcome } from '../domain/LadderService.js';
 import type { PublishOutcome } from '../domain/PublishService.js';
 import { stageTakesStreams } from '../domain/StageService.js';
+import { stampAge } from '../domain/stampAge.js';
 import { hasUnpublishedEdits } from '../domain/unpublishedEdits.js';
 import type { DesignatedCatalogueStamp, StageRow, StreamRow, UserRow } from '../types/index.js';
 
@@ -100,10 +101,12 @@ export function toIngestLookup(row: StreamRow): IngestLookupResponse {
 
 /**
  * A stage as the console lists it. Built field by field from the row, which carries neither the passphrase nor the
- * token hash, so a field a newer record adds reaches the console only once it is named here.
+ * token hash, so a field a newer record adds reaches the console only once it is named here. Each rung's stamp
+ * reading is aged to `now` from the moment the manager read the stage.
  */
-export function toStageSummary(row: StageRow): StageSummary {
+export function toStageSummary(row: StageRow, now: number): StageSummary {
   const { record } = row;
+  const observedAt = row.observed_at.toISOString();
   return {
     stageId: row.stage_id,
     name: row.name,
@@ -127,6 +130,7 @@ export function toStageSummary(row: StageRow): StageSummary {
             batchId: rung.stamp.batchId,
             state: rung.stamp.state,
             ttlSeconds: rung.stamp.ttlSeconds,
+            ...stampAge({ ttlSeconds: rung.stamp.ttlSeconds, observedAt }, now),
             fillRatio: rung.stamp.fillRatio,
             immutable: rung.stamp.immutable,
           }
@@ -138,15 +142,19 @@ export function toStageSummary(row: StageRow): StageSummary {
     uploader: record.uploader ? { state: record.uploader.state, reasons: [...record.uploader.reasons] } : null,
     readiness: { tone: record.readiness.tone, reasons: [...record.readiness.reasons] },
     adminTokenKind: row.admin_token_kind,
-    observedAt: row.observed_at.toISOString(),
+    observedAt,
     receivedAt: row.received_at.toISOString(),
     retiredAt: iso(row.retired_observed_at),
   };
 }
 
-/** The catalogue stamp as the console shows it: everything but the Bee API address the admin dials. */
-export function toCatalogueStampSummary(row: DesignatedCatalogueStamp): CatalogueStampSummary {
+/**
+ * The catalogue stamp as the console shows it: everything but the Bee API address the admin dials, with its reading
+ * aged to `now` from the moment the manager read it.
+ */
+export function toCatalogueStampSummary(row: DesignatedCatalogueStamp, now: number): CatalogueStampSummary {
   const { record } = row;
+  const observedAt = row.observed_at.toISOString();
   return {
     nodeName: record.nodeName,
     batchId: row.batch_id,
@@ -154,9 +162,10 @@ export function toCatalogueStampSummary(row: DesignatedCatalogueStamp): Catalogu
     depth: record.depth,
     state: record.state,
     ttlSeconds: record.ttlSeconds,
+    ...stampAge({ ttlSeconds: record.ttlSeconds, observedAt }, now),
     fillRatio: record.fillRatio,
     designatedAt: record.designatedAt,
-    observedAt: row.observed_at.toISOString(),
+    observedAt,
     receivedAt: row.received_at.toISOString(),
   };
 }

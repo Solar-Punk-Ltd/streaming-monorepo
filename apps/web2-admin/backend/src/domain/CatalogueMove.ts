@@ -10,13 +10,7 @@ import { getErrorMessage } from '../utils/errorUtils.js';
 
 import { describeActor, type Actor } from './actor.js';
 import { recordAudit, type AuditLog } from './AuditLog.js';
-import {
-  catalogueRefusal,
-  expiredByClock,
-  refusalFor,
-  shortBatch,
-  type CatalogueBatchStore,
-} from './CatalogueBatch.js';
+import { catalogueRefusal, refusalFor, shortBatch, type CatalogueBatchStore } from './CatalogueBatch.js';
 import type { CatalogueMoveRow, CatalogueMoveStore, FeedSlotRow } from './CatalogueMoveRepository.js';
 import { withoutCatalogueNode } from './catalogueNodeText.js';
 import { CatalogueMoveRefusedError } from './errors/index.js';
@@ -25,6 +19,7 @@ import type { FeedIdentity } from './feedIdentity.js';
 import { Logger } from './Logger.js';
 import type { Mutex } from './Mutex.js';
 import { THUMBNAIL_FILE_EXTENSIONS } from './PublishService.js';
+import { expiredByClock } from './stampAge.js';
 import type { StoredThumbnail } from './StreamRepository.js';
 
 const logger = Logger.getInstance();

@@ -188,8 +188,11 @@ streams from it does, so `INGEST_KEY_VERIFIED` leaves the env with the other `IN
 The catalogue is written through the catalogue stamp record's node and batch, read from the
 admin's own database on every write. The admin warns on My Streams when that batch has less than
 48 hours left or is 90% full, and refuses to publish with a clear error when it is expired or gone.
-Every write also records the exact bytes it uploaded, so the history can be stamped again under a
-new batch.
+The warning and the time left the console shows are aged by the reading's `observedAt`, as the
+refusal is: the API answers each batch reading with `remainingSeconds` and `expiredByClock`
+worked out at request time, and the Stages page says "Expired by the clock" of a batch whose last
+reading's time to live has run out. Every write also records the exact bytes it uploaded, so the
+history can be stamped again under a new batch.
 
 As built (phase 7), in `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
 

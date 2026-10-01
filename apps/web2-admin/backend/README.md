@@ -295,7 +295,9 @@ that record gave it has run out, `observedAt` plus `ttlSeconds` before the
 admin's clock, whatever its state says: a pinned batch the manager no longer
 reads keeps its last reading, and that reading only ages. A time to live counts
 only when it is positive, and a clock a few seconds off cannot change an answer
-measured in hours. `mutable` holds on the admin's side the rule the manager
+measured in hours. The console is shown every batch reading aged by the same
+rule (`src/domain/stampAge.ts`), so it never shows time left on a batch the
+admin refuses. `mutable` holds on the admin's side the rule the manager
 already keeps when it designates a batch. The uploader's state and rendition reports store their state first
 and are refused the same way when their rewrite of the catalogue comes, with
 the sentence recorded as the stream's `publish_error`; 503 is a 5xx, so the
@@ -307,8 +309,8 @@ it was. `GET /api/catalogue-stamp` tells the console the rest:
 `catalogueWrite` holds the batch the catalogue is written with, the refusal, a
 waiting move and `unrecordedHistory`, the count of this feed's writes with no
 batch recorded, and My Streams shows them as a banner, with a warning under 48
-hours left (`STAMP_EXPIRY_WARNING_SECONDS`) or at 90% full
-(`CATALOGUE_FILL_WARNING_RATIO`).
+hours left (`STAMP_EXPIRY_WARNING_SECONDS`), by the batch's `remainingSeconds`
+aged to the request, or at 90% full (`CATALOGUE_FILL_WARNING_RATIO`).
 
 Every write records the exact string it uploaded as the payload in
 `feed_writes.payload_text`, next to `payload`, which holds it parsed, and the
@@ -715,10 +717,10 @@ token are kept in columns of their own (migration 009) that no list selects;
 neither is logged, audited or answered to anyone. The console reads the
 records back behind the session:
 
-| Method | Path                   | Answer                                                                                                                                                                                                                                                                                                                                                                               |
-| ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GET    | `/api/stages`          | `StageListResponse`: every stage, retired ones last, with `supported` (the engine is SRS), its status, owner, ingest host and ports, `hasSrtPassphrase`, rung stamp and chequebook readings, uploader, readiness, `adminTokenKind` (`own`, `shared`, or `null` when the manager pushed no token) and when it was observed                                                            |
-| GET    | `/api/catalogue-stamp` | `CatalogueStampResponse`: `catalogueStamp`, the designated batch's node name, batch id, immutable, depth, state, time to live and fill, or null; `catalogueWrite`, the batch the catalogue is written with, the refusal and a waiting move; and `catalogueMove`, the move of the history ([Moving the catalogue](#moving-the-catalogue-to-another-batch)). Never the Bee API address |
+| Method | Path                   | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/stages`          | `StageListResponse`: every stage, retired ones last, with `supported` (the engine is SRS), its status, owner, ingest host and ports, `hasSrtPassphrase`, rung stamp and chequebook readings, uploader, readiness, `adminTokenKind` (`own`, `shared`, or `null` when the manager pushed no token) and when it was observed. Each rung stamp carries `remainingSeconds` and `expiredByClock`, aged at request time from the stage's `observedAt`                                                        |
+| GET    | `/api/catalogue-stamp` | `CatalogueStampResponse`: `catalogueStamp`, the designated batch's node name, batch id, immutable, depth, state, time to live and fill, or null; `catalogueWrite`, the batch the catalogue is written with, the refusal and a waiting move; and `catalogueMove`, the move of the history ([Moving the catalogue](#moving-the-catalogue-to-another-batch)). Both batch readings carry `remainingSeconds` and `expiredByClock`, aged at request time from their `observedAt`. Never the Bee API address |
 
 `POST /api/catalogue-stamp/move`, behind the session and the same-site check,
 takes `{ targetBatchId }` and starts the move, or retries a failed one, and

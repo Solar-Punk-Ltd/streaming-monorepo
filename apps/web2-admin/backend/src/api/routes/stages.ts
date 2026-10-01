@@ -17,6 +17,8 @@ import { toCatalogueStampSummary, toStageSummary } from '../presenters.js';
 export interface StageRoutesDeps {
   stageService: StageService;
   requireAuth: RequestHandler;
+  /** The admin's clock, which every batch reading answered is aged to; a test sets it. */
+  now?: () => number;
 }
 
 /**
@@ -24,7 +26,7 @@ export interface StageRoutesDeps {
  * every other console route. Read only: the manager is the one that changes a stage.
  */
 export function createStagesRouter(deps: StageRoutesDeps): Router {
-  const { stageService, requireAuth } = deps;
+  const { stageService, requireAuth, now = Date.now } = deps;
   const router = Router();
 
   router.use(requireAuth);
@@ -33,7 +35,8 @@ export function createStagesRouter(deps: StageRoutesDeps): Router {
     '/',
     asyncHandler(async (_req: Request, res: Response) => {
       const stages = await stageService.list();
-      const response: StageListResponse = { stages: stages.map(toStageSummary) };
+      const at = now();
+      const response: StageListResponse = { stages: stages.map((stage) => toStageSummary(stage, at)) };
       res.json(response);
     }),
   );
@@ -50,14 +53,14 @@ export interface CatalogueStampRoutesDeps extends StageRoutesDeps {
  * `GET /api/catalogue-stamp`: the brand's catalogue batch, or null while none is designated, what the next catalogue
  * write does (the batch it is written with, why it is refused, and a move that is waiting) and the move of the
  * catalogue's history: whether one waits, can start, runs or finished. Behind the session. My Streams warns from the
- * second, the Stages page shows the first and the third.
+ * second, the Stages page shows the first and the third. Both batch readings are aged to the moment of the request.
  *
  * `POST /api/catalogue-stamp/move` starts the move to the batch its body names, which must be the designated one, or
  * retries a failed one, and answers the move's status. 409 with the sentence when it cannot start. Behind the session
  * and the same-site check, like every console write.
  */
 export function createCatalogueStampRouter(deps: CatalogueStampRoutesDeps): Router {
-  const { stageService, catalogueBatch, catalogueMove, requireAuth } = deps;
+  const { stageService, catalogueBatch, catalogueMove, requireAuth, now = Date.now } = deps;
   const router = Router();
 
   router.use(requireAuth);
@@ -71,7 +74,7 @@ export function createCatalogueStampRouter(deps: CatalogueStampRoutesDeps): Rout
         catalogueMove.status(),
       ]);
       const response: CatalogueStampResponse = {
-        catalogueStamp: stamp ? toCatalogueStampSummary(stamp) : null,
+        catalogueStamp: stamp ? toCatalogueStampSummary(stamp, now()) : null,
         catalogueWrite,
         catalogueMove: move,
       };

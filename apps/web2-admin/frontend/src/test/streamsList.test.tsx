@@ -3,7 +3,7 @@ import type { CatalogueBatchReading, CatalogueWriteStatus } from '@streaming-mon
 import { describe, expect, it } from 'vitest';
 
 import { StreamsPage } from '../pages/StreamsPage';
-import { jsonError, jsonOk, makeStream, mockFetch, pendingFetch, renderWithProviders } from './helpers';
+import { jsonError, jsonOk, makeStream, minutesAgo, mockFetch, pendingFetch, renderWithProviders } from './helpers';
 
 const STREAMS = '/api/streams';
 const STAMP = '/api/catalogue-stamp';
@@ -95,6 +95,8 @@ function batch(overrides: Partial<CatalogueBatchReading> = {}): CatalogueBatchRe
     nodeName: 'catalogue-node',
     state: 'active',
     ttlSeconds: 30 * 86_400,
+    remainingSeconds: 30 * 86_400 - 180,
+    expiredByClock: false,
     fillRatio: 0.01,
     observedAt: new Date(Date.now() - 3 * 60_000).toISOString(),
     ...overrides,
@@ -119,8 +121,14 @@ describe('StreamsPage catalogue banner', () => {
     expect(screen.getByText('Draft one')).toBeInTheDocument();
   });
 
-  it('warns when the batch has less than 48 hours left', async () => {
-    serveWith({ batch: batch({ ttlSeconds: 47 * 3600 }), refusal: null, moveWaitingTo: null, unrecordedHistory: null });
+  it('warns when the batch has less than 48 hours left as of now, whatever time to live the manager last read', async () => {
+    // Three days to live when the manager read it, 47 hours of them left now: a pinned batch's reading only ages.
+    serveWith({
+      batch: batch({ ttlSeconds: 3 * 86_400, remainingSeconds: 47 * 3600, observedAt: minutesAgo(25 * 60) }),
+      refusal: null,
+      moveWaitingTo: null,
+      unrecordedHistory: null,
+    });
 
     expect(
       await screen.findByText('The catalogue batch c2c2c2c2… has less than 48 hours left. Top it up in the manager.'),
@@ -177,6 +185,26 @@ describe('StreamsPage catalogue banner', () => {
 
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(screen.getByText(/^3 earlier catalogue writes are under a batch/)).toBeInTheDocument();
+  });
+
+  it('shows the refusal of a batch expired by the clock, and no warning about its time left', async () => {
+    const message = 'The catalogue batch c2c2c2c2… is expired. Nothing can be written to the catalogue with it.';
+    serveWith({
+      batch: batch({
+        state: 'expired',
+        ttlSeconds: 3600,
+        remainingSeconds: 0,
+        expiredByClock: true,
+        observedAt: minutesAgo(18 * 60),
+      }),
+      refusal: { problem: 'expired', message },
+      moveWaitingTo: null,
+      unrecordedHistory: null,
+    });
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.queryByText(/less than 48 hours/)).not.toBeInTheDocument();
   });
 
   it('still lists the streams when the catalogue status cannot be read', async () => {
