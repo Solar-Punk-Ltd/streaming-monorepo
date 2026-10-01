@@ -268,7 +268,9 @@ As built (phase 7), in `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
   batch](#moving-the-catalogue-to-another-batch)).
 - **A read of the stages** for the manager's own console, `GET /stages`, behind the session like
   every other route, and `GET /stages/:name/registration`, the last push of one deployment, which
-  the deployment page reads.
+  the deployment page reads. As built (2026-10-01): the console's Stages page, in the navigation
+  beside Deployments, reads `GET /stages` every 30 seconds, one row per stage with its readiness,
+  owner, ingest, token kind and last push, or the reason its record could not be built.
 
 ## The uploader's side
 

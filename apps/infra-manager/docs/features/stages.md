@@ -199,13 +199,44 @@ together once.
   "Web2 admin registration: <outcome> <N> s ago", read every ten seconds from
   `GET /stages/:name/registration`, and Rotate the uploader's admin token,
   `POST /profiles/:name/admin-token/rotate`, asked for first.
+- **The Stages page**, `#/stages`, in the navigation under Deployments. Built
+  2026-10-01, not deployed. One row per stage, by name, from `GET /stages`,
+  read when the page opens and every 30 seconds after, the cadence a running
+  stage is pushed on, and again on Refresh. Each row shows:
+  - the stage's name, which opens its deployment page, with its kind, its
+    engine and its stack version;
+  - the deployment's status, in the words and tone of every other row;
+  - the record's readiness: its verdict in the web2 admin's four words, Ready,
+    Warning, Blocked or Unknown, on the console's green, amber, red and blue,
+    with every reason beneath it in the manager's order, so the first is the
+    console's own label;
+  - the owner, shortened, with a copy button for the whole address;
+  - the public ingest host, with the SRT port and whether a passphrase goes
+    with it, and the RTMP port and whether it is public;
+  - the uploader's token: Own, None, or Shared, which is red and says to rotate
+    the uploader's admin token on the deployment page and redeploy, since the
+    admin refuses it;
+  - the last push, in the stage card's words, with how long ago it ended:
+    seconds for the first minute, then minutes, hours and days.
+
+  A stage whose record could not be put together shows the manager's reason in
+  place of the record's columns, and its last push. A manager that runs no
+  stage says so and offers New stream. A read that fails keeps the last answer
+  on screen, says how old it is, and offers Try again. The page changes
+  nothing: the ingest address and the token are changed on the deployment
+  page. What each row says is `frontend/src/stages/stagesView.ts`, with its
+  unit test beside it.
+
 - **`GET /stages`**, behind the session: every record the manager would push
   now, built afresh, each with its last push and without the SRT passphrase,
   which is answered only as `hasSrtPassphrase`, or the admin token's sha256,
-  which is answered only by its `kind`.
+  which is answered only by its `kind`. The Stages page reads it.
 
-`pnpm -C frontend dev:mock` shows the card, and
-`frontend/test/stage-card-browser.test.mjs` drives it in Chrome.
+`pnpm -C frontend dev:mock` shows the card and the Stages page. The mock's
+records carry the readiness the manager works out from the deployment alone,
+and its own token, but for a stage whose name carries `legacy`, a shared one,
+or `standalone`, none. `frontend/test/stage-card-browser.test.mjs` drives the
+card in Chrome; no browser suite drives the Stages page yet.
 
 ## The catalogue node
 
