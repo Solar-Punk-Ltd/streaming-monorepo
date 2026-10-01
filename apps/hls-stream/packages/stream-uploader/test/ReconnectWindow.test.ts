@@ -1641,6 +1641,42 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
     assert.deepEqual(calls.stopped, [], 'and nothing is finalized, which is the whole of the change');
   });
 
+  /**
+   * ⛔ SRS's publish takeover on a single stream: the new connection's `on_publish`, then the old
+   * connection's `on_unpublish`, then media from the new one and nothing more. The new connection has
+   * already resumed the session, so a disconnect noted on the old one's late unpublish would report a
+   * live stream as disconnected until its next return or its end.
+   */
+  it('notes no disconnect for a single stream when the old connection unpublishes after a takeover', async () => {
+    const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
+    const calls = await postToSrs(
+      [
+        { action: 'on_publish', ...broadcaster, client_id: 'old-connection' },
+        { action: 'on_publish', ...broadcaster, client_id: 'new-connection' },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'old-connection' },
+      ],
+      false,
+    );
+
+    assert.deepEqual(calls.started, ['video/demo', 'video/demo'], 'the takeover is announced as a return');
+    assert.deepEqual(calls.disconnected, [], 'and the connection it replaced has nothing left to disconnect');
+  });
+
+  it('still notes a disconnect when the current connection of a single stream unpublishes', async () => {
+    const broadcaster = { app: 'video', stream: 'demo', ip: '203.0.113.10' };
+    const calls = await postToSrs(
+      [
+        { action: 'on_publish', ...broadcaster, client_id: 'old-connection' },
+        { action: 'on_publish', ...broadcaster, client_id: 'new-connection' },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'old-connection' },
+        { action: 'on_unpublish', ...broadcaster, client_id: 'new-connection' },
+      ],
+      false,
+    );
+
+    assert.deepEqual(calls.disconnected, ['video/demo']);
+  });
+
   it('notes a disconnect for a rung SRS dialled from loopback, and stops nothing', async () => {
     const calls = await postToSrs(
       [
