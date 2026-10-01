@@ -50,8 +50,9 @@ the encoders are killed when the hold runs out. Destroying the source, reloading
 SRS down kill held encoders at once.
 
 The hold is the transcode directive `unpublish_hold`, in seconds, set inside the `transcode` block beside `ffmpeg`.
-The fork defaults it to 60 seconds, and 0 gives stock behaviour. The stack sets it from `ABR_UNPUBLISH_HOLD`, **12
-seconds by default**, and SRS checks it every 3 seconds, so a 12 second hold ends 12 to 15 seconds after the drop.
+The fork leaves it at 0 by default, which is off and behaves as stock SRS does. The stack sets it from
+`ABR_UNPUBLISH_HOLD`, **12 seconds by default**, and SRS checks it every 3 seconds, so a 12 second hold ends 12 to 15
+seconds after the drop.
 It is kept short on purpose, for the reason the measurements below show: SRS cuts the idle rung publishes about 13 to
 17 seconds into a drop, and past that a held encoder only fails and restarts, which is slower than a fresh set. The
 hold's own end, 12 to 15 seconds after the drop, can overlap the earliest of those cuts, so a broadcaster back 13 to 15
@@ -71,7 +72,7 @@ hold and a clean drop, every reconnect was accepted at every gap from 0.3 to 70 
   vhost, after its publish timeout of 5 seconds by default, which the stack does not set. So the uploader gets each
   rung's `on_unpublish` during the gap and its `on_publish` after the return, and takes the rungs up through its usual
   resume path.
-- **Why the hold is not longer.** With the fork's own default of 60 seconds, a return between about 13 and 60 seconds
+- **Why the hold is not longer.** With a hold of 60 seconds, a return between about 13 and 60 seconds
   finds encoders whose rung publishes SRS has already cut. They fail on their first write and restart, and every rung
   is back after 8 to 10 seconds instead of about 4. Up to about 12 seconds the two behave the same.
 - **The uploader** sees only the source's `on_unpublish` and `on_publish` while the rungs are held. When the source
@@ -87,8 +88,10 @@ then. An encoder that gives up after one refusal ends the broadcast there. With 
 the `on_publish` hook accepted replaces the old one: SRS disconnects the old publisher, waits up to 5 seconds for it to
 be gone, and accepts the new one, or refuses it as before if the old one does not go. The fork leaves it off by
 default, because with no `on_publish` hook every publisher is accepted and could replace a live one. The stack turns it
-on with `SRT_TAKEOVER`, on by default, because the uploader's hook refuses a wrong publish key. The new publisher has
-to come over SRT, but the one it replaces can be an RTMP publisher.
+on by itself wherever the uploader refuses a wrong publish key, which is when `PUBLISH_KEY_SECRET` or admin mode
+(`ADMIN_API_URL`) is configured, and leaves it off otherwise, because the uploader then accepts any publisher. Compose
+tells SRS only whether each of the two is set, never its value. `SRT_TAKEOVER=on` or `off` decides it outright. The new
+publisher has to come over SRT, but the one it replaces can be an RTMP publisher.
 
 Measured on the same rig with the 12 second hold, a publisher killed without closing its connection and a new one
 with the same key 1, 3 or 5 seconds later: all 30 reconnects were accepted, the takeover took 11 to 45 milliseconds,
