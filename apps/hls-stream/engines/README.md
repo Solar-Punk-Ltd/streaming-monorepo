@@ -112,8 +112,8 @@ configure flags of upstream's release (`--sanitizer=off --gb28181=on`), and push
 it. On 2026-10-01 that build image held the same ffmpeg 8.1.2 binary as the official `ossrs/srs:v6.0-r1` and
 `v6.0-r2` images, byte for byte.
 
-> **TODO:** the compose files still run `ossrs/srs:v6.0-r1`. Pin the fork's image by digest in
-> `engines/srs/docker-compose.yml` and `deploy/docker-compose.yml` once its first release build exists.
+The compose files run `ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.2`, built from the fork's `main` at
+`adff4a5a`, and pin it by digest, so every deploy runs the same build.
 
 **Going back to stock SRS** means going back to a stack version from before this change as well. The entrypoint writes
 `unpublish_hold` and `takeover`, and stock SRS refuses to start on a directive it does not know.
@@ -244,17 +244,18 @@ down on its next start, so check it first. SRS has a test mode that names the of
 checks values as well as syntax, so a file that still carries the tokens is refused at the first of
 them, which on a copy of the template is the bare `TRANSCODE_PLACEHOLDER` line, and a mistake
 of yours further down is never reached. Fill the tokens with a stand-in and drop the two bare lines
-first:
+first. Check the copy with the fork's image, because stock SRS refuses the template's `takeover` line:
 
 ```bash
 sed -E '/^(TRANSCODE|ABR_VHOST)_PLACEHOLDER$/d; s/[A-Z_]+_PLACEHOLDER/1/g' my-srs.conf > my-srs.check.conf
-docker run --rm -v "$PWD/my-srs.check.conf:/check/srs.conf:ro" ossrs/srs:6 ./objs/srs -t -c /check/srs.conf
+docker run --rm -v "$PWD/my-srs.check.conf:/check/srs.conf:ro" \
+  ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.2 ./objs/srs -t -c /check/srs.conf
 ```
 
 The copy that passes is not the file you deploy. The deploy mounts `my-srs.conf` itself, and the
-entrypoint fills its tokens from the environment. Measured 2026-09-07 on `ossrs/srs:6` at 6.0.184: a
-copy of the template is refused at that line, the filled copy passes, and a misspelt `hls_window` in
-the filled copy is named.
+entrypoint fills its tokens from the environment. Measured 2026-10-01 with an arm64 build of that image's
+source: a copy of the template is refused at that line, the filled copy passes, and a misspelt
+`hls_window` in the filled copy is named. Stock `ossrs/srs:v6.0-r2` refuses the filled copy at `takeover`.
 
 OvenMediaEngine has no test mode. Its log names the element it refused.
 
