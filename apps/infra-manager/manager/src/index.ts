@@ -161,6 +161,8 @@ async function gracefulShutdown(signal: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // Before the first line, so nothing below the configured level is written.
+  logger.setLevel(config.logLevel);
   logStartupConfig();
 
   database = new Database(config.databaseUrl);

@@ -4,6 +4,8 @@ import { isIP } from 'node:net';
 
 import { bzzToPlur, DEFAULT_CHEQUEBOOK_FLOOR_BZZ, rpcEndpointProblem } from '@streaming-infra-manager/common';
 
+import { DEFAULT_LOG_LEVEL, isLogLevel, LOG_LEVELS, type LogLevel } from '../domain/Logger.js';
+
 function required(name: string): string {
   const value = process.env[name];
   if (!value || value.trim() === '') {
@@ -57,6 +59,25 @@ export function beeRpcEndpoint(raw: string | undefined): string | null {
   if (!value) return null;
   const problem = rpcEndpointProblem(value);
   if (problem) throw new Error(`BEE_RPC_ENDPOINT: ${problem}`);
+  return value;
+}
+
+/**
+ * How much the manager logs, read once at startup, which the api hands its
+ * logger before it logs anything else. Trimmed, in either case, and info when
+ * unset.
+ *
+ * A level the logger does not know stops the process rather than falling back
+ * to info, for the reason the chequebook floor does: logging at a level other
+ * than the one the operator wrote is how this setting went unnoticed before,
+ * when it was read and never applied.
+ *
+ * Exported so the refusal can be tested without the process exiting.
+ */
+export function logLevel(raw: string | undefined): LogLevel {
+  const value = raw?.trim().toLowerCase();
+  if (!value) return DEFAULT_LOG_LEVEL;
+  if (!isLogLevel(value)) throw new Error(`LOG_LEVEL must be one of ${LOG_LEVELS.join(', ')}, got: ${raw}`);
   return value;
 }
 
@@ -115,7 +136,8 @@ export interface AppConfig {
   host: string;
   publicHost: string;
   databaseUrl: string;
-  logLevel: string;
+  /** See `logLevel`. */
+  logLevel: LogLevel;
   chequebookFloorPlur: bigint;
   /**
    * Where added stack versions are checked out. A sibling of the data root,
@@ -134,7 +156,7 @@ export const config: AppConfig = {
   host: optional('MANAGER_HOST', '0.0.0.0'),
   publicHost: optional('PUBLIC_HOST', ''),
   databaseUrl: required('DATABASE_URL'),
-  logLevel: optional('LOG_LEVEL', 'info'),
+  logLevel: logLevel(process.env.LOG_LEVEL),
   chequebookFloorPlur: chequebookFloorPlur(),
   stackVersionsRoot: optional('STACK_VERSIONS_ROOT', '/opt/streaming/streaming-infra-manager-versions'),
   beeRpcEndpoint: beeRpcEndpoint(process.env.BEE_RPC_ENDPOINT),

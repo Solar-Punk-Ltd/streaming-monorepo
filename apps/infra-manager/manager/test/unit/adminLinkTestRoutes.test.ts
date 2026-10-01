@@ -28,6 +28,7 @@ import {
 
 import type { AdminLinkProbe } from '../../src/domain/adminLink/adminLinkProbe.js';
 import type { AuthService } from '../../src/domain/auth/AuthService.js';
+import { Logger } from '../../src/domain/Logger.js';
 import { makeProfile } from '../support/profileFixtures.js';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 import { InMemoryManagerAdminLink } from '../support/InMemoryManagerAdminLink.js';
@@ -138,12 +139,17 @@ async function testApi(options: TestApiOptions = {}) {
   };
 }
 
-/** Every line the manager logs while the test runs, from each level. */
+/**
+ * Every line the manager logs while the test runs, from each level. The logger
+ * writes at trace meanwhile, so a debug line the default level drops is read too.
+ */
 function capturedLogs(t: TestContext): string[] {
   const lines: string[] = [];
   for (const level of ['log', 'info', 'warn', 'error', 'debug'] as const) {
     t.mock.method(console, level, (...args: unknown[]) => lines.push(args.map(String).join(' ')));
   }
+  const previous = Logger.getInstance().setLevel('trace');
+  t.after(() => Logger.getInstance().setLevel(previous));
   return lines;
 }
 
