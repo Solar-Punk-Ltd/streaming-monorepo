@@ -642,9 +642,7 @@ export class StreamOrchestrator {
       .filter((streamId) => {
         const uploader = this.activeStreams.get(streamId);
         return (
-          uploader !== undefined &&
-          !this.isDraining(streamId, uploader) &&
-          !this.streamDisconnectedAt.has(streamId)
+          uploader !== undefined && !this.isDraining(streamId, uploader) && !this.streamDisconnectedAt.has(streamId)
         );
       });
 

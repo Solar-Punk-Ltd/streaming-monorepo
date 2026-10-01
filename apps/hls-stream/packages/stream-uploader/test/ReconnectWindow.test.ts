@@ -1484,10 +1484,9 @@ describe('a ladder whose rungs SRS held through a short drop of its source', () 
     const [held] = rungIds;
 
     harness.orchestrator.resumeHeldRungs(LADDER_BASE);
-    assert.deepEqual(
-      harness.orchestrator.handleSegment(held, 1, SEGMENT_SECONDS, Buffer.from(`${held}-again`)),
-      { accepted: true },
-    );
+    assert.deepEqual(harness.orchestrator.handleSegment(held, 1, SEGMENT_SECONDS, Buffer.from(`${held}-again`)), {
+      accepted: true,
+    });
     await harness.segment(`${held}-b0`, 2, held);
     await harness.published(`${held}-b0`);
 
@@ -1626,7 +1625,11 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
             body: JSON.stringify({ vhost: '__defaultVhost__', param: '', ...post }),
           },
         );
-        assert.equal(await response.json(), answer, `SRS must be answered ${answer} for ${post.action} of ${post.stream}`);
+        assert.equal(
+          await response.json(),
+          answer,
+          `SRS must be answered ${answer} for ${post.action} of ${post.stream}`,
+        );
       }
     } finally {
       server.close();
@@ -1740,10 +1743,7 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
   });
 
   it('asks the held rungs of a ladder source that publishes to resume', async () => {
-    const calls = await postToSrs(
-      [{ action: 'on_publish', app: 'video', stream: 'demo', ip: '203.0.113.10' }],
-      true,
-    );
+    const calls = await postToSrs([{ action: 'on_publish', app: 'video', stream: 'demo', ip: '203.0.113.10' }], true);
 
     assert.deepEqual(calls.resumed, ['video/demo'], 'the source coming back is the only word a held rung gets');
     assert.deepEqual(calls.started, [], 'and the source itself is still never ingested');
