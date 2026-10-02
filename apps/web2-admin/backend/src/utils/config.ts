@@ -57,7 +57,10 @@ export interface AppConfig {
   feedPrivateKey: string;
   feedTopic: string;
   viewerBaseUrl: string;
-  /** Bearer token the uploader presents on /api/internal. */
+  /**
+   * The registrar token the manager pushes stages with on /api/internal. No uploader is given it, and the uploader's
+   * routes refuse it.
+   */
   internalApiToken: string;
   /**
    * `CATALOGUE_MOVE_ENABLED`: whether an operator may move the catalogue's history onto another batch from the
