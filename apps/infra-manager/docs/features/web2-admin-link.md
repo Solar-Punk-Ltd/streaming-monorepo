@@ -110,21 +110,22 @@ rule. Phase 9 goes another way, decided 2026-09-29, on a host that runs the
 admin and manager from before stages:
 
 0. **Create the catalogue node** and buy its immutable batch.
-1. **Deploy the phase 9 manager** and designate the catalogue node. An admin from before stages
-   has no `/api/internal/stages` or `/api/internal/catalogue-stamp` route, so every push comes to
-   `not-admin` until step 2, which is harmless: it stores nothing. Its Manager settings Test
-   connection falls back from the registrar check's 404 to the lookup, which takes the token.
-   Create no stage and rotate nothing yet: that admin refuses a token of its own.
-2. **Deploy the phase 8 admin**, the phase 8 state of `feat/stages` (commit `d29616851`; tag it,
-   e.g. `web2-admin/stages-phase-8`, before `feat/stages` is merged to `main`, because a squash or
+1. **Deploy the manager that pushes stage records** and designate the catalogue node. An admin from
+   before stages has no `/api/internal/stages` or `/api/internal/catalogue-stamp` route, so every
+   push comes to `not-admin` until step 2, which is harmless: it stores nothing. Its Manager
+   settings Test connection falls back from the registrar check's 404 to the lookup, which takes the
+   token. Create no stage and rotate nothing yet: that admin refuses a token of its own.
+2. **Deploy the intermediate admin**: commit `d29616851` of `feat/stages` (tag it
+   `web2-admin/stages-intermediate` before `feat/stages` is merged to `main`, because a squash or
    rebase merge leaves that commit unreachable). It takes both the shared token and a stage's own,
    and refuses every catalogue write, `503`, until the manager's next push, within ten seconds.
    Each deployment's Test connection answers `token-not-own` for every stage still to rotate.
 3. **Give every stream a stage** before any rotation: unpublish every scheduled stream, pick its
-   stage and publish it again. A stage on its own token is answered only about its own streams.
+   stage and publish it again, and pick a stage for every draft. A stage on its own token is
+   answered only about its own streams.
 4. **Rotate and redeploy every stage** (**Rotate the uploader's admin token** on its deployment
    page, then deploy) until the admin's Stages page reads "Its own token" for all of them.
-5. **Deploy the phase 9 admin.**
+5. **Deploy the admin that refuses the shared token.**
 
 Skipping steps 2 to 4 means every running uploader gets 401 from the phase 9 admin until its stage
 is rotated and redeployed. After it, give each stage a `STREAM_KEY` of its own, since a stage from

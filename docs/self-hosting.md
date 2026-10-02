@@ -184,21 +184,20 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
     and publish. The OBS panel shows that stage's ingest details.
 
 **Upgrading a host that runs the admin and manager from before stages.** A fresh installation
-needs none of this. On a running one, in this order, and only with the owner's word:
+needs none of this. On a running one, in this order:
 
 0. **Create the catalogue node**, by step 6 of the Bee host recipe below: a Bee-only deployment,
    funded, with one immutable batch of depth 18 or more bought on it. It must be ready before step 2.
-1. **Deploy the manager that pushes stage records**, and designate the catalogue node and its
-   batch on **Manager settings** at once. The admin from before stages has no
-   `/api/internal/stages` or
+1. **Deploy the manager that pushes stage records**, and designate the catalogue node and its batch
+   on **Manager settings** at once. The admin from before stages has no `/api/internal/stages` or
    `/api/internal/catalogue-stamp` route, so every stage's push and the catalogue stamp come to
    `not-admin` ("not a web2 admin") until step 2. That is harmless: that admin stores nothing and
    keeps writing with its env file's batch, and Test connection on Manager settings still takes the
-   token there. Create no stage and rotate nothing until step 2 is done: an admin from before
-   stages refuses a token of its own.
+   token there. Create no stage and rotate nothing until step 2 is done: an admin from before stages
+   refuses a token of its own.
 2. **Deploy the intermediate admin**, which takes stage records and still accepts the shared
-   token on an uploader's routes: commit `d29616851` of `feat/stages` (tag it, e.g.
-   `web2-admin/stages-intermediate`, before `feat/stages` is merged to `main`, because a squash or
+   token on an uploader's routes: commit `d29616851` of `feat/stages` (tag it
+   `web2-admin/stages-intermediate` before `feat/stages` is merged to `main`, because a squash or
    rebase merge leaves that commit unreachable). It takes both the shared token and a stage's own.
    It refuses every catalogue write, `503`, until it holds a catalogue stamp, so publishing and the
    uploaders' state reports (which retry) wait from its start until the manager's next push, at
