@@ -283,13 +283,19 @@ describe('StreamRepository on stages', () => {
     const stages = new StageRepository(database.pool);
     const retired = randomUUID();
     const twin = randomUUID();
+    const retiredAlone = randomUUID();
+    // No other stage signs as this one, so only a list that takes retired stages has it.
+    const retiredOwner = '0x5e6d7c8b9a0f1e2d3c4b5a69788796a5b4c3d2e1';
     await stages.upsert(splitStageRecord(stageRecord({ stageId: retired, name: 'Stage E', owner: ROTATED_OWNER })));
     await stages.upsert(splitStageRecord(stageRecord({ stageId: twin, name: 'Stage F', owner: ROTATED_OWNER })));
+    await stages.upsert(splitStageRecord(stageRecord({ stageId: retiredAlone, name: 'Stage G', owner: retiredOwner })));
     assert.equal((await stages.retire(retired, '2099-01-01T00:00:00.000Z')).outcome, 'done');
+    assert.equal((await stages.retire(retiredAlone, '2099-01-01T00:00:00.000Z')).outcome, 'done');
 
     const owners = await stages.listOwners();
 
     assert.equal(owners.filter((owner) => owner === ROTATED_OWNER).length, 1);
+    assert.ok(owners.includes(retiredOwner), 'the owner only a retired stage has is listed');
     assert.ok(owners.includes(STAGE_B_OWNER));
     // The fixture is pushed without the schema's parse, so it keeps its case.
     assert.ok(owners.includes(STAGE_A_OWNER));

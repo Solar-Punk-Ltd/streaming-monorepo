@@ -516,7 +516,7 @@ describe('the console’s catalogue move', () => {
     assert.equal((await call('POST', '/api/catalogue-stamp/move', { body })).status, 401);
   });
 
-  it('refuses a body that names no batch', async () => {
+  it('refuses a target batch that is not 64 hex digits', async () => {
     const answer = await call('POST', '/api/catalogue-stamp/move', {
       token: null,
       cookie,
@@ -525,7 +525,7 @@ describe('the console’s catalogue move', () => {
     assert.equal(answer.status, 400);
   });
 
-  it('refuses with 409 and the sentence when there is nothing to move', async () => {
+  it('refuses with 409 and problem `nothing` when there is nothing to move', async () => {
     await call('PUT', '/api/internal/catalogue-stamp', { body: catalogueStampRecord() });
     const answer = await call('POST', '/api/catalogue-stamp/move', {
       token: null,

@@ -174,6 +174,7 @@ describe('restampSlot', () => {
       (e: unknown) => e as Error,
     );
     assert.match(error?.message ?? '', /the node answered 402 to the upload of slot 0/);
+    assert.equal(error?.message.includes(new URL(bee.url).hostname), false, 'the node’s address reached the error');
   });
 });
 
