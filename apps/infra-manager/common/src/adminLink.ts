@@ -97,7 +97,8 @@ export function adminLinkEditProblem(edits: readonly AdminLinkEdit[], before: Ad
 /**
  * Why these edits leave a stored `ADMIN_API_TOKEN` at an address on the origin of the manager's link while the link
  * stores a token (`generatedFor`), or null. A value typed now counts, and so does one the deployment stores that the
- * edits leave, while a reset or an empty value takes it out, so the first deploy generates a token of its own.
+ * edits leave, while a reset takes it out, so the first deploy generates a token of its own. An empty value counts as
+ * none here and leaves the address with no token, which `adminLinkProblem` refuses first.
  */
 export function typedTokenAtLinkProblem(edits: readonly AdminLinkEdit[], before: AdminLinkBefore): string | null {
   const link = before.token.generatedFor;

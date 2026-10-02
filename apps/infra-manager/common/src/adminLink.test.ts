@@ -356,7 +356,7 @@ describe("a stored token at the manager's link address", () => {
     );
   });
 
-  it('is taken out by a reset or an empty value, and not held at another address or with no link token', () => {
+  it('is taken out by a reset, and not held at another address or with no link token', () => {
     assert.equal(adminLinkEditProblem([{ key: 'ADMIN_API_TOKEN', value: null }], before(true)), null);
     assert.equal(
       adminLinkEditProblem([{ key: 'ADMIN_API_URL', value: 'https://admin2.example.com' }, TYPED], before(false)),

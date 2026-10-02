@@ -872,15 +872,24 @@ describe('what the publisher keeps', () => {
 
   it('keeps one it pushed, and one a change event named, until its removal retires it', async (t) => {
     logLines(t);
-    const { publisher, events, profiles } = publisherFor();
+    const { publisher, clock, events, profiles } = publisherFor({
+      profiles: [stage('stage-one', 1), stage('stage-two', 2)],
+    });
     publisher.start();
     t.after(() => publisher.stop());
     await publisher.pushNow('stage-one');
+    // stage-two is never pushed: it is gone by the time the push its change event gathered runs.
+    changed(events, profiles.get('stage-two')!);
     profiles.delete('stage-one');
+    profiles.delete('stage-two');
     assert.equal(await publisher.pushNow('stage-one'), null);
+    await clock.advance(STAGE_PUSH_DEBOUNCE_MS);
     assert.equal(publisher.keeps('stage-one'), true, 'kept for its retirement');
+    assert.equal(publisher.keeps('stage-two'), true, 'kept for its retirement');
     events.publish(removal('stage-one', 1));
+    events.publish(removal('stage-two', 2));
     await settle();
     assert.equal(publisher.keeps('stage-one'), false);
+    assert.equal(publisher.keeps('stage-two'), false);
   });
 });
