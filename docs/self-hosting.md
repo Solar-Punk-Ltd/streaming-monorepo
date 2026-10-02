@@ -177,7 +177,7 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
 needs none of this. On a running one, in this order, and only with the owner's word:
 
 0. **Create the catalogue node**, by step 6 of the Bee host recipe below: a Bee-only deployment,
-   funded, with one immutable batch bought on it. It must be ready before step 2.
+   funded, with one immutable batch of depth 18 or more bought on it. It must be ready before step 2.
 1. **Deploy the manager that pushes stage records**, and designate the catalogue node and its
    batch on **Manager settings** at once. The admin from before stages has no
    `/api/internal/stages` or
@@ -318,7 +318,8 @@ stage hosts publish through. It is prepared like a stage host.
    deployment on a stage host.
 
 6. **The catalogue node.** **New deployment**, a Bee-only deployment with `bee-1` as the host, fund it
-   and buy one immutable batch on it, below, deep enough for the catalogue's history. It holds the
+   and buy one immutable batch on it, below, of depth 18 or more: the manager refuses a shallower one
+   for the catalogue, since its buckets fill after a few thousand writes. It holds the
    brand's catalogue alone: no pool string may name its batch or its Bee API, and the manager
    refuses a pool that does. Open its Bee API to the control host alone, where the admin writes
    through it, and designate it on **Manager settings**.

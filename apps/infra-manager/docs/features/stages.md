@@ -271,12 +271,19 @@ save does. `CatalogueDesignationService` refuses, with one sentence each
 | a mutable batch                                                        | once a bucket fills it overwrites its oldest chunks, which are the catalogue's first slots |
 | a batch whose kind the node does not report                            | the kind that fails is the one it might be                                                 |
 | an expired batch                                                       | nothing written with it stays                                                              |
+| a new batch shallower than `MIN_CATALOGUE_DEPTH`, 18                   | its buckets fill soon, and the first slot refused freezes the catalogue                    |
 | a batch an ABR uploader of this manager names in its `BEE_PUBLISHERS`  | segments would fill it                                                                     |
 | another batch than the pinned one, without `move: true`                | the catalogue's slots are stamped by the pinned batch, and moving them is its own action   |
 | a third batch while a move is pending, `move: true` or not             | the batch moved from still holds the history until the admin reports the move done         |
 
 The node is asked about the batch fresh, `GET /stamps/{id}` on its own Bee API,
 when the designation is saved.
+
+The minimum depth holds a new batch alone, `catalogueShallowBatchRefusal`: the
+pinned batch designated again after a clear, and a move back to the batch moved
+from, are taken at the depth they have, so a designation made before the
+minimum keeps working. The card does not mark a shallow batch in its list; the
+save says why it is refused.
 
 Once a batch has been designated, the catalogue stays on it. The same batch can
 be designated again after a clear, which puts it in force once more. Another

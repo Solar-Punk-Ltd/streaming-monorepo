@@ -26,6 +26,8 @@ import {
   CATALOGUE_UNREACHABLE_REFUSAL,
   catalogueMoveRefusal,
   catalogueReleaseFirstRefusal,
+  catalogueShallowBatchRefusal,
+  MIN_CATALOGUE_DEPTH,
   REQUESTED_WITH_HEADER,
   REQUESTED_WITH_VALUE,
   SESSION_COOKIE_NAME,
@@ -277,6 +279,37 @@ describe('PUT /manager-settings/catalogue-node', () => {
     });
   }
 
+  it('refuses a new batch shallower than the catalogue’s minimum depth, saying so, and stores nothing', async (t) => {
+    assert.equal(MIN_CATALOGUE_DEPTH, 18);
+    const api = await testApi(t, { held: async (_n, id) => stampOf({ batchID: id, depth: 17 }) });
+    const answer = await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    assert.deepEqual(refusalOf(answer), [catalogueShallowBatchRefusal(17)]);
+    assert.match(catalogueShallowBatchRefusal(17), /depth 17/);
+    assert.match(catalogueShallowBatchRefusal(17), /depth 18 or more/);
+    assert.equal(api.store.row.revision, 0);
+    assert.equal(api.changes(), 0);
+  });
+
+  it('takes a batch of the minimum depth', async (t) => {
+    const api = await testApi(t, { held: async (_n, id) => stampOf({ batchID: id, depth: MIN_CATALOGUE_DEPTH }) });
+    const answer = await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    assert.equal(answer.status, 200, JSON.stringify(answer.body));
+    assert.equal(api.store.row.batchDepth, MIN_CATALOGUE_DEPTH);
+  });
+
+  it('designates a shallower batch pinned before the minimum again after a clear', async (t) => {
+    const api = await testApi(t, { held: async (_n, id) => stampOf({ batchID: id, depth: 17 }) });
+    await api.store.designate(
+      { profileName: 'catalogue', batchId: BATCH, batchDepth: 17, at: new Date(DESIGNATED_AT) },
+      0,
+      'operator',
+    );
+    await api.clear({ expectedRevision: 1 });
+    const again = await api.save({ expectedRevision: 2, profileName: 'catalogue', batchId: BATCH });
+    assert.equal(again.status, 200, JSON.stringify(again.body));
+    assert.equal(api.store.row.clearedAt, null);
+  });
+
   it('says a mutable batch overwrites the catalogue’s oldest slots', () => {
     assert.match(CATALOGUE_MUTABLE_REFUSAL, /mutable/);
     assert.match(CATALOGUE_MUTABLE_REFUSAL, /overwrites its oldest chunks/);
@@ -478,6 +511,30 @@ describe('another batch than the pinned one is a move, saved only when confirmed
       'the last reading was of another batch',
     );
     assert.deepEqual(await api.service.guardedNodes(), ['catalogue', 'catalogue-two']);
+  });
+
+  it('refuses a move to a batch shallower than the minimum, and takes a move back to one pinned before it', async (t) => {
+    const api = await testApi(t, {
+      held: async (_n, id) => stampOf({ batchID: id, depth: id === OTHER_BATCH ? 20 : 17 }),
+    });
+    await api.store.designate(
+      { profileName: 'catalogue', batchId: BATCH, batchDepth: 17, at: new Date(DESIGNATED_AT) },
+      0,
+      'operator',
+    );
+    const shallow = await api.save({ expectedRevision: 1, profileName: 'catalogue', batchId: THIRD_BATCH, move: true });
+    assert.deepEqual(refusalOf(shallow), [catalogueShallowBatchRefusal(17)]);
+    const moved = await api.save({
+      expectedRevision: 1,
+      profileName: 'catalogue-two',
+      batchId: OTHER_BATCH,
+      move: true,
+    });
+    assert.equal(moved.status, 200, JSON.stringify(moved.body));
+    const back = await api.save({ expectedRevision: 2, profileName: 'catalogue', batchId: BATCH, move: true });
+    assert.equal(back.status, 200, JSON.stringify(back.body));
+    assert.equal(api.store.row.batchId, BATCH);
+    assert.equal(api.store.row.movingFromBatchId, OTHER_BATCH);
   });
 
   it('refuses a third batch while a move is pending, confirmed or not, naming the batch moved from', async (t) => {
