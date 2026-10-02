@@ -164,7 +164,9 @@ export async function assertNodeReachable(node: ReachableNode): Promise<void> {
   try {
     connected = await node.bee.connectivity.isConnected();
   } catch (error) {
-    throw new NodeUnreachableError(`${url} did not answer a liveness check: ${stripUrlUserinfo(describeFailure(error))}`);
+    throw new NodeUnreachableError(
+      `${url} did not answer a liveness check: ${stripUrlUserinfo(describeFailure(error))}`,
+    );
   }
 
   if (!connected) {
