@@ -11,6 +11,8 @@ import {
   stageSelfAnswerSchema,
 } from '@streaming-monorepo/contracts';
 
+import { judgePlainHttpAdminLink, type PlainHttpJudge } from './plainHttpAdminLink.js';
+
 /**
  * What Test connection asks a web2 admin with: the address, the token, and whose token it is. `registrar` is the
  * manager's own, proved on the admin's registrar check; `uploader` is the one a deployment's uploader would be given,
@@ -33,6 +35,8 @@ export interface AdminLinkProbeOptions {
   timeoutMs?: number;
   /** The most of a body that is read. The admin's own answers are a few hundred bytes. */
   maxBodyBytes?: number;
+  /** The rule for plain http to another host than the manager's own. The manager's own when left out. */
+  plainHttp?: PlainHttpJudge;
 }
 
 export type AdminLinkProbe = (
@@ -193,15 +197,24 @@ function lookupOutcome(lookup: Answer): AdminLinkTestOutcome {
  * without the token.
  *
  * It reaches whatever the manager's own host can reach, loopback and private
- * addresses included, as the uploader reaches whatever its host can. It never
- * throws, and nothing the far end sent reaches its answer.
+ * addresses included, as the uploader reaches whatever its host can. The
+ * registrar's token goes in plain http only where the manager's pushes may,
+ * to its own host, and is otherwise answered `plain-http-refused` unasked, or
+ * `unreachable` for a name that does not resolve from the manager now. It
+ * never throws, and nothing the far end sent reaches its answer.
  */
 export const probeAdminLink: AdminLinkProbe = async (target, options = {}) => {
   if (adminUrlProblem(target.url) !== null) return 'invalid-address';
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
   const base = target.url.replace(/\/+$/, '');
-  if (target.check === 'registrar') return probeRegistrar(base, target.token, timeoutMs, maxBytes);
+  if (target.check === 'registrar') {
+    // The manager's own token goes where its pushes go, and nowhere its pushes would not.
+    const plainHttp = await (options.plainHttp ?? judgePlainHttpAdminLink)(target.url);
+    if (plainHttp === 'refused') return 'plain-http-refused';
+    if (plainHttp === 'unresolved') return 'unreachable';
+    return probeRegistrar(base, target.token, timeoutMs, maxBytes);
+  }
 
   const refusal = lookupRefusal(
     await ask(`${base}${UNUSED_STREAM_PATH}`, { authorization: `Bearer ${target.token}` }, timeoutMs, maxBytes),

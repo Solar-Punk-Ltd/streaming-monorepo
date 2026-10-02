@@ -200,12 +200,13 @@ say, never what the admin answered, its address or a token.
 | `redirected`           | a redirect, which is not followed                                                                          |
 | `not-admin`            | any other answer, or one that is not the admin's JSON                                                      |
 | `skipped-no-link`      | the manager's link has no address or no token                                                              |
+| `refused-plain-http`   | the link is plain http to another host than the manager's own: nothing is sent                             |
 | `skipped-not-linked`   | the deployment's next deploy gives its uploader no `ADMIN_API_URL`                                         |
 | `skipped-other-origin` | its `ADMIN_API_URL` is on another origin than the link's                                                   |
 | `skipped-no-record`    | the record could not be put together: no stream key, no port, no environment yet, no public ingest address |
 
-The client is bounded like Test connection: http and https alone, no redirect
-followed, five seconds a call, at most 64 KiB of an answer read. The last
+The client is bounded like Test connection: http and https alone, plain http
+only to the manager's own host (`web2-admin-link.md`), no redirect followed, five seconds a call, at most 64 KiB of an answer read. The last
 outcome of each deployment and its time are kept in memory; the log says a
 deployment's outcome when it changes, and why its record could not be put
 together once.
@@ -402,7 +403,8 @@ changes.
 
 To the manager's web2 admin link, `PUT <link>/api/internal/catalogue-stamp`,
 with the link's stored token, the registrar's, on the stage client's bounds:
-http and https alone, no redirect followed, five seconds, 64 KiB of an answer
+http and https alone, plain http only to the manager's own host, no redirect
+followed, five seconds, 64 KiB of an answer
 read. It is pushed:
 
 - **when the designation changes**, at once after the save;
@@ -425,7 +427,8 @@ one more after it, so a clear never overtakes the push before it.
 
 Each call comes to one of `CATALOGUE_PUSH_OUTCOMES`: `stored`, `older-ignored`,
 `cleared`, `not-cleared`, `refused-token`, `refused-record`, `unreachable`,
-`redirected`, `not-admin`, `skipped-no-link`, `skipped-no-node` (the designated
+`redirected`, `not-admin`, `skipped-no-link`, `refused-plain-http` (a link in
+plain http to another host, sent nothing), `skipped-no-node` (the designated
 deployment is gone) and `skipped-no-record` (a record the contract refuses, no
 depth known, or a loopback Bee API address). The card shows the last one, "Web2 admin: stored 12 s ago",
 and the log says it when it changes.

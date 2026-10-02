@@ -38,6 +38,10 @@ describe('the sentence for each Test connection outcome', () => {
     );
     assert.equal(adminLinkTestText('unreachable'), 'The web2 admin did not answer from where the manager runs.');
     assert.equal(
+      adminLinkTestText('plain-http-refused'),
+      "This address is plain http to another host than the manager's own, so the manager's token was not sent there: give the https address the web2 admin is served on, or set ADMIN_LINK_ALLOW_PLAIN_HTTP=true on the manager for a test setup.",
+    );
+    assert.equal(
       adminLinkTestText('stored-token-elsewhere'),
       'The stored token was saved for another address, so it was not sent here, and the token has to be typed again for this address.',
     );
@@ -61,6 +65,7 @@ describe('the sentence for each Test connection outcome', () => {
       'redirected',
       'unreachable',
       'invalid-address',
+      'plain-http-refused',
       'no-token',
       'stored-token-elsewhere',
     ] as const) {

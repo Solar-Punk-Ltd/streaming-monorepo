@@ -46,6 +46,11 @@ export const ADMIN_LINK_TEST_OUTCOMES = [
   'unreachable',
   /** The address is not an http or https one the uploader could use. */
   'invalid-address',
+  /**
+   * The address is plain http to another host than the manager's own, which the manager sends its token to only while
+   * `ADMIN_LINK_ALLOW_PLAIN_HTTP` is on, so nothing was asked.
+   */
+  'plain-http-refused',
   /** There is no address, so the uploader runs standalone. */
   'not-linked',
   /** There is an address and no token, which the uploader refuses to start with. */

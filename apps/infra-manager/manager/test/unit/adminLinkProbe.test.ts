@@ -390,3 +390,44 @@ describe("Test connection of an uploader's token", () => {
     );
   });
 });
+
+describe('Test connection of an address in plain http to another host', () => {
+  it("presents the manager's token there not at all, and answers plain-http-refused", async (t) => {
+    const fetched = t.mock.method(globalThis, 'fetch', async () => {
+      throw new Error('no request may leave');
+    });
+    const target = { url: 'http://admin.example:3000', token: TOKEN, check: 'registrar' as const, feedOwner: null };
+    assert.equal(await probeAdminLink(target, { plainHttp: async () => 'refused' }), 'plain-http-refused');
+    assert.equal(fetched.mock.callCount(), 0);
+  });
+
+  it("asks nothing while the address's name does not resolve, and answers unreachable", async (t) => {
+    const fetched = t.mock.method(globalThis, 'fetch', async () => {
+      throw new Error('no request may leave');
+    });
+    const target = {
+      url: 'http://web2-admin-backend:3000',
+      token: TOKEN,
+      check: 'registrar' as const,
+      feedOwner: null,
+    };
+    assert.equal(await probeAdminLink(target, { plainHttp: async () => 'unresolved' }), 'unreachable');
+    assert.equal(fetched.mock.callCount(), 0);
+  });
+
+  it("judges only the manager's own token: an uploader's goes wherever its uploader would send it", async () => {
+    const admin = await serve(adminAnswering());
+    const judged: string[] = [];
+    const outcome = await probeAdminLink(
+      { url: admin.url, token: TOKEN, check: 'uploader', feedOwner: null },
+      {
+        plainHttp: async (url) => {
+          judged.push(url);
+          return 'refused';
+        },
+      },
+    );
+    assert.equal(outcome, 'token-accepted');
+    assert.deepEqual(judged, []);
+  });
+});

@@ -27,10 +27,11 @@ import {
   STORED_TOKEN_NOT_AN_UPLOADER,
 } from './adminLinkTest.js';
 import {
+  ADMIN_LINK_ALLOW_PLAIN_HTTP_KEY,
   adminTokenProblem,
   managerAdminLinkProblems,
-  PLAIN_HTTP_ADMIN_LINK_WARNING,
-  plainHttpAdminLinkWarning,
+  PLAIN_HTTP_ADMIN_LINK_REFUSED,
+  plainHttpAdminLinkHost,
 } from './managerAdminLink.js';
 
 const ADMIN_URL = 'https://admin.example.com';
@@ -286,33 +287,56 @@ describe("a save of the manager's own web2 admin link", () => {
 });
 
 describe("a plain http address for the manager's own web2 admin link", () => {
-  it('is warned about for any host but the manager’s own', () => {
-    for (const url of [
-      'http://admin.example.org',
-      'http://203.0.113.7:9877',
-      'HTTP://Admin.Example.org/api',
-      ' http://[2001:db8::1]:80 ',
+  it('leaves the manager a host to judge for any plain http host its text cannot place on the manager’s own', () => {
+    for (const [url, host] of [
+      ['http://admin.example.org', 'admin.example.org'],
+      ['http://admin.example:3000', 'admin.example'],
+      ['http://203.0.113.7:9877', '203.0.113.7'],
+      ['HTTP://Admin.Example.org/api', 'admin.example.org'],
+      [' http://[2001:db8::1]:80 ', '2001:db8::1'],
+      // A Docker service name on the manager's host: only what it resolves to tells, which the manager reads.
+      ['http://web2-admin-backend:3000', 'web2-admin-backend'],
     ]) {
-      assert.equal(plainHttpAdminLinkWarning(url), PLAIN_HTTP_ADMIN_LINK_WARNING, url);
+      assert.equal(plainHttpAdminLinkHost(url!), host, url);
     }
   });
 
-  it('is not for https, a loopback host or what is no address at all', () => {
+  it('leaves none for https, a loopback host, the Docker host gateway or what is no address at all', () => {
     for (const url of [
       'https://admin.example.org',
       'http://localhost:9877',
       'http://127.0.0.1:9877',
       'http://[::1]:9877',
       'http://0.0.0.0:9877',
+      'http://host.docker.internal:3000',
       '',
       'admin.example.org',
     ]) {
-      assert.equal(plainHttpAdminLinkWarning(url), null, url);
+      assert.equal(plainHttpAdminLinkHost(url), null, url);
     }
   });
 
-  it('names no address and no token', () => {
-    assert.doesNotMatch(PLAIN_HTTP_ADMIN_LINK_WARNING, /example|:\/\//);
+  it('refuses a save the manager judged to go to another host, and only then', () => {
+    const save = { expectedRevision: 0, url: 'http://admin.example:3000', token: 'synthetic-token-0123456789abcdef' };
+    assert.deepEqual(managerAdminLinkProblems(save, undefined, 'refused'), [PLAIN_HTTP_ADMIN_LINK_REFUSED]);
+    assert.deepEqual(managerAdminLinkProblems(save, undefined, 'allowed'), []);
+    assert.deepEqual(managerAdminLinkProblems(save, undefined, 'allowed-by-setting'), []);
+    assert.deepEqual(
+      managerAdminLinkProblems(save, undefined, 'unresolved'),
+      [],
+      'a name that does not resolve yet, a stopped service among them, is judged when it is sent to',
+    );
+    assert.deepEqual(
+      managerAdminLinkProblems(save),
+      [],
+      'the text alone refuses nothing: a page cannot resolve the host',
+    );
+  });
+
+  it('names the setting that allows it, and no address and no token', () => {
+    assert.equal(ADMIN_LINK_ALLOW_PLAIN_HTTP_KEY, 'ADMIN_LINK_ALLOW_PLAIN_HTTP');
+    assert.ok(PLAIN_HTTP_ADMIN_LINK_REFUSED.includes(`${ADMIN_LINK_ALLOW_PLAIN_HTTP_KEY}=true`));
+    assert.doesNotMatch(PLAIN_HTTP_ADMIN_LINK_REFUSED, /example|:\/\//);
   });
 });
 
@@ -388,6 +412,7 @@ describe('a request to test a web2 admin link typed on a page', () => {
       'not-linked',
       'owner-mismatch',
       'owner-unconfirmed',
+      'plain-http-refused',
       'redirected',
       'stored-token-elsewhere',
       'token-accepted',

@@ -771,6 +771,27 @@ describe('a retirement the admin has not answered', () => {
     assert.equal(retirements.rows.size, 0);
   });
 
+  it('is kept for one whose pushes the plain http rule stopped, which the admin may hold from before it', async (t) => {
+    logLines(t);
+    let plainHttp = true;
+    const { publisher, clock, events, profiles, sent, retirements } = publisherFor({
+      answer: (request) => (plainHttp ? 'refused-plain-http' : request.kind === 'store' ? 'stored' : 'retired'),
+    });
+    publisher.start();
+    t.after(() => publisher.stop());
+    assert.equal(await publisher.pushNow('stage-one'), 'refused-plain-http');
+    profiles.delete('stage-one');
+    events.publish(removal('stage-one', 1, clock));
+    await settle();
+    assert.equal(sent.filter((request) => request.kind === 'retire').length, 1);
+    assert.equal(retirements.rows.size, 1, 'kept until the link can take it');
+
+    plainHttp = false;
+    await clock.advance(STAGE_PUSH_INTERVAL_MS);
+    assert.equal(sent.filter((request) => request.kind === 'retire').length, 2);
+    assert.equal(retirements.rows.size, 0);
+  });
+
   it('is kept for one pushed while the link had no token, cleared to rotate it, and sent once it has one', async (t) => {
     logLines(t);
     const { publisher, clock, events, profiles, sent, retirements, link } = publisherFor({

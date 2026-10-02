@@ -135,11 +135,36 @@ batch from before stages until the catalogue is moved, is "Upgrading" in the rep
 
 **The link is https in production.** Every push carries the stored token, each
 stage's SRT passphrase and its token hash, so the link's address is the https
-one the edge serves the admin on. The Manager settings card warns under a plain
-http address to another host than the manager's own
-(`plainHttpAdminLinkWarning` in `common/src/managerAdminLink.ts`), and a save of
-one logs a warning. Both are warnings: a loopback address, or a test setup,
-still saves.
+one the edge serves the admin on. The manager takes plain http only to its own
+host: a loopback address, `host.docker.internal` or the bridge address it
+resolves to, or a name that resolves into one of the Docker networks of the
+manager's container, such as the admin's compose service name on the same
+host. Every address the name resolves to has to be one of those. A name that
+does not resolve from the manager now is neither taken nor refused: Docker's own
+DNS answers no address for a service whose container is not running, so a link
+to the admin's service reads so while the admin is stopped or redeployed. A save
+of such a name is taken, a send to it is not made and comes to `unreachable`,
+and the next send judges it again once it resolves. The text of an address cannot
+tell a service name from another host's name, so `plainHttpAdminLinkHost` in
+`common/src/managerAdminLink.ts` only picks out the host to judge, and the
+manager judges it by what it resolves to
+(`manager/src/domain/adminLink/plainHttpAdminLink.ts`). The card says nothing
+while an address is typed. A save of plain http to another host is refused with
+a sentence saying why, and every send to such an address, a push, a retirement,
+a catalogue call or Test connection with the manager's token, is not made: a
+push comes to `refused-plain-http` and the test to `plain-http-refused`. The
+manager's `ADMIN_LINK_ALLOW_PLAIN_HTTP=true` takes plain http to any host, for a
+test setup, and a save of one then logs a warning.
+
+On upgrading to a manager with this rule, a link already saved in plain http to
+another host stops pushing: the stages and the catalogue stamp say
+`refused-plain-http` until the link is given its https address or the manager
+is given `ADMIN_LINK_ALLOW_PLAIN_HTTP=true`. A link on the manager's own host,
+https or plain, goes on as before. Moving the same admin from http to https
+changes the link's origin, and a retirement still pending for the old origin is
+then dropped, with a log line, so the stage behind it stays active at the
+admin. Switch the link once the pending retirements have gone through: the log
+names each retirement as the admin answers it.
 
 **A token the version sets cannot be rotated.** A deployment whose version's
 env files set `ADMIN_API_TOKEN` is given that value at every deploy, in place of
@@ -209,7 +234,9 @@ settings card, and the stored token the wizard presents for a token of its
 own, is the registrar's. It is proved on the admin's registrar check,
 `GET <address>/api/internal/registrar` with the bearer token, which answers
 `204` (`token-accepted`) or the admin's own 401 (`token-refused`), and no owner
-is compared. The uploader's routes refuse that token since phase 9, so the
+is compared. That token goes in plain http only where the manager's pushes may,
+so an address in plain http to another host answers `plain-http-refused` and is
+not asked; an uploader's token goes wherever its uploader would send it. The uploader's routes refuse that token since phase 9, so the
 lookup below would read it as refused. An admin older than the check answers
 its own `404 not_found` there only past its door, and only then is the lookup
 below asked with the same token, which such an admin still takes. This holds
@@ -247,7 +274,8 @@ with. Any other answer to the stage read is `owner-unconfirmed`, and the
 catalogue owner is not asked, since it is not a stage's. Both are compared the
 way the uploader compares them, without case and with or without `0x`.
 
-It takes http and https alone, follows no redirect and says so, gives up after
+It takes http and https alone, plain http for the manager's token only to the
+manager's own host, follows no redirect and says so, gives up after
 five seconds a request, the uploader's own lookup timeout, and reads at most
 64 KiB of an answer. It never throws, and the answer is one outcome code, never
 anything the admin said, the address or a token. The log names who tested and

@@ -176,7 +176,14 @@ describe('the last push', () => {
   });
 
   it('is an error where the admin refused it or none answered, and off where the operator left it unpushed', () => {
-    for (const outcome of ['refused-token', 'refused-record', 'unreachable', 'redirected', 'not-admin'] as const) {
+    for (const outcome of [
+      'refused-token',
+      'refused-record',
+      'refused-plain-http',
+      'unreachable',
+      'redirected',
+      'not-admin',
+    ] as const) {
       assert.equal(pushView({ outcome, at: AT }, NOW).tone, 'err', outcome);
     }
     for (const outcome of ['skipped-not-linked', 'skipped-other-origin'] as const) {

@@ -160,3 +160,54 @@ describe('retiring a stage', () => {
     );
   });
 });
+
+describe('an admin link in plain http to another host', () => {
+  const refused = async () => 'refused' as const;
+
+  it('is sent nothing, and the call answers refused-plain-http', async (t) => {
+    const fetched = t.mock.method(globalThis, 'fetch', async () => {
+      throw new Error('no request may leave');
+    });
+    const baseUrl = 'http://admin.example:3000';
+    assert.equal(
+      await sendStageRequest({ kind: 'store', baseUrl, token: TOKEN, record }, { plainHttp: refused }),
+      'refused-plain-http',
+    );
+    assert.equal(
+      await sendStageRequest(
+        { kind: 'retire', baseUrl, token: TOKEN, stageId: STAGE_ID, observedAt: '2026-09-28T10:00:05.000Z' },
+        { plainHttp: refused },
+      ),
+      'refused-plain-http',
+    );
+    assert.equal(fetched.mock.callCount(), 0);
+  });
+
+  it('is sent nothing while its name does not resolve, and the call answers unreachable', async (t) => {
+    const fetched = t.mock.method(globalThis, 'fetch', async () => {
+      throw new Error('no request may leave');
+    });
+    const outcome = await sendStageRequest(
+      { kind: 'store', baseUrl: 'http://web2-admin-backend:3000', token: TOKEN, record },
+      { plainHttp: async () => 'unresolved' },
+    );
+    assert.equal(outcome, 'unreachable');
+    assert.equal(fetched.mock.callCount(), 0);
+  });
+
+  it('is judged on the link’s address, and one taken is sent as before', async (t) => {
+    const admin = await fakeAdmin(t, json(200, { stored: true }));
+    const judged: string[] = [];
+    const outcome = await sendStageRequest(
+      { kind: 'store', baseUrl: admin.base, token: TOKEN, record },
+      {
+        plainHttp: async (url) => {
+          judged.push(url);
+          return 'allowed-by-setting';
+        },
+      },
+    );
+    assert.equal(outcome, 'stored');
+    assert.deepEqual(judged, [admin.base]);
+  });
+});
