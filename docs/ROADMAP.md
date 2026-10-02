@@ -326,11 +326,28 @@ the owner has tried it whole.
   until it is rotated in the manager. `GET /api/internal/registrar` proves the
   manager's stored token, and its Manager settings Test connection uses it.
   `use_manager_admin_token` is gone, and these pages close checkpoint 3.
+- Review of the pull request into `main` (#74, 2026-10-02): three reviews and
+  a review table, answered in #76 to #81 on `fix/stages--review-fixes`.
+  Decided: the admin's deploy script refuses the sample brand key and
+  registrar token unless it is given `--allow-sample-secrets`; a new
+  catalogue batch must be depth 18 or more, the batch already pinned and a
+  move back to it excepted, and warnings for a shallow batch come later; a
+  deploy on the manager's own Linux host binds every empty Bee API bind to the
+  Docker bridge address, and the catalogue node card warns when Docker shows
+  the node's API on every address; the manager sends the web2 admin plain
+  http only on its own host, unless `ADMIN_LINK_ALLOW_PLAIN_HTTP=true`; a
+  removed stage's retirement waits in the table migration 049 adds,
+  `pending_stage_retirements`, and is sent again until the admin answers it.
 
 Left open after the nine phases:
 
 - **The catalogue move** is built and off until the owner's trial on a real
   node, whose date goes here.
+- **The upgrade, scripted.** The rollout below is six manual steps in a fixed
+  order; a script with a check after each step comes before the QA control
+  host or the pilot is upgraded.
+- **Pending retirements** show only in the manager's log; the Stages page
+  could count them.
 - **Top-ups from the admin.** The admin reads every rung's stamp and
   chequebook and the catalogue batch; buying, topping up and funding stay in
   the manager's console until this is decided.
