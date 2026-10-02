@@ -12,7 +12,7 @@ export class CatalogueNodeRemovalError extends Error {
     super(
       movingFrom
         ? `${profileName} holds the batch the brand's catalogue is moving from, which keeps the catalogue's history until the web2 admin reports the move done. Release the previous batch on the Manager settings page before removing it.`
-        : `${profileName} is the brand's catalogue node, and the web2 admin writes the catalogue through it. Clear the designation on the Manager settings page before removing it.`,
+        : `${profileName} is the brand's catalogue node: its batch stamps the catalogue's history. Move the catalogue to another node and release this batch on the Manager settings page before removing it.`,
     );
     this.name = 'CatalogueNodeRemovalError';
   }

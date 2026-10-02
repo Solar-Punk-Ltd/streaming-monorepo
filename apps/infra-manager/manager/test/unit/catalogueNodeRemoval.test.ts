@@ -80,7 +80,9 @@ it('refuses to remove the designated catalogue node, and claims nothing', async 
     h.orchestrator.startRemove(h.node),
     (err: unknown) =>
       err instanceof CatalogueNodeRemovalError &&
-      /Clear the designation on the Manager settings page before removing it\./.test(err.message),
+      /Move the catalogue to another node and release this batch on the Manager settings page before removing it\./.test(
+        err.message,
+      ),
   );
   assert.equal(h.runner.runs.length, 0);
   assert.equal(h.profiles.rows.get('catalogue')!.status, 'RUNNING');
