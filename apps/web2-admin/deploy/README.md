@@ -7,9 +7,8 @@ per host set up with `infra/edge/edge.sh`, serves it over HTTPS under its own
 name, and an SSH tunnel is the way in without it.
 
 `deploy.sh` is written so streaming-infra-manager can run it the way it runs
-swarm-hls-stream's: same flags, standard input closed, output streamed. That
-integration is the next step and is not done here; see "What the manager will
-call" below.
+swarm-hls-stream's: same flags, standard input closed, output streamed. The
+manager does not run it yet; see "Running it from the manager" below.
 
 ## One-time host setup
 
@@ -530,10 +529,11 @@ The Caddyfile disables Caddy's admin API. On the host's network it would
 listen on the host's `127.0.0.1:2019`, where any local user could rewrite the
 routes, and a new Caddyfile takes effect by recreating the container anyway.
 
-## What the manager will call
+## Running it from the manager
 
-The manager runs a stack's `deploy.sh` with `bash`, standard input from
-`/dev/null`, and each line of output streamed to the console:
+The manager does not run this script yet. It runs a stack's `deploy.sh` with
+`bash`, standard input from `/dev/null`, and each line of output streamed to
+the console:
 
 ```
 deploy.sh --profile=<name> --portSlot=<N> --host=<target> [service...]
@@ -573,15 +573,15 @@ node --test 'apps/web2-admin/deploy/test/*.test.mjs'
 ## Deliberately not here
 
 - **Manager integration.** See the section above.
-- **The uploader reaching `/api/internal`.** swarm-hls-stream's uploader calls
-  the admin's internal API. Without the edge nothing outside the host reaches
-  it. With the edge, nginx passes all of `/api/` through, so
+- **A filter on `/api/internal` at the edge.** swarm-hls-stream's uploader
+  calls the admin's internal API. Without the edge nothing outside the host
+  reaches it. With the edge, nginx passes all of `/api/` through, so
   `https://<ADMIN_DOMAIN>/api/internal` answers from anywhere, guarded by a
   bearer token alone: `INTERNAL_API_TOKEN` (32 characters or more, compared in
   constant time) on the manager's routes, and on the uploader's a stage's own
-  token, known by its sha256, and nothing else: since stages phase 9 the
-  uploader's routes refuse `INTERNAL_API_TOKEN`. Whether the uploader should use
-  that route, or the edge should refuse it, belongs with the manager
-  integration.
+  token, known by its sha256, and nothing else: the uploader's routes refuse
+  `INTERNAL_API_TOKEN`. The edge passes it through on purpose: an uploader on a
+  stage host reaches the admin there, at the link's address, on its stage's own
+  token.
 - **Stop, health and clean scripts, and database backups.** Use compose by hand
   (above) until they exist. `down -v` deletes the profile's database.
