@@ -18,7 +18,7 @@ export const STAGE_RECORD_SCHEMA_VERSION = 1 as const;
 export const STAGE_KINDS = ['abr-uploader', 'streamer'] as const;
 export type StageKind = (typeof STAGE_KINDS)[number];
 
-/** The ingest engines a stage can run. Only SRS stages take streams in this round; an OME stage is listed. */
+/** The ingest engines a stage can run. Only SRS stages take streams; an OME stage is listed. */
 export const STAGE_ENGINES = ['srs', 'ome'] as const;
 export type StageEngine = (typeof STAGE_ENGINES)[number];
 
@@ -37,8 +37,8 @@ export type StageReadinessTone = (typeof STAGE_READINESS_TONES)[number];
 /**
  * Where the token a stage's uploader presents came from: `own`, the one the manager generated for the deployment, or
  * `shared`, any other (one copied from the admin link by an older manager, typed, or set by the version). Only an
- * `own` token is taken on the uploader's routes; since phase 9 a `shared` one is refused there, and the stage must
- * have its token rotated in the manager, whose next deploy generates one of its own.
+ * `own` token is taken on the uploader's routes; a `shared` one is refused there, and the stage must have its token
+ * rotated in the manager, whose next deploy generates one of its own.
  */
 export const ADMIN_TOKEN_KINDS = ['own', 'shared'] as const;
 export type AdminTokenKind = (typeof ADMIN_TOKEN_KINDS)[number];

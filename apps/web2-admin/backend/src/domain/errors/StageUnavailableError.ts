@@ -1,7 +1,7 @@
 /**
  * Why a stage cannot take a stream: the admin was never told of it, the
- * manager retired it, or it runs an engine the admin takes no streams on yet
- * (OvenMediaEngine, in this round).
+ * manager retired it, or it runs an engine the admin takes no streams on
+ * (OvenMediaEngine: the admin takes streams on SRS only).
  */
 export type StageUnavailableReason = 'unknown' | 'retired' | 'unsupported';
 

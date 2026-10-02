@@ -485,6 +485,7 @@ describe('a move that cannot start', () => {
     assert.deepEqual(status.waiting, { targetBatchId: NEW, fromBatchId: OLD, slots: 2 });
     assert.equal(status.refusal?.problem, 'disabled');
     assert.match(status.refusal?.message ?? '', /not yet enabled on this installation/);
+    assert.match(status.refusal?.message ?? '', /CATALOGUE_MOVE_ENABLED=true; try the move on a scratch node first/);
     assert.equal((await refusal(moving)).problem, 'disabled');
     assert.equal(bee.under(NEW).length, 0);
   });

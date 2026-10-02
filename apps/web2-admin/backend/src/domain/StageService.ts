@@ -44,7 +44,7 @@ export interface CatalogueStampStore {
   clear(observedAt: string): Promise<RetireOutcome<CatalogueStampRow>>;
 }
 
-/** The engines the admin takes streams on in this round. An OvenMediaEngine stage is listed and takes none. */
+/** The engines the admin takes streams on: SRS only. An OvenMediaEngine stage is listed and takes none. */
 export const SUPPORTED_STAGE_ENGINES: readonly StageEngine[] = ['srs'];
 
 /** Whether a stage on this engine can take streams. */
