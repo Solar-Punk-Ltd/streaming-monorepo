@@ -110,7 +110,7 @@ export const TYPE_TOKEN_HERE = 'Type a token for this address';
 
 /** The line at the top of the Manager settings card. */
 export const MANAGER_LINK_LEAD =
-  'New uploader deployments start linked to this web2 admin, with the switch on in the new-deployment wizard. A deployment keeps what it was created with, so a change here reaches only deployments created after it.';
+  'New uploader deployments start linked to this web2 admin, with the switch on in the new-deployment wizard. The manager pushes the stage of every deployment linked to this admin to this address with this token, so a new token is used at the next push. A deployment keeps the address it was created with, so an address of another admin here stops its pushes.';
 
 export const MANAGER_LINK_URL_HINT =
   'Where the uploaders reach the web2 admin. Leave it empty for no default, which takes the stored token out too.';

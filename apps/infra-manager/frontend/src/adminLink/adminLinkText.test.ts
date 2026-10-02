@@ -12,6 +12,7 @@ import {
   ADMIN_LINK_TEST_REACH,
   adminLinkTestSeverity,
   adminLinkTestText,
+  MANAGER_LINK_LEAD,
   OWN_TOKEN_TITLE,
   ownTokenDetail,
 } from './adminLinkText';
@@ -93,6 +94,13 @@ describe('the sentence for each Test connection outcome', () => {
     assert.equal(
       ADMIN_LINK_TEST_REACH,
       "The test runs from where the manager runs, so an address only the deployment's own network can reach reads as unreachable here.",
+    );
+  });
+
+  it('says on Manager settings what a change of the link does to the deployments that exist', () => {
+    assert.equal(
+      MANAGER_LINK_LEAD,
+      'New uploader deployments start linked to this web2 admin, with the switch on in the new-deployment wizard. The manager pushes the stage of every deployment linked to this admin to this address with this token, so a new token is used at the next push. A deployment keeps the address it was created with, so an address of another admin here stops its pushes.',
     );
   });
 });
