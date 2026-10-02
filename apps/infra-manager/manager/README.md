@@ -784,7 +784,8 @@ admin. The manager builds its stage record, `stageRecordSchema` in
 `ADMIN_API_URL` is on the link's origin: when the deployment changes, every 30
 seconds while it runs, and before a deploy starts its uploader, which never
 holds the deploy. A removed deployment is retired with `DELETE` at the same
-path. The record carries the ingest encoders dial, the owner the stage signs
+path; the retirement is written with the deletion (migration 049) and sent again
+every 30 seconds and at start until the admin answers it. The record carries the ingest encoders dial, the owner the stage signs
 as, its rungs' stamps and chequebooks, the uploader's reading, the readiness the
 console shows and the sha256 of the uploader's admin token, and never a key, a
 token, an RPC endpoint or a node address. Each push comes to one outcome code,

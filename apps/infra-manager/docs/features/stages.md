@@ -139,10 +139,22 @@ taken as the deployment's row is deleted, with the deployment's `instance_id`
 and kind. A push in flight is waited for first, since it may be the stage's
 first.
 
+A retirement is kept until the admin answers it. The removal writes it into the
+manager's database in the transaction that deletes the deployment's row
+(`pending_stage_retirements`, migration 049), and the publisher sends it, then
+sends it again every 30 seconds and when the manager starts, until the admin
+answers `retired` or `not-retired`. Then the row is deleted. A retirement that
+keeps failing is logged once, with its outcome, and again only when the outcome
+changes. One the manager stopped before sending, between the deletion and the
+event, is sent when it starts again, as of that moment.
+
 Every moment the admin orders by is the manager's own: a record's `observedAt`
 is taken as its deployment's row is read, before the node and uploader
 readings, and a retirement's as the row is deleted, so a 30-second pass that
-starts before a removal and ends after it still carries the earlier moment.
+starts before a removal and ends after it still carries the earlier moment. A
+retirement sent again carries the same moment. One found at start with no
+moment takes the moment it is found, which is later than every record of the
+stage, since none is read once the row is gone.
 
 ## To whom
 
@@ -155,13 +167,20 @@ linked to another admin, one not linked at all, or any while the link stores no
 token, is skipped with an outcome saying which.
 
 A retirement goes to the link its records went to, and only while the link is
-still on that origin. A deployment removed before its first push since the
+still on that origin: one whose link has moved to another origin since is
+dropped, and the log says so. While the link stores no address or no token, a
+retirement waits for one. A deployment removed before its first push since the
 manager started is retired at the current link as well, by the `instance_id`
 the removal event carries, and with the link's token: one whose push was not
 made yet, and one this manager pushed before a restart and not since. The admin
 retires the stage it holds, or keeps a tombstone of one it never stored, so a
 retirement it did not need changes nothing there. A deployment the manager
-skipped since it started, linked to another admin or to none, is not retired.
+skipped since it started, linked to another admin or to none, is not retired,
+and its row is deleted. A deployment whose pushes stopped at the manager's own
+link is retired all the same, since the admin may hold its stage from before: a
+link in plain http to another host (`refused-plain-http`), or one with no token,
+as while a token is cleared to rotate it (`skipped-no-link`). Its retirement
+waits until the link takes it.
 
 ## Outcomes
 
@@ -464,6 +483,9 @@ in Chrome through all three.
 ## Limits
 
 - One admin link per manager: a stage on another admin's origin is not pushed.
+- A deployment whose record could not be put together since the manager
+  started (`skipped-no-record`) is not retired when it is removed, so a stage
+  the admin stored from a push before a restart stays active there.
 - The catalogue stamp record goes to the link as it is now. A link moved to
   another admin leaves the old one holding the last record it was sent.
 - The last catalogue reading and push are in memory, and a restarted manager
@@ -473,7 +495,9 @@ in Chrome through all three.
   deployment that is gone and was never pushed or seen is dropped from memory.
 - The outcomes are in memory. A restarted manager says "not pushed yet" until
   its first push. A running stage is pushed within 30 seconds of the start, and
-  one removed before that is retired at the current link by its id.
+  one removed before that is retired at the current link by its id. A
+  retirement is not in memory: it is kept in the database until the admin
+  answers it, and a restarted manager sends it at start.
 - A deployment whose `ADMIN_API_URL` moves to another origin is no longer
   pushed, and the stage it was stays at the admin it left until that admin
   retires it.

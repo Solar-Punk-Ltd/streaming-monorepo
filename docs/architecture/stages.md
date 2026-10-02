@@ -224,7 +224,9 @@ In `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
   it runs, and before a deploy starts its uploader, so the uploader's first call finds its token
   known. A deleted deployment is retired the same way, by the `instance_id` and the moment its
   `profile.deleted` event carries, at the current link with its token, whether or not the manager
-  pushed it since it started. The client is bounded like the Test connection probe: http and https
+  pushed it since it started. The retirement is written into the manager's database with the
+  deletion and kept until the admin answers it, `retired` or `not-retired`: it is sent again every
+  30 seconds and when the manager starts. The client is bounded like the Test connection probe: http and https
   alone, no redirects, five seconds, a small answer read, and an outcome code, never what the far
   end said, in the log and on the deployment page. In production the link is https, which the edge
   provides: every push carries the registrar token, each stage's SRT passphrase and its token

@@ -25,6 +25,7 @@ import { ScriptRunner } from './domain/ScriptRunner.js';
 import { SrtIngestHealthService } from './domain/srtIngest/SrtIngestHealthService.js';
 import { readManagerId } from './domain/stages/managerIdentity.js';
 import { StagePublisher } from './domain/stages/StagePublisher.js';
+import { StageRetirementRepository } from './domain/stages/StageRetirementRepository.js';
 import { StageRecordBuilder } from './domain/stages/StageRecordBuilder.js';
 import { beeApiUrlFor, beePublisherUrlFor, StampService } from './domain/StampService.js';
 import { localBeeApiBindReader, localPublisherHost } from './domain/localHost.js';
@@ -409,6 +410,7 @@ async function main(): Promise<void> {
     },
     builder: stageBuilder,
     link: managerAdminLink,
+    retirements: new StageRetirementRepository(database.pool),
     events: eventBus,
   });
   const publisher = stagePublisher;
