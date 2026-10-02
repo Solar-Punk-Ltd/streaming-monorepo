@@ -1,6 +1,6 @@
 import type { BeeNodeObservation, BeeNodeState, BeeReadinessView } from '@streaming-infra-manager/common';
 
-// Declared beside the readiness list that reads it, in the common package since 2026-09-28.
+// Declared beside the readiness list that reads it, in the common package.
 export type { BeeReadinessView } from '@streaming-infra-manager/common';
 
 /** How old a reading may get before this view stops vouching for it. */

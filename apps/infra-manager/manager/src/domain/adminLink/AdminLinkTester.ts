@@ -23,8 +23,8 @@ const logger = Logger.getInstance();
 
 /**
  * The outcomes of an admin that took the token. A token the manager did not generate for the deployment is still
- * taken by an admin older than stages phase 9, which a rollout runs for a while (docs/architecture/stages.md), so
- * at the link's address such a token reads as `token-not-own` whatever that admin answered: the phase 9 admin
+ * taken by an older admin, which an upgrade runs for a while (docs/architecture/stages.md), so at the link's address
+ * such a token reads as `token-not-own` whatever that admin answered: an admin that takes only a stage's own token
  * refuses it.
  */
 const TOOK_THE_TOKEN: readonly AdminLinkTestOutcome[] = [
@@ -100,7 +100,7 @@ export class AdminLinkTester {
    * link's address, typed, copied from the link by an older manager, or the
    * version's, is `token-not-own`: the admin takes only a token of the
    * deployment's own from an uploader, and a rotation gives it one. So is
-   * such a token that an admin older than phase 9 still took.
+   * such a token that an older admin still took.
    */
   async testDeployment(name: string, username: string): Promise<AdminLinkTestAnswer> {
     const profile = await this.profiles.findByName(name);

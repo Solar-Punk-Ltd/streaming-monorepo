@@ -19,7 +19,7 @@ const TEST_TEXT: Readonly<Record<AdminLinkTestOutcome, string>> = {
     'The stored token was saved for another address, so it was not sent here, and the token has to be typed again for this address.',
   'token-refused': 'The web2 admin answered but refused the token.',
   'token-not-own':
-    "This deployment's token is not one the manager generated for it, and the web2 admin on Manager settings takes no other from an uploader since stages phase 9, so rotate the uploader's admin token on the deployment page and redeploy.",
+    "This deployment's token is not one the manager generated for it, and the web2 admin on Manager settings takes no other from an uploader, so rotate the uploader's admin token on the deployment page and redeploy.",
   'token-not-registered':
     "The web2 admin does not know this deployment's own token yet, because the manager has not registered the stage with it: a deploy does that before the uploader starts, so deploy or wait for the next push.",
   'not-admin': 'Something answered at this address, but not the way a web2 admin does.',

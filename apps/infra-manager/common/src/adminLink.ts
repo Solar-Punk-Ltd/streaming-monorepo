@@ -40,8 +40,7 @@ export interface AdminLinkBefore {
 
 /**
  * Why a stored `ADMIN_API_TOKEN` is refused at the address of the manager's link while the link stores a token: the
- * web2 admin there takes only a token of the deployment's own from an uploader (stages phase 9). The wizard's group
- * says it too.
+ * web2 admin there takes only a token of the deployment's own from an uploader. The wizard's group says it too.
  */
 export const TYPED_TOKEN_AT_LINK =
   'The web2 admin on Manager settings takes only a token of its own from an uploader, so a token typed for its address would be refused. Choose A token of its own, or leave ADMIN_API_TOKEN empty so the first deploy generates one.';

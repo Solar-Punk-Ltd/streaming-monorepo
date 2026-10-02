@@ -38,9 +38,9 @@ import type { UploaderHealthReading, UploaderHealthState, UploaderStartGateWarni
 
 /**
  * The readiness list of a deployment: one step for each thing it needs before
- * it does its job, in the order an operator acts on them. It lived in the
- * console until 2026-09-28 and moved here so the manager can work out a
- * stage's readiness in the same words, from the readings it takes itself.
+ * it does its job, in the order an operator acts on them. It sits here, in the
+ * common package, so the manager can work out a stage's readiness in the
+ * console's words, from the readings it takes itself.
  */
 
 /** What the Bee API observation came to, as the console words it (`beeReadinessView`). */

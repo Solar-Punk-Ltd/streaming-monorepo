@@ -9,8 +9,8 @@ import {
 } from '@streaming-infra-manager/common';
 
 // The readiness sentences write these, and the readiness composition lives in
-// the common package since 2026-09-28, so the manager works it out in the same
-// words. They are passed on here so every page keeps importing them from one place.
+// the common package, so the manager works it out in the same words. They are
+// passed on here so every page keeps importing them from one place.
 export { BZZ_DECIMALS, formatDateTime, formatTokenBalance, formatTtl, NO_VALUE, shortHex, XDAI_DECIMALS };
 
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
