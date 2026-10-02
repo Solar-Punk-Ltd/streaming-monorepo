@@ -795,8 +795,10 @@ curl -sS -X DELETE http://127.0.0.1:9877/api/internal/stages/5f0c2a8e-1b2c-4d3e-
 ## Migrations
 
 `src/migrations/NNN_name.sql`, applied in order inside a transaction at every
-boot and recorded in `_migrations` (`src/domain/Database.ts`). Add a file, never
-edit an applied one; `001_init.sql` carries the rationale for each table in its
+boot and recorded in `_migrations` (`src/domain/Database.ts`) by file name
+alone, so a database that already applied a file never runs it again. Add a
+file for a change, and never change an applied one's SQL; a corrected comment
+is harmless. `001_init.sql` carries the rationale for each table in its
 header. `pnpm build` copies the directory into `dist`. `007_audit_log.sql` is
 the audit log below, and `008_streams_user_id_set_null.sql` stops removing a
 user from deleting the streams they drafted. The latest six are
