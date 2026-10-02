@@ -24,7 +24,7 @@ without `BEE_URL`, `POSTAGE_BATCH_ID` and `INGEST_HOST`.
 | Keys            | Every stage signs its feeds with its own key. The brand key signs the catalogue alone and never leaves the admin.                                                                            |
 | Catalogue stamp | A batch of its own, immutable and deep, on a dedicated catalogue node the manager runs, pinned by id. Never a batch a rung stamps segments with.                                             |
 | Scope           | The admin reads. Top-ups, purchases and chequebooks stay in the manager's console.                                                                                                           |
-| Engines         | SRS stages only in this round. An OvenMediaEngine stage is listed and marked as not supported.                                                                                               |
+| Engines         | SRS stages only. An OvenMediaEngine stage is listed and marked as not supported.                                                                                                             |
 
 ## Why these
 
@@ -62,7 +62,7 @@ that receives them.
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `schemaVersion`                          | 1                                                                                                                                       |
 | `stageId`                                | the deployment's `instance_id`                                                                                                          |
-| `managerId`                              | the manager's own generated id, so two managers linked to one admin cannot collide                                                      |
+| `managerId`                              | the manager's own generated id, which names the manager a record came from                                                              |
 | `name`, `kind`, `engine`, `stackVersion` | for display; `kind` is `abr-uploader` or `streamer`, `engine` `srs` or `ome`                                                            |
 | `status`                                 | the deployment's status as the manager reports it                                                                                       |
 | `observedAt`                             | when the manager read what the record says; an older record never replaces a newer one                                                  |
@@ -146,9 +146,10 @@ records only when something arrived. So the two hosts' clocks never need to agre
 - The `PUT`s answer `{ stored }`. The `DELETE`s answer `{ retired }` and `{ cleared }`
   (`stageRetireAnswerSchema`, `catalogueStampClearAnswerSchema`), true only when the call
   retired or cleared something the admin held, and false otherwise, a kept tombstone included.
-- The last manager to push a stage wins. A stage record's `managerId` replaces the stored one, so
-  a manager reinstalled with a new id takes its stages back. The move is audited as a
-  `stage.change`.
+- The newest record of a stage wins, whichever manager pushed it: the admin replaces the stored
+  stage only when the record's `observedAt` is not older than the one it holds. Its `managerId`
+  then replaces the stored one, so a manager reinstalled with a new id takes its stages back, and
+  the change is audited as a `stage.change`.
 
 The console gets `GET /api/stages`: every stage with its readiness and stamp readings and when
 the manager last confirmed them, without the passphrase or the token hash, and
@@ -395,7 +396,7 @@ straight into the feed's chunk with no timestamp, so the same bytes make the sam
 same addresses. The job is resumable and runs while the old batch still has days of life.
 
 **The move is off by default.** `CATALOGUE_MOVE_ENABLED` in the admin's env file turns it on,
-and it stays off on every installation until the owner has tried it on a real node, by
+and it stays off on every installation until the move has been tried on a real node, by
 [Trying the move on a real node](#trying-the-move-on-a-real-node) below. Until then the Stages
 page says the move is not yet enabled on this installation. The manager's move and release work
 with the admin's move off: they change which batch is designated and which is guarded, and while
@@ -463,8 +464,8 @@ migration 014; the admin backend's README has the detail):
 
 ### Trying the move on a real node
 
-For the owner, once, before `CATALOGUE_MOVE_ENABLED` is turned on anywhere. Nothing in the
-repository runs this; every unit and integration test uses a fake Bee.
+Once, before `CATALOGUE_MOVE_ENABLED` is turned on anywhere. Nothing in the repository runs
+this; every unit and integration test uses a fake Bee.
 
 1. **Set up a scratch installation.** A testnet or scratch Bee node as a Bee-only deployment of
    a scratch manager, and a scratch admin with its own `FEED_PRIVATE_KEY` and `FEED_TOPIC`, so no
