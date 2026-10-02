@@ -120,12 +120,13 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
 6. **The web2 admin.** From `apps/web2-admin`, make the profile's env file from the sample and fill
    in what it asks for: `POSTGRES_PASSWORD`, `FEED_PRIVATE_KEY`, the brand key the catalog is
    signed with, and `INTERNAL_API_TOKEN`, the registrar token the manager pushes with. Generate
-   your own key and token. The sample's values are public and the deploy script refuses them. The
-   admin takes no stage settings: no ingest address, port or passphrase, no Bee node and no batch.
-   It learns each stage from the manager and writes the catalogue through the catalogue node the
-   manager designates, refusing to publish, saying why, until the manager has. The `INGEST_*`
-   keys, `BEE_URL` and `POSTAGE_BATCH_ID` an older env file carries are no longer read, and the
-   deploy names each one it finds.
+   your own key and token. The sample's values are public and the deploy script refuses them,
+   unless `--allow-sample-secrets` is given for a test install. The admin takes no stage settings:
+   no ingest address, port or passphrase, no Bee node and no batch. It learns each stage from the
+   manager and writes the catalogue through the catalogue node the manager designates, refusing to
+   publish, saying why, until the manager has. The `INGEST_*` keys, `BEE_URL` and
+   `POSTAGE_BATCH_ID` an older env file carries are no longer read, and the deploy names each one
+   it finds.
 
    ```sh
    cp backend/.env.sample backend/.env.brand-a

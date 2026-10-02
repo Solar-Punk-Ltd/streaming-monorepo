@@ -2,7 +2,7 @@
 # Deploy the web2 admin layer (postgres, API, console) to a host with Docker.
 #
 #   ./deploy/deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>]
-#                      [--remote-path=<dir>] [service...]
+#                      [--remote-path=<dir>] [--allow-sample-secrets] [service...]
 #
 # The grammar is swarm-hls-stream's, because streaming-infra-manager already
 # runs that stack's deploy.sh as `deploy.sh --profile=<name> --portSlot=<N>
@@ -53,13 +53,14 @@ readonly KNOWN_SERVICES="postgres api web"
 # console is on 8080, and both are often tunnelled from one laptop.
 readonly DEFAULT_WEB_PORT=9090
 # The public keys a fresh copy of .env.sample carries. They make a checkout
-# start, and they must never sign a real catalogue or guard a real internal API.
+# start, and they must never sign a real catalogue or guard a real internal API,
+# so a deploy refuses them unless --allow-sample-secrets is given.
 readonly SAMPLE_FEED_PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 readonly SAMPLE_INTERNAL_API_TOKEN="change-me-to-32-or-more-random-characters"
 
 usage() {
     cat <<'USAGE'
-Usage: deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path=<dir>] [service...]
+Usage: deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path=<dir>] [--allow-sample-secrets] [service...]
 
   deploy.sh --host=admin-host                          Deploy the default profile (apps/web2-admin/backend/.env)
   deploy.sh --host=admin-host --profile=brand-a        Deploy profile brand-a (apps/web2-admin/backend/.env.brand-a)
@@ -68,7 +69,7 @@ Usage: deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remo
   deploy.sh --host=admin-host --profile=brand-a api    Rebuild and restart the API only
   deploy.sh --host=localhost --profile=brand-a         Deploy on this machine, no rsync and no ssh
 
-Flags (each also accepts a separate value, as in --host admin-host):
+Flags (each one with a value also accepts it separately, as in --host admin-host):
   --host=<target>       Required. An ssh alias from ~/.ssh/config, user@host, or
                         "localhost" for this machine. There is no default host.
   --profile=<name>      Profile name, ^[a-z0-9][a-z0-9-]{0,30}$. Default: "default".
@@ -82,6 +83,11 @@ Flags (each also accepts a separate value, as in --host admin-host):
   --remote-path=<dir>   Absolute checkout path on the host. Default:
                         /opt/streaming/streaming-monorepo, shared by every
                         profile. Not accepted with --host=localhost.
+  --allow-sample-secrets
+                        Deploy a FEED_PRIVATE_KEY or INTERNAL_API_TOKEN that is
+                        still the public value from .env.sample, with a warning
+                        for each. For a test install only: without it, either
+                        value refuses the deploy.
   -h, --help            Show this help.
 
 Services: postgres api web. None named means all three.
@@ -105,6 +111,7 @@ HOST=""
 PROFILE="default"
 PORT_SLOT=""
 REMOTE_PATH=""
+ALLOW_SAMPLE_SECRETS=false
 SERVICES=()
 # The flags that appeared, so an empty value can be told from an absent flag.
 GIVEN=""
@@ -132,6 +139,10 @@ while [ $# -gt 0 ]; do
         --remote-path=*)
             REMOTE_PATH="${1#*=}"
             GIVEN="$GIVEN --remote-path"
+            shift
+            ;;
+        --allow-sample-secrets)
+            ALLOW_SAMPLE_SECRETS=true
             shift
             ;;
         --host | --profile | --portSlot | --remote-path)
@@ -315,6 +326,18 @@ problem() {
     PROBLEMS=$((PROBLEMS + 1))
 }
 
+# A value still the sample's is public. It refuses the deploy, and only warns
+# when --allow-sample-secrets says the install is a test one.
+SAMPLE_SECRETS=0
+sample_secret() {
+    if [ "$ALLOW_SAMPLE_SECRETS" = true ]; then
+        warn "$* Deploying anyway: --allow-sample-secrets."
+    else
+        problem "$*"
+        SAMPLE_SECRETS=$((SAMPLE_SECRETS + 1))
+    fi
+}
+
 # The password goes into DATABASE_URL unescaped (see docker-compose.yml), and
 # compose interpolates a dollar sign, so anything outside the URL-safe set
 # would reach the API as a different password or a broken URL.
@@ -342,14 +365,14 @@ elif ! [[ "$FEED_PRIVATE_KEY" =~ ^0x[0-9a-fA-F]{64}$ ]]; then
 elif [[ "$FEED_PRIVATE_KEY" =~ ^0x0{64}$ ]]; then
     problem "FEED_PRIVATE_KEY is all zeroes, which is not a private key."
 elif [ "$(lower "$FEED_PRIVATE_KEY")" = "$SAMPLE_FEED_PRIVATE_KEY" ]; then
-    warn "FEED_PRIVATE_KEY is the public Hardhat test key from .env.sample. Anyone can write this catalogue's feed. Generate a key of your own for anything real."
+    sample_secret "FEED_PRIVATE_KEY is the public Hardhat test key from .env.sample. Anyone can write this catalogue's feed. Generate a key of your own."
 fi
 
 INTERNAL_API_TOKEN="$(env_value INTERNAL_API_TOKEN)"
 if [ "${#INTERNAL_API_TOKEN}" -lt 32 ]; then
     problem "INTERNAL_API_TOKEN must be at least 32 characters (got ${#INTERNAL_API_TOKEN})."
 elif [ "$INTERNAL_API_TOKEN" = "$SAMPLE_INTERNAL_API_TOKEN" ]; then
-    warn "INTERNAL_API_TOKEN is the placeholder from .env.sample. It registers stages and designates the catalogue batch, so generate a real one."
+    sample_secret "INTERNAL_API_TOKEN is the placeholder from .env.sample. It registers stages and designates the catalogue batch, so generate a real one."
 fi
 
 # The INGEST_* keys are no longer read: each stream's OBS details come from its
@@ -381,6 +404,9 @@ if [ -n "$ENV_WEB_PORT" ]; then
 fi
 
 if [ "$PROBLEMS" -gt 0 ]; then
+    if [ "$SAMPLE_SECRETS" -gt 0 ]; then
+        echo "[deploy] ERROR: a test install can keep the sample's values with --allow-sample-secrets. Anything real needs values of its own." >&2
+    fi
     die "$PROBLEMS problem(s) in $ENV_FILE_FROM_ROOT. Nothing was deployed. See $ENV_SAMPLE_FROM_ROOT for what each key means."
 fi
 
