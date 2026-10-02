@@ -310,7 +310,7 @@ describe('PUT /manager-settings/catalogue-node', () => {
     assert.deepEqual((await api.read()).body?.designation, saved.body?.designation);
   });
 
-  it('answers no reading for a batch other than the one designated', async (t) => {
+  it('answers no reading while the last reading is of another batch than the one designated', async (t) => {
     const api = await testApi(t);
     const saved = await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: OTHER_BATCH });
     assert.equal(saved.status, 200);

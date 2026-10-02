@@ -636,7 +636,7 @@ describe(
       assert.equal((await call(`/profiles/${name}`)).status, 404);
     });
 
-    it('stores the address alone, copies no token, and takes the retired flag and ignores it', async () => {
+    it('stores the address alone and copies no token', async () => {
       const token = 'offline-mock-manager-token-0123456789abcdef';
       assert.equal((await managerLink({ url: ADMIN_URL, token })).status, 200);
       const name = `mock-linked-${nextProfile++}`;
