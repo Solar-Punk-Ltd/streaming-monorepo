@@ -62,9 +62,12 @@ ones: see "Upgrading from before the move into apps/web2-admin" below.
 The script refuses to deploy, before anything leaves your machine, when a key
 the API cannot start without is missing or malformed: `POSTGRES_PASSWORD`,
 `FEED_PRIVATE_KEY` and `INTERNAL_API_TOKEN` (32 characters or more), plus the
-optional keys the API refuses when they are set wrong. It warns, and carries
-on, when a value is still the sample's: the public Hardhat key, the placeholder
-token.
+optional keys the API refuses when they are set wrong. It also refuses a
+`FEED_PRIVATE_KEY` or an `INTERNAL_API_TOKEN` that is still the sample's: the
+public Hardhat key, the placeholder token. Anyone could write the stream list
+with the one and register stages with the other. A test install can keep them
+with `--allow-sample-secrets`, and the script then warns about each one and
+deploys.
 
 No Bee node or batch is set here either: the catalogue is written through the
 catalogue node and batch the manager designates and pushes. An env file that
@@ -108,7 +111,7 @@ From `apps/web2-admin`:
 The full grammar:
 
 ```
-deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path=<dir>] [service...]
+deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path=<dir>] [--allow-sample-secrets] [service...]
 ```
 
 - `--host` is required, and there is no default host. It is an ssh alias,
@@ -121,9 +124,12 @@ deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path
 - `--remote-path` is an absolute path on the host, default
   `/opt/streaming/streaming-monorepo`. It is not accepted with
   `--host=localhost`.
+- `--allow-sample-secrets` deploys an env file whose `FEED_PRIVATE_KEY` or
+  `INTERNAL_API_TOKEN` is still the sample's, with a warning for each. It is
+  for a test install only. Without it, either value refuses the deploy.
 - Services are `postgres`, `api` and `web`. None named means all three. Compose
   starts whatever a named service depends on.
-- Each flag also takes its value as the next word (`--host admin-host`), as
+- Each flag with a value also takes it as the next word (`--host admin-host`), as
   swarm-hls-stream's do. An empty value (`--portSlot=`) is an error, never the
   default. Anything else starting with a dash is refused.
 - `HEALTH_TIMEOUT` in the environment sets how long the host waits for the
