@@ -210,7 +210,7 @@ export function catalogueRemovalRefusal(name) {
   if (catalogueDesignation.profileName === name) {
     return {
       error: 'catalogue_node_designated',
-      message: `${name} is the brand's catalogue node, and the web2 admin writes the catalogue through it. Clear the designation on the Manager settings page before removing it.`,
+      message: `${name} is the brand's catalogue node: its batch stamps the catalogue's history. Move the catalogue to another node and release this batch on the Manager settings page before removing it.`,
     };
   }
   if (catalogueDesignation.movingFromProfileName === name) {
