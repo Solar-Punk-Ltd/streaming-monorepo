@@ -388,11 +388,11 @@ from its first deploy, and its catalogue starts on the catalogue node.
 
 A top-up keeps the batch id and extends the life of every chunk it stamped, the history
 included; nothing changes in the admin but the readings. Moving to another batch means stamping
-the history again: the admin rewrites every slot of the feed, in order, with the exact bytes
-it recorded, under the new batch, re-uploads the thumbnails the latest entry names, then writes
-with the new batch. bee-js puts a payload straight into the feed's chunk with no timestamp, so
-the same bytes make the same chunks at the same addresses. The job is resumable and runs while
-the old batch still has days of life.
+the history again: the admin rewrites every slot of the feed, in order, with the exact bytes it
+recorded, under the new batch, then every thumbnail a stream names, published or not, and every
+one the latest entry names, and then the admin writes with the new batch. bee-js puts a payload
+straight into the feed's chunk with no timestamp, so the same bytes make the same chunks at the
+same addresses. The job is resumable and runs while the old batch still has days of life.
 
 **The move is off by default.** `CATALOGUE_MOVE_ENABLED` in the admin's env file turns it on,
 and it stays off on every installation until the owner has tried it on a real node, by
