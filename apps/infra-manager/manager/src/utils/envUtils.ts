@@ -1,5 +1,6 @@
 import { chmodSync, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { copyFile } from 'node:fs/promises';
+import { isIPv4 } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -272,6 +273,44 @@ export interface ProfileEnvValues {
    * `localBeeUploader` is.
    */
   gatewayMode?: NodeMode | null;
+  /**
+   * The address this deployment's Bee APIs are bound to wherever neither the
+   * base .env nor the operator names one: the docker bridge address the
+   * manager reaches a local node on. Null or absent for a deployment on
+   * another host, whose API has to answer the control host, and wherever the
+   * manager could not confirm the bridge, which leaves the stack's default.
+   */
+  localBeeApiBind?: string | null;
+}
+
+/**
+ * The host-side address of each Bee node's published API in the stack's
+ * compose file. Bee's API asks for no password, and an empty one publishes it
+ * on every address.
+ */
+export const BEE_API_BIND_KEYS = [
+  'BEE_UPLOADER_API_BIND',
+  'BEE_GATEWAY_API_BIND',
+  'BEE_RUNG_480P_API_BIND',
+  'BEE_RUNG_720P_API_BIND',
+  'BEE_RUNG_1080P_API_BIND',
+] as const;
+
+/**
+ * The Bee API binds a deploy writes where nothing names one, from
+ * `localBeeApiBind`, or none. Unlike the managed lines these give way: a value
+ * the base .env or the operator sets stands, 0.0.0.0 included, which is how a
+ * node that a host elsewhere reaches is opened on purpose.
+ */
+export function beeApiBindLines(values: ProfileEnvValues): ManagedEnvLines {
+  const bind = values.localBeeApiBind;
+  if (bind === undefined || bind === null) return {};
+  if (!isIPv4(bind)) {
+    throw new Error(
+      `refusing to write BEE_UPLOADER_API_BIND to the env file: the bridge address is not an IPv4 address`,
+    );
+  }
+  return Object.fromEntries(BEE_API_BIND_KEYS.map((key) => [key, bind]));
 }
 
 /**
@@ -556,7 +595,8 @@ export function managedEnvLines(
 
 /**
  * The deployment's env file: the version's base `.env`, then the values the
- * operator stored for this deployment, then every managed line.
+ * operator stored for this deployment, then each fallback for a key both left
+ * empty, then every managed line.
  *
  * The managed lines go last so that nothing stored can take their place,
  * whatever reached the store. A stored value is checked here as well as where
@@ -567,6 +607,7 @@ export function renderProfileEnv(
   baseText: string,
   managed: ManagedEnvLines,
   stored: Readonly<Record<string, string>> = {},
+  fallbacks: ManagedEnvLines = {},
 ): string {
   let contents = baseText;
   for (const [key, value] of Object.entries(stored)) {
@@ -575,6 +616,10 @@ export function renderProfileEnv(
       throw new Error(`refusing to write ${key} to the env file: it ${problem}`);
     }
     contents = upsertEnvLine(contents, key, value);
+  }
+  const named = parseEnvText(contents);
+  for (const [key, value] of Object.entries(fallbacks)) {
+    if (!named[key]) contents = upsertEnvLine(contents, key, value);
   }
   for (const [key, value] of Object.entries(managed)) {
     contents = upsertEnvLine(contents, key, value);
@@ -593,7 +638,12 @@ export function writeProfileEnv(
 ): string {
   const basePath = baseEnvPath(root);
   const baseContents = existsSync(basePath) ? readFileSync(basePath, 'utf8') : '';
-  const contents = renderProfileEnv(baseContents, managedEnvLines(values, baseContents), stored);
+  const contents = renderProfileEnv(
+    baseContents,
+    managedEnvLines(values, baseContents),
+    stored,
+    beeApiBindLines(values),
+  );
 
   const path = profileEnvPath(root, name);
   writeFileSync(path, contents, { encoding: 'utf8', mode: ENV_FILE_MODE });

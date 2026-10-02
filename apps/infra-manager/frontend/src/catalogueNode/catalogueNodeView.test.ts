@@ -18,6 +18,8 @@ import {
 
 import {
   CATALOGUE_RELEASE_LABEL,
+  CATALOGUE_API_EVERY_ADDRESS_WARNING,
+  catalogueApiWarning,
   catalogueBatchViews,
   catalogueCandidates,
   catalogueMoveConfirmText,
@@ -205,5 +207,20 @@ describe('what the card says of the pinned batch', () => {
     assert.match(note, /leaves the catalogue on the pinned one/);
     assert.match(note, /Moving the catalogue to another batch is its own action\./);
     assert.match(note, /Top up the pinned batch here/);
+  });
+});
+
+describe('the pinned node’s Bee API', () => {
+  it('warns when Docker reports it published on every address, and says nothing otherwise', () => {
+    assert.equal(catalogueApiWarning({ apiOnEveryAddress: true }), CATALOGUE_API_EVERY_ADDRESS_WARNING);
+    assert.match(CATALOGUE_API_EVERY_ADDRESS_WARNING, /every address/);
+    assert.match(CATALOGUE_API_EVERY_ADDRESS_WARNING, /no password/);
+    assert.match(CATALOGUE_API_EVERY_ADDRESS_WARNING, /where the manager confirmed the bridge/);
+    assert.match(CATALOGUE_API_EVERY_ADDRESS_WARNING, /BEE_UPLOADER_API_BIND/);
+    assert.match(CATALOGUE_API_EVERY_ADDRESS_WARNING, /BEE_UPLOADER_API_LISTEN under host networking/);
+    assert.match(CATALOGUE_API_EVERY_ADDRESS_WARNING, /firewall must admit the control host alone/);
+    for (const apiOnEveryAddress of [false, null, undefined]) {
+      assert.equal(catalogueApiWarning({ apiOnEveryAddress }), null, String(apiOnEveryAddress));
+    }
   });
 });
