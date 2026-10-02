@@ -129,9 +129,10 @@ export function CatalogueMoveCard({
               <DialogContent>
                 <DialogContentText component="div">
                   Every slot of the catalogue, {waiting.slots} of them, is uploaded again under batch{' '}
-                  {shortHex(waiting.targetBatchId)} through the catalogue node, byte for byte, then every thumbnail the
-                  latest entry names, and then the admin writes with the new batch. Publishing goes on meanwhile. Keep
-                  the previous batch alive until this page says the move is done; then release it in the manager.
+                  {shortHex(waiting.targetBatchId)} through the catalogue node, byte for byte, then every thumbnail a
+                  stream names, published or not, and every one the latest entry names, and then the admin writes with
+                  the new batch. Publishing goes on meanwhile. Keep the previous batch alive until this page says the
+                  move is done; then release it in the manager.
                 </DialogContentText>
               </DialogContent>
               <DialogActions>

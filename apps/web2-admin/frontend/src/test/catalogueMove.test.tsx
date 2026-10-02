@@ -102,6 +102,11 @@ describe('the catalogue move on the Stages page', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Move the catalogue to batch b2b2b2b2…b2b2b2' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText(/Every slot of the catalogue, 5 of them/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        /every thumbnail a stream names, published or not, and every one the latest entry names/,
+      ),
+    ).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Move the catalogue' }));
 
     expect(await screen.findByText(/Moving the catalogue to batch b2b2b2b2…b2b2b2: 2 of 5 slots/)).toBeInTheDocument();
