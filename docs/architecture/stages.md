@@ -251,12 +251,15 @@ In `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
   record carries its sha256.
 - **The catalogue node.** A Bee-only deployment designated as the brand's catalogue node on the
   Manager settings page, next to the admin link, with its batch pinned by id. The manager refuses
-  a mutable batch or one whose kind the node did not report. Buying or using another batch on that
-  node leaves the catalogue on the pinned one, and the page says so; moving the catalogue is its
-  own action. Once a batch has been designated, the manager takes another only as a move, through
-  a clear as well, and the same batch can be designated again. A clear keeps the node and the
-  batch recorded; that node is not removed, and a pool string that names its batch or its Bee API
-  is refused on create and update. A move keeps the previous batch guarded until it is released
+  a mutable batch or one whose kind the node did not report, and a new batch shallower than depth
+  18: an immutable batch refuses a chunk whose bucket is full and a slot is written again at the
+  same address, so the first slot refused freezes the catalogue for every stage. Buying or using
+  another batch on that node leaves the catalogue on the pinned one, and the page says so; moving
+  the catalogue is its own action. Once a batch has been designated, the manager takes another
+  only as a move, through a clear as well, and the same batch can be designated again. A clear
+  keeps the node and the batch recorded; that node is not removed, and a pool string that names
+  its batch or its Bee API is refused on create and update. A move keeps the previous batch
+  guarded until it is released
   ([Moving the catalogue to another batch](#moving-the-catalogue-to-another-batch)).
 - **A read of the stages** for the manager's own console, `GET /stages`, behind the session like
   every other route, and `GET /stages/:name/registration`, the last push of one deployment, which
@@ -459,8 +462,9 @@ repository runs this; every unit and integration test uses a fake Bee.
 
 1. **Set up a scratch installation.** A testnet or scratch Bee node as a Bee-only deployment of
    a scratch manager, and a scratch admin with its own `FEED_PRIVATE_KEY` and `FEED_TOPIC`, so no
-   brand's catalogue is touched. Buy two small immutable batches on the node, A and B (depth 17
-   or 18 is plenty: a catalogue slot is one chunk, or a few for a long list). Link the admin
+   brand's catalogue is touched. Buy two small immutable batches on the node, A and B (depth 18
+   or more, the shallowest a designation takes: a catalogue slot is one chunk, or a few for a long
+   list). Link the admin
    and designate the node with batch A.
 2. **Make history.** Create a few streams, give some a thumbnail, publish and unpublish them
    until the feed has a dozen slots or more. Make at least one catalogue longer than 4096 bytes

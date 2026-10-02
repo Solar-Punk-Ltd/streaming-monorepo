@@ -15,6 +15,8 @@ import {
   catalogueMoveRefusal,
   catalogueNodeProblem,
   catalogueReleaseFirstRefusal,
+  catalogueShallowBatchRefusal,
+  MIN_CATALOGUE_DEPTH,
   parseBeePublishers,
   shortHex,
 } from '@streaming-infra-manager/common';
@@ -108,8 +110,8 @@ function moveOf(row: CatalogueDesignationRow, reading: CatalogueReading | null):
  * The brand's catalogue node, which the Manager settings page designates: a Bee-only deployment of this manager and
  * one immutable batch its node holds, pinned by id. A designation is refused, with a sentence saying why, for a
  * deployment that is more than a Bee node or a rung of a node pool, and for a batch the node does not hold, one it
- * calls mutable, one whose kind it does not report, one that has expired, and one an ABR uploader stamps segments
- * with. A save, a clear and a release name the revision they read, as the admin link's do.
+ * calls mutable, one whose kind it does not report, one that has expired, one an ABR uploader stamps segments
+ * with, and a new one shallower than `MIN_CATALOGUE_DEPTH`. A save, a clear and a release name the revision they read, as the admin link's do.
  *
  * Once a batch has been designated it stays the catalogue's, through a clear as well: its slots are stamped by it, so
  * another batch is a move, saved only when the page confirms it as one, and the same batch can be designated again.
@@ -174,6 +176,12 @@ export class CatalogueDesignationService {
     if (batchProblem) throw new CatalogueNodeInputError([batchProblem]);
     if (!Number.isInteger(stamp.depth) || stamp.depth < 17 || stamp.depth > 64) {
       throw new CatalogueNodeInputError(['The node reported no depth for this batch that a batch can have.']);
+    }
+    // The minimum holds a new batch alone: the pinned one, designated again, and the one a move goes back to were
+    // designated before it, and their slots are already stamped there.
+    const known = batchId === pinnedBatchId || batchId === stored.movingFromBatchId;
+    if (!known && stamp.depth < MIN_CATALOGUE_DEPTH) {
+      throw new CatalogueNodeInputError([catalogueShallowBatchRefusal(stamp.depth)]);
     }
 
     const write = { profileName: profile.name, batchId, batchDepth: stamp.depth, at: new Date(this.now()) };

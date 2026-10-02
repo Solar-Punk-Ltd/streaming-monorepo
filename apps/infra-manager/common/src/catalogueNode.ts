@@ -172,6 +172,21 @@ export const CATALOGUE_NOT_HELD_REFUSAL =
 export const CATALOGUE_UNREACHABLE_REFUSAL =
   'The node did not answer, so whether this batch is immutable could not be checked. Try again once the node answers.';
 /**
+ * The shallowest batch a designation takes. An immutable batch refuses a chunk whose bucket is full, and a catalogue
+ * slot is written again at the same address, so the first slot refused freezes the catalogue for every stage until
+ * the batch is diluted. At depth 17 that comes after about 2,600 chunks, at depth 18 after about 18,000.
+ */
+export const MIN_CATALOGUE_DEPTH = 18;
+
+/**
+ * Why a new batch shallower than {@link MIN_CATALOGUE_DEPTH} cannot be the catalogue's. The batch already pinned is
+ * not held to it, nor a move back to the batch moved from, so a designation made before the minimum keeps working.
+ */
+export function catalogueShallowBatchRefusal(depth: number): string {
+  return `This batch has depth ${depth}. Its buckets are small enough that the catalogue would stop taking new slots after a few thousand writes, for every stage. Designate a batch of depth ${MIN_CATALOGUE_DEPTH} or more.`;
+}
+
+/**
  * Why a batch cannot both hold the catalogue and stamp an ABR uploader's segments, which a designation and a pool
  * string are both refused with: segments fill the batch the catalogue's slots live in.
  */
