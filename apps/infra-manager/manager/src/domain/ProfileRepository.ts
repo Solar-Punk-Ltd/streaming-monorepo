@@ -1,6 +1,7 @@
 import {
   ADMIN_API_TOKEN_KEY,
   type EngineSettings,
+  isStageKind,
   type NodeMode,
   nullify,
   type RpcEndpointSource,
@@ -17,6 +18,7 @@ import {
   PROFILE_SLOT_LOCK_KEY,
 } from './profileSql.js';
 import { ProfileConfigError } from './errors/index.js';
+import { PENDING_RETIREMENT_INSERT_SQL } from './stages/StageRetirementRepository.js';
 import type { StackSecrets } from './versions/stackSecrets.js';
 import type { ExpectedDeployOwner } from './versions/buildLedger.js';
 
@@ -698,8 +700,8 @@ export class ProfileRepository {
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock($1)', [PROFILE_SLOT_LOCK_KEY]);
-      const selected = await client.query<Pick<Profile, 'status' | 'instance_id' | 'intent_revision'>>(
-        'SELECT status, instance_id, intent_revision FROM profiles WHERE name = $1 FOR UPDATE',
+      const selected = await client.query<Pick<Profile, 'status' | 'instance_id' | 'intent_revision' | 'kind'>>(
+        'SELECT status, instance_id, intent_revision, kind FROM profiles WHERE name = $1 FOR UPDATE',
         [name],
       );
       const row = selected.rows[0];
@@ -732,6 +734,9 @@ export class ProfileRepository {
          AND ((holder_kind = 'job' AND holder_id = $1) OR (holder_kind = 'snapshot' AND split_part(holder_id, '/', 1) = $1))`,
         [name],
       );
+      // A stage's retirement is owed from the moment its row is gone, so it is written with the deletion: a manager that
+      // stops before the stage publisher hears of it still sends it when it starts again.
+      if (isStageKind(row.kind)) await client.query(PENDING_RETIREMENT_INSERT_SQL, [row.instance_id, name]);
       const result = await client.query<{ port_slot: number }>(
         'DELETE FROM profiles WHERE name = $1 RETURNING port_slot',
         [name],
