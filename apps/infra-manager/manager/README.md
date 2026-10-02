@@ -618,19 +618,19 @@ removal, checked again by the statement that takes the token out, one whose
 uploader is given another address than the link's, a link with no token, and a
 version whose env files set the token.
 
-**Rolling it out.** The admin is upgraded to phase 5 before the manager, and no
-uploader deployment is redeployed in between, so an older admin never meets a
-token of its own, which it would refuse. Phase 9 goes another way, on a host
-that runs the admin and manager from before stages: the catalogue node created,
-then the phase 9 manager with the node designated, then the phase 8 admin (the
-phase 8 state of `feat/stages`, commit `d29616851`; tag it, e.g.
-`web2-admin/stages-phase-8`, before `feat/stages` is merged to `main`, because a
-squash or rebase merge leaves that commit unreachable), then every scheduled
-stream given a stage, then every stage rotated and redeployed until the admin's
-Stages page says "Its own token" for all, then the phase 9 admin. Skipping the
-middle steps means every running uploader gets 401 until its stage is rotated
-and redeployed. "Upgrading" in the repository's `docs/self-hosting.md` has each
-step. A fresh installation needs none of this.
+**Rolling it out.** An admin from before stages refuses a token of its own, so a
+host that runs the admin and manager from before stages is upgraded in this
+order: the catalogue node created, then the manager that pushes stage records
+with the node designated, then the intermediate admin, which takes both the
+shared token and a stage's own (commit `d29616851` of `feat/stages`; tag it
+`web2-admin/stages-intermediate` before `feat/stages` is merged to `main`,
+because a squash or rebase merge leaves that commit unreachable), then every
+scheduled stream and every draft given a stage, then every stage rotated and
+redeployed until the admin's Stages page says "Its own token" for all, then the
+admin that refuses the shared token. Skipping the middle steps means every
+running uploader gets 401 until its stage is rotated and redeployed. "Upgrading"
+in the repository's `docs/self-hosting.md` has each step. A fresh installation
+needs none of this.
 
 In admin mode the uploader refuses to start without a token, so a save of a
 deployment's settings, or a create, that names either key and leaves an address

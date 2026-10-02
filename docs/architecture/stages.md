@@ -363,13 +363,14 @@ self-hosting guide, has each step in full:
    from before stages has no `/api/internal/stages` route, so every push comes to `not-admin`
    until step 2, which is harmless. Create no stage and rotate nothing yet.
 2. **Deploy the intermediate admin**, which takes stage records and still accepts the shared
-   token on an uploader's routes: commit `d29616851` of `feat/stages` (tag it, e.g.
-   `web2-admin/stages-intermediate`, before `feat/stages` is merged to `main`, because a squash
+   token on an uploader's routes: commit `d29616851` of `feat/stages` (tag it
+   `web2-admin/stages-intermediate` before `feat/stages` is merged to `main`, because a squash
    or rebase merge leaves that commit unreachable). It refuses every catalogue write, `503`, until
    it holds a catalogue stamp, which the manager pushes within ten seconds of its start.
 3. **Give every stream a stage** before any rotation: unpublish every scheduled stream, pick its
-   stage, publish it again. A stage on its own token is answered only about its own streams, and a
-   stream live at rotation keeps its live state until an operator unpublishes it.
+   stage, publish it again, and pick a stage for every draft. A stage on its own token is answered
+   only about its own streams, and a stream live at rotation keeps its live state until an operator
+   unpublishes it.
 4. **Rotate and redeploy every stage** until the admin's Stages page reads "Its own token" for all.
 5. **Deploy the admin that refuses the shared token**, the one this page describes.
 
