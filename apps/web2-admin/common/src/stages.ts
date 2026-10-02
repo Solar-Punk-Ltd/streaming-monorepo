@@ -210,7 +210,7 @@ export interface CatalogueMoveSummary {
   /** Slots uploaded again, and slots already under the target batch. */
   restamped: number;
   skipped: number;
-  /** Thumbnails uploaded again: every one a stream or the latest entry names, once the move is done. */
+  /** The thumbnails the move went through: every one a stream or the latest entry names, once the move is done. */
   thumbnails: number;
   /** Why a failed move stopped. */
   error: string | null;

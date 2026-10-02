@@ -215,7 +215,7 @@ export function pinnedReadingOf(record: CatalogueStampRecord): string | null {
   return JSON.stringify({ ...record.previous, observedAt: record.observedAt });
 }
 
-/** The one catalogue stamp row (migrations 010 and 011). */
+/** The one catalogue stamp row (migrations 010 and 013). */
 export class CatalogueStampRepository {
   constructor(private readonly pool: Pool) {}
 

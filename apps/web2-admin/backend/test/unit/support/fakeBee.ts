@@ -12,8 +12,9 @@
  * - `POST /bzz?name=`, `GET` and `HEAD /bzz/{ref}/`: a file, whose reference is a hash of its name, type and bytes,
  *   so the same file gives the same reference as Bee's manifest does.
  *
- * `beforeAnswer` runs before an upload is answered, so a test can write the catalogue while a move is on its way or
- * hold a call for ever, as a process that died would. `failNext` answers the next matching upload with an error.
+ * `beforeAnswer` runs before a single-owner chunk or a file upload is answered, never a `POST /bytes`, so a test can
+ * write the catalogue while a move is on its way or hold a call for ever, as a process that died would. `failNext`
+ * answers the next matching upload with an error.
  */
 import http from 'node:http';
 

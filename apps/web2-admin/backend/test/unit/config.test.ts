@@ -1,6 +1,6 @@
 /**
- * The env keys the catalogue stamp replaced. Unit test: the config module loaded twice in this process, under two
- * environments. `pnpm test`.
+ * The env keys the catalogue stamp replaced, and `CATALOGUE_MOVE_ENABLED`. Unit test: the config module loaded afresh
+ * in this process for each environment a test sets. `pnpm test`.
  *
  * `BEE_URL` and `POSTAGE_BATCH_ID` named the catalogue's node and batch until the manager's catalogue stamp did. The
  * config reads only the keys it names, so a host whose env file still sets them starts as one whose file does not,

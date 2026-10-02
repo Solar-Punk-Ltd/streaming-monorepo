@@ -14,8 +14,9 @@ export const SCHEDULE_LOCKED = 'The schedule cannot change once the stream has g
 
 /**
  * The stage field's helper text once the stage is fixed: the same sentences
- * the backend's `stage_locked` carries for its two reasons, which the console
- * shows as they come.
+ * the backend's `stage_locked` carries for two of its three reasons, the two
+ * the form tells from the stream alone. The console shows the backend's
+ * sentence as it comes, whatever the reason.
  */
 export const STAGE_LOCKED = {
   published: 'Unpublish the stream to change its stage; publishing fixed it.',
