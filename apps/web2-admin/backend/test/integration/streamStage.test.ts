@@ -288,7 +288,7 @@ describe('StreamRepository on stages', () => {
     const twin = randomUUID();
     const retiredAlone = randomUUID();
     // No other stage signs as this one, so only a list that takes retired stages has it.
-    const retiredOwner = '0x5e6d7c8b9a0f1e2d3c4b5a69788796a5b4c3d2e1';
+    const retiredOwner = '0x1111111111111111111111111111111111111111';
     await stages.upsert(splitStageRecord(stageRecord({ stageId: retired, name: 'Stage E', owner: ROTATED_OWNER })));
     await stages.upsert(splitStageRecord(stageRecord({ stageId: twin, name: 'Stage F', owner: ROTATED_OWNER })));
     await stages.upsert(splitStageRecord(stageRecord({ stageId: retiredAlone, name: 'Stage G', owner: retiredOwner })));
