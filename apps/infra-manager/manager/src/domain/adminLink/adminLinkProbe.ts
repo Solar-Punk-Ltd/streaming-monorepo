@@ -31,7 +31,7 @@ export interface AdminLinkProbeTarget {
 }
 
 export interface AdminLinkProbeOptions {
-  /** How long each of the two requests may take in all. */
+  /** How long each request may take in all: an uploader's check makes up to three, the registrar's up to two. */
   timeoutMs?: number;
   /** The most of a body that is read. The admin's own answers are a few hundred bytes. */
   maxBodyBytes?: number;

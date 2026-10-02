@@ -121,7 +121,7 @@ function kindOf(immutable: boolean | null | undefined): string {
   return 'kind not reported';
 }
 
-/** A fill as the card prints it, or a dash when the node did not say enough. */
+/** A fill as the card prints it, or "fill unknown" when the node did not say enough. */
 function fillOf(fillRatio: number | null): string {
   return fillRatio === null ? 'fill unknown' : `${formatFillPercent(fillRatio)} full`;
 }

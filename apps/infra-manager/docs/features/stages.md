@@ -341,10 +341,11 @@ there is no previous batch to release." when none is. The operator presses it
 once the admin reports the move done; the manager cannot tell that itself.
 
 There is no audit table. A designation, a move, a move back, a clear and a
-release are each logged with the user, the batches shortened, as in
+release are each logged with the user: a designation with its whole batch id,
+a move, a move back and a release with the batches shortened, as in
 `[Catalogue] operator released batch abababab…ababab on catalogue-node after
-the move to cdcdcdcd…cdcdcd`, and the row records who made the last of each and
-when.
+the move to cdcdcdcd…cdcdcd`, and a clear with none. The row records who made
+the last of each and when.
 
 ### What the manager keeps
 
