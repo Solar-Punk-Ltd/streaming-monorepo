@@ -19,11 +19,18 @@
  * stream address to compare with the admin's owner. The stored token is not
  * presented at an address on another origin than the link's, as the manager
  * does not present it there, and never as an uploader's.
+ *
+ * The manager judges plain http by what a name resolves to, which the mock
+ * cannot, so here a plain http host with a dot in it, such as
+ * `http://admin.offline.example`, is another host and its save is refused with
+ * the manager's sentence, and one without, such as a compose service name, is
+ * on the manager's host.
  */
 import {
   ADMIN_LINK_TEST_OUTCOMES,
   adminLinkTestProblems,
   managerAdminLinkProblems,
+  plainHttpAdminLinkHost,
   sameAdminOrigin,
 } from '@streaming-infra-manager/common';
 
@@ -75,7 +82,8 @@ async function save(req, res, readBody) {
       message: "The manager's settings changed after the page read them. Reload them and make the change again.",
     });
   }
-  const problems = managerAdminLinkProblems(body, managerAdminLink);
+  const plainHttp = plainHttpAdminLinkHost(body.url)?.includes('.') ? 'refused' : 'allowed';
+  const problems = managerAdminLinkProblems(body, managerAdminLink, plainHttp);
   if (problems.length > 0) return send(res, 400, { error: 'validation_error', errors: problems });
   managerAdminLink.url = body.url === '' ? null : body.url;
   if (managerAdminLink.url === null) managerAdminLink.tokenStored = false;

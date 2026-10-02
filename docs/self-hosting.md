@@ -161,7 +161,8 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
    It worked when it says "The web2 admin answered and took the token." The manager pushes every
    stage and the catalogue stamp with this token, and gives it to no uploader. The address is the
    edge's https one: every push carries this token and each stage's SRT passphrase and token hash,
-   and the card warns under a plain http address to another host.
+   and the manager refuses a plain http address to another host than its own unless its
+   `ADMIN_LINK_ALLOW_PLAIN_HTTP=true` is set, for a test setup.
    `apps/infra-manager/docs/features/web2-admin-link.md` has the details.
 
 9. **The Bee host and the catalogue node**, by the Bee host recipe below: the ABR node pool, and a

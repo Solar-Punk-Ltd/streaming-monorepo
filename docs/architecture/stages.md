@@ -230,8 +230,11 @@ In `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
   alone, no redirects, five seconds, a small answer read, and an outcome code, never what the far
   end said, in the log and on the deployment page. In production the link is https, which the edge
   provides: every push carries the registrar token, each stage's SRT passphrase and its token
-  hash. The Manager settings card warns under a plain http address to another host than the
-  manager's own, and a save of one is logged as a warning. A pool's rungs
+  hash. So the manager takes plain http only to its own host: a loopback address,
+  `host.docker.internal` or the bridge address it resolves to, or a name that resolves into a Docker
+  network of its container. It refuses to save any other plain http address, and sends nothing to
+  one saved before that rule, which comes to `refused-plain-http`, unless the manager's
+  `ADMIN_LINK_ALLOW_PLAIN_HTTP=true`, for a test setup, lets it. A pool's rungs
   are read on the deployments of this manager that stamp with each rung's batch, and a rung under
   another manager has no reading. `apps/infra-manager/docs/features/stages.md` is the page.
 - **The moments it stamps.** The admin orders everything by these, so they must be true:

@@ -131,6 +131,21 @@ export function beeLocalHost(raw: string | undefined): string | null {
   return value;
 }
 
+/**
+ * Whether the manager's web2 admin link may be plain http to any host, for a test setup. Off by default: the manager
+ * then saves and sends plain http only to its own host or a Docker network of its container, since every push carries
+ * the registrar token and each stage's SRT passphrase. `true` turns it on, and any value but `true`, `false` or none
+ * stops the manager at startup, as a malformed BEE_LOCAL_HOST does.
+ *
+ * Exported so the refusal can be tested without the process exiting.
+ */
+export function adminLinkAllowPlainHttp(raw: string | undefined): boolean {
+  const value = raw?.trim() ?? '';
+  if (value === '' || value === 'false') return false;
+  if (value === 'true') return true;
+  throw new Error(`ADMIN_LINK_ALLOW_PLAIN_HTTP must be true or false, got: ${raw}`);
+}
+
 export interface AppConfig {
   port: number;
   host: string;
@@ -149,6 +164,8 @@ export interface AppConfig {
   beeRpcEndpoint: string | null;
   /** See `beeLocalHost`. Null when the operator configured none. */
   beeLocalHost: string | null;
+  /** See `adminLinkAllowPlainHttp`. */
+  adminLinkAllowPlainHttp: boolean;
 }
 
 export const config: AppConfig = {
@@ -161,4 +178,5 @@ export const config: AppConfig = {
   stackVersionsRoot: optional('STACK_VERSIONS_ROOT', '/opt/streaming/streaming-infra-manager-versions'),
   beeRpcEndpoint: beeRpcEndpoint(process.env.BEE_RPC_ENDPOINT),
   beeLocalHost: beeLocalHost(process.env.BEE_LOCAL_HOST),
+  adminLinkAllowPlainHttp: adminLinkAllowPlainHttp(process.env.ADMIN_LINK_ALLOW_PLAIN_HTTP),
 };

@@ -47,7 +47,7 @@ function outcomeOf(request: CatalogueRequest, status: number, body: unknown): Ca
 
 /**
  * `PUT` or `DELETE <link>/api/internal/catalogue-stamp` with the link's token, on the stage client's rules: http and
- * https alone, no redirect followed, five seconds in all, at most 64 KiB of the answer read, and one outcome code.
+ * https alone, plain http only to the manager's own host, no redirect followed, five seconds in all, at most 64 KiB of the answer read, and one outcome code.
  * The body is checked against the contract's schema before it leaves, and one that fails is not sent.
  */
 export const sendCatalogueRequest: CatalogueSender = async (request, options = {}) => {
@@ -67,6 +67,6 @@ export const sendCatalogueRequest: CatalogueSender = async (request, options = {
     },
     options,
   );
-  if (answered === 'unreachable' || answered === 'redirected') return answered;
+  if (typeof answered === 'string') return answered;
   return outcomeOf(request, answered.status, answered.body);
 };

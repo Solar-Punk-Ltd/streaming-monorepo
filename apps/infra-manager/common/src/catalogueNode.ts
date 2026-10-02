@@ -61,6 +61,11 @@ export const CATALOGUE_PUSH_OUTCOMES = [
   'not-admin',
   /** The manager has no web2 admin link, or its link stores no token. */
   'skipped-no-link',
+  /**
+   * The link is plain http to another host than the manager's own, which the manager sends nothing to unless
+   * `ADMIN_LINK_ALLOW_PLAIN_HTTP` is on: a link saved before that rule, until it is given https.
+   */
+  'refused-plain-http',
   /** The designated deployment is not there any more. */
   'skipped-no-node',
   /** The record could not be put together, for the reason the log gives. */
@@ -80,6 +85,7 @@ export const CATALOGUE_PUSH_OUTCOME_TEXT: Readonly<Record<CataloguePushOutcome, 
   redirected: 'redirected, not followed',
   'not-admin': 'not a web2 admin',
   'skipped-no-link': 'not sent (the manager has no admin link with a token)',
+  'refused-plain-http': 'not sent (the admin link is plain http to another host)',
   'skipped-no-node': 'not sent (the designated deployment is gone)',
   'skipped-no-record': 'not sent (the record is incomplete)',
 };

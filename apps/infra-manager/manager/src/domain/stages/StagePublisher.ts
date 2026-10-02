@@ -91,7 +91,7 @@ interface StageEntry {
  * pushed before a restart, or before the token was cleared. A removed stage whose pushes came to one of these is
  * retired all the same, once the link takes it.
  */
-const RETIRED_THOUGH_UNPUSHED: readonly StagePushOutcome[] = ['skipped-no-link'];
+const RETIRED_THOUGH_UNPUSHED: readonly StagePushOutcome[] = ['refused-plain-http', 'skipped-no-link'];
 
 /** Outcomes where the admin was asked, so a later retirement has somewhere to go. */
 const ASKED: readonly StagePushOutcome[] = [
@@ -411,7 +411,7 @@ export class StagePublisher {
   /**
    * What this publisher kept of a removed deployment decides its retirement, and is dropped: `skipped` for one it
    * skipped since it started, else the origin its records went to, or null for one it never pushed, or whose pushes
-   * the manager's own link stopped for want of a token. `no-stage` for a
+   * the manager's own link stopped: the plain http rule, or no token. `no-stage` for a
    * kind that runs no uploader. An entry that names another stage, a later deployment of the same name, is not this
    * one's and stays.
    */
@@ -434,8 +434,8 @@ export class StagePublisher {
     if (entry.pushed) return { origin: entry.pushed.origin };
     // One removed before its first push is retired all the same, which the admin keeps as a tombstone, so a record of
     // it that arrives late does not register a deployment that is gone. So is one whose pushes stopped at the
-    // manager's own link, which the admin may hold from before: a token cleared to rotate it. It waits for the link to
-    // take it.
+    // manager's own link, which the admin may hold from before: the plain http rule, or a token cleared to rotate it.
+    // It waits for the link to take it.
     return entry.last === null || RETIRED_THOUGH_UNPUSHED.includes(entry.last.outcome) ? { origin: null } : 'skipped';
   }
 

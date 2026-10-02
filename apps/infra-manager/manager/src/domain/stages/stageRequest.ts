@@ -9,6 +9,7 @@ import {
 } from '@streaming-monorepo/contracts';
 
 import { boundedJson } from '../adminLink/adminLinkProbe.js';
+import { judgePlainHttpAdminLink, type PlainHttpJudge } from '../adminLink/plainHttpAdminLink.js';
 
 /**
  * One call the stage publisher makes: store a record, or retire a stage as of the moment the manager saw its
@@ -23,6 +24,8 @@ export interface StageRequestOptions {
   timeoutMs?: number;
   /** The most of an answer that is read. The admin's own answers are a few bytes. */
   maxBodyBytes?: number;
+  /** The rule for plain http to another host than the manager's own. The manager's own when left out. */
+  plainHttp?: PlainHttpJudge;
 }
 
 /** Sends one stage call and answers its outcome code. Never throws. */
@@ -55,11 +58,9 @@ function outcomeOf(request: StageRequest, status: number, body: unknown): StageP
 
 /**
  * `PUT` or `DELETE <link>/api/internal/stages/<id>` with the link's token, and a JSON body either way: the record,
- * or the moment the deployment was seen gone. On
- * the Test connection probe's rules: http and https alone, no redirect
- * followed, five seconds in all, at most 64 KiB of the answer read, and one
- * outcome code. Nothing the far end sent reaches the answer, and neither does
- * the address or the token.
+ * or the moment the deployment was seen gone. On the Test connection probe's rules: http and https alone, plain http
+ * only to the manager's own host, no redirect followed, five seconds in all, at most 64 KiB of the answer read, and
+ * one outcome code. Nothing the far end sent reaches the answer, and neither does the address or the token.
  */
 export const sendStageRequest: StageSender = async (request, options = {}) => {
   if (adminUrlProblem(request.baseUrl) !== null) return 'not-admin';
@@ -76,7 +77,7 @@ export const sendStageRequest: StageSender = async (request, options = {}) => {
     { baseUrl: request.baseUrl, path, method: request.kind === 'store' ? 'PUT' : 'DELETE', token: request.token, body },
     options,
   );
-  if (answered === 'unreachable' || answered === 'redirected') return answered;
+  if (typeof answered === 'string') return answered;
   return outcomeOf(request, answered.status, answered.body);
 };
 
@@ -92,12 +93,18 @@ export interface AdminCall {
 /**
  * Sends one JSON call with the link's token on the Test connection probe's rules: no redirect followed, five seconds
  * in all, at most 64 KiB of the answer read. Answers the status and the body read as JSON, or what stopped it. Never
- * throws, and what the far end sent goes to the caller alone.
+ * throws, and what the far end sent goes to the caller alone. An address in plain http to another host than the
+ * manager's own is sent nothing, since the call carries the registrar token, and answers `refused-plain-http`; one
+ * in plain http to a name that does not resolve now is sent nothing either, and answers `unreachable`.
  */
 export async function boundedAdminCall(
   call: AdminCall,
   options: StageRequestOptions = {},
-): Promise<{ status: number; body: unknown } | 'unreachable' | 'redirected'> {
+): Promise<{ status: number; body: unknown } | 'unreachable' | 'redirected' | 'refused-plain-http'> {
+  const plainHttp = await (options.plainHttp ?? judgePlainHttpAdminLink)(call.baseUrl);
+  if (plainHttp === 'refused') return 'refused-plain-http';
+  // A name that does not resolve now reaches nothing, and is judged again at the next call.
+  if (plainHttp === 'unresolved') return 'unreachable';
   const url = `${call.baseUrl.replace(/\/+$/, '')}${call.path}`;
   let response: Response;
   try {

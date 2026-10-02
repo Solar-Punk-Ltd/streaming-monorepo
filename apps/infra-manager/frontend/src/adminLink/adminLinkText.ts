@@ -26,6 +26,8 @@ const TEST_TEXT: Readonly<Record<AdminLinkTestOutcome, string>> = {
   redirected: 'This address answered with a redirect, so give the address the web2 admin itself answers on.',
   unreachable: 'The web2 admin did not answer from where the manager runs.',
   'invalid-address': 'This is not an http or https address the uploader can use.',
+  'plain-http-refused':
+    "This address is plain http to another host than the manager's own, so the manager's token was not sent there: give the https address the web2 admin is served on, or set ADMIN_LINK_ALLOW_PLAIN_HTTP=true on the manager for a test setup.",
   'not-linked': 'This deployment is not linked to a web2 admin, because ADMIN_API_URL is empty.',
   'no-token': 'There is no token to test with, and the uploader refuses to start with an address and no token.',
 };

@@ -17,7 +17,13 @@ import { describe, it } from 'node:test';
 
 import express from 'express';
 
-import { REQUESTED_WITH_HEADER, REQUESTED_WITH_VALUE, SESSION_COOKIE_NAME } from '@streaming-infra-manager/common';
+import {
+  PLAIN_HTTP_ADMIN_LINK_REFUSED,
+  type PlainHttpAdminLinkVerdict,
+  REQUESTED_WITH_HEADER,
+  REQUESTED_WITH_VALUE,
+  SESSION_COOKIE_NAME,
+} from '@streaming-infra-manager/common';
 
 import { errorHandler } from '../../src/api/middleware/errorHandler.js';
 import { createRequireSession } from '../../src/api/middleware/requireSession.js';
@@ -25,6 +31,7 @@ import { requireSameSite } from '../../src/api/middleware/requireSameSite.js';
 import { createManagerSettingsRouter } from '../../src/api/routes/managerSettings.js';
 import type { AuthService } from '../../src/domain/auth/AuthService.js';
 import { ManagerAdminLinkService } from '../../src/domain/adminLink/ManagerAdminLinkService.js';
+import type { PlainHttpJudge } from '../../src/domain/adminLink/plainHttpAdminLink.js';
 import { InMemoryManagerAdminLink } from '../support/InMemoryManagerAdminLink.js';
 
 const ADMIN_URL = 'https://admin.example.com';
@@ -43,13 +50,20 @@ const session = {
   },
 } as unknown as AuthService;
 
-async function testApi() {
+/**
+ * The manager's judgement of plain http, as it reads on a host where `web2-admin-backend` is a service on one of the
+ * manager container's Docker networks and every other host is another: no lookup leaves the test.
+ */
+const judgeOnOneHost: PlainHttpJudge = async (url) =>
+  url.startsWith('http://') && !/^http:\/\/(127\.0\.0\.1|web2-admin-backend)[:/]/.test(url) ? 'refused' : 'allowed';
+
+async function testApi(plainHttp: PlainHttpJudge = judgeOnOneHost) {
   const store = new InMemoryManagerAdminLink();
   const app = express();
   app.use(requireSameSite);
   app.use(express.json());
   app.use(createRequireSession(session));
-  app.use('/', createManagerSettingsRouter(new ManagerAdminLinkService(store)));
+  app.use('/', createManagerSettingsRouter(new ManagerAdminLinkService(store, plainHttp)));
   app.use(errorHandler);
 
   const server = http.createServer(app);
@@ -123,23 +137,69 @@ describe('PUT /manager-settings/admin-link', () => {
     }
   });
 
-  it('saves a plain http address to another host, and warns in the log without naming it or the token', async (t) => {
+  it('refuses a plain http address to another host, says why, and stores nothing', async () => {
+    const api = await testApi();
+    try {
+      const refused = await api.save({ expectedRevision: 0, url: 'http://admin.example:3000', token: TOKEN });
+      assert.equal(refused.status, 400, refused.text);
+      assert.ok(refused.text.includes(PLAIN_HTTP_ADMIN_LINK_REFUSED), refused.text);
+      assert.equal(refused.text.includes(TOKEN), false, refused.text);
+      assert.deepEqual(await api.store.storedLink(), { url: null, token: null });
+    } finally {
+      await api.close();
+    }
+  });
+
+  it('saves plain http to the manager’s own host, a Docker service name on it included, and warns of nothing', async (t) => {
     const lines: string[] = [];
     for (const level of ['info', 'warn', 'error', 'log'] as const) {
       t.mock.method(console, level, (...args: unknown[]) => lines.push(`${level} ${args.map(String).join(' ')}`));
     }
     const api = await testApi();
     try {
-      const plain = await api.save({ expectedRevision: 0, url: 'http://admin.example.com', token: TOKEN });
-      assert.equal(plain.status, 200, plain.text);
+      const service = await api.save({ expectedRevision: 0, url: 'http://web2-admin-backend:3000', token: TOKEN });
+      assert.equal(service.status, 200, service.text);
       const local = await api.save({ expectedRevision: 1, url: 'http://127.0.0.1:9877', token: TOKEN });
       assert.equal(local.status, 200, local.text);
       const secure = await api.save({ expectedRevision: 2, url: ADMIN_URL, token: TOKEN });
       assert.equal(secure.status, 200, secure.text);
+      assert.deepEqual(
+        lines.filter((line) => line.includes('plain http')),
+        [],
+      );
+    } finally {
+      await api.close();
+    }
+  });
+
+  it('saves plain http to a name that does not resolve yet, an admin service not started, for the sends to judge', async () => {
+    const api = await testApi(async () => 'unresolved');
+    try {
+      const saved = await api.save({ expectedRevision: 0, url: 'http://web2-admin-backend:3000', token: TOKEN });
+      assert.equal(saved.status, 200, saved.text);
+      assert.deepEqual(saved.body, { url: 'http://web2-admin-backend:3000', tokenStored: true, revision: 1 });
+    } finally {
+      await api.close();
+    }
+  });
+
+  it('saves plain http to another host while ADMIN_LINK_ALLOW_PLAIN_HTTP is on, and warns in the log without naming it or the token', async (t) => {
+    const lines: string[] = [];
+    for (const level of ['info', 'warn', 'error', 'log'] as const) {
+      t.mock.method(console, level, (...args: unknown[]) => lines.push(`${level} ${args.map(String).join(' ')}`));
+    }
+    const allowed: PlainHttpJudge = async (url): Promise<PlainHttpAdminLinkVerdict> =>
+      url.startsWith('http://') ? 'allowed-by-setting' : 'allowed';
+    const api = await testApi(allowed);
+    try {
+      const plain = await api.save({ expectedRevision: 0, url: 'http://admin.example.com', token: TOKEN });
+      assert.equal(plain.status, 200, plain.text);
+      const secure = await api.save({ expectedRevision: 1, url: ADMIN_URL, token: TOKEN });
+      assert.equal(secure.status, 200, secure.text);
 
       const warnings = lines.filter((line) => line.includes('plain http'));
       assert.equal(warnings.length, 1, lines.join('\n'));
-      assert.match(warnings[0]!, /^warn .*https address/);
+      assert.match(warnings[0]!, /^warn .*ADMIN_LINK_ALLOW_PLAIN_HTTP/);
       for (const line of lines) assert.ok(!line.includes(TOKEN) && !line.includes('admin.example.com'), line);
     } finally {
       await api.close();
@@ -166,7 +226,8 @@ describe('PUT /manager-settings/admin-link', () => {
   });
 
   it('refuses an address on another origin that would keep the stored token, and takes it with a new token or a cleared one', async () => {
-    const api = await testApi();
+    // Each address here is judged by the origin rule alone, plain http included.
+    const api = await testApi(async () => 'allowed');
     try {
       await api.save({ expectedRevision: 0, url: ADMIN_URL, token: TOKEN });
       for (const elsewhere of [
