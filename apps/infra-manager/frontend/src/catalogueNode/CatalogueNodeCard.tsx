@@ -30,6 +30,7 @@ import {
   CATALOGUE_RELEASED,
   CATALOGUE_SAVE_RACE,
   CATALOGUE_SAVED,
+  catalogueApiWarning,
   type CatalogueBatchView,
   catalogueBatchViews,
   catalogueCandidates,
@@ -228,6 +229,12 @@ function CatalogueEditor({
           {pinned ? ` ${cataloguePinnedNote(pinned)}` : ''}
         </Alert>
       )}
+
+      {designation && catalogueApiWarning(answer) ? (
+        <Alert severity="warning" sx={WRAPPED_ALERT} data-catalogue-api-exposed>
+          {catalogueApiWarning(answer)}
+        </Alert>
+      ) : null}
 
       <Typography variant="caption" data-catalogue-push sx={{ color: 'text.secondary' }}>
         {cataloguePushLine(answer.lastPush, now)}

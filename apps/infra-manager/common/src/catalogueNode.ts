@@ -130,6 +130,11 @@ export interface CatalogueNodeAnswer {
   reading: CatalogueReading | null;
   /** The last push or clear, or null before any since the manager started. */
   lastPush: CataloguePushState | null;
+  /**
+   * Whether Docker reports the pinned node's Bee API published on every address of its host: true, which the card
+   * warns about, false for an API bound to one address, null when nothing is pinned or Docker could not be read.
+   */
+  apiOnEveryAddress?: boolean | null;
 }
 
 /** What `PUT /manager-settings/catalogue-node` takes. */

@@ -23,6 +23,7 @@ import {
 import { Profile, ProfileStatus } from '../types/index.js';
 import {
   baseEnvPath,
+  beeApiBindLines,
   bootstrapStackDefaults,
   deleteProfileEnv,
   engineEnvPath,
@@ -465,6 +466,8 @@ export class DeploymentOrchestrator {
   /** The manager's web2 admin link, whose address a token of a deployment's own is generated for. */
   private managerAdminLink: Pick<ManagerAdminLinkStore, 'read'> | null = null;
   private removalGuard: RemovalGuard | null = null;
+  /** The bridge address a local deployment's Bee APIs are bound to where nothing names a bind, or none. */
+  private localBeeApiBind: (() => Promise<string | null>) | null = null;
 
   constructor(
     private readonly profiles: ProfileRepository,
@@ -506,6 +509,23 @@ export class DeploymentOrchestrator {
    */
   setManagerAdminLink(link: Pick<ManagerAdminLinkStore, 'read'> | null): void {
     this.managerAdminLink = link;
+  }
+
+  /**
+   * Sets what a deploy binds a local deployment's Bee APIs to where neither the version's base env nor the operator
+   * names a bind (`localBeeApiBindReader` in localHost.ts). Left unset, or answering null, the stack's default stands.
+   */
+  setLocalBeeApiBind(reader: (() => Promise<string | null>) | null): void {
+    this.localBeeApiBind = reader;
+  }
+
+  /**
+   * The bind for a deployment on this target: none for another host, whose Bee API has to answer the control host
+   * and whose firewall is what closes it.
+   */
+  private async localBeeApiBindFor(host: string | null): Promise<string | null> {
+    if (!this.localBeeApiBind || !isLocalTarget(targetAlias(host))) return null;
+    return this.localBeeApiBind();
   }
 
   /** Sets what a removal asks before it claims the deployment, a setter for the same reason as the one above. */
@@ -834,6 +854,7 @@ export class DeploymentOrchestrator {
       stackSecrets: StackSecrets;
       engineConfigFile: string | null;
       stored: Record<string, string>;
+      localBeeApiBind?: string | null;
     },
   ): ProfileEnvValues {
     return {
@@ -856,6 +877,7 @@ export class DeploymentOrchestrator {
       stackSecrets: withoutKeys(read.stackSecrets, Object.keys(read.stored)),
       stackEngineDefaults: version?.contract?.engineDefaults,
       engineConfigFile: read.engineConfigFile,
+      localBeeApiBind: read.localBeeApiBind ?? null,
       // From the profile's own components, deliberately not from the reserved
       // services: a held-back uploader is deployed on its own, and deploy.sh
       // must still resolve the local Bee address for it.
@@ -893,13 +915,14 @@ export class DeploymentOrchestrator {
       stackSecrets,
       engineConfigFile: await this.engineConfigPathFor(profile, engine, version),
       stored,
+      localBeeApiBind: await this.localBeeApiBindFor(profile.host),
     });
     const managed = managedEnvLines(values, baseText, { keepRefusedEngineSettings: true });
     const env = effectiveEnvOf({
       profile,
       contract: version.contract,
       target: targetAlias(profile.host),
-      rootEnvText: renderProfileEnv(baseText, managed, stored),
+      rootEnvText: renderProfileEnv(baseText, managed, stored, beeApiBindLines(values)),
       engineEnvText: readIfPresent(engineEnvPath(root, engine)),
     });
     const generatedToken = ADMIN_API_TOKEN_KEY in stored ? '' : (stackSecrets[ADMIN_API_TOKEN_KEY] ?? '');
@@ -1420,6 +1443,7 @@ export class DeploymentOrchestrator {
           stackSecrets: await this.stackSecretsFor(profile, version, paths.root, engine, stored),
           engineConfigFile,
           stored,
+          localBeeApiBind: await this.localBeeApiBindFor(reservation.host ?? profile.host),
         }),
         stored,
       );

@@ -94,6 +94,10 @@ interface Setup {
   profiles?: Profile[];
   /** What the node answers for a batch, or throws. */
   held?: (name: string, batchId: string) => Promise<BeeStamp>;
+  /** Whether Docker publishes the node's Bee API on every address, or throws. */
+  apiOnEveryAddress?: (profile: Profile) => Promise<boolean | null>;
+  /** The service's clock, the designation's moment unless a test moves it. */
+  now?: () => number;
 }
 
 async function testApi(t: TestContext, setup: Setup = {}) {
@@ -131,7 +135,8 @@ async function testApi(t: TestContext, setup: Setup = {}) {
       lastPush: { kind: 'store', outcome: 'stored', at: new Date(DESIGNATED_AT).toISOString() },
     }),
     changed: () => void (changes += 1),
-    now: () => DESIGNATED_AT,
+    apiOnEveryAddress: setup.apiOnEveryAddress,
+    now: setup.now ?? (() => DESIGNATED_AT),
   });
 
   const app = express();
@@ -198,12 +203,86 @@ describe('GET /manager-settings/catalogue-node', () => {
       revision: 0,
       reading: null,
       lastPush: { kind: 'store', outcome: 'stored', at: new Date(DESIGNATED_AT).toISOString() },
+      apiOnEveryAddress: null,
     });
   });
 
   it('is behind the session', async (t) => {
     const api = await testApi(t);
     assert.equal((await api.read({ authenticated: false })).status, 401);
+  });
+});
+
+/** Lets a reading started in the background by a GET come back. */
+const settled = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+describe('whether the pinned node’s Bee API answers on every address', () => {
+  it('answers what Docker reports for the pinned node, read in the background once a minute at most', async (t) => {
+    const asked: string[] = [];
+    let now = DESIGNATED_AT;
+    const api = await testApi(t, {
+      now: () => now,
+      apiOnEveryAddress: async (profile) => {
+        asked.push(profile.name);
+        return true;
+      },
+    });
+    assert.equal((await api.read()).body?.apiOnEveryAddress, null, 'nothing pinned, nothing read');
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    assert.equal((await api.read()).body?.apiOnEveryAddress, null, 'the first GET starts the reading');
+    await settled();
+    assert.equal((await api.read()).body?.apiOnEveryAddress, true);
+    assert.deepEqual(asked, ['catalogue']);
+    now += 61_000;
+    await api.read();
+    await settled();
+    assert.deepEqual(asked, ['catalogue', 'catalogue'], 'read again after a minute');
+  });
+
+  it('answers at once while a reading is pending, and two GETs start one reading', async (t) => {
+    let calls = 0;
+    let answer: (value: boolean) => void = () => undefined;
+    const api = await testApi(t, {
+      apiOnEveryAddress: () => {
+        calls += 1;
+        return new Promise<boolean>((resolve) => (answer = resolve));
+      },
+    });
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    const [first, second] = await Promise.all([api.read(), api.read()]);
+    assert.equal(first.status, 200);
+    assert.equal(first.body?.apiOnEveryAddress, null);
+    assert.equal(second.body?.apiOnEveryAddress, null);
+    assert.equal(calls, 1);
+    answer(true);
+    await settled();
+    assert.equal((await api.read()).body?.apiOnEveryAddress, true);
+    assert.equal(calls, 1);
+  });
+
+  it('answers null when Docker could not be read, warning once for the node and then at debug', async (t) => {
+    const warnings: string[] = [];
+    t.mock.method(Logger.prototype, 'warn', (...args: unknown[]) => void warnings.push(args.map(String).join(' ')));
+    t.mock.method(Logger.prototype, 'debug', () => undefined);
+    let now = DESIGNATED_AT;
+    const failing = await testApi(t, {
+      now: () => now,
+      apiOnEveryAddress: async () => {
+        throw new Error('Docker target probe failed');
+      },
+    });
+    await failing.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    for (let round = 0; round < 3; round++) {
+      await failing.read();
+      await settled();
+      assert.equal((await failing.read()).body?.apiOnEveryAddress, null);
+      now += 61_000;
+    }
+    assert.equal(warnings.length, 1, warnings.join('\n'));
+    assert.match(warnings[0]!, /catalogue/);
+    const none = await testApi(t);
+    await none.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    assert.equal((await none.read()).body?.apiOnEveryAddress, null);
   });
 });
 

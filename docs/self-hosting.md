@@ -98,6 +98,14 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
    sign-in page while `ssh control-1` is open. The first deploy takes a while, because the host
    builds the stack version the manager bundles.
 
+   Every Bee node the manager deploys on this host has its API bound to the Docker bridge address,
+   where neither the stack's `.env` nor the deployment names a bind, since the API asks for no
+   password ("Bind the node and engine APIs off the public interface" in
+   `apps/infra-manager/deploy/README.md`; the engine ports are still yours to bind). On a host
+   upgraded to this manager, a node is narrowed at its next deploy: one that something on another
+   host reaches by this host's public address needs `BEE_UPLOADER_API_BIND=0.0.0.0` in its own
+   settings, and the firewall to close the port.
+
 4. **The manager's first user**, on the host. It asks for the password twice.
 
    ```sh
