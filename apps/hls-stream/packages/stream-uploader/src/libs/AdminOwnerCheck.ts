@@ -18,9 +18,9 @@ export type AdminOwnerSource = Pick<AdminApiClient, 'describe' | 'fetchStageSelf
  *
  * 1. `GET /api/internal/stages/self` with this service's own token. An answer names the stage and
  *    its owner, and a mismatch refuses to start.
- * 2. A 404 there is a caller on the shared token, which belongs to no stage, or an admin older than
- *    stages. Both still sign as the brand key, so the owner compared is the one the admin's public
- *    `/api/config` names for its catalog, as before stages.
+ * 2. A 404 there is an admin from before stages, which has no such route, or the intermediate admin
+ *    answering the shared token. Both still sign as the brand key, so the owner compared is the one
+ *    the admin's public `/api/config` names for its catalog, as before stages.
  *
  * An admin that cannot be read yet is a warning rather than a refusal, because that is a deploy
  * ordering and the gate covers it. A failed read of the stage is not followed by the config, because
@@ -55,7 +55,7 @@ export async function assertAdminSignsAsThisService(
     return;
   }
 
-  // No stage for this token: the shared token, or an admin older than stages.
+  // No stage for this token: an admin from before stages, or the intermediate admin answering the shared token.
   const feedOwner = await adminApi.fetchFeedOwner();
   if (feedOwner === null) {
     logger.warn(
@@ -69,8 +69,8 @@ export async function assertAdminSignsAsThisService(
       `${admin} names no stage for this service's token and signs its catalog as ${feedOwner}, and this service ` +
         `signs its feeds as ${signerOwner}. On a token that is not a stage's own, STREAM_KEY and the owner the ` +
         "admin knows, its catalog's, have to be one address, or the admin's catalog entries point viewers at feeds " +
-        'nobody writes. Give this deployment a token of its own in the manager, so the admin knows its stage, or fix ' +
-        'its STREAM_KEY, and restart.',
+        `nobody writes. Fix this deployment's STREAM_KEY in the manager so it signs as ${feedOwner}, or, on the ` +
+        'intermediate admin, give it a token of its own in the manager so the admin knows its stage, and restart.',
     );
   }
   logger.info(
