@@ -52,9 +52,14 @@ deployment as well; nothing does now. The
 columns refuse a token with no address, a token under 32 characters and an empty
 address, as a backstop to the service.
 
-It applies to deployments created after it is set. A deployment keeps what it
-was created with in its own settings, so a change here reaches no deployment
-that exists.
+A deployment created after it is set starts with its address, and keeps what it
+was created with in its own settings. The link still reaches the deployments
+that exist, through their stages: the stage publisher pushes the record of
+every deployment whose `ADMIN_API_URL` is on the link's origin to the link's
+address with the link's token ([stages.md](stages.md#to-whom)). A new token is
+used at the next push. An address on another origin stops their pushes with
+`skipped-other-origin`, since each keeps its own address, and Limits, below,
+says what that does to a token of their own.
 
 ## A token of its own
 
