@@ -30,7 +30,10 @@ import { stageRecord } from '../unit/support/stageFakes.js';
 import { releaseStack, requireStack, stack } from './helpers.js';
 
 const OWNER = '90f8bf6a479f320ead074411a4b0e7944ea8c9c1';
-/** Stage A signs as `OWNER`, printed the way a stage record prints it; stage B with a key of its own. */
+/**
+ * Stage A signs as `OWNER`, with 0x and in upper case: the contract lower-cases an owner, but these fixtures are
+ * pushed without its parse. Stage B has a key of its own.
+ */
 const STAGE_A_OWNER = `0x${OWNER.toUpperCase()}`;
 const STAGE_B_OWNER = '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3';
 const ROTATED_OWNER = '0x4f0e1c2b3a49586772635441302f1e0d0c0b0a09';

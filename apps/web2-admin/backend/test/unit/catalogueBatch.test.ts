@@ -66,7 +66,7 @@ const GONE = 'The catalogue batch c2c2c2c2… is gone. Nothing can be written to
 const MUTABLE =
   "The catalogue batch c2c2c2c2… is mutable, and a mutable batch overwrites the catalogue's oldest slots once it fills. Nothing is written to the catalogue with it.";
 
-/** The row as migrations 010 and 011 leave it after `record` was pushed and `active` pinned. */
+/** The row as migrations 010 and 013 leave it after `record` was pushed and `active` pinned. */
 function row(
   record: CatalogueStampRecord | null,
   active: CatalogueStampRecord | null = null,
