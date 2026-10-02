@@ -66,7 +66,7 @@ SHLS_ROOT="$(mktemp -d)" BEE_LOCAL_HOST=127.0.0.1 DATABASE_URL=postgres://unused
   tsx --conditions=development --test test/unit/<file>
 ```
 
-The URL matters for more files than it did. Since 2026-10-01
+The URL matters even to files that never reach a database.
 `src/domain/localHost.ts` reads `BEE_LOCAL_HOST` from the config module, which
 checks it at load, so every file that reaches the local host reaches the config
 too, and the config refuses to load without a database URL.

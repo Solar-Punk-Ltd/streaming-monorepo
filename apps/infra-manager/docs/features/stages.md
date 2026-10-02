@@ -8,13 +8,14 @@ link names. The admin never calls the manager. The design is `docs/architecture/
 at the repository root; the record's shape is `stageRecordSchema` in
 `packages/contracts/src/stage.ts`.
 
-Status, 2026-09-29. Phase 3 of the brief, phase 5, which gives every
-uploader linked to the manager's admin a token of its own, phase 6, where every
-stage signs with a key of its own, phases 7 and 8, the catalogue node and its
-move, and phase 9, where the admin stops taking any other token from an
-uploader. Not deployed. A deployment created before phase 5 still presents the
-link's own token, reported as `shared`, which the admin refuses since phase 9:
-its token has to be rotated.
+Status, 2026-10-01, checked against the code at `372d1ff01`: built. The manager
+pushes every stage's record, every uploader it links to its admin gets a token
+of its own, every stage signs with a key of its own, the brand's catalogue is
+written through a node and a batch of its own and can move to another batch,
+the admin takes no other token from an uploader, and the console lists every
+stage on a Stages page. A deployment created by a manager from before stages
+still presents the link's own token, reported as `shared`, which the admin
+refuses: its token has to be rotated.
 
 **A key per stage.** Every stage's `STREAM_KEY` is its own, generated in the
 new-deployment wizard, and nothing asks for the admin's brand key: the admin
@@ -59,7 +60,7 @@ them reaches the JSON that is sent.
 
 ### The uploader's token
 
-Since phase 5 a deploy gives an uploader linked to the manager's admin a token
+A deploy gives an uploader linked to the manager's admin a token
 of its own, generated the first time, kept with the deployment's generated
 secrets and never replaced (`manager/src/domain/adminLink/ownAdminToken.ts`;
 [web2-admin-link.md](web2-admin-link.md) has the rule). The admin knows it by
@@ -73,15 +74,15 @@ deployment's Test connection answers `token-not-registered` rather than
 The next push carries no token, so the admin stops taking the old one; the
 next deploy generates a new one and its pre-start push registers it. A
 deployment on any token the manager did not generate, `shared`, which the admin
-refuses since phase 9, gets one of its own this way and no other: its Test
+refuses, gets one of its own this way and no other: its Test
 connection answers `token-not-own` until it has. The link's token is the
 registrar token these pushes present, and no uploader is given it.
 
 ### Readiness
 
 `common/src/readiness.ts` holds the readiness composition the console shows on
-every row and page, moved out of the console on 2026-09-28 with its checklist,
-so the manager works it out the same way. The record carries its verdict in the
+every row and page, with its checklist, in the common package so the manager
+works it out the same way. The record carries its verdict in the
 admin's four words, and the problem of every step that is not ok as a reason,
 in the list's order, so the first reason is the console's own label:
 
@@ -219,8 +220,8 @@ together once.
   "Web2 admin registration: <outcome> <N> s ago", read every ten seconds from
   `GET /stages/:name/registration`, and Rotate the uploader's admin token,
   `POST /profiles/:name/admin-token/rotate`, asked for first.
-- **The Stages page**, `#/stages`, in the navigation under Deployments. Built
-  2026-10-01, not deployed. One row per stage, by name, from `GET /stages`,
+- **The Stages page**, `#/stages`, in the navigation under Deployments. One
+  row per stage, by name, from `GET /stages`,
   read when the page opens and every 30 seconds after, the cadence a running
   stage is pushed on, and again on Refresh. Each row shows:
   - the stage's name, which opens its deployment page, with its kind, its
@@ -259,10 +260,6 @@ or `standalone`, none. `frontend/test/stage-card-browser.test.mjs` drives the
 card in Chrome; no browser suite drives the Stages page yet.
 
 ## The catalogue node
-
-Built on `stages/p7-catalogue-node`, phase 7 of the brief, 2026-09-28, and
-moving the catalogue to another batch on `stages/p8-catalogue-move`, phase 8,
-2026-09-28. Neither is deployed.
 
 The web2 admin writes the brand's catalogue through one Bee node and one batch
 of their own, so that no stage's segments fill the batch the catalogue's slots

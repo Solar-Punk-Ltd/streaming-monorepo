@@ -3,7 +3,7 @@
  * the create routes, the real service and in-memory rows.
  *
  * Unit test, no database and no deploy script. `pnpm test` in manager/. No
- * create copies the manager's stored token in any more: an uploader given the
+ * create copies the manager's stored token in: an uploader given the
  * link's address gets a token of its own at its first deploy, which
  * `ownAdminToken.test.ts` proves. This proves the create stores the address
  * alone, counts that token for the link's address and no other when it holds
@@ -218,8 +218,8 @@ describe("a create with a token typed for the manager's web2 admin address", () 
 });
 
 describe('use_manager_admin_token, which is gone', () => {
-  // Taken and ignored from 2026-09-28 until stages phase 9. A create drops a key its schema does not name, so an
-  // older script that still sends it is not refused, and nothing is copied whatever it says.
+  // A manager from before stages copied the link's token when a create sent it. A create drops a key its schema does
+  // not name, so an older script that still sends it is not refused, and nothing is copied whatever it says.
   it('is dropped as any key a create does not name, and the create stores the address alone', async () => {
     const app = await appFor();
     try {

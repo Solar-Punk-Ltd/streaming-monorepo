@@ -14,9 +14,9 @@
  * far end said. It follows no redirect, reads a bounded body, gives up after
  * its timeout, and sends the token to the admin's internal routes alone.
  *
- * `adminAnswering` is an admin of stages phases 5 to 8, which takes its
- * registrar token on the uploader's routes and has no registrar check;
- * `phase9Admin` is one of this version.
+ * `adminAnswering` is the intermediate admin, which takes its registrar token
+ * on the uploader's routes and has no registrar check; `ownTokenOnlyAdmin` is
+ * one of this version, which takes only a stage's own token there.
  */
 import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -75,7 +75,7 @@ function adminAnswering(
       if (request.headers.authorization !== `Bearer ${TOKEN}` && !onStage) {
         return json(response, 401, { error: 'unauthenticated' });
       }
-      // Up to phase 8, the shared token belongs to no stage, and is answered the 404 an unknown path gets.
+      // Here the shared token belongs to no stage, and is answered the 404 an unknown path gets.
       if (path === STAGE_SELF && onStage) {
         if (options.selfStatus) return json(response, options.selfStatus, { error: 'internal_error' });
         return json(response, 200, { stageId: STAGE_ID, owner: options.stageOwner ?? OWNER });
@@ -98,7 +98,7 @@ function adminAnswering(
 }
 
 /** A web2 admin of this version: the registrar token opens the registrar check alone, and the uploader's routes refuse it. */
-function phase9Admin(request: IncomingMessage, response: ServerResponse): void {
+function ownTokenOnlyAdmin(request: IncomingMessage, response: ServerResponse): void {
   const path = request.url ?? '';
   const authorization = request.headers.authorization;
   if (!path.startsWith('/api/internal/')) return json(response, 404, { error: 'not_found', path });
@@ -114,7 +114,7 @@ function phase9Admin(request: IncomingMessage, response: ServerResponse): void {
 
 describe("Test connection of the manager's own token, the registrar's", () => {
   it("proves it on the admin's registrar check alone, and asks nothing else", async () => {
-    const admin = await serve(phase9Admin);
+    const admin = await serve(ownTokenOnlyAdmin);
 
     assert.equal(
       await probeAdminLink({ url: `${admin.url}/`, token: TOKEN, check: 'registrar', feedOwner: OWNER }),
@@ -124,7 +124,7 @@ describe("Test connection of the manager's own token, the registrar's", () => {
   });
 
   it("takes the admin's 401 there as the token refused, a stage's own token included", async () => {
-    const admin = await serve(phase9Admin);
+    const admin = await serve(ownTokenOnlyAdmin);
 
     for (const token of [`${TOKEN}-wrong`, STAGE_TOKEN]) {
       assert.equal(
@@ -136,7 +136,7 @@ describe("Test connection of the manager's own token, the registrar's", () => {
   });
 
   it('reads the same token as refused on the lookup, which is why the lookup no longer proves it', async () => {
-    const admin = await serve(phase9Admin);
+    const admin = await serve(ownTokenOnlyAdmin);
 
     assert.equal(
       await probeAdminLink({ url: admin.url, token: TOKEN, check: 'uploader', feedOwner: null }),

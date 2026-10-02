@@ -35,7 +35,7 @@ describe('the sentence for each Test connection outcome', () => {
     assert.equal(adminLinkTestText('token-refused'), 'The web2 admin answered but refused the token.');
     assert.equal(
       adminLinkTestText('token-not-own'),
-      "This deployment's token is not one the manager generated for it, and the web2 admin on Manager settings takes no other from an uploader since stages phase 9, so rotate the uploader's admin token on the deployment page and redeploy.",
+      "This deployment's token is not one the manager generated for it, and the web2 admin on Manager settings takes no other from an uploader, so rotate the uploader's admin token on the deployment page and redeploy.",
     );
     assert.equal(adminLinkTestText('unreachable'), 'The web2 admin did not answer from where the manager runs.');
     assert.equal(

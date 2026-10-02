@@ -113,8 +113,8 @@ export function ownTokenElsewhere(state: WizardState, context: WizardContext): b
 
 /**
  * Whether the group asks for a token typed here at the address of the manager's link, while the link stores a token to
- * register one of the deployment's own with. That admin takes only a token of the deployment's own from an uploader
- * (stages phase 9), so a typed one would be refused there.
+ * register one of the deployment's own with. That admin takes only a token of the deployment's own from an uploader,
+ * so a typed one would be refused there.
  */
 export function typedTokenAtLink(state: WizardState, context: WizardContext): boolean {
   const choice = chosenAdminLink(state, context);

@@ -1,9 +1,8 @@
 /**
  * What a deployment is and where it stands, as far as its readiness needs to
- * know. These lived in the console's `deployments/shape.ts`,
- * `deployments/deploymentPhase.ts` and `data.ts` until the readiness
- * composition moved here, on 2026-09-28, so the manager can work out a stage's
- * readiness the way the console does. The console passes them on unchanged.
+ * know. They sit here with the readiness composition, so the manager can work
+ * out a stage's readiness the way the console does. The console passes them on
+ * unchanged.
  */
 
 import { CLIENT_SERVICE, STREAM_UPLOADER_SERVICE } from './constants.js';

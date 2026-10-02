@@ -60,8 +60,8 @@ const CONFIG_PATH = '/api/config';
 
 /**
  * The owner the admin knows for the token's stage, off its answer to `GET /api/internal/stages/self`: the owner on a
- * 200 that names one, `no-stage` on a 404, which only an admin older than stages answers (from stages phase 5 to 8 it
- * also answered the shared token so), and null for anything else.
+ * 200 that names one, `no-stage` on a 404, which only an admin older than stages answers, or the intermediate admin
+ * for the shared token, and null for anything else.
  */
 function stageOwnerOf(answer: Answer): string | 'no-stage' | null {
   if (answer.kind !== 'answered') return null;
@@ -152,8 +152,8 @@ const ADMIN_ERROR_NOT_FOUND = 'not_found';
  * Proves the manager's own token, the admin's registrar token, on the admin's registrar check: 204 is `token-accepted`
  * and the admin's own 401 is `token-refused`. An admin older than the check answers its own 404 for the path only once
  * a token got past its door, so that 404 is followed by the uploader's lookup with the same token, which such an admin
- * still takes it on. The uploader's routes refuse the registrar token since stages phase 9, so a lookup would read an
- * admin of this version as refusing it.
+ * still takes it on. An admin that has the check refuses the registrar token on the uploader's routes, so a lookup
+ * would read it as refusing the token.
  */
 async function probeRegistrar(
   base: string,

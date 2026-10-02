@@ -2,9 +2,8 @@
 
 The web2 admin is a separate service where streams are declared and listed. A
 deployment's stream uploader reports to it when the stack gives it
-`ADMIN_API_URL` and `ADMIN_API_TOKEN`. Since 2026-09-25, setting
-this up has to work out of the box on any host a clone of this repository
-deploys to, documented for whoever clones it. This page is the design. The
+`ADMIN_API_URL` and `ADMIN_API_TOKEN`. Setting this up works out of the box on
+any host a clone of this repository deploys to. This page is the design. The
 operator's guide, with the routes and what each Test connection outcome means,
 is the section [Linking uploaders to the web2
 admin](../../manager/README.md#linking-uploaders-to-the-web2-admin) of
@@ -12,10 +11,10 @@ admin](../../manager/README.md#linking-uploaders-to-the-web2-admin) of
 
 The same link is where the manager pushes each stage's record, with the stored
 token as the registrar's: [stages.md](stages.md) says what is pushed, when, to
-whom and what each outcome means. Since stages phase 5, 2026-09-28, the stored
-token is the registrar's alone: an uploader linked to this admin presents a
-token of its own, below, and no deployment is given the stored one any more.
-Since phase 9, 2026-09-29, the admin takes nothing else from an uploader.
+whom and what each outcome means. The stored token is the registrar's alone:
+an uploader linked to this admin presents a token of its own, below, and no
+deployment is given the stored one. The admin takes nothing else from an
+uploader.
 
 ## The two keys, and the rule they answer to together
 
@@ -47,8 +46,8 @@ its row: the address, or null for no default, the token, a revision a save
 names, and who saved it last. The address is answered in clear. The token column
 is never selected by a read, only `token IS NOT NULL`, and two things read it:
 the stage publisher, which presents it as the registrar token, and Test
-connection. Until phase 5 the insert of a new deployment copied it into the
-deployment as well; nothing does now. The
+connection. A manager from before stages copied it into a new deployment at
+its insert as well; nothing does now. The
 columns refuse a token with no address, a token under 32 characters and an empty
 address, as a backstop to the service.
 
@@ -64,9 +63,8 @@ says what that does to a token of their own.
 ## A token of its own
 
 Every uploader linked to the manager's admin presents a token of its own
-(`manager/src/domain/adminLink/ownAdminToken.ts`, from 2026-09-28, stages phase
-5). A deploy generates `ADMIN_API_TOKEN` for a deployment when all of these
-hold:
+(`manager/src/domain/adminLink/ownAdminToken.ts`). A deploy generates
+`ADMIN_API_TOKEN` for a deployment when all of these hold:
 
 - it runs a stream uploader;
 - the address its next deploy gives the uploader is on the origin of the
@@ -83,20 +81,22 @@ to another admin. The stage record carries its sha256 as `own`, and the push a
 deploy makes before it starts the uploader registers it, so the uploader's
 first call finds it known.
 
-No create copies the manager's stored token into a deployment any more. The
-wizard and a create through the API that leaves the link to the manager store
-the address alone. `use_manager_admin_token`, taken and ignored from phase 5,
-is gone since phase 9: a create drops it as any key it does not name, so an
+No create copies the manager's stored token into a deployment. The wizard and
+a create through the API that leaves the link to the manager store the address
+alone. `use_manager_admin_token`, with which a create on a manager from before
+stages copied it, is gone: a create drops it as any key it does not name, so an
 older script is not refused and nothing is copied. `admin_token_missing` and
-`admin_token_elsewhere` are gone, and a create at the link's address while the
-link stores no token is refused by the ordinary rule, naming both keys.
+`admin_token_elsewhere` are gone with it, and a create at the link's address
+while the link stores no token is refused by the ordinary rule, naming both
+keys.
 
-A deployment created before phase 5 keeps the token it was created with, the
-link's own, copied in at its insert, and so does one given a typed token. The
-stage record reports either as `shared`. From phase 5 to phase 8 the admin
-still took the link's copy as an unattributed caller; since phase 9 it refuses
-every `shared` token, the admin's Stages page says it is refused until it is
-rotated, and the deployment's Test connection answers `token-not-own`.
+A deployment created by a manager from before stages keeps the token it was
+created with, the link's own, copied in at its insert, and so does one given a
+typed token. The stage record reports either as `shared`. The intermediate
+admin of the upgrade below still takes the link's copy as an unattributed
+caller. An admin that takes only a stage's own token refuses every `shared`
+token, its Stages page says it is refused until it is rotated, and the
+deployment's Test connection answers `token-not-own`.
 Rotating, below, is the one way back.
 
 The stage record's `adminToken.kind` says where the token came from, never
@@ -106,13 +106,11 @@ copy, a typed token or a version's. So an old copy of the link's token stays
 `shared` after the admin's `INTERNAL_API_TOKEN` changes, and the admin, which
 attributes only `own` tokens, refuses it.
 
-**Rolling it out.** The admin is upgraded to phase 5 before the manager, and no
-uploader deployment is redeployed in between. An older admin takes only its
-`INTERNAL_API_TOKEN` from an uploader and would refuse a token of its own that
-a redeploy by the new manager generated; the phase 5 admin takes both, so
-every running uploader keeps working while the two move. That was phase 5's
-rule. Phase 9 goes another way, decided 2026-09-29, on a host that runs the
-admin and manager from before stages:
+**Rolling it out.** An admin from before stages takes only its
+`INTERNAL_API_TOKEN` from an uploader and refuses a token of its own, and an
+admin that takes only a stage's own token refuses the shared one. So a host
+that runs the admin and manager from before stages moves through the
+intermediate admin, which takes both, in this order:
 
 0. **Create the catalogue node** and buy its immutable batch.
 1. **Deploy the manager that pushes stage records** and designate the catalogue node. An admin from
@@ -132,12 +130,12 @@ admin and manager from before stages:
    page, then deploy) until the admin's Stages page reads "Its own token" for all of them.
 5. **Deploy the admin that refuses the shared token.**
 
-Skipping steps 2 to 4 means every running uploader gets 401 from the phase 9 admin until its stage
-is rotated and redeployed. After it, give each stage a `STREAM_KEY` of its own, since a stage from
-before stages signs with the brand key. A fresh installation needs none of this: every stage it
-creates has a token of its own from its first deploy. The whole sequence, with what to keep of the
-batch from before stages until the catalogue is moved, is "Upgrading" in the repository's
-`docs/self-hosting.md`.
+Skipping steps 2 to 4 means every running uploader gets 401 from the admin that refuses the shared
+token until its stage is rotated and redeployed. After it, give each stage a `STREAM_KEY` of its
+own, since a stage from before stages signs with the brand key. A fresh installation needs none of
+this: every stage it creates has a token of its own from its first deploy. The whole sequence, with
+what to keep of the batch from before stages until the catalogue is moved, is "Upgrading" in the
+repository's `docs/self-hosting.md`.
 
 **The link is https in production.** Every push carries the stored token, each
 stage's SRT passphrase and its token hash, so the link's address is the https
@@ -174,8 +172,8 @@ names each retirement as the admin answers it.
 
 **A token the version sets cannot be rotated.** A deployment whose version's
 env files set `ADMIN_API_TOKEN` is given that value at every deploy, in place of
-a token of its own, and its record says `shared`, which the admin refuses since
-phase 9. The rotation below is refused for it. Take the token out of the
+a token of its own, and its record says `shared`, which the admin refuses. The
+rotation below is refused for it. Take the token out of the
 version, or move the deployment to a version that sets none, and redeploy: the
 deploy then generates a token of its own.
 
@@ -242,12 +240,11 @@ own, is the registrar's. It is proved on the admin's registrar check,
 `204` (`token-accepted`) or the admin's own 401 (`token-refused`), and no owner
 is compared. That token goes in plain http only where the manager's pushes may,
 so an address in plain http to another host answers `plain-http-refused` and is
-not asked; an uploader's token goes wherever its uploader would send it. The uploader's routes refuse that token since phase 9, so the
-lookup below would read it as refused. An admin older than the check answers
-its own `404 not_found` there only past its door, and only then is the lookup
-below asked with the same token, which such an admin still takes. This holds
-from phase 9 of the stages brief, 2026-09-29; before, the Manager settings card
-asked the lookup.
+not asked; an uploader's token goes wherever its uploader would send it. The
+uploader's routes refuse that token, so the lookup below would read it as
+refused. An admin older than the check answers its own `404 not_found` there
+only past its door, and only then is the lookup below asked with the same
+token, which such an admin still takes.
 
 **An uploader's token**, a deployment's and one typed in the wizard for
 another admin (`tokenFor: 'uploader'` on the request), is proved as the
@@ -262,8 +259,8 @@ not the link's, at the link's address while no push of its stage has been
 stored, the test answers `token-not-registered` rather than `token-refused`,
 since a deploy registers it. At the link's address, a token the manager did
 not generate for the deployment, a copy of the link's, a typed one or the
-version's, answers `token-not-own` whether the admin refused it or, older than
-phase 9, still took it: rotate the uploader's admin token and redeploy. At
+version's, answers `token-not-own` whether the admin refused it or, as an older
+admin does, still took it: rotate the uploader's admin token and redeploy. At
 another address a refusal is `token-refused`. The wizard's test for a token of its own, which does not exist
 before the first deploy, presents the manager's stored token, as the
 registrar's.
@@ -273,7 +270,7 @@ boot. Every stage signs with a key of its own, so the owner compared is the
 one the admin knows for the stage the token belongs to:
 `GET <address>/api/internal/stages/self` with the same token, whose
 `{ stageId, owner }` answers `linked` or `owner-mismatch`. A 404 there is an
-admin older than stages (or, from phase 5 to 8, one taking the link's token),
+admin older than stages, or the intermediate admin answering the link's token,
 and only then is the admin's public `GET <address>/api/config` asked,
 without the token, for `feed.owner`, the brand key the catalogue is signed
 with. Any other answer to the stage read is `owner-unconfirmed`, and the
@@ -304,9 +301,7 @@ address of the stream key chosen in the step, which the browser derives with
 the same function, as the uploader will at boot. At the address of the
 manager's link, while the link stores a token, a typed token is held with a
 sentence and a button back to a token of its own, since that admin takes no
-typed token from an uploader. This holds from phase 9 of the stages brief,
-2026-09-29; the comparison with the stage's owner from phase 6, 2026-09-28, and
-with the catalogue owner alone from 2026-09-26, commit 1256076.
+typed token from an uploader.
 
 ## What it reaches
 
@@ -359,11 +354,11 @@ and so on, and every sentence can be seen with `pnpm -C frontend dev:mock`.
 - A stored token at the link's address, while the link stores a token, is
   refused by the manager at a save and a create (`typedTokenAtLinkProblem` in
   `common/src/adminLink.ts`), with the wizard's sentence, and the wizard holds
-  it before. One stored before phase 9 stays until a save of either key or a
+  it before. One an older manager stored stays until a save of either key or a
   rotation takes it out; its Test connection says `token-not-own`. At another
-  address, a typed token reaches only an admin older than phase 9, since an
-  admin of this version takes a stage's own token alone and learns it only from
-  the manager linked to it.
+  address, a typed token reaches only an older admin, the intermediate one or
+  one from before stages, since an admin that takes only a stage's own token
+  learns it only from the manager linked to it.
 - The card's test uses the saved values. A change that is not saved yet is
   tested once it is saved, and the block says so while one is pending.
 - A signed-in user can still save the manager's link with an address and a new
