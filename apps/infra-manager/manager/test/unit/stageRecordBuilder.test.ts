@@ -2,7 +2,8 @@
  * The stage record the manager pushes into the web2 admin for one deployment
  * that runs a stream uploader: every field as the contract takes it, the owner
  * derived from the stream key and never the key, the admin token by its sha256
- * and its kind, and nothing secret anywhere in it.
+ * and its kind, the SRT passphrase as the one secret the admin needs for the
+ * OBS panel, and no key and no token anywhere in it.
  *
  * Unit test, no database, no network. `pnpm test` in manager/.
  */
