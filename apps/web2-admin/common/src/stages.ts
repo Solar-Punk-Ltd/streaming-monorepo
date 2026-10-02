@@ -72,7 +72,7 @@ export interface StageSummary {
   name: string;
   kind: StageKind;
   engine: StageEngine;
-  /** Whether the admin takes streams on this stage's engine: SRS only, in this round. */
+  /** Whether the admin takes streams on this stage's engine: SRS only. */
   supported: boolean;
   stackVersion: string | null;
   /** The deployment's status in the manager's words. */

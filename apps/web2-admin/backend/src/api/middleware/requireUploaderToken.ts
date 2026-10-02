@@ -54,10 +54,10 @@ async function attribute(stages: UploaderTokenStore, presented: string): Promise
  * it (anything else is 401 without a query). Its sha256 is looked up among the active stages whose record names a
  * token of their `own`, and the one it matches is the caller, answered only about that stage's streams.
  *
- * Everything else is 401 `unauthenticated`: the registrar token, `INTERNAL_API_TOKEN`, which is the manager's alone
- * since phase 9 of docs/architecture/stages.md, compared itself before any lookup; a retired stage's token; the hash a `shared` record carries, a token
- * the manager did not generate, which that stage has to rotate in the manager; a hash no stage names; and one that
- * matches several stages, which cannot say which of them calls, with a warning in the log.
+ * Everything else is 401 `unauthenticated`: the registrar token, `INTERNAL_API_TOKEN`, which is the manager's alone,
+ * compared itself before any lookup; a retired stage's token; the hash a `shared` record carries, a token the manager
+ * did not generate, which that stage has to rotate in the manager; a hash no stage names; and one that matches several
+ * stages, which cannot say which of them calls, with a warning in the log.
  *
  * Neither the token nor its hash is logged, at any level. A session cookie is not a token here either.
  */

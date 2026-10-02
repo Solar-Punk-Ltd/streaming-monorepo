@@ -1,7 +1,7 @@
 /**
- * A token per uploader (docs/architecture/stages.md, phases 5 and 9). Unit test: the real internal router, both
- * doors and the real services on a random port, mounted the way `src/api/server.ts` mounts them, with the stores, the
- * feed log and the audit log in memory. `pnpm test`.
+ * A token per uploader (docs/architecture/stages.md). Unit test: the real internal router, both doors and the real
+ * services on a random port, mounted the way `src/api/server.ts` mounts them, with the stores, the feed log and the
+ * audit log in memory. `pnpm test`.
  *
  * Pinned here:
  * - the manager's routes and `GET /registrar` take the registrar token alone, and refuse a stage's own token;

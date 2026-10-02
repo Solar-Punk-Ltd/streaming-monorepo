@@ -196,7 +196,7 @@ into the admin (`docs/architecture/stages.md` at the repository root).
 `null` for none, or absent to leave the stream's as it is.
 
 - **Which stages take a stream.** One the admin holds, that the manager has not
-  retired, on an engine the admin takes streams on (SRS in this round). Any
+  retired, on an engine the admin takes streams on (SRS only). Any
   other is `409 stage_unavailable` with `reason` `unknown`, `retired` or
   `unsupported`. A stream already on a stage the manager retires later keeps
   it, and a save naming the stage it has is not a change.
@@ -353,11 +353,11 @@ id and needs nothing here. Another batch means stamping every slot again under
 it before the old one lapses: `src/domain/CatalogueMove.ts`, with its progress
 in `catalogue_moves` (migration `014`).
 
-**Off by default.** `CATALOGUE_MOVE_ENABLED=true` turns it on. Until the owner
-has tried it on a real node (`docs/architecture/stages.md`, "Trying the move on
-a real node"), the Stages page says the move is not yet enabled on this
-installation, and a start is refused with `problem: disabled` before anything
-else, a move left running included.
+**Off by default.** `CATALOGUE_MOVE_ENABLED=true` turns it on. Try it on a
+scratch node first (`docs/architecture/stages.md`, "Trying the move on a real
+node"). While it is off, the Stages page says the move is not yet enabled on
+this installation, and a start is refused with `problem: disabled` before
+anything else, a move left running included.
 
 **When a move waits.** When the feed has history and the pinned batch is not the
 designated one (another designated, `moveWaitingTo`, or a move back to one that
@@ -515,7 +515,8 @@ on the row.
 
 **Do not give `FEED_PRIVATE_KEY` to a running swarm-hls-stream uploader.** It
 caches the feed's next index; two writers at one index fork the feed.
-Checkpoint 3 turns this around and has the uploader report into this API.
+The uploader reports into this API instead (`POST /streams/:id/state` and
+`/renditions`).
 
 ## The internal API
 
@@ -559,12 +560,12 @@ stages.
 
 **The registrar token on an uploader's route** is `401 unauthenticated`, like
 any other token that is not a stage's own, on the lookup, both reports and
-`GET /stages/self`, and nothing is written for it. From stages phase 5 to phase
-8 it was still taken there, as an unattributed caller answered about every
-stream; phase 9 stopped that. A stage whose uploader still presents it, or any
-other `shared` token, is refused until its token is rotated in the manager
-(**Rotate the uploader's admin token**) and the stage redeployed, and the
-Stages page says so.
+`GET /stages/self`, and nothing is written for it. An admin from before stages
+and the upgrade's intermediate admin (`docs/self-hosting.md`) still take it
+there, as an unattributed caller answered about every stream. A stage whose
+uploader still presents it, or any other `shared` token, is refused until its
+token is rotated in the manager (**Rotate the uploader's admin token**) and the
+stage redeployed, and the Stages page says so.
 
 Neither token nor its hash is logged at any level, audited or answered.
 
@@ -900,7 +901,7 @@ the mutation it describes, which has already happened by then; the failure is
 logged as `[Audit] could not record …` and the request answers as it would
 have.
 
-Nothing in the API reads it yet. With `psql`:
+Nothing in the API reads it. With `psql`:
 
 ```sql
 -- the last fifty things anyone did
@@ -921,7 +922,7 @@ SELECT at, action, details FROM audit_log
  WHERE actor_kind = 'manager' AND details ->> 'stageId' = '<stage id>' ORDER BY at;
 ```
 
-## Limitations (intentional, checkpoint 3 step 1)
+## Limitations (intentional)
 
 - **A stream belongs to the installation.** Every signed-in user sees and can
   edit, publish, unpublish and delete every stream. `streams.user_id` records
