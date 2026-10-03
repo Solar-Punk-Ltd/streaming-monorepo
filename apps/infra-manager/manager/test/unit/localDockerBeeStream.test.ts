@@ -255,25 +255,37 @@ describe('local owned Docker connection', { timeout: 5000 }, () => {
   it('destroys immediately owned connection when readiness resolves after timeout without making HTTP requests', async (t) => {
     const h = harness(t);
     let release!: () => void;
+    let opened!: () => void;
+    const connectionOpened = new Promise<void>((resolve) => {
+      opened = resolve;
+    });
     h.onReady(
       () =>
         new Promise((resolve) => {
           release = resolve;
         }),
     );
-    await assert.rejects(
-      acquireLocalDockerBeeStream(
-        syntheticTarget,
-        async () => locator(),
-        { ...limits, acquisitionTimeoutMs: 20 },
-        qualified,
-        undefined,
-        h.connect,
-      ),
+    // The timer is driven by hand, so the connection is always open and readiness pending when it fires.
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const pending = acquireLocalDockerBeeStream(
+      syntheticTarget,
+      async () => locator(),
+      { ...limits, acquisitionTimeoutMs: 1000 },
+      qualified,
+      undefined,
+      (path) => {
+        const connection = h.connect(path);
+        opened();
+        return connection;
+      },
     );
+    const refused = assert.rejects(pending);
+    await connectionOpened;
+    t.mock.timers.tick(1000);
+    await refused;
     assert.equal(h.docker.transport.destroyed, true);
     release();
-    await pause(0);
+    await new Promise((resolve) => setImmediate(resolve));
     assert.equal(h.docker.dockerRequests.length, 0);
     assert.equal(h.opens(), 1);
     assert.equal(h.docker.counts().closes, 1);
