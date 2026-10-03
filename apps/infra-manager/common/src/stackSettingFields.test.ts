@@ -43,6 +43,18 @@ describe('the shape of a stack setting', () => {
     assert.match(stackSettingFieldProblem('STAMP_IMMUTABLE', 'yes') ?? '', /true or false/);
   });
 
+  // SRS's entrypoint exits at start on any other value, so a typed true would restart it in a loop.
+  it('takes on, off or empty for each takeover switch, and refuses true, which SRS will not start on', () => {
+    for (const key of ['RTMP_TAKEOVER', 'SRT_TAKEOVER']) {
+      assert.deepEqual(stackSettingFieldOf(key), { kind: 'choice', choices: ['', 'on', 'off'] }, key);
+      for (const value of ['', 'on', 'off'])
+        assert.equal(stackSettingFieldProblem(key, value), null, key + ' ' + value);
+      for (const value of ['true', 'ON', 'yes']) {
+        assert.match(stackSettingFieldProblem(key, value) ?? '', new RegExp(key + ' must be one of on, off'), value);
+      }
+    }
+  });
+
   it('takes an empty value for every field, which leaves the stack its own default', () => {
     for (const key of Object.keys(STACK_SETTING_FIELDS)) {
       assert.equal(stackSettingFieldProblem(key, ''), null, key);
