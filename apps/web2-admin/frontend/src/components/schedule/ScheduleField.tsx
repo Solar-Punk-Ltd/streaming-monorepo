@@ -57,6 +57,11 @@ export function ScheduleField({ value, onChange, error = false, disabled = false
   const [heldTime, setHeldTime] = useState('');
   const chosenTime = time || heldTime;
 
+  // The text in the time box. Text that is not a time of day changes nothing
+  // in the form, so the box goes back to the chosen time rather than keeping
+  // text the form never took.
+  const [timeText, setTimeText] = useState(chosenTime);
+
   // A stream that already went live is scheduled in the past by definition,
   // and so is any older draft. Flagging that as invalid would paint the field
   // red for a value the operator cannot change anyway, so the floor is only
@@ -83,7 +88,10 @@ export function ScheduleField({ value, onChange, error = false, disabled = false
 
   const handleTime = (typed: string) => {
     const nextTime = parseTypedTime(typed);
-    if (!nextTime) return;
+    if (!nextTime) {
+      setTimeText(chosenTime);
+      return;
+    }
     onChange(joinDateTimeLocal(date || todayValue(now), nextTime));
   };
 
@@ -126,6 +134,8 @@ export function ScheduleField({ value, onChange, error = false, disabled = false
           id="scheduled-time"
           options={slotOptions(chosenTime)}
           value={chosenTime}
+          inputValue={timeText}
+          onInputChange={(_event, text) => setTimeText(text)}
           onChange={(_event, next) => handleTime(next)}
           disabled={disabled}
           disableClearable
