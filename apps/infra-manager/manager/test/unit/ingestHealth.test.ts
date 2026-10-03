@@ -6,11 +6,13 @@
  * On 2026-09-22 an outside tester's SRT broadcast came out with broken blocks
  * of picture for five hours and nothing on any screen said so. SRS had been
  * printing the reason every ten seconds: about six percent of the packets
- * dropped. This is the read of those lines, and the reading has to carry
- * numbers and a verdict and nothing else, because the same log carries the
- * webhook URL with the uploader's token in it and the publisher's address.
+ * dropped. This is the read of those lines, and of SRS's line for each RTMP
+ * publisher beside them. The reading has to carry numbers and states and
+ * nothing else, because the same log carries the webhook URL with the
+ * uploader's token in it, the publisher's address and an RTMP stream key.
  */
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { describe, it, type TestContext } from 'node:test';
 
 import {
@@ -19,6 +21,10 @@ import {
   INGEST_READ,
   INGEST_UNREADABLE,
   type IngestHealthReading,
+  RTMP_INGEST_MEASURED,
+  RTMP_INGEST_NO_REPORTS,
+  RTMP_INGEST_UNATTRIBUTED,
+  type RtmpIngestReading,
   SRS_SERVICE,
   SRT_INGEST_MEASURED,
   SRT_INGEST_NO_REPORTS,
@@ -42,7 +48,8 @@ import {
   IngestHealthService,
   type MarkedLogLines,
 } from '../../src/domain/ingestHealth/IngestHealthService.js';
-import { TRANSPORT_STATS_MARKER } from '../../src/domain/ingestHealth/transportStatsLine.js';
+import { parseRtmpPublishReport } from '../../src/domain/ingestHealth/rtmpPublishReport.js';
+import { parseTransportStatsLine, TRANSPORT_STATS_MARKER } from '../../src/domain/ingestHealth/transportStatsLine.js';
 import type { Profile } from '../../src/types/index.js';
 import { InMemoryProfiles, makeProfile } from '../support/profileFixtures.js';
 
@@ -57,12 +64,26 @@ const CLEAN =
 const ONE_DROP =
   '[2026-09-23 09:00:20.000][INFO][1][c1eanl1n] <- SRT_CPB Transport Stats # pktRecv=9000, pktRcvLoss=12, pktRcvRetrans=11, pktRcvDrop=1';
 
+/** One RTMP publisher's report, as an image that names the vhost prints it. */
+function rtmpReport(connection: string, vhost: string | null, incomingKbps: number): string {
+  return (
+    `[2026-10-03 17:43:50.386][INFO][1][${connection}] <- CPB time=40021, okbps=0,0,0, ` +
+    `ikbps=0,${incomingKbps},0, mr=0/350, p1stpt=20000, pnt=5000${vhost === null ? '' : `, vhost=${vhost}`}`
+  );
+}
+
+const INGEST_VHOST = '__defaultVhost__';
+const ABR_VHOST = 'abr';
+
 /** Everything else a live SRS log carries around the reports. */
 const SECRET_BEARING = [
   '[2026-09-22 17:33:40.101][INFO][1][4ek6chsn] SRT: publish stream=live/stream, peer ip=203.0.113.7:51514',
   '[2026-09-22 17:33:40.123][INFO][1][4ek6chsn] http: on_publish ok, client_id=4ek6chsn, url=http://stream-uploader:3000/engines/srs/streams?token=abc123, response={"code":0}',
   '\u001b[33m[2026-09-22 17:33:50.901][WARN][1][4ek6chsn] RCV-DROPPED 1 packet(s). Packet seqno %861816580 delayed for 4.5 ms\u001b[0m',
   `[2026-09-22 17:33:51.000][INFO][1][4ek6chsn] url=http://srs/?token=abc123 ${TRANSPORT_STATS_MARKER}pktRecv=1, pktRcvLoss=0, pktRcvRetrans=0, pktRcvDrop=0`,
+  '[2026-10-03 17:43:10.120][INFO][1][9tq3vz71] connect app, tcUrl=rtmp://ingest.example.org:10062/video, pageUrl=, swfUrl=, schema=rtmp, vhost=ingest.example.org, port=10062, app=video, args=null',
+  '[2026-10-03 17:43:10.130][INFO][1][9tq3vz71] client identified, type=fmle-publish, vhost=ingest.example.org, app=video, stream=1867808f, param=?key=abc123, duration=0ms',
+  `[2026-10-03 17:43:10.140][INFO][1][9tq3vz71] stream=${rtmpReport('9tq3vz71', INGEST_VHOST, 4812)}`,
 ];
 
 interface LogRead {
@@ -95,6 +116,14 @@ async function srtOf(service: IngestHealthService): Promise<SrtIngestReading> {
   assert.equal(reading.state, INGEST_READ);
   if (reading.state !== INGEST_READ) throw new Error('the log was not read');
   return reading.srt;
+}
+
+/** The RTMP part of a reading of these lines. */
+async function rtmpOver(lines: string[]): Promise<RtmpIngestReading> {
+  const reading = await serviceOver(lines).service.read('stage');
+  assert.equal(reading.state, INGEST_READ);
+  if (reading.state !== INGEST_READ) throw new Error('the log was not read');
+  return reading.rtmp;
 }
 
 describe('IngestHealthService.read', () => {
@@ -163,6 +192,7 @@ describe('IngestHealthService.read', () => {
       state: INGEST_READ,
       windowSeconds: 60,
       srt: { state: SRT_INGEST_NO_REPORTS },
+      rtmp: { state: RTMP_INGEST_NO_REPORTS },
     });
   });
 
@@ -197,8 +227,160 @@ describe('IngestHealthService.read', () => {
   });
 });
 
+describe('the RTMP part of a reading', () => {
+  it('counts the RTMP publishers on the ingest vhost and the bitrate SRS received from them', async () => {
+    assert.deepEqual(
+      await rtmpOver([rtmpReport('9tq3vz71', INGEST_VHOST, 4790), rtmpReport('9tq3vz71', INGEST_VHOST, 4812)]),
+      { state: RTMP_INGEST_MEASURED, reports: 2, connections: 1, incomingKbps: 4812 },
+    );
+  });
+
+  it("leaves out the ladder's rungs, which SRS also takes over RTMP onto their own vhost", async () => {
+    const ladderOverRtmp = [
+      rtmpReport('9tq3vz71', INGEST_VHOST, 6100),
+      rtmpReport('r1080p01', ABR_VHOST, 5000),
+      rtmpReport('r720p001', ABR_VHOST, 2800),
+      rtmpReport('r480p001', ABR_VHOST, 1200),
+    ];
+
+    assert.deepEqual(await rtmpOver(ladderOverRtmp), {
+      state: RTMP_INGEST_MEASURED,
+      reports: 1,
+      connections: 1,
+      incomingKbps: 6100,
+    });
+  });
+
+  it('says no RTMP publisher for an SRT broadcast whose ladder republishes its rungs over RTMP', async () => {
+    const reading = await serviceOver([
+      FIRST,
+      rtmpReport('r1080p01', ABR_VHOST, 5000),
+      rtmpReport('r720p001', ABR_VHOST, 2800),
+    ]).service.read('stage');
+
+    assert.equal(reading.state, INGEST_READ);
+    if (reading.state !== INGEST_READ) return;
+    assert.equal(reading.srt.state, SRT_INGEST_MEASURED);
+    assert.deepEqual(reading.rtmp, { state: RTMP_INGEST_NO_REPORTS });
+  });
+
+  it('reports an RTMP broadcast as one, and as no SRT publisher rather than a broken SRT link', async () => {
+    const reading = await serviceOver([rtmpReport('9tq3vz71', INGEST_VHOST, 4812)]).service.read('stage');
+
+    assert.equal(reading.state, INGEST_READ);
+    if (reading.state !== INGEST_READ) return;
+    assert.deepEqual(reading.srt, { state: SRT_INGEST_NO_REPORTS });
+    assert.equal(reading.rtmp.state, RTMP_INGEST_MEASURED);
+  });
+
+  it('says RTMP ingest cannot be told from the rungs on an SRS that does not name the vhost', async () => {
+    const olderEngine = [rtmpReport('9tq3vz71', null, 6100), rtmpReport('r1080p01', null, 5000)];
+
+    assert.deepEqual(await rtmpOver(olderEngine), { state: RTMP_INGEST_UNATTRIBUTED });
+  });
+
+  it('reads an SRS that names the vhost by what it names, over older lines left from before an upgrade', async () => {
+    assert.deepEqual(await rtmpOver([rtmpReport('o1dl1ne5', null, 6100), rtmpReport('r1080p01', ABR_VHOST, 5000)]), {
+      state: RTMP_INGEST_NO_REPORTS,
+    });
+    assert.equal(
+      (await rtmpOver([rtmpReport('o1dl1ne5', null, 6100), rtmpReport('9tq3vz71', INGEST_VHOST, 6100)])).state,
+      RTMP_INGEST_MEASURED,
+    );
+  });
+
+  it('counts a publisher that reconnected twice, and only the connection still sending in the bitrate', async () => {
+    assert.deepEqual(
+      await rtmpOver([
+        rtmpReport('f1rstcon', INGEST_VHOST, 4800),
+        rtmpReport('f1rstcon', INGEST_VHOST, 4650),
+        rtmpReport('sec0ndcn', INGEST_VHOST, 4900),
+      ]),
+      { state: RTMP_INGEST_MEASURED, reports: 3, connections: 2, incomingKbps: 4900 },
+    );
+  });
+
+  it('adds up two publishers that send at once, each by its latest report', async () => {
+    assert.deepEqual(
+      await rtmpOver([
+        rtmpReport('stream0a', INGEST_VHOST, 3000),
+        rtmpReport('stream0b', INGEST_VHOST, 1000),
+        rtmpReport('stream0a', INGEST_VHOST, 3100),
+        rtmpReport('stream0b', INGEST_VHOST, 1200),
+      ]),
+      { state: RTMP_INGEST_MEASURED, reports: 4, connections: 2, incomingKbps: 4300 },
+    );
+  });
+
+  it('has no bitrate yet for a connection SRS has not sampled for 30 seconds, rather than a bitrate of zero', async () => {
+    assert.deepEqual(await rtmpOver([rtmpReport('n3wc0nnx', INGEST_VHOST, 0)]), {
+      state: RTMP_INGEST_MEASURED,
+      reports: 1,
+      connections: 1,
+      incomingKbps: null,
+    });
+    assert.deepEqual(
+      await rtmpOver([rtmpReport('f1rstcon', INGEST_VHOST, 4800), rtmpReport('sec0ndcn', INGEST_VHOST, 0)]),
+      { state: RTMP_INGEST_MEASURED, reports: 2, connections: 2, incomingKbps: null },
+      'the bitrate of the connection that ended is not counted for the one that replaced it',
+    );
+  });
+});
+
+describe('the lines one read of the log keeps', () => {
+  /** Lines through the host's own `grep -E`, which is what runs on the remote host. */
+  function keptByGrep(lines: readonly string[]): string[] {
+    const run = spawnSync('grep', ['-E', '-e', INGEST_LOG_LINES.hostPattern], {
+      input: `${lines.join('\n')}\n`,
+      encoding: 'utf8',
+      env: { PATH: '/usr/bin:/bin' },
+    });
+    assert.ok(run.status === 0 || run.status === 1, run.stderr);
+    return run.stdout.split('\n').filter((line) => line !== '');
+  }
+
+  const parsed = (line: string) => parseTransportStatsLine(line) !== null || parseRtmpPublishReport(line) !== null;
+
+  it('are, on a remote host, exactly the lines one of the two readers parses', () => {
+    const lines = [
+      FIRST,
+      CLEAN,
+      rtmpReport('9tq3vz71', INGEST_VHOST, 4812),
+      rtmpReport('r1080p01', ABR_VHOST, 5000),
+      rtmpReport('o1dl1ne5', null, 6100),
+      ...SECRET_BEARING,
+      `${rtmpReport('9tq3vz71', INGEST_VHOST, 4812)}, token=abc123`,
+      `${FIRST}, token=abc123`,
+    ];
+
+    assert.deepEqual(keptByGrep(lines), lines.filter(parsed));
+    assert.equal(lines.filter(parsed).length, 5);
+  });
+
+  it('carry the marker the reader filters on before parsing, SRT and RTMP alike', () => {
+    for (const line of [FIRST, rtmpReport('9tq3vz71', INGEST_VHOST, 4812), rtmpReport('o1dl1ne5', null, 6100)]) {
+      assert.ok(line.includes(INGEST_LOG_LINES.marker), line);
+    }
+  });
+});
+
 describe('what an ingest reading may carry', () => {
-  const SECRETS = ['abc123', 'token', '203.0.113.7', 'stream-uploader', '4ek6chsn', 'RCV-DROPPED', 'SRT_CPB'];
+  const SECRETS = [
+    'abc123',
+    'token',
+    '203.0.113.7',
+    'stream-uploader',
+    '4ek6chsn',
+    'RCV-DROPPED',
+    'SRT_CPB',
+    '9tq3vz71',
+    'r7u2ng48',
+    'ingest.example.org',
+    '1867808f',
+    INGEST_VHOST,
+    ABR_VHOST,
+    'CPB',
+  ];
   const STATES = [
     INGEST_READ,
     INGEST_NOT_RUNNING,
@@ -206,6 +388,9 @@ describe('what an ingest reading may carry', () => {
     INGEST_NOT_SRS,
     SRT_INGEST_MEASURED,
     SRT_INGEST_NO_REPORTS,
+    RTMP_INGEST_MEASURED,
+    RTMP_INGEST_NO_REPORTS,
+    RTMP_INGEST_UNATTRIBUTED,
   ];
   const VERDICTS = [SRT_LINK_HEALTHY, SRT_LINK_DEGRADED, SRT_LINK_BAD];
 
@@ -238,13 +423,20 @@ describe('what an ingest reading may carry', () => {
     }
   }
 
-  it('hands on numbers and the verdict from a log that carries a token beside the reports', async (t) => {
+  it('hands on numbers, states and the verdict from a log that carries a token and a key beside the reports', async (t) => {
     const logged = captureLogs(t);
-    const { service } = serviceOver([...SECRET_BEARING, FIRST, SECOND]);
+    const { service } = serviceOver([
+      ...SECRET_BEARING,
+      FIRST,
+      rtmpReport('9tq3vz71', INGEST_VHOST, 4812),
+      rtmpReport('r7u2ng48', ABR_VHOST, 2795),
+      SECOND,
+    ]);
 
     const reading = await service.read('stage');
 
     assert.equal(reading.state === INGEST_READ && reading.srt.state, SRT_INGEST_MEASURED);
+    assert.equal(reading.state === INGEST_READ && reading.rtmp.state, RTMP_INGEST_MEASURED);
     assertCarriesNothingFromTheLog(reading, logged);
   });
 

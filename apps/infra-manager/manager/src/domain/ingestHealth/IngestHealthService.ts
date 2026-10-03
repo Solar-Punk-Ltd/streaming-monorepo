@@ -16,13 +16,11 @@ import { Logger } from '../Logger.js';
 import type { LogWindow } from '../logWindow.js';
 import type { TargetDocker } from '../ports/TargetDocker.js';
 import type { ProfileRepository } from '../ProfileRepository.js';
-import { srtIngestReadingFrom } from './srtIngestReading.js';
 import type { MarkedLines } from '../ports/remoteLogLines.js';
-import {
-  parseTransportStatsLines,
-  TRANSPORT_STATS_HOST_PATTERN,
-  TRANSPORT_STATS_MARKER,
-} from './transportStatsLine.js';
+import { rtmpIngestReadingFrom } from './rtmpIngestReading.js';
+import { parseRtmpPublishReports, RTMP_PUBLISH_HOST_PATTERN } from './rtmpPublishReport.js';
+import { srtIngestReadingFrom } from './srtIngestReading.js';
+import { parseTransportStatsLines, TRANSPORT_STATS_HOST_PATTERN } from './transportStatsLine.js';
 
 const logger = Logger.getInstance();
 
@@ -37,10 +35,14 @@ const logger = Logger.getInstance();
  */
 export const INGEST_LOG_WINDOW: LogWindow = { sinceSeconds: 60, tailLines: 20_000 };
 
-/** SRS's statistics lines, held to their whole shape on a remote host. */
+/**
+ * SRS's report lines for SRT and RTMP publishers, each held to its whole shape
+ * on a remote host. The marker is the tag SRS gives a publisher's report in
+ * both, `SRT_CPB` and `CPB`, with the space after it.
+ */
 export const INGEST_LOG_LINES: MarkedLines = {
-  marker: TRANSPORT_STATS_MARKER,
-  hostPattern: TRANSPORT_STATS_HOST_PATTERN,
+  marker: 'CPB ',
+  hostPattern: `${TRANSPORT_STATS_HOST_PATTERN}|${RTMP_PUBLISH_HOST_PATTERN}`,
 };
 
 /** The part of `TargetDocker` this reads through. */
@@ -89,6 +91,7 @@ export class IngestHealthService {
       state: INGEST_READ,
       windowSeconds: INGEST_LOG_WINDOW.sinceSeconds,
       srt: srtIngestReadingFrom(parseTransportStatsLines(lines)),
+      rtmp: rtmpIngestReadingFrom(parseRtmpPublishReports(lines)),
     };
   }
 }

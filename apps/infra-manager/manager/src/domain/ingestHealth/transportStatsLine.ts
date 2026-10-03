@@ -1,5 +1,7 @@
 import type { SrtLinkCounts } from '@streaming-infra-manager/common';
 
+import { DIGITS, HOST_DIGITS, SRS_LINE_PREFIX, srsLogText, wholeHostLine } from './srsLogLine.js';
+
 /**
  * SRS's per-publisher SRT statistics line, and nothing else from its log.
  *
@@ -24,43 +26,21 @@ export interface TransportStatsReport {
   counts: SrtLinkCounts;
 }
 
-/** A colour or cursor sequence, which SRS writes around the lines it prints to a console. */
-const ANSI_ESCAPE = /\u001b\[[0-9;]*[A-Za-z]/g;
-
-/** `[time][level][pid][connection] `, the prefix SRS puts before every message. */
-const SRS_LINE_PREFIX = String.raw`\[[^\]]*\]\[[A-Za-z]+\]\[\d+\]\[([A-Za-z0-9]{1,64})\] `;
-
-/** No more digits than a JavaScript number holds exactly. */
-const COUNT = String.raw`(\d{1,15})`;
+const COUNT = `(${DIGITS})`;
 
 const REPORT_LINE = new RegExp(
   `^${SRS_LINE_PREFIX}<- SRT_CPB Transport Stats # ` +
     `pktRecv=${COUNT}, pktRcvLoss=${COUNT}, pktRcvRetrans=${COUNT}, pktRcvDrop=${COUNT}$`,
 );
 
-/**
- * A colour or cursor sequence in POSIX ERE. ERE has no escape for the escape
- * byte, so it is written into the pattern literally. A `.` in its place would
- * let any byte stand in for it.
- */
-const HOST_ESCAPE = '(\u001b\\[[0-9;]*[A-Za-z])*';
-const HOST_COUNT = '[0-9]{1,15}';
-
-/**
- * The same report shape as a POSIX extended regular expression, for a reader
- * that filters with grep on another host before anything crosses to the
- * manager. A publisher chooses its SRT stream id and SRS quotes it into hook
- * lines that carry the webhook token, so that filter has to hold the whole
- * line to this shape, as the parser does, rather than look for the marker.
- */
-export const TRANSPORT_STATS_HOST_PATTERN =
-  `^${HOST_ESCAPE}` +
-  String.raw`\[[^]]*\]\[[A-Za-z]+\]\[[0-9]+\]\[[A-Za-z0-9]{1,64}\] <- SRT_CPB Transport Stats # ` +
-  `pktRecv=${HOST_COUNT}, pktRcvLoss=${HOST_COUNT}, pktRcvRetrans=${HOST_COUNT}, pktRcvDrop=${HOST_COUNT}` +
-  `${HOST_ESCAPE}[[:space:]]*$`;
+/** The same report shape as a POSIX extended regular expression, for a reader that filters with grep on another host. */
+export const TRANSPORT_STATS_HOST_PATTERN = wholeHostLine(
+  '<- SRT_CPB Transport Stats # ' +
+    `pktRecv=${HOST_DIGITS}, pktRcvLoss=${HOST_DIGITS}, pktRcvRetrans=${HOST_DIGITS}, pktRcvDrop=${HOST_DIGITS}`,
+);
 
 export function parseTransportStatsLine(line: string): TransportStatsReport | null {
-  const match = REPORT_LINE.exec(line.replace(ANSI_ESCAPE, '').trimEnd());
+  const match = REPORT_LINE.exec(srsLogText(line));
   if (!match) return null;
   const [, connection, received, lost, retransmitted, dropped] = match;
   return {

@@ -54,12 +54,12 @@ import { ReadinessCard } from './ReadinessCard';
 import { RemoveCard } from './RemoveCard';
 import type { SettingReveal } from './settings/SettingsList';
 import { useDeploymentSettings } from './settings/useDeploymentSettings';
-import { SrtIngestCard } from './SrtIngestCard';
+import { IngestHealthCard } from './IngestHealthCard';
 import { StageCard } from './StageCard';
 import { isStage } from './stageText';
 import { offersLatencySetting, SRT_LATENCY_SETTING_KEY } from './srtIngestText';
 import { StorageCard } from './StorageCard';
-import { engineOf, isRunning, readsSrtIngest, shapeOf, streamersOf } from './shape';
+import { engineOf, isRunning, readsIngestHealth, shapeOf, streamersOf } from './shape';
 import { WatchCard } from './WatchCard';
 
 const STORAGE_ANCHOR = 'storage';
@@ -153,8 +153,8 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
   // that never answered, which nothing on the container says.
   const uploaderDeployed = profile.containers.some((container) => container.service === STREAM_UPLOADER_SERVICE);
   const uploaderHealth = useUploaderHealth(uploaderDeployed ? profile : null);
-  const srtIngestShown = readsSrtIngest(profile);
-  const srtIngest = useIngestHealth(srtIngestShown ? profile : null);
+  const ingestHealthShown = readsIngestHealth(profile);
+  const ingestHealth = useIngestHealth(ingestHealthShown ? profile : null);
   const group = groups.find((entry) => entry.id === profile.group_id) ?? null;
   const version = versions?.find((entry) => entry.id === profile.stack_version_id) ?? null;
   const rung = group ? rungFromMemberName(group.name, profile.name) : null;
@@ -256,9 +256,9 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
 
           <ReadinessCard steps={steps} summary={summary} onAction={runStepAction} />
 
-          {srtIngestShown && (
-            <SrtIngestCard
-              load={srtIngest}
+          {ingestHealthShown && (
+            <IngestHealthCard
+              load={ingestHealth}
               latencySettingOffered={offersLatencySetting(engineLoad.overview?.fields)}
               onRaiseLatency={() => revealSetting(SRT_LATENCY_SETTING_KEY)}
             />

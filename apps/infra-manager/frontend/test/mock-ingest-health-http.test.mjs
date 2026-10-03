@@ -127,6 +127,7 @@ describe('the mock ingest health route', { concurrency: false, timeout: 60_000 }
     assert.equal(reading.srt.verdict, 'healthy');
     assert.equal(reading.srt.reports, 6);
     assert.deepEqual(Object.keys(reading.srt.counts).sort(), ['dropped', 'lost', 'received', 'retransmitted']);
+    assert.deepEqual(reading.rtmp, { state: 'no_reports' });
   });
 
   it('keeps the state a reviewer picked for the asks that follow', async () => {
@@ -141,10 +142,27 @@ describe('the mock ingest health route', { concurrency: false, timeout: 60_000 }
       state: 'read',
       windowSeconds: 60,
       srt: { state: 'no_reports' },
+      rtmp: { state: 'no_reports' },
     });
     assert.deepEqual(await request(`/profiles/${name}/ingest-health?state=unreadable`), {
       state: 'unreadable',
       windowSeconds: 60,
+    });
+  });
+
+  it('answers a broadcast over RTMP alone, kept like the SRT state, in every RTMP state a reviewer picks', async () => {
+    const name = await runningDeployment('srs');
+
+    const rtmpOnly = await request(`/profiles/${name}/ingest-health?state=no_reports&rtmp=measured`);
+    assert.deepEqual(rtmpOnly.srt, { state: 'no_reports' });
+    assert.deepEqual(rtmpOnly.rtmp, { state: 'measured', reports: 6, connections: 1, incomingKbps: 4812 });
+    assert.deepEqual((await request(`/profiles/${name}/ingest-health`)).rtmp, rtmpOnly.rtmp);
+    assert.equal((await request(`/profiles/${name}/ingest-health?rtmp=measuring`)).rtmp.incomingKbps, null);
+    assert.deepEqual((await request(`/profiles/${name}/ingest-health?rtmp=unattributed`)).rtmp, {
+      state: 'unattributed',
+    });
+    assert.deepEqual((await request(`/profiles/${name}/ingest-health?rtmp=not-a-state`)).rtmp, {
+      state: 'unattributed',
     });
   });
 

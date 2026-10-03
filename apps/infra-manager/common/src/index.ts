@@ -38,6 +38,7 @@ export * from './readinessChecklist.js';
 export * from './readySummary.js';
 export * from './redactEndpoints.js';
 export * from './rpcEndpointSource.js';
+export * from './rtmpIngestHealth.js';
 export * from './runningCommit.js';
 export * from './settingValues.js';
 export * from './srtIngestHealth.js';

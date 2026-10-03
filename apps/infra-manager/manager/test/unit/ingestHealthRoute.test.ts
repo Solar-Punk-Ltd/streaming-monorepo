@@ -37,6 +37,7 @@ const BROKEN_UP: IngestHealthReading = {
     connections: 1,
     counts: { received: 12_957, lost: 761, retransmitted: 731, dropped: 763 },
   }),
+  rtmp: { state: 'measured', reports: 6, connections: 1, incomingKbps: 4812 },
 };
 
 const session = {
@@ -104,12 +105,22 @@ describe('the ingest health route', () => {
   });
 
   it('answers a minute with no reports in it as that, with no numbers on it', async (t) => {
-    const api = await testApi({ state: 'read', windowSeconds: 60, srt: { state: 'no_reports' } });
+    const api = await testApi({
+      state: 'read',
+      windowSeconds: 60,
+      srt: { state: 'no_reports' },
+      rtmp: { state: 'no_reports' },
+    });
     t.after(() => api.close());
 
     const response = await api.get('/profiles/stage/ingest-health');
 
-    assert.deepEqual(await response.json(), { state: 'read', windowSeconds: 60, srt: { state: 'no_reports' } });
+    assert.deepEqual(await response.json(), {
+      state: 'read',
+      windowSeconds: 60,
+      srt: { state: 'no_reports' },
+      rtmp: { state: 'no_reports' },
+    });
   });
 
   it('needs a session, and asks nothing without one', async (t) => {

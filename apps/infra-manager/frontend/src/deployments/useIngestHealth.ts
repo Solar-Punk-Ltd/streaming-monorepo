@@ -5,9 +5,9 @@ import { getErrorMessage } from '@streaming-infra-manager/common';
 import type { Profile } from '../types';
 import { NODE_REFRESH_INTERVAL_MS } from '../uploaders/beeReadiness';
 import { fetchIngestHealth } from './ingestHealthApi';
-import type { SrtIngestLoad } from './srtIngestText';
+import type { IngestHealthLoad } from './ingestHealthText';
 
-const NOT_READ: SrtIngestLoad = { reading: null, loadError: null };
+const NOT_READ: IngestHealthLoad = { reading: null, loadError: null };
 
 /**
  * The ingest reading, asked again on the cadence of the node readings beside
@@ -21,8 +21,8 @@ const NOT_READ: SrtIngestLoad = { reading: null, loadError: null };
  * @param profile the deployment to ask about, or null for one with no SRS
  *   running, which asks nothing at all.
  */
-export function useIngestHealth(profile: Profile | null): SrtIngestLoad {
-  const [load, setLoad] = useState<SrtIngestLoad>(NOT_READ);
+export function useIngestHealth(profile: Profile | null): IngestHealthLoad {
+  const [load, setLoad] = useState<IngestHealthLoad>(NOT_READ);
   const name = profile?.name ?? null;
 
   useEffect(() => {

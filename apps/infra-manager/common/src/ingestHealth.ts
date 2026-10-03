@@ -7,6 +7,7 @@
  * a log that could not be read, or an engine that is not SRS. A reading that
  * was read carries what the log said about each ingest protocol.
  */
+import type { RtmpIngestReading } from './rtmpIngestHealth.js';
 import type { SrtIngestReading } from './srtIngestHealth.js';
 
 /** The manager read the window of SRS's log, and the reading carries what it found. */
@@ -25,6 +26,7 @@ export interface IngestHealthRead {
   /** How far back the manager read the log. */
   windowSeconds: number;
   srt: SrtIngestReading;
+  rtmp: RtmpIngestReading;
 }
 
 export interface IngestHealthNotRead {

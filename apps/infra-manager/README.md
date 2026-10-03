@@ -81,9 +81,10 @@ run any of it on a laptop: [docs/ci.md](docs/ci.md).
     deployment's version declares and its engine settings, set for one
     deployment on its page or in the new-deployment wizard, and Apply for the
     containers behind on them.
-  - [srt-ingest-health.md](docs/features/srt-ingest-health.md): how the SRT
-    link from the broadcaster held up over the last minute, from SRS's own
-    statistics, and what to change when it drops packets.
+  - [srt-ingest-health.md](docs/features/srt-ingest-health.md): how the
+    broadcast coming into SRS held up over the last minute, from SRS's own
+    statistics: the SRT link and what to change when it drops packets, and the
+    RTMP publishers with the bitrate SRS received from them.
   - [group-deployment.md](docs/features/group-deployment.md): several
     deployments created at once under one name.
   - [web2-admin-link.md](docs/features/web2-admin-link.md): an uploader linked

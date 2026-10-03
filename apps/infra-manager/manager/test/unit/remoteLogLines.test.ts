@@ -21,6 +21,7 @@ import { ContainerNotRunningError } from '../../src/domain/errors/index.js';
 import type { LogWindow } from '../../src/domain/logWindow.js';
 import { type MarkedLines, remoteLogLinesCommand, remoteLogLinesFrom } from '../../src/domain/ports/remoteLogLines.js';
 import { TargetDocker } from '../../src/domain/ports/TargetDocker.js';
+import { INGEST_LOG_LINES } from '../../src/domain/ingestHealth/IngestHealthService.js';
 import { TRANSPORT_STATS_HOST_PATTERN } from '../../src/domain/ingestHealth/transportStatsLine.js';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 
@@ -149,10 +150,13 @@ describe('the remote command, run by a POSIX shell', () => {
   );
   chmodSync(fakeDocker, 0o755);
 
-  function runOnHost(fake: { ids?: string; log?: string; logFormat?: string; psExit?: number; logsExit?: number }) {
+  function runOnHost(
+    fake: { ids?: string; log?: string; logFormat?: string; psExit?: number; logsExit?: number },
+    lines: MarkedLines = LINES,
+  ) {
     const calls = join(bin, `calls-${Math.random().toString(36).slice(2)}`);
     writeFileSync(calls, '');
-    const result = spawnSync('/bin/sh', ['-c', remoteLogLinesCommand('stream1', 'srs', LINES, WINDOW)], {
+    const result = spawnSync('/bin/sh', ['-c', remoteLogLinesCommand('stream1', 'srs', lines, WINDOW)], {
       encoding: 'utf8',
       env: {
         PATH: `${bin}:/usr/bin:/bin`,
@@ -182,6 +186,30 @@ describe('the remote command, run by a POSIX shell', () => {
     assert.ok(!run.stdout.includes('quoted123'), 'a hook line quoting the report crossed the connection');
     assert.ok(!run.stdout.includes('split123'), 'a hook line split to begin like a report crossed the connection');
     assert.ok(run.stdout.includes(COLOURED_REPORT), 'a real report in colour codes has to cross');
+  });
+
+  it("hands back the SRT and RTMP reports of the ingest's own read, and no line with a key or a token", () => {
+    const rtmpReport =
+      '[2026-10-03 17:43:50.386][INFO][1][9tq3vz71] <- CPB time=40021, okbps=0,0,0, ikbps=0,4812,0, mr=0/350, p1stpt=20000, pnt=5000, vhost=__defaultVhost__';
+    const log = [
+      WEBHOOK,
+      REPORT,
+      '[2026-10-03 17:43:10.120][INFO][1][9tq3vz71] connect app, tcUrl=rtmp://ingest.example.org:10062/video?key=tcurl123, schema=rtmp, vhost=ingest.example.org, port=10062, app=video, args=null',
+      '[2026-10-03 17:43:10.130][INFO][1][9tq3vz71] client identified, type=fmle-publish, vhost=ingest.example.org, app=video, stream=s, param=?key=param123, duration=0ms',
+      `[2026-10-03 17:43:10.140][INFO][1][9tq3vz71] http: on_publish ok, stream=x${rtmpReport.slice(rtmpReport.indexOf('<-'))}, url=http://stream-uploader:3000/engines/srs/streams?token=rtmp123`,
+      `\u001b[0m${rtmpReport}`,
+    ].join('\n');
+
+    const run = runOnHost({ ids: CONTAINER_ID, log }, INGEST_LOG_LINES);
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.deepEqual(remoteLogLinesFrom(run.stdout, INGEST_LOG_LINES.marker), {
+      container: 'running',
+      lines: [REPORT, `\u001b[0m${rtmpReport}`],
+    });
+    for (const secret of ['abc123', 'tcurl123', 'param123', 'rtmp123']) {
+      assert.ok(!run.stdout.includes(secret), `${secret} crossed the connection`);
+    }
   });
 
   it('asks for the logs of the container it found, within the window', () => {
