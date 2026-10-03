@@ -291,3 +291,60 @@ export function afterApply(catalog) {
     catalog: { ...catalog, entries: rows, drift: { keys: [], services: [], fullRedeploy: false } },
   };
 }
+
+export const ABR_LADDER_INSTANCE = '99999999-9999-4999-8999-999999999999';
+
+/** The ladder the manager writes for a deployment that stores no rung setting, highest rung first. */
+export const SHIPPED_ABR_LADDER = '1080p:1920:1080:5000 720p:1280:720:2800 480p:854:480:1200 360p:640:360:700';
+
+const SHIPPED_RUNGS = [
+  { name: '360p', width: '640', height: '360', kbps: '700' },
+  { name: '480p', width: '854', height: '480', kbps: '1200' },
+  { name: '720p', width: '1280', height: '720', kbps: '2800' },
+  { name: '1080p', width: '1920', height: '1080', kbps: '5000' },
+];
+
+/**
+ * A running deployment that encodes the ABR ladder, with nothing of the ladder
+ * stored: every rung at the manager's own default, and ABR_LADDER read-only,
+ * put together from them.
+ */
+export function abrLadderCatalog() {
+  const ladderServices = ['srs', 'stream-uploader'];
+  const rungRows = SHIPPED_RUNGS.flatMap((rung) =>
+    ['width', 'height', 'kbps'].map((dimension) =>
+      engineEntry(`ABR_RUNG_${rung.name.toUpperCase()}_${dimension.toUpperCase()}`, rung[dimension], {
+        services: ladderServices,
+        defaultSource: 'manager',
+      }),
+    ),
+  );
+  return {
+    instanceId: ABR_LADDER_INSTANCE,
+    revision: 3,
+    buildId: 'be440d65e0e82bcf9000a8a0dde905dc215255d6',
+    entries: [
+      entry({
+        key: 'ABR_LADDER',
+        section: 'ABR ladder',
+        description: 'The rungs the engine encodes, name:width:height:kbps.',
+        owner: 'abr-rungs',
+        source: 'manager',
+        value: SHIPPED_ABR_LADDER,
+        services: ladderServices,
+      }),
+      engineEntry('ABR_FPS', '30', { section: 'ABR ladder' }),
+      engineEntry('HLS_FRAGMENT', '2', {
+        section: 'SRS Media Server',
+        services: ladderServices,
+        defaultSource: 'host',
+      }),
+      ...rungRows,
+    ],
+    drift: { keys: [], services: [], fullRedeploy: false },
+    running: true,
+    engine: 'srs',
+    abr: true,
+    engineSettingsProblem: null,
+  };
+}

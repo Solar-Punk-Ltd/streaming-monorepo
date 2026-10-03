@@ -166,7 +166,7 @@ function listedSettingsOf(input: ListInput, running: boolean): ListedSetting[] {
 
   return listedKeysOf(input, engineFields).map(({ sample: declared, isDeclared }) => {
     const key = declared.key;
-    const services = readers.get(key) ?? null;
+    const services = readers.get(engineFields.get(key)?.composedInto ?? key) ?? null;
     const differing = differingServices(key, services, input);
     const base: EntryBase = {
       key,
@@ -177,9 +177,10 @@ function listedSettingsOf(input: ListInput, running: boolean): ListedSetting[] {
       running: runningStateOf(running, differing),
     };
     const stored = storedKeyOf(key, input);
+    const field = engineFields.get(key);
     const entry =
-      input.engineSettings && engineFields.has(key)
-        ? engineSettingEntryOf(base, stored, input.engineSettings, input.nextEnv)
+      input.engineSettings && field
+        ? engineSettingEntryOf(base, field, stored, input.engineSettings, input.nextEnv)
         : settingEntryOf(base, { stored, isDeclared, owner: settingOwnerOf(key, ownerContext), version, input });
     return { entry, differing: differing === 'unknown' ? [] : differing };
   });
@@ -188,10 +189,13 @@ function listedSettingsOf(input: ListInput, running: boolean): ListedSetting[] {
 /**
  * An engine setting the deployment reads, which the operator sets here. Its
  * default is what an unset key falls back to on the deployment's host, as the
- * Engine card names it, and a stored value is the deployment's own.
+ * Engine card names it, and a stored value is the deployment's own. A
+ * setting composed into another key has no line of its own in the next env,
+ * so its value is what it contributes to that key.
  */
 function engineSettingEntryOf(
   base: EntryBase,
+  field: EngineSettingField,
   stored: StoredKey,
   engineSettings: DeploymentEngineSettings,
   nextEnv: Readonly<Record<string, string>>,
@@ -210,7 +214,9 @@ function engineSettingEntryOf(
     versionValue: engineSettings.defaults.values[base.key] ?? null,
     stored: stored.stored,
     storedValue: stored.value,
-    value: nextEnv[base.key] ?? null,
+    value: field.composedInto
+      ? (stored.value ?? engineSettings.defaults.values[base.key] ?? null)
+      : (nextEnv[base.key] ?? null),
     source,
     owner: null,
     field: null,

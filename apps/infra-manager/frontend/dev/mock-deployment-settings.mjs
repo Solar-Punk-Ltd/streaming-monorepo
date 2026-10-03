@@ -285,6 +285,11 @@ for (const [service, keys] of Object.entries(SERVICE_ENV_KEYS)) {
   for (const key of keys) READERS.set(key, [...(READERS.get(key) ?? []), service]);
 }
 
+/** The services that read a key, a rung setting by the key it is composed into. */
+function readersOf(key) {
+  return READERS.get(engineSettingFieldOf(key)?.composedInto ?? key) ?? null;
+}
+
 const RUNNING_STATUSES = ['RUNNING', 'ERROR'];
 const BUSY_STATUSES = ['DEPLOYING', 'STOPPING', 'REMOVING'];
 
@@ -326,7 +331,7 @@ function versionOf(profile) {
 
 /** A sample key with the services that read it, which for an engine setting are the manager's own list's. */
 function withReaders(sample) {
-  return engineSettingFieldOf(sample.key) ? { ...sample, services: READERS.get(sample.key) ?? null } : sample;
+  return engineSettingFieldOf(sample.key) ? { ...sample, services: readersOf(sample.key) } : sample;
 }
 
 /** The root sample's keys, then those of the engine a deployment of this shape runs, if it runs one. */
@@ -414,7 +419,7 @@ function listedOf(profile, store, facts) {
   const known = new Set(declared.map(({ key }) => key));
   const engine = (facts?.fields ?? [])
     .filter(({ key }) => !known.has(key))
-    .map(({ key }) => ({ key, section: '', description: '', services: READERS.get(key) ?? null }));
+    .map(({ key }) => ({ key, section: '', description: '', services: readersOf(key) }));
   for (const { key } of engine) known.add(key);
   const dropped = [...Object.keys(store.plain), ...store.secrets.keys(), ...Object.keys(profile.engine_settings)]
     .filter((key) => !known.has(key))

@@ -162,8 +162,10 @@ Reading live status from it is not built into the manager yet.`
   whose default is the manager's own as the update above says), and on an ABR uploader alone the
   transcoding settings: frame rate, preset, profile, threads, audio codec, audio bitrate, VBV
   seconds (`ABR_FPS`, `ABR_PRESET`, `ABR_PROFILE`, `ABR_THREADS`, `ABR_ACODEC`,
-  `ABR_AUDIO_BITRATE`, `ABR_VBV_SECONDS`). The ladder itself stays fixed, it is the contract with
-  the node pool. For OME: **Segment duration** and **Segment count** (`HLS_SEGMENT_DURATION`,
+  `ABR_AUDIO_BITRATE`, `ABR_VBV_SECONDS`), and each rung's width, height and bitrate
+  (`ABR_RUNG_360P_WIDTH` to `ABR_RUNG_1080P_KBPS`, see
+  [Each rung's size and bitrate](abr-ladder.md#each-rungs-size-and-bitrate)). The rung names stay
+  fixed, they are the contract with the node pool. For OME: **Segment duration** and **Segment count** (`HLS_SEGMENT_DURATION`,
   `HLS_SEGMENT_COUNT`), **Poll interval** (`OME_HLS_POLL_INTERVAL_MS`). Each field is named by its
   label with the key beside it, shows its unit, the default an unset one falls back to on this
   host, and its help, a one line explanation copied from the stack's sample files into the field

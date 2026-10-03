@@ -114,6 +114,69 @@ describe('writeProfileEnv — BEE_PUBLISHERS', () => {
   });
 });
 
+describe('writeProfileEnv, ABR_LADDER from the rung settings', () => {
+  const rungLines = (path: string) => lines(path).filter((line) => line.startsWith('ABR_RUNG_'));
+
+  it('composes the rungs the deployment stores over the shipped ones, highest first', () => {
+    const path = writeProfileEnv(root, 'stage-rungs', {
+      engine: 'srs',
+      beePublishers: PUBLISHERS,
+      engineSettings: {
+        ABR_RUNG_1080P_WIDTH: '2560',
+        ABR_RUNG_1080P_HEIGHT: '1440',
+        ABR_RUNG_1080P_KBPS: '8000',
+        ABR_RUNG_360P_KBPS: '600',
+      },
+    });
+    assert.equal(
+      lineFor(path, 'ABR_LADDER'),
+      'ABR_LADDER=1080p:2560:1440:8000 720p:1280:720:2800 480p:854:480:1200 360p:640:360:600',
+    );
+    assert.equal(lineFor(path, 'BEE_PUBLISHERS'), `BEE_PUBLISHERS=${PUBLISHERS}`);
+  });
+
+  it('writes no rung setting as a line of its own', () => {
+    const path = writeProfileEnv(root, 'stage-rung-lines', {
+      engine: 'srs',
+      beePublishers: PUBLISHERS,
+      engineSettings: { ABR_RUNG_720P_WIDTH: '1024', ABR_RUNG_720P_HEIGHT: '576', ABR_FPS: '30' },
+    });
+    assert.deepEqual(rungLines(path), []);
+    assert.equal(lineFor(path, 'ABR_FPS'), 'ABR_FPS=30');
+  });
+
+  it('writes the shipped ladder over whatever the base env says', () => {
+    writeBaseEnv(`${BASE_ENV}ABR_LADDER=1080p:1280:720:3000 720p:854:480:1500 480p:640:360:800 360p:426:240:400\n`);
+    const path = writeProfileEnv(root, 'stage-rung-base', { engine: 'srs', beePublishers: PUBLISHERS });
+    assert.equal(
+      lineFor(path, 'ABR_LADDER'),
+      'ABR_LADDER=1080p:1920:1080:5000 720p:1280:720:2800 480p:854:480:1200 360p:640:360:700',
+    );
+  });
+
+  it('writes none of it for a deployment that does not encode the ladder, whatever it stores', () => {
+    const path = writeProfileEnv(root, 'stage-rung-plain', {
+      engine: 'srs',
+      stampId: BATCH('own'),
+      engineSettings: { ABR_RUNG_1080P_WIDTH: '2560' },
+    });
+    assert.equal(lineFor(path, 'ABR_LADDER'), undefined);
+    assert.deepEqual(rungLines(path), []);
+  });
+
+  it('refuses a ladder out of order, naming the rungs', () => {
+    assert.throws(
+      () =>
+        writeProfileEnv(root, 'stage-rung-order', {
+          engine: 'srs',
+          beePublishers: PUBLISHERS,
+          engineSettings: { ABR_RUNG_720P_HEIGHT: '480' },
+        }),
+      /refusing to write the engine settings.*720p rung has to be taller than the 480p rung/,
+    );
+  });
+});
+
 describe('writeProfileEnv — BEE_URL', () => {
   it('writes an explicit external node', () => {
     const path = writeProfileEnv(root, 'ext-a', {

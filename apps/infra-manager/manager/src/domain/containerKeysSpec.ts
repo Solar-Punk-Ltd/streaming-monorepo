@@ -5,7 +5,9 @@ import {
   type EngineName,
   engineSettingsFields,
   OME_SERVICE,
+  OME_SETTINGS,
   SRS_SERVICE,
+  SRS_SETTINGS,
   STREAM_UPLOADER_SERVICE,
 } from '@streaming-infra-manager/common';
 
@@ -37,15 +39,27 @@ export const UPLOADER_ENGINE_SETTING_KEYS: readonly string[] = ['OME_HLS_POLL_IN
  * `HLS_FRAGMENT` is the only settings field in this position, read off
  * `deploy/docker-compose.yml` rather than assumed: the engine is asked
  * to cut at it and the uploader dates every segment by it. The other keys both
- * blocks set, ABR_ENABLED, ABR_LADDER, ABR_VHOST and SRS_WEBHOOK_TOKEN, are not
- * settings fields and never reach this decision.
+ * blocks set, ABR_ENABLED, ABR_VHOST and SRS_WEBHOOK_TOKEN, are not settings
+ * fields and never reach this decision. ABR_LADDER reaches it through the rung
+ * settings composed into it, see {@link COMPOSED_ENGINE_SETTING_KEYS}.
  */
 export const SHARED_ENGINE_SETTING_KEYS: readonly string[] = ['HLS_FRAGMENT'];
+
+/**
+ * Engine settings no container reads under their own name, because the
+ * manager writes them into another key, the rung sizes and bitrates into
+ * `ABR_LADDER`. Both the engine and the uploader read that one, so a change to
+ * any of these brings both back, and a container record covers the composed
+ * key rather than its parts.
+ */
+export const COMPOSED_ENGINE_SETTING_KEYS: readonly string[] = [...SRS_SETTINGS, ...OME_SETTINGS]
+  .filter((field) => field.composedInto !== undefined)
+  .map((field) => field.key);
 
 function engineSettingKeysFor(engine: EngineName): string[] {
   return engineSettingsFields(engine)
     .map((field) => field.key)
-    .filter((key) => !UPLOADER_ENGINE_SETTING_KEYS.includes(key));
+    .filter((key) => !UPLOADER_ENGINE_SETTING_KEYS.includes(key) && !COMPOSED_ENGINE_SETTING_KEYS.includes(key));
 }
 
 /**
