@@ -114,6 +114,18 @@ describe('update: clearing the ABR pool string', () => {
     );
   }
 
+  it("recreates the uploader too when a rung's size changes, because both read the ABR_LADDER it goes into", async () => {
+    const { service, deploys } = withLadder();
+
+    await service.updateEngineSettings('stream1', {
+      HLS_FRAGMENT: '2',
+      ABR_FPS: '30',
+      ABR_RUNG_720P_KBPS: '3000',
+    });
+
+    assert.deepEqual(deploys, [{ name: 'stream1', services: ['srs', 'stream-uploader'] }]);
+  });
+
   it('takes the rung settings out with it', async () => {
     // Left behind, ABR_FPS fails the settings check on every later deploy and
     // the deployment lands in ERROR over a field the settings page offers only

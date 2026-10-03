@@ -1,4 +1,5 @@
 import {
+  ABR_LADDER_ENV_KEY,
   ENGINE_CONFIG_ENV_KEYS,
   type EngineName,
   engineOfSettingKey,
@@ -19,7 +20,6 @@ const FIELD_OWNERS: Readonly<Record<string, SettingOwner>> = {
   STAMP: 'stamp',
   BEE_PUBLISHERS: 'node-pool',
   ABR_ENABLED: 'node-pool',
-  ABR_LADDER: 'node-pool',
   RPC_ENDPOINT: 'chain-endpoint',
   BEE_GATEWAY_RPC_ENDPOINT: 'node-mode',
   BEE_GATEWAY_SWAP_ENABLE: 'node-mode',
@@ -68,6 +68,15 @@ export interface SettingOwnerContext {
   engineReader?: EngineSettingsReader;
 }
 
+/**
+ * Who decides the ladder key. A deployment that encodes the ladder takes it
+ * from its rung settings. Any other takes it from its node pool, which for a
+ * deployment without one means the manager writes none.
+ */
+function abrLadderOwnerOf(reader: EngineSettingsReader | undefined): SettingOwner {
+  return reader?.abr ? 'abr-rungs' : 'node-pool';
+}
+
 /** Who sets an engine setting: the operator in the list, the engine settings, or nobody the deployment has. */
 function engineSettingOwnerOf(
   key: string,
@@ -82,6 +91,7 @@ function engineSettingOwnerOf(
 
 /** The control that decides this key for a deployment, or why the deployment does not read it, or null when the operator decides it. */
 export function settingOwnerOf(key: string, context: SettingOwnerContext): SettingOwner | null {
+  if (key === ABR_LADDER_ENV_KEY) return abrLadderOwnerOf(context.engineReader);
   const field = FIELD_OWNERS[key];
   if (field) return field;
   const engine = engineOfSettingKey(key);

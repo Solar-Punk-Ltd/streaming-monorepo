@@ -19,6 +19,7 @@
  * fewer of them, which is why the settings are stored as one JSONB column
  * rather than as a column each.
  */
+import { ABR_RUNG_SETTINGS, abrLadderOrderProblem, type ComposedEnvKey } from './abrRungSettings.js';
 import { OME_SERVICE, SRS_SERVICE } from './constants.js';
 import type { EngineDefaults } from './engineDefaults.js';
 import type { EngineName } from './engines.js';
@@ -53,6 +54,8 @@ export interface EngineSettingField {
   managerOwnsDefault?: boolean;
   min?: number;
   max?: number;
+  /** A picture size, which the H.264 encoder refuses when it is odd. */
+  mustBeEven?: boolean;
   choices?: readonly string[];
   help: string;
   /** Read only when the ABR ladder is on, which is the abr-uploader kind. */
@@ -64,6 +67,12 @@ export interface EngineSettingField {
    * reading the setting, see `settingsNotInConfig`.
    */
   placeholder?: string;
+  /**
+   * The env key this value is written into as one part, rather than as a line
+   * of its own. `engineSettingsEnv` leaves it out and the writer of that key
+   * composes it, and the host's base env cannot set it on its own.
+   */
+  composedInto?: ComposedEnvKey;
 }
 
 /**
@@ -236,6 +245,7 @@ export const SRS_SETTINGS: readonly EngineSettingField[] = [
     abrOnly: true,
     placeholder: 'TRANSCODE_PLACEHOLDER',
   },
+  ...ABR_RUNG_SETTINGS,
 ];
 
 export const OME_SETTINGS: readonly EngineSettingField[] = [
@@ -406,6 +416,9 @@ export function engineSettingFieldProblem(field: EngineSettingField, rawValue: s
   if (field.max !== undefined && parsed > field.max) {
     return `${field.label} must be at most ${field.max}. Got ${value}.`;
   }
+  if (field.mustBeEven && parsed % 2 !== 0) {
+    return `${field.label} must be an even number, because the H.264 encoder refuses odd picture sizes. Got ${value}.`;
+  }
   return null;
 }
 
@@ -510,7 +523,7 @@ export function engineSettingsProblem(
     const defaults = options.defaults ?? {};
     const ceiling = forceCloseCeilingProblem(settings, defaults);
     if (ceiling) return ceiling;
-    if (options.abr) return gopProblem(settings, defaults);
+    if (options.abr) return gopProblem(settings, defaults) ?? abrLadderOrderProblem(settings);
   }
   return null;
 }
@@ -547,6 +560,7 @@ export function engineSettingsEnv(
 ): Record<string, string> {
   const pairs: Record<string, string> = {};
   for (const field of engineSettingsFieldsFor(engine, options)) {
+    if (field.composedInto) continue;
     const value = settings[field.key]?.trim() || managerDefaultOf(field, options.defaults);
     if (value) pairs[field.key] = value;
   }

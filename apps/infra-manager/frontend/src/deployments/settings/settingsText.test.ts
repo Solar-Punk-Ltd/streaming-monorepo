@@ -123,10 +123,17 @@ describe('ownerSentence', () => {
 
   it('reads as a sentence for every control', () => {
     for (const owner of (Object.keys(SETTING_OWNER_LABELS) as SettingOwner[]).filter(
-      (candidate) => !isNotReadOwner(candidate),
+      (candidate) => !isNotReadOwner(candidate) && candidate !== 'abr-rungs',
     )) {
       assert.match(ownerSentence(owner), /^Decided by .+\. It cannot be set here\.$/);
     }
+  });
+
+  it('points ABR_LADDER at the rung settings it is put together from, rather than saying it cannot be set', () => {
+    assert.equal(
+      ownerSentence('abr-rungs'),
+      'Put together from the rung settings under Engine settings, the width, height and bitrate of each rung. Change those to change it.',
+    );
   });
 
   it('says who reads an engine setting the deployment does not, rather than naming a control', () => {
