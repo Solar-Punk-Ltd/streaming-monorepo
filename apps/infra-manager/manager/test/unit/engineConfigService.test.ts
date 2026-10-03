@@ -108,6 +108,7 @@ interface Setup<W extends EngineWatcher> {
   harness: ProfileServiceHarness;
   service: InstanceType<typeof EngineConfigService>;
   watcher: W;
+  operations: InstanceType<typeof InMemoryEngineConfigOperations>;
   checkerCalls: number;
 }
 
@@ -147,13 +148,21 @@ async function setup<W extends EngineWatcher = ScriptedWatcher>(
     harness,
     service,
     watcher,
+    operations,
     get checkerCalls() {
       return state.checkerCalls;
     },
   };
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
+/** Waits until no rollout is still applying, watching or reverting, so a slow machine only makes the wait longer. */
+async function settle(operations: { listOpen(): Promise<unknown[]> }, limitMs = 5_000): Promise<void> {
+  const deadline = Date.now() + limitMs;
+  while ((await operations.listOpen()).length > 0) {
+    assert.ok(Date.now() < deadline, `a rollout was still open after ${limitMs} ms`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
 
 describe('what the editor opens on', () => {
   it("answers the version's template, its placeholders, and that it is supported", async () => {
@@ -225,10 +234,10 @@ describe('applying a file', () => {
   });
 
   it('claims, stores, recreates the engine, and leaves the file in place when it stays up', async () => {
-    const { service, harness, watcher } = await setup();
+    const { service, harness, watcher, operations } = await setup();
 
     const profile = await service.apply('stream1', 'listen 1935;\nhls_fragment HLS_FRAGMENT_PLACEHOLDER;\n');
-    await settle();
+    await settle(operations);
 
     assert.equal(profile.has_engine_config, true);
     assert.equal(profile.engine_config_error, null);
@@ -245,13 +254,13 @@ describe('applying a file', () => {
 
 describe('an engine that will not stay up on the new file', () => {
   it('gets the previous file back, is recreated again, and the row says why', async () => {
-    const { service, harness } = await setup({
+    const { service, harness, operations } = await setup({
       states: [RUNNING, { ...RUNNING, status: 'restarting', restartCount: 2 }],
     });
     harness.profiles.engineConfigs.set('stream1', 'listen 1935; # the old one\n');
 
     await service.apply('stream1', 'listen 1935;\nhls_window 5;\n');
-    await settle();
+    await settle(operations);
 
     const row = harness.profiles.rows.get('stream1');
     assert.equal(harness.profiles.engineConfigs.get('stream1'), 'listen 1935; # the old one\n');
@@ -269,10 +278,10 @@ describe('an engine that will not stay up on the new file', () => {
   });
 
   it('goes back to the template when there was no previous file', async () => {
-    const { service, harness } = await setup({ states: [null] });
+    const { service, harness, operations } = await setup({ states: [null] });
 
     await service.apply('stream1', 'listen 1935;\n');
-    await settle();
+    await settle(operations);
 
     const row = harness.profiles.rows.get('stream1');
     assert.equal(harness.profiles.engineConfigs.has('stream1'), false);
@@ -314,10 +323,10 @@ describe('what the engine said, on its way to an operator', () => {
     ['the last lines of a tail that names no reason', () => new QuietWatcher(restarting)],
   ] as const) {
     it(`keeps no secret out of ${what}`, async () => {
-      const { service, harness } = await setup({ watcher: watcher() });
+      const { service, harness, operations } = await setup({ watcher: watcher() });
 
       await service.apply('stream1', 'listen 1935;\nhls_window 5;\n');
-      await settle();
+      await settle(operations);
 
       const reason = harness.profiles.rows.get('stream1')?.engine_config_error ?? '';
       assert.match(reason, /passphrase|token/, "the engine's own words still reach the operator");
@@ -343,13 +352,13 @@ describe('the watch over the real Docker adapter', () => {
         logBytes: frame('invalid config, exiting\n'),
       },
     ]);
-    const { service, harness } = await setup({
+    const { service, harness, operations } = await setup({
       watcher: new ContainerControl(new EventBus(), docker),
     });
     harness.profiles.engineConfigs.set('stream1', 'listen 1935; # the old one\n');
 
     await service.apply('stream1', 'listen 1935;\nhls_window 5;\n');
-    await settle();
+    await settle(operations);
 
     const row = harness.profiles.rows.get('stream1');
     assert.equal(harness.profiles.engineConfigs.get('stream1'), 'listen 1935; # the old one\n');
