@@ -59,11 +59,14 @@ the only source there is.
 
 ## What the manager reads, and what it never hands on
 
-`GET /profiles/:name/srt-ingest`, behind the session, one deployment at a time.
-`manager/src/domain/srtIngest/SrtIngestHealthService.ts` does the reading.
+`GET /profiles/:name/ingest-health`, behind the session, one deployment at a time.
+`manager/src/domain/ingestHealth/IngestHealthService.ts` does the reading. The
+answer's SRT part is under `srt`, and the states that say no log was read, SRS
+not running, a log that could not be read and an engine that is not SRS, belong
+to the answer as a whole (`common/src/ingestHealth.ts`).
 
 - **The window.** The last 60 seconds of the `srs` container's log, and of those
-  at most the last 20,000 lines (`SRT_INGEST_LOG_WINDOW`). Under loss libsrt
+  at most the last 20,000 lines (`INGEST_LOG_WINDOW`). Under loss libsrt
   writes a line per dropped packet into the same log, `RCV-DROPPED 1 packet(s).
 Packet seqno %861816580 delayed for 4.5 ms`, about forty a second on
   2026-09-22, so a read that asked for the whole log would grow by megabytes a
@@ -80,7 +83,7 @@ Packet seqno %861816580 delayed for 4.5 ms`, about forty a second on
   ssh path `TargetDocker` already takes for its snapshots and published ports,
   and there `grep -E` holds each line to the report's whole shape, from start to
   end with colour codes allowed, on the remote host
-  (`TRANSPORT_STATS_HOST_PATTERN` in `manager/src/domain/srtIngest/transportStatsLine.ts`, the
+  (`TRANSPORT_STATS_HOST_PATTERN` in `manager/src/domain/ingestHealth/transportStatsLine.ts`, the
   command in `manager/src/domain/ports/remoteLogLines.ts`).
   So no other line of the log crosses the connection, not even a hook line
   whose publisher chose a stream id that quotes the report. A filter on the
@@ -92,7 +95,7 @@ Packet seqno %861816580 delayed for 4.5 ms`, about forty a second on
   reader, a last line the read cut short is dropped, since a count cut after two
   of its digits still parses, and a line is parsed only when it has the report's
   exact shape from start to end, colour codes aside
-  (`manager/src/domain/srtIngest/transportStatsLine.ts`).
+  (`manager/src/domain/ingestHealth/transportStatsLine.ts`).
 - **The answer is numbers and a verdict.** SRS writes its webhook URL, with the
   uploader's token in it, into every hook line of the same log, and the
   publisher's address into others. None of the log's text is returned, stored,
@@ -222,11 +225,11 @@ These are P3: rare, with no damage path, recorded once.
   quotes the report, with and without a line break, which stay on the host
   while a report in colour codes crosses. Run by hand under dash, the macOS sh
   and zsh as well, before the pattern replaced the marker.
-- `manager/test/unit/srtIngestHealth.test.ts`: the service's states, and a log
+- `manager/test/unit/ingestHealth.test.ts`: the service's states, and a log
   holding the webhook token and the publisher's address beside the reports,
   after which neither the reading nor anything logged carries any of it, the
   failure path included.
-- `manager/test/unit/srtIngestHealthRoute.test.ts`: the route answers the reading
+- `manager/test/unit/ingestHealthRoute.test.ts`: the route answers the reading
   whole, needs a session, refuses a bad name and answers 404 for a missing one.
 - `frontend/src/deployments/srtIngestText.test.ts`: the card's words in every
   state, a bad minute with nothing received, the remedy's steps naming no
@@ -239,10 +242,10 @@ These are P3: rare, with no damage path, recorded once.
   landing on the SRT latency in the Stack settings card, focused, no card and
   no request without SRS, and none for a
   stopped deployment that still carries its SRS records.
-- `frontend/test/mock-srt-ingest-http.test.mjs`: the offline mock answers the
+- `frontend/test/mock-ingest-health-http.test.mjs`: the offline mock answers the
   route in the manager's shape and keeps the state a reviewer picked.
 
 `pnpm --filter @streaming-infra-manager/frontend-prototype dev:mock` serves the
-card offline. `GET /profiles/<name>/srt-ingest?state=bad` picks what a
+card offline. `GET /profiles/<name>/ingest-health?state=bad` picks what a
 deployment shows, and it sticks: `healthy`, `recovered`, `degraded`, `bad`,
 `no_reports` or `unreadable`.

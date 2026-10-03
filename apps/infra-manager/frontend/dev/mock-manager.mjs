@@ -56,7 +56,7 @@ import { createTargetRoutes } from './mock-targets.mjs';
 import { closeRollout, engineConfigRoutes, forgetEngineConfig } from './mock-engine-config.mjs';
 import { readBody, send as sendRaw, sendScriptRun } from './mock-http.mjs';
 import { metricsClients, metricsSnapshot } from './mock-metrics.mjs';
-import { srtIngestRoutes } from './mock-srt-ingest.mjs';
+import { ingestHealthRoutes } from './mock-ingest-health.mjs';
 import { stageRoutes } from './mock-stages.mjs';
 import { MOCK_CURRENT_PRICE, stampChangeRoutes } from './mock-stamps.mjs';
 import { defaultVersionId, newDeploymentVersionProblem, seedVersions, versionRoutes } from './mock-versions.mjs';
@@ -910,7 +910,7 @@ const ROUTES = [
   ...createTargetRoutes(readBody),
   ...engineRoutes({ readBody, withProfile, findProfile, deploy, publish, settingsSaved: engineSettingsSaved }),
   ...engineConfigRoutes({ readBody, withProfile, deploy, publish }),
-  ...srtIngestRoutes({ withProfile }),
+  ...ingestHealthRoutes({ withProfile }),
   ...stageRoutes({ readBody, withProfile, profiles: () => state.profiles, changed, publicHost: PUBLIC_HOST, send }),
   ...deploymentSettingsRoutes({ readBody, withProfile, deploy }),
   ...versionRoutes(readBody, publish),

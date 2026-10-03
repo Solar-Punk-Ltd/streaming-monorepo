@@ -21,7 +21,7 @@ import { ContainerNotRunningError } from '../../src/domain/errors/index.js';
 import type { LogWindow } from '../../src/domain/logWindow.js';
 import { type MarkedLines, remoteLogLinesCommand, remoteLogLinesFrom } from '../../src/domain/ports/remoteLogLines.js';
 import { TargetDocker } from '../../src/domain/ports/TargetDocker.js';
-import { TRANSPORT_STATS_HOST_PATTERN } from '../../src/domain/srtIngest/transportStatsLine.js';
+import { TRANSPORT_STATS_HOST_PATTERN } from '../../src/domain/ingestHealth/transportStatsLine.js';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 
 const MARKER = '<- SRT_CPB Transport Stats # ';

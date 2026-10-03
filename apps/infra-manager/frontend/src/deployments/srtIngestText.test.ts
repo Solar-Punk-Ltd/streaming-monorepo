@@ -12,14 +12,29 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { measuredSrtIngest, type SrtIngestReading, type SrtLinkCounts } from '@streaming-infra-manager/common';
+import {
+  INGEST_READ,
+  type IngestHealthReading,
+  measuredSrtIngest,
+  SRT_INGEST_NO_REPORTS,
+  type SrtLinkCounts,
+} from '@streaming-infra-manager/common';
 
 import { offersLatencySetting, RAISE_LATENCY_ACTION, srtIngestView, type SrtIngestView } from './srtIngestText';
 
-const measured = (counts: SrtLinkCounts, reports = 6, connections = 1): SrtIngestReading =>
-  measuredSrtIngest({ windowSeconds: 60, reports, connections, counts });
+const measured = (counts: SrtLinkCounts, reports = 6, connections = 1): IngestHealthReading => ({
+  state: INGEST_READ,
+  windowSeconds: 60,
+  srt: measuredSrtIngest({ reports, connections, counts }),
+});
 
-const read = (reading: SrtIngestReading, latencySettingOffered = false): SrtIngestView =>
+const NO_SRT_REPORTS: IngestHealthReading = {
+  state: INGEST_READ,
+  windowSeconds: 60,
+  srt: { state: SRT_INGEST_NO_REPORTS },
+};
+
+const read = (reading: IngestHealthReading, latencySettingOffered = false): SrtIngestView =>
   srtIngestView({ reading, loadError: null }, { latencySettingOffered });
 
 const BROKEN_UP = measured({ received: 12_957, lost: 761, retransmitted: 731, dropped: 763 }, 2);
@@ -200,7 +215,7 @@ describe('the SRT latency step of the remedy', () => {
 
 describe('an SRT link the card has no numbers for', () => {
   it('says there were no reports rather than showing zeros', () => {
-    const view = read({ state: 'no_reports', windowSeconds: 60 });
+    const view = read(NO_SRT_REPORTS);
 
     assert.deepEqual(view.pill, { label: 'No SRT publisher', tone: 'gray' });
     assert.equal(
@@ -256,9 +271,8 @@ describe('the words on the card', () => {
       read(ONE_DROP),
       read(RECOVERED),
       read(CLEAN),
-      ...(['no_reports', 'not_running', 'unreadable', 'not_srs'] as const).map((state) =>
-        read({ state, windowSeconds: 60 }),
-      ),
+      read(NO_SRT_REPORTS),
+      ...(['not_running', 'unreadable', 'not_srs'] as const).map((state) => read({ state, windowSeconds: 60 })),
       srtIngestView({ reading: null, loadError: null }, { latencySettingOffered: false }),
     ];
 

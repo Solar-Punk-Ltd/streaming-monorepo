@@ -41,7 +41,7 @@ import { DeploymentHeader } from './DeploymentHeader';
 import { DeploymentSettingsCard } from './DeploymentSettingsCard';
 import { EngineCard } from './EngineCard';
 import { usePublishUrl } from './usePublishUrl';
-import { useSrtIngestHealth } from './useSrtIngestHealth';
+import { useIngestHealth } from './useIngestHealth';
 import { useUploaderHealth } from './useUploaderHealth';
 import { useEngineOverview } from './useEngineOverview';
 import { HeldAttemptCard } from './HeldAttemptCard';
@@ -154,7 +154,7 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
   const uploaderDeployed = profile.containers.some((container) => container.service === STREAM_UPLOADER_SERVICE);
   const uploaderHealth = useUploaderHealth(uploaderDeployed ? profile : null);
   const srtIngestShown = readsSrtIngest(profile);
-  const srtIngest = useSrtIngestHealth(srtIngestShown ? profile : null);
+  const srtIngest = useIngestHealth(srtIngestShown ? profile : null);
   const group = groups.find((entry) => entry.id === profile.group_id) ?? null;
   const version = versions?.find((entry) => entry.id === profile.stack_version_id) ?? null;
   const rung = group ? rungFromMemberName(group.name, profile.name) : null;

@@ -24,6 +24,7 @@ export * from './engineSettingObservation.js';
 export * from './engines.js';
 export * from './envSafeValue.js';
 export * from './errorUtils.js';
+export * from './ingestHealth.js';
 export * from './ingestHost.js';
 export * from './managerAdminLink.js';
 export * from './metrics.js';

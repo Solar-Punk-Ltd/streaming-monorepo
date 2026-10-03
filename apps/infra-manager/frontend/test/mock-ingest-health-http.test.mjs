@@ -1,5 +1,5 @@
 /**
- * The offline mock's SRT ingest route, over its own authenticated HTTP.
+ * The offline mock's ingest health route, over its own authenticated HTTP.
  *
  * The mock is how the card is reviewed without a host, so it has to answer in
  * the shape the manager does and stay in the state a reviewer picked, because
@@ -115,35 +115,42 @@ async function runningDeployment(engine) {
   return name;
 }
 
-describe('the mock SRT ingest route', { concurrency: false, timeout: 60_000 }, () => {
-  it('answers a running SRS deployment with a measured, healthy minute', async () => {
+describe('the mock ingest health route', { concurrency: false, timeout: 60_000 }, () => {
+  it('answers a running SRS deployment with a measured, healthy SRT minute', async () => {
     const name = await runningDeployment('srs');
 
-    const reading = await request(`/profiles/${name}/srt-ingest`);
+    const reading = await request(`/profiles/${name}/ingest-health`);
 
-    assert.equal(reading.state, 'measured');
-    assert.equal(reading.verdict, 'healthy');
+    assert.equal(reading.state, 'read');
     assert.equal(reading.windowSeconds, 60);
-    assert.equal(reading.reports, 6);
-    assert.deepEqual(Object.keys(reading.counts).sort(), ['dropped', 'lost', 'received', 'retransmitted']);
+    assert.equal(reading.srt.state, 'measured');
+    assert.equal(reading.srt.verdict, 'healthy');
+    assert.equal(reading.srt.reports, 6);
+    assert.deepEqual(Object.keys(reading.srt.counts).sort(), ['dropped', 'lost', 'received', 'retransmitted']);
   });
 
   it('keeps the state a reviewer picked for the asks that follow', async () => {
     const name = await runningDeployment('srs');
+    const verdict = async (query = '') => (await request(`/profiles/${name}/ingest-health${query}`)).srt.verdict;
 
-    assert.equal((await request(`/profiles/${name}/srt-ingest?state=bad`)).verdict, 'bad');
-    assert.equal((await request(`/profiles/${name}/srt-ingest`)).verdict, 'bad');
-    assert.equal((await request(`/profiles/${name}/srt-ingest?state=not-a-state`)).verdict, 'bad');
-    assert.equal((await request(`/profiles/${name}/srt-ingest?state=degraded`)).verdict, 'degraded');
-    assert.deepEqual(await request(`/profiles/${name}/srt-ingest?state=no_reports`), {
-      state: 'no_reports',
+    assert.equal(await verdict('?state=bad'), 'bad');
+    assert.equal(await verdict(), 'bad');
+    assert.equal(await verdict('?state=not-a-state'), 'bad');
+    assert.equal(await verdict('?state=degraded'), 'degraded');
+    assert.deepEqual(await request(`/profiles/${name}/ingest-health?state=no_reports`), {
+      state: 'read',
+      windowSeconds: 60,
+      srt: { state: 'no_reports' },
+    });
+    assert.deepEqual(await request(`/profiles/${name}/ingest-health?state=unreadable`), {
+      state: 'unreadable',
       windowSeconds: 60,
     });
   });
 
   it('says SRS is not running once the deployment stops', async () => {
     const name = await runningDeployment('srs');
-    await request(`/profiles/${name}/srt-ingest?state=bad`);
+    await request(`/profiles/${name}/ingest-health?state=bad`);
 
     await fetch(`${base}/profiles/${name}/stop`, {
       method: 'POST',
@@ -152,12 +159,12 @@ describe('the mock SRT ingest route', { concurrency: false, timeout: 60_000 }, (
     }).then((response) => response.text());
     await until(`/profiles/${name}`, (profile) => profile.status === 'STOPPED');
 
-    assert.deepEqual(await request(`/profiles/${name}/srt-ingest`), { state: 'not_running', windowSeconds: 60 });
+    assert.deepEqual(await request(`/profiles/${name}/ingest-health`), { state: 'not_running', windowSeconds: 60 });
   });
 
-  it('says a deployment on another engine has no SRT statistics', async () => {
+  it('says a deployment on another engine has no SRS statistics', async () => {
     const name = await runningDeployment('ome');
 
-    assert.deepEqual(await request(`/profiles/${name}/srt-ingest`), { state: 'not_srs', windowSeconds: 60 });
+    assert.deepEqual(await request(`/profiles/${name}/ingest-health`), { state: 'not_srs', windowSeconds: 60 });
   });
 });

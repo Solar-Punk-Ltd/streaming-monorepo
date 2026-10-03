@@ -79,20 +79,25 @@ const base = {
   containers: RUNNING_SRS,
 };
 
+/** A minute of SRS's log read whole, with what it said about SRT. */
+const readWith = (srt) => ({ state: 'read', windowSeconds: 60, srt });
+
 /** The two reports SRS printed for the tester's broadcast of 2026-09-22. */
-const BROKEN_UP = measuredSrtIngest({
-  windowSeconds: 60,
-  reports: 2,
-  connections: 1,
-  counts: { received: 12_957, lost: 761, retransmitted: 731, dropped: 763 },
-});
-const RECOVERED = measuredSrtIngest({
-  windowSeconds: 60,
-  reports: 6,
-  connections: 1,
-  counts: { received: 39_000, lost: 118, retransmitted: 118, dropped: 0 },
-});
-const NO_REPORTS = { state: 'no_reports', windowSeconds: 60 };
+const BROKEN_UP = readWith(
+  measuredSrtIngest({
+    reports: 2,
+    connections: 1,
+    counts: { received: 12_957, lost: 761, retransmitted: 731, dropped: 763 },
+  }),
+);
+const RECOVERED = readWith(
+  measuredSrtIngest({
+    reports: 6,
+    connections: 1,
+    counts: { received: 39_000, lost: 118, retransmitted: 118, dropped: 0 },
+  }),
+);
+const NO_REPORTS = readWith({ state: 'no_reports' });
 
 /** The engine setting the card's latency step leads to in the Stack settings card. */
 const SRT_LATENCY_KEY = 'SRT_LATENCY';
@@ -154,7 +159,7 @@ test('the SRT ingest card says how the link is holding up, and how to fix it', {
               res.write(': offline fixture\n\n');
               return;
             }
-            if (path === '/profiles/ingest-stage/srt-ingest') {
+            if (path === '/profiles/ingest-stage/ingest-health') {
               ingestReads += 1;
               return json(reading);
             }

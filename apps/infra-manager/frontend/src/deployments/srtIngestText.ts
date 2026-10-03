@@ -1,17 +1,16 @@
 import {
+  INGEST_NOT_RUNNING,
+  INGEST_NOT_SRS,
+  INGEST_READ,
+  INGEST_UNREADABLE,
+  type IngestHealthReading,
+  type IngestNotReadState,
   SRT_BAD_DROP_PERCENT,
   SRT_INGEST_MEASURED,
-  SRT_INGEST_NO_REPORTS,
-  SRT_INGEST_NOT_RUNNING,
-  SRT_INGEST_NOT_SRS,
-  SRT_INGEST_UNREADABLE,
   SRT_LINK_BAD,
   SRT_LINK_DEGRADED,
   SRT_LINK_HEALTHY,
   type SrtIngestMeasured,
-  type SrtIngestReading,
-  type SrtIngestUnmeasured,
-  type SrtIngestUnmeasuredState,
   type SrtLinkVerdict,
 } from '@streaming-infra-manager/common';
 
@@ -26,7 +25,7 @@ import { formatScaledPercent } from '../format';
 
 /** What the page holds: the last answer, or why there is none. */
 export interface SrtIngestLoad {
-  reading: SrtIngestReading | null;
+  reading: IngestHealthReading | null;
   loadError: string | null;
 }
 
@@ -95,12 +94,13 @@ const VERDICT_PILL: Record<SrtLinkVerdict, SrtIngestView['pill']> = {
   [SRT_LINK_BAD]: { label: 'Bad', tone: 'err' },
 };
 
-const UNMEASURED_PILL: Record<SrtIngestUnmeasuredState, SrtIngestView['pill']> = {
-  [SRT_INGEST_NO_REPORTS]: { label: 'No SRT publisher', tone: 'gray' },
-  [SRT_INGEST_NOT_RUNNING]: { label: 'SRS not running', tone: 'gray' },
-  [SRT_INGEST_UNREADABLE]: { label: 'Not read', tone: 'gray' },
-  [SRT_INGEST_NOT_SRS]: { label: 'Not SRS', tone: 'gray' },
+const LOG_NOT_READ_PILL: Record<IngestNotReadState, SrtIngestView['pill']> = {
+  [INGEST_NOT_RUNNING]: { label: 'SRS not running', tone: 'gray' },
+  [INGEST_UNREADABLE]: { label: 'Not read', tone: 'gray' },
+  [INGEST_NOT_SRS]: { label: 'Not SRS', tone: 'gray' },
 };
+
+const NO_SRT_PUBLISHER_PILL: SrtIngestView['pill'] = { label: 'No SRT publisher', tone: 'gray' };
 
 const NOT_READ_PILL: SrtIngestView['pill'] = { label: 'Not read', tone: 'gray' };
 const READING_PILL: SrtIngestView['pill'] = { label: 'Reading', tone: 'info' };
@@ -117,37 +117,42 @@ export function srtIngestView(load: SrtIngestLoad, options: SrtIngestViewOptions
       loadError ? `Could not ask the manager. ${loadError}` : "Reading SRS's SRT statistics.",
     );
   }
-  if (reading.state === SRT_INGEST_MEASURED) return measuredView(reading, options);
-  return nothingToShow(UNMEASURED_PILL[reading.state], unmeasuredSummary(reading));
+  if (reading.state !== INGEST_READ)
+    return nothingToShow(LOG_NOT_READ_PILL[reading.state], notReadSummary(reading.state));
+  const { srt, windowSeconds } = reading;
+  if (srt.state === SRT_INGEST_MEASURED) return measuredView(srt, windowSeconds, options);
+  return nothingToShow(NO_SRT_PUBLISHER_PILL, noSrtReportsSummary(windowSeconds));
 }
 
 function nothingToShow(pill: SrtIngestView['pill'], summary: string): SrtIngestView {
   return { pill, summary, rows: [], verdict: null, remedy: null };
 }
 
-function unmeasuredSummary(reading: SrtIngestUnmeasured): string {
-  switch (reading.state) {
-    case SRT_INGEST_NO_REPORTS:
-      return (
-        `SRS printed no SRT statistics in the last ${reading.windowSeconds} seconds. ` +
-        'It prints them about every ten seconds while a publisher sends over SRT, so nobody is ' +
-        'publishing over SRT, or a publisher connected moments ago. A broadcast over RTMP is not counted here.'
-      );
-    case SRT_INGEST_NOT_RUNNING:
+function notReadSummary(state: IngestNotReadState): string {
+  switch (state) {
+    case INGEST_NOT_RUNNING:
       return 'SRS is not running, so there is no link to read.';
-    case SRT_INGEST_UNREADABLE:
+    case INGEST_UNREADABLE:
       return "The manager could not read SRS's log just now. The page asks again in a few seconds.";
-    case SRT_INGEST_NOT_SRS:
+    case INGEST_NOT_SRS:
       return 'This deployment does not run SRS, and only SRS reports these statistics.';
   }
 }
 
-function measuredView(reading: SrtIngestMeasured, options: SrtIngestViewOptions): SrtIngestView {
+function noSrtReportsSummary(windowSeconds: number): string {
+  return (
+    `SRS printed no SRT statistics in the last ${windowSeconds} seconds. ` +
+    'It prints them about every ten seconds while a publisher sends over SRT, so nobody is ' +
+    'publishing over SRT, or a publisher connected moments ago. A broadcast over RTMP is not counted here.'
+  );
+}
+
+function measuredView(reading: SrtIngestMeasured, windowSeconds: number, options: SrtIngestViewOptions): SrtIngestView {
   const { counts, percent } = reading;
   return {
     pill: VERDICT_PILL[reading.verdict],
     summary:
-      `From the ${countOf(reading.reports, 'report')} SRS printed in the last ${reading.windowSeconds} seconds, ` +
+      `From the ${countOf(reading.reports, 'report')} SRS printed in the last ${windowSeconds} seconds, ` +
       `over ${countOf(reading.connections, 'SRT connection')}.`,
     rows: [
       { label: 'Packets received', value: formatCount(counts.received), detail: 'Data packets that reached SRS.' },
