@@ -19,12 +19,16 @@ types from [`../common`](../common/).
 The OBS panel is built from the stream's stage, as the manager pushed it. It
 offers SRT, and RTMP as well only on a stage whose record says `rtmpPublic`.
 The manager says it on no stage, because RTMP is closed to the outside on
-every stage for now, so the panel offers SRT alone. Beside RTMP it warns that RTMP is not
-encrypted: the stream key crosses the network as readable text, anyone who
-reads it there can publish to the stream with it, and on a stage that lets a
-reconnecting encoder replace one whose connection dropped they can replace a
-live broadcast too, so SRT with a passphrase is the one to use on a network
-the broadcaster does not trust. The SRT Server line carries the same per-stream `key=` as the RTMP
+every stage for now, so the panel offers SRT alone. Where a record does say
+it, the panel warns beside RTMP that RTMP is not encrypted: the stream key
+crosses the network as readable text, anyone who reads it there can publish to
+the stream with it, and since the stage lets a new RTMP publisher with the key
+take over a live stream, they can replace a live broadcast too, whichever
+protocol it came in over. It says that SRT with the stage's passphrase keeps
+the picture private but not the key, because SRT sends the key before
+encryption starts and a key read off either protocol publishes over RTMP while
+RTMP is open. On a stage with no SRT passphrase it says so instead of
+recommending one. The SRT Server line carries the same per-stream `key=` as the RTMP
 stream key, and the SRT passphrase wherever OBS can read it there, so the console hides
 those values, and the SRT Password field when there is one, until the operator
 reveals them. The host, port and stream id stay readable, and Copy always

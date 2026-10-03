@@ -877,9 +877,8 @@ middle of a broadcast, under one key.
 ⚠️ **The RTMP form carries the key in the clear.** RTMP is not encrypted and has no passphrase, so
 the key crosses the network readable. Anyone who reads it there can publish to that stream, and
 while the engine's takeover is on, which it is wherever a key is checked, take a live broadcast
-over. SRT with a passphrase is the form to hand a broadcaster on a network they do not trust. The
-SRT streamid crosses readable as well, so the passphrase is what protects that form: while the RTMP
-port is open, a key read off either protocol works over RTMP. See the takeover section of
+over. The SRT streamid crosses readable as well, so an SRT passphrase keeps the picture private but
+not the key: while the RTMP port is open, a key read off either protocol publishes over RTMP. See the takeover section of
 [engines/README.md](../../engines/README.md).
 
 **Take the ports from `publish-key.sh` rather than from here.** At slot 0 SRS uses the stock 1935

@@ -8,7 +8,13 @@ import type { Profile } from '../types';
 import type { RtmpPublishSettings } from '../urls';
 import { engineOf } from './shape';
 import { deploymentProgressText } from './deploymentPhase';
-import { OBS_SERVER_BOX, OBS_STREAM_KEY_BOX, RTMP_BOXES_NOTE, RTMP_UNENCRYPTED_WARNING } from './publishText';
+import {
+  OBS_SERVER_BOX,
+  OBS_STREAM_KEY_BOX,
+  publishesWithSrtPassphrase,
+  RTMP_BOXES_NOTE,
+  rtmpUnencryptedWarning,
+} from './publishText';
 
 /**
  * Which passphrase is already baked into the URL on screen.
@@ -84,20 +90,20 @@ export function PublishCard({
           {!passphrasePending && <>{passphraseNote(profile, hostPassphrase, !fieldPassphrase)} </>}
           Change <code>live/stream</code> to your own app and stream name if you use one.
         </Typography>
-        {rtmp && <RtmpPart rtmp={rtmp} />}
+        {rtmp && <RtmpPart rtmp={rtmp} hasSrtPassphrase={publishesWithSrtPassphrase(profile, hostPassphrase)} />}
       </Stack>
     </SectionCard>
   );
 }
 
 /** OBS's RTMP boxes, which carry no passphrase because RTMP has none, with what that costs. */
-function RtmpPart({ rtmp }: { rtmp: RtmpPublishSettings }) {
+function RtmpPart({ rtmp, hasSrtPassphrase }: { rtmp: RtmpPublishSettings; hasSrtPassphrase: boolean }) {
   return (
     <>
       <Typography variant="subtitle2" sx={{ pt: 1 }}>
         RTMP
       </Typography>
-      <Alert severity="warning">{RTMP_UNENCRYPTED_WARNING}</Alert>
+      <Alert severity="warning">{rtmpUnencryptedWarning(hasSrtPassphrase)}</Alert>
       <BoxLabel>{OBS_SERVER_BOX}</BoxLabel>
       <CopyBox value={rtmp.server} />
       <BoxLabel>{OBS_STREAM_KEY_BOX}</BoxLabel>

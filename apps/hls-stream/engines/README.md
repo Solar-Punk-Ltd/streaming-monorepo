@@ -124,11 +124,10 @@ the reconnect is refused as on stock SRS.
   the picture alternates between them. Closing one of them ends it.
 - **A stream key read off the network.** RTMP is not encrypted. Its stream key crosses the network readable, and
   RTMP has no passphrase as SRT has. Anyone who reads a key off the network can publish to that stream, and while a
-  takeover is on they can also take a live broadcast over. SRT with a passphrase stays the ingest to recommend on a
-  network the broadcaster does not trust: its picture is encrypted, and a publisher without the passphrase is
-  refused. SRT does not hide the key itself, though. It travels in the SRT stream id, which SRT sends before
-  encryption starts, so while the RTMP port is open a key read off an SRT broadcaster's connection works there too,
-  where no passphrase is asked.
+  takeover is on they can also take a live broadcast over, whichever protocol it came in over. An SRT passphrase
+  keeps the picture private and refuses an SRT publisher without it, but it does not keep the key private. The key
+  travels in the SRT stream id, which SRT sends before encryption starts, so while the RTMP port is open a key read
+  off an SRT broadcaster's connection publishes over RTMP, where no passphrase is asked.
 
 **How the image is built.** A workflow in the fork builds SRS's own root `Dockerfile` for `linux/amd64`, with the
 configure flags of upstream's release (`--sanitizer=off --gb28181=on`), and pushes it to

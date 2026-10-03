@@ -24,8 +24,10 @@ export const NO_STAGE_NOTE = 'Pick the stage this stream is broadcast on, in its
 export const RETIRED_STAGE_NOTE =
   'The manager retired this stage. These are the details it last pushed, and they may no longer answer.';
 
-/** What the panel says beside RTMP, in the words every console uses. */
-export const RTMP_UNENCRYPTED_NOTE = rtmpUnencryptedWarning('stage');
+/** What the panel says beside RTMP, in the words every console uses, for a stage with or without an SRT passphrase. */
+export function rtmpUnencryptedNote(hasSrtPassphrase: boolean): string {
+  return rtmpUnencryptedWarning('stage', hasSrtPassphrase);
+}
 
 /**
  * The SRT Server line carries `key=<publishKey>` and, where it can ride there,
@@ -88,10 +90,10 @@ function SrtSettings({ srt }: { srt: IngestSrtDetails }) {
  * OBS's RTMP boxes. OBS publishes the Stream Key box as the RTMP stream name,
  * so the key rides on it as `<topic>?key=<key>`.
  */
-function RtmpSettings({ rtmp }: { rtmp: IngestRtmpDetails }) {
+function RtmpSettings({ rtmp, hasSrtPassphrase }: { rtmp: IngestRtmpDetails; hasSrtPassphrase: boolean }) {
   return (
     <ProtocolSection title="RTMP">
-      <Alert severity="warning">{RTMP_UNENCRYPTED_NOTE}</Alert>
+      <Alert severity="warning">{rtmpUnencryptedNote(hasSrtPassphrase)}</Alert>
       <ValueField label="RTMP Server" value={rtmp.server} helperText="Paste into the Server box." />
       <ValueField
         label="RTMP Stream Key"
@@ -157,7 +159,9 @@ export function IngestPanel({
 
             <SrtSettings srt={details.srt} />
             {/* Sent only where the stage opens RTMP ingest. Elsewhere its port refuses encoders. */}
-            {details.rtmp ? <RtmpSettings rtmp={details.rtmp} /> : null}
+            {details.rtmp ? (
+              <RtmpSettings rtmp={details.rtmp} hasSrtPassphrase={Boolean(details.srt.passphrase)} />
+            ) : null}
           </>
         ) : (
           <Alert severity="info">{NO_STAGE_NOTE}</Alert>

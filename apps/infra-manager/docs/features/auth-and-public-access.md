@@ -358,9 +358,10 @@ moved and are marked where they do.
    so five bands stay open: SRT ingest on UDP, RTMP ingest on TCP, the viewer page and the two Bee
    peer ports, and a port the deployment page calls public has to be one of those five. RTMP is
    plain RTMP and not encrypted. A broadcaster's stream key crosses the network as readable text,
-   anyone who reads it there can publish to that stream with it, and on a stack that lets a
-   reconnecting encoder take over a stream they can take over a live broadcast too. SRT with a
-   passphrase stays the ingest to recommend on a network the broadcaster does not trust. A draft
+   anyone who reads it there can publish to that stream with it, and wherever keys are checked the
+   stack lets a new RTMP publisher take over a live stream, so they can replace a live broadcast
+   too, whichever protocol it came in over. While RTMP is open the SRT passphrase keeps the picture
+   private but not the key, because SRT sends the key before encryption starts. A draft
    applied before the band opened keeps RTMP closed until the host's table is replaced, and
    `deploy/README.md` step 3 says how.
 

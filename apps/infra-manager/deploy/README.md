@@ -527,10 +527,12 @@ free for a version that does run them.
 
 RTMP ingest, `10002 + 10 × slot` over TCP, is plain RTMP and is not
 encrypted. A broadcaster's stream key crosses the network as readable text,
-and anyone who reads it there can publish to that stream with it. On a stack
-that lets a reconnecting encoder take over a stream, they can also take over a
-live broadcast. RTMP has no passphrase, as SRT has, so SRT with a passphrase
-stays the ingest to recommend on a network the broadcaster does not trust.
+and anyone who reads it there can publish to that stream with it. Wherever
+keys are checked the stack lets a new RTMP publisher take over a live stream,
+so they can also replace a live broadcast, whichever protocol it came in over.
+While RTMP is open, the SRT passphrase keeps the picture private but not the
+key: SRT sends its stream id, key included, before encryption starts, so a key
+read off either protocol publishes over RTMP.
 
 **Upgrading to RTMP ingest.** The RTMP band came with version 2 of the port
 policy. A draft applied before it keeps every slot's RTMP port closed, while

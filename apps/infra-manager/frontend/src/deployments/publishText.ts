@@ -1,5 +1,6 @@
-import { rtmpUnencryptedWarning } from '@streaming-infra-manager/common';
+import { rtmpUnencryptedWarning as sharedRtmpWarning } from '@streaming-infra-manager/common';
 
+import type { Profile } from '../types';
 import type { RtmpPublishSettings } from '../urls';
 
 /**
@@ -7,8 +8,18 @@ import type { RtmpPublishSettings } from '../urls';
  * panel gives a broadcaster, and which of OBS's boxes each value goes in.
  */
 
-/** The warning every console gives beside RTMP, naming a deployment. */
-export const RTMP_UNENCRYPTED_WARNING = rtmpUnencryptedWarning('deployment');
+/** The warning every console gives beside RTMP, naming a deployment, with or without an SRT passphrase. */
+export function rtmpUnencryptedWarning(hasSrtPassphrase: boolean): string {
+  return sharedRtmpWarning('deployment', hasSrtPassphrase);
+}
+
+/**
+ * Whether this deployment's SRT ingest is encrypted: its own passphrase, else
+ * the host-wide one, the same precedence the deploy applies.
+ */
+export function publishesWithSrtPassphrase(profile: Profile, hostPassphrase: string | null): boolean {
+  return profile.has_srt_passphrase || Boolean(hostPassphrase);
+}
 
 /** OBS's names for its two RTMP boxes, which label the values that go in them. */
 export const OBS_SERVER_BOX = 'Server';

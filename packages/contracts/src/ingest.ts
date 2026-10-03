@@ -67,17 +67,26 @@ export const OBS_SRT_PASSPHRASE_FIELD_HELP =
 export type IngestOwner = 'stage' | 'deployment';
 
 /**
- * What a console says beside RTMP details, so every console tells a broadcaster the same thing. RTMP has no
- * passphrase, so the stream key crosses the network as readable text, and where a reconnecting encoder may take a
- * stream over, whoever reads the key off the network can take a live broadcast over too.
+ * What a console says beside RTMP details, so every console tells a broadcaster the same thing, on a stage or
+ * deployment where RTMP is open to the outside. RTMP has no passphrase, so the stream key crosses the network as
+ * readable text. The stack lets a new RTMP publisher take over a live stream wherever keys are checked, so whoever
+ * reads the key can replace a live broadcast, whichever protocol it arrived over. SRT sends its stream id, key
+ * included, before its encryption starts, so while RTMP is open the SRT passphrase keeps the picture private but not
+ * the key. `hasSrtPassphrase` says whether this owner's SRT ingest has a passphrase at all, so the text never offers
+ * one that is not there.
  */
-export function rtmpUnencryptedWarning(owner: IngestOwner): string {
-  return (
+export function rtmpUnencryptedWarning(owner: IngestOwner, hasSrtPassphrase: boolean): string {
+  const exposure =
     'RTMP is not encrypted. Your stream key crosses the network as readable text, and anyone who reads it there can ' +
-    `publish to this stream with it. On a ${owner} that lets a reconnecting encoder replace one whose connection ` +
-    'dropped, they can also replace your live broadcast with theirs. On a network you do not trust, broadcast over ' +
-    'SRT with a passphrase instead.'
-  );
+    `publish to this stream with it. This ${owner} lets a new RTMP publisher with the key take over a live stream, ` +
+    'so they can also replace your live broadcast with theirs, whichever protocol you broadcast over.';
+  const srt = hasSrtPassphrase
+    ? `SRT with this ${owner}'s passphrase keeps your picture private but not your key, because SRT sends the key ` +
+      'before encryption starts, and while RTMP is open a key read off either protocol publishes over RTMP.'
+    : 'Broadcasting over SRT does not help: SRT sends the key before any encryption starts, so while RTMP is open a ' +
+      `key read off either protocol publishes over RTMP, and this ${owner} has no SRT passphrase to keep the picture ` +
+      'private.';
+  return `${exposure} ${srt}`;
 }
 
 /**

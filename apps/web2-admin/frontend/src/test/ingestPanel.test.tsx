@@ -1,7 +1,7 @@
 import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { IngestPanel, NO_STAGE_NOTE, RETIRED_STAGE_NOTE, RTMP_UNENCRYPTED_NOTE } from '../components/IngestPanel';
+import { IngestPanel, NO_STAGE_NOTE, RETIRED_STAGE_NOTE, rtmpUnencryptedNote } from '../components/IngestPanel';
 import { RTMP_OFFERED, makeIngest, mockFetch, renderWithProviders } from './helpers';
 
 const renderPanel = (details = makeIngest()) =>
@@ -91,20 +91,33 @@ describe('IngestPanel', () => {
     expect(screen.queryByLabelText('RTMP Stream Key')).not.toBeInTheDocument();
     expect(screen.queryByText(/pick one of the two protocols/)).not.toBeInTheDocument();
     expect(screen.getByText(/copy the SRT values below into OBS/)).toBeInTheDocument();
-    expect(screen.queryByText(RTMP_UNENCRYPTED_NOTE)).not.toBeInTheDocument();
+    expect(screen.queryByText(/RTMP is not encrypted/)).not.toBeInTheDocument();
   });
 
-  it('warns beside RTMP that it is not encrypted, what a key read off the network allows, and to use SRT', () => {
+  it('warns beside RTMP that it is not encrypted, what a key read off the network allows, and what SRT keeps', () => {
     mockFetch([]);
 
     renderPanel(makeIngest({ rtmp: RTMP_OFFERED }));
 
-    const warning = section('RTMP').getByText(RTMP_UNENCRYPTED_NOTE);
+    const warning = section('RTMP').getByText(rtmpUnencryptedNote(true));
     expect(warning).toHaveTextContent(/RTMP is not encrypted/);
     expect(warning).toHaveTextContent(/can publish to this stream/);
     expect(warning).toHaveTextContent(/replace your live broadcast/);
-    expect(warning).toHaveTextContent(/On a network you do not trust, broadcast over SRT with a passphrase/);
-    expect(section('SRT').queryByText(RTMP_UNENCRYPTED_NOTE)).not.toBeInTheDocument();
+    expect(warning).toHaveTextContent(/keeps your picture private but not your key/);
+    expect(warning).toHaveTextContent(/a key read off either protocol publishes over RTMP/);
+    expect(section('SRT').queryByText(/RTMP is not encrypted/)).not.toBeInTheDocument();
+  });
+
+  it('does not recommend an SRT passphrase beside RTMP on a stage that has none', () => {
+    mockFetch([]);
+    const details = makeIngest({ rtmp: RTMP_OFFERED });
+
+    renderPanel({ ...details, srt: { ...details.srt!, passphrase: null } });
+
+    const warning = section('RTMP').getByText(rtmpUnencryptedNote(false));
+    expect(warning).toHaveTextContent(/has no SRT passphrase to keep the picture private/);
+    expect(warning).not.toHaveTextContent(/keeps your picture private/);
+    expect(section('SRT').getByText('No SRT passphrase is configured on this stage.')).toBeInTheDocument();
   });
 
   it('says what goes in the OBS Server and Stream Key boxes for RTMP where the deployment opens it', () => {

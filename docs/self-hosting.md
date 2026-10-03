@@ -299,10 +299,11 @@ images on the host itself.
    ports, a browser opens the viewer page, and a port ending in 5 or 7 does not answer from outside.
 
    RTMP is plain RTMP and is not encrypted. A broadcaster's stream key crosses the network as
-   readable text, and anyone who reads it there can publish to that stream with it. On a stack that
-   lets a reconnecting encoder take over a stream, they can also take over a live broadcast. RTMP
-   has no passphrase, as SRT has, so tell broadcasters to use SRT with a passphrase on any network
-   they do not trust.
+   readable text, and anyone who reads it there can publish to that stream with it. Wherever keys
+   are checked the stack lets a new RTMP publisher take over a live stream, so they can also
+   replace a live broadcast, whichever protocol it came in over. While RTMP is open, the SRT
+   passphrase keeps the picture private but not the key: SRT sends its stream id, key included,
+   before encryption starts, so a key read off either protocol publishes over RTMP.
 
 The engine's `docker logs` on a stage host are as sensitive as its env files. SRS logs every
 broadcaster's publish key when they connect and the webhook token on every hook it calls, and a

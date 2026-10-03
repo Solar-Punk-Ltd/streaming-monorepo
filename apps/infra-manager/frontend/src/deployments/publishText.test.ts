@@ -14,19 +14,33 @@ import {
   OBS_SERVER_BOX,
   OBS_STREAM_KEY_BOX,
   publishCopyText,
+  publishesWithSrtPassphrase,
   RTMP_BOXES_NOTE,
-  RTMP_UNENCRYPTED_WARNING,
+  rtmpUnencryptedWarning,
 } from './publishText';
+import type { Profile } from '../types';
 
 describe('the Publish card beside RTMP', () => {
-  it('warns that RTMP is not encrypted, what a key read off the network allows, and to use SRT', () => {
-    assert.match(RTMP_UNENCRYPTED_WARNING, /^RTMP is not encrypted\./);
-    assert.match(RTMP_UNENCRYPTED_WARNING, /anyone who reads it there can publish to this stream with it/);
-    assert.match(RTMP_UNENCRYPTED_WARNING, /they can also replace your live broadcast with theirs/);
-    assert.match(
-      RTMP_UNENCRYPTED_WARNING,
-      /On a network you do not trust, broadcast over SRT with a passphrase instead\.$/,
-    );
+  it('warns that RTMP is not encrypted, what a key read off the network allows, and what SRT keeps', () => {
+    const warning = rtmpUnencryptedWarning(true);
+    assert.match(warning, /^RTMP is not encrypted\./);
+    assert.match(warning, /anyone who reads it there can publish to this stream with it/);
+    assert.match(warning, /This deployment lets a new RTMP publisher with the key take over a live stream/);
+    assert.match(warning, /SRT with this deployment's passphrase keeps your picture private but not your key/);
+  });
+
+  it('does not recommend an SRT passphrase to a deployment that publishes without one', () => {
+    const warning = rtmpUnencryptedWarning(false);
+    assert.doesNotMatch(warning, /keeps your picture private/);
+    assert.match(warning, /this deployment has no SRT passphrase to keep the picture private/);
+  });
+
+  it("counts the deployment's own passphrase or the host-wide one, as the SRT line does", () => {
+    const own = { has_srt_passphrase: true } as Profile;
+    const none = { has_srt_passphrase: false } as Profile;
+    assert.equal(publishesWithSrtPassphrase(own, null), true);
+    assert.equal(publishesWithSrtPassphrase(none, 'host-wide'), true);
+    assert.equal(publishesWithSrtPassphrase(none, null), false);
   });
 
   it('labels each value with the name of the OBS box it goes in', () => {
@@ -35,7 +49,7 @@ describe('the Publish card beside RTMP', () => {
   });
 
   it('carries no em dash and no semicolon', () => {
-    for (const text of [RTMP_UNENCRYPTED_WARNING, RTMP_BOXES_NOTE]) {
+    for (const text of [rtmpUnencryptedWarning(true), rtmpUnencryptedWarning(false), RTMP_BOXES_NOTE]) {
       assert.ok(!text.includes('\u2014'), `an em dash in: ${text}`);
       assert.ok(!text.includes(';'), `a semicolon in: ${text}`);
     }

@@ -214,11 +214,11 @@ rather than as holes in the picture, and there is no latency window to set.
 
 ⛔ **RTMP is not encrypted.** The stream key crosses the network readable, and RTMP has no
 passphrase as SRT has. Anyone who reads a key off the network can publish to that stream, and while
-the takeover is on, which it is wherever keys are checked, they can also take a live broadcast over.
-SRT with a passphrase stays the ingest to recommend on a network the broadcaster does not trust: its
-picture is encrypted, and a publisher without the passphrase is refused. SRT does not hide the key
-itself, though, because it sends its stream id before encryption starts, so while the RTMP port is
-open a key read off an SRT connection works on RTMP too. There is no RTMPS: SRS 6 has no TLS on its
+the takeover is on, which it is wherever keys are checked, they can also take a live broadcast over,
+whichever protocol it came in over. An SRT passphrase keeps the picture private and refuses an SRT
+publisher without it, but it does not keep the key private: SRT sends its stream id before encryption
+starts, so while the RTMP port is open a key read off an SRT connection publishes over RTMP, where no
+passphrase is asked. There is no RTMPS: SRS 6 has no TLS on its
 RTMP listener, and offering it would take a TLS terminator in front.
 
 An open RTMP port is not an open stream. SRS allows play from its own loopback only, on the ingest

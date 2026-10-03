@@ -395,9 +395,11 @@ Left open after the nine phases:
 Decided by the owner: RTMP ingest at the same level as SRT, as plain RTMP. SRS 6
 has no TLS on its RTMP listener, so there is no RTMPS. An RTMP stream key
 crosses the network as readable text, anyone who reads it there can publish to
-that stream with it, and on a stack that lets a reconnecting encoder take over a
-stream they can take over a live broadcast too. SRT with a passphrase stays the
-ingest to recommend on a network the broadcaster does not trust.
+that stream with it, and wherever keys are checked the stack lets a new RTMP
+publisher take over a live stream, so they can replace a live broadcast too,
+whichever protocol it came in over. While RTMP is open, the SRT passphrase keeps
+the picture private but not the key, because SRT sends the key before
+encryption starts and a key read off either protocol publishes over RTMP.
 
 - The manager's port policy opens an RTMP ingest band, TCP on
   `10002 + 10 × slot` for slots 1 to 100, as its version 2. The firewall draft
