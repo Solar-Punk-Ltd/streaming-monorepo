@@ -199,7 +199,7 @@ SRT or RTMP ingest ──▶ __defaultVhost__ ───────────�
                        hls: off                         no transcode
 ```
 
-Two things about this shape are load-bearing:
+Three things about this shape are load-bearing:
 
 **The second vhost is what stops a transcode loop.** Transcode scope is matched at vhost, app and
 stream level and the matches are cumulative (`parse_scope_engines` in SRS's `srs_app_encoder.cpp`).
@@ -212,6 +212,15 @@ rendition arrive on the wrong vhost and say so.
 **Every rung must cut segments at the same media timestamps.** `ABR_FPS x HLS_FRAGMENT` is the GOP
 and has to be a whole number of frames; the entrypoint refuses to start rather than round it,
 because a fractional GOP drifts the rungs apart and every switch then lands mid-GOP.
+
+**The transcode input dials the port the broadcast came in on.** SRS builds each rung's ffmpeg input
+itself, as an RTMP play from `127.0.0.1` on the port in the broadcaster's own server URL
+(`srs_app_encoder.cpp`). A broadcaster who dials the stage directly names `SRS_RTMP_PORT`, where SRS
+listens. One behind a forward that changes the port, for example a public 11935 forwarded to the
+stage's 1935, makes the input dial 11935 inside the container, where nothing listens, so that RTMP
+broadcast gets no rungs while SRS and the uploader both look healthy. Keep the port the same on both
+sides of any forward in front of RTMP. An SRT source carries no RTMP port and its input dials 1935,
+which the entrypoint makes SRS listen on from loopback whenever its RTMP listener is on another port.
 
 ⛔⛔⛔ **`HLS_FRAGMENT` also sets how fast SRS has to announce, and that has a ceiling.** SRS fires
 `on_hls` once per closed segment per rung, so a ladder asks for `rungs / HLS_FRAGMENT` announcements
